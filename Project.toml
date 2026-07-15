@@ -1,0 +1,26 @@
+name = "LPJmLFITEmulator"
+uuid = "e4cfba23-4562-4fe9-8259-be4d4b246161"
+authors = ["Jamir Priesner"]
+version = "0.1.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ESM-ready LPJmL-FIT hybrid land component.
+#   S = slow ML trait/size distribution emulator (annual)
+#   F = fast physical biophysical core kept from LPJmL-FIT (daily)
+#   E = surface-energy-balance + skin-temperature closure (new; reuse Terrarium.jl)
+# See DESIGN.md (frozen schemas) and DEVELOPMENT_PLAN.md (phased plan).
+#
+# Deps are added PER PHASE (keep the graph lean; Aqua checks for stale deps):
+#   Phase 3/6 (differentiable core F2):  Enzyme, Lux, SciML, KernelAbstractions
+#   Phase 4   (energy layer E):          Terrarium (SurfaceEnergyBalance/ImplicitSkinTemperature)
+#   Cross-cutting:                       StableRNGs, DrWatson (reproducibility)
+# ─────────────────────────────────────────────────────────────────────────────
+
+[deps]
+
+[compat]
+julia = "1.10"
+
+# Test dependencies live in `test/Project.toml` (the test-specific environment used by
+# `Pkg.test()` / ReTestItems). Do NOT add an [extras]/[targets] stanza here — the two
+# mechanisms are mutually exclusive.

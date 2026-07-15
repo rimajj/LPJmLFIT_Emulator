@@ -1,0 +1,32 @@
+# Runic.jl formatting gate (ENGINEERING_STANDARDS.md §3).
+# Zero-config, deterministic formatter — eliminates style churn in agent output.
+# Fails CI if any tracked Julia source is not Runic-formatted.
+name: format
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # setup-julia is optional for runic-action but GitHub's ubuntu runners do
+      # not ship Julia, so install the LTS to run Runic against.
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: 'lts'
+      # Verify-only (default): the action fails if files are not formatted.
+      # Usage per https://github.com/fredrikekre/runic-action
+      - uses: fredrikekre/runic-action@v1
+        with:
+          version: '1'

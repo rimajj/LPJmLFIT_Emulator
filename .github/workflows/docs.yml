@@ -1,0 +1,63 @@
+# Documenter.jl build + doctests + linkcheck + versioned GitHub Pages deploy
+# (ENGINEERING_STANDARDS.md §3 and §4). Documenter is the single source of truth.
+#
+# `docs/make.jl` MUST call makedocs(...) with `doctest = true` and
+# `linkcheck = true` (and `warnonly` OFF) so the doc<->code consistency gate and
+# the linkcheck run inside the build. The explicit doctest step below is a
+# belt-and-braces re-run so doctest failures surface even on PRs from forks.
+name: docs
+
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+    branches:
+      - main
+
+# Deploy needs write access to push the built site to the gh-pages branch;
+# statuses/pull-requests let Documenter post preview links on PRs.
+permissions:
+  contents: write
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    # Headless GR backend so figure-generating @example blocks work on CI.
+    env:
+      GKSwstype: '100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Instantiate docs environment
+        run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path = pwd()))
+            Pkg.instantiate()'
+      - name: Run doctests
+        run: |
+          julia --project=docs -e '
+            using Documenter
+            using LPJmLFITEmulator
+            DocMeta.setdocmeta!(
+                LPJmLFITEmulator, :DocTestSetup, :(using LPJmLFITEmulator);
+                recursive = true,
+            )
+            doctest(LPJmLFITEmulator)'
+      - name: Build, linkcheck and deploy docs
+        uses: julia-actions/julia-docdeploy@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

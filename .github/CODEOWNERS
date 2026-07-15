@@ -1,0 +1,4 @@
+# Code owners for rimajj/LPJmLFIT_Emulator (private).
+# Owner is auto-requested for review on every PR; combine with branch protection
+# requiring code-owner review (ENGINEERING_STANDARDS.md §1).
+* @rimajj

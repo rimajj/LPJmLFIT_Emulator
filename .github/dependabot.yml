@@ -1,0 +1,32 @@
+# Dependabot version updates (ENGINEERING_STANDARDS.md §3).
+# Dependabot now supports Julia natively (CompatHelper's README recommends
+# migrating to it) and supports the `uv` ecosystem for uv-managed Python.
+version: 2
+updates:
+  # Julia package dependencies (Project.toml [compat]) at the repo root.
+  - package-ecosystem: "julia"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "julia"
+
+  # GitHub Actions pinned in .github/workflows (directory "/" scans that dir).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Python prototype managed by uv (pyproject.toml / uv.lock under python/).
+  # If Dependabot ever rejects `uv` here, fall back to package-ecosystem "pip".
+  - package-ecosystem: "uv"
+    directory: "/python"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"

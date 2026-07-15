@@ -1,0 +1,23 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Julia / Python source
+*.jl   text diff=julia
+*.py   text diff=python
+*.toml text
+*.yaml text
+*.yml  text
+*.md   text
+*.bib  text
+
+# Diagram SOURCES are text and reviewable (never commit rendered SVG — ENGINEERING_STANDARDS §5)
+*.mmd  text
+*.d2   text
+
+# Treat notebooks/large generated assets sensibly
+*.ipynb text
+*.svg  -diff
+
+# Linguist: keep the repo language stats honest (docs/vendored not counted)
+docs/build/**    linguist-generated=true
+docs/src/generated/**  linguist-generated=true

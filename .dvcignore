@@ -1,0 +1,6 @@
+# DVC ignore — patterns DVC should skip when tracking data dirs.
+# (Data, weights, LPJmL outputs/restarts are DVC-tracked pointers, never committed to git.)
+*.tmp
+*.log
+.ipynb_checkpoints/
+__pycache__/

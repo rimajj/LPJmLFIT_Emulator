@@ -1,0 +1,37 @@
+# Python prototype checks (ENGINEERING_STANDARDS.md §3): lint, format, tests.
+# The prototype is uv-managed and lives under python/.
+name: python
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: python
+    runs-on: ubuntu-latest
+    # All `run` steps execute inside python/ where pyproject.toml / uv.lock live.
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          working-directory: python
+      - name: Sync environment (frozen to uv.lock)
+        run: uv sync
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Pytest
+        run: uv run pytest

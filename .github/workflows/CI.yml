@@ -1,0 +1,70 @@
+# Julia package tests + coverage (ENGINEERING_STANDARDS.md §3).
+# Required branch-protection checks (name them exactly): `test (lts)` and `test (1)`.
+# The `test (pre)` job is allowed to fail; the macOS job is an extra platform gate.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+    branches:
+      - main
+
+# Cancel superseded runs on a branch/PR, but never cancel a run on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # NOTE: do not set a static `name:` here — GitHub auto-generates the matrix
+  # names `test (lts)`, `test (1)`, `test (pre)` from the job id + `version`.
+  test:
+    runs-on: ubuntu-latest
+    # `pre` (upcoming Julia prerelease) is allowed to fail.
+    continue-on-error: ${{ matrix.version == 'pre' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - 'lts'   # long-term-support Julia (currently 1.10, per Project.toml compat) — REQUIRED
+          - '1'     # latest released Julia 1.x — REQUIRED
+          - 'pre'   # upcoming Julia prerelease — allowed to fail
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+          arch: x64
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          annotate: true
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: false
+
+  # One extra platform: macOS (Apple Silicon) on the LTS Julia. Not a required
+  # check; keep its name distinct from the `test (...)` matrix jobs.
+  test-macos:
+    name: test (macOS, lts)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: 'lts'
+          arch: aarch64
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          annotate: true

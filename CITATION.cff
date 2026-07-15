@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "LPJmL-FIT Hybrid Land Component (ESM-ready emulator)"
+abstract: >-
+  A hybrid Earth-System-Model land-surface component derived from LPJmL-FIT: a slow ML
+  trait/size-distribution emulator (S), the kept physical daily biophysical core (F), and a
+  new surface-energy-balance + skin-temperature closure (E), conserving water and carbon by
+  construction and closing the energy budget in E.
+type: software
+authors:
+  - given-names: Jamir
+    family-names: Priesner
+    affiliation: "Potsdam Institute for Climate Impact Research (PIK)"
+version: 0.1.0
+repository-code: "https://github.com/rimajj/LPJmLFIT_Emulator"
+keywords:
+  - land-surface model
+  - dynamic global vegetation model
+  - LPJmL-FIT
+  - hybrid physics-ML
+  - Earth system model
+  - emulator
+# license: TBD by owner — LPJmL-FIT is AGPL-3.0; cross-repo embedding needs a legal read (see ADR).

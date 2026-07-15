@@ -1,0 +1,63 @@
+# environment.yml — Python env for PROTOTYPING the slow distributional emulator (component S).
+# NOTE (see ECOSYSTEM_AND_COUPLING.md): the target ESM stack is JULIA + Enzyme AD.
+#   - Component E (energy balance/skin temp) is REUSED from Terrarium.jl (Julia) — not built here.
+#   - The differentiable fast core (F2) and the coupled/online-trainable system are JULIA
+#     (Enzyme.jl, Lux.jl/Flux.jl, SciML, KernelAbstractions) — add a Julia Project.toml for that.
+#   - This Python env is for the S prototype (DRF/tabular-diffusion maturity); port S to Lux.jl for coupling.
+# Create: `conda env create -f environment.yml` (or micromamba). Reconcile the CUDA build
+# of pytorch with the cluster's CUDA module (see hpc_slurm.yaml). Pin a lockfile after first
+# create; log resolved versions in JOURNAL.md. Data generation (LPJmL-FIT) uses Intel/MPI, NOT this env.
+
+name: esm-land-emulator
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.11
+  # --- core numerics / IO ---
+  - numpy=1.26.*
+  - scipy=1.13.*
+  - pandas=2.2.*
+  - pyarrow=16.*
+  - xarray=2024.*
+  - netcdf4=1.6.*
+  - dask=2024.*
+  - zarr=2.*
+  # --- classical ML / distributional baselines (Phase 2) ---
+  - scikit-learn=1.5.*
+  - xgboost=2.1.*
+  - lightgbm=4.*
+  - statsmodels=0.14.*
+  # --- deep learning (Phase 2 escalation, Phase 4/6) ---
+  - pytorch=2.4.*
+  - pytorch-cuda=12.1          # reconcile with cluster CUDA module
+  - lightning=2.*              # training loops / checkpoints
+  # --- evaluation metrics ---
+  - matplotlib=3.9.*
+  - seaborn=0.13.*
+  - pip
+  - pip:
+      # distributional emulation (versions are a starting point — LOCK them in a lockfile
+      # after the first successful solve, and log resolved versions in JOURNAL.md)
+      - quantile-forest==1.3.0   # QRF marginals
+      - ngboost==0.5.1           # probabilistic boosting (parametric marginals)
+      - copulas==0.11.0          # copula dependence (SDV)
+      - sdv==1.15.0              # tabular synthesis baselines (CTGAN/TVAE) if needed
+      - sdmetrics==0.15.0        # PCD, detection AUC, distributional diagnostics
+      # proper scoring / distances
+      - properscoring==0.1       # CRPS
+      - POT==0.9.4               # optimal transport / Wasserstein
+      # config / reproducibility
+      - hydra-core==1.3.2        # config-driven runs
+      - omegaconf==2.3.0
+      - pyyaml==6.0.2
+      # DRF (Distributional Random Forests) — Phase 2 baseline. CAUTION: `pip install drf`
+      # installs Django REST Framework, NOT this. Install the Distributional Random Forest
+      # package from the authors' source and PIN THE COMMIT (github.com/lorismichel/drf).
+      # TabDiff / TabSyn (escalation only) are research repos — install from source, pin the
+      # commit, only if the metric panel justifies going beyond DRF/copula.
+
+# Optional JAX stack for the differentiable fast core (F2, Phase 6). Create as a SEPARATE
+# env to avoid CUDA conflicts with pytorch:
+#   jax[cuda12], optax, equinox (or flax), diffrax   # pin after reconciling with cluster CUDA

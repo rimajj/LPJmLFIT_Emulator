@@ -1,0 +1,81 @@
+# hpc_slurm.yaml — SLURM/module settings for the PIK cluster (login03).
+# RESOLVED 2026-07-15 (Phase 0) from the production run scripts under
+# /home/jamirp/scripts/clustering/global/bash_run_model/ and the sibling emulator project.
+# Do NOT probe partitions interactively; use these values. SLURM binaries present:
+# /usr/bin/{sbatch,squeue,sinfo}. `module` is a shell function (load in the job, from profile).
+
+cluster: pik
+
+# ---- Modules ([VERIFIED] exact versions from run_spinup_transient_ground_truth_global_ssp370.sh) ----
+modules:
+  lpjml_build_run:        # compiling + running LPJmL-FIT (Intel MPI toolchain)
+    - intel/oneAPI/2024.0.0   # provides mpiicx/icx + mpirun
+    - udunits/2.2.28
+    - json-c/0.13.1
+    - openssl/3.6.0
+    - netcdf-c/4.9.2       # [VERIFIED] bare `netcdf-c` resolves to 4.9.2 (default); provides libnetcdf.so.19 that bin/lpjml needs
+    - curl/8.4.0
+    - expat/2.5.0
+  # [VERIFIED 2026-07-15] With these modules loaded, `bin/lpjml -h` runs: "lpjml C Version 5.6.004 (Feb 5 2026)".
+  ml_cpu:                 # slow-emulator S (LightGBM/copula) — CPU, no GPU needed for the baseline
+    - anaconda            # then: `source activate py311_new`
+  ml_gpu:                 # only for generative escalation (diffusion) or Julia F2 later
+    - cuda                # TODO confirm CUDA module if/when GPU escalation is pursued
+
+# ---- Python env (REUSE — do NOT create a new one) ----
+python_env:
+  interpreter: /home/jamirp/.conda/envs/py311_new/bin/python   # Python 3.11.9
+  activate: "module load anaconda; source activate py311_new"
+  key_pkgs: "lightgbm 4.6.0, xgboost 3.2.0, copulas 0.14.1, shap 0.51.0, polars 1.33.1, pandas 2.3.2, pyarrow 23.0.1, numpy 2.2.6, scipy 1.14.1, scikit-learn 1.7.2, torch 2.5.1+cu124, xarray, netCDF4"
+  added_reqs: /p/projects/open/Jamir/emulator/requirements_added.txt
+  fixed_seed: 42
+
+slurm_account: waldspektrum   # emulator project account (LPJmL ground-truth scripts leave --account commented)
+
+# ---- LPJmL-FIT data-generation jobs (CPU, Intel MPI) ----
+# NB: the repo .jcf files (slurm_lpjmlfit*.jcf) are STALE (point at /home/billing/...). Use the
+# production run scripts, which auto-generate input_*.js + lpjml_*.js + slurm_*.jcf and submit a
+# spinup->transient dependency chain. Authoritative recipe = config/paths.yaml:lpjml.run_scripts_dir.
+lpjml_singlesite:         # prototype single-cell (tiny daily-output test); from slurm_lpjmlfit_singlesite.jcf
+  qos: short
+  ntasks: 1
+  # NB: single-site spinup is 1000 spinup yrs x 30-yr cycle -> shorten nspinup for a quick daily-output demo.
+  cmd_spinup: "mpirun ${lpjml.binary} -DSPINUP -DSINGLESITE ${lpjml.run_config}"
+  cmd_transient: "mpirun ${lpjml.binary} -DTRANSIENT -DSINGLESITE ${lpjml.run_config}"
+
+lpjml_global:             # multi-cell ground truth; from the production run scripts
+  qos: short
+  exclusive: true
+  ntasks: 2048            # ssp370 script uses 2048; historical ground-truth script uses 46 (both fit qos=short)
+  time: "03:30:00"        # ssp370 wall time (2020-2100 continuation from restart_2019.lpj)
+  cmd_spinup: "mpirun ${lpjml.binary} -DSPINUP <generated_config.js>"        # nspinup 1000, nspinyear 30
+  cmd_transient: "mpirun ${lpjml.binary} -DFROM_RESTART <generated_config.js>"
+
+# Daily-output re-run (Phase 1): SAME as lpjml_global/singlesite but with daily "timestep" on the
+# fast-layer flux/pool variables (see DESIGN.md data schema). Simulation CPU cost unchanged; only I/O grows.
+# Keep the `ind` tree table ANNUAL (cost driver). For per-tree carbon pools, add a RAW-format ind output.
+
+# ---- ML training jobs (mostly CPU for the S baseline) ----
+ml_train:                 # slow-emulator S (LightGBM/copula) — runs on CPU
+  qos: short
+  account: waldspektrum
+  cpus_per_task: 16       # TODO tune (LightGBM threads / data loaders)
+  mem: "64G"              # TODO tune (big parquet -> stream from /p/tmp)
+  time: "12:00:00"        # TODO tune
+  job_name: esm_land_S
+
+ml_train_gpu:             # ONLY if generative escalation (TabDiff/TabSyn) or Julia F2 is pursued
+  qos: TODO_gpu_qos       # TODO confirm PIK GPU qos
+  account: waldspektrum
+  gres: "gpu:1"           # TODO confirm GPU type string
+  cpus_per_task: 8
+  mem: "64G"
+  time: "12:00:00"
+  job_name: esm_land_gpu
+
+notes: >
+  Data generation runs on CPU/MPI (LPJmL is not GPU code). The slow-emulator baseline (S) is
+  LightGBM/copula and runs on CPU — no GPU required until generative escalation or the Julia
+  differentiable core (F2). Julia 1.10.0 is available at
+  /p/system/packages_rhel9/tools/julia/1.10.0 for the Terrarium.jl/SpeedyWeather.jl path.
+  Log the exact modules used per job in JOURNAL.md.

@@ -1,0 +1,77 @@
+# ── Secrets / credentials (NEVER commit) ─────────────────────────────────────
+*.pem
+*.key
+*_deploy
+*_signing
+id_ed25519*
+id_rsa*
+.env
+.env.*
+secrets/
+*token*
+*credential*
+
+# ── Data, model weights, large binaries (tracked via DVC pointers, not git) ──
+# LPJmL inputs/outputs & restarts live on /p/projects and /p/tmp, never in-repo.
+*.clm
+*.lpj
+*.nc
+*.nc4
+*.bin
+*.soil.bin
+*.parquet
+*.arrow
+*.feather
+*.h5
+*.hdf5
+data/raw/
+data/interim/
+data/processed/
+artifacts/models/
+artifacts/logs/
+!**/.gitkeep
+
+# ── Julia ────────────────────────────────────────────────────────────────────
+# NOTE: this is an APPLICATION/experiment repo → Manifest.toml IS committed
+# (reproducibility, ENGINEERING_STANDARDS §7). Only build/coverage artifacts ignored.
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+/docs/build/
+/docs/site/
+LocalPreferences.toml
+deps/deps.jl
+.julia_history
+
+# ── Documentation build ──────────────────────────────────────────────────────
+docs/build/
+docs/src/generated/*.svg
+_freeze/
+.quarto/
+*_files/
+
+# ── Python (slow-emulator prototype) ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# ── Experiment tracking / provenance ─────────────────────────────────────────
+mlruns/
+mlartifacts/
+.dvc/cache/
+.dvc/tmp/
+
+# ── Editor / OS ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
+core-*

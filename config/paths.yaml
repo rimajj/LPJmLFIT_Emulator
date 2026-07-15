@@ -1,0 +1,110 @@
+# paths.yaml — fixed paths for the LPJmL-FIT hybrid land-component project.
+# All code must read paths from here (no hard-coded paths).
+#
+# RESOLVED 2026-07-15 (Phase 0 DESIGN) against the live PIK cluster (login03).
+# The handover's assumed repo path /home/jamirp/waldspektrum was WRONG; the real
+# LPJmL-FIT tree is /home/jamirp/lpjml56fit (LPJROOT already set, binary already built).
+# Input data is the priesner/clustering pipeline under /p/projects/waldspektrum/...,
+# NOT the repo-default input_GSWP3-W5E5.js. Values still unresolved are marked TODO.
+
+project:
+  root: /p/projects/open/Jamir/esm_land_emulator          # this project's deliverables/code (THIS repo)
+  repo_root: /home/jamirp/lpjml56fit                       # LPJmL-FIT source tree (LPJmL 5.6.004 + FIT)
+  design_doc: /p/projects/open/Jamir/esm_land_emulator/DESIGN.md
+  memory: /p/projects/open/Jamir/esm_land_emulator/MEMORY.md
+  journal: /p/projects/open/Jamir/esm_land_emulator/JOURNAL.md
+  # Sibling PRIOR WORK (offline component-S emulator; reuse data/eval/env, do not redo):
+  prior_emulator: /p/projects/open/Jamir/emulator
+  prior_emulator_metrics: /p/projects/open/Jamir/emulator/src/metrics.py
+
+lpjml:
+  lpjroot: /home/jamirp/lpjml56fit                         # [VERIFIED] Makefile.inc:38 LPJROOT already = this
+  binary: /home/jamirp/lpjml56fit/bin/lpjml                # [VERIFIED] built 2026-02-05, 11.8 MB
+  version: "5.6.004"                                        # [VERIFIED] VERSION file
+  git_commit: b2e5ca944a9c139cb8bc26997032fb7ee5bc0cf4     # [VERIFIED] 2026-01-28 "fixed inheritance routine in new_tree.c"
+  run_config: /home/jamirp/lpjml56fit/lpjmlfit.js          # repo default (npatch:25, SINGLESITE=Hainich/28008 or all)
+  input_config_repo_default: /home/jamirp/lpjml56fit/input_GSWP3-W5E5.js  # repo default (obsclim); superseded by production run scripts below
+  makefile_inc: /home/jamirp/lpjml56fit/Makefile.inc       # Intel MPI build (Makefile.hpc2024 selected by configure.sh)
+  configure: /home/jamirp/lpjml56fit/configure.sh
+
+  # Authoritative RUN RECIPE = the production run scripts (NOT the stale repo .jcf files, which
+  # still point at /home/billing/... and /p/tmp/billing/...). These write input_*.js + lpjml_*.js
+  # + slurm_*.jcf into <outpath>/scripts_for_running_the_model/ and submit a spinup->transient chain.
+  run_scripts_dir: /home/jamirp/scripts/clustering/global/bash_run_model
+  run_script_historical: /home/jamirp/scripts/clustering/global/bash_run_model/run_spinup_transient_ground_truth_general_global_historical.sh
+  run_script_ssp370: /home/jamirp/scripts/clustering/global/bash_run_model/run_spinup_transient_ground_truth_global_ssp370.sh
+
+  # ---- INPUT DATA (production "global" domain; 0.5deg; 67420 cells, 63119 with tree data) ----
+  # [VERIFIED present on disk 2026-07-15]. Same 5 climate vars for both scenarios (tas,pr,lwnet,rsds,huss).
+  inputs:
+    inpath: /p/projects/waldspektrum/priesner/clustering/global
+    soil:      /p/projects/waldspektrum/priesner/clustering/global/soil_code_test.soil.bin   # raw, 67420 bytes (1 byte/cell)
+    coord:     /p/projects/waldspektrum/priesner/clustering/global/soil_code_test.grid.clm   # clm "orderA" grid
+    soildepth: /p/projects/waldspektrum/priesner/clustering/global/soil_depth_test.clm
+    # Historical (obsclim GSWP3-W5E5 ISIMIP3a; DAILY, noleap, 1901-2019; here used 2000-2019). [VERIFIED daily via NetCDF header]
+    historical:
+      tas:   /p/projects/waldspektrum/priesner/clustering/global/temperature_test.clm
+      pr:    /p/projects/waldspektrum/priesner/clustering/global/precipitation_test.clm
+      lwnet: /p/projects/waldspektrum/priesner/clustering/global/long_wave_radiation_test.clm  # net LW, downward-positive (petpar2.c:72, islwdown=FALSE)
+      rsds:  /p/projects/waldspektrum/priesner/clustering/global/short_wave_radiation_test.clm
+      huss:  /p/projects/waldspektrum/priesner/clustering/global/humid_test.clm                # specific humidity (relative_humidity:false)
+      co2:   /p/projects/lpjml/inputs/co2/global/TRENDY/v12/global_co2_ann_1700_2022.txt
+    # SSP370 (MPI-ESM1-2-HR; 2015-2100; regridded "orderA"). THIS IS THE REALISTIC OOD TRAJECTORY.
+    ssp370:
+      tas:   /p/projects/waldspektrum/priesner/clustering/global/ssp370/tas_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm
+      pr:    /p/projects/waldspektrum/priesner/clustering/global/ssp370/pr_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm
+      lwnet: /p/projects/waldspektrum/priesner/clustering/global/ssp370/lwnet_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm
+      rsds:  /p/projects/waldspektrum/priesner/clustering/global/ssp370/rsds_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm
+      huss:  /p/projects/waldspektrum/priesner/clustering/global/ssp370/huss_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm
+      co2:   /home/jamirp/scripts/clustering/climclusterpy_package/global_co2_ann_1700_2019_const_2100.txt  # CO2 HELD CONSTANT after 2019
+    # Raw GCM NetCDFs (9 vars incl. sfcwind, tasmax/min, hurs, ps?): needed to source WIND + PS for component E
+    ssp370_raw_gcm: /p/projects/waldspektrum/priesner/clustering/global/ssp370/MPI-ESM1-2-HR
+  # OOD/warming test forcing = the SSP370 MPI-ESM1-2-HR trajectory above (a real GCM scenario, NOT a synthetic delta). Constant CO2.
+  ood_forcing: ${lpjml.inputs.ssp370}
+
+  # ---- NEW forcings required by energy layer E (not used by LPJmL-FIT core) ----
+  # wind: sfcwind is in the raw GCM NetCDFs (ssp370_raw_gcm) and GSWP3-W5E5 obsclim. ps: source from GCM/obsclim.
+  energy_extra_inputs:
+    sfcwind: TODO_extract_from_GCM_or_obsclim   # present in raw GCM; not yet a model-ready .clm
+    ps:      TODO_source_surface_pressure       # required by E; not in current input config
+
+  # ---- Existing GROUND-TRUTH runs (data already generated; ANNUAL output only, no daily) ----
+  ground_truth:
+    historical_seed1: /p/projects/waldspektrum/priesner/clustering/global/Historical/ground_truth/model_output/transient_2000_2019_npatch25_nspinup1000_nspinyear30_random_seed1
+    historical_seed2: /p/projects/waldspektrum/priesner/clustering/global/Historical/ground_truth/model_output/transient_2000_2019_npatch25_nspinup1000_nspinyear30_random_seed2
+    ssp370_seed1:     /p/projects/waldspektrum/priesner/clustering/global/ssp370/ground_truth/model_output/transient_2020_2100_npatch25_random_seed1
+    ssp370_seed2:     /p/projects/waldspektrum/priesner/clustering/global/ssp370/ground_truth/model_output/transient_2020_2100_npatch25_random_seed2  # in progress (noise-floor pair for SSP)
+  # Restart files (~128 GB each, seed1). CRITICAL distinction (review finding):
+  #  - restart_1999.lpj = END OF SPINUP (before the 2000-2019 transient). USE THIS to reproduce the
+  #    Historical 2000-2019 trajectory (the annual ground truth + slow-table are built on it) in a
+  #    DAILY-output re-run. Restarting from 2019 would leave no Historical forcing to run.
+  #  - restart_2019.lpj = HISTORICAL END. Used only as the start of the SSP370 2020-2100 continuation.
+  restart_historical_spinup_end: /p/projects/waldspektrum/priesner/clustering/global/Historical/ground_truth/model_output/transient_2000_2019_npatch25_nspinup1000_nspinyear30_random_seed1/restart/restart_1999.lpj
+  restart_historical_end:        /p/projects/waldspektrum/priesner/clustering/global/Historical/ground_truth/model_output/transient_2000_2019_npatch25_nspinup1000_nspinyear30_random_seed1/restart/restart_2019.lpj
+  # Example output files (schemas frozen in DESIGN.md): ind CSV = 29 cols; globalflux CSV = 17-20 cols.
+  ind_csv_historical_seed1: ${lpjml.ground_truth.historical_seed1}/output/ind_2000_2019.csv           # 44 GB
+  globalflux_csv_historical_seed1: ${lpjml.ground_truth.historical_seed1}/output/globalflux_2000_2019.csv
+
+  # ---- Scratch (writable) ----
+  scratch_root: /p/tmp/jamirp/lpjmlfit_run_outputs         # [VERIFIED /p/tmp/jamirp exists]
+  daily_output_run_root: /p/tmp/jamirp/esm_land_daily      # NEW daily-output re-runs (Phase 1) go here
+
+data:
+  # Generated / staged training data.
+  root: /p/tmp/jamirp/esm_land_emulator_data
+  # PROTOTYPE = one (or a few) cells drawn from the EXISTING global ground-truth (no new run needed for S).
+  # Candidate prototype cell: Hainich (repo SINGLESITE startgrid 28008) or a S.German cell.
+  prototype:
+    daily_output: ${data.root}/prototype/daily             # NEW: daily fluxes for F/E (requires daily-output re-run)
+    tree_table_source: ${lpjml.ind_csv_historical_seed1}   # existing annual ind CSV (subset to prototype cell)
+  slow_table: ${data.root}/slow_emulator_table             # (cell,year) conditioning + trait/size distribution + N
+  fast_validation: ${data.root}/fast_core_validation       # daily forcing -> daily fluxes+pools (from daily re-run)
+  energy_reference: ${data.root}/fluxnet_plumber2           # TODO: external FLUXNET/PLUMBER2 site data for component E
+  # Prior emulator's large derived tables (reusable): 63119-cell parquet on /p/tmp/jamirp/emulator_global/
+  prior_derived: /p/tmp/jamirp/emulator_global
+
+artifacts:
+  models: ${project.root}/artifacts/models                 # trained S/E models (versioned, seed-logged)
+  metrics: ${project.root}/artifacts/metrics
+  figures: ${project.root}/artifacts/figures
+  logs: ${project.root}/artifacts/logs
