@@ -1,0 +1,16 @@
+# Test environment for LPJmLFITEmulator (ENGINEERING_STANDARDS §2).
+# ReTestItems runs the hermetic `@testitem`s in `test/` (incl. `test/testitems/`) in parallel.
+# These deps are installed in CI (`Pkg.instantiate`); do NOT add/instantiate on the HPC by hand.
+[deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+LPJmLFITEmulator = "e4cfba23-4562-4fe9-8259-be4d4b246161"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+ReferenceTests = "324d217c-45ce-50fc-942e-d289b448e8cf"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+Supposition = "5a0628fe-1738-4658-9b6d-0b7605a9755b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
+
+[compat]
+julia = "1.10"
