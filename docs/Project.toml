@@ -1,0 +1,15 @@
+# docs/Project.toml — environment for the Documenter.jl site (the single source of truth).
+# Build locally with:  julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+#                then:  julia --project=docs docs/make.jl
+# The main package is `dev`-ed (path dependency) so source links point at the working tree /
+# the exact GitHub lines (ENGINEERING_STANDARDS.md §4). See docs/src/howto/build_docs.md.
+
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+DocumenterCitations = "daee34ce-89f3-4625-b898-19384cb65244"
+DocumenterMermaid = "a078cd44-4d9c-4618-b545-3ab9d77f9177"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
+LPJmLFITEmulator = "e4cfba23-4562-4fe9-8259-be4d4b246161"
+
+[compat]
+julia = "1.10"
