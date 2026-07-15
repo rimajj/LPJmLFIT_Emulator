@@ -32,8 +32,11 @@ artifacts/logs/
 !**/.gitkeep
 
 # ── Julia ────────────────────────────────────────────────────────────────────
-# NOTE: this is an APPLICATION/experiment repo → Manifest.toml IS committed
-# (reproducibility, ENGINEERING_STANDARDS §7). Only build/coverage artifacts ignored.
+# Manifest.toml SHOULD be committed for reproducibility (ENGINEERING_STANDARDS §7) once the
+# package has real dependencies. Until then [deps] is empty, so the auto-generated root
+# Manifest is trivial and only records the Julia patch version (pure churn) — ignore it for now
+# and UN-IGNORE (delete this line) + commit it when Phase-3 deps (Enzyme/Lux/SciML) are added.
+/Manifest.toml
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
