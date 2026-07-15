@@ -27,8 +27,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   gates, with a project-specific unit-test list (allometry, unit conversions, softmax/allocation,
   config parsing, data loaders, index/date math, numerical kernels, error handling).
 
+### Validation
+- Scaffold validated locally end-to-end: **Julia `Pkg.test()` green** (21,071 assertions pass, 6
+  intentional `@test_broken` Phase-6 placeholders, 0 fail/error; Aqua + JET clean), **Python `pytest`
+  green** (21 pass in `py311_new`), diagram diff-alarm (`gen_diagrams.jl --check`) green, all CI YAML
+  parses, and `bin/lpjml -h` runs (netcdf-c/4.9.2). JET caught and fixed a real `SharedState`
+  constructor bug (`@kwdef` unbound type parameter) during scaffolding.
+
 ### Notes
 - No modelling behaviour yet — this release is the design freeze + auditable engineering skeleton.
 - Data, model weights, and restarts are never committed (tracked via DVC pointers).
+- Root `Manifest.toml` deferred until Phase-3+ deps are added (the package currently has empty `[deps]`).
 
 [Unreleased]: https://github.com/rimajj/LPJmLFIT_Emulator/commits/main
