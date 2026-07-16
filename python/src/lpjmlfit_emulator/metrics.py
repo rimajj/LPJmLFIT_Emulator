@@ -127,9 +127,7 @@ def noise_floor(seed1: ArrayLike, seed2: ArrayLike, reduce: str = "median") -> f
     s1 = np.asarray(seed1, dtype=float).ravel()
     s2 = np.asarray(seed2, dtype=float).ravel()
     if s1.size != s2.size:
-        raise ValueError(
-            f"seed1/seed2 must be aligned per-cell (got {s1.size} vs {s2.size})"
-        )
+        raise ValueError(f"seed1/seed2 must be aligned per-cell (got {s1.size} vs {s2.size})")
     denom = 0.5 * (np.abs(s1) + np.abs(s2))
     with np.errstate(divide="ignore", invalid="ignore"):
         rel = np.abs(s1 - s2) / denom
@@ -149,9 +147,7 @@ def per_cell_relative_error(pred: ArrayLike, truth: ArrayLike) -> np.ndarray:
     p = np.asarray(pred, dtype=float).ravel()
     t = np.asarray(truth, dtype=float).ravel()
     if p.size != t.size:
-        raise ValueError(
-            f"pred/truth must be aligned per-cell (got {p.size} vs {t.size})"
-        )
+        raise ValueError(f"pred/truth must be aligned per-cell (got {p.size} vs {t.size})")
     with np.errstate(divide="ignore", invalid="ignore"):
         err = np.abs(p - t) / np.where(np.abs(t) > _EPS, np.abs(t), np.nan)
     return err

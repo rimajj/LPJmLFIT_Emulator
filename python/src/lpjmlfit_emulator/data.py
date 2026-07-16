@@ -98,13 +98,10 @@ def validate_ind_schema(df, *, ordered: bool = True) -> bool:
         )
     if len(got) != len(expected):  # same name set but a duplicate present
         raise ValueError(
-            f"ind schema has duplicate columns: got {len(got)} names for "
-            f"{len(expected_set)} unique"
+            f"ind schema has duplicate columns: got {len(got)} names for {len(expected_set)} unique"
         )
     if ordered and got != expected:
         raise ValueError(
-            "ind schema column ORDER mismatch:\n"
-            f"  got     : {got}\n"
-            f"  expected: {expected}"
+            f"ind schema column ORDER mismatch:\n  got     : {got}\n  expected: {expected}"
         )
     return True

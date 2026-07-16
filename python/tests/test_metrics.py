@@ -73,9 +73,7 @@ def test_wasserstein_symmetric():
     rng = np.random.default_rng(SEED)
     a = rng.normal(0.0, 1.0, 1500)
     b = rng.normal(0.5, 1.3, 1200)
-    assert math.isclose(
-        M.wasserstein1d(a, b), M.wasserstein1d(b, a), rel_tol=1e-12, abs_tol=1e-12
-    )
+    assert math.isclose(M.wasserstein1d(a, b), M.wasserstein1d(b, a), rel_tol=1e-12, abs_tol=1e-12)
 
 
 def test_wasserstein_positive_for_shifted():
