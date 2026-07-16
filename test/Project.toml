@@ -3,6 +3,9 @@
 # These deps are installed in CI (`Pkg.instantiate`); do NOT add/instantiate on the HPC by hand.
 [deps]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 LPJmLFITEmulator = "e4cfba23-4562-4fe9-8259-be4d4b246161"
 ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
@@ -12,5 +15,12 @@ Supposition = "5a0628fe-1738-4658-9b6d-0b7605a9755b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
+# AD stack (Enzyme/ForwardDiff/FiniteDifferences) is a TEST/train-time dependency only — the F_diff
+# runtime (src/) is deliberately dependency-free (ADR 0014). The gradient-correctness gate
+# (test/testitems/gradient_correctness_tests.jl) uses Enzyme reverse-mode + ForwardDiff vs
+# FiniteDifferences ground truth through the daily rollout.
 [compat]
+Enzyme = "0.13"
+FiniteDifferences = "0.12"
+ForwardDiff = "1"
 julia = "1.10"

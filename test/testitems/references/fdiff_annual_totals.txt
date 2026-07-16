@@ -1,0 +1,10 @@
+# F_diff annual totals baseline — fixed deterministic scenario (see numerical_regression_tests.jl).
+# ReferenceTests numerical-regression anchor: catches silent drift after refactors.
+# Regenerate ONLY on an intended physics change (and record why in JOURNAL/CHANGELOG).
+# key value(gC/m2/yr or mm/yr)
+npp    868.51795106
+gpp    2960.15593903
+transp 635.07095784
+evap   50.37496270
+runoff 82.55414454
+precip 848.00000000

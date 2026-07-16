@@ -32,3 +32,5 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0011](0011-reuse-global-ground-truth.md) | Reuse existing global (annual) ground truth; daily re-run is the gap | accepted |
 | [0012](0012-canonical-slow-emulator-here.md) | Canonicalize component S here; port the sibling once, then abandon it | accepted |
 | [0013](0013-main-only-workflow.md) | Work on `main` directly — no branches/PRs/branch-protection (relaxes §1) | accepted |
+| [0014](0014-differentiable-fast-core-first.md) | Fast core F is differentiable from the start (`F_diff`); C binary is oracle-only (supersedes F1/F2 split) | accepted |
+| [0015](0015-reuse-map.md) | Reuse map for F_diff — what to TAKE/REDO/SKIP from the reference repos, + citations | accepted |

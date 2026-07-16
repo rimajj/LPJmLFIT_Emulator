@@ -26,6 +26,15 @@ include("state.jl")
 include("interface.jl")
 # ── Conservation-by-construction helpers (DESIGN.md §8, DEVELOPMENT_PLAN §2.2) ─
 include("conservation.jl")
+# ── Smooth surrogates for the non-differentiable ops (low-level lib; ADR 0014 step 5) ─
+include("fdiff_smoothops.jl")
+using .SmoothOps
+# ── Shared allometry / diagnostics library (differentiable pure fns; ADR 0014/0015) ─
+include("allometry.jl")
+using .Allometry
+# ── F_diff — the differentiable fast physical core (ADR 0014) ───────────────
+include("fdiff.jl")
+using .FDiff
 # ── Component abstract types + Phase-N stubs ────────────────────────────────
 include("components/slow.jl")
 include("components/fast.jl")

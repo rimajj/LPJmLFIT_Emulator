@@ -1,6 +1,12 @@
-# Component F — fast physical biophysical core kept from LPJmL-FIT (daily). DEVELOPMENT_PLAN §2.3.
-# F1 (Phases 3-5): keep the LPJmL-FIT C core, driven via a callable interface (feasibility spike first —
-#   the binary exposes `-couple host[:port]`, a candidate path). F2 (Phase 6): differentiable rewrite.
+# Component F — fast physical biophysical core (daily). DEVELOPMENT_PLAN §2.3.
+# DIFFERENTIABLE-FIRST (ADR 0014): the concrete daily biophysics lives in the `FDiff` submodule
+# (`src/fdiff.jl`) — a from-scratch AD-friendly reimplementation with the SAME equations, verified
+# end-to-end differentiable (Enzyme/ForwardDiff vs finite differences; `docs/phase3_fdiff_spike.md`).
+# The compiled LPJmL-FIT C binary is retained ONLY as the numerical-regression oracle + data
+# generator, NOT the coupling path. This `AbstractFastCore` interface (which mutates the shared
+# `SharedState`) is the eventual coupling surface; wiring `FDiff` behind it — mapping `FDiff`'s
+# lightweight state to `SharedState`, multi-layer soil — is a documented scale-up step (spike report),
+# so the abstract `step!` still throws until that adapter lands.
 
 """
     AbstractFastCore
@@ -16,8 +22,9 @@ abstract type AbstractFastCore end
 """
     step!(::AbstractFastCore, state::SharedState, bc::SToF, forcing::AtmForcing) -> FToE
 
-Advance F by one day. **Not implemented in Phase 0** — F1 wraps the LPJmL-FIT C core
-(`/home/jamirp/lpjml56fit`); see DEVELOPMENT_PLAN.md §6 Phase 3.
+Advance F by one day. The differentiable daily biophysics is implemented in the `FDiff` submodule
+(`FDiff.daily_step` / `FDiff.rollout`); this `SharedState`-mutating adapter is the coupling surface
+and is not wired yet (ADR 0014; scale-up step in `docs/phase3_fdiff_spike.md`), so it throws.
 """
 step!(::AbstractFastCore, ::SharedState, ::SToF, ::AtmForcing) =
-    error("Component F `step!` is not implemented yet — see DEVELOPMENT_PLAN.md §6 Phase 3.")
+    error("Component F `step!` (SharedState adapter) is not wired yet — use `FDiff.daily_step`; see docs/phase3_fdiff_spike.md.")

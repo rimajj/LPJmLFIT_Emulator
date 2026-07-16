@@ -11,9 +11,16 @@ version = "0.1.0"
 # See DESIGN.md (frozen schemas) and DEVELOPMENT_PLAN.md (phased plan).
 #
 # Deps are added PER PHASE (keep the graph lean; Aqua checks for stale deps):
-#   Phase 3/6 (differentiable core F2):  Enzyme, Lux, SciML, KernelAbstractions
-#   Phase 4   (energy layer E):          Terrarium (SurfaceEnergyBalance/ImplicitSkinTemperature)
-#   Cross-cutting:                       StableRNGs, DrWatson (reproducibility)
+#   F_diff (ADR 0014):  the differentiable fast core (src/fdiff.jl, src/allometry.jl,
+#     src/fdiff_smoothops.jl) is deliberately RUNTIME-DEPENDENCY-FREE — pure Base Julia. AD is a
+#     TRAIN/TEST-time tool (ADR 0014), so Enzyme + ForwardDiff + FiniteDifferences live in
+#     test/Project.toml (the gradient-correctness gate), NOT here. The λ solve uses a
+#     fixed-graph damped Newton with a finite-difference g', so no runtime AD dep is needed.
+#   Scale-up deps (added WHEN the feature lands, to stay Aqua-clean):
+#     • learned closures in F/E:  Lux, KernelAbstractions (GPU)
+#     • production λ adjoint:     SciMLSensitivity (SteadyStateAdjoint) + NonlinearSolve/OrdinaryDiffEq
+#     • energy layer E (Phase 4): Terrarium (SurfaceEnergyBalance/ImplicitSkinTemperature)
+#     • cross-cutting:            StableRNGs, DrWatson (reproducibility)
 # ─────────────────────────────────────────────────────────────────────────────
 
 [deps]
