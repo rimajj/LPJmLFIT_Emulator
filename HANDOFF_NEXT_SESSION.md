@@ -14,6 +14,31 @@ Repo: `/p/projects/open/Jamir/esm_land_emulator` → remote `git@github-esm:rima
 
 ---
 
+## ⭐ SESSION 4 (2026-07-16) — DIFFERENTIABLE FAST CORE (`F_diff`) spike: DONE, PR #14 OPEN (CI-green)
+
+Owner decision: **build F differentiable from the start** (`F_diff`, ADR 0014, supersedes
+F1-now/F2-later). Delivered as an early **one-cell spike on a branch + PR** (per-task exception to
+main-only for the review surface). **PR #14** (`feat/fdiff-differentiable-core`) is OPEN and **all
+required CI checks are green** (test lts/1/macOS, docs, format, python; `test (pre)` red = pre-existing
+allowed-to-fail prerelease). **Awaiting owner review/merge.**
+- **Gate MET:** Enzyme reverse-mode AND ForwardDiff match FiniteDifferences to ~1e-11 for
+  `d(annual NPP)/dx` through the full 365-day daily rollout (incl. the λ solve + soil-water coupling).
+- New: `src/allometry.jl`, `src/fdiff_smoothops.jl`, `src/fdiff.jl` (`FDiff` submodule, runtime
+  dependency-free), gates in `test/testitems/{allometry,smoothops,fdiff_physics,gradient_correctness,
+  numerical_regression}_tests.jl` (suite 25,756 pass / 0 fail). ADR 0014 + 0015; report
+  `docs/phase3_fdiff_spike.md`; DEVELOPMENT_PLAN §2.3/§6 updated.
+- Reference repos cloned to `/p/tmp/jamirp/esm_reference_repos` (SSH; HTTPS blocked). λ solve uses a
+  fixed-graph Newton (SteadyStateAdjoint is the scale-up option). Port specs (line-level) in this
+  session's scratch.
+- **NEXT after merge = scale F_diff** (ADR 0014 / report §7): multi-layer soil + 23-layer enthalpy
+  thermal, full petpar radiation/daylength, multi-PFT + representative individuals, **quantitative
+  C-binary validation on the prototype cell** (186 GB daily dataset is the target), `SharedState`
+  adapter, then S↔F coupling + gradient-based online training. ~2.5–4 months to cover all of F.
+
+The rest of this handoff (below) describes the pre-session-4 `main` state.
+
+---
+
 ## ⚙️ WORKFLOW CHANGE (owner decision, session 2) — WORK ON `main` DIRECTLY
 
 The owner switched away from the trunk-based + short-lived-branches + PR-per-change model. **Going
