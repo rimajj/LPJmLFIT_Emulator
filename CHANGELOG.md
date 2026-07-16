@@ -40,6 +40,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (the sibling `eval_presentday_critical.py` is unreadable under the auto-mode classifier's
   "eval"-filename heuristic — not an owner-configured hook).
 
+- **Phase 1 / P3b — daily-output re-run + WATER-CLOSURE gate (PASSED).** `scripts/run_daily_subset.sh`
+  enables daily output (no recompile) and re-runs the Historical transient from the spinup-end
+  `restart_1999.lpj` over a contiguous cell subset; `scripts/water_closure_check.py` verifies closure.
+  Boreal validation run (cells 45000–45999, 2000–2002, 83 s): LPJmL's `-DSAFE` per-cell/year water
+  balance passed for all 1000 cells × 3 yr (a clean run *is* closure to ≤1.5 mm/yr), daily fluxes
+  integrate to the annual `globalflux` to 5 sig figs, cumulative per-cell imbalance median 2.7 %, and
+  daily NPP → annual NPP ratio 1.000. Report: [`docs/phase1_p3b_water_closure.md`](docs/phase1_p3b_water_closure.md);
+  summary `artifacts/metrics/p3b_water_closure_boreal_c45000_45999.json`. Verified against LPJmL source
+  (adversarially): contiguous-subset restart via 0-based positional `startgrid`/`endgrid`; daily via
+  `"timestep":"daily"` in the entry's `file` object; `swc` is fractional saturation (`wsats` not output);
+  build modules need `json-c/0.13.1` (not 0.17).
+
 ### Changed
 - **Workflow → main-only** ([ADR 0013](docs/decisions/0013-main-only-workflow.md)): commit and push
   straight to `main`; no feature branches, PRs, or branch protection (owner declined), and no
