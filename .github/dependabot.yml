@@ -1,13 +1,23 @@
 # Dependabot version updates (ENGINEERING_STANDARDS.md §3).
 # Dependabot now supports Julia natively (CompatHelper's README recommends
 # migrating to it) and supports the `uv` ecosystem for uv-managed Python.
+#
+# TAMED 2026-07-16 (session 3): monthly (was weekly) + grouped updates, so each
+# ecosystem opens at most ONE consolidated PR per cycle instead of a swarm of
+# per-package branches (the session-2 branch spam the owner noticed). The Python
+# upper-bound caps in python/pyproject.toml still make major bumps that violate a
+# cap fail `uv sync --frozen` — those PRs should be closed, not merged, until the
+# cap is deliberately raised.
 version: 2
 updates:
   # Julia package dependencies (Project.toml [compat]) at the repo root.
   - package-ecosystem: "julia"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      julia:
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "julia"
@@ -16,7 +26,10 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "github-actions"
@@ -26,7 +39,10 @@ updates:
   - package-ecosystem: "uv"
     directory: "/python"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      python:
+        patterns: ["*"]
     labels:
       - "dependencies"
       - "python"

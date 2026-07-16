@@ -20,12 +20,22 @@ Honest limit: prose narrative and the equation↔code mapping are still human/ag
 
 ## 1. Repository & Git workflow (private repo)
 
+> **RELAXED since 2026-07-16 — see [ADR 0013](docs/decisions/0013-main-only-workflow.md).** For this
+> solo, pre-release repo the owner switched to a **main-only** workflow: commit and push straight to
+> `main`; **no feature branches, no PRs, no branch protection** (declined), and **no signed-commit
+> enforcement** (signing declined — commits show "Unverified"). CI still runs on `push: main` as a
+> **smoke alarm** (not a merge gate); if a push turns `main` red, **fix forward**, having run the
+> CI-equivalent checks locally first. The two struck-through bullets below record the *original*
+> stricter posture and the exact conditions/commands to **reinstate** it (a second contributor joins,
+> or the repo goes public) — reinstatement means a new ADR superseding 0013. Everything else in this
+> section still applies.
+
 - **One private repo** on the owner's GitHub (owner creates it and provides URL + auth; see §8 for safe HPC auth). The `esm_land_emulator/` planning docs live in it alongside the code.
-- **Trunk-based, short-lived branches + Pull Requests**, even solo. The agent works on a branch → opens a PR → **required CI checks must be green to merge**. Direct pushes to `main` disabled. This turns CI into a hard safety gate around agent output.
-- **Branch protection on `main`:** require PR, require status checks (`test (lts)`, `test (1)`, `format`, `docs`, coverage), require signed commits, dismiss stale approvals, no force-push.
-- **Conventional Commits** (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `BREAKING CHANGE:`) → drives SemVer. One logical change per commit; keep formatting-only and refactor commits separate from behavior changes.
-- **Commit/push cadence:** commit at every meaningful step with a descriptive message; push the branch regularly (at least at each checkpoint and end of work session) so the owner always sees current state. Never commit data, model weights, or secrets (`.gitignore` + DVC + a secret-scanning pre-commit hook).
-- **Signed commits:** SSH commit signing (`git config gpg.format ssh; commit.gpgsign true`) for the "Verified" badge — simpler than GPG on an HPC.
+- ~~**Trunk-based, short-lived branches + Pull Requests**, even solo. The agent works on a branch → opens a PR → **required CI checks must be green to merge**. Direct pushes to `main` disabled. This turns CI into a hard safety gate around agent output.~~ *(Superseded by ADR 0013: work on `main` directly. CI on `push: main` is the retained signal.)*
+- ~~**Branch protection on `main`:** require PR, require status checks (`test (lts)`, `test (1)`, `format`, `docs`, coverage), require signed commits, dismiss stale approvals, no force-push.~~ *(Superseded by ADR 0013: branch protection declined. Reinstatement command — required checks `test (lts)`, `test (1)`, `format`, `docs`, `python`, **no** `required_signatures` — preserved in `JOURNAL.md` session 2.)*
+- **Conventional Commits** (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `BREAKING CHANGE:`) → drives SemVer. One logical change per commit; keep formatting-only and refactor commits separate from behavior changes. *(Retained under main-only.)*
+- **Commit/push cadence:** commit at every meaningful step with a descriptive message; push to `main` regularly (at least at each checkpoint and end of work session) so the owner always sees current state. **Run the CI-equivalent checks locally before pushing** (the main-only substitute for the pre-merge gate). Never commit data, model weights, or secrets (`.gitignore` + DVC + a secret-scanning pre-commit hook).
+- **Signed commits:** SSH commit signing (`git config gpg.format ssh; commit.gpgsign true`) for the "Verified" badge — simpler than GPG on an HPC. *(Enforcement declined per ADR 0013; commits are still `G`-signed locally but show "Unverified" on GitHub while the repo is private. Cosmetic — do not chase.)*
 - **SemVer 2.0.0** for `Project.toml` version; **Keep a Changelog** `CHANGELOG.md` (agent maintains the Unreleased section); **TagBot** for release notes on tags.
 
 ## 2. Testing (unit-test base + scientific gates on top)

@@ -41,6 +41,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   "eval"-filename heuristic — not an owner-configured hook).
 
 ### Changed
+- **Workflow → main-only** ([ADR 0013](docs/decisions/0013-main-only-workflow.md)): commit and push
+  straight to `main`; no feature branches, PRs, or branch protection (owner declined), and no
+  signed-commit enforcement. CI still runs on `push: main` as a smoke alarm (fix-forward if red).
+  `ENGINEERING_STANDARDS.md` §1 softened to point at the ADR (original PR/branch-protection posture
+  retained struck-through, with the reinstatement command).
+- `.github/dependabot.yml` **tamed**: monthly (was weekly) + grouped updates (one consolidated PR per
+  ecosystem per cycle) to stop the per-package branch spam.
 - `ENGINEERING_STANDARDS.md` §2 and `DESIGN_CHECKPOINT_PROMPT.md` item 2 now lead with an explicit
   **unit-test foundation** (testing pyramid: unit → integration → system) beneath the scientific
   gates, with a project-specific unit-test list (allometry, unit conversions, softmax/allocation,
