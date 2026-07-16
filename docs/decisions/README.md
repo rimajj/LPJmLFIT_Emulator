@@ -30,3 +30,4 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0009](0009-ssh-deploy-key-auth.md) | SSH deploy-key auth from the HPC | accepted |
 | [0010](0010-s-prototype-biome-stratified.md) | S prototype = biome-stratified multi-cell (F/E single cell) | accepted |
 | [0011](0011-reuse-global-ground-truth.md) | Reuse existing global (annual) ground truth; daily re-run is the gap | accepted |
+| [0012](0012-canonical-slow-emulator-here.md) | Canonicalize component S here; port the sibling once, then abandon it | accepted |

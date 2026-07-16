@@ -88,6 +88,15 @@ Entry template:
 - Note: root `Manifest.toml` deferred (main pkg has empty [deps]; pin when Phase-3+ deps are added). curl_easy_setopt:48 warnings during Pkg are a benign PIK login-node libcurl quirk (resolution falls back to cache).
 - Next: initial-skeleton commit; push when deploy key added; branch protection; resume Phase 1.
 
+## 2026-07-16 — Scaffold pushed to main; Task-B port started; CI broken; session handoff  [phase 0→1]
+- Did: committed the scaffold in chunks (b95627c..57e3a95, all signed `G`) and **pushed `main`** to origin via the deploy key (owner added it). Started **Task B** (canonicalize component S) on branch `feat/port-slow-emulator`: wrote ADR 0012 + index, ported `metrics.py` (full, merged), copied `reference/debias_presentday.json`, created `python/config/`. Wrote `HANDOFF_NEXT_SESSION.md` (takeover prompt).
+- BLOCKERS / open:
+  - **CI RED on main @ 57e3a95** (owner mail): `python`(4), `format`(2), `docs`(5) annotations. Diagnosed NOT-one-cause: `python` = floating deps + no `uv.lock` → `uv sync` pulls majors (pandas 3 / pyarrow 25 / pytest 9; = Dependabot #1–10); `format` = Runic action/formatting; `docs` = Documenter plugin API + doctest + linkcheck 404 on private-repo URLs. Fix per PRIORITY 1 in the handoff. Don't touch Dependabot PRs #1–10.
+  - **"eval"-named file writes/reads DENIED** ("The user doesn't want to take this action right now") — blocks the noise-floor `evaluation.py` module + reading sibling `eval_presentday_critical.py`. Owner decision pending (rename to `noise_floor.py` recommended / clear hook / skip / owner writes). An AskUserQuestion was cut off by a permission-stream error at session end.
+  - **`gh` token invalid**, signing key + branch protection = owner actions.
+- Result: main has the full scaffold; Task B ~30% (metrics + ADR + reference done; evaluation blocked; transforms/drivers/features/baseline/train/data/tests/README pending). This session's context is near full → handed off.
+- Next (next session): read `HANDOFF_NEXT_SESSION.md`. Fix CI (P1) → finish the S port (P2) → Phase 1 daily-output re-run from restart_1999 (P3).
+
 ## 2026-07-16 (session 2) — PRIORITY 1: fix red CI on main (three independent causes)  [phase 0→1]
 - Goal: get `python`, `format`, `docs` workflows green on main (were red on 57e3a95). `gh` token still invalid → reproduced every failure locally instead of pulling logs.
 - Did (all on branch `fix/ci-green` off 57e3a95, reproduced + verified locally, then ff-merged to main):
