@@ -37,6 +37,9 @@ artifacts/logs/
 # Manifest is trivial and only records the Julia patch version (pure churn) — ignore it for now
 # and UN-IGNORE (delete this line) + commit it when Phase-3 deps (Enzyme/Lux/SciML) are added.
 /Manifest.toml
+# docs/Manifest.toml is a local artifact of `Pkg.instantiate()` on the docs env; the docs CI
+# resolves fresh each build, so keep it out of git (same rationale as the root Manifest).
+/docs/Manifest.toml
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
