@@ -133,3 +133,12 @@ Entry template:
   - **SLURM:** `--qos=short`, account `waldspektrum`, submit from the bash_run_model dir; outputs to `/p/tmp/jamirp/esm_land_daily` (paths.yaml). NOT on the login node.
   - **Water-closure gate (post-run):** daily `prec == transp + evap + interc + runoff + Δsoilwater (+ snow)` per cell/day, and re-check carbon closure at daily resolution.
 - Next: fix the biome-stratified cell list, wire the transient-only daily re-run from restart_1999, submit via SLURM, then run the water-closure check. (Launching = heavy compute + a cell-selection design choice → confirm scope before firing.)
+
+## 2026-07-16 (session 2 end) — gh authenticated, PR #11 merged, main-only, P3b guidance, handoff  [phase 1]
+- gh: owner re-authenticated (`gh auth login` → classic PAT, scopes repo/read:org/workflow). Used it to CONFIRM the CI repair is green on real CI (main 9fe93f3: python/format/docs/test(lts)/test(1)/test(macOS) all pass; test(pre) allowed-to-fail, pre-existing), opened **PR #11** (port), watched it → all required checks green + `documenter/deploy` preview OK.
+- Owner **merged PR #11** (squash) → **`main` = `c3831aa`**, `feat/port-slow-emulator` deleted. We are now cleanly **main-only**.
+- **WORKFLOW DECISION (owner):** work on `main` directly henceforth — no branches, no PRs, no branch protection (declined), no signing key (declined; commits "Unverified", repo going public later). The auto-mode classifier gated branch-protection + the PR-merge (correctly — I didn't route around them; owner ran the merge). CI still runs on push = smoke alarm. → TODO ADR 0013 + soften ENGINEERING_STANDARDS §1.
+- Investigated the "eval" block for the owner: **no configured hook exists** anywhere → it's the auto-mode classifier heuristic on the filename token. noise_floor.py was rebuilt from spec (never read the eval file).
+- **P3b guidance from owner:** don't use the clustering pipeline for now; either run the whole global script (~1–2 h, 2048 cores), or run individual biome cells / boxes as single jobs, or regrid climate+soil onto a subset grid. **Regrid/CLM tools = `/p/projects/biodiversity/bloh/git/master_bsq/bin/`** (getcellindex/cutclm/regridclm/regridlpj/cdf2clm/clm2cdf/…). cell→latlon = grid_1999.nc.
+- Rewrote `HANDOFF_NEXT_SESSION.md` (full session-2 state + P3b plan) and updated MEMORY. Committed to main (main-only).
+- Next session: execute P3b (daily re-run + water closure) per the handoff; close obsolete Dependabot PRs (#6/#8/#9); write ADR 0013 (main-only).
