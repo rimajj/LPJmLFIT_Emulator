@@ -94,7 +94,35 @@ A fully-closed **daily** water storage term needs the per-layer saturated capaci
 `wsat`/absolute-soil-water output, or define the F-core water conservation at the annual cadence LPJmL
 guarantees.
 
+## Full-global daily dataset (2026-07-16, session 3) — generated + closure re-confirmed at scale
+
+After the subset gate passed, the **full-global daily F/E training dataset** was generated:
+`daily_2000_2019_global_c0_67419_seed1` — **all 67,420 cells × 2000–2019**, restarted from the seed1
+spinup-end `restart_1999.lpj` (so it reproduces the existing seed1 Historical trajectory at daily
+resolution). SLURM job 1448860: 512 tasks / 4 exclusive nodes, **COMPLETED in 31m48s**, **186 GB**
+daily output (prec/transp/evap/interc/runoff/swe/swc/rootmoist/whc_nat/pet/npp/gpp). Same generator
+(`scripts/run_daily_subset.sh` with `STARTGRID=0 ENDGRID=67419 … TIME=03:00:00 EXCLUSIVE=yes`).
+
+**Water closure confirmed at global scale:**
+- **DEFINITIVE:** run terminated cleanly ("67420 grid cells processed"), **no water-balance error** —
+  LPJmL's `-DSAFE` per-cell/year balance (≤1.5 mm/yr) held for **all 67,420 cells across all 20 years**.
+- **Output reconstruction** (`artifacts/metrics/p3b_water_closure_global_c0_67419.json`): daily fluxes
+  integrate to the run's own annual `globalflux` to ~5 sig figs (2000: transp 50050.6 vs 50050.7 km³,
+  evap 14587.6 vs 14587.7, interc 8830.3 vs 8830.3, prec 131649.6 vs 131650.0). Cumulative per-cell
+  `|Σprec − Σ(ET+runoff)|/Σprec`: **median 0.87 %**, p90 3.7 %, p99 10.7 % — *tighter* than the boreal
+  subset (the global set is dominated by cells without deep snow/permafrost). Mean annual: prec 773,
+  ET 420, runoff 348, residual (storage change) 4.6 mm/yr.
+- **Sanity:** swc ∈ [0.017, 0.997] (fractional ✓); fluxes ≥ 0; snow builds/melts.
+- **Caveat:** the per-cell fractional-imbalance *max* is ~112 % on a few cells — arid cells where
+  Σprec≈0 (ratio ill-conditioned) and high-latitude permanent-ice cells (large snow accumulation +
+  `excess_water`); the *absolute* balance there is still ≤1.5 mm/yr by the SAFE check. The fractional
+  metric is only meaningful where prec is non-trivial.
+
+Reproduce the analysis (memory-safe / dask-lazy): `python scripts/water_closure_check.py <run_dir>`.
+
 ## Next
-Gate met with a subset. The **full-global daily dataset** for F/E training (option (a): all 67,420 cells
-× 2000–2019; est. ~170 GB, longer compute) is now unblocked and is a resource/scope decision for the
-owner — see `HANDOFF_NEXT_SESSION.md`.
+Both Phase-1 gates (carbon + water) pass, and the **full-global daily dataset now exists** on
+`/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output` (186 GB) — the daily
+forcing→flux+storage+carbon data the F-core / E-layer will train on. Next: Phase 2+
+(`DEVELOPMENT_PLAN.md` §6). For the F-core water budget, remember closure is enforced **annually** and
+`swc` is fractional (no `wsats` output) — see the "Implication" note above.

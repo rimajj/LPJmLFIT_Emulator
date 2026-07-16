@@ -47,7 +47,13 @@ forward: commit and push straight to `main`. No feature branches, no PRs, no bra
    `docs/phase1_p3b_water_closure.md`. **Reusable tooling:** `scripts/run_daily_subset.sh` +
    `scripts/water_closure_check.py`. All source facts (restart-subset, daily syntax, water identity,
    module set) adversarially verified against `/home/jamirp/lpjml56fit` before submitting.
-2. **Housekeeping:** ADR 0013 (main-only) + §1 softened + index; `.github/dependabot.yml` tamed
+2. **FULL-GLOBAL daily F/E training dataset GENERATED** (owner approved). All **67,420 cells ×
+   2000–2019**, restarted from seed1 `restart_1999.lpj` → `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output`
+   (**186 GB**; SLURM job 1448860, 512 tasks / 4 exclusive nodes, 31m48s). Water closure re-confirmed at
+   scale (clean run, no water-balance error, all cells × 20 yr; daily→annual `globalflux` exact; per-cell
+   multi-year imbalance median 0.87 %). This is the daily forcing→flux+storage+carbon data F/E train on.
+   Summary `artifacts/metrics/p3b_water_closure_global_c0_67419.json`.
+3. **Housekeeping:** ADR 0013 (main-only) + §1 softened + index; `.github/dependabot.yml` tamed
    (monthly+grouped). Committed + pushed to main.
 
 ## ✅ DONE PREVIOUS SESSION (session 2)
@@ -84,25 +90,28 @@ forward: commit and push straight to `main`. No feature branches, no PRs, no bra
 
 ---
 
-## ▶️ PRIORITY 1 (live) — generate the FULL-GLOBAL daily F/E training dataset (owner decision)
+## ▶️ PRIORITY 1 (live) — Phase 2+ (`DEVELOPMENT_PLAN.md` §6)
 
-P3b's gate is met on a subset; the **mechanism is proven and unblocked**. The remaining Phase-1
-data-generation is the **full-global daily dataset** the F-core / E-layer will train on. This is a
-resource/scope decision (est. ~170 GB, longer compute) — surface it to the owner before firing.
+Both Phase-1 gates (carbon + water) PASS and the **full-global daily F/E dataset now exists** (186 GB,
+`/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output` — daily
+prec/transp/evap/interc/runoff/swe/swc/rootmoist/whc_nat/pet/npp/gpp for all 67,420 cells × 2000–2019).
+Resume the phased plan: **per-tree carbon pools** (allometric reconstruction from the existing `ind`
+CSV, or a RAW `ind` re-gen), then **component-E inputs** (wind `sfcwind` + surface pressure `ps` +
+FLUXNET/PLUMBER2), Phase 4.
 
-**HOW (reuse the session-3 tooling — it just works):**
-```
-STARTGRID=0 ENDGRID=67419 FIRSTYEAR=2000 LASTYEAR=2019 NTASKS=512 RUNTAG=global SUBMIT=yes \
-  bash scripts/run_daily_subset.sh
-```
-`scripts/run_daily_subset.sh` generates the config from the EXACT production sections I&II, runs a
-`lpjcheck` pre-flight (parse + input + restart-header validation), and submits. Then verify with
-`scripts/water_closure_check.py <run_dir>` (add the full-grid area/globalflux cross-check).
+**F-core water-budget caveat (carry forward):** LPJmL enforces water closure **annually** (not daily),
+and daily `swc` is **fractional saturation** (no `wsats` output). To give the F-core a fully-closed
+daily storage term, either reconstruct `wsats` from soil params, add a `wsat`/absolute-soil-water
+output and re-run, or define F conservation at the annual cadence. See `docs/phase1_p3b_water_closure.md`.
 
-**Owner scope choices (P3b guidance, still valid):** (a) whole global; (b) biome boxes as separate
-contiguous jobs (what session 3 did); (c) regrid climate+soil onto a subset grid — tools
-`/p/projects/biodiversity/bloh/git/master_bsq/bin/` (`getcellindex`, `cutclm`, `regridclm`, …). Bound
-output size by choosing years/vars. **Never run on the login node.**
+**Re-running LPJmL daily (tooling proven, reuse freely):** `scripts/run_daily_subset.sh` (params
+`STARTGRID ENDGRID FIRSTYEAR LASTYEAR NTASKS TIME EXCLUSIVE RUNTAG SUBMIT RANDOM_SEED`) generates the
+config from the EXACT production sections I&II, runs a `lpjcheck` pre-flight, and submits. Full-global
+example: `STARTGRID=0 ENDGRID=67419 FIRSTYEAR=2000 LASTYEAR=2019 NTASKS=512 TIME=03:00:00 EXCLUSIVE=yes
+RUNTAG=global SUBMIT=yes bash scripts/run_daily_subset.sh`. Verify with (dask-lazy, memory-safe)
+`scripts/water_closure_check.py <run_dir>`. **Never run on the login node.** Subset-grid options if ever
+needed (regrid tools `/p/projects/biodiversity/bloh/git/master_bsq/bin/`: `getcellindex`, `cutclm`,
+`regridclm`, …).
 
 **KEY VERIFIED FACTS (session 3, adversarially confirmed vs `/home/jamirp/lpjml56fit`):**
 - **Restart a contiguous subset from the full-grid restart works** — integer `"startgrid"/"endgrid"` =

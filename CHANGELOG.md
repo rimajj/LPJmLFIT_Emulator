@@ -51,6 +51,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (adversarially): contiguous-subset restart via 0-based positional `startgrid`/`endgrid`; daily via
   `"timestep":"daily"` in the entry's `file` object; `swc` is fractional saturation (`wsats` not output);
   build modules need `json-c/0.13.1` (not 0.17).
+- **Full-global daily F/E training dataset generated** — all **67,420 cells × 2000–2019** (186 GB,
+  daily prec/transp/evap/interc/runoff/swe/swc/rootmoist/whc_nat/pet/npp/gpp), restarted from the seed1
+  spinup-end restart so it reproduces the seed1 Historical trajectory at daily resolution. Water closure
+  re-confirmed at scale: clean run with no water-balance error (SAFE, all cells × 20 yr), daily fluxes
+  integrate to the annual `globalflux` to ~5 sig figs, per-cell multi-year imbalance median 0.87 %.
+  Summary `artifacts/metrics/p3b_water_closure_global_c0_67419.json`; data on `/p/tmp` (DVC, not in git).
+  Generator/analysis parameterized (`TIME`/`EXCLUSIVE`) + made dask-lazy/memory-safe for the ~185 GB
+  scale. Both Phase-1 gates (carbon + water) now pass.
 
 ### Changed
 - **Workflow → main-only** ([ADR 0013](docs/decisions/0013-main-only-workflow.md)): commit and push
