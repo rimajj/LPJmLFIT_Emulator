@@ -27,6 +27,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   gates, with a project-specific unit-test list (allometry, unit conversions, softmax/allocation,
   config parsing, data loaders, index/date math, numerical kernels, error handling).
 
+### Fixed
+- **CI green on `main`** — repaired the three workflows that were red on `57e3a95` (three independent
+  causes):
+  - `python`: floating `>=` deps with no lockfile let CI resolve breaking majors. Added upper-bound
+    caps matching the known-good `py311_new` set, committed `python/uv.lock`, and switched the job to
+    `uv sync --frozen`. Also ran `ruff format` on the never-formatted scaffold sources.
+  - `format`: reformatted all 18 tracked Julia files with Runic 1.7.0 (the version the job installs).
+  - `docs`: fixed a broken `[`checkdims`](@ref)` cross-reference (non-exported symbol → added a
+    `CurrentModule` @meta block), enabled `linkcheck` with an ignore for private-repo self-links, and
+    silenced two DocumenterCitations `.bib`-comment warnings. Each fix was reproduced and verified
+    locally (uv venv for Python; local Julia 1.10 + Documenter 1.17 for format/docs).
+
 ### Validation
 - Scaffold validated locally end-to-end: **Julia `Pkg.test()` green** (21,071 assertions pass, 6
   intentional `@test_broken` Phase-6 placeholders, 0 fail/error; Aqua + JET clean), **Python `pytest`
