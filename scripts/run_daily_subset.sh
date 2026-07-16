@@ -44,6 +44,8 @@ NTASKS="${NTASKS:-16}"
 RUNTAG="${RUNTAG:-subset}"
 SUBMIT="${SUBMIT:-no}"
 RANDOM_SEED="${RANDOM_SEED:-1}"
+TIME="${TIME:-00:30:00}"          # SLURM wall limit (full-global needs more, e.g. 02:00:00)
+EXCLUSIVE="${EXCLUSIVE:-no}"      # yes -> whole-node allocation (recommended for large jobs)
 
 LPJROOT=/home/jamirp/lpjml56fit
 GLOBAL=/p/projects/waldspektrum/priesner/clustering/global
@@ -225,12 +227,15 @@ cat > "${out_script}/lpjml.js" <<EOF
 EOF
 
 # ---- slurm job ---------------------------------------------------------------
+excl_directive=""
+[ "${EXCLUSIVE}" = "yes" ] && excl_directive="#SBATCH --exclusive"
 cat > "${out_script}/slurm.jcf" <<EOF
 #!/bin/bash
 #SBATCH --ntasks=${NTASKS}
 #SBATCH --qos=short
+${excl_directive}
 #SBATCH -J FIT_p3b_${RUNTAG}
-#SBATCH --time=00:30:00
+#SBATCH --time=${TIME}
 #SBATCH -o ${outpath}/lpjml.%j.out
 #SBATCH -e ${outpath}/lpjml.%j.err
 
