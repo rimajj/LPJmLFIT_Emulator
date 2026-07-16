@@ -37,6 +37,12 @@ makedocs(;
     repo = Documenter.Remotes.GitHub("rimajj", "LPJmLFIT_Emulator"),
     checkdocs = :exports,   # every exported symbol must be documented
     doctest = true,         # execute all jldoctest blocks; fail on output mismatch
+    linkcheck = true,       # every external link must resolve (ENGINEERING_STANDARDS §4/§9)
+    # The repo is PRIVATE, so unauthenticated linkcheck gets 404 on our own
+    # github.com/rimajj/LPJmLFIT_Emulator/... self-links (ADRs, DESIGN.md, plan). Ignore just
+    # those; all other external links (papers, public repos) are still checked. Make the repo
+    # public or add an authenticated token to drop this ignore.
+    linkcheck_ignore = [r"https://github\.com/rimajj/LPJmLFIT_Emulator(/.*)?"],
     warnonly = false,       # STRICT — no silent doc↔code drift
     plugins = [bib],
     format = Documenter.HTML(;

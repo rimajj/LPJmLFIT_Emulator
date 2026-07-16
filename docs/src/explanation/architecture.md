@@ -1,5 +1,9 @@
 # The three-component architecture
 
+```@meta
+CurrentModule = LPJmLFITEmulator
+```
+
 > *Explanation — the concepts and the reasoning. For the exact signatures see the
 > [API reference](../reference/api.md); for the frozen schemas see `DESIGN.md` §2 and §8.*
 
