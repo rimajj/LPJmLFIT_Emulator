@@ -301,7 +301,11 @@ def energy_distance_null(X_true, standardize=True, max_n=2000, seed=0, n_repeats
     perm = rng.permutation(X.shape[0])
     half = X.shape[0] // 2
     return energy_distance_mv(
-        X[perm[:half]], X[perm[half:]], standardize=standardize, max_n=max_n, seed=seed,
+        X[perm[:half]],
+        X[perm[half:]],
+        standardize=standardize,
+        max_n=max_n,
+        seed=seed,
         n_repeats=n_repeats,
     )
 
