@@ -59,6 +59,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   Summary `artifacts/metrics/p3b_water_closure_global_c0_67419.json`; data on `/p/tmp` (DVC, not in git).
   Generator/analysis parameterized (`TIME`/`EXCLUSIVE`) + made dask-lazy/memory-safe for the ~185 GB
   scale. Both Phase-1 gates (carbon + water) now pass.
+- **Phase 2 (slow emulator, offline) — gate met at the baseline tier.** `scripts/train_slow_emulator.py`
+  trains the ported DIRECT `DirectEmulator` on a biome-stratified 6000-cell set and scores rendered
+  holdout distributions vs the seed1-vs-seed2 noise floor (random in-distribution + warm+dry OOD),
+  building `tree_step`/`grass`/holdout subsets from the `ind` parquet. In-distribution: median KS 0.023,
+  joint energy within 1.72× the floor, drift-free, per-cell NPP conserved ~21% median. Warm+dry OOD:
+  ks 32× floor — the documented equilibrium-ML limitation the Phase-3 hybrid targets. No generative
+  escalation triggered (ADR 0005). Report [`docs/phase2_slow_emulator.md`](docs/phase2_slow_emulator.md);
+  artifacts `artifacts/metrics/phase2_slow_emulator_{random,oodwarm}_6000.json`.
 
 ### Changed
 - **Workflow → main-only** ([ADR 0013](docs/decisions/0013-main-only-workflow.md)): commit and push

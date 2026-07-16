@@ -3,10 +3,10 @@
 **Read this first, then `MEMORY.md` (durable facts) and the tail of `JOURNAL.md` (narrative).**
 You are continuing an in-progress build of an ESM-ready LPJmL-FIT hybrid land component (S = slow ML
 distribution emulator, F = fast physical core kept, E = new energy balance). Phase 0 DESIGN is frozen
-and on `main`. DONE: CI repair, the component-S port, carbon closure, and now **P3b — the daily-output
-re-run + WATER CLOSURE (PASSED, session 3)**. Both Phase-1 gates (carbon + water) are met.
-The next live work is **generating the full-global daily F/E training dataset** (owner scope/resource
-decision — see PRIORITY 1) and then **Phase 2+** (`DEVELOPMENT_PLAN.md` §6).
+and on `main`. DONE: CI repair, the component-S port, carbon closure, **Phase 1 COMPLETE** (water
+closure PASSED + the full-global daily F/E dataset, 186 GB), and **Phase 2 slow-emulator GATE MET at
+the baseline tier** (session 3). The next live work is **Phase 3 — hybrid integration (F1 + S↔F
+interface)** (`DEVELOPMENT_PLAN.md` §6).
 
 Repo: `/p/projects/open/Jamir/esm_land_emulator` → remote `git@github-esm:rimajj/LPJmLFIT_Emulator.git`
 (SSH alias `github-esm`, deploy key `~/.ssh/esm_land_emulator_deploy`; **push works with NO manual auth**).
@@ -53,8 +53,14 @@ forward: commit and push straight to `main`. No feature branches, no PRs, no bra
    scale (clean run, no water-balance error, all cells × 20 yr; daily→annual `globalflux` exact; per-cell
    multi-year imbalance median 0.87 %). This is the daily forcing→flux+storage+carbon data F/E train on.
    Summary `artifacts/metrics/p3b_water_closure_global_c0_67419.json`.
-3. **Housekeeping:** ADR 0013 (main-only) + §1 softened + index; `.github/dependabot.yml` tamed
-   (monthly+grouped). Committed + pushed to main.
+3. **PHASE 2 slow-emulator GATE MET (baseline tier).** Trained the ported `DirectEmulator` on a
+   biome-stratified 6000-cell set (SLURM 1449446). In-distribution (random holdout): median KS 0.023,
+   joint energy within 1.72× the noise floor, drift-free, per-cell NPP conserved ~21% median. Warm+dry
+   OOD holdout: ks 32× floor = the documented equilibrium-ML limitation the Phase-3 hybrid targets. No
+   generative escalation triggered (ADR 0005). Report `docs/phase2_slow_emulator.md`; driver
+   `scripts/train_slow_emulator.py`; artifacts `artifacts/metrics/phase2_slow_emulator_{random,oodwarm}_6000.json`.
+4. **Housekeeping:** ADR 0013 (main-only) + §1 softened + index; `.github/dependabot.yml` tamed
+   (monthly+grouped) — Dependabot then auto-closed all its PRs (open PRs now = 0). Committed + pushed.
 
 ## ✅ DONE PREVIOUS SESSION (session 2)
 
@@ -90,14 +96,22 @@ forward: commit and push straight to `main`. No feature branches, no PRs, no bra
 
 ---
 
-## ▶️ PRIORITY 1 (live) — Phase 2+ (`DEVELOPMENT_PLAN.md` §6)
+## ▶️ PRIORITY 1 (live) — Phase 3: hybrid integration (F1 + S↔F interface) (`DEVELOPMENT_PLAN.md` §6)
 
-Both Phase-1 gates (carbon + water) PASS and the **full-global daily F/E dataset now exists** (186 GB,
-`/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output` — daily
-prec/transp/evap/interc/runoff/swe/swc/rootmoist/whc_nat/pet/npp/gpp for all 67,420 cells × 2000–2019).
-Resume the phased plan: **per-tree carbon pools** (allometric reconstruction from the existing `ind`
-CSV, or a RAW `ind` re-gen), then **component-E inputs** (wind `sfcwind` + surface pressure `ps` +
-FLUXNET/PLUMBER2), Phase 4.
+Phase 1 (both gates + 186 GB daily F/E dataset) and Phase 2 (slow-emulator baseline, gate met) are
+done. Phase 3 = **drive the KEPT LPJmL physical core (F1) with the emulated structure + representative
+individuals, and couple S↔F on the prototype** (checkpoint: coupled hybrid reproduces LPJmL
+biomass/LAI/flux *trajectories* within tolerance; budgets close). The Phase-1 daily dataset
+(`/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output`) is the target trajectory;
+the Phase-2 `DirectEmulator` (trained; `scripts/train_slow_emulator.py`) is component S. Interface
+contract is frozen in `DESIGN.md` §2.5 / DEVELOPMENT_PLAN §2.5. The binary help exposes `-couple
+host[:port]` (candidate F1 coupling interface — see DESIGN). After Phase 3: **component-E inputs** (wind
+`sfcwind` + surface pressure `ps` + FLUXNET/PLUMBER2), Phase 4.
+
+**Optional S improvement** (not gating): a presence/absence gate before the Poisson count model to blunt
+the OOD tree over-prediction on arid cells (the Phase-2 OOD failure mode). **F-core water-budget
+caveat:** LPJmL closure is enforced ANNUALLY and daily `swc` is fractional (no `wsats` output) — see
+`docs/phase1_p3b_water_closure.md`.
 
 **F-core water-budget caveat (carry forward):** LPJmL enforces water closure **annually** (not daily),
 and daily `swc` is **fractional saturation** (no `wsats` output). To give the F-core a fully-closed
