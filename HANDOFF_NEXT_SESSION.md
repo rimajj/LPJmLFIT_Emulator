@@ -28,7 +28,26 @@ for HEAD.
 
 ---
 
-## ⭐ WHAT LANDED IN SESSION 5 (on `main`)
+## ⭐ WHAT LANDED IN SESSION 5b (on `main`) — MULTI-LAYER SOIL (scale-up step 2)
+
+Replaced `F_diff`'s single soil bucket with a **differentiable 23-layer soil column** (`FDiff.SoilColumn`,
+`FDiffStateML`, `daily_step_ml`/`rollout_daily_ml`, `hainich_soilcolumn`): fill-to-field-capacity
+infiltration cascade, Jackson-1996 β root distribution (D95≈115 cm → ~93 % roots in top 1 m), per-layer
+root-weighted transpiration withdrawal, top-300 mm quadratic soil evaporation. Per-layer capacities from
+the C run's own `whc_nat` output (no pedotransfer port); dependency-free; water closes ~1e-12.
+- **Result (Hainich, FAPAR-driven):** GPP daily correlation **0.76 → 0.93**, transpiration **0.91 → 0.96**,
+  root-zone water now representable (r 0.87) — at **essentially unchanged LEVELS** (GPP 0.61, transp 1.45).
+- **DECISIVE FINDING:** the transp/GPP **level** gaps are **demand-side / single-representative-individual,
+  NOT soil-supply** — with realistic per-layer drying the root zone tracks the C yet transp stays ~45 %
+  high & demand-limited. → the next step is now unambiguously **multi-PFT / representative-individual**.
+- **AD:** ForwardDiff differentiates the layered rollout (matches FD). Enzyme-reverse through the layered
+  Vector-mutation is a follow-up (single-bucket already proves Enzyme-reverse through the physics).
+- Gate `test/testitems/multilayer_soil_tests.jl` + committed `references/hainich_{soilcolumn,ml_baseline_2010}.txt`.
+  Report `docs/phase3_fdiff_cbinary_validation.md` §8. Full suite **25,788 pass / 0 fail**; Runic-clean.
+
+---
+
+## WHAT LANDED IN SESSION 5 (on `main`)
 
 **Quantitative "same physics" validation of `F_diff` against the LPJmL-FIT C binary on the Hainich
 prototype cell** — the handoff's Priority-1 item 1. `F_diff` driven by the cell's REAL daily `.clm`
@@ -87,13 +106,21 @@ The one-cell spike proved the AD toolchain is NOT the blocker; **session 5 quant
 work is **physics coverage** to close the two MEASURED level gaps, in priority order:
 1. ✅ **DONE (session 5) — Quantitative C-binary validation on the prototype cell.** See
    `docs/phase3_fdiff_cbinary_validation.md`; gate `test/testitems/cbinary_validation_tests.jl`.
-2. **Multi-PFT + representative-individual set** (C3/C4, angio/gymno) driven by S — **the biggest GPP
-   lever** (measured −42% level gap comes from one representative individual vs the 25-patch multi-PFT
-   canopy). Aggregate to per-m² GPP for the comparison.
-3. **Multi-layer soil water** (LPJmL `NSOILLAYER`, infil/perc/drainage, rootdist) + the **23-layer
-   enthalpy soil-thermal + permafrost** (REDO from C, or reuse Terrarium.jl's differentiable thermal —
-   ADR 0006) — **the biggest transpiration lever** (measured +40% level gap + over-drained root-zone
-   water). The spike uses a single bucket + degree-day snow.
+2. ✅ **DONE (session 5b) — Multi-layer soil water (water-only v1).** 23-layer differentiable column
+   (`daily_step_ml`); improved GPP/transp DYNAMICS (corr 0.76→0.93 / 0.91→0.96); root-zone water
+   representable. See `docs/phase3_fdiff_cbinary_validation.md` §8; gate `multilayer_soil_tests.jl`.
+   **It proved the transp/GPP LEVEL gaps are demand-side, not soil-supply** → do #3 next.
+   v2 soil items (deferred): free-water percolation timescale + surface/infil-excess runoff split, the
+   **23-layer enthalpy soil-thermal + permafrost** (REDO from C or reuse Terrarium.jl — ADR 0006),
+   Enzyme-reverse through the layered Vector-mutation.
+3. **★ NEXT — Multi-PFT + representative-individual set** (C3/C4, angio/gymno) driven by S. This is now
+   the localized cause of BOTH level gaps (GPP −42%, transp +45%): one well-watered representative tree
+   transpires at full atmospheric demand and concentrates all light through the SLA-Vcmax cap.
+   Approach: split the canopy into PFT×size classes from the `ind` CSV (leaf/sapwood C, crown, nind,
+   height per class — reconstruction recipe in the session-5 investigation), distribute light per class,
+   run per-individual photosynthesis (SLA cap + co-limitation act per individual) + per-individual water
+   stress, aggregate to per-m². Validate GPP/transp LEVEL recovery with the existing FAPAR/forcing
+   harness (may need per-PFT FAPAR from a re-run, or a Beer–Lambert layered light split).
 4. **Coupled conductance↔carbon consistency** (the measured water-use-efficiency inconsistency: high
    transp + low GPP) and **dynamic phenology-folded structure** (so full-year GPP no longer needs the
    FAPAR crutch / growing-season restriction).

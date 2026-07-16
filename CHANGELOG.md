@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Differentiable multi-layer soil water for `F_diff` (Phase-3 scale-up step 2).** Replaced the single
+  soil bucket with a 23-layer differentiable column (`FDiff.SoilColumn`, `FDiffStateML`,
+  `daily_step_ml`/`rollout_daily_ml`, `hainich_soilcolumn`): fill-to-field-capacity infiltration
+  cascade, Jackson-1996 β root distribution (D95 ≈ 115 cm → ~93 % of roots in the top 1 m), per-layer
+  root-weighted transpiration withdrawal, and top-300 mm quadratic soil evaporation. Per-layer
+  capacities are taken from the C run's own `whc_nat` output (no pedotransfer port); the runtime stays
+  dependency-free and water closes to ~1e-12 mm.
+  - Validated on Hainich (same FAPAR-driven harness): **GPP daily correlation 0.76 → 0.93**,
+    **transpiration 0.91 → 0.96**, and root-zone water now representable per layer (r = 0.87) — at
+    essentially unchanged levels. This **localizes the residual transpiration/GPP level gaps to the
+    demand-side / single-representative-individual step, not soil supply** (the next scale-up item).
+  - New gate `test/testitems/multilayer_soil_tests.jl` (per-day water closure, no-NaN, soil-water +
+    GPP/transp correlations vs the C binary, ForwardDiff differentiability, drift baseline) with
+    committed `references/hainich_soilcolumn.txt` + `hainich_ml_baseline_2010.txt`. Report
+    `docs/phase3_fdiff_cbinary_validation.md` §8. Full suite **25,788 pass / 0 fail**. ForwardDiff
+    differentiates the layered rollout; Enzyme reverse-mode through it is a documented follow-up.
 - **`F_diff` ↔ LPJmL-FIT C-binary quantitative validation on the prototype cell (Phase-3 scale-up
   step 1).** `F_diff` driven by Hainich's (global-grid cell **42490**) REAL daily `.clm` forcing + the
   C binary's ACTUAL daily FAPAR (kernel-isolation drive), compared to LPJmL-FIT's own daily

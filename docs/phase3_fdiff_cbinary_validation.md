@@ -169,3 +169,40 @@ sharpening the remaining "cover all of F" items:
 3. Coupled conductance↔carbon consistency (the WUE inconsistency).
 4. Dynamic (phenology-folded) structure so the full-year GPP comparison no longer needs the FAPAR
    crutch or the growing-season restriction.
+
+---
+
+## 8. Update — multi-layer soil water (scale-up step 2)
+
+The single soil bucket was replaced with a **differentiable 23-layer soil column** (`FDiff.SoilColumn`,
+`FDiffStateML`, `daily_step_ml`/`rollout_daily_ml`): fill-to-field-capacity infiltration cascade,
+Jackson-1996 β root distribution (from D95 ≈ 115 cm → ~93 % of roots in the top 1 m), per-layer
+root-weighted transpiration withdrawal, and top-300 mm quadratic soil evaporation. Per-layer capacities
+come from the C run's own `whc_nat` output (× layer depth), so no pedotransfer port is needed; the code
+stays dependency-free and water closes exactly. Validated on Hainich with the same FAPAR-driven harness.
+
+| metric (Hainich 2000–2019, growing season) | single bucket | **multi-layer** | C binary |
+|---|---|---|---|
+| water closure | exact | **exact (~1e-10)** | — |
+| **GPP daily correlation** | 0.76 | **0.93** | — |
+| **transpiration daily correlation** | 0.91 | **0.96** | — |
+| root-zone water (top-1 m) | 1 bucket | **23 layers, r = 0.87** | `d_rootmoist` |
+| GPP level (GS ratio) | 0.59 | 0.61 | 1.0 |
+| transpiration level (GS ratio) | 1.41 | 1.45 | 1.0 |
+
+**Outcome:** the multi-layer column substantially improves the daily **dynamics** (GPP correlation
+0.76 → 0.93; transpiration 0.91 → 0.96) and makes soil water physically representable per layer, at
+**essentially unchanged levels**. This is the decisive finding: the transpiration/GPP **level** gaps are
+**NOT soil-supply-limited** — with realistic per-layer drying the root-zone water tracks the C binary
+(r = 0.87) yet transpiration stays ~45 % high and demand-limited. The levels are therefore **demand-side
+/ single-representative-individual** effects (one well-watered tree transpires at full atmospheric demand
+and concentrates all light through the SLA-Vcmax cap), which **definitively localizes the next step to
+the multi-PFT / representative-individual work** (item 1 above). One documented v1 simplification: a bug
+where saturation-excess at field capacity bounced rain into spurious surface runoff (→ over-drained the
+root zone) was fixed by letting infiltration always refill toward field capacity and route the excess as
+drainage; surface/infiltration-excess runoff, the free-water percolation timescale, and permafrost ice
+are v2 items. Differentiability: **ForwardDiff** flows through the layered rollout (matches finite
+differences); **Enzyme reverse-mode** through the layered Vector-mutation is a follow-up (the single-
+bucket already establishes Enzyme-reverse through the full physics). Gate:
+`test/testitems/multilayer_soil_tests.jl` + committed `hainich_soilcolumn.txt` /
+`hainich_ml_baseline_2010.txt`.

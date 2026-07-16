@@ -28,7 +28,8 @@ using ..SmoothOps
 export FDiffParams, FDiffState, Structure, DailyForcing,
     photosynthesis, priestley_taylor_eeq, solve_lambda, temp_stress,
     daily_step, rollout, rollout_daily, annual_npp,
-    tebs_params, tebs_structure
+    tebs_params, tebs_structure,
+    SoilColumn, FDiffStateML, daily_step_ml, rollout_daily_ml, hainich_soilcolumn
 
 # ── unit helpers (LPJmL-FIT include/units.h; 273.15 K — NOT the reference's 272.15 bug) ──────────
 ppm2bar(co2) = co2 * 1.0e-6          # ppmv → bar  (units.h:23)
@@ -645,6 +646,247 @@ Convenience scalar: the annual NPP (gC/m²/yr) produced by [`rollout`](@ref). Th
 output whose gradient w.r.t. an input/parameter the spike verifies against finite differences.
 """
 annual_npp(p, st0, str, forcings; kwargs...) = rollout(p, st0, str, forcings; kwargs...)[2].npp
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# MULTI-LAYER SOIL WATER (scale-up step 2 — docs/phase3_fdiff_cbinary_validation.md §7)
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# Replaces the single bucket with LPJmL-FIT's N-layer soil column so that (a) the shallow layers dry
+# preferentially under concentrated root uptake + top-30 cm soil evaporation, collapsing the
+# root-weighted moisture `wr` in summer and correctly SUPPLY-LIMITING transpiration (the single bucket
+# blends wet deep water with dry shallow water and stays demand-limited → the measured +40 % transp
+# bias), and (b) the per-layer soil water can be compared to the C binary's `d_swc`/`d_rootmoist`.
+#
+# Faithful DAILY approximation (v1): each layer tracks PLANT-AVAILABLE water `w[l] ∈ [0, whcs[l]]` mm
+# (between wilting point and field capacity). Percolation in LPJmL only moves water ABOVE field
+# capacity (`percthres=1.0`) and drains it fast, so at daily resolution a fill-to-field-capacity
+# infiltration CASCADE (excess flows to the next layer; bottom excess → drainage; saturation-excess at
+# the top → surface runoff) is the daily limit of that free-water percolation. Root uptake is the
+# Jackson-1996 β root distribution; soil evaporation is drawn from the top `soildepth_evap` with the
+# LPJmL quadratic moisture limiter. Documented v1 simplifications (NOT bit-exact to the C):
+# the Saxton–Rawls pedotransfer Ks/β exponential percolation timescale + explicit free-water (`w_fw`)
+# store, permafrost ice blocking percolation, litter evaporation, and the energy-balance snow melt.
+# `whcs`/`rootdist` come from the C run's own `whc_nat` output + the D95 β profile (dependency-free).
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+"""
+    SoilColumn{T}
+
+Fixed per-layer soil boundary for the multi-layer core: `whcs` = per-layer plant-available capacity
+(field capacity − wilting point, mm), `rootdist` = per-layer root fraction (Jackson-1996 β profile,
+sums ≈ 1), `frac_evap` = fraction of each layer within the top `soildepth_evap` (soil-evaporation
+weights), and `soil_infil` = the LPJmL infiltration exponent (surface runoff `∝ 1−(1−S₀)^{1/soil_infil}`).
+Build the Hainich column with [`hainich_soilcolumn`](@ref).
+"""
+struct SoilColumn{T <: Real}
+    whcs::Vector{T}
+    rootdist::Vector{T}
+    frac_evap::Vector{T}
+    soil_infil::T
+end
+
+"""
+    FDiffStateML{T}
+
+Multi-layer prognostic state: per-layer plant-available soil water `w[l]` (mm, `0 ≤ w[l] ≤ whcs[l]`)
+and snow water equivalent `snowpack` (mm). The multi-layer analogue of [`FDiffState`](@ref).
+"""
+struct FDiffStateML{T <: Real}
+    w::Vector{T}
+    snowpack::T
+end
+
+_wt(::SoilColumn{T}) where {T} = T
+_wt(::FDiffStateML{T}) where {T} = T
+
+# ── infiltration: fill-to-field-capacity cascade; excess past the bottom → drainage ──────────────
+# Because F_diff tracks only PLANT-AVAILABLE water (capped at field capacity), each layer fills toward
+# `whcs[l]` and the excess percolates to the next layer (the daily limit of LPJmL's fast free-water
+# percolation, `percthres=1.0`); whatever passes the bottom layer is drainage. There is no FC-blocking
+# of infiltration (a v1 that blocked at FC bounced rain off a full top layer into spurious surface
+# runoff → over-drained the root zone). Surface/infiltration-excess runoff is a documented v2 item
+# (needs the free-water saturation range); here total `runoff` ≡ bottom drainage. Closure is EXACT:
+# `infil = Σ(fills) + drainage`. `smoothmin` for the fill; overflow is the residual `influx − fill`.
+function _infiltrate(w::AbstractVector{T}, whcs, infil, βw) where {T}
+    N = length(w)
+    wnew = similar(w)
+    influx = infil
+    for l in 1:N
+        space = whcs[l] - w[l]
+        fill = smoothmin(influx, space, βw)
+        wnew[l] = w[l] + fill
+        influx = influx - fill
+    end
+    drainage = influx                                    # leftover past the bottom layer
+    return (wnew, drainage)
+end
+
+# ── root-weighted transpiration withdrawal (per layer ∝ rootdist·relative-moisture, capped) ──────
+function _transpire(w::AbstractVector{T}, whcs, rootdist, emax, phen, demand, βw) where {T}
+    N = length(w)
+    rel = w ./ whcs                                      # relative moisture per layer
+    wr = zero(T)
+    for l in 1:N
+        wr += rootdist[l] * rel[l]
+    end
+    supply = emax * wr * phen
+    transp_tot = smoothmin(supply, demand, βw)
+    wscal = smoothmin(one(T), supply / (demand + T(1.0e-9)), T(30.0))
+    wnew = similar(w)
+    actual = zero(T)
+    invwr = inv(wr + T(1.0e-12))
+    for l in 1:N
+        want = transp_tot * (rootdist[l] * rel[l]) * invwr     # share ∝ root-weighted moisture
+        take = smoothmin(want, w[l], βw)                        # cannot exceed layer water
+        wnew[l] = w[l] - take
+        actual += take
+    end
+    return (wnew, actual, wr, wscal)
+end
+
+# ── bare-soil evaporation from the top `soildepth_evap` (quadratic moisture limiter; waterbalance.c) ─
+function _soil_evap(w::AbstractVector{T}, whcs, frac_evap, eeq, α_PT, cover, βevap, βw) where {T}
+    N = length(w)
+    w_evap = zero(T); whcs_evap = zero(T)
+    for l in 1:N
+        w_evap += frac_evap[l] * w[l]
+        whcs_evap += frac_evap[l] * whcs[l]
+    end
+    moisture = (w_evap / (whcs_evap + T(1.0e-9)))^2                 # quadratic (w_evap/whcs_evap)²
+    evap_energy = eeq * α_PT * smoothmax(one(T) - cover, T(0.05), βevap)
+    evap_dem = evap_energy * moisture
+    evap = smoothmin(evap_dem, w_evap, βw)                          # supply-capped
+    wnew = similar(w)
+    frac = evap / (w_evap + T(1.0e-12))
+    for l in 1:N
+        wnew[l] = w[l] - frac * frac_evap[l] * w[l]                 # withdraw ∝ frac_evap·w
+    end
+    return (wnew, evap)
+end
+
+"""
+    daily_step_ml(p, st::FDiffStateML, str::Structure, soil::SoilColumn, f::DailyForcing;
+                  c_sapwood, c_root, fapar=nothing) -> (st′, fluxes)
+
+One multi-layer day. Same canopy/photosynthesis/λ path as [`daily_step`](@ref), but the soil water is
+the [`SoilColumn`](@ref): infiltration cascade → root-weighted transpiration (per-layer withdrawal) →
+top-layer soil evaporation. Returns the new [`FDiffStateML`](@ref) and daily fluxes
+`(gpp, npp, transp, evap, eeq, runoff, rootmoist, lambda, wscal)` (rootmoist = top-1 m available mm).
+Water closes exactly: `precip = transp + evap + runoff + Δ(Σw + snowpack)`.
+"""
+function daily_step_ml(
+        p::FDiffParams, st::FDiffStateML, str::Structure, soil::SoilColumn, f::DailyForcing;
+        c_sapwood = 3000.0, c_root = 800.0, fapar = nothing, n_top1m::Int = 3
+    )
+    T = promote_type(_wt(p), _wt(st), _wt(str), _wt(soil), _wt(f))
+    c_sapwood = convert(T, c_sapwood); c_root = convert(T, c_root)
+    w = p.water
+    eeq = priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, str.albedo)
+
+    # snow (degree-day; v1) + water reaching the soil
+    frac_rain = sigmoid(w.βsnow * (f.temp - w.tsnow))
+    rain = frac_rain * f.precip
+    snowfall = (one(T) - frac_rain) * f.precip
+    melt_potential = w.melt_factor * softplus(f.temp - w.tsnow, w.βmelt)
+    melt = smoothmin(melt_potential, st.snowpack + snowfall, w.βmelt)
+    snowpack′ = st.snowpack + snowfall - melt
+    infil = rain + melt
+
+    # canopy light + photosynthesis machinery (identical to daily_step)
+    par = 0.5 * w.dayseconds * f.swdown
+    fpar = str.fpc * (one(T) - exp(-str.k_beer * str.lai))
+    apar = _apar(par, str, fapar, fpar)
+    ts = temp_stress(p.tstress, f.temp, f.daylength)
+    co2_Pa = ppm2Pa(f.co2)
+    (_, _, vm, adtmm_opt) = photosynthesis(p.photo, w.lambda_opt, ts, co2_Pa, f.temp, apar, f.daylength; comp_vm = true)
+    gp_pot = 1.6 * adtmm_opt / (ppm2bar(f.co2) * (one(T) - w.lambda_opt) * hour2sec(f.daylength)) + w.gmin * str.fpc
+
+    # 1) infiltration cascade
+    (w1, drainage) = _infiltrate(convert.(T, st.w), convert.(T, soil.whcs), infil, w.βw)
+
+    # 2) supply/demand → conductance → λ → GPP  (root-weighted supply from the layers)
+    N = length(w1)
+    rel1 = w1 ./ convert.(T, soil.whcs)
+    wr = zero(T)
+    for l in 1:N
+        wr += convert(T, soil.rootdist[l]) * rel1[l]
+    end
+    supply = w.emax * wr * str.phen
+    (gc, demand) = canopy_conductance(w, eeq, gp_pot, supply)
+    gpd = hour2sec(f.daylength) * (gc * str.fpc - w.gmin * fpar)
+    gpd = softplus(gpd, w.βflux)
+    fac = gpd / 1.6 * ppm2bar(f.co2)
+    λ = solve_lambda(p, fac, ts, co2_Pa, f.temp, apar, f.daylength, vm)
+    (agd, rd, _, _) = photosynthesis(p.photo, λ, ts, co2_Pa, f.temp, apar, f.daylength; comp_vm = false, vm = vm)
+    gpp = softplus(agd, w.βflux)
+
+    # 3) transpiration (per-layer withdrawal) then 4) soil evaporation (top layers)
+    (w2, transp, _, wscal) = _transpire(w1, convert.(T, soil.whcs), convert.(T, soil.rootdist), w.emax, str.phen, demand, w.βw)
+    cover = str.fpc * str.phen
+    (w3, soil_evap) = _soil_evap(w2, convert.(T, soil.whcs), convert.(T, soil.frac_evap), eeq, w.α_PT, cover, w.βevap, w.βw)
+
+    (npp, _) = autotrophic_respiration(p.resp, f.temp, gpp, rd, c_sapwood, c_root)
+
+    runoff = drainage                                     # v1: bottom drainage (surface runoff = v2)
+    rootmoist = zero(T)                                    # top-1 m plant-available water (mm)
+    for l in 1:min(n_top1m, N)
+        rootmoist += w3[l]
+    end
+    st′ = FDiffStateML{T}(w3, convert(T, snowpack′))
+    fluxes = (
+        gpp = convert(T, gpp), npp = convert(T, npp), transp = convert(T, transp),
+        evap = convert(T, soil_evap), eeq = convert(T, eeq), runoff = convert(T, runoff),
+        rootmoist = convert(T, rootmoist), lambda = convert(T, λ), wscal = convert(T, wscal),
+    )
+    return (st′, fluxes)
+end
+
+"""
+    rollout_daily_ml(p, st0::FDiffStateML, str, soil, forcings; fapars=nothing, kwargs...) -> (st, days)
+
+Fold [`daily_step_ml`](@ref) over a vector of [`DailyForcing`](@ref), carrying the per-layer soil water
+and snow. Returns the final state and the per-day flux `NamedTuple`s. `fapars`/`c_sapwoods`/`c_roots`
+are optional per-day override vectors (as in [`rollout_daily`](@ref)).
+"""
+function rollout_daily_ml(
+        p::FDiffParams, st0::FDiffStateML, str::Structure, soil::SoilColumn, forcings;
+        c_sapwood = 3000.0, c_root = 800.0, fapars = nothing, c_sapwoods = nothing, c_roots = nothing,
+        n_top1m::Int = 3
+    )
+    T = promote_type(_wt(p), _wt(st0), _wt(str), _wt(soil), _wt(first(forcings)))
+    st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
+    days = Vector{typeof(daily_step_ml(p, st, str, soil, first(forcings); c_sapwood = c_sapwood, c_root = c_root, n_top1m = n_top1m)[2])}()
+    sizehint!(days, length(forcings))
+    for (i, f) in enumerate(forcings)
+        fp = fapars === nothing ? nothing : fapars[i]
+        cs = c_sapwoods === nothing ? c_sapwood : c_sapwoods[i]
+        cr = c_roots === nothing ? c_root : c_roots[i]
+        (st, fl) = daily_step_ml(p, st, str, soil, f; c_sapwood = cs, c_root = cr, fapar = fp, n_top1m = n_top1m)
+        push!(days, fl)
+    end
+    return (st, days)
+end
+
+"""
+    hainich_soilcolumn(::Type{T}=Float64; whcs, rootdist, soildepth_evap=300.0, soil_infil=2.0) -> SoilColumn{T}
+
+Build a [`SoilColumn`](@ref) from per-layer plant-available capacities `whcs` (mm) and root fractions
+`rootdist`, computing the soil-evaporation layer weights `frac_evap` from `soildepth_evap` (mm) and the
+per-layer thicknesses `soildepth` (mm). Used by the C-binary multi-layer validation (the Hainich column
+is committed in `test/testitems/references/hainich_soilcolumn.txt`).
+"""
+function hainich_soilcolumn(
+        ::Type{T} = Float64; whcs, rootdist, soildepth, soildepth_evap = 300.0, soil_infil = 2.0
+    ) where {T <: Real}
+    N = length(whcs)
+    frac_evap = zeros(T, N)
+    remaining = T(soildepth_evap)
+    for l in 1:N
+        d = T(soildepth[l])
+        take = min(d, max(remaining, zero(T)))
+        frac_evap[l] = d > 0 ? take / d : zero(T)         # fraction of layer l within the top soildepth_evap
+        remaining -= take
+    end
+    return SoilColumn{T}(T.(whcs), T.(rootdist), frac_evap, T(soil_infil))
+end
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # LPJmL-FIT temperate-broadleaf-summergreen (TeBS, PFT id 3 — beech) parameter set. The kernel
