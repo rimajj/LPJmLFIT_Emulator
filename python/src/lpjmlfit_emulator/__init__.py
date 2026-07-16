@@ -13,7 +13,8 @@ once on 2026-07-16 from the now-frozen sibling emulator at
 dependency and is never synced back. Fixed seed 42 for all stochastic work.
 
 Layout:
-  - ``metrics``     distributional metrics + the seed1-vs-seed2 noise floor (the yardstick)
+  - ``metrics``     distributional metrics (Wasserstein, KS, energy distance, quantile errors)
+  - ``noise_floor`` seed1-vs-seed2 noise-floor diagnostics (the evaluation yardstick)
   - ``data``        frozen 29-column ``ind`` schema + validated loader + patch summaries
   - ``transforms``  signed-log + monotone (isotonic) trait links
   - ``drivers``     annual climate/CO2 driver aggregation (xarray guarded)
@@ -24,7 +25,7 @@ Layout:
 
 from __future__ import annotations
 
-from . import baseline, data, drivers, features, metrics, train, transforms
+from . import baseline, data, drivers, features, metrics, noise_floor, train, transforms
 from .baseline import DirectEmulator, ResidualRegressor, add_competition
 from .data import (
     IND_COLUMNS,
@@ -34,7 +35,8 @@ from .data import (
     validate_ind_schema,
 )
 from .features import AXES, FEATURES, build_cell_year_feats
-from .metrics import PUBLISHED_NOISE_FLOOR, noise_floor, per_cell_relative_error
+from .metrics import PUBLISHED_NOISE_FLOOR, per_cell_relative_error
+from .noise_floor import noise_floor_report, per_cell_magnitude_floor
 from .transforms import MonotoneLink, VarTransformer, expm1_clip, log1p_signed
 
 __version__ = "0.1.0"
@@ -50,6 +52,7 @@ __all__ = [
     "drivers",
     "features",
     "metrics",
+    "noise_floor",
     "train",
     "transforms",
     # baseline
@@ -66,10 +69,11 @@ __all__ = [
     "FEATURES",
     "AXES",
     "build_cell_year_feats",
-    # metrics
+    # metrics + noise floor
     "PUBLISHED_NOISE_FLOOR",
-    "noise_floor",
     "per_cell_relative_error",
+    "per_cell_magnitude_floor",
+    "noise_floor_report",
     # transforms
     "MonotoneLink",
     "VarTransformer",

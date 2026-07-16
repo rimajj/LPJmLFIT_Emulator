@@ -100,7 +100,8 @@ python/
 ├── config/config.yaml                # ported prototype config (paths marked; see repo-root config/)
 ├── src/lpjmlfit_emulator/
 │   ├── __init__.py                    # package docstring, __version__, curated public API
-│   ├── metrics.py                     # distributional metrics + seed-split noise floor
+│   ├── metrics.py                     # distributional metrics (Wasserstein, KS, energy dist)
+│   ├── noise_floor.py                 # seed1-vs-seed2 noise-floor diagnostics (the yardstick)
 │   ├── data.py                        # frozen 29-col `ind` schema + loader + patch summaries
 │   ├── transforms.py                  # signed-log + monotone (isotonic) trait links
 │   ├── drivers.py                     # annual climate/CO2 driver aggregation (xarray guarded)
@@ -109,6 +110,7 @@ python/
 │   └── train.py                       # training / holdout / evaluation (matplotlib guarded)
 └── tests/
     ├── test_metrics.py                # distributional metrics + noise floor
+    ├── test_noise_floor.py            # seed-split floor (asserts published numbers)
     ├── test_data.py                   # schema validation + loader + patch summaries
     ├── test_transforms.py             # log transforms + monotone links (determinism)
     └── test_features.py               # feature schema + build_cell_year_feats

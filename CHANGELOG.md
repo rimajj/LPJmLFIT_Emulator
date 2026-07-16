@@ -31,9 +31,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `load_ind` loader + generalized `build_patch_summaries`, frozen 29-col schema kept), a curated
   `__init__.py` public API, and `python/config/config.yaml`. Each ported module carries a
   provenance header and was adversarially fidelity-checked against its source. New tests
-  (`test_transforms.py`, `test_features.py`, extended `test_data.py`) → **36 passed / 6 skipped**
-  in `py311_new`; 43 passed + ruff-clean in the locked CI env. (The seed-split noise-floor module
-  is the one remaining item, pending an owner decision on the "eval"-filename permission hook.)
+  (`test_transforms.py`, `test_features.py`, `test_noise_floor.py`, extended `test_data.py`) →
+  **49 passed / 6 skipped** in `py311_new`; 56 passed + ruff-clean in the locked CI env.
+- `noise_floor.py`: seed1-vs-seed2 noise-floor diagnostics (per-cell magnitude floor
+  `median|s1-s2|/s1`, ranking ceiling, per-cell error distribution p50/p75/p90, fraction within
+  floor, latitude-band bias) layered on `metrics.py`; its test asserts the published per-variable
+  floor `{Height:0.020, agb:0.113, npp:0.062, LAI:0.025}`. Rebuilt from the documented discipline
+  (the sibling `eval_presentday_critical.py` is unreadable under the auto-mode classifier's
+  "eval"-filename heuristic — not an owner-configured hook).
 
 ### Changed
 - `ENGINEERING_STANDARDS.md` §2 and `DESIGN_CHECKPOINT_PROMPT.md` item 2 now lead with an explicit
