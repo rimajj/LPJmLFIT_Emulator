@@ -28,7 +28,9 @@ jobs:
           enable-cache: true
           working-directory: python
       - name: Sync environment (frozen to uv.lock)
-        run: uv sync
+        # --frozen installs exactly the committed uv.lock (no re-resolve), so CI is
+        # reproducible and a floating major can't sneak in (root cause of the prior failure).
+        run: uv sync --frozen
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format check

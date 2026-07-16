@@ -14,23 +14,27 @@ keywords = ["lpjml-fit", "land-emulator", "distributional-emulation", "esm"]
 
 # Runtime dependencies mirror the reused conda env /home/jamirp/.conda/envs/py311_new
 # (Python 3.11.9). Lower bounds track the versions resolved in that env; the exact
-# pins live in the uv lockfile (uv.lock) for reproducible CI (Engineering Standards §7).
+# pins live in the committed uv lockfile (uv.lock) for reproducible CI (Engineering
+# Standards §7). Upper bounds cap the next SemVer major (or the next calendar year for
+# calendar-versioned pkgs) so a floating `uv sync`/Dependabot bump cannot silently pull
+# a breaking major (pandas 3, pyarrow 25, scikit-learn 2, …) into CI — the root cause of
+# the 2026-07-16 `python` job failure on main.
 # NOTE: torch/lightning/sdv/statsmodels/POT etc. from environment.yml are intentionally
 # omitted from the prototype's core deps (baseline S = LightGBM + Gaussian copula, no NN)
 # and are added only if the metric panel escalates beyond the baseline.
 dependencies = [
-    "numpy>=2.2",
-    "scipy>=1.14",
-    "pandas>=2.2",
-    "polars>=1.33",
-    "pyarrow>=16",
-    "scikit-learn>=1.5",
-    "lightgbm>=4.6",
-    "xgboost>=3.2",
-    "copulas>=0.14",
-    "xarray>=2024.0",
-    "netcdf4>=1.6",
-    "matplotlib>=3.9",
+    "numpy>=2.2,<3",
+    "scipy>=1.14,<2",
+    "pandas>=2.2,<3",
+    "polars>=1.33,<2",
+    "pyarrow>=16,<25",
+    "scikit-learn>=1.5,<2",
+    "lightgbm>=4.6,<5",
+    "xgboost>=3.2,<4",
+    "copulas>=0.14,<0.15",
+    "xarray>=2024.0,<2026",
+    "netcdf4>=1.6,<2",
+    "matplotlib>=3.9,<4",
 ]
 
 [project.urls]
@@ -39,10 +43,12 @@ Homepage = "https://github.com/"  # owner's private repo (set at first push, see
 # PEP 735 dependency groups (dev/test/lint only — never shipped).
 [dependency-groups]
 dev = [
-    "pytest>=8",
-    "pytest-cov>=5",
-    "hypothesis>=6",
-    "ruff>=0.6",
+    "pytest>=8,<9",
+    "pytest-cov>=5,<8",
+    "hypothesis>=6,<7",
+    # ruff is pre-1.0: new minors add/adjust lint rules, so an uncapped bump can turn a
+    # green `ruff check` red. Cap to the 0.14.x line and let uv.lock pin the exact patch.
+    "ruff>=0.6,<0.15",
 ]
 
 [tool.hatch.build.targets.wheel]
