@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Diagrams · LPJmL-FIT Hybrid Land Component</title><meta name="title" content="Diagrams · LPJmL-FIT Hybrid Land Component"/><meta property="og:title" content="Diagrams · LPJmL-FIT Hybrid Land Component"/><meta property="twitter:title" content="Diagrams · LPJmL-FIT Hybrid Land Component"/><meta name="description" content="Documentation for LPJmL-FIT Hybrid Land Component."/><meta property="og:description" content="Documentation for LPJmL-FIT Hybrid Land Component."/><meta property="twitter:description" content="Documentation for LPJmL-FIT Hybrid Land Component."/><meta property="og:url" content="https://rimajj.github.io/LPJmLFIT_Emulator/diagrams/"/><meta property="twitter:url" content="https://rimajj.github.io/LPJmLFIT_Emulator/diagrams/"/><link rel="canonical" href="https://rimajj.github.io/LPJmLFIT_Emulator/diagrams/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">LPJmL-FIT Hybrid Land Component</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><span class="tocitem">Explanation</span><ul><li><a class="tocitem" href="../explanation/architecture/">The three-component architecture</a></li><li><a class="tocitem" href="../explanation/conservation/">Conservation by construction</a></li><li><a class="tocitem" href="../explanation/hybrid_rationale/">Why a hybrid?</a></li><li><a class="tocitem" href="../explanation/limitations/">Limitations &amp; honest scope</a></li></ul></li><li><span class="tocitem">Model description (GMD-style)</span><ul><li><a class="tocitem" href="../model/model_description/">Model description</a></li><li><a class="tocitem" href="../model/model_card/">Model card — component S</a></li><li><input class="collapse-toggle" id="menuitem-3-3" type="checkbox"/><label class="tocitem" for="menuitem-3-3"><span class="docs-label">Datasheets</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../model/datasheets/historical_obsclim/">Historical (obsclim)</a></li><li><a class="tocitem" href="../model/datasheets/ssp370/">SSP370 (OOD)</a></li></ul></li></ul></li><li class="is-active"><a class="tocitem" href>Diagrams</a><ul class="internal"><li><a class="tocitem" href="#Governance:-curated-vs-derived"><span>Governance: curated vs derived</span></a></li><li><a class="tocitem" href="#Curated-conceptual-diagrams-(owner-facing)"><span>Curated conceptual diagrams (owner-facing)</span></a></li><li><a class="tocitem" href="#Code-derived-diagrams-(source-of-truth)"><span>Code-derived diagrams (source of truth)</span></a></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li><a class="tocitem" href="../howto/run_lpjml/">Run LPJmL-FIT &amp; generate data</a></li><li><a class="tocitem" href="../howto/reproduce/">Reproduce a result</a></li><li><a class="tocitem" href="../howto/build_docs/">Build the documentation</a></li></ul></li><li><a class="tocitem" href="../tutorials/">Tutorials</a></li><li><span class="tocitem">Reference</span><ul><li><a class="tocitem" href="../reference/api/">API</a></li><li><a class="tocitem" href="../reference/glossary/">Glossary</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Diagrams</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Diagrams</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/rimajj/LPJmLFIT_Emulator" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/rimajj/LPJmLFIT_Emulator/blob/main/docs/src/diagrams.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Diagrams"><a class="docs-heading-anchor" href="#Diagrams">Diagrams</a><a id="Diagrams-1"></a><a class="docs-heading-anchor-permalink" href="#Diagrams" title="Permalink"></a></h1><p>A picture of where every piece sits. There are <strong>two sets</strong> of diagrams, and the governance rule that resolves the tension between them is the important part (ENGINEERING_STANDARDS §5).</p><h2 id="Governance:-curated-vs-derived"><a class="docs-heading-anchor" href="#Governance:-curated-vs-derived">Governance: curated vs derived</a><a id="Governance:-curated-vs-derived-1"></a><a class="docs-heading-anchor-permalink" href="#Governance:-curated-vs-derived" title="Permalink"></a></h2><table><tr><th style="text-align: right"></th><th style="text-align: right"><strong>Curated</strong></th><th style="text-align: right"><strong>Derived</strong></th></tr><tr><td style="text-align: right">Author</td><td style="text-align: right">hand-drawn by a human/agent</td><td style="text-align: right">generated from the code&#39;s own registry</td></tr><tr><td style="text-align: right">Purpose</td><td style="text-align: right">the owner&#39;s <strong>mental model</strong> — small, readable</td><td style="text-align: right">the <strong>source of truth</strong> — always true</td></tr><tr><td style="text-align: right">Source</td><td style="text-align: right"><code>docs/src/assets/diagrams/*.mmd</code> (versioned Mermaid text)</td><td style="text-align: right"><code>docs/src/generated/*.mmd</code>, emitted by <code>scripts/gen_diagrams.jl</code> from <a href="../reference/api/#LPJmLFITEmulator.COMPONENTS"><code>COMPONENTS</code></a>/<a href="../reference/api/#LPJmLFITEmulator.FLUXES"><code>FLUXES</code></a></td></tr><tr><td style="text-align: right">Staleness</td><td style="text-align: right">possible → caught by the diff alarm</td><td style="text-align: right">impossible — CI fails on <code>git diff --exit-code</code> if the committed copy is stale</td></tr></table><p><strong>The rule:</strong> curated diagrams are the owner&#39;s mental model; the derived diagrams are the source of truth and act as a <strong>diff alarm</strong>. <code>scripts/gen_diagrams.jl</code> reads the model&#39;s own component/flux registry (<code>src/registry.jl</code>) and emits Mermaid to <code>docs/src/generated/</code>; CI re-runs it and fails on <code>git diff --exit-code</code> if the committed copy diverged. When the auto-generated graph changes, that is the signal to update the curated diagrams by hand. We commit diagram <strong>text</strong> (<code>.mmd</code>), never rendered SVG, so diffs stay reviewable.</p><div class="admonition is-info" id="Caveats-(ENGINEERING_STANDARDS-§5)-eadc8c856e0909d5"><header class="admonition-header">Caveats (ENGINEERING_STANDARDS §5)<a class="admonition-anchor" href="#Caveats-(ENGINEERING_STANDARDS-§5)-eadc8c856e0909d5" title="Permalink"></a></header><div class="admonition-body"><p>Mermaid degrades past ~50–100 nodes — keep derived graphs subsystem-level and drop to D2/Graphviz for dense views. GitHub&#39;s Mermaid does not render C4; use <code>flowchart</code>/<code>architecture-beta</code>.</p></div></div><h2 id="Curated-conceptual-diagrams-(owner-facing)"><a class="docs-heading-anchor" href="#Curated-conceptual-diagrams-(owner-facing)">Curated conceptual diagrams (owner-facing)</a><a id="Curated-conceptual-diagrams-(owner-facing)-1"></a><a class="docs-heading-anchor-permalink" href="#Curated-conceptual-diagrams-(owner-facing)" title="Permalink"></a></h2><p>Authored as versioned Mermaid text under <code>docs/src/assets/diagrams/</code> and embedded here, so the page and the <code>.mmd</code> files never duplicate. (If a file is not yet committed, a placeholder shows until it lands.)</p><h3 id="Components-overview-—-S-/-F-/-E-and-the-one-shared-state"><a class="docs-heading-anchor" href="#Components-overview-—-S-/-F-/-E-and-the-one-shared-state">Components overview — S / F / E and the one shared state</a><a id="Components-overview-—-S-/-F-/-E-and-the-one-shared-state-1"></a><a class="docs-heading-anchor-permalink" href="#Components-overview-—-S-/-F-/-E-and-the-one-shared-state" title="Permalink"></a></h3><pre><code class="language-mermaid hljs">%% CURATED (hand-authored) — the OWNER&#39;S mental model of the components.
+%% NOT auto-generated. Source of truth is docs/src/generated/components.mmd
+%% (derived from src/registry.jl); if that changes, the derived diagram acts as a
+%% DIFF ALARM to revisit this file by hand. ENGINEERING_STANDARDS §5(i).
+%% Renders natively on GitHub (flowchart). ML pieces highlighted; one shared state.
+flowchart TB
+    ATM[&quot;ATM — Atmosphere / forcing&lt;br/&gt;SpeedyWeather.jl or FLUXNET (external)&quot;]
+
+    S[&quot;S — Slow distribution emulator&lt;br/&gt;ML: trait/size distribution + count N (annual)&quot;]
+
+    subgraph E[&quot;E — Energy balance + skin-T closure (hybrid, sub-daily)&quot;]
+        direction TB
+        ESEB[&quot;SEB physics (reuse Terrarium.jl)&lt;br/&gt;solve T_skin; A = Rn − G → LE, H, G (H residual)&quot;]
+        ENN[&quot;bounded NN&lt;br/&gt;closure correction / g_a&quot;]
+    end
+
+    F[&quot;F — Fast physical core, LPJmL-FIT&lt;br/&gt;physics: GPP→NPP, water, snow, soil thermal (daily)&quot;]
+
+    STATE[&quot;SharedState — ONE authoritative copy&lt;br/&gt;soil water · snow · soil thermal (enth)&lt;br/&gt;SOM/litter · vegc · climate buffers&quot;]
+
+    ATM --&gt; F
+    ATM --&gt; E
+    S &lt;--&gt; F
+    S --&gt; E
+    F &lt;--&gt; E
+    E --&gt; ATM
+
+    S -.-&gt; STATE
+    F -.-&gt; STATE
+    E -.-&gt; STATE
+
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef external fill:#e5e7eb,stroke:#374151,stroke-width:1px,stroke-dasharray:5 4,color:#111827;
+    classDef state fill:#fce7f3,stroke:#9d174d,stroke-width:2px,color:#111827;
+
+    class S ml;
+    class ENN ml;
+    class F physics;
+    class ESEB physics;
+    class ATM external;
+    class STATE state;
+</code></pre><h3 id="Fast-slow-coupling-(Daily-/-Annual-tiers;-the-crossing-arrows-are-the-shared-state-handoffs)"><a class="docs-heading-anchor" href="#Fast-slow-coupling-(Daily-/-Annual-tiers;-the-crossing-arrows-are-the-shared-state-handoffs)">Fast ↔ slow coupling (Daily / Annual tiers; the crossing arrows are the shared-state handoffs)</a><a id="Fast-slow-coupling-(Daily-/-Annual-tiers;-the-crossing-arrows-are-the-shared-state-handoffs)-1"></a><a class="docs-heading-anchor-permalink" href="#Fast-slow-coupling-(Daily-/-Annual-tiers;-the-crossing-arrows-are-the-shared-state-handoffs)" title="Permalink"></a></h3><pre><code class="language-mermaid hljs">%% CURATED (hand-authored) — the fast↔slow COUPLING, the owner&#39;s mental model.
+%% NOT auto-generated. Kept in sync by hand with src/registry.jl / DESIGN.md §8;
+%% the derived diagrams (docs/src/generated/) are the diff alarm. ENG_STANDARDS §5(i).
+%% Two timescale tiers as subgraphs; the CROSSING ARROWS are the state pools / handoffs.
+flowchart TB
+    subgraph ANNUAL[&quot;Annual (slow tier)&quot;]
+        S[&quot;S — Slow distribution emulator&lt;br/&gt;allocates delivered bm_inc by flux-then-integrate&quot;]
+    end
+
+    subgraph DAILY[&quot;Daily / sub-daily (fast tier)&quot;]
+        direction LR
+        F[&quot;F — Fast physical core (LPJmL-FIT)&quot;]
+        E[&quot;E — Energy balance + skin-T closure&quot;]
+    end
+
+    %% ── Crossing arrows between tiers = the conserved carbon + structure handoffs ──
+    F -- &quot;bm_inc + stress + soil-moisture state&lt;br/&gt;(conserved carbon UP)&quot; --&gt; S
+    S -- &quot;structure DOWN: LAI, height, z0, rootdepth, Vcmax, FPC, albedo&quot; --&gt; F
+    S -- &quot;structure DOWN: albedo, z0, canopy&quot; --&gt; E
+
+    %% ── Within the fast tier = the energy handshake (LE / T_skin between F and E) ──
+    F -- &quot;LE = λ·ET; GPP, NPP, Rh, firec; G&quot; --&gt; E
+    E -- &quot;T_skin (mandatory top thermal BC); G(T_skin); g_a&quot; --&gt; F
+
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;
+
+    class S ml;
+    class F physics;
+    class E hybrid;
+
+    style ANNUAL fill:#fffbeb,stroke:#b45309,stroke-dasharray:6 4;
+    style DAILY fill:#eff6ff,stroke:#1e40af,stroke-dasharray:6 4;
+</code></pre><h3 id="Data-/-flux-flow-(input-drivers-model-output-fluxes,-with-the-conserved-budgets)"><a class="docs-heading-anchor" href="#Data-/-flux-flow-(input-drivers-model-output-fluxes,-with-the-conserved-budgets)">Data / flux flow (input drivers → model → output fluxes, with the conserved budgets)</a><a id="Data-/-flux-flow-(input-drivers-model-output-fluxes,-with-the-conserved-budgets)-1"></a><a class="docs-heading-anchor-permalink" href="#Data-/-flux-flow-(input-drivers-model-output-fluxes,-with-the-conserved-budgets)" title="Permalink"></a></h3><pre><code class="language-mermaid hljs">%% CURATED (hand-authored) — the DATA / FLUX flow, the owner&#39;s mental model.
+%% NOT auto-generated. Mirror of src/registry.jl FLUXES + DESIGN.md §8; the derived
+%% docs/src/generated/dataflow.mmd is the source of truth + diff alarm. ENG_STANDARDS §5(i).
+%% input drivers → model (S/F/E) → output fluxes, plus the conserved water/carbon budgets.
+flowchart LR
+    subgraph DRIVERS[&quot;Atmospheric drivers (ATM →)&quot;]
+        direction TB
+        SW[&quot;SWdown&quot;]
+        LW[&quot;LWdown&quot;]
+        TA[&quot;Tair&quot;]
+        QA[&quot;qair&quot;]
+        WND[&quot;wind (NEW)&quot;]
+        PS[&quot;psurf (NEW)&quot;]
+        PR[&quot;precip&quot;]
+        CO2[&quot;CO₂&quot;]
+    end
+
+    subgraph MODEL[&quot;Land component&quot;]
+        direction TB
+        S[&quot;S — slow ML distribution (annual)&quot;]
+        F[&quot;F — fast physical core (daily)&quot;]
+        E[&quot;E — energy balance + skin-T (sub-daily)&quot;]
+    end
+
+    subgraph OUTPUTS[&quot;Surface fluxes / state (→ ATM)&quot;]
+        direction TB
+        LE[&quot;LE — latent heat&quot;]
+        H[&quot;H — sensible heat (residual)&quot;]
+        G[&quot;G — ground heat&quot;]
+        TS[&quot;T_skin&quot;]
+        NBP[&quot;NBP_atm&quot;]
+        Z0[&quot;z0 — roughness&quot;]
+    end
+
+    subgraph BUDGETS[&quot;Conserved budgets (closure gates)&quot;]
+        direction TB
+        WB[&quot;Water: precip = ET + runoff + ΔS_soil+snow&quot;]
+        CB[&quot;Carbon: NBP = NPP − Rh − firec + flux_estabc&quot;]
+    end
+
+    %% drivers into the model (wind + psurf feed E specifically)
+    DRIVERS --&gt; F
+    SW --&gt; E
+    LW --&gt; E
+    WND --&gt; E
+    PS --&gt; E
+
+    %% internal coupling
+    F &lt;--&gt; S
+    F &lt;--&gt; E
+    S --&gt; E
+
+    %% model to outputs (E is the ESM-facing surface)
+    E --&gt; LE
+    E --&gt; H
+    E --&gt; G
+    E --&gt; TS
+    E --&gt; NBP
+    E --&gt; Z0
+
+    %% conservation ties
+    F -.-&gt; WB
+    F -.-&gt; CB
+    E -.-&gt; CB
+
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;
+    classDef budget fill:#f3e8ff,stroke:#6d28d9,stroke-width:2px,color:#111827;
+
+    class S ml;
+    class F physics;
+    class E hybrid;
+    class WB budget;
+    class CB budget;
+</code></pre><h2 id="Code-derived-diagrams-(source-of-truth)"><a class="docs-heading-anchor" href="#Code-derived-diagrams-(source-of-truth)">Code-derived diagrams (source of truth)</a><a id="Code-derived-diagrams-(source-of-truth)-1"></a><a class="docs-heading-anchor-permalink" href="#Code-derived-diagrams-(source-of-truth)" title="Permalink"></a></h2><p>Emitted by <code>scripts/gen_diagrams.jl</code> from the package&#39;s own <a href="../reference/api/#LPJmLFITEmulator.COMPONENTS"><code>COMPONENTS</code></a> / <a href="../reference/api/#LPJmLFITEmulator.FLUXES"><code>FLUXES</code></a> registry (<code>src/registry.jl</code>) and committed under <code>docs/src/generated/</code>. They cannot drift unnoticed: CI regenerates them and fails on any <code>git diff</code>. Embedded live below, so this page always shows the committed source of truth.</p><h3 id="Derived-—-component-overview"><a class="docs-heading-anchor" href="#Derived-—-component-overview">Derived — component overview</a><a id="Derived-—-component-overview-1"></a><a class="docs-heading-anchor-permalink" href="#Derived-—-component-overview" title="Permalink"></a></h3><pre><code class="language-mermaid hljs">%% AUTO-GENERATED by scripts/gen_diagrams.jl — DO NOT EDIT
+%% Source of truth: src/registry.jl (COMPONENTS, FLUXES).
+%% Regenerate: julia --project=. scripts/gen_diagrams.jl
+flowchart TB
+    %% Component overview (kind / timescale) — derived from COMPONENTS.
+    S[&quot;&lt;b&gt;S&lt;/b&gt; — Slow distribution emulator&lt;br/&gt;kind: ml · timescale: annual&lt;br/&gt;p(traits,size / drivers,state) + count N; allocates delivered NPP (flux-then-integrate)&quot;]
+    F[&quot;&lt;b&gt;F&lt;/b&gt; — Fast physical core (LPJmL-FIT)&lt;br/&gt;kind: physics · timescale: daily&lt;br/&gt;photosynthesis→GPP→NPP, water balance, snow, soil thermal; conserving&quot;]
+    E[&quot;&lt;b&gt;E&lt;/b&gt; — Energy-balance + skin-T closure&lt;br/&gt;kind: hybrid · timescale: subdaily&lt;br/&gt;solve T_skin; partition A=Rn−G into LE,H,G (H residual); reuse Terrarium.jl&quot;]
+    ATM[&quot;&lt;b&gt;ATM&lt;/b&gt; — Atmosphere (ESM)&lt;br/&gt;kind: external · timescale: subdaily&lt;br/&gt;SpeedyWeather.jl / FLUXNET forcing; NEE diagnostic-only (no carbon cycle)&quot;]
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;
+    classDef external fill:#e5e7eb,stroke:#374151,stroke-width:1px,color:#111827,stroke-dasharray:5 4;
+    class S ml;
+    class F physics;
+    class E hybrid;
+    class ATM external;
+</code></pre><h3 id="Derived-—-data-flow-graph-(conserved-handoffs-highlighted)"><a class="docs-heading-anchor" href="#Derived-—-data-flow-graph-(conserved-handoffs-highlighted)">Derived — data-flow graph (conserved handoffs highlighted)</a><a id="Derived-—-data-flow-graph-(conserved-handoffs-highlighted)-1"></a><a class="docs-heading-anchor-permalink" href="#Derived-—-data-flow-graph-(conserved-handoffs-highlighted)" title="Permalink"></a></h3><pre><code class="language-mermaid hljs">%% AUTO-GENERATED by scripts/gen_diagrams.jl — DO NOT EDIT
+%% Source of truth: src/registry.jl (COMPONENTS, FLUXES).
+%% Regenerate: julia --project=. scripts/gen_diagrams.jl
+flowchart LR
+    %% Nodes = subsystems (kept subsystem-level per the Mermaid caveats, §5).
+    S[&quot;S — Slow distribution emulator&lt;br/&gt;[ml · annual]&quot;]
+    F[&quot;F — Fast physical core (LPJmL-FIT)&lt;br/&gt;[physics · daily]&quot;]
+    E[&quot;E — Energy-balance + skin-T closure&lt;br/&gt;[hybrid · subdaily]&quot;]
+    ATM[&quot;ATM — Atmosphere (ESM)&lt;br/&gt;[external · subdaily]&quot;]
+    %% Edges = fluxes/handoffs; thick ==&gt; marks a CONSERVED handoff.
+    S --&gt;|&quot;SToF (LAI,height,z0,rootdepth,Vcmax,FPC,albedo)&lt;br/&gt;[annual]&quot;| F
+    S --&gt;|&quot;SToE (albedo,z0,canopy structure)&lt;br/&gt;[annual]&quot;| E
+    F ==&gt;|&quot;FToS (bm_inc, stresses, soil moisture)&lt;br/&gt;[annual · conserved]&quot;| S
+    F ==&gt;|&quot;FToE (LE=λ·ET; GPP,NPP,Rh,firec,flux_estabc; G)&lt;br/&gt;[daily · conserved]&quot;| E
+    E --&gt;|&quot;EToF (T_skin, G(T_skin), g_a)&lt;br/&gt;[daily]&quot;| F
+    E ==&gt;|&quot;EToATM (LE,H,G,T_skin,NBP_atm,z0)&lt;br/&gt;[subdaily · conserved]&quot;| ATM
+    ATM --&gt;|&quot;AtmForcing (SW,LW,Tair,qair,wind,psurf,precip,CO₂)&lt;br/&gt;[subdaily]&quot;| F
+    ATM --&gt;|&quot;AtmForcing (+wind,psurf — NEW)&lt;br/&gt;[subdaily]&quot;| E
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;
+    classDef external fill:#e5e7eb,stroke:#374151,stroke-width:1px,color:#111827,stroke-dasharray:5 4;
+    class S ml;
+    class F physics;
+    class E hybrid;
+    class ATM external;
+</code></pre><p>The same registry underlies the <a href="../explanation/architecture/">interface-contract table</a> and the <a href="../explanation/conservation/">conservation</a> helpers. For the atmosphere/coupling ecosystem this graph plugs into, see <code>ECOSYSTEM_AND_COUPLING.md</code>.</p><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+    startOnLoad: true,
+    theme: "neutral"
+});
+</script></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../model/datasheets/ssp370/">« SSP370 (OOD)</a><a class="docs-footer-nextpage" href="../howto/run_lpjml/">Run LPJmL-FIT &amp; generate data »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 16 July 2026 10:08">Thursday 16 July 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
