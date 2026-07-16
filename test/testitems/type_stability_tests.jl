@@ -2,7 +2,7 @@
 # The conservation kernels are inference-stable (`@inferred`); SharedState constructs for both
 # Float32 and Float64. (The full @test_opt / JET battery across batch sizes lands with the
 # components; the package-wide JET pass lives in `test/jet.jl`.)
-@testitem "Type stability" tags=[:types] begin
+@testitem "Type stability" tags = [:types] begin
     using LPJmLFITEmulator
     using Test
 
@@ -15,7 +15,7 @@
 
     # Keyword-only helpers: wrap in a nullary closure (robust `@inferred` on kwargs).
     carbres() = carbon_budget_residual(; npp = 1.0, rh = 0.5, firec = 0.1, flux_estabc = 0.2, dC = 0.6)
-    watres()  = water_budget_residual(; prec = 1.0, et = 0.4, runoff = 0.3, drainage = 0.2, dstorage = 0.1)
+    watres() = water_budget_residual(; prec = 1.0, et = 0.4, runoff = 0.3, drainage = 0.2, dstorage = 0.1)
     @test @inferred(carbres()) isa Float64
     @test @inferred(watres()) isa Float64
 

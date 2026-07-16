@@ -3,7 +3,7 @@
 # in [0,1]); `flux_then_integrate` outputs are non-negative regardless of increment sign.
 # Property-style coverage via a seeded StableRNGs loop (see conservation_closure_tests.jl for why
 # Supposition `@check` is not used inside `@testitem` on the pinned versions).
-@testitem "Physical boundedness" tags=[:boundedness] begin
+@testitem "Physical boundedness" tags = [:boundedness] begin
     using LPJmLFITEmulator
     using Test
     using StableRNGs
@@ -15,8 +15,8 @@
         n = rand(rng, 1:32)
         f = softmax_partition(100 .* randn(rng, n))
         @test all(≥(0.0), f)
-        @test all(≤(1.0 + 1e-12), f)
-        @test isapprox(sum(f), 1.0; atol=1e-10)
+        @test all(≤(1.0 + 1.0e-12), f)
+        @test isapprox(sum(f), 1.0; atol = 1.0e-10)
 
         # flux_then_integrate: storage stays ≥ 0 for ARBITRARY (signed) increments
         m = rand(rng, 1:16)

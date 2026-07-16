@@ -3,7 +3,7 @@
 # residuals; the ONE documented residual is sensible heat H in the energy layer (LE is water-limited).
 
 "Latent heat of vaporization of water, J/kg (liquid ET). DESIGN.md §2.4."
-const LAMBDA_VAPORIZATION = 2.50e6
+const LAMBDA_VAPORIZATION = 2.5e6
 "Latent heat of sublimation, J/kg (snow/ice ET). ≈13% larger than vaporization — do not conflate."
 const LAMBDA_SUBLIMATION = 2.83e6
 
@@ -37,7 +37,7 @@ Advance a storage/pool vector by conserved `increments` (MC-LSTM / flux-then-int
 `new_state = state + increments`, then clamp to non-negativity. Carbon/mass is only moved, never
 created — the increments are what a conserved input was partitioned into. DEVELOPMENT_PLAN §2.2.
 """
-function flux_then_integrate(state::AbstractVector{T}, increments::AbstractVector{T}) where {T<:Real}
+function flux_then_integrate(state::AbstractVector{T}, increments::AbstractVector{T}) where {T <: Real}
     length(state) == length(increments) ||
         throw(DimensionMismatch("state and increments must match"))
     return max.(state .+ increments, zero(T))
@@ -82,5 +82,5 @@ Derive latent heat from evapotranspiration: `LE = λ·ET`. Uses λ of **vaporiza
 and of **sublimation** for the snow/ice component (`sublimation=true`) — never predicted
 independently (DESIGN.md §2.4). `et` in kg/m²/s ⇒ `LE` in W/m².
 """
-latent_heat(et::Real; sublimation::Bool=false) =
+latent_heat(et::Real; sublimation::Bool = false) =
     et * (sublimation ? LAMBDA_SUBLIMATION : LAMBDA_VAPORIZATION)

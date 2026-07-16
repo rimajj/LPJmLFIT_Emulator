@@ -1,7 +1,7 @@
 # Gate 5 — Determinism (ENGINEERING_STANDARDS §2, item 5).
 # Fixed StableRNGs seed ⇒ bit-identical results across runs. (Base Julia RNG streams are NOT stable
 # across versions — StableRNGs.jl is required for reproducible seeded tests.)
-@testitem "Determinism" tags=[:determinism] begin
+@testitem "Determinism" tags = [:determinism] begin
     using LPJmLFITEmulator
     using Test
     using StableRNGs

@@ -2,7 +2,7 @@
 # LPJ_resilience). The full battery — autocorrelation-vs-climate, recovery rate, and the shuffle
 # test — lands with the components. Scaffolded here; a deterministic, seeded AR(1) lag-1
 # autocorrelation helper (the estimator the battery will reuse) is checked now.
-@testitem "Resilience battery" tags=[:resilience] begin
+@testitem "Resilience battery" tags = [:resilience] begin
     using LPJmLFITEmulator
     using Test
     using StableRNGs

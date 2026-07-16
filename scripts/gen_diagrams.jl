@@ -27,9 +27,9 @@
 using LPJmLFITEmulator   # brings COMPONENTS, FLUXES, Component, Flux into scope
 
 # ── Paths (relative to this script, so it is CWD-independent) ────────────────
-const REPO_ROOT       = dirname(@__DIR__)
-const OUT_DIR         = joinpath(REPO_ROOT, "docs", "src", "generated")
-const DATAFLOW_PATH   = joinpath(OUT_DIR, "dataflow.mmd")
+const REPO_ROOT = dirname(@__DIR__)
+const OUT_DIR = joinpath(REPO_ROOT, "docs", "src", "generated")
+const DATAFLOW_PATH = joinpath(OUT_DIR, "dataflow.mmd")
 const COMPONENTS_PATH = joinpath(OUT_DIR, "components.mmd")
 
 # ── Header stamped into every generated file ─────────────────────────────────
@@ -48,9 +48,9 @@ sanitize(s) = replace(String(s), '"' => '\'', '|' => '/')
 
 # Distinct visual styling per component `kind` — the ML node(s) stand out (§5(i)).
 const KIND_CLASSDEF = Dict(
-    :ml       => "classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;",
-    :physics  => "classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;",
-    :hybrid   => "classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;",
+    :ml => "classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;",
+    :physics => "classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;",
+    :hybrid => "classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;",
     :external => "classDef external fill:#e5e7eb,stroke:#374151,stroke-width:1px,color:#111827,stroke-dasharray:5 4;",
 )
 
@@ -79,7 +79,7 @@ function render_dataflow(components, fluxes)
     println(io, "    %% Edges = fluxes/handoffs; thick ==> marks a CONSERVED handoff.")
     for f in fluxes
         arrow = f.conserved ? "==>" : "-->"
-        tag   = f.conserved ? "$(f.timescale) · conserved" : String(f.timescale)
+        tag = f.conserved ? "$(f.timescale) · conserved" : String(f.timescale)
         label = "$(sanitize(f.payload))<br/>[$(tag)]"
         println(io, "    $(f.from) $(arrow)|\"$(label)\"| $(f.to)")
     end
@@ -103,7 +103,7 @@ end
 
 # ── Targets: (path, generated-content) pairs ─────────────────────────────────
 targets() = (
-    (DATAFLOW_PATH,   render_dataflow(COMPONENTS, FLUXES)),
+    (DATAFLOW_PATH, render_dataflow(COMPONENTS, FLUXES)),
     (COMPONENTS_PATH, render_components(COMPONENTS)),
 )
 
@@ -145,7 +145,7 @@ function check()
 end
 
 function main(args)
-    if "--check" in args
+    return if "--check" in args
         exit(check())
     else
         generate()

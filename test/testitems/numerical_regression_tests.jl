@@ -2,7 +2,7 @@
 # ReferenceTests.@test_reference baselines against saved artifacts catch silent numerical drift
 # after refactors. The real baselines (fixed-input outputs, reference trajectories) arrive WITH
 # the components (Phase 3+, DEVELOPMENT_PLAN §6). Scaffolded here with one closed-form anchor now.
-@testitem "Numerical regression" tags=[:regression] begin
+@testitem "Numerical regression" tags = [:regression] begin
     using LPJmLFITEmulator
     using Test
     using ReferenceTests   # provides @test_reference; used by the Phase-3+ baselines below

@@ -1,7 +1,7 @@
 # Gate 6 — Data validation (ENGINEERING_STANDARDS §2, item 6).
 # `checkdims` enforces the frozen SharedState array shapes (the schema/shape gate). Well-formed
 # states pass; malformed states are rejected with DimensionMismatch.
-@testitem "Data validation" tags=[:validation] begin
+@testitem "Data validation" tags = [:validation] begin
     using LPJmLFITEmulator
     using Test
 

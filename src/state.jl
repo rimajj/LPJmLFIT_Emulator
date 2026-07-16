@@ -49,7 +49,7 @@ here by aggregate pools until the distribution machinery lands.
 - `climbuf_mprec20::Vector{T}` 20-yr mean monthly precip, mm      `[NMONTH]`
 - `climbuf_atemp_mean20::T`    20-yr mean annual temperature, °C
 """
-struct SharedState{T<:AbstractFloat}
+struct SharedState{T <: AbstractFloat}
     w::Vector{T}
     w_fw::Vector{T}
     w_evap::T
@@ -83,9 +83,12 @@ function SharedState{T}(;
         vegc = zero(T),
         climbuf_mtemp20 = zeros(T, NMONTH),
         climbuf_mprec20 = zeros(T, NMONTH),
-        climbuf_atemp_mean20 = zero(T)) where {T<:AbstractFloat}
-    return SharedState{T}(w, w_fw, w_evap, rw_buffer, snowpack, enth, som_fast, som_slow,
-        litc, vegc, climbuf_mtemp20, climbuf_mprec20, climbuf_atemp_mean20)
+        climbuf_atemp_mean20 = zero(T)
+    ) where {T <: AbstractFloat}
+    return SharedState{T}(
+        w, w_fw, w_evap, rw_buffer, snowpack, enth, som_fast, som_slow,
+        litc, vegc, climbuf_mtemp20, climbuf_mprec20, climbuf_atemp_mean20
+    )
 end
 
 SharedState(; kwargs...) = SharedState{Float64}(; kwargs...)

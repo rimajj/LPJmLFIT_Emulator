@@ -9,7 +9,7 @@
 #   E→ATM : LE,H,G,T_skin,NBP_atm,z0 — Rn(T_skin)=LE+H+G closed by construction; H is the residual.
 
 "S → F (annual): structural boundary conditions, re-derived from the trait/size distribution."
-Base.@kwdef struct SToF{T<:AbstractFloat}
+Base.@kwdef struct SToF{T <: AbstractFloat}
     lai::T          # leaf area index, m²/m²
     height::T       # canopy height, m
     z0::T           # roughness length, m
@@ -21,7 +21,7 @@ Base.@kwdef struct SToF{T<:AbstractFloat}
 end
 
 "S → E (annual): structure for Rn and aerodynamic conductance."
-Base.@kwdef struct SToE{T<:AbstractFloat}
+Base.@kwdef struct SToE{T <: AbstractFloat}
     albedo::T       # –
     z0::T           # m
     lai::T          # m²/m² (canopy structure for g_a)
@@ -29,7 +29,7 @@ Base.@kwdef struct SToE{T<:AbstractFloat}
 end
 
 "F → S (annual): the CONSERVED carbon increment + stress/state drivers. S allocates exactly `bm_inc`."
-Base.@kwdef struct FToS{T<:AbstractFloat}
+Base.@kwdef struct FToS{T <: AbstractFloat}
     bm_inc::T       # annual NPP increment delivered by F, gC/m²/yr (the conserved quantity)
     water_stress::T # –
     temp_stress::T  # –
@@ -41,7 +41,7 @@ end
 F → E (daily; +annual channel): LE plus ALL four carbon terms E needs for NBP_atm.
 `flux_estabc` arrives on the annual channel; the rest are daily (DESIGN.md §8, review finding 8).
 """
-Base.@kwdef struct FToE{T<:AbstractFloat}
+Base.@kwdef struct FToE{T <: AbstractFloat}
     le::T           # latent heat = λ·ET, W/m² (derived, not predicted)
     gpp::T          # gross primary production, gC/m²/day
     npp::T          # net primary production, gC/m²/day  (Ra = GPP − NPP)
@@ -52,14 +52,14 @@ Base.@kwdef struct FToE{T<:AbstractFloat}
 end
 
 "E → F (daily): the ONE skin temperature (mandatory top thermal BC) + consistent ground heat."
-Base.@kwdef struct EToF{T<:AbstractFloat}
+Base.@kwdef struct EToF{T <: AbstractFloat}
     t_skin::T       # skin/surface temperature, K  (replaces F's air-temp Dirichlet BC)
     ground_heat::T  # G(T_skin), W/m²
     g_a::T          # aerodynamic conductance, m/s
 end
 
 "E → ATM (sub-daily): the ESM interface. `Rn(T_skin)=LE+H+G` closed by construction; H is the residual."
-Base.@kwdef struct EToATM{T<:AbstractFloat}
+Base.@kwdef struct EToATM{T <: AbstractFloat}
     le::T           # latent heat, W/m²
     h::T            # sensible heat (RESIDUAL = Rn − G − LE), W/m²
     g::T            # ground heat, W/m²
@@ -69,7 +69,7 @@ Base.@kwdef struct EToATM{T<:AbstractFloat}
 end
 
 "ATM → F/E: forcing. `wind` and `psurf` are NEW inputs LPJmL-FIT ignores (used only in E)."
-Base.@kwdef struct AtmForcing{T<:AbstractFloat}
+Base.@kwdef struct AtmForcing{T <: AbstractFloat}
     swdown::T       # downward shortwave, W/m²
     lwdown::T       # downward longwave, W/m²
     tair::T         # air temperature, K

@@ -2,7 +2,7 @@
 # A synthetic bounded-storage rollout via `flux_then_integrate` stays non-negative and bounded over
 # many steps (no blow-up). The real "no spurious oscillation / AC-gap vs LPJmL reference" test — the
 # stiff carbon+population failure mode from LPJ_resilience — lands in Phase 6 (DEVELOPMENT_PLAN §5).
-@testitem "Rollout stability" tags=[:rollout, :stability] begin
+@testitem "Rollout stability" tags = [:rollout, :stability] begin
     using LPJmLFITEmulator
     using Test
 
@@ -18,16 +18,16 @@
     ok_bounded = true
     for _ in 1:nstep
         increments = -0.1 .* state .+ input               # decay toward the steady state
-        state      = flux_then_integrate(state, increments)
-        ok_nonneg  &= all(≥(0.0), state)                  # clamp guarantees non-negativity
-        ok_finite  &= all(isfinite, state)
+        state = flux_then_integrate(state, increments)
+        ok_nonneg &= all(≥(0.0), state)                  # clamp guarantees non-negativity
+        ok_finite &= all(isfinite, state)
         ok_bounded &= all(≤(bound), state)                # bounded — no blow-up
     end
     @test ok_nonneg
     @test ok_finite
     @test ok_bounded
     # Converged near the analytic steady state input/0.1 = 20.
-    @test all(s -> isapprox(s, 20.0; atol = 1e-6), state)
+    @test all(s -> isapprox(s, 20.0; atol = 1.0e-6), state)
 
     # ── Phase-6 scaffold: no AC-gap / oscillation vs an LPJmL reference trajectory ───────────────
     # Long-horizon rollout vs a saved LPJmL reference: bounded drift, no spurious limit cycle /
