@@ -21,6 +21,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (LPJROOT `/home/jamirp/lpjml56fit`, verified modules, production input/restart paths,
   Python env `py311_new`).
 
+- **Component S canonical port** (`feat/port-slow-emulator`, ADR 0012): ported the slow
+  distributional emulator from the now-frozen sibling `/p/projects/open/Jamir/emulator` into
+  `python/src/lpjmlfit_emulator/` — `transforms.py` (signed-log + isotonic monotone links),
+  `drivers.py` (annual climate/CO₂ aggregation, xarray-guarded), `features.py`
+  (`build_cell_year_feats` + climclusterpy/NetCDF-guarded eco diagnostics), `baseline.py` (the
+  DIRECT non-recursive climate→distribution emulator + `ResidualRegressor`/`add_competition`),
+  `train.py` (holdout/train/eval helpers, matplotlib-guarded), extended `data.py` (validated
+  `load_ind` loader + generalized `build_patch_summaries`, frozen 29-col schema kept), a curated
+  `__init__.py` public API, and `python/config/config.yaml`. Each ported module carries a
+  provenance header and was adversarially fidelity-checked against its source. New tests
+  (`test_transforms.py`, `test_features.py`, extended `test_data.py`) → **36 passed / 6 skipped**
+  in `py311_new`; 43 passed + ruff-clean in the locked CI env. (The seed-split noise-floor module
+  is the one remaining item, pending an owner decision on the "eval"-filename permission hook.)
+
 ### Changed
 - `ENGINEERING_STANDARDS.md` §2 and `DESIGN_CHECKPOINT_PROMPT.md` item 2 now lead with an explicit
   **unit-test foundation** (testing pyramid: unit → integration → system) beneath the scientific
