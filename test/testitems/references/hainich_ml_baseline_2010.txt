@@ -3,7 +3,8 @@
 # soil column hainich_soilcolumn.txt). ReferenceTests drift alarm for the multi-layer path; regenerate
 # ONLY on an intended physics change (record why). See test/testitems/multilayer_soil_tests.jl.
 # key             value (gC/m2/yr, mm/yr, or mm)
-gpp_annual        627.1503
-transp_annual     356.4074
-evap_annual       215.2093
-rootmoist_mean    153.8851
+# Regenerated with the βvm 0.05→1.0 Vcmax-cap-smoothing fix (docs §9).
+gpp_annual        719.959117
+transp_annual     382.545935
+evap_annual       211.949666
+rootmoist_mean    151.604401

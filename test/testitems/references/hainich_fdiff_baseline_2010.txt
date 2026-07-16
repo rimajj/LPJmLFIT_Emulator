@@ -3,7 +3,10 @@
 # catches silent numerical drift after refactors, now pinned on REAL forcing (not the synthetic
 # scenario). Regenerate ONLY on an intended physics change (record why in JOURNAL/CHANGELOG).
 # See test/testitems/cbinary_validation_tests.jl + docs/phase3_fdiff_cbinary_validation.md.
+# Regenerated (docs §9): the βvm Vcmax-cap smoothing sharpness was corrected 0.05→1.0 (the too-soft
+# smoothmin biased low-Vcmax days' assimilation downward); this lifts the single-individual GPP
+# 626→721 (−42% → −35% vs the C binary) and raises transpiration in step (correct carbon⇒conductance).
 # key            value (gC/m2/yr or mm/yr)
-gpp_annual       626.4237
-transp_annual    356.1542
-pet_annual       806.9610
+gpp_annual       721.166030
+transp_annual    383.384435
+pet_annual       806.960999

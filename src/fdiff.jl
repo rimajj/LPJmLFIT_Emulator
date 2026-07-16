@@ -29,7 +29,8 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     photosynthesis, priestley_taylor_eeq, solve_lambda, temp_stress,
     daily_step, rollout, rollout_daily, annual_npp,
     tebs_params, tebs_structure,
-    SoilColumn, FDiffStateML, daily_step_ml, rollout_daily_ml, hainich_soilcolumn
+    SoilColumn, FDiffStateML, daily_step_ml, rollout_daily_ml, hainich_soilcolumn,
+    Individual, daily_step_canopy, rollout_daily_canopy
 
 # ── unit helpers (LPJmL-FIT include/units.h; 273.15 K — NOT the reference's 272.15 bug) ──────────
 ppm2bar(co2) = co2 * 1.0e-6          # ppmv → bar  (units.h:23)
@@ -74,7 +75,14 @@ Base.@kwdef struct PhotoParams{T <: Real}
     # (`issla=false`) so the spike baseline is unchanged; the beech TeBS validation set turns it on.
     issla::Bool = false      # apply the SLA Vcmax cap (LPJmL-FIT individual mode)
     sla::T = 0.01986         # specific leaf area, m²/gC (drives the cap; = TeBS value)
-    βvm::T = 0.05            # AD-smoothing sharpness for the Vcmax cap (1/[gC/m²/day])
+    # AD-smoothing sharpness for the `min(vm, vm_n)` Vcmax cap (1/[gC/m²/day]). Vcmax operates at
+    # O(1–700) gC/m²/day and the cap `vm_n` at ~30–40, so `β=1` keeps the near-cap deviation
+    # (`≤ log(2)/β ≈ 0.69`) negligible AND — crucially — leaves *uncapped* small-Vcmax individuals
+    # unbiased (a too-soft β biases `smoothmin(small_vm, vm_n)` DOWN by up to `log(2)/β`, which for
+    # the earlier `β=0.05` reached ≈14 and drove light-starved understory individuals to NEGATIVE
+    # assimilation once the canopy light was distributed — masked in the single-lumped-individual
+    # spike because its Vcmax was always far above the cap).
+    βvm::T = 1.0
 end
 
 """
@@ -925,6 +933,211 @@ function tebs_structure(
         lai = T(lai), fpc = T(fpc), albedo = T(0.15), phen = T(phen),
         whc = T(whc), k_beer = T(0.59), alphaa = T(0.55),
     )
+end
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# MULTI-INDIVIDUAL / MULTI-PFT CANOPY (scale-up step 3 — docs/phase3_fdiff_cbinary_validation.md §7)
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# Replaces the single representative tree with the cell's REAL set of individuals (per patch: a
+# size/PFT distribution of trees + grass, reconstructed from the `ind` output — see
+# scripts/extract_fdiff_individuals.py), sharing ONE multi-layer soil column. This closes the two
+# level gaps the single-individual validation measured (GPP −42 %, transp +45 %) because LPJmL-FIT
+# computes BOTH per individual, then sums to the stand:
+#
+#  • GPP light is the FIT vertical layered Beer–Lambert competition (`getfpar.c`): the tall dominant
+#    trees absorb PAR first, the suppressed ones get the transmitted light. Each individual's
+#    photosynthesis sees `apar_i = par·(1−albedo_i)·alphaa_i·fpar_i·phen` (`water_stressed.c:204`),
+#    where `fpar_i` is its LAYERED absorbed fraction (Σ_i fpar_i = canopy-absorbed PAR). Distributing
+#    the light across individuals means the SLA-Vcmax cap no longer saturates one over-lit tree, and
+#    the canopy total absorbs the true layered fraction (≈0.83 leafon) rather than the fpc/albedo
+#    `d_fapar` OUTPUT (≈0.49) the single-individual drive mistakenly used — recovering GPP.
+#  • Transpiration demand is STAND-level (`gp_sum.c` returns the fpc-normalized MEAN potential
+#    conductance `gp_stand = Σ_i gp_i·phen / Σ_i fpc_i`, with each `gp_i` from FPC-based light), and
+#    each individual transpires `min(supply_i, demand_stand)·fpc_i` (`water_stressed.c:153` after the
+#    per-layer sum cancels the `/wr·Σ(rootdist·trf)=wr`). Summing over individuals gives
+#    `min(supply, demand_stand)·Σfpc` — the fpc-weighting + mean-conductance normalization the single
+#    individual (which used its full-light `gp_pot` and no `·fpc`) got wrong, over-transpiring.
+#
+# The soil column is shared: total per-layer withdrawal is capped at the layer's available water
+# (`water_stressed.c:269`; combined-then-capped, the ordering effect is negligible — verified). This
+# is the same-physics port; the light distribution + the stand aggregation are the only changes from
+# `daily_step_ml`. AD: ForwardDiff flows through the per-individual loop (fixed graph). Documented v1
+# simplifications: fixed (year-end) canopy structure with a daily phenology factor, sub-5 m saplings
+# absent from `ind`, per-individual root distribution approximated by the shared cell profile, and
+# interception/wet-canopy omitted (as in `daily_step_ml`).
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+"""
+    Individual{T}
+
+One canopy individual (a tree or grass cohort in a patch) for the multi-PFT core. `fpar` = its LAYERED
+absorbed-PAR fraction (patch basis, phen = 1; from the FIT `getfpar.c` layered-light port), `fpc` = its
+foliar projective cover, `alphaa`/`albedo_leaf`/`emax` the PFT constants, `c_sapwood`/`c_root` the
+maintenance-respiration pools, and `photo`/`tstress` the per-PFT [`PhotoParams`](@ref) /
+[`TempStressParams`](@ref) (the SLA-Vcmax cap uses this individual's `sla`). `is_grass` skips woody
+respiration. Build the Hainich set from `test/testitems/references/hainich_individuals_2010.csv`.
+"""
+struct Individual{T <: Real}
+    fpar::T                       # layered absorbed-PAR fraction (leafon, patch basis)
+    fpc::T                        # foliar projective cover (patch basis)
+    alphaa::T
+    albedo_leaf::T
+    emax::T
+    c_sapwood::T
+    c_root::T
+    photo::PhotoParams{T}
+    tstress::TempStressParams{T}
+    is_grass::Bool
+end
+_wt(::Individual{T}) where {T} = T
+
+# ── withdraw a given TOTAL transpiration demand from the shared column, per-layer capped ──────────
+# The per-individual demand/supply limiting is already applied (transp_tot); here the shared soil caps
+# the combined withdrawal at each layer's available water (water_stressed.c:269). Withdrawal per layer
+# ∝ rootdist·relative-moisture (the C's `aet·rootdist·trf`), consistent with [`_transpire`](@ref).
+function _transpire_total(w::AbstractVector{T}, whcs, rootdist, wr, transp_tot, βw) where {T}
+    N = length(w)
+    rel = w ./ whcs
+    wnew = similar(w)
+    actual = zero(T)
+    invwr = inv(wr + T(1.0e-12))
+    for l in 1:N
+        want = transp_tot * (rootdist[l] * rel[l]) * invwr
+        take = smoothmin(want, w[l], βw)
+        wnew[l] = w[l] - take
+        actual += take
+    end
+    return (wnew, actual)
+end
+
+"""
+    daily_step_canopy(p, inds, soil, st, f; phen=1.0, n_top1m=3) -> (st′, fluxes)
+
+Advance a multi-individual patch canopy one day. `inds` is the patch's [`Individual`](@ref) set, `soil`
+the shared [`SoilColumn`](@ref), `st` the [`FDiffStateML`](@ref) soil state, `f` the [`DailyForcing`](@ref),
+`phen ∈ [0,1]` the daily phenology factor (scales leaf display). Chain: shared PET/snow/infiltration →
+per-individual FPC-light potential conductance → stand mean `gp_stand` → per-individual layered-light
+photosynthesis (water-limited via `gp_stand`) + λ solve → sum GPP; per-individual
+`min(supply, demand_stand)·fpc` transpiration → shared-soil withdrawal (per-layer capped) → soil
+evaporation → per-individual respiration. Returns the new state and stand daily fluxes
+`(gpp, npp, transp, evap, eeq, runoff, rootmoist, fapar, fpc)` (per m² of patch). Water closes exactly.
+"""
+function daily_step_canopy(
+        p::FDiffParams, inds::AbstractVector{<:Individual}, soil::SoilColumn, st::FDiffStateML,
+        f::DailyForcing; phen = 1.0, n_top1m::Int = 3
+    )
+    T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
+    ph = convert(T, phen)
+    w = p.water
+    albedo = T(0.15)
+    eeq = priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, albedo)
+
+    # shared snow + infiltration into the column
+    frac_rain = sigmoid(w.βsnow * (f.temp - w.tsnow))
+    rain = frac_rain * f.precip
+    snowfall = (one(T) - frac_rain) * f.precip
+    melt_potential = w.melt_factor * softplus(f.temp - w.tsnow, w.βmelt)
+    melt = smoothmin(melt_potential, st.snowpack + snowfall, w.βmelt)
+    snowpack′ = st.snowpack + snowfall - melt
+    infil = rain + melt
+    (w1, drainage) = _infiltrate(convert.(T, st.w), convert.(T, soil.whcs), infil, w.βw)
+
+    # shared root-weighted relative soil moisture (cell rootdist for all individuals, v1)
+    N = length(w1)
+    rel1 = w1 ./ convert.(T, soil.whcs)
+    wr = zero(T)
+    for l in 1:N
+        wr += convert(T, soil.rootdist[l]) * rel1[l]
+    end
+
+    par = 0.5 * w.dayseconds * f.swdown
+    co2_Pa = ppm2Pa(f.co2)
+    dl = f.daylength
+    condfac = ppm2bar(f.co2) * (one(T) - w.lambda_opt) * hour2sec(dl)
+
+    # ── pass 1: gp_sum — per-individual potential conductance (FPC-based light, λ_opt) → stand mean ──
+    gp_stand_acc = zero(T)
+    fpc_tot = zero(T)
+    for ind in inds
+        fpc_i = convert(T, ind.fpc) * ph
+        apar_gp = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_i
+        tsi = temp_stress(ind.tstress, f.temp, dl)
+        (_, _, _, adtmm_gp) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_gp, dl; comp_vm = true)
+        gp_i = 1.6 * adtmm_gp / condfac + w.gmin * fpc_i
+        gp_stand_acc += gp_i
+        fpc_tot += fpc_i
+    end
+    gp_stand = fpc_tot > T(1.0e-20) ? gp_stand_acc / fpc_tot : zero(T)
+
+    # ── pass 2: per-individual layered-light photosynthesis (water-limited by gp_stand) + transp ──
+    gpp_tot = zero(T); npp_tot = zero(T); transp_demand_tot = zero(T); fapar_tot = zero(T)
+    for ind in inds
+        fpc_i = convert(T, ind.fpc) * ph
+        fpar_i = convert(T, ind.fpar) * ph                 # layered absorbed fraction (phen-scaled)
+        apar = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpar_i
+        tsi = temp_stress(ind.tstress, f.temp, dl)
+        (_, _, vm, _) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar, dl; comp_vm = true)
+        supply_i = convert(T, ind.emax) * wr * ph
+        (gc, demand) = canopy_conductance(w, eeq, gp_stand, supply_i)   # demand uses the STAND mean gp
+        gpd = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
+        gpd = softplus(gpd, w.βflux)
+        fac = gpd / 1.6 * ppm2bar(f.co2)
+        p_i = FDiffParams{T}(;
+            photo = ind.photo, tstress = ind.tstress, water = w, resp = p.resp,
+            allom = p.allom, nlambda = p.nlambda, ω = p.ω,
+        )
+        λ = solve_lambda(p_i, fac, tsi, co2_Pa, f.temp, apar, dl, vm)
+        (agd, rd, _, _) = photosynthesis(ind.photo, λ, tsi, co2_Pa, f.temp, apar, dl; comp_vm = false, vm = vm)
+        gpp_i = softplus(agd, w.βflux)
+        gpp_tot += gpp_i
+        fapar_tot += fpar_i
+        # transpiration: min(supply, demand_stand)·fpc (water_stressed.c:153 after the per-layer sum)
+        transp_demand_tot += smoothmin(supply_i, demand, w.βtransp) * fpc_i
+        c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood)
+        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root))
+        npp_tot += npp_i
+    end
+
+    # ── shared soil: withdraw the total transpiration demand (per-layer capped), then soil evap ──
+    (w2, transp) = _transpire_total(w1, convert.(T, soil.whcs), convert.(T, soil.rootdist), wr, transp_demand_tot, w.βw)
+    cover = smoothmin(fpc_tot, one(T), w.βevap)            # total canopy cover (≤ 1)
+    (w3, soil_evap) = _soil_evap(w2, convert.(T, soil.whcs), convert.(T, soil.frac_evap), eeq, w.α_PT, cover, w.βevap, w.βw)
+
+    runoff = drainage
+    rootmoist = zero(T)
+    for l in 1:min(n_top1m, N)
+        rootmoist += w3[l]
+    end
+    st′ = FDiffStateML{T}(w3, convert(T, snowpack′))
+    fluxes = (
+        gpp = convert(T, gpp_tot), npp = convert(T, npp_tot), transp = convert(T, transp),
+        evap = convert(T, soil_evap), eeq = convert(T, eeq), runoff = convert(T, runoff),
+        rootmoist = convert(T, rootmoist), fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot),
+    )
+    return (st′, fluxes)
+end
+
+"""
+    rollout_daily_canopy(p, st0, inds, soil, forcings; phens=nothing, n_top1m=3) -> (st, days)
+
+Fold [`daily_step_canopy`](@ref) over a vector of [`DailyForcing`](@ref) for ONE patch canopy `inds`,
+carrying the shared per-layer soil water and snow. `phens` is an optional per-day phenology vector
+(defaults to 1.0). Returns the final [`FDiffStateML`](@ref) and the per-day stand flux `NamedTuple`s.
+"""
+function rollout_daily_canopy(
+        p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
+        forcings; phens = nothing, n_top1m::Int = 3
+    )
+    T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
+    st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
+    ph1 = phens === nothing ? 1.0 : phens[1]
+    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m)[2])}()
+    sizehint!(days, length(forcings))
+    for (i, f) in enumerate(forcings)
+        ph = phens === nothing ? 1.0 : phens[i]
+        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m)
+        push!(days, fl)
+    end
+    return (st, days)
 end
 
 end # module FDiff

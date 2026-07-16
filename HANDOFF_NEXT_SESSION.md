@@ -28,7 +28,37 @@ for HEAD.
 
 ---
 
-## ⭐ WHAT LANDED IN SESSION 5b (on `main`) — MULTI-LAYER SOIL (scale-up step 2)
+## ⭐ WHAT LANDED IN SESSION 5c (on `main`) — MULTI-INDIVIDUAL / MULTI-PFT CANOPY (scale-up step 3)
+
+Replaced the single representative tree with the Hainich cell's **real per-patch set of individuals**
+(`FDiff.Individual`, `daily_step_canopy`, `rollout_daily_canopy`): 25 patches × **297 reconstructed
+individuals** (trees + grass), each patch a canopy sharing one 23-layer soil column, light distributed
+by the FIT **vertical layered Beer–Lambert competition** (`getfpar.c` port — tallest-first, `k_lambert
+=0.5`, 2 m layers). Individuals reconstructed from the `ind` output by `scripts/extract_fdiff_individuals.py`
+(committed `references/hainich_individuals_2010.csv`); crown/leaf/sapwood via LPJmL-FIT allometry.
+- **⭐ RESULT: the GPP LEVEL GAP IS CLOSED — annual ratio 0.57 → 1.06** (full-year daily r 0.95). This
+  was the multi-PFT step's primary target. Transpiration improved 1.60 → **1.32** (r 0.96); root-zone
+  water GS r 0.97.
+- **Three effects close GPP:** (1) the correct **layered** canopy light (Σ≈0.83) — sessions 5/5b drove
+  the tree with the *albedo-based* `d_fapar` OUTPUT (≈0.49), a DIFFERENT quantity than the layered
+  `pft->fpar` that actually feeds photosynthesis (~1.7× under-fed); (2) de-saturation of the SLA-Vcmax
+  cap once light is spread across individuals; (3) a fixed **latent `βvm` bug** — the Vcmax-cap smoothing
+  `smoothmin(vm, vm_n, βvm=0.05)` biased ALL Vcmax down by up to ~14, driving light-starved understory
+  individuals NEGATIVE. Corrected `βvm 0.05→1.0`; regenerated the cbinary + multilayer drift baselines.
+- **Transpiration residual (+32 %) is DEMAND-side** (no interception/wet-canopy, `eeq` ~7 % high from the
+  fixed forest albedo, stand conductance→demand) = the documented **coupled-conductance (item 3)** +
+  **petpar-albedo (item 4)** items — NOT the multi-PFT structure.
+- **Data semantics (verified):** the `ind`-CSV `gpp`==`npp` columns are BOTH `pft->anpp` (= cell **NPP**,
+  a genuine FIT bug `daily_natural.c:193 pft->agpp+=npp`); per-individual GROSS GPP is unrecoverable from
+  `ind` — the cell `d_gpp` (gross) is the honest target. Reconstruction self-validates: `nind=1/225` for
+  every tree ⇒ Jucker crown-area reconstruction matches the C's stored crownarea.
+- **AD:** ForwardDiff flows through the per-individual loop (matches FD). Gate
+  `test/testitems/multi_individual_tests.jl` + committed `hainich_{individuals,canopy_baseline}_2010`.
+  Report `docs/phase3_fdiff_cbinary_validation.md` §9.
+
+---
+
+## WHAT LANDED IN SESSION 5b (on `main`) — MULTI-LAYER SOIL (scale-up step 2)
 
 Replaced `F_diff`'s single soil bucket with a **differentiable 23-layer soil column** (`FDiff.SoilColumn`,
 `FDiffStateML`, `daily_step_ml`/`rollout_daily_ml`, `hainich_soilcolumn`): fill-to-field-capacity
@@ -113,17 +143,16 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    v2 soil items (deferred): free-water percolation timescale + surface/infil-excess runoff split, the
    **23-layer enthalpy soil-thermal + permafrost** (REDO from C or reuse Terrarium.jl — ADR 0006),
    Enzyme-reverse through the layered Vector-mutation.
-3. **★ NEXT — Multi-PFT + representative-individual set** (C3/C4, angio/gymno) driven by S. This is now
-   the localized cause of BOTH level gaps (GPP −42%, transp +45%): one well-watered representative tree
-   transpires at full atmospheric demand and concentrates all light through the SLA-Vcmax cap.
-   Approach: split the canopy into PFT×size classes from the `ind` CSV (leaf/sapwood C, crown, nind,
-   height per class — reconstruction recipe in the session-5 investigation), distribute light per class,
-   run per-individual photosynthesis (SLA cap + co-limitation act per individual) + per-individual water
-   stress, aggregate to per-m². Validate GPP/transp LEVEL recovery with the existing FAPAR/forcing
-   harness (may need per-PFT FAPAR from a re-run, or a Beer–Lambert layered light split).
-4. **Coupled conductance↔carbon consistency** (the measured water-use-efficiency inconsistency: high
-   transp + low GPP) and **dynamic phenology-folded structure** (so full-year GPP no longer needs the
-   FAPAR crutch / growing-season restriction).
+3. ✅ **DONE (session 5c) — Multi-PFT + representative-individual set.** 25 patches × 297 reconstructed
+   individuals share one soil column with FIT layered-Beer–Lambert light (`Individual`/`daily_step_canopy`).
+   **GPP LEVEL GAP CLOSED (0.57→1.06);** transp improved 1.60→1.32. Localized the transp residual to the
+   demand side (items 4 below). Fixed the latent `βvm` Vcmax-cap bug. See §9 + `multi_individual_tests.jl`.
+4. **★ NEXT — Coupled conductance↔carbon consistency** (close the measured transp +32% demand-side
+   residual): add **interception / wet-canopy** `(1−wet)` demand reduction (`interception.c`: `wet=intc·
+   LAI·rain/(eeq·1.32)`, capped), reconcile the stand `gp_stand`→demand coupling (the C's fpc-normalized
+   mean conductance vs F_diff's), and the `eeq` **albedo** (F_diff uses a fixed forest albedo → PET ~7%
+   high; full `petpar` daily `albedo_patch`). Then **dynamic phenology-folded structure** (so full-year
+   GPP no longer needs the C-`d_fapar`-derived phenology crutch / growing-season restriction).
 5. **Full `petpar` radiation/daylength** (smoothed polar-day/night `acos` branches) — the spike (and the
    validation) supplies daylength as forcing; reproduced exactly from `petpar2.c` in the extractor.
 6. **`SharedState` adapter** so `FDiff` sits behind `AbstractFastCore.step!` (currently throws) → then

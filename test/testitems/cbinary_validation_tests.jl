@@ -71,11 +71,11 @@
     # ── GPP: SEASONAL DYNAMICS captured (correlation); LEVEL inside the documented scale-up band ──
     @test _corr(gpp, t["gpp_C"]) > 0.92                            # annual r ≈ 0.986
     @test _corr(gpp[gs], t["gpp_C"][gs]) > 0.85                    # growing-season r ≈ 0.961
-    @test 0.45 <= sum(gpp) / sum(t["gpp_C"]) <= 1.5                # ratio ≈ 0.57 (single-individual)
+    @test 0.45 <= sum(gpp) / sum(t["gpp_C"]) <= 1.5                # ratio ≈ 0.65 (single-individual, βvm-corrected)
 
     # ── transpiration: timing captured; level inside the single-bucket soil-water confound band ──
     @test _corr(transp[gs], t["transp_C"][gs]) > 0.85             # r ≈ 0.965
-    @test 0.5 <= sum(transp) / sum(t["transp_C"]) <= 2.0          # ratio ≈ 1.49
+    @test 0.5 <= sum(transp) / sum(t["transp_C"]) <= 2.0          # ratio ≈ 1.61
 
     # ── ReferenceTests drift alarm: F_diff's OWN annual totals on the real forcing must not drift ──
     @test sum(gpp) ≈ base["gpp_annual"] rtol = 1.0e-4

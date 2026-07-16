@@ -1,0 +1,11 @@
+# F_diff MULTI-INDIVIDUAL / MULTI-PFT canopy (Phase-3 scale-up step 3) annual cell totals on the
+# committed Hainich 2010 REAL forcing: 25 patches × 297 reconstructed individuals (hainich_individuals_2010.csv),
+# each patch a canopy of trees+grass sharing one 23-layer soil column, driven by the C binary's daily
+# FAPAR-derived phenology, averaged over patches. ReferenceTests drift alarm for the canopy path;
+# regenerate ONLY on an intended physics change (record why in JOURNAL). See
+# test/testitems/multi_individual_tests.jl + docs/phase3_fdiff_cbinary_validation.md §9.
+# key             value (gC/m2/yr, mm/yr, or mm)
+gpp_annual        1168.634344
+transp_annual     314.964067
+evap_annual       278.145016
+rootmoist_mean    153.778454

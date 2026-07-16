@@ -1,0 +1,24 @@
+{
+  "cell": 42490,
+  "year": 2010,
+  "npatch": 25,
+  "n_individuals": 297,
+  "n_trees": 272,
+  "n_grass": 25,
+  "cell_fapar_leafon": 0.8339690350379927,
+  "cell_fapar_C_gs": 0.4886037142857145,
+  "fapar_ratio_recon_over_C": 1.7068413740103567,
+  "tree_fpar": 0.7514519503921846,
+  "grass_fpar": 0.08251708464580781,
+  "k_lambert": 0.5,
+  "vstep": 2.0,
+  "crownlength": 0.3334,
+  "pft_type_counts": {
+    "1": 3,
+    "2": 4,
+    "3": 259,
+    "4": 4,
+    "5": 2,
+    "8": 25
+  }
+}

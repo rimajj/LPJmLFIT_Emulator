@@ -206,3 +206,67 @@ differences); **Enzyme reverse-mode** through the layered Vector-mutation is a f
 bucket already establishes Enzyme-reverse through the full physics). Gate:
 `test/testitems/multilayer_soil_tests.jl` + committed `hainich_soilcolumn.txt` /
 `hainich_ml_baseline_2010.txt`.
+
+## 9. Update — multi-individual / multi-PFT canopy (scale-up step 3): the GPP level gap closes
+
+The single representative tree was replaced with the Hainich cell's **real set of individuals** — 25
+patches × 297 reconstructed trees + grass — each patch a canopy that shares one 23-layer soil column
+and distributes light by LPJmL-FIT's **vertical layered Beer–Lambert competition**. New code:
+`FDiff.Individual`, `daily_step_canopy`, `rollout_daily_canopy` (`src/fdiff.jl`); the individual set is
+reconstructed from the `ind` output by `scripts/extract_fdiff_individuals.py` and committed as
+`test/testitems/references/hainich_individuals_2010.csv`.
+
+**Same-physics port (verified against the C source, adversarially).** Each individual's photosynthesis
+sees `apar_i = par·(1−albedo_i)·alphaa_i·fpar_i·phen` (`water_stressed.c:204`), where `fpar_i` is the
+individual's LAYERED absorbed-PAR fraction from the FIT canopy light model (`getfpar.c`: 2 m layers,
+tallest-first, `k_lambert=0.5`; the tall dominants absorb first, the suppressed ones get the transmitted
+light). Transpiration demand is stand-level — `gp_sum.c` returns the fpc-normalized MEAN potential
+conductance `gp_stand = Σ_i gp_i·phen / Σ_i fpc_i` (each `gp_i` from FPC-based light) — and each
+individual transpires `min(supply_i, demand_stand)·fpc_i`, summed and withdrawn from the shared soil
+(per-layer capped at available water). GPP is `Σ_i` gross assimilation per m² (`daily_natural.c:200`).
+
+**Reconstruction, self-validated.** From the `ind` CSV (`Height, LAI, SLA, Wooddens, fpc_ind`) each
+individual's crown area (Jucker), leaf & sapwood carbon (pipe model), and layered leaf-area profile are
+reconstructed. The reconstructed density comes out to `nind = 1/225` for **every** tree — i.e. exactly
+one individual per the FIT 225 m² patch — which independently confirms the Jucker crown-area
+reconstruction reproduces the C's stored crown area (via `fpc = crownarea·nind·(1−e^{−k·LAI})`). The
+layered light is provably independent of the (uncertain) crown-area reconstruction: the per-layer leaf
+area `atoh·nind` reduces to CSV-only quantities (`LAI, fpc_ind, H, SLA`).
+
+**A load-bearing correction to the earlier drive.** The cell `d_fapar` OUTPUT is an **albedo-based**
+quantity (`albedo_tree.c:75`, ≈0.49 leaf-on) — NOT the **layered** `fpar` that actually feeds
+photosynthesis (Σ ≈ 0.83 leaf-on). The single-individual validations (§2, §8) drove the canopy with the
+albedo `d_fapar` and so under-fed it by ~1.7×; the multi-individual core drives each individual with its
+reconstructed layered `fpar` (using the C's daily `d_fapar` only for its phenology *shape*).
+
+**A latent Vcmax-cap bug, fixed.** The SLA-Vcmax cap `smoothmin(vm, vm_n, βvm)` used `βvm = 0.05`, whose
+`log(2)/β ≈ 14 gC/m²/day` softmin floor biased **every** individual's Vcmax downward — negligible for the
+single lumped tree (its Vcmax sits far above the cap) but catastrophic once light is distributed: the
+light-starved understory individuals were driven to **negative** assimilation. Corrected to `βvm = 1.0`
+(near-cap deviation `≤ 0.69`, uncapped individuals unbiased). This alone lifts even the single-individual
+GPP 626 → 721 (−42% → −35%) and raises transpiration in step (correct carbon ⇒ conductance ⇒ demand);
+the committed single-individual drift baselines (`hainich_fdiff_baseline_2010.txt`,
+`hainich_ml_baseline_2010.txt`) were regenerated accordingly.
+
+| metric (Hainich 2010, cell mean over 25 patches) | single individual | **multi-individual** | C binary |
+|---|---|---|---|
+| **GPP annual ratio** (model/C) | 0.57 → 0.65* | **1.06** | 1.0 |
+| GPP full-year daily r | 0.96 | **0.95** | — |
+| **transpiration annual ratio** | 1.47 → 1.60* | **1.32** | 1.0 |
+| transpiration full-year daily r | 0.97 | **0.96** | — |
+| root-zone water (GS) daily r | 0.87 | **0.97** | — |
+
+*single-individual values after the `βvm` fix.
+
+**Outcome — the GPP level gap is CLOSED** (annual ratio 0.57 → **1.06**), the primary lever the multi-PFT
+step targeted (§7 item 1). Three effects combine: the correct (layered, ~1.7× larger) canopy light, the
+de-saturation of the SLA-Vcmax cap once light is spread across individuals, and the `βvm` fix.
+**Transpiration improves** (single-individual multilayer 1.60 → **1.32**) and is now cleanly
+demand-limited: the residual +32 % is demand-side — no interception/wet-canopy `(1−wet)` term, `eeq` ~7 %
+high from the fixed forest albedo, and the stand conductance→demand coupling — i.e. exactly the
+documented **coupled conductance↔carbon (§7 item 3)** + **full `petpar` radiation (§7 item 4)** items,
+not the multi-PFT structure. Differentiability: **ForwardDiff** flows through the per-individual loop
+(matches finite differences). Documented v1 simplifications: fixed (year-end) canopy structure with a
+daily phenology factor, sub-5 m saplings absent from the `ind` output, the shared cell root profile for
+all individuals, and interception omitted. Gate: `test/testitems/multi_individual_tests.jl` + committed
+`hainich_individuals_2010.csv` / `hainich_canopy_baseline_2010.txt`.

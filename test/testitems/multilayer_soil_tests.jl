@@ -93,8 +93,8 @@
     @test _corr(gpp[gs], t["gpp_C"][gs]) > 0.9           # growing-season r ≈ 0.978 (bucket was 0.961)
     @test _corr(tr[gs], t["transp_C"][gs]) > 0.9         # r ≈ 0.971
     # levels remain in the documented single-representative-individual band (demand-side gap)
-    @test 0.45 <= sum(gpp) / sum(t["gpp_C"]) <= 1.5       # ≈ 0.59
-    @test 0.5 <= sum(tr) / sum(t["transp_C"]) <= 2.0      # ≈ 1.44
+    @test 0.45 <= sum(gpp) / sum(t["gpp_C"]) <= 1.5       # ≈ 0.65 (βvm-corrected)
+    @test 0.5 <= sum(tr) / sum(t["transp_C"]) <= 2.0      # ≈ 1.60 (βvm-corrected)
 
     # ── ReferenceTests drift alarm: multi-layer annual totals on real forcing must not drift ──
     @test sum(gpp) ≈ base["gpp_annual"] rtol = 1.0e-3
