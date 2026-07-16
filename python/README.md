@@ -40,16 +40,19 @@ python -m pytest python/tests -q
 
 ## `pyproject.toml` / `uv.lock` are for reproducible CI + lockfile only
 
-The `pyproject.toml` (build backend **hatchling**) and the eventual **`uv.lock`** exist to
-**pin an exact, reproducible dependency set for CI** and archival reproducibility
-(`ENGINEERING_STANDARDS.md` §7: Python uses a `uv` lockfile). They are **not** the way you
-run day-to-day work here — that is the reused conda env above. To (re)generate the lockfile
-on a machine **with network** (do not run in the offline HPC job):
+The `pyproject.toml` (build backend **hatchling**) and the **committed `uv.lock`** pin an
+exact, reproducible dependency set for CI and archival reproducibility
+(`ENGINEERING_STANDARDS.md` §7). Runtime deps carry **upper-bound caps** (e.g. `pandas<3`,
+`pyarrow<25`, `pytest<9`, `ruff<0.15`) so a floating resolve can't pull a breaking major; the
+`python` CI job runs `uv sync --frozen`. They are **not** the way you run day-to-day work here
+— that is the reused conda env above. To exercise the locked env / regenerate the lock on a
+machine **with network** (not in the offline HPC job):
 
 ```bash
-uv sync              # resolves deps + dev group, writes uv.lock
+uv sync --frozen     # install exactly uv.lock (CI's command); drop --frozen to re-resolve
 uv run pytest -q     # runs the suite in the locked env
 uv run ruff check .  # lint (E,F,I,UP,B); uv run ruff format --check .
+uv lock              # re-resolve + rewrite uv.lock after editing pyproject deps
 ```
 
 Runtime deps mirror `py311_new`; dev group = `pytest`, `pytest-cov`, `hypothesis`, `ruff`.
@@ -58,19 +61,33 @@ Config: Ruff (line-length 100, target py311, select `E,F,I,UP,B`), pytest
 pyproject table; its deterministic profile (`derandomize=True`, `deadline=None`) is
 registered in `conftest.py`.
 
-## Reused from the PRIOR sibling emulator
+## Ported once from the (now-frozen) sibling emulator — single source of truth
 
-The sibling project **`/p/projects/open/Jamir/emulator`** already established the evaluation
-discipline this prototype **reuses rather than re-derives**:
+Component **S** was **ported once on 2026-07-16** from the prior sibling project
+**`/p/projects/open/Jamir/emulator`** (newest sibling source mtime 2026-07-14). **This repo is
+now the single source of truth for S**; the sibling is **frozen** — it is not a dependency,
+submodule, or sync target, and it is never edited or re-imported (ADR
+`docs/decisions/0012-canonical-slow-emulator-here.md`). What was ported, and from where:
 
-- **`emulator/src/metrics.py`** — the full metric library (1-D Wasserstein, KS, per-quantile
-  errors, multivariate energy distance + its seed-split null floor, correlation-matrix
-  Frobenius distance, moment NRMSE/bias/R²). `src/lpjmlfit_emulator/metrics.py` here is a
-  small, pure-numpy, tested **subset**; port/import the sibling module as the panel grows.
+| this package | ported from (sibling `src/`) |
+| --- | --- |
+| `metrics.py` | `metrics.py` (full metric library + noise floor) |
+| `transforms.py` | `transforms.py` |
+| `drivers.py` | `parse_drivers.py` (generalized; xarray guarded) |
+| `features.py` | `direct_features.py` + `eco_features.py` (climclusterpy/NetCDF guarded) |
+| `baseline.py` | `direct_emulator.py` + (`ResidualRegressor`, `add_competition`, `LGB_COMMON` from `ibm_model.py`) |
+| `train.py` | `direct_train_eval.py` (generalized; matplotlib guarded) |
+| `data.py` | frozen 29-col schema (DESIGN.md §3.1) + `build_patch_summaries` from `data_prep.py` |
+
+Intentionally **not** ported (abandoned/one-off; see ADR 0012): `ibm_model.IBMEmulator`,
+`train_baseline.py`, `direct_zone*`, `direct_scale_eval`, `phaseF/H_*`, `shap_analysis`, `eda`,
+`moving_normals`, `ssp_*`, `g1/g2*`, `make_global_split`, `global_*`, `convert_to_parquet`, `infer.py`.
+Trained models (`models/*`, 262 MB–1.1 GB) and any dataset/parquet/`.clm`/`.lpj` are **never** copied.
+
 - **Noise-floor discipline** — the **seed1-vs-seed2 noise floor** is the yardstick, not zero
   error (published per-cell floor ≈ `{Height: 0.020, agb: 0.113, npp: 0.062, LAI: 0.025}`;
-  **~11 % on cell-mean agb**). **Report per-cell error magnitude against the per-cell floor
-  FIRST**, never lead with a pooled metric (see `DESIGN.md` §"Reuse", `emulator/src/eval_presentday_critical.py`).
+  **~11 % on cell-mean agb**, `metrics.PUBLISHED_NOISE_FLOOR`). **Report per-cell error magnitude
+  against the per-cell floor FIRST**, never lead with a pooled metric (see `DESIGN.md` §"Reuse").
 
 ## Package layout
 
@@ -80,11 +97,21 @@ python/
 ├── .python-version                    # 3.11
 ├── README.md                          # this file
 ├── conftest.py                        # src/ on sys.path; deterministic Hypothesis profile
+├── config/config.yaml                # ported prototype config (paths marked; see repo-root config/)
 ├── src/lpjmlfit_emulator/
-│   ├── __init__.py                    # package docstring + __version__ = "0.1.0"
-│   ├── metrics.py                     # pure-numpy distributional metrics + noise floor
-│   └── data.py                        # frozen 29-column `ind` schema validation (DESIGN.md §3.1)
+│   ├── __init__.py                    # package docstring, __version__, curated public API
+│   ├── metrics.py                     # distributional metrics (Wasserstein, KS, energy dist)
+│   ├── noise_floor.py                 # seed1-vs-seed2 noise-floor diagnostics (the yardstick)
+│   ├── data.py                        # frozen 29-col `ind` schema + loader + patch summaries
+│   ├── transforms.py                  # signed-log + monotone (isotonic) trait links
+│   ├── drivers.py                     # annual climate/CO2 driver aggregation (xarray guarded)
+│   ├── features.py                    # per-(Cell,Year) climate features + eco diagnostics (guarded)
+│   ├── baseline.py                    # DIRECT (non-recursive) climate->distribution emulator
+│   └── train.py                       # training / holdout / evaluation (matplotlib guarded)
 └── tests/
-    ├── test_metrics.py                # pytest + Hypothesis property tests
-    └── test_data.py                   # pytest + Hypothesis property tests
+    ├── test_metrics.py                # distributional metrics + noise floor
+    ├── test_noise_floor.py            # seed-split floor (asserts published numbers)
+    ├── test_data.py                   # schema validation + loader + patch summaries
+    ├── test_transforms.py             # log transforms + monotone links (determinism)
+    └── test_features.py               # feature schema + build_cell_year_feats
 ```
