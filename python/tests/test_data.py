@@ -9,7 +9,16 @@ from __future__ import annotations
 
 import pytest
 
-from lpjmlfit_emulator.data import IND_COLUMNS, ind_columns, validate_ind_schema
+from lpjmlfit_emulator.data import (
+    DIAG_VARS,
+    IND_COLUMNS,
+    TRAIT_VARS,
+    TREE_TYPES,
+    build_patch_summaries,
+    ind_columns,
+    load_ind,
+    validate_ind_schema,
+)
 
 SEED = 42
 
@@ -107,6 +116,62 @@ def test_order_not_checked_when_unordered():
 def test_rejects_bare_string():
     with pytest.raises(TypeError):
         validate_ind_schema("Year,ID,Type")
+
+
+# --------------------------------------------------------------------------
+# load_ind (CSV/Parquet loader with schema validation)
+# --------------------------------------------------------------------------
+def test_load_ind_csv_valid(tmp_path):
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame([[0] * len(IND_COLUMNS)], columns=list(IND_COLUMNS))
+    p = tmp_path / "ind.csv"
+    df.to_csv(p, index=False)
+    out = load_ind(p)  # validate=True by default
+    assert list(out.columns) == list(IND_COLUMNS)
+    assert len(out) == 1
+
+
+def test_load_ind_csv_bad_schema_raises(tmp_path):
+    pd = pytest.importorskip("pandas")
+    df = pd.DataFrame([[1, 2, 3]], columns=["a", "b", "c"])
+    p = tmp_path / "bad.csv"
+    df.to_csv(p, index=False)
+    with pytest.raises(ValueError):
+        load_ind(p)
+    # validation can be skipped
+    assert list(load_ind(p, validate=False).columns) == ["a", "b", "c"]
+
+
+# --------------------------------------------------------------------------
+# build_patch_summaries (generalized, I/O-free)
+# --------------------------------------------------------------------------
+def test_build_patch_summaries_shape_and_columns():
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("polars")
+    rng = __import__("numpy").random.default_rng(SEED)
+    n = 300
+    living = pd.DataFrame(
+        {
+            "Cell": rng.integers(0, 3, n),
+            "Patch": rng.integers(0, 2, n),
+            "Year": rng.integers(2000, 2003, n),
+            "Type": rng.choice(TREE_TYPES, n),
+            **{v: rng.uniform(0.1, 1.0, n) for v in TRAIT_VARS},
+            **{v: rng.uniform(0.0, 50.0, n) for v in DIAG_VARS},
+        }
+    )
+    summ = build_patch_summaries(living)
+    # keys present, plus n_trees, the requested stats, and per-PFT fractions
+    for key in ("Cell", "Patch", "Year", "n_trees"):
+        assert key in summ.columns
+    assert "agb_q50" in summ.columns and "SLA_mean" in summ.columns and "agb_sd" in summ.columns
+    for t in TREE_TYPES:
+        assert f"frac_type{t}" in summ.columns
+    # one summary row per (Cell,Patch,Year) group and n_trees sums back to the input count
+    import polars as pl
+
+    assert summ.height == living[["Cell", "Patch", "Year"]].drop_duplicates().shape[0]
+    assert int(summ.select(pl.col("n_trees").sum()).item()) == n
 
 
 # --------------------------------------------------------------------------

@@ -1,0 +1,71 @@
+# ============================================================================
+# LPJmL-FIT slow distributional emulator (component S) — prototype config.
+#
+# Provenance: ported once on 2026-07-16 from the frozen sibling emulator config
+# /p/projects/open/Jamir/emulator/configs/config.yaml (newest sibling source mtime
+# 2026-07-14). This repository is the single source of truth for component S; the
+# sibling is frozen (ADR docs/decisions/0012-canonical-slow-emulator-here.md) —
+# port once, do not sync.
+#
+# NOTE ON PATHS: every value tagged  # SIBLING-ABSOLUTE  below points at the frozen
+# sibling's on-disk artifacts (its derived parquet / model dirs). They are recorded
+# for provenance only and MUST be re-pointed before use in this repo. The canonical,
+# verified ground-truth + run paths for THIS project live in ../../config/paths.yaml
+# and ../../config/hpc_slurm.yaml (repo root config/). Never copy models/* or any
+# dataset/parquet/.clm/.lpj into git — DVC pointers + config references only.
+# ============================================================================
+
+python: /home/jamirp/.conda/envs/py311_new/bin/python   # reused conda env (do not recreate)
+
+# --- Data schema (frozen 29-col `ind`; see lpjmlfit_emulator.data.IND_COLUMNS) ----
+schema:
+  year_col: Year
+  cell_col: Cell        # global-grid cell id
+  patch_col: Patch      # patch within a cell (stable (Cell,Patch) key under landuse="no")
+  tree_col: ID          # individual identifier (NOT tracked across years)
+  type_col: Type        # PFT / functional-type code
+  dead_col: isdead
+  # patch key = (Cell, Patch)
+
+# --- Variable groupings (from EDA; mirror lpjmlfit_emulator.data / .features) ------
+variables:
+  tree_types: [1, 2, 3, 4, 5]
+  grass_type: 8
+  # Path-dependent size/state vars, heavy right-skew -> log1p
+  size_state: [Height, Age, agb, vegc, npp, LAI, fpc_ind, D95]
+  log_transform: [agb, vegc, npp, LAI, fpc_ind, D95, Height]
+  # Traits ~fixed at establishment, quasi-stationary
+  traits: [SLA, Wooddens, beta_root]
+  derived_from:                              # target -> source (near-deterministic link)
+    Longevity: SLA        # monotone f(SLA)  (transforms.MonotoneLink, increasing=False)
+    D95max: beta_root     # monotone g(beta_root)
+    gpp: npp              # identical
+  drop: [transp, gpp, wscal_mean, k_root, mort_water]   # degenerate / redundant
+  emulate_tree: [Height, Age, agb, vegc, npp, LAI, fpc_ind, D95, SLA, Wooddens, beta_root]
+  grass_vars: [agb, vegc, npp, LAI]
+  climate: [temp, prec, swrad, lwrad, humid, co2_ppm]
+
+# --- Patch-state summary (lagged features; lpjmlfit_emulator.data.build_patch_summaries)
+patch_summary:
+  stats: [mean, sd, q25, q50, q75]
+  summary_vars: [Height, Age, agb, vegc, npp, LAI, fpc_ind, D95, SLA, Wooddens, beta_root]
+
+# --- Splits ----------------------------------------------------------------------
+splits:
+  patch_holdout_frac: 0.2
+  temporal_train_max_year: 2008
+  temporal_test_years: [2009, 2010]
+
+# --- Reproducibility -------------------------------------------------------------
+random_seed: 42
+
+# --- Sibling-frozen artifact locations (provenance only; re-point before use) -----
+sibling_frozen:
+  root: /p/projects/open/Jamir/emulator                  # SIBLING-ABSOLUTE (frozen; not a dependency)
+  derived_parquet_global: /p/projects/open/Jamir/emulator/data_global   # SIBLING-ABSOLUTE
+  co2_file: /p/projects/lpjml/inputs/co2/global/TRENDY/v12/global_co2_ann_1700_2022.txt  # SIBLING-ABSOLUTE
+  # Trained models (262 MB–1.1 GB) live under the sibling models/ dir — NEVER copied here.
+
+# --- Canonical project paths (authoritative) live at repo-root config/ ------------
+project_paths_ref: ../../config/paths.yaml
+hpc_slurm_ref: ../../config/hpc_slurm.yaml
