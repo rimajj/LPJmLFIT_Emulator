@@ -18,12 +18,42 @@ for HEAD.
   dataset generated** (all 67,420 cells × 2000–2019, **186 GB** on `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output`).
 - **Phase 2** — slow-emulator GATE MET at the baseline tier (in-distribution median KS 0.023; warm+dry
   OOD is the documented equilibrium-ML limit the hybrid targets). `scripts/train_slow_emulator.py`.
-- **Phase 3 (this = session 4) — DIFFERENTIABLE FAST CORE `F_diff` spike: DONE + MERGED to `main`**
+- **Phase 3 (session 4) — DIFFERENTIABLE FAST CORE `F_diff` spike: DONE + MERGED to `main`**
   (squash `8dcf55b`, was PR #14; CI green on all required checks; docs deployed).
+- **Phase 3 (session 5) — `F_diff` ↔ C-BINARY QUANTITATIVE VALIDATION on the prototype cell: DONE**
+  (scale-up step 1). PET/radiation path validated tight (r 0.999, ratio 1.05); GPP/transp seasonal
+  dynamics captured, level offsets = the documented multi-PFT/soil scale-up gaps. Committed C-binary
+  gate + 2010 ReferenceTests baselines replace the self-referential pin. Suite 25,768 pass / 0 fail.
+  **See `docs/phase3_fdiff_cbinary_validation.md`.**
 
 ---
 
-## ⭐ WHAT LANDED IN SESSION 4 (on `main`)
+## ⭐ WHAT LANDED IN SESSION 5 (on `main`)
+
+**Quantitative "same physics" validation of `F_diff` against the LPJmL-FIT C binary on the Hainich
+prototype cell** — the handoff's Priority-1 item 1. `F_diff` driven by the cell's REAL daily `.clm`
+forcing + the C binary's ACTUAL daily FAPAR (kernel isolation), compared to LPJmL-FIT's own daily
+GPP/transp/PET.
+- **⚠️ LOAD-BEARING CORRECTION:** the prototype cell in the **global orderA grid** (all data) is
+  **`42490`** (lat 51.25/lon 10.25 = Hainich beech), **NOT `28008`** (= Sonoran desert in that grid;
+  28008 is Hainich only in the repo `-DSINGLESITE` grid). Corrected in MEMORY/DESIGN/paths.yaml.
+- **Results:** PET ratio 1.05 / r 0.999 (radiation path VALIDATED); GPP annual r 0.96 (within-year GS
+  daily r 0.96) but level −42%; transp r 0.91–0.97 but level +40–47%. Level offsets = multi-PFT/
+  representative-individual + 23-layer-soil scale-up gaps (kernel constants byte-identical ⇒ not bugs).
+- **New code:** `scripts/run_fdiff_validation_cell.sh` (single-cell re-run adding daily FAPAR + NV_LAI;
+  9 s), `scripts/extract_fdiff_validation_inputs.py` (`.clm` YEARCELL reader validated vs `d_prec`;
+  petpar2 daylength; C-target extraction), `scripts/validate_fdiff_vs_cbinary.jl` (multi-year driver).
+- **`F_diff` additions (AD-safe, regression baseline EXACT):** `Structure.alphaa`, `PhotoParams` SLA-
+  Vcmax cap (`issla`), external-FAPAR drive (`daily_step`/`rollout`/new `rollout_daily` take per-day
+  `fapar`), `tebs_params()`/`tebs_structure()`. λ-Newton iterate now `clamp`ed to [0.02,0.85] (fixes a
+  real deep-winter NaN; `smooth_clamp` rejected — overflows the AD dual). The clamp is conditional →
+  **Enzyme reverse now uses `set_runtime_activity`** (still exact vs FD; ForwardDiff unaffected).
+- **Gate:** `test/testitems/cbinary_validation_tests.jl` + committed `hainich_{forcing,cbinary_targets,
+  fdiff_baseline}_2010.*`. Full suite 25,768 pass / 0 fail; Runic-clean; JET/Aqua green.
+
+---
+
+## WHAT LANDED IN SESSION 4 (on `main`)
 
 **Owner decision (ADR 0014): F is differentiable FROM THE START (`F_diff`)** — supersedes the old
 F1-now/F2-at-Phase-6 split. The compiled LPJmL-FIT C binary is retained **only** as the
@@ -52,24 +82,30 @@ New code on `main` (**runtime is dependency-free**; AD lives in `test/Project.to
 
 ## ▶️ PRIORITY 1 (live) — SCALE `F_diff` toward the coupled hybrid (`docs/phase3_fdiff_spike.md` §7)
 
-The one-cell spike proved the AD toolchain is NOT the blocker; the remaining work is **physics
-coverage + validation**, not a differentiability unknown. Suggested order (each is independently
-committable + gated):
-1. **Quantitative C-binary validation on the prototype cell** — the strongest "same physics" check.
-   Drive `F_diff` with the prototype cell's REAL forcing + soil/PFT params and compare daily
-   GPP/NPP/ET to the 186 GB dataset; add `ReferenceTests` trajectory baselines. (Today's regression
-   gate pins F_diff against ITSELF only.)
-2. **Multi-layer soil water** (LPJmL `NSOILLAYER`, infil/perc/drainage, rootdist) + the **23-layer
+The one-cell spike proved the AD toolchain is NOT the blocker; **session 5 quantitatively validated
+`F_diff` against the C binary** (PET tight; GPP/transp dynamics captured, levels offset). The remaining
+work is **physics coverage** to close the two MEASURED level gaps, in priority order:
+1. ✅ **DONE (session 5) — Quantitative C-binary validation on the prototype cell.** See
+   `docs/phase3_fdiff_cbinary_validation.md`; gate `test/testitems/cbinary_validation_tests.jl`.
+2. **Multi-PFT + representative-individual set** (C3/C4, angio/gymno) driven by S — **the biggest GPP
+   lever** (measured −42% level gap comes from one representative individual vs the 25-patch multi-PFT
+   canopy). Aggregate to per-m² GPP for the comparison.
+3. **Multi-layer soil water** (LPJmL `NSOILLAYER`, infil/perc/drainage, rootdist) + the **23-layer
    enthalpy soil-thermal + permafrost** (REDO from C, or reuse Terrarium.jl's differentiable thermal —
-   ADR 0006). The spike uses a single bucket + degree-day snow.
-3. **Full `petpar` radiation/daylength** (smoothed polar-day/night `acos` branches) — the spike
-   supplies daylength as forcing.
-4. **Multi-PFT + representative-individual set** (C3/C4, angio/gymno) driven by S.
-5. **`SharedState` adapter** so `FDiff` sits behind `AbstractFastCore.step!` (currently throws) → then
+   ADR 0006) — **the biggest transpiration lever** (measured +40% level gap + over-drained root-zone
+   water). The spike uses a single bucket + degree-day snow.
+4. **Coupled conductance↔carbon consistency** (the measured water-use-efficiency inconsistency: high
+   transp + low GPP) and **dynamic phenology-folded structure** (so full-year GPP no longer needs the
+   FAPAR crutch / growing-season restriction).
+5. **Full `petpar` radiation/daylength** (smoothed polar-day/night `acos` branches) — the spike (and the
+   validation) supplies daylength as forcing; reproduced exactly from `petpar2.c` in the extractor.
+6. **`SharedState` adapter** so `FDiff` sits behind `AbstractFastCore.step!` (currently throws) → then
    **S↔F coupling** (flux-then-integrate `bm_inc`) on the prototype, and **gradient-based online
    rollout training** (finish NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks).
-6. **λ-solve at scale:** swap the fixed-graph Newton for `SteadyStateAdjoint`/`ImplicitDifferentiation`
-   if memory/perf needs it (the hybrid repo notes the adjoint's memory blow-up on large grids).
+7. **λ-solve at scale:** swap the fixed-graph Newton for `SteadyStateAdjoint`/`ImplicitDifferentiation`
+   if memory/perf needs it (the hybrid repo notes the adjoint's memory blow-up on large grids). NB: the
+   Newton iterate is now `clamp`ed to the physical bracket (robustness); Enzyme reverse uses
+   `set_runtime_activity` because of that conditional.
 
 **Keep the runtime dependency-free** where possible; Aqua checks stale deps. Add Lux/KernelAbstractions/
 SciMLSensitivity/OrdinaryDiffEq only WHEN the feature that uses them lands.

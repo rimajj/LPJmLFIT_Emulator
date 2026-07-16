@@ -7,6 +7,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **`F_diff` ↔ LPJmL-FIT C-binary quantitative validation on the prototype cell (Phase-3 scale-up
+  step 1).** `F_diff` driven by Hainich's (global-grid cell **42490**) REAL daily `.clm` forcing + the
+  C binary's ACTUAL daily FAPAR (kernel-isolation drive), compared to LPJmL-FIT's own daily
+  GPP/transp/PET. **PET/radiation path validated tight** (daily ratio 1.05, r 0.999); **GPP seasonal
+  dynamics captured** (annual r 0.96, within-year growing-season daily r 0.96) with level −42%;
+  **transpiration timing captured** (r 0.91–0.97) with level +40–47% — the level offsets attributed
+  to the documented multi-PFT/representative-individual + 23-layer-soil scale-up gaps (photosynthesis
+  kernel `#define`s are byte-identical, so not kernel bugs).
+  - New: `scripts/run_fdiff_validation_cell.sh` (single-cell daily re-run adding daily FAPAR + NV_LAI +
+    annual FPC_STAND/LAI_STAND), `scripts/extract_fdiff_validation_inputs.py` (LPJmL `.clm` YEARCELL
+    reader — validated against the model's own `d_prec` to 0.0 — + `petpar2` daylength + C-target
+    extraction), `scripts/validate_fdiff_vs_cbinary.jl` (multi-year analysis driver).
+  - New gate `test/testitems/cbinary_validation_tests.jl` (committed one-year 2010 reference:
+    `hainich_{forcing,cbinary_targets,fdiff_baseline}_2010.*`) + a `ReferenceTests` drift alarm on
+    `F_diff`'s own annual totals on real forcing. Replaces the "`F_diff` pinned against ITSELF" note.
+    Report `docs/phase3_fdiff_cbinary_validation.md`; metrics
+    `artifacts/metrics/phase3_fdiff_cbinary_validation.json`. Full suite **25,768 pass / 0 fail**.
+  - `F_diff` additions (AD-safe; the numerical-regression baseline is unchanged): `Structure.alphaa`
+    (PAR-use fraction, default 1.0; TeBS 0.55), the SLA-dependent Vcmax cap (`PhotoParams.issla`,
+    default off), an **external-FAPAR drive mode** (`daily_step`/`rollout`/new `rollout_daily` accept a
+    per-day `fapar`), and `tebs_params()`/`tebs_structure()` (the beech PFT-3 set). The λ-solve Newton
+    iterate is now `clamp`ed to the physical bracket `[0.02, 0.85]` (fixes a deep-winter low-light NaN;
+    a `smooth_clamp` was rejected because `softplus(β·huge)` overflows the AD dual). That clamp is a
+    conditional, so **Enzyme reverse-mode now uses `set_runtime_activity`** (still exact vs finite
+    differences; ForwardDiff unaffected; the gradient-correctness gate is unchanged).
+- **⚠️ Corrected the prototype-cell index:** Hainich (DE-Hai) in the **global orderA grid** (all
+  ground-truth + daily data) is 0-based index **42490** (lat 51.25/lon 10.25), NOT `28008` (= Sonoran
+  desert in that grid; 28008 is Hainich only in the repo default `-DSINGLESITE` grid). Fixed in
+  `MEMORY.md`, `DESIGN.md`, `config/paths.yaml`.
 - **Differentiable fast core (`F_diff`) — early one-cell spike (ADR 0014/0015).** Built F
   differentiable from the start (owner decision superseding the F1-now/F2-later split): the shared
   **allometry/diagnostics** library (`src/allometry.jl` — pipe-model height, Jucker 2022 crown/stem,

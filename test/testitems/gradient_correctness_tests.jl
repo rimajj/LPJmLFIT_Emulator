@@ -77,9 +77,16 @@ end
     @test abs(ForwardDiff.derivative(f_w0, 0.6)) > 1.0e-3
 
     # ── Enzyme reverse-mode vs FiniteDifferences (a forcing + a state, through the coupling) ─────
+    # `set_runtime_activity`: the λ-solve now confines its Newton iterate to the physical bracket
+    # [0.02, 0.85] with a `clamp` (robustness on real forcing — deep-winter low-light degeneracy would
+    # otherwise diverge; see solve_lambda + cbinary_validation_tests.jl). That `clamp` is a conditional,
+    # so Enzyme's *static* activity analysis is (conservatively) insufficient; runtime activity is the
+    # documented mode for genuinely conditional activity. Still true reverse-mode through the full
+    # physics rollout, and still exact vs finite differences.
+    RA = Enzyme.set_runtime_activity(Enzyme.Reverse)
     for (name, f, x0) in (("co2", f_co2, 380.0), ("w0_dry", f_w0, 0.6))
         gfd = fdm(f, x0)
-        gz = Enzyme.autodiff(Enzyme.Reverse, f, Enzyme.Active, Enzyme.Active(x0))[1][1]
+        gz = Enzyme.autodiff(RA, f, Enzyme.Active, Enzyme.Active(x0))[1][1]
         @test isfinite(gz)
         @test isapprox(gz, gfd; rtol = 1.0e-5, atol = 1.0e-8)
     end

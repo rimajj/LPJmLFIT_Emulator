@@ -283,8 +283,11 @@ are inactive under `landuse="no"`. huss is a **hard dependency** (`getvpd.c:38` 
 - SLURM: `--qos=short`, `--exclusive`, `--ntasks` 46 (historical) / 2048 (ssp370). Account
   `waldspektrum`. **Do not probe partitions interactively.** SSP370 continuation restarts from the
   Historical seed1 `restart_2019.lpj` (120 GB) — a working, documented pattern.
-- Single-site (tiny tests): `-DSINGLESITE` selects `startgrid:28008` (Hainich ≈51.1 N/10.4 E),
-  `--ntasks=1`. `mpirun bin/lpjml -DSPINUP -DSINGLESITE lpjmlfit.js` then `-DTRANSIENT -DSINGLESITE`.
+- Single-site (tiny tests): `-DSINGLESITE` selects `startgrid:28008` (Hainich ≈51.1 N/10.4 E) **in the
+  repo default single-site input grid**, `--ntasks=1`. `mpirun bin/lpjml -DSPINUP -DSINGLESITE lpjmlfit.js`
+  then `-DTRANSIENT -DSINGLESITE`. **NB (session 5):** `28008` is Hainich ONLY in that default grid; in
+  the **global orderA grid** used by all ground-truth/daily data, Hainich = index **42490** (28008 there
+  = Sonoran desert). Single-cell daily re-run against the global data: `STARTGRID=ENDGRID=42490`.
 
 ### 4.4 Reproducibility ledger (log per dataset)
 LPJmL commit `b2e5ca9` / v5.6.004; config JS (`lpjmlfit.js` + generated `lpjml_*.js`); input `.clm`
@@ -308,8 +311,9 @@ The handover's "single-cell / ~50,000 realizations" framing is **superseded** by
   in progress). See `config/paths.yaml:lpjml.ground_truth`.
 
 **Prototype definition (this project):**
-- **F1 integration and E** are proven on **one** cell first (candidate **Hainich `startgrid:28008`**,
-  or a S-German cell) — a single cell is sufficient to prove the daily biophysics + energy closure.
+- **F1 integration and E** are proven on **one** cell first (**Hainich = global-grid index `42490`**,
+  lat 51.25/lon 10.25 — NOT `28008`, see §4.3 note) — a single cell suffices to prove the daily
+  biophysics + energy closure.
 - **S is prototyped on a small BIOME-STRATIFIED multi-cell set from the start (≈10–50 cells), NOT one
   cell.** Rationale: S's whole purpose — and the exact thing the sibling emulator failed at (§6) — is
   the **climate/state-conditional** distribution; a single cell has no across-cell climate gradient to

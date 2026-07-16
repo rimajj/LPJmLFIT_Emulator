@@ -1,0 +1,9 @@
+# F_diff (TeBS beech params, FAPAR-driven) annual totals on the committed Hainich 2010 REAL forcing
+# (hainich_forcing_2010.csv + hainich_cbinary_targets_2010.csv fapar). ReferenceTests drift alarm:
+# catches silent numerical drift after refactors, now pinned on REAL forcing (not the synthetic
+# scenario). Regenerate ONLY on an intended physics change (record why in JOURNAL/CHANGELOG).
+# See test/testitems/cbinary_validation_tests.jl + docs/phase3_fdiff_cbinary_validation.md.
+# key            value (gC/m2/yr or mm/yr)
+gpp_annual       626.4237
+transp_annual    356.1542
+pet_annual       806.9610

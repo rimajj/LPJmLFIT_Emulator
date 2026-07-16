@@ -27,7 +27,8 @@ using ..SmoothOps
 
 export FDiffParams, FDiffState, Structure, DailyForcing,
     photosynthesis, priestley_taylor_eeq, solve_lambda, temp_stress,
-    daily_step, rollout, annual_npp
+    daily_step, rollout, rollout_daily, annual_npp,
+    tebs_params, tebs_structure
 
 # ── unit helpers (LPJmL-FIT include/units.h; 273.15 K — NOT the reference's 272.15 bug) ──────────
 ppm2bar(co2) = co2 * 1.0e-6          # ppmv → bar  (units.h:23)
@@ -67,6 +68,12 @@ Base.@kwdef struct PhotoParams{T <: Real}
     bc4::T = 0.035           # C4
     path::Symbol = :c3
     εσ::T = 1.0e-9           # floor under the σ sqrt
+    # SLA-dependent Vcmax cap (`photosynthesis.c:92-97`), ACTIVE in LPJmL-FIT `individual:true` mode
+    # (`issla=TRUE`): `vm ≤ vm_n = 11.205·sla^-0.383·1.0368·exp(0.069·(temp-25))`. Defaults keep it OFF
+    # (`issla=false`) so the spike baseline is unchanged; the beech TeBS validation set turns it on.
+    issla::Bool = false      # apply the SLA Vcmax cap (LPJmL-FIT individual mode)
+    sla::T = 0.01986         # specific leaf area, m²/gC (drives the cap; = TeBS value)
+    βvm::T = 0.05            # AD-smoothing sharpness for the Vcmax cap (1/[gC/m²/day])
 end
 
 """
@@ -209,6 +216,10 @@ Base.@kwdef struct Structure{T <: Real}
     phen::T = 1.0
     whc::T = 200.0
     k_beer::T = 0.5
+    # PAR-use / light-absorption efficiency `alphaa` (`alphaa_tree.c`; `water_stressed.c:204`
+    # `apar = par·(1-albedo_leaf)·alphaa·fpar`). With N off it is the PFT constant (TeBS = 0.55).
+    # Default `1.0` keeps the spike baseline (which folded no alphaa into APAR) unchanged.
+    alphaa::T = 1.0
 end
 
 """
@@ -268,6 +279,14 @@ by [`SmoothOps`](@ref) surrogates: the σ floor (`sqrt_floor`), the C4 `phipi<1`
 the `adt≤0` floor (softplus). The co-limitation discriminant `(je+jc)²−4θ·je·jc ≥ (je−jc)² ≥ 0` is
 positive by construction (θ<1), so its sqrt needs only a round-off floor.
 """
+# SLA-dependent Vcmax cap (photosynthesis.c:92-97), smoothed for AD. Only binds when `issla` is set
+# (LPJmL-FIT individual mode); a soft `min(vm, vm_n)` so the cap is differentiable near the kink.
+function _sla_vm_cap(p::PhotoParams, vm, temp)
+    p.issla || return vm
+    vm_n = 11.205 * p.sla^(-0.383) * 1.0368 * exp(0.069 * (temp - 25))
+    return smoothmin(vm, vm_n, p.βvm)
+end
+
 function photosynthesis(
         p::PhotoParams{T}, λ, tstress, co2_Pa, temp, apar, daylength;
         comp_vm::Bool = true, vm = zero(T)
@@ -290,7 +309,7 @@ function photosynthesis(
             c2o = (pi_opt - gammastar) / (pi_opt + fac_kin)
             s = (24 / daylength) * b
             σ = sqrt_floor(one(temp) - (c2o - s) / (c2o - θ * s), p.εσ)
-            vm = (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq
+            vm = _sla_vm_cap(p, (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq, temp)
         end
         # c1, c2 at the (actual) λ (photosynthesis.c:99-105)
         pi_ = λ * co2_Pa
@@ -307,7 +326,7 @@ function photosynthesis(
             c2o = one(temp)
             s = (24 / daylength) * b
             σ = sqrt_floor(one(temp) - (c2o - s) / (c2o - θ * s), p.εσ)
-            vm = (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq
+            vm = _sla_vm_cap(p, (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq, temp)
         end
         # C4 CO2-limitation factor: smooth min(1, λ/λmc4)  (photosynthesis.c:123-125)
         ratio = λ / p.lambdamc4
@@ -374,10 +393,21 @@ function solve_lambda(p::FDiffParams{T}, fac, tstress, co2_Pa, temp, apar, dayle
         photosynthesis(p.photo, λ, tstress, co2_Pa, temp, apar, daylength; comp_vm = false, vm = vm)[4]
     h = T(1.0e-6)
     λ = T(0.7)                       # fixed interior initial guess (∈ [0.02, 0.85])
+    # The Newton iterate is confined to the physical bracket [0.02, 0.85] by a PLAIN `clamp`. Why not
+    # a smooth surrogate: in the degenerate low-light regime (e.g. deep winter with a fixed summer
+    # canopy) adtmm is pinned at its softplus floor ⇒ dg≈0 ⇒ the raw Newton step `ω·gλ/dg` diverges;
+    # a `smooth_clamp` returns the right PRIMAL but `softplus(β·huge)` overflows to `exp(Inf)` and
+    # NaNs the AD dual. A hard `clamp` instead DISCARDS the divergent branch's derivative (min/max
+    # keeps only the selected operand's dual), so both ForwardDiff and Enzyme stay finite. In the
+    # normal regime λ is interior (≤ λmax = 0.8 < 0.85), so `clamp` is the identity (derivative 1) —
+    # the gradient gate and the regression baseline are unchanged. The kink is on an INTERNAL solver
+    # iterate in a regime where GPP≈0 and the gradient is physically immaterial (cf. the reference's
+    # SteadyStateAdjoint, which likewise does not differentiate through solver internals).
+    lo = T(0.02); hi = T(0.85)
     for _ in 1:p.nlambda
         gλ = g(λ)
         dg = (g(λ + h) - g(λ - h)) / (2h)
-        λ = λ - p.ω * gλ / dg
+        λ = clamp(λ - p.ω * gλ / dg, lo, hi)
     end
     return λ
 end
@@ -453,9 +483,19 @@ S-provided carbon pools used for maintenance respiration.
 
 Water closure holds by construction: `precip = transp + evap + runoff + Δ(soil water + snowpack)`.
 """
+# APAR (absorbed PAR energy, J/m²/day). Internal path: `par·(1-albedo)·alphaa·fpar` (Beer–Lambert fpar
+# from structure — `water_stressed.c:204`). External path (`fapar` supplied): drive APAR with the C
+# binary's ACTUAL daily FAPAR output. Since that output already carries `(1-albedo_leaf)` and, at full
+# canopy (`phen≈1`, no snow), `FAPAR_out = fpc·(1-albedo_leaf)` while `fpar = fpc`, the C
+# `apar = par·(1-albedo)·alphaa·fpar` collapses to `par·alphaa·FAPAR_out` — so the external path is
+# `par·alphaa·fapar` (no second `(1-albedo)`). This is the "same physics" kernel-isolation drive used by
+# the C-binary validation (docs/phase3_fdiff_cbinary_validation.md).
+_apar(par, str::Structure, ::Nothing, fpar_internal) = par * (one(par) - str.albedo) * str.alphaa * fpar_internal
+_apar(par, str::Structure, fapar::Real, fpar_internal) = par * str.alphaa * fapar
+
 function daily_step(
         p::FDiffParams, st::FDiffState, str::Structure, f::DailyForcing;
-        c_sapwood = 3000.0, c_root = 800.0
+        c_sapwood = 3000.0, c_root = 800.0, fapar = nothing
     )
     # working (AD) type from the model inputs only — the carbon-pool kwargs are `convert`ed to it so
     # a Float64 default does not silently upcast a Float32 rollout (nor a Dual AD pass).
@@ -478,7 +518,7 @@ function daily_step(
     # --- canopy radiation absorption ---
     par = 0.5 * w.dayseconds * f.swdown                   # PAR energy, J/m²/day (half of SW)
     fpar = str.fpc * (one(T) - exp(-str.k_beer * str.lai))
-    apar = par * (one(T) - str.albedo) * fpar
+    apar = _apar(par, str, fapar, fpar)                   # internal (fapar=nothing) or C-FAPAR-driven
 
     # --- temperature stress + photosynthesis machinery ---
     ts = temp_stress(p.tstress, f.temp, f.daylength)
@@ -548,18 +588,54 @@ and snow state. Returns the final state and annual totals `(npp, gpp, transp, ev
 """
 function rollout(
         p::FDiffParams, st0::FDiffState, str::Structure, forcings;
-        c_sapwood = 3000.0, c_root = 800.0
+        c_sapwood = 3000.0, c_root = 800.0, fapars = nothing,
+        c_sapwoods = nothing, c_roots = nothing
     )
     T = promote_type(_wt(p), _wt(st0), _wt(str), _wt(first(forcings)))
     st = FDiffState{T}(; w = convert(T, st0.w), snowpack = convert(T, st0.snowpack))
     npp = zero(T); gpp = zero(T); transp = zero(T); evap = zero(T); runoff = zero(T); precip = zero(T)
-    for f in forcings
-        (st, fl) = daily_step(p, st, str, f; c_sapwood = c_sapwood, c_root = c_root)
+    for (i, f) in enumerate(forcings)
+        fp = fapars === nothing ? nothing : fapars[i]        # per-day C FAPAR (or internal)
+        cs = c_sapwoods === nothing ? c_sapwood : c_sapwoods[i]
+        cr = c_roots === nothing ? c_root : c_roots[i]
+        (st, fl) = daily_step(p, st, str, f; c_sapwood = cs, c_root = cr, fapar = fp)
         npp += fl.npp; gpp += fl.gpp; transp += fl.transp; evap += fl.evap; runoff += fl.runoff
         precip += convert(T, f.precip)
     end
     totals = (npp = npp, gpp = gpp, transp = transp, evap = evap, runoff = runoff, precip = precip)
     return (st, totals)
+end
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Daily-trajectory rollout (returns every day's fluxes) — used by the C-binary validation driver
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+"""
+    rollout_daily(p, st0, str, forcings; fapars=nothing, c_sapwoods=nothing, c_roots=nothing,
+                  c_sapwood=3000.0, c_root=800.0) -> (st, days)
+
+Like [`rollout`](@ref) but returns the full per-day flux trajectory `days` (a `Vector` of the
+`daily_step` flux `NamedTuple`s) instead of only annual totals. `fapars` / `c_sapwoods` / `c_roots`
+are optional per-day vectors (the C binary's actual daily FAPAR and carbon pools) that override the
+internal Beer–Lambert FAPAR and the scalar pool defaults — this is what drives the "same physics"
+daily comparison against the LPJmL-FIT C outputs.
+"""
+function rollout_daily(
+        p::FDiffParams, st0::FDiffState, str::Structure, forcings;
+        c_sapwood = 3000.0, c_root = 800.0, fapars = nothing,
+        c_sapwoods = nothing, c_roots = nothing
+    )
+    T = promote_type(_wt(p), _wt(st0), _wt(str), _wt(first(forcings)))
+    st = FDiffState{T}(; w = convert(T, st0.w), snowpack = convert(T, st0.snowpack))
+    days = Vector{typeof(daily_step(p, st, str, first(forcings); c_sapwood = c_sapwood, c_root = c_root)[2])}()
+    sizehint!(days, length(forcings))
+    for (i, f) in enumerate(forcings)
+        fp = fapars === nothing ? nothing : fapars[i]
+        cs = c_sapwoods === nothing ? c_sapwood : c_sapwoods[i]
+        cr = c_roots === nothing ? c_root : c_roots[i]
+        (st, fl) = daily_step(p, st, str, f; c_sapwood = cs, c_root = cr, fapar = fp)
+        push!(days, fl)
+    end
+    return (st, days)
 end
 
 """
@@ -569,5 +645,44 @@ Convenience scalar: the annual NPP (gC/m²/yr) produced by [`rollout`](@ref). Th
 output whose gradient w.r.t. an input/parameter the spike verifies against finite differences.
 """
 annual_npp(p, st0, str, forcings; kwargs...) = rollout(p, st0, str, forcings; kwargs...)[2].npp
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# LPJmL-FIT temperate-broadleaf-summergreen (TeBS, PFT id 3 — beech) parameter set. The kernel
+# constants (θ, α_c3, ALPHAM, GM, α_PT, resp k, e0, …) already match the C source; this switches on
+# the PFT-specific values the confound analysis flagged (`par/pft_lpjmlfit.js` PFT 3): photosynthesis
+# T-optimum (temp_photos 20/30), max transpiration `emax=10`, min conductance `gmin=1.0`, the SLA
+# Vcmax cap (`issla=true`), woody respcoeff 1.2, fine-root C:N 30. Used by the C-binary validation.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+"""
+    tebs_params(::Type{T}=Float64; nlambda=25, ω=0.9) -> FDiffParams{T}
+
+F_diff parameters for the LPJmL-FIT temperate broadleaved summergreen tree PFT (beech, PFT id 3) —
+the Hainich prototype's dominant PFT. See [`tebs_structure`](@ref) for the matching S→F boundary.
+"""
+function tebs_params(::Type{T} = Float64; nlambda::Int = 25, ω = T(0.9)) where {T <: Real}
+    return FDiffParams{T}(;
+        photo = PhotoParams{T}(; path = :c3, issla = true, sla = T(0.01986)),
+        tstress = TempStressParams{T}(; temp_photos_low = T(20.0), temp_photos_high = T(30.0)),
+        water = WaterParams{T}(; emax = T(10.0), gmin = T(1.0)),
+        resp = RespParams{T}(; respcoeff = T(1.2), cn_root = T(30.0)),
+        nlambda = nlambda, ω = T(ω),
+    )
+end
+
+"""
+    tebs_structure(::Type{T}=Float64; lai=5.7, fpc=0.56, whc=230.0, phen=1.0) -> Structure{T}
+
+S→F structural boundary for the beech (TeBS) PFT: leaf albedo `0.15`, broadleaf Beer–Lambert
+`k_beer=0.59`, PAR-use `alphaa=0.55`. `lai`/`fpc`/`whc`/`phen` are the cell/day-specific canopy state
+(defaults are the Hainich 2010 growing-season aggregate).
+"""
+function tebs_structure(
+        ::Type{T} = Float64; lai = T(5.7), fpc = T(0.56), whc = T(230.0), phen = T(1.0)
+    ) where {T <: Real}
+    return Structure{T}(;
+        lai = T(lai), fpc = T(fpc), albedo = T(0.15), phen = T(phen),
+        whc = T(whc), k_beer = T(0.59), alphaa = T(0.55),
+    )
+end
 
 end # module FDiff

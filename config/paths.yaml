@@ -93,7 +93,10 @@ data:
   # Generated / staged training data.
   root: /p/tmp/jamirp/esm_land_emulator_data
   # PROTOTYPE = one (or a few) cells drawn from the EXISTING global ground-truth (no new run needed for S).
-  # Candidate prototype cell: Hainich (repo SINGLESITE startgrid 28008) or a S.German cell.
+  # Prototype cell = Hainich (DE-Hai). GLOBAL orderA grid (soil_code_test.grid.clm / grid.nc, used by
+  # ALL ground-truth + daily data): Hainich = 0-based positional index 42490 (lat 51.25, lon 10.25).
+  # NB: index 28008 is Hainich ONLY in the repo default -DSINGLESITE input grid; in the GLOBAL grid
+  # 28008 = Sonoran desert (31.75N,-114.75E). Single-cell daily re-run: STARTGRID=ENDGRID=42490.
   prototype:
     daily_output: ${data.root}/prototype/daily             # NEW: daily fluxes for F/E (requires daily-output re-run)
     tree_table_source: ${lpjml.ind_csv_historical_seed1}   # existing annual ind CSV (subset to prototype cell)
