@@ -17,3 +17,10 @@ automatically when the code changes.
 Modules = [LPJmLFITEmulator]
 Order = [:module, :constant, :type, :function]
 ```
+
+!!! note "Differentiable fast core (`F_diff`) API"
+    The `F_diff` submodules — `Allometry` (shared diagnostics), `SmoothOps` (smooth surrogates), and
+    `FDiff` (daily biophysics + rollout) — are documented in the source (`?LPJmLFITEmulator.FDiff.rollout`
+    in the REPL) and summarized in `docs/phase3_fdiff_spike.md`. Rendering their API here (with the
+    cross-module `@ref` links their docstrings use) is a small docs-infra follow-up (per-submodule
+    `CurrentModule` pages). See ADR 0014 / 0015.

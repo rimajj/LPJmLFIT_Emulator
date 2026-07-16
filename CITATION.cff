@@ -21,3 +21,40 @@ keywords:
   - Earth system model
   - emulator
 # license: TBD by owner — LPJmL-FIT is AGPL-3.0; cross-repo embedding needs a legal read (see ADR).
+references:
+  # Reference implementations reused (research use with attribution) for the differentiable fast
+  # core F_diff — see docs/decisions/0015-reuse-map.md.
+  - type: article
+    title: "A general model for the distribution of leaf area index (BIOME3 photosynthesis)"
+    authors:
+      - given-names: Alex
+        family-names: Haxeltine
+      - given-names: I. Colin
+        family-names: Prentice
+    journal: "Global Biogeochemical Cycles"
+    year: 1996
+    volume: 10
+    issue: 4
+  - type: software
+    title: "LPJmL-hybrid-photosynthesis (differentiable λ root-find; C3/C4 photosynthesis)"
+    repository-code: "https://github.com/TUM-PIK-ESM/LPJmL-hybrid-photosynthesis"
+    notes: "MIT. Reused as the photosynthesis-kernel + differentiable-λ pattern reference."
+  - type: article
+    title: "NeuralCrop.jl — differentiable LPJmL (NN λ/Vcmax, neural-ODE, rollout training)"
+    authors:
+      - given-names: Yunan
+        family-names: Lin
+    year: 2025
+    notes: "arXiv:2512.20177; code github.com/yunan-l/NeuralCrop.jl (CC-BY-NC). Reused for PET/ET/respiration + the daily-rollout idiom."
+  - type: software
+    title: "Terrarium.jl — differentiable land surface (SEB + skin temperature)"
+    repository-code: "https://github.com/NumericalEarth/Terrarium.jl"
+    notes: "EUPL-1.2. Reuse target for component E (ADR 0006); not in the F_diff spike."
+  - type: article
+    title: "Global allometric models of tree height, crown radius and stem diameter (Tallo)"
+    authors:
+      - given-names: Tommaso
+        family-names: Jucker
+    journal: "Global Change Biology"
+    year: 2022
+    notes: "The FIT-fork crown/height allometry ported in src/allometry.jl."

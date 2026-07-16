@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Differentiable fast core (`F_diff`) — early one-cell spike (ADR 0014/0015).** Built F
+  differentiable from the start (owner decision superseding the F1-now/F2-later split): the shared
+  **allometry/diagnostics** library (`src/allometry.jl` — pipe-model height, Jucker 2022 crown/stem,
+  LAI, Beer–Lambert FPC, pure & differentiable), a **smooth-surrogate** library (`src/fdiff_smoothops.jl`
+  — softplus/smoothmin/max/clamp with tested `log(2)/β` deviation bounds), and the **`F_diff` daily
+  biophysics** (`src/fdiff.jl` — C3/C4 Haxeltine & Prentice photosynthesis, the λ ci:ca supply/demand
+  solve, Priestley–Taylor PET/ET, soil-water bucket + snow, Lloyd–Taylor respiration; pure
+  `daily_step` + 365-day `rollout`). Same equations as the LPJmL-FIT C core, C-source constants.
+  **Runtime is dependency-free**; AD is a test-time tool (ADR 0014).
+  - **Gradient-correctness gate MET:** Enzyme reverse-mode **and** ForwardDiff match FiniteDifferences
+    to ~1e-11 for `d(annual NPP)/dx` (x = CO₂, emax, α_c3, initial soil water) through the full daily
+    rollout incl. the λ Newton solve and the autoregressive soil-water coupling — no NaN/Inf. This is
+    the differentiability the reference repos do not demonstrate (they detach physics).
+  - New gates: `allometry_tests.jl` (values/limits/monotonicity/types), `smoothops_tests.jl`
+    (surrogate deviation bounds), `fdiff_physics_tests.jl` (water closure ~1e-12, boundedness,
+    limiting cases, determinism, Float32), filled-in `gradient_correctness_tests.jl` (AD vs FD) and
+    `numerical_regression_tests.jl` (annual-totals baseline `references/fdiff_annual_totals.txt`).
+    Full suite: **25,756 pass / 0 fail** (JET clean; a latent `@kwdef` unbound-`T` bug in
+    `FDiffParams` that JET caught was fixed). Reuse map + citations in ADR 0015 / CITATION.cff.
+  - Report: `docs/phase3_fdiff_spike.md` (feasibility verdict, non-smoothness issues hit, effort
+    estimate ≈ 2.5–4 months to cover all of F). `DEVELOPMENT_PLAN.md` §2.3/§6 updated.
 - **Phase 0 (DESIGN)** deliverable `DESIGN.md`: re-verified the two load-bearing LPJmL-FIT
   findings (daily output is config-only; no surface energy balance), froze the shared-state
   vector and the S↔F↔E interface contract, froze the data schema, and resolved the build/run

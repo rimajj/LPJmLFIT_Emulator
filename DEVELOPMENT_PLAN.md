@@ -113,9 +113,20 @@ From `SOURCE_FINDINGS.md` Q4. The emulator's state must match the model's so re-
 - **Keeps (unchanged physics):** daily photosynthesis→GPP→NPP (per representative individual, preserving trait-dependence), water balance (transpiration, soil/interception evaporation, runoff, drainage), snow, soil thermal (enthalpy). Conserving water & carbon by construction.
 - **Parameterized by S:** LAI, height, z0, rooting depth, Vcmax, FPC, and the representative-individual set — the slow→fast **boundary conditions** (structural states, not fluxes).
 - **Delivers:** daily LE candidate (= λ·ET), water fluxes, soil-moisture/snow/thermal state updates; and at year-end the **annual NPP increment** (`bm_inc`) and mean water stress for S.
-- **Implementation options (phased):**
-  - **F1 (Phases 3–5): keep the LPJmL-FIT C core**, driven by emulated structure (call as a library / via a thin file or in-memory interface). Fast to stand up; conservation guaranteed; **not differentiable** (couple via interface; train S offline + re-anchoring).
-  - **F2 (Phase 6, if needed): re-implement the daily biophysics in a differentiable framework (JAX/PyTorch)** so the coupled S+F(+E) system is end-to-end differentiable and trainable online (NeuralGCM/DifferLand pattern). Higher effort; unlocks online rollout training and later fast-core emulation.
+- **Implementation (differentiable-first — see [ADR 0014](docs/decisions/0014-differentiable-fast-core-first.md), which SUPERSEDES the earlier F1-now/F2-at-Phase-6 split below):**
+  - **`F_diff` (from the start): the daily biophysics reimplemented in AD-friendly Julia with the SAME
+    equations** (`src/fdiff.jl` + the shared `src/allometry.jl`). This is the coupling path. Non-smooth
+    ops use documented smooth surrogates (`src/fdiff_smoothops.jl`); the λ (ci:ca) solve is a
+    fixed-graph Newton whose gradient is verified against finite differences. **Enzyme reverse-mode +
+    ForwardDiff both differentiate the full daily rollout** (spike validated, ~1e-11 vs FD), so the
+    coupled S+F(+E) system is end-to-end differentiable for training/online rollout from Phase 3 on.
+    Reuse map: [ADR 0015](docs/decisions/0015-reuse-map.md).
+  - **The compiled LPJmL-FIT C binary (the former "F1") is retained ONLY as (i) the
+    numerical-regression oracle F_diff must reproduce and (ii) the daily training-data generator (the
+    186 GB dataset).** It is NOT the coupling path.
+  - _Superseded plan (kept for the audit trail):_ ~~F1 (Phases 3–5) keep the C core, not
+    differentiable; F2 (Phase 6, if needed) a differentiable rewrite in JAX/PyTorch.~~ Replaced by
+    F_diff-first in Julia/Enzyme (ADR 0014).
 
 ### 2.4 Component E — surface-energy-balance + skin-temperature closure (NEW)
 
@@ -208,10 +219,10 @@ From `SOURCE_FINDINGS.md` Q4. The emulator's state must match the model's so re-
 | **0. DESIGN** | Re-verify source findings; audit data; freeze the shared-state vector, interface contract, and I/O schemas in `DESIGN.md`. No heavy compute. | DESIGN.md complete; schemas frozen; findings reproduced. |
 | **1. Data generation** | Enable daily output; run prototype-cell ensemble + a small biome-stratified multi-cell set; build data loaders. | Raw LPJmL daily **water & carbon budgets close** (confirms the closure targets are real); slow table + fast set materialized. |
 | **2. Slow emulator (offline, prototype cell)** | DRF baseline + count model → metric panel; escalate if needed; verify carbon allocation conserves. | Distributional panel passes tolerances; allocation conserves NPP. |
-| **3. Hybrid integration F1 + interface** | Drive kept physical core with emulated structure + representative individuals; couple S↔F on prototype. | Coupled hybrid reproduces LPJmL biomass/LAI/flux **trajectories** within tolerance; budgets close. |
+| **3. Hybrid integration F_diff + interface** | Drive the differentiable core `F_diff` (ADR 0014) with emulated structure + representative individuals; couple S↔F on prototype. (An **early one-cell spike** — `docs/phase3_fdiff_spike.md` — de-risked F_diff: correct Enzyme/ForwardDiff gradients through the daily rollout, water closes, allometry + surrogates tested.) | Coupled hybrid reproduces LPJmL biomass/LAI/flux **trajectories** within tolerance; budgets close. |
 | **4. Energy-balance closure E** | Add surface energy balance + T_skin + diurnal downscaling; validate closure and vs FLUXNET. | Energy closes; LE/H/T_skin plausible vs flux towers. |
 | **5. Multi-cell generalization** | Scale S to many cells (biome-agnostic, stratified); held-out cell/scenario evaluation. | Generalization metrics pass on held-out cells **and** scenarios. |
-| **6. Online stability + OOD** | (Optional F2 differentiable core) rollout training/validation; multi-year free runs; warming OOD (constant CO₂); resilience battery (§5). | Stable multi-year (no oscillations/AC-gap); plausible, conserving OOD behavior; resilience metrics preserved. |
+| **6. Online stability + OOD** | Gradient-based rollout training/validation **through `F_diff`** (differentiable from Phase 3, ADR 0014 — no longer an optional late rewrite); multi-year free runs; warming OOD (constant CO₂); resilience battery (§5). | Stable multi-year (no oscillations/AC-gap); plausible, conserving OOD behavior; resilience metrics preserved. |
 | **7. (Optional) fast-core emulation + ESM packaging** | If profiling justifies / F2 exists: emulate fast core; package the ESM coupling interface (skin temp, fluxes, roughness, sub-daily). | Speed target met; interface spec validated. |
 
 Each phase writes results and decisions to `MEMORY.md` and `JOURNAL.md`; each checkpoint is a stop-and-review before spending the next phase's compute.
