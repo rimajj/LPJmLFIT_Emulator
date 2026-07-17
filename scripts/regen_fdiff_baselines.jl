@@ -60,24 +60,32 @@ for r in eachindex(ind["patch"])
     push!(prows[parse(Int, ind["patch"][r])], r)
 end
 pft_intc(typ) = typ <= 3 ? 0.02 : (typ <= 6 ? 0.06 : 0.01)
+function pft_albedo(typ)                       # (albedo_stem, albedo_litter, snowcanopyfrac), par/pft.js
+    typ == 1 && return (0.04, 0.1, 0.1)
+    typ in (2, 3) && return (0.04, 0.1, 0.4)
+    typ in (4, 5) && return (0.1, 0.1, 0.15)
+    typ == 6 && return (0.05, 0.01, 0.15)
+    return (0.15, 0.1, 0.4)
+end
 function mkind(r)
     sla = parse(Float64, ind["sla"][r]); typ = parse(Int, ind["type"][r])
+    (ast, alt, scf) = pft_albedo(typ)
     return Individual{Float64}(
         parse(Float64, ind["fpar_leafon"][r]), parse(Float64, ind["fpc_ind"][r]),
         parse(Float64, ind["alphaa"][r]), parse(Float64, ind["albedo_leaf"][r]), parse(Float64, ind["emax"][r]),
         parse(Float64, ind["sapwood_c"][r]), parse(Float64, ind["root_c"][r]),
-        parse(Float64, ind["lai"][r]), pft_intc(typ),
+        parse(Float64, ind["lai"][r]), pft_intc(typ), ast, alt, scf,
         PhotoParams{Float64}(path = :c3, issla = true, sla = sla),
         TempStressParams{Float64}(temp_photos_low = 20.0, temp_photos_high = 30.0), typ >= 7
     )
 end
-# final config for the committed canopy baseline: interception ON + C-albedo eeq (pet_C/1.32 drive)
-eeqs = [x / 1.32 for x in fc(t, "pet_C")]
+# final config for the committed canopy baseline: STANDALONE (crutch-free) — self-computed GSI leaf
+# phenology + self-computed dynamic-albedo eeq (§11). No phens/eeqs C-output drives.
 gpp = zeros(n); tr = zeros(n); ev = zeros(n); ic = zeros(n); rm = zeros(n); fa = zeros(n)
 for pnum in patches
     inds = [mkind(r) for r in prows[pnum]]
     st = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
-    (_, dd) = rollout_daily_canopy(tebs_params(), st, inds, soil, forc; phens = phens, eeqs = eeqs)
+    (_, dd) = rollout_daily_canopy(tebs_params(), st, inds, soil, forc)
     for i in 1:n
         gpp[i] += dd[i].gpp / length(patches); tr[i] += dd[i].transp / length(patches)
         ev[i] += dd[i].evap / length(patches); ic[i] += dd[i].interc / length(patches)

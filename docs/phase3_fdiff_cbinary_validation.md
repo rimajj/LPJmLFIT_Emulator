@@ -170,6 +170,12 @@ sharpening the remaining "cover all of F" items:
 4. Dynamic (phenology-folded) structure so the full-year GPP comparison no longer needs the FAPAR
    crutch or the growing-season restriction.
 
+**Status (as of step 5):** items 1–4 are DONE (§8 multi-layer soil, §9 multi-PFT canopy — GPP level
+closed, §10 coupled conductance — transpiration level closed), and the two C-output crutches (FAPAR
+phenology + PET/albedo `eeq`) are now REMOVED (§11 — F_diff self-computes the GSI phenology and the
+dynamic-albedo `eeq`, matching the dropped C outputs at r 0.99 / 0.999). Remaining: prognostic
+(within-year dynamic) canopy structure, then the `SharedState` adapter → S↔F coupling.
+
 ---
 
 ## 8. Update — multi-layer soil water (scale-up step 2)
@@ -330,3 +336,74 @@ still-fixed (phenology-folded) canopy structure. Next: the full `albedo_patch`/`
 the PET crutch) and **dynamic phenology-folded structure**, then the `SharedState`/`AbstractFastCore`
 adapter → S↔F coupling. Gate: `test/testitems/multi_individual_tests.jl` (transpiration ratio now
 0.9–1.15, interception r > 0.9) + regenerated `hainich_canopy_baseline_2010.txt`.
+
+## 11. Update — self-computed radiation + phenology (scale-up step 5): the C-output crutches are removed
+
+Steps 1–4 leaned on two daily C-binary outputs to isolate the physics under test: the leaf phenology
+was driven by the C's daily **FAPAR** (`phens = fapar_C/peak`) and the Priestley–Taylor `eeq` by the
+C's daily **PET** (`eeqs = pet_C/1.32`, which embeds the dynamic `albedo_patch`). This step ports both
+so the canopy runs **standalone** — from the atmospheric forcing and the S-supplied structure alone —
+and the self-computed quantities reproduce the C outputs they replaced.
+
+**(a) GSI leaf phenology (`phenology_gsi.c`).** LPJmL-FIT's "new phenology" is the Growing-Season-Index
+model: four low-passed logistic limiting functions — cold-temperature `tmin`, heat `tmax`, `light`,
+water `wscal` — whose product is the daily leaf-display factor `phen ∈ [0,1]`. Each is
+`f ← f + (sigmoid(±sl·(x−base)) − f)·τ`; `phen = tmin·tmax·light·wscal`. The beech (TeBS, PFT id 3,
+`par/pft.js:527-550`) parameters are `tmin`(sl 2, base 8 °C, τ 0.2), `tmax`(1.74, 41.51 °C, 0.2),
+`light`(58, 40 W/m², 0.2), `wscal`(5.24, base = `minwscal`·100 = 20.96 %, 0.1). Drivers: daily-mean air
+temperature, shortwave-down, and the previous day's stand water scalar; the C's `soil→temp[0] < 10 °C ⇒
+water factor forced open` rule (`phenology_gsi.c:67`) is driven here by air temperature (LPJmL uses air
+temp as the soil top boundary). The steep-slope `exp` overflow the C guards with its `<200` branch is
+handled by a clamped sigmoid ([`stable_sigmoid`](@ref); the clamp only bites in a saturated tail with a
+`< 1e-13` true derivative). The self-computed `phen` tracks the C's daily FAPAR at **r = 0.99**
+(`FDiff.phenology_gsi_step`, `FDiff.PhenState`, `FDiff.tebs_phenparams`).
+
+**(b) Dynamic surface albedo → self-computed `eeq` (`albedo_stand.c`).** The daily patch albedo `beta`
+LPJmL feeds to `petpar2`'s `eeq` (`swnet = (1−beta)·swdown`) is
+`Σᵢ fpcᵢ·(frsᵢ·c_albsnow + (1−frsᵢ)·albvegᵢ) + max(1−Σfpc, 0)·(sfr·c_albsnow + (1−sfr)·c_albsoil)`, where
+the leaf-on/off vegetation albedo is `phen·albedo_leaf + (1−phen)·(c_fstem·albedo_stem +
+(1−c_fstem)·albedo_litter)` for a tree (no stem term for grass), and the snow fraction `sfr` comes from
+the snowpack (`snow.c`). Constants are the LPJmL `#define`s (`c_albsnow = 0.65`, `c_albsoil = 0.30`,
+`c_fstem = 0.70`, `c_watertosnow = 6.70`) and the PFT albedos (`par/pft.js`; beech leaf 0.15 / stem
+0.04 / litter 0.10 / snowcanopyfrac 0.40). For a leaf-on beech patch (`Σfpc ≈ 0.56`) this gives
+`beta ≈ 0.22`, vs the fixed `0.15` the earlier canopy runs used — exactly the ~7 % PET overshoot the
+C-`eeq` drive had been correcting. The canopy-snow-burial term `frs2` (snow deeper than the crown base;
+`albedo_tree.c:44-52`) is neglected — a v1 simplification (needs per-individual height) that is
+negligible at temperate Hainich, where the dominant snow effect (ground snow through the exposed
+fraction) is exact. The self-computed `eeq` matches the C's daily PET at **r = 0.999**, annual ratio
+**0.98** (740 vs 756 mm; the fixed-0.15 `eeq` was 807, ratio 1.07). ([`FDiff.patch_albedo`](@ref).)
+
+**(c) Daylength from latitude (`petpar2.c`).** `petpar_daylength(lat, doy)` reproduces the C's
+declination/hour-angle daylength (the polar-day/night three-way branch is the branch-free clamp of the
+`acos` argument to `[−1,1]`), so F_diff no longer needs daylength as a forcing. It reproduces the
+supplied Hainich daylength to `max|Δ| = 5e-5 h`. ([`FDiff.petpar_daylength`](@ref).)
+
+| metric (Hainich 2010, cell mean over 25 patches) | step 4 (both crutches) | **standalone (self+self)** | C binary |
+|---|---|---|---|
+| **GPP annual ratio** (model/C) | 1.09 | **1.17** | 1.0 |
+| GPP full-year daily r | 0.998 | **0.993** | — |
+| **transpiration annual ratio** | 1.02 | **1.08** | 1.0 |
+| transpiration full-year daily r | 0.988 | **0.978** | — |
+| interception flux (mm/yr) | 17.4 | **20.4** | 23.1 |
+| root-zone water (GS) daily r | 0.98 | **0.984** | — |
+| self `phen` ↔ C `d_fapar` (daily r) | — | **0.99** | — |
+| self `eeq` ↔ C `d_pet` (daily r) | — | **0.999** | — |
+
+**Outcome — both crutches are removed** with the daily dynamics essentially intact (GPP r 0.993,
+transpiration r 0.978). The annual levels edge up (GPP 1.09 → 1.17, transpiration 1.02 → 1.08) because
+the faithful GSI phenology integrates ~11 % more leaf-display than the FAPAR-normalized proxy the
+earlier steps used (self-`phen` annual mean 0.479 vs proxy 0.432; the C's `d_fapar` output folds
+`(1−albedo_leaf)` and the leaf-off stem term, so `fapar/peak` under-reads the true `phen`), which
+surfaces slightly more of the reconstruction's pre-existing GPP over-estimate. Both remain in the gate
+bands, the interception flux improves toward the C (20.4 vs 23.1 mm, from the longer effective leaf-on
+season), and the self-computed `eeq` matches the C's PET essentially exactly (r 0.999). Differentiability
+is preserved: **ForwardDiff** flows through the GSI phenology + dynamic-albedo + water-scalar-feedback
+path (`d(annual canopy GPP)/d(α_c3)` matches finite differences to ~1e-11). Documented v1
+simplifications: one beech-GSI `phen` applied patch-wide (as the FAPAR-proxy crutch was — the stand is
+87 % beech; per-PFT phenology for the evergreen/grass minority is a follow-up), the canopy-snow-burial
+`frs2` term neglected, and the soil-temp water gate driven by air temperature. Next: **dynamic
+(prognostic) canopy structure** so the year-end reconstructed individuals are no longer fixed within the
+year, then the `SharedState`/`AbstractFastCore` adapter → S↔F coupling. Gate:
+`test/testitems/multi_individual_tests.jl` (standalone config: GPP ratio 0.9–1.30, transpiration
+0.9–1.2, + crutch-removal asserts phen↔FAPAR r > 0.95 / eeq↔PET r > 0.98 / daylength Δ < 0.01 h) +
+regenerated `hainich_canopy_baseline_2010.txt`.

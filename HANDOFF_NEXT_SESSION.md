@@ -25,9 +25,44 @@ for HEAD.
   dynamics captured, level offsets = the documented multi-PFT/soil scale-up gaps. Committed C-binary
   gate + 2010 ReferenceTests baselines replace the self-referential pin. Suite 25,768 pass / 0 fail.
   **See `docs/phase3_fdiff_cbinary_validation.md`.**
-- **Phase 3 (session 5b/5c/6) — scale-up steps 2, 3, 4: DONE.** (5b) multi-layer 23-layer soil;
+- **Phase 3 (session 5b/5c/6/7) — scale-up steps 2, 3, 4, 5: DONE.** (5b) multi-layer 23-layer soil;
   (5c) multi-individual/multi-PFT canopy — GPP level gap CLOSED (0.57→1.06); (6) coupled
-  conductance↔carbon — **transpiration level gap CLOSED (1.32→1.02)**. Suite 25,807 pass / 0 fail / 4 broken.
+  conductance↔carbon — **transpiration level gap CLOSED (1.32→1.02)**; (7) self-computed radiation +
+  phenology — **the two C-output crutches REMOVED** (standalone F_diff self-computes its GSI phenology
+  + dynamic-albedo `eeq`, matching the dropped C outputs at r 0.99 / 0.999). Suite **25,811 pass / 0 fail / 4 broken**.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 7 (on `main`) — SELF-COMPUTED RADIATION + PHENOLOGY (scale-up step 5)
+
+**Removed the two daily C-binary "crutches" the canopy validation leaned on** (handoff item 5), so
+standalone F_diff runs from atmospheric forcing + S-structure alone. Three faithful ports (3-agent
+C-source extraction, cross-checked by direct reads):
+- **GSI leaf phenology** (`phenology_gsi.c` → `PhenParams`/`PhenState`/`phenology_gsi_step`/
+  `tebs_phenparams`): four low-passed logistic limiters (cold `tmin`, heat `tmax`, `light`, water
+  `wscal`), `f += (sigmoid(±sl·(x−base)) − f)·τ`, `phen = tmin·tmax·light·wscal`. Beech params
+  (`par/pft.js:527-550`). Drivers = daily-mean air temp, swdown, prev-day stand water scalar; the
+  `soil→temp[0] < 10 °C ⇒ water factor open` gate uses air temp. `stable_sigmoid` (arg clamp ±30)
+  guards the steep-slope `exp` overflow the C handles with its `<200` branch. **Self-`phen` ↔ C
+  `d_fapar` r 0.99** (mean 0.479 vs the FAPAR-proxy 0.432 — `fapar/peak` under-reads true `phen`
+  because `d_fapar` folds `(1−albedo_leaf)` + the stem term).
+- **Dynamic patch albedo → self-computed `eeq`** (`albedo_stand.c`/`albedo_tree.c`/`albedo_grass.c` →
+  `patch_albedo`): `beta = Σ fpc·(frs·0.65 + (1−frs)·albveg) + max(1−Σfpc,0)·(sfr·0.65 + (1−sfr)·0.30)`;
+  leaf-on beech `beta ≈ 0.22` vs the fixed `0.15`. **Self-`eeq` ↔ C `d_pet` r 0.999, annual ratio 0.98**
+  (fixed-0.15 was 1.07 — the 6.8 % overshoot is gone). `frs2` canopy-snow-burial neglected (v1;
+  negligible at Hainich). `petpar2.c` `eeq` form already matched exactly.
+- **`petpar_daylength(lat, doy)`** (`petpar2.c`; branch-free polar-day/night via `clamp(−u/v, −1, 1)`)
+  reproduces the forcing daylength to 5e-5 h.
+
+`Individual` gained `albedo_stem`/`albedo_litter`/`snowcanopyfrac` (3 fields; all 4 ctor sites updated).
+`rollout_daily_canopy` **self-computes phen + eeq by default** (`phens`/`eeqs` now optional crutch
+overrides for kernel isolation). **Standalone Hainich 2010:** GPP annual ratio 1.09→**1.17**, transp
+1.02→**1.08** (the faithful GSI phen integrates ~11 % more leaf-display), daily r **0.993/0.978**,
+root-zone GS r 0.98; interception 20.4 vs C 23.1 mm (was 17.4). **ForwardDiff** through the
+GSI+albedo+water-feedback path matches FD ~1e-11. Baseline `hainich_canopy_baseline_2010.txt`
+regenerated (GPP 1205→1286, transp 243→258, interc 17.4→20.4); single-bucket/multilayer baselines
+UNCHANGED. Gate `multi_individual_tests.jl` runs the standalone config + 3 crutch-removal asserts.
+Suite **25,811 pass / 0 fail / 4 broken**; Runic-clean. Report `docs/phase3_fdiff_cbinary_validation.md` §11.
 
 ---
 
@@ -189,16 +224,20 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    `eeq` kernel-isolation drive from the C's daily PET, and a load-bearing **`βadt` net-assimilation-floor
    fix** that removed a ~8× `gp_stand` inflation (and lifted GPP r to 0.998, transp r to 0.988). See §10 +
    `multi_individual_tests.jl`.
-5. **★ NEXT — remove the two C-output "crutches" so standalone F_diff computes them itself:**
-   (a) **Full `petpar` daily `albedo_patch`** (tree/grass/soil/snow albedos → `eeq`; `albedo_stand.c` +
-   `albedo_tree.c`/`albedo_grass.c`/`albedo_soil.c`) so `eeq` needs no `pet_C` drive; plus full `petpar`
-   radiation/daylength (smoothed polar-day/night `acos` branches; `petpar2.c` — currently daylength is
-   supplied as forcing). (b) **Dynamic phenology-folded structure** (so full-year GPP no longer needs the
-   C-`d_fapar`-derived phenology crutch / growing-season restriction). Smaller residuals to chase then:
-   the remaining `gp_stand` over-estimate (GS transp +8%; F_diff ~10.7 vs C's implied ~2.9) and the
-   interception magnitude (17.4 vs 23.1 mm).
-6. **`SharedState` adapter** so `FDiff` sits behind `AbstractFastCore.step!` (currently throws) → then
-   **S↔F coupling** (flux-then-integrate `bm_inc`) on the prototype, and **gradient-based online
+5. ✅ **DONE (session 7) — remove the two C-output "crutches".** F_diff now self-computes (a) its `eeq`
+   from the **dynamic patch albedo** (`albedo_stand.c`/`albedo_tree.c`/`albedo_grass.c` port → `patch_albedo`;
+   self-`eeq` ↔ C `d_pet` r 0.999) + `petpar_daylength(lat,doy)`, and (b) its **GSI leaf phenology**
+   (`phenology_gsi.c` port → `phenology_gsi_step`; self-`phen` ↔ C `d_fapar` r 0.99). `albedo_soil.c` is
+   dead code in this build (non-FMS → `soil_albedo = c_albsoil` constant). Standalone GPP 1.17 / transp 1.08,
+   daily r 0.99/0.98. See §11 + `multi_individual_tests.jl`. Smaller residuals still open: the `gp_stand`
+   over-estimate (GS transp +8%) and the interception magnitude (20.4 vs 23.1 mm).
+6. **★ NEXT — (a) dynamic (prognostic within-year) canopy structure** so the year-end reconstructed
+   individuals (`hainich_individuals_2010.csv`) are no longer fixed within the year (crown/leaf/sapwood
+   grow from allocated `bm_inc`; phen already scales leaf display daily). Small residuals to chase: per-PFT
+   phenology for the evergreen/grass minority (currently one beech-GSI `phen` patch-wide, as the FAPAR
+   proxy was), the `frs2` canopy-snow-burial term (needs per-ind height), the `gp_stand` over-estimate.
+   **(b) The `SharedState` adapter** so `FDiff` sits behind `AbstractFastCore.step!` (currently throws) →
+   then **S↔F coupling** (flux-then-integrate `bm_inc`) on the prototype, and **gradient-based online
    rollout training** (finish NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks).
 7. **λ-solve at scale:** swap the fixed-graph Newton for `SteadyStateAdjoint`/`ImplicitDifferentiation`
    if memory/perf needs it (the hybrid repo notes the adjoint's memory blow-up on large grids). NB: the

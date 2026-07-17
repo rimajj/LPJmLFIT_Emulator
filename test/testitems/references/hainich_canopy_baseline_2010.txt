@@ -1,15 +1,16 @@
-# F_diff MULTI-INDIVIDUAL / MULTI-PFT canopy (Phase-3 scale-up step 3) annual cell totals on the
+# F_diff MULTI-INDIVIDUAL / MULTI-PFT canopy (Phase-3 scale-up step 5) annual cell totals on the
 # committed Hainich 2010 REAL forcing: 25 patches × 297 reconstructed individuals (hainich_individuals_2010.csv),
-# each patch a canopy of trees+grass sharing one 23-layer soil column, driven by the C binary's daily
-# FAPAR-derived phenology, averaged over patches. ReferenceTests drift alarm for the canopy path;
-# regenerate ONLY on an intended physics change (record why in JOURNAL). See
-# test/testitems/multi_individual_tests.jl + docs/phase3_fdiff_cbinary_validation.md §9/§10.
-# Regenerated (docs §10) with the coupled-conductance work: wet-canopy interception ON, eeq driven by
-# the C's daily PET (pet_C/1.32), and the βadt 0.5→20 net-assimilation-floor fix (which removed the ~8×
-# gp_stand inflation). Transpiration level closes: annual ratio 1.32 → 1.02 vs the C binary.
+# each patch a canopy of trees+grass sharing one 23-layer soil column, averaged over patches.
+# ReferenceTests drift alarm for the canopy path; regenerate ONLY on an intended physics change
+# (record why in JOURNAL). See test/testitems/multi_individual_tests.jl +
+# docs/phase3_fdiff_cbinary_validation.md §9/§10/§11.
+# Regenerated (docs §11) for the STANDALONE (crutch-free) config: F_diff now computes BOTH its own
+# leaf phenology (GSI, phenology_gsi.c) and its own eeq (dynamic patch albedo, albedo_stand.c) — no
+# C-binary FAPAR/PET drives. GPP annual ratio 1.09→1.17, transp 1.02→1.08 (the faithful GSI phen
+# integrates ~11% more leaf-display than the FAPAR-normalized proxy); daily r stays ≈0.99.
 # key             value (gC/m2/yr, mm/yr, or mm)
-gpp_annual        1204.972541
-transp_annual     242.991648
-evap_annual       268.673899
-interc_annual     17.354651
-rootmoist_mean    159.941872
+gpp_annual        1286.333767
+transp_annual     257.925784
+evap_annual       255.743737
+interc_annual     20.432741
+rootmoist_mean    160.110871

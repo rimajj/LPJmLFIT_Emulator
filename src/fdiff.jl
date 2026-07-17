@@ -30,7 +30,8 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     daily_step, rollout, rollout_daily, annual_npp,
     tebs_params, tebs_structure,
     SoilColumn, FDiffStateML, daily_step_ml, rollout_daily_ml, hainich_soilcolumn,
-    Individual, daily_step_canopy, rollout_daily_canopy
+    Individual, daily_step_canopy, rollout_daily_canopy,
+    PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, petpar_daylength, patch_albedo
 
 # ── unit helpers (LPJmL-FIT include/units.h; 273.15 K — NOT the reference's 272.15 bug) ──────────
 ppm2bar(co2) = co2 * 1.0e-6          # ppmv → bar  (units.h:23)
@@ -951,6 +952,185 @@ function tebs_structure(
 end
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════
+# SELF-COMPUTED RADIATION + PHENOLOGY (scale-up step 5 — docs/phase3_fdiff_cbinary_validation.md §11)
+# Removes the two C-output "crutches" the canopy validation had leaned on:
+#   • `phen` was driven by the C binary's daily FAPAR (`phens = fapar_C/peak`);
+#   • `eeq` was driven by the C binary's daily PET (`eeqs = pet_C/1.32`, which embeds `albedo_patch`).
+# Here F_diff computes BOTH itself — the GSI leaf phenology (`phenology_gsi.c`) and the dynamic surface
+# albedo (`albedo_stand.c`/`albedo_tree.c`/`albedo_grass.c` → `petpar2.c` `eeq`) — plus daylength from
+# latitude (`petpar2.c`), so the daily rollout needs only the atmospheric forcing + the S-supplied
+# structure. All ports are differentiable (the GSI limiters are already sigmoids; the hard `acos`
+# polar-day/night and `exp`-overflow branches are replaced by clamped surrogates).
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+# LPJmL surface-albedo constants (fixed C `#define`s — never AD parameters). `include/soil.h`
+# (`c_albsnow`, `c_albsoil`, `c_watertosnow`), `src/tree/albedo_tree.c` (`c_fstem`),
+# `src/soil/snow.c` (`c_roughness`).
+const C_ALBSNOW = 0.65          # snow albedo (soil.h:54)
+const C_ALBSOIL = 0.30          # bare-soil albedo, live non-FMS path (soil.h:55)
+const C_FSTEM = 0.70            # ground masking by stems/branches when leafless (albedo_tree.c:21)
+const C_WATERTOSNOW = 6.70      # mm water → m snow depth (soil.h:58)
+const C_ROUGHNESS = 0.06        # sub-canopy roughness height, m (snow.c:18)
+
+deg2rad_(deg) = deg * π / 180   # include/units.h:20
+
+"""
+    petpar_daylength(lat, doy) -> hours
+
+Daylength (h) from latitude (°) and day-of-year (1–365), the LPJmL-FIT radiation routine
+(`src/numeric/petpar2.c:47-59`): solar declination `δ = −23.4°·cos(2π(doy+10)/365)`, `u = sinφ·sinδ`,
+`v = cosφ·cosδ`, `daylength = 24/π·acos(−u/v)`. The C's three-way polar-day (`u≥v`) / polar-night
+(`u≤−v`) / normal branch is the exact equivalent of clamping the `acos` argument to `[−1,1]`, so it is
+implemented branch-free here. `lat`/`doy` are constants (not AD parameters), so the `clamp` and `acos`
+are gradient-safe. Reproduces the daylength currently supplied as forcing (validated to ~0 on Hainich).
+"""
+function petpar_daylength(lat, doy)
+    δ = deg2rad_(-23.4 * cos(2π * (doy + 10.0) / 365.0))
+    u = sin(deg2rad_(lat)) * sin(δ)
+    v = cos(deg2rad_(lat)) * cos(δ)
+    arg = clamp(-u / v, -one(u), one(u))          # −1 → 24 h (polar day), +1 → 0 h (polar night)
+    return 24 * acos(arg) / π
+end
+
+"""
+    PhenParams{T}
+
+GSI ("new phenology") leaf-phenology parameters (`src/lpj/phenology_gsi.c`; `par/pft.js` per PFT).
+Four limiting functions — cold-temperature `tmin`, heat-stress `tmax`, `light`, water `wscal` — each a
+logistic `sigmoid(sl·(x−base))` low-passed toward the previous day by rate `tau`; `phen` is their
+product. Defaults are the temperate broadleaved summergreen tree (beech, PFT id 3, `par/pft.js:527-550`;
+`wscal_base = minwscal·100 = 20.96`). `soiltemp_gate`/`βgate` implement the C's `soil→temp[0] < 10 °C ⇒
+wscal factor forced open` rule (`phenology_gsi.c:67`), driven here by air temperature (LPJmL uses air
+temp as the soil top boundary condition). `εfloor` is the C `max(epsilon, ·)` factor floor.
+"""
+Base.@kwdef struct PhenParams{T <: Real}
+    tmin_sl::T = 2.0
+    tmin_base::T = 8.0
+    tmin_tau::T = 0.2
+    tmax_sl::T = 1.74
+    tmax_base::T = 41.51
+    tmax_tau::T = 0.2
+    light_sl::T = 58.0
+    light_base::T = 40.0
+    light_tau::T = 0.2
+    wscal_sl::T = 5.24
+    wscal_base::T = 20.96          # = minwscal (0.2096) × 100
+    wscal_tau::T = 0.1
+    soiltemp_gate::T = 10.0
+    βgate::T = 1.0                 # smoothing of the 10 °C soil-temp water gate
+    εfloor::T = 1.0e-7
+end
+
+"""
+    PhenState{T}
+
+The four recurrent GSI low-pass filter values (`Phenology` struct, `include/pft.h:78-84`). LPJmL
+initialises the cold-temperature and light filters closed (`0`) and the heat/water filters open (`1`)
+(`src/lpj/newpft.c:44-45`).
+"""
+Base.@kwdef struct PhenState{T <: Real}
+    tmin::T = 0.0
+    tmax::T = 1.0
+    light::T = 0.0
+    wscal::T = 1.0
+end
+_wt(::PhenState{T}) where {T} = T
+
+"""
+    tebs_phenparams(::Type{T}=Float64) -> PhenParams{T}
+
+GSI phenology parameters for the beech (TeBS, PFT id 3) — the Hainich prototype's dominant PFT.
+"""
+tebs_phenparams(::Type{T} = Float64) where {T <: Real} = PhenParams{T}()
+
+"""
+    phenology_gsi_step(pp, ps, temp, swdown, water_avail, soiltemp) -> (ps′, phen)
+
+One day of the GSI leaf phenology (`phenology_gsi.c:50-84`). Given the persisted filter state `ps`
+([`PhenState`](@ref)), daily-mean air `temp` (°C), shortwave-down `swdown` (W/m²), plant water
+availability `water_avail ∈ [0,1]` (the previous day's water scalar; `pft->wscal`), and `soiltemp` (°C,
+air-temp proxy), advance the four filters and return the new state and `phen = tmin·tmax·light·wscal`.
+Each filter is `f += (target − f)·tau` with `target = sigmoid(±sl·(x−base))` ([`stable_sigmoid`](@ref)
+guards the steep-slope `exp` overflow that the C handles with its `<200` branch), then floored at
+`εfloor`. The water filter is forced open (`= 1`) below `soiltemp_gate` °C, blended smoothly by `βgate`.
+"""
+function phenology_gsi_step(pp::PhenParams, ps::PhenState, temp, swdown, water_avail, soiltemp)
+    T = promote_type(_wt(ps), typeof(temp), typeof(swdown), typeof(water_avail), typeof(soiltemp))
+    ε = convert(T, pp.εfloor)
+    # cold-temperature (rising in temp) — sigmoid(sl·(T−base))
+    tmin_t = stable_sigmoid(pp.tmin_sl * (temp - pp.tmin_base))
+    tmin = max(ps.tmin + (tmin_t - ps.tmin) * pp.tmin_tau, ε)
+    # heat stress (falling in temp) — 1/(1+exp(+sl·(T−base))) = sigmoid(−sl·(T−base))
+    tmax_t = stable_sigmoid(-pp.tmax_sl * (temp - pp.tmax_base))
+    tmax = max(ps.tmax + (tmax_t - ps.tmax) * pp.tmax_tau, ε)
+    # light (rising in shortwave) — the C's `<200` overflow branch (relax toward 0) is exactly the
+    # clamped sigmoid's saturated value, so no explicit branch is needed.
+    light_t = stable_sigmoid(pp.light_sl * (swdown - pp.light_base))
+    light = max(ps.light + (light_t - ps.light) * pp.light_tau, ε)
+    # water (rising in availability, %) with the soil-temp gate: cold ⇒ forced open (=1)
+    wsc_t = stable_sigmoid(pp.wscal_sl * (100 * water_avail - pp.wscal_base))
+    gate = stable_sigmoid(pp.βgate * (soiltemp - pp.soiltemp_gate))   # ≈0 cold → open; ≈1 warm → sigmoid
+    wsc_warm = ps.wscal + (wsc_t - ps.wscal) * pp.wscal_tau
+    wscal = max(gate * wsc_warm + (one(T) - gate) * one(T), ε)
+    ps′ = PhenState{T}(convert(T, tmin), convert(T, tmax), convert(T, light), convert(T, wscal))
+    phen = tmin * tmax * light * wscal
+    return (ps′, convert(T, phen))
+end
+
+# ── snow state from the snowpack (src/soil/snow.c:120-126) ───────────────────────────────────────
+# HS = c_watertosnow·(snowpack/1000) m; snowfraction = HS/(HS + 0.5·c_roughness). Both → 0 as
+# snowpack → 0 (the C's `snowpack>epsilon` branch is a no-op here since the smooth form already
+# vanishes), so no branch is needed.
+@inline function _snow_state(snowpack::T) where {T <: Real}
+    HS = T(C_WATERTOSNOW) * snowpack / 1000
+    sfr = HS / (HS + T(0.5) * T(C_ROUGHNESS))
+    return (HS, sfr)
+end
+
+"""
+    patch_albedo(inds, phen, snowpack) -> beta
+
+Dynamic patch surface albedo `beta` (`src/lpj/albedo_stand.c:56-64`), the value LPJmL feeds to
+`petpar2`'s `eeq` (via `swnet = (1−beta)·swdown`). Each individual contributes
+`fpc·(frs·c_albsnow + (1−frs)·albveg)`, where the leaf-on/off vegetation albedo is
+`phen·albedo_leaf + (1−phen)·(c_fstem·albedo_stem + (1−c_fstem)·albedo_litter)` for a tree and
+`phen·albedo_leaf + (1−phen)·albedo_litter` for grass (no stem; `albedo_tree.c:56-68`,
+`albedo_grass.c:40-49`). The exposed-ground fraction `max(1−Σfpc, 0)` gets
+`snowfraction·c_albsnow + (1−snowfraction)·c_albsoil`. The canopy snow-burial term `frs2`
+(`albedo_tree.c:44-52`, snow deeper than the canopy base) is neglected — a v1 simplification that
+requires per-individual height and is negligible at temperate Hainich (snow ≪ crown base); the
+dominant snow effect (ground snow via the exposed fraction, and `frs1`) is exact. For a leaf-on beech
+patch (`Σfpc ≈ 0.56`) this gives `beta ≈ 0.56·0.15 + 0.44·0.30 ≈ 0.22`, vs the fixed `0.15` the earlier
+canopy runs used — exactly the ~7 % PET overshoot the C-`eeq` drive had been correcting.
+"""
+function patch_albedo(inds, phen, snowpack)     # `inds`::AbstractVector{<:Individual} (defined below)
+    T = promote_type(isempty(inds) ? Float64 : _wt(first(inds)), typeof(phen), typeof(snowpack))
+    ph = convert(T, phen)
+    (_, sfr) = _snow_state(convert(T, snowpack))
+    cfs = T(C_FSTEM)
+    albstot = zero(T)
+    fpc_sum = zero(T)
+    for ind in inds
+        fpc_i = convert(T, ind.fpc)
+        al = convert(T, ind.albedo_leaf)
+        ast = convert(T, ind.albedo_stem)
+        alt = convert(T, ind.albedo_litter)
+        scf = convert(T, ind.snowcanopyfrac)
+        if ind.is_grass
+            albveg = ph * al + (one(T) - ph) * alt
+            frs = sfr * (ph * scf + (one(T) - ph))                     # grass frs1 (no stem term)
+        else
+            albveg = ph * al + (one(T) - ph) * (cfs * ast + (one(T) - cfs) * alt)
+            frs = sfr * (ph * scf + (one(T) - ph) * (one(T) - cfs))    # tree frs1 (frs2 neglected, v1)
+        end
+        albstot += fpc_i * (frs * T(C_ALBSNOW) + (one(T) - frs) * albveg)
+        fpc_sum += fpc_i
+    end
+    fbare = softplus(one(T) - fpc_sum, T(50.0))                        # max(1−Σfpc, 0), smooth
+    return albstot + fbare * (sfr * T(C_ALBSNOW) + (one(T) - sfr) * T(C_ALBSOIL))
+end
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
 # MULTI-INDIVIDUAL / MULTI-PFT CANOPY (scale-up step 3 — docs/phase3_fdiff_cbinary_validation.md §7)
 # ═════════════════════════════════════════════════════════════════════════════════════════════
 # Replaces the single representative tree with the cell's REAL set of individuals (per patch: a
@@ -990,10 +1170,12 @@ foliar projective cover, `alphaa`/`albedo_leaf`/`emax` the PFT constants, `c_sap
 maintenance-respiration pools, `lai` = its leaf-on crown LAI (`leaf_c·sla/crownarea`) and `intc` = the
 PFT interception coefficient (`par->intc`) — together these give the wet-canopy fraction
 `wet = min(intc·lai·phen·rain/(eeq·1.32), 0.9999)` (`interception.c`) that reduces transpirative demand
-by `(1 − wet)` and evaporates `eeq·1.32·wet·fpc` off the wet canopy. `photo`/`tstress` are the per-PFT
-[`PhotoParams`](@ref) / [`TempStressParams`](@ref) (the SLA-Vcmax cap uses this individual's `sla`).
-`is_grass` skips woody respiration. Build the Hainich set from
-`test/testitems/references/hainich_individuals_2010.csv`.
+by `(1 − wet)` and evaporates `eeq·1.32·wet·fpc` off the wet canopy. `albedo_stem`/`albedo_litter`/
+`snowcanopyfrac` are the PFT surface-albedo constants (`par/pft.js`) feeding the dynamic patch albedo
+[`patch_albedo`](@ref) that lets standalone F_diff compute its own `eeq` (no `pet_C` drive). `photo`/
+`tstress` are the per-PFT [`PhotoParams`](@ref) / [`TempStressParams`](@ref) (the SLA-Vcmax cap uses
+this individual's `sla`). `is_grass` skips woody respiration and the stem-albedo term. Build the Hainich
+set from `test/testitems/references/hainich_individuals_2010.csv`.
 """
 struct Individual{T <: Real}
     fpar::T                       # layered absorbed-PAR fraction (leafon, patch basis)
@@ -1005,6 +1187,9 @@ struct Individual{T <: Real}
     c_root::T
     lai::T                        # leaf-on crown LAI (leaf_c·sla/crownarea) → actual_lai = lai·phen
     intc::T                       # PFT interception coefficient (par->intc)
+    albedo_stem::T                # PFT stem/branch albedo (leaf-off; par->albedo_stem)
+    albedo_litter::T              # PFT litter background albedo (par->albedo_litter)
+    snowcanopyfrac::T             # PFT max snow coverage in green canopy (par->snowcanopyfrac)
     photo::PhotoParams{T}
     tstress::TempStressParams{T}
     is_grass::Bool
@@ -1055,11 +1240,12 @@ photosynthesis (water-limited via `gp_stand`) + λ solve → sum GPP; per-indivi
 `min(supply, demand_stand)·fpc` transpiration → shared-soil withdrawal (per-layer capped) → soil
 evaporation → per-individual respiration. Wet-canopy interception (`_wet_interc`,
 `interception.c`) evaporates off each individual (removed from infiltration) and reduces each
-individual's demand by `(1 − wet)`. `eeq_ext` optionally overrides the fixed-albedo Priestley–Taylor
-`eeq` with the C binary's own daily PET (`pet_C/α_PT`) for kernel-isolation validation of the albedo
-path. Returns the new state and stand daily fluxes
-`(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fpc)` (per m² of patch). Water closes
-exactly: `precip = transp + evap + interc + runoff + Δ(Σw + snow)`.
+individual's demand by `(1 − wet)`. By default `eeq` is self-computed from the DYNAMIC patch albedo
+([`patch_albedo`](@ref)), so no C-PET crutch is needed; `eeq_ext` overrides it with the C binary's own
+daily PET (`pet_C/α_PT`) for the kernel-isolation comparison of §10. Returns the new state and stand
+daily fluxes `(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fpc, wscal)` (per m² of
+patch; `wscal` = the stand water scalar feeding next day's GSI water phenology). Water closes exactly:
+`precip = transp + evap + interc + runoff + Δ(Σw + snow)`.
 """
 function daily_step_canopy(
         p::FDiffParams, inds::AbstractVector{<:Individual}, soil::SoilColumn, st::FDiffStateML,
@@ -1068,11 +1254,15 @@ function daily_step_canopy(
     T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
     ph = convert(T, phen)
     w = p.water
-    # eeq: fixed-forest-albedo Priestley–Taylor by default; kernel-isolation drive from the C binary's
-    # own daily PET (eeq_ext = pet_C/α_PT) removes the ~7 % fixed-albedo bias for validation (§10).
-    albedo = T(0.15)
-    eeq = eeq_ext === nothing ? priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, albedo) :
+    # eeq: by default self-computed from the DYNAMIC patch albedo (patch_albedo — the albedo_stand.c
+    # port), so standalone F_diff needs no C-PET crutch (§11). `eeq_ext` (= pet_C/α_PT) still overrides
+    # it for the kernel-isolation comparison of §10 (the C binary's own daily albedo_patch).
+    eeq = if eeq_ext === nothing
+        beta = patch_albedo(inds, ph, st.snowpack)
+        priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, beta)
+    else
         convert(T, eeq_ext)
+    end
 
     # shared snow + interception + infiltration into the column
     frac_rain = sigmoid(w.βsnow * (f.temp - w.tsnow))
@@ -1121,6 +1311,7 @@ function daily_step_canopy(
 
     # ── pass 2: per-individual layered-light photosynthesis (water-limited by gp_stand) + transp ──
     gpp_tot = zero(T); npp_tot = zero(T); transp_demand_tot = zero(T); fapar_tot = zero(T)
+    sup_acc = zero(T); dem_acc = zero(T)        # fpc-weighted supply/demand → stand water scalar (phenology)
     for ind in inds
         fpc_i = convert(T, ind.fpc) * ph
         fpar_i = convert(T, ind.fpar) * ph                 # layered absorbed fraction (phen-scaled)
@@ -1132,6 +1323,8 @@ function daily_step_canopy(
         (wet_i, _) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), ph, convert(T, ind.fpc), eeq, rain, w.α_PT)
         wet_dem = smoothmin(wet_i, T(0.99), w.βw)
         (gc, demand) = canopy_conductance(w, eeq, gp_stand, supply_i; wet = wet_dem)   # demand uses the STAND mean gp
+        sup_acc += supply_i * fpc_i
+        dem_acc += demand * fpc_i
         gpd = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
         gpd = softplus(gpd, w.βflux)
         fac = gpd / 1.6 * ppm2bar(f.co2)
@@ -1161,39 +1354,57 @@ function daily_step_canopy(
     for l in 1:min(n_top1m, N)
         rootmoist += w3[l]
     end
+    # stand water scalar (min(1, Σsupply·fpc / Σdemand·fpc)) — feeds next day's GSI water phenology
+    wscal = smoothmin(one(T), sup_acc / (dem_acc + T(1.0e-9)), w.βwscal)
     st′ = FDiffStateML{T}(w3, convert(T, snowpack′))
     fluxes = (
         gpp = convert(T, gpp_tot), npp = convert(T, npp_tot), transp = convert(T, transp),
         evap = convert(T, soil_evap), interc = convert(T, interc_tot), eeq = convert(T, eeq),
         runoff = convert(T, runoff), rootmoist = convert(T, rootmoist),
-        fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot),
+        fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot), wscal = convert(T, wscal),
     )
     return (st′, fluxes)
 end
 
 """
-    rollout_daily_canopy(p, st0, inds, soil, forcings; phens=nothing, n_top1m=3, eeqs=nothing) -> (st, days)
+    rollout_daily_canopy(p, st0, inds, soil, forcings; phens=nothing, eeqs=nothing,
+                         phen_params=nothing, phen_state=nothing, n_top1m=3) -> (st, days)
 
 Fold [`daily_step_canopy`](@ref) over a vector of [`DailyForcing`](@ref) for ONE patch canopy `inds`,
-carrying the shared per-layer soil water and snow. `phens` is an optional per-day phenology vector
-(defaults to 1.0); `eeqs` an optional per-day `eeq` override (the C binary's `pet_C/α_PT`, for the
-albedo-path kernel-isolation drive). Returns the final [`FDiffStateML`](@ref) and the per-day stand
-flux `NamedTuple`s.
+carrying the shared per-layer soil water and snow. **By default (standalone, crutch-free) F_diff
+computes both the phenology and the `eeq` albedo itself** (§11): the daily leaf-display factor `phen`
+comes from the GSI phenology ([`phenology_gsi_step`](@ref) with `phen_params`, default
+[`tebs_phenparams`](@ref)), advanced from the air temperature, shortwave, and the previous day's stand
+water scalar (the soil-temp gate uses air temp as its proxy); and `eeq` from the dynamic
+[`patch_albedo`](@ref). Passing `phens` (e.g. `fapar_C/peak`) and/or `eeqs` (the C's `pet_C/α_PT`)
+overrides these with the C-binary-driven values for kernel-isolation comparison (§9/§10). `phen_state`
+optionally seeds the GSI filters (e.g. for multi-year continuity); it defaults to the LPJmL cold-start
+(`newpft.c:44-45`). Returns the final [`FDiffStateML`](@ref) and the per-day stand flux `NamedTuple`s.
 """
 function rollout_daily_canopy(
         p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
-        forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing
+        forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing,
+        phen_params = nothing, phen_state = nothing
     )
     T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
     st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
-    ph1 = phens === nothing ? 1.0 : phens[1]
+    pp = phen_params === nothing ? tebs_phenparams(T) : phen_params
+    ps = phen_state === nothing ? PhenState{T}() : phen_state
+    water_avail = one(T)                          # previous day's stand water scalar (moist cold-start)
+    ph1 = phens === nothing ? one(T) : convert(T, phens[1])
     ee1 = eeqs === nothing ? nothing : eeqs[1]
     days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1)[2])}()
     sizehint!(days, length(forcings))
     for (i, f) in enumerate(forcings)
-        ph = phens === nothing ? 1.0 : phens[i]
+        # phenology: supplied crutch (phens) OR self-computed GSI (soil-temp gate ≈ air temp)
+        if phens === nothing
+            (ps, ph) = phenology_gsi_step(pp, ps, f.temp, f.swdown, water_avail, f.temp)
+        else
+            ph = convert(T, phens[i])
+        end
         ee = eeqs === nothing ? nothing : eeqs[i]
         (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m, eeq_ext = ee)
+        water_avail = fl.wscal                    # today's water status → tomorrow's water phenology
         push!(days, fl)
     end
     return (st, days)

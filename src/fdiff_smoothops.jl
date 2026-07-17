@@ -16,10 +16,22 @@ model's operating scales; a larger `β` is a closer approximation with a stiffer
 """
 module SmoothOps
 
-export sigmoid, softplus, smoothmax0, smoothmin, smoothmax, smooth_clamp, sqrt_floor, softabs
+export sigmoid, stable_sigmoid, softplus, smoothmax0, smoothmin, smoothmax, smooth_clamp, sqrt_floor, softabs
 
 "Logistic sigmoid `1/(1+e^{-x})`. Smooth everywhere; the building block for regime gates."
 sigmoid(x) = inv(one(x) + exp(-x))
+
+"""
+    stable_sigmoid(x, xcap=30) -> y
+
+Logistic sigmoid with the argument clamped to `[-xcap, xcap]` before `exp`. Prevents `exp(-x)`
+overflow (→ `Inf` → `NaN` gradient) for the steep GSI phenology limiters (e.g. the light slope
+`58`, whose argument reaches ≈±2300). The clamp only bites deep in a saturated tail where the true
+sigmoid derivative is `< e^{-30} ≈ 1e-13`, so the deviation from the exact sigmoid is negligible and
+the forward/backward passes stay finite. Mirrors the C GSI's own `if(-sl·(x-base) < 200)` overflow
+guard (`phenology_gsi.c:57`), which likewise relaxes toward the saturated value.
+"""
+stable_sigmoid(x, xcap = 30) = sigmoid(clamp(x, -xcap, xcap))
 
 """
     softplus(x, β=one(x)) -> y
