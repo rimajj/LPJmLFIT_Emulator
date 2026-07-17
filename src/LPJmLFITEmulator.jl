@@ -42,6 +42,53 @@ include("components/energy.jl")
 # ── Component/flux registry — source of truth for code-derived diagrams ─────
 include("registry.jl")
 
+# ── Hybrid NN-hook training API (ADR 0016; scale-up step 7b) ─────────────────
+# The gradient-based online-rollout training of the learned Vcmax / λ corrections ([`FDiff.FluxHooks`])
+# lives in the `FDiffTrainingExt` PACKAGE EXTENSION, so `Lux`/`Zygote`/`Optimisers` stay out of the
+# (deliberately dependency-free) runtime. These are the generic-function stubs the extension adds
+# methods to; calling them without the extension loaded (i.e. without `using Lux, Zygote, Optimisers`)
+# raises a `MethodError`. See `ext/FDiffTrainingExt.jl` and `docs/phase3_fdiff_cbinary_validation.md` §14.
+"""
+    build_fdiff_nn(; targets=(:vm,), n_in=6, width=12, depth=2, corr_max=1.0, rng) -> nn
+
+Build the learned-correction MLP(s) for the F_diff photosynthesis hooks (requires the `FDiffTrainingExt`
+extension: `using Lux, Zygote, Optimisers`). Returns a container with the Lux `model`, initial
+parameters `ps`, state `st`, and the feature normalizer. See the extension for the full signature.
+"""
+function build_fdiff_nn end
+
+"""
+    neural_vm_hook(nn, ps) -> (feat -> vm_scale)
+    neural_lambda_hook(nn, ps) -> (feat -> λ_scale)
+
+Wrap a trained network + parameters as an `FDiff.FluxHooks`-compatible callable mapping the day's driver
+feature vector to a positive multiplicative Vcmax / λ correction. Requires the `FDiffTrainingExt` extension.
+"""
+function neural_vm_hook end
+"""See [`neural_vm_hook`](@ref)."""
+function neural_lambda_hook end
+
+"""
+    fdiff_gpp_loss(ps, nn, phys...; ...) -> Real
+
+Scalar mean-squared daily-GPP loss of the hooked F_diff rollout against a target GPP trajectory, as a
+function of the network parameters `ps` — the object whose gradient the online-rollout training
+descends (and the gradient-correctness gate checks against finite differences). Requires the
+`FDiffTrainingExt` extension.
+"""
+function fdiff_gpp_loss end
+
+"""
+    train_fdiff_rollout!(nn, ps, phys...; chunk, epochs, opt, ...) -> (ps, history)
+
+Truncated-backprop-through-time (TBPTT) online-rollout training loop (finished port of NeuralCrop.jl's
+`train_loop_rollout!`): sweep the daily rollout in `chunk`-day segments, take a Zygote gradient of the
+segment GPP loss w.r.t. the network parameters, `Optimisers.update`, and carry the (detached) soil-water
+state across segment boundaries. Requires the `FDiffTrainingExt` extension. Returns the trained
+parameters and the per-epoch loss history.
+"""
+function train_fdiff_rollout! end
+
 # State
 export SharedState, NSOILLAYER, LASTLAYER, GPLHEAT, NHEATGRIDP, NTREEPOOLS, CLIMBUFSIZE
 # Interface payloads
@@ -55,5 +102,8 @@ export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
 export FDiffFastCore, step!, annual_step!
 # Registry
 export COMPONENTS, FLUXES, Component, Flux
+# Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook
+# container) is reached via `using LPJmLFITEmulator.FDiff`, matching the other F_diff types.
+export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!
 
 end # module

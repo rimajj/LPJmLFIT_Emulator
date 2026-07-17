@@ -6,6 +6,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **Gradient-based online rollout training — NN λ/Vcmax hooks + finished TBPTT loop (Phase-3 scale-up
+  step 7b; ADR 0016).** The milestone the differentiable-first core (ADR 0014) exists to enable.
+  - **Dependency-free NN hooks in the physics** (`FDiff.FluxHooks`): optional LEARNED multiplicative
+    corrections to the two photosynthesis levers a hybrid trains — Vcmax (`vm`) and the ci:ca ratio `λ` —
+    threaded through `daily_step`/`rollout`/`annual_npp`. Default `nothing` = the identity fast path, so
+    **every regression baseline is byte-identical when the hook is off**; the runtime stays
+    dependency-free (the physics only ever *calls* the hook). `photosynthesis` gains a `vm_scale` kwarg
+    (applied at Vcmax, propagating into potential conductance + leaf respiration); the λ hook re-clamps to
+    the physical bracket. Feature vector `[temp, swdown, daylength, apar, w_soil, co2]`.
+  - **Training as a PACKAGE EXTENSION** `ext/FDiffTrainingExt.jl` (weakdeps `Lux`/`Zygote`/`Optimisers`,
+    activated by `using` them; runtime `[deps]` stays empty): a Lux MLP with a **zero-initialized final
+    layer** (untrained ⇒ exactly the identity correction), `build_fdiff_nn` / `neural_vm_hook` /
+    `neural_lambda_hook`, the scalar rollout GPP loss `fdiff_gpp_loss`, and the finished TBPTT
+    online-rollout loop `train_fdiff_rollout!` — a working port of NeuralCrop.jl's broken
+    `train_loop_rollout!` scaffold (Zygote reverse-mode + `Optimisers.update` + detached soil-water state
+    carried across chunk boundaries).
+  - **Gate** `test/testitems/nn_training_tests.jl`: (1) identity (hook-off == committed baseline;
+    zero-init net == pure physics to 1e-10); (2) gradient correctness (Zygote gradient w.r.t. NN params
+    vs FiniteDifferences, rtol 1e-4 — the AD-vs-FD discipline of the physics gradient gate); (3) recovery
+    of a known correction (loss 0.67 → ~1e-3, trained GPP within 0.1 %, recovered Vcmax scale ≈ the known
+    1.30 — an identifiability proof of the machinery).
+  - **Physical finding:** fitting the learned Vcmax correction to the LPJmL-FIT C daily GPP on the
+    single-representative path only PARTIALLY closes the level gap (annual ratio ≈ 0.64 → ≈ 0.79) — that
+    gap is **light/structure-limited** (Haxeltine–Prentice co-limitation saturates at the light-limited
+    rate `je`), so Vcmax is the wrong lever there; it is exactly why the multi-individual canopy step
+    (§9) closed GPP by spreading light. The learned Vcmax/λ correction belongs on the **coupled canopy
+    path** (Enzyme-reverse-through-mutation), the documented next step. Driver `scripts/train_fdiff_nn.jl`;
+    report `docs/phase3_fdiff_cbinary_validation.md` §14; ADR 0016.
+- Root `Project.toml` gains `[weakdeps]` + `[extensions]` (`FDiffTrainingExt`) and their `[compat]`; the
+  runtime `[deps]` is still empty (dependency-free core, ADR 0014). `test/Project.toml` gains
+  `Lux`/`Zygote`/`Optimisers`.
+
 ### Changed
 - **Self-computed canopy NPP CALIBRATED — the `bm_inc` crutch removed (Phase-3 scale-up step 7a).** The
   step-6 over-respiration (standalone canopy NPP ≈ −25 vs the C's ≈ +507 gC/m²/yr) was decomposed against

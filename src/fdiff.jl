@@ -33,7 +33,8 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     Individual, daily_step_canopy, rollout_daily_canopy,
     PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, petpar_daylength, patch_albedo,
     AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
-    agb_ind, vegc_ind
+    agb_ind, vegc_ind,
+    FluxHooks
 
 # ── unit helpers (LPJmL-FIT include/units.h; 273.15 K — NOT the reference's 272.15 bug) ──────────
 ppm2bar(co2) = co2 * 1.0e-6          # ppmv → bar  (units.h:23)
@@ -41,6 +42,45 @@ ppm2Pa(co2) = co2 * 1.0e-1          # ppmv → Pa   (units.h:24; assumes p = 1e5
 hour2sec(h) = h * 3600              # h → s
 hour2day(h) = h / 24                # h → day-fraction
 degCtoK(t) = t + 273.15            # °C → K  (units.h:22 — 273.15 exactly)
+
+# ── NN hooks (hybrid ML corrections) — dependency-free injection points (scale-up step 7b) ───────
+# Optional LEARNED multiplicative corrections to the two photosynthesis levers the hybrid trains:
+# Vcmax (`vm`) and the ci:ca ratio λ (the gradient-based online-rollout-training milestone; ADR 0016).
+# Each field is either `nothing` (pure physics — the identity fast path, so EVERY regression baseline
+# is byte-identical) or a callable `feat -> scale` mapping the day's driver feature vector to a
+# positive multiplicative scale (≈ 1). The FEATURE VECTOR handed to a hook is, in fixed order,
+# `T[temp_°C, swdown, daylength_h, apar, w_soil, co2_ppm]` (the drivers in scope at the photosynthesis
+# call in [`daily_step`](@ref)); the learned model (a Lux MLP built in the `FDiffTrainingExt` package
+# extension) owns its OWN input normalization. `vm` scales Vcmax — and hence, consistently, the
+# potential conductance and leaf respiration that derive from it; `λ` scales the solved ci:ca ratio,
+# re-clamped to the physical bracket [`_LAMBDA_LO`, `_LAMBDA_HI`]. The runtime stays dependency-free:
+# `FDiff` only ever *calls* the hook (a plain function); `Lux`/`Zygote`/`Optimisers` live in the
+# extension + the test env, never in `src/`.
+"""
+    FluxHooks(; vm=nothing, λ=nothing)
+
+Optional learned multiplicative corrections to the Vcmax (`vm`) and ci:ca-ratio (`λ`) levers of the
+photosynthesis kernel. Each is `nothing` (pure physics; identity fast path) or a callable
+`feat -> scale` (`feat` = `[temp, swdown, daylength, apar, w_soil, co2]`, `scale ≈ 1`). Threaded through
+[`daily_step`](@ref) / [`rollout`](@ref) / [`annual_npp`](@ref); the default [`_NO_HOOKS`](@ref) leaves
+the physics untouched. Build the learned hooks with the `FDiffTrainingExt` extension (needs `Lux`).
+"""
+struct FluxHooks{V, L}
+    vm::V
+    λ::L
+end
+FluxHooks(; vm = nothing, λ = nothing) = FluxHooks(vm, λ)
+
+"The no-op hooks (pure physics) — the default everywhere; skips feature construction entirely."
+const _NO_HOOKS = FluxHooks(nothing, nothing)
+
+@inline _has_hooks(::FluxHooks{Nothing, Nothing}) = false
+@inline _has_hooks(::FluxHooks) = true
+
+# Physical bracket for the ci:ca ratio λ (water_stressed.c; λmax = 0.8 < 0.85). Shared by the λ Newton
+# solve ([`solve_lambda`](@ref)) and the learned-λ hook clamp so both confine λ to the same interval.
+const _LAMBDA_LO = 0.02
+const _LAMBDA_HI = 0.85
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # Parameters (LPJmL-FIT C-source values: photosynthesis.c #defines, lpjparam_fit.js, soil.h)
@@ -315,7 +355,7 @@ end
 
 function photosynthesis(
         p::PhotoParams{T}, λ, tstress, co2_Pa, temp, apar, daylength;
-        comp_vm::Bool = true, vm = zero(T)
+        comp_vm::Bool = true, vm = zero(T), vm_scale = one(T)
     ) where {T}
     θ = p.theta
     # temperature-dependent kinetics (photosynthesis.c:66-70)
@@ -335,7 +375,8 @@ function photosynthesis(
             c2o = (pi_opt - gammastar) / (pi_opt + fac_kin)
             s = (24 / daylength) * b
             σ = sqrt_floor(one(temp) - (c2o - s) / (c2o - θ * s), p.εσ)
-            vm = _sla_vm_cap(p, (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq, temp)
+            # `vm_scale` = the learned Vcmax correction (identity `1` when no NN hook; FluxHooks).
+            vm = vm_scale * _sla_vm_cap(p, (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq, temp)
         end
         # c1, c2 at the (actual) λ (photosynthesis.c:99-105)
         pi_ = λ * co2_Pa
@@ -352,7 +393,7 @@ function photosynthesis(
             c2o = one(temp)
             s = (24 / daylength) * b
             σ = sqrt_floor(one(temp) - (c2o - s) / (c2o - θ * s), p.εσ)
-            vm = _sla_vm_cap(p, (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq, temp)
+            vm = vm_scale * _sla_vm_cap(p, (1 / b) * (c1o / c2o) * ((2θ - 1) * s - (2θ * s - c2o) * σ) * apar * p.cmass * p.cq, temp)
         end
         # C4 CO2-limitation factor: smooth min(1, λ/λmc4)  (photosynthesis.c:123-125)
         ratio = λ / p.lambdamc4
@@ -430,7 +471,7 @@ function solve_lambda(p::FDiffParams{T}, fac, tstress, co2_Pa, temp, apar, dayle
     # the gradient gate and the regression baseline are unchanged. The kink is on an INTERNAL solver
     # iterate in a regime where GPP≈0 and the gradient is physically immaterial (cf. the reference's
     # SteadyStateAdjoint, which likewise does not differentiate through solver internals).
-    lo = T(0.02); hi = T(0.85)
+    lo = T(_LAMBDA_LO); hi = T(_LAMBDA_HI)
     for _ in 1:p.nlambda
         gλ = g(λ)
         dg = (g(λ + h) - g(λ - h)) / (2h)
@@ -533,7 +574,7 @@ _apar(par, str::Structure, fapar::Real, fpar_internal) = par * str.alphaa * fapa
 
 function daily_step(
         p::FDiffParams, st::FDiffState, str::Structure, f::DailyForcing;
-        c_sapwood = 3000.0, c_root = 800.0, fapar = nothing
+        c_sapwood = 3000.0, c_root = 800.0, fapar = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     # working (AD) type from the model inputs only — the carbon-pool kwargs are `convert`ed to it so
     # a Float64 default does not silently upcast a Float32 rollout (nor a Dual AD pass).
@@ -558,11 +599,23 @@ function daily_step(
     fpar = str.fpc * (one(T) - exp(-str.k_beer * str.lai))
     apar = _apar(par, str, fapar, fpar)                   # internal (fapar=nothing) or C-FAPAR-driven
 
+    # --- NN hooks: learned multiplicative Vcmax / λ corrections (identity when no hook — see FluxHooks).
+    # The feature vector is built ONCE per day and only when a hook is active (identity fast path skips
+    # it entirely, so the physics — and every regression baseline — is byte-identical when hooks off).
+    vm_scale = one(T)
+    λ_scale = one(T)
+    if _has_hooks(hooks)
+        feat = T[f.temp, f.swdown, f.daylength, apar, st.w, f.co2]
+        hooks.vm === nothing || (vm_scale = convert(T, hooks.vm(feat)))
+        hooks.λ === nothing || (λ_scale = convert(T, hooks.λ(feat)))
+    end
+
     # --- temperature stress + photosynthesis machinery ---
     ts = temp_stress(p.tstress, f.temp, f.daylength)
     co2_Pa = ppm2Pa(f.co2)
-    # potential (unstressed) photosynthesis at λ_opt → Vcmax and potential conductance
-    (_, _, vm, adtmm_opt) = photosynthesis(p.photo, w.lambda_opt, ts, co2_Pa, f.temp, apar, f.daylength; comp_vm = true)
+    # potential (unstressed) photosynthesis at λ_opt → Vcmax and potential conductance (Vcmax scaled by
+    # the learned hook, which propagates consistently into `gp_pot`, the λ solve, `rd`, and GPP)
+    (_, _, vm, adtmm_opt) = photosynthesis(p.photo, w.lambda_opt, ts, co2_Pa, f.temp, apar, f.daylength; comp_vm = true, vm_scale = vm_scale)
     gp_pot = 1.6 * adtmm_opt / (ppm2bar(f.co2) * (one(T) - w.lambda_opt) * hour2sec(f.daylength)) + w.gmin * str.fpc
 
     # --- supply / demand → conductance → λ ---
@@ -574,6 +627,8 @@ function daily_step(
     gpd = softplus(gpd, w.βflux)
     fac = gpd / 1.6 * ppm2bar(f.co2)
     λ = solve_lambda(p, fac, ts, co2_Pa, f.temp, apar, f.daylength, vm)
+    # learned ci:ca correction (identity when no hook), re-clamped to the physical bracket
+    λ = clamp(λ * λ_scale, T(_LAMBDA_LO), T(_LAMBDA_HI))
     (agd, rd, _, _) = photosynthesis(p.photo, λ, ts, co2_Pa, f.temp, apar, f.daylength; comp_vm = false, vm = vm)
     gpp = softplus(agd, w.βflux)                          # GPP, gC/m²/day (agd≥0)
 
@@ -627,7 +682,7 @@ and snow state. Returns the final state and annual totals `(npp, gpp, transp, ev
 function rollout(
         p::FDiffParams, st0::FDiffState, str::Structure, forcings;
         c_sapwood = 3000.0, c_root = 800.0, fapars = nothing,
-        c_sapwoods = nothing, c_roots = nothing
+        c_sapwoods = nothing, c_roots = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     T = promote_type(_wt(p), _wt(st0), _wt(str), _wt(first(forcings)))
     st = FDiffState{T}(; w = convert(T, st0.w), snowpack = convert(T, st0.snowpack))
@@ -636,7 +691,7 @@ function rollout(
         fp = fapars === nothing ? nothing : fapars[i]        # per-day C FAPAR (or internal)
         cs = c_sapwoods === nothing ? c_sapwood : c_sapwoods[i]
         cr = c_roots === nothing ? c_root : c_roots[i]
-        (st, fl) = daily_step(p, st, str, f; c_sapwood = cs, c_root = cr, fapar = fp)
+        (st, fl) = daily_step(p, st, str, f; c_sapwood = cs, c_root = cr, fapar = fp, hooks = hooks)
         npp += fl.npp; gpp += fl.gpp; transp += fl.transp; evap += fl.evap; runoff += fl.runoff
         precip += convert(T, f.precip)
     end
@@ -660,7 +715,7 @@ daily comparison against the LPJmL-FIT C outputs.
 function rollout_daily(
         p::FDiffParams, st0::FDiffState, str::Structure, forcings;
         c_sapwood = 3000.0, c_root = 800.0, fapars = nothing,
-        c_sapwoods = nothing, c_roots = nothing
+        c_sapwoods = nothing, c_roots = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     T = promote_type(_wt(p), _wt(st0), _wt(str), _wt(first(forcings)))
     st = FDiffState{T}(; w = convert(T, st0.w), snowpack = convert(T, st0.snowpack))
@@ -670,7 +725,7 @@ function rollout_daily(
         fp = fapars === nothing ? nothing : fapars[i]
         cs = c_sapwoods === nothing ? c_sapwood : c_sapwoods[i]
         cr = c_roots === nothing ? c_root : c_roots[i]
-        (st, fl) = daily_step(p, st, str, f; c_sapwood = cs, c_root = cr, fapar = fp)
+        (st, fl) = daily_step(p, st, str, f; c_sapwood = cs, c_root = cr, fapar = fp, hooks = hooks)
         push!(days, fl)
     end
     return (st, days)

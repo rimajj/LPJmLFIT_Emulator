@@ -34,3 +34,4 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0013](0013-main-only-workflow.md) | Work on `main` directly — no branches/PRs/branch-protection (relaxes §1) | accepted |
 | [0014](0014-differentiable-fast-core-first.md) | Fast core F is differentiable from the start (`F_diff`); C binary is oracle-only (supersedes F1/F2 split) | accepted |
 | [0015](0015-reuse-map.md) | Reuse map for F_diff — what to TAKE/REDO/SKIP from the reference repos, + citations | accepted |
+| [0016](0016-nn-hook-training.md) | Hybrid learned closures in F_diff: NN λ/Vcmax correction hooks, TBPTT online-rollout training, shipped as a package extension | accepted |

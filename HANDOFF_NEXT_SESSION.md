@@ -40,6 +40,63 @@ for HEAD.
   **total Ra matches the C to 0.5 %** so the overshoot is the inherited +17 % GPP-phenology level, not a
   respiration bug. The coupled loop now runs **fully self-driven** (grows H 9.41→10.28 over 8 yr, no
   blow-up). Suite **25,865 pass / 0 fail / 4 broken** (JET/Aqua/gradient green); Runic-clean. See §13.
+- **Phase 3 (session 10) — scale-up step 7b: GRADIENT-BASED ONLINE ROLLOUT TRAINING (NN λ/Vcmax hooks +
+  finished TBPTT loop).** Dependency-free `FDiff.FluxHooks` (optional learned Vcmax/λ multiplicative
+  corrections; identity fast path ⇒ baselines byte-identical) + `ext/FDiffTrainingExt.jl` package
+  extension (Lux MLP, zero-init ⇒ untrained = identity; `train_fdiff_rollout!` = the finished port of
+  NeuralCrop's TBPTT scaffold, Zygote reverse + Optimisers + detached state carry). Gate: identity,
+  Zygote-vs-FiniteDifferences NN-param gradient (rtol 1e-4), and recovery of a known correction (loss
+  0.675→1.4e-3, recovered scale ≈1.31 vs 1.30). **Finding:** the single-representative C GPP gap is
+  light-limited (co-limitation saturates at `je`), so Vcmax is the wrong lever there (fit only 0.64→0.79,
+  degrades daily r) — the learned correction belongs on the coupled canopy path (Enzyme-reverse, the
+  documented NEXT). ADR 0016; report §14. Runtime `[deps]` still empty.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 10 (on `main`) — GRADIENT-BASED ONLINE ROLLOUT TRAINING: NN λ/Vcmax HOOKS + FINISHED TBPTT LOOP (scale-up step 7b)
+
+**The milestone the differentiable-first core (ADR 0014) exists to enable — train a learned closure
+end-to-end through the differentiable rollout — landed and is gate-verified on the proven
+single-representative path.** Two pieces (ADR 0016):
+
+- **(a) Dependency-free NN hooks in the physics (`FDiff.FluxHooks`).** Optional LEARNED multiplicative
+  corrections to the two levers a hybrid trains: Vcmax (`vm`) and the ci:ca ratio `λ`. Each field is
+  `nothing` (pure physics — the identity fast path, so **every regression baseline is byte-identical**)
+  or a callable `feat -> scale` (`scale ≈ 1`; `feat = [temp, swdown, daylength, apar, w_soil, co2]`).
+  `photosynthesis` gained a `vm_scale` kwarg (applied at Vcmax → propagates into potential conductance +
+  `rd`); the λ hook re-clamps to the shared bracket `_LAMBDA_LO/HI`. Threaded through
+  `daily_step`/`rollout`/`rollout_daily`/`annual_npp`. The runtime only ever *calls* the hook — it stays
+  dependency-free.
+- **(b) The finished TBPTT loop, a PACKAGE EXTENSION** `ext/FDiffTrainingExt.jl` (weakdeps
+  `Lux`/`Zygote`/`Optimisers` + `[extensions]` in root Project.toml; runtime `[deps]` **still empty**).
+  A Lux MLP with a **zero-initialized final layer** (untrained ⇒ exactly the identity correction),
+  `build_fdiff_nn`/`neural_vm_hook`/`neural_lambda_hook`, the Zygote-safe scalar loss `fdiff_gpp_loss`,
+  and `train_fdiff_rollout!` = the working port of NeuralCrop.jl's broken `train_loop_rollout!`
+  (Zygote reverse-mode + `Optimisers.update` + detached soil-water state carried across chunk boundaries
+  = the truncation in TBPTT). Reverse-mode by necessity: F_diff `convert(T,·)`s its state, so a
+  ForwardDiff dual injected only via the NN params would hit that convert; Zygote/Enzyme keep the forward
+  values `Float64`. Params are `Lux.f64` (no mixed-precision matmul fallback).
+- **★ GATE `test/testitems/nn_training_tests.jl`** (all with margin): (1) IDENTITY — nothing-hook ==
+  committed baseline, zero-init net == pure physics to 1e-10; (2) GRADIENT CORRECTNESS — Zygote gradient
+  w.r.t. the NN params vs **FiniteDifferences, rtol 1e-4** (the AD-vs-FD discipline of the physics gate,
+  now w.r.t. NN params); (3) RECOVERY — the TBPTT loop drives the loss **0.675 → 1.4e-3 (> 99 %)**,
+  trained GPP within **0.5 %** of the target, recovered Vcmax scale **≈ 1.31 vs the known 1.30**.
+- **★ PHYSICAL FINDING — which lever, which path (the immediate NEXT is set by this).** Fitting the
+  learned Vcmax correction to the LPJmL-FIT C daily GPP on the single-representative path only PARTIALLY
+  closes the level gap (annual ratio **0.644 → 0.794**) and DEGRADES the growing-season daily shape (r
+  **0.957 → 0.810** — trades shape for level). Physics, not a training failure: that gap is
+  **light/structure-limited** (Haxeltine–Prentice co-limitation saturates at `je`), so Vcmax can't close
+  it — exactly why the multi-individual canopy (§9) closed GPP by spreading light. **★ NEXT (item
+  7b-canopy):** wire the hooks into `daily_step_canopy` + train on the coupled canopy path where the
+  residual is Vcmax/phenology-shaped — that path mutates arrays, so it trains with **Enzyme reverse**
+  (the AD-through-mutation follow-up flagged since step 2), then a real coupled-rollout objective through
+  the layered-light + structure feedback.
+- **Baselines / gates / deps.** NO committed baseline moved (identity fast path). Root Project.toml gains
+  `[weakdeps]`+`[extensions]`+their `[compat]`; `test/Project.toml` gains `Lux`/`Zygote`/`Optimisers`
+  (+`Random`/`Printf` stdlibs — the first full run caught `using Random` for `randperm` needed it
+  declared). Suite **25,879 pass / 0 fail / 4 broken** (JET/Aqua/gradient green; the hooks add a
+  `nothing`-typed default the compiler specializes away). Runic-clean; docs strict-build green. Driver
+  `scripts/train_fdiff_nn.jl`; report §14; ADR 0016.
 
 ---
 
@@ -347,10 +404,16 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    maintenance phen-gated) took standalone annual NPP −25 → +663 gC/m²/yr (C 507; CUE 0.52 vs 0.46; daily r
    0.987); kernel-isolation Ra matches the C to 0.5 % ⇒ the residual is the inherited GPP-phenology level.
    The coupled loop runs fully self-driven (no crutch). See §13 + the self-NPP gate in `multi_individual_tests.jl`.
-   **★ NEXT — (b) gradient-based online rollout training** — finish NeuralCrop's TBPTT scaffold + add Lux
-   NN λ/Vcmax hooks (the AD-through-the-rollout prerequisite is proven: `d(structure)/d(bm_inc)` and the
-   within-year `d(GPP)/d(param)` both match FD; the calibrated self-NPP means the training loop no longer
-   needs a C-output crutch anywhere in the fast core). **(c) Smaller residuals:** per-PFT phenology for the
+   **(b) ✅ DONE (session 10) — gradient-based online rollout training (machinery).** `FDiff.FluxHooks`
+   (dependency-free learned Vcmax/λ corrections) + `ext/FDiffTrainingExt.jl` (Lux MLP + finished TBPTT
+   `train_fdiff_rollout!`, Zygote reverse); gate-verified identity + Zygote-vs-FD gradient + recovery of a
+   known correction. See §14 + ADR 0016 + `nn_training_tests.jl`.
+   **★ NEXT — (b-canopy): apply the hooks where the residual is Vcmax/phenology-shaped** — wire
+   `FluxHooks` into `daily_step_canopy` and train on the coupled multi-individual canopy path (the
+   representative-path C GPP gap is light-limited, so Vcmax is the wrong lever there — §14). That path
+   mutates arrays ⇒ **Enzyme-reverse-through-mutation** training (the follow-up flagged since step 2);
+   then a real coupled-rollout objective through the layered-light + structure feedback. **(c) Smaller
+   residuals:** per-PFT phenology for the
    evergreen/grass minority (one beech-GSI `phen` patch-wide today); grass structure prognostic
    (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`, which — with the rare-day `rd`
    conductance gate — is the small remaining respiration residual, both documented in §13) + carbon-debt in

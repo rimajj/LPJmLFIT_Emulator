@@ -559,3 +559,54 @@ report NPP). Full suite green; ForwardDiff/Enzyme through the new respiration pa
 **Next:** per-PFT phenology for the evergreen/grass minority; grass structure prognostic; the below-ground
 `sapwood_bg` + carbon-debt in the allocation; then gradient-based online rollout training (finish
 NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks — the AD-through-the-rollout prerequisite is proven).
+
+## 14. Update — gradient-based online rollout training: NN λ/Vcmax hooks + finished TBPTT loop (scale-up step 7b)
+
+The milestone the differentiable-first core exists to enable (ADR 0014): **train a learned closure
+end-to-end through the differentiable rollout.** Two pieces landed (ADR 0016).
+
+**(a) Dependency-free NN hooks in the physics (`FDiff.FluxHooks`).** The two photosynthesis levers a
+hybrid trains — Vcmax (`vm`) and the ci:ca ratio `λ` — each gain an OPTIONAL learned multiplicative
+correction `feat -> scale` (`scale ≈ 1`; `feat = [temp, swdown, daylength, apar, w_soil, co2]`). `vm`
+scales Vcmax (propagating consistently into potential conductance and leaf respiration); `λ` scales the
+solved ci:ca ratio, re-clamped to the physical bracket. The default is `nothing` — the identity fast
+path — so **every regression baseline is byte-identical when the hook is off**; the runtime stays
+dependency-free (the physics only ever *calls* the hook). The learned model (a Lux MLP) has a
+**zero-initialized final layer**, so the *untrained* network is exactly the identity correction:
+training departs from the calibrated physics rather than replacing it.
+
+**(b) The finished TBPTT online-rollout training loop** (`train_fdiff_rollout!`, a working port of
+NeuralCrop.jl's broken `train_loop_rollout!` scaffold), shipped as the `FDiffTrainingExt` **package
+extension** (activated by `using Lux, Zygote, Optimisers`; runtime deps stay empty). It sweeps the daily
+rollout in chunks, takes a **Zygote** gradient of the segment GPP loss w.r.t. the network parameters,
+`Optimisers.update`s, and carries the detached soil-water state across chunk boundaries (the truncation
+in TBPTT). Reverse-mode is the right tool: F_diff computes its working type from its declared inputs and
+`convert(T,·)`s its state, so a ForwardDiff dual injected *only* via the NN params would hit that
+convert; Zygote (and Enzyme) keep the forward values `Float64` and trace the adjoint.
+
+**Verification (gate `test/testitems/nn_training_tests.jl`):**
+- **Identity** — the `nothing` hook reproduces the committed baseline; the zero-init network reproduces
+  the pure-physics rollout to ~1e-10.
+- **Gradient correctness** — the Zygote gradient of the real-forcing (Hainich C-FAPAR) rollout GPP loss
+  w.r.t. the network parameters matches **FiniteDifferences to rtol 1e-4** (the AD-vs-FD discipline of
+  the physics gradient gate, now w.r.t. NN parameters).
+- **Recovery of a known correction** — on a well-posed light-sufficient scenario the TBPTT loop drives
+  the loss **0.67 → ~1e-3 (> 99 % down)**, the trained GPP matches the target to **< 0.5 %**, and the
+  recovered Vcmax correction **≈ 1.31 vs the known 1.30** — an identifiability proof of the machinery,
+  independent of the physics being right.
+
+**Physical finding — which lever, which path.** Fitting the learned Vcmax correction to the LPJmL-FIT C
+daily GPP on the **single-representative** path only PARTIALLY closes the level gap (annual ratio ≈ 0.64
+→ ≈ 0.79) and actually *degrades* the growing-season daily shape (r 0.96 → 0.81 — the net trades shape
+for level). The reason is physical, not a training failure: that gap is **light/structure-limited** — the
+Haxeltine–Prentice co-limitation saturates at the light-limited rate `je`, so once a single individual's
+absorbed PAR is fixed, scaling Vcmax (the Rubisco-limited rate `jc`) gives diminishing returns and cannot
+recover the *shape*. This is exactly why the **multi-individual canopy** step (§9) closed GPP by spreading
+light across individuals, not by changing Vcmax. So the learned Vcmax/λ correction belongs on the
+**coupled canopy path**, where the residual is Vcmax/phenology-shaped — and that path mutates arrays, so
+it trains with **Enzyme reverse** (the documented next step; the AD-through-mutation follow-up flagged
+since step 2). This session lands and gate-verifies the *machinery* on the proven representative path;
+wiring the hooks into `daily_step_canopy` + Enzyme-reverse training is item 7b-canopy.
+
+**Reproduce:** `julia --project=test scripts/train_fdiff_nn.jl` (identity + recovery + the C-fit partial
+closure with the light-limitation explanation). Gate + ADR 0016.
