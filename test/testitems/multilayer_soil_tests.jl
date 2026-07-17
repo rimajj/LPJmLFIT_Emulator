@@ -86,15 +86,15 @@
 
     # ── soil water: per-layer column now tracks the C binary's top-1 m available water (d_rootmoist) ──
     @test _corr(rm[gs], t["rootmoist_C"][gs]) > 0.85       # r ≈ 0.97
-    @test 0.4 <= _mean(rm[gs]) / _mean(t["rootmoist_C"][gs]) <= 1.2   # ratio ≈ 0.70
+    @test 0.4 <= _mean(rm[gs]) / _mean(t["rootmoist_C"][gs]) <= 1.2   # ratio ≈ 0.75 (βadt floor fix)
 
     # ── dynamics: GPP + transpiration daily correlation vs the C binary (improved over the bucket) ──
     @test _corr(gpp, t["gpp_C"]) > 0.95                   # annual r ≈ 0.988
     @test _corr(gpp[gs], t["gpp_C"][gs]) > 0.9           # growing-season r ≈ 0.978 (bucket was 0.961)
     @test _corr(tr[gs], t["transp_C"][gs]) > 0.9         # r ≈ 0.971
     # levels remain in the documented single-representative-individual band (demand-side gap)
-    @test 0.45 <= sum(gpp) / sum(t["gpp_C"]) <= 1.5       # ≈ 0.65 (βvm-corrected)
-    @test 0.5 <= sum(tr) / sum(t["transp_C"]) <= 2.0      # ≈ 1.60 (βvm-corrected)
+    @test 0.45 <= sum(gpp) / sum(t["gpp_C"]) <= 1.5       # ≈ 0.64 (βvm+βadt)
+    @test 0.5 <= sum(tr) / sum(t["transp_C"]) <= 2.0      # ≈ 1.47 (βadt floor fix; §10)
 
     # ── ReferenceTests drift alarm: multi-layer annual totals on real forcing must not drift ──
     @test sum(gpp) ≈ base["gpp_annual"] rtol = 1.0e-3

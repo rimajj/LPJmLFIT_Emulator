@@ -59,30 +59,36 @@ prows = Dict(p => Int[] for p in patches)
 for r in eachindex(ind["patch"])
     push!(prows[parse(Int, ind["patch"][r])], r)
 end
+pft_intc(typ) = typ <= 3 ? 0.02 : (typ <= 6 ? 0.06 : 0.01)
 function mkind(r)
-    sla = parse(Float64, ind["sla"][r])
+    sla = parse(Float64, ind["sla"][r]); typ = parse(Int, ind["type"][r])
     return Individual{Float64}(
         parse(Float64, ind["fpar_leafon"][r]), parse(Float64, ind["fpc_ind"][r]),
         parse(Float64, ind["alphaa"][r]), parse(Float64, ind["albedo_leaf"][r]), parse(Float64, ind["emax"][r]),
         parse(Float64, ind["sapwood_c"][r]), parse(Float64, ind["root_c"][r]),
+        parse(Float64, ind["lai"][r]), pft_intc(typ),
         PhotoParams{Float64}(path = :c3, issla = true, sla = sla),
-        TempStressParams{Float64}(temp_photos_low = 20.0, temp_photos_high = 30.0), parse(Int, ind["type"][r]) >= 7
+        TempStressParams{Float64}(temp_photos_low = 20.0, temp_photos_high = 30.0), typ >= 7
     )
 end
-gpp = zeros(n); tr = zeros(n); ev = zeros(n); rm = zeros(n); fa = zeros(n)
+# final config for the committed canopy baseline: interception ON + C-albedo eeq (pet_C/1.32 drive)
+eeqs = [x / 1.32 for x in fc(t, "pet_C")]
+gpp = zeros(n); tr = zeros(n); ev = zeros(n); ic = zeros(n); rm = zeros(n); fa = zeros(n)
 for pnum in patches
     inds = [mkind(r) for r in prows[pnum]]
     st = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
-    (_, dd) = rollout_daily_canopy(tebs_params(), st, inds, soil, forc; phens = phens)
+    (_, dd) = rollout_daily_canopy(tebs_params(), st, inds, soil, forc; phens = phens, eeqs = eeqs)
     for i in 1:n
         gpp[i] += dd[i].gpp / length(patches); tr[i] += dd[i].transp / length(patches)
-        ev[i] += dd[i].evap / length(patches); rm[i] += dd[i].rootmoist / length(patches); fa[i] += dd[i].fapar / length(patches)
+        ev[i] += dd[i].evap / length(patches); ic[i] += dd[i].interc / length(patches)
+        rm[i] += dd[i].rootmoist / length(patches); fa[i] += dd[i].fapar / length(patches)
     end
 end
 println("\n=== hainich_canopy_baseline_2010.txt ===")
 println("gpp_annual        ", sum(gpp))
 println("transp_annual     ", sum(tr))
 println("evap_annual       ", sum(ev))
+println("interc_annual     ", sum(ic))
 println("rootmoist_mean    ", _mean(rm))
 gC = fc(t, "gpp_C"); trC = fc(t, "transp_C"); rmC = fc(t, "rootmoist_C")
 println("\n=== canopy gate metrics ===")

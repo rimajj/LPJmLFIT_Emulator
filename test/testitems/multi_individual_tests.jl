@@ -3,12 +3,13 @@
 # representative tree with the Hainich cell's real per-patch set of individuals (25 patches × 297
 # reconstructed trees+grass, hainich_individuals_2010.csv), sharing one 23-layer soil column and
 # distributing light by the FIT vertical layered Beer–Lambert competition. This CLOSES the GPP level
-# gap the single-individual core under-predicted (annual ratio 0.57 → ≈1.06) — the primary lever of
+# gap the single-individual core under-predicted (annual ratio 0.57 → ≈1.09) — the primary lever of
 # the multi-PFT scale-up — because the light is spread across individuals so the SLA-Vcmax cap no
-# longer saturates one over-lit tree, and the canopy absorbs the true layered fraction. Transpiration
-# improves too (single-individual multilayer ≈1.60 → ≈1.32) with the residual now localized to the
-# demand side (interception + coupled conductance + eeq albedo — documented items 4–5). Committed
-# one-year 2010 reference; no HPC/`/p/tmp` dependency.
+# longer saturates one over-lit tree, and the canopy absorbs the true layered fraction. The
+# coupled-conductance work (docs §10) then CLOSES the transpiration level (≈1.32 → ≈1.02): wet-canopy
+# interception (interception.c), the eeq driven by the C's own daily PET (pet_C/1.32, kernel isolation
+# of the albedo path), and the βadt net-assimilation-floor fix that removed the ~8× gp_stand inflation.
+# Committed one-year 2010 reference; no HPC/`/p/tmp` dependency.
 @testitem "Multi-individual canopy — F_diff vs LPJmL-FIT daily (Hainich 42490, 2010)" tags = [:validation, :fdiff, :canopy] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -63,69 +64,78 @@
     ]
     fapar_C = fcol(t, "fapar_C")
     phens = [clamp(x / maximum(fapar_C), 0.0, 1.0) for x in fapar_C]
+    eeqs = [x / 1.32 for x in fcol(t, "pet_C")]           # C's daily eeq (embeds albedo_patch), §10
 
     patches = sort(unique(parse.(Int, ind["patch"])))
     prows = Dict(p => Int[] for p in patches)
     for r in eachindex(ind["patch"])
         push!(prows[parse(Int, ind["patch"][r])], r)
     end
+    pft_intc(typ) = typ <= 3 ? 0.02 : (typ <= 6 ? 0.06 : 0.01)   # par->intc (par/pft.js)
     function mkind(r)
-        sla = parse(Float64, ind["sla"][r])
+        sla = parse(Float64, ind["sla"][r]); typ = parse(Int, ind["type"][r])
         return Individual{Float64}(
             parse(Float64, ind["fpar_leafon"][r]), parse(Float64, ind["fpc_ind"][r]),
             parse(Float64, ind["alphaa"][r]), parse(Float64, ind["albedo_leaf"][r]), parse(Float64, ind["emax"][r]),
             parse(Float64, ind["sapwood_c"][r]), parse(Float64, ind["root_c"][r]),
+            parse(Float64, ind["lai"][r]), pft_intc(typ),
             FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = sla),
             FDiff.TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0),
-            parse(Int, ind["type"][r]) >= 7,
+            typ >= 7,
         )
     end
 
-    # ── per-day water closure on one patch: precip = transp + evap + runoff + Δ(Σw + snow) ──
+    # ── per-day water closure on one patch: precip = transp + evap + interc + runoff + Δ(Σw + snow) ──
     inds5 = [mkind(r) for r in prows[5]]
     st = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
     maxres = 0.0
     for i in 1:n
-        (st′, fl) = daily_step_canopy(tebs_params(), inds5, soil, st, forc[i]; phen = phens[i])
+        (st′, fl) = daily_step_canopy(tebs_params(), inds5, soil, st, forc[i]; phen = phens[i], eeq_ext = eeqs[i])
         dW = sum(st′.w) - sum(st.w)
-        res = forc[i].precip - (fl.transp + fl.evap + fl.runoff + dW + (st′.snowpack - st.snowpack))
+        res = forc[i].precip - (fl.transp + fl.evap + fl.interc + fl.runoff + dW + (st′.snowpack - st.snowpack))
         maxres = max(maxres, abs(res))
         st = st′
     end
-    @test maxres < 1.0e-6                                  # water closes by construction
+    @test maxres < 1.0e-6                                  # water closes by construction (interception incl.)
 
-    # ── run all 25 patches, average daily stand fluxes to the cell ──
-    gpp = zeros(n); tr = zeros(n); ev = zeros(n); rm = zeros(n)
+    # ── run all 25 patches, average daily stand fluxes to the cell (final §10 config: interc + C-eeq) ──
+    gpp = zeros(n); tr = zeros(n); ev = zeros(n); ic = zeros(n); rm = zeros(n)
     for pnum in patches
         inds = [mkind(r) for r in prows[pnum]]
         st0 = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
-        (_, days) = rollout_daily_canopy(tebs_params(), st0, inds, soil, forc; phens = phens)
+        (_, days) = rollout_daily_canopy(tebs_params(), st0, inds, soil, forc; phens = phens, eeqs = eeqs)
         for i in 1:n
             gpp[i] += days[i].gpp / length(patches); tr[i] += days[i].transp / length(patches)
-            ev[i] += days[i].evap / length(patches); rm[i] += days[i].rootmoist / length(patches)
+            ev[i] += days[i].evap / length(patches); ic[i] += days[i].interc / length(patches)
+            rm[i] += days[i].rootmoist / length(patches)
         end
     end
-    gpp_C = fcol(t, "gpp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C")
+    gpp_C = fcol(t, "gpp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C"); interc_C = fcol(t, "interc_C")
     doy = fcol(f, "doy")
     gs = [i for i in 1:n if 150 <= doy[i] <= 240]
 
-    @test all(isfinite, gpp) && all(isfinite, tr) && all(isfinite, rm) && all(isfinite, ev)
+    @test all(isfinite, gpp) && all(isfinite, tr) && all(isfinite, rm) && all(isfinite, ev) && all(isfinite, ic)
 
-    # ── GPP LEVEL now closed (the multi-PFT lever): annual ratio ≈ 1.06, dynamics preserved ──
-    @test 0.9 <= sum(gpp) / sum(gpp_C) <= 1.25            # ≈ 1.06 (was 0.57 single-individual)
-    @test _corr(gpp, gpp_C) > 0.9                          # full-year r ≈ 0.95
+    # ── GPP LEVEL closed (the multi-PFT lever): annual ratio ≈ 1.09, dynamics near-exact ──
+    @test 0.9 <= sum(gpp) / sum(gpp_C) <= 1.25            # ≈ 1.09 (was 0.57 single-individual)
+    @test _corr(gpp, gpp_C) > 0.95                         # full-year r ≈ 0.998
 
-    # ── transpiration: improved over the single individual (≈1.60 → ≈1.32); residual = demand-side ──
-    @test 1.0 <= sum(tr) / sum(transp_C) <= 1.45          # ≈ 1.32 (single-individual multilayer ≈ 1.60)
-    @test _corr(tr, transp_C) > 0.9                        # full-year r ≈ 0.96
+    # ── transpiration LEVEL now closed (§10 coupled conductance): annual ratio ≈ 1.02 ──
+    @test 0.9 <= sum(tr) / sum(transp_C) <= 1.15          # ≈ 1.02 (was ≈ 1.32 before interception+eeq+βadt)
+    @test _corr(tr, transp_C) > 0.95                       # full-year r ≈ 0.988
+
+    # ── interception flux tracks the C binary (interception.c port) ──
+    @test _corr(ic, interc_C) > 0.9                        # r ≈ 0.99
+    @test 0.5 <= sum(ic) / sum(interc_C) <= 1.2           # ≈ 0.75 (17.4 vs 23.1 mm; v1 magnitude)
 
     # ── soil water tracks the C binary's root-zone water ──
-    @test _corr(rm[gs], rootm_C[gs]) > 0.9                # GS r ≈ 0.97
+    @test _corr(rm[gs], rootm_C[gs]) > 0.9                # GS r ≈ 0.98
 
     # ── ReferenceTests drift alarm: canopy annual totals must not drift ──
     @test sum(gpp) ≈ base["gpp_annual"] rtol = 1.0e-3
     @test sum(tr) ≈ base["transp_annual"] rtol = 1.0e-3
     @test sum(ev) ≈ base["evap_annual"] rtol = 1.0e-3
+    @test sum(ic) ≈ base["interc_annual"] rtol = 1.0e-3
     @test _mean(rm) ≈ base["rootmoist_mean"] rtol = 1.0e-3
 end
 
@@ -141,12 +151,12 @@ end
     whcs = [37.0, 53.0, 88.0, 175.0, 175.0]
     rootdist = [0.41, 0.32, 0.2, 0.07, 0.0]
     soildepth = [200.0, 300.0, 500.0, 1000.0, 1000.0]
-    # (fpar, fpc, alphaa, albedo, emax, c_sap, c_root, sla) for 4 individuals of decreasing dominance
+    # (fpar, fpc, alphaa, albedo, emax, c_sap, c_root, lai, intc, sla) for 4 individuals of decreasing dominance
     specs = [
-        (0.35, 0.18, 0.55, 0.15, 10.0, 3.0e5, 1.0e4, 0.01986),
-        (0.12, 0.1, 0.55, 0.15, 10.0, 5.0e4, 3.0e3, 0.02),
-        (0.04, 0.05, 0.55, 0.15, 10.0, 1.0e4, 1.0e3, 0.025),
-        (0.02, 0.04, 0.5, 0.15, 5.0, 0.0, 5.0e2, 0.042),
+        (0.35, 0.18, 0.55, 0.15, 10.0, 3.0e5, 1.0e4, 4.0, 0.02, 0.01986),
+        (0.12, 0.1, 0.55, 0.15, 10.0, 5.0e4, 3.0e3, 3.0, 0.02, 0.02),
+        (0.04, 0.05, 0.55, 0.15, 10.0, 1.0e4, 1.0e3, 2.0, 0.02, 0.025),
+        (0.02, 0.04, 0.5, 0.15, 5.0, 0.0, 5.0e2, 1.5, 0.01, 0.042),
     ]
     mkforc(::Type{S}) where {S} = [
         DailyForcing{S}(swdown = 220.0, lwnet = -45.0, temp = 19.0, precip = (d % 4 == 0 ? 8.0 : 0.3), daylength = 14.0, co2 = 380.0)
@@ -155,10 +165,10 @@ end
     function ann_gpp(x)                                    # differentiate annual canopy GPP w.r.t. α_c3
         T = typeof(x)
         inds = Individual{T}[]
-        for (fp, fc, aa, al, em, cs, cr, sla) in specs
+        for (fp, fc, aa, al, em, cs, cr, lai, intc, sla) in specs
             push!(
                 inds, Individual{T}(
-                    T(fp), T(fc), T(aa), T(al), T(em), T(cs), T(cr),
+                    T(fp), T(fc), T(aa), T(al), T(em), T(cs), T(cr), T(lai), T(intc),
                     FDiff.PhotoParams{T}(; path = :c3, issla = true, sla = T(sla), alphac3 = x),
                     FDiff.TempStressParams{T}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
                 )

@@ -83,6 +83,17 @@ Base.@kwdef struct PhotoParams{T <: Real}
     # assimilation once the canopy light was distributed — masked in the single-lumped-individual
     # spike because its Vcmax was always far above the cap).
     βvm::T = 1.0
+    # AD-smoothing sharpness for the C's hard `(adt≤0)?0` net-daytime-assimilation floor
+    # (`photosynthesis.c:166`) that converts to the mm-units `adtmm` driving canopy conductance. This
+    # ONLY affects `adtmm` (the 4th return / the λ-solve residual + `gp_sum` potential conductance),
+    # NOT `agd` (GPP). It MUST be sharp: a soft floor `log(2)/βadt` is injected as spurious net
+    # assimilation into every LIGHT-STARVED individual (`adt ≈ 0`), and because `gp_i ∝ adtmm` while its
+    # fpc is tiny, the understory's `gp_i/fpc` explodes and inflates the fpc-normalized stand
+    # conductance `gp_stand = Σgp_i/Σfpc_i` (the earlier `β=0.5` floor of 1.386 gC lifted `gp_stand`
+    # ~8× → transpiration demand ~+30 %). `βadt=20` keeps the floor ≤ 0.035 gC (≈0.07 mm adtmm);
+    # the dominant individuals have `adt ≫ floor` so their conductance and the GPP baseline are
+    # unchanged.
+    βadt::T = 20.0
 end
 
 """
@@ -353,8 +364,9 @@ function photosynthesis(
     agd = (X - sqrt_floor(disc, 1.0e-12)) / (2θ) * daylength
     rd = b_resp * vm
     adt = agd - hour2day(daylength) * rd
-    # adt≤0 → 0 (photosynthesis.c:166), smoothed
-    adt_pos = softplus(adt, T(0.5))
+    # adt≤0 → 0 (photosynthesis.c:166), smoothed with a SHARP floor (see PhotoParams.βadt): a coarse
+    # floor injects spurious net assimilation into light-starved individuals and inflates gp_stand.
+    adt_pos = softplus(adt, p.βadt)
     adtmm = adt_pos / p.cmass * 8.314 * degCtoK(temp) / p.p_atm * 1000
     return (agd, rd, vm, adtmm)
 end
@@ -425,18 +437,21 @@ end
 # Canopy conductance + transpiration demand/supply — water_stressed.c / gp_sum.c (smooth-gated)
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 """
-    canopy_conductance(p, eeq, gp_pot, supply) -> (gc, demand)
+    canopy_conductance(p, eeq, gp_pot, supply; wet = p.wet) -> (gc, demand)
 
-Actual canopy conductance from the supply/demand regime (`water_stressed.c:180-189`). The hard
+Actual canopy conductance from the supply/demand regime (`water_stressed.c:180-189`). `wet` is the
+wet-canopy fraction (`interception.c`) that reduces atmospheric demand by `(1 − wet)`; the single-
+individual paths default to `p.wet` (0), the multi-individual canopy passes each individual's wet. The
+hard
 `supply≥demand ? gp_pot : water-limited` switch is replaced by a smooth cap: the water-limited
 back-solve `gc_w = GM·ALPHAM·supply/((1−wet)·eeq·ALPHAM − supply)` equals `gp_pot` at `supply=demand`
 and exceeds it when not water-limited, so `gc = smoothmin(gc_w, gp_pot)` recovers both regimes
 continuously. The denominator is kept positive by a softplus guard (so `gc_w → +∞`, not a NaN, when
 not water-limited, where `smoothmin` then selects `gp_pot`).
 """
-function canopy_conductance(p::WaterParams, eeq, gp_pot, supply)
-    demand = eeq > 0 ? (one(eeq) - p.wet) * eeq * p.ALPHAM / (one(eeq) + p.GM * p.ALPHAM / gp_pot) : zero(eeq)
-    denom_raw = (one(eeq) - p.wet) * eeq * p.ALPHAM - supply
+function canopy_conductance(p::WaterParams, eeq, gp_pot, supply; wet = p.wet)
+    demand = eeq > 0 ? (one(eeq) - wet) * eeq * p.ALPHAM / (one(eeq) + p.GM * p.ALPHAM / gp_pot) : zero(eeq)
+    denom_raw = (one(eeq) - wet) * eeq * p.ALPHAM - supply
     denom = softplus(denom_raw, p.βden) + 1.0e-6
     gc_w = p.GM * p.ALPHAM * supply / denom
     gc = smoothmin(gc_w, gp_pot, p.βcond)
@@ -972,9 +987,13 @@ end
 One canopy individual (a tree or grass cohort in a patch) for the multi-PFT core. `fpar` = its LAYERED
 absorbed-PAR fraction (patch basis, phen = 1; from the FIT `getfpar.c` layered-light port), `fpc` = its
 foliar projective cover, `alphaa`/`albedo_leaf`/`emax` the PFT constants, `c_sapwood`/`c_root` the
-maintenance-respiration pools, and `photo`/`tstress` the per-PFT [`PhotoParams`](@ref) /
-[`TempStressParams`](@ref) (the SLA-Vcmax cap uses this individual's `sla`). `is_grass` skips woody
-respiration. Build the Hainich set from `test/testitems/references/hainich_individuals_2010.csv`.
+maintenance-respiration pools, `lai` = its leaf-on crown LAI (`leaf_c·sla/crownarea`) and `intc` = the
+PFT interception coefficient (`par->intc`) — together these give the wet-canopy fraction
+`wet = min(intc·lai·phen·rain/(eeq·1.32), 0.9999)` (`interception.c`) that reduces transpirative demand
+by `(1 − wet)` and evaporates `eeq·1.32·wet·fpc` off the wet canopy. `photo`/`tstress` are the per-PFT
+[`PhotoParams`](@ref) / [`TempStressParams`](@ref) (the SLA-Vcmax cap uses this individual's `sla`).
+`is_grass` skips woody respiration. Build the Hainich set from
+`test/testitems/references/hainich_individuals_2010.csv`.
 """
 struct Individual{T <: Real}
     fpar::T                       # layered absorbed-PAR fraction (leafon, patch basis)
@@ -984,11 +1003,27 @@ struct Individual{T <: Real}
     emax::T
     c_sapwood::T
     c_root::T
+    lai::T                        # leaf-on crown LAI (leaf_c·sla/crownarea) → actual_lai = lai·phen
+    intc::T                       # PFT interception coefficient (par->intc)
     photo::PhotoParams{T}
     tstress::TempStressParams{T}
     is_grass::Bool
 end
 _wt(::Individual{T}) where {T} = T
+
+# ── wet-canopy interception (interception.c) ─────────────────────────────────────────────────────
+# Relative canopy wetness `wet = min(intc·actual_lai·rain/(eeq·α_PT), 0.9999)` with `actual_lai = lai·phen`
+# and the interception-store cap `int_store = min(intc·actual_lai, 0.9999)`; the intercepted water that
+# evaporates off the wet canopy is `eeq·α_PT·wet·fpc` (mm). Returns `(wet, interc_flux)`; both zero when
+# `eeq` or `fpc` vanish (interception.c:24-27). Hard `min` (physical caps, AD selects the live branch).
+@inline function _wet_interc(intc, lai, phen, fpc, eeq, rain, α_PT)
+    T = promote_type(typeof(intc), typeof(lai), typeof(phen), typeof(fpc), typeof(eeq), typeof(rain))
+    (eeq < T(1.0e-4) || fpc <= zero(T)) && return (zero(T), zero(T))
+    int_store = min(intc * lai * phen, T(0.9999))
+    wet = min(int_store * rain / (eeq * α_PT), T(0.9999))
+    interc = eeq * α_PT * wet * fpc
+    return (convert(T, wet), convert(T, interc))
+end
 
 # ── withdraw a given TOTAL transpiration demand from the shared column, per-layer capped ──────────
 # The per-individual demand/supply limiting is already applied (transp_tot); here the shared soil caps
@@ -1018,27 +1053,43 @@ the shared [`SoilColumn`](@ref), `st` the [`FDiffStateML`](@ref) soil state, `f`
 per-individual FPC-light potential conductance → stand mean `gp_stand` → per-individual layered-light
 photosynthesis (water-limited via `gp_stand`) + λ solve → sum GPP; per-individual
 `min(supply, demand_stand)·fpc` transpiration → shared-soil withdrawal (per-layer capped) → soil
-evaporation → per-individual respiration. Returns the new state and stand daily fluxes
-`(gpp, npp, transp, evap, eeq, runoff, rootmoist, fapar, fpc)` (per m² of patch). Water closes exactly.
+evaporation → per-individual respiration. Wet-canopy interception (`_wet_interc`,
+`interception.c`) evaporates off each individual (removed from infiltration) and reduces each
+individual's demand by `(1 − wet)`. `eeq_ext` optionally overrides the fixed-albedo Priestley–Taylor
+`eeq` with the C binary's own daily PET (`pet_C/α_PT`) for kernel-isolation validation of the albedo
+path. Returns the new state and stand daily fluxes
+`(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fpc)` (per m² of patch). Water closes
+exactly: `precip = transp + evap + interc + runoff + Δ(Σw + snow)`.
 """
 function daily_step_canopy(
         p::FDiffParams, inds::AbstractVector{<:Individual}, soil::SoilColumn, st::FDiffStateML,
-        f::DailyForcing; phen = 1.0, n_top1m::Int = 3
+        f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing
     )
     T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
     ph = convert(T, phen)
     w = p.water
+    # eeq: fixed-forest-albedo Priestley–Taylor by default; kernel-isolation drive from the C binary's
+    # own daily PET (eeq_ext = pet_C/α_PT) removes the ~7 % fixed-albedo bias for validation (§10).
     albedo = T(0.15)
-    eeq = priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, albedo)
+    eeq = eeq_ext === nothing ? priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, albedo) :
+        convert(T, eeq_ext)
 
-    # shared snow + infiltration into the column
+    # shared snow + interception + infiltration into the column
     frac_rain = sigmoid(w.βsnow * (f.temp - w.tsnow))
     rain = frac_rain * f.precip
     snowfall = (one(T) - frac_rain) * f.precip
     melt_potential = w.melt_factor * softplus(f.temp - w.tsnow, w.βmelt)
     melt = smoothmin(melt_potential, st.snowpack + snowfall, w.βmelt)
     snowpack′ = st.snowpack + snowfall - melt
-    infil = rain + melt
+    # wet-canopy interception: sum the evaporated flux (removed from infiltration); the demand-reducing
+    # per-individual `wet` is recomputed in pass 2 (deterministic in eeq/rain/phen/lai/intc).
+    interc_tot = zero(T)
+    for ind in inds
+        (_, interc_i) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), ph, convert(T, ind.fpc), eeq, rain, w.α_PT)
+        interc_tot += interc_i
+    end
+    interc_tot = smoothmin(interc_tot, rain, w.βw)          # cannot intercept more than the rain
+    infil = rain + melt - interc_tot
     (w1, drainage) = _infiltrate(convert.(T, st.w), convert.(T, soil.whcs), infil, w.βw)
 
     # shared root-weighted relative soil moisture (cell rootdist for all individuals, v1)
@@ -1077,7 +1128,10 @@ function daily_step_canopy(
         tsi = temp_stress(ind.tstress, f.temp, dl)
         (_, _, vm, _) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar, dl; comp_vm = true)
         supply_i = convert(T, ind.emax) * wr * ph
-        (gc, demand) = canopy_conductance(w, eeq, gp_stand, supply_i)   # demand uses the STAND mean gp
+        # wet-canopy demand reduction (1 − wet); water_stressed.c re-caps wet at 0.99
+        (wet_i, _) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), ph, convert(T, ind.fpc), eeq, rain, w.α_PT)
+        wet_dem = smoothmin(wet_i, T(0.99), w.βw)
+        (gc, demand) = canopy_conductance(w, eeq, gp_stand, supply_i; wet = wet_dem)   # demand uses the STAND mean gp
         gpd = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
         gpd = softplus(gpd, w.βflux)
         fac = gpd / 1.6 * ppm2bar(f.co2)
@@ -1110,31 +1164,36 @@ function daily_step_canopy(
     st′ = FDiffStateML{T}(w3, convert(T, snowpack′))
     fluxes = (
         gpp = convert(T, gpp_tot), npp = convert(T, npp_tot), transp = convert(T, transp),
-        evap = convert(T, soil_evap), eeq = convert(T, eeq), runoff = convert(T, runoff),
-        rootmoist = convert(T, rootmoist), fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot),
+        evap = convert(T, soil_evap), interc = convert(T, interc_tot), eeq = convert(T, eeq),
+        runoff = convert(T, runoff), rootmoist = convert(T, rootmoist),
+        fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot),
     )
     return (st′, fluxes)
 end
 
 """
-    rollout_daily_canopy(p, st0, inds, soil, forcings; phens=nothing, n_top1m=3) -> (st, days)
+    rollout_daily_canopy(p, st0, inds, soil, forcings; phens=nothing, n_top1m=3, eeqs=nothing) -> (st, days)
 
 Fold [`daily_step_canopy`](@ref) over a vector of [`DailyForcing`](@ref) for ONE patch canopy `inds`,
 carrying the shared per-layer soil water and snow. `phens` is an optional per-day phenology vector
-(defaults to 1.0). Returns the final [`FDiffStateML`](@ref) and the per-day stand flux `NamedTuple`s.
+(defaults to 1.0); `eeqs` an optional per-day `eeq` override (the C binary's `pet_C/α_PT`, for the
+albedo-path kernel-isolation drive). Returns the final [`FDiffStateML`](@ref) and the per-day stand
+flux `NamedTuple`s.
 """
 function rollout_daily_canopy(
         p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
-        forcings; phens = nothing, n_top1m::Int = 3
+        forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing
     )
     T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
     st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
     ph1 = phens === nothing ? 1.0 : phens[1]
-    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m)[2])}()
+    ee1 = eeqs === nothing ? nothing : eeqs[1]
+    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1)[2])}()
     sizehint!(days, length(forcings))
     for (i, f) in enumerate(forcings)
         ph = phens === nothing ? 1.0 : phens[i]
-        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m)
+        ee = eeqs === nothing ? nothing : eeqs[i]
+        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m, eeq_ext = ee)
         push!(days, fl)
     end
     return (st, days)

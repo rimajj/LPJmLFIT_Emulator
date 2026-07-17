@@ -1,10 +1,13 @@
 # F_diff annual totals baseline — fixed deterministic scenario (see numerical_regression_tests.jl).
 # ReferenceTests numerical-regression anchor: catches silent drift after refactors.
 # Regenerate ONLY on an intended physics change (and record why in JOURNAL/CHANGELOG).
+# Regenerated (docs §10): the net-daytime-assimilation floor was sharpened (PhotoParams.βadt, the
+# hardcoded softplus(adt,0.5) → softplus(adt,20)); the coarse floor injected spurious assimilation
+# into low-light days' conductance path. Net effect on this well-lit synthetic scenario is small.
 # key value(gC/m2/yr or mm/yr)
-npp    868.51795106
-gpp    2960.15593903
-transp 635.07095784
-evap   50.37496270
-runoff 82.55414454
+npp    871.81148008
+gpp    2964.11535214
+transp 631.53597203
+evap   50.37819900
+runoff 86.08584863
 precip 848.00000000

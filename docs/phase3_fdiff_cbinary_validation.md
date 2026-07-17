@@ -270,3 +270,63 @@ not the multi-PFT structure. Differentiability: **ForwardDiff** flows through th
 daily phenology factor, sub-5 m saplings absent from the `ind` output, the shared cell root profile for
 all individuals, and interception omitted. Gate: `test/testitems/multi_individual_tests.jl` + committed
 `hainich_individuals_2010.csv` / `hainich_canopy_baseline_2010.txt`.
+
+## 10. Update — coupled conductance ↔ carbon consistency (scale-up step 4): the transpiration level closes
+
+Step 3 closed the GPP level and localized the remaining transpiration residual (+32 %) to the **demand
+side**. This step closes that residual — the multi-individual canopy transpiration annual ratio goes
+**1.32 → 1.02** vs the C binary — by porting the three demand-side pieces and, in the process, finding a
+load-bearing conductance bug.
+
+**(a) Wet-canopy interception (`interception.c`).** Each individual now carries its leaf-on crown LAI
+(`lai = leaf_c·sla/crownarea`) and PFT interception coefficient (`intc`; trees 0.02 / boreal 0.06 /
+grass 0.01). The relative canopy wetness `wet = min(intc·lai·phen·rain/(eeq·1.32), 0.9999)` (a) reduces
+each individual's transpirative demand by `(1 − wet)` (`water_stressed.c:118`) and (b) evaporates
+`eeq·1.32·wet·fpc` off the wet canopy, which is removed from infiltration (`daily_natural.c:151`) so
+water still closes exactly. The interception flux tracks the C binary at **r = 0.99** (17.4 vs 23.1
+mm/yr; the ~25 % magnitude shortfall is a v1 point — the C sums over its full pft list including
+sub-5 m saplings absent from the reconstruction).
+
+**(b) The `eeq` albedo (kernel isolation).** F_diff's fixed forest albedo (0.15) makes its
+Priestley–Taylor `eeq` **6.8 %** high (annual PET 807 vs the C's 755.6). Exactly as the FAPAR path is
+driven by the C's daily output, `eeq` is now optionally driven by the C binary's own daily PET
+(`eeq = pet_C/1.32`), which embeds the daily `albedo_patch` (`update_daily.c:157`). Porting the full
+`albedo_patch` (tree/grass/soil/snow albedos) so standalone F_diff needs no PET crutch is a documented
+follow-up, parallel to the dynamic-phenology-structure item.
+
+**(c) The load-bearing bug: a coarse net-assimilation floor inflated stand conductance ~8×.** The
+`adtmm` conductance driver (`photosynthesis.c:166`, the C's `(adt≤0)?0`) was smoothed with a hardcoded
+`softplus(adt, 0.5)`, whose floor `log(2)/0.5 = 1.386 gC` injected spurious net assimilation into every
+**light-starved** individual. Because `gp_i ∝ adtmm` while an understory individual's `fpc` is tiny,
+its `gp_i/fpc` exploded (≈190 for a suppressed sapling), and the fpc-normalized stand conductance
+`gp_stand = Σgp_i/Σfpc_i` was lifted to **24.5 mm/s** — vs the ~2.9 the C's transpiration implies —
+which through the saturating demand function `eeq·ALPHAM/(1 + GM·ALPHAM/gp_stand)` inflated demand ~2×.
+This affected **only** `adtmm` (the 4th `photosynthesis` return + the conductance/λ-solve path), **not**
+`agd` (GPP) — which is exactly why GPP matched while transpiration ran high, and why the earlier
+sessions' correlations were capped at ≈0.95. Sharpening the floor (`PhotoParams.βadt`, 0.5 → 20; floor
+≤ 0.035 gC) drops `gp_stand` to a physically sensible ~10.7 and leaves the well-lit dominant
+individuals (and the GPP baseline) unchanged.
+
+| metric (Hainich 2010, cell mean over 25 patches) | step 3 | + interception | + interception + C-eeq | C binary |
+|---|---|---|---|---|
+| **transpiration annual ratio** (model/C) | 1.32 | 1.05 | **1.02** | 1.0 |
+| transpiration full-year daily r | 0.955 | — | **0.988** | — |
+| GPP annual ratio | 1.06 | — | **1.09** | 1.0 |
+| GPP full-year daily r | 0.953 | — | **0.998** | — |
+| root-zone water (GS) daily r | 0.97 | — | **0.98** | — |
+| root-zone water (GS) ratio | 0.73 | — | **0.84** | 1.0 |
+| interception flux (mm/yr) | — (0) | 17.4 | **17.4** | 23.1 (r 0.99) |
+
+**Outcome — the transpiration level gap is CLOSED** (annual ratio 1.32 → **1.02**), and the fix lifts
+every daily correlation (GPP 0.953 → **0.998**, transpiration 0.955 → **0.988**, root-zone water ratio
+0.73 → **0.84**) because the inflated conductance had been distorting demand for the whole canopy, not
+just the understory. The single-representative-individual paths inherit the same `βadt` fix (their
+committed drift baselines were regenerated: single-bucket transpiration 383 → 350, multi-layer 382 →
+350 — the floor had been over-transpiring their shoulder seasons too). Differentiability is preserved:
+**ForwardDiff** flows through the interception + per-individual loop (matches finite differences).
+Remaining demand-side residual is now small and in the GS (+8 %), attributable to the residual
+`gp_stand` over-estimate (10.7 vs ~2.9 implied) and the interception magnitude shortfall — plus the
+still-fixed (phenology-folded) canopy structure. Next: the full `albedo_patch`/`petpar` port (remove
+the PET crutch) and **dynamic phenology-folded structure**, then the `SharedState`/`AbstractFastCore`
+adapter → S↔F coupling. Gate: `test/testitems/multi_individual_tests.jl` (transpiration ratio now
+0.9–1.15, interception r > 0.9) + regenerated `hainich_canopy_baseline_2010.txt`.

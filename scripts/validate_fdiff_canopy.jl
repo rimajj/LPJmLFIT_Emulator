@@ -50,6 +50,10 @@ function _corr(a, b)
     return sum((a .- ma) .* (b .- mb)) / sqrt(sum((a .- ma) .^ 2) * sum((b .- mb) .^ 2))
 end
 
+# PFT interception coefficient par->intc (par/pft.js): tropical/temperate trees (types 0–3) 0.02,
+# boreal trees (4–6) 0.06, grasses (7–9) 0.01.
+pft_intc(typ) = typ <= 3 ? 0.02 : (typ <= 6 ? 0.06 : 0.01)
+
 # build one Individual from a reconstructed row (index r into the parsed columns)
 function make_individual(ind, r)
     typ = parse(Int, ind["type"][r])
@@ -65,6 +69,8 @@ function make_individual(ind, r)
         parse(Float64, ind["emax"][r]),
         parse(Float64, ind["sapwood_c"][r]),
         parse(Float64, ind["root_c"][r]),
+        parse(Float64, ind["lai"][r]),             # leaf-on crown LAI (interception)
+        pft_intc(typ),                             # PFT interception coefficient
         photo, tstress, typ >= 7,
     )
 end
@@ -95,54 +101,67 @@ function main()
         push!(patch_rows[parse(Int, ind["patch"][r])], r)
     end
 
-    whc_top1m = sum(whcs[1:3])
     p = tebs_params()
+    gpp_C = fcol(t, "gpp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C")
+    interc_C = fcol(t, "interc_C"); pet_C = fcol(t, "pet_C")
+    gs = [i for i in 1:n if GS_LO <= doy[i] <= GS_HI]
+    eeqs_C = [x / 1.32 for x in pet_C]                  # C's own eeq (embeds the daily albedo_patch)
 
-    # run each patch canopy, average daily fluxes over patches
-    gpp = zeros(n); transp = zeros(n); evap = zeros(n); rootm = zeros(n); fapar = zeros(n)
-    for pnum in patches
-        inds = [make_individual(ind, r) for r in patch_rows[pnum]]
-        st0 = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
-        (_, days) = rollout_daily_canopy(p, st0, inds, soil, forc; phens = phens)
-        for i in 1:n
-            gpp[i] += days[i].gpp / length(patches)
-            transp[i] += days[i].transp / length(patches)
-            evap[i] += days[i].evap / length(patches)
-            rootm[i] += days[i].rootmoist / length(patches)
-            fapar[i] += days[i].fapar / length(patches)
+    # average daily stand fluxes over the 25 patches, for a given eeq drive
+    function run_cell(; eeqs = nothing)
+        gpp = zeros(n); transp = zeros(n); evap = zeros(n); interc = zeros(n); rootm = zeros(n); fapar = zeros(n)
+        for pnum in patches
+            inds = [make_individual(ind, r) for r in patch_rows[pnum]]
+            st0 = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
+            (_, days) = rollout_daily_canopy(p, st0, inds, soil, forc; phens = phens, eeqs = eeqs)
+            for i in 1:n
+                gpp[i] += days[i].gpp / length(patches); transp[i] += days[i].transp / length(patches)
+                evap[i] += days[i].evap / length(patches); interc[i] += days[i].interc / length(patches)
+                rootm[i] += days[i].rootmoist / length(patches); fapar[i] += days[i].fapar / length(patches)
+            end
         end
+        return (; gpp, transp, evap, interc, rootm, fapar)
     end
 
-    gpp_C = fcol(t, "gpp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C")
-    gs = [i for i in 1:n if GS_LO <= doy[i] <= GS_HI]
+    a = run_cell()                                     # interception ON, fixed-albedo eeq
+    b = run_cell(eeqs = eeqs_C)                         # interception ON + C-albedo eeq (pet_C drive)
 
     println("F_diff MULTI-INDIVIDUAL canopy ↔ LPJmL-FIT C-binary — Hainich 42490, 2010")
-    println("  ", length(patches), " patches, ", length(ind["patch"]), " individuals; phenology from C d_fapar\n")
-    fmtline(name, a, b) = println(
-        rpad(name, 26),
-        "model/truth=", round(_mean(a), digits = 3), "/", round(_mean(b), digits = 3),
-        "  ratio=", round(_mean(a) / _mean(b), digits = 3), "  r=", round(_corr(a, b), digits = 4)
-    )
-    println("── annual (sum over 365 d) ──")
+    println("  ", length(patches), " patches, ", length(ind["patch"]), " individuals; phenology from C d_fapar")
+    println("  interception (wet-canopy) now ON; eeq drive shown both fixed-albedo and C-pet_C\n")
+
+    println("── annual transpiration ratio (model/C) — the demand-side residual ──")
+    println("  prior session (no interception, fixed albedo)      = 1.319")
+    println("  + interception, fixed-albedo eeq                    = ", round(sum(a.transp) / sum(transp_C), digits = 3))
+    println("  + interception + C-albedo eeq (pet_C drive)         = ", round(sum(b.transp) / sum(transp_C), digits = 3))
+    println("\n── annual GPP ratio (model/C) ──")
     println(
-        "GPP    model/truth = ", round(sum(gpp), digits = 1), " / ", round(sum(gpp_C), digits = 1),
-        "  ratio=", round(sum(gpp) / sum(gpp_C), digits = 3)
+        "  fixed-albedo eeq  = ", round(sum(a.gpp) / sum(gpp_C), digits = 3),
+        "   C-albedo eeq = ", round(sum(b.gpp) / sum(gpp_C), digits = 3)
     )
+    println("\n── interception flux (annual mm) ──")
     println(
-        "transp model/truth = ", round(sum(transp), digits = 1), " / ", round(sum(transp_C), digits = 1),
-        "  ratio=", round(sum(transp) / sum(transp_C), digits = 3)
+        "  F_diff = ", round(sum(a.interc), digits = 1), "   C interc = ", round(sum(interc_C), digits = 1),
+        "   r = ", round(_corr(a.interc, interc_C), digits = 3)
     )
-    println("\n── growing season (DOY 150–240) daily ──")
-    fmtline("GPP (gC/m2/day)", gpp[gs], gpp_C[gs])
-    fmtline("transp (mm/day)", transp[gs], transp_C[gs])
-    fmtline("rootmoist (mm)", rootm[gs], rootm_C[gs])
-    println("\n── full-year daily correlation ──")
-    println("GPP r    = ", round(_corr(gpp, gpp_C), digits = 4))
-    println("transp r = ", round(_corr(transp, transp_C), digits = 4))
+    println("\n── PET check: F_diff eeq·1.32 (fixed albedo) vs C pet_C ──")
+    eeq_fd = [FDiff.priestley_taylor_eeq(FDiff.WaterParams{Float64}(), fcol(f, "swdown")[i], fcol(f, "lwnet")[i], fcol(f, "temp")[i], fcol(f, "daylength")[i], 0.15) for i in 1:n]
     println(
-        "mean canopy FAPAR (GS) model/truth = ", round(_mean(fapar[gs]), digits = 3),
-        " / ", round(_mean(fapar_C[gs]), digits = 3)
+        "  F_diff PET = ", round(sum(1.32 .* eeq_fd), digits = 1), "   C PET = ", round(sum(pet_C), digits = 1),
+        "   ratio = ", round(sum(1.32 .* eeq_fd) / sum(pet_C), digits = 3)
     )
+
+    println("\n── final (interception + C-albedo eeq): growing season (DOY 150–240) daily ──")
+    fmtline(name, x, y) = println(
+        rpad(name, 26), "model/truth=", round(_mean(x), digits = 3), "/", round(_mean(y), digits = 3),
+        "  ratio=", round(_mean(x) / _mean(y), digits = 3), "  r=", round(_corr(x, y), digits = 4)
+    )
+    fmtline("GPP (gC/m2/day)", b.gpp[gs], gpp_C[gs])
+    fmtline("transp (mm/day)", b.transp[gs], transp_C[gs])
+    fmtline("rootmoist (mm)", b.rootm[gs], rootm_C[gs])
+    println("\n── final full-year daily correlation ──")
+    println("GPP r    = ", round(_corr(b.gpp, gpp_C), digits = 4))
+    println("transp r = ", round(_corr(b.transp, transp_C), digits = 4))
     return nothing
 end
 

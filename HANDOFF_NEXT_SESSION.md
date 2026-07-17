@@ -25,6 +25,43 @@ for HEAD.
   dynamics captured, level offsets = the documented multi-PFT/soil scale-up gaps. Committed C-binary
   gate + 2010 ReferenceTests baselines replace the self-referential pin. Suite 25,768 pass / 0 fail.
   **See `docs/phase3_fdiff_cbinary_validation.md`.**
+- **Phase 3 (session 5b/5c/6) — scale-up steps 2, 3, 4: DONE.** (5b) multi-layer 23-layer soil;
+  (5c) multi-individual/multi-PFT canopy — GPP level gap CLOSED (0.57→1.06); (6) coupled
+  conductance↔carbon — **transpiration level gap CLOSED (1.32→1.02)**. Suite 25,807 pass / 0 fail / 4 broken.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 6 (on `main`) — COUPLED CONDUCTANCE ↔ CARBON (scale-up step 4)
+
+Closed the demand-side transpiration residual session 5c localized (handoff item 4). **The
+multi-individual canopy transpiration annual ratio goes 1.32 → 1.02 vs the C binary.** Three pieces:
+- **Wet-canopy interception** (`interception.c` port): `Individual` gained `lai`+`intc`; `_wet_interc`
+  computes `wet = min(intc·lai·phen·rain/(eeq·1.32), 0.9999)`, which reduces each individual's demand by
+  `(1−wet)` (new `wet` kwarg on `canopy_conductance`) and evaporates `eeq·1.32·wet·fpc` off the canopy
+  (removed from infiltration; new `interc` flux; **water still closes ~1e-12**). Flux tracks the C at
+  **r 0.99** (17.4 vs 23.1 mm/yr; the ~25 % magnitude shortfall = sub-5 m saplings absent from the
+  reconstruction). `intc` per PFT: trees 0.02 / boreal 0.06 / grass 0.01.
+- **`eeq` albedo (kernel isolation):** F_diff's fixed 0.15 albedo makes PET **6.8 %** high (807 vs C
+  755.6). Added an optional `eeq_ext`/`eeqs` drive from the C's own daily PET (`pet_C/1.32`, which
+  embeds `albedo_patch`) — the same methodology as the FAPAR drive. Full `albedo_patch`/`petpar` port
+  (so standalone F_diff needs no PET crutch) is a documented follow-up.
+- **★ LOAD-BEARING BUG FIX — the coarse net-assimilation floor inflated stand conductance ~8×.** The
+  `adtmm` conductance driver (`photosynthesis.c:166` `(adt≤0)?0`) was smoothed with a hardcoded
+  `softplus(adt, 0.5)` whose floor (`log(2)/0.5 = 1.386 gC`) injected spurious assimilation into every
+  LIGHT-STARVED individual; since `gp_i ∝ adtmm` with tiny understory `fpc`, `gp_i/fpc` hit ≈190 and
+  `gp_stand = Σgp_i/Σfpc_i` was lifted to **24.5 mm/s** (vs the ~2.9 the C's transp implies) → demand
+  ~2× high. It affects ONLY `adtmm` (4th `photosynthesis` return + conductance/λ path), NOT `agd`
+  (GPP) — exactly why GPP matched all along while transp ran high. Fix: `PhotoParams.βadt` 0.5→20 →
+  `gp_stand`~10.7. **This alone lifts every daily correlation: GPP r 0.95→0.998, transp 0.96→0.988,
+  root-zone GS r 0.97→0.98, ratio 0.73→0.84.** GPP annual 1.06→1.09.
+- **Baselines regenerated** (intended physics change — βadt touches the single-individual paths too,
+  which over-transpired their shoulder seasons): `fdiff_annual_totals`, `hainich_fdiff_baseline` (transp
+  383→350), `hainich_ml_baseline` (382→350), `hainich_canopy_baseline` (new §10 config: interception ON
+  + C-eeq drive; transp 315→243, +`interc_annual`). Gate `test/testitems/multi_individual_tests.jl`
+  tightened (transp ratio 0.9–1.15, interception r>0.9, interc in water closure, ForwardDiff ctor for
+  lai/intc). **ForwardDiff** through the interception + per-individual loop matches FD.
+- Report `docs/phase3_fdiff_cbinary_validation.md` §10. Full suite **25,807 pass / 0 fail / 4 broken**;
+  Runic-clean.
 
 ---
 
@@ -147,14 +184,19 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    individuals share one soil column with FIT layered-Beer–Lambert light (`Individual`/`daily_step_canopy`).
    **GPP LEVEL GAP CLOSED (0.57→1.06);** transp improved 1.60→1.32. Localized the transp residual to the
    demand side (items 4 below). Fixed the latent `βvm` Vcmax-cap bug. See §9 + `multi_individual_tests.jl`.
-4. **★ NEXT — Coupled conductance↔carbon consistency** (close the measured transp +32% demand-side
-   residual): add **interception / wet-canopy** `(1−wet)` demand reduction (`interception.c`: `wet=intc·
-   LAI·rain/(eeq·1.32)`, capped), reconcile the stand `gp_stand`→demand coupling (the C's fpc-normalized
-   mean conductance vs F_diff's), and the `eeq` **albedo** (F_diff uses a fixed forest albedo → PET ~7%
-   high; full `petpar` daily `albedo_patch`). Then **dynamic phenology-folded structure** (so full-year
-   GPP no longer needs the C-`d_fapar`-derived phenology crutch / growing-season restriction).
-5. **Full `petpar` radiation/daylength** (smoothed polar-day/night `acos` branches) — the spike (and the
-   validation) supplies daylength as forcing; reproduced exactly from `petpar2.c` in the extractor.
+4. ✅ **DONE (session 6) — Coupled conductance↔carbon consistency.** Closed the transp +32% demand-side
+   residual: **transp annual ratio 1.32→1.02.** Wet-canopy interception (`interception.c` port, r 0.99),
+   `eeq` kernel-isolation drive from the C's daily PET, and a load-bearing **`βadt` net-assimilation-floor
+   fix** that removed a ~8× `gp_stand` inflation (and lifted GPP r to 0.998, transp r to 0.988). See §10 +
+   `multi_individual_tests.jl`.
+5. **★ NEXT — remove the two C-output "crutches" so standalone F_diff computes them itself:**
+   (a) **Full `petpar` daily `albedo_patch`** (tree/grass/soil/snow albedos → `eeq`; `albedo_stand.c` +
+   `albedo_tree.c`/`albedo_grass.c`/`albedo_soil.c`) so `eeq` needs no `pet_C` drive; plus full `petpar`
+   radiation/daylength (smoothed polar-day/night `acos` branches; `petpar2.c` — currently daylength is
+   supplied as forcing). (b) **Dynamic phenology-folded structure** (so full-year GPP no longer needs the
+   C-`d_fapar`-derived phenology crutch / growing-season restriction). Smaller residuals to chase then:
+   the remaining `gp_stand` over-estimate (GS transp +8%; F_diff ~10.7 vs C's implied ~2.9) and the
+   interception magnitude (17.4 vs 23.1 mm).
 6. **`SharedState` adapter** so `FDiff` sits behind `AbstractFastCore.step!` (currently throws) → then
    **S↔F coupling** (flux-then-integrate `bm_inc`) on the prototype, and **gradient-based online
    rollout training** (finish NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks).
