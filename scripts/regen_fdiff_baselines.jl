@@ -74,7 +74,7 @@ function mkind(r)
         parse(Float64, ind["fpar_leafon"][r]), parse(Float64, ind["fpc_ind"][r]),
         parse(Float64, ind["alphaa"][r]), parse(Float64, ind["albedo_leaf"][r]), parse(Float64, ind["emax"][r]),
         parse(Float64, ind["sapwood_c"][r]), parse(Float64, ind["root_c"][r]),
-        parse(Float64, ind["lai"][r]), pft_intc(typ), ast, alt, scf,
+        parse(Float64, ind["lai"][r]), pft_intc(typ), ast, alt, scf, parse(Float64, ind["nind"][r]),
         PhotoParams{Float64}(path = :c3, issla = true, sla = sla),
         TempStressParams{Float64}(temp_photos_low = 20.0, temp_photos_high = 30.0), typ >= 7
     )

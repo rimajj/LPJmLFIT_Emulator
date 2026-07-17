@@ -1,0 +1,9 @@
+# Hainich cell 42490 cell-aggregate carbon (per-m2, mean over 25 patches) by year, from the
+# seed1 ind output. Validation target for the F_diff DYNAMIC (prognostic) canopy structure
+# (scale-up step 6): starting from year Y-1 structure + running year Y forcing, F_diff's
+# allocated bm_inc must reproduce the C's agb/vegc INCREMENT (dAGB = agb[Y]-agb[Y-1]).
+# year  agb_cell  vegc_cell  npp_cell  n_trees  mean_tree_height  (gC/m2, gC/m2, gC/m2/yr, -, m)
+2008  4463.6143  5613.3103  507.5281  282  9.1448
+2009  4646.4163  5824.0400  555.4479  280  9.2103
+2010  4783.7775  6000.2720  512.5999  272  9.3444
+2011  4971.0881  6210.9732  587.1011  265  9.4865

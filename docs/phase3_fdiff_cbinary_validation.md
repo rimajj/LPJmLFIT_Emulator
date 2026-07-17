@@ -407,3 +407,87 @@ year, then the `SharedState`/`AbstractFastCore` adapter → S↔F coupling. Gate
 `test/testitems/multi_individual_tests.jl` (standalone config: GPP ratio 0.9–1.30, transpiration
 0.9–1.2, + crutch-removal asserts phen↔FAPAR r > 0.95 / eeq↔PET r > 0.98 / daylength Δ < 0.01 h) +
 regenerated `hainich_canopy_baseline_2010.txt`.
+
+## 12. Update — dynamic (prognostic) canopy structure + the S↔F coupling adapter (scale-up step 6)
+
+Steps 3–5 fixed each individual's structure at its year-END value for the whole year (a daily phenology
+factor scaled leaf display, but crown/leaf/sapwood were static). Step 6 makes the per-individual carbon
+pools **prognostic**: they accumulate the daily `bm_inc` (= Σ daily NPP) and, at the annual boundary,
+**GROW** via a faithful **differentiable** port of the LPJmL-FIT year-end sequence `turnover_tree.c` →
+`allocation_tree.c` → `allometry_tree.c` (`annual_tree.c:29-30`). This is the flux-then-integrate carbon
+handoff of DESIGN §8, and it is also the mechanism the `SharedState`/`AbstractFastCore` adapter needs to
+close the S↔F coupling surface.
+
+**The port (verified line-by-line against `/home/jamirp/lpjml56fit` v5.6.004; `with_nitrogen=no`, FIT
+individual mode, PFT 3 beech).** The annual allocation partitions the accumulated `bm_inc_ind =
+bm_inc/nind` into leaf/sapwood/heartwood/root subject to (A) the pipe-model leaf-area:sapwood-area
+constraint (`k_latosa`), (B) the leaf:root ratio `lmtorm = 0.5 + 0.5·min(1, wscal)`, and (C,D) the
+Jucker-2022 crown/height allometry, by solving the residual `f(leaf_inc) = k1·(b − x·lm + heart) −
+((b − x·lm)/(leaf + x)·k3)^(1+2/allom3) = 0` (`allocation_tree.c:120-125`; `b = sapwood + bm_inc −
+leaf/lmtorm + root`, `k1 = allom2^(2/allom3)·4/π/wooddens`, `k3 = k_latosa/wooddens/sla`). The C's
+`leftmostzero` bracket-scan + bisection is replaced by a **fixed-graph damped-Newton** with a segment
+seed and a plain `clamp` to the physical bracket — the same AD-safe pattern the λ solve uses
+(`FDiff._solve_leaf_inc`): the total derivative equals the implicit-function result at convergence, so
+ForwardDiff flows through cleanly. Turnover (reproduction reserve `bm_inc·0.1`, sapwood→heartwood at the
+0.04/yr rate, summergreen leaf recycle `leaf/1.05`, fine-root turnover) precedes allocation; the height
+cap does the sapwood→heartwood transfer; height/crownarea/LAI/FPC are re-derived. New API:
+`FDiff.AllocParams` / `FDiff.TreePools` / `FDiff.grow_individual` / `FDiff.individual_from_pools` /
+`FDiff._patch_fpars` (getfpar layered-light recompute as heights change) / `FDiff.rollout_canopy_years`
+(the multi-year coupled loop) / `FDiff.tebs_allocparams`.
+
+**Validation (decisive, all on the committed 2010 reference).** For every reconstructed beech, growing it
+by its per-individual `bm_inc` reproduces the C's allometric constraint to **machine precision**:
+
+| check | result |
+|---|---|
+| pipe-model invariant `leaf ≈ k_latosa·sapwood/(wooddens·H·sla)` after allocation | **max rel. error 2.9e-16** (272 trees) |
+| carbon conservation `Δ(pools) = bm_net − turnover-to-litter` | **exact** (max abs 0, to fp) |
+| growth direction (`bm_inc>0 ⇒ agb↑`) | **258/272** (the rest are in the abnormal/deficit regime) |
+| AD `d(height)/d(bm_inc)`, `d(sapwood)/d(bm_inc)` vs finite differences | **match** (rtol 1e-4) |
+| coupled gradient `d(grown height)/d(α_c3)` (daily flux → bm_inc → allocation) | **matches** finite differences |
+| multi-year coupled rollout (2009 start + 2010 forcing + C `bm_inc`) | **year-1 mean tree height 9.34 m = the C's 2010 value** (from 2009's 9.21); AGB 4625 → 4864 (C 2010: 4784); an 8-year trajectory grows smoothly (AGB 4864→6314, H 9.34→10.02) with all pools finite and heights bounded — no blow-up |
+
+**The `SharedState` adapter (`FDiffFastCore <: AbstractFastCore`).** `AbstractFastCore.step!` previously
+threw; it is now wired: the daily `step!(fc, state::SharedState, bc::SToF, forcing::AtmForcing) -> FToE`
+maps the shared per-layer soil water (`SharedState.w`, fraction of WHC) to the `SoilColumn`
+plant-available mm, self-computes daylength (from latitude) / GSI phenology / dynamic-albedo `eeq`, runs
+one `daily_step_canopy`, **writes the updated soil water back into `state.w` in place**, accumulates the
+conserved per-individual `bm_inc`, and returns the daily `FToE` (`LE = λ·ET` derived; `gpp`/`npp` from
+the canopy). The year-end `annual_step!(fc, state) -> FToS` grows the prognostic structure
+(`grow_individual`) from the accumulated `bm_inc` and returns the conserved `FToS` increment for S — the
+deterministic carbon allocation F owns, leaving demography (distribution/count/mortality) to S.
+
+**A load-bearing correction surfaced by this work — the per-m² maintenance respiration.** The
+multi-individual `daily_step_canopy` had fed **per-individual** carbon pools into the maintenance-
+respiration term while `gpp`/`rd` are **per-m²** (patch basis) — harmless for the existing gates (NPP is
+not gated; GPP/transpiration do not depend on it) but wrong for `bm_inc`. The C forms maintenance as
+`nind·(sapwood·… + root·…)` (`npp_tree.c:51`), i.e. per-m². Adding `nind` to `FDiff.Individual` and the
+`×nind` factor makes NPP per-m² consistent (the committed water/light baselines are unchanged — they do
+not involve NPP).
+
+**Known residual (documented; the immediate follow-up).** F_diff's SELF-computed canopy NPP still
+over-respires (the `×nind` fix moved the cell NPP from wildly negative to ≈ −25 gC/m²/yr, vs the C's
+≈ +512): the maintenance constants match the C exactly (`param.k=0.0548`, `nc_ratio=1/cn`, `CTON_SAP=330`,
+`CTON_ROOT=30`), so the excess is a leaf-respiration aggregation issue over the multi-individual canopy
+that was never gated (the C-binary validation explicitly did not gate NPP). Until it is calibrated, the
+coupled multi-year rollout and the adapter use a `bm_inc` **crutch** — the C's own per-individual annual
+NPP — exactly the kernel-isolation methodology steps 5–7 used for the FAPAR/PET C-outputs (and later
+removed). This isolates the allocation/structure growth (validated above to machine precision) from the
+flux calibration. A carbon-deficit individual (`bm_inc ≤ 0`) **stagnates** (structure held; whole-tree
+mortality is S's demography) rather than stripping its leaves and blowing up the pipe-model height — a
+robustness guard.
+
+**v1 simplifications (carried forward):** below-ground root-sapwood (`sapwood_bg`) and the carbon-debt
+loan are neglected (second-order under `with_nitrogen=no`); grasses hold structure fixed (the grass
+allocation is a separate model); GSI phenology cold-starts each year; the full-year multi-year gradient
+through the layered-light feedback is a follow-up (the within-year gradient and the `d(structure)/d(bm)`
+gradient are proven). Gates: `test/testitems/dynamic_structure_tests.jl` (allocation invariant,
+conservation, growth, AD) + `test/testitems/coupling_tests.jl` (the `FDiffFastCore` adapter + the coupled
+loop). Reconstruction of the before/after individual sets: `scripts/extract_fdiff_individuals_multiyear.py`
+(+ committed cell-aggregate targets `references/hainich_structure_growth.txt`); driver
+`scripts/validate_fdiff_structure.jl`.
+
+**Next:** calibrate the self-computed canopy NPP (remove the `bm_inc` crutch) so the coupled loop runs
+fully self-driven; per-PFT phenology for the evergreen/grass minority; then gradient-based online rollout
+training (finish NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks — the AD-through-the-rollout
+prerequisite is proven).

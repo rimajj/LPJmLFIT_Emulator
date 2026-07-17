@@ -31,7 +31,9 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     tebs_params, tebs_structure,
     SoilColumn, FDiffStateML, daily_step_ml, rollout_daily_ml, hainich_soilcolumn,
     Individual, daily_step_canopy, rollout_daily_canopy,
-    PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, petpar_daylength, patch_albedo
+    PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, petpar_daylength, patch_albedo,
+    AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
+    agb_ind, vegc_ind
 
 # ── unit helpers (LPJmL-FIT include/units.h; 273.15 K — NOT the reference's 272.15 bug) ──────────
 ppm2bar(co2) = co2 * 1.0e-6          # ppmv → bar  (units.h:23)
@@ -1172,7 +1174,10 @@ PFT interception coefficient (`par->intc`) — together these give the wet-canop
 `wet = min(intc·lai·phen·rain/(eeq·1.32), 0.9999)` (`interception.c`) that reduces transpirative demand
 by `(1 − wet)` and evaporates `eeq·1.32·wet·fpc` off the wet canopy. `albedo_stem`/`albedo_litter`/
 `snowcanopyfrac` are the PFT surface-albedo constants (`par/pft.js`) feeding the dynamic patch albedo
-[`patch_albedo`](@ref) that lets standalone F_diff compute its own `eeq` (no `pet_C` drive). `photo`/
+[`patch_albedo`](@ref) that lets standalone F_diff compute its own `eeq` (no `pet_C` drive). `nind` is
+the individual density (indiv/m², patch basis) — used so maintenance respiration is formed per-m²
+(`nind·pool`, `npp_tree.c:51`) and so the accumulated per-m² `bm_inc` maps to the per-individual
+allocation (`bm_inc/nind`, [`grow_individual`](@ref)). `photo`/
 `tstress` are the per-PFT [`PhotoParams`](@ref) / [`TempStressParams`](@ref) (the SLA-Vcmax cap uses
 this individual's `sla`). `is_grass` skips woody respiration and the stem-albedo term. Build the Hainich
 set from `test/testitems/references/hainich_individuals_2010.csv`.
@@ -1190,6 +1195,7 @@ struct Individual{T <: Real}
     albedo_stem::T                # PFT stem/branch albedo (leaf-off; par->albedo_stem)
     albedo_litter::T              # PFT litter background albedo (par->albedo_litter)
     snowcanopyfrac::T             # PFT max snow coverage in green canopy (par->snowcanopyfrac)
+    nind::T                       # individual density, indiv/m² (patch basis; = 1/patcharea per tree)
     photo::PhotoParams{T}
     tstress::TempStressParams{T}
     is_grass::Bool
@@ -1243,8 +1249,10 @@ evaporation → per-individual respiration. Wet-canopy interception (`_wet_inter
 individual's demand by `(1 − wet)`. By default `eeq` is self-computed from the DYNAMIC patch albedo
 ([`patch_albedo`](@ref)), so no C-PET crutch is needed; `eeq_ext` overrides it with the C binary's own
 daily PET (`pet_C/α_PT`) for the kernel-isolation comparison of §10. Returns the new state and stand
-daily fluxes `(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fpc, wscal)` (per m² of
-patch; `wscal` = the stand water scalar feeding next day's GSI water phenology). Water closes exactly:
+daily fluxes `(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fpc, wscal, npp_ind)`
+(per m² of patch; `wscal` = the stand water scalar feeding next day's GSI water phenology; `npp_ind` =
+the per-individual daily NPP vector, whose annual sum is each individual's `bm_inc` for
+[`grow_individual`](@ref)). Water closes exactly:
 `precip = transp + evap + interc + runoff + Δ(Σw + snow)`.
 """
 function daily_step_canopy(
@@ -1312,7 +1320,8 @@ function daily_step_canopy(
     # ── pass 2: per-individual layered-light photosynthesis (water-limited by gp_stand) + transp ──
     gpp_tot = zero(T); npp_tot = zero(T); transp_demand_tot = zero(T); fapar_tot = zero(T)
     sup_acc = zero(T); dem_acc = zero(T)        # fpc-weighted supply/demand → stand water scalar (phenology)
-    for ind in inds
+    npp_inds = Vector{T}(undef, length(inds))   # per-individual daily NPP (per-m², patch basis) → bm_inc
+    for (ii, ind) in enumerate(inds)
         fpc_i = convert(T, ind.fpc) * ph
         fpar_i = convert(T, ind.fpar) * ph                 # layered absorbed fraction (phen-scaled)
         apar = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpar_i
@@ -1339,9 +1348,15 @@ function daily_step_canopy(
         fapar_tot += fpar_i
         # transpiration: min(supply, demand_stand)·fpc (water_stressed.c:153 after the per-layer sum)
         transp_demand_tot += smoothmin(supply_i, demand, w.βtransp) * fpc_i
-        c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood)
-        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root))
+        # maintenance respiration is PER-M² (patch basis): the C multiplies the per-individual sapwood/
+        # root carbon by `nind` (`npp_tree.c:51` `mresp = nind·(sapwood·… + root·…)`), consistent with
+        # the per-m² `gpp_i`/`rd` here — so `bm_inc = Σ npp_i` accumulates on the same patch basis the
+        # annual allocation (`allocation_tree.c:236` `bm_inc_ind = bm_inc/nind`) divides back out.
+        nind_i = convert(T, ind.nind)
+        c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood) * nind_i
+        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i)
         npp_tot += npp_i
+        npp_inds[ii] = npp_i
     end
 
     # ── shared soil: withdraw the total transpiration demand (per-layer capped), then soil evap ──
@@ -1362,6 +1377,7 @@ function daily_step_canopy(
         evap = convert(T, soil_evap), interc = convert(T, interc_tot), eeq = convert(T, eeq),
         runoff = convert(T, runoff), rootmoist = convert(T, rootmoist),
         fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot), wscal = convert(T, wscal),
+        npp_ind = npp_inds,       # per-individual daily NPP (per-m², patch basis) — the flux-then-integrate bm_inc source
     )
     return (st′, fluxes)
 end
@@ -1408,6 +1424,377 @@ function rollout_daily_canopy(
         push!(days, fl)
     end
     return (st, days)
+end
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# DYNAMIC (PROGNOSTIC WITHIN-YEAR) CANOPY STRUCTURE (scale-up step 6 — docs §12)
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# Steps 3–5 fixed each individual's structure at its year-END value for the whole year (a daily
+# phenology factor scaled leaf display, but crown/leaf/sapwood were static). Here the per-individual
+# carbon pools become PROGNOSTIC state that (a) accumulate the daily bm_inc (= Σ daily NPP, per-m² patch
+# basis — see the `npp_ind` flux) and (b) at the annual boundary GROW via a faithful differentiable port
+# of the LPJmL-FIT year-end sequence `turnover_tree.c` → `allocation_tree.c` → `allometry_tree.c`
+# (`annual_tree.c:29-30`). This is the flux-then-integrate carbon handoff (DESIGN §8): F delivers the
+# conserved `bm_inc`; the allocation partitions it into the pools subject to the pipe-model
+# (leaf-area:sapwood-area, `k_latosa`), the leaf:root ratio (`lmtorm`, water-stress-modulated), and the
+# Jucker-2022 crown/height allometry; then height/crownarea/LAI/FPC are re-derived. Verified line-by-line
+# against /home/jamirp/lpjml56fit v5.6.004 (with_nitrogen=no, FIT individual mode, PFT 3 beech; the
+# `par/pft_lpjmlfit.js` ANGIO constants are the `Allometry.TreeAllometry` defaults).
+#
+# v1 simplifications (documented; NOT bit-exact to the C):
+#   • below-ground root-sapwood (`sapwood_bg`, `allocation_tree.c:163-209`, `C_LATERAL` lateral demand)
+#     is neglected — it reduces `bm_inc` before the aboveground allocation; a FIT root-sapwood
+#     correction, second-order to the aboveground structure the `ind` output records;
+#   • the carbon-debt loan (`allocation_tree.c:288-297`) is off (debt=0 for a healthy growing tree —
+#     only fires when `bm_inc < min` leaf+root demand);
+#   • daily-accumulated leaf/root turnover (`turnover_daily_tree.c`) is applied at the annual PFT rates
+#     (`turnover.{leaf,sapwood,root}`); the summergreen full-leaf-drop uses the individual-mode
+#     `leaf/1.05` form (`turnover_tree.c:102`);
+#   • the raingreen `cmass_excess` (`turnover_tree.c:83`) is skipped (≤0 for beech: `longevity·365 > 365 ≥
+#     aphen`, verified);
+#   • grasses hold structure fixed (no woody allocation — `grass_allocation.c` is a separate v2 item);
+#   • establishment + whole-tree mortality are S's demography, held fixed (fixed-N prototype).
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+"""
+    AllocParams{T}
+
+Annual carbon-allocation + turnover parameters (`allocation_tree.c` / `turnover_tree.c`; beech PFT 3,
+`par/pft_lpjmlfit.js`). `lmro_ratio`/`lmro_offset` set the leaf:root ratio `lmtorm = lmro_ratio·(lmro_offset
++ (1−lmro_offset)·min(1, wscal))`; `reprod_cost` is the reproduction reserve removed from `bm_inc` before
+allocation; the `turnover_*` are the annual tissue-turnover RATES (= 1/residence-time: beech leaf 1.0,
+sapwood 0.04 = 1/25 yr, root 1.0); `deciduous_leaf_div` is the summergreen individual-mode annual leaf
+turnover divisor (`turn.leaf = leaf/1.05`). `niter`/`ω`/`h` control the fixed-graph damped-Newton
+allocation solve.
+"""
+Base.@kwdef struct AllocParams{T <: Real}
+    lmro_ratio::T = 1.0
+    lmro_offset::T = 0.5
+    reprod_cost::T = 0.1
+    turnover_leaf::T = 1.0            # 1/yr (residence 1 yr; summergreen)
+    turnover_sapwood::T = 0.04        # = 1/25 yr
+    turnover_root::T = 1.0            # 1/yr
+    deciduous_leaf_div::T = 1.05      # summergreen isphen leaf turnover: turn.leaf = leaf/1.05
+    is_deciduous::Bool = true         # summergreen ⇒ full annual leaf recycle (else leaf·turnover_leaf)
+    niter::Int = 60                   # allocation-solve fixed-graph Newton iterations
+    ω::T = 0.5                        # Newton damping
+    h::T = 1.0e-7                     # central-FD step for the residual derivative
+end
+
+"""
+    tebs_allocparams(::Type{T}=Float64) -> AllocParams{T}
+
+Allocation/turnover parameters for the beech (TeBS, PFT id 3) — the Hainich prototype's dominant PFT.
+"""
+tebs_allocparams(::Type{T} = Float64) where {T <: Real} = AllocParams{T}()
+
+"""
+    TreePools{T}
+
+Prognostic per-individual carbon pools + geometry (the state the annual allocation advances). Carbon
+`gC/individual`: `leaf_c`, `sapwood_c`, `heartwood_c`, `root_c`; `height` (m), `crownarea` (m²), `nind`
+(indiv/m², patch basis). `sla` (m²/gC) and `wooddens` (gC/m³) are the per-individual allometry inputs
+(the reconstruction draws them per tree); `is_grass` skips woody allocation. Built for the Hainich set
+from `test/testitems/references/hainich_individuals_2010.csv` and advanced by [`grow_individual`](@ref).
+"""
+struct TreePools{T <: Real}
+    leaf_c::T
+    sapwood_c::T
+    heartwood_c::T
+    root_c::T
+    height::T
+    crownarea::T
+    nind::T
+    sla::T
+    wooddens::T
+    is_grass::Bool
+end
+_wt(::TreePools{T}) where {T} = T
+
+"aboveground biomass of one individual (gC): leaf + sapwood + heartwood (`agb_tree_sum`, `tree.h:249`)."
+agb_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c
+"total vegetation carbon of one individual (gC): + fine root (bg sapwood/heartwood neglected, v1)."
+vegc_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c + t.root_c
+
+# ── the allocation residual f(leaf_inc)=0 (allocation_tree.c:120-125) ─────────────────────────────
+# f(x) = k1·(b − x·lm_coef + ind_heart) − ((b − x·lm_coef)/(ind_leaf + x)·k3)^(1 + 2/allom3)
+# (eq 15 stem-allometry height^(1+2/allom3) minus eq 21 pipe-model height^(1+2/allom3)). The power base
+# is floored at 0 (a non-integer power of a negative base is NaN; the C's bracket guards keep it ≥0, and
+# the floor's derivative for the exponent >1 vanishes as base→0 — AD-safe).
+@inline function _alloc_residual(x, b, lm_coef, k1, k3, ind_leaf, ind_heart, allom3)
+    T = promote_type(typeof(x), typeof(b))
+    num = b - x * lm_coef
+    base = num / (ind_leaf + x) * k3
+    base = max(base, zero(T))
+    return k1 * (num + ind_heart) - base^(one(T) + 2 / allom3)
+end
+
+# ── differentiable allocation solve (fixed-graph damped Newton + bracket clamp; solve_lambda pattern) ─
+# The C uses leftmostzero (NSEG scan for the first sign change) + bisection; bisection midpoints are not
+# smooth in the parameters, so — exactly as for the λ solve — we use a FIXED-ITERATION damped Newton
+# with a FIXED computational graph and a plain `clamp` to the physical bracket [x1,x2]. At convergence
+# the total derivative equals the implicit-function result regardless of the (finite-difference) g′; the
+# clamp discards any divergent-branch derivative. A short primal scan over the bracket seeds Newton at
+# the segment with the smallest |f| (robust to the residual's non-monotonicity), matching leftmostzero's
+# left-to-right intent.
+function _solve_leaf_inc(x1::T, x2::T, b, lm_coef, k1, k3, ind_leaf, ind_heart, allom3, niter::Int, ω, h) where {T}
+    lo = min(x1, x2); hi = max(x1, x2)
+    # degenerate-bracket guard (allocation_tree.c:318-320) → no leaf increment
+    if (x1 == 0 && x2 == 0) || (b - x1 * lm_coef < 0) || (ind_leaf + x1 <= 0) ||
+            (b - x2 * lm_coef < 0) || (ind_leaf + x2 <= 0)
+        return zero(T)
+    end
+    fx(x) = _alloc_residual(x, b, lm_coef, k1, k3, ind_leaf, ind_heart, allom3)
+    # seed at the bracket segment (of NSEG=20) with the smallest |f| (leftmostzero-style)
+    nseg = 20
+    x = lo; best = abs(fx(lo))
+    for s in 1:nseg
+        xs = lo + (hi - lo) * s / nseg
+        v = abs(fx(xs))
+        if v < best
+            best = v; x = xs
+        end
+    end
+    for _ in 1:niter
+        gx = fx(x)
+        dg = (fx(x + h) - fx(x - h)) / (2h)
+        # guard a vanishing derivative (softplus-free): fall back to a tiny step when |dg| underflows
+        step = abs(dg) > T(1.0e-30) ? ω * gx / dg : zero(T)
+        x = clamp(x - step, lo, hi)
+    end
+    return x
+end
+
+"""
+    grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tree::TreePools, bm_inc_ind, wscal_mean) -> TreePools
+
+Advance one tree individual's carbon pools + geometry by one year (the LPJmL-FIT annual sequence
+`turnover_tree` → `allocation_tree` → `allometry_tree`, `annual_tree.c:29-30`), given the accumulated
+per-individual biomass increment `bm_inc_ind` (gC/individual = Σ daily NPP / `nind`) and the annual-mean
+stand water scalar `wscal_mean ∈ [0,1]` (drives `lmtorm`). Returns the grown [`TreePools`](@ref). Pure
+and differentiable (the pipe-model allocation solve is [`_solve_leaf_inc`](@ref); the height cap
+sapwood→heartwood transfer is a smooth-a.e. `min`). Grasses are returned unchanged (v1). See the section
+header for the v1 simplifications.
+"""
+function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tree::TreePools{T0}, bm_inc_ind, wscal_mean) where {T0}
+    tree.is_grass && return tree
+    # promote to the working (AD) type so differentiating w.r.t. bm_inc/wscal makes T a Dual while the
+    # Float64 pool state widens into it (the daily-step pattern).
+    T = promote_type(T0, typeof(float(bm_inc_ind)), typeof(float(wscal_mean)))
+    bm = convert(T, bm_inc_ind)
+    sla = convert(T, tree.sla); wd = convert(T, tree.wooddens)
+    H = convert(T, tree.height)
+    # reproduction reserve (only if bm_inc≥0): bm_inc·reprod_cost leaves the pools (→ estab/litter)
+    bm_net = bm >= 0 ? bm * (one(T) - convert(T, alloc.reprod_cost)) : bm
+    # STAGNATION guard: a carbon-deficit individual (bm_net ≤ 0) is held FIXED (v1). For a summergreen the
+    # leaves are shed annually and must be REGROWN from bm_inc; with no positive increment the tree cannot
+    # regrow them, and stripping leaf→~0 while re-deriving `height = k_latosa·sapwood/(leaf·sla·wd)` would
+    # blow height up. In LPJmL such a tree hits `isneg_tree` and DIES; here whole-tree mortality is S's
+    # demography (fixed-N prototype), so the deficit individual simply stagnates (no growth, no death).
+    (H <= 0 || bm_net <= 0) && return tree
+
+    # ── turnover_tree.c (no-N, individual mode, summergreen): sapwood→heartwood + leaf/root recycle ──
+    turn_sap = convert(T, tree.sapwood_c) * convert(T, alloc.turnover_sapwood)
+    sm = convert(T, tree.sapwood_c) - turn_sap
+    hm = convert(T, tree.heartwood_c) + turn_sap
+    lm = alloc.is_deciduous ? convert(T, tree.leaf_c) - convert(T, tree.leaf_c) / convert(T, alloc.deciduous_leaf_div) :
+        convert(T, tree.leaf_c) * (one(T) - convert(T, alloc.turnover_leaf))
+    rm = convert(T, tree.root_c) * (one(T) - convert(T, alloc.turnover_root))
+
+    # ── allocation_tree.c (with_nitrogen=no) ──
+    lmtorm = convert(T, alloc.lmro_ratio) *
+        (convert(T, alloc.lmro_offset) + (one(T) - convert(T, alloc.lmro_offset)) * smoothmin(one(T), convert(T, wscal_mean), T(30.0)))
+    k_latosa = allom.k_latosa; allom2 = allom.allom2; allom3 = allom.allom3
+    leaf_inc = zero(T); root_inc = zero(T); sap_inc = zero(T); heart_inc = zero(T)
+    # minimum leaf/root to maintain current sapwood (eq 27)
+    leaf_min = k_latosa * sm / (wd * H * sla) - lm
+    root_min = k_latosa * sm / (wd * H * sla * lmtorm) - rm
+    normal = (root_min >= 0 && leaf_min >= 0 && (root_min + leaf_min <= bm_net))
+    if normal
+        b = sm + bm_net - lm / lmtorm + rm
+        lm_coef = one(T) + one(T) / lmtorm
+        k1 = allom2^(2 / allom3) * 4 * (one(T) / π) / wd
+        k3 = k_latosa / wd / sla
+        x2 = (bm_net - (lm / lmtorm - rm)) / lm_coef
+        x1 = lm < T(1.0e-10) ? x2 / 20 : zero(T)
+        leaf_inc = _solve_leaf_inc(x1, x2, b, lm_coef, k1, k3, lm, hm, allom3, alloc.niter, convert(T, alloc.ω), convert(T, alloc.h))
+        root_inc = leaf_inc < 0 ? zero(T) : (leaf_inc + lm) / lmtorm - rm
+        # proportional cap if leaf+root exceed bm (allocation_tree.c:327-331; faithful quirk: the
+        # leaf rescale uses the ALREADY-updated root_inc denominator)
+        if root_inc + leaf_inc > bm_net
+            tot = root_inc + leaf_inc
+            root_inc = bm_net * root_inc / tot
+            leaf_inc = bm_net * leaf_inc / (root_inc + leaf_inc)
+        end
+        sap_inc = bm_net - leaf_inc - root_inc
+        heart_inc = zero(T)
+    else
+        # abnormal allocation (allocation_tree.c:341-354): leaves + roots only, sapwood→heartwood
+        leaf_inc = (bm_net + rm - lm / lmtorm) / (one(T) + one(T) / lmtorm)
+        if leaf_inc > 0
+            root_inc = bm_net - leaf_inc
+        else
+            root_inc = bm_net
+            leaf_inc = (rm + root_inc) * lmtorm - lm
+        end
+        sap_inc = (leaf_inc + lm) * wd * H * sla / k_latosa - sm
+        heart_inc = -sap_inc
+    end
+    lm += leaf_inc; rm += root_inc; sm += sap_inc; hm += heart_inc
+
+    # ── allometry_tree.c: height from pipe model, height cap sapwood→heartwood, crownarea ──
+    height_new = (sm <= 0 || lm <= 0) ? zero(T) : k_latosa * sm / (lm * sla * wd)
+    if height_new > allom.height_max
+        sm_temp = sm
+        sm = lm * convert(T, allom.height_max) * wd * sla / k_latosa
+        hm = hm + (sm_temp - sm)
+        height_new = convert(T, allom.height_max)
+    end
+    crownarea_new = height_new > 0 ? min(allom.allom1 * (height_new / allom2)^(allom.kpr / allom3), convert(T, allom.crownarea_max)) : zero(T)
+    return TreePools{T}(lm, sm, hm, rm, height_new, crownarea_new, convert(T, tree.nind), sla, wd, tree.is_grass)
+end
+
+# ── per-patch layered Beer–Lambert light (getfpar.c) → per-individual leaf-on fpar ────────────────
+# Recomputes each tree's absorbed-PAR fraction as heights change across years (the light competition
+# feedback). Fixed `nlayers` loop (AD-safe; layers above the tallest tree contribute 0 naturally). The
+# height/boleht layer-membership tests compare by value under ForwardDiff, so the arithmetic derivatives
+# (atoh, exp, the uptake distribution) flow through. Grasses take the transmitted forest-floor light.
+function _patch_fpars(trees::AbstractVector{TreePools{T}}, allom::Allometry.TreeAllometry; nlayers::Int = 60, vstep = 2.0, k_lambert = 0.5) where {T}
+    vs = T(vstep); kl = T(k_lambert)
+    n = length(trees)
+    fpars = zeros(T, n)
+    # per-tree leaf-area-per-height (atoh) and bole/top heights; grass excluded from the tree canopy
+    atoh = zeros(T, n); top = zeros(T, n); bole = zeros(T, n); istree = falses(n)
+    for i in 1:n
+        t = trees[i]
+        (t.is_grass || t.height <= 0 || t.leaf_c <= 0) && continue
+        istree[i] = true
+        top[i] = t.height
+        bole[i] = (one(T) - allom.crownlength) * t.height
+        cd = max(t.height - bole[i], T(1.0e-6))
+        atoh[i] = min(t.leaf_c * t.sla / cd, T(40.0)) * t.nind        # leaf area density × nind (patch basis)
+    end
+    plai = zero(T); fpar_bottom = one(T)
+    for layer in (nlayers - 1):-1:0
+        lowb = layer * vs; highb = lowb + vs
+        fpar_top = fpar_bottom
+        plai_layer = zero(T)
+        la = zeros(T, n)
+        for i in 1:n
+            if istree[i] && top[i] > lowb && bole[i] < highb && (top[i] - bole[i]) > T(1.0e-6)
+                frac = one(T)
+                top[i] < highb && (frac -= (highb - top[i]) / vs)
+                bole[i] > lowb && (frac -= (bole[i] - lowb) / vs)
+                la[i] = atoh[i] * frac * vs
+                plai_layer += la[i]
+            end
+        end
+        plai += plai_layer
+        fpar_bottom = exp(-kl * plai)
+        uptake = fpar_top - fpar_bottom
+        if plai_layer > T(1.0e-12)
+            for i in 1:n
+                fpars[i] += uptake * la[i] / plai_layer
+            end
+        end
+    end
+    # grasses: transmitted forest-floor light × their own Beer–Lambert absorption
+    for i in 1:n
+        t = trees[i]
+        if t.is_grass && t.leaf_c > 0
+            lai_g = t.crownarea > 0 ? t.leaf_c * t.sla / t.crownarea : zero(T)
+            fpars[i] = fpar_bottom * (one(T) - exp(-convert(T, allom.k_beer) * lai_g))
+        end
+    end
+    return fpars
+end
+
+"""
+    individual_from_pools(tmpl::Individual, tree::TreePools, allom, fpar) -> Individual
+
+Build the daily-canopy [`Individual`](@ref) from prognostic [`TreePools`](@ref): recompute `lai =
+leaf_c·sla/crownarea` (`lai_tree.c`) and `fpc = crownarea·nind·(1−e^{−k·lai})` (`fpc_tree.c`), carry the
+pools into `c_sapwood`/`c_root`, and reuse the PFT constants from the template individual `tmpl`. `fpar`
+is the (recomputed) layered absorbed-PAR fraction from [`_patch_fpars`](@ref).
+"""
+function individual_from_pools(tmpl::Individual{T}, tree::TreePools{T}, allom::Allometry.TreeAllometry, fpar::T) where {T}
+    ca = tree.crownarea
+    laival = (tree.leaf_c > 0 && ca > 0) ? tree.leaf_c * tree.sla / ca : zero(T)
+    fpc_i = ca > 0 ? ca * tree.nind * (one(T) - exp(-convert(T, allom.k_beer) * laival)) : zero(T)
+    return Individual{T}(
+        fpar, fpc_i, tmpl.alphaa, tmpl.albedo_leaf, tmpl.emax, tree.sapwood_c, tree.root_c, laival,
+        tmpl.intc, tmpl.albedo_stem, tmpl.albedo_litter, tmpl.snowcanopyfrac, tree.nind,
+        tmpl.photo, tmpl.tstress, tree.is_grass,
+    )
+end
+
+"""
+    rollout_canopy_years(p, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings;
+                         phen_params=nothing, nlayers=60, n_top1m=3) -> (trees, st, pools_by_year, annual)
+
+Multi-year COUPLED rollout of one patch canopy: for each year, (1) recompute per-individual layered
+`fpar` from the current [`TreePools`](@ref) heights ([`_patch_fpars`](@ref)); (2) build the daily
+[`Individual`](@ref)s ([`individual_from_pools`](@ref)); (3) run the differentiable daily canopy
+([`rollout_daily_canopy`](@ref)) accumulating each individual's per-m² `bm_inc = Σ npp_ind` and the
+annual-mean stand water scalar; (4) GROW each tree ([`grow_individual`](@ref)) from its per-individual
+`bm_inc/nind`. This is the flux-then-integrate S↔F loop (DESIGN §8) with the allocation as the carbon
+handoff. Soil water carries across years (continuous); GSI phenology cold-starts each year (v1). Returns
+the final `TreePools`, final soil state, the per-year pools trajectory, and per-year cell aggregates
+`(gpp, npp, agb, vegc, mean_height, wscal_mean)` (per-m²/m).
+
+`bm_inc_ext` (optional; a per-year vector of per-individual per-m² `bm_inc`) overrides the self-computed
+`Σ npp_ind` — a kernel-isolation crutch (as sessions 5–7 used for the FAPAR/PET C-outputs) that isolates
+the allocation/structure growth from F_diff's self-computed canopy NPP, which currently over-respires
+(pre-existing, un-gated; see docs §12). Calibrating the self-NPP (removing this crutch) is the follow-up.
+"""
+function rollout_canopy_years(
+        p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
+        trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
+        yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing
+    ) where {T}
+    trees = collect(trees0)
+    st = st0
+    n = length(trees)
+    pools_by_year = Vector{Vector{TreePools{T}}}()
+    annual = NamedTuple[]
+    for (yr, forc) in enumerate(yearly_forcings)
+        fpars = _patch_fpars(trees, allom; nlayers = nlayers)
+        inds = Individual{T}[individual_from_pools(tmpls[i], trees[i], allom, fpars[i]) for i in 1:n]
+        (st, days) = rollout_daily_canopy(p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m)
+        bm_perm2 = zeros(T, n)
+        gpp_yr = zero(T); npp_yr = zero(T); wsum = zero(T)
+        for d in days
+            for i in 1:n
+                bm_perm2[i] += d.npp_ind[i]
+            end
+            gpp_yr += d.gpp; npp_yr += d.npp; wsum += d.wscal
+        end
+        wscal_mean = wsum / length(days)
+        # `bm_inc_ext` (optional per-year, per-individual per-m² bm_inc) OVERRIDES the self-computed
+        # Σ npp_ind — the same kernel-isolation "crutch" methodology sessions 5–7 used for the FAPAR/PET
+        # C-outputs. It isolates the ALLOCATION (structure growth) from F_diff's self-computed canopy NPP,
+        # which currently over-respires (a pre-existing, un-gated leaf-respiration aggregation issue that
+        # the per-m² maintenance fix only partly closed — see docs §12). Removing this crutch (calibrating
+        # the self-NPP to the C's ~512 gC/m²/yr) is the immediate follow-up before fully self-driven coupling.
+        bm_year = bm_inc_ext === nothing ? bm_perm2 : convert.(T, bm_inc_ext[yr])
+        newtrees = Vector{TreePools{T}}(undef, n)
+        for i in 1:n
+            tr = trees[i]
+            bm_ind = bm_year[i] / (tr.nind + T(1.0e-12))
+            newtrees[i] = grow_individual(alloc, allom, tr, bm_ind, wscal_mean)
+        end
+        agb = sum(agb_ind(newtrees[i]) * newtrees[i].nind for i in 1:n)
+        vegc = sum(vegc_ind(newtrees[i]) * newtrees[i].nind for i in 1:n)
+        htree = [newtrees[i].height for i in 1:n if !newtrees[i].is_grass && newtrees[i].height > 0]
+        push!(
+            annual, (
+                gpp = gpp_yr, npp = npp_yr, bm_inc = npp_yr, agb = agb, vegc = vegc,
+                mean_height = isempty(htree) ? zero(T) : sum(htree) / length(htree), wscal_mean = wscal_mean,
+            )
+        )
+        push!(pools_by_year, newtrees)
+        trees = newtrees
+    end
+    return (trees, st, pools_by_year, annual)
 end
 
 end # module FDiff

@@ -7,6 +7,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Dynamic (prognostic) canopy structure + the S↔F coupling adapter (Phase-3 scale-up step 6).** The
+  multi-individual canopy's per-individual carbon pools are now PROGNOSTIC: they accumulate the daily
+  `bm_inc` (= Σ daily NPP, per-m² patch basis — the new `npp_ind` flux) and GROW at the annual boundary
+  via a faithful DIFFERENTIABLE port of the LPJmL-FIT year-end sequence `turnover_tree.c` →
+  `allocation_tree.c` → `allometry_tree.c`. New `FDiff` API: `AllocParams`, `TreePools`, `grow_individual`
+  (reproduction reserve + sapwood→heartwood + summergreen leaf/root recycle + pipe-model allocation +
+  allometry), `_alloc_residual`/`_solve_leaf_inc` (a fixed-graph damped-Newton allocation solve — the
+  λ-solve AD pattern, not the C's bisection), `individual_from_pools`/`_patch_fpars` (getfpar
+  layered-light recompute as heights grow), `rollout_canopy_years` (the multi-year coupled loop),
+  `tebs_allocparams`. Verified line-by-line against the C source (9-agent extraction workflow +
+  adversarial re-derivation).
+  - **Decisive validation:** the pipe-model invariant `leaf ≈ k_latosa·sapwood/(wooddens·H·sla)` holds
+    after allocation to **max rel. error 2.9e-16**; carbon conservation `Δ(pools) = bm_net − turnover` is
+    exact; **ForwardDiff `d(height)/d(bm_inc)` & `d(sapwood)/d(bm_inc)` match finite differences**; a
+    coupled multi-year rollout (2009 start + 2010 forcing + the C's `bm_inc`) gives **year-1 mean tree
+    height 9.34 m = the C's actual 2010 value** (from 2009's 9.21) and an 8-year trajectory grows smoothly
+    with no blow-up.
+  - **`FDiffFastCore <: AbstractFastCore` — `AbstractFastCore.step!` no longer throws.** Daily
+    `step!(fc, state::SharedState, bc::SToF, forcing::AtmForcing) -> FToE` maps the shared per-layer soil
+    water ↔ the `SoilColumn`, self-computes daylength/GSI-phenology/dynamic-albedo `eeq`, runs one
+    `daily_step_canopy`, **writes the soil water back into `SharedState.w` in place**, and returns the
+    daily `FToE` (`LE = λ·ET`); the year-end `annual_step!(fc, state) -> FToS` grows the prognostic
+    structure and returns the conserved increment for S — the flux-then-integrate S↔F handoff (DESIGN §8).
+  - **A load-bearing per-m² maintenance-respiration fix:** `daily_step_canopy` had fed per-individual
+    pools into the maintenance term against per-m² GPP/leaf-resp; added `nind` to `FDiff.Individual` and
+    the `×nind` factor (`npp_tree.c:51`) so NPP is per-m² consistent (the committed water/light baselines
+    are unchanged). **Known residual (the immediate follow-up):** F_diff's self-computed canopy NPP still
+    over-respires (≈ −25 vs the C's ≈ +512 gC/m²/yr) — an un-gated leaf-respiration aggregation issue
+    (the maintenance constants match the C exactly); until calibrated, the coupled loop uses a `bm_inc`
+    crutch (the C's per-individual NPP — the same kernel-isolation methodology used for the FAPAR/PET
+    crutches), and a carbon-deficit individual stagnates rather than blowing up the pipe-model height.
+  - New gates `test/testitems/dynamic_structure_tests.jl` (allocation invariant, conservation, growth,
+    AD; 30 tests) + `test/testitems/coupling_tests.jl` (the `FDiffFastCore` adapter + coupled loop; 15
+    tests), self-contained on the committed 2010 reference. Data reconstruction
+    `scripts/extract_fdiff_individuals_multiyear.py` (2008–2011 per-individual pools incl. heartwood) +
+    committed `references/hainich_structure_growth.txt`; driver `scripts/validate_fdiff_structure.jl`.
+    Report `docs/phase3_fdiff_cbinary_validation.md` §12. Full suite **25,856 pass / 0 fail / 4 broken**;
+    JET/Aqua/gradient green; Runic-clean.
 - **Differentiable multi-layer soil water for `F_diff` (Phase-3 scale-up step 2).** Replaced the single
   soil bucket with a 23-layer differentiable column (`FDiff.SoilColumn`, `FDiffStateML`,
   `daily_step_ml`/`rollout_daily_ml`, `hainich_soilcolumn`): fill-to-field-capacity infiltration

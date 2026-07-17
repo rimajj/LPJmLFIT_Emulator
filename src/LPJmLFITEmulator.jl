@@ -52,6 +52,7 @@ export softmax_partition, flux_then_integrate,
     LAMBDA_VAPORIZATION, LAMBDA_SUBLIMATION
 # Components
 export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
+export FDiffFastCore, step!, annual_step!
 # Registry
 export COMPONENTS, FLUXES, Component, Flux
 
