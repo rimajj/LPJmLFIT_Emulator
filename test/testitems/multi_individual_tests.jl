@@ -128,7 +128,7 @@
     @test all(isfinite, gpp) && all(isfinite, tr) && all(isfinite, rm) && all(isfinite, ev) && all(isfinite, ic)
 
     # ── GPP LEVEL stays closed with self-computed phenology: annual ratio ≈ 1.17, dynamics near-exact ──
-    @test 0.9 <= sum(gpp) / sum(gpp_C) <= 1.30            # ≈ 1.17 (self GSI phen integrates more leaf-display)
+    @test 0.9 <= sum(gpp) / sum(gpp_C) <= 1.3            # ≈ 1.17 (self GSI phen integrates more leaf-display)
     @test _corr(gpp, gpp_C) > 0.95                         # full-year r ≈ 0.993
 
     # ── transpiration LEVEL stays closed with self-computed eeq: annual ratio ≈ 1.08 ──
@@ -153,8 +153,12 @@
     @test _corr(phen_self, fapar_C) > 0.95                # r ≈ 0.99 — GSI phenology reproduces the C's phen curve
     # (b) self-computed eeq (dynamic patch albedo) matches the C's daily PET (no pet_C drive)
     inds1 = [mkind(r) for r in prows[patches[1]]]
-    eeq_self = [FDiff.priestley_taylor_eeq(FDiff.WaterParams{Float64}(), fcol(f, "swdown")[i], fcol(f, "lwnet")[i],
-            fcol(f, "temp")[i], fcol(f, "daylength")[i], FDiff.patch_albedo(inds1, phen_self[i], 0.0)) for i in 1:n]
+    eeq_self = [
+        FDiff.priestley_taylor_eeq(
+                FDiff.WaterParams{Float64}(), fcol(f, "swdown")[i], fcol(f, "lwnet")[i],
+                fcol(f, "temp")[i], fcol(f, "daylength")[i], FDiff.patch_albedo(inds1, phen_self[i], 0.0)
+            ) for i in 1:n
+    ]
     @test _corr(eeq_self, pet_C ./ 1.32) > 0.98           # r ≈ 0.999
     @test 0.9 <= sum(1.32 .* eeq_self) / sum(pet_C) <= 1.1  # annual PET ratio ≈ 0.98 (fixed-0.15 was 1.07)
     # (c) petpar daylength (lat 51.25) reproduces the forcing daylength it replaces

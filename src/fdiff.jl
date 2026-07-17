@@ -967,9 +967,9 @@ end
 # (`c_albsnow`, `c_albsoil`, `c_watertosnow`), `src/tree/albedo_tree.c` (`c_fstem`),
 # `src/soil/snow.c` (`c_roughness`).
 const C_ALBSNOW = 0.65          # snow albedo (soil.h:54)
-const C_ALBSOIL = 0.30          # bare-soil albedo, live non-FMS path (soil.h:55)
-const C_FSTEM = 0.70            # ground masking by stems/branches when leafless (albedo_tree.c:21)
-const C_WATERTOSNOW = 6.70      # mm water → m snow depth (soil.h:58)
+const C_ALBSOIL = 0.3          # bare-soil albedo, live non-FMS path (soil.h:55)
+const C_FSTEM = 0.7            # ground masking by stems/branches when leafless (albedo_tree.c:21)
+const C_WATERTOSNOW = 6.7      # mm water → m snow depth (soil.h:58)
 const C_ROUGHNESS = 0.06        # sub-canopy roughness height, m (snow.c:18)
 
 deg2rad_(deg) = deg * π / 180   # include/units.h:20

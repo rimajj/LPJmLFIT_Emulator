@@ -141,8 +141,12 @@ function main()
         phen_self[i] = ph
     end
     inds1 = [make_individual(ind, r) for r in patch_rows[patches[1]]]
-    eeq_self = [FDiff.priestley_taylor_eeq(FDiff.WaterParams{Float64}(), fcol(f, "swdown")[i], fcol(f, "lwnet")[i],
-            fcol(f, "temp")[i], fcol(f, "daylength")[i], FDiff.patch_albedo(inds1, phen_self[i], 0.0)) for i in 1:n]
+    eeq_self = [
+        FDiff.priestley_taylor_eeq(
+                FDiff.WaterParams{Float64}(), fcol(f, "swdown")[i], fcol(f, "lwnet")[i],
+                fcol(f, "temp")[i], fcol(f, "daylength")[i], FDiff.patch_albedo(inds1, phen_self[i], 0.0)
+            ) for i in 1:n
+    ]
     dl_self = [petpar_daylength(51.25, d) for d in 1:n]
 
     println("F_diff STANDALONE (crutch-free) canopy ↔ LPJmL-FIT C-binary — Hainich 42490, 2010 (§11)")
@@ -150,18 +154,24 @@ function main()
     println("  F_diff now self-computes BOTH the GSI leaf phenology AND the dynamic-albedo eeq\n")
 
     println("── crutch removal proofs (self-computed vs the C output each replaced) ──")
-    println("  GSI phen  vs C d_fapar      r = ", round(_corr(phen_self, fapar_C), digits = 4),
-        "  (mean ", round(_mean(phen_self), digits = 3), " vs proxy ", round(_mean(phens_C), digits = 3), ")")
-    println("  eeq·1.32  vs C d_pet        r = ", round(_corr(eeq_self, eeqs_C), digits = 4),
+    println(
+        "  GSI phen  vs C d_fapar      r = ", round(_corr(phen_self, fapar_C), digits = 4),
+        "  (mean ", round(_mean(phen_self), digits = 3), " vs proxy ", round(_mean(phens_C), digits = 3), ")"
+    )
+    println(
+        "  eeq·1.32  vs C d_pet        r = ", round(_corr(eeq_self, eeqs_C), digits = 4),
         "  annual ", round(sum(1.32 .* eeq_self), digits = 1), " vs ", round(sum(pet_C), digits = 1),
-        " (ratio ", round(sum(1.32 .* eeq_self) / sum(pet_C), digits = 3), "; fixed-0.15 was 807/1.068)")
+        " (ratio ", round(sum(1.32 .* eeq_self) / sum(pet_C), digits = 3), "; fixed-0.15 was 807/1.068)"
+    )
     println("  daylength vs petpar2 forc   max|Δ| = ", round(maximum(abs.(dl_self .- fcol(f, "daylength"))), digits = 6), " h")
 
     println("\n── annual ratios (model/C): crutch (phen_C+eeq_C)  →  standalone (self+self) ──")
     println("  GPP     = ", round(sum(crut.gpp) / sum(gpp_C), digits = 3), "  →  ", round(sum(st.gpp) / sum(gpp_C), digits = 3))
     println("  transp  = ", round(sum(crut.transp) / sum(transp_C), digits = 3), "  →  ", round(sum(st.transp) / sum(transp_C), digits = 3))
-    println("  interc  = ", round(sum(crut.interc) / sum(interc_C), digits = 3), "  →  ", round(sum(st.interc) / sum(interc_C), digits = 3),
-        "   (", round(sum(st.interc), digits = 1), " vs C ", round(sum(interc_C), digits = 1), " mm)")
+    println(
+        "  interc  = ", round(sum(crut.interc) / sum(interc_C), digits = 3), "  →  ", round(sum(st.interc) / sum(interc_C), digits = 3),
+        "   (", round(sum(st.interc), digits = 1), " vs C ", round(sum(interc_C), digits = 1), " mm)"
+    )
 
     println("\n── standalone growing season (DOY 150–240) daily ──")
     fmtline(name, x, y) = println(
