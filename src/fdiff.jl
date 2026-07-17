@@ -160,12 +160,14 @@ end
 """
     RespParams{T}
 
-Autotrophic-respiration constants (Lloyd–Taylor `gtemp`, LPJmL `npp.c`; Sitch et al. 2003). Tissue
-maintenance respiration is `respcoeff·k·(C_tissue/CN_tissue)·gtemp(temp)` summed over sapwood and
-fine root, using **tissue-specific C:N ratios** (wood is N-poor, `CN_sapwood≈330`; fine root
-N-rich, `CN_root≈29`) — a single leaf-like N:C over-respires the large woody pool. `k` is the
-maintenance rate per unit tissue N (gC gN⁻¹ day⁻¹). Growth respiration is
-`r_growth·(GPP − Rleaf − Rmaint)⁺`. `βgate` smooths the low-T cutoff.
+Autotrophic-respiration constants (Lloyd–Taylor `gtemp`, LPJmL-FIT `npp_tree.c`; Sitch et al. 2003).
+Tissue maintenance respiration is `respcoeff·k·(C_tissue/CN_tissue)·gtemp(temp)` over sapwood and
+fine root, using **tissue-specific C:N ratios** (wood N-poor, `CN_sapwood≈330`; fine root N-rich,
+`CN_root≈29`) — a single leaf-like N:C over-respires the large woody pool. Faithful to `npp_tree.c:51`,
+the **fine-root term is PHEN-GATED** (roots respire only while leaves are displayed; the sapwood term
+runs year-round). `k` is the maintenance rate per unit tissue N (gC gN⁻¹ day⁻¹). Growth respiration is
+`r_growth·max(0, GPP − Rleaf − Rmaint)` (`npp_tree.c:52`), the `max(0,·)` floor sharpened by `βgrowth`.
+`βgate` smooths the low-T cutoff.
 """
 Base.@kwdef struct RespParams{T <: Real}
     e0::T = 308.56           # Lloyd–Taylor activation temp
@@ -176,6 +178,7 @@ Base.@kwdef struct RespParams{T <: Real}
     respcoeff::T = 1.0
     r_growth::T = 0.25
     βgate::T = 1.0
+    βgrowth::T = 50.0        # sharpness of the growth-resp `max(0,·)` floor (npp_tree.c:52 hard branch)
 end
 
 """
@@ -466,20 +469,28 @@ end
 # Respiration → NPP — Lloyd–Taylor gtemp + maintenance + growth (npp; NeuralCrop respiration.jl)
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 """
-    autotrophic_respiration(p::RespParams, temp, gpp, rd, c_sapwood, c_root) -> (npp, ra)
+    autotrophic_respiration(p::RespParams, temp, gpp, rd, c_sapwood, c_root; phen=1.0) -> (npp, ra)
 
 Net primary production `NPP = GPP − Ra`, `Ra = Rleaf + Rmaint + Rgrowth`. `Rmaint = respcoeff·k·
-(N:C)·gtemp(temp)·(C_sap + C_root)` with the Lloyd–Taylor `gtemp = exp(e0·(1/(Tr+10) − 1/(temp+Tr)))`
-(low-T cutoff smoothed by a sigmoid, per NeuralCrop's AD-safe variant); `Rgrowth = r_growth·(GPP −
-Rleaf − Rmaint)⁺` (softplus floor). `rd` is the leaf respiration already returned by
-[`photosynthesis`](@ref).
+gtemp(temp)·(C_sap/CN_sap + phen·C_root/CN_root)` with the Lloyd–Taylor `gtemp = exp(e0·(1/(Tr+10) −
+1/(temp+Tr)))` (low-T cutoff smoothed by a sigmoid, per NeuralCrop's AD-safe variant); the fine-root
+term is **phen-gated** (`npp_tree.c:51`). `Rgrowth = r_growth·max(0, GPP − Rleaf − Rmaint)`
+(`npp_tree.c:52`), the floor a SHARP softplus (`p.βgrowth`) — a soft β≈1 floor over-counts growth resp
+for every carbon-negative individual/day, which aggregated over the multi-PFT canopy drives NPP strongly
+negative. `rd` is the leaf respiration already returned by [`photosynthesis`](@ref).
 """
-function autotrophic_respiration(p::RespParams, temp, gpp, rd, c_sapwood, c_root)
+function autotrophic_respiration(p::RespParams, temp, gpp, rd, c_sapwood, c_root; phen = one(temp))
     gate = sigmoid(10 * (temp + 40))                       # smooth of temp ≥ −40 °C
     gtemp = gate * exp(p.e0 * (1 / (p.temp_response + 10) - 1 / (temp + p.temp_response)))
-    tissue_n = c_sapwood / p.cn_sapwood + c_root / p.cn_root
-    rmaint = p.respcoeff * p.k * gtemp * tissue_n
-    rgrowth = p.r_growth * softplus(gpp - rd - rmaint, one(gpp))
+    # Aboveground sapwood maintenance runs year-round (gtemp_air, NO phen); the fine-root term is
+    # PHEN-GATED (`npp_tree.c:51` `(root·nc_root)·…·gtemp_soil·phen`) — a deciduous canopy stops
+    # respiring roots when leaves are off. `gtemp_soil` is proxied by `gtemp_air` (no soil-thermal model).
+    rmaint = p.respcoeff * p.k * gtemp * (c_sapwood / p.cn_sapwood + phen * c_root / p.cn_root)
+    # Growth respiration only on POSITIVE net-of-maintenance carbon: `npp_tree.c:52`
+    # `(assim<mresp) ? assim−mresp : (assim−mresp)·(1−r_growth)` ⇒ `rgrowth = r_growth·max(0, assim−mresp)`.
+    # A SHARP softplus (βgrowth) — a soft β≈1 floor injects a spurious ~log(2) growth resp into every
+    # carbon-negative individual/day and drives the aggregated canopy NPP strongly negative.
+    rgrowth = p.r_growth * softplus(gpp - rd - rmaint, p.βgrowth)
     ra = rd + rmaint + rgrowth
     return (gpp - ra, ra)
 end
@@ -592,7 +603,7 @@ function daily_step(
     soil_evap = evap_demand * et_frac
 
     # --- respiration → NPP ---
-    (npp, _) = autotrophic_respiration(p.resp, f.temp, gpp, rd, c_sapwood, c_root)
+    (npp, _) = autotrophic_respiration(p.resp, f.temp, gpp, rd, c_sapwood, c_root; phen = str.phen)
 
     st′ = FDiffState{T}(; w = convert(T, w′), snowpack = convert(T, snowpack′))
     fluxes = (
@@ -849,7 +860,7 @@ function daily_step_ml(
     cover = str.fpc * str.phen
     (w3, soil_evap) = _soil_evap(w2, convert.(T, soil.whcs), convert.(T, soil.frac_evap), eeq, w.α_PT, cover, w.βevap, w.βw)
 
-    (npp, _) = autotrophic_respiration(p.resp, f.temp, gpp, rd, c_sapwood, c_root)
+    (npp, _) = autotrophic_respiration(p.resp, f.temp, gpp, rd, c_sapwood, c_root; phen = str.phen)
 
     runoff = drainage                                     # v1: bottom drainage (surface runoff = v2)
     rootmoist = zero(T)                                    # top-1 m plant-available water (mm)
@@ -1354,7 +1365,7 @@ function daily_step_canopy(
         # annual allocation (`allocation_tree.c:236` `bm_inc_ind = bm_inc/nind`) divides back out.
         nind_i = convert(T, ind.nind)
         c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood) * nind_i
-        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i)
+        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = ph)
         npp_tot += npp_i
         npp_inds[ii] = npp_i
     end
@@ -1742,9 +1753,10 @@ the final `TreePools`, final soil state, the per-year pools trajectory, and per-
 `(gpp, npp, agb, vegc, mean_height, wscal_mean)` (per-m²/m).
 
 `bm_inc_ext` (optional; a per-year vector of per-individual per-m² `bm_inc`) overrides the self-computed
-`Σ npp_ind` — a kernel-isolation crutch (as sessions 5–7 used for the FAPAR/PET C-outputs) that isolates
-the allocation/structure growth from F_diff's self-computed canopy NPP, which currently over-respires
-(pre-existing, un-gated; see docs §12). Calibrating the self-NPP (removing this crutch) is the follow-up.
+`Σ npp_ind` — retained as a kernel-isolation lever (as sessions 5–7 used for the FAPAR/PET C-outputs) to
+isolate the allocation/structure growth from the canopy NPP. As of docs §13 the self-computed canopy NPP
+is CALIBRATED (positive, CUE≈0.52 vs the C's 0.46), so the DEFAULT (`bm_inc_ext=nothing`) is fully
+self-driven — the crutch is no longer load-bearing.
 """
 function rollout_canopy_years(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
@@ -1770,11 +1782,9 @@ function rollout_canopy_years(
         end
         wscal_mean = wsum / length(days)
         # `bm_inc_ext` (optional per-year, per-individual per-m² bm_inc) OVERRIDES the self-computed
-        # Σ npp_ind — the same kernel-isolation "crutch" methodology sessions 5–7 used for the FAPAR/PET
-        # C-outputs. It isolates the ALLOCATION (structure growth) from F_diff's self-computed canopy NPP,
-        # which currently over-respires (a pre-existing, un-gated leaf-respiration aggregation issue that
-        # the per-m² maintenance fix only partly closed — see docs §12). Removing this crutch (calibrating
-        # the self-NPP to the C's ~512 gC/m²/yr) is the immediate follow-up before fully self-driven coupling.
+        # Σ npp_ind — a kernel-isolation lever (as sessions 5–7 used for the FAPAR/PET C-outputs). As of
+        # docs §13 the self-computed canopy NPP is CALIBRATED (the growth-resp floor βgrowth + fine-root
+        # phen-gating took annual self-NPP −25 → +663 gC/m²/yr), so the DEFAULT is fully self-driven.
         bm_year = bm_inc_ext === nothing ? bm_perm2 : convert.(T, bm_inc_ext[yr])
         newtrees = Vector{TreePools{T}}(undef, n)
         for i in 1:n

@@ -110,18 +110,20 @@
 
     # ── run all 25 patches, average daily stand fluxes to the cell — STANDALONE (crutch-free, §11): ──
     # F_diff self-computes BOTH the GSI leaf phenology AND the dynamic-albedo eeq (no phens/eeqs drives).
-    gpp = zeros(n); tr = zeros(n); ev = zeros(n); ic = zeros(n); rm = zeros(n); fa = zeros(n)
+    gpp = zeros(n); np = zeros(n); tr = zeros(n); ev = zeros(n); ic = zeros(n); rm = zeros(n); fa = zeros(n)
     for pnum in patches
         inds = [mkind(r) for r in prows[pnum]]
         st0 = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
         (_, days) = rollout_daily_canopy(tebs_params(), st0, inds, soil, forc)
         for i in 1:n
-            gpp[i] += days[i].gpp / length(patches); tr[i] += days[i].transp / length(patches)
+            gpp[i] += days[i].gpp / length(patches); np[i] += days[i].npp / length(patches)
+            tr[i] += days[i].transp / length(patches)
             ev[i] += days[i].evap / length(patches); ic[i] += days[i].interc / length(patches)
             rm[i] += days[i].rootmoist / length(patches); fa[i] += days[i].fapar / length(patches)
         end
     end
-    gpp_C = fcol(t, "gpp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C"); interc_C = fcol(t, "interc_C")
+    gpp_C = fcol(t, "gpp_C"); npp_C = fcol(t, "npp_C"); transp_C = fcol(t, "transp_C")
+    rootm_C = fcol(t, "rootmoist_C"); interc_C = fcol(t, "interc_C"); fapar_Cann = fcol(t, "fapar_C")
     doy = fcol(f, "doy")
     gs = [i for i in 1:n if 150 <= doy[i] <= 240]
 
@@ -134,6 +136,23 @@
     # ── transpiration LEVEL stays closed with self-computed eeq: annual ratio ≈ 1.08 ──
     @test 0.9 <= sum(tr) / sum(transp_C) <= 1.2           # ≈ 1.08
     @test _corr(tr, transp_C) > 0.95                       # full-year r ≈ 0.978
+
+    # ── self-computed canopy NPP is now CALIBRATED (docs §13; the bm_inc crutch is removed) ──
+    # The growth-respiration max(0,·) floor was sharpened (RespParams.βgrowth 1→50) and the fine-root
+    # maintenance term is phen-gated (npp_tree.c:51-52). This closed the pre-existing over-respiration
+    # (annual self-NPP went −25 → +663 gC/m²/yr; winter leaf-off deficit −250 → −6.7 ≈ the C's −13).
+    # In the kernel-isolation (C-FAPAR/PET-driven) config the respiration TOTAL Ra matches the C to 0.5 %
+    # — so the residual overshoot is INHERITED from the standalone GPP (the documented +17 % GSI-phenology
+    # level), NOT a respiration miscalibration: F_diff's carbon-use efficiency CUE=NPP/GPP≈0.52 sits just
+    # above the C's 0.46 (a physical temperate-forest value), and the daily NPP tracks the C at r≈0.99.
+    @test sum(np) > 0                                      # POSITIVE self-NPP (the −25 gC/m²/yr bug is fixed)
+    @test 1.0 <= sum(np) / sum(npp_C) <= 1.6              # ≈ 1.31 (inherits the GPP-phenology level)
+    @test 0.42 <= sum(np) / sum(gpp) <= 0.56              # CUE ≈ 0.52 vs C 0.46 — respiration is calibrated
+    @test _corr(np, npp_C) > 0.95                          # daily NPP dynamics track the C (r ≈ 0.99)
+    # winter (leaf-off) is a SMALL sapwood-maintenance deficit, not the old runaway growth-resp blow-up
+    let wint = [i for i in 1:n if fapar_Cann[i] < 0.02]
+        @test -40 < sum(np[wint]) < 2                      # ≈ −6.7 (C −13); was −250 before the fix
+    end
 
     # ── interception flux tracks the C binary (interception.c port) ──
     @test _corr(ic, interc_C) > 0.9                        # r ≈ 0.99

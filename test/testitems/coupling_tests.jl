@@ -5,8 +5,8 @@
 # `FToE`; the year-end `annual_step!` grows the prognostic canopy structure (FDiff.grow_individual) from
 # the accumulated conserved `bm_inc` and returns `FToS` — the flux-then-integrate S↔F handoff (DESIGN §8).
 # This gate confirms the interface is wired (no throw), the SharedState soil water is updated in place,
-# FToE/FToS are finite + conserved, and a multi-year coupled loop (driven by the C's per-individual
-# bm_inc crutch — self-NPP calibration is the documented follow-up) grows structure without blow-up.
+# FToE/FToS are finite + conserved, and a multi-year coupled loop — FULLY SELF-DRIVEN by the calibrated
+# self-computed canopy NPP (the bm_inc crutch is removed; docs §13) — grows structure without blow-up.
 @testitem "S↔F coupling — FDiffFastCore behind AbstractFastCore.step! (Hainich 42490)" tags = [:validation, :fdiff, :canopy, :coupling] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -84,33 +84,36 @@
     @test ftoe.le >= 0 && ftoe.rh == 0 && ftoe.firec == 0 # LE = λ·ET ≥ 0; SOM/fire terms are 0 in v1
 
     # ── year-end flux-then-integrate handoff ──
+    h_before = sum(t.height for t in core.pools) / length(core.pools)
     ftos = annual_step!(core, state)
     @test ftos isa FToS
     @test isfinite(ftos.bm_inc) && isfinite(ftos.growth_eff)
+    @test ftos.bm_inc > 0                                 # SELF-computed per-m² NPP is positive (calibrated; docs §13)
     @test 0 <= ftos.water_stress <= 1
     @test 0 <= ftos.soilmoist <= 1
-    # structure stays physical after the annual grow (no blow-up even when self-NPP is a deficit — v1
-    # stagnation guard); heights bounded, pools non-negative
+    # structure stays physical after the annual grow (no blow-up); the calibrated self-NPP GROWS it (the
+    # adapter is fully self-driven — it accumulates fl.npp_ind, never the C crutch); heights bounded
     @test all(0 < t.height <= 100 && t.sapwood_c > 0 && t.leaf_c > 0 && isfinite(t.height) for t in core.pools)
+    @test sum(t.height for t in core.pools) / length(core.pools) > h_before   # positive self-NPP ⇒ growth
 
     # ── the abstract fallback still throws for an unimplemented core ──
     struct _DummyCore <: AbstractFastCore end
     @test_throws ErrorException step!(_DummyCore(), state, bc, atm(1))
 
-    # ── multi-year coupled loop (bm_inc crutch = C per-individual NPP) grows structure, stays physical ──
+    # ── multi-year coupled loop — FULLY SELF-DRIVEN (self-computed NPP, no crutch): grows, stays physical ──
     forc = [
         DailyForcing{Float64}(
                 swdown = fc("swdown")[i], lwnet = fc("lwnet")[i], temp = fc("temp")[i],
                 precip = fc("precip")[i], daylength = fc("daylength")[i], co2 = fc("co2")[i]
             ) for i in 1:n
     ]
-    bm0 = [v("npp_ind", r) for r in rows]
     NY = 4
     st0 = FDiffStateML{Float64}([0.9 * w for w in whcs], 0.0)
     (_, _, _, annual) = rollout_canopy_years(
         tebs_params(), tebs_allocparams(), Allometry.TreeAllometry{Float64}(), st0, pools, tmpls, soil,
-        [forc for _ in 1:NY]; bm_inc_ext = [bm0 for _ in 1:NY],
+        [forc for _ in 1:NY],                             # no bm_inc_ext ⇒ self-computed NPP drives allocation
     )
     @test all(isfinite(a.agb) && a.agb > 0 for a in annual)
-    @test annual[NY].agb > annual[1].agb                  # cumulative growth from the delivered bm_inc
+    @test all(a.npp > 0 for a in annual)                  # self-computed NPP positive every year (calibrated)
+    @test annual[NY].agb > annual[1].agb                  # cumulative growth from the self-computed NPP
 end

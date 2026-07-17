@@ -81,6 +81,7 @@ function make_individual(ind, r)
         parse(Float64, ind["lai"][r]),             # leaf-on crown LAI (interception)
         pft_intc(typ),                             # PFT interception coefficient
         ast, alt, scf,                             # PFT albedo constants (dynamic patch albedo)
+        parse(Float64, ind["nind"][r]),            # individual density (per-m² maintenance / bm_inc)
         photo, tstress, typ >= 7,
     )
 end
@@ -107,7 +108,7 @@ function main()
     end
 
     p = tebs_params()
-    gpp_C = fcol(t, "gpp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C")
+    gpp_C = fcol(t, "gpp_C"); npp_C = fcol(t, "npp_C"); transp_C = fcol(t, "transp_C"); rootm_C = fcol(t, "rootmoist_C")
     interc_C = fcol(t, "interc_C"); pet_C = fcol(t, "pet_C"); fapar_C = fcol(t, "fapar_C")
     gs = [i for i in 1:n if GS_LO <= doy[i] <= GS_HI]
     # C-binary drives (kernel isolation, §9/§10) — used only for the crutch-vs-standalone comparison
@@ -117,18 +118,19 @@ function main()
     # average daily stand fluxes over the 25 patches. Default (phens=eeqs=nothing) is STANDALONE:
     # F_diff self-computes the GSI phenology + dynamic-albedo eeq (§11).
     function run_cell(; phens = nothing, eeqs = nothing)
-        gpp = zeros(n); transp = zeros(n); evap = zeros(n); interc = zeros(n); rootm = zeros(n); fapar = zeros(n)
+        gpp = zeros(n); npp = zeros(n); transp = zeros(n); evap = zeros(n); interc = zeros(n); rootm = zeros(n); fapar = zeros(n)
         for pnum in patches
             inds = [make_individual(ind, r) for r in patch_rows[pnum]]
             st0 = FDiffStateML{Float64}([0.9 * wc for wc in whcs], 0.0)
             (_, days) = rollout_daily_canopy(p, st0, inds, soil, forc; phens = phens, eeqs = eeqs)
             for i in 1:n
-                gpp[i] += days[i].gpp / length(patches); transp[i] += days[i].transp / length(patches)
+                gpp[i] += days[i].gpp / length(patches); npp[i] += days[i].npp / length(patches)
+                transp[i] += days[i].transp / length(patches)
                 evap[i] += days[i].evap / length(patches); interc[i] += days[i].interc / length(patches)
                 rootm[i] += days[i].rootmoist / length(patches); fapar[i] += days[i].fapar / length(patches)
             end
         end
-        return (; gpp, transp, evap, interc, rootm, fapar)
+        return (; gpp, npp, transp, evap, interc, rootm, fapar)
     end
 
     crut = run_cell(phens = phens_C, eeqs = eeqs_C)     # both C-output crutches (§9/§10 config)
@@ -167,6 +169,11 @@ function main()
 
     println("\n── annual ratios (model/C): crutch (phen_C+eeq_C)  →  standalone (self+self) ──")
     println("  GPP     = ", round(sum(crut.gpp) / sum(gpp_C), digits = 3), "  →  ", round(sum(st.gpp) / sum(gpp_C), digits = 3))
+    println(
+        "  NPP     = ", round(sum(crut.npp) / sum(npp_C), digits = 3), "  →  ", round(sum(st.npp) / sum(npp_C), digits = 3),
+        "   (self ", round(sum(st.npp), digits = 1), " vs C ", round(sum(npp_C), digits = 1),
+        " gC/m²/yr; CUE=NPP/GPP ", round(sum(st.npp) / sum(st.gpp), digits = 3), " vs C ", round(sum(npp_C) / sum(gpp_C), digits = 3), ")"
+    )
     println("  transp  = ", round(sum(crut.transp) / sum(transp_C), digits = 3), "  →  ", round(sum(st.transp) / sum(transp_C), digits = 3))
     println(
         "  interc  = ", round(sum(crut.interc) / sum(interc_C), digits = 3), "  →  ", round(sum(st.interc) / sum(interc_C), digits = 3),

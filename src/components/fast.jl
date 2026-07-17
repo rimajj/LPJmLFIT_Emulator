@@ -33,7 +33,8 @@ step!(::AbstractFastCore, ::SharedState, ::SToF, ::AtmForcing) =
 # Wires the differentiable multi-individual canopy (`FDiff.daily_step_canopy`) behind
 # `AbstractFastCore.step!`: it reads/writes the authoritative soil water in `SharedState`, self-computes
 # phenology (GSI) + `eeq` (dynamic albedo) + daylength (from latitude), and accumulates the conserved
-# per-individual `bm_inc` that the ANNUAL handoff ([`annual_step!`](@ref)) allocates into the prognostic
+# per-individual self-computed `bm_inc` (`fl.npp_ind` — NO C crutch; the canopy NPP is calibrated, docs
+# §13) that the ANNUAL handoff ([`annual_step!`](@ref)) allocates into the prognostic
 # canopy structure (`FDiff.grow_individual`) and returns to S as [`FToS`](@ref) — the flux-then-integrate
 # S↔F coupling of DESIGN §8. This closes the "SharedState adapter" scale-up item (the interface no longer
 # throws) on the Hainich prototype.

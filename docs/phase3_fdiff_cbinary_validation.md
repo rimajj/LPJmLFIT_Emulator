@@ -491,3 +491,71 @@ loop). Reconstruction of the before/after individual sets: `scripts/extract_fdif
 fully self-driven; per-PFT phenology for the evergreen/grass minority; then gradient-based online rollout
 training (finish NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks — the AD-through-the-rollout
 prerequisite is proven).
+
+## 13. Update — self-computed canopy NPP CALIBRATED; the `bm_inc` crutch removed (scale-up step 7a)
+
+Step 6 left the self-computed canopy NPP over-respiring (≈ −25 gC/m²/yr vs the C's ≈ +507), so the
+coupled loop leaned on the `bm_inc` crutch. Decomposing the standalone canopy respiration `Ra = R_leaf +
+R_maint + R_growth` against the C target isolated the cause to **two faithful-to-`npp_tree.c` fixes**, not
+a constants error (the maintenance constants match the C exactly):
+
+1. **Growth-respiration floor was far too soft.** The C is a hard branch — `npp = (assim < mresp) ?
+   assim−mresp : (assim−mresp)·(1−r_growth)` (`npp_tree.c:52`), i.e. `R_growth = r_growth·max(0, assim −
+   mresp)` with `assim = gpp − rd` — **zero whenever a tissue is carbon-negative**. F_diff smoothed that
+   `max(0,·)` with `softplus(·, β=1)`, whose `log(2)/β ≈ 0.69 gC` offset (and slow sub-zero decay)
+   injected a spurious growth respiration into **every carbon-negative individual on every day**;
+   aggregated over ~12 individuals × 365 days this alone was ≈ **+730 gC/m²/yr** of phantom Ra (on
+   deep-winter days with GPP ≈ 0 the model booked R_growth ≈ 2 gC/m²/day). Fix: a dedicated sharpness
+   `RespParams.βgrowth = 50` (matching the other flux floors' `βflux`), reducing the offset to
+   `log(2)/50 ≈ 0.014 gC`.
+2. **Fine-root maintenance was not phen-gated.** The C multiplies the root (+`sapwood_bg`) maintenance
+   block by `pft->phen` (`npp_tree.c:51`) — a deciduous canopy stops respiring roots when the leaves are
+   off — while the above-ground sapwood term runs year-round (no phen). F_diff respired the root pool
+   year-round. Fix: `R_maint = respcoeff·k·gtemp·(C_sap/CN_sap + phen·C_root/CN_root)` (the sapwood term
+   still un-gated). (`gtemp_soil` for the root term is proxied by `gtemp_air` — F_diff has no soil-thermal
+   model yet; a small, documented residual.)
+
+Both are in `FDiff.autotrophic_respiration`; the three call sites (`daily_step`, `daily_step_ml`,
+`daily_step_canopy`) pass the current day's `phen`.
+
+**Result — standalone canopy (self-GSI-phen + self-albedo-`eeq`, 25 patches, 2010):**
+
+| quantity | before | after | C binary |
+|---|---:|---:|---:|
+| annual NPP (gC/m²/yr) | **−25** | **+663** | 507 |
+| winter (leaf-off, 117 d) NPP | −250 | **−6.7** | −13 |
+| daily NPP correlation vs C | — | **0.987** | — |
+| carbon-use efficiency NPP/GPP | (neg.) | **0.52** | 0.46 |
+
+The respiration is now **physically calibrated**: in the kernel-isolation config (C's FAPAR + PET drives,
+so GPP ≈ C), F_diff's **total Ra = 592.8 vs the C's 595.6 — a 0.5 % match**. The remaining standalone NPP
+overshoot (663 vs 507, ×1.31) is therefore **inherited from the standalone GPP** (the documented +17 %
+GSI-phenology level of §11), *not* a respiration miscalibration — CUE 0.52 sits just above the C's 0.46
+(a physical temperate-forest value). Two second-order respiration residuals, both **pre-existing v1
+simplifications**, partially cancel and account for the CUE sitting slightly high: `sapwood_bg`
+below-ground maintenance is omitted (biases NPP high, growing-season) and `rd` is not conductance-gated on
+rare water-stress-collapse days (the C zeroes it when `gpd ≤ 1e-5`, `water_stressed.c:196`; biases NPP low
+on those days). Both stay on the item-7c list — fixing the `rd` gate *alone* would push CUE further from
+the C, and `sapwood_bg` needs a below-ground pool.
+
+**The crutch is removed.** `rollout_canopy_years` now defaults to fully self-driven (`bm_inc_ext=nothing`
+uses `Σ npp_ind`); `FDiffFastCore` always self-accumulated `fl.npp_ind` (never the crutch), so the adapter
+was self-driven the moment the flux went positive. The self-driven coupled loop (2009 start + 2010
+forcing) delivers self-NPP ≈ 594 gC/m²/yr and **grows structure smoothly** — year-1 mean tree height 9.41 m
+(C 2010: 9.344), an 8-year trajectory H 9.41 → 10.28 (≈ 0.11 m/yr vs the C's ≈ 0.13), AGB 4927 → 6736, all
+finite, no blow-up — essentially tracking the crutch-driven trajectory.
+
+**Baselines / gates.** Only the numerical-regression anchor `references/fdiff_annual_totals.txt` moves —
+`npp` 871.81 → **893.28** (the sharpened growth-resp floor removes the phantom Ra on this synthetic
+scenario too); `gpp/transp/evap/runoff/precip` are **byte-identical** (the fix is downstream of GPP and the
+water balance). The water/light canopy baselines (`hainich_{fdiff,ml,canopy}_baseline`) are unchanged for
+the same reason. New self-NPP gate in `multi_individual_tests.jl` (positive NPP, ratio ≤ 1.6, CUE ∈
+[0.42,0.56], daily r > 0.95, winter deficit bounded); `dynamic_structure_tests.jl` and `coupling_tests.jl`
+now run the coupled loop **self-driven** (asserting positive annual self-NPP + structure growth).
+Diagnostic decomposition driver behaviour is reproduced by `scripts/validate_fdiff_canopy.jl` (extended to
+report NPP). Full suite green; ForwardDiff/Enzyme through the new respiration path match finite differences
+(the fixes add no new conditionals — a sharper `softplus` and a `phen` multiply).
+
+**Next:** per-PFT phenology for the evergreen/grass minority; grass structure prognostic; the below-ground
+`sapwood_bg` + carbon-debt in the allocation; then gradient-based online rollout training (finish
+NeuralCrop's TBPTT scaffold; add Lux NN λ/Vcmax hooks — the AD-through-the-rollout prerequisite is proven).

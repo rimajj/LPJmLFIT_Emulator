@@ -14,11 +14,12 @@
 #  2. carbon CONSERVATION: Δ(pools) = bm_net − turnover-to-litter (allocation invents no carbon);
 #  3. GROWTH direction: bm_inc>0 ⇒ agb/height increase;
 #  4. AD: d(height)/d(bm_inc) and d(sapwood)/d(bm_inc) match finite differences (ForwardDiff);
-#  5. MULTI-YEAR coupled rollout (rollout_canopy_years, bm_inc from the C's per-individual NPP — the same
-#     kernel-isolation crutch sessions 5–7 used for FAPAR/PET) stays physical + reproduces cell growth.
-# NB: F_diff's SELF-computed canopy NPP currently over-respires (a pre-existing, un-gated leaf-respiration
-# aggregation issue; the per-m² maintenance fix only partly closed it) — the bm_inc crutch isolates the
-# allocation from it; calibrating the self-NPP is the documented follow-up (docs §12).
+#  5. MULTI-YEAR coupled rollout (rollout_canopy_years) is now FULLY SELF-DRIVEN (no bm_inc crutch): the
+#     self-computed canopy NPP feeds the allocation, and the structure stays physical + grows across years.
+# NB: F_diff's SELF-computed canopy NPP is now CALIBRATED (docs §13) — the growth-resp max(0,·) floor was
+# sharpened (RespParams.βgrowth) + the fine-root maintenance is phen-gated (npp_tree.c:51-52), taking
+# annual self-NPP from −25 to +663 gC/m²/yr; the bm_inc crutch is removed. Self-NPP magnitude is gated in
+# multi_individual_tests.jl; here we confirm the self-driven coupled loop grows structure without blow-up.
 @testitem "Dynamic canopy structure — differentiable allocation (Hainich 42490, 2010)" tags = [:validation, :fdiff, :canopy, :structure] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -76,7 +77,7 @@
     @test maxcons < 1.0e-6                   # carbon conserved by the allocation (net of turnover)
     @test nup / length(trees) > 0.9          # bm_inc>0 grows aboveground biomass
 
-    # ── 5. multi-year COUPLED rollout (bm_inc crutch = C per-individual NPP): stable + grows ──
+    # ── 5. multi-year COUPLED rollout — FULLY SELF-DRIVEN (self-computed NPP, no crutch): stable + grows ──
     f = readcsv(joinpath(refdir, "hainich_forcing_2010.csv"))
     fc(k) = parse.(Float64, f[k])
     n = length(fc("doy"))
@@ -107,20 +108,21 @@
     )
     pool0 = [pools(r) for r in rows]
     tmpls = [tmpl(r) for r in rows]
-    bm0v = [v("npp_ind", r) for r in rows]                # per-m² bm_inc for the crutch
     NY = 5
     st0 = FDiffStateML{Float64}([0.9 * w for w in whcs], 0.0)
     (_, _, poolshist, annual) = rollout_canopy_years(
-        tebs_params(), alloc, allom, st0, pool0, tmpls, soil, [forc for _ in 1:NY]; bm_inc_ext = [bm0v for _ in 1:NY]
+        tebs_params(), alloc, allom, st0, pool0, tmpls, soil, [forc for _ in 1:NY]     # no bm_inc_ext ⇒ self-driven
     )
     @test length(annual) == NY
+    # self-computed NPP is delivered as the conserved bm_inc each year (positive, physical)
+    @test all(isfinite(a.npp) && a.npp > 0 for a in annual)
     # physical + smoothly growing structure across years (no blow-up, heights bounded, monotone AGB)
     for y in 1:NY
         @test isfinite(annual[y].agb) && annual[y].agb > 0
         @test all(0 < t.height <= allom.height_max && isfinite(t.height) for t in poolshist[y])
         @test all(t.sapwood_c > 0 && t.heartwood_c >= 0 && t.leaf_c > 0 for t in poolshist[y])
     end
-    @test annual[NY].agb > annual[1].agb                  # cumulative growth from the delivered bm_inc
+    @test annual[NY].agb > annual[1].agb                  # cumulative growth from the self-computed NPP
     # mean-height growth rate is gradual + physical (not a jump)
     h1 = sum(t.height for t in poolshist[1]) / length(pool0)
     h5 = sum(t.height for t in poolshist[NY]) / length(pool0)

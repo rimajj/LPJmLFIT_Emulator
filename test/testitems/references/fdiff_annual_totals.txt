@@ -4,8 +4,11 @@
 # Regenerated (docs §10): the net-daytime-assimilation floor was sharpened (PhotoParams.βadt, the
 # hardcoded softplus(adt,0.5) → softplus(adt,20)); the coarse floor injected spurious assimilation
 # into low-light days' conductance path. Net effect on this well-lit synthetic scenario is small.
+# Regenerated (docs §13): the growth-respiration max(0,·) floor was sharpened (RespParams.βgrowth,
+# softplus β 1.0→50.0) + fine-root maintenance is now phen-gated (npp_tree.c:51-52). ONLY `npp` moves
+# (871.81→893.28); gpp/transp/evap/runoff/precip byte-identical (the fix is downstream of GPP/water).
 # key value(gC/m2/yr or mm/yr)
-npp    871.81148008
+npp    893.27793226
 gpp    2964.11535214
 transp 631.53597203
 evap   50.37819900

@@ -6,6 +6,43 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- **Self-computed canopy NPP CALIBRATED — the `bm_inc` crutch removed (Phase-3 scale-up step 7a).** The
+  step-6 over-respiration (standalone canopy NPP ≈ −25 vs the C's ≈ +507 gC/m²/yr) was decomposed against
+  the C target (`Ra = R_leaf + R_maint + R_growth`) to two faithful-to-`npp_tree.c` fixes in
+  `FDiff.autotrophic_respiration` — NOT a constants error:
+  - **The growth-respiration `max(0,·)` floor was far too soft.** The C is a hard branch
+    `npp = (assim<mresp) ? assim−mresp : (assim−mresp)·(1−r_growth)` (`npp_tree.c:52`, `assim = gpp−rd`),
+    i.e. `R_growth = r_growth·max(0, gpp−rd−mresp)`, zero when carbon-negative; F_diff smoothed it with
+    `softplus(·, β=1)`, whose `log(2)/β ≈ 0.69 gC` offset injected a phantom growth respiration into every
+    carbon-negative individual/day (≈ +730 gC/m²/yr aggregated). Sharpened via a new `RespParams.βgrowth`
+    (= 50, matching the other flux floors).
+  - **Fine-root maintenance is now phen-gated** (`npp_tree.c:51` scales the root/`sapwood_bg` block by
+    `pft->phen`, above-ground sapwood year-round): `R_maint = respcoeff·k·gtemp·(C_sap/CN_sap +
+    phen·C_root/CN_root)`. The three call sites pass the day's `phen`.
+  - **Result:** standalone canopy annual NPP **−25 → +663 gC/m²/yr** (C 507); winter leaf-off **−250 →
+    −6.7** (C −13); daily NPP **r 0.987**; carbon-use efficiency **NPP/GPP 0.52 vs the C's 0.46**. In the
+    kernel-isolation config (C FAPAR+PET, GPP≈C) the respiration **total Ra = 592.8 vs the C's 595.6 — a
+    0.5 % match**, so the standalone NPP overshoot (×1.31) is inherited from the documented +17 %
+    GPP-phenology level, not a respiration miscalibration.
+  - **The `bm_inc` crutch is removed:** `rollout_canopy_years` defaults fully self-driven, and
+    `FDiffFastCore` always self-accumulated its own NPP. The self-driven coupled loop grows structure
+    smoothly (year-1 mean tree height 9.41 m vs the C's 9.344; 8-year H 9.41 → 10.28; no blow-up).
+  - Adversarially re-verified against `npp_tree.c` / `water_stressed.c` / `daily_natural.c`. Two
+    documented second-order residuals remain (both pre-existing v1, partially cancelling): omitted
+    `sapwood_bg` below-ground maintenance (NPP high) and un-gated `rd` on rare water-stress-collapse days
+    (NPP low). Report `docs/phase3_fdiff_cbinary_validation.md` §13.
+- **Numerical-regression baseline** `test/testitems/references/fdiff_annual_totals.txt`: `npp`
+  871.81 → 893.28 (the sharpened growth-resp floor removes the phantom respiration on the synthetic
+  scenario too); `gpp`/`transp`/`evap`/`runoff`/`precip` are byte-identical (the fix is downstream of GPP
+  and the water balance). The water/light canopy baselines are unchanged.
+- **Gates:** new self-computed-NPP gate in `multi_individual_tests.jl` (positive NPP; ratio ≤ 1.6; CUE ∈
+  [0.42, 0.56]; daily r > 0.95; bounded winter deficit); `dynamic_structure_tests.jl` and
+  `coupling_tests.jl` now run the coupled loop fully self-driven. `scripts/validate_fdiff_canopy.jl`
+  fixed (stale `nind` constructor) + extended to report NPP/CUE. Full suite **25,865 pass / 0 fail /
+  4 broken**; ForwardDiff/Enzyme still match finite differences (the fixes add no new conditionals);
+  Runic-clean.
+
 ### Added
 - **Dynamic (prognostic) canopy structure + the S↔F coupling adapter (Phase-3 scale-up step 6).** The
   multi-individual canopy's per-individual carbon pools are now PROGNOSTIC: they accumulate the daily
@@ -33,11 +70,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   - **A load-bearing per-m² maintenance-respiration fix:** `daily_step_canopy` had fed per-individual
     pools into the maintenance term against per-m² GPP/leaf-resp; added `nind` to `FDiff.Individual` and
     the `×nind` factor (`npp_tree.c:51`) so NPP is per-m² consistent (the committed water/light baselines
-    are unchanged). **Known residual (the immediate follow-up):** F_diff's self-computed canopy NPP still
-    over-respires (≈ −25 vs the C's ≈ +512 gC/m²/yr) — an un-gated leaf-respiration aggregation issue
-    (the maintenance constants match the C exactly); until calibrated, the coupled loop uses a `bm_inc`
-    crutch (the C's per-individual NPP — the same kernel-isolation methodology used for the FAPAR/PET
-    crutches), and a carbon-deficit individual stagnates rather than blowing up the pipe-model height.
+    are unchanged). **Known residual (RESOLVED in step 7a, above):** F_diff's self-computed canopy NPP
+    over-respired (≈ −25 vs the C's ≈ +512 gC/m²/yr) — the real causes were the soft growth-resp floor +
+    un-phen-gated root maintenance (the maintenance constants matched the C exactly); until then the
+    coupled loop used a `bm_inc` crutch (the C's per-individual NPP — the same kernel-isolation methodology
+    used for the FAPAR/PET crutches), and a carbon-deficit individual stagnates rather than blowing up the
+    pipe-model height.
   - New gates `test/testitems/dynamic_structure_tests.jl` (allocation invariant, conservation, growth,
     AD; 30 tests) + `test/testitems/coupling_tests.jl` (the `FDiffFastCore` adapter + coupled loop; 15
     tests), self-contained on the committed 2010 reference. Data reconstruction
