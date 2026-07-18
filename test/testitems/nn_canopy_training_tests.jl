@@ -131,3 +131,103 @@
             "$(VERSION) (Enzyme 0.13 internal compiler error on ≥ 1.11); verified on 1.10-lts (docs §15)."
     end
 end
+
+# Gate — CELL (multi-patch) NN-hook training against the honest cell-mean GPP objective (ADR 0016;
+# scale-up step 7b-cell; docs §16). The LPJmL-FIT C daily GPP is a CELL quantity (the mean over the
+# cell's patches), so the learned correction is trained so the CELL-MEAN GPP matches the C — the
+# objective the full-Hainich driver `scripts/train_fdiff_canopy_cell.jl` runs against the real 25-patch
+# reconstruction. The cell-MSE gradient is computed by an EXACT per-patch decomposition (Gauss–Newton
+# residual reweighting: ∂L/∂ps = Σ_p ∂/∂ps Σ_i c_i·g_{p,i}, c_i = (2/(D·P))(ḡ_i−t_i) detached), so every
+# reverse pass is the proven single-patch `daily_step_canopy` Enzyme path and the cell gradient inherits
+# its correctness — verified here against FiniteDifferences on the FULL multi-patch cell MSE. This gate
+# also exercises BOTH levers (`targets = (:vm, :λ)`). Self-contained (3 ragged patches, a 5-layer soil
+# column, a 30-day forcing); Enzyme parts guarded to Julia < 1.11 (docs §15).
+@testitem "NN cell (multi-patch) training — identity, cell gradient vs FD (Gauss–Newton), recovery, vm+λ levers" tags = [:training, :fdiff, :canopy] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: daily_step_canopy, rollout_daily_canopy, hainich_soilcolumn
+    using Lux, Zygote, Optimisers, Enzyme, FiniteDifferences, StableRNGs
+    using Random
+    using Test
+
+    soil = hainich_soilcolumn(;
+        whcs = [37.0, 53.0, 88.0, 175.0, 175.0], rootdist = [0.41, 0.32, 0.2, 0.07, 0.0],
+        soildepth = [200.0, 300.0, 500.0, 1000.0, 1000.0],
+    )
+    mkind(fpar, fpc, sla, alphaa) = Individual{Float64}(
+        fpar, fpc, alphaa, 0.05, 5.0, 3000.0, 800.0, 4.0 * fpc, 0.02, 0.04, 0.1, 0.4, 1 / 225,
+        FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = sla),
+        FDiff.TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    # 3 patches with DIFFERENT individual counts (ragged, like the real 25-patch cell)
+    inds_all = [
+        [mkind(0.55, 0.35, 0.01986, 0.5), mkind(0.25, 0.25, 0.022, 0.5), mkind(0.12, 0.2, 0.025, 0.5)],
+        [mkind(0.6, 0.4, 0.02, 0.5), mkind(0.15, 0.15, 0.026, 0.5)],
+        [mkind(0.5, 0.3, 0.019, 0.5), mkind(0.3, 0.22, 0.023, 0.5), mkind(0.1, 0.12, 0.028, 0.5), mkind(0.05, 0.08, 0.03, 0.5)],
+    ]
+    P = length(inds_all)
+    ndays = 30
+    forc = [
+        DailyForcing{Float64}(
+                swdown = 220.0, lwnet = -45.0, temp = 19.0, precip = (d % 4 == 0 ? 8.0 : 0.3),
+                daylength = 14.0, co2 = 380.0,
+            ) for d in 1:ndays
+    ]
+    st0s = [FDiffStateML{Float64}([0.7 * wc for wc in soil.whcs], 0.0) for _ in 1:P]
+    phys = tebs_params()
+    phens = fill(1.0, ndays)
+    day_range = 1:ndays
+
+    # ── (1) IDENTITY (both vm + λ hooks): zero-init cell rollout == pure-physics cell rollout ──
+    cellgpp(hooks) = sum(sum(x.gpp for x in rollout_daily_canopy(phys, st0s[p], inds_all[p], soil, forc; phens = phens, hooks = hooks)[2]) for p in 1:P) / P
+    gpp_base = cellgpp(FluxHooks())
+    nn = build_fdiff_nn(; targets = (:vm, :λ), width = 10, depth = 2, rng = StableRNG(42))
+    hooks_id = FluxHooks(vm = neural_vm_hook(nn), λ = neural_lambda_hook(nn))
+    @test cellgpp(hooks_id) ≈ gpp_base rtol = 1.0e-10       # untrained (zero-init) net = identity, both levers
+
+    if VERSION < v"1.11"
+        ext = Base.get_extension(LPJmLFITEmulator, :FDiffTrainingExt)
+        @test ext !== nothing                               # extension loaded (Lux/Zygote/Optimisers/Enzyme)
+
+        # target from a KNOWN vm=1.15, λ=1.05 correction (so loss/gradient are genuinely non-zero)
+        tgt = zeros(ndays)
+        for p in 1:P
+            stp = st0s[p]
+            for i in 1:ndays
+                (stp, fl) = daily_step_canopy(phys, inds_all[p], soil, stp, forc[i]; phen = 1.0, hooks = FluxHooks(vm = (_ -> 1.15), λ = (_ -> 1.05)))
+                tgt[i] += fl.gpp / P
+            end
+        end
+        # perturb the zero-init net so the hidden-layer gradients are non-zero too
+        flat0, re0 = Optimisers.destructure(nn.ps)
+        ps = re0(flat0 .+ 0.05 .* randn(StableRNG(3), length(flat0)))
+        lossf(p) = fdiff_cell_gpp_loss(p, nn, phys, st0s, inds_all, soil, forc, phens, tgt, day_range)
+        @test isfinite(lossf(ps))
+
+        # ── (2) CELL GRADIENT (Gauss–Newton per-patch decomposition) vs FiniteDifferences ──
+        (lval, dps) = ext._enzyme_cell_grad(ps, nn, phys, st0s, inds_all, soil, forc, phens, tgt, day_range)
+        @test lval ≈ lossf(ps) rtol = 1.0e-8                # the decomposed primal equals the direct cell MSE
+        gz = Optimisers.destructure(dps)[1]
+        flat, re = Optimisers.destructure(ps)
+        @test all(isfinite, gz)
+        @test any(!iszero, gz)
+        fdm = central_fdm(5, 1)
+        for k in randperm(StableRNG(7), length(flat))[1:8]  # random parameter subset (full FD is O(nparams))
+            g_fd = fdm(ε -> lossf(re((v = copy(flat); v[k] += ε; v))), 0.0)
+            @test isapprox(gz[k], g_fd; rtol = 1.0e-4, atol = 1.0e-6)
+        end
+
+        # ── (3) TRAINING RECOVERS THE KNOWN CORRECTION on the multi-patch cell ──
+        nn2 = build_fdiff_nn(; targets = (:vm, :λ), width = 10, depth = 2, rng = StableRNG(9))
+        loss_init = fdiff_cell_gpp_loss(nn2.ps, nn2, phys, st0s, inds_all, soil, forc, phens, tgt, day_range)
+        (ps2, hist) = train_fdiff_cell_rollout!(
+            nn2, phys, st0s, inds_all, soil, forc, phens, tgt; chunk = 30, epochs = 25, lr = 3.0e-2, ps = deepcopy(nn2.ps),
+        )
+        @test hist[end] < 0.1 * loss_init                   # Enzyme TBPTT drives the cell loss down ≥ 90 %
+        hooks_tr = FluxHooks(vm = neural_vm_hook(nn2, ps2), λ = neural_lambda_hook(nn2, ps2))
+        @test isapprox(cellgpp(hooks_tr), sum(tgt); rtol = 0.03)   # trained cell GPP matches the target
+    else
+        @info "NN cell training: Enzyme-reverse gradient + training checks skipped on Julia " *
+            "$(VERSION) (Enzyme 0.13 internal compiler error on ≥ 1.11); verified on 1.10-lts (docs §16)."
+    end
+end

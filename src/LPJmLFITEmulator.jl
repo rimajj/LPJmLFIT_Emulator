@@ -119,6 +119,29 @@ Requires the `FDiffTrainingExt` extension. Returns the best parameters and the p
 """
 function train_fdiff_canopy_rollout! end
 
+"""
+    fdiff_cell_gpp_loss(ps, nn, phys, st0s, inds_all, soil, forcings, phens, targets, day_range) -> Real
+
+Scalar mean-squared **cell-mean** daily-GPP loss over the multi-patch canopy: the cell GPP is the mean
+of the per-patch `FDiff.daily_step_canopy` stand GPP, compared to the C-binary `targets`. The honest
+multi-patch validation objective (item 7b-cell) — trained against the LPJmL-FIT C daily GPP on the full
+25-patch Hainich cell. `st0s`/`inds_all` are per-patch vectors; `soil` is the shared column. Requires
+the `FDiffTrainingExt` extension.
+"""
+function fdiff_cell_gpp_loss end
+
+"""
+    train_fdiff_cell_rollout!(nn, phys, st0s, inds_all, soil, forcings, phens, targets; chunk, epochs, opt, ...) -> (ps, history)
+
+TBPTT online-rollout training of a single shared learned Vcmax/λ correction so the **cell-mean** daily
+GPP matches the C-binary `targets` over the multi-patch canopy (item 7b-cell). The cell-MSE gradient is
+computed by an exact per-patch decomposition (Gauss–Newton residual reweighting), so every reverse pass
+is the proven single-patch `FDiff.daily_step_canopy` **Enzyme** path — no monolithic multi-patch AD
+entry point. Requires the `FDiffTrainingExt` extension. Returns the best parameters and the per-epoch
+loss history.
+"""
+function train_fdiff_cell_rollout! end
+
 # State
 export SharedState, NSOILLAYER, LASTLAYER, GPLHEAT, NHEATGRIDP, NTREEPOOLS, CLIMBUFSIZE
 # Interface payloads
@@ -135,6 +158,6 @@ export COMPONENTS, FLUXES, Component, Flux
 # Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook
 # container) is reached via `using LPJmLFITEmulator.FDiff`, matching the other F_diff types.
 export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!,
-    fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!
+    fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!, fdiff_cell_gpp_loss, train_fdiff_cell_rollout!
 
 end # module

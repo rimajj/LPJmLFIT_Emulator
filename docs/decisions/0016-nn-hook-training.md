@@ -113,3 +113,28 @@ choice), Enzyme (reverse), or ForwardDiff (forward).
 
 - A violates ADR 0014 (dependency-free runtime) and would fail Aqua; B (a `training/` env like `docs/`)
   keeps the capability out of the shipped package and out of the CI gate — weaker than an extension.
+
+## Implementation status (updated)
+
+The decision above landed in three steps (docs `phase3_fdiff_cbinary_validation.md` §14–§16):
+
+- **§14 (step 7b)** — the hooks + the Zygote TBPTT loop (`train_fdiff_rollout!`) on the immutable
+  single-representative `daily_step` path; gate-verified identity + Zygote-vs-FD gradient + recovery.
+  Finding: that path's GPP residual is **light-limited**, so Vcmax is the wrong lever there.
+- **§15 (step 7b-canopy)** — the hooks + an **Enzyme-reverse** TBPTT loop (`train_fdiff_canopy_rollout!`)
+  on the array-mutating multi-individual `daily_step_canopy`; Enzyme gradient vs FiniteDifferences to
+  1.2e-8. This closed the AD-through-mutation follow-up.
+- **§16 (step 7b-cell)** — training against the **real C-binary daily GPP** on the full 25-patch cell
+  (`fdiff_cell_gpp_loss` / `train_fdiff_cell_rollout!`). The C daily GPP is the cell-mean over patches, so
+  the cell-MSE gradient is computed by an **exact per-patch Gauss–Newton decomposition** (`∂L/∂ps =
+  Σ_p ∂/∂ps Σ_i c_i·g_{p,i}`, `c_i` the detached residual) — every reverse pass is the proven single-patch
+  Enzyme path, so no monolithic multi-patch AD entry point is compiled. The learned Vcmax/λ correction
+  closes the canopy GPP level (1.093 → 1.023 `:vm`, → 1.010 `:vm,:λ`) while the daily correlation improves
+  — the canopy residual is Vcmax-shaped, confirming §14's prediction that this is the right path/lever. The
+  λ lever is now exercised (both heads trained).
+
+**Open follow-ups** (unchanged in spirit): (a) the multi-year objective **through the structure/allocation
+feedback** (`rollout_canopy_years`) needs Enzyme reverse through `_patch_fpars` + `grow_individual`'s
+allocation Newton, which currently raises `EnzymeNoTypeError` on Julia 1.10 (a type-analysis blocker on the
+composed structure path — the feedback itself is differentiable, §12 verifies it with ForwardDiff); (b)
+lifting the `VERSION < v"1.11"` guard once Enzyme compiles the mutating canopy reverse pass on Julia ≥ 1.11.

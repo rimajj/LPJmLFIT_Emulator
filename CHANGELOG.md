@@ -7,6 +7,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **NN training against the REAL C-binary daily GPP on the full 25-patch cell + the λ lever (Phase-3
+  scale-up step 7b-cell; ADR 0016).** §15 recovered a *synthetic* correction on one patch; this trains the
+  learned correction against the LPJmL-FIT C binary's own daily GPP on the full Hainich cell (25 patches /
+  297 individuals) — the honest validation objective — and turns on the λ head.
+  - **Cell (multi-patch) loss + trainer** `fdiff_cell_gpp_loss` / `train_fdiff_cell_rollout!` (extension):
+    the C daily GPP is the cell-mean over patches, so one shared learned correction is trained so the
+    cell-mean GPP matches the C. The cell-MSE gradient is computed by an **exact per-patch decomposition**
+    (Gauss–Newton residual reweighting: `∂L/∂ps = Σ_p ∂/∂ps Σ_i c_i·g_{p,i}`, `c_i = (2/(D·P))(ḡ_i−t_i)`
+    detached), so every reverse pass is the proven single-patch `daily_step_canopy` Enzyme path — **no
+    monolithic multi-patch AD entry point** — and the per-patch gradients are summed by reusing one
+    accumulating `Duplicated` shadow. Runtime `[deps]` still empty.
+  - **Result (full 25-patch Hainich, kernel-isolation C-FAPAR phenology):** the learned Vcmax lever closes
+    the GPP level from **1.093 → 1.023** (`:vm`) and **→ 1.010** (`:vm, :λ`) against the real C daily GPP,
+    while the daily correlation **improves** (full-year 0.9978 → 0.9983, growing-season 0.9973 → 0.9990) —
+    the opposite of the single-representative path (§14), where the light-limited residual made Vcmax the
+    wrong lever and the fit degraded the shape. The canopy residual IS Vcmax-shaped. Driver
+    `scripts/train_fdiff_canopy_cell.jl`; report `docs/phase3_fdiff_cbinary_validation.md` §16.
+  - **Gate** `test/testitems/nn_canopy_training_tests.jl` (cell testitem, 3 ragged patches, self-contained):
+    identity (Δ = 0, both vm+λ hooks); **cell gradient (Gauss–Newton decomposition) vs FiniteDifferences,
+    max rel err 6.1e-10** on the full multi-patch cell MSE; recovery of a known vm=1.15/λ=1.05 correction
+    (loss 0.330 → 0.011, trained cell GPP within 0.04 %). Enzyme parts guarded to `VERSION < v"1.11"` (§15).
+  - **Multi-year objective through the structure/allocation feedback — the next frontier.** Enzyme reverse
+    through `rollout_canopy_years` (`_patch_fpars` layered-light recompute + `grow_individual`'s allocation
+    Newton) raises `EnzymeNoTypeError` on Julia 1.10 — an Enzyme type-analysis blocker on the composed
+    structure path, not a differentiability problem (§12's ForwardDiff `d(structure)/d(bm_inc)` /
+    `d(structure)/d(α_c3)` already match FD). Documented in §16 as the follow-up.
 - **NN training on the coupled CANOPY path — Enzyme reverse through the array-mutating rollout (Phase-3
   scale-up step 7b-canopy; ADR 0016).** Applies the learned correction where the residual is
   Vcmax/phenology-shaped (the coupled canopy), and closes the AD-through-mutation follow-up flagged since

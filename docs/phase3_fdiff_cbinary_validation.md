@@ -666,3 +666,68 @@ switched to the equivalent **positional** constructor (Enzyme-transparent, behav
 Enzyme-dependent parts of the canopy gate are guarded to `VERSION < v"1.11"` (identity still runs on all
 versions), so CI's forward-compat `test (1)` job stays green. Lifting the guard is an upstream-Enzyme
 follow-up (EnzymeAD/Enzyme.jl on Julia ≥ 1.11).
+
+## 16. Update — NN training against the REAL C-binary daily GPP on the full 25-patch cell + the λ lever (scale-up step 7b-cell)
+
+§15 proved the Enzyme-reverse canopy trainer recovers a *known synthetic* correction on one patch. This
+step trains the learned correction against the **honest objective** — the LPJmL-FIT C binary's own daily
+GPP — on the full Hainich cell (25 patches / 297 reconstructed individuals), and turns on the λ lever.
+
+**The cell objective + an exact per-patch gradient decomposition.** The C daily GPP is a CELL quantity:
+the mean over the cell's patches. A single shared learned correction (one MLP, feature-driven per
+individual) is trained so the cell-mean GPP `ḡ_i = (1/P)·Σ_p g_{p,i}` matches the C. The cell MSE
+`L = (1/D)·Σ_i (ḡ_i − t_i)²` is a sum of squares, so its EXACT gradient factors into one reverse pass
+PER PATCH with detached Gauss–Newton residual weights:
+
+  `∂L/∂ps = Σ_p ∂/∂ps [ Σ_i c_i·g_{p,i}(ps) ]`,  `c_i = (2/(D·P))·(ḡ_i − t_i)`   (detached, at the current `ps`).
+
+The identity `Σ_p ∂g_{p,i}/∂ps = P·∂ḡ_i/∂ps` makes this exact (not an approximation) — the weights are
+the true residuals. Each per-patch pass is exactly the proven single-patch `daily_step_canopy` Enzyme
+path (§15), so the cell gradient inherits its Enzyme-vs-FiniteDifferences correctness and its Julia-1.10
+compilation — there is **no** new monolithic multi-patch Enzyme entry point. The per-patch gradients are
+summed by REUSING one `Duplicated` shadow across the patch loop (Enzyme accumulates `∂/∂ps` into the
+shadow — verified independently), fresh per cell-gradient call. `fdiff_cell_gpp_loss` /
+`train_fdiff_cell_rollout!` in the extension; driver `scripts/train_fdiff_canopy_cell.jl`.
+
+**Verification (gate `nn_canopy_training_tests.jl`, cell testitem — 3 ragged patches, self-contained):**
+- **Identity** — the zero-init network (BOTH vm + λ hooks) reproduces the pure-physics cell rollout, **Δ = 0**.
+- **Cell gradient vs FiniteDifferences** — the per-patch-decomposed cell-MSE gradient matches FD on the
+  FULL multi-patch cell loss to **max rel err 6.1e-10** (through the array-mutating canopy, both levers).
+- **Recovery** — the cell TBPTT loop drives the loss **0.330 → 0.011 (> 96 %)**; trained cell GPP within
+  **0.04 %** of a known vm = 1.15 / λ = 1.05 target.
+
+**Result — the learned canopy Vcmax/λ lever closes the GPP LEVEL against the real C daily GPP.** On the
+full 25-patch Hainich cell (C annual GPP 1102.5 gC/m²/yr; kernel-isolation phenology = the C binary's own
+daily FAPAR, `phens = fapar_C / max`), fitting the cell-mean daily GPP over the growing-season window
+(DOY 105–285):
+
+| lever | annual GPP ratio (model/C) | daily r (full-year) | daily r (GS) | mean GS Vcmax scale |
+|---|---:|---:|---:|---:|
+| baseline (identity) | 1.093 | 0.9978 | 0.9973 | 1.000 |
+| `:vm` | **1.023** | 0.9982 | 0.9984 | 0.798 |
+| `:vm, :λ` | **1.010** | 0.9983 | 0.9990 | 0.724 |
+
+Unlike the single-representative path (§14, where the residual is light-limited so Vcmax is the wrong
+lever and the fit *degraded* the daily shape — r 0.96 → 0.81), the canopy residual IS Vcmax-shaped: the
+learned correction closes the level from +9.3 % toward the C (ratio 1.093 → 1.023 with Vcmax alone,
+→ 1.010 adding λ) while the (already excellent) daily correlation **improves** (full-year 0.9978 → 0.9983,
+growing-season 0.9973 → 0.9990). This is exactly the lever docs §14/§15 predicted for the coupled canopy
+path — light is spread across individuals, so photosynthesis is Vcmax-limited and a modest effective-Vcmax
+reduction (mean growing-season scale ≈ 0.80 for `:vm`, ≈ 0.72 with the λ head sharing the load) removes
+the inherited over-estimate without touching the seasonal shape. The learned correction is a **safe
+residual** on the calibrated physics (identity-at-init, bounded `1 + corr_max·tanh`, `corr_max = 0.6`).
+
+**Multi-year objective through the structure/allocation feedback — the next frontier, not yet reached.**
+Training the correction so MULTI-YEAR GPP matches the C — with the canopy structure growing between years
+via the allocation — needs Enzyme reverse through `rollout_canopy_years`'s composed path (`_patch_fpars`
+layered-light recompute + `grow_individual`'s pipe-model allocation Newton + `individual_from_pools`),
+chained onto the daily rollout. A direct probe (a lean 2-year GPP loss folding `daily_step_canopy`
+per year and growing between years) raises **`EnzymeNoTypeError`** on Julia 1.10 — Enzyme cannot statically
+type the reverse pass through this composed structure path (the likely culprits are untyped temporaries:
+the `BitVector` leaf-layer mask in `_patch_fpars` and the allocation-solve primal scan in
+`_solve_leaf_inc`). This is an Enzyme *type-analysis* blocker on the composed path, **not** a
+differentiability problem: the structure/allocation feedback itself is differentiable and verified —
+§12 already shows ForwardDiff `d(grown height)/d(bm_inc)` and the coupled `d(grown height)/d(α_c3)` (daily
+flux → bm_inc → allocation) match finite differences. Making that path Enzyme-typeable (typed temporaries
+in `_patch_fpars`/`_solve_leaf_inc`, or an `Enzyme.API.maxtypeoffset!` bump) is the documented follow-up;
+the single-year cell training above is the landed milestone.

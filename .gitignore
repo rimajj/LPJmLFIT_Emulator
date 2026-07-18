@@ -40,6 +40,10 @@ artifacts/logs/
 # docs/Manifest.toml is a local artifact of `Pkg.instantiate()` on the docs env; the docs CI
 # resolves fresh each build, so keep it out of git (same rationale as the root Manifest).
 /docs/Manifest.toml
+# test/Manifest.toml is a local artifact of instantiating the test env with the package dev'd in
+# (`Pkg.develop(path="."); Pkg.instantiate()` — the workflow the training-driver scripts document);
+# it records a machine-specific dev path. `Pkg.test()` uses its own temp env, so keep it out of git.
+/test/Manifest.toml
 *.jl.cov
 *.jl.*.cov
 *.jl.mem

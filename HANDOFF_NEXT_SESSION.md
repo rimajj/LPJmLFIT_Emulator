@@ -62,6 +62,65 @@ for HEAD.
   — canopy-specific) → the per-individual `FDiffParams{T}` ctor is now positional (Enzyme-transparent) and
   the Enzyme canopy-gate parts are guarded to `VERSION < v"1.11"` (identity runs everywhere); lifting the
   guard is an upstream-Enzyme follow-up. Gate `nn_canopy_training_tests.jl`; report §15; ADR 0016.
+- **Phase-3 (session 11) — scale-up step 7b-cell: NN TRAINING vs the REAL C-BINARY DAILY GPP on the FULL
+  25-PATCH CELL + the λ LEVER.** The C daily GPP is a CELL-mean over 25 patches, so one shared learned
+  correction is trained so the cell-mean GPP matches the C. **Exact per-patch gradient decomposition
+  (Gauss–Newton reweighting):** `∂L/∂ps = Σ_p ∂/∂ps[Σ_i c_i·g_{p,i}]`, `c_i = (2/(D·P))(ḡ_i−t_i)` detached,
+  so every reverse pass is the PROVEN single-patch Enzyme path (no monolithic multi-patch AD entry point);
+  per-patch grads summed by reusing one accumulating `Duplicated` shadow. **Result (kernel-isolation
+  C-FAPAR phenology):** GPP annual ratio **1.093 → 1.023 (`:vm`) → 1.010 (`:vm,:λ`)** with the daily
+  correlation IMPROVING (GS r 0.997 → 0.999) — the OPPOSITE of the light-limited single-rep path (§14).
+  `fdiff_cell_gpp_loss`/`train_fdiff_cell_rollout!`; driver `scripts/train_fdiff_canopy_cell.jl`; gate cell
+  testitem (identity Δ=0; cell grad vs FD 6.1e-10; recovery 0.330→0.011, GPP within 0.04 %); report §16.
+  **Multi-year through the structure feedback = the documented frontier:** Enzyme reverse through
+  `rollout_canopy_years` (`_patch_fpars` + `grow_individual` allocation Newton) raises `EnzymeNoTypeError`
+  on 1.10 (type-analysis blocker, NOT a differentiability one — §12's ForwardDiff structure gradients match
+  FD). Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 11 (on `main`) — NN TRAINING vs the REAL C-BINARY DAILY GPP ON THE FULL 25-PATCH CELL + the λ LEVER (scale-up step 7b-cell)
+
+**The handoff's IMMEDIATE NEXT landed:** the learned canopy correction is trained against the LPJmL-FIT
+C binary's OWN daily GPP (not a synthetic recovery target) on the full 25-patch Hainich cell, with the λ
+lever on. (ADR 0016; report §16.)
+
+- **The objective is a CELL quantity + an EXACT per-patch gradient decomposition.** The C daily GPP is
+  the cell-mean over patches, so ONE shared learned correction (one MLP, feature-driven per individual) is
+  trained so the cell-mean GPP `ḡ_i = (1/P)·Σ_p g_{p,i}` matches the C. The cell MSE is a sum of squares,
+  so its gradient factors into ONE reverse pass PER PATCH with **detached Gauss–Newton residual weights**
+  `c_i = (2/(D·P))(ḡ_i−t_i)`: `∂L/∂ps = Σ_p ∂/∂ps[Σ_i c_i·g_{p,i}]` — EXACT (`Σ_p ∂g_{p,i}/∂ps =
+  P·∂ḡ_i/∂ps`). So every reverse pass is the **PROVEN single-patch `daily_step_canopy` Enzyme path** (§15)
+  and there is **NO new monolithic multi-patch Enzyme entry point**; per-patch grads are summed by reusing
+  one accumulating `Duplicated` shadow (Enzyme adds `∂/∂ps` into the shadow — verified 0.0 vs summing
+  separate grads). `fdiff_cell_gpp_loss`/`train_fdiff_cell_rollout!` (extension) + parent stubs/exports;
+  runtime `[deps]` still EMPTY.
+- **★ RESULT (full 25-patch Hainich, kernel-isolation C-FAPAR phenology, window DOY 105–285).** The
+  learned Vcmax lever CLOSES the GPP level against the real C daily GPP — annual ratio **1.093 → 1.023**
+  (`:vm`), **→ 1.010** (`:vm,:λ`) — while the daily correlation IMPROVES (full-year 0.9978 → 0.9983;
+  growing-season 0.9973 → 0.9990). This is the **OPPOSITE of the single-rep path** (§14, r 0.96 → 0.81
+  degraded): the CANOPY residual is Vcmax-shaped (light spread across individuals ⇒ Vcmax-limited), so a
+  modest effective-Vcmax reduction (mean GS scale ≈ 0.80 `:vm`, ≈ 0.72 with the λ head sharing) removes the
+  inherited over-estimate without touching the seasonal shape. Safe residual (identity-at-init, bounded
+  `1 + 0.6·tanh`). Driver `scripts/train_fdiff_canopy_cell.jl`.
+- **★ GATE `nn_canopy_training_tests.jl` — new cell testitem** (3 ragged patches, self-contained; Enzyme
+  parts guarded `VERSION < v"1.11"`): (1) IDENTITY — zero-init net (both vm+λ) == pure-physics cell rollout,
+  Δ=0; (2) CELL GRADIENT — the per-patch-decomposed cell-MSE gradient vs FiniteDifferences on the FULL
+  multi-patch cell loss, **max rel err 6.1e-10**; (3) RECOVERY — cell TBPTT loop loss **0.330 → 0.011
+  (>96 %)**, trained cell GPP within **0.04 %** of a known vm=1.15/λ=1.05 target. The gate reaches the
+  extension internal `_enzyme_cell_grad` via `Base.get_extension`.
+- **★ MULTI-YEAR THROUGH THE STRUCTURE/ALLOCATION FEEDBACK — probed, the DOCUMENTED FRONTIER.** Enzyme
+  reverse through a lean 2-year GPP loss (fold `daily_step_canopy` per year + `grow_individual` between
+  years) raises **`EnzymeNoTypeError`** on Julia 1.10 — Enzyme cannot statically type the reverse pass
+  through `rollout_canopy_years`'s composed structure path (`_patch_fpars` layered-light recompute +
+  `grow_individual`'s allocation Newton; likely the `BitVector` leaf-layer mask in `_patch_fpars` + the
+  `_solve_leaf_inc` primal scan). This is a TYPE-ANALYSIS blocker, NOT a differentiability one — **§12
+  already verifies the structure/allocation feedback with ForwardDiff** (`d(grown height)/d(bm_inc)`,
+  `d(grown height)/d(α_c3)` match FD). Making `_patch_fpars`/`_solve_leaf_inc` Enzyme-typeable (typed
+  temporaries, or an `Enzyme.API.maxtypeoffset!` bump) is the next step.
+- **Housekeeping:** `test/Manifest.toml` (a local `Pkg.develop(path=".")` artifact from the
+  `--project=test` driver workflow) is now `.gitignore`d — a bare `Pkg.test()` fails with "can not merge
+  projects" while it exists (delete it before running `Pkg.test()`). Runic-clean; runtime `[deps]` EMPTY.
 
 ---
 
@@ -428,14 +487,23 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    arrays so Zygote can't). **The AD-through-mutation path is proven: Enzyme gradient w.r.t. the NN params
    matches FiniteDifferences to 1.2e-8**; recovery of a known correction (loss 0.205→1.1e-3, scale ≈1.18
    vs 1.20). Gate `nn_canopy_training_tests.jl`; §15; the step-2 follow-up is closed.
-   **★ NEXT — train the canopy correction against the REAL C-binary daily GPP** (not a synthetic recovery
-   target) on the full 25-patch Hainich canopy; add the λ lever + a multi-year objective through the
-   structure/allocation feedback. **(c) Smaller residuals:** per-PFT phenology for the
+   **(b-cell) ✅ DONE (session 11) — NN training vs the REAL C-binary daily GPP on the full 25-patch cell +
+   the λ lever.** One shared correction trained so the CELL-mean GPP matches the C, via an EXACT per-patch
+   Gauss–Newton gradient decomposition (every reverse pass = the proven single-patch Enzyme path; no
+   monolithic multi-patch AD). **GPP annual ratio 1.093 → 1.023 (`:vm`) → 1.010 (`:vm,:λ`)** while daily r
+   IMPROVES (GS 0.997 → 0.999) — the canopy residual is Vcmax-shaped (opposite of the light-limited single-
+   rep path §14). `fdiff_cell_gpp_loss`/`train_fdiff_cell_rollout!`; driver `scripts/train_fdiff_canopy_cell.jl`;
+   gate cell testitem (identity Δ=0; cell grad vs FD 6.1e-10; recovery 0.330→0.011, GPP within 0.04 %); §16.
+   **★ NEXT — the multi-year objective THROUGH the structure/allocation feedback** (`rollout_canopy_years`):
+   Enzyme reverse currently raises `EnzymeNoTypeError` on the composed `_patch_fpars` + `grow_individual`
+   allocation-Newton path (a type-analysis blocker, NOT a differentiability one — §12's ForwardDiff
+   structure gradients match FD). Make `_patch_fpars`/`_solve_leaf_inc` Enzyme-typeable (typed temporaries —
+   the `BitVector` mask + the primal scan — or `Enzyme.API.maxtypeoffset!`), then train a multi-year GPP
+   objective. **(c) Smaller residuals:** per-PFT phenology for the
    evergreen/grass minority (one beech-GSI `phen` patch-wide today); grass structure prognostic
    (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`, which — with the rare-day `rd`
    conductance gate — is the small remaining respiration residual, both documented in §13) + carbon-debt in
-   the allocation; the full multi-year gradient through the layered-light feedback; whole-tree
-   mortality/establishment (S's demography) so the coupled loop is not fixed-N.
+   the allocation; whole-tree mortality/establishment (S's demography) so the coupled loop is not fixed-N.
 8. **λ-solve at scale:** swap the fixed-graph Newton for `SteadyStateAdjoint`/`ImplicitDifferentiation`
    if memory/perf needs it (the hybrid repo notes the adjoint's memory blow-up on large grids). NB: the
    Newton iterate is now `clamp`ed to the physical bracket (robustness); Enzyme reverse uses

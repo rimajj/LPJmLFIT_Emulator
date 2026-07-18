@@ -32,7 +32,8 @@ using Lux, Zygote, Optimisers, Enzyme
 using Lux: Random   # stdlib Random via Lux (the dep-free parent can't declare it); RNG for Lux.setup
 
 import LPJmLFITEmulator: build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss,
-    train_fdiff_rollout!, fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!
+    train_fdiff_rollout!, fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!,
+    fdiff_cell_gpp_loss, train_fdiff_cell_rollout!
 
 # ── feature normalization (fixed climatological scales → O(1) NN inputs) ─────────────────────────
 # FDiff hands each hook the feature vector `[temp_°C, swdown, daylength_h, apar, w_soil, co2_ppm]`
@@ -303,6 +304,175 @@ function train_fdiff_canopy_rollout!(
             day = dlast + 1
         end
         epoch_loss = fdiff_canopy_gpp_loss(ps, nn, phys, st0, inds, soil, forcings, phens, targets, day_start:day_end)
+        push!(history, epoch_loss)
+        if epoch_loss < best_loss
+            best_loss = epoch_loss
+            best_ps = deepcopy(ps)
+        end
+        verbose && println("epoch $ep  loss=$(round(epoch_loss; sigdigits = 5))")
+    end
+    return (best_ps, history)
+end
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# CELL (multi-patch) online-rollout training against the REAL LPJmL-FIT C-binary daily GPP
+# (scale-up step 7b-cell; ADR 0016; docs §16)
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# The LPJmL-FIT C daily GPP is a CELL quantity: the mean over the cell's patches (the Hainich
+# prototype is 25 patches / 297 individuals — the reconstruction in
+# test/testitems/references/hainich_individuals_2010.csv). §15 trained one patch against a synthetic
+# recovery target; this step trains a SINGLE shared learned correction (one MLP, feature-driven per
+# individual) so the CELL-MEAN GPP `ḡ_i = (1/P)·Σ_p g_{p,i}` matches the C daily GPP — the honest
+# validation objective.
+#
+# EXACT GRADIENT BY PER-PATCH DECOMPOSITION (Gauss–Newton residual reweighting). The cell MSE
+#     L(ps) = (1/D)·Σ_i (ḡ_i − t_i)²
+# is a sum of squares, so its exact gradient factors into ONE reverse pass PER PATCH with DETACHED
+# residual weights:
+#     ∂L/∂ps = (1/D)·Σ_i 2(ḡ_i − t_i)·∂ḡ_i/∂ps = Σ_p ∂/∂ps [ Σ_i c_i·g_{p,i}(ps) ],
+#     c_i = (2/(D·P))·(ḡ_i − t_i)   (constant — evaluated at the current ps).
+# The identity Σ_p ∂g_{p,i}/∂ps = P·∂ḡ_i/∂ps makes this EXACT (not an approximation): the weights are
+# the true residuals at the current ps. Each per-patch pass `Σ_i c_i·g_{p,i}` is a linear functional of
+# exactly the PROVEN single-patch canopy rollout (fdiff_canopy_gpp_loss's `daily_step_canopy` fold), so
+# the cell gradient inherits its Enzyme-vs-FiniteDifferences correctness AND its Julia-1.10
+# compilation — there is NO new monolithic multi-patch Enzyme entry point to compile. The per-patch
+# gradients are summed by REUSING one `Duplicated` shadow across the patch loop: Enzyme ACCUMULATES into
+# the shadow across successive `autodiff` calls (`∂/∂ps` adds), which is precisely Σ_p. The shadow is
+# FRESH per cell-gradient call (never carried across chunks/epochs).
+
+# forward-only per-day cell-mean GPP over `day_range` (NO AD) + the per-patch END states (TBPTT carry).
+# `st0s`/`inds_all` are per-patch vectors; the shared `soil` is one SoilColumn. States are never mutated
+# in place (daily_step_canopy returns a fresh FDiffStateML), only reassigned — so `collect` (shallow) is
+# a safe working copy.
+function _cell_daily_gpp(ps, nn::FDiffNN, phys::FDiffParams, st0s, inds_all, soil::SoilColumn, forcings, phens, day_range)
+    hooks = hooks_from(nn, ps)
+    P = length(inds_all)
+    sts = collect(st0s)
+    gcell = zeros(Float64, length(day_range))
+    for (k, i) in enumerate(day_range)
+        acc = 0.0
+        for p in 1:P
+            (sts[p], fl) = daily_step_canopy(phys, inds_all[p], soil, sts[p], forcings[i]; phen = phens[i], hooks = hooks)
+            acc += fl.gpp
+        end
+        gcell[k] = acc / P
+    end
+    return (gcell, sts)
+end
+
+"""
+    fdiff_cell_gpp_loss(ps, nn, phys, st0s, inds_all, soil, forcings, phens, targets, day_range) -> Real
+
+Scalar mean-squared **cell-mean** daily-GPP loss over `day_range`: the cell GPP is the mean of the
+per-patch stand GPP (`ḡ_i = mean_p daily_step_canopy(inds_all[p], …).gpp`), compared to the C-binary
+`targets[i]`. This is the honest multi-patch validation objective (item 7b-cell); its exact gradient is
+computed patch-by-patch by [`_enzyme_cell_grad`](@ref) (Gauss–Newton reweighting), and this scalar form
+is what the gate cross-checks against FiniteDifferences and what the trainer monitors.
+"""
+function fdiff_cell_gpp_loss(ps, nn::FDiffNN, phys::FDiffParams, st0s, inds_all, soil::SoilColumn, forcings, phens, targets, day_range)
+    (gcell, _) = _cell_daily_gpp(ps, nn, phys, st0s, inds_all, soil, forcings, phens, day_range)
+    D = length(day_range)
+    d0 = first(day_range)
+    loss = zero(eltype(targets))
+    for k in 1:D
+        loss += (gcell[k] - targets[d0 + k - 1])^2
+    end
+    return loss / D
+end
+
+# per-patch LINEAR GPP functional Σ_k weights[k]·gpp_{p,k} — the Enzyme entry point for the cell
+# gradient (linear in the daily GPP so, summed over patches with the detached Gauss–Newton weights, it
+# reproduces ∂(cell MSE)/∂ps exactly). Structurally identical to fdiff_canopy_gpp_loss (same
+# `daily_step_canopy` fold), so it compiles on the same proven Julia-1.10 Enzyme path.
+function _patch_linear_gpp(ps, nn::FDiffNN, phys::FDiffParams, st0::FDiffStateML, inds, soil::SoilColumn, forcings, phens, weights, day_range)
+    hooks = hooks_from(nn, ps)
+    st = st0
+    acc = zero(eltype(weights))
+    for (k, i) in enumerate(day_range)
+        (st, fl) = daily_step_canopy(phys, inds, soil, st, forcings[i]; phen = phens[i], hooks = hooks)
+        acc += weights[k] * fl.gpp
+    end
+    return acc
+end
+
+# advance ALL patch states across a window WITHOUT tracking gradients (the TBPTT truncation between
+# chunks); returns the new per-patch states vector.
+function _advance_cell_states(ps, nn::FDiffNN, phys::FDiffParams, st0s, inds_all, soil::SoilColumn, forcings, phens, day_range)
+    (_, sts) = _cell_daily_gpp(ps, nn, phys, st0s, inds_all, soil, forcings, phens, day_range)
+    return sts
+end
+
+# Enzyme reverse gradient of the cell MSE w.r.t. `ps`, by the per-patch decomposition. Returns
+# `(loss, dps)`. ONE shadow `dps` is reused across the patch loop so Enzyme accumulates Σ_p; it is fresh
+# per call (never carried across chunks). `set_runtime_activity` for the λ-solve `clamp` conditional.
+function _enzyme_cell_grad(ps, nn::FDiffNN, phys::FDiffParams, st0s, inds_all, soil::SoilColumn, forcings, phens, targets, day_range)
+    (gcell, _) = _cell_daily_gpp(ps, nn, phys, st0s, inds_all, soil, forcings, phens, day_range)
+    D = length(day_range)
+    P = length(inds_all)
+    d0 = first(day_range)
+    loss = zero(eltype(targets))
+    weights = Vector{Float64}(undef, D)
+    for k in 1:D
+        r = gcell[k] - targets[d0 + k - 1]
+        loss += r^2
+        weights[k] = (2.0 / (D * P)) * r            # detached Gauss–Newton residual weight
+    end
+    loss /= D
+    dps = Enzyme.make_zero(ps)                       # ONE shadow — Enzyme accumulates Σ_p across the loop
+    RA = Enzyme.set_runtime_activity(Enzyme.ReverseWithPrimal)
+    for p in 1:P
+        Enzyme.autodiff(
+            RA, Enzyme.Const(_patch_linear_gpp), Enzyme.Active,
+            Enzyme.Duplicated(ps, dps), Enzyme.Const(nn), Enzyme.Const(phys), Enzyme.Const(st0s[p]),
+            Enzyme.Const(inds_all[p]), Enzyme.Const(soil), Enzyme.Const(forcings), Enzyme.Const(phens),
+            Enzyme.Const(weights), Enzyme.Const(day_range),
+        )
+    end
+    return (loss, dps)
+end
+
+"""
+    train_fdiff_cell_rollout!(nn, phys, st0s, inds_all, soil, forcings, phens, targets;
+                              chunk=73, epochs=30, lr=1e-2, opt=Optimisers.Adam(lr),
+                              day_start=1, day_end=length(forcings), ps=deepcopy(nn.ps), verbose=false)
+        -> (ps, history)
+
+Train a single shared learned Vcmax/λ correction so the **cell-mean** daily GPP matches the C-binary
+`targets` over the multi-patch canopy (`st0s`/`inds_all` are per-patch vectors, `soil` shared) — the
+Enzyme-reverse TBPTT counterpart of [`train_fdiff_canopy_rollout!`](@ref) for the full cell (item
+7b-cell). Each `chunk`-day segment: forward all patches for the cell residual, take the Enzyme
+per-patch-decomposed gradient of the cell MSE ([`_enzyme_cell_grad`](@ref)), `Optimisers.update`, then
+advance every patch's (detached) soil-water state through the segment with the updated `ps` and carry it
+forward (TBPTT truncation). `epochs` re-sweeps. Returns the best (lowest full-window loss) parameters and
+the per-epoch loss `history`.
+"""
+function train_fdiff_cell_rollout!(
+        nn::FDiffNN, phys::FDiffParams, st0s, inds_all, soil::SoilColumn,
+        forcings, phens, targets; chunk::Int = 73, epochs::Int = 30, lr::Real = 1.0e-2,
+        opt = Optimisers.Adam(lr), day_start::Int = 1, day_end::Int = length(forcings),
+        ps = deepcopy(nn.ps), verbose::Bool = false
+    )
+    opt_state = Optimisers.setup(opt, ps)
+    history = Float64[]
+    best_ps = deepcopy(ps)
+    best_loss = Inf
+    for ep in 1:epochs
+        sts = collect(st0s)
+        day = day_start
+        while day <= day_end
+            dlast = min(day + chunk - 1, day_end)
+            rng_days = day:dlast
+            (l, dps) = _enzyme_cell_grad(ps, nn, phys, sts, inds_all, soil, forcings, phens, targets, rng_days)
+            if isfinite(l)
+                opt_state, ps = Optimisers.update(opt_state, ps, dps)
+            else
+                verbose && @warn "non-finite loss at epoch $ep, days $rng_days — skipping update"
+            end
+            # TBPTT: carry the detached per-patch end-states (recomputed with the updated ps) forward
+            sts = _advance_cell_states(ps, nn, phys, sts, inds_all, soil, forcings, phens, rng_days)
+            day = dlast + 1
+        end
+        epoch_loss = fdiff_cell_gpp_loss(ps, nn, phys, st0s, inds_all, soil, forcings, phens, targets, day_start:day_end)
         push!(history, epoch_loss)
         if epoch_loss < best_loss
             best_loss = epoch_loss
