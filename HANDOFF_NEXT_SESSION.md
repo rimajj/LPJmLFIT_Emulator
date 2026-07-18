@@ -56,8 +56,12 @@ for HEAD.
   `daily_step_canopy` mutates arrays so Zygote can't cross it). **The AD-through-mutation follow-up (open
   since step 2) is CLOSED and proven: the Enzyme gradient w.r.t. the NN params matches FiniteDifferences
   to 1.2e-8** through the mutating multi-individual path; recovery of a known correction (loss 0.205→1.1e-3,
-  scale ≈1.18 vs 1.20). `Enzyme` is now a 4th extension trigger; runtime `[deps]` still empty. Gate
-  `nn_canopy_training_tests.jl`; report §15; ADR 0016.
+  scale ≈1.18 vs 1.20). `Enzyme` is now a 4th extension trigger; runtime `[deps]` still empty. **Julia-version
+  caveat (CI-surfaced): the Enzyme-reverse canopy path is verified on Julia 1.10 (lts); Enzyme 0.13 hits an
+  internal LLVM compiler error on ≥1.11 for this mutating path** (single-bucket Enzyme gate is fine on 1.11
+  — canopy-specific) → the per-individual `FDiffParams{T}` ctor is now positional (Enzyme-transparent) and
+  the Enzyme canopy-gate parts are guarded to `VERSION < v"1.11"` (identity runs everywhere); lifting the
+  guard is an upstream-Enzyme follow-up. Gate `nn_canopy_training_tests.jl`; report §15; ADR 0016.
 
 ---
 

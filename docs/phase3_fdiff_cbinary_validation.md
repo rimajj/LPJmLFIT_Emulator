@@ -654,3 +654,15 @@ verified against finite differences to 1e-8. Applying it against the real C-bina
 synthetic recovery target) on the full 25-patch Hainich canopy, and adding the λ lever + a multi-year
 objective through the structure/allocation feedback, is the next step. Driver
 `scripts/train_fdiff_nn.jl`; ADR 0016.
+
+**Julia-version note (CI-surfaced).** The Enzyme-reverse canopy path is verified on **Julia 1.10** (the
+`lts` CI job + `Project.toml` compat `julia = "1.10"` — the project's supported version) to 1e-8. On
+**Julia ≥ 1.11**, Enzyme 0.13 raises an internal LLVM compiler error compiling the reverse pass through
+this complex array-mutating path (the simpler single-bucket Enzyme gate,
+`gradient_correctness_tests.jl`, compiles fine on 1.11 — it is specific to the multi-individual canopy).
+Two responses: (i) the pre-existing per-individual `FDiffParams{T}(; …)` **keyword** constructor in
+`daily_step_canopy` — which Enzyme on 1.11 could not even type-analyze (`EnzymeNoTypeError`) — was
+switched to the equivalent **positional** constructor (Enzyme-transparent, behaviour-identical); (ii) the
+Enzyme-dependent parts of the canopy gate are guarded to `VERSION < v"1.11"` (identity still runs on all
+versions), so CI's forward-compat `test (1)` job stays green. Lifting the guard is an upstream-Enzyme
+follow-up (EnzymeAD/Enzyme.jl on Julia ≥ 1.11).

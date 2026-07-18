@@ -26,6 +26,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     err 1.2e-8** through the mutating canopy path; recovery of a known correction (loss 0.205 → 1.1e-3,
     trained GPP within 3 %, recovered Vcmax scale ≈ 1.18 vs the known 1.20 — the small low-bias is the
     understory `je`-limit). Report `docs/phase3_fdiff_cbinary_validation.md` §15.
+  - **Julia-version caveat (CI-surfaced):** the Enzyme-reverse canopy path is verified on **Julia 1.10**
+    (lts; `Project.toml` compat `julia = "1.10"`). On **Julia ≥ 1.11**, Enzyme 0.13 raises an internal LLVM
+    compiler error through this complex mutating path (the single-bucket Enzyme gate compiles fine on 1.11).
+    The per-individual `FDiffParams{T}` construction in `daily_step_canopy` was switched from the keyword to
+    the equivalent **positional** constructor (Enzyme-transparent; behaviour-identical), and the
+    Enzyme-dependent parts of the canopy gate are guarded to `VERSION < v"1.11"` (identity runs everywhere)
+    so CI's forward-compat `test (1)` job stays green. Lifting the guard is an upstream-Enzyme follow-up.
 - **Gradient-based online rollout training — NN λ/Vcmax hooks + finished TBPTT loop (Phase-3 scale-up
   step 7b; ADR 0016).** The milestone the differentiable-first core (ADR 0014) exists to enable.
   - **Dependency-free NN hooks in the physics** (`FDiff.FluxHooks`): optional LEARNED multiplicative

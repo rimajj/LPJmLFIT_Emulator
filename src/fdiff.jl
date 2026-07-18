@@ -1426,10 +1426,12 @@ function daily_step_canopy(
         gpd = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
         gpd = softplus(gpd, w.βflux)
         fac = gpd / 1.6 * ppm2bar(f.co2)
-        p_i = FDiffParams{T}(;
-            photo = ind.photo, tstress = ind.tstress, water = w, resp = p.resp,
-            allom = p.allom, nlambda = p.nlambda, ω = p.ω,
-        )
+        # POSITIONAL constructor (field order: photo, tstress, water, resp, allom, nlambda, ω) — NOT the
+        # keyword `FDiffParams{T}(; …)`: Enzyme reverse (the canopy trainer, scale-up step 7b-canopy)
+        # cannot statically type-analyze the kwarg constructor on Julia 1.11 (`EnzymeNoTypeError` via the
+        # `#_#10` kwarg method), while the plain positional inner constructor is transparent to it.
+        # Behaviour-identical (same object) — the identity/regression baselines are unchanged.
+        p_i = FDiffParams{T}(ind.photo, ind.tstress, w, p.resp, p.allom, p.nlambda, p.ω)
         λ = solve_lambda(p_i, fac, tsi, co2_Pa, f.temp, apar, dl, vm)
         # learned ci:ca correction (identity when no hook), re-clamped to the physical bracket (a no-op
         # in the identity path — solve_lambda already confines λ to [_LAMBDA_LO, _LAMBDA_HI]).
