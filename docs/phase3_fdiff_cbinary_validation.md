@@ -610,3 +610,47 @@ wiring the hooks into `daily_step_canopy` + Enzyme-reverse training is item 7b-c
 
 **Reproduce:** `julia --project=test scripts/train_fdiff_nn.jl` (identity + recovery + the C-fit partial
 closure with the light-limitation explanation). Gate + ADR 0016.
+
+## 15. Update — NN training on the coupled CANOPY path: Enzyme reverse through the mutating rollout (scale-up step 7b-canopy)
+
+§14 landed the online-rollout-training *machinery* on the single-representative path and found that path's
+GPP gap is light-limited, so Vcmax is the wrong lever there. This step applies the learned correction
+where the residual **is** Vcmax/phenology-shaped — the coupled multi-individual canopy — and, in doing so,
+closes the AD-through-array-mutation follow-up flagged since step 2.
+
+**(a) Per-individual NN hooks in `daily_step_canopy`.** Each individual gets a learned Vcmax/λ correction
+from its own feature vector `[temp, swdown, daylength, apar_i, wr, co2]` (`apar_i` = its layered absorbed
+PAR — the physically relevant lever; `wr` = the shared root-zone relative moisture), applied consistently
+to both the potential-conductance Vcmax (pass 1) and the GPP/λ Vcmax (pass 2), exactly as `daily_step`
+propagates `vm_scale`. The identity fast path (no hook) skips feature construction entirely, so **every
+committed canopy baseline (`multi_individual`/`dynamic_structure`/`coupling`) is byte-identical** — the
+gate confirms Δ = 0. Threaded through `rollout_daily_canopy` and `rollout_canopy_years`.
+
+**(b) Enzyme-reverse training** (`fdiff_canopy_gpp_loss` / `train_fdiff_canopy_rollout!`, in the
+extension). `daily_step_canopy` MUTATES the per-layer soil-water arrays (`_infiltrate` / `_transpire_total`
+/ `_soil_evap`) and its per-individual buffers, which **Zygote cannot cross** — so this path trains with
+**Enzyme reverse**: the network params are the sole `Duplicated` argument (a fresh `make_zero` shadow per
+call — never reused, which would silently accumulate across chunks), everything else `Const`, the scalar
+loss `Active`, and `set_runtime_activity` covers the λ-solve's data-dependent `clamp` (the same conditional
+`gradient_correctness_tests.jl` documents). The returned gradient is a NamedTuple in the params' tree
+shape, so it drops straight into `Optimisers.update`; the TBPTT chunk loop is otherwise identical to the
+Zygote trainer.
+
+**Verification (gate `test/testitems/nn_canopy_training_tests.jl`, self-contained: 4 individuals, a
+5-layer soil column, a 40-day forcing):**
+- **Identity** — the zero-init network reproduces the pure-physics canopy rollout exactly (**Δ = 0**).
+- **Enzyme gradient correctness** — the Enzyme-reverse gradient of the canopy GPP loss w.r.t. the network
+  parameters matches **FiniteDifferences to max rel err 1.2e-8** (through the array-mutating
+  multi-individual path — the decisive proof the AD-through-mutation path is not just running but
+  *correct*). The Enzyme primal equals the direct loss.
+- **Recovery of a known correction** — the Enzyme TBPTT loop drives the loss **0.205 → 1.1e-3 (> 99 %
+  down)**, the trained canopy GPP matches the target to **< 3 %**, and the recovered Vcmax correction is
+  **≈ 1.18 vs the known 1.20** (the small low-bias is the understory individuals, whose `je`-limited
+  photosynthesis weakens their Vcmax gradient — the top, light-sufficient individual recovers it tightest).
+
+This is the AD-through-mutation milestone: F_diff is now end-to-end differentiable **and trainable** on
+the coupled multi-individual canopy — the path the hybrid actually couples through — with Enzyme reverse
+verified against finite differences to 1e-8. Applying it against the real C-binary daily GPP (rather than a
+synthetic recovery target) on the full 25-patch Hainich canopy, and adding the λ lever + a multi-year
+objective through the structure/allocation feedback, is the next step. Driver
+`scripts/train_fdiff_nn.jl`; ADR 0016.

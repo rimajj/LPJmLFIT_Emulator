@@ -7,21 +7,32 @@
 # backprop-through-time (TBPTT) rollout idiom, adapted to F_diff's tree/FIT physics and made to actually
 # run (the reference's `ps_frozen`/`dailyWeather` scaffold was inconsistent).
 #
-# WHY REVERSE-MODE (Zygote). The NN has many parameters, so reverse-mode is the right tool; and F_diff
-# computes its working type `T` from its declared inputs (params/state/structure/forcing) and
-# `convert(T, …)`s its state — so a ForwardDiff `Dual` injected ONLY via the NN params would hit that
-# convert. Zygote (and Enzyme) keep the forward values `Float64` and trace the adjoint, so the hook
-# gradient flows cleanly. The gate cross-checks the Zygote gradient against FiniteDifferences (and, when
-# it cooperates, Enzyme reverse) — the same AD-vs-FD discipline as the physics gradient gate.
+# WHY REVERSE-MODE. The NN has many parameters, so reverse-mode is the right tool; and F_diff computes
+# its working type `T` from its declared inputs (params/state/structure/forcing) and `convert(T, …)`s its
+# state — so a ForwardDiff `Dual` injected ONLY via the NN params would hit that convert. Zygote and
+# Enzyme keep the forward values `Float64` and trace the adjoint, so the hook gradient flows cleanly.
+#
+# TWO AD BACKENDS, TWO ROLLOUT PATHS.
+#  • SINGLE-REPRESENTATIVE (`train_fdiff_rollout!`): the allocation-free `daily_step` differentiates with
+#    ZYGOTE (the NeuralCrop TBPTT idiom). Its gate checks Zygote vs FiniteDifferences.
+#  • MULTI-INDIVIDUAL CANOPY (`train_fdiff_canopy_rollout!`): `daily_step_canopy` MUTATES the per-layer
+#    soil arrays + its `npp_ind` buffer, which Zygote cannot cross — so it differentiates with ENZYME
+#    reverse (`Duplicated` params + `make_zero` shadow + `set_runtime_activity`, exactly Lux's own
+#    `AutoEnzyme` path). Its gate checks Enzyme vs FiniteDifferences. This is where the learned correction
+#    has the right lever (the canopy residual is Vcmax/phenology-shaped, not light-limited — docs §14/§15).
+# Both cross-check the AD gradient against FiniteDifferences — the same AD-vs-FD discipline as the physics
+# gradient gate. The extension activates via `using Lux, Zygote, Optimisers, Enzyme`.
 module FDiffTrainingExt
 
 using LPJmLFITEmulator
 using LPJmLFITEmulator.FDiff
-using LPJmLFITEmulator.FDiff: FluxHooks, DailyForcing, FDiffState, Structure, FDiffParams, daily_step
-using Lux, Zygote, Optimisers
+using LPJmLFITEmulator.FDiff: FluxHooks, DailyForcing, FDiffState, Structure, FDiffParams, daily_step,
+    FDiffStateML, SoilColumn, Individual, daily_step_canopy
+using Lux, Zygote, Optimisers, Enzyme
 using Lux: Random   # stdlib Random via Lux (the dep-free parent can't declare it); RNG for Lux.setup
 
-import LPJmLFITEmulator: build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!
+import LPJmLFITEmulator: build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss,
+    train_fdiff_rollout!, fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!
 
 # ── feature normalization (fixed climatological scales → O(1) NN inputs) ─────────────────────────
 # FDiff hands each hook the feature vector `[temp_°C, swdown, daylength_h, apar, w_soil, co2_ppm]`
@@ -181,6 +192,117 @@ function train_fdiff_rollout!(
         end
         # full-window loss for monitoring / best-parameter tracking (single detached forward)
         epoch_loss = _window_gpp_loss(ps, nn, phys, st0, str, forcings, fapars, targets, day_start:day_end)[1]
+        push!(history, epoch_loss)
+        if epoch_loss < best_loss
+            best_loss = epoch_loss
+            best_ps = deepcopy(ps)
+        end
+        verbose && println("epoch $ep  loss=$(round(epoch_loss; sigdigits = 5))")
+    end
+    return (best_ps, history)
+end
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# CANOPY (multi-individual) online-rollout training — ENZYME reverse through the mutating path
+# (scale-up step 7b-canopy; ADR 0016; docs §15)
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# The learned Vcmax / λ correction has the right lever on the COUPLED CANOPY path: there the light is
+# spread across individuals so photosynthesis is Vcmax-limited (not saturated at the light-limited rate
+# `je` as on the single-representative path — docs §14), and the standalone canopy carries a
+# Vcmax/phenology-shaped level residual (GPP ratio ≈ 1.17). But `daily_step_canopy` MUTATES the per-layer
+# soil-water arrays (`_infiltrate`/`_transpire_total`/`_soil_evap`) and its per-individual `npp_ind`
+# buffer, which Zygote cannot differentiate — so this path trains with ENZYME reverse (the
+# AD-through-mutation follow-up flagged since scale-up step 2). The idiom is exactly Lux's own
+# `AutoEnzyme` path: the network params are the sole `Duplicated` argument (with a `make_zero` shadow);
+# everything else is `Const`; the scalar loss is `Active`; `set_runtime_activity` covers the λ-solve's
+# data-dependent `clamp` (the same conditional gradient_correctness_tests.jl documents). The returned
+# gradient is a NamedTuple in the params' tree shape, so it drops straight into `Optimisers.update`.
+
+# scalar-accumulating canopy GPP loss (NO per-day flux vector — Enzyme-friendly fold; carries the
+# per-layer FDiffStateML across days). `phens[i]` = the fixed, physics-determined daily leaf-display
+# factor (the same Const-drive discipline the single-representative loss uses for `fapars`).
+function fdiff_canopy_gpp_loss(
+        ps, nn::FDiffNN, phys::FDiffParams, st0::FDiffStateML, inds, soil::SoilColumn,
+        forcings, phens, targets, day_range
+    )
+    hooks = hooks_from(nn, ps)
+    st = st0
+    loss = zero(eltype(targets))
+    ndays = 0
+    for i in day_range
+        (st, fl) = daily_step_canopy(phys, inds, soil, st, forcings[i]; phen = phens[i], hooks = hooks)
+        loss += (fl.gpp - targets[i])^2
+        ndays += 1
+    end
+    return loss / max(ndays, 1)   # max(·,1): guard an empty day_range (no-op for ndays ≥ 1)
+end
+
+# advance the canopy state across a window WITHOUT tracking gradients (the TBPTT truncation between chunks)
+function _advance_canopy_state(ps, nn::FDiffNN, phys::FDiffParams, st0::FDiffStateML, inds, soil::SoilColumn, forcings, phens, day_range)
+    hooks = hooks_from(nn, ps)
+    st = st0
+    for i in day_range
+        (st, _) = daily_step_canopy(phys, inds, soil, st, forcings[i]; phen = phens[i], hooks = hooks)
+    end
+    return st
+end
+
+# Enzyme reverse gradient of the canopy GPP loss w.r.t. the network params `ps` (Duplicated-NamedTuple
+# idiom). Returns `(loss, dps)` — `dps` is the gradient in the same tree shape as `ps` (drops into
+# `Optimisers.update`). A FRESH `make_zero(ps)` per call (never a reused shadow — a reused shadow would
+# silently ACCUMULATE gradients across chunks). `set_runtime_activity` for the λ-solve `clamp` conditional.
+function _enzyme_canopy_grad(ps, nn::FDiffNN, phys::FDiffParams, st0::FDiffStateML, inds, soil::SoilColumn, forcings, phens, targets, day_range)
+    dps = Enzyme.make_zero(ps)
+    RA = Enzyme.set_runtime_activity(Enzyme.ReverseWithPrimal)
+    (_, loss) = Enzyme.autodiff(
+        RA, Enzyme.Const(fdiff_canopy_gpp_loss), Enzyme.Active,
+        Enzyme.Duplicated(ps, dps), Enzyme.Const(nn), Enzyme.Const(phys), Enzyme.Const(st0),
+        Enzyme.Const(inds), Enzyme.Const(soil), Enzyme.Const(forcings), Enzyme.Const(phens),
+        Enzyme.Const(targets), Enzyme.Const(day_range),
+    )
+    return (loss, dps)
+end
+
+"""
+    train_fdiff_canopy_rollout!(nn, phys, st0, inds, soil, forcings, phens, targets;
+                                chunk=73, epochs=30, lr=1e-2, opt=Optimisers.Adam(lr),
+                                day_start=1, day_end=length(forcings), ps=deepcopy(nn.ps), verbose=false)
+        -> (ps, history)
+
+Enzyme-reverse counterpart of [`train_fdiff_rollout!`](@ref) for the array-mutating multi-individual
+canopy path (item 7b-canopy). Sweeps `[day_start, day_end]` in `chunk`-day segments; per segment takes
+an Enzyme reverse gradient of the canopy GPP loss w.r.t. `ps` ([`_enzyme_canopy_grad`](@ref)),
+`Optimisers.update`s, then advances the (detached) per-layer soil-water state through the segment with
+the updated `ps` and carries it forward (TBPTT truncation). `epochs` re-sweeps. Returns the best
+(lowest full-window loss) parameters and the per-epoch loss `history`.
+"""
+function train_fdiff_canopy_rollout!(
+        nn::FDiffNN, phys::FDiffParams, st0::FDiffStateML, inds, soil::SoilColumn,
+        forcings, phens, targets; chunk::Int = 73, epochs::Int = 30, lr::Real = 1.0e-2,
+        opt = Optimisers.Adam(lr), day_start::Int = 1, day_end::Int = length(forcings),
+        ps = deepcopy(nn.ps), verbose::Bool = false
+    )
+    opt_state = Optimisers.setup(opt, ps)
+    history = Float64[]
+    best_ps = deepcopy(ps)
+    best_loss = Inf
+    for ep in 1:epochs
+        st = st0
+        day = day_start
+        while day <= day_end
+            dlast = min(day + chunk - 1, day_end)
+            rng_days = day:dlast
+            (l, dps) = _enzyme_canopy_grad(ps, nn, phys, st, inds, soil, forcings, phens, targets, rng_days)
+            if isfinite(l)
+                opt_state, ps = Optimisers.update(opt_state, ps, dps)
+            else
+                verbose && @warn "non-finite loss/grad at epoch $ep, days $rng_days — skipping update"
+            end
+            # TBPTT: carry the detached end-state (recomputed with the updated ps) into the next chunk
+            st = _advance_canopy_state(ps, nn, phys, st, inds, soil, forcings, phens, rng_days)
+            day = dlast + 1
+        end
+        epoch_loss = fdiff_canopy_gpp_loss(ps, nn, phys, st0, inds, soil, forcings, phens, targets, day_start:day_end)
         push!(history, epoch_loss)
         if epoch_loss < best_loss
             best_loss = epoch_loss

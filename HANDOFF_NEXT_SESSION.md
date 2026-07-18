@@ -50,6 +50,14 @@ for HEAD.
   light-limited (co-limitation saturates at `je`), so Vcmax is the wrong lever there (fit only 0.64→0.79,
   degrades daily r) — the learned correction belongs on the coupled canopy path (Enzyme-reverse, the
   documented NEXT). ADR 0016; report §14. Runtime `[deps]` still empty.
+- **Phase 3 (session 10 cont.) — scale-up step 7b-canopy: NN TRAINING ON THE COUPLED CANOPY PATH via
+  ENZYME REVERSE.** Per-individual `FluxHooks` in `daily_step_canopy` (identity fast path ⇒ canopy
+  baselines byte-identical) + `train_fdiff_canopy_rollout!`/`fdiff_canopy_gpp_loss` (Enzyme reverse —
+  `daily_step_canopy` mutates arrays so Zygote can't cross it). **The AD-through-mutation follow-up (open
+  since step 2) is CLOSED and proven: the Enzyme gradient w.r.t. the NN params matches FiniteDifferences
+  to 1.2e-8** through the mutating multi-individual path; recovery of a known correction (loss 0.205→1.1e-3,
+  scale ≈1.18 vs 1.20). `Enzyme` is now a 4th extension trigger; runtime `[deps]` still empty. Gate
+  `nn_canopy_training_tests.jl`; report §15; ADR 0016.
 
 ---
 
@@ -86,11 +94,13 @@ single-representative path.** Two pieces (ADR 0016):
   closes the level gap (annual ratio **0.644 → 0.794**) and DEGRADES the growing-season daily shape (r
   **0.957 → 0.810** — trades shape for level). Physics, not a training failure: that gap is
   **light/structure-limited** (Haxeltine–Prentice co-limitation saturates at `je`), so Vcmax can't close
-  it — exactly why the multi-individual canopy (§9) closed GPP by spreading light. **★ NEXT (item
-  7b-canopy):** wire the hooks into `daily_step_canopy` + train on the coupled canopy path where the
-  residual is Vcmax/phenology-shaped — that path mutates arrays, so it trains with **Enzyme reverse**
-  (the AD-through-mutation follow-up flagged since step 2), then a real coupled-rollout objective through
-  the layered-light + structure feedback.
+  it — exactly why the multi-individual canopy (§9) closed GPP by spreading light. **(item 7b-canopy) ✅
+  DONE (session 10 cont.):** the hooks are wired into `daily_step_canopy` and trained on the coupled
+  canopy path with **Enzyme reverse** (the AD-through-mutation follow-up — PROVEN: Enzyme gradient vs
+  FiniteDifferences to **1.2e-8**; recovery loss 0.205→1.1e-3, scale ≈1.18 vs 1.20; gate
+  `nn_canopy_training_tests.jl`, §15). **★ NEXT: train the canopy correction against the REAL C-binary
+  daily GPP** on the full 25-patch Hainich canopy (not a synthetic recovery target) + add the λ lever + a
+  multi-year objective through the structure/allocation feedback.
 - **Baselines / gates / deps.** NO committed baseline moved (identity fast path). Root Project.toml gains
   `[weakdeps]`+`[extensions]`+their `[compat]`; `test/Project.toml` gains `Lux`/`Zygote`/`Optimisers`
   (+`Random`/`Printf` stdlibs — the first full run caught `using Random` for `randperm` needed it
@@ -408,12 +418,15 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    (dependency-free learned Vcmax/λ corrections) + `ext/FDiffTrainingExt.jl` (Lux MLP + finished TBPTT
    `train_fdiff_rollout!`, Zygote reverse); gate-verified identity + Zygote-vs-FD gradient + recovery of a
    known correction. See §14 + ADR 0016 + `nn_training_tests.jl`.
-   **★ NEXT — (b-canopy): apply the hooks where the residual is Vcmax/phenology-shaped** — wire
-   `FluxHooks` into `daily_step_canopy` and train on the coupled multi-individual canopy path (the
-   representative-path C GPP gap is light-limited, so Vcmax is the wrong lever there — §14). That path
-   mutates arrays ⇒ **Enzyme-reverse-through-mutation** training (the follow-up flagged since step 2);
-   then a real coupled-rollout objective through the layered-light + structure feedback. **(c) Smaller
-   residuals:** per-PFT phenology for the
+   **(b-canopy) ✅ DONE (session 10 cont.) — NN training on the coupled canopy path via Enzyme reverse.**
+   Per-individual `FluxHooks` in `daily_step_canopy` (identity fast path ⇒ canopy baselines byte-identical)
+   + `train_fdiff_canopy_rollout!`/`fdiff_canopy_gpp_loss` (Enzyme reverse — `daily_step_canopy` mutates
+   arrays so Zygote can't). **The AD-through-mutation path is proven: Enzyme gradient w.r.t. the NN params
+   matches FiniteDifferences to 1.2e-8**; recovery of a known correction (loss 0.205→1.1e-3, scale ≈1.18
+   vs 1.20). Gate `nn_canopy_training_tests.jl`; §15; the step-2 follow-up is closed.
+   **★ NEXT — train the canopy correction against the REAL C-binary daily GPP** (not a synthetic recovery
+   target) on the full 25-patch Hainich canopy; add the λ lever + a multi-year objective through the
+   structure/allocation feedback. **(c) Smaller residuals:** per-PFT phenology for the
    evergreen/grass minority (one beech-GSI `phen` patch-wide today); grass structure prognostic
    (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`, which — with the rare-day `rd`
    conductance gate — is the small remaining respiration residual, both documented in §13) + carbon-debt in

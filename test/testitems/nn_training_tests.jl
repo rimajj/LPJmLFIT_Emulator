@@ -16,11 +16,12 @@
 # multi-individual canopy path (Enzyme-reverse-through-mutation) — the documented next step: on the
 # single-representative path the C GPP gap is light/structure-limited (co-limitation saturates at the
 # light-limited rate `je`), so a Vcmax lever cannot close it there (docs §14).
-# The extension (ext/FDiffTrainingExt.jl) activates via `using Lux, Zygote, Optimisers`.
+# The extension (ext/FDiffTrainingExt.jl) activates via `using Lux, Zygote, Optimisers, Enzyme` (Enzyme
+# is a trigger because the sibling canopy trainer — nn_canopy_training_tests.jl — needs Enzyme reverse).
 @testitem "NN-hook training — identity, gradient vs FD, recovery of a known correction" tags = [:training, :fdiff] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
-    using Lux, Zygote, Optimisers, FiniteDifferences, StableRNGs
+    using Lux, Zygote, Optimisers, Enzyme, FiniteDifferences, StableRNGs
     using Random
     using Test
 

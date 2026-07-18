@@ -24,7 +24,7 @@
 # =============================================================================
 using LPJmLFITEmulator
 using LPJmLFITEmulator.FDiff
-using Lux, Zygote, Optimisers, StableRNGs
+using Lux, Zygote, Optimisers, Enzyme, StableRNGs   # Enzyme: extension trigger (canopy trainer uses it)
 using Printf
 
 const REF = joinpath(@__DIR__, "..", "test", "testitems", "references")

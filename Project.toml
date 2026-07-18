@@ -31,14 +31,19 @@ version = "0.1.0"
 # `using Lux, Zygote, Optimisers` (which activates `ext/FDiffTrainingExt.jl`). They are NOT runtime
 # deps — the physics core (src/fdiff.jl) only ever *calls* the learned hook (a plain function).
 [weakdeps]
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 Lux = "b2108857-7c20-44ae-9111-449ecde12c47"
 Optimisers = "3bd65402-5787-11e9-1adc-39752487f4e2"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [extensions]
-FDiffTrainingExt = ["Lux", "Zygote", "Optimisers"]
+# The single-representative rollout trains with Zygote; the multi-individual CANOPY rollout mutates
+# arrays so it trains with Enzyme reverse (scale-up step 7b-canopy). Both live in one extension, so it
+# activates only when all four training backends are loaded (`using Lux, Zygote, Optimisers, Enzyme`).
+FDiffTrainingExt = ["Lux", "Zygote", "Optimisers", "Enzyme"]
 
 [compat]
+Enzyme = "0.13"
 Lux = "1"
 Optimisers = "0.4"
 Zygote = "0.6, 0.7"

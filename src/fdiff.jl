@@ -1314,7 +1314,9 @@ evaporation → per-individual respiration. Wet-canopy interception (`_wet_inter
 `interception.c`) evaporates off each individual (removed from infiltration) and reduces each
 individual's demand by `(1 − wet)`. By default `eeq` is self-computed from the DYNAMIC patch albedo
 ([`patch_albedo`](@ref)), so no C-PET crutch is needed; `eeq_ext` overrides it with the C binary's own
-daily PET (`pet_C/α_PT`) for the kernel-isolation comparison of §10. Returns the new state and stand
+daily PET (`pet_C/α_PT`) for the kernel-isolation comparison of §10. `hooks` ([`FluxHooks`](@ref)) adds
+optional learned PER-INDIVIDUAL Vcmax/λ corrections (identity fast path when off ⇒ byte-identical to
+pure physics); this is the coupled-canopy training path (scale-up step 7b-canopy, Enzyme reverse). Returns the new state and stand
 daily fluxes `(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fpc, wscal, npp_ind)`
 (per m² of patch; `wscal` = the stand water scalar feeding next day's GSI water phenology; `npp_ind` =
 the per-individual daily NPP vector, whose annual sum is each individual's `bm_inc` for
@@ -1323,7 +1325,7 @@ the per-individual daily NPP vector, whose annual sum is each individual's `bm_i
 """
 function daily_step_canopy(
         p::FDiffParams, inds::AbstractVector{<:Individual}, soil::SoilColumn, st::FDiffStateML,
-        f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing
+        f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
     ph = convert(T, phen)
@@ -1369,14 +1371,34 @@ function daily_step_canopy(
     dl = f.daylength
     condfac = ppm2bar(f.co2) * (one(T) - w.lambda_opt) * hour2sec(dl)
 
+    # --- NN hooks: PER-INDIVIDUAL learned Vcmax / λ multiplicative corrections (identity when no hook —
+    # see FluxHooks). Each individual's scale is evaluated ONCE per day from its own feature vector
+    # `[temp, swdown, daylength, apar_i, wr, co2]` (`apar_i` = its LAYERED absorbed PAR — the physically
+    # relevant lever, matching daily_step's single feature; `wr` = the shared root-zone relative
+    # moisture), then applied CONSISTENTLY to both the potential-conductance Vcmax (pass 1) and the
+    # GPP/λ Vcmax (pass 2), exactly as daily_step propagates `vm_scale` into `gp_pot`, the λ solve, and
+    # `rd`. The identity fast path (no hook) leaves the scales `nothing` and skips feature construction
+    # entirely, so the physics — and every committed canopy baseline — is byte-identical when hooks off.
+    vm_scales = _has_hooks(hooks) ? Vector{T}(undef, length(inds)) : nothing
+    λ_scales = _has_hooks(hooks) ? Vector{T}(undef, length(inds)) : nothing
+    if _has_hooks(hooks)
+        for (ii, ind) in enumerate(inds)
+            apar_i = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * (convert(T, ind.fpar) * ph)
+            feat = T[f.temp, f.swdown, dl, apar_i, wr, f.co2]
+            vm_scales[ii] = hooks.vm === nothing ? one(T) : convert(T, hooks.vm(feat))
+            λ_scales[ii] = hooks.λ === nothing ? one(T) : convert(T, hooks.λ(feat))
+        end
+    end
+
     # ── pass 1: gp_sum — per-individual potential conductance (FPC-based light, λ_opt) → stand mean ──
     gp_stand_acc = zero(T)
     fpc_tot = zero(T)
-    for ind in inds
+    for (ii, ind) in enumerate(inds)
         fpc_i = convert(T, ind.fpc) * ph
         apar_gp = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_i
         tsi = temp_stress(ind.tstress, f.temp, dl)
-        (_, _, _, adtmm_gp) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_gp, dl; comp_vm = true)
+        vms = vm_scales === nothing ? one(T) : vm_scales[ii]
+        (_, _, _, adtmm_gp) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_gp, dl; comp_vm = true, vm_scale = vms)
         gp_i = 1.6 * adtmm_gp / condfac + w.gmin * fpc_i
         gp_stand_acc += gp_i
         fpc_tot += fpc_i
@@ -1392,7 +1414,8 @@ function daily_step_canopy(
         fpar_i = convert(T, ind.fpar) * ph                 # layered absorbed fraction (phen-scaled)
         apar = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpar_i
         tsi = temp_stress(ind.tstress, f.temp, dl)
-        (_, _, vm, _) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar, dl; comp_vm = true)
+        vms = vm_scales === nothing ? one(T) : vm_scales[ii]
+        (_, _, vm, _) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar, dl; comp_vm = true, vm_scale = vms)
         supply_i = convert(T, ind.emax) * wr * ph
         # wet-canopy demand reduction (1 − wet); water_stressed.c re-caps wet at 0.99
         (wet_i, _) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), ph, convert(T, ind.fpc), eeq, rain, w.α_PT)
@@ -1408,6 +1431,10 @@ function daily_step_canopy(
             allom = p.allom, nlambda = p.nlambda, ω = p.ω,
         )
         λ = solve_lambda(p_i, fac, tsi, co2_Pa, f.temp, apar, dl, vm)
+        # learned ci:ca correction (identity when no hook), re-clamped to the physical bracket (a no-op
+        # in the identity path — solve_lambda already confines λ to [_LAMBDA_LO, _LAMBDA_HI]).
+        λs = λ_scales === nothing ? one(T) : λ_scales[ii]
+        λ = clamp(λ * λs, T(_LAMBDA_LO), T(_LAMBDA_HI))
         (agd, rd, _, _) = photosynthesis(ind.photo, λ, tsi, co2_Pa, f.temp, apar, dl; comp_vm = false, vm = vm)
         gpp_i = softplus(agd, w.βflux)
         gpp_tot += gpp_i
@@ -1466,7 +1493,7 @@ optionally seeds the GSI filters (e.g. for multi-year continuity); it defaults t
 function rollout_daily_canopy(
         p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
         forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing,
-        phen_params = nothing, phen_state = nothing
+        phen_params = nothing, phen_state = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
     st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
@@ -1475,7 +1502,7 @@ function rollout_daily_canopy(
     water_avail = one(T)                          # previous day's stand water scalar (moist cold-start)
     ph1 = phens === nothing ? one(T) : convert(T, phens[1])
     ee1 = eeqs === nothing ? nothing : eeqs[1]
-    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1)[2])}()
+    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1, hooks = hooks)[2])}()
     sizehint!(days, length(forcings))
     for (i, f) in enumerate(forcings)
         # phenology: supplied crutch (phens) OR self-computed GSI (soil-temp gate ≈ air temp)
@@ -1485,7 +1512,7 @@ function rollout_daily_canopy(
             ph = convert(T, phens[i])
         end
         ee = eeqs === nothing ? nothing : eeqs[i]
-        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m, eeq_ext = ee)
+        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m, eeq_ext = ee, hooks = hooks)
         water_avail = fl.wscal                    # today's water status → tomorrow's water phenology
         push!(days, fl)
     end
@@ -1816,7 +1843,8 @@ self-driven — the crutch is no longer load-bearing.
 function rollout_canopy_years(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
         trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
-        yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing
+        yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing,
+        hooks::FluxHooks = _NO_HOOKS
     ) where {T}
     trees = collect(trees0)
     st = st0
@@ -1826,7 +1854,7 @@ function rollout_canopy_years(
     for (yr, forc) in enumerate(yearly_forcings)
         fpars = _patch_fpars(trees, allom; nlayers = nlayers)
         inds = Individual{T}[individual_from_pools(tmpls[i], trees[i], allom, fpars[i]) for i in 1:n]
-        (st, days) = rollout_daily_canopy(p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m)
+        (st, days) = rollout_daily_canopy(p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m, hooks = hooks)
         bm_perm2 = zeros(T, n)
         gpp_yr = zero(T); npp_yr = zero(T); wsum = zero(T)
         for d in days

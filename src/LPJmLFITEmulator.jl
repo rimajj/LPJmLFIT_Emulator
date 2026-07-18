@@ -42,12 +42,17 @@ include("components/energy.jl")
 # ── Component/flux registry — source of truth for code-derived diagrams ─────
 include("registry.jl")
 
-# ── Hybrid NN-hook training API (ADR 0016; scale-up step 7b) ─────────────────
+# ── Hybrid NN-hook training API (ADR 0016; scale-up steps 7b + 7b-canopy) ────
 # The gradient-based online-rollout training of the learned Vcmax / λ corrections ([`FDiff.FluxHooks`])
-# lives in the `FDiffTrainingExt` PACKAGE EXTENSION, so `Lux`/`Zygote`/`Optimisers` stay out of the
-# (deliberately dependency-free) runtime. These are the generic-function stubs the extension adds
-# methods to; calling them without the extension loaded (i.e. without `using Lux, Zygote, Optimisers`)
-# raises a `MethodError`. See `ext/FDiffTrainingExt.jl` and `docs/phase3_fdiff_cbinary_validation.md` §14.
+# lives in the `FDiffTrainingExt` PACKAGE EXTENSION, so `Lux`/`Zygote`/`Optimisers`/`Enzyme` stay out of
+# the (deliberately dependency-free) runtime. These are the generic-function stubs the extension adds
+# methods to; calling them without the extension loaded (i.e. without `using Lux, Zygote, Optimisers,
+# Enzyme`) raises a `MethodError`. Two rollout paths: the SINGLE-REPRESENTATIVE loss/trainer
+# ([`fdiff_gpp_loss`](@ref)/[`train_fdiff_rollout!`](@ref)) differentiates with **Zygote** (allocation-
+# free daily_step); the multi-individual CANOPY loss/trainer ([`fdiff_canopy_gpp_loss`](@ref)/
+# [`train_fdiff_canopy_rollout!`](@ref)) differentiates with **Enzyme reverse** because `daily_step_canopy`
+# mutates the per-layer soil arrays (the AD-through-mutation path — item 7b-canopy). See
+# `ext/FDiffTrainingExt.jl` and `docs/phase3_fdiff_cbinary_validation.md` §14–§15.
 """
     build_fdiff_nn(; targets=(:vm,), n_in=6, width=12, depth=2, corr_max=1.0, rng) -> nn
 
@@ -89,6 +94,31 @@ parameters and the per-epoch loss history.
 """
 function train_fdiff_rollout! end
 
+"""
+    fdiff_canopy_gpp_loss(ps, nn, phys, st0, inds, soil, forcings, phens, targets, day_range) -> Real
+
+Scalar mean-squared daily stand-GPP loss of the hooked **multi-individual canopy** rollout
+(`FDiff.daily_step_canopy`) over `day_range` against `targets`, as a function of the network
+parameters `ps`. Folded as scalar accumulators (no per-day flux vector) so it is differentiable through
+the array-mutating canopy path by **Enzyme reverse** — this is where the learned Vcmax/λ correction has
+the right lever (the canopy residual is Vcmax/phenology-shaped, unlike the light-limited single-
+representative path). `phens[i]` is the (fixed, physics-determined) daily leaf-display factor. Requires
+the `FDiffTrainingExt` extension.
+"""
+function fdiff_canopy_gpp_loss end
+
+"""
+    train_fdiff_canopy_rollout!(nn, phys, st0, inds, soil, forcings, phens, targets; chunk, epochs, opt, ...) -> (ps, history)
+
+TBPTT online-rollout training of the learned canopy correction, the Enzyme-reverse counterpart of
+[`train_fdiff_rollout!`](@ref) for the array-mutating `FDiff.daily_step_canopy` path (item
+7b-canopy): each `chunk`-day segment takes an **Enzyme reverse** gradient of the canopy GPP loss w.r.t.
+the network parameters (`Duplicated` params + `make_zero` shadow, `set_runtime_activity`), then
+`Optimisers.update`s and carries the detached per-layer soil-water state across segment boundaries.
+Requires the `FDiffTrainingExt` extension. Returns the best parameters and the per-epoch loss history.
+"""
+function train_fdiff_canopy_rollout! end
+
 # State
 export SharedState, NSOILLAYER, LASTLAYER, GPLHEAT, NHEATGRIDP, NTREEPOOLS, CLIMBUFSIZE
 # Interface payloads
@@ -104,6 +134,7 @@ export FDiffFastCore, step!, annual_step!
 export COMPONENTS, FLUXES, Component, Flux
 # Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook
 # container) is reached via `using LPJmLFITEmulator.FDiff`, matching the other F_diff types.
-export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!
+export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!,
+    fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!
 
 end # module

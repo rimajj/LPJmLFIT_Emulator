@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **NN training on the coupled CANOPY path — Enzyme reverse through the array-mutating rollout (Phase-3
+  scale-up step 7b-canopy; ADR 0016).** Applies the learned correction where the residual is
+  Vcmax/phenology-shaped (the coupled canopy), and closes the AD-through-mutation follow-up flagged since
+  step 2.
+  - **Per-individual NN hooks in `FDiff.daily_step_canopy`** (threaded through `rollout_daily_canopy` +
+    `rollout_canopy_years`): each individual's learned Vcmax/λ correction from its own feature vector
+    `[temp, swdown, daylength, apar_i, wr, co2]`, applied consistently to pass-1 (gp_sum) and pass-2
+    (GPP/λ) Vcmax. Identity fast path when off ⇒ **every committed canopy baseline byte-identical** (gate
+    Δ = 0).
+  - **Enzyme-reverse trainer** `train_fdiff_canopy_rollout!` + loss `fdiff_canopy_gpp_loss` (extension):
+    `daily_step_canopy` mutates the per-layer soil arrays, which Zygote can't cross — so it trains with
+    Enzyme reverse (`Duplicated` params + fresh `make_zero` shadow + `set_runtime_activity`, Lux's
+    `AutoEnzyme` idiom). `Enzyme` becomes a 4th extension trigger (`FDiffTrainingExt` now needs
+    `Lux`/`Zygote`/`Optimisers`/`Enzyme`); runtime `[deps]` still empty.
+  - **Gate** `test/testitems/nn_canopy_training_tests.jl` (self-contained: 4 individuals, 5-layer soil,
+    40-day forcing): identity (Δ = 0); **Enzyme gradient w.r.t. NN params vs FiniteDifferences, max rel
+    err 1.2e-8** through the mutating canopy path; recovery of a known correction (loss 0.205 → 1.1e-3,
+    trained GPP within 3 %, recovered Vcmax scale ≈ 1.18 vs the known 1.20 — the small low-bias is the
+    understory `je`-limit). Report `docs/phase3_fdiff_cbinary_validation.md` §15.
 - **Gradient-based online rollout training — NN λ/Vcmax hooks + finished TBPTT loop (Phase-3 scale-up
   step 7b; ADR 0016).** The milestone the differentiable-first core (ADR 0014) exists to enable.
   - **Dependency-free NN hooks in the physics** (`FDiff.FluxHooks`): optional LEARNED multiplicative
