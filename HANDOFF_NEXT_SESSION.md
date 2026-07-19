@@ -782,12 +782,14 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
   public later — declined). Do not chase.
 
 ## Commit history on `main` (recent)
-`2d3d92a` feat(fdiff) NN training on the CELL × MULTI-YEAR objective vs the REAL C per-year annual GPP —
-§16 per-patch decomposition THROUGH §17 multi-year rollout + `sbatch_train.sh` (step 7b-cell-multiyear;
-CI green — `test (lts)`/`test (1)` pass, `test (pre)` is the allowed pre-release ReTestItems break) ·
-`4956529` feat(fdiff) NN training THROUGH the multi-year structure/allocation feedback — SoA fix for the
-Enzyme-typeable `rollout_canopy_years_gpp` (step 7b-multiyear) · `433ccb9` feat(fdiff) NN training vs the
-REAL C-binary daily GPP on the full 25-patch cell + the λ lever
+`c33b71d` feat(fdiff) per-PFT GSI leaf phenology + the beech-tmin correction (par/pft_lpjmlfit.js) —
+scalar-or-vector `phen` in `daily_step_canopy` (scalar path byte-identical; Enzyme trainer untouched),
+`pft_phenparams`/`per_pft_phenology`/`rollout_daily_canopy(;pft_ids)`; cell GPP ratio vs C 1.134→1.097,
+daily r 0.988→0.993; suite 26,106/0/4 (step 8) · `2d3d92a` feat(fdiff) NN training on the CELL × MULTI-YEAR
+objective vs the REAL C per-year annual GPP — §16 per-patch decomposition THROUGH §17 multi-year rollout +
+`sbatch_train.sh` (step 7b-cell-multiyear) · `4956529` feat(fdiff) NN training THROUGH the multi-year
+structure/allocation feedback — SoA fix for the Enzyme-typeable `rollout_canopy_years_gpp` (step 7b-multiyear)
+· `433ccb9` feat(fdiff) NN training vs the REAL C-binary daily GPP on the full 25-patch cell + the λ lever
 (step 7b-cell) · `e9b8212` fix(fdiff) make the Enzyme canopy path Julia-1.11-safe (CI test(1) fix-forward)
 · `c68c5ea` feat(fdiff) NN training on the canopy path — Enzyme reverse (step 7b-canopy) · `3db1406`
 feat(fdiff) gradient-based online rollout training — NN λ/Vcmax hooks + TBPTT (step 7b) · `7a76f45`
