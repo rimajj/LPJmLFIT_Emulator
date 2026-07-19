@@ -861,7 +861,12 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
   public later — declined). Do not chase.
 
 ## Commit history on `main` (recent)
-`c33b71d` feat(fdiff) per-PFT GSI leaf phenology + the beech-tmin correction (par/pft_lpjmlfit.js) —
+`c16c0be` feat(fdiff) prognostic grass structure — the `allocation_grass.c` port (`grow_grass_individual`/
+`grass_allocparams`/`grass_treepools`, per-area `crownarea=nind=1`), wired into both rollouts via a `galloc`
+kwarg (grass branch fires only for `is_grass` ⇒ tree baselines + Enzyme trainer byte-identical); allocation
+golden <1e-5, conservation 4.4e-16, fed the C's grass NPP the grass equilibrates to leaf:root 0.791 vs the
+C's 0.799; self-computed grass NPP ~3× the C's (beech params) ⇒ grass-NPP calibration is the NEXT; suite
+26,166/0/4 (step 9) · `c33b71d` feat(fdiff) per-PFT GSI leaf phenology + the beech-tmin correction (par/pft_lpjmlfit.js) —
 scalar-or-vector `phen` in `daily_step_canopy` (scalar path byte-identical; Enzyme trainer untouched),
 `pft_phenparams`/`per_pft_phenology`/`rollout_daily_canopy(;pft_ids)`; cell GPP ratio vs C 1.134→1.097,
 daily r 0.988→0.993; suite 26,106/0/4 (step 8) · `2d3d92a` feat(fdiff) NN training on the CELL × MULTI-YEAR
