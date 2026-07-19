@@ -922,7 +922,13 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
   public later — declined). Do not chase.
 
 ## Commit history on `main` (recent)
-`c16c0be` feat(fdiff) prognostic grass structure — the `allocation_grass.c` port (`grow_grass_individual`/
+`e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the
+committed real reference to 2009–2019 (`extract_fdiff_decadal.py`, no C re-run); the 25-patch rollout
+self-driving 11 years from the 2008 structure tracks the C at **mean ratio 1.066, each year 1.01–1.11 (no
+runaway), interannual r = 0.86** (fidelity-stable over a decade). Gate `decadal_validation_tests.jl`. Also
+diagnosed + deferred two frontier items: the §20 grass-NPP overshoot is STRUCTURAL (shared `gp_stand`
+conductance, needs per-PFT conductance), and the Enzyme-≥1.11 guard-lift is BLOCKED upstream (latest 0.13.187
+still `EnzymeInternalError`). Suite 26,174/0/4 (step 10) · `c16c0be` feat(fdiff) prognostic grass structure — the `allocation_grass.c` port (`grow_grass_individual`/
 `grass_allocparams`/`grass_treepools`, per-area `crownarea=nind=1`), wired into both rollouts via a `galloc`
 kwarg (grass branch fires only for `is_grass` ⇒ tree baselines + Enzyme trainer byte-identical); allocation
 golden <1e-5, conservation 4.4e-16, fed the C's grass NPP the grass equilibrates to leaf:root 0.791 vs the
