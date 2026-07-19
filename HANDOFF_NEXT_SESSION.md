@@ -710,6 +710,9 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
   public later — declined). Do not chase.
 
 ## Commit history on `main` (recent)
+`2d3d92a` feat(fdiff) NN training on the CELL × MULTI-YEAR objective vs the REAL C per-year annual GPP —
+§16 per-patch decomposition THROUGH §17 multi-year rollout + `sbatch_train.sh` (step 7b-cell-multiyear;
+CI green — `test (lts)`/`test (1)` pass, `test (pre)` is the allowed pre-release ReTestItems break) ·
 `4956529` feat(fdiff) NN training THROUGH the multi-year structure/allocation feedback — SoA fix for the
 Enzyme-typeable `rollout_canopy_years_gpp` (step 7b-multiyear) · `433ccb9` feat(fdiff) NN training vs the
 REAL C-binary daily GPP on the full 25-patch cell + the λ lever
