@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Per-PFT GSI leaf phenology (Phase-3 scale-up step 8; docs §19).** Generalizes the self-computed leaf
+  phenology (§11) from ONE beech GSI applied patch-wide to PER-PFT: the LPJmL-FIT config runs
+  `phenology_gsi` for every natural PFT (`lpjmlfit.js` `"new_phenology":true` + `"individual":true`; the
+  "evergreen"-named PFTs run the full four-limiter GSI, not static `phen≡1`), so each individual now gets
+  its own PFT's leaf-display curve.
+  - **`pft_phenparams(id, T)`** — the twelve GSI parameters (`tmin/tmax/light`·slope·base·tau + `wscal`)
+    for each 0-based natural PFT id 0–9, verbatim from the ACTIVE `par/pft_lpjmlfit.js`. `wscal_base =
+    minwscal_median·100` (the C's individual-mode water inflection, `phenology_gsi.c:64-66`, NOT the inert
+    par-file `wscal.base`). `tebs_phenparams()` == `pft_phenparams(3)`.
+  - **`per_pft_phenology(pft_ids, forcings; …)`** — standalone per-PFT driver (one `PhenState` per distinct
+    PFT → per-day × per-individual leaf display); grasses (id ≥ 7) drive the light limiter with forest-floor
+    light `grass_light_frac·swdown`.
+  - **Per-individual `phen` wiring** — `daily_step_canopy`/`patch_albedo` accept `phen` as a scalar OR a
+    per-individual vector (compile-time-dispatched `_phen_at`; the scalar path is **byte-identical**, so
+    every committed baseline + the Enzyme trainer are untouched). `rollout_daily_canopy` gains a `pft_ids`
+    kwarg co-solving per-PFT phenology with the stand water feedback + a lag-1 grass forest-floor light
+    attenuation. The Enzyme multi-year training path keeps its scalar C-FAPAR phen (unchanged).
+  - **Result (25-patch Hainich 2010):** per-PFT phenology moves the standalone cell GPP annual ratio vs the
+    C **1.134 → 1.097** (closer to the C) with daily r improving **0.988 → 0.993**, driven by the minority
+    the beech-patch-wide phen got wrong (evergreens hold winter leaves; grass understory is light-shaded).
+  - **Gate `per_pft_phenology_tests.jl`** (self-contained): param fidelity vs `par/pft_lpjmlfit.js` (all
+    ids 0–9); distinct/bounded/physically-ordered trajectories; scalar-vs-vector byte-identity (Δ = 0);
+    per-PFT self-driven rollout closes water and reduces to the beech default on an all-beech patch.
+  Runtime `[deps]` stays EMPTY.
 - **NN training on the CELL × MULTI-YEAR objective against a REAL multi-year reference (Phase-3 scale-up
   step 7b-cell-multiyear; ADR 0016).** Composes §16 (cell) with §17 (multi-year): the learned Vcmax/λ
   correction is trained so the **cell-mean PER-YEAR annual GPP** matches the C binary's own per-year annual
@@ -145,6 +169,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `Lux`/`Zygote`/`Optimisers`.
 
 ### Changed
+- **Beech GSI phenology `tmin` corrected to the ACTIVE FIT parameter file (docs §19).** The beech (TeBS)
+  cold-temperature limiter was `tmin_slope=2.0`, `tmin_base=8.0` — the **standard** `par/pft.js` values —
+  but the FIT run uses **`par/pft_lpjmlfit.js`** (`tmin_slope=4.0`, `tmin_base=8.5`; the other beech GSI
+  params already matched). Correcting them makes the self-computed phenology consistent with the C binary it
+  validates against: the standalone 25-patch canopy GPP annual ratio tightens **1.17 → 1.13**, transp
+  **1.08 → 1.05**, daily r ≈ 0.99 unchanged. Only `hainich_canopy_baseline_2010.txt` moved (`gpp`
+  1286 → 1250, `transp` 258 → 251); the C-FAPAR-driven single-rep/multilayer baselines and
+  `fdiff_annual_totals.txt` are unmoved.
 - **Self-computed canopy NPP CALIBRATED — the `bm_inc` crutch removed (Phase-3 scale-up step 7a).** The
   step-6 over-respiration (standalone canopy NPP ≈ −25 vs the C's ≈ +507 gC/m²/yr) was decomposed against
   the C target (`Ra = R_leaf + R_maint + R_growth`) to two faithful-to-`npp_tree.c` fixes in

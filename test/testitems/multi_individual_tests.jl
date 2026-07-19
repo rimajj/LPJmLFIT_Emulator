@@ -11,7 +11,8 @@
 # inflation. This gate now runs the STANDALONE (crutch-free) config (docs §11): F_diff self-computes
 # BOTH its leaf phenology (GSI, phenology_gsi.c) and its eeq (dynamic patch albedo, albedo_stand.c) —
 # no C-binary FAPAR/PET drives — and the crutch-removal asserts confirm the self-computed phen/eeq match
-# the C outputs they replaced (phen↔FAPAR r≈0.99, eeq↔PET r≈0.999). GPP ratio ≈1.17, transp ≈1.08.
+# the C outputs they replaced (phen↔FAPAR r≈0.99, eeq↔PET r≈0.999). GPP ratio ≈1.13, transp ≈1.05
+# (docs §19: beech GSI tmin corrected to the active par/pft_lpjmlfit.js — see below).
 # Committed one-year 2010 reference; no HPC/`/p/tmp` dependency.
 @testitem "Multi-individual canopy — F_diff vs LPJmL-FIT daily (Hainich 42490, 2010)" tags = [:validation, :fdiff, :canopy] begin
     using LPJmLFITEmulator
@@ -129,12 +130,14 @@
 
     @test all(isfinite, gpp) && all(isfinite, tr) && all(isfinite, rm) && all(isfinite, ev) && all(isfinite, ic)
 
-    # ── GPP LEVEL stays closed with self-computed phenology: annual ratio ≈ 1.17, dynamics near-exact ──
-    @test 0.9 <= sum(gpp) / sum(gpp_C) <= 1.3            # ≈ 1.17 (self GSI phen integrates more leaf-display)
-    @test _corr(gpp, gpp_C) > 0.95                         # full-year r ≈ 0.993
+    # ── GPP LEVEL stays closed with self-computed phenology: annual ratio ≈ 1.13, dynamics near-exact ──
+    # (docs §19: the beech GSI tmin was corrected to the ACTIVE par/pft_lpjmlfit.js, 2/8→4/8.5; the
+    # self-phen is now consistent with the C binary and the ratio tightened 1.17→1.13, daily r ≈ 0.99.)
+    @test 0.9 <= sum(gpp) / sum(gpp_C) <= 1.3            # ≈ 1.13 (self GSI phen integrates more leaf-display)
+    @test _corr(gpp, gpp_C) > 0.95                         # full-year r ≈ 0.988
 
-    # ── transpiration LEVEL stays closed with self-computed eeq: annual ratio ≈ 1.08 ──
-    @test 0.9 <= sum(tr) / sum(transp_C) <= 1.2           # ≈ 1.08
+    # ── transpiration LEVEL stays closed with self-computed eeq: annual ratio ≈ 1.05 ──
+    @test 0.9 <= sum(tr) / sum(transp_C) <= 1.2           # ≈ 1.05
     @test _corr(tr, transp_C) > 0.95                       # full-year r ≈ 0.978
 
     # ── self-computed canopy NPP is now CALIBRATED (docs §13; the bm_inc crutch is removed) ──
@@ -143,11 +146,11 @@
     # (annual self-NPP went −25 → +663 gC/m²/yr; winter leaf-off deficit −250 → −6.7 ≈ the C's −13).
     # In the kernel-isolation (C-FAPAR/PET-driven) config the respiration TOTAL Ra matches the C to 0.5 %
     # — so the residual overshoot is INHERITED from the standalone GPP (the documented +17 % GSI-phenology
-    # level), NOT a respiration miscalibration: F_diff's carbon-use efficiency CUE=NPP/GPP≈0.52 sits just
-    # above the C's 0.46 (a physical temperate-forest value), and the daily NPP tracks the C at r≈0.99.
+    # level), NOT a respiration miscalibration: F_diff's carbon-use efficiency CUE=NPP/GPP≈0.51 sits just
+    # above the C's 0.46 (a physical temperate-forest value), and the daily NPP tracks the C at r≈0.98.
     @test sum(np) > 0                                      # POSITIVE self-NPP (the −25 gC/m²/yr bug is fixed)
-    @test 1.0 <= sum(np) / sum(npp_C) <= 1.6              # ≈ 1.31 (inherits the GPP-phenology level)
-    @test 0.42 <= sum(np) / sum(gpp) <= 0.56              # CUE ≈ 0.52 vs C 0.46 — respiration is calibrated
+    @test 1.0 <= sum(np) / sum(npp_C) <= 1.6              # ≈ 1.26 (inherits the GPP-phenology level)
+    @test 0.42 <= sum(np) / sum(gpp) <= 0.56              # CUE ≈ 0.51 vs C 0.46 — respiration is calibrated
     @test _corr(np, npp_C) > 0.95                          # daily NPP dynamics track the C (r ≈ 0.99)
     # winter (leaf-off) is a SMALL sapwood-maintenance deficit, not the old runaway growth-resp blow-up
     let wint = [i for i in 1:n if fapar_Cann[i] < 0.02]

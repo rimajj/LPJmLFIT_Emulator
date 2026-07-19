@@ -31,7 +31,8 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     tebs_params, tebs_structure,
     SoilColumn, FDiffStateML, daily_step_ml, rollout_daily_ml, hainich_soilcolumn,
     Individual, daily_step_canopy, rollout_daily_canopy,
-    PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, petpar_daylength, patch_albedo,
+    PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, pft_phenparams, per_pft_phenology,
+    petpar_daylength, patch_albedo,
     AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
     rollout_canopy_years_gpp,
     agb_ind, vegc_ind,
@@ -1064,17 +1065,21 @@ end
 """
     PhenParams{T}
 
-GSI ("new phenology") leaf-phenology parameters (`src/lpj/phenology_gsi.c`; `par/pft.js` per PFT).
-Four limiting functions — cold-temperature `tmin`, heat-stress `tmax`, `light`, water `wscal` — each a
-logistic `sigmoid(sl·(x−base))` low-passed toward the previous day by rate `tau`; `phen` is their
-product. Defaults are the temperate broadleaved summergreen tree (beech, PFT id 3, `par/pft.js:527-550`;
-`wscal_base = minwscal·100 = 20.96`). `soiltemp_gate`/`βgate` implement the C's `soil→temp[0] < 10 °C ⇒
-wscal factor forced open` rule (`phenology_gsi.c:67`), driven here by air temperature (LPJmL uses air
-temp as the soil top boundary condition). `εfloor` is the C `max(epsilon, ·)` factor floor.
+GSI ("new phenology") leaf-phenology parameters (`src/lpj/phenology_gsi.c`; **`par/pft_lpjmlfit.js`** per
+PFT — the ACTIVE FIT parameter file, `lpjmlfit.js:133 → param_lpjmlfit.js`, NOT the standard `par/pft.js`;
+see [`pft_phenparams`](@ref)). Four limiting functions — cold-temperature `tmin`, heat-stress `tmax`,
+`light`, water `wscal` — each a logistic `sigmoid(sl·(x−base))` low-passed toward the previous day by rate
+`tau`; `phen` is their product. Defaults are the temperate broadleaved summergreen tree (beech, PFT id 3,
+`par/pft_lpjmlfit.js:514-574`). `wscal_base` is the C's individual-mode water inflection `minwscal·100`
+(`phenology_gsi.c:64-66` uses `pft->minwscal·100`, NOT the par-file `wscal.base`, when `config->individual`
+— TRUE for this FIT run); beech `minwscal` median 0.2096 → 20.96. `soiltemp_gate`/`βgate` implement the C's
+`soil→temp[0] < 10 °C ⇒ wscal factor forced open` rule (`phenology_gsi.c:67`), driven here by air
+temperature (LPJmL uses air temp as the soil top boundary condition). `εfloor` is the C `max(epsilon, ·)`
+factor floor.
 """
 Base.@kwdef struct PhenParams{T <: Real}
-    tmin_sl::T = 2.0
-    tmin_base::T = 8.0
+    tmin_sl::T = 4.0               # beech: par/pft_lpjmlfit.js tmin slope (was 2.0 from the STANDARD pft.js)
+    tmin_base::T = 8.5             # beech: par/pft_lpjmlfit.js tmin base  (was 8.0 from the STANDARD pft.js)
     tmin_tau::T = 0.2
     tmax_sl::T = 1.74
     tmax_base::T = 41.51
@@ -1083,7 +1088,7 @@ Base.@kwdef struct PhenParams{T <: Real}
     light_base::T = 40.0
     light_tau::T = 0.2
     wscal_sl::T = 5.24
-    wscal_base::T = 20.96          # = minwscal (0.2096) × 100
+    wscal_base::T = 20.96          # = minwscal (0.2096) × 100 (individual-mode inflection)
     wscal_tau::T = 0.1
     soiltemp_gate::T = 10.0
     βgate::T = 1.0                 # smoothing of the 10 °C soil-temp water gate
@@ -1105,12 +1110,88 @@ Base.@kwdef struct PhenState{T <: Real}
 end
 _wt(::PhenState{T}) where {T} = T
 
+# Per-individual leaf-display accessor: the canopy `phen` may be a single patch-wide scalar (every
+# committed baseline + the Enzyme trainer, which pass a scalar) OR a per-individual vector (per-PFT
+# phenology). `_phen_at` dispatches on the argument TYPE, so the scalar path constant-folds to the plain
+# value — the scalar specialization of `daily_step_canopy`/`patch_albedo` compiles to the identical IR it
+# had before per-individual phen existed (byte-identical, Enzyme-transparent), while a vector indexes.
+@inline _phen_at(ph::AbstractVector, i::Integer) = @inbounds ph[i]
+@inline _phen_at(ph, ::Integer) = ph
+_pheltype(ph::AbstractVector) = isempty(ph) ? Float64 : eltype(ph)
+_pheltype(ph) = typeof(ph)
+
 """
     tebs_phenparams(::Type{T}=Float64) -> PhenParams{T}
 
-GSI phenology parameters for the beech (TeBS, PFT id 3) — the Hainich prototype's dominant PFT.
+GSI phenology parameters for the beech (TeBS, PFT id 3) — the Hainich prototype's dominant PFT. Equal to
+`pft_phenparams(3, T)` (the [`PhenParams`](@ref) defaults).
 """
 tebs_phenparams(::Type{T} = Float64) where {T <: Real} = PhenParams{T}()
+
+# is a natural PFT id a grass? (LPJmL-FIT `par/pft_lpjmlfit.js` scan order: 0–6 trees, 7–9 grasses,
+# 10+ crops). Grass runs the SAME GSI four-limiter product, differing only in the light-limiter driver
+# (forest-floor `fpar_grass·light`, `phenology_gsi.c:30-35`) — see [`per_pft_phenology`](@ref).
+_pft_is_grass(id::Integer) = id >= 7
+
+"""
+    pft_phenparams(id::Integer, ::Type{T}=Float64) -> PhenParams{T}
+
+GSI leaf-phenology parameters for LPJmL-FIT natural PFT `id` (0-based scan order of the ACTIVE
+`par/pft_lpjmlfit.js`), the authoritative FIT file (`lpjmlfit.js` sets `"new_phenology":true` +
+`"individual":true`, so **every** natural PFT — trees AND grasses — runs the four-limiter GSI product;
+the "evergreen"-named PFTs are NOT static). Each PFT's `tmin/tmax/light` slope/base/tau come straight
+from its `par/pft_lpjmlfit.js` block; `wscal_base` is the individual-mode inflection `minwscal_median·100`
+(the par-file `wscal.base` is inert under `config->individual`, `phenology_gsi.c:64-66`). Supported ids:
+
+| id | PFT (`par/pft_lpjmlfit.js`)                    | minwscal_med |
+|----|-----------------------------------------------|:------------:|
+| 0  | tropical broadleaved evergreen tree (TrBE)    | 0.60 |
+| 1  | temperate needleleaved evergreen tree (TeNE)  | 0.10 |
+| 2  | temperate broadleaved evergreen tree (TeBE)   | 0.10 |
+| 3  | temperate broadleaved summergreen tree (TeBS, **beech**) | 0.2096 |
+| 4  | boreal needleleaved evergreen tree (BoNE)     | 0.25 |
+| 5  | boreal broadleaved summergreen tree (BoBS)    | 0.25 |
+| 6  | boreal needleleaved summergreen tree (BoNS)   | 0.35 |
+| 7  | tropical C4 grass                             | 0.20 |
+| 8  | temperate C3 grass                            | 0.20 |
+| 9  | polar C3 grass                                | 0.20 |
+
+Crops (id ≥ 10, `cropgreen`) use a different routine (`phenology.c`, not `phenology_gsi`) and are out of
+scope for the natural-vegetation canopy. The Hainich prototype (cell 42490) contains ids 1, 2, 3, 4, 5, 8.
+"""
+function pft_phenparams(id::Integer, ::Type{T} = Float64) where {T <: Real}
+    # (tmin_sl, tmin_base, tmin_tau, tmax_sl, tmax_base, tmax_tau, light_sl, light_base, light_tau,
+    #  wscal_sl, wscal_base = minwscal_med·100, wscal_tau) — verbatim from par/pft_lpjmlfit.js.
+    p = if id == 0            # tropical broadleaved evergreen
+        (1.01, 10.0, 0.2, 1.86, 38.64, 0.2, 77.17, 55.53, 0.52, 5.14, 60.0, 0.44)
+    elseif id == 1           # temperate needleleaved evergreen
+        (1.0, -30.0, 0.1, 1.83, 35.26, 0.2, 20.0, 40.872, 0.2, 5.0, 10.0, 0.01)
+    elseif id == 2           # temperate broadleaved evergreen
+        (1.0, -5.0, 0.2, 1.6, 41.12, 0.2, 18.83, 2.0, 0.2, 5.0, 10.0, 0.1)
+    elseif id == 3           # temperate broadleaved summergreen (beech) — the PhenParams defaults
+        return PhenParams{T}()
+    elseif id == 4           # boreal needleleaved evergreen
+        (0.5, -80.0, 0.2, 0.4, 28.0, 0.2, 15.0, 0.001, 0.1, 5.0, 25.0, 0.01)
+    elseif id == 5           # boreal broadleaved summergreen
+        (2.0, 8.0, 0.2, 1.74, 28.0, 0.2, 58.0, 55.0, 0.2, 5.24, 25.0, 0.1)
+    elseif id == 6           # boreal needleleaved summergreen
+        (1.0, 7.0, 0.1, 0.5, 28.0, 0.2, 58.0, 59.78, 0.2, 5.0, 35.0, 0.8)
+    elseif id == 7           # tropical C4 grass
+        (0.91, 6.418, 0.2, 1.47, 29.16, 0.2, 64.23, 69.9, 0.4, 0.1, 20.0, 0.17)
+    elseif id == 8           # temperate C3 grass
+        (1.0, 6.0, 0.1011, 0.24, 32.04, 0.2, 23.0, 75.94, 0.22, 0.5222, 20.0, 0.1)
+    elseif id == 9           # polar C3 grass
+        (0.311, 4.79, 0.11, 0.24, 20.0, 0.2, 23.0, 50.0, 0.38, 0.88, 20.0, 0.94)
+    else
+        throw(ArgumentError("pft_phenparams: unsupported natural PFT id $id (supported 0–9; crops out of scope)"))
+    end
+    return PhenParams{T}(;
+        tmin_sl = T(p[1]), tmin_base = T(p[2]), tmin_tau = T(p[3]),
+        tmax_sl = T(p[4]), tmax_base = T(p[5]), tmax_tau = T(p[6]),
+        light_sl = T(p[7]), light_base = T(p[8]), light_tau = T(p[9]),
+        wscal_sl = T(p[10]), wscal_base = T(p[11]), wscal_tau = T(p[12]),
+    )
+end
 
 """
     phenology_gsi_step(pp, ps, temp, swdown, water_avail, soiltemp) -> (ps′, phen)
@@ -1173,13 +1254,14 @@ patch (`Σfpc ≈ 0.56`) this gives `beta ≈ 0.56·0.15 + 0.44·0.30 ≈ 0.22`,
 canopy runs used — exactly the ~7 % PET overshoot the C-`eeq` drive had been correcting.
 """
 function patch_albedo(inds, phen, snowpack)     # `inds`::AbstractVector{<:Individual} (defined below)
-    T = promote_type(isempty(inds) ? Float64 : _wt(first(inds)), typeof(phen), typeof(snowpack))
-    ph = convert(T, phen)
+    # `phen` may be a scalar (patch-wide) or a per-individual vector (per-PFT phenology) — see `_phen_at`.
+    T = promote_type(isempty(inds) ? Float64 : _wt(first(inds)), _pheltype(phen), typeof(snowpack))
     (_, sfr) = _snow_state(convert(T, snowpack))
     cfs = T(C_FSTEM)
     albstot = zero(T)
     fpc_sum = zero(T)
-    for ind in inds
+    for (ii, ind) in enumerate(inds)
+        ph = convert(T, _phen_at(phen, ii))
         fpc_i = convert(T, ind.fpc)
         al = convert(T, ind.albedo_leaf)
         ast = convert(T, ind.albedo_stem)
@@ -1329,13 +1411,17 @@ function daily_step_canopy(
         f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
-    ph = convert(T, phen)
+    # `phen` is EITHER a single patch-wide scalar (every committed baseline + the Enzyme trainer pass one
+    # — byte-identical to pre-per-PFT behaviour) OR a per-individual vector (per-PFT phenology; see
+    # `per_pft_phenology`/`rollout_daily_canopy`). Each per-individual loop reads its own leaf-display
+    # factor `phi = convert(T, _phen_at(phen, ii))`; `_phen_at` dispatches on type so the scalar path
+    # constant-folds to the plain value (identical IR ⇒ Enzyme-transparent).
     w = p.water
     # eeq: by default self-computed from the DYNAMIC patch albedo (patch_albedo — the albedo_stand.c
     # port), so standalone F_diff needs no C-PET crutch (§11). `eeq_ext` (= pet_C/α_PT) still overrides
     # it for the kernel-isolation comparison of §10 (the C binary's own daily albedo_patch).
     eeq = if eeq_ext === nothing
-        beta = patch_albedo(inds, ph, st.snowpack)
+        beta = patch_albedo(inds, phen, st.snowpack)
         priestley_taylor_eeq(w, f.swdown, f.lwnet, f.temp, f.daylength, beta)
     else
         convert(T, eeq_ext)
@@ -1351,8 +1437,9 @@ function daily_step_canopy(
     # wet-canopy interception: sum the evaporated flux (removed from infiltration); the demand-reducing
     # per-individual `wet` is recomputed in pass 2 (deterministic in eeq/rain/phen/lai/intc).
     interc_tot = zero(T)
-    for ind in inds
-        (_, interc_i) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), ph, convert(T, ind.fpc), eeq, rain, w.α_PT)
+    for (ii, ind) in enumerate(inds)
+        phi = convert(T, _phen_at(phen, ii))
+        (_, interc_i) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), phi, convert(T, ind.fpc), eeq, rain, w.α_PT)
         interc_tot += interc_i
     end
     interc_tot = smoothmin(interc_tot, rain, w.βw)          # cannot intercept more than the rain
@@ -1384,7 +1471,8 @@ function daily_step_canopy(
     λ_scales = _has_hooks(hooks) ? Vector{T}(undef, length(inds)) : nothing
     if _has_hooks(hooks)
         for (ii, ind) in enumerate(inds)
-            apar_i = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * (convert(T, ind.fpar) * ph)
+            phi = convert(T, _phen_at(phen, ii))
+            apar_i = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * (convert(T, ind.fpar) * phi)
             feat = T[f.temp, f.swdown, dl, apar_i, wr, f.co2]
             vm_scales[ii] = hooks.vm === nothing ? one(T) : convert(T, hooks.vm(feat))
             λ_scales[ii] = hooks.λ === nothing ? one(T) : convert(T, hooks.λ(feat))
@@ -1395,7 +1483,8 @@ function daily_step_canopy(
     gp_stand_acc = zero(T)
     fpc_tot = zero(T)
     for (ii, ind) in enumerate(inds)
-        fpc_i = convert(T, ind.fpc) * ph
+        phi = convert(T, _phen_at(phen, ii))
+        fpc_i = convert(T, ind.fpc) * phi
         apar_gp = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_i
         tsi = temp_stress(ind.tstress, f.temp, dl)
         vms = vm_scales === nothing ? one(T) : vm_scales[ii]
@@ -1411,15 +1500,16 @@ function daily_step_canopy(
     sup_acc = zero(T); dem_acc = zero(T)        # fpc-weighted supply/demand → stand water scalar (phenology)
     npp_inds = Vector{T}(undef, length(inds))   # per-individual daily NPP (per-m², patch basis) → bm_inc
     for (ii, ind) in enumerate(inds)
-        fpc_i = convert(T, ind.fpc) * ph
-        fpar_i = convert(T, ind.fpar) * ph                 # layered absorbed fraction (phen-scaled)
+        phi = convert(T, _phen_at(phen, ii))
+        fpc_i = convert(T, ind.fpc) * phi
+        fpar_i = convert(T, ind.fpar) * phi                 # layered absorbed fraction (phen-scaled)
         apar = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpar_i
         tsi = temp_stress(ind.tstress, f.temp, dl)
         vms = vm_scales === nothing ? one(T) : vm_scales[ii]
         (_, _, vm, _) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar, dl; comp_vm = true, vm_scale = vms)
-        supply_i = convert(T, ind.emax) * wr * ph
+        supply_i = convert(T, ind.emax) * wr * phi
         # wet-canopy demand reduction (1 − wet); water_stressed.c re-caps wet at 0.99
-        (wet_i, _) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), ph, convert(T, ind.fpc), eeq, rain, w.α_PT)
+        (wet_i, _) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), phi, convert(T, ind.fpc), eeq, rain, w.α_PT)
         wet_dem = smoothmin(wet_i, T(0.99), w.βw)
         (gc, demand) = canopy_conductance(w, eeq, gp_stand, supply_i; wet = wet_dem)   # demand uses the STAND mean gp
         sup_acc += supply_i * fpc_i
@@ -1450,7 +1540,7 @@ function daily_step_canopy(
         # annual allocation (`allocation_tree.c:236` `bm_inc_ind = bm_inc/nind`) divides back out.
         nind_i = convert(T, ind.nind)
         c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood) * nind_i
-        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = ph)
+        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = phi)
         npp_tot += npp_i
         npp_inds[ii] = npp_i
     end
@@ -1478,9 +1568,63 @@ function daily_step_canopy(
     return (st′, fluxes)
 end
 
+# Advance each DISTINCT PFT's four GSI filters one day and return the per-distinct-PFT `phen`. `states`
+# (a `Vector{PhenState}`, one per distinct PFT) is updated in place; grasses (`isg[k]`) drive the light
+# limiter with the forest-floor light `grass_lf·swdown` (`phenology_gsi.c:30-35`), trees with full
+# `swdown`. Pure w.r.t. the numeric inputs (ForwardDiff-safe); NOT on the Enzyme training path.
+function _step_pft_phen_day!(
+        states::Vector{PhenState{T}}, params::Vector{PhenParams{T}}, isg::Vector{Bool},
+        temp, swdown, water_avail, soiltemp, grass_lf
+    ) where {T}
+    phen = Vector{T}(undef, length(states))
+    for k in eachindex(states)
+        light_in = isg[k] ? convert(T, grass_lf) * convert(T, swdown) : convert(T, swdown)
+        (states[k], ph) = phenology_gsi_step(params[k], states[k], temp, light_in, water_avail, soiltemp)
+        phen[k] = ph
+    end
+    return phen
+end
+
+"""
+    per_pft_phenology(pft_ids, forcings; phen_params_by_pft=nothing, water_avails=nothing,
+                      grass_light_frac=nothing) -> phens::Vector{Vector}
+
+Per-PFT GSI leaf phenology for a patch of individuals with 0-based `pft_lpjmlfit.js` PFT ids `pft_ids`,
+returning the per-day × per-individual leaf-display factor `phens[d][i] ∈ [0,1]`. Each DISTINCT PFT
+advances its own [`PhenState`](@ref) filters with its [`pft_phenparams`](@ref); individuals of the same
+PFT share the trajectory (the per-individual `minwscal` sampling of the C's individual mode is a
+documented v1 simplification — the median is used). Grasses (id ≥ 7) drive the light limiter with the
+forest-floor light `grass_light_frac·swdown` (`phenology_gsi.c:30-35`); `grass_light_frac` (scalar or
+per-day vector) defaults to `1` (open field) and is supplied canopy-attenuated by
+[`rollout_daily_canopy`](@ref) when phenology is co-solved with the structure. `water_avails[d]` (the
+previous day's stand water scalar) drives the water limiter; it defaults to moist `1` (open-loop — the
+closed-loop self-driven form lives in [`rollout_daily_canopy`](@ref)). Pure / AD-safe (ForwardDiff);
+this is the standalone per-PFT phenology used for validation and to feed `daily_step_canopy`'s
+per-individual `phen` vector.
+"""
+function per_pft_phenology(
+        pft_ids, forcings; phen_params_by_pft = nothing, water_avails = nothing, grass_light_frac = nothing
+    )
+    T = isempty(forcings) ? Float64 : _wt(first(forcings))
+    uids = unique(pft_ids)
+    slot = Dict{Int, Int}(id => k for (k, id) in enumerate(uids))
+    params = PhenParams{T}[phen_params_by_pft === nothing ? pft_phenparams(id, T) : phen_params_by_pft(id) for id in uids]
+    states = PhenState{T}[PhenState{T}() for _ in uids]
+    isg = Bool[_pft_is_grass(id) for id in uids]
+    phens = Vector{Vector{T}}(undef, length(forcings))
+    for (d, f) in enumerate(forcings)
+        wav = water_avails === nothing ? one(T) : convert(T, water_avails[d])
+        glf = grass_light_frac === nothing ? one(T) :
+            (grass_light_frac isa Number ? convert(T, grass_light_frac) : convert(T, grass_light_frac[d]))
+        phen_slot = _step_pft_phen_day!(states, params, isg, f.temp, f.swdown, wav, f.temp, glf)
+        phens[d] = T[phen_slot[slot[id]] for id in pft_ids]
+    end
+    return phens
+end
+
 """
     rollout_daily_canopy(p, st0, inds, soil, forcings; phens=nothing, eeqs=nothing,
-                         phen_params=nothing, phen_state=nothing, n_top1m=3) -> (st, days)
+                         phen_params=nothing, phen_state=nothing, pft_ids=nothing, n_top1m=3) -> (st, days)
 
 Fold [`daily_step_canopy`](@ref) over a vector of [`DailyForcing`](@ref) for ONE patch canopy `inds`,
 carrying the shared per-layer soil water and snow. **By default (standalone, crutch-free) F_diff
@@ -1491,32 +1635,58 @@ water scalar (the soil-temp gate uses air temp as its proxy); and `eeq` from the
 [`patch_albedo`](@ref). Passing `phens` (e.g. `fapar_C/peak`) and/or `eeqs` (the C's `pet_C/α_PT`)
 overrides these with the C-binary-driven values for kernel-isolation comparison (§9/§10). `phen_state`
 optionally seeds the GSI filters (e.g. for multi-year continuity); it defaults to the LPJmL cold-start
-(`newpft.c:44-45`). Returns the final [`FDiffStateML`](@ref) and the per-day stand flux `NamedTuple`s.
+(`newpft.c:44-45`). **`pft_ids`** (0-based `pft_lpjmlfit.js` ids, one per individual) switches the
+self-computed phenology from a single patch-wide beech GSI to PER-PFT: each individual gets its own PFT's
+GSI leaf-display ([`pft_phenparams`](@ref)/[`per_pft_phenology`](@ref)), co-solved with the stand water
+feedback and a lag-1 forest-floor light attenuation for grass (`grass_lf = 1 − Σ_trees fpar_i·phen_i`).
+`pft_ids === nothing` (default) keeps the beech-patch-wide behaviour (byte-identical). `pft_ids` is
+ignored when `phens` (the C-FAPAR crutch) is supplied. Returns the final [`FDiffStateML`](@ref) and the
+per-day stand flux `NamedTuple`s.
 """
 function rollout_daily_canopy(
         p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
         forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing,
-        phen_params = nothing, phen_state = nothing, hooks::FluxHooks = _NO_HOOKS
+        phen_params = nothing, phen_state = nothing, pft_ids = nothing, hooks::FluxHooks = _NO_HOOKS
     )
     T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
     st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
     pp = phen_params === nothing ? tebs_phenparams(T) : phen_params
     ps = phen_state === nothing ? PhenState{T}() : phen_state
+    # per-PFT self-phen (only when self-computing AND pft_ids supplied): one PhenState per DISTINCT PFT.
+    per_pft = pft_ids !== nothing && phens === nothing
+    uids = per_pft ? unique(pft_ids) : Int[]
+    pft_slot = Dict{Int, Int}(id => k for (k, id) in enumerate(uids))
+    pft_params = PhenParams{T}[pft_phenparams(id, T) for id in uids]
+    pft_states = PhenState{T}[PhenState{T}() for _ in uids]
+    pft_isg = Bool[_pft_is_grass(id) for id in uids]
+    grass_lf = one(T)                             # lag-1 forest-floor light fraction for grass
     water_avail = one(T)                          # previous day's stand water scalar (moist cold-start)
     ph1 = phens === nothing ? one(T) : convert(T, phens[1])
     ee1 = eeqs === nothing ? nothing : eeqs[1]
     days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1, hooks = hooks)[2])}()
     sizehint!(days, length(forcings))
     for (i, f) in enumerate(forcings)
-        # phenology: supplied crutch (phens) OR self-computed GSI (soil-temp gate ≈ air temp)
-        if phens === nothing
-            (ps, ph) = phenology_gsi_step(pp, ps, f.temp, f.swdown, water_avail, f.temp)
+        # phenology: supplied crutch (phens) OR self-computed — per-PFT (per-individual vector) or the
+        # single patch-wide beech GSI (scalar; soil-temp gate ≈ air temp).
+        phen_arg = if phens !== nothing
+            convert(T, phens[i])
+        elseif per_pft
+            phen_slot = _step_pft_phen_day!(pft_states, pft_params, pft_isg, f.temp, f.swdown, water_avail, f.temp, grass_lf)
+            T[phen_slot[pft_slot[id]] for id in pft_ids]     # per-individual leaf-display vector
         else
-            ph = convert(T, phens[i])
+            (ps, ph) = phenology_gsi_step(pp, ps, f.temp, f.swdown, water_avail, f.temp)
+            ph
         end
         ee = eeqs === nothing ? nothing : eeqs[i]
-        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m, eeq_ext = ee, hooks = hooks)
+        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = phen_arg, n_top1m = n_top1m, eeq_ext = ee, hooks = hooks)
         water_avail = fl.wscal                    # today's water status → tomorrow's water phenology
+        if per_pft                                # update lag-1 grass light fraction from this day's tree leaf display
+            absorbed = zero(T)
+            for (ii, ind) in enumerate(inds)
+                ind.is_grass || (absorbed += convert(T, ind.fpar) * _phen_at(phen_arg, ii))
+            end
+            grass_lf = clamp(one(T) - absorbed, zero(T), one(T))
+        end
         push!(days, fl)
     end
     return (st, days)

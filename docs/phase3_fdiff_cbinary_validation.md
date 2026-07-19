@@ -942,3 +942,79 @@ whole-tree mortality/establishment is S's job). Remaining open items: **per-PFT 
 evergreen/grass minority (one beech-GSI `phen` patch-wide today), **grass structure prognostic**
 (`grass_allocation.c`), and the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (§15). Runtime `[deps]` stays
 EMPTY. ADR 0016 (addendum).
+
+## 19. Update — per-PFT GSI leaf phenology + the beech-tmin correction (scale-up step 8)
+
+§11 removed the daily C-FAPAR "crutch" by self-computing the GSI leaf phenology (`phenology_gsi.c`), but
+with a **single beech GSI applied patch-wide** — every individual, including the evergreen/grass minority,
+got the beech (TeBS, summergreen) leaf-display curve. The LPJmL-FIT config runs `phenology_gsi` **per PFT**
+(`lpjmlfit.js` sets `"new_phenology":true` + `"individual":true`, so the four-limiter GSI runs for *every*
+natural PFT with its own parameters — the "evergreen"-named PFTs are **not** static `phen≡1`). This step
+generalizes the self-computed phenology from one beech GSI to per-PFT, and corrects a parameter-sourcing
+bug found along the way.
+
+**The beech-tmin correction (a real fidelity fix).** The committed `PhenParams` defaults (beech) had
+`tmin_slope = 2.0`, `tmin_base = 8.0` — these are the **standard** `par/pft.js` values, but the active FIT
+run (verified session 8) uses **`par/pft_lpjmlfit.js`**, which sets beech `tmin_slope = 4.0`,
+`tmin_base = 8.5` (all other beech GSI params — `tmax` 1.74/41.51, `light` 58/40, `wscal` 5.24/20.96 —
+already matched). So the self-computed phenology had been using cold-limiter params the C binary it
+validates against never used. Correcting them to the active file (`tmin` 2/8 → 4/8.5) brings the
+self-phenology into consistency with the C: the standalone 25-patch canopy GPP annual ratio tightens
+**1.17 → 1.13** (closer to the C), transpiration **1.08 → 1.05**, with the daily GPP correlation essentially
+unchanged (≈ 0.99). Only one committed baseline moved — `hainich_canopy_baseline_2010.txt` (the standalone
+self-phen canopy: `gpp` 1286 → 1250, `transp` 258 → 251 gC·m⁻²·yr⁻¹ / mm·yr⁻¹). The single-representative
+and multilayer baselines and `fdiff_annual_totals.txt` are **unmoved** — they drive phenology from the C
+FAPAR (kernel isolation), not the self-computed GSI.
+
+**Per-PFT parameters, verbatim from the active file.** `pft_phenparams(id, T)` returns the twelve GSI
+numbers (`tmin/tmax/light` slope·base·tau + `wscal` slope·base·tau) for each 0-based natural PFT id 0–9,
+read directly from `par/pft_lpjmlfit.js`. The individual-mode subtlety: under `config->individual` the
+water-limiter inflection is **`minwscal·100`, NOT the par-file `wscal.base`** (`phenology_gsi.c:64-66`), so
+`wscal_base = minwscal_median·100` (beech `0.2096·100 = 20.96`, which is why the previous beech value
+happened to be right). `tebs_phenparams()` == `pft_phenparams(3)` == the `PhenParams` defaults (single
+source of truth for beech). Crops (id ≥ 10, `cropgreen`) use a different routine and are out of scope.
+
+**The per-individual phen path (AD-safe by construction).** `daily_step_canopy` and `patch_albedo` now
+accept `phen` as **either a scalar (patch-wide) or a per-individual vector**, via a compile-time-dispatched
+accessor `_phen_at`. In the scalar specialization `_phen_at(phen, i)` constant-folds to the plain value, so
+the scalar path — **every committed baseline and the Enzyme trainer** — compiles to the identical IR it had
+before and is **byte-identical** (gate: scalar vs a uniform vector Δ = 0 across every flux + state field).
+The Enzyme multi-year training path (`rollout_canopy_years_gpp`, `ext/FDiffTrainingExt.jl`) keeps passing a
+**scalar** C-FAPAR phen per day (kernel isolation), so it is structurally untouched. `per_pft_phenology`
+(the standalone driver) advances one `PhenState` per distinct PFT and returns the per-day × per-individual
+leaf-display; `rollout_daily_canopy` gains a `pft_ids` kwarg that co-solves per-PFT phenology with the stand
+water feedback and a **lag-1 forest-floor light attenuation for grass** (`grass_lf = 1 − Σ_trees fpar_i·phen_i`,
+the C's `fpar_grass·light` for the understory light limiter, `phenology_gsi.c:30-35`).
+
+**Result (full 25-patch Hainich cell, 2010, standalone self-driven).** Cell composition: beech (id 3) 259
+individuals, temperate C3 grass (id 8) 25, temperate/boreal evergreen + boreal summergreen minority (ids
+1/2/4/5) 13. Per-PFT phenology gives each PFT its physically-correct leaf display — annual-mean `phen`
+evergreens **0.77 (TeNE) / 0.89 (TeBE) / 0.96 (BoNE)** vs summergreens **0.46 (beech/BoBS)** and grass
+**0.47** — and, wired through the canopy, **moves the cell GPP annual ratio vs the C `1.134 → 1.097`
+(closer to the C) while the daily GPP correlation improves `0.988 → 0.993`** (cell-mean |ΔGPP| ≈ 40
+gC·m⁻²·yr⁻¹, 3.2 %). The improvement is driven entirely by the minority the beech-patch-wide phen got
+wrong: the evergreens now hold winter leaf display, and the grass understory is light-shaded rather than
+given the full beech curve. Beech (the dominant PFT) self-phenology still tracks the C's daily FAPAR at
+**r ≈ 0.99**.
+
+**Verification (gate `per_pft_phenology_tests.jl`, self-contained):**
+- **Param fidelity** — `pft_phenparams(id)` for every id 0–9 matches `par/pft_lpjmlfit.js` exactly (all
+  twelve numbers, `wscal_base = minwscal_median·100`); beech is the corrected `tmin` 4.0/8.5; crops throw.
+- **Trajectories** — per-PFT `phen ∈ [0,1]`, distinct and physically ordered (summergreen beech swings
+  near-off → near-full; the "evergreen"-named TeNE runs full GSI but holds far more winter display; grass
+  forest-floor shading lowers its light limiter).
+- **Scalar byte-identity** — `daily_step_canopy`/`patch_albedo` with a scalar phen == with a uniform
+  per-individual vector, **Δ = 0** across every flux + state field (self-eeq and kernel-isolation `eeq_ext`
+  paths); a per-individual vector correctly changes only the individuals whose display changed.
+- **Self-driven rollout** — the per-PFT `rollout_daily_canopy` runs, closes water exactly (`|Σprecip −
+  (Σout + ΔS)| < 1e-6`), and reduces to the beech-patch-wide default identically on an all-beech patch
+  (rtol 1e-12).
+
+**What this is — and is not.** A faithful per-PFT generalization of the self-computed GSI phenology, plus a
+beech-tmin sourcing correction — essential for the ESM goal of running F_diff on non-beech vegetation
+(grasslands, evergreen forests), where the single beech GSI would be badly wrong. It is **AD-safe**
+(per-individual phen is Const forcing-derived data on the standalone path; the Enzyme trainer keeps scalar
+phen, byte-identical). Documented v1 simplifications: the per-individual `minwscal` corridor sampling of the
+C's individual mode is collapsed to the PFT **median**; the grass forest-floor light is a **lag-1**
+attenuation from the previous day's tree leaf display; and the `aphen` COLDEST_DAY reset (`newpft.c`) is
+omitted (as in the §11 beech port). Runtime `[deps]` stays EMPTY.

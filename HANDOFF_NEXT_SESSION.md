@@ -103,6 +103,67 @@ for HEAD.
   multi-year testitem (identity per-year Δ=0; cell-multi-year grad vs FD 1.5e-10; recovery 98.8 %, GPP
   within 0.07 %). **Result: mean cell-mean annual-GPP ratio 1.034 → 0.998 (`:vm`) → 0.996 (`:vm,:λ`) over sim years 2009/2010/2011 (per-year model/C ratio 1.026/1.014/1.063 → 0.992/0.981/1.022 with `:vm`); ONE shared correction fit to all years trims the year-to-year spread (2011 the high-GPP outlier, 1.063→1.02) rather than zeroing each year independently — the §16 within-year cell level result carried consistently across years through F_diff's own allocation.** Runtime `[deps]` still EMPTY. Report §18;
   ADR 0016 addendum.
+- **Phase-3 (session 14) — scale-up step 8: PER-PFT GSI LEAF PHENOLOGY + the beech-tmin correction.** The
+  first-listed frontier item lands. §11's self-computed leaf phenology used ONE beech GSI patch-wide; the FIT
+  config runs `phenology_gsi` per PFT (`"new_phenology":true`+`"individual":true`; the "evergreen"-named PFTs
+  run the full four-limiter GSI, not static `phen≡1`). Generalized to per-PFT via `pft_phenparams(id)` (the
+  twelve GSI numbers for the 10 natural PFTs verbatim from the ACTIVE `par/pft_lpjmlfit.js`; `wscal_base =
+  minwscal_median·100`, the individual-mode inflection) + `per_pft_phenology` + a scalar-OR-vector `phen` in
+  `daily_step_canopy`/`patch_albedo` (compile-time `_phen_at`; **scalar path byte-identical ⇒ every baseline
+  + the Enzyme trainer untouched**) + a `pft_ids` kwarg on `rollout_daily_canopy` (co-solved per-PFT phen +
+  lag-1 grass forest-floor light). **Found + fixed a real fidelity bug:** beech `tmin` was sourced from the
+  STANDARD `par/pft.js` (2/8) not the active file (4/8.5) — correcting it tightens the standalone canopy GPP
+  ratio 1.17→1.13. **Result (25-patch Hainich): per-PFT phenology moves the cell GPP annual ratio vs the C
+  1.134→1.097 (closer) with daily r improving 0.988→0.993** (minority-driven: evergreens hold winter leaves,
+  grass understory shaded). Only `hainich_canopy_baseline_2010.txt` moved; the Enzyme training path keeps its
+  scalar C-FAPAR phen. Gate `per_pft_phenology_tests.jl`; suite **26,106 pass / 0 fail / 4 broken**;
+  adversarially verified (0 blockers). Report §19; CHANGELOG. Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 14 (on `main`) — PER-PFT GSI LEAF PHENOLOGY + THE BEECH-TMIN CORRECTION (scale-up step 8)
+
+**The handoff's first-listed NEXT landed:** the self-computed leaf phenology (§11) is generalized from one
+beech GSI applied patch-wide to per-PFT — each individual now advances its own PFT's four-limiter GSI — plus
+a beech-`tmin` parameter-sourcing correction found along the way. (Report §19; CHANGELOG.)
+
+- **★ THE GENERALIZATION.** `pft_phenparams(id, T)` returns the twelve GSI params (`tmin/tmax/light`·slope·
+  base·tau + `wscal`) for each 0-based natural PFT id 0–9, **verbatim from the ACTIVE `par/pft_lpjmlfit.js`**
+  (adversarially verified — all 120 numbers match). The individual-mode subtlety: `wscal_base =
+  minwscal_median·100` (`phenology_gsi.c:64-66` under `config->individual`, NOT the inert par-file
+  `wscal.base`). `per_pft_phenology(pft_ids, forcings; …)` advances one `PhenState` per distinct PFT →
+  per-day × per-individual leaf display; grasses (id ≥ 7) drive the light limiter with forest-floor light.
+- **★ THE BEECH-TMIN CORRECTION (a real fidelity fix).** The committed beech GSI `tmin` was `slope 2 / base
+  8` — the STANDARD `par/pft.js` — but the FIT run uses `par/pft_lpjmlfit.js` (`slope 4 / base 8.5`; tmax/
+  light/wscal already matched). Correcting it makes the self-phenology consistent with the C binary it
+  validates against: standalone 25-patch canopy GPP annual ratio **1.17 → 1.13**, transp **1.08 → 1.05**,
+  daily r ≈ 0.99 unchanged. **`par/pft_lpjmlfit.js` is the ACTIVE file for ALL FIT params (session 8
+  established this for allometry — it also holds for phenology).**
+- **★ AD-SAFE BY CONSTRUCTION.** `daily_step_canopy`/`patch_albedo` accept `phen` as a scalar OR a
+  per-individual vector via a compile-time-dispatched `_phen_at`; the scalar specialization constant-folds to
+  the plain value, so the scalar path is **byte-identical** (gate: Δ = 0 vs a uniform vector across every
+  flux + state). The Enzyme multi-year training path (`rollout_canopy_years_gpp`, `ext/FDiffTrainingExt.jl`)
+  keeps passing a scalar C-FAPAR phen per day — structurally untouched (verified). Per-individual phen is a
+  Const forcing-derived input on the STANDALONE self-driven path only.
+- **★ RESULT (25-patch Hainich 2010, standalone).** Per-PFT phenology moves the cell GPP annual ratio vs the
+  C **1.134 → 1.097** (closer) while the daily r improves **0.988 → 0.993** — driven entirely by the minority
+  the beech-patch-wide phen got wrong: evergreens now hold winter display (annual-mean phen 0.77/0.89/0.96
+  TeNE/TeBE/BoNE vs 0.46 summergreen), the grass understory is light-shaded. Beech self-phen still tracks the
+  C FAPAR at r ≈ 0.99. Composition: beech 259, grass 25, evergreen+boreal-summergreen minority 13.
+- **★ GATE `per_pft_phenology_tests.jl`** (4 self-contained testitems): param fidelity vs
+  `par/pft_lpjmlfit.js` (all ids 0–9); distinct/bounded/physically-ordered trajectories; scalar-vs-vector
+  byte-identity (Δ = 0, self-eeq AND kernel-isolation `eeq_ext`); per-PFT self-driven rollout closes water +
+  reduces to the beech default on an all-beech patch (rtol 1e-12). Suite **26,106 pass / 0 fail / 4 broken**
+  (new gate + Enzyme canopy gates + JET/type-stability green). Only `hainich_canopy_baseline_2010.txt` moved.
+- **★ ADVERSARIALLY VERIFIED (4-reviewer workflow, 0 blockers):** all 120 params match the active file (with
+  strong `wscal_base=minwscal·100` discriminators); the algorithm is faithful (`soil<10` gate, grass
+  forest-floor light); AD-safety confirmed (scalar path byte-identical, Enzyme kernel + `FDiffTrainingExt`
+  unmodified); the baseline move is honest (only the self-phen baseline moved, bands intact).
+- **★ WHAT THIS IS / IS NOT.** A faithful per-PFT generalization + a beech-tmin sourcing correction —
+  essential for running F_diff on non-beech vegetation (the single beech GSI would be badly wrong on
+  grasslands/evergreen forests). Documented v1 simplifications: per-individual `minwscal` corridor → PFT
+  median; grass forest-floor light is a lag-1 attenuation; the `aphen` COLDEST_DAY reset is omitted (as §11).
+  Runtime `[deps]` stays EMPTY.
 
 ---
 
@@ -643,17 +704,28 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    driver `scripts/train_fdiff_cell_multiyear.jl`; gate cell × multi-year testitem (identity per-year Δ=0;
    cell-multi-year grad vs FD 1.5e-10; recovery 98.8 %, GPP within 0.07 %); §18. Result:
    mean cell-mean annual-GPP ratio 1.034 → 0.998 (`:vm`) → 0.996 (`:vm,:λ`) over sim years 2009/2010/2011 (per-year model/C ratio 1.026/1.014/1.063 → 0.992/0.981/1.022 with `:vm`); ONE shared correction fit to all years trims the year-to-year spread (2011 the high-GPP outlier, 1.063→1.02) rather than zeroing each year independently — the §16 within-year cell level result carried consistently across years through F_diff's own allocation.
-   **★ NEXT:** **per-PFT phenology** for the evergreen/grass minority (one beech-GSI `phen` patch-wide
-   today); **grass structure prognostic** (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`)
-   + carbon-debt in the allocation; whole-tree mortality/establishment (S's demography, so the coupled loop
-   is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION < v"1.11"` guard on the
-   Enzyme gates, §15); and — for a longer trajectory — extend the committed reconstruction span beyond
-   2008–2011.
-   **(c) Smaller residuals:** per-PFT phenology for the
-   evergreen/grass minority (one beech-GSI `phen` patch-wide today); grass structure prognostic
-   (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`, which — with the rare-day `rd`
-   conductance gate — is the small remaining respiration residual, both documented in §13) + carbon-debt in
-   the allocation; whole-tree mortality/establishment (S's demography) so the coupled loop is not fixed-N.
+   **(per-PFT-phenology) ✅ DONE (session 14) — per-PFT GSI leaf phenology + the beech-tmin correction
+   (scale-up step 8).** Generalized the self-computed leaf phenology (§11) from one beech GSI patch-wide to
+   per-PFT: `pft_phenparams(id)` (the 12 GSI numbers for the 10 natural PFTs verbatim from the ACTIVE
+   `par/pft_lpjmlfit.js`, `wscal_base = minwscal_median·100`) + `per_pft_phenology` + a scalar-OR-vector
+   `phen` in `daily_step_canopy`/`patch_albedo` (compile-time `_phen_at`, **scalar path byte-identical**) +
+   a `pft_ids` kwarg on `rollout_daily_canopy` (co-solved per-PFT phen + lag-1 grass forest-floor light).
+   Fixed a real bug (beech `tmin` sourced from the standard `par/pft.js`, corrected to the active file's
+   4/8.5). **Result: cell GPP ratio vs C 1.134→1.097, daily r 0.988→0.993.** The Enzyme training path keeps
+   its scalar C-FAPAR phen (untouched). Gate `per_pft_phenology_tests.jl`; only `hainich_canopy_baseline_2010.txt`
+   moved; suite 26,106 pass / 0 fail / 4 broken; adversarially verified (0 blockers). §19; CHANGELOG.
+   **★ NEXT:** **grass structure prognostic** (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`)
+   + carbon-debt in the allocation (**scouted: `sapwood_bg` is a GENUINE SEPARATE carbon pool, `tree.h:50`,
+   NOT a fraction of the sapwood pool — a faithful port needs its own establishment/allocation/turnover state
+   through the SoA multi-year rollout, higher AD risk**); whole-tree mortality/establishment (S's demography,
+   so the coupled loop is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION <
+   v"1.11"` guard on the Enzyme gates, §15); and — for a longer trajectory — extend the committed
+   reconstruction span beyond 2008–2011. Phenology-fidelity follow-ups: the per-individual `minwscal`
+   corridor sampling (now → PFT median) and a canopy-consistent (non-lag) grass forest-floor light.
+   **(c) Smaller residuals:** grass structure prognostic (`grass_allocation.c`); below-ground root-sapwood
+   (`sapwood_bg`, which — with the rare-day `rd` conductance gate — is the small remaining respiration
+   residual, both documented in §13) + carbon-debt in the allocation; whole-tree mortality/establishment
+   (S's demography) so the coupled loop is not fixed-N.
 8. **λ-solve at scale:** swap the fixed-graph Newton for `SteadyStateAdjoint`/`ImplicitDifferentiation`
    if memory/perf needs it (the hybrid repo notes the adjoint's memory blow-up on large grids). NB: the
    Newton iterate is now `clamp`ed to the physical bracket (robustness); Enzyme reverse uses

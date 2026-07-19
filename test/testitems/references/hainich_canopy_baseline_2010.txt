@@ -6,11 +6,16 @@
 # docs/phase3_fdiff_cbinary_validation.md §9/§10/§11.
 # Regenerated (docs §11) for the STANDALONE (crutch-free) config: F_diff now computes BOTH its own
 # leaf phenology (GSI, phenology_gsi.c) and its own eeq (dynamic patch albedo, albedo_stand.c) — no
-# C-binary FAPAR/PET drives. GPP annual ratio 1.09→1.17, transp 1.02→1.08 (the faithful GSI phen
-# integrates ~11% more leaf-display than the FAPAR-normalized proxy); daily r stays ≈0.99.
+# C-binary FAPAR/PET drives.
+# Regenerated AGAIN (docs §19, scale-up step 8/per-PFT phenology): the beech (TeBS) GSI tmin params were
+# corrected to the ACTIVE FIT file par/pft_lpjmlfit.js (slope 2→4, base 8→8.5; the previous values were
+# sourced from the STANDARD par/pft.js). This brings the self-computed phenology into consistency with
+# the C binary this baseline validates against: GPP annual ratio 1.17→1.13 (closer to the C), transp
+# 1.08→1.05; daily GPP r stays ≈0.99. Values are the 25-patch cell mean with the beech-patch-wide
+# self-phen default (per-PFT phenology, when enabled via pft_ids, is validated separately — §19).
 # key             value (gC/m2/yr, mm/yr, or mm)
-gpp_annual        1286.333767
-transp_annual     257.925784
-evap_annual       255.743737
-interc_annual     20.432741
-rootmoist_mean    160.110871
+gpp_annual        1250.123813
+transp_annual     250.611716
+evap_annual       264.536033
+interc_annual     19.591628
+rootmoist_mean    160.029322
