@@ -148,6 +148,69 @@ for HEAD.
   conductance (`gp_stand`), needing per-PFT conductance not a param fix. The Enzyme-≥1.11 guard-lift is BLOCKED
   upstream (latest Enzyme 0.13.187 still `EnzymeInternalError` on the mutating canopy reverse on 1.11.7).
   Report §21; CHANGELOG. Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 17) — scale-up step 11: GRASS-OVERSHOOT RE-DIAGNOSIS — the §21 per-PFT-conductance next
+  step is REFUTED; roadmap corrected.** Session 16 set **per-PFT/per-individual canopy conductance** as the
+  first-listed next step, on the §21 diagnosis that the shared stand-mean `gp_stand` over-supplies the
+  understory grass. Re-diagnosed from the LPJmL-FIT C source + a faithful instrumented reproduction on the
+  committed Hainich 2010 cell (adversarially verified — 4 independent lenses, ALL confirming): **the
+  attribution is wrong.** (1) The C's returned GPP uses `gp_stand` for every natural PFT incl. grass — the
+  per-PFT `gp_pft`/`gc_pft` feed ONLY the `PFT_GCGP` diagnostic (`daily_natural.c:187`) — so a per-PFT GPP
+  conductance is LESS faithful, not more. (2) F_diff's grass GPP **already uses `gp_stand`** (measured
+  `gc_grass ≈ 0.75·gp_stand`; the moist Hainich soil, growing-season `wscal ≈ 0.99`, keeps it only mildly
+  water-limited) — exactly as the C does; the grass's own `gp` is only ~0.14·`gp_stand`, so a per-PFT
+  (own-`gp`) conductance would change the grass GPP **~43 %**, a large DE-calibration away from the C-faithful
+  value. (3) At the C's OWN structure the per-year grass NPP is **faithful** (total **0.83×**, `fpar` matches)
+  — so the §20 "3×" is a **multi-year structural-feedback over-growth** (leaf → LAI → forest-floor `fpar` →
+  NPP), unbounded because F_diff lacks the C's grass **cover/light competition** (`light.c` → `light_grass.c`
+  kills excess grass leaf/root back to the permitted cover). **Corrected next step: grass cover/light
+  competition, NOT per-PFT conductance.** Gate
+  `grass_overshoot_diagnosis_tests.jl` (3 testitems); no physics change (diagnosis + roadmap correction).
+  Report §22; CHANGELOG. Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 17 (on `main`) — GRASS-OVERSHOOT RE-DIAGNOSIS: PER-PFT CONDUCTANCE IS REFUTED (scale-up step 11)
+
+**The handoff's own first-listed next step (per-PFT/per-individual canopy conductance) was wrong — this
+session proves it and corrects the roadmap.** Session 16's §21 diagnosed the §20 self-driven grass-NPP
+overshoot (~3×) as the shared stand-mean `gp_stand` "over-supplying the understory grass" and set per-PFT
+conductance as the fix. Reading the LPJmL-FIT C source (`water_stressed.c`, `gp_sum.c`, `daily_natural.c`,
+`npp_grass.c`) surfaced a contradiction — the C's *returned GPP* uses `gp_stand` too — so I re-diagnosed from
+the source **and** a faithful instrumented reproduction on the committed Hainich 2010 cell, then
+adversarially verified with four independent lenses (all confirming). No physics change: the deliverable is
+the corrected diagnosis, its gate, and the roadmap correction. (Report §22; CHANGELOG.)
+
+- **★ FINDING 1 — the C's returned GPP uses `gp_stand`, so per-PFT-GPP-conductance is LESS faithful.** In
+  `water_stressed.c` the returned assimilation is driven by `gc` (line 194), set from the STAND mean
+  `gp_stand` (line 181, and the water-limited else-branch uses the `gp_stand`-based `demand` of line 118). The
+  per-PFT `gp_pft`/`demand_pft`/`gc_pft` are diagnostic-only (`gc_pft` is write-only, consumed solely by
+  `PFT_GCGP`, `daily_natural.c:187`; the one per-PFT-*supply* path into GPP is the `nitrogen_coupled` branch,
+  **off** in the carbon-only FIT config). F_diff already mirrors the C (one shared `gp_stand` for every
+  individual, `fdiff.jl:1497/1515`).
+- **★ FINDING 2 — F_diff's grass GPP already uses `gp_stand` (like the C); per-PFT would DE-calibrate it.**
+  `canopy_conductance` returns `gc = smoothmin(gc_w(supply_i), gp_stand)`. Instrumented on the committed 2010
+  cell (state advanced by the REAL `daily_step_canopy`), the grass's actual `gc_grass ≈ 0.75·gp_stand` — the
+  moist Hainich soil (growing-season `wscal ≈ 0.99`, min 0.85) keeps it only mildly water-limited, so it uses
+  MOST of the stand mean, exactly as the C's `water_stressed.c` returns grass GPP from `gp_stand`. The grass's
+  OWN potential `gp` is only ~0.14·`gp_stand`, so a per-PFT (own-`gp`) conductance would change the grass GPP
+  **~43 %** — a large de-calibration AWAY from the C-faithful value. So per-PFT conductance is the WRONG lever
+  (it would cut the grass GPP and move the validated tree GPP too). *(An initial reproduction reported a
+  spurious `0.13·gp_stand` "water-limited" figure — a hand-rolled soil-evolution bug; the real path keeps the
+  soil moist, verified against `rollout_daily_canopy`.)*
+- **★ FINDING 3 — the per-year grass NPP is FAITHFUL at fixed structure; the "3×" is a MULTI-YEAR
+  over-growth.** With the grass at the C's OWN structure (real leaf/root carbon → real maintenance
+  respiration), total grass NPP is **0.83×** the C (a mild UNDERshoot; ind-CSV `gpp_ind` is the C NPP),
+  `fpar` matches. The "3×" is a multi-year structural-feedback over-growth (leaf → LAI → forest-floor `fpar`
+  → NPP), unbounded because F_diff lacks the C's grass **cover/light competition** (`light.c` →
+  `light_grass.c` caps grass FPC at `1 − tree cover` and kills excess leaf/root to litter).
+- **★ CORRECTED NEXT STEP.** Grass **cover/light competition** (`light.c` → `light_grass.c` → `fpc_grass.c`),
+  optionally with the supply-side per-layer soil-water competition (`water_stressed.c:153-179`) — **NOT**
+  per-PFT conductance. Grass-specific photosynthesis params (temp-opt 10/30, `alphaa` 0.5, `albedo_leaf` 0.23,
+  `k_beer` 0.5) are a faithful minor improvement (grass NPP 0.83 → 0.90) but do not touch the runaway.
+- **★ GATE `grass_overshoot_diagnosis_tests.jl`** (3 self-contained testitems on the committed 2010
+  reference): per-year NPP faithful (ratio ∈ [0.6, 1.3]); grass GPP uses the stand mean (`mean gc/gp_stand >
+  0.5`, measured 0.75; own `gp < 0.25·gp_stand`) + per-PFT would change grass GPP `> 0.2` (measured 0.43);
+  self-driven grass over-grows > 2×. Runtime `[deps]` stays EMPTY.
 
 ---
 
@@ -848,12 +911,28 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    beech; the residual is the shared stand-mean conductance (`gp_stand`), so it needs per-PFT conductance not a
    param fix; (b) the Enzyme-≥1.11 guard-lift is BLOCKED upstream (latest Enzyme 0.13.187 still
    `EnzymeInternalError` on 1.11.7). §21; CHANGELOG.
-   **★ NEXT:** **per-PFT / per-individual canopy conductance** — the REAL fix for the grass-NPP overshoot
-   (finding above): replace the shared stand-mean `gp_stand` (which over-supplies the understory grass) with a
-   per-PFT/per-individual demand conductance, as the C's `water_stressed.c` does. This is a structural change
-   to `daily_step_canopy`'s two-pass conductance (it will move the validated tree transp/GPP — regenerate the
-   baselines), but it is the faithful port that makes grass-inclusive self-driven multi-year rollouts physical
-   AND is generally more faithful to the C. Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
+   **(grass-rediagnosis) ✅ DONE (session 17) — the §21 per-PFT-conductance next step is REFUTED; roadmap
+   corrected (scale-up step 11).** Re-diagnosed the §20 self-driven grass-NPP overshoot from the C source +
+   a faithful reproduction on the committed Hainich 2010 cell (adversarially verified — 4 independent lenses,
+   all confirming). Three findings: (1) the C's returned GPP uses `gp_stand` for EVERY natural PFT incl. grass
+   (the per-PFT `gp_pft`/`gc_pft` feed ONLY the `PFT_GCGP` diagnostic, `daily_natural.c:187`), so a per-PFT
+   GPP conductance is LESS faithful, not more; (2) F_diff's grass GPP ALREADY uses `gp_stand` (measured
+   `gc_grass ≈ 0.75·gp_stand`; moist Hainich soil, `wscal ≈ 0.99`) — like the C — and its own `gp` is only
+   ~0.14·`gp_stand`, so per-PFT conductance would change the grass GPP ~43 %, a large DE-calibration; (3) at
+   the C's OWN structure the per-year grass NPP is FAITHFUL (total 0.83×, `fpar` matches), so the "3×" is a
+   MULTI-YEAR structural-feedback over-growth
+   (leaf → LAI → forest-floor `fpar` → NPP), unbounded because F_diff lacks the C's grass COVER/LIGHT
+   competition (`light.c` → `light_grass.c` kills excess grass leaf/root back to the permitted cover). Gate
+   `grass_overshoot_diagnosis_tests.jl`. §22; CHANGELOG.
+   **★ NEXT (corrected):** **grass COVER / LIGHT competition** (`light.c` → `light_grass.c` → `fpc_grass.c`)
+   — the negative feedback that hard-caps understory-grass cover at `(1 − tree cover)` and kills the excess
+   leaf/root to litter, the REAL fix that makes grass-inclusive self-driven multi-year rollouts physical
+   (session-17 finding). Optionally pair it with the C's supply-side per-layer soil-water competition
+   (`water_stressed.c:153-179`, the C-faithful lever for the grass water status). **NOT** per-PFT/per-individual
+   canopy conductance (session-16's proposed step) — that is diagnostic-only in the C's GPP and would DEGRADE
+   the validated tree GPP. Grass-specific photosynthesis params (temp-opt 10/30, `alphaa` 0.5, `albedo_leaf`
+   0.23, `k_beer` 0.5) are a faithful minor improvement (grass NPP 0.83 → 0.90) but do not touch the runaway.
+   Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
    (**scouted: a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of the sapwood pool — needs the
    per-soil-layer lateral-root-sapwood demand `root_sapwood_layer` (`allocation_tree.c:160-209`, so soil layers
    must reach `grow_individual`) + its own turnover to `heartwood_bg` + maintenance respiration through the SoA

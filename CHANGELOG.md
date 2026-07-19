@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Grass-overshoot RE-DIAGNOSIS — the §21 per-PFT-conductance next step is REFUTED; roadmap corrected
+  (Phase-3 scale-up step 11; docs §22).** Session 16 (§21) attributed the §20 self-driven grass-NPP
+  overshoot (~3×) to the shared stand-mean conductance `gp_stand` "over-supplying the understory grass" and
+  set **per-PFT/per-individual canopy conductance** as the next step. Re-diagnosed from the LPJmL-FIT C
+  source + a faithful instrumented reproduction on the committed Hainich 2010 cell (adversarially verified —
+  four independent lenses, all confirming); no physics change (diagnosis + roadmap correction).
+  - **Finding 1** — the C's returned GPP uses `gp_stand` for every natural PFT incl. grass (`water_stressed.c`
+    line 194 ← `gc` ← `gp_stand`); the per-PFT `gp_pft`/`gc_pft` feed ONLY the `PFT_GCGP` diagnostic
+    (`daily_natural.c:187`). So a per-PFT GPP conductance is **less** faithful, not more.
+  - **Finding 2** — F_diff's grass GPP **already uses `gp_stand`** (measured `gc_grass ≈ 0.75·gp_stand`; the
+    moist Hainich soil, growing-season `wscal ≈ 0.99`, keeps it only mildly water-limited), exactly as the C
+    does; the grass's own `gp` is only ~0.14·`gp_stand`, so a per-PFT (own-`gp`) conductance would change the
+    grass GPP **~43 %** — a large **de-calibration** away from the C-faithful value, not a fix.
+  - **Finding 3** — at the C's OWN structure the per-year grass NPP is **faithful** (total **0.83×**, `fpar`
+    matches). The "3×" is a **multi-year structural-feedback over-growth** (leaf → LAI → forest-floor `fpar`
+    → NPP), unbounded because F_diff lacks the C's grass **cover/light competition** (`light.c` →
+    `light_grass.c` kills excess grass leaf/root back to `1 − tree cover`).
+  - **Corrected next step: grass cover/light competition** (`light.c` → `light_grass.c` → `fpc_grass.c`),
+    optionally with the supply-side per-layer soil-water competition (`water_stressed.c:153-179`) — **NOT**
+    per-PFT conductance (diagnostic-only in the C's GPP, and would degrade the validated tree GPP).
+  - **Gate `grass_overshoot_diagnosis_tests.jl`** (3 self-contained testitems on the committed 2010
+    reference): per-year NPP faithful (ratio ∈ [0.6, 1.3]); grass GPP uses the stand mean (`mean gc/gp_stand >
+    0.5`, own `gp < 0.25·gp_stand`) + a per-PFT conductance would change grass GPP `> 0.2`; self-driven grass
+    over-grows > 2×. Runtime `[deps]` stays EMPTY.
 - **Decadal (11-year) fidelity validation of the coupled multi-year rollout (Phase-3 scale-up step 10;
   docs §21).** §18 validated the cell × multi-year objective over 3 years (2009–2011); this extends the
   committed real reference to a full DECADE (2009–2019) and answers the fidelity-horizon question — starting
@@ -26,9 +50,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   - **Two investigation findings recorded** (roadmap, no code change): the §20 self-driven **grass-NPP
     overshoot is structural** — carbon-only run, grass fPAR matches the C, light-limited, root C:N/respcoeff
     equal the beech values; the residual is the **shared stand-mean conductance** (`gp_stand` over-supplies
-    the understory grass), needing per-PFT conductance, not a parameter fix. The **Enzyme-on-Julia-≥1.11
-    guard-lift is blocked upstream** — the latest Enzyme 0.13.187 still raises `EnzymeInternalError` on the
-    mutating canopy reverse pass on Julia 1.11.7.
+    the understory grass), needing per-PFT conductance, not a parameter fix. **[SUPERSEDED by §22 /
+    scale-up step 11:** this `gp_stand` attribution is **refuted** — the C's GPP itself uses `gp_stand`, and
+    F_diff's grass GPP already matches it (`gc_grass ≈ 0.75·gp_stand`, so a per-PFT conductance would
+    *de-calibrate* it ~43 %); the per-year grass NPP is faithful (0.83×) and the overshoot is a multi-year
+    cover-competition gap; per-PFT conductance is NOT the fix.**]** The **Enzyme-on-Julia-≥1.11 guard-lift is blocked upstream**
+    — the latest Enzyme 0.13.187 still raises `EnzymeInternalError` on the mutating canopy reverse pass on
+    Julia 1.11.7.
 - **Prognostic GRASS structure — the `allocation_grass.c` port (Phase-3 scale-up step 9; docs §20).** The
   multi-year rollout previously grew only trees; grasses were held fixed and — because the `ind`-output
   reconstruction gives grass rows `leaf_c = crownarea = nind = 0` (grass is a per-**area** cohort) — were
