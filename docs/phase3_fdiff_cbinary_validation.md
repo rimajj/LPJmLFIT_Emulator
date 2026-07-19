@@ -1094,3 +1094,54 @@ the other Enzyme canopy gates). Runtime `[deps]` stays EMPTY.
 growing-days fraction is taken as 1 (as for trees); and — the load-bearing one — the self-computed grass NPP
 is uncalibrated (grass shares the beech photosynthesis parameters), so the faithful validation uses the C's
 grass NPP as the carbon input.
+
+## 21. Update — decadal (11-year) fidelity of the coupled multi-year rollout (scale-up step 10)
+
+§18 validated the cell × multi-year objective over a **3-year** span (2009–2011). The open question it left
+is the **fidelity horizon**: F_diff's coupled rollout starts from a reconstructed structure and self-drives
+(each patch grown across years by the pipe-model allocation) — over a decade, does the self-driven structure
+stay faithful to the C, or drift / blow up? This step extends the committed real reference to a full DECADE
+(2009–2019, 11 sim years) and measures it.
+
+**The decadal reference (committed, no C re-run).** `scripts/extract_fdiff_decadal.py` slices the full-period
+single-cell daily CSV already on disk (`hainich_c42490_daily_2000_2019.csv`) into
+`hainich_decadal_forcing.csv` (per-year daily forcing) + `hainich_decadal_targets.csv` (per-year daily C
+GPP + FAPAR), reusing the already-committed 2008 start structure. The C's own per-year annual GPP over the
+decade is `[1177, 1102, 1233, 1181, 1085, 1241, 1146, 1150, 1147, 1373, 1286]` gC·m⁻²·yr⁻¹ (2009→2019) — a
+rich decadal target driven mostly by interannual weather, no trend.
+
+**★ Result — the coupled rollout stays faithful over the decade.** Starting from the 2008 reconstructed
+25-patch structure and self-driving 11 years (kernel-isolation C-FAPAR phenology, each patch grown by its own
+allocation), F_diff's cell-mean per-year annual GPP tracks the C's own per-year annual GPP with:
+- **mean annual-GPP ratio 1.066** over 2009–2019 (F_diff's inherited ~+7 % GPP-phenology level, §13/§19), each
+  year **bounded in 1.01–1.11** — a mild mid-decade drift (peaks ~1.11 at 2015–2017) that recovers by 2019,
+  and **no runaway** (cell GPP stays in 1118–1401 gC·m⁻²·yr⁻¹, no blow-up of the self-driven structure);
+- **interannual correlation r = 0.86** with the C's year-to-year variability — the coupled rollout responds to
+  the real forcing, mirroring the C's high years (2011/2014/2018/2019) and low years (2010/2013), not just a
+  flat mean.
+
+So the coupled multi-year rollout is fidelity-stable over a decade: the level bias is the documented,
+bounded GPP-phenology offset (it does not compound into a drift), and the self-driven structure neither
+collapses nor blows up over 11 years. This is the first validation of the coupled rollout beyond 3 years.
+
+**Gate `decadal_validation_tests.jl`** (self-contained on the committed decadal reference): the 25-patch
+rollout runs the full 11 years and stays physical (finite, positive, bounded per-year GPP); the mean ratio is
+near 1 (≤ 1.12) with each year bounded (0.9–1.2); and the per-year correlation with the C exceeds 0.7
+(measured 0.86). Runtime `[deps]` stays EMPTY.
+
+**Two investigation findings recorded this step (sharpen the roadmap; no code change).**
+- **Grass-NPP calibration is *structural*, not a parameter fix.** Decomposing the §20 self-driven grass
+  overshoot (~3×): the run is carbon-only (`with_nitrogen:"no"` — N-limitation ruled out); the grass fPAR the
+  recompute produces matches the C exactly (0.03042 vs 0.0304233 — open-field light ruled out); grass is
+  light-limited, insensitive to soil water (shared-water ruled out); grass root C:N (30) and `respcoeff` (1.2)
+  equal the beech values F_diff reuses (respiration ruled out). The residual overshoot is the **shared
+  stand-mean conductance** (`gp_stand`, `daily_step_canopy`): F_diff gives the understory grass the
+  tree-dominated stand conductance, so it is not demand-limited the way the C's *per-PFT* grass is. Fixing it
+  faithfully needs per-PFT/per-individual conductance — a structural change to the two-pass conductance model
+  (which would move the validated tree transpiration/GPP), not a clean grass-only parameter port. So grass-NPP
+  calibration is deferred to a per-PFT-conductance step, not attempted as a quick fix.
+- **The Enzyme-on-Julia-≥1.11 guard-lift is blocked upstream.** Probed on Julia 1.11.7 with the latest
+  Enzyme 0.13.187 (newer than the 0.13 the guards were written against): the canopy forward pass is fine
+  (loss finite), but the Enzyme *reverse* through the array-mutating canopy path still raises
+  `Enzyme.Compiler.EnzymeInternalError` — the same class of failure §15 documented. So the `VERSION < 1.11`
+  guards cannot be lifted by a 0.13.x bump; it remains an upstream-Enzyme (or 0.14-migration) follow-up.

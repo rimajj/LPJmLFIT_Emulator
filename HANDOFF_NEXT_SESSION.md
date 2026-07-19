@@ -135,6 +135,54 @@ for HEAD.
   fidelity, golden+conservation, equilibrium-fed-C-NPP, ForwardDiff through the coupled multi-year rollout,
   Enzyme reverse guarded `VERSION<1.11`); suite **26,166 pass / 0 fail / 4 broken**; adversarially verified.
   Report §20; CHANGELOG. Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 16) — scale-up step 10: DECADAL (11-year) fidelity validation of the coupled multi-year
+  rollout + two diagnosed frontier items.** §18 validated the cell × multi-year objective over 3 years; this
+  extends the committed real reference to a full DECADE (2009–2019, `scripts/extract_fdiff_decadal.py` slices
+  it from the on-disk daily CSV — no C re-run) and answers the FIDELITY-HORIZON question. **Result: starting
+  from the 2008 structure and self-driving 11 years (kernel-isolation C-FAPAR phen, each patch grown by its
+  own allocation), F_diff's cell-mean per-year annual GPP tracks the C — mean ratio 1.066, each year bounded
+  1.01–1.11 (no runaway), interannual r = 0.86.** The coupled rollout is fidelity-stable over a decade (the
+  ~+7 % level bias does NOT compound into drift). Gate `decadal_validation_tests.jl`. **Two findings recorded
+  (deferrals, no code change):** the §20 self-driven grass-NPP overshoot is STRUCTURAL — carbon-only run,
+  grass fPAR matches the C, light-limited, root C:N/respcoeff = beech; the residual is the SHARED stand-mean
+  conductance (`gp_stand`), needing per-PFT conductance not a param fix. The Enzyme-≥1.11 guard-lift is BLOCKED
+  upstream (latest Enzyme 0.13.187 still `EnzymeInternalError` on the mutating canopy reverse on 1.11.7).
+  Report §21; CHANGELOG. Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 16 (on `main`) — DECADAL (11-YEAR) FIDELITY OF THE COUPLED MULTI-YEAR ROLLOUT (scale-up step 10)
+
+**The coupled multi-year rollout is validated over a full decade for the first time.** §18 validated the
+cell × multi-year objective over 3 years (2009–2011); this extends the committed real reference to 2009–2019
+and shows the self-driven structure stays faithful to the C over 11 years. Plus two decisive diagnoses that
+re-scope the roadmap. (Report §21; CHANGELOG.)
+
+- **★ THE DECADAL REFERENCE (committed, no C re-run).** `scripts/extract_fdiff_decadal.py` slices
+  `hainich_decadal_forcing.csv` + `hainich_decadal_targets.csv` (2009–2019 per-year daily forcing + per-year
+  daily C GPP/FAPAR) from the full-period single-cell daily CSV already on disk, reusing the committed 2008
+  start structure. CI-runnable (no `/p/tmp` at test time).
+- **★ RESULT — fidelity-stable over the decade.** Starting from the 2008 reconstructed 25-patch structure and
+  self-driving 11 years (kernel-isolation C-FAPAR phenology, each patch grown by its own pipe-model
+  allocation): **mean cell-mean annual-GPP ratio 1.066** (F_diff's inherited ~+7 % GPP-phenology level,
+  §13/§19), **each year bounded 1.01–1.11** (a mild mid-decade drift ~1.11 at 2015–2017 that recovers by
+  2019, **no runaway** — cell GPP stays 1118–1401 gC·m⁻²·yr⁻¹), and **interannual r = 0.86** with the C's
+  year-to-year variability (mirrors the C's high years 2011/2014/2018/2019 and low years 2010/2013). The level
+  bias does NOT compound into a drift; the self-driven structure neither collapses nor blows up.
+- **★ GATE `decadal_validation_tests.jl`** (self-contained on the committed decadal reference): the 25-patch
+  rollout runs the full 11 years + stays physical (finite/positive/bounded per-year GPP); mean ratio ≤ 1.12;
+  each year 0.9–1.2; per-year correlation with the C > 0.7 (measured 0.86). Runtime `[deps]` stays EMPTY.
+- **★ FINDING 1 (deferred) — grass-NPP calibration is STRUCTURAL.** Decomposed the §20 self-driven grass
+  overshoot (~3×): carbon-only run (`with_nitrogen:"no"` — N ruled out); grass fPAR matches the C exactly
+  (0.03042 vs 0.0304233 — open-field light ruled out); grass light-limited, water-insensitive (shared-water
+  ruled out); grass root C:N (30) + respcoeff (1.2) = beech (respiration ruled out). The residual is the
+  **shared stand-mean conductance** (`gp_stand`) over-supplying the understory grass — a faithful fix needs
+  **per-PFT/per-individual conductance** (structural, would move the validated tree transp/GPP), the new
+  first-listed NEXT.
+- **★ FINDING 2 (deferred) — the Enzyme-≥1.11 guard-lift is BLOCKED upstream.** Probed on Julia 1.11.7 with
+  the LATEST Enzyme 0.13.187: forward fine, but the reverse through the mutating canopy path still raises
+  `Enzyme.Compiler.EnzymeInternalError`. The `VERSION < 1.11` guards cannot be lifted by a 0.13.x bump —
+  upstream-Enzyme / a higher-risk 0.14 migration (Lux/code pin 0.13).
 
 ---
 
@@ -790,16 +838,29 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    documented next step, below). Gate `grass_structure_tests.jl` (5 testitems incl. ForwardDiff + Enzyme
    through the grass-inclusive multi-year rollout); suite 26,166 pass / 0 fail / 4 broken; adversarially
    verified. §20; CHANGELOG.
-   **★ NEXT:** **grass NPP calibration** (the direct follow-up to make the self-driven grass physical:
-   grass-specific Vcmax / `respcoeff` / temperature-optimum instead of the beech params, + the `fpc_grass.c`
-   cover competition that caps grass fpc — measure the self-driven grass leaf/root vs the committed C grass
-   reference `hainich_individuals_{2008,2010}.csv`); below-ground root-sapwood (`sapwood_bg`) + carbon-debt in
-   the allocation (**scouted: `sapwood_bg` is a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of
-   the sapwood pool — a faithful port needs its own establishment/allocation/turnover state through the SoA
-   multi-year rollout, higher AD risk**); whole-tree mortality/establishment (S's demography, so the coupled
-   loop is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION < v"1.11"` guard on
-   the Enzyme gates, §15); and — for a longer trajectory — extend the committed reconstruction span beyond
-   2008–2011. Phenology-fidelity follow-ups: the per-individual `minwscal` corridor sampling (now → PFT
+   **(decadal-validation) ✅ DONE (session 16) — DECADAL (11-year) fidelity of the coupled multi-year rollout
+   + two diagnosed frontier items (scale-up step 10).** Extended the committed real reference to 2009–2019
+   (`scripts/extract_fdiff_decadal.py`, sliced from the on-disk daily CSV — no C re-run). The 25-patch rollout,
+   self-driving 11 years from the 2008 structure (kernel-isolation C-FAPAR phen), tracks the C: **mean ratio
+   1.066, each year 1.01–1.11 (no runaway), interannual r = 0.86** — fidelity-stable over a decade. Gate
+   `decadal_validation_tests.jl`. **Also diagnosed + deferred two frontier items:** (a) the §20 grass-NPP
+   overshoot is STRUCTURAL — carbon-only run, grass fPAR matches the C, light-limited, root C:N/respcoeff =
+   beech; the residual is the shared stand-mean conductance (`gp_stand`), so it needs per-PFT conductance not a
+   param fix; (b) the Enzyme-≥1.11 guard-lift is BLOCKED upstream (latest Enzyme 0.13.187 still
+   `EnzymeInternalError` on 1.11.7). §21; CHANGELOG.
+   **★ NEXT:** **per-PFT / per-individual canopy conductance** — the REAL fix for the grass-NPP overshoot
+   (finding above): replace the shared stand-mean `gp_stand` (which over-supplies the understory grass) with a
+   per-PFT/per-individual demand conductance, as the C's `water_stressed.c` does. This is a structural change
+   to `daily_step_canopy`'s two-pass conductance (it will move the validated tree transp/GPP — regenerate the
+   baselines), but it is the faithful port that makes grass-inclusive self-driven multi-year rollouts physical
+   AND is generally more faithful to the C. Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
+   (**scouted: a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of the sapwood pool — needs the
+   per-soil-layer lateral-root-sapwood demand `root_sapwood_layer` (`allocation_tree.c:160-209`, so soil layers
+   must reach `grow_individual`) + its own turnover to `heartwood_bg` + maintenance respiration through the SoA
+   rollout, touching every `TreePools` reconstruction site; higher AD risk**); whole-tree mortality/
+   establishment (S's demography, so the coupled loop is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11
+   guard-lift** (probed session 16 — still blocked on the latest 0.13.187; retry on a future Enzyme 0.14
+   migration). Phenology-fidelity follow-ups: the per-individual `minwscal` corridor sampling (now → PFT
    median) and a canopy-consistent (non-lag) grass forest-floor light.
    **(c) Smaller residuals:** grass structure prognostic (`grass_allocation.c`); below-ground root-sapwood
    (`sapwood_bg`, which — with the rare-day `rd` conductance gate — is the small remaining respiration

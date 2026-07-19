@@ -7,6 +7,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Decadal (11-year) fidelity validation of the coupled multi-year rollout (Phase-3 scale-up step 10;
+  docs §21).** §18 validated the cell × multi-year objective over 3 years (2009–2011); this extends the
+  committed real reference to a full DECADE (2009–2019) and answers the fidelity-horizon question — starting
+  from the 2008 reconstructed 25-patch structure and self-driving 11 years (each patch grown by its own
+  pipe-model allocation, kernel-isolation C-FAPAR phenology), does the coupled rollout stay faithful to the
+  C's OWN per-year annual GPP?
+  - **`scripts/extract_fdiff_decadal.py`** — slices `hainich_decadal_forcing.csv` + `hainich_decadal_targets.csv`
+    (2009–2019 daily forcing + per-year daily C GPP/FAPAR) from the full-period single-cell daily CSV already
+    on disk (no C re-run), reusing the committed 2008 start structure.
+  - **★ Result: the coupled rollout stays faithful over the decade** — mean cell-mean annual-GPP ratio
+    **1.066** (the inherited ~+7 % GPP-phenology level, §13/§19), each year bounded 1.01–1.11 (a mild
+    mid-decade drift that recovers, **no runaway**), and **interannual correlation r = 0.86** with the C's
+    year-to-year variability (tracks the real forcing, not a flat mean).
+  - **Gate `decadal_validation_tests.jl`** (self-contained): the 25-patch rollout runs 11 years and stays
+    physical (finite/positive/bounded per-year GPP); mean ratio ≤ 1.12; each year 0.9–1.2; per-year
+    correlation with the C > 0.7. Runtime `[deps]` stays EMPTY.
+  - **Two investigation findings recorded** (roadmap, no code change): the §20 self-driven **grass-NPP
+    overshoot is structural** — carbon-only run, grass fPAR matches the C, light-limited, root C:N/respcoeff
+    equal the beech values; the residual is the **shared stand-mean conductance** (`gp_stand` over-supplies
+    the understory grass), needing per-PFT conductance, not a parameter fix. The **Enzyme-on-Julia-≥1.11
+    guard-lift is blocked upstream** — the latest Enzyme 0.13.187 still raises `EnzymeInternalError` on the
+    mutating canopy reverse pass on Julia 1.11.7.
 - **Prognostic GRASS structure — the `allocation_grass.c` port (Phase-3 scale-up step 9; docs §20).** The
   multi-year rollout previously grew only trees; grasses were held fixed and — because the `ind`-output
   reconstruction gives grass rows `leaf_c = crownarea = nind = 0` (grass is a per-**area** cohort) — were
