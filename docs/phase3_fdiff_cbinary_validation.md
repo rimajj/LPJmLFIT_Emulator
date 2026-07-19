@@ -1153,9 +1153,9 @@ conductance** `gp_stand` "over-supplying the understory grass", and set **per-PF
 conductance** as the next step (the handoff's first-listed item). This step re-diagnoses that overshoot from
 the LPJmL-FIT C source **plus** a faithful reproduction on the committed Hainich 2010 reference, and
 **refutes the attribution**: per-PFT conductance is neither the lever nor faithful to the C. The finding
-re-scopes the roadmap. No physics change this step; the deliverable is the corrected diagnosis + its gate
-(`grass_overshoot_diagnosis_tests.jl`) + this roadmap correction (adversarially verified — four independent
-lenses, all confirming).
+re-scopes the roadmap. No physics change this step; the deliverable is the corrected diagnosis + its committed
+reproduction (`scripts/grass_overshoot_diagnosis.jl`) + this roadmap correction (adversarially verified — four
+independent lenses, all confirming).
 
 **★ Finding 1 — the C's returned GPP uses `gp_stand`, so per-PFT-GPP-conductance is LESS faithful, not
 more.** In `water_stressed.c` the gross assimilation the function returns is driven by `gc` (line 194,
@@ -1210,9 +1210,15 @@ grass NPP ratio 0.83 → 0.90) but do not touch the runaway. Until the cover com
 multi-year runs keep the `bm_inc_ext` grass crutch, and the validated tree-only rollouts (§18/§21) are
 unaffected (grass filtered).
 
-**Gate `grass_overshoot_diagnosis_tests.jl`** (three self-contained testitems on the committed 2010 reference):
-(1) per-year grass NPP faithful at the C's fixed structure (ratio ∈ [0.6, 1.3], measured 0.83); (2) the grass
-GPP uses the stand mean (mean `gc_grass/gp_stand > 0.5`, measured 0.75; the grass's own `gp < 0.25·gp_stand`)
-and a per-PFT (own-`gp`) conductance would change the grass GPP substantially (mean `> 0.2`, measured 0.43) —
-the de-calibration that refutes per-PFT as the fix; (3) the self-driven grass over-grows > 2× without cover
-competition. Runtime `[deps]` stays EMPTY.
+**Reproduction `scripts/grass_overshoot_diagnosis.jl`** (self-contained on the committed 2010/2008 reference;
+run off the login node via SLURM) reproduces + asserts all three: (1) per-year grass NPP faithful at the C's
+fixed structure (ratio ∈ [0.6, 1.3], measured 0.83); (2) the grass GPP uses the stand mean
+(mean `gc_grass/gp_stand > 0.5`, measured 0.75; the grass's own `gp < 0.25·gp_stand`) and a per-PFT (own-`gp`)
+conductance would change the grass GPP substantially (mean `> 0.2`, measured 0.43) — the de-calibration that
+refutes per-PFT as the fix; (3) the self-driven grass over-grows > 2× without cover competition. It is a
+**script, not a CI `@testitem`, by design**: adding the heavy per-cell conductance instrumentation to the
+parallel ReTestItems pool shifted worker scheduling enough to trip a pre-existing Enzyme-0.13/Julia-1.10-`lts`
+`LLVM error: Canonicalization failed` in the (unrelated) Enzyme-reverse canopy testitems — a known Enzyme+worker
+fragility, not a defect here. Keeping the reproduction as a standalone script keeps that compilation out of the
+test pool while remaining committed + reproducible (re-add as a gate once Enzyme is robust — cf. the
+Enzyme-≥1.11 guard-lift TODO). Runtime `[deps]` stays EMPTY.

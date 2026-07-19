@@ -164,7 +164,7 @@ for HEAD.
   NPP), unbounded because F_diff lacks the C's grass **cover/light competition** (`light.c` → `light_grass.c`
   kills excess grass leaf/root back to the permitted cover). **Corrected next step: grass cover/light
   competition, NOT per-PFT conductance.** Gate
-  `grass_overshoot_diagnosis_tests.jl` (3 testitems); no physics change (diagnosis + roadmap correction).
+  reproduction script `scripts/grass_overshoot_diagnosis.jl`; no physics change (diagnosis + roadmap correction).
   Report §22; CHANGELOG. Runtime `[deps]` still EMPTY.
 
 ---
@@ -207,10 +207,14 @@ the corrected diagnosis, its gate, and the roadmap correction. (Report §22; CHA
   optionally with the supply-side per-layer soil-water competition (`water_stressed.c:153-179`) — **NOT**
   per-PFT conductance. Grass-specific photosynthesis params (temp-opt 10/30, `alphaa` 0.5, `albedo_leaf` 0.23,
   `k_beer` 0.5) are a faithful minor improvement (grass NPP 0.83 → 0.90) but do not touch the runaway.
-- **★ GATE `grass_overshoot_diagnosis_tests.jl`** (3 self-contained testitems on the committed 2010
-  reference): per-year NPP faithful (ratio ∈ [0.6, 1.3]); grass GPP uses the stand mean (`mean gc/gp_stand >
-  0.5`, measured 0.75; own `gp < 0.25·gp_stand`) + per-PFT would change grass GPP `> 0.2` (measured 0.43);
-  self-driven grass over-grows > 2×. Runtime `[deps]` stays EMPTY.
+- **★ REPRODUCTION `scripts/grass_overshoot_diagnosis.jl`** (self-contained on the committed 2010/2008
+  reference; run off the login node via SLURM — verified job 1530883 COMPLETED) reproduces + asserts all three:
+  per-year NPP faithful (ratio ∈ [0.6, 1.3], measured 0.832); grass GPP uses the stand mean (`mean gc/gp_stand
+  > 0.5`, measured 0.751; own `gp` 0.138·`gp_stand`) + per-PFT would change grass GPP `> 0.2` (measured 0.427);
+  self-driven grass over-grows > 2× (leaf 6.4 → 160, ×25 over 11 yr). It is a **script, not a CI `@testitem`,
+  by design**: the heavy per-cell conductance instrumentation, added to the parallel ReTestItems pool, tripped
+  a pre-existing Enzyme-0.13/Julia-1.10-`lts` `LLVM error: Canonicalization failed` in the unrelated
+  Enzyme-reverse canopy testitems (see Housekeeping). Runtime `[deps]` stays EMPTY.
 
 ---
 
@@ -923,7 +927,7 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    MULTI-YEAR structural-feedback over-growth
    (leaf → LAI → forest-floor `fpar` → NPP), unbounded because F_diff lacks the C's grass COVER/LIGHT
    competition (`light.c` → `light_grass.c` kills excess grass leaf/root back to the permitted cover). Gate
-   `grass_overshoot_diagnosis_tests.jl`. §22; CHANGELOG.
+   reproduction `scripts/grass_overshoot_diagnosis.jl`. §22; CHANGELOG.
    **★ NEXT (corrected):** **grass COVER / LIGHT competition** (`light.c` → `light_grass.c` → `fpc_grass.c`)
    — the negative feedback that hard-caps understory-grass cover at `(1 − tree cover)` and kills the excess
    leaf/root to litter, the REAL fix that makes grass-inclusive self-driven multi-year rollouts physical
@@ -999,14 +1003,18 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
 - **Dependabot:** `.github/dependabot.yml` tamed (monthly + grouped); open PRs = 0.
 - **Signing:** commits are `G`-signed locally but show "Unverified" on GitHub (cosmetic; repo going
   public later — declined). Do not chase.
-- **Enzyme+ReTestItems CI fragility (session 17):** on Julia-1.10 `lts` (Enzyme 0.13) the FIRST Enzyme
-  reverse compilation on a fresh ReTestItems worker can raise `LLVM error: Canonicalization failed`;
-  subsequent Enzyme compiles on the same worker succeed (worker warm-up). Adding/removing testitems shifts
-  which Enzyme testitem is the cold-first compile, so this can surface on ANY test-set change. The four
-  Enzyme-reverse canopy testitems in `nn_canopy_training_tests.jl` carry `retries = 2` to absorb it. If a
-  future push fails with this error on another Enzyme testitem (`gradient_correctness_tests.jl`,
-  `grass_structure_tests.jl`'s Enzyme item), add `retries = 2` there too — it is a worker-warmup flake, not
-  a code defect. (On Julia ≥ 1.11 the Enzyme parts are guarded off, so `test (1)` is unaffected.)
+- **Enzyme+ReTestItems CI fragility (session 17) — DIAGNOSED, worked around by NOT gating the heavy
+  reproduction.** Adding the grass re-diagnosis as 3 `@testitem`s (esp. the heavy per-cell conductance one)
+  made CI (`test (lts)`/`pre`/`macOS-lts`, Julia 1.10 + Enzyme 0.13) fail DETERMINISTICALLY with `LLVM error:
+  Canonicalization failed` in the UNRELATED Enzyme-reverse canopy testitems (`nn_canopy_training_tests.jl:22`
+  + `:145`) — the added testitems shifted the parallel-worker schedule so a heavy Enzyme testitem became a
+  cold-first compile on a "poisoned" worker. **`retries` did NOT help** — ReTestItems re-runs the retry on
+  the SAME worker (observed: 3 consecutive failures on worker 2498). **Resolution: keep the reproduction as a
+  standalone `scripts/grass_overshoot_diagnosis.jl` (run via SLURM), NOT a `@testitem`** — so the test set
+  equals the last-green commit (`a6d6975`) and CI is unperturbed. `test (1)`/1.11 was always green (Enzyme
+  guarded off there). If a FUTURE change to the test set trips this again on lts, the reliable fixes are (a)
+  a per-worker Enzyme warmup in `runtests.jl`'s `worker_init_expr` (compile the canopy reverse once, cached,
+  before any poison), or (b) an Enzyme 0.14 bump (same upstream as the ≥1.11 guard-lift TODO) — NOT `retries`.
 
 ## Commit history on `main` (recent)
 `e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the

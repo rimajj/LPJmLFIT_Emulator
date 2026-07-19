@@ -85,3 +85,6 @@ mlartifacts/
 *.swp
 *~
 core-*
+
+# SLURM job logs (scripts/sbatch_*.sh, scripts run off the login node)
+logs/

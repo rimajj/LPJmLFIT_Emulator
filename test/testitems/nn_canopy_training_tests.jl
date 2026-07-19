@@ -19,15 +19,7 @@
 #       (an identifiability/recovery proof of the Enzyme online-rollout-training machinery).
 # Fully self-contained (a small inline canopy: 4 individuals, a 5-layer soil column, a 40-day forcing);
 # no HPC/reference-file dependency. The extension activates via `using Lux, Zygote, Optimisers, Enzyme`.
-#
-# `retries = 2` on the four Enzyme-reverse canopy testitems below: on Julia-1.10 `lts` (Enzyme 0.13) the
-# FIRST Enzyme reverse compilation on a fresh ReTestItems worker can raise `LLVM error: Canonicalization
-# failed`, while SUBSEQUENT Enzyme compilations on the SAME worker succeed (the worker "warms up"). This is a
-# known Enzyme+worker fragility, independent of the code under test — it surfaces only when parallel-worker
-# scheduling makes one of these the cold-first Enzyme compile (adding/removing unrelated testitems can shift
-# which one). The retry re-runs on a now-warmed worker and passes; the assertions are unchanged. (On
-# Julia ≥ 1.11 the Enzyme parts are guarded off entirely — see the `VERSION < v"1.11"` branches.)
-@testitem "NN canopy training — identity, Enzyme gradient vs FD, recovery of a known correction" tags = [:training, :fdiff, :canopy] retries = 2 begin
+@testitem "NN canopy training — identity, Enzyme gradient vs FD, recovery of a known correction" tags = [:training, :fdiff, :canopy] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
     using LPJmLFITEmulator.FDiff: daily_step_canopy, rollout_daily_canopy, hainich_soilcolumn
@@ -150,7 +142,7 @@ end
 # its correctness — verified here against FiniteDifferences on the FULL multi-patch cell MSE. This gate
 # also exercises BOTH levers (`targets = (:vm, :λ)`). Self-contained (3 ragged patches, a 5-layer soil
 # column, a 30-day forcing); Enzyme parts guarded to Julia < 1.11 (docs §15).
-@testitem "NN cell (multi-patch) training — identity, cell gradient vs FD (Gauss–Newton), recovery, vm+λ levers" tags = [:training, :fdiff, :canopy] retries = 2 begin
+@testitem "NN cell (multi-patch) training — identity, cell gradient vs FD (Gauss–Newton), recovery, vm+λ levers" tags = [:training, :fdiff, :canopy] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
     using LPJmLFITEmulator.FDiff: daily_step_canopy, rollout_daily_canopy, hainich_soilcolumn
@@ -261,7 +253,7 @@ end
 # Fully self-contained (a small 3-tree patch, a 5-layer soil column, a 40-day forcing repeated NY=3 years,
 # kernel-isolation constant phens); no HPC/reference-file dependency. Enzyme parts guarded to Julia < 1.11
 # (Enzyme 0.13 internal compiler error on ≥ 1.11 for this mutating path; verified on 1.10-lts, docs §15/§17).
-@testitem "NN multi-year (single-patch) training — identity, multi-year Enzyme gradient vs FD, recovery through the structure feedback" tags = [:training, :fdiff, :canopy] retries = 2 begin
+@testitem "NN multi-year (single-patch) training — identity, multi-year Enzyme gradient vs FD, recovery through the structure feedback" tags = [:training, :fdiff, :canopy] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
     using LPJmLFITEmulator.FDiff: rollout_canopy_years_gpp, hainich_soilcolumn
@@ -376,7 +368,7 @@ end
 #       (`train_fdiff_cell_multiyear_rollout!`) drives the loss down ≥ 90 % toward a known vm/λ target.
 # Self-contained (3 ragged patches, a 5-layer soil column, a 30-day forcing repeated NY=2 years,
 # kernel-isolation constant phens); Enzyme parts guarded to Julia < 1.11 (docs §15/§17).
-@testitem "NN cell × multi-year training — identity, cell-multiyear Enzyme gradient vs FD, recovery through the structure feedback" tags = [:training, :fdiff, :canopy] retries = 2 begin
+@testitem "NN cell × multi-year training — identity, cell-multiyear Enzyme gradient vs FD, recovery through the structure feedback" tags = [:training, :fdiff, :canopy] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
     using LPJmLFITEmulator.FDiff: rollout_canopy_years_gpp, hainich_soilcolumn

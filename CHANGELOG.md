@@ -27,10 +27,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   - **Corrected next step: grass cover/light competition** (`light.c` → `light_grass.c` → `fpc_grass.c`),
     optionally with the supply-side per-layer soil-water competition (`water_stressed.c:153-179`) — **NOT**
     per-PFT conductance (diagnostic-only in the C's GPP, and would degrade the validated tree GPP).
-  - **Gate `grass_overshoot_diagnosis_tests.jl`** (3 self-contained testitems on the committed 2010
-    reference): per-year NPP faithful (ratio ∈ [0.6, 1.3]); grass GPP uses the stand mean (`mean gc/gp_stand >
-    0.5`, own `gp < 0.25·gp_stand`) + a per-PFT conductance would change grass GPP `> 0.2`; self-driven grass
-    over-grows > 2×. Runtime `[deps]` stays EMPTY.
+  - **Reproduction `scripts/grass_overshoot_diagnosis.jl`** (self-contained on the committed 2010/2008
+    reference; run off the login node via SLURM) reproduces + asserts all three: per-year NPP faithful (ratio
+    ∈ [0.6, 1.3], measured 0.832); grass GPP uses the stand mean (`mean gc/gp_stand > 0.5`, measured 0.751;
+    own `gp` 0.138·`gp_stand`) + a per-PFT conductance would change grass GPP `> 0.2` (measured 0.427);
+    self-driven grass over-grows > 2× (leaf 6.4 → 160, ×25 over 11 yr). It is a **script, not a CI
+    `@testitem`, by design** — adding the heavy per-cell conductance instrumentation to the parallel
+    ReTestItems pool tripped a pre-existing Enzyme-0.13/Julia-1.10-`lts` `LLVM error: Canonicalization failed`
+    in the unrelated Enzyme-reverse canopy testitems (a known Enzyme+worker fragility); the script keeps that
+    compilation out of the test pool while staying committed + reproducible. Runtime `[deps]` stays EMPTY.
 - **Decadal (11-year) fidelity validation of the coupled multi-year rollout (Phase-3 scale-up step 10;
   docs §21).** §18 validated the cell × multi-year objective over 3 years (2009–2011); this extends the
   committed real reference to a full DECADE (2009–2019) and answers the fidelity-horizon question — starting
