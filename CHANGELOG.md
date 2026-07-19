@@ -7,6 +7,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **NN training on the CELL × MULTI-YEAR objective against a REAL multi-year reference (Phase-3 scale-up
+  step 7b-cell-multiyear; ADR 0016).** Composes §16 (cell) with §17 (multi-year): the learned Vcmax/λ
+  correction is trained so the **cell-mean PER-YEAR annual GPP** matches the C binary's own per-year annual
+  GPP over the full 25-patch Hainich cell, with **every patch grown across years** through the pipe-model
+  allocation. §17's two flagged next steps — the cell-multi-year objective and a real multi-year reference —
+  both land here.
+  - **Cell × multi-year loss + trainer** `fdiff_cell_multiyear_gpp_loss` / `train_fdiff_cell_multiyear_rollout!`
+    (extension): the cell MSE over years `L = (1/NY)Σ_y (Ḡ_y − T_y)²`, `Ḡ_y = (1/P)Σ_p G_{p,y}`, factors
+    exactly patch-by-patch (`∂L/∂ps = Σ_p ∂/∂ps Σ_y c_y·G_{p,y}`, `c_y = (2/(NY·P))(Ḡ_y − T_y)` detached), so
+    every reverse pass is the proven single-patch multi-year `rollout_canopy_years_gpp` Enzyme path — **no
+    monolithic multi-patch AD** — and the per-patch gradients are summed by reusing one accumulating
+    `Duplicated` shadow. One Enzyme reverse per patch over the FULL multi-year rollout per epoch (no
+    per-chunk TBPTT). Runtime `[deps]` still EMPTY.
+  - **Real committed multi-year reference** (`scripts/extract_fdiff_cell_multiyear.py`, sliced from the
+    already-on-disk C re-run — no C re-run needed): the 2008 start-year 25-patch structure
+    (`hainich_individuals_2008.csv`), per-year 2009–2011 daily forcing (`hainich_multiyear_forcing.csv`), and
+    those years' daily C GPP + FAPAR (`hainich_multiyear_targets.csv`).
+  - **Verification / gate** — new self-contained cell × multi-year testitem in `nn_canopy_training_tests.jl`
+    (3 ragged patches × NY = 2): identity per-year Δ = 0; the per-patch-decomposed cell-multi-year gradient
+    vs FiniteDifferences to **max rel err 1.5e-10**; recovery loss down **98.8 %** in 25 epochs, trained cell
+    GPP within **0.07 %** of a known `vm=1.15/λ=1.05` target. Enzyme parts guarded `VERSION < v"1.11"`.
+    Driver `scripts/train_fdiff_cell_multiyear.jl`; report §18; ADR 0016 (addendum).
+  - **Result (full 25-patch cell, real 2008→2011 reference, kernel-isolation C-FAPAR phenology)** — the
+    learned correction closes the cell-mean annual-GPP LEVEL against the real C per-year annual GPP through
+    the multi-year structure feedback: mean model/C ratio **1.034 → 0.998** (`:vm`) → **0.996** (`:vm,:λ`);
+    per-year 1.026/1.014/1.063 → 0.992/0.981/1.022 (`:vm`). One shared correction fit across years trims the
+    year-to-year spread (2011 the high-GPP outlier) rather than zeroing each year. Full suite
+    **25,943 pass / 0 fail / 4 broken** on Julia 1.10.
+- **`scripts/sbatch_train.sh`** — submit the F_diff NN-training drivers as durable SLURM batch jobs on a
+  compute node (`standard`/`qos=short`, `--project=test`, Julia 1.10), so the heavy Enzyme-reverse training
+  runs (the cell × multi-year fit is a one-time ~7-min compile + ~30-min run) are off the login node and
+  survive a dropped interactive session.
 - **NN training THROUGH the multi-year structure/allocation feedback (Phase-3 scale-up step 7b-multiyear;
   ADR 0016).** §16's documented frontier — training GPP to match the C *while the canopy structure grows
   between years via the allocation* — is now Enzyme-differentiable. Session 11's `EnzymeNoTypeError` was

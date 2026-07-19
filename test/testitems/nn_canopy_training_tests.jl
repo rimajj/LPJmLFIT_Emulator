@@ -349,3 +349,123 @@ end
             "$(VERSION) (Enzyme 0.13 internal compiler error on ≥ 1.11); verified on 1.10-lts (docs §17)."
     end
 end
+
+# Gate — CELL × MULTI-YEAR NN-hook training: the §16 per-patch Gauss–Newton CELL decomposition applied
+# THROUGH the §17 MULTI-YEAR structure/allocation feedback (ADR 0016; scale-up step 7b-cell-multiyear;
+# docs §18). §16 fit the cell-mean DAILY GPP with the structure FROZEN for the year; §17 fit ONE patch's
+# per-year annual GPP THROUGH the allocation. This composition fits the CELL-mean PER-YEAR annual GPP
+# trajectory while EVERY patch grows across years: the objective is `L = (1/NY)Σ_y (Ḡ_y − T_y)²`,
+# `Ḡ_y = mean_p rollout_canopy_years_gpp(trees0_all[p], …)[y]`, whose exact gradient factors patch-by-patch
+# (`∂L/∂ps = Σ_p ∂/∂ps Σ_y c_y·G_{p,y}`, `c_y = (2/(NY·P))(Ḡ_y − T_y)` detached), so every reverse pass is
+# the proven single-patch multi-year `rollout_canopy_years_gpp` Enzyme path — NO monolithic multi-patch AD.
+# Three properties, mirroring the cell (§16) and multi-year (§17) gates:
+#   (1) IDENTITY — the untrained (zero-init) network (vm+λ) reproduces the pure-physics cell multi-year
+#       rollout (per year, per patch), so the cell-mean per-year GPP is unmoved;
+#   (2) CELL-MULTIYEAR GRADIENT — the ENZYME per-patch-decomposed gradient of the cell-multi-year MSE
+#       matches FiniteDifferences on the FULL multi-patch multi-year loss, and the decomposed primal equals
+#       the direct cell MSE;
+#   (3) TRAINING RECOVERS A KNOWN CORRECTION — the cell-multi-year loop
+#       (`train_fdiff_cell_multiyear_rollout!`) drives the loss down ≥ 90 % toward a known vm/λ target.
+# Self-contained (3 ragged patches, a 5-layer soil column, a 30-day forcing repeated NY=2 years,
+# kernel-isolation constant phens); Enzyme parts guarded to Julia < 1.11 (docs §15/§17).
+@testitem "NN cell × multi-year training — identity, cell-multiyear Enzyme gradient vs FD, recovery through the structure feedback" tags = [:training, :fdiff, :canopy] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: rollout_canopy_years_gpp, hainich_soilcolumn
+    using LPJmLFITEmulator.Allometry
+    using Lux, Zygote, Optimisers, Enzyme, FiniteDifferences, StableRNGs
+    using Random
+    using Test
+
+    soil = hainich_soilcolumn(;
+        whcs = [37.0, 53.0, 88.0, 175.0, 175.0], rootdist = [0.41, 0.32, 0.2, 0.07, 0.0],
+        soildepth = [200.0, 300.0, 500.0, 1000.0, 1000.0],
+    )
+    allom = Allometry.TreeAllometry{Float64}()          # angiosperm beech (par/pft_lpjmlfit.js ANGIO)
+    alloc = tebs_allocparams()
+    mktree(leaf, sap, heart, root, h, ca, nind) =
+        TreePools{Float64}(leaf, sap, heart, root, h, ca, nind, 0.01986, 2.0e5, false)
+    mktmpl(fpar, alphaa, sla) = Individual{Float64}(
+        fpar, 0.0, alphaa, 0.15, 10.0, 0.0, 0.0, 0.0, 0.02, 0.04, 0.1, 0.4, 1 / 225,
+        FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = sla),
+        FDiff.TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    # 3 patches with DIFFERENT tree counts (ragged, like the real 25-patch cell); each a spread of heights
+    trees0_all = [
+        [mktree(2769.0, 33000.0, 120000.0, 2769.0, 12.0, 15.8, 1 / 225), mktree(1600.0, 12000.0, 40000.0, 1600.0, 8.0, 8.0, 1 / 180), mktree(600.0, 3000.0, 9000.0, 600.0, 4.0, 3.0, 1 / 120)],
+        [mktree(2400.0, 28000.0, 100000.0, 2400.0, 11.0, 14.0, 1 / 225), mktree(900.0, 5000.0, 15000.0, 900.0, 5.0, 4.0, 1 / 150)],
+        [mktree(3000.0, 36000.0, 130000.0, 3000.0, 13.0, 17.0, 1 / 250), mktree(1400.0, 10000.0, 32000.0, 1400.0, 7.5, 7.0, 1 / 175), mktree(700.0, 3500.0, 10000.0, 700.0, 4.5, 3.4, 1 / 130), mktree(300.0, 1200.0, 3000.0, 300.0, 3.0, 2.0, 1 / 100)],
+    ]
+    tmpls_all = [
+        [mktmpl(0.55, 0.5, 0.01986), mktmpl(0.3, 0.5, 0.022), mktmpl(0.12, 0.5, 0.025)],
+        [mktmpl(0.5, 0.5, 0.02), mktmpl(0.2, 0.5, 0.024)],
+        [mktmpl(0.6, 0.5, 0.019), mktmpl(0.28, 0.5, 0.023), mktmpl(0.13, 0.5, 0.026), mktmpl(0.06, 0.5, 0.03)],
+    ]
+    P = length(trees0_all)
+    ndays = 30
+    forc = [
+        DailyForcing{Float64}(
+                swdown = 220.0, lwnet = -45.0, temp = 19.0, precip = (d % 4 == 0 ? 8.0 : 0.3),
+                daylength = 14.0, co2 = 380.0,
+            ) for d in 1:ndays
+    ]
+    NY = 2
+    yearly_forcings = [forc for _ in 1:NY]                          # a short forcing repeated NY years
+    phens_by_year = [fill(1.0, ndays) for _ in 1:NY]              # kernel-isolation constant leaf display
+    st0 = FDiffStateML{Float64}([0.7 * wc for wc in soil.whcs], 0.0)
+    phys = tebs_params()
+
+    # ── (1) IDENTITY (both vm + λ hooks): zero-init cell multi-year rollout == pure-physics rollout ──
+    cellmy(hooks) = begin
+        gc = zeros(NY)
+        for p in 1:P
+            g = rollout_canopy_years_gpp(phys, alloc, allom, st0, trees0_all[p], tmpls_all[p], soil, yearly_forcings; phens_by_year = phens_by_year, hooks = hooks)
+            gc .+= g ./ P
+        end
+        gc
+    end
+    gc_base = cellmy(FluxHooks())
+    nn = build_fdiff_nn(; targets = (:vm, :λ), width = 10, depth = 2, rng = StableRNG(42))
+    hooks_id = FluxHooks(vm = neural_vm_hook(nn), λ = neural_lambda_hook(nn))
+    @test all(isapprox.(cellmy(hooks_id), gc_base; rtol = 1.0e-10))   # untrained (zero-init) net = identity, per year
+
+    if VERSION < v"1.11"
+        ext = Base.get_extension(LPJmLFITEmulator, :FDiffTrainingExt)
+        @test ext !== nothing                                      # extension loaded (Lux/Zygote/Optimisers/Enzyme)
+
+        # per-year cell annual-GPP target from a KNOWN vm=1.15, λ=1.05 correction (loss/gradient non-zero)
+        tgt = cellmy(FluxHooks(vm = (_ -> 1.15), λ = (_ -> 1.05)))
+        # perturb the zero-init net so the hidden-layer gradients are non-zero too
+        flat0, re0 = Optimisers.destructure(nn.ps)
+        ps = re0(flat0 .+ 0.05 .* randn(StableRNG(3), length(flat0)))
+        lossf(p) = fdiff_cell_multiyear_gpp_loss(p, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, tgt)
+        @test isfinite(lossf(ps))
+
+        # ── (2) CELL-MULTIYEAR GRADIENT (Gauss–Newton per-patch decomposition) vs FiniteDifferences ──
+        (lval, dps) = ext._enzyme_cell_multiyear_grad(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, tgt)
+        @test lval ≈ lossf(ps) rtol = 1.0e-8                       # the decomposed primal equals the direct cell MSE
+        gz = Optimisers.destructure(dps)[1]
+        flat, re = Optimisers.destructure(ps)
+        @test all(isfinite, gz)
+        @test any(!iszero, gz)
+        fdm = central_fdm(5, 1)
+        for k in randperm(StableRNG(7), length(flat))[1:8]         # random parameter subset (full FD is O(nparams))
+            g_fd = fdm(ε -> lossf(re((v = copy(flat); v[k] += ε; v))), 0.0)
+            @test isapprox(gz[k], g_fd; rtol = 1.0e-4, atol = 1.0e-6)
+        end
+
+        # ── (3) TRAINING RECOVERS THE KNOWN CORRECTION on the multi-patch cell through the years ──
+        nn2 = build_fdiff_nn(; targets = (:vm, :λ), width = 10, depth = 2, rng = StableRNG(9))
+        loss_init = fdiff_cell_multiyear_gpp_loss(nn2.ps, nn2, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, tgt)
+        (ps2, hist) = train_fdiff_cell_multiyear_rollout!(
+            nn2, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, tgt;
+            epochs = 25, lr = 3.0e-2, ps = deepcopy(nn2.ps),
+        )
+        @test hist[end] < 0.1 * loss_init                          # Enzyme cell-multi-year training drives the loss down ≥ 90 %
+        hooks_tr = FluxHooks(vm = neural_vm_hook(nn2, ps2), λ = neural_lambda_hook(nn2, ps2))
+        @test isapprox(sum(cellmy(hooks_tr)), sum(tgt); rtol = 0.03)   # trained cell multi-year GPP matches the target
+    else
+        @info "NN cell × multi-year training: Enzyme-reverse gradient + training checks skipped on Julia " *
+            "$(VERSION) (Enzyme 0.13 internal compiler error on ≥ 1.11); verified on 1.10-lts (docs §18)."
+    end
+end

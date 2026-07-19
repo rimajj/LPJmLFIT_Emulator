@@ -849,3 +849,96 @@ it closes the GPP level without touching the seasonal shape, now with the effect
 consistently through the between-year allocation. ADR 0016 (addendum). The remaining open items are the
 cell-multi-year objective, per-PFT phenology for the evergreen/grass minority, and the
 upstream-Enzyme-on-Julia-≥1.11 guard-lift (§15).
+
+## 18. Update — NN training on the CELL × MULTI-YEAR objective against a real multi-year reference (scale-up step 7b-cell-multiyear)
+
+§16 fit the learned Vcmax/λ correction to the real C daily GPP on the full 25-patch cell for a SINGLE year
+(structure frozen). §17 fit ONE patch's per-year annual GPP THROUGH the between-year allocation, but against
+a *demo* target (2010 repeated) — flagging both the **cell-multi-year objective** and a **real multi-year
+reference** as the next steps. This step lands both: the cell-mean per-year annual GPP over several years,
+fit to the C binary's OWN per-year annual GPP, with every one of the 25 patches grown across years.
+
+**The composition — §16's cell decomposition through §17's multi-year rollout.** The objective is
+`Ḡ_y = (1/P)·Σ_p G_{p,y}(ps)`, the cell-mean over patches of each patch's year-`y` stand GPP `G_{p,y}` (from
+the SoA multi-year rollout `rollout_canopy_years_gpp`, §17), against the C's per-year annual GPP `T_y`. The
+cell MSE over years
+
+  `L(ps) = (1/NY)·Σ_y (Ḡ_y − T_y)²`
+
+is a sum of squares, so — exactly as in §16, but with the year index in place of the day index — its
+gradient factors into ONE reverse pass PER PATCH with detached Gauss–Newton residual weights:
+
+  `∂L/∂ps = Σ_p ∂/∂ps [ Σ_y c_y·G_{p,y}(ps) ]`,  `c_y = (2/(NY·P))·(Ḡ_y − T_y)`   (detached, at the current `ps`).
+
+The identity `Σ_p ∂G_{p,y}/∂ps = P·∂Ḡ_y/∂ps` makes this exact. Each per-patch pass `Σ_y c_y·G_{p,y}` is a
+linear functional of exactly the PROVEN single-patch multi-year rollout (§17), so the cell-multi-year
+gradient inherits its Enzyme-vs-FiniteDifferences correctness AND its Julia-1.10 compilation — there is
+**no** new monolithic multi-patch AD entry point. The per-patch gradients are summed by REUSING one
+`Duplicated` shadow across the patch loop (Enzyme accumulates `∂/∂ps` into the shadow), fresh per gradient
+call; each patch pass is ONE Enzyme reverse over the FULL multi-year rollout (no per-chunk TBPTT — the
+annual structure feedback stays inside the differentiated unit, as in §17). `fdiff_cell_multiyear_gpp_loss`
+/ `train_fdiff_cell_multiyear_rollout!` in the extension; driver `scripts/train_fdiff_cell_multiyear.jl`.
+
+**A real, committed multi-year reference (`scripts/extract_fdiff_cell_multiyear.py`).** The prerequisite
+§17 flagged — real multi-year forcing + per-year C annual-GPP targets — is produced by slicing data already
+on disk (no C re-run): the single-cell C re-run (`run_fdiff_validation_cell.sh`) already wrote the full
+2000–2019 daily forcing + daily C GPP/FAPAR, and the multi-year structure reconstruction
+(`extract_fdiff_individuals_multiyear.py`) already wrote the per-year per-patch individuals. The script
+commits a CI-runnable slice: the **2008** start-year 25-patch reconstructed structure
+(`hainich_individuals_2008.csv`), the per-year daily forcing for sim years **2009/2010/2011**
+(`hainich_multiyear_forcing.csv`), and those years' daily C GPP + FAPAR (`hainich_multiyear_targets.csv`).
+Start-of-year convention (matching the dynamic-structure validation §12): the rollout starts from 2008's
+reconstructed structure and simulates the subsequent years, so the structure entering each sim year is
+F_diff's OWN grown structure; the C annual-GPP trajectory is the target for that self-driven growth. Kernel
+isolation: the per-year daily leaf display is driven by that year's C FAPAR (`phens = fapar_C / peak`),
+isolating the Vcmax/λ level lever from phenology mismatch (the §16 discipline, across years).
+
+**Verification (gate `nn_canopy_training_tests.jl`, cell × multi-year testitem — 3 ragged patches × NY = 2,
+self-contained):**
+- **Identity** — the zero-init network (BOTH vm + λ hooks) reproduces the pure-physics cell multi-year
+  rollout, per-year **Δ = 0**.
+- **Cell-multi-year gradient vs FiniteDifferences** — the per-patch-decomposed cell-multi-year MSE gradient
+  matches FD on the FULL multi-patch multi-year loss to **max rel err 1.5e-10** (through the SoA structure →
+  daily rollout → grow → next-year chain, both levers); the decomposed primal equals the direct cell MSE.
+- **Recovery** — the cell-multi-year loop drives the loss down **98.8 %** in 25 epochs; trained cell GPP
+  within **0.07 %** of a known vm = 1.15 / λ = 1.05 target.
+
+**Result — the learned canopy Vcmax/λ lever closes the ANNUAL GPP LEVEL against the real C per-year annual
+GPP, over the full 25-patch cell, through the multi-year structure feedback.** Start structure 2008; sim
+years 2009/2010/2011; C per-year annual GPP (cell-mean) [1177.4, 1102.5, 1233.1] gC/m²/yr; kernel-isolation
+phenology = that year's C FAPAR:
+
+| lever | 2009 | 2010 | 2011 | mean ratio |
+|---|---:|---:|---:|---:|
+| baseline (identity) | 1.026 | 1.014 | 1.063 | 1.034 |
+| `:vm` | 0.992 | 0.981 | 1.022 | **0.998** |
+| `:vm, :λ` | 0.991 | 0.979 | 1.020 | **0.996** |
+
+(per-year model/C annual-GPP ratio; C targets [1177.4, 1102.5, 1233.1] gC/m²/yr.)
+
+The learned canopy Vcmax/λ correction closes the cell-mean annual-GPP LEVEL against the real C per-year
+annual GPP THROUGH the multi-year structure feedback — mean ratio **1.034 → 0.998** (`:vm`) → **0.996**
+(`:vm, :λ`) — with the level residual carried consistently across years by F_diff's OWN self-driven grown
+structure (the rollout starts from 2008 and grows; the C FAPAR drives only the leaf display). ONE shared
+correction is fit to all three years' cell-mean at once, so it trims the year-to-year SPREAD rather than
+zeroing each year independently: 2011 (the high outlier — a high-GPP year, baseline 1.063) lands at 1.02
+while 2009/2010 settle at ~0.98–0.99, and the mean sits at ≈1.0. This is the §16 within-year cell result
+(the Vcmax-shaped canopy residual closes the level while the daily/seasonal shape is preserved) now extended
+across years through the between-year allocation — the honest multi-year analogue. The λ head adds little
+over `:vm` alone here (0.998 → 0.996), consistent with §16 (the canopy level is Vcmax-shaped). Loss
+(mean-squared per-year annual-GPP error, gC²·m⁻⁴·yr⁻²) 2390 (identity) → ~434 (`:vm`) → ~419 (`:vm, :λ`).
+Cost: baseline forward over all 25 patches ~5 s; first cell-multi-year gradient ~413 s (one-time Enzyme
+compile of the multi-year reverse pass); ~34 s/epoch post-compile (25 per-patch reverses); the two-fit
+driver ≈ 30 min. Heavy runs like this belong on a compute node — `scripts/sbatch_train.sh
+scripts/train_fdiff_cell_multiyear.jl` submits it as a durable SLURM batch job.
+
+**What this milestone is — and is not.** This is the first honest cell fit *through* the structure feedback:
+the §16 cell-mean objective (the quantity the C actually reports) trained against the C's real per-year
+annual GPP trajectory (§17's demo target replaced by a committed real reference), with every patch grown by
+its own allocation across years. As in §16/§17 the correction is a **safe residual** on the calibrated
+physics (identity-at-init, bounded `1 + corr_max·tanh`). What it is NOT: a full multi-decade fit (the span
+is 3 years, bounded by the committed reconstruction 2008–2011) or a demography-coupled run (fixed-N canopy;
+whole-tree mortality/establishment is S's job). Remaining open items: **per-PFT phenology** for the
+evergreen/grass minority (one beech-GSI `phen` patch-wide today), **grass structure prognostic**
+(`grass_allocation.c`), and the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (§15). Runtime `[deps]` stays
+EMPTY. ADR 0016 (addendum).

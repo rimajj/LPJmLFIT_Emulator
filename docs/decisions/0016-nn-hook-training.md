@@ -148,6 +148,20 @@ The decision above landed in three steps (docs `phase3_fdiff_cbinary_validation.
   `train_fdiff_multiyear_rollout!`; gate multi-year testitem (identity Δ=0; recovery loss 16.2 → 0.12,
   99.3 %, trained GPP within 0.28 % of a known vm=1.15/λ=1.05 target). Single-patch entry point; the
   cell-multi-year objective is the next extension.
+- **§18 (step 7b-cell-multiyear)** — the **cell × multi-year** objective: the §16 per-patch Gauss–Newton
+  cell decomposition applied THROUGH the §17 multi-year structure feedback. The objective is the cell-mean
+  PER-YEAR annual GPP over several years vs the C's own per-year annual GPP, each of the 25 patches grown
+  across years. The cell MSE over years `L = (1/NY)·Σ_y (Ḡ_y − T_y)²`, `Ḡ_y = (1/P)·Σ_p G_{p,y}`, factors
+  exactly patch-by-patch (`∂L/∂ps = Σ_p ∂/∂ps Σ_y c_y·G_{p,y}`, `c_y = (2/(NY·P))(Ḡ_y − T_y)` detached), so
+  every reverse pass is the proven single-patch multi-year `rollout_canopy_years_gpp` Enzyme path — NO new
+  monolithic multi-patch AD entry point, and the shadow accumulates Σ_p by reuse across the patch loop.
+  Trainer `fdiff_cell_multiyear_gpp_loss` / `train_fdiff_cell_multiyear_rollout!`; gate cell-multi-year
+  testitem (identity per-year Δ=0; the per-patch-decomposed cell-multi-year gradient vs FiniteDifferences to
+  **max rel err 1.5e-10**; recovery loss down **98.8 %** in 25 epochs, trained cell GPP within **0.07 %** of
+  a known vm=1.15/λ=1.05 target). This lands against a REAL committed multi-year reference (the
+  `scripts/extract_fdiff_cell_multiyear.py` slice of the C re-run: start-year 2008 structure + per-year
+  2009–2011 forcing + per-year C annual GPP), the first honest cell fit through the structure feedback.
+  Runtime `[deps]` still EMPTY.
 
 **Open follow-ups** (updated). (a) ✅ **DONE (§17, step 7b-multiyear)** — the multi-year objective through
 the structure/allocation feedback is now Enzyme-differentiable (<1e-9 vs FD). The predicted culprit was
@@ -159,7 +173,10 @@ padding, every carried value concretely typed; the same discipline applies to `U
 (materialize to a concrete type up front) and to two-field state structs carried around a loop (carry the
 fields, not the struct). `Enzyme.API.maxtypeoffset!`/`maxtypedepth!` (size limits) and `looseTypeAnalysis!`
 (returns a WRONG gradient) are NOT correct workarounds — the only correct fix is to remove the untypeable
-value. (b) the **cell-multi-year objective** — §16's exact per-patch Gauss–Newton decomposition, each patch
-grown across years (every reverse pass = the proven single-patch `rollout_canopy_years_gpp` Enzyme path).
-(c) lifting the `VERSION < v"1.11"` guard once Enzyme compiles the mutating canopy reverse pass on Julia
-≥ 1.11.
+value. (b) ✅ **DONE (§18, step 7b-cell-multiyear)** — the **cell-multi-year objective**: §16's exact
+per-patch Gauss–Newton decomposition, each patch now grown across years (every reverse pass = the proven
+single-patch `rollout_canopy_years_gpp` Enzyme path; the accumulating `Duplicated` shadow gives Σ_p). Landed
+against a real committed multi-year reference; gate verified vs FiniteDifferences to 1.5e-10 and 98.8 %
+recovery. (c) lifting the `VERSION < v"1.11"` guard once Enzyme compiles the mutating canopy reverse pass on
+Julia ≥ 1.11. (d) **per-PFT phenology** for the evergreen/grass minority (one beech-GSI `phen` patch-wide
+today) and **grass structure prognostic** (`grass_allocation.c`).

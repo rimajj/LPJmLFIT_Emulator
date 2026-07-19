@@ -169,6 +169,37 @@ Requires the `FDiffTrainingExt` extension. Returns the best parameters and the p
 """
 function train_fdiff_multiyear_rollout! end
 
+"""
+    fdiff_cell_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, targets_by_year) -> Real
+
+Scalar mean-squared **cell-mean per-year annual-GPP** loss over a multi-year coupled canopy rollout: the
+cell GPP each year is the mean of the per-patch stand GPP (`Ḡ_y = mean_p rollout_canopy_years_gpp(trees0_all[p], …)[y]`),
+compared to the C-binary per-year annual `targets_by_year`. This composes the §16 CELL objective (one
+shared correction fit so the cell-mean matches the C) with the §17 MULTI-YEAR structure-feedback path (each
+patch grown across years). `trees0_all`/`tmpls_all` are per-patch vectors of per-individual pools +
+`Individual` templates; the shared `st0`/`soil`/`yearly_forcings`/`phens_by_year` are the cell drivers. Its
+exact gradient is computed patch-by-patch (Gauss–Newton reweighting) by the extension's
+`_enzyme_cell_multiyear_grad`, so every reverse pass is the proven single-patch multi-year
+`FDiff.rollout_canopy_years_gpp` Enzyme path. This scalar form is what the gate cross-checks against
+FiniteDifferences and what the trainer monitors. Requires the `FDiffTrainingExt` extension.
+"""
+function fdiff_cell_multiyear_gpp_loss end
+
+"""
+    train_fdiff_cell_multiyear_rollout!(nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, targets_by_year; epochs, lr, opt, ...) -> (ps, history)
+
+Train a single shared learned Vcmax/λ correction so the **cell-mean per-year** annual GPP matches the
+C-binary `targets_by_year` over a multi-year coupled canopy rollout of the multi-patch cell — the
+CELL × MULTI-YEAR objective (item 7b-cell-multiyear), composing the §16 cell decomposition with the §17
+multi-year structure feedback. Each epoch takes ONE Enzyme-reverse gradient of the cell MSE, decomposed
+patch-by-patch (Gauss–Newton reweighting, so every reverse pass is the proven single-patch multi-year
+`FDiff.rollout_canopy_years_gpp` path — no monolithic multi-patch AD), and one `Optimisers.update`; the
+whole multi-year rollout is a single differentiated unit per patch (no per-chunk TBPTT — the annual
+structure feedback must stay inside the differentiated unit). Requires the `FDiffTrainingExt` extension.
+Returns the best parameters and the per-epoch loss history.
+"""
+function train_fdiff_cell_multiyear_rollout! end
+
 # State
 export SharedState, NSOILLAYER, LASTLAYER, GPLHEAT, NHEATGRIDP, NTREEPOOLS, CLIMBUFSIZE
 # Interface payloads
@@ -186,6 +217,7 @@ export COMPONENTS, FLUXES, Component, Flux
 # container) is reached via `using LPJmLFITEmulator.FDiff`, matching the other F_diff types.
 export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!,
     fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!, fdiff_cell_gpp_loss, train_fdiff_cell_rollout!,
-    fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!
+    fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!,
+    fdiff_cell_multiyear_gpp_loss, train_fdiff_cell_multiyear_rollout!
 
 end # module

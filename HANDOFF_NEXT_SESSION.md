@@ -89,6 +89,66 @@ for HEAD.
   `train_fdiff_multiyear_rollout!`; gate multi-year testitem (identity Δ=0; recovery 99.3 %); runtime
   `[deps]` still EMPTY. The machinery is the deliverable; a real multi-year C fit needs a multi-year
   reference (next step). Report §17; ADR 0016 addendum.
+- **Phase-3 (session 13) — scale-up step 7b-cell-multiyear: NN TRAINING ON THE CELL × MULTI-YEAR OBJECTIVE
+  AGAINST A REAL MULTI-YEAR REFERENCE.** §17's two flagged next steps both land. Composes §16 (cell) with §17
+  (multi-year): the learned Vcmax/λ correction is trained so the **cell-mean PER-YEAR annual GPP** matches
+  the C binary's OWN per-year annual GPP over the full 25-patch Hainich cell, **every patch grown across
+  years** via the allocation. The cell MSE over years factors EXACTLY patch-by-patch (Gauss–Newton
+  reweighting, `c_y = (2/(NY·P))(Ḡ_y−T_y)` detached), so every reverse pass is the PROVEN single-patch
+  multi-year `rollout_canopy_years_gpp` Enzyme path (no monolithic multi-patch AD; per-patch grads summed
+  by reusing one accumulating `Duplicated` shadow). **Real committed reference** (no C re-run —
+  `scripts/extract_fdiff_cell_multiyear.py` slices data already on disk): 2008 start-year 25-patch structure
+  + per-year 2009–2011 forcing + per-year daily C GPP/FAPAR. `fdiff_cell_multiyear_gpp_loss`/
+  `train_fdiff_cell_multiyear_rollout!`; driver `scripts/train_fdiff_cell_multiyear.jl`; gate cell ×
+  multi-year testitem (identity per-year Δ=0; cell-multi-year grad vs FD 1.5e-10; recovery 98.8 %, GPP
+  within 0.07 %). **Result: mean cell-mean annual-GPP ratio 1.034 → 0.998 (`:vm`) → 0.996 (`:vm,:λ`) over sim years 2009/2010/2011 (per-year model/C ratio 1.026/1.014/1.063 → 0.992/0.981/1.022 with `:vm`); ONE shared correction fit to all years trims the year-to-year spread (2011 the high-GPP outlier, 1.063→1.02) rather than zeroing each year independently — the §16 within-year cell level result carried consistently across years through F_diff's own allocation.** Runtime `[deps]` still EMPTY. Report §18;
+  ADR 0016 addendum.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 13 (on `main`) — NN TRAINING ON THE CELL × MULTI-YEAR OBJECTIVE AGAINST A REAL MULTI-YEAR REFERENCE (scale-up step 7b-cell-multiyear)
+
+**The handoff's IMMEDIATE NEXT landed:** the cell-multi-year objective — §16's exact per-patch Gauss–Newton
+decomposition, each patch now grown across years — trained against a REAL multi-year C annual-GPP reference.
+It composes the two proven decompositions (§16 cell + §17 multi-year). (ADR 0016 addendum; report §18.)
+
+- **★ THE COMPOSITION — §16's CELL decomposition THROUGH §17's MULTI-YEAR rollout.** The objective is the
+  cell-mean per-year annual GPP `Ḡ_y = (1/P)·Σ_p G_{p,y}` (mean over patches of each patch's year-`y` stand
+  GPP from `rollout_canopy_years_gpp`) vs the C's per-year annual `T_y`. The cell MSE over years
+  `L = (1/NY)·Σ_y (Ḡ_y − T_y)²` factors EXACTLY patch-by-patch: `∂L/∂ps = Σ_p ∂/∂ps [Σ_y c_y·G_{p,y}]`,
+  `c_y = (2/(NY·P))·(Ḡ_y − T_y)` detached (`Σ_p ∂G_{p,y}/∂ps = P·∂Ḡ_y/∂ps` makes it exact). So every reverse
+  pass is the PROVEN single-patch multi-year `rollout_canopy_years_gpp` Enzyme path (§17) — **NO new
+  monolithic multi-patch AD entry point** — and the per-patch gradients are summed by reusing one
+  accumulating `Duplicated` shadow (fresh per gradient call). One Enzyme reverse per patch over the FULL
+  multi-year rollout per epoch (no per-chunk TBPTT — the annual structure feedback stays inside the
+  differentiated unit, as §17). `fdiff_cell_multiyear_gpp_loss` / `train_fdiff_cell_multiyear_rollout!` in
+  `ext/FDiffTrainingExt.jl` (+ parent stubs/exports); runtime `[deps]` still EMPTY.
+- **★ A REAL, COMMITTED MULTI-YEAR REFERENCE (no C re-run).** The prerequisite §17 flagged — real multi-year
+  forcing + per-year C annual-GPP targets — is produced by slicing data already on disk: the single-cell C
+  re-run (session 5) already wrote 2000–2019 daily forcing + daily C GPP/FAPAR, and the multi-year structure
+  reconstruction (session 8) already wrote per-year per-patch individuals. New
+  `scripts/extract_fdiff_cell_multiyear.py` commits a CI-runnable slice: `hainich_individuals_2008.csv`
+  (start-year 25-patch structure), `hainich_multiyear_forcing.csv` (per-year daily forcing 2009/2010/2011),
+  `hainich_multiyear_targets.csv` (those years' daily C GPP + FAPAR). C per-year annual GPP (cell-mean)
+  [1177.4, 1102.5, 1233.1] gC/m²/yr. Start-of-year convention (dynamic-structure validation §12): the
+  rollout starts from 2008's reconstructed structure and simulates the subsequent years, so the structure
+  entering each sim year is F_diff's own grown structure; kernel isolation drives each year's leaf display
+  by that year's C FAPAR (`phens = fapar_C/peak`).
+- **★ RESULT (full 25-patch Hainich, real 2008→2011 reference).** mean cell-mean annual-GPP ratio 1.034 → 0.998 (`:vm`) → 0.996 (`:vm,:λ`) over sim years 2009/2010/2011 (per-year model/C ratio 1.026/1.014/1.063 → 0.992/0.981/1.022 with `:vm`); ONE shared correction fit to all years trims the year-to-year spread (2011 the high-GPP outlier, 1.063→1.02) rather than zeroing each year independently — the §16 within-year cell level result carried consistently across years through F_diff's own allocation.
+- **★ GATE `nn_canopy_training_tests.jl` — new cell × multi-year testitem** (3 ragged patches × NY=2,
+  self-contained; Enzyme parts guarded `VERSION < v"1.11"`): (1) IDENTITY — zero-init net (both vm+λ) ==
+  pure-physics cell multi-year rollout, per-year Δ=0; (2) CELL-MULTIYEAR GRADIENT — the per-patch-decomposed
+  cell-multi-year MSE gradient vs FiniteDifferences on the FULL multi-patch multi-year loss, **max rel err
+  1.5e-10** (both levers); decomposed primal == direct cell MSE; (3) RECOVERY — the cell-multi-year loop
+  drives the loss down **98.8 %** in 25 epochs, trained cell GPP within **0.07 %** of a known vm=1.15/λ=1.05
+  target. The gate reaches the extension internal `_enzyme_cell_multiyear_grad` via `Base.get_extension`.
+- **★ WHAT THIS MILESTONE IS / IS NOT.** The first HONEST cell fit *through* the structure feedback: the
+  §16 cell-mean objective (the quantity the C reports) trained against the C's real per-year annual GPP
+  trajectory (§17's demo target replaced by a committed real reference), every patch grown by its own
+  allocation across years. NOT a multi-decade fit (3-year span, bounded by the committed 2008–2011
+  reconstruction) or a demography-coupled run (fixed-N canopy; whole-tree mortality/establishment is S's
+  job). **Cost:** baseline forward over all 25 patches ~5 s; first cell-multi-year gradient ~413 s (one-time
+  Enzyme compile); ~34 s/epoch post-compile (25 per-patch reverses); driver ≈ 35 min. Runtime `[deps]` EMPTY.
 
 ---
 
@@ -572,13 +632,23 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    `scripts/train_fdiff_multiyear.jl`; gate multi-year testitem (identity Δ=0; recovery loss 16.2→0.12,
    99.3 %, GPP within 0.28 % of a known vm=1.15/λ=1.05 target); §17; ADR 0016 addendum. Single-patch entry
    point; the *machinery* is the deliverable (a real multi-year C fit needs a multi-year reference — below).
-   **★ NEXT — the CELL-multi-year objective against a REAL multi-year reference:** apply §16's exact
-   per-patch Gauss–Newton decomposition with each patch now grown across years (every reverse pass = the
-   proven single-patch `rollout_canopy_years_gpp` Enzyme path; no monolithic multi-patch AD), training a
-   multi-year cell-mean GPP loss vs the C. First produce the multi-year forcing + per-year C annual-GPP
-   targets (`scripts/extract_fdiff_individuals_multiyear.py` → `/p/tmp/.../fdiff_structure/`; the driver's
-   flagged TODOs). Then **per-PFT phenology**, grass structure prognostic, and the
-   **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION < v"1.11"` guard on the Enzyme gates, §15).
+   **(b-cell-multiyear) ✅ DONE (session 13) — NN training on the CELL × MULTI-YEAR objective against a REAL
+   multi-year reference.** Composes §16 (cell) with §17 (multi-year): the learned Vcmax/λ correction is
+   trained so the cell-mean PER-YEAR annual GPP matches the C's own per-year annual GPP over the full
+   25-patch cell, each patch grown across years. The cell MSE over years factors EXACTLY patch-by-patch
+   (Gauss–Newton, `c_y = (2/(NY·P))(Ḡ_y−T_y)` detached), so every reverse pass is the proven single-patch
+   multi-year `rollout_canopy_years_gpp` Enzyme path (no monolithic multi-patch AD). Real committed reference
+   from `scripts/extract_fdiff_cell_multiyear.py` (2008 start structure + 2009–2011 forcing/targets, sliced
+   from data already on disk — no C re-run). `fdiff_cell_multiyear_gpp_loss`/`train_fdiff_cell_multiyear_rollout!`;
+   driver `scripts/train_fdiff_cell_multiyear.jl`; gate cell × multi-year testitem (identity per-year Δ=0;
+   cell-multi-year grad vs FD 1.5e-10; recovery 98.8 %, GPP within 0.07 %); §18. Result:
+   mean cell-mean annual-GPP ratio 1.034 → 0.998 (`:vm`) → 0.996 (`:vm,:λ`) over sim years 2009/2010/2011 (per-year model/C ratio 1.026/1.014/1.063 → 0.992/0.981/1.022 with `:vm`); ONE shared correction fit to all years trims the year-to-year spread (2011 the high-GPP outlier, 1.063→1.02) rather than zeroing each year independently — the §16 within-year cell level result carried consistently across years through F_diff's own allocation.
+   **★ NEXT:** **per-PFT phenology** for the evergreen/grass minority (one beech-GSI `phen` patch-wide
+   today); **grass structure prognostic** (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`)
+   + carbon-debt in the allocation; whole-tree mortality/establishment (S's demography, so the coupled loop
+   is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION < v"1.11"` guard on the
+   Enzyme gates, §15); and — for a longer trajectory — extend the committed reconstruction span beyond
+   2008–2011.
    **(c) Smaller residuals:** per-PFT phenology for the
    evergreen/grass minority (one beech-GSI `phen` patch-wide today); grass structure prognostic
    (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`, which — with the rare-day `rd`

@@ -34,7 +34,8 @@ using Lux: Random   # stdlib Random via Lux (the dep-free parent can't declare i
 import LPJmLFITEmulator: build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss,
     train_fdiff_rollout!, fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!,
     fdiff_cell_gpp_loss, train_fdiff_cell_rollout!,
-    fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!
+    fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!,
+    fdiff_cell_multiyear_gpp_loss, train_fdiff_cell_multiyear_rollout!
 
 # ── feature normalization (fixed climatological scales → O(1) NN inputs) ─────────────────────────
 # FDiff hands each hook the feature vector `[temp_°C, swdown, daylength_h, apar, w_soil, co2_ppm]`
@@ -607,6 +608,175 @@ function train_fdiff_multiyear_rollout!(
         end
         # monitor / best-parameter track with the UPDATED ps (a single forward — matches the canopy trainer's epoch_loss)
         epoch_loss = fdiff_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year)
+        push!(history, epoch_loss)
+        if epoch_loss < best_loss
+            best_loss = epoch_loss
+            best_ps = deepcopy(ps)
+        end
+        verbose && println("epoch $ep  loss=$(round(epoch_loss; sigdigits = 5))")
+    end
+    return (best_ps, history)
+end
+
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# CELL × MULTI-YEAR online-rollout training — the §16 per-patch Gauss–Newton CELL decomposition applied
+# THROUGH the §17 MULTI-YEAR structure/allocation feedback (scale-up step 7b-cell-multiyear; ADR 0016;
+# docs §18)
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# This is the COMPOSITION of the two proven decompositions this file already builds:
+#   • §16 (CELL): the LPJmL-FIT C GPP is a CELL-mean over the cell's patches, so ONE shared learned
+#     correction is trained so the cell-mean GPP matches the C, and the cell-MSE gradient factors into ONE
+#     reverse pass PER PATCH with DETACHED Gauss–Newton residual weights (no monolithic multi-patch AD).
+#   • §17 (MULTI-YEAR): each patch is grown across years by `rollout_canopy_years_gpp` (the pipe-model
+#     allocation regrows the pools between years; the reverse pass is Enzyme-typeable via struct-of-arrays).
+# Here the objective is the CELL-MEAN PER-YEAR annual GPP over several years vs the C's OWN per-year annual
+# GPP (`_enzyme_cell_grad` fits the cell-mean DAILY GPP within ONE frozen-structure year; this fits the
+# cell-mean ANNUAL GPP TRAJECTORY while every patch grows). The cell MSE over years
+#     L(ps) = (1/NY)·Σ_y (Ḡ_y − T_y)²,   Ḡ_y = (1/P)·Σ_p G_{p,y}(ps)     [G_{p,y} = patch p's year-y stand GPP]
+# is a sum of squares, so its EXACT gradient factors patch-by-patch with detached residual weights:
+#     ∂L/∂ps = (1/NY)·Σ_y 2(Ḡ_y − T_y)·∂Ḡ_y/∂ps = Σ_p ∂/∂ps [ Σ_y c_y·G_{p,y}(ps) ],
+#     c_y = (2/(NY·P))·(Ḡ_y − T_y)   (constant — evaluated at the current ps).
+# The identity Σ_p ∂G_{p,y}/∂ps = P·∂Ḡ_y/∂ps makes this EXACT. Each per-patch pass `Σ_y c_y·G_{p,y}` is a
+# linear functional of exactly the PROVEN single-patch multi-year rollout (`rollout_canopy_years_gpp`, §17),
+# so the cell-multi-year gradient inherits its Enzyme-vs-FiniteDifferences correctness AND its Julia-1.10
+# compilation — there is NO new monolithic multi-patch Enzyme entry point. The per-patch gradients are
+# summed by REUSING one `Duplicated` shadow across the patch loop (Enzyme ACCUMULATES `∂/∂ps` into the
+# shadow across successive `autodiff` calls, precisely Σ_p); the shadow is FRESH per gradient call. The
+# whole multi-year rollout is ONE differentiated unit per patch (NO per-chunk TBPTT — the annual structure
+# feedback must not be truncated, exactly as in the single-patch multi-year trainer).
+
+# forward-only per-year CELL-mean annual GPP over all patches (NO AD). `trees0_all`/`tmpls_all` are
+# per-patch vectors of per-individual pools + `Individual` templates; the shared `st0`/`soil`/
+# `yearly_forcings`/`phens_by_year` are the cell drivers. Returns the per-year cell-mean GPP `Ḡ_y` (length
+# NY = number of years).
+function _cell_multiyear_gpp(
+        ps, nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML,
+        trees0_all, tmpls_all, soil::SoilColumn, yearly_forcings, phens_by_year
+    )
+    hooks = hooks_from(nn, ps)
+    P = length(trees0_all)
+    NY = length(yearly_forcings)
+    gcell = zeros(Float64, NY)
+    for p in 1:P
+        g = LPJmLFITEmulator.FDiff.rollout_canopy_years_gpp(
+            phys, alloc, allom, st0, trees0_all[p], tmpls_all[p], soil, yearly_forcings;
+            phens_by_year = phens_by_year, hooks = hooks,
+        )
+        for y in 1:NY
+            gcell[y] += g[y] / P
+        end
+    end
+    return gcell
+end
+
+"""
+    fdiff_cell_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, targets_by_year) -> Real
+
+Scalar mean-squared **cell-mean per-year annual-GPP** loss over the multi-year multi-patch canopy rollout:
+the cell GPP each year is the mean of the per-patch stand GPP
+(`Ḡ_y = mean_p rollout_canopy_years_gpp(trees0_all[p], …)[y]`), compared to the C-binary per-year annual
+`targets_by_year`. This is the honest CELL × MULTI-YEAR validation objective (item 7b-cell-multiyear); its
+exact gradient is computed patch-by-patch by [`_enzyme_cell_multiyear_grad`](@ref) (Gauss–Newton
+reweighting), and this scalar form is what the gate cross-checks against FiniteDifferences and what the
+trainer monitors.
+"""
+function fdiff_cell_multiyear_gpp_loss(
+        ps, nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML,
+        trees0_all, tmpls_all, soil::SoilColumn, yearly_forcings, phens_by_year, targets_by_year
+    )
+    gcell = _cell_multiyear_gpp(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year)
+    NY = length(targets_by_year)
+    loss = zero(eltype(targets_by_year))
+    for y in 1:NY
+        loss += (gcell[y] - targets_by_year[y])^2
+    end
+    return loss / NY
+end
+
+# per-patch LINEAR multi-year GPP functional Σ_y weights[y]·G_{p,y} — the Enzyme entry point for the
+# cell-multi-year gradient (linear in the per-year stand GPP so, summed over patches with the detached
+# Gauss–Newton weights, it reproduces ∂(cell MSE)/∂ps exactly). Structurally identical to
+# `fdiff_multiyear_gpp_loss`'s use of `rollout_canopy_years_gpp` (same SoA multi-year kernel), so it
+# compiles on the same proven Julia-1.10 Enzyme path.
+function _patch_linear_multiyear_gpp(
+        ps, nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML,
+        trees0, tmpls, soil::SoilColumn, yearly_forcings, phens_by_year, weights
+    )
+    hooks = hooks_from(nn, ps)
+    g = LPJmLFITEmulator.FDiff.rollout_canopy_years_gpp(
+        phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings; phens_by_year = phens_by_year, hooks = hooks,
+    )
+    acc = zero(eltype(weights))
+    for y in eachindex(g)
+        acc += weights[y] * g[y]
+    end
+    return acc
+end
+
+# Enzyme reverse gradient of the cell-multi-year MSE w.r.t. `ps`, by the per-patch decomposition. Returns
+# `(loss, dps)`. ONE shadow `dps` is reused across the patch loop so Enzyme accumulates Σ_p; it is fresh
+# per call (never carried across epochs). `set_runtime_activity` for the λ-solve / allocation-solve `clamp`
+# conditionals. Each patch pass is ONE `autodiff` over the FULL multi-year rollout (the year loop's
+# structure feedback is inside the differentiated unit — not chunked/detached).
+function _enzyme_cell_multiyear_grad(
+        ps, nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML,
+        trees0_all, tmpls_all, soil::SoilColumn, yearly_forcings, phens_by_year, targets_by_year
+    )
+    gcell = _cell_multiyear_gpp(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year)
+    NY = length(targets_by_year)
+    P = length(trees0_all)
+    loss = zero(eltype(targets_by_year))
+    weights = Vector{Float64}(undef, NY)
+    for y in 1:NY
+        r = gcell[y] - targets_by_year[y]
+        loss += r^2
+        weights[y] = (2.0 / (NY * P)) * r            # detached Gauss–Newton residual weight
+    end
+    loss /= NY
+    dps = Enzyme.make_zero(ps)                       # ONE shadow — Enzyme accumulates Σ_p across the loop
+    RA = Enzyme.set_runtime_activity(Enzyme.ReverseWithPrimal)
+    for p in 1:P
+        Enzyme.autodiff(
+            RA, Enzyme.Const(_patch_linear_multiyear_gpp), Enzyme.Active,
+            Enzyme.Duplicated(ps, dps), Enzyme.Const(nn), Enzyme.Const(phys), Enzyme.Const(alloc),
+            Enzyme.Const(allom), Enzyme.Const(st0), Enzyme.Const(trees0_all[p]), Enzyme.Const(tmpls_all[p]),
+            Enzyme.Const(soil), Enzyme.Const(yearly_forcings), Enzyme.Const(phens_by_year), Enzyme.Const(weights),
+        )
+    end
+    return (loss, dps)
+end
+
+"""
+    train_fdiff_cell_multiyear_rollout!(nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, targets_by_year;
+                                        epochs=30, lr=1e-2, opt=Optimisers.Adam(lr), ps=deepcopy(nn.ps), verbose=false)
+        -> (ps, history)
+
+Train a single shared learned Vcmax/λ correction so the **cell-mean per-year** annual GPP matches the
+C-binary `targets_by_year` over the multi-year multi-patch canopy — the CELL × MULTI-YEAR objective (item
+7b-cell-multiyear), composing the §16 cell decomposition ([`train_fdiff_cell_rollout!`](@ref)) with the §17
+multi-year structure feedback ([`train_fdiff_multiyear_rollout!`](@ref)). Each epoch takes ONE Enzyme
+per-patch-decomposed gradient of the cell MSE ([`_enzyme_cell_multiyear_grad`](@ref)) and one
+`Optimisers.update` — the whole multi-year rollout is a single differentiated unit per patch (NO per-chunk
+TBPTT: the annual structure/allocation feedback must stay inside the differentiated unit). `epochs`
+re-descends. Returns the best (lowest full cell-multi-year loss) parameters and the per-epoch loss `history`.
+"""
+function train_fdiff_cell_multiyear_rollout!(
+        nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML,
+        trees0_all, tmpls_all, soil::SoilColumn, yearly_forcings, phens_by_year, targets_by_year;
+        epochs::Int = 30, lr::Real = 1.0e-2, opt = Optimisers.Adam(lr), ps = deepcopy(nn.ps), verbose::Bool = false
+    )
+    opt_state = Optimisers.setup(opt, ps)
+    history = Float64[]
+    best_ps = deepcopy(ps)
+    best_loss = Inf
+    for ep in 1:epochs
+        (l, dps) = _enzyme_cell_multiyear_grad(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, targets_by_year)
+        if isfinite(l)
+            opt_state, ps = Optimisers.update(opt_state, ps, dps)
+        else
+            verbose && @warn "non-finite loss/grad at epoch $ep — skipping update"
+        end
+        epoch_loss = fdiff_cell_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0_all, tmpls_all, soil, yearly_forcings, phens_by_year, targets_by_year)
         push!(history, epoch_loss)
         if epoch_loss < best_loss
             best_loss = epoch_loss
