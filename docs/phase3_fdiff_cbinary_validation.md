@@ -1222,3 +1222,43 @@ parallel ReTestItems pool shifted worker scheduling enough to trip a pre-existin
 fragility, not a defect here. Keeping the reproduction as a standalone script keeps that compilation out of the
 test pool while remaining committed + reproducible (re-add as a gate once Enzyme is robust — cf. the
 Enzyme-≥1.11 guard-lift TODO). Runtime `[deps]` stays EMPTY.
+
+## 23. CI fix — the `test (lts)` failure was an Enzyme 0.13.189 regression, not the test tree (step 11 follow-up)
+
+**Symptom.** After the step-11 pushes (`f65ca84`, `f1cdad1`, `6514fd7`) the required CI check **`test (lts)`**
+(Julia 1.10) — and the non-required `test (macOS, lts)` — failed with `LLVM error: Canonicalization failed`
+raised inside the Enzyme reverse pass of `fdiff_canopy_gpp_loss`/`fdiff_cell_gpp_loss`, in the canopy training
+testitems `nn_canopy_training_tests.jl:22` and `:145`. `test (1)` (Julia 1.11, where the `VERSION < v"1.11"`
+guards skip those Enzyme items) stayed green.
+
+**Root cause (bisected from the CI logs — conclusive).** The last green run, `a6d6975`, resolved **Enzyme
+v0.13.188** and those two canopy testitems PASSED (Test Summary: pass/broken, zero errors). The next push
+`f65ca84`, ~5 h later, resolved **Enzyme v0.13.189** and the same two items began erroring. The test tree is
+**byte-identical** between the two commits — `git diff a6d6975 6514fd7 -- test/` is empty (step 11 changed
+only docs, `scripts/grass_overshoot_diagnosis.jl`, and `.gitignore`). Because `test/Manifest.toml` is
+git-ignored, CI re-resolves the environment on every run, and the wide `[compat] Enzyme = "0.13"` let it
+auto-upgrade 0.13.188 → 0.13.189. **The single variable that changed for the canopy tests was the Enzyme
+patch version.** 0.13.189 is the latest published Enzyme (no fixed newer release exists), so an upstream bump
+is not yet available.
+
+**This corrects the session-17 (step-11) diagnosis.** Step 11 (§22 / HANDOFF Housekeeping) attributed the
+failure to adding the heavy grass re-diagnosis `@testitem`s "poisoning" the parallel ReTestItems worker pool,
+and reverted the test tree to `a6d6975` as the fix. That is **refuted by the evidence**: the revert (`6514fd7`)
+left CI red with the identical `LLVM error`, because the cause is the moving Enzyme dependency, not the test
+set. (The `retries = 2` in `f1cdad1` also could not help — a deterministic compile-time error, not a flake.)
+Keeping the grass reproduction as a SLURM script rather than a `@testitem` remains a reasonable way to keep a
+heavy Enzyme compile out of CI, but it was never the fix for this failure.
+
+**Fix.** Pin `Enzyme = "0.13.0 - 0.13.188"` in both the root and `test/Project.toml` `[compat]` (kept in
+sync). A fresh resolve on Julia 1.10 then lands on 0.13.188, the last-good version — and the green `a6d6975`
+CI run already proves 0.13.188 passes these exact (byte-identical) canopy testitems. **Verified locally**
+(SLURM, Julia 1.10, compute node, the pinned test env): `Pkg.status` reports Enzyme v0.13.188 and the full
+`nn_canopy_training_tests.jl` set (the two formerly-failing items + the multi-year items) passes.
+
+**Scope / non-goals.** Only `test (lts)` and `test (1)` are required branch-protection checks; `test (pre)`
+is `continue-on-error` (allowed to fail) and errors for an *unrelated* Julia-prerelease `ScopedValue` API
+break (`MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` at test-item
+scan time) — left as-is per the CI.yml policy. `test (macOS, lts)` (non-required extra-platform gate) failed
+for the same Enzyme reason and is fixed by the same pin. **Lift the pin** when a fixed Enzyme ships (retry
+alongside the Enzyme-≥1.11 guard-lift TODO); revisit whether to commit `test/Manifest.toml` so CI resolution
+is reproducible rather than picking up dependency patch bumps silently.

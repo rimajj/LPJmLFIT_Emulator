@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+- **CI `test (lts)` green again — the failure was an Enzyme 0.13.189 REGRESSION, not the test tree
+  (Phase-3 scale-up step 11 CI follow-up; docs §23).** Pinned `Enzyme = "0.13.0 - 0.13.188"` in both the
+  root and `test/Project.toml` `[compat]`. **Root cause (conclusively bisected from the CI logs):** the
+  green run `a6d6975` resolved **Enzyme v0.13.188** and the Enzyme-reverse canopy testitems
+  (`nn_canopy_training_tests.jl:22` and `:145`) PASSED; the very next push (`f65ca84`, ~5 h later) resolved
+  **v0.13.189** and those same items began failing with `LLVM error: Canonicalization failed`. The test
+  tree was **byte-identical** across the two commits (`git diff a6d6975 HEAD -- test/` is empty), and
+  `test/Manifest.toml` is git-ignored so CI re-resolves fresh each run and auto-upgraded 188 → 189. 0.13.189
+  is the latest published Enzyme, so the fix is to cap at the last-good 0.13.188 until a fixed Enzyme ships.
+  Only `test (lts)` is a REQUIRED check; `test (1)` (Julia 1.11, where the `VERSION < v"1.11"` guards skip
+  the Enzyme canopy items) stayed green; `test (macOS, lts)` (non-required) failed for the same Enzyme
+  reason and is fixed by the same pin; `test (pre)` is `continue-on-error` (allowed to fail) and fails for
+  an unrelated Julia-prerelease `ScopedValue` API break (`setindex!(::ScopedValue, ::Bool)`), untouched here.
+  - **Corrects the session-17 diagnosis.** Step 11 (below) attributed the failure to adding the heavy grass
+    re-diagnosis `@testitem`s "poisoning" the parallel ReTestItems worker pool, and reverted the test tree to
+    `a6d6975` as the fix. That is **refuted**: the revert (`6514fd7`) left CI still red with the identical
+    `LLVM error` — because the cause is the moving Enzyme dependency, not the test set. (Keeping the grass
+    reproduction as a SLURM script rather than a `@testitem` remains reasonable to keep a heavy compile out of
+    CI, but it was never the fix for this failure.)
+
 ### Added
 - **Grass-overshoot RE-DIAGNOSIS — the §21 per-PFT-conductance next step is REFUTED; roadmap corrected
   (Phase-3 scale-up step 11; docs §22).** Session 16 (§21) attributed the §20 self-driven grass-NPP

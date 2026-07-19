@@ -43,7 +43,12 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 FDiffTrainingExt = ["Lux", "Zygote", "Optimisers", "Enzyme"]
 
 [compat]
-Enzyme = "0.13"
+# PINNED to ≤ 0.13.188: Enzyme 0.13.189 regressed the Enzyme-reverse CANOPY path on Julia 1.10 (lts)
+# with an internal `LLVM error: Canonicalization failed` (nn_canopy_training_tests.jl:22 and :145).
+# 0.13.188 is the last-good release — CI was green on a6d6975 with 0.13.188 and red on the very next
+# push (f65ca84) once CI auto-upgraded to 0.13.189, with the test tree byte-identical. Lift this cap
+# when a fixed Enzyme ships. See docs/phase3_fdiff_cbinary_validation.md §23 / CHANGELOG.
+Enzyme = "0.13.0 - 0.13.188"
 Lux = "1"
 Optimisers = "0.4"
 Zygote = "0.6, 0.7"

@@ -1003,18 +1003,27 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
 - **Dependabot:** `.github/dependabot.yml` tamed (monthly + grouped); open PRs = 0.
 - **Signing:** commits are `G`-signed locally but show "Unverified" on GitHub (cosmetic; repo going
   public later — declined). Do not chase.
-- **Enzyme+ReTestItems CI fragility (session 17) — DIAGNOSED, worked around by NOT gating the heavy
-  reproduction.** Adding the grass re-diagnosis as 3 `@testitem`s (esp. the heavy per-cell conductance one)
-  made CI (`test (lts)`/`pre`/`macOS-lts`, Julia 1.10 + Enzyme 0.13) fail DETERMINISTICALLY with `LLVM error:
-  Canonicalization failed` in the UNRELATED Enzyme-reverse canopy testitems (`nn_canopy_training_tests.jl:22`
-  + `:145`) — the added testitems shifted the parallel-worker schedule so a heavy Enzyme testitem became a
-  cold-first compile on a "poisoned" worker. **`retries` did NOT help** — ReTestItems re-runs the retry on
-  the SAME worker (observed: 3 consecutive failures on worker 2498). **Resolution: keep the reproduction as a
-  standalone `scripts/grass_overshoot_diagnosis.jl` (run via SLURM), NOT a `@testitem`** — so the test set
-  equals the last-green commit (`a6d6975`) and CI is unperturbed. `test (1)`/1.11 was always green (Enzyme
-  guarded off there). If a FUTURE change to the test set trips this again on lts, the reliable fixes are (a)
-  a per-worker Enzyme warmup in `runtests.jl`'s `worker_init_expr` (compile the canopy reverse once, cached,
-  before any poison), or (b) an Enzyme 0.14 bump (same upstream as the ≥1.11 guard-lift TODO) — NOT `retries`.
+- **CI `test (lts)` red after step 11 → an Enzyme 0.13.189 REGRESSION; FIXED by pinning `Enzyme ≤ 0.13.188`
+  (session 18; docs §23, CHANGELOG "Fixed").** The `test (lts)` (+ non-required `test (macOS, lts)`) failures
+  with `LLVM error: Canonicalization failed` in `nn_canopy_training_tests.jl:22`/`:145` are a **moving-dependency
+  regression**, NOT the test set. Bisected from the CI logs: the green `a6d6975` run resolved **Enzyme
+  v0.13.188** and those canopy testitems PASSED; the next push `f65ca84` (~5 h later) resolved **v0.13.189** and
+  they began erroring — with the test tree **byte-identical** (`git diff a6d6975 6514fd7 -- test/` empty). Since
+  `test/Manifest.toml` is git-ignored, CI re-resolves each run and the wide `[compat] Enzyme = "0.13"` auto-upgraded
+  188 → 189. **Fix = `Enzyme = "0.13.0 - 0.13.188"` in BOTH root + `test/Project.toml` `[compat]`** (last-good;
+  0.13.189 is the latest published Enzyme, so no upstream fix yet). Verified: fresh resolve on Julia 1.10 → 0.13.188;
+  full `Pkg.test()` green.
+  - **This CORRECTS the earlier session-17 theory** (below) that the heavy grass `@testitem`s "poisoned" the
+    parallel ReTestItems worker pool: reverting the test tree to `a6d6975` (`6514fd7`) left CI red with the
+    identical error, so the worker-schedule hypothesis is refuted. `retries` (`f1cdad1`) also could not help — a
+    deterministic compile-time error, not a flake. (Keeping the grass reproduction as a SLURM script rather than a
+    `@testitem` is still fine — it keeps a heavy Enzyme compile out of CI — but it was never this failure's fix.)
+  - **Lift the pin** when a fixed Enzyme ships (retry with the Enzyme-≥1.11 guard-lift TODO). Consider committing
+    `test/Manifest.toml` so CI resolution is reproducible instead of silently picking up dependency patch bumps.
+  - `test (pre)` is `continue-on-error` (allowed to fail); it errors for an UNRELATED Julia-prerelease `ScopedValue`
+    API break (`setindex!(::ScopedValue, ::Bool)` at test-item scan) — not our code, left as-is.
+  - _[superseded theory, kept for the record]_ Session 17 believed adding the grass re-diagnosis `@testitem`s
+    shifted worker scheduling so a heavy Enzyme testitem cold-compiled on a "poisoned" worker. Refuted above.
 
 ## Commit history on `main` (recent)
 `e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the

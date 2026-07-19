@@ -25,7 +25,10 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 # (test/testitems/gradient_correctness_tests.jl) uses Enzyme reverse-mode + ForwardDiff vs
 # FiniteDifferences ground truth through the daily rollout.
 [compat]
-Enzyme = "0.13"
+# PINNED to ≤ 0.13.188: Enzyme 0.13.189 regressed the Enzyme-reverse canopy path on Julia 1.10 with
+# `LLVM error: Canonicalization failed` (nn_canopy_training_tests.jl:22/:145). 0.13.188 is last-good
+# (CI green on a6d6975). Kept in sync with the root Project.toml cap. Lift when a fixed Enzyme ships.
+Enzyme = "0.13.0 - 0.13.188"
 FiniteDifferences = "0.12"
 ForwardDiff = "1"
 Lux = "1"
