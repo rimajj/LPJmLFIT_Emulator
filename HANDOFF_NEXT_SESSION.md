@@ -118,6 +118,69 @@ for HEAD.
   grass understory shaded). Only `hainich_canopy_baseline_2010.txt` moved; the Enzyme training path keeps its
   scalar C-FAPAR phen. Gate `per_pft_phenology_tests.jl`; suite **26,106 pass / 0 fail / 4 broken**;
   adversarially verified (0 blockers). Report §19; CHANGELOG. Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 15) — scale-up step 9: PROGNOSTIC GRASS structure — the `allocation_grass.c` port.**
+  The multi-year rollout grew only trees; grasses were held fixed AND structurally dropped (the `ind`-output
+  reconstruction gives grass rows `leaf_c=crownarea=nind=0`, so a round-trip through `individual_from_pools`/
+  `_patch_fpars_soa` zeroed grass). Grass leaf/root carbon are now PROGNOSTIC via a faithful differentiable
+  port of the NATURAL-veg annual grass sequence `turnover_grass.c`→`allocation_grass.c` — essential for
+  running F_diff on grasslands (no trees). `grow_grass_individual` + `grass_allocparams` (temperate C3 grass
+  id 8 verbatim from `par/pft_lpjmlfit.js`) + `grass_treepools(agb, vegc, sla)` (per-area convention:
+  leaf=agb, root=vegc−agb, `crownarea=nind=1` ⇒ the existing `fpar`/`fpc` recompute reproduces the C exactly);
+  wired into both rollouts via a `galloc` kwarg (grass branch fires only for `is_grass` ⇒ every TREE baseline +
+  the Enzyme trainer byte-identical). **Allocation faithful (the deliverable):** golden vs `allocation_grass.c`
+  across every branch < 1e-5; conservation 4.4e-16; fed the C's grass NPP the grass equilibrates to leaf:root
+  0.791 vs the C's 0.799. **Honest finding:** the self-computed grass NPP is ~3× the C's (grass shares the beech
+  photosynthesis/respiration params), so a self-driven grass overshoots — the grass-NPP calibration is the NEXT
+  step (parallel to the tree NPP calibration, §13). Gate `grass_structure_tests.jl` (5 testitems: param
+  fidelity, golden+conservation, equilibrium-fed-C-NPP, ForwardDiff through the coupled multi-year rollout,
+  Enzyme reverse guarded `VERSION<1.11`); suite **26,166 pass / 0 fail / 4 broken**; adversarially verified.
+  Report §20; CHANGELOG. Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 15 (on `main`) — PROGNOSTIC GRASS STRUCTURE: THE `allocation_grass.c` PORT (scale-up step 9)
+
+**The handoff's first-listed NEXT landed:** grass leaf/root carbon are now prognostic — a faithful,
+differentiable, AD-safe port of the LPJmL-FIT NATURAL-veg annual grass carbon allocation
+(`turnover_grass.c` → `allocation_grass.c`), essential for running F_diff on grasslands (where trees are
+absent entirely). (Report §20; CHANGELOG.)
+
+- **★ THE GAP.** Through §19 the multi-year rollout grew only trees; grass was held fixed by `grow_individual`
+  AND structurally dropped: the `ind`-output reconstruction gives grass rows `leaf_c = crownarea = nind = 0`
+  (grass is a per-**area** cohort, carried via `lai`/`fpc`/`fpar`, not per-individual-count), so a round-trip
+  through `individual_from_pools`/`_patch_fpars_soa` (which derive structure from those zeros) produced a dead
+  grass cohort — every multi-year test filtered grass out (`type ≤ 6`).
+- **★ THE PORT (`grow_grass_individual`).** Closed-form carbon math: leaf turns over daily + root monthly
+  (annual pool `→ pool·(1 − rate)`, `turnover_daily_grass.c`/`turnover_monthly_grass.c`); reproduction reserve
+  removed before allocation; natural-veg full-reallocation partitions `bm_net` at `lmtorm = lmro_ratio·
+  (lmro_offset + (1 − lmro_offset)·min(1, wscal))` with the no-reallocation caps + the negative-leaf branch
+  (`allocation_grass.c:87-118`). `grass_allocparams` = temperate C3 grass (id 8) verbatim from the active
+  `par/pft_lpjmlfit.js` (`lmro_ratio 0.8`, `lmro_offset 0.5`, leaf rate 1.0, root rate 0.5 after the
+  `fscanpft_grass.c:124` reciprocal, `reprod_cost 0.1`).
+- **★ THE PER-AREA CONVENTION (`grass_treepools`).** Reconstructs grass from the two grass columns the `ind`
+  output carries: leaf = `agb` (`agb_grass.c:25`), root = `vegc − agb`; sets `crownarea = nind = 1` so
+  `lai = leaf_c·sla` and `fpc = 1 − e^{−k·lai}`. **With this convention NO change to
+  `individual_from_pools`/`_patch_fpars_soa` was needed** — the grass `fpar` recompute reproduces the C to
+  5 s.f. (0.03042 vs 0.0304233). Wired into `rollout_canopy_years`/`rollout_canopy_years_gpp` via a `galloc`
+  kwarg; the grass branch fires only for `is_grass`, so all TREE baselines + the Enzyme trainer are
+  **byte-identical**.
+- **★ ALLOCATION FAITHFULNESS (the deliverable, gate-verified).** Golden vs `allocation_grass.c` across every
+  branch (positive/zero/negative bm; the negative-leaf reallocation) **< 1e-5**; carbon conservation
+  Δ(leaf+root) = bm_net − turnover **4.4e-16**; fed the C's Hainich grass NPP (patch-15 `npp = 10.73`) from a
+  cold start the grass equilibrates to leaf:root **0.791 vs the C's 6.406/8.023 = 0.799** (within 3 %,
+  magnitudes ~8 %) — the `bm_inc_ext` crutch, exactly as the TREE allocation was validated (§12) before its
+  self-NPP was calibrated (§13).
+- **★ THE HONEST FINDING — the self-computed grass NPP is uncalibrated (~3×).** With the pools live the grass
+  gets its per-m² respiration (`nind = 1`) but still the **beech** photosynthesis/respiration params, so
+  F_diff's self-computed grass NPP at the C structure is **31.8 vs the C's 10.7** and a self-driven grass
+  overshoots (leaf 6.4 → ~48, lai 0.27 → 2.0 over 8 yr). Precisely the tree story — the grass ALLOCATION is
+  the deliverable; the grass-NPP calibration is the documented NEXT (see below). Until then, grass-inclusive
+  multi-year runs should drive grass with the C's grass NPP crutch.
+- **★ GATE `grass_structure_tests.jl`** (5 self-contained testitems): param fidelity + reconstruction; golden
+  vs C + conservation + bounds; equilibrium-fed-C-NPP → C structure; ForwardDiff (scalar + d(ΣGPP)/d(α_c3)
+  through the coupled multi-year grass-inclusive rollout, AD=FD=6020.82) vs FiniteDifferences; Enzyme reverse
+  through the grass-inclusive multi-year path (grad vs FD `rtol 1e-4`, guarded `VERSION < 1.11`). Suite
+  **26,166 pass / 0 fail / 4 broken**; Runic-clean; adversarially verified. Runtime `[deps]` stays EMPTY.
 
 ---
 
@@ -714,14 +777,30 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    4/8.5). **Result: cell GPP ratio vs C 1.134→1.097, daily r 0.988→0.993.** The Enzyme training path keeps
    its scalar C-FAPAR phen (untouched). Gate `per_pft_phenology_tests.jl`; only `hainich_canopy_baseline_2010.txt`
    moved; suite 26,106 pass / 0 fail / 4 broken; adversarially verified (0 blockers). §19; CHANGELOG.
-   **★ NEXT:** **grass structure prognostic** (`grass_allocation.c`); below-ground root-sapwood (`sapwood_bg`)
-   + carbon-debt in the allocation (**scouted: `sapwood_bg` is a GENUINE SEPARATE carbon pool, `tree.h:50`,
-   NOT a fraction of the sapwood pool — a faithful port needs its own establishment/allocation/turnover state
-   through the SoA multi-year rollout, higher AD risk**); whole-tree mortality/establishment (S's demography,
-   so the coupled loop is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION <
-   v"1.11"` guard on the Enzyme gates, §15); and — for a longer trajectory — extend the committed
-   reconstruction span beyond 2008–2011. Phenology-fidelity follow-ups: the per-individual `minwscal`
-   corridor sampling (now → PFT median) and a canopy-consistent (non-lag) grass forest-floor light.
+   **(grass-structure) ✅ DONE (session 15) — prognostic grass structure: the `allocation_grass.c` port
+   (scale-up step 9).** Grass leaf/root carbon are now prognostic via a faithful differentiable port of the
+   NATURAL-veg annual grass sequence `turnover_grass.c`→`allocation_grass.c`: `grow_grass_individual` +
+   `grass_allocparams` (temperate C3 grass id 8 verbatim from `par/pft_lpjmlfit.js`) + `grass_treepools(agb,
+   vegc, sla)` (per-area convention leaf=agb/root=vegc−agb/`crownarea=nind=1` ⇒ the existing `fpar`/`fpc`
+   recompute reproduces the C exactly, no change needed to `individual_from_pools`/`_patch_fpars_soa`); wired
+   into both rollouts via a `galloc` kwarg (grass branch fires only for `is_grass` ⇒ every TREE baseline + the
+   Enzyme trainer byte-identical). **Allocation faithful (golden < 1e-5, conservation 4.4e-16, fed the C's
+   grass NPP the grass equilibrates to leaf:root 0.791 vs the C's 0.799).** **Self-computed grass NPP ~3× the
+   C's (grass shares the beech photosynthesis/respiration params) — a self-driven grass overshoots** (the
+   documented next step, below). Gate `grass_structure_tests.jl` (5 testitems incl. ForwardDiff + Enzyme
+   through the grass-inclusive multi-year rollout); suite 26,166 pass / 0 fail / 4 broken; adversarially
+   verified. §20; CHANGELOG.
+   **★ NEXT:** **grass NPP calibration** (the direct follow-up to make the self-driven grass physical:
+   grass-specific Vcmax / `respcoeff` / temperature-optimum instead of the beech params, + the `fpc_grass.c`
+   cover competition that caps grass fpc — measure the self-driven grass leaf/root vs the committed C grass
+   reference `hainich_individuals_{2008,2010}.csv`); below-ground root-sapwood (`sapwood_bg`) + carbon-debt in
+   the allocation (**scouted: `sapwood_bg` is a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of
+   the sapwood pool — a faithful port needs its own establishment/allocation/turnover state through the SoA
+   multi-year rollout, higher AD risk**); whole-tree mortality/establishment (S's demography, so the coupled
+   loop is not fixed-N); the **upstream-Enzyme-on-Julia-≥1.11 guard-lift** (the `VERSION < v"1.11"` guard on
+   the Enzyme gates, §15); and — for a longer trajectory — extend the committed reconstruction span beyond
+   2008–2011. Phenology-fidelity follow-ups: the per-individual `minwscal` corridor sampling (now → PFT
+   median) and a canopy-consistent (non-lag) grass forest-floor light.
    **(c) Smaller residuals:** grass structure prognostic (`grass_allocation.c`); below-ground root-sapwood
    (`sapwood_bg`, which — with the rare-day `rd` conductance gate — is the small remaining respiration
    residual, both documented in §13) + carbon-debt in the allocation; whole-tree mortality/establishment

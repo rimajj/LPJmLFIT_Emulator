@@ -35,6 +35,7 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     petpar_daylength, patch_albedo,
     AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
     rollout_canopy_years_gpp,
+    grass_allocparams, grass_treepools, grow_grass_individual,
     agb_ind, vegc_ind,
     FluxHooks
 
@@ -1718,7 +1719,11 @@ end
 #     `leaf/1.05` form (`turnover_tree.c:102`);
 #   • the raingreen `cmass_excess` (`turnover_tree.c:83`) is skipped (≤0 for beech: `longevity·365 > 365 ≥
 #     aphen`, verified);
-#   • grasses hold structure fixed (no woody allocation — `grass_allocation.c` is a separate v2 item);
+#   • grasses now grow their leaf/root pools via a faithful port of the NATURAL-veg branch of
+#     `allocation_grass.c` + `turnover_grass.c` ([`grow_grass_individual`](@ref)); the per-area grass
+#     convention (`crownarea = nind = 1`) carries the leaf/root carbon per-m². v1 simplifications there:
+#     the pool→structure light recompute shares the beech `k_beer`, grass maintenance respiration reuses
+#     the beech `RespParams`, and the reproduction growing-days fraction is taken as 1 (as for trees);
 #   • establishment + whole-tree mortality are S's demography, held fixed (fixed-N prototype).
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 """
@@ -1919,6 +1924,92 @@ function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tre
     return TreePools{T}(lm, sm, hm, rm, height_new, crownarea_new, convert(T, tree.nind), sla, wd, tree.is_grass)
 end
 
+"""
+    grass_allocparams(::Type{T}=Float64) -> AllocParams{T}
+
+Allocation/turnover parameters for the temperate C3 grass (PFT id 8) — the Hainich understory grass —
+verbatim from the ACTIVE `par/pft_lpjmlfit.js`: `lmro_ratio` 0.8, `lmro_offset` 0.5, leaf turnover rate
+1.0 (`turnover.leaf` 1.0 → full annual leaf renewal), root turnover rate 0.5 (`turnover.root` 2.0 →
+`1/2` after the `fscanpft_grass.c:124` reciprocal), `reprod_cost` 0.1. The woody/Newton fields are unused
+by [`grow_grass_individual`](@ref) (grass has no sapwood/heartwood/allometry solve).
+"""
+grass_allocparams(::Type{T} = Float64) where {T <: Real} =
+    AllocParams{T}(; lmro_ratio = 0.8, lmro_offset = 0.5, turnover_leaf = 1.0, turnover_root = 0.5, reprod_cost = 0.1)
+
+"""
+    grass_treepools(agb, vegc, sla; nind=1.0, wooddens=0.0) -> TreePools
+
+Reconstruct a per-area grass [`TreePools`](@ref) from the LPJmL-FIT `ind`-output `agb`/`vegc` (gC/m², the
+`hainich_individuals_*.csv` grass columns). Grass leaf carbon = `agb` (`agb_grass.c:25` = `leaf·nind`,
+i.e. `lai/sla` per-m²); root carbon = `vegc − agb` (grass has no woody pools, so `vegc = leaf + root`).
+The **per-area convention** carries `crownarea = nind = 1` so the pool→structure recompute reproduces the
+grass canopy: `lai = leaf_c·sla` and `fpc = 1 − e^{−k·lai}` (both [`individual_from_pools`](@ref) and
+[`_patch_fpars_soa`](@ref) require `crownarea > 0` and `nind > 0`); `height = sapwood_c = heartwood_c = 0`.
+Advance one year with [`grow_grass_individual`](@ref).
+"""
+function grass_treepools(agb, vegc, sla; nind = 1.0, wooddens = 0.0)
+    T = promote_type(typeof(float(agb)), typeof(float(vegc)), typeof(float(sla)))
+    leaf = convert(T, agb); root = max(convert(T, vegc) - leaf, zero(T))
+    return TreePools{T}(leaf, zero(T), zero(T), root, zero(T), one(T), convert(T, nind), convert(T, sla), convert(T, wooddens), true)
+end
+
+"""
+    grow_grass_individual(alloc::AllocParams, tree::TreePools, bm_inc_ind, wscal_mean) -> TreePools
+
+Advance one GRASS cohort's leaf/root carbon by one year — a faithful differentiable port of the LPJmL-FIT
+NATURAL-vegetation annual grass sequence `turnover_grass.c` → `allocation_grass.c` (`annual_grass.c:29-30`,
+`landusetype == NATURAL`). Given the accumulated per-area biomass increment `bm_inc_ind` (gC/m² = Σ daily
+NPP, the per-m² grass basis with `nind = 1`) and the annual-mean stand water scalar `wscal_mean ∈ [0,1]`
+(drives `lmtorm`). Pure and differentiable — closed-form carbon math (no allometry solve). Returns the
+grown grass [`TreePools`](@ref) (`sapwood_c = heartwood_c = height = 0` preserved; `crownarea`/`nind`/`sla`
+carried). Non-grass individuals are returned unchanged (grow trees with [`grow_individual`](@ref)).
+
+Turnover (NATURAL, no-N): leaf turns over DAILY (`turnover_daily_grass.c`) and root MONTHLY
+(`turnover_monthly_grass.c`), each accumulating against the within-year-constant pool → the annual pool is
+reduced by `pool·turnover_rate` (`leaf → leaf·(1 − r_leaf)`, `root → root·(1 − r_root)`). Reproduction
+(`turnover_grass.c:45`) removes `bm·reprod_cost` before allocation (the growing-days fraction is exactly 1
+on the NATURAL path — `daily_natural.c:82`). Allocation (`allocation_grass.c:87-118`, natural-veg full-reallocation, `with_nitrogen=no`
+⇒ `vscal = 1`): `lmtorm = lmro_ratio·(lmro_offset + (1−lmro_offset)·min(1, wscal))`; the leaf increment
+solves today's `lmtorm` (`inc_leaf = (bm + root − leaf/lmtorm)/(1 + 1/lmtorm)`) with the no-reallocation
+caps (`inc_leaf ∈ [·, bm]`) and the negative-leaf reduction branch (`allocation_grass.c:97-110`). The
+`min(1, wscal)` is the AD-safe `smoothmin` (as [`grow_individual`](@ref)).
+"""
+function grow_grass_individual(alloc::AllocParams, tree::TreePools{T0}, bm_inc_ind, wscal_mean) where {T0}
+    tree.is_grass || return tree
+    T = promote_type(T0, typeof(float(bm_inc_ind)), typeof(float(wscal_mean)))
+    bm = convert(T, bm_inc_ind)
+    leaf = convert(T, tree.leaf_c); root = convert(T, tree.root_c)
+    # ── turnover_grass.c (NATURAL, no-N): annual pool reduction = pool·rate (leaf daily, root monthly) ──
+    leaf_t = leaf * (one(T) - convert(T, alloc.turnover_leaf))   # temperate C3: rate 1.0 ⇒ full annual leaf renewal
+    root_t = root * (one(T) - convert(T, alloc.turnover_root))   # rate 0.5 ⇒ 2-yr root residence
+    # ── reproduction reserve removed from bm_inc before allocation (turnover_grass.c:45; the growing-days
+    # fraction = patch->growing_days/NDAYYEAR is EXACTLY 1 on the NATURAL path — growing_days increments
+    # unconditionally each day, daily_natural.c:82, reset only at year end) ──
+    bm_net = bm >= 0 ? bm * (one(T) - convert(T, alloc.reprod_cost)) : bm
+    # ── allocation_grass.c natural-veg branch (with_nitrogen=no ⇒ vscal=1 ⇒ min(vscal,wscal)=min(1,wscal)) ──
+    lmtorm = convert(T, alloc.lmro_ratio) *
+        (convert(T, alloc.lmro_offset) + (one(T) - convert(T, alloc.lmro_offset)) * smoothmin(one(T), convert(T, wscal_mean), T(30.0)))
+    inc_leaf = zero(T); inc_root = zero(T)
+    if lmtorm < T(1.0e-10)
+        inc_leaf = zero(T); inc_root = bm_net                       # allocation_grass.c:89-93
+    else
+        inc_leaf = (bm_net + root_t - leaf_t / lmtorm) / (one(T) + one(T) / lmtorm)   # :96
+        if inc_leaf < zero(T)                                       # negative allocation to leaf (:97-110)
+            inc_root = bm_net
+            inc_leaf = (root_t + inc_root) * lmtorm - leaf_t
+        else
+            (bm_net > 0 && inc_leaf > bm_net) && (inc_leaf = bm_net)   # no reallocation from roots to leaves (:113-114)
+            inc_root = bm_net - inc_leaf                            # :115
+        end
+    end
+    leaf_new = leaf_t + inc_leaf                                    # allocation_grass.c:125
+    root_new = root_t + inc_root                                    # :126
+    return TreePools{T}(
+        leaf_new, zero(T), zero(T), root_new, zero(T), convert(T, tree.crownarea),
+        convert(T, tree.nind), convert(T, tree.sla), convert(T, tree.wooddens), true,
+    )
+end
+
 # ── per-patch layered Beer–Lambert light (getfpar.c) → per-individual leaf-on fpar ────────────────
 # Recomputes each tree's absorbed-PAR fraction as heights change across years (the light competition
 # feedback). Fixed `nlayers` loop (AD-safe; layers above the tallest tree contribute 0 naturally). The
@@ -2031,9 +2122,11 @@ Multi-year COUPLED rollout of one patch canopy: for each year, (1) recompute per
 `fpar` from the current [`TreePools`](@ref) heights ([`_patch_fpars`](@ref)); (2) build the daily
 [`Individual`](@ref)s ([`individual_from_pools`](@ref)); (3) run the differentiable daily canopy
 ([`rollout_daily_canopy`](@ref)) accumulating each individual's per-m² `bm_inc = Σ npp_ind` and the
-annual-mean stand water scalar; (4) GROW each tree ([`grow_individual`](@ref)) from its per-individual
-`bm_inc/nind`. This is the flux-then-integrate S↔F loop (DESIGN §8) with the allocation as the carbon
-handoff. Soil water carries across years (continuous); GSI phenology cold-starts each year (v1). Returns
+annual-mean stand water scalar; (4) GROW each individual from its per-individual `bm_inc/nind` — trees via
+[`grow_individual`](@ref) (pipe-model allocation), grasses via [`grow_grass_individual`](@ref) (the
+`allocation_grass.c` natural-veg branch; `galloc` = the grass allocation/turnover params). This is the
+flux-then-integrate S↔F loop (DESIGN §8) with the allocation as the carbon handoff. Soil water carries
+across years (continuous); GSI phenology cold-starts each year (v1). Returns
 the final `TreePools`, final soil state, the per-year pools trajectory, and per-year cell aggregates
 `(gpp, npp, agb, vegc, mean_height, wscal_mean)` (per-m²/m).
 
@@ -2047,7 +2140,7 @@ function rollout_canopy_years(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
         trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
         yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing,
-        hooks::FluxHooks = _NO_HOOKS
+        galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS
     ) where {T}
     trees = collect(trees0)
     st = st0
@@ -2076,7 +2169,8 @@ function rollout_canopy_years(
         for i in 1:n
             tr = trees[i]
             bm_ind = bm_year[i] / (tr.nind + T(1.0e-12))
-            newtrees[i] = grow_individual(alloc, allom, tr, bm_ind, wscal_mean)
+            newtrees[i] = tr.is_grass ? grow_grass_individual(galloc, tr, bm_ind, wscal_mean) :
+                grow_individual(alloc, allom, tr, bm_ind, wscal_mean)
         end
         agb = sum(agb_ind(newtrees[i]) * newtrees[i].nind for i in 1:n)
         vegc = sum(vegc_ind(newtrees[i]) * newtrees[i].nind for i in 1:n)
@@ -2103,8 +2197,9 @@ end
 allocation feedback (docs §17; scale-up step 7b-multiyear). Same physics as [`rollout_canopy_years`](@ref)
 — for each year: recompute the layered `fpar` from the current heights, build the daily
 [`Individual`](@ref)s, fold [`daily_step_canopy`](@ref) accumulating each individual's per-m²
-`bm_inc = Σ npp_ind` + the annual-mean stand water scalar, then GROW each tree
-([`grow_individual`](@ref)) — but the evolving per-individual pool state is carried as **struct-of-arrays**
+`bm_inc = Σ npp_ind` + the annual-mean stand water scalar, then GROW each individual (trees via
+[`grow_individual`](@ref); grasses via [`grow_grass_individual`](@ref), `galloc` = grass alloc params) —
+but the evolving per-individual pool state is carried as **struct-of-arrays**
 (plain `Vector{T}` field arrays, NOT a `Vector{TreePools}`). This is what makes the reverse pass
 Enzyme-typeable: on the multi-year path the trees are the ACTIVE outputs of `grow_individual`, and a
 `Vector{TreePools}` field-scatter (`trees[i].height → scratch[i]`) raises `EnzymeNoTypeError` (the struct's
@@ -2119,7 +2214,7 @@ function rollout_canopy_years_gpp(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
         trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
         yearly_forcings; phens_by_year = nothing, nlayers::Int = 60, n_top1m::Int = 3,
-        hooks::FluxHooks = _NO_HOOKS
+        galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS
     ) where {T}
     n = length(trees0)
     # initial per-individual pool state as struct-of-arrays (iteration over the Const trees0 — never a
@@ -2173,12 +2268,15 @@ function rollout_canopy_years_gpp(
         wcol = st.w; snow = st.snowpack       # carry the soil column into next year (as fields, not the struct)
         gpp_by_year[yr] = gpp_yr
         wscal_mean = wsum / max(nd, 1)
-        # GROW each tree via SoA: rebuild a single TreePools, advance it, scatter the grown fields back
-        # into fresh arrays (the next year's structure). No `Vector{TreePools}` is ever field-scattered.
+        # GROW each individual via SoA: rebuild a single TreePools, advance it (trees via the pipe-model
+        # `grow_individual`; grasses via the `allocation_grass.c` `grow_grass_individual`), scatter the grown
+        # fields back into fresh arrays (the next year's structure). No `Vector{TreePools}` field-scatter.
         nh = zeros(T, n); nl = zeros(T, n); nsap = zeros(T, n); nheart = zeros(T, n); nroot = zeros(T, n); nc = zeros(T, n)
         for i in 1:n
             tri = TreePools{T}(leafcs[i], sapcs[i], heartcs[i], rootcs[i], heights[i], crowns[i], ninds[i], slas[i], wds[i], isgrass[i])
-            g = grow_individual(alloc, allom, tri, bm_perm2[i] / (ninds[i] + T(1.0e-12)), wscal_mean)
+            bm_ind = bm_perm2[i] / (ninds[i] + T(1.0e-12))
+            g = isgrass[i] ? grow_grass_individual(galloc, tri, bm_ind, wscal_mean) :
+                grow_individual(alloc, allom, tri, bm_ind, wscal_mean)
             nh[i] = g.height; nl[i] = g.leaf_c; nsap[i] = g.sapwood_c
             nheart[i] = g.heartwood_c; nroot[i] = g.root_c; nc[i] = g.crownarea
         end

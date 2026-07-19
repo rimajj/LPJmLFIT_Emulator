@@ -7,6 +7,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Prognostic GRASS structure — the `allocation_grass.c` port (Phase-3 scale-up step 9; docs §20).** The
+  multi-year rollout previously grew only trees; grasses were held fixed and — because the `ind`-output
+  reconstruction gives grass rows `leaf_c = crownarea = nind = 0` (grass is a per-**area** cohort) — were
+  structurally dropped from the multi-year path. Grass leaf/root carbon are now PROGNOSTIC via a faithful
+  differentiable port of the LPJmL-FIT NATURAL-veg annual grass sequence `turnover_grass.c` →
+  `allocation_grass.c` (`annual_grass.c:29-30`) — essential for running F_diff on grasslands.
+  - **`grow_grass_individual(alloc, tree, bm_inc_ind, wscal_mean)`** — closed-form carbon math: leaf turns
+    over daily + root monthly (annual pool `→ pool·(1 − rate)`); reproduction reserve removed before
+    allocation; natural-veg full-reallocation partitions `bm_net` at `lmtorm = lmro_ratio·(lmro_offset +
+    (1 − lmro_offset)·min(1, wscal))` with the no-reallocation caps + negative-leaf branch.
+  - **`grass_allocparams()`** — temperate C3 grass (id 8) verbatim from the active `par/pft_lpjmlfit.js`
+    (`lmro_ratio 0.8`, `lmro_offset 0.5`, leaf turnover rate `1.0`, root `0.5`, `reprod_cost 0.1`).
+  - **`grass_treepools(agb, vegc, sla)`** — per-area reconstruction (leaf = `agb`, root = `vegc − agb`,
+    `crownarea = nind = 1`); with this convention the existing `fpar`/`fpc` recompute reproduces the C
+    (recomputed grass `fpar = 0.03042` vs the C's `0.0304233`). Wired into `rollout_canopy_years`/
+    `rollout_canopy_years_gpp` via a `galloc` kwarg; the grass branch fires only for `is_grass` individuals,
+    so all committed TREE baselines + the Enzyme trainer are **byte-identical**.
+  - **Allocation faithfulness (the deliverable):** golden-vs-`allocation_grass.c` across every branch
+    **< 1e-5**; carbon conservation **4.4e-16**; fed the C's grass NPP the allocation equilibrates to the
+    C's grass leaf:root **0.791 vs 0.799** (the `bm_inc_ext` crutch, as the tree allocation was validated
+    before its self-NPP was calibrated in §13).
+  - **Honest finding:** F_diff's SELF-computed grass NPP is ~3× the C's (grass shares the beech
+    photosynthesis/respiration params), so a self-driven grass overshoots — the grass-NPP calibration is the
+    documented next step (parallel to the tree NPP calibration, §13).
+  - **Gate `grass_structure_tests.jl`** (5 testitems): param fidelity + reconstruction; golden + conservation
+    + bounds; equilibrium-fed-C-NPP → C structure; ForwardDiff (scalar + through the coupled multi-year
+    grass-inclusive rollout) vs FD; Enzyme reverse through the grass-inclusive multi-year path (guarded
+    `VERSION < 1.11`). Runtime `[deps]` stays EMPTY.
 - **Per-PFT GSI leaf phenology (Phase-3 scale-up step 8; docs §19).** Generalizes the self-computed leaf
   phenology (§11) from ONE beech GSI applied patch-wide to PER-PFT: the LPJmL-FIT config runs
   `phenology_gsi` for every natural PFT (`lpjmlfit.js` `"new_phenology":true` + `"individual":true`; the

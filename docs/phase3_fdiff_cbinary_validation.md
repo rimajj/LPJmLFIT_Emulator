@@ -1018,3 +1018,79 @@ phen, byte-identical). Documented v1 simplifications: the per-individual `minwsc
 C's individual mode is collapsed to the PFT **median**; the grass forest-floor light is a **lag-1**
 attenuation from the previous day's tree leaf display; and the `aphen` COLDEST_DAY reset (`newpft.c`) is
 omitted (as in the §11 beech port). Runtime `[deps]` stays EMPTY.
+
+## 20. Update — prognostic GRASS structure: the `allocation_grass.c` port (scale-up step 9)
+
+Through §19 the multi-year structure rollout grew only **trees**: `grow_individual` returns grass
+unchanged, and — more fundamentally — grass was structurally *dropped* from the multi-year path. The
+committed `ind`-output reconstruction gives grass rows `leaf_c = root_c = crownarea = nind = 0` (grass is a
+per-**area** cohort, carried in the daily canopy via `lai`/`fpc`/`fpar`, not per-individual-count), so a
+round-trip through `individual_from_pools`/`_patch_fpars_soa` (which derive structure from
+`crownarea`/`leaf_c`/`nind`) zeroed grass to a dead cohort. Every multi-year test/script therefore filtered
+grass out (`type ≤ 6`). This step makes grass leaf/root carbon **prognostic** — a faithful differentiable
+port of the LPJmL-FIT NATURAL-veg annual grass sequence `turnover_grass.c` → `allocation_grass.c`
+(`annual_grass.c:29-30`, `landusetype == NATURAL`) — essential for the ESM goal of running F_diff on
+grasslands (where trees are absent entirely).
+
+**The per-area grass convention.** `grass_treepools(agb, vegc, sla)` reconstructs a grass `TreePools` from
+the two grass columns the `ind` output *does* carry: leaf carbon = `agb` (`agb_grass.c:25` `= leaf·nind`,
+i.e. `lai/sla`, per-m²) and root carbon = `vegc − agb` (grass has no woody pools, so `vegc = leaf + root`).
+It sets `crownarea = nind = 1` (the per-area convention: `lai = leaf_c·sla` and `fpc = 1 − e^{−k·lai}`,
+both of which the existing recompute needs `> 0`) and `height = sapwood_c = heartwood_c = 0`. With this
+convention **no change to `individual_from_pools`/`_patch_fpars_soa` was needed** — the grass `fpar`
+recompute already reproduces the C: at the committed Hainich structure the recomputed grass `fpar = 0.03042`
+matches the C's `fpar_leafon = 0.0304233` to 5 s.f.
+
+**The allocation port (`grow_grass_individual`).** Closed-form carbon math (no allometry solve): leaf turns
+over **daily** (`turnover_daily_grass.c`) and root **monthly** (`turnover_monthly_grass.c`), each
+accumulating against the within-year-constant pool ⇒ the annual pool is reduced by `pool·rate`
+(`leaf → leaf·(1 − r_leaf)`, `root → root·(1 − r_root)`); the reproduction reserve (`turnover_grass.c:45`)
+removes `bm·reprod_cost` before allocation (growing-days fraction ≈ 1, v1, as for the tree path); and the
+natural-veg full-reallocation (`allocation_grass.c:87-118`, `with_nitrogen = no` ⇒ `vscal = 1`) partitions
+`bm_net` between leaf and root at `lmtorm = lmro_ratio·(lmro_offset + (1 − lmro_offset)·min(1, wscal))`,
+including the no-reallocation caps and the negative-leaf reduction branch (`:97-110`). (The reproduction
+growing-days fraction is *exactly* 1 on the NATURAL path — `patch->growing_days` increments unconditionally,
+`daily_natural.c:82` — so this is not an approximation.) `grass_allocparams`
+holds the temperate C3 grass (id 8) numbers **verbatim from the active `par/pft_lpjmlfit.js`**:
+`lmro_ratio 0.8`, `lmro_offset 0.5`, leaf turnover rate `1.0` (full annual renewal), root turnover rate
+`0.5` (`turnover.root 2.0 → 1/2` after the `fscanpft_grass.c:124` reciprocal), `reprod_cost 0.1`.
+
+**Allocation faithfulness (the deliverable, gate-verified).**
+- **Golden** — `grow_grass_individual` reproduces a direct hand-port of the `allocation_grass.c` natural-veg
+  formula across **every** branch (positive / zero / negative `bm`; the negative-leaf reallocation) to
+  **< 1e-5** (the residual = the AD-safe `smoothmin(1, wscal)` vs the C's hard `min`).
+- **Conservation** — Δ(leaf + root) = `bm_net − (leaf_turnover + root_turnover)` to **4.4e-16** (the
+  allocation invents no carbon, net of turnover).
+- **Equilibrium fed the C's grass NPP** (the `bm_inc_ext` crutch, exactly as the *tree* allocation was
+  validated in §12 before the self-NPP was calibrated in §13): fed the C's Hainich grass NPP (patch-15
+  grass `npp = 10.73`), from a cold start the grass equilibrates to leaf:root = **0.791** vs the C's
+  `6.406/8.023 = 0.799` (within 3 %), with leaf/root magnitudes within ~8 % — the allocation reproduces the
+  C's grass structure when given the C's carbon.
+
+**The honest finding — the self-computed grass NPP is uncalibrated (~3×).** With the grass carbon pools now
+live, the daily canopy gives the grass its physically-correct per-m² respiration (`nind = 1`), but the grass
+still uses the **beech** `PhotoParams`/`RespParams`/temp-stress. F_diff's self-computed grass NPP at the C's
+structure is **31.8 vs the C's 10.7** (~3×), so a **self-driven** grass overshoots (leaf 6.4 → ~48, lai
+0.27 → 2.0 over 8 years). This is *precisely* the tree story — §6 shipped the tree allocation with the
+self-NPP still a crutch (`bm_inc_ext`), and §13 later calibrated it (the `βgrowth` growth-resp floor +
+fine-root phen-gating). The grass allocation is the deliverable here; the **grass NPP calibration**
+(grass-specific Vcmax / `respcoeff` / temperature optimum, and the `fpc_grass.c` cover competition) is the
+documented next step. Until then, grass-inclusive multi-year runs should drive the grass with the
+`bm_inc_ext` crutch (the C's grass NPP), as the gate does.
+
+**AD-safe, additive by construction.** `grow_grass_individual` is scalar carbon math (no arrays, no struct
+field-scatter), so it is Enzyme-typeable on the multi-year SoA path by the same argument as
+`grow_individual`. The grass branch (`isgrass[i] ? grow_grass_individual(galloc, …) : grow_individual(…)`)
+fires **only** for `is_grass` individuals, and every existing caller passes trees only — so all committed
+tree baselines and the Enzyme trainer are **untouched** (byte-identical). Gate `grass_structure_tests.jl`
+(five self-contained testitems): param fidelity + reconstruction; golden-vs-C + conservation + bounds;
+equilibrium-fed-C-NPP → C structure; **ForwardDiff** d(grown pools)/d(bm, wscal) and d(ΣGPP)/d(α_c3)
+*through the coupled multi-year grass-inclusive rollout* vs finite differences; and **Enzyme reverse**
+through the grass-inclusive multi-year training path (grad vs FD `rtol 1e-4`, guarded `VERSION < 1.11` as
+the other Enzyme canopy gates). Runtime `[deps]` stays EMPTY.
+
+**v1 simplifications (documented).** The grass pool→structure light recompute shares the beech `k_beer`
+(0.59 vs the grass 0.5); grass maintenance respiration reuses the beech `RespParams`; the reproduction
+growing-days fraction is taken as 1 (as for trees); and — the load-bearing one — the self-computed grass NPP
+is uncalibrated (grass shares the beech photosynthesis parameters), so the faithful validation uses the C's
+grass NPP as the carbon input.
