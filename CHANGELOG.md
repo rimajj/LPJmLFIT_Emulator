@@ -28,6 +28,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     CI, but it was never the fix for this failure.)
 
 ### Added
+- **Grass-overshoot RE-DIAGNOSIS #2 — the §22 cover-competition next step targets an INACTIVE code path;
+  the real gap is a light-limited grass carbon balance (Phase-3 scale-up step 11 follow-up; docs §24).**
+  §22 (session 17) corrected the roadmap to porting the LPJmL grass cover competition
+  (`light.c`→`light_grass.c`→`fpc_grass.c`, "kills excess grass leaf/root to litter"). Re-examined against the
+  actually-active FIT code path + a per-patch SLURM reproduction on the committed Hainich 2008/2010 reference;
+  no physics change (corrected diagnosis + two committed reproductions + roadmap correction).
+  - **Finding 1** — the FIT config runs `"individual":true` (`lpjmlfit.js:34`), and `annual_natural.c:117`
+    gates `light()` behind `if(!config->individual)` — so `light()`/`light_grass()` are **never called**. The
+    individual-mode cover reduction is `establishmentpft_ind.c:168-176` → `reduce_grass()`, which is **only**
+    `pft->fpc /= factor` (`reduce_grass.c`; no carbon killed) and is gated on **total** cover `fpc_total > 1`
+    — inactive in the typical Hainich patch (tree+grass FPC < 1). Porting `light_grass.c` carbon-killing would
+    add a mechanism the C does not run in this config — the *same class of error* §22 caught in §21.
+  - **Finding 2** — the C's grass leaf is a smooth monotone function of forest-floor light (0.011 → 215 gC/m²
+    across the 25 patches) satisfying the steady-state balance NPP ≈ 1.8·leaf at *every* patch — bounded by the
+    light-limited carbon balance alone, no hard cap.
+  - **Finding 3** — F_diff's grass genuinely OVERSHOOTS even with trees held at the C's own structure (Exp A,
+    identical forest-floor light): grass leaf median **92.5 (50–194)** vs the C's **6.5 (0.01–215)**, median
+    ratio **×13.9**, deep-shade patches ×100–6900, cross-patch corr **0.57** (compressed, not light-tracking).
+    Real + structural — not a tree-growth or §22-repro setup artifact.
+  - **Finding 4** — the mechanism is an **under-light-limited grass NPP, ~2–3× the C at matched absorbed
+    light** (the grass absorbed-PAR reproduces the C's `fpar_leafon` — §20's 5-s.f. match — so the light
+    *absorption* is faithful; the gap is GPP/NPP per unit absorbed light). F_diff's grass makes ~2.9 gC/m²/yr
+    NPP even at ~zero leaf/light, nearly the same in a shaded vs a bright patch — a light-insensitive NPP floor.
+    Through the turnover balance this becomes the extinct-vs-thriving divergence. **Vindicates session 15's
+    original "~3× grass NPP" as a per-patch, per-light fact** — §22's "faithful 0.83×" was a cell-total ratio
+    dominated by the few high-leaf patches, masking the shaded-patch overshoot.
+  - **Corrected next step** — a **light-limited grass carbon balance** (grass GPP/NPP → 0 under deep shade,
+    scaling with the already-faithful absorbed light), pinned with a light- vs conductance-limitation
+    decomposition (prime suspects: the `gc·fpc` conductance term uses the un-attenuated grass cover while the
+    light term uses the tree-attenuated `fpar`, `water_stressed.c:194`/`fdiff.jl:1518`; and the single stand
+    `gmin` vs the C's grass `gmin=0.8`). **Grass-specific** (the tree path — decadal GPP ×1.066, §21 — stays
+    byte-identical) and AD-safe. **NOT** `light.c`/`light_grass.c` cover competition (inactive), **NOT** per-PFT
+    conductance (§22), **NOT** grass photosynthesis params (grass `temp_photos` 10/30 would *raise* NPP at cool
+    Hainich temps). Reproductions `scripts/grass_cover_mechanism_diagnosis.jl` + `scripts/grass_lightbalance_probe.jl`
+    (self-checking `@assert`s). Runtime `[deps]` stays EMPTY.
 - **Grass-overshoot RE-DIAGNOSIS — the §21 per-PFT-conductance next step is REFUTED; roadmap corrected
   (Phase-3 scale-up step 11; docs §22).** Session 16 (§21) attributed the §20 self-driven grass-NPP
   overshoot (~3×) to the shared stand-mean conductance `gp_stand` "over-supplying the understory grass" and

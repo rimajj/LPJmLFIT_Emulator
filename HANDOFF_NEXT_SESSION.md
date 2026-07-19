@@ -166,6 +166,65 @@ for HEAD.
   competition, NOT per-PFT conductance.** Gate
   reproduction script `scripts/grass_overshoot_diagnosis.jl`; no physics change (diagnosis + roadmap correction).
   Report §22; CHANGELOG. Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 18) — CI FIX: the `test (lts)` red was an Enzyme 0.13.189 REGRESSION, not the test tree.**
+  Pinned `Enzyme = "0.13.0 - 0.13.188"` in both root + `test/Project.toml` `[compat]` (last-good; 0.13.189
+  auto-upgraded via the git-ignored `test/Manifest.toml` and broke the Enzyme-reverse canopy testitems with
+  `LLVM error: Canonicalization failed`). Corrected the session-17 worker-poisoning theory. Report §23; CHANGELOG.
+- **Phase-3 (session 19) — scale-up step 11 follow-up: GRASS-OVERSHOOT RE-DIAGNOSIS #2 — §22's cover-competition
+  next step targets an INACTIVE code path; the real gap is a light-limited grass carbon balance.** §22's corrected
+  next step (port `light.c`→`light_grass.c`→`fpc_grass.c` to "kill excess grass leaf/root to litter") targets a
+  path the FIT config does NOT run: `"individual":true` ⇒ `annual_natural.c:117` gates `light()` behind
+  `if(!config->individual)`, so `light_grass()` is never called; the individual-mode reduction is `reduce_grass`
+  (fpc-only, `pft->fpc/=factor`, no carbon killed, gated on total cover > 1 which is < 1 at Hainich). The same
+  class of error §22 caught in §21. **The overshoot is nonetheless REAL** (per-patch SLURM reproduction, trees
+  FIXED at the C structure so forest-floor light is identical): grass leaf median **92.5 (50–194)** vs the C's
+  **6.5 (0.011–215)**, median ratio **×13.9**, cross-patch corr **0.57** — F_diff's grass is compressed and
+  insensitive to shading while the C's spans four orders of magnitude. **Mechanism:** an under-light-limited
+  grass NPP, **~2–3× the C at matched absorbed light** (grass fpar reproduces the C's `fpar_leafon`, so light
+  *absorption* is faithful; the gap is GPP/NPP per absorbed light — a light-insensitive NPP floor of ~2.9
+  gC/m²/yr even at ~zero light). **Vindicates session 15's "~3× NPP" as a per-patch fact; §22's "0.83×" was a
+  cell-total masking it.** No physics change (as §22): deliverable = corrected diagnosis + two committed
+  self-checking reproductions (`scripts/grass_cover_mechanism_diagnosis.jl`, `scripts/grass_lightbalance_probe.jl`)
+  + roadmap correction. Report §24; CHANGELOG. Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 19 (on `main`) — GRASS-OVERSHOOT RE-DIAGNOSIS #2: THE §22 COVER-COMPETITION NEXT STEP TARGETS AN INACTIVE CODE PATH (scale-up step 11 follow-up)
+
+**§22's corrected next step is itself wrong — this session proves it and re-points the roadmap at the true
+fix.** §22 (session 17) refuted the §21 per-PFT-conductance step and set the next step as porting the LPJmL grass
+cover/light competition (`light.c`→`light_grass.c`→`fpc_grass.c`). Reading the ACTUALLY-ACTIVE FIT code path +
+a per-patch SLURM reproduction shows that port targets a code path the FIT config never runs, and the real
+overshoot is a light-limited **carbon-balance** gap, not a missing cover cap. No physics change (as §22): the
+deliverable is the corrected diagnosis, its two committed reproductions, and the roadmap correction. (Report §24;
+CHANGELOG.)
+
+- **★ FINDING 1 — `light()`/`light_grass()` are NEVER called in the FIT config (`"individual":true`).**
+  `annual_natural.c:117` gates the entire cover-competition call behind `if(!config->individual)`. The
+  individual-mode grass cover reduction is `establishmentpft_ind.c:168-176` → `reduce_grass()` = **only**
+  `pft->fpc /= factor` (`reduce_grass.c`; `Litter*`/`Config*` args `UNUSED` — no carbon killed), gated on
+  **total** patch cover `fpc_total > 1` — which never fires at Hainich (tree+grass FPC < 1, e.g. patch 0:
+  0.44 + 0.07 = 0.51). So porting `light_grass.c` carbon-killing adds a mechanism the C does not run — the same
+  class of error §22 caught in §21. The C's grass here is bounded by the **light-limited carbon balance alone**.
+- **★ FINDING 2 — the C's grass leaf is a smooth monotone function of forest-floor light** (0.011 → 215 gC/m²
+  across the 25 patches; shaded `plai≈4` → grass ≈ 0.01, open `plai≈1.4` → grass ≈ 215), satisfying the
+  steady-state balance **NPP ≈ 1.8·leaf** at *every* patch — the carbon-balance fingerprint, no hard cap.
+- **★ FINDING 3 — F_diff genuinely OVERSHOOTS even with trees fixed at the C's structure** (Exp A, identical
+  forest-floor light; `scripts/grass_cover_mechanism_diagnosis.jl`, SLURM 1534524): grass leaf median **92.5
+  (50–194)** vs C **6.5 (0.011–215)**, median ratio **×13.87**, deep-shade patches ×100–6900, cross-patch corr
+  **0.57**. Compressed + light-insensitive (not the §22-repro setup artifact, not tree-growth).
+- **★ FINDING 4 — the mechanism is an under-light-limited grass NPP, ~2–3× the C at matched absorbed light.**
+  F_diff's grass fpar reproduces the C's `fpar_leafon` (patch 15: 0.0304 vs 0.03042, the §20 match) — light
+  *absorption* is faithful; the gap is GPP/NPP per absorbed light. `scripts/grass_lightbalance_probe.jl`
+  (SLURM 1534531): in shaded patch 3 (floor 0.14, C grass extinct at NPP 0.005) F_diff makes NPP **2.94** even
+  at leaf 0.01 (fapar 5e-5), and its low-leaf NPP is ≈ the same in a shaded vs a bright patch — a light-insensitive
+  floor. Through the turnover balance this ~2–3× surplus becomes the extinct-vs-thriving divergence. **Vindicates
+  session 15's "~3× NPP" as a per-patch fact; §22's "0.83×" was a cell-total ratio dominated by the few high-leaf
+  patches, masking it.**
+- **★ RULED OUT.** Grass photosynthesis params are NOT the fix — grass `temp_photos` 10/30 vs beech 20/30 would
+  *raise* NPP at cool Hainich temps; `albedo_leaf` 0.23 vs 0.15 is a ~9 % trim (consistent with §22).
+- **★ REPRODUCTIONS** (both committed, self-checking `@assert`s, SLURM, `--project=.`): verified job 1534549
+  (MECH_OK: median Exp A/C > 5, corr < 0.75, ≥1 patch > 100×; PROBE_OK: the light-insensitive NPP floor).
 
 ---
 
@@ -927,15 +986,32 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    MULTI-YEAR structural-feedback over-growth
    (leaf → LAI → forest-floor `fpar` → NPP), unbounded because F_diff lacks the C's grass COVER/LIGHT
    competition (`light.c` → `light_grass.c` kills excess grass leaf/root back to the permitted cover). Gate
-   reproduction `scripts/grass_overshoot_diagnosis.jl`. §22; CHANGELOG.
-   **★ NEXT (corrected):** **grass COVER / LIGHT competition** (`light.c` → `light_grass.c` → `fpc_grass.c`)
-   — the negative feedback that hard-caps understory-grass cover at `(1 − tree cover)` and kills the excess
-   leaf/root to litter, the REAL fix that makes grass-inclusive self-driven multi-year rollouts physical
-   (session-17 finding). Optionally pair it with the C's supply-side per-layer soil-water competition
-   (`water_stressed.c:153-179`, the C-faithful lever for the grass water status). **NOT** per-PFT/per-individual
-   canopy conductance (session-16's proposed step) — that is diagnostic-only in the C's GPP and would DEGRADE
-   the validated tree GPP. Grass-specific photosynthesis params (temp-opt 10/30, `alphaa` 0.5, `albedo_leaf`
-   0.23, `k_beer` 0.5) are a faithful minor improvement (grass NPP 0.83 → 0.90) but do not touch the runaway.
+   reproduction `scripts/grass_overshoot_diagnosis.jl`. §22; CHANGELOG. **[SUPERSEDED by session 19 / §24 —
+   the cited `light.c`→`light_grass.c` path is INACTIVE in the FIT config (`individual:true`); see below.]**
+   **(grass-rediagnosis-2) ✅ DONE (session 19) — §22's cover-competition next step targets an INACTIVE code
+   path; the real gap is a light-limited grass carbon balance (scale-up step 11 follow-up).** In the FIT config
+   (`"individual":true`, `lpjmlfit.js:34`) `annual_natural.c:117` gates `light()` behind `if(!config->individual)`
+   — so `light()`/`light_grass()` are NEVER called; the individual-mode cover reduction is `reduce_grass`
+   (fpc-only, no carbon killed, gated on total cover > 1, which is < 1 at Hainich). So the §22 port would add a
+   non-faithful mechanism — the same class of error §22 caught in §21. Per-patch SLURM reproduction (trees FIXED
+   at the C structure): grass leaf median 92.5 (50–194) vs C 6.5 (0.011–215), median ratio ×13.9, cross-patch
+   corr 0.57 — a REAL, structural overshoot. Mechanism: an under-light-limited grass NPP ~2–3× the C at matched
+   absorbed light (grass fpar reproduces the C's `fpar_leafon`; the gap is GPP/NPP per absorbed light — a
+   light-insensitive NPP floor ~2.9 gC/m²/yr). Vindicates session 15's "~3× NPP" as a per-patch fact; §22's
+   "0.83×" was a cell-total masking it. Reproductions `scripts/grass_cover_mechanism_diagnosis.jl` +
+   `scripts/grass_lightbalance_probe.jl`. §24; CHANGELOG.
+   **★ NEXT (corrected again — session 19 / §24):** a **light-limited grass carbon balance** — make F_diff's
+   grass GPP/NPP → 0 under deep shade and scale with the already-faithful absorbed light, so each patch's grass
+   equilibrates at the C's forest-floor-light-set leaf (the C bounds grass by this carbon balance ALONE — no
+   hard cover cap in the FIT config). Pin the lever first with a **light- vs conductance-limitation decomposition**
+   of the coupled Haxeltine–Prentice grass solve (prime suspects: the `gc·fpc` conductance-demand term uses the
+   UN-attenuated grass cover `fpc` while the light term `apar` uses the tree-attenuated `fpar` —
+   `fdiff.jl:1518` / `water_stressed.c:194`; and the single stand `w.gmin` vs the C's grass `gmin = 0.8`). It
+   MUST be grass-specific (`daily_step_canopy` is shared with the VALIDATED tree path — decadal GPP ×1.066, §21
+   — which must stay byte-identical) and AD-safe (the Enzyme canopy/multi-year trainers run this kernel).
+   **NOT** `light.c`/`light_grass.c` cover competition (inactive in the FIT config — §24), **NOT** per-PFT
+   conductance (§22), **NOT** grass-specific photosynthesis params (grass `temp_photos` 10/30 vs beech 20/30
+   would RAISE grass NPP at cool Hainich temps — worsening; `albedo_leaf` 0.23 vs 0.15 is a ~9 % trim).
    Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
    (**scouted: a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of the sapwood pool — needs the
    per-soil-layer lateral-root-sapwood demand `root_sapwood_layer` (`allocation_tree.c:160-209`, so soil layers
@@ -1026,6 +1102,12 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
     shifted worker scheduling so a heavy Enzyme testitem cold-compiled on a "poisoned" worker. Refuted above.
 
 ## Commit history on `main` (recent)
+_(this session 19 lands on top: docs(fdiff) grass-overshoot RE-DIAGNOSIS #2 — §22's cover-competition next step
+targets an INACTIVE code path (`light()` gated behind `!individual`); the real gap is a light-limited grass
+carbon balance (grass NPP ~2–3× the C at matched absorbed light, median ×13.9 overshoot at fixed light). Two
+committed SLURM reproductions; docs §24; no physics change. `git log --oneline -8` for exact HEAD.)_
+`5f490d5` fix(ci) pin Enzyme ≤ 0.13.188 — 0.13.189 regressed the Enzyme-reverse canopy path (step 11 CI; §23) ·
+`6514fd7`/`f1cdad1`/`f65ca84` step-11 grass re-diagnosis + CI churn (per-PFT conductance REFUTED; §22) ·
 `e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the
 committed real reference to 2009–2019 (`extract_fdiff_decadal.py`, no C re-run); the 25-patch rollout
 self-driving 11 years from the 2008 structure tracks the C at **mean ratio 1.066, each year 1.01–1.11 (no
