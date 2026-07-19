@@ -999,6 +999,14 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
 - **Dependabot:** `.github/dependabot.yml` tamed (monthly + grouped); open PRs = 0.
 - **Signing:** commits are `G`-signed locally but show "Unverified" on GitHub (cosmetic; repo going
   public later — declined). Do not chase.
+- **Enzyme+ReTestItems CI fragility (session 17):** on Julia-1.10 `lts` (Enzyme 0.13) the FIRST Enzyme
+  reverse compilation on a fresh ReTestItems worker can raise `LLVM error: Canonicalization failed`;
+  subsequent Enzyme compiles on the same worker succeed (worker warm-up). Adding/removing testitems shifts
+  which Enzyme testitem is the cold-first compile, so this can surface on ANY test-set change. The four
+  Enzyme-reverse canopy testitems in `nn_canopy_training_tests.jl` carry `retries = 2` to absorb it. If a
+  future push fails with this error on another Enzyme testitem (`gradient_correctness_tests.jl`,
+  `grass_structure_tests.jl`'s Enzyme item), add `retries = 2` there too — it is a worker-warmup flake, not
+  a code defect. (On Julia ≥ 1.11 the Enzyme parts are guarded off, so `test (1)` is unaffected.)
 
 ## Commit history on `main` (recent)
 `e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the
