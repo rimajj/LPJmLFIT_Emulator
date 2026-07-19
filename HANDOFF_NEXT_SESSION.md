@@ -640,7 +640,9 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
   public later — declined). Do not chase.
 
 ## Commit history on `main` (recent)
-`433ccb9` feat(fdiff) NN training vs the REAL C-binary daily GPP on the full 25-patch cell + the λ lever
+`4956529` feat(fdiff) NN training THROUGH the multi-year structure/allocation feedback — SoA fix for the
+Enzyme-typeable `rollout_canopy_years_gpp` (step 7b-multiyear) · `433ccb9` feat(fdiff) NN training vs the
+REAL C-binary daily GPP on the full 25-patch cell + the λ lever
 (step 7b-cell) · `e9b8212` fix(fdiff) make the Enzyme canopy path Julia-1.11-safe (CI test(1) fix-forward)
 · `c68c5ea` feat(fdiff) NN training on the canopy path — Enzyme reverse (step 7b-canopy) · `3db1406`
 feat(fdiff) gradient-based online rollout training — NN λ/Vcmax hooks + TBPTT (step 7b) · `7a76f45`
