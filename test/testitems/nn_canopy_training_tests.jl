@@ -231,3 +231,121 @@ end
             "$(VERSION) (Enzyme 0.13 internal compiler error on ≥ 1.11); verified on 1.10-lts (docs §16)."
     end
 end
+
+# Gate — MULTI-YEAR (single-patch) NN-hook training THROUGH the structure/allocation feedback (ADR 0016;
+# scale-up step 7b-multiyear; docs §17). §15/§16 trained the correction against DAILY GPP with the canopy
+# STRUCTURE frozen for the year; this step closes the outer loop: the objective is per-year annual stand
+# GPP over several years, and the gradient flows THROUGH the annual allocation (`FDiff.grow_individual`
+# regrows the pools between years, the light is recomputed from the grown heights). The multi-year kernel
+# `FDiff.rollout_canopy_years_gpp` carries the evolving per-individual pool state as struct-of-arrays
+# (plain `Vector{Float64}`, NOT a `Vector{TreePools}` field-scatter — whose trailing `is_grass::Bool` +
+# padding reads back as `Anything` for the reverse pass, the `_patch_fpars` ENZYME NOTE root cause), which
+# is what makes the whole multi-year chain Enzyme-typeable. Three properties, mirroring the canopy/cell
+# gates but on the multi-year structure-feedback path:
+#   (1) IDENTITY — the untrained (zero-initialized) network (vm+λ) reproduces the pure-physics multi-year
+#       rollout (`rollout_canopy_years_gpp` with the default `_NO_HOOKS`), per-year Δ = 0;
+#   (2) MULTI-YEAR GRADIENT — the ENZYME reverse gradient of the multi-year GPP loss w.r.t. the network
+#       parameters matches FiniteDifferences (the AD-vs-FD discipline, now through the annual structure/
+#       allocation feedback; `Duplicated` params + `make_zero` shadow + `set_runtime_activity`);
+#   (3) TRAINING RECOVERS A KNOWN CORRECTION — the multi-year training loop (`train_fdiff_multiyear_rollout!`)
+#       drives the loss down ≥ 90 % toward a known vm/λ target (an identifiability/recovery proof of the
+#       multi-year Enzyme online-rollout machinery).
+# Fully self-contained (a small 3-tree patch, a 5-layer soil column, a 40-day forcing repeated NY=3 years,
+# kernel-isolation constant phens); no HPC/reference-file dependency. Enzyme parts guarded to Julia < 1.11
+# (Enzyme 0.13 internal compiler error on ≥ 1.11 for this mutating path; verified on 1.10-lts, docs §15/§17).
+@testitem "NN multi-year (single-patch) training — identity, multi-year Enzyme gradient vs FD, recovery through the structure feedback" tags = [:training, :fdiff, :canopy] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: rollout_canopy_years_gpp, hainich_soilcolumn
+    using LPJmLFITEmulator.Allometry
+    using Lux, Zygote, Optimisers, Enzyme, FiniteDifferences, StableRNGs
+    using Random
+    using Test
+
+    # ── small self-contained single-patch canopy (3 ragged trees so the light is spread) ────────────
+    soil = hainich_soilcolumn(;
+        whcs = [37.0, 53.0, 88.0, 175.0, 175.0], rootdist = [0.41, 0.32, 0.2, 0.07, 0.0],
+        soildepth = [200.0, 300.0, 500.0, 1000.0, 1000.0],
+    )
+    allom = Allometry.TreeAllometry{Float64}()          # angiosperm beech (par/pft_lpjmlfit.js ANGIO)
+    alloc = tebs_allocparams()
+    # per-individual prognostic pools (leaf, sapwood, heartwood, root [gC/indiv]; height, crownarea, nind,
+    # sla, wooddens; is_grass) at a plausible pipe-model geometry, and the daily-Individual template (fpar/
+    # fpc/lai/sapwood/root are placeholders — `individual_from_pools` recomputes them from the grown pools).
+    mktree(leaf, sap, heart, root, h, ca, nind) =
+        TreePools{Float64}(leaf, sap, heart, root, h, ca, nind, 0.01986, 2.0e5, false)
+    mktmpl(fpar, alphaa, sla) = Individual{Float64}(
+        fpar, 0.0, alphaa, 0.15, 10.0, 0.0, 0.0, 0.0, 0.02, 0.04, 0.1, 0.4, 1 / 225,
+        FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = sla),
+        FDiff.TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    trees0 = [
+        mktree(2769.0, 33000.0, 120000.0, 2769.0, 12.0, 15.8, 1 / 225),
+        mktree(1600.0, 12000.0, 40000.0, 1600.0, 8.0, 8.0, 1 / 180),
+        mktree(600.0, 3000.0, 9000.0, 600.0, 4.0, 3.0, 1 / 120),
+    ]
+    tmpls = [mktmpl(0.55, 0.5, 0.01986), mktmpl(0.3, 0.5, 0.022), mktmpl(0.12, 0.5, 0.025)]
+    ndays = 40
+    forc = [
+        DailyForcing{Float64}(
+                swdown = 220.0, lwnet = -45.0, temp = 19.0, precip = (d % 4 == 0 ? 8.0 : 0.3),
+                daylength = 14.0, co2 = 380.0,
+            ) for d in 1:ndays
+    ]
+    NY = 3
+    yearly_forcings = [forc for _ in 1:NY]                          # a short forcing repeated NY years
+    phens_by_year = [fill(1.0, ndays) for _ in 1:NY]               # kernel-isolation constant leaf display
+    st0 = FDiffStateML{Float64}([0.7 * wc for wc in soil.whcs], 0.0)
+    phys = tebs_params()
+
+    # ── (1) IDENTITY (both vm + λ hooks): zero-init multi-year rollout == pure-physics multi-year rollout ──
+    g_base = rollout_canopy_years_gpp(phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings; phens_by_year = phens_by_year)
+    nn = build_fdiff_nn(; targets = (:vm, :λ), width = 10, depth = 2, rng = StableRNG(42))
+    hooks_id = FluxHooks(vm = neural_vm_hook(nn), λ = neural_lambda_hook(nn))
+    g_id = rollout_canopy_years_gpp(phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings; phens_by_year = phens_by_year, hooks = hooks_id)
+    @test all(isapprox.(g_id, g_base; rtol = 1.0e-10))             # untrained (zero-init) net = identity, per year
+
+    if VERSION < v"1.11"
+        ext = Base.get_extension(LPJmLFITEmulator, :FDiffTrainingExt)
+        @test ext !== nothing                                      # extension loaded (Lux/Zygote/Optimisers/Enzyme)
+
+        # per-year annual-GPP target from a KNOWN vm=1.15, λ=1.05 correction (so loss/gradient are non-zero)
+        tgt = rollout_canopy_years_gpp(
+            phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings;
+            phens_by_year = phens_by_year, hooks = FluxHooks(vm = (_ -> 1.15), λ = (_ -> 1.05)),
+        )
+        # perturb the zero-init net so the hidden-layer gradients are non-zero too
+        flat0, re0 = Optimisers.destructure(nn.ps)
+        ps = re0(flat0 .+ 0.05 .* randn(StableRNG(3), length(flat0)))
+        lossf(p) = fdiff_multiyear_gpp_loss(p, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, tgt)
+        @test isfinite(lossf(ps))
+
+        # ── (2) MULTI-YEAR GRADIENT (Enzyme reverse through the structure feedback) vs FiniteDifferences ──
+        (lval, dps) = ext._enzyme_multiyear_grad(ps, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, tgt)
+        @test lval ≈ lossf(ps) rtol = 1.0e-8                       # the reverse primal equals the direct multi-year MSE
+        gz = Optimisers.destructure(dps)[1]
+        flat, re = Optimisers.destructure(ps)
+        @test all(isfinite, gz)
+        @test any(!iszero, gz)
+        fdm = central_fdm(5, 1)
+        for k in randperm(StableRNG(7), length(flat))[1:8]         # random parameter subset (full FD is O(nparams))
+            g_fd = fdm(ε -> lossf(re((v = copy(flat); v[k] += ε; v))), 0.0)
+            @test isapprox(gz[k], g_fd; rtol = 1.0e-4, atol = 1.0e-6)
+        end
+
+        # ── (3) TRAINING RECOVERS THE KNOWN CORRECTION through the multi-year structure feedback ──
+        nn2 = build_fdiff_nn(; targets = (:vm, :λ), width = 10, depth = 2, rng = StableRNG(9))
+        loss_init = fdiff_multiyear_gpp_loss(nn2.ps, nn2, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, tgt)
+        (ps2, hist) = train_fdiff_multiyear_rollout!(
+            nn2, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, tgt;
+            epochs = 25, lr = 3.0e-2, ps = deepcopy(nn2.ps),
+        )
+        @test hist[end] < 0.1 * loss_init                          # Enzyme multi-year training drives the loss down ≥ 90 %
+        hooks_tr = FluxHooks(vm = neural_vm_hook(nn2, ps2), λ = neural_lambda_hook(nn2, ps2))
+        g_tr = rollout_canopy_years_gpp(phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings; phens_by_year = phens_by_year, hooks = hooks_tr)
+        @test isapprox(sum(g_tr), sum(tgt); rtol = 0.03)           # trained multi-year GPP matches the target
+    else
+        @info "NN multi-year training: Enzyme-reverse gradient + training checks skipped on Julia " *
+            "$(VERSION) (Enzyme 0.13 internal compiler error on ≥ 1.11); verified on 1.10-lts (docs §17)."
+    end
+end

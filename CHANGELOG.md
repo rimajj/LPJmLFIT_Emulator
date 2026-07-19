@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **NN training THROUGH the multi-year structure/allocation feedback (Phase-3 scale-up step 7b-multiyear;
+  ADR 0016).** §16's documented frontier — training GPP to match the C *while the canopy structure grows
+  between years via the allocation* — is now Enzyme-differentiable. Session 11's `EnzymeNoTypeError` was
+  root-caused (NOT the guessed `BitVector`/`_solve_leaf_inc` temporary, both of which differentiate cleanly
+  in isolation) to a **struct-in-memory** failure: a `Vector{TreePools}` field-scatter of `grow_individual`'s
+  branchy output copies the struct's trailing `is_grass::Bool` + padding as `Anything` in an 80-byte memcpy.
+  - **Struct-of-arrays fix.** `_patch_fpars` split into an Enzyme-typeable SoA core `_patch_fpars_soa`
+    (plain `Vector{Float64}` field arrays) + a thin `Vector{TreePools}` unpacking wrapper — **byte-identical**
+    (max|Δ| = 0.0), so no committed canopy baseline moves. New dependency-free `rollout_canopy_years_gpp`
+    (exported): the multi-year coupled rollout in SoA form (same physics as `rollout_canopy_years`),
+    returning per-year annual stand GPP; soil carried across years as fields, `phens` materialized to a
+    concrete type — the two smaller `EnzymeNoTypeError` mechanisms documented in the report Enzyme note.
+  - **Multi-year trainer** `fdiff_multiyear_gpp_loss` / `train_fdiff_multiyear_rollout!` (extension) — one
+    Enzyme reverse gradient of the FULL multi-year loss per epoch (the annual structure feedback stays inside
+    the differentiated unit). Runtime `[deps]` still EMPTY.
+  - **Verification / gate** — Enzyme reverse through the full SoA structure → daily rollout → grow →
+    next-year chain matches FiniteDifferences to ~1e-11 (scalar hook) / 8.2e-10 (network-param gradient);
+    ForwardDiff through the physics to ~1e-13. New self-contained multi-year testitem in
+    `nn_canopy_training_tests.jl`: identity (Δ = 0), Enzyme-vs-FD gradient, and recovery of a known
+    `vm=1.15/λ=1.05` correction (loss 16.2 → 0.12, 99.3 %; trained GPP within 0.28 %). Enzyme parts guarded
+    `VERSION < v"1.11"`. Driver `scripts/train_fdiff_multiyear.jl`; report §17; ADR 0016 (addendum).
 - **NN training against the REAL C-binary daily GPP on the full 25-patch cell + the λ lever (Phase-3
   scale-up step 7b-cell; ADR 0016).** §15 recovered a *synthetic* correction on one patch; this trains the
   learned correction against the LPJmL-FIT C binary's own daily GPP on the full Hainich cell (25 patches /

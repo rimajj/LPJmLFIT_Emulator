@@ -33,6 +33,7 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     Individual, daily_step_canopy, rollout_daily_canopy,
     PhenParams, PhenState, phenology_gsi_step, tebs_phenparams, petpar_daylength, patch_albedo,
     AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
+    rollout_canopy_years_gpp,
     agb_ind, vegc_ind,
     FluxHooks
 
@@ -1753,20 +1754,51 @@ end
 # feedback). Fixed `nlayers` loop (AD-safe; layers above the tallest tree contribute 0 naturally). The
 # height/boleht layer-membership tests compare by value under ForwardDiff, so the arithmetic derivatives
 # (atoh, exp, the uptake distribution) flow through. Grasses take the transmitted forest-floor light.
-function _patch_fpars(trees::AbstractVector{TreePools{T}}, allom::Allometry.TreeAllometry; nlayers::Int = 60, vstep = 2.0, k_lambert = 0.5) where {T}
-    vs = T(vstep); kl = T(k_lambert)
+#
+# ENZYME NOTE (scale-up step 7b-multiyear, docs §17). The layered light is implemented on a
+# STRUCT-OF-ARRAYS interface ([`_patch_fpars_soa`](@ref), plain `Vector{T}` field arrays), NOT directly on
+# `Vector{TreePools}`. On the MULTI-YEAR structure-feedback path (where the trees fed here are the ACTIVE
+# outputs of [`grow_individual`](@ref)), Enzyme reverse cannot type-analyze a `Vector{TreePools}` whose
+# branchy struct elements are field-scattered (`trees[i].height → scratch[i]`) — the struct's trailing
+# `is_grass::Bool` + padding read as `Anything` and the reverse pass raises `EnzymeNoTypeError`. Keeping
+# the differentiated state as plain float arrays avoids the struct memcpy entirely (Enzyme-vs-FD match
+# 1e-12 through the coupled multi-year rollout). The `Vector{TreePools}` method below is a thin unpacking
+# wrapper (the diagnostic/non-AD path — numerically identical); it is NOT on the Enzyme multi-year path.
+function _patch_fpars(trees::AbstractVector{TreePools{T}}, allom::Allometry.TreeAllometry; kwargs...) where {T}
     n = length(trees)
+    heights = T[t.height for t in trees]; leafcs = T[t.leaf_c for t in trees]
+    slas = T[t.sla for t in trees]; ninds = T[t.nind for t in trees]
+    crownareas = T[t.crownarea for t in trees]; isgrass = Bool[t.is_grass for t in trees]
+    return _patch_fpars_soa(heights, leafcs, slas, ninds, crownareas, isgrass, allom; kwargs...)
+end
+
+"""
+    _patch_fpars_soa(heights, leafcs, slas, ninds, crownareas, isgrass, allom;
+                     nlayers=60, vstep=2.0, k_lambert=0.5) -> Vector
+
+Struct-of-arrays core of the per-patch layered Beer–Lambert light ([`_patch_fpars`](@ref)) — the
+per-individual pool fields are passed as plain `Vector{T}` arrays (`heights`, `leafcs`=leaf_c, `slas`,
+`ninds`, `crownareas`) + a `Vector{Bool}` grass mask. This form is Enzyme-typeable on the multi-year
+structure-feedback path (see the `_patch_fpars` ENZYME NOTE); the arithmetic is byte-identical to the
+`Vector{TreePools}` method.
+"""
+function _patch_fpars_soa(
+        heights::AbstractVector{T}, leafcs::AbstractVector, slas::AbstractVector, ninds::AbstractVector,
+        crownareas::AbstractVector, isgrass::AbstractVector{Bool}, allom::Allometry.TreeAllometry;
+        nlayers::Int = 60, vstep = 2.0, k_lambert = 0.5
+    ) where {T}
+    vs = T(vstep); kl = T(k_lambert)
+    n = length(heights)
     fpars = zeros(T, n)
     # per-tree leaf-area-per-height (atoh) and bole/top heights; grass excluded from the tree canopy
-    atoh = zeros(T, n); top = zeros(T, n); bole = zeros(T, n); istree = falses(n)
+    atoh = zeros(T, n); top = zeros(T, n); bole = zeros(T, n); istree = fill(false, n)
     for i in 1:n
-        t = trees[i]
-        (t.is_grass || t.height <= 0 || t.leaf_c <= 0) && continue
+        (isgrass[i] || heights[i] <= 0 || leafcs[i] <= 0) && continue
         istree[i] = true
-        top[i] = t.height
-        bole[i] = (one(T) - allom.crownlength) * t.height
-        cd = max(t.height - bole[i], T(1.0e-6))
-        atoh[i] = min(t.leaf_c * t.sla / cd, T(40.0)) * t.nind        # leaf area density × nind (patch basis)
+        top[i] = heights[i]
+        bole[i] = (one(T) - allom.crownlength) * heights[i]
+        cd = max(heights[i] - bole[i], T(1.0e-6))
+        atoh[i] = min(leafcs[i] * slas[i] / cd, T(40.0)) * ninds[i]        # leaf area density × nind (patch basis)
     end
     plai = zero(T); fpar_bottom = one(T)
     for layer in (nlayers - 1):-1:0
@@ -1794,9 +1826,8 @@ function _patch_fpars(trees::AbstractVector{TreePools{T}}, allom::Allometry.Tree
     end
     # grasses: transmitted forest-floor light × their own Beer–Lambert absorption
     for i in 1:n
-        t = trees[i]
-        if t.is_grass && t.leaf_c > 0
-            lai_g = t.crownarea > 0 ? t.leaf_c * t.sla / t.crownarea : zero(T)
+        if isgrass[i] && leafcs[i] > 0
+            lai_g = crownareas[i] > 0 ? leafcs[i] * slas[i] / crownareas[i] : zero(T)
             fpars[i] = fpar_bottom * (one(T) - exp(-convert(T, allom.k_beer) * lai_g))
         end
     end
@@ -1890,6 +1921,100 @@ function rollout_canopy_years(
         trees = newtrees
     end
     return (trees, st, pools_by_year, annual)
+end
+
+"""
+    rollout_canopy_years_gpp(p, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings;
+                             phens_by_year=nothing, nlayers=60, n_top1m=3, hooks=_NO_HOOKS)
+        -> gpp_by_year::Vector
+
+**Enzyme-differentiable** multi-year coupled canopy rollout that returns the per-year annual **stand GPP**
+`gpp_by_year[yr]` (gC/m²/yr) — the object a MULTI-YEAR training loss descends THROUGH the structure/
+allocation feedback (docs §17; scale-up step 7b-multiyear). Same physics as [`rollout_canopy_years`](@ref)
+— for each year: recompute the layered `fpar` from the current heights, build the daily
+[`Individual`](@ref)s, fold [`daily_step_canopy`](@ref) accumulating each individual's per-m²
+`bm_inc = Σ npp_ind` + the annual-mean stand water scalar, then GROW each tree
+([`grow_individual`](@ref)) — but the evolving per-individual pool state is carried as **struct-of-arrays**
+(plain `Vector{T}` field arrays, NOT a `Vector{TreePools}`). This is what makes the reverse pass
+Enzyme-typeable: on the multi-year path the trees are the ACTIVE outputs of `grow_individual`, and a
+`Vector{TreePools}` field-scatter (`trees[i].height → scratch[i]`) raises `EnzymeNoTypeError` (the struct's
+trailing `is_grass::Bool` + padding read as `Anything`) — see the [`_patch_fpars`](@ref) ENZYME NOTE. The
+soil water carries across years; `hooks` supplies the learned Vcmax/λ correction (identity when off).
+`phens_by_year[yr][d]` = the fixed daily leaf-display factor for year `yr`, day `d` (kernel isolation, e.g.
+`fapar_C/peak` — the same crutch discipline as §9/§16); when `nothing`, full leaf display (`phen=1`) is
+used. The `Vector{TreePools}` diagnostics ([`rollout_canopy_years`](@ref)) remain for the non-AD validation
+path; this function returns only the per-year GPP the trainer needs.
+"""
+function rollout_canopy_years_gpp(
+        p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
+        trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
+        yearly_forcings; phens_by_year = nothing, nlayers::Int = 60, n_top1m::Int = 3,
+        hooks::FluxHooks = _NO_HOOKS
+    ) where {T}
+    n = length(trees0)
+    # initial per-individual pool state as struct-of-arrays (iteration over the Const trees0 — never a
+    # differentiated `Vector{TreePools}` field-scatter). `slas`/`ninds`/`wds`/`isgrass` are the per-tree
+    # constants (not differentiated); the pool fields evolve across years.
+    leafcs = T[t.leaf_c for t in trees0]; sapcs = T[t.sapwood_c for t in trees0]
+    heartcs = T[t.heartwood_c for t in trees0]; rootcs = T[t.root_c for t in trees0]
+    heights = T[t.height for t in trees0]; crowns = T[t.crownarea for t in trees0]
+    ninds = T[t.nind for t in trees0]; slas = T[t.sla for t in trees0]
+    wds = T[t.wooddens for t in trees0]; isgrass = Bool[t.is_grass for t in trees0]
+    # the soil state is carried across years as its FIELDS (`wcol`::Vector, `snow`::scalar), NOT as the
+    # `FDiffStateML` struct: an Enzyme reverse pass cannot type-analyze a `{Vector, Float64}` struct phi
+    # carried around the OUTER (year) loop (the same struct-in-memory limitation the `_patch_fpars` ENZYME
+    # NOTE describes), whereas a plain Vector + scalar carry types cleanly. Continuity is preserved — each
+    # year rebuilds `FDiffStateML` from the carried column (soil water carries across years, as in
+    # [`rollout_canopy_years`](@ref)).
+    wcol = convert.(T, st0.w); snow = convert(T, st0.snowpack)
+    # per-year daily leaf-display factors (the kernel-isolation crutch, e.g. `fapar_C/peak`). Materialized
+    # UP FRONT to a CONCRETE `Vector{Vector{T}}` (full display `1` when not supplied) — a
+    # `Union{Nothing,Vector}` `phens` local carried into the daily loop is an untypeable `{Pointer,Float64}`
+    # phi for the Enzyme reverse pass (same struct-in-memory limitation as the `_patch_fpars` ENZYME NOTE).
+    phens_arr = phens_by_year === nothing ? [ones(T, length(f)) for f in yearly_forcings] :
+        [T[convert(T, x) for x in pv] for pv in phens_by_year]
+    NY = length(yearly_forcings)
+    gpp_by_year = Vector{T}(undef, NY)
+    for yr in 1:NY
+        forc = yearly_forcings[yr]
+        fpars = _patch_fpars_soa(heights, leafcs, slas, ninds, crowns, isgrass, allom; nlayers = nlayers)
+        # build the daily Individuals from the current SoA structure (a SINGLE TreePools per individual,
+        # consumed immediately — no `Vector{TreePools}` round-trip). `individual_from_pools` recomputes
+        # lai/fpc from the grown pools (lai_tree.c/fpc_tree.c).
+        inds = Vector{Individual{T}}(undef, n)
+        for i in 1:n
+            tri = TreePools{T}(leafcs[i], sapcs[i], heartcs[i], rootcs[i], heights[i], crowns[i], ninds[i], slas[i], wds[i], isgrass[i])
+            inds[i] = individual_from_pools(tmpls[i], tri, allom, fpars[i])
+        end
+        phens = phens_arr[yr]
+        # scalar-accumulating daily fold (Enzyme-friendly — no per-day flux vector); carries the per-layer
+        # soil water across days (the `FDiffStateML` struct is local to the year), and accumulates the
+        # per-individual bm_inc.
+        st = FDiffStateML{T}(wcol, snow)
+        bm_perm2 = zeros(T, n); gpp_yr = zero(T); wsum = zero(T); nd = 0
+        for (d, f) in enumerate(forc)
+            ph = phens[d]
+            (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = ph, n_top1m = n_top1m, hooks = hooks)
+            for i in 1:n
+                bm_perm2[i] += fl.npp_ind[i]
+            end
+            gpp_yr += fl.gpp; wsum += fl.wscal; nd += 1
+        end
+        wcol = st.w; snow = st.snowpack       # carry the soil column into next year (as fields, not the struct)
+        gpp_by_year[yr] = gpp_yr
+        wscal_mean = wsum / max(nd, 1)
+        # GROW each tree via SoA: rebuild a single TreePools, advance it, scatter the grown fields back
+        # into fresh arrays (the next year's structure). No `Vector{TreePools}` is ever field-scattered.
+        nh = zeros(T, n); nl = zeros(T, n); nsap = zeros(T, n); nheart = zeros(T, n); nroot = zeros(T, n); nc = zeros(T, n)
+        for i in 1:n
+            tri = TreePools{T}(leafcs[i], sapcs[i], heartcs[i], rootcs[i], heights[i], crowns[i], ninds[i], slas[i], wds[i], isgrass[i])
+            g = grow_individual(alloc, allom, tri, bm_perm2[i] / (ninds[i] + T(1.0e-12)), wscal_mean)
+            nh[i] = g.height; nl[i] = g.leaf_c; nsap[i] = g.sapwood_c
+            nheart[i] = g.heartwood_c; nroot[i] = g.root_c; nc[i] = g.crownarea
+        end
+        heights = nh; leafcs = nl; sapcs = nsap; heartcs = nheart; rootcs = nroot; crowns = nc
+    end
+    return gpp_by_year
 end
 
 end # module FDiff

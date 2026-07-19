@@ -132,9 +132,34 @@ The decision above landed in three steps (docs `phase3_fdiff_cbinary_validation.
   closes the canopy GPP level (1.093 → 1.023 `:vm`, → 1.010 `:vm,:λ`) while the daily correlation improves
   — the canopy residual is Vcmax-shaped, confirming §14's prediction that this is the right path/lever. The
   λ lever is now exercised (both heads trained).
+- **§17 (step 7b-multiyear)** — training **through the multi-year structure/allocation feedback**. This
+  closes open follow-up (a) below. The `EnzymeNoTypeError` was NOT the cause (a) predicted (an untyped
+  temporary in `_patch_fpars`/`_solve_leaf_inc` — both differentiate cleanly in isolation, Enzyme =
+  FiniteDifferences to 1e-9); it is a **struct-in-memory** failure: storing `grow_individual`'s branchy
+  struct output into a `Vector{TreePools}` and field-scattering it copies the struct's trailing
+  `is_grass::Bool` + padding as `Anything` in an 80-byte `memcpy` ⇒ Enzyme cannot deduce the copy's type.
+  The fix (a reusable technique, see the updated follow-ups) is **struct-of-arrays**: carry the
+  differentiated multi-year state as plain `Vector{Float64}` field arrays, never a `Vector{TreePools}` in
+  the differentiated region. `_patch_fpars` is split into an Enzyme-typeable SoA core `_patch_fpars_soa`
+  (+ a byte-identical `Vector{TreePools}` wrapper, max|Δ| = 0.0), and a new `rollout_canopy_years_gpp` runs
+  the multi-year coupled rollout in SoA form (per-year stand GPP). Enzyme reverse through the full SoA
+  structure → daily rollout → grow → next-year chain matches FiniteDifferences to **<1e-9** (network-param
+  gradient; ~1e-11 on a scalar hook; ForwardDiff too). Trainer `fdiff_multiyear_gpp_loss` /
+  `train_fdiff_multiyear_rollout!`; gate multi-year testitem (identity Δ=0; recovery loss 16.2 → 0.12,
+  99.3 %, trained GPP within 0.28 % of a known vm=1.15/λ=1.05 target). Single-patch entry point; the
+  cell-multi-year objective is the next extension.
 
-**Open follow-ups** (unchanged in spirit): (a) the multi-year objective **through the structure/allocation
-feedback** (`rollout_canopy_years`) needs Enzyme reverse through `_patch_fpars` + `grow_individual`'s
-allocation Newton, which currently raises `EnzymeNoTypeError` on Julia 1.10 (a type-analysis blocker on the
-composed structure path — the feedback itself is differentiable, §12 verifies it with ForwardDiff); (b)
-lifting the `VERSION < v"1.11"` guard once Enzyme compiles the mutating canopy reverse pass on Julia ≥ 1.11.
+**Open follow-ups** (updated). (a) ✅ **DONE (§17, step 7b-multiyear)** — the multi-year objective through
+the structure/allocation feedback is now Enzyme-differentiable (<1e-9 vs FD). The predicted culprit was
+wrong: not an untyped temporary in `_patch_fpars`/`_solve_leaf_inc` but a `Vector{TreePools}` field-scatter
+whose struct `memcpy` reads the trailing `is_grass::Bool` + padding as `Anything`. **Reusable technique
+recorded: to make a mutating, branchy struct path Enzyme-typeable, carry the differentiated state as
+struct-of-arrays (`Vector{Float64}` per field) rather than a `Vector{struct}`** — no struct memcpy, no
+padding, every carried value concretely typed; the same discipline applies to `Union{Nothing,Vector}` phis
+(materialize to a concrete type up front) and to two-field state structs carried around a loop (carry the
+fields, not the struct). `Enzyme.API.maxtypeoffset!`/`maxtypedepth!` (size limits) and `looseTypeAnalysis!`
+(returns a WRONG gradient) are NOT correct workarounds — the only correct fix is to remove the untypeable
+value. (b) the **cell-multi-year objective** — §16's exact per-patch Gauss–Newton decomposition, each patch
+grown across years (every reverse pass = the proven single-patch `rollout_canopy_years_gpp` Enzyme path).
+(c) lifting the `VERSION < v"1.11"` guard once Enzyme compiles the mutating canopy reverse pass on Julia
+≥ 1.11.

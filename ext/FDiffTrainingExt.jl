@@ -33,7 +33,8 @@ using Lux: Random   # stdlib Random via Lux (the dep-free parent can't declare i
 
 import LPJmLFITEmulator: build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss,
     train_fdiff_rollout!, fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!,
-    fdiff_cell_gpp_loss, train_fdiff_cell_rollout!
+    fdiff_cell_gpp_loss, train_fdiff_cell_rollout!,
+    fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!
 
 # ── feature normalization (fixed climatological scales → O(1) NN inputs) ─────────────────────────
 # FDiff hands each hook the feature vector `[temp_°C, swdown, daylength_h, apar, w_soil, co2_ppm]`
@@ -473,6 +474,139 @@ function train_fdiff_cell_rollout!(
             day = dlast + 1
         end
         epoch_loss = fdiff_cell_gpp_loss(ps, nn, phys, st0s, inds_all, soil, forcings, phens, targets, day_start:day_end)
+        push!(history, epoch_loss)
+        if epoch_loss < best_loss
+            best_loss = epoch_loss
+            best_ps = deepcopy(ps)
+        end
+        verbose && println("epoch $ep  loss=$(round(epoch_loss; sigdigits = 5))")
+    end
+    return (best_ps, history)
+end
+
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# MULTI-YEAR (single-patch) online-rollout training — ENZYME reverse THROUGH the structure/allocation
+# feedback (scale-up step 7b-multiyear; ADR 0016; docs §17)
+# ════════════════════════════════════════════════════════════════════════════════════════════════
+# §15/§16 trained the learned Vcmax/λ correction against DAILY GPP with the canopy STRUCTURE held fixed
+# for the year (`daily_step_canopy` over one year). This step closes the outer loop: the objective is the
+# per-year annual stand GPP over SEVERAL years, and the gradient flows THROUGH the annual structure/
+# allocation feedback — each year the pipe-model allocation ([`FDiff.grow_individual`]) regrows the pools,
+# the layered light is recomputed from the new heights ([`FDiff.rollout_canopy_years_gpp`] via
+# `_patch_fpars_soa`), and next year's photosynthesis sees the grown canopy. So the learned correction is
+# trained not just for a fixed stand but for how the stand it produces GROWS.
+#
+# WHAT MADE IT ENZYME-TYPEABLE. On the multi-year path the trees are the ACTIVE outputs of
+# `grow_individual` (a branchy pipe-model solve), so the naive carry — a `Vector{TreePools}` scattered
+# field-by-field across the year loop (`trees[i].height → scratch[i]`) — raises `EnzymeNoTypeError`: the
+# `TreePools` struct's trailing `is_grass::Bool` + padding reads back as `Anything` for the reverse pass
+# (the `_patch_fpars` ENZYME NOTE root cause). `FDiff.rollout_canopy_years_gpp` sidesteps this by carrying
+# the evolving per-individual pool state as STRUCT-OF-ARRAYS (plain `Vector{Float64}` field arrays, never
+# a differentiated `Vector{TreePools}` field-scatter) and rebuilding a single `TreePools`/`FDiffStateML`
+# locally per year — plain Vectors + scalars type cleanly. That is the dependency-free, Enzyme-
+# differentiable multi-year kernel this section trains against (verified: Enzyme reverse matches
+# FiniteDifferences to ~1e-11 for a constant scale, ~8e-10 through the NN, over the full
+# structure/allocation chain).
+#
+# ONE DIFFERENTIATED UNIT (no per-chunk TBPTT). Unlike the canopy/cell trainers — which chunk the daily
+# rollout and carry a DETACHED soil-water state across segment boundaries — the whole multi-year rollout is
+# a SINGLE differentiated unit: the year loop's structure feedback is exactly what we want the gradient to
+# see, so it must not be truncated. Each epoch is therefore ONE `_enzyme_multiyear_grad` of the full
+# multi-year loss + one `Optimisers.update` (per-YEAR truncation — restart the SoA carry each year with a
+# detached structure — is the memory-scaling option for many-year rollouts; unneeded at the handful of
+# years here). The Enzyme idiom is otherwise identical to the canopy path: `Duplicated` params + a FRESH
+# `make_zero` shadow + `set_runtime_activity` (the λ-solve/allocation-solve `clamp` conditionals), scalar
+# loss `Active`, everything else `Const`. Kernel isolation: the per-year daily leaf-display is DRIVEN by
+# `phens_by_year` (e.g. `fapar_C/peak`), isolating the Vcmax/λ level lever from phenology mismatch (§9/§16).
+#
+# SINGLE-PATCH entry point (one patch's ragged individuals grown across years). The CELL multi-year
+# objective (the Gauss–Newton per-patch decomposition of the cell-mean annual GPP, as `_enzyme_cell_grad`
+# does for the within-year daily loss) is the noted next extension.
+
+"""
+    fdiff_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year) -> Real
+
+Scalar mean-squared **per-year annual stand-GPP** loss of the hooked multi-year coupled canopy rollout
+([`FDiff.rollout_canopy_years_gpp`](@ref)) against `targets_by_year` (one annual GPP target per year,
+gC/m²/yr), as a function of the network parameters `ps`. Differentiated by **Enzyme reverse** THROUGH the
+annual structure/allocation feedback (the trees regrow via [`FDiff.grow_individual`] between years, the
+light is recomputed from the grown heights) — the struct-of-arrays multi-year kernel is what makes that
+reverse pass typeable (item 7b-multiyear). `phens_by_year[yr]` is the (fixed, physics-determined) daily
+leaf-display vector for year `yr` (kernel isolation). This scalar form is what the gate cross-checks
+against FiniteDifferences and what the trainer monitors.
+"""
+function fdiff_multiyear_gpp_loss(
+        ps, nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML, trees0, tmpls, soil::SoilColumn,
+        yearly_forcings, phens_by_year, targets_by_year
+    )
+    hooks = hooks_from(nn, ps)
+    g = LPJmLFITEmulator.FDiff.rollout_canopy_years_gpp(
+        phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings; phens_by_year = phens_by_year, hooks = hooks,
+    )
+    NY = length(targets_by_year)
+    loss = zero(eltype(targets_by_year))
+    for y in 1:NY
+        loss += (g[y] - targets_by_year[y])^2
+    end
+    return loss / NY   # mean squared per-year annual-GPP error
+end
+
+# Enzyme reverse gradient of the multi-year GPP loss w.r.t. the network params `ps` (Duplicated-NamedTuple
+# idiom — mirrors `_enzyme_canopy_grad`). Returns `(loss, dps)` — `dps` in the same tree shape as `ps`
+# (drops into `Optimisers.update`). A FRESH `make_zero(ps)` per call (never a reused shadow — a reused
+# shadow would silently ACCUMULATE gradients across epochs). `set_runtime_activity` for the λ-solve /
+# allocation-solve `clamp` conditionals. The full multi-year rollout is a SINGLE `autodiff` call (the year
+# loop's structure feedback is inside the differentiated unit — not truncated).
+function _enzyme_multiyear_grad(
+        ps, nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML, trees0, tmpls, soil::SoilColumn,
+        yearly_forcings, phens_by_year, targets_by_year
+    )
+    dps = Enzyme.make_zero(ps)
+    RA = Enzyme.set_runtime_activity(Enzyme.ReverseWithPrimal)
+    (_, loss) = Enzyme.autodiff(
+        RA, Enzyme.Const(fdiff_multiyear_gpp_loss), Enzyme.Active,
+        Enzyme.Duplicated(ps, dps), Enzyme.Const(nn), Enzyme.Const(phys), Enzyme.Const(alloc),
+        Enzyme.Const(allom), Enzyme.Const(st0), Enzyme.Const(trees0), Enzyme.Const(tmpls),
+        Enzyme.Const(soil), Enzyme.Const(yearly_forcings), Enzyme.Const(phens_by_year),
+        Enzyme.Const(targets_by_year),
+    )
+    return (loss, dps)
+end
+
+"""
+    train_fdiff_multiyear_rollout!(nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year;
+                                   epochs=30, lr=1e-2, opt=Optimisers.Adam(lr), ps=deepcopy(nn.ps), verbose=false)
+        -> (ps, history)
+
+Train the learned Vcmax/λ correction so the per-year annual stand GPP matches `targets_by_year` over a
+multi-year coupled canopy rollout, the Enzyme-reverse counterpart of [`train_fdiff_canopy_rollout!`](@ref)
+for the multi-year structure-feedback objective (item 7b-multiyear). Each epoch takes ONE **Enzyme
+reverse** gradient of the FULL multi-year GPP loss w.r.t. `ps` ([`_enzyme_multiyear_grad`](@ref)) and one
+`Optimisers.update` — the whole multi-year rollout is a single differentiated unit (NO per-chunk TBPTT:
+the annual structure/allocation feedback is exactly what the gradient must see; per-year truncation is the
+memory-scaling option for many-year rollouts). `epochs` re-descends. Returns the best (lowest full
+multi-year loss) parameters and the per-epoch loss `history`.
+"""
+function train_fdiff_multiyear_rollout!(
+        nn::FDiffNN, phys::FDiffParams, alloc, allom, st0::FDiffStateML, trees0, tmpls, soil::SoilColumn,
+        yearly_forcings, phens_by_year, targets_by_year; epochs::Int = 30, lr::Real = 1.0e-2,
+        opt = Optimisers.Adam(lr), ps = deepcopy(nn.ps), verbose::Bool = false
+    )
+    opt_state = Optimisers.setup(opt, ps)
+    history = Float64[]
+    best_ps = deepcopy(ps)
+    best_loss = Inf
+    for ep in 1:epochs
+        # ONE Enzyme reverse pass over the FULL multi-year rollout (the year loop's structure feedback is
+        # inside the differentiated unit — not chunked/detached, unlike the daily-TBPTT canopy/cell trainers).
+        (l, dps) = _enzyme_multiyear_grad(ps, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year)
+        if isfinite(l)
+            opt_state, ps = Optimisers.update(opt_state, ps, dps)
+        else
+            verbose && @warn "non-finite loss/grad at epoch $ep — skipping update"
+        end
+        # monitor / best-parameter track with the UPDATED ps (a single forward — matches the canopy trainer's epoch_loss)
+        epoch_loss = fdiff_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year)
         push!(history, epoch_loss)
         if epoch_loss < best_loss
             best_loss = epoch_loss

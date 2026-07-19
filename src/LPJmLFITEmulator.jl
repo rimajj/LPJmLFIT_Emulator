@@ -142,6 +142,33 @@ loss history.
 """
 function train_fdiff_cell_rollout! end
 
+"""
+    fdiff_multiyear_gpp_loss(ps, nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year) -> Real
+
+Scalar mean-squared **per-year annual stand-GPP** loss of the hooked multi-year coupled canopy rollout
+(`FDiff.rollout_canopy_years_gpp`) against `targets_by_year` (one annual GPP target per year), as a
+function of the network parameters `ps`. Differentiated by **Enzyme reverse** THROUGH the annual
+structure/allocation feedback (the trees regrow via `FDiff.grow_individual` between years and the light is
+recomputed from the grown heights) — the struct-of-arrays multi-year kernel is what makes that reverse
+pass typeable (item 7b-multiyear). `trees0`/`tmpls` are the patch's per-individual pools + `Individual`
+templates; `phens_by_year[yr]` is the (fixed, physics-determined) daily leaf-display vector for year `yr`.
+Requires the `FDiffTrainingExt` extension.
+"""
+function fdiff_multiyear_gpp_loss end
+
+"""
+    train_fdiff_multiyear_rollout!(nn, phys, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings, phens_by_year, targets_by_year; epochs, lr, opt, ...) -> (ps, history)
+
+Online-rollout training of the learned Vcmax/λ correction so the per-year annual stand GPP matches
+`targets_by_year` over a multi-year coupled canopy rollout — the Enzyme-reverse counterpart of
+`train_fdiff_canopy_rollout!` for the multi-year **structure-feedback** objective (item 7b-multiyear).
+Each epoch takes ONE **Enzyme reverse** gradient of the FULL multi-year GPP loss w.r.t. the network
+parameters and one `Optimisers.update` — the whole multi-year rollout is a single differentiated unit (no
+per-chunk TBPTT: the annual structure/allocation feedback must stay inside the differentiated unit).
+Requires the `FDiffTrainingExt` extension. Returns the best parameters and the per-epoch loss history.
+"""
+function train_fdiff_multiyear_rollout! end
+
 # State
 export SharedState, NSOILLAYER, LASTLAYER, GPLHEAT, NHEATGRIDP, NTREEPOOLS, CLIMBUFSIZE
 # Interface payloads
@@ -158,6 +185,7 @@ export COMPONENTS, FLUXES, Component, Flux
 # Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook
 # container) is reached via `using LPJmLFITEmulator.FDiff`, matching the other F_diff types.
 export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!,
-    fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!, fdiff_cell_gpp_loss, train_fdiff_cell_rollout!
+    fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!, fdiff_cell_gpp_loss, train_fdiff_cell_rollout!,
+    fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!
 
 end # module
