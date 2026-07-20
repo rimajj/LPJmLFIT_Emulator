@@ -109,9 +109,11 @@ end
 println("\nSUMMARY:")
 println("  BEECH phen  : median NPP F/C = ", round(_median(nb ./ max.(nc, 1.0e-6)), digits = 2), "   corr(Fd,C) = ", round(_corr(nb, nc), digits = 3))
 println("  PER-PFT phen: median NPP F/C = ", round(_median(np ./ max.(nc, 1.0e-6)), digits = 2), "   corr(Fd,C) = ", round(_corr(np, nc), digits = 3))
-println("\nVERDICT: ", _median(np ./ max.(nc, 1.0e-6)) < 0.5 * _median(nb ./ max.(nc, 1.0e-6)) ?
-    "PER-PFT PHENOLOGY collapses the overshoot ⇒ H2 CONFIRMED (the grass rollout must use per-PFT GSI)" :
-    "per-PFT phenology does NOT collapse the overshoot ⇒ H2 rejected; conductance (H1) remains")
+println(
+    "\nVERDICT: ", _median(np ./ max.(nc, 1.0e-6)) < 0.5 * _median(nb ./ max.(nc, 1.0e-6)) ?
+        "PER-PFT PHENOLOGY collapses the overshoot ⇒ H2 CONFIRMED (the grass rollout must use per-PFT GSI)" :
+        "per-PFT phenology does NOT collapse the overshoot ⇒ H2 rejected; conductance (H1) remains"
+)
 
 # ── SLURM ──
 #   #!/usr/bin/env bash

@@ -127,11 +127,15 @@ for pr in patchref
         rpad(round(m.fpar, digits = 5), 9), round(m.fpar / max(m.cfpar, 1.0e-9), digits = 3)
     )
 end
-println("\nSUMMARY Q1: median NPP F/C = ", round(_median(nppF ./ max.(nppC, 1.0e-6)), digits = 2),
+println(
+    "\nSUMMARY Q1: median NPP F/C = ", round(_median(nppF ./ max.(nppC, 1.0e-6)), digits = 2),
     "  median fpar F/C = ", round(_median(fparF ./ max.(fparC, 1.0e-9)), digits = 3),
-    "  corr(Fd_NPP,C_NPP) = ", round(_corr(nppF, nppC), digits = 3))
-println("Q4 FAITHFUL grass params (albedo .23, tphotos 10/30, respcoeff 1.2, cn 30): median NPP F/C = ",
-    round(_median(nppF_faith ./ max.(nppC, 1.0e-6)), digits = 2))
+    "  corr(Fd_NPP,C_NPP) = ", round(_corr(nppF, nppC), digits = 3)
+)
+println(
+    "Q4 FAITHFUL grass params (albedo .23, tphotos 10/30, respcoeff 1.2, cn 30): median NPP F/C = ",
+    round(_median(nppF_faith ./ max.(nppC, 1.0e-6)), digits = 2)
+)
 
 # ── Q2/Q3: single-day term breakdown at the moderate patch, brightest warm day ──
 ffmed = _median([pr.ff for pr in patchref])
@@ -191,26 +195,36 @@ function breakdown(pr; faithful = false, respp = phys.resp)
     return (gp_stand = gp_stand, grass = gt, trees = tt)
 end
 
-println("\nQ2/Q3 TERM BREAKDOWN — moderate patch ", modpr.pn, " (ff=", round(modpr.ff, digits = 3), "), brightest warm day (T=",
-    round(f.temp, digits = 1), " sw=", round(f.swdown, digits = 1), " dl=", round(f.daylength, digits = 2), " wr=", round(wr, digits = 3), ")")
+println(
+    "\nQ2/Q3 TERM BREAKDOWN — moderate patch ", modpr.pn, " (ff=", round(modpr.ff, digits = 3), "), brightest warm day (T=",
+    round(f.temp, digits = 1), " sw=", round(f.swdown, digits = 1), " dl=", round(f.daylength, digits = 2), " wr=", round(wr, digits = 3), ")"
+)
 b = breakdown(modpr)
 g = b.grass
 println("  gp_stand = ", round(b.gp_stand, digits = 4), " mm/s")
-println("  GRASS: apar=", round(g.apar, digits = 2), " Vcmax=", round(g.vm, digits = 3), " λ=", round(g.λ, digits = 4),
+println(
+    "  GRASS: apar=", round(g.apar, digits = 2), " Vcmax=", round(g.vm, digits = 3), " λ=", round(g.λ, digits = 4),
     " gc=", round(g.gc, digits = 4), " | GPP=", round(g.gpp, digits = 4), " Rd=", round(g.rd, digits = 4),
-    " NPP=", round(g.npp, digits = 4), " CUE=", round(g.npp / max(g.gpp, 1.0e-9), digits = 3), " GPP/apar=", round(g.gpp_per_apar, sigdigits = 4))
+    " NPP=", round(g.npp, digits = 4), " CUE=", round(g.npp / max(g.gpp, 1.0e-9), digits = 3), " GPP/apar=", round(g.gpp_per_apar, sigdigits = 4)
+)
 println("  TREES GPP/apar (validated kernel): ", [round(t.gpp_per_apar, sigdigits = 4) for t in b.trees], "  grass GPP/apar=", round(g.gpp_per_apar, sigdigits = 4))
 println("  TREES λ: ", [round(t.λ, digits = 3) for t in b.trees], "  grass λ=", round(g.λ, digits = 4))
 bf = breakdown(modpr; faithful = true, respp = phys_gresp.resp).grass
-println("  FAITHFUL grass (albedo .23, tphotos 10/30, respcoeff 1.2): apar=", round(bf.apar, digits = 2), " Vcmax=", round(bf.vm, digits = 3),
-    " λ=", round(bf.λ, digits = 4), " GPP=", round(bf.gpp, digits = 4), " NPP=", round(bf.npp, digits = 4), " CUE=", round(bf.npp / max(bf.gpp, 1.0e-9), digits = 3))
+println(
+    "  FAITHFUL grass (albedo .23, tphotos 10/30, respcoeff 1.2): apar=", round(bf.apar, digits = 2), " Vcmax=", round(bf.vm, digits = 3),
+    " λ=", round(bf.λ, digits = 4), " GPP=", round(bf.gpp, digits = 4), " NPP=", round(bf.npp, digits = 4), " CUE=", round(bf.npp / max(bf.gpp, 1.0e-9), digits = 3)
+)
 
 println("\n================ VERDICT ================")
 mnf = _median(nppF ./ max.(nppC, 1.0e-6)); mff = _median(fparF ./ max.(fparC, 1.0e-9))
-println("Q1: F_diff grass NPP is ", round(mnf, digits = 2), "× the C at MATCHED 2008 leaf; fpar F/C = ", round(mff, digits = 3),
-    mff < 1.3 ? " (fpar MATCHED ⇒ overshoot is GPP-per-light, not absorption)" : " (fpar HIGH ⇒ light-absorption gap)")
-println("Q3: grass GPP/apar vs trees' — ", abs(g.gpp_per_apar - _mean([t.gpp_per_apar for t in b.trees])) / max(_mean([t.gpp_per_apar for t in b.trees]), 1e-9) < 0.25 ?
-    "SIMILAR (kernel consistent ⇒ C-grass genuinely lower, a grass-specific physics F_diff lacks)" : "ANOMALOUS (grass-specific input inflates GPP)")
+println(
+    "Q1: F_diff grass NPP is ", round(mnf, digits = 2), "× the C at MATCHED 2008 leaf; fpar F/C = ", round(mff, digits = 3),
+    mff < 1.3 ? " (fpar MATCHED ⇒ overshoot is GPP-per-light, not absorption)" : " (fpar HIGH ⇒ light-absorption gap)"
+)
+println(
+    "Q3: grass GPP/apar vs trees' — ", abs(g.gpp_per_apar - _mean([t.gpp_per_apar for t in b.trees])) / max(_mean([t.gpp_per_apar for t in b.trees]), 1.0e-9) < 0.25 ?
+        "SIMILAR (kernel consistent ⇒ C-grass genuinely lower, a grass-specific physics F_diff lacks)" : "ANOMALOUS (grass-specific input inflates GPP)"
+)
 
 # ── SLURM (run off the login node): submit as a one-task batch job ──
 #   #!/usr/bin/env bash

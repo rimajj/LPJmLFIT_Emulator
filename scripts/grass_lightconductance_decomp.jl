@@ -202,7 +202,7 @@ configs = [
 
 results = Dict{String, Any}()
 b0tnpp = Ref(0.0)
-verdict(r) = (r.floor_sh < 0.5 && r.corr > 0.90) ? "COLLAPSES" : ((r.floor_sh < 1.5 || r.corr > 0.75) ? "PARTIAL" : "NO-EFFECT")
+verdict(r) = (r.floor_sh < 0.5 && r.corr > 0.9) ? "COLLAPSES" : ((r.floor_sh < 1.5 || r.corr > 0.75) ? "PARTIAL" : "NO-EFFECT")
 println(rpad("config", 16), rpad("floor_sh", 10), rpad("floor_lit", 10), rpad("ratio", 8), rpad("corrA", 8), rpad("medA/C", 9), rpad("treeNPPΔ", 11), "verdict")
 for c in configs
     r = run_cfg(c)
@@ -225,7 +225,7 @@ for (k, pd) in enumerate(patchdata)
 end
 
 println("\n================ VERDICT ================")
-decisive = [c.name for c in configs if results[c.name].floor_sh < 0.5 && results[c.name].corr > 0.90]
+decisive = [c.name for c in configs if results[c.name].floor_sh < 0.5 && results[c.name].corr > 0.9]
 println("decisive lever(s) (floor_sh<0.5 & corrA>0.90): ", isempty(decisive) ? "NONE ALONE" : join(decisive, ", "))
 tΔA = abs(rA.tnpp_sh - rB0.tnpp_sh) / max(abs(rB0.tnpp_sh), 1.0e-12)
 println("lever A grass-only check: |treeNPP(1e6)−treeNPP(50)|/treeNPP(50) = ", round(tΔA, sigdigits = 3))
@@ -233,7 +233,7 @@ println("lever A grass-only check: |treeNPP(1e6)−treeNPP(50)|/treeNPP(50) = ",
 # ── assertions ──
 # (1) B0 reproduces the committed diagnosis (regression gate; committed floor≈2.94, corr≈0.566, medA/C≈13.87).
 @assert 2.3 < rB0.floor_sh < 3.6 "B0 floor should reproduce ≈2.94, got $(rB0.floor_sh)"
-@assert 0.40 < rB0.corr < 0.72 "B0 corr should reproduce ≈0.566, got $(rB0.corr)"
+@assert 0.4 < rB0.corr < 0.72 "B0 corr should reproduce ≈0.566, got $(rB0.corr)"
 @assert rB0.medAC > 5.0 "B0 median Exp A/C should reproduce >5 (≈13.87), got $(rB0.medAC)"
 # (2) LEVER A (hard GPP floor, βflux=1e6) COLLAPSES the light-insensitive floor.
 @assert rA.floor_sh < 0.5 "lever A should collapse the shaded low-light floor (<0.5), got $(rA.floor_sh)"
@@ -243,8 +243,10 @@ println("lever A grass-only check: |treeNPP(1e6)−treeNPP(50)|/treeNPP(50) = ",
 @assert results["B:gmin=0.8"].floor_sh > 1.5 "lever B (gmin=0.8) should NOT collapse the floor, got $(results["B:gmin=0.8"].floor_sh)"
 println("\nASSERTED ✓  lever A (hard GPP floor) collapses the light-insensitive floor and is grass-only;")
 println("            lever B (gmin) does not — the softplus GPP floor (fdiff.jl:1533) is the pinned lever.")
-println("            corr(lever A) = ", round(rA.corr, digits = 3), " (from B0 ", round(rB0.corr, digits = 3), ") — ",
-    rA.corr > 0.90 ? "SUFFICIENT ALONE" : "improved; residual = grass-param fidelity (respcoeff/temp_photos/albedo/turnover)")
+println(
+    "            corr(lever A) = ", round(rA.corr, digits = 3), " (from B0 ", round(rB0.corr, digits = 3), ") — ",
+    rA.corr > 0.9 ? "SUFFICIENT ALONE" : "improved; residual = grass-param fidelity (respcoeff/temp_photos/albedo/turnover)"
+)
 
 # ── SLURM (run off the login node): submit as a one-task batch job ──
 #   #!/usr/bin/env bash
