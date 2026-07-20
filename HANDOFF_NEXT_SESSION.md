@@ -214,6 +214,40 @@ for HEAD.
 
 ---
 
+## ⭐ WHAT LANDED IN SESSION 22 (on `main`) — GRASS-EQUILIBRIUM CO-CALIBRATION: THE §25 HARD-FLOOR LEVER IS REFUTED; THE FAITHFUL MECHANISM IS THE C'S PHOTOSYNTHESIS DEMAND-GATE; THE GATE EXPOSES THE TRUE RESIDUAL (scale-up step 11 follow-up #3)
+
+**§25's co-calibrated next step (three interacting faithful mechanisms) is pinned with a committed
+co-calibration probe (`scripts/grass_cocalibration_probe.jl`: matched-structure per-patch spectrum +
+gate-sharpness sweep + the self-driven 11-yr equilibrium). The §25 hard-floor lever is REFUTED; the C's
+mechanism is a photosynthesis DEMAND-GATE; turning it on EXPOSES a grass-NPP LEVEL undershoot the soft floor
+was masking.** All committed knobs are opt-in / grass-gated ⇒ every validated tree path is byte-identical.
+(Report §26; CHANGELOG "Changed".)
+
+- **★ REFUTED — the §25 hard-floor lever `max(0,agd)`.** Applied grass-gated it drives deep-shade grass NPP
+  NEGATIVE (patches 3/4/18: −98 / −14 / −30 gC/m²/yr) and extincts 18/25 patches self-driven. Root cause:
+  flooring the DEMAND `gpd→0` collapses `fac`, so the fixed-graph λ-solve returns a degenerate low λ that
+  suppresses `agd` while `rd` stays normal ⇒ `agd−rd ≪ 0`. A hard GPP floor is the WRONG mechanism.
+- **★ COMMITTED FIX — a grass photosynthesis DEMAND-GATE** (`WaterParams.grass_demand_gate`, opt-in): the C
+  skips photosynthesis when `gpd≤1e-5` (`water_stressed.c:196` ⇒ `agd=0`, no leaf resp) and scales `mresp·phen`
+  (`npp_grass.c`; F_diff already matches this). A smooth `stable_sigmoid(βgpd_gate·(gpd−1e-5))` multiplies grass
+  GPP AND `rd`, zeroing both as demand→0 while the λ-solve keeps the bounded soft-`βflux` `fac` (no degeneracy).
+  Deep-shade grass NPP positive-and-suppressed, shade count 0/4 → 4/4, no negatives. Replaces the refuted
+  `βflux_grass`. Grass-gated ⇒ trees byte-identical; opt-in default off ⇒ byte-identical.
+- **★ THE GATE EXPOSES THE TRUE RESIDUAL.** With the faithful gate the matched-structure grass NPP is aggregate
+  **0.83× the C** (median 0.48×); the §25 "1.13×" was inflated by the soft `softplus` floor producing grass GPP
+  on the sub-threshold (`gpd≤1e-5`) days the C GATES OFF. The real residual is a grass-NPP LEVEL gap on the
+  ABOVE-threshold days (corr unchanged ~0.973 — ranking right, level low). **This is the corrected next step.**
+- **★ ESTABLISHMENT is NECESSARY (committed opt-in `grass_estab`).** `establishment_grass.c` individual mode
+  (`est_pft=(1−fpc_total)/n_est`, `leaf+=sapl.leaf·est_pft`): without it the gated grass extincts 17–18/25
+  patches; with it 0 extinct. `GrassEstabParams`/`grass_estabparams`/`_treepools_fpc`, grass-only.
+- **★ `:exp` forest-floor light NOT adopted** (committed inert): with the gate it drives deep-shade grass NPP
+  negative again (leaf-on-but-demand-gated days pay root maintenance); `:linear` retained.
+- **★ SUITE + gate.** Full suite 26200 pass / 4 broken (26183 baseline + the §26 gate) (byte-identical defaults, Enzyme
+  canopy path intact). New gate "Grass demand-gate + establishment — §26 faithful deep-shade balance; trees
+  byte-identical" (`grass_structure_tests.jl`). SLURM 1537797/1537804/1537815/1537816/1537834/1537853.
+
+---
+
 ## ⭐ WHAT LANDED IN SESSION 20 (on `main`) — GRASS-OVERSHOOT RE-DIAGNOSIS #3 + FIX: THE §24 "CARBON BALANCE" IS per-PFT grass PHENOLOGY, NOW WIRED INTO THE COUPLED ROLLOUT (scale-up step 11 follow-up #2)
 
 **§24's corrected next step ("a light-limited grass carbon balance, pinned with a light- vs
@@ -1065,21 +1099,28 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    `pft_ids` kwarg on `rollout_canopy_years` (grass→8 / tree→3) ⇒ matched-structure grass NPP overshoot
    4.26 → 1.13×, corr 0.929 → 0.973; tree paths byte-identical (suite 26174/0/4). Report §25; CHANGELOG.
    `scripts/grass_lightconductance_decomp.jl` + `..._carbonbalance_probe.jl` + `..._phen_probe.jl`.
-   **★ NEXT (corrected again — session 20 / §25): CO-CALIBRATE the grass equilibrium** — the three remaining
-   levers INTERACT (each alone over/under-corrects), so tune them together against the C's per-patch grass
-   spectrum: **(i)** the **grass-gated hard GPP floor** `max(0, agd)` in `daily_step_canopy` (faithful to the
-   C's `water_stressed.c:259` / `photosynthesis.c:166`, no soft floor ⇒ grass GPP vanishes with light and the
-   light-independent root maintenance drives NPP negative → deep-shade extinction). It was implemented + tested
-   this step but REVERTED: on top of per-PFT phenology it OVER-corrects (matched-structure 0.37× undershoot),
-   because **(ii)** F_diff's **grass GSI light-limiter season is over-suppressed** in deep shade (the grass light
-   limiter's high onset `light_base ≈ 76 W/m²` flips the understory grass on/off near the forest-floor light) —
-   calibrate `light_base`/`grass_lf` to the C's grass leaf-on days; and **(iii)** the self-driven per-patch
-   equilibrium is bimodal because the C maintains its dim-patch grass (where NPP < turnover) by annual
-   **establishment/re-seeding** — port grass establishment so the coupled loop is not fixed-N. The floor +
-   season must be grass-specific (`daily_step_canopy` is shared with the VALIDATED tree path — decadal GPP
-   ×1.066, §21 — byte-identical) and AD-safe (Enzyme canopy/multi-year trainers). **NOT** `light.c`/`light_grass.c`
-   (§24), **NOT** per-PFT conductance (§22), **NOT** grass photosynthesis params or a respiration/CUE change
-   (§25: GPP-per-light and CUE are faithful).
+   **(grass-rediagnosis-4 / co-calibration) ✅ DONE (session 22) — the §25 hard-floor lever is REFUTED; the
+   faithful mechanism is the C's photosynthesis DEMAND-GATE, committed opt-in.** The co-calibration probe
+   (`scripts/grass_cocalibration_probe.jl`) showed a grass-gated hard `max(0,agd)` drives deep-shade grass NPP
+   NEGATIVE (flooring the DEMAND collapses `fac` → degenerate λ → `agd−rd≪0`); the C instead GATES photosynthesis
+   on `gpd>1e-5` (`water_stressed.c:196`) + scales `mresp·phen` (already matched). Committed: the grass demand-gate
+   (`WaterParams.grass_demand_gate`), grass establishment (`grass_estab`), the `:exp` mode (inert) — see the
+   session-22 landing log above. Docs §26.
+
+   **★ NEXT (corrected again — session 22 / §26): CLOSE THE GRASS-NPP LEVEL GAP on the ABOVE-threshold days.**
+   The demand-gate EXPOSED that F_diff's faithfully-gated grass NPP is aggregate **0.83× the C** (matched
+   structure; the §25 "1.13×" was inflated by the soft-`βflux` floor producing grass GPP on the sub-threshold
+   days the C gates off). The cross-patch corr is right (~0.973) — only the LEVEL is low, on the days the grass
+   IS photosynthesizing. The grass shares the beech photosynthesis params (`temp_photos` 10/30 vs the tree 20/30,
+   `alphaa` 0.5 vs 0.55, `sla` 0.042242) — check the grass per-day above-threshold GPP / Vcmax / λ vs the C
+   directly (a matched-leaf, matched-light, single-patch daily decomposition). Then **flip the demand-gate +
+   establishment to the coupled-rollout DEFAULT** once validated against a **MULTI-YEAR C grass reference** (the
+   §26 self-driven metric compares only to the 2008 snapshot — extract the C's per-year grass leaf/NPP over
+   2009–2019, as the decadal tree reference §21 did). **NOT** a hard GPP floor (§26 Finding 1), **NOT** `:exp`
+   forest-floor light (§26 Finding 6 — negative with the gate), **NOT** per-PFT conductance (§22), cover
+   competition (§24), or a respiration/CUE change (§25). Keep grass-specific (`daily_step_canopy` shared with the
+   VALIDATED tree path — decadal GPP ×1.066, §21 — byte-identical) and AD-safe (Enzyme canopy/multi-year trainers;
+   the demand-gate sigmoid is smooth/differentiable but very steep — check the Enzyme gradient when it goes live).
    Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
    (**scouted: a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of the sapwood pool — needs the
    per-soil-layer lateral-root-sapwood demand `root_sapwood_layer` (`allocation_tree.c:160-209`, so soil layers
@@ -1170,12 +1211,15 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
     shifted worker scheduling so a heavy Enzyme testitem cold-compiled on a "poisoned" worker. Refuted above.
 
 ## Commit history on `main` (recent)
-_(this session 20 lands on top: feat(fdiff) grass-overshoot RE-DIAGNOSIS #3 + FIX — the §24 "carbon balance"
-is per-PFT grass PHENOLOGY (the coupled rollout `rollout_canopy_years` applied the beech GSI to the understory
-grass); wiring per-PFT grass phenology in (a `pft_ids` kwarg) drops the matched-structure grass NPP overshoot
-4.26 → 1.13× the C (corr 0.929 → 0.973), tree paths byte-identical (suite 26174/0/4). Conductance / cover /
-carbon-balance / respiration / params all RULED OUT (5 SLURM probes). Co-calibrated next step: hard GPP floor
-+ grass GSI season + establishment. Docs §25. `git log --oneline -8` for exact HEAD.)_
+_(this session 22 lands on top: feat(fdiff) grass-equilibrium CO-CALIBRATION — the §25 hard-floor lever is
+REFUTED (a grass-gated `max(0,agd)` drives deep-shade grass NPP NEGATIVE: flooring the demand collapses `fac`
+→ degenerate λ-solve → `agd−rd≪0`); the C's mechanism is a photosynthesis DEMAND-GATE (`water_stressed.c:196`
+`gpd>1e-5`) + `mresp·phen` (already matched). Committed opt-in: the grass demand-gate (`WaterParams.grass_demand_gate`,
+replacing the refuted `βflux_grass`), grass establishment (`grass_estab`/`GrassEstabParams`/`_treepools_fpc`),
+the `:exp` mode (inert). The gate EXPOSES the true residual — faithfully-gated grass NPP is aggregate 0.83× the
+C (the §25 1.13× was the soft-floor artifact on sub-threshold days). All opt-in/grass-gated ⇒ byte-identical
+defaults (suite 26183 + the new §26 gate / 4 broken). Docs §26. `git log --oneline -8` for exact HEAD. Next:
+close the above-threshold grass-NPP level gap; then flip to default vs a multi-year C grass reference.)_
 `5f490d5` fix(ci) pin Enzyme ≤ 0.13.188 — 0.13.189 regressed the Enzyme-reverse canopy path (step 11 CI; §23) ·
 `6514fd7`/`f1cdad1`/`f65ca84` step-11 grass re-diagnosis + CI churn (per-PFT conductance REFUTED; §22) ·
 `e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the

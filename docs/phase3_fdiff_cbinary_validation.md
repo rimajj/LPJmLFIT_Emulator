@@ -1446,3 +1446,83 @@ C's recorded `fpar_leafon` to 6 s.f. at every patch (ratio 1.0, from the deepest
 committed per-PFT-phenology fix (4.26 → 1.13×) was **independently reproduced** (`scripts/grass_phen_probe.jl`,
 SLURM 1535533: beech 4.26/corr 0.93 → per-PFT 1.13/corr 0.973). Synthesis verdict: §25 HOLDS; §24's Findings
 1–3 hold, its Finding 4 lever + next step are correctly superseded here (§24 now carries a superseded banner).
+
+## 26. Grass-equilibrium CO-CALIBRATION — the §25 hard-floor lever REFUTED (drives deep-shade grass NPP NEGATIVE); the faithful mechanism is the C's photosynthesis DEMAND-GATE; the gate EXPOSES the true residual (a grass-NPP LEVEL undershoot), establishment stabilizes the self-driven equilibrium (scale-up step 11 follow-up #3)
+
+§25 committed the per-PFT grass phenology fix (matched-structure grass NPP 4.26 → 1.13×) and named a
+**co-calibrated next step**: three interacting faithful mechanisms — (i) the grass-gated hard GPP floor
+`max(0,agd)`, (ii) the grass GSI light-limiter season (`:linear` vs faithful `:exp` forest-floor light),
+(iii) grass establishment/re-seeding. This step **pins those levers empirically** (a co-calibration probe,
+`scripts/grass_cocalibration_probe.jl`: matched-structure per-patch spectrum + a gate-sharpness sweep +
+the self-driven 11-yr equilibrium, on the Hainich 2008 reference) and finds that **the §25 hard-floor
+lever (i) is REFUTED**, the faithful mechanism is the C's photosynthesis **demand-gate**, and turning it on
+**EXPOSES the true residual** the soft floor was masking. Verified from the LPJmL-FIT C source + SLURM runs;
+runtime `[deps]` stays EMPTY. All committed knobs are grass-gated / opt-in ⇒ every validated tree path is
+byte-identical (full suite **26200 pass / 4 broken** — the 26183 baseline unchanged + the new §26 gate).
+
+**★ Finding 1 — the §25 hard-floor lever (i) is REFUTED: it drives deep-shade grass NPP strongly NEGATIVE**
+(probe Part 1, SLURM 1537804). Applied grass-gated (a large `βflux` recovering `max(0,agd)`), it does NOT
+"over-correct to 0.37×" (as §25's Finding 4 measured for a GPP-only floor with a soft demand) — it drives
+the deep-shade patches (3/4/18, C grass NPP 0.01–0.09) to **−98 / −14 / −30 gC/m²/yr**, and the self-driven
+11-yr rollout **extincts 18/25 patches**. Root cause: F_diff floors BOTH softplus applications — the
+DEMAND (`gpd`) and the GPP (`agd`). Flooring the demand `gpd→0` collapses `fac = gpd/1.6·co2`, so the
+fixed-graph λ-solve returns a degenerate low λ that suppresses `agd` while `rd` (from the precomputed `vm`)
+stays normal ⇒ `agd − rd ≪ 0`. So a "hard floor" is the WRONG mechanism (it can't reproduce the C).
+
+**★ Finding 2 — the C's actual mechanism is a photosynthesis DEMAND-GATE + phen-scaled maintenance, NOT a
+GPP floor** (C source: `water_stressed.c`, `npp_grass.c`, `daily_natural.c`). The C computes `agd`/`rd` only
+inside `if(gpd>1e-5 && isphoto(tstress))` (`water_stressed.c:196`); below the demand threshold it SKIPS
+photosynthesis entirely (`else agd=0`), and the grass NPP is `assim = gpp − rd` fed to `npp_grass.c`, whose
+maintenance respiration `mresp = root·nind·respcoeff·k·nc·gtemp_soil·pft->phen` is **phen-scaled** — a
+leaf-off grass barely respires. **F_diff already matches `mresp·phen`** (`autotrophic_respiration`:
+`phen·c_root/cn_root`, and grass `c_sapwood=0`). So the only missing piece is the demand-gate.
+
+**★ Finding 3 — THE FIX: a grass photosynthesis DEMAND-GATE** (`WaterParams.grass_demand_gate`, opt-in).
+A smooth `stable_sigmoid(βgpd_gate·(gpd − 1e-5))` on the pre-floor demand multiplies the grass GPP AND `rd`
+outputs, zeroing BOTH as demand→0 — while the λ-solve keeps the bounded **soft**-`βflux` `fac` (so `agd`/`rd`
+stay finite, NO degenerate solve). This eliminates the negative pathology: with `:linear` forest-floor light
+the deep-shade grass NPP is positive-and-suppressed, the "C<1 ⇒ F<1" shade count goes **0/4 → 4/4**, and NO
+patch goes negative. The gate sharpness converges by `βgpd_gate = 1e6` (the C's hard `gpd>1e-5` step; 1e6 ==
+1e8 to the digit). Grass-gated ⇒ trees byte-identical; opt-in (`grass_demand_gate=false` default ⇒ `gate ≡ 1`,
+byte-identical — the tree path never even evaluates the sigmoid).
+
+**★ Finding 4 — the gate EXPOSES the true residual: a grass-NPP LEVEL undershoot the soft floor was masking.**
+With the faithful gate, the matched-structure grass NPP is **aggregate 0.83× the C** (Σ_F/Σ_C; bright patches
+13/24/20/6 undershoot 12–44 %), median **0.48×**. The §25 "1.13× / aggregate 0.89× match" was **inflated by
+the soft `softplus(agd, βflux=50)` floor producing grass GPP (~0.0139 gC/m²/day) on sub-threshold (`gpd≤1e-5`)
+days the C GATES OFF** — right number, wrong mechanism. So the deep-shade "overshoot" §24/§25 chased is a
+~1 %-of-total floor artifact; the REAL residual is a grass-NPP LEVEL gap on the *above-threshold* days (the
+cross-patch corr is unchanged at ~0.973, so the ranking is right — only the level is low).
+
+**★ Finding 5 — establishment is NECESSARY for the self-driven equilibrium** (probe Part 2). The faithful
+establishment (`establishment_grass.c` individual mode: `est_pft = (1−fpc_total)/n_est` gated on
+`fpc_total<1`; `leaf += sapl.leaf·est_pft`, `root += sapl.root·est_pft`; `sapl.leaf = lai_sapl/sla ≈ 2.367`,
+`sapl.root = sapl.leaf/lmro_ratio ≈ 2.959` for temperate C3 grass id 8) is what maintains the C's DIM-patch
+grass where the light-limited NPP is below the annual turnover. Without it the gated/shaded grass goes
+**extinct in 17–18/25 patches**; with it **0 extinct** and the self-driven grass leaf is aggregate ~1.1–1.2×
+the C's 2008 snapshot. Faithful, grass-only (no tree pool touched).
+
+**★ Finding 6 — the `:exp` forest-floor light (ii) is NOT adopted** (probe Part 1, `gate1e8-exp`). The
+faithful Lambert-Beer transmission `exp(−k·Σ plai·phen)` (`getfpar.c`), combined with the demand-gate,
+drives the deep-shade grass NPP NEGATIVE again (**−34 / −4 / −9** at 3/4/18): it shifts the grass GSI season
+so the grass is leaf-ON (paying phen-scaled root maintenance) on days the demand-gate zeroes photosynthesis.
+So `:exp` mis-times the grass season relative to the demand; `:linear` (`grass_lf = 1 − Σ fpar·phen`) is
+retained. The `:exp` mode is kept inert + characterized for a future grass-phen-timing pass.
+
+**★ Committed this step** (all opt-in / grass-gated ⇒ byte-identical defaults; the refuted `βflux_grass`
+knob is REPLACED by the demand-gate): the grass demand-gate (`WaterParams.grass_demand_gate` /
+`βgpd_gate` / `gpd_gate`, wired in `daily_step_canopy`), grass establishment (`rollout_canopy_years`
+`grass_estab` kwarg + `GrassEstabParams` / `grass_estabparams` / `_treepools_fpc`), and the `:exp`
+forest-floor mode (`grass_lf_mode` / `phen_params_by_pft` kwargs on `rollout_daily_canopy` /
+`rollout_canopy_years`, inert). New gate: **"Grass demand-gate + establishment — §26 faithful deep-shade
+balance; trees byte-identical"** (`grass_structure_tests.jl`: the gate suppresses the deep-shade grass
+non-negatively with trees byte-identical; establishment param-fidelity + keeps the dim grass alive,
+grass-only). Reproduction: `scripts/grass_cocalibration_probe.jl` (SLURM 1537804/1537816/1537834).
+
+**★ Corrected next step:** close the exposed grass-NPP LEVEL gap on the *above-threshold* days (aggregate
+0.83× at matched structure) — the grass shares the beech photosynthesis params (`temp_photos` 10/30 vs the
+tree 20/30, `alphaa` 0.5 vs 0.55); check the grass per-day above-threshold GPP / Vcmax / λ vs the C directly.
+Then flip the demand-gate + establishment to the coupled-rollout DEFAULT once validated against a **multi-year
+C grass reference** (the current self-driven metric compares only to the 2008 snapshot). NOT a hard GPP floor
+(§26 Finding 1), NOT `:exp` light (§26 Finding 6). Then: below-ground `sapwood_bg` + carbon-debt; whole-tree
+mortality/establishment; the upstream-Enzyme-≥1.11 guard-lift.

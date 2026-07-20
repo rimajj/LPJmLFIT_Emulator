@@ -7,6 +7,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- **Grass-equilibrium CO-CALIBRATION — the §25 hard-floor lever REFUTED; the faithful mechanism is the C's
+  photosynthesis DEMAND-GATE; the gate EXPOSES the true residual (a grass-NPP LEVEL undershoot); establishment
+  stabilizes the self-driven equilibrium (Phase-3 scale-up step 11 follow-up #3; docs §26).** §25 named a
+  co-calibrated next step of three interacting faithful mechanisms — (i) the grass-gated hard GPP floor
+  `max(0,agd)`, (ii) the grass GSI light-limiter season (`:linear` vs `:exp` forest-floor light), (iii) grass
+  establishment. A co-calibration probe (`scripts/grass_cocalibration_probe.jl`: matched-structure per-patch
+  spectrum + gate-sharpness sweep + the self-driven 11-yr equilibrium; SLURM) pins them:
+  - **REFUTED — the §25 hard-floor lever (i).** Applied grass-gated it drives the deep-shade patches (3/4/18,
+    C grass NPP 0.01–0.09) to **−98 / −14 / −30 gC/m²/yr** and extincts **18/25** patches in the self-driven
+    rollout. Root cause: flooring the DEMAND `gpd→0` collapses `fac = gpd/1.6·co2`, so the fixed-graph λ-solve
+    returns a degenerate low λ that suppresses `agd` while `rd` (from the precomputed `vm`) stays normal ⇒
+    `agd − rd ≪ 0`. A hard GPP floor is the WRONG mechanism. (§25's Finding-4 "0.37×" tested a GPP-ONLY floor
+    with a soft demand; the scaffolding's `βflux_grass` floored BOTH, exposing the sharper NEGATIVE pathology.)
+  - **The C's actual mechanism is a photosynthesis DEMAND-GATE + phen-scaled maintenance:** `water_stressed.c:196`
+    `if(gpd>1e-5 && isphoto)` computes `agd`/`rd`, else `agd=0` (photosynthesis skipped); `npp_grass.c`
+    `mresp = root·nind·respcoeff·k·nc·gtemp_soil·pft->phen`. F_diff ALREADY matches `mresp·phen`
+    (`autotrophic_respiration`; grass `c_sapwood=0`); the only missing piece is the gate.
+  - **Committed FIX — a grass photosynthesis DEMAND-GATE** (`WaterParams.grass_demand_gate`, opt-in): a smooth
+    `stable_sigmoid(βgpd_gate·(gpd−1e-5))` on the pre-floor demand multiplies grass GPP AND `rd`, zeroing both
+    as demand→0 while the λ-solve keeps the bounded soft-`βflux` `fac` (no degeneracy). Eliminates the negative
+    pathology — deep-shade grass NPP positive-and-suppressed, the "C<1 ⇒ F<1" shade count **0/4 → 4/4**, no
+    negatives (with `:linear`). Grass-gated ⇒ trees byte-identical; opt-in (default off ⇒ byte-identical).
+    Replaces the refuted `βflux_grass` knob.
+  - **The gate EXPOSES the true residual:** with the faithful gate the matched-structure grass NPP is aggregate
+    **0.83× the C** (median 0.48×; bright patches 12–44 % low); the §25 "1.13×" was **inflated by the soft
+    `softplus(agd, βflux=50)` floor producing grass GPP on the sub-threshold (`gpd≤1e-5`) days the C GATES OFF**
+    — right number, wrong mechanism. The real residual is a grass-NPP LEVEL gap on the *above-threshold* days
+    (cross-patch corr unchanged ~0.973 — the ranking is right, only the level is low).
+  - **Establishment (`establishment_grass.c`) is NECESSARY for the self-driven equilibrium:** without it the
+    gated/shaded grass extincts 17–18/25 patches; with it **0 extinct**. Committed as an opt-in `grass_estab`
+    kwarg on `rollout_canopy_years` (`GrassEstabParams`/`grass_estabparams`/`_treepools_fpc`), grass-only.
+  - **`:exp` forest-floor light NOT adopted:** with the gate it drives deep-shade grass NPP negative again
+    (leaf-on-but-demand-gated days pay phen-scaled root maintenance with no photosynthesis); `:linear` retained.
+    The `:exp` mode (`grass_lf_mode`/`phen_params_by_pft` kwargs) is kept inert + characterized.
+  - All committed knobs opt-in / grass-gated ⇒ every validated tree path is byte-identical (full suite **26200 pass / 4 broken** (26183 baseline + the §26 gate)). New gate "Grass demand-gate + establishment — §26 faithful
+    deep-shade balance; trees byte-identical" (`grass_structure_tests.jl`). Reproduction
+    `scripts/grass_cocalibration_probe.jl` (self-checking, SLURM). Runtime `[deps]` stays EMPTY. **Next:** close
+    the grass-NPP LEVEL gap on the above-threshold days (grass shares the beech photo params); then flip the
+    gate + establishment to the coupled-rollout DEFAULT once validated against a MULTI-YEAR C grass reference.
 - **Independent adversarial verification of the §24 → §25 grass re-diagnosis chain + §24 superseded-banner /
   factual fixes (Phase-3 scale-up step 11 follow-up #2 verification; docs §24 banner + §25 "Independently
   verified").** A 4-lens refutation workflow (each lens tried to REFUTE a load-bearing claim) + an all-25-patch

@@ -317,3 +317,84 @@ end
         @info "Prognostic grass: Enzyme-reverse checks skipped on Julia $(VERSION) (Enzyme 0.13 ≥1.11 compiler error); verified on 1.10-lts."
     end
 end
+
+@testitem "Grass demand-gate + establishment — §26 faithful deep-shade balance; trees byte-identical" tags = [:validation, :fdiff, :canopy, :structure, :grass] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: rollout_canopy_years, rollout_daily_canopy, hainich_soilcolumn, tebs_allocparams,
+        tebs_params, WaterParams, FDiffParams, grass_estabparams, _treepools_fpc, grass_treepools,
+        _patch_fpars, individual_from_pools
+    using LPJmLFITEmulator.Allometry
+    using Test
+
+    # §26 replaces the REFUTED §25 hard-floor lever (a large grass-only `βflux` recovering `max(0,agd)` drove
+    # deep-shade grass NPP NEGATIVE — flooring the demand `gpd→0` collapses `fac`, so the fixed-graph λ-solve
+    # returns a degenerate low λ that suppresses `agd` while `rd` stays normal) with the C's own mechanism: a
+    # photosynthesis DEMAND-GATE (`water_stressed.c:196` `if(gpd>1e-5)` skips photosynthesis ⇒ agd=0, no leaf
+    # resp). F_diff's `WaterParams.grass_demand_gate` multiplies grass GPP + `rd` by a smooth sigmoid of the
+    # pre-floor demand, zeroing BOTH as demand→0 (no negative pathology). Plus grass ESTABLISHMENT
+    # (`establishment_grass.c`). Both grass-gated / opt-in ⇒ the validated tree paths stay byte-identical.
+    soil = hainich_soilcolumn(;
+        whcs = [37.0, 53.0, 88.0, 175.0, 175.0], rootdist = [0.41, 0.32, 0.2, 0.07, 0.0],
+        soildepth = [200.0, 300.0, 500.0, 1000.0, 1000.0],
+    )
+    allom = Allometry.TreeAllometry{Float64}()
+    alloc = tebs_allocparams()
+    mktree(leaf, sap, heart, root, h, ca, nind) = TreePools{Float64}(leaf, sap, heart, root, h, ca, nind, 0.01986, 2.0e5, false)
+    mktmpl(sla, isg) = Individual{Float64}(
+        0.0, 0.0, 0.5, 0.15, 10.0, 0.0, 0.0, 0.0, isg ? 0.01 : 0.02, isg ? 0.15 : 0.04, 0.1, 0.4, isg ? 1.0 : 1 / 120,
+        FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = sla),
+        FDiff.TempStressParams{Float64}(; temp_photos_low = (isg ? 10.0 : 20.0), temp_photos_high = 30.0), isg,
+    )
+    # deeply-shaded understory (as the §25 gate): two dense beeches over one grass (forest floor ≈ 15 % of open)
+    trees0 = [mktree(4000.0, 40000.0, 150000.0, 4000.0, 20.0, 20.0, 1 / 120), mktree(1500.0, 12000.0, 40000.0, 1500.0, 12.0, 8.0, 1 / 120), grass_treepools(4.0, 10.0, 0.042242)]
+    tmpls = [mktmpl(0.01986, false), mktmpl(0.025, false), mktmpl(0.042242, true)]
+    n = length(trees0)
+    forc = [DailyForcing{Float64}(swdown = 190.0, lwnet = -45.0, temp = 16.0, precip = (d % 4 == 0 ? 8.0 : 0.3), daylength = 14.0, co2 = 380.0) for d in 1:40]
+    yearly = [forc for _ in 1:4]
+    st0 = FDiffStateML{Float64}([0.7 * wc for wc in soil.whcs], 0.0)
+
+    p0 = tebs_params()
+    # gate-on params: copy tebs's WaterParams, flip the §26 demand-gate on (sharp ⇒ the C's hard gpd>1e-5 step)
+    won = WaterParams{Float64}(
+        map(fieldnames(WaterParams)) do k
+            k === :grass_demand_gate ? true : (k === :βgpd_gate ? 1.0e8 : getfield(p0.water, k))
+        end...
+    )
+    pon = FDiffParams{Float64}(; photo = p0.photo, tstress = p0.tstress, water = won, resp = p0.resp, allom = p0.allom, nlambda = p0.nlambda, ω = p0.ω)
+
+    # ── DEMAND-GATE: wired + NON-NEGATIVE (no §25 pathology) + grass-gated (trees shift only via competition) ──
+    (_, _, pools_off, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly)   # DEFAULT (gate off)
+    (_, _, pools_on, _) = rollout_canopy_years(pon, alloc, allom, st0, trees0, tmpls, soil, yearly)   # §26 gate on
+    goff = pools_off[end][3].leaf_c; gon = pools_on[end][3].leaf_c
+    @test !isapprox(gon, goff; rtol = 1.0e-6)         # the demand-gate is WIRED — it changes the grass carbon balance
+    @test gon ≥ 0 && isfinite(gon)                    # NON-NEGATIVE — no degenerate-λ negative-NPP pathology (unlike the refuted §25 hard floor)
+    # DAILY (FIXED structure): the gate touches only grass GPP/`rd`, NOT water (transp/soil use gate-free
+    # quantities), so the shared soil is gate-independent ⇒ the trees are BYTE-IDENTICAL every day, and the
+    # grass GPP is `softplus(agd)·gate ≤ softplus(agd)`, so the demand-gate can only LOWER the stand GPP.
+    fp0 = _patch_fpars(trees0, allom)
+    inds0 = Individual{Float64}[individual_from_pools(tmpls[i], trees0[i], allom, fp0[i]) for i in 1:n]
+    (_, d_off) = rollout_daily_canopy(p0, st0, inds0, soil, forc; pft_ids = [3, 3, 8])
+    (_, d_on) = rollout_daily_canopy(pon, st0, inds0, soil, forc; pft_ids = [3, 3, 8])
+    @test all(d_on[t].npp_ind[i] == d_off[t].npp_ind[i] for t in eachindex(forc) for i in 1:(n - 1))  # trees byte-identical (grass-gated)
+    @test sum(x.gpp for x in d_on) ≤ sum(x.gpp for x in d_off)   # the gate can only LOWER the stand GPP (grass GPP × sigmoid ≤ 1)
+    # MULTI-YEAR: the trees shift only through the shared soil-water / stand-conductance tree↔grass competition
+    for i in 1:(n - 1)                                # (< 2 %, as §25) — the validated tree-ONLY paths (no grass) stay byte-identical
+        @test isapprox(pools_on[end][i].leaf_c, pools_off[end][i].leaf_c; rtol = 0.05)
+        @test isapprox(pools_on[end][i].height, pools_off[end][i].height; rtol = 0.05)
+        @test pools_on[end][i].leaf_c > 0 && isfinite(pools_on[end][i].leaf_c)
+    end
+
+    # ── ESTABLISHMENT (establishment_grass.c): param fidelity + keeps the dim-patch grass alive; grass-only ──
+    est = grass_estabparams()
+    @test isapprox(est.sapl_leaf, 0.1 / 0.042242; rtol = 1.0e-12)   # lai_sapl/sla (fscanpft_grass.c:140, temperate C3 id 8)
+    @test isapprox(est.sapl_root, est.sapl_leaf / 0.8; rtol = 1.0e-12)   # sapl_root = sapl_leaf/lmro_ratio
+    g = grass_treepools(4.0, 10.0, 0.042242)          # _treepools_fpc reproduces the per-area grass fpc (crownarea=nind=1)
+    @test isapprox(_treepools_fpc(g, allom), 1 - exp(-allom.k_beer * (g.leaf_c * g.sla)); rtol = 1.0e-12)
+    (_, _, pools_est, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly; grass_estab = est)
+    @test pools_est[end][3].leaf_c ≥ pools_off[end][3].leaf_c   # re-seeding only ADDS grass biomass (fpc_total<1 gate)
+    @test pools_est[end][3].leaf_c > 0
+    for i in 1:(n - 1)                                # establishment touches only the grass pool (trees shift only via competition)
+        @test isapprox(pools_est[end][i].leaf_c, pools_off[end][i].leaf_c; rtol = 0.05)
+    end
+end

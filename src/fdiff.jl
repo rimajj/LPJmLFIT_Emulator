@@ -36,6 +36,7 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
     rollout_canopy_years_gpp,
     grass_allocparams, grass_treepools, grow_grass_individual,
+    GrassEstabParams, grass_estabparams,
     agb_ind, vegc_ind,
     FluxHooks
 
@@ -198,6 +199,22 @@ Base.@kwdef struct WaterParams{T <: Real}
     βevap::T = 20.0          # soil-evap cover soft-max (fraction)
     βw::T = 20.0             # soil-water storage clamp (mm)
     βflux::T = 50.0          # flux non-negativity floors (gC or mm)
+    # §26 grass photosynthesis DEMAND-GATE (default off ⇒ byte-identical). The C skips grass
+    # photosynthesis entirely when the canopy demand is below threshold (`water_stressed.c:196`
+    # `if(gpd>1e-5)` ⇒ `agd=0`, no leaf respiration), so a deep-shade grass makes ~zero NET carbon —
+    # its `mresp` is ALREADY phen-scaled (`autotrophic_respiration`, matching `npp_grass.c`'s
+    # `mresp·phen`), so a leaf-off grass barely respires. F_diff's shared softplus `βflux` instead keeps a
+    # light-insensitive ~log(2)/50 = 0.0139 gC/m²/day (≈2.9 gC/m²/yr) GPP floor at ~zero forest-floor
+    # demand (the deep-shade grass overshoot, docs §24-26). REFUTED §25 lever: a large grass-only `βflux`
+    # ("hard floor" `max(0,agd)`) drives deep-shade grass NPP strongly NEGATIVE — flooring the DEMAND
+    # `gpd→0` collapses `fac`, so the fixed-graph λ-solve returns a degenerate low λ that suppresses `agd`
+    # while `rd` stays normal ⇒ `agd−rd ≪ 0` (docs §26 co-calibration probe). The faithful fix is this
+    # smooth sigmoid gate on the pre-floor demand `gpd`, which zeroes BOTH grass GPP and `rd` as demand→0
+    # while the λ-solve keeps the bounded soft-`βflux` `fac` (no degeneracy). Grass-gated ⇒ the VALIDATED
+    # tree path (decadal GPP ×1.066, §21) is byte-identical.
+    grass_demand_gate::Bool = false
+    βgpd_gate::T = 2.0e4     # sigmoid sharpness of the demand gate (in `gpd` units, ≈ 1/threshold)
+    gpd_gate::T = 1.0e-5     # C demand threshold (`water_stressed.c:196` `gpd>1e-5`)
 end
 
 """
@@ -1515,8 +1532,17 @@ function daily_step_canopy(
         (gc, demand) = canopy_conductance(w, eeq, gp_stand, supply_i; wet = wet_dem)   # demand uses the STAND mean gp
         sup_acc += supply_i * fpc_i
         dem_acc += demand * fpc_i
-        gpd = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
-        gpd = softplus(gpd, w.βflux)
+        # §26 grass demand-gate: the C skips grass photosynthesis when demand `gpd ≤ 1e-5`
+        # (`water_stressed.c:196` ⇒ `agd=0`, no leaf resp), so a deep-shade grass makes ~zero NET carbon.
+        # F_diff keeps the shared soft `βflux` on the λ-solve input (bounded-positive `fac` ⇒ finite
+        # agd/rd, NO degenerate solve) and instead multiplies the grass GPP + `rd` OUTPUTS by a smooth
+        # sigmoid of the pre-floor demand `gpd_raw`. Default off (`grass_demand_gate=false` ⇒ gate ≡ 1,
+        # byte-identical); the tree path is always ungated. Replaces the REFUTED §25 hard-floor lever
+        # (which drove deep-shade grass NPP negative via the degenerate low-`fac` solve) — see `WaterParams`.
+        gpd_raw = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
+        gate = (ind.is_grass && w.grass_demand_gate) ?
+            stable_sigmoid(w.βgpd_gate * (gpd_raw - w.gpd_gate)) : one(T)
+        gpd = softplus(gpd_raw, w.βflux)
         fac = gpd / 1.6 * ppm2bar(f.co2)
         # POSITIONAL constructor (field order: photo, tstress, water, resp, allom, nlambda, ω) — NOT the
         # keyword `FDiffParams{T}(; …)`: Enzyme reverse (the canopy trainer, scale-up step 7b-canopy)
@@ -1530,7 +1556,8 @@ function daily_step_canopy(
         λs = λ_scales === nothing ? one(T) : λ_scales[ii]
         λ = clamp(λ * λs, T(_LAMBDA_LO), T(_LAMBDA_HI))
         (agd, rd, _, _) = photosynthesis(ind.photo, λ, tsi, co2_Pa, f.temp, apar, dl; comp_vm = false, vm = vm)
-        gpp_i = softplus(agd, w.βflux)
+        gpp_i = softplus(agd, w.βflux) * gate                 # §26 grass demand-gate (≡ gpp_i when off)
+        rd = rd * gate                                        # gate leaf resp with GPP (else deep-shade NPP<0)
         gpp_tot += gpp_i
         fapar_tot += fpar_i
         # transpiration: min(supply, demand_stand)·fpc (water_stressed.c:153 after the per-layer sum)
@@ -1647,17 +1674,21 @@ per-day stand flux `NamedTuple`s.
 function rollout_daily_canopy(
         p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
         forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing,
-        phen_params = nothing, phen_state = nothing, pft_ids = nothing, hooks::FluxHooks = _NO_HOOKS
+        phen_params = nothing, phen_state = nothing, pft_ids = nothing, hooks::FluxHooks = _NO_HOOKS,
+        phen_params_by_pft = nothing, grass_lf_mode::Symbol = :linear
     )
     T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
     st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
     pp = phen_params === nothing ? tebs_phenparams(T) : phen_params
     ps = phen_state === nothing ? PhenState{T}() : phen_state
     # per-PFT self-phen (only when self-computing AND pft_ids supplied): one PhenState per DISTINCT PFT.
+    # `phen_params_by_pft` (id → PhenParams) overrides the default `pft_phenparams` (e.g. a co-calibrated
+    # grass light limiter, docs §26); `nothing` uses the ACTIVE `par/pft_lpjmlfit.js` values.
     per_pft = pft_ids !== nothing && phens === nothing
     uids = per_pft ? unique(pft_ids) : Int[]
     pft_slot = Dict{Int, Int}(id => k for (k, id) in enumerate(uids))
-    pft_params = PhenParams{T}[pft_phenparams(id, T) for id in uids]
+    pft_params = PhenParams{T}[phen_params_by_pft === nothing ? pft_phenparams(id, T) : convert(PhenParams{T}, phen_params_by_pft(id)) for id in uids]
+    kl_ff = T(0.5)                                 # k_lambert forest-floor extinction (getfpar.c fpar_grass)
     pft_states = PhenState{T}[PhenState{T}() for _ in uids]
     pft_isg = Bool[_pft_is_grass(id) for id in uids]
     grass_lf = one(T)                             # lag-1 forest-floor light fraction for grass
@@ -1682,11 +1713,29 @@ function rollout_daily_canopy(
         (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = phen_arg, n_top1m = n_top1m, eeq_ext = ee, hooks = hooks)
         water_avail = fl.wscal                    # today's water status → tomorrow's water phenology
         if per_pft                                # update lag-1 grass light fraction from this day's tree leaf display
-            absorbed = zero(T)
-            for (ii, ind) in enumerate(inds)
-                ind.is_grass || (absorbed += convert(T, ind.fpar) * _phen_at(phen_arg, ii))
+            if grass_lf_mode === :exp
+                # FAITHFUL forest-floor transmission `exp(-k_lambert·Σ_trees plai_i·phen_i)` (getfpar.c:165,
+                # phen-scaled tree LAI). Patch-basis tree LAI recovered from the leaf-on `fpc`/`lai`:
+                # `fpc = crownarea·nind·(1−e^{−k_beer·lai})` ⇒ `crownarea·nind = fpc/(1−e^{−k_beer·lai})`, so
+                # `plai_i = lai·crownarea·nind`. Differs from `:linear` only while trees transition (phen<1);
+                # at full leaf (phen=1) both equal `exp(−k·plai_leafon)` (the layered partition telescopes).
+                plai_phen = zero(T)
+                for (ii, ind) in enumerate(inds)
+                    ind.is_grass && continue
+                    lai_i = convert(T, ind.lai)
+                    lai_i <= zero(T) && continue
+                    denom = one(T) - exp(-convert(T, p.allom.k_beer) * lai_i)
+                    plai_i = denom > T(1.0e-12) ? lai_i * convert(T, ind.fpc) / denom : zero(T)
+                    plai_phen += plai_i * _phen_at(phen_arg, ii)
+                end
+                grass_lf = exp(-kl_ff * plai_phen)
+            else
+                absorbed = zero(T)
+                for (ii, ind) in enumerate(inds)
+                    ind.is_grass || (absorbed += convert(T, ind.fpar) * _phen_at(phen_arg, ii))
+                end
+                grass_lf = clamp(one(T) - absorbed, zero(T), one(T))
             end
-            grass_lf = clamp(one(T) - absorbed, zero(T), one(T))
         end
         push!(days, fl)
     end
@@ -1937,6 +1986,35 @@ grass_allocparams(::Type{T} = Float64) where {T <: Real} =
     AllocParams{T}(; lmro_ratio = 0.8, lmro_offset = 0.5, turnover_leaf = 1.0, turnover_root = 0.5, reprod_cost = 0.1)
 
 """
+    GrassEstabParams{T}
+
+Grass annual establishment/re-seeding increment (`establishment_grass.c` individual mode). Each year, if
+the total patch FPC `fpc_total < 1`, every establishing grass PFT adds sapling biomass
+`sapl_leaf·est_pft` (leaf) and `sapl_root·est_pft` (root) with `est_pft = (1−fpc_total)/n_est`
+(`establishment_grass.c:38-49`; `n_est` = number of establishing grass PFTs). This is the mechanism that
+maintains the C's DIM-patch grass where the light-limited NPP alone is below the annual turnover (the
+grass would otherwise go extinct — docs §25/§26). `sapl_leaf = lai_sapl/sla`, `sapl_root =
+sapl_leaf/lmro_ratio` (`fscanpft_grass.c:140-141`; temperate C3 grass id 8: `lai_sapl` 0.1, `sla`
+0.042242, `lmro_ratio` 0.8 ⇒ `sapl_leaf ≈ 2.367`, `sapl_root ≈ 2.959` gC/m²).
+"""
+struct GrassEstabParams{T <: Real}
+    sapl_leaf::T
+    sapl_root::T
+end
+
+"""
+    grass_estabparams(::Type{T}=Float64) -> GrassEstabParams{T}
+
+Temperate C3 grass (PFT id 8) establishment increment from the ACTIVE `par/pft_lpjmlfit.js`
+(`lai_sapl` 0.1, `sla` 0.042242, `lmro_ratio` 0.8) via `fscanpft_grass.c:140-141`. See
+[`GrassEstabParams`](@ref).
+"""
+function grass_estabparams(::Type{T} = Float64) where {T <: Real}
+    sapl_leaf = T(0.1) / T(0.042242)             # lai_sapl / sla.median
+    return GrassEstabParams{T}(sapl_leaf, sapl_leaf / T(0.8))   # sapl_root = sapl_leaf / lmro_ratio
+end
+
+"""
     grass_treepools(agb, vegc, sla; nind=1.0, wooddens=0.0) -> TreePools
 
 Reconstruct a per-area grass [`TreePools`](@ref) from the LPJmL-FIT `ind`-output `agb`/`vegc` (gC/m², the
@@ -2136,11 +2214,22 @@ isolate the allocation/structure growth from the canopy NPP. As of docs §13 the
 is CALIBRATED (positive, CUE≈0.52 vs the C's 0.46), so the DEFAULT (`bm_inc_ext=nothing`) is fully
 self-driven — the crutch is no longer load-bearing.
 """
+# foliar projective cover of a `TreePools` (fpc_tree.c / per-area grass), the formula
+# `individual_from_pools` uses (`crownarea·nind·(1−e^{−k_beer·lai})`, `lai = leaf_c·sla/crownarea`) —
+# reused for the grass-establishment `fpc_total` gate without rebuilding the daily `Individual`.
+function _treepools_fpc(tree::TreePools{T}, allom::Allometry.TreeAllometry) where {T}
+    ca = tree.crownarea
+    (tree.leaf_c <= zero(T) || ca <= zero(T)) && return zero(T)
+    lai = tree.leaf_c * tree.sla / ca
+    return ca * tree.nind * (one(T) - exp(-convert(T, allom.k_beer) * lai))
+end
+
 function rollout_canopy_years(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
         trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
         yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing,
-        galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS, pft_ids = nothing
+        galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS, pft_ids = nothing,
+        grass_estab = nothing, grass_lf_mode::Symbol = :linear, phen_params_by_pft = nothing
     ) where {T}
     trees = collect(trees0)
     st = st0
@@ -2159,7 +2248,10 @@ function rollout_canopy_years(
     for (yr, forc) in enumerate(yearly_forcings)
         fpars = _patch_fpars(trees, allom; nlayers = nlayers)
         inds = Individual{T}[individual_from_pools(tmpls[i], trees[i], allom, fpars[i]) for i in 1:n]
-        (st, days) = rollout_daily_canopy(p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m, hooks = hooks, pft_ids = pids)
+        (st, days) = rollout_daily_canopy(
+            p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m, hooks = hooks,
+            pft_ids = pids, grass_lf_mode = grass_lf_mode, phen_params_by_pft = phen_params_by_pft,
+        )
         bm_perm2 = zeros(T, n)
         gpp_yr = zero(T); npp_yr = zero(T); wsum = zero(T)
         for d in days
@@ -2180,6 +2272,34 @@ function rollout_canopy_years(
             bm_ind = bm_year[i] / (tr.nind + T(1.0e-12))
             newtrees[i] = tr.is_grass ? grow_grass_individual(galloc, tr, bm_ind, wscal_mean) :
                 grow_individual(alloc, allom, tr, bm_ind, wscal_mean)
+        end
+        # GRASS ESTABLISHMENT / re-seeding (establishment_grass.c, individual mode): if the total patch FPC
+        # is below 1, each grass PFT gains sapling biomass `sapl·(1−fpc_total)/n_est` — the mechanism that
+        # maintains the C's DIM-patch grass where the light-limited NPP is below the annual turnover (docs
+        # §26). Off by default (`grass_estab === nothing`); grass-specific (no tree pool touched).
+        if grass_estab !== nothing
+            n_est = 0
+            for i in 1:n
+                newtrees[i].is_grass && (n_est += 1)
+            end
+            if n_est > 0
+                fpc_total = zero(T)
+                for i in 1:n
+                    fpc_total += _treepools_fpc(newtrees[i], allom)
+                end
+                est_pft = max(zero(T), one(T) - fpc_total) / n_est     # establishment_grass.c:38 (fpc_total<1)
+                if est_pft > zero(T)
+                    for i in 1:n
+                        g = newtrees[i]
+                        g.is_grass || continue
+                        newtrees[i] = TreePools{T}(
+                            g.leaf_c + convert(T, grass_estab.sapl_leaf) * est_pft, g.sapwood_c, g.heartwood_c,
+                            g.root_c + convert(T, grass_estab.sapl_root) * est_pft, g.height, g.crownarea,
+                            g.nind, g.sla, g.wooddens, g.is_grass,
+                        )
+                    end
+                end
+            end
         end
         agb = sum(agb_ind(newtrees[i]) * newtrees[i].nind for i in 1:n)
         vegc = sum(vegc_ind(newtrees[i]) * newtrees[i].nind for i in 1:n)
