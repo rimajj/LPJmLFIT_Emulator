@@ -7,6 +7,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- **Independent adversarial verification of the §24 → §25 grass re-diagnosis chain + §24 superseded-banner /
+  factual fixes (Phase-3 scale-up step 11 follow-up #2 verification; docs §24 banner + §25 "Independently
+  verified").** A 4-lens refutation workflow (each lens tried to REFUTE a load-bearing claim) + an all-25-patch
+  fapar check confirmed §25 and correctly superseded §24's forward-looking lever: (1) `light()`/`light_grass()`
+  are dead code in `individual:true` (`annual_natural.c:117`); (2) `reduce_grass` is fpc-only and its
+  `fpc_total > 1` cap fires at **0/25** Hainich patches (max FPC 0.955); (3) grass `temp_photos` 10/30 raises
+  cool-temp NPP (params can't fix it); (4) the ~2.9 gC/m²/yr floor is the `softplus(agd, βflux=50)` artifact;
+  (5) **F_diff's grass fapar reproduces the C's `fpar_leafon` to 6 s.f. at every patch (ratio 1.0)** — the light
+  absorption is byte-faithful, so §25's "the gap is phenology, not light" holds. The §25 fix (4.26 → 1.13×) was
+  **independently reproduced** (`scripts/grass_phen_probe.jl`, SLURM: beech 4.26/0.93 → per-PFT 1.13/0.973). §24
+  now carries a superseded banner (its diagnostic Findings 1–3 HOLD; Finding 4's carbon-balance lever + next step
+  are refuted by §25) and two factual fixes (patch-0 FPC 0.47+0.09=0.56; grass `alphaa` 0.5 vs beech 0.55 was
+  omitted). New reproduction `scripts/grass_fapar_faithfulness_check.jl` (self-checking `@assert`, SLURM). Also
+  refreshed the stale `MEMORY.md` header (§25 had not updated it). Runtime `[deps]` stays EMPTY.
 - **Grass-overshoot RE-DIAGNOSIS #3 + FIX — the §24 "carbon balance" is per-PFT grass PHENOLOGY (dominant),
   wired into the coupled rollout; conductance / cover / carbon-balance / respiration / params all RULED OUT
   (Phase-3 scale-up step 11 follow-up #2; docs §25).** §24 (session 19) set the next step as "a light-limited
