@@ -2140,17 +2140,26 @@ function rollout_canopy_years(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
         trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
         yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing,
-        galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS
+        galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS, pft_ids = nothing
     ) where {T}
     trees = collect(trees0)
     st = st0
     n = length(trees)
+    # PER-PFT GSI phenology (the FIT config's `new_phenology:true`): each individual advances its own PFT's
+    # GSI leaf-display, and — decisively for the coupled rollout — a GRASS drives its light limiter with the
+    # tree-attenuated forest-floor light (`phenology_gsi.c:30-35`), so a shaded understory grass is leaf-on
+    # far LESS than the canopy trees. Without this the grass ran the patch-wide BEECH GSI and its self-driven
+    # leaf over-grew ~×4 at moderate shade (docs §24-25). `pft_ids` defaults to the Hainich mapping
+    # grass→8 (temperate C3), tree→3 (beech): the beech GSI `pft_phenparams(3) === tebs_phenparams`, so the
+    # id-3 trees' leaf display is BYTE-IDENTICAL to the previous patch-wide-beech behaviour (per-PFT and
+    # scalar make the same call for id 3) — only the grass changes. Pass explicit `pft_ids` for other PFTs.
+    pids = pft_ids === nothing ? Int[t.is_grass ? 8 : 3 for t in tmpls] : pft_ids
     pools_by_year = Vector{Vector{TreePools{T}}}()
     annual = NamedTuple[]
     for (yr, forc) in enumerate(yearly_forcings)
         fpars = _patch_fpars(trees, allom; nlayers = nlayers)
         inds = Individual{T}[individual_from_pools(tmpls[i], trees[i], allom, fpars[i]) for i in 1:n]
-        (st, days) = rollout_daily_canopy(p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m, hooks = hooks)
+        (st, days) = rollout_daily_canopy(p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m, hooks = hooks, pft_ids = pids)
         bm_perm2 = zeros(T, n)
         gpp_yr = zero(T); npp_yr = zero(T); wsum = zero(T)
         for d in days

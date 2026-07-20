@@ -199,6 +199,64 @@ end
     @test isapprox(gad, gfd; rtol = 1.0e-3, atol = 1.0e-6)      # gradient flows through the grass structure feedback too
 end
 
+@testitem "Prognostic grass — coupled rollout uses PER-PFT grass phenology (docs §25)" tags = [:validation, :fdiff, :canopy, :structure, :grass] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: rollout_canopy_years, hainich_soilcolumn, tebs_allocparams
+    using LPJmLFITEmulator.Allometry
+    using Test
+
+    # The multi-year coupled rollout `rollout_canopy_years` now drives each individual's leaf phenology with
+    # its OWN PFT's GSI (the FIT config's `new_phenology:true`), via a `pft_ids` kwarg defaulting to the
+    # Hainich mapping grass→8 / tree→3. Decisively, a GRASS runs its light limiter on the tree-attenuated
+    # forest-floor light, so a shaded understory grass is leaf-on far less than the canopy trees — collapsing
+    # the §24 grass overshoot (matched-structure grass NPP 4.26× → 1.13× the C; docs §25). Because the beech
+    # GSI `pft_phenparams(3) === tebs_phenparams`, switching the tree individuals from the old patch-wide
+    # beech GSI to per-PFT is BYTE-IDENTICAL — only the grass leaf display changes.
+    soil = hainich_soilcolumn(;
+        whcs = [37.0, 53.0, 88.0, 175.0, 175.0], rootdist = [0.41, 0.32, 0.2, 0.07, 0.0],
+        soildepth = [200.0, 300.0, 500.0, 1000.0, 1000.0],
+    )
+    allom = Allometry.TreeAllometry{Float64}()
+    alloc = tebs_allocparams()
+    mktree(leaf, sap, heart, root, h, ca, nind) = TreePools{Float64}(leaf, sap, heart, root, h, ca, nind, 0.01986, 2.0e5, false)
+    mktmpl(sla, isg) = Individual{Float64}(
+        0.0, 0.0, 0.5, 0.15, 10.0, 0.0, 0.0, 0.0, isg ? 0.01 : 0.02, isg ? 0.15 : 0.04, 0.1, 0.4, isg ? 1.0 : 1 / 120,
+        FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = sla),
+        FDiff.TempStressParams{Float64}(; temp_photos_low = (isg ? 10.0 : 20.0), temp_photos_high = 30.0), isg,
+    )
+    # a DEEPLY-shaded understory: two dense beeches over one grass (forest-floor light ≈ 15 % of open).
+    trees0 = [mktree(4000.0, 40000.0, 150000.0, 4000.0, 20.0, 20.0, 1 / 120), mktree(1500.0, 12000.0, 40000.0, 1500.0, 12.0, 8.0, 1 / 120), grass_treepools(4.0, 10.0, 0.042242)]
+    tmpls = [mktmpl(0.01986, false), mktmpl(0.025, false), mktmpl(0.042242, true)]
+    n = length(trees0)
+    ndays = 40
+    forc = [DailyForcing{Float64}(swdown = 190.0, lwnet = -45.0, temp = 16.0, precip = (d % 4 == 0 ? 8.0 : 0.3), daylength = 14.0, co2 = 380.0) for d in 1:ndays]
+    NY = 4
+    yearly = [forc for _ in 1:NY]
+    st0 = FDiffStateML{Float64}([0.7 * wc for wc in soil.whcs], 0.0)
+
+    # per-PFT (DEFAULT: grass id 8, light-limited) vs the old all-beech GSI (pft_ids = 3 everywhere)
+    (_, _, pools_pft, _) = rollout_canopy_years(tebs_params(), alloc, allom, st0, trees0, tmpls, soil, yearly)
+    (_, _, pools_beech, _) = rollout_canopy_years(tebs_params(), alloc, allom, st0, trees0, tmpls, soil, yearly; pft_ids = fill(3, n))
+
+    gpft = pools_pft[end][3].leaf_c
+    gbeech = pools_beech[end][3].leaf_c
+    # (1) the grass leaf display IS routed through per-PFT phenology (differs from the beech-GSI grass)
+    @test !isapprox(gpft, gbeech; rtol = 1.0e-6)
+    # (2) the shaded understory grass is SUPPRESSED by its own light limiter (leaf-on less than beech GSI)
+    @test gpft < gbeech
+    @test gpft ≥ 0 && isfinite(gpft)
+    # (3) the TREES are essentially unchanged: the beech GSI `pft_phenparams(3) === tebs_phenparams`, so the
+    # id-3 tree leaf-DISPLAY is byte-identical; the trees shift only by < 1 % through the shared soil-water /
+    # stand-conductance coupling to the now-lighter, light-limited grass (the C's tree↔grass competition —
+    # physically correct, and only in a MIXED coupled patch; the validated tree-only paths stay byte-identical).
+    for i in 1:(n - 1)
+        @test isapprox(pools_pft[end][i].leaf_c, pools_beech[end][i].leaf_c; rtol = 0.02)
+        @test isapprox(pools_pft[end][i].height, pools_beech[end][i].height; rtol = 0.02)
+        @test pools_pft[end][i].leaf_c > 0 && isfinite(pools_pft[end][i].leaf_c)
+    end
+end
+
 @testitem "Prognostic grass — Enzyme reverse through the grass-inclusive multi-year training path" tags = [:gradient, :training, :fdiff, :canopy, :structure, :grass] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff

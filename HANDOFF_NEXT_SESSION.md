@@ -186,6 +186,61 @@ for HEAD.
   cell-total masking it.** No physics change (as §22): deliverable = corrected diagnosis + two committed
   self-checking reproductions (`scripts/grass_cover_mechanism_diagnosis.jl`, `scripts/grass_lightbalance_probe.jl`)
   + roadmap correction. Report §24; CHANGELOG. Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 20) — scale-up step 11 follow-up #2: GRASS-OVERSHOOT RE-DIAGNOSIS #3 + FIX — the §24
+  "carbon balance" is per-PFT grass PHENOLOGY (dominant), now wired into the coupled rollout; conductance /
+  cover / carbon-balance / respiration / params all RULED OUT.** §24's next step ("a light-limited grass carbon
+  balance, pinned with a light- vs conductance-limitation decomposition") is executed. **Five committed SLURM
+  decomposition probes** pin the lever: the "carbon balance" is TWO faithful mechanisms F_diff was missing,
+  **dominated by per-PFT grass PHENOLOGY** (not any carbon-balance / conductance / respiration parameter), and
+  they interact. **(1)** The `daily_step_canopy` softplus GPP floor (`softplus(agd, βflux=50)` → 0.0139
+  gC/m²/day ≈ 2.9 gC/m²/yr at ~zero light) is the DEEP-SHADE lever — necessary but not sufficient (moderate
+  patches barely move). **(2)** The `gc·fpc − gmin·fpar` demand (`fdiff.jl:1518`) is byte-faithful to
+  `water_stressed.c:194`; grass `gmin` inert; at matched leaf+light the grass GPP-per-absorbed-light is
+  IDENTICAL to the validated trees' (`3.025e-6` gC/J, `λ=0.85`) and grass respiration matches the C
+  (`npp_grass.c`; CUE ≈ trees') — so GPP-per-light and CUE are faithful (RULES OUT §21/§22/§24). **(3, THE
+  CAUSE)** `rollout_canopy_years` applied the patch-wide **beech** GSI phenology to the understory grass; the C
+  (`new_phenology:true`) runs PER-PFT GSI (the grass light-limited by tree-attenuated forest-floor light,
+  `phenology_gsi.c:30-35`). **COMMITTED FIX:** a `pft_ids` kwarg on `rollout_canopy_years` (default grass→8 /
+  tree→3) → the grass uses its own light-limited GSI. **Matched-structure grass NPP overshoot 4.26 → 1.13× the
+  C, cross-patch corr 0.929 → 0.973.** Tree paths BYTE-IDENTICAL (`pft_phenparams(3) === tebs_phenparams`; full
+  suite **26174 pass / 0 fail / 4 broken**; decadal §21 uses `rollout_canopy_years_gpp` with supplied phen —
+  untouched; mixed-patch trees shift < 0.4 % via water/conductance competition). New gate in
+  `grass_structure_tests.jl`. **Levers INTERACT (co-calibrated next step, NOT committed):** the grass-gated
+  hard floor `max(0,agd)` ON TOP of per-PFT phenology OVER-corrects to 0.37× (undershoot) — F_diff's grass GSI
+  season is over-suppressed in deep shade (`light_base ≈ 76 W/m²`); and the self-driven per-patch equilibrium is
+  bimodal (the C maintains dim-patch grass, NPP < turnover, by ESTABLISHMENT/re-seeding, which the fixed-N loop
+  lacks). Reproductions `scripts/grass_lightconductance_decomp.jl`, `scripts/grass_carbonbalance_probe.jl`,
+  `scripts/grass_phen_probe.jl`. Report §25; CHANGELOG. Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 20 (on `main`) — GRASS-OVERSHOOT RE-DIAGNOSIS #3 + FIX: THE §24 "CARBON BALANCE" IS per-PFT grass PHENOLOGY, NOW WIRED INTO THE COUPLED ROLLOUT (scale-up step 11 follow-up #2)
+
+**§24's corrected next step ("a light-limited grass carbon balance, pinned with a light- vs
+conductance-limitation decomposition") is executed. The lever is not a carbon-balance / conductance /
+respiration parameter — it is per-PFT grass PHENOLOGY, which the coupled rollout was not using.** Five committed
+SLURM decomposition probes on the Hainich 2008 reference pin it; the dominant, clean, faithful lever is
+committed, the interacting remainder is a pinned co-calibrated next step. (Report §25; CHANGELOG "Changed".)
+
+- **★ COMMITTED FIX — per-PFT grass phenology in `rollout_canopy_years`.** A `pft_ids` kwarg (default grass→8 /
+  tree→3) is passed to `rollout_daily_canopy`, so each individual runs its own PFT's GSI. A grass drives its
+  light limiter with the tree-attenuated forest-floor light ⇒ a shaded understory grass is leaf-on far less than
+  the canopy trees (the FIT `new_phenology:true`). `per_pft_phenology` existed since §19 but was only in
+  `rollout_daily_canopy`. **Matched-structure grass NPP overshoot (grass at the C's 2008 leaf, trees fixed,
+  matched fpar): 4.26 → 1.13×, corr 0.929 → 0.973** (`scripts/grass_phen_probe.jl`).
+- **★ TREE PATHS BYTE-IDENTICAL.** `pft_phenparams(3) === tebs_phenparams` (beech GSI), so the id-3 tree
+  leaf-display is unchanged; the tree-only coupled-rollout gates + every tree baseline are unchanged (full suite
+  **26174 pass / 0 fail / 4 broken**); the decadal tree-GPP validation (§21) uses `rollout_canopy_years_gpp`
+  with SUPPLIED phen, untouched. In a MIXED tree+grass patch the trees shift < 0.4 % — the now-lighter grass
+  leaves more soil water / stand conductance for the trees (the C's tree↔grass competition, physically correct;
+  only in the grass/mixed coupled rollout, not any validated tree path).
+- **★ RULED OUT (5 probes).** The softplus GPP floor is the DEEP-SHADE lever only (necessary, not sufficient);
+  the `gc·fpc − gmin·fpar` demand is byte-faithful to `water_stressed.c:194`; grass `gmin` is inert; the grass
+  GPP-per-absorbed-light == the validated trees' and grass CUE == the trees' (`npp_grass.c` respiration matched,
+  `respcoeff`/`cn_root` ≈ F_diff's). So NOT per-PFT conductance (§21), NOT cover competition (§22), NOT
+  carbon-balance / respiration / photosynthesis-params (§24).
+- **★ CO-CALIBRATED NEXT STEP (NOT committed; the levers interact).** Grass-gated hard floor `max(0,agd)` +
+  grass GSI light-limiter season calibration + grass establishment/re-seeding — see the NEXT section below.
 
 ---
 
@@ -1000,18 +1055,31 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    light-insensitive NPP floor ~2.9 gC/m²/yr). Vindicates session 15's "~3× NPP" as a per-patch fact; §22's
    "0.83×" was a cell-total masking it. Reproductions `scripts/grass_cover_mechanism_diagnosis.jl` +
    `scripts/grass_lightbalance_probe.jl`. §24; CHANGELOG.
-   **★ NEXT (corrected again — session 19 / §24):** a **light-limited grass carbon balance** — make F_diff's
-   grass GPP/NPP → 0 under deep shade and scale with the already-faithful absorbed light, so each patch's grass
-   equilibrates at the C's forest-floor-light-set leaf (the C bounds grass by this carbon balance ALONE — no
-   hard cover cap in the FIT config). Pin the lever first with a **light- vs conductance-limitation decomposition**
-   of the coupled Haxeltine–Prentice grass solve (prime suspects: the `gc·fpc` conductance-demand term uses the
-   UN-attenuated grass cover `fpc` while the light term `apar` uses the tree-attenuated `fpar` —
-   `fdiff.jl:1518` / `water_stressed.c:194`; and the single stand `w.gmin` vs the C's grass `gmin = 0.8`). It
-   MUST be grass-specific (`daily_step_canopy` is shared with the VALIDATED tree path — decadal GPP ×1.066, §21
-   — which must stay byte-identical) and AD-safe (the Enzyme canopy/multi-year trainers run this kernel).
-   **NOT** `light.c`/`light_grass.c` cover competition (inactive in the FIT config — §24), **NOT** per-PFT
-   conductance (§22), **NOT** grass-specific photosynthesis params (grass `temp_photos` 10/30 vs beech 20/30
-   would RAISE grass NPP at cool Hainich temps — worsening; `albedo_leaf` 0.23 vs 0.15 is a ~9 % trim).
+   **(grass-rediagnosis-3) ✅ DONE (session 20) — the §24 "carbon balance" is per-PFT grass PHENOLOGY
+   (dominant), wired into the coupled rollout; conductance / respiration / params RULED OUT (scale-up step 11
+   follow-up #2).** Five SLURM decomposition probes pinned the lever. The softplus GPP floor is the DEEP-SHADE
+   lever only; the `gc·fpc − gmin·fpar` demand is byte-faithful to `water_stressed.c:194`; grass `gmin` inert;
+   the grass GPP-per-absorbed-light == the validated trees' and grass CUE == the trees' — so GPP-per-light and
+   respiration are faithful. The BROAD overshoot is that `rollout_canopy_years` applied the patch-wide BEECH GSI
+   phenology to the understory grass instead of the grass's own light-limited per-PFT GSI. **COMMITTED:** a
+   `pft_ids` kwarg on `rollout_canopy_years` (grass→8 / tree→3) ⇒ matched-structure grass NPP overshoot
+   4.26 → 1.13×, corr 0.929 → 0.973; tree paths byte-identical (suite 26174/0/4). Report §25; CHANGELOG.
+   `scripts/grass_lightconductance_decomp.jl` + `..._carbonbalance_probe.jl` + `..._phen_probe.jl`.
+   **★ NEXT (corrected again — session 20 / §25): CO-CALIBRATE the grass equilibrium** — the three remaining
+   levers INTERACT (each alone over/under-corrects), so tune them together against the C's per-patch grass
+   spectrum: **(i)** the **grass-gated hard GPP floor** `max(0, agd)` in `daily_step_canopy` (faithful to the
+   C's `water_stressed.c:259` / `photosynthesis.c:166`, no soft floor ⇒ grass GPP vanishes with light and the
+   light-independent root maintenance drives NPP negative → deep-shade extinction). It was implemented + tested
+   this step but REVERTED: on top of per-PFT phenology it OVER-corrects (matched-structure 0.37× undershoot),
+   because **(ii)** F_diff's **grass GSI light-limiter season is over-suppressed** in deep shade (the grass light
+   limiter's high onset `light_base ≈ 76 W/m²` flips the understory grass on/off near the forest-floor light) —
+   calibrate `light_base`/`grass_lf` to the C's grass leaf-on days; and **(iii)** the self-driven per-patch
+   equilibrium is bimodal because the C maintains its dim-patch grass (where NPP < turnover) by annual
+   **establishment/re-seeding** — port grass establishment so the coupled loop is not fixed-N. The floor +
+   season must be grass-specific (`daily_step_canopy` is shared with the VALIDATED tree path — decadal GPP
+   ×1.066, §21 — byte-identical) and AD-safe (Enzyme canopy/multi-year trainers). **NOT** `light.c`/`light_grass.c`
+   (§24), **NOT** per-PFT conductance (§22), **NOT** grass photosynthesis params or a respiration/CUE change
+   (§25: GPP-per-light and CUE are faithful).
    Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
    (**scouted: a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of the sapwood pool — needs the
    per-soil-layer lateral-root-sapwood demand `root_sapwood_layer` (`allocation_tree.c:160-209`, so soil layers
@@ -1102,10 +1170,12 @@ FRACTIONAL saturation (no `wsats` output → absolute mm needs wsats). See `docs
     shifted worker scheduling so a heavy Enzyme testitem cold-compiled on a "poisoned" worker. Refuted above.
 
 ## Commit history on `main` (recent)
-_(this session 19 lands on top: docs(fdiff) grass-overshoot RE-DIAGNOSIS #2 — §22's cover-competition next step
-targets an INACTIVE code path (`light()` gated behind `!individual`); the real gap is a light-limited grass
-carbon balance (grass NPP ~2–3× the C at matched absorbed light, median ×13.9 overshoot at fixed light). Two
-committed SLURM reproductions; docs §24; no physics change. `git log --oneline -8` for exact HEAD.)_
+_(this session 20 lands on top: feat(fdiff) grass-overshoot RE-DIAGNOSIS #3 + FIX — the §24 "carbon balance"
+is per-PFT grass PHENOLOGY (the coupled rollout `rollout_canopy_years` applied the beech GSI to the understory
+grass); wiring per-PFT grass phenology in (a `pft_ids` kwarg) drops the matched-structure grass NPP overshoot
+4.26 → 1.13× the C (corr 0.929 → 0.973), tree paths byte-identical (suite 26174/0/4). Conductance / cover /
+carbon-balance / respiration / params all RULED OUT (5 SLURM probes). Co-calibrated next step: hard GPP floor
++ grass GSI season + establishment. Docs §25. `git log --oneline -8` for exact HEAD.)_
 `5f490d5` fix(ci) pin Enzyme ≤ 0.13.188 — 0.13.189 regressed the Enzyme-reverse canopy path (step 11 CI; §23) ·
 `6514fd7`/`f1cdad1`/`f65ca84` step-11 grass re-diagnosis + CI churn (per-PFT conductance REFUTED; §22) ·
 `e159724` feat(fdiff) DECADAL (11-year) fidelity validation of the coupled multi-year rollout — extended the
