@@ -238,6 +238,62 @@ for HEAD.
   the patch, `test/testitems/references/hainich_grass_daily_2009_2019.csv`, scripts
   `run_fdiff_grass_gpp_cell.sh`/`extract_fdiff_grass_daily.py`/`grass_daily_curve_fdiff.jl`/
   `compare_grass_daily_c_vs_fdiff.py`. Report §26.2; CHANGELOG. Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 25) — the validated-faithful grass config is now the coupled-rollout DEFAULT.** §26.2
+  proved F_diff's grass FLUX faithful, but the two mechanisms that make it so (§26 photosynthesis demand-gate,
+  §22 establishment) were still OPT-IN, so the DEFAULT `rollout_canopy_years` kept the deep-shade grass
+  overshoot and would extinct dim-patch grass — the fidelity did not take effect for the global run's many
+  grass cells. **Flipped:** `rollout_canopy_years` now defaults `grass_demand_gate=true` (via a
+  `_with_grass_gate(p, on)` helper that reconstructs `p.water` at the C's sharp `βgpd_gate=1e8` — the §26.2
+  validated value; the rollout is the NON-diff path so no gradient cost) + `grass_estab=grass_estabparams(T)`.
+  **Grass-only ⇒ tree-only rollouts BYTE-IDENTICAL, and the Enzyme/decadal path `rollout_canopy_years_gpp`
+  UNCHANGED** (reads `p.water` directly, gate off; trainer byte-identical + gradient-stable). Validated
+  self-driven over the committed decade (`scripts/grass_default_flip_probe.jl`, SLURM 1542301): the GATE lowers
+  total grass carbon 111.0→86.6 gC/m² (removes the deep-shade overshoot), ESTABLISHMENT restores survivors
+  **14/25→25/25** (gate-alone extincts 11 dim patches; each mechanism ALONE is worse than pre-§26.3 — together
+  they give the gate-corrected level, no extinction, physical over 11 yr). **Honest scope:** validates the
+  FLUX-config default + anti-extinction, NOT the self-driven grass STRUCTURE per-patch (§24's compressed-grass
+  item is separate). Full suite **26205 pass / 0 fail / 4 broken** (SLURM 1542299). Reworked two
+  `grass_structure_tests.jl` testitems + a new "default is now faithful-grass" gate. Report §26.3; CHANGELOG.
+  Runtime `[deps]` still EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 25 (on `main`) — THE VALIDATED-FAITHFUL GRASS CONFIG IS NOW THE COUPLED-ROLLOUT DEFAULT (grass fidelity made real for the global run)
+
+**§26.2 settled that F_diff's grass FLUX is faithful, but the demand-gate (§26) + establishment (§22) that
+make it so were OPT-IN — so the DEFAULT multi-year coupled rollout `rollout_canopy_years` still ran the
+deep-shade grass overshoot and would extinct dim-patch grass. Ten sessions of grass fidelity did not take
+effect in the behaviour a global (many grass-dominated cells) run would see. This session flips the default —
+surgically, grass-only, nothing validated regresses.** (Report §26.3; CHANGELOG.)
+
+- **★ THE CHANGE.** `rollout_canopy_years` now DEFAULTS `grass_demand_gate=true` + `grass_estab=grass_estabparams(T)`.
+  Helper `_with_grass_gate(p, on)` reconstructs `p.water` with the gate on at the C's sharp step
+  `βgpd_gate=1e8` (the §26.2-validated value; `rollout_canopy_years` is the non-differentiable diagnostic /
+  self-driven path, so the steep sigmoid costs no gradient). Pass `grass_demand_gate=false` /
+  `grass_estab=nothing` for the pre-§26.3 references.
+- **★ NOTHING VALIDATED REGRESSES (grass-only).** Tree-only rollouts are **byte-identical** (gate is gated on
+  `ind.is_grass`; establishment is a no-op with no grass — verified `leaf_c`/`height` to the last bit). The
+  **Enzyme / decadal path `rollout_canopy_years_gpp` is UNCHANGED** (reads `p.water` directly, gate off; the
+  NN trainer stays byte-identical + gradient-stable; §21 decadal GPP unaffected). Bare default is bit-identical
+  to explicit `grass_demand_gate=true, grass_estab=grass_estabparams()` (new gate assertion).
+- **★ VALIDATED self-driven over the real decade** (`scripts/grass_default_flip_probe.jl`, SLURM 1542301;
+  committed Hainich 25 mixed patches, 2008 structure self-driven 2009–2019): GATE lowers Σ grass leaf
+  111.0→86.6 gC/m² (deep-shade overshoot removed); ESTABLISHMENT survivors **14/25→25/25**; all physical,
+  trees grow. Each mechanism alone is worse than pre-§26.3.
+- **★ HONEST SCOPE.** Validates the flux-config default + establishment-prevents-extinction + gate-removes-overshoot;
+  does NOT claim the self-driven grass STRUCTURE matches the C per-patch (§24 found it compressed/light-insensitive
+  — a separate open item). The grass FLUX faithfulness (matched structure) is §26.2, unchanged.
+- **★ COMMITTED.** `src/fdiff.jl` (`_with_grass_gate` + defaults + docstring); two reworked
+  `grass_structure_tests.jl` testitems + a new default-is-faithful gate; `scripts/grass_default_flip_probe.jl`;
+  docs §26.3 + CHANGELOG. Suite 26205 pass / 0 fail / 4 broken. Runtime `[deps]` still EMPTY.
+- **★ NEXT (session 26).** Two grass follow-ups + the tree frontier: (a) **the 2018 drought-amplitude residual**
+  (§26.2: matched per-year structure gives F/C 1.87 in the 2018 European drought, ampR 1.69 — F_diff's grass
+  under-responds to extreme drought/heat) — DIAGNOSE FIRST whether it is a real grass water/heat-stress
+  mechanism gap or a per-year `ind` structure-reconstruction artifact (the confound §26.2 flagged), given this
+  thread's history of mis-attributed grass diagnoses; (b) bring the **`FDiffFastCore` v1 adapter** to
+  `rollout_canopy_years` parity — it still grows grass with the TREE allocation (`grow_individual`) + a single
+  beech-style phenology + no gate/establishment (a real deployment-path gap, though not the AD path). The
+  larger frontier remains the tree below-ground **`sapwood_bg` + carbon-debt** (scouted §26.2/§13).
 
 ---
 

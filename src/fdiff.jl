@@ -2213,6 +2213,14 @@ the final `TreePools`, final soil state, the per-year pools trajectory, and per-
 isolate the allocation/structure growth from the canopy NPP. As of docs §13 the self-computed canopy NPP
 is CALIBRATED (positive, CUE≈0.52 vs the C's 0.46), so the DEFAULT (`bm_inc_ext=nothing`) is fully
 self-driven — the crutch is no longer load-bearing.
+
+**Grass defaults (docs §26.3).** The validated-faithful grass config is ON by default: the §26.2
+photosynthesis `grass_demand_gate` (reconstructs `p` at the C's sharp `βgpd_gate=1e8`, so the
+self-driven grass gets the daily-flux physics validated against the C's own daily grass NPP) and §22
+`grass_estab` establishment (re-seeding that keeps dim-patch grass from extincting). Both are
+grass-only ⇒ a tree-only rollout is byte-identical, and the Enzyme/decadal path
+[`rollout_canopy_years_gpp`](@ref) is unchanged. Pass `grass_demand_gate=false` / `grass_estab=nothing`
+for the pre-§26.3 gate-off reference.
 """
 # foliar projective cover of a `TreePools` (fpc_tree.c / per-area grass), the formula
 # `individual_from_pools` uses (`crownarea·nind·(1−e^{−k_beer·lai})`, `lai = leaf_c·sla/crownarea`) —
@@ -2224,13 +2232,50 @@ function _treepools_fpc(tree::TreePools{T}, allom::Allometry.TreeAllometry) wher
     return ca * tree.nind * (one(T) - exp(-convert(T, allom.k_beer) * lai))
 end
 
+# §26.3 — the VALIDATED-faithful grass photosynthesis DEMAND-GATE (`water_stressed.c:196` `gpd>1e-5`;
+# docs §26/§26.2) as a reconstructed-`p` toggle for [`rollout_canopy_years`](@ref). Returns `p` with its
+# `WaterParams.grass_demand_gate` set to `on`; when turning ON it also pins the sharp `βgpd_gate=1e8`
+# (the C's hard step — exactly the value `scripts/grass_daily_curve_fdiff.jl` validated against the C's
+# NEW daily grass NPP output). `rollout_canopy_years` is the NON-differentiable diagnostic/self-driven
+# path, so the steep sigmoid costs NO gradient there; the Enzyme/decadal path `rollout_canopy_years_gpp`
+# reads `p.water` directly and is UNCHANGED (stays gate-off + gradient-stable). Reconstruction is
+# fieldnames-driven (robust to future `WaterParams` fields) and returns `p` UNCHANGED when already in the
+# requested state — so a gate-off request on a gate-off `p` is byte-identical. The gate is grass-gated in
+# [`daily_step_canopy`](@ref) (`ind.is_grass && w.grass_demand_gate`), so a TREE-ONLY rollout is
+# byte-identical regardless of this toggle.
+const _GRASS_GATE_βSHARP = 1.0e8
+function _with_grass_gate(p::FDiffParams{T}, on::Bool) where {T}
+    w0 = p.water
+    (w0.grass_demand_gate == on && (!on || w0.βgpd_gate == T(_GRASS_GATE_βSHARP))) && return p
+    w = WaterParams{T}(
+        Any[
+            f === :grass_demand_gate ? on :
+                (f === :βgpd_gate && on ? T(_GRASS_GATE_βSHARP) : getfield(w0, f))
+                for f in fieldnames(WaterParams)
+        ]...,
+    )
+    return FDiffParams{T}(p.photo, p.tstress, w, p.resp, p.allom, p.nlambda, p.ω)
+end
+
 function rollout_canopy_years(
         p::FDiffParams, alloc::AllocParams, allom::Allometry.TreeAllometry, st0::FDiffStateML,
         trees0::AbstractVector{TreePools{T}}, tmpls::AbstractVector{Individual{T}}, soil::SoilColumn,
         yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing,
         galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS, pft_ids = nothing,
-        grass_estab = nothing, grass_lf_mode::Symbol = :linear, phen_params_by_pft = nothing
+        grass_estab = grass_estabparams(T), grass_demand_gate::Bool = true,
+        grass_lf_mode::Symbol = :linear, phen_params_by_pft = nothing
     ) where {T}
+    # §26.3 — the coupled multi-year rollout DEFAULTS to the validated-faithful grass config: the §26.2
+    # photosynthesis demand-gate (`grass_demand_gate=true`, reconstructing `p` at the C's sharp step) and
+    # §22 grass establishment (`grass_estab` on). Together they give the SELF-DRIVEN grass the flux physics
+    # §26.2 validated against the C's daily grass NPP AND the anti-extinction re-seeding §22 needs. They are
+    # coupled: WITHOUT the gate the deep-shade grass over-shoots on the light-insensitive soft floor; WITH the
+    # gate but WITHOUT establishment the (now-suppressed) dim-patch grass extincts (11/25 self-driven, docs
+    # §26.3) — so each mechanism alone is worse, and only the pair gives the gate-corrected level with no
+    # extinction. Both are GRASS-gated / grass-only ⇒ a tree-only rollout is byte-identical, and the
+    # Enzyme/decadal path `rollout_canopy_years_gpp` (which reads `p.water` directly, gate off) is untouched.
+    # Pass `grass_demand_gate=false` / `grass_estab=nothing` for the gate-off, no-establishment reference.
+    p = _with_grass_gate(p, grass_demand_gate)
     trees = collect(trees0)
     st = st0
     n = length(trees)

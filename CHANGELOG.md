@@ -7,6 +7,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- **The validated-faithful grass config is now the coupled-rollout DEFAULT (Phase-3 scale-up step 11
+  follow-up #6; docs §26.3).** §26.2 settled that F_diff's grass FLUX is faithful to the C, but the two
+  mechanisms that make it so — the §26 photosynthesis demand-gate and the §22 grass establishment — were
+  still OPT-IN, so the DEFAULT multi-year coupled rollout `rollout_canopy_years` kept the deep-shade grass
+  overshoot and (with the gate on) would have extincted dim-patch grass. This flips the default.
+  - **`rollout_canopy_years` now defaults `grass_demand_gate=true` + `grass_estab=grass_estabparams(T)`.** A
+    helper `_with_grass_gate(p, on)` reconstructs `p.water` with the gate on at the C's sharp step
+    `βgpd_gate=1e8` (the value `scripts/grass_daily_curve_fdiff.jl` validated in §26.2; the rollout is the
+    non-differentiable diagnostic path, so the steep sigmoid costs no gradient). Pass
+    `grass_demand_gate=false` / `grass_estab=nothing` for the pre-§26.3 references.
+  - **Grass-only ⇒ nothing validated regresses.** A tree-only rollout is **byte-identical** (gate is gated on
+    `ind.is_grass`; establishment is a no-op with no grass — verified `leaf_c`/`height` equal to the last
+    bit). The Enzyme/decadal path `rollout_canopy_years_gpp` reads `p.water` directly (gate off) and is
+    **unchanged** — trainer byte-identical + gradient-stable, §21 decadal GPP unaffected.
+  - **Validated self-driven over the real decade** (`scripts/grass_default_flip_probe.jl`, SLURM: committed
+    Hainich 25 mixed patches, 2008 structure self-driven 2009–2019). The two payoffs: the GATE lowers total
+    grass carbon 111.0 → 86.6 gC/m² (removes the deep-shade overshoot); ESTABLISHMENT restores the grass the
+    gate alone would extinct (survivors **14/25 → 25/25**). Each mechanism alone is worse (gate-alone
+    extincts; no-gate overshoots); together they give the gate-corrected level with no extinction, all
+    physical over 11 years.
+  - **Honest scope:** validates the FLIP's mechanism payoffs + that the default is the §26.2-validated FLUX
+    config — NOT that the self-driven grass STRUCTURE matches the C per-patch (the §24 compressed-grass item
+    is separate). The `FDiffFastCore` v1 adapter still grows grass as a tree (documented follow-up).
+  - Reworked two `grass_structure_tests.jl` testitems (pre-§26.3 references made explicit) + a new "the
+    default is now the faithful grass config" gate. Runtime `[deps]` still EMPTY.
 - **Grass-equilibrium CO-CALIBRATION — the §25 hard-floor lever REFUTED; the faithful mechanism is the C's
   photosynthesis DEMAND-GATE; the gate EXPOSES the true residual (a grass-NPP LEVEL undershoot); establishment
   stabilizes the self-driven equilibrium (Phase-3 scale-up step 11 follow-up #3; docs §26).** §25 named a

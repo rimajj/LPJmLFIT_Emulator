@@ -235,9 +235,11 @@ end
     yearly = [forc for _ in 1:NY]
     st0 = FDiffStateML{Float64}([0.7 * wc for wc in soil.whcs], 0.0)
 
-    # per-PFT (DEFAULT: grass id 8, light-limited) vs the old all-beech GSI (pft_ids = 3 everywhere)
-    (_, _, pools_pft, _) = rollout_canopy_years(tebs_params(), alloc, allom, st0, trees0, tmpls, soil, yearly)
-    (_, _, pools_beech, _) = rollout_canopy_years(tebs_params(), alloc, allom, st0, trees0, tmpls, soil, yearly; pft_ids = fill(3, n))
+    # per-PFT (grass id 8, light-limited) vs the old all-beech GSI (pft_ids = 3 everywhere). The §26.3
+    # grass demand-gate + establishment are held OFF here so this gate isolates the per-PFT-PHENOLOGY effect
+    # (its pre-§26.3 baseline) rather than conflating it with the gate/establishment defaults.
+    (_, _, pools_pft, _) = rollout_canopy_years(tebs_params(), alloc, allom, st0, trees0, tmpls, soil, yearly; grass_demand_gate = false, grass_estab = nothing)
+    (_, _, pools_beech, _) = rollout_canopy_years(tebs_params(), alloc, allom, st0, trees0, tmpls, soil, yearly; pft_ids = fill(3, n), grass_demand_gate = false, grass_estab = nothing)
 
     gpft = pools_pft[end][3].leaf_c
     gbeech = pools_beech[end][3].leaf_c
@@ -364,8 +366,12 @@ end
     pon = FDiffParams{Float64}(; photo = p0.photo, tstress = p0.tstress, water = won, resp = p0.resp, allom = p0.allom, nlambda = p0.nlambda, ω = p0.ω)
 
     # ── DEMAND-GATE: wired + NON-NEGATIVE (no §25 pathology) + grass-gated (trees shift only via competition) ──
-    (_, _, pools_off, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly)   # DEFAULT (gate off)
-    (_, _, pools_on, _) = rollout_canopy_years(pon, alloc, allom, st0, trees0, tmpls, soil, yearly)   # §26 gate on
+    # §26.3 flipped the coupled-rollout DEFAULT to the faithful grass config (gate on + establishment on),
+    # so the pre-§26.3 references are now requested EXPLICITLY: `pools_off` (gate off, no establishment) and
+    # `pools_on` (gate on, no establishment — isolating the gate). These reproduce the pre-§26.3 baselines
+    # bit-for-bit (the gate + establishment are the only grass toggles this rollout owns).
+    (_, _, pools_off, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly; grass_demand_gate = false, grass_estab = nothing)
+    (_, _, pools_on, _) = rollout_canopy_years(pon, alloc, allom, st0, trees0, tmpls, soil, yearly; grass_estab = nothing)   # §26 gate on, establishment isolated off
     goff = pools_off[end][3].leaf_c; gon = pools_on[end][3].leaf_c
     @test !isapprox(gon, goff; rtol = 1.0e-6)         # the demand-gate is WIRED — it changes the grass carbon balance
     @test gon ≥ 0 && isfinite(gon)                    # NON-NEGATIVE — no degenerate-λ negative-NPP pathology (unlike the refuted §25 hard floor)
@@ -391,10 +397,24 @@ end
     @test isapprox(est.sapl_root, est.sapl_leaf / 0.8; rtol = 1.0e-12)   # sapl_root = sapl_leaf/lmro_ratio
     g = grass_treepools(4.0, 10.0, 0.042242)          # _treepools_fpc reproduces the per-area grass fpc (crownarea=nind=1)
     @test isapprox(_treepools_fpc(g, allom), 1 - exp(-allom.k_beer * (g.leaf_c * g.sla)); rtol = 1.0e-12)
-    (_, _, pools_est, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly; grass_estab = est)
+    # establishment isolated (gate off) so `pools_est` vs `pools_off` measures re-seeding alone
+    (_, _, pools_est, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly; grass_demand_gate = false, grass_estab = est)
     @test pools_est[end][3].leaf_c ≥ pools_off[end][3].leaf_c   # re-seeding only ADDS grass biomass (fpc_total<1 gate)
     @test pools_est[end][3].leaf_c > 0
     for i in 1:(n - 1)                                # establishment touches only the grass pool (trees shift only via competition)
         @test isapprox(pools_est[end][i].leaf_c, pools_off[end][i].leaf_c; rtol = 0.05)
     end
+
+    # ── §26.3 DEFAULT: the bare coupled rollout is now the FAITHFUL grass config (gate ON + establishment ON) ──
+    # No grass kwargs ⇒ `grass_demand_gate=true` (reconstructs `p` at the C's sharp `βgpd_gate=1e8`) AND
+    # `grass_estab=grass_estabparams()`. So the default must (1) be bit-identical to requesting both
+    # explicitly, (2) differ from the pre-§26.3 gate-off/no-establishment baseline, and (3) carry the
+    # establishment re-seeding on top of the gate (grass leaf ≥ the gate-only `pools_on`).
+    (_, _, pools_def, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly)
+    (_, _, pools_both, _) = rollout_canopy_years(p0, alloc, allom, st0, trees0, tmpls, soil, yearly; grass_demand_gate = true, grass_estab = grass_estabparams())
+    @test pools_def[end][3].leaf_c == pools_both[end][3].leaf_c    # the DEFAULT is exactly gate-on + establishment-on
+    @test all(pools_def[end][i].leaf_c == pools_both[end][i].leaf_c for i in 1:n)
+    @test !isapprox(pools_def[end][3].leaf_c, goff; rtol = 1.0e-6) # the default differs from the pre-§26.3 gate-off baseline
+    @test pools_def[end][3].leaf_c ≥ gon                          # establishment re-seeds on top of the demand-gate
+    @test pools_def[end][3].leaf_c ≥ 0 && isfinite(pools_def[end][3].leaf_c)
 end
