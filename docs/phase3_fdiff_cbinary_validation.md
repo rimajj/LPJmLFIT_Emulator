@@ -1617,3 +1617,67 @@ reference sliced from the on-disk production `ind` output
 against that reference proves insufficient and per-day per-PFT ground truth is genuinely required.
 Reproductions: `scripts/grass_npp_light_response_probe.jl`, `scripts/grass_gsi_warmstart_probe.jl` (both
 self-checking, SLURM, `--project=.`; runtime `[deps]` stays EMPTY).
+
+### 26.2 Follow-up #3 (session 24) — BUILT the C's daily grass GPP/NPP output; it shows F_diff's grass is FAITHFUL (the §26/§26.1 "level gap" was a reference-basis artifact)
+
+§26.1 concluded that closing (or even confirming) the grass-NPP level gap needed the C's **daily grass GPP**,
+which no stock LPJmL output provided — so it required modifying + recompiling the LPJmL-FIT C binary. **This
+step did exactly that**, then used the new ground truth to test F_diff's grass — and the result overturns the
+premise: **F_diff's grass GPP/NPP is faithful to the C; the apparent §26/§26.1 undershoot was an artifact of
+the reference used.**
+
+**★ The C-source change (built, committed as a patch).** Two new SCALAR daily outputs `D_GRASS_GPP` /
+`D_GRASS_NPP` (`include/conf.h` ids 419/420, `NOUT`→421) accumulated per day in `src/lpj/daily_natural.c`
+right beside the existing cell-mean `GPP`/`NPP` writes — `if(getpftpar(pft,type)==GRASS) getoutput(...,
+D_GRASS_GPP,...)+=gpp*frac` (unconditional per day, same `*frac` cell-mean weighting as `GPP`, so a
+daily-timestep request yields the cell-mean daily grass flux), flushed in `src/lpj/fwriteoutput.c` (their ids
+lie outside the `D_LAI..D_PET` daily-loop range, so they are written explicitly), registered in
+`par/outputvars.js`. Scalars ⇒ no `outputsize.c`/`createpftnames.c` change (default 1 band). The FIT binary was
+rebuilt with the exact production toolchain; the only build snag was that **this cluster's `json-c/0.13.1`
+header set is truncated (missing `json_object_iterator.h`)** — supplied by a local ABI-compatible shim on
+`CPATH` (`patches/json_object_iterator.h.shim`), touching no system files. Change = **18 insertions / 1
+deletion across 4 files** (`patches/lpjmlfit_daily_grass_gpp.patch`, re-appliable to
+`git@gitlab.pik-potsdam.de:bloh/LPJmLFit.git`). Verified: `d_grass_npp` annual = **50 gC/m²/yr ≈ the
+`pft_npp` band-8 (temperate C3 grass) value 51** — the new daily output integrates to the stock annual per-PFT
+output (correctness check).
+
+**★ THE RESULT — F_diff's grass is FAITHFUL to the C's OWN daily grass NPP** (Hainich single cell re-run
+2000–2019; `scripts/run_fdiff_grass_gpp_cell.sh` → SLURM). Comparing F_diff's cell-mean daily grass NPP
+(matched 2008 structure, faithful grass params `temp_photos 10/30` + `albedo_leaf 0.23`, demand-gate ON) to the
+C's own daily grass NPP over the decadal forcing years 2009–2019:
+
+| metric | value |
+|---|---|
+| aggregate ΣF/ΣC (11 yr) | **0.95** |
+| mean per-year F/C | **0.98** (range 0.72–1.19, **no systematic bias** — F_diff over- and under-shoots in equal measure) |
+| season length `actR` (F active-day frac / C's) | **1.02** (faithful) |
+| amplitude `ampR` (F mean-NPP-on-active-days / C's) | **0.96** (faithful) |
+| daily correlation (per year) | **0.86** (0.78–0.91) |
+
+So on the days the grass photosynthesizes, F_diff makes the right amount of NPP, for the right number of days,
+with the right seasonal shape. The grass CUE (`NPP/GPP`) the new output exposes is **0.55–0.60** in the C —
+matching F_diff. **There is no systematic grass-NPP level gap.**
+
+**★ WHY §26/§26.1 SAW "0.82×" — a reference-basis artifact.** Those matched-structure probes measured F_diff
+(2008 structure, run on the 2009 forcing year) against the C's **2008** per-patch `ind`-output NPP — a
+single-year structural snapshot in a different year from the forcing. The C's grass NPP swings widely
+year-to-year (annual 28–51 gC/m²/yr over 2009–2019), so comparing an F_diff run on one year's forcing to the C's
+grass in a *different* year manufactures an apparent offset. Measured against the C's **same-year** daily grass
+flux (the authoritative reference this step built), the offset disappears (2009: F/C 1.09, not 0.83). The
+demand-gate + faithful grass params (already committed in §26/§26.1) are what make the grass faithful; no
+further physics change is warranted.
+
+**★ Committed (all in the emulator repo; the FIT binary lives at `/home/jamirp/lpjml56fit`).** The C-source
+patch + json shim (`patches/`); the CI-friendly committed reference
+`test/testitems/references/hainich_grass_daily_2009_2019.csv` (per-day C grass GPP/NPP + cell GPP, 2009–2019);
+and the scripts `run_fdiff_grass_gpp_cell.sh` (the C re-run), `extract_fdiff_grass_daily.py` (slice the
+reference from the `.nc`), `grass_daily_curve_fdiff.jl` (F_diff's daily grass NPP curve), and
+`compare_grass_daily_c_vs_fdiff.py` (the season/amplitude decomposition, reads the committed reference — no
+`/p/tmp` needed). Runtime `[deps]` stays EMPTY; no `src/`/`test/` F_diff code change (the finding validates the
+already-committed §26 mechanism).
+
+**★ Residual + next.** The year-to-year F/C scatter (0.72–1.19) is F_diff holding the 2008 structure while the
+C's grass structure evolves each year; feeding F_diff the C's per-year grass structure (sliceable from the
+on-disk `ind` parquet) would tighten it — a refinement, not a gap. The demand-gate + establishment can now be
+flipped to the coupled-rollout DEFAULT, validated against this multi-year grass reference. The grass-NPP thread
+(§20→§26.2) is closed: the grass is faithful.

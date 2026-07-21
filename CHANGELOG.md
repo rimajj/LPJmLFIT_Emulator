@@ -70,6 +70,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     **Recommendation: DEFER to the learned canopy Vcmax/λ correction (§16/§18, proven on trees) rather than
     recompile;** if a hard-coded fix is later wanted, validate a grass-phenology-season fit against a multi-year
     grass NPP reference sliced from the on-disk production `ind` output (no C re-run).
+  - **Follow-up #3 (session 24; docs §26.2): BUILT the C's daily grass GPP/NPP output — and it shows F_diff's
+    grass is FAITHFUL; the §26/§26.1 "level gap" was a REFERENCE-BASIS ARTIFACT.** Added two scalar daily
+    outputs to the LPJmL-FIT C source (`D_GRASS_GPP`/`D_GRASS_NPP`, `include/conf.h` ids 419/420, `NOUT`→421;
+    cell-mean per-day accumulation in `src/lpj/daily_natural.c` beside the `GPP`/`NPP` writes; explicit flush in
+    `src/lpj/fwriteoutput.c`; registered in `par/outputvars.js`) and rebuilt the FIT binary (18 insertions/1
+    deletion — `patches/lpjmlfit_daily_grass_gpp.patch`; a local shim `patches/json_object_iterator.h.shim`
+    works around this cluster's truncated `json-c/0.13.1` headers). Verified the new daily output integrates to
+    the stock annual `pft_npp` band-8 grass value (50 ≈ 51). **Comparing F_diff's cell-mean daily grass NPP
+    (matched 2008 structure, faithful params, demand-gate ON) to the C's OWN daily grass NPP over 2009–2019:
+    aggregate ΣF/ΣC = 0.95, mean per-year F/C = 0.98 (range 0.72–1.19, NO systematic bias), season length
+    faithful (actR 1.02), amplitude faithful (ampR 0.96), daily r ≈ 0.86.** So F_diff's grass GPP/NPP is
+    faithful; the §26/§26.1 "0.82×" came from measuring F_diff (run on 2009 forcing) against the C's 2008
+    `ind`-output NPP — a year/basis mismatch (the C's grass NPP swings 28–51 gC/m²/yr year-to-year). No F_diff
+    physics change; the already-committed demand-gate + faithful grass params are what make it faithful.
+    Committed: the C-source patch + shim (`patches/`), the CI-friendly reference
+    `test/testitems/references/hainich_grass_daily_2009_2019.csv`, and scripts `run_fdiff_grass_gpp_cell.sh` /
+    `extract_fdiff_grass_daily.py` / `grass_daily_curve_fdiff.jl` / `compare_grass_daily_c_vs_fdiff.py`. The
+    grass-NPP thread (§20→§26.2) is CLOSED: the grass is faithful. Runtime `[deps]` stays EMPTY.
 - **Independent adversarial verification of the §24 → §25 grass re-diagnosis chain + §24 superseded-banner /
   factual fixes (Phase-3 scale-up step 11 follow-up #2 verification; docs §24 banner + §25 "Independently
   verified").** A 4-lens refutation workflow (each lens tried to REFUTE a load-bearing claim) + an all-25-patch

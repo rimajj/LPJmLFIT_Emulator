@@ -1,0 +1,69 @@
+diff --git a/include/conf.h b/include/conf.h
+index 68589a3..919a68b 100644
+--- a/include/conf.h
++++ b/include/conf.h
+@@ -119,7 +119,7 @@
+ #define NO_ROOT_MODEL 0
+ #define LIN_ROOT_MODEL 1
+ #define LOGISTIC_ROOT_MODEL 2
+-#define NOUT 419            /* number of output files */
++#define NOUT 421            /* number of output files */
+ #define END -1              /* end marker for output files */
+ #define GRIDBASED 1         /* pft-specific outputs scaled by stand->frac */
+ #define PFTBASED 0          /* pft-specific outputs not scaled by stand->frac */
+@@ -556,6 +556,8 @@
+ #define LAI_STAND 416
+ #define PFT_LAI_STAND 417
+ #define PFT_LAI_WEIGHTED 418
++#define D_GRASS_GPP 419        /* grass daily GPP (natural), scalar — F_diff grass-GPP validation */
++#define D_GRASS_NPP 420        /* grass daily NPP (natural), scalar — F_diff grass-NPP validation */
+ #define PFT_GCGP_COUNT 0
+ #define NDAY_MONTH 1
+ #define RANDOM_SEED 0
+diff --git a/par/outputvars.js b/par/outputvars.js
+index 97c3776..41ca654 100644
+--- a/par/outputvars.js
++++ b/par/outputvars.js
+@@ -146,6 +146,8 @@
+   { "id" : D_WSCAL, "name": "d_wscal", "timestep" : "daily", "var" : "wscal", "descr" :  "", "unit" : "", "scale" : 1.0, "offset" : 0.0},
+   { "id" : D_NPP, "name": "d_npp", "timestep" : "daily", "var" : "NPP", "descr" :  "Net primary production", "unit" : "gC/m2/day", "scale" : 1.0, "offset" : 0.0},
+   { "id" : D_GPP, "name": "d_gpp", "timestep" : "daily", "var" : "GPP", "descr" :  "Gross primary production", "unit" : "gC/m2/day", "scale" : 1.0, "offset" : 0.0},
++  { "id" : D_GRASS_GPP, "name": "d_grass_gpp", "timestep" : "daily", "var" : "GPP", "descr" :  "grass daily GPP (natural PFTs)", "unit" : "gC/m2/day", "scale" : 1.0, "offset" : 0.0},
++  { "id" : D_GRASS_NPP, "name": "d_grass_npp", "timestep" : "daily", "var" : "NPP", "descr" :  "grass daily NPP (natural PFTs)", "unit" : "gC/m2/day", "scale" : 1.0, "offset" : 0.0},
+   { "id" : D_RD, "name": "d_rd", "timestep" : "daily", "var" : "RD", "descr" :  "", "unit" : "", "scale" : 1.0, "offset" : 0.0},
+   { "id" : D_RROOT, "name": "d_rroot", "timestep" : "daily", "var" : "rroot", "descr" :  "", "unit" : "", "scale" : 1.0, "offset" : 0.0},
+   { "id" : D_RSO, "name": "d_rso", "timestep" : "daily", "var" : "RSO", "descr" :  "", "unit" : "", "scale" : 1.0, "offset" : 0.0},
+diff --git a/src/lpj/daily_natural.c b/src/lpj/daily_natural.c
+index 91bc578..6eb2340 100644
+--- a/src/lpj/daily_natural.c
++++ b/src/lpj/daily_natural.c
+@@ -216,6 +216,14 @@ Real daily_natural(Patch *patch,                /**< [inout] patch pointer */
+     stand->cell->balance.agpp+=gpp*frac;
+     getoutput(output,NPP,config)+=npp*frac;
+     getoutput(output,GPP,config)+=gpp*frac;
++    /* grass-only daily GPP/NPP (F_diff grass-level validation) — accumulated UNCONDITIONALLY like the
++       GPP/NPP outputs above (cell-mean, *frac), so a daily-timestep request yields the cell-mean daily
++       grass flux directly comparable to the (GPP,daily) output. Grass = natural PFT type GRASS. */
++    if(getpftpar(pft,type)==GRASS)
++    {
++      getoutput(output,D_GRASS_NPP,config)+=npp*frac;
++      getoutput(output,D_GRASS_GPP,config)+=gpp*frac;
++    }
+     getoutput(output,FAPAR,config) += pft->fapar * frac * (1.0/(1-stand->cell->lakefrac-stand->cell->ml.reservoirfrac));
+     if (stand->type->landusetype == SETASIDE_RF || stand->type->landusetype == SETASIDE_IR)
+       getoutput(output,NPP_AGR,config) += npp*frac / agrfrac;
+diff --git a/src/lpj/fwriteoutput.c b/src/lpj/fwriteoutput.c
+index b017ccd..7b96222 100644
+--- a/src/lpj/fwriteoutput.c
++++ b/src/lpj/fwriteoutput.c
+@@ -2114,5 +2114,10 @@ void fwriteoutput(Outputfile *output,  /**< output file array */
+   }
+   for(i=D_LAI;i<=D_PET;i++)
+     writeoutputvar(i,1);
++  /* daily grass GPP/NPP (F_diff grass-level validation) — new scalar daily outputs whose ids lie
++     OUTSIDE the D_LAI..D_PET daily range, so they are flushed explicitly here (iswrite gates them to
++     the DAILY timestep + open file). */
++  writeoutputvar(D_GRASS_GPP,1);
++  writeoutputvar(D_GRASS_NPP,1);
+   free(vec);
+ } /* of 'fwriteoutput' */

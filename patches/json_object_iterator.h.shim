@@ -1,0 +1,56 @@
+/*
+ * json_object_iterator.h — LOCAL COMPAT SHIM (added by the ESM emulator project).
+ *
+ * The system module json-c/0.13.1 (against whose libjson-c.so.4 bin/lpjml is linked)
+ * has an INCOMPLETE header set on this cluster: its include/json-c/ is missing
+ * json_object_iterator.h, which json-c/json.h #includes unconditionally. That breaks
+ * ANY recompile of a file that includes json.h (e.g. src/tools/fscanreal.c). The
+ * iterator API is stable and unchanged from json-c 0.10 through 0.17, and the exported
+ * symbols (json_object_iter_*) ARE present in libjson-c.so.4, so this faithful
+ * reconstruction of the 0.13.1 header is ABI-compatible.
+ *
+ * It reuses <json-c/json_object.h> for JSON_EXPORT / json_bool / struct json_object
+ * (all defined there in 0.13.1), instead of the 0.17-only json_types.h split.
+ *
+ * Put on the include path via CPATH at build time; touches no system files.
+ * Verbatim declarations from json-c's public json_object_iterator.h.
+ */
+
+#ifndef _json_object_iterator_h_
+#define _json_object_iterator_h_
+
+#include <json-c/json_object.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * The opaque iterator that references a name/value pair within
+ * a JSON Object instance or the "end" iterator value.
+ */
+struct json_object_iterator
+{
+	const void *opaque_;
+};
+
+JSON_EXPORT struct json_object_iterator json_object_iter_init_default(void);
+
+JSON_EXPORT struct json_object_iterator json_object_iter_begin(struct json_object *obj);
+
+JSON_EXPORT struct json_object_iterator json_object_iter_end(const struct json_object *obj);
+
+JSON_EXPORT void json_object_iter_next(struct json_object_iterator *iter);
+
+JSON_EXPORT const char *json_object_iter_peek_name(const struct json_object_iterator *iter);
+
+JSON_EXPORT struct json_object *json_object_iter_peek_value(const struct json_object_iterator *iter);
+
+JSON_EXPORT json_bool json_object_iter_equal(const struct json_object_iterator *iter1,
+                                             const struct json_object_iterator *iter2);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* _json_object_iterator_h_ */
