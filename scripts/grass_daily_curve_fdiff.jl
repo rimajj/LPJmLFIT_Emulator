@@ -43,7 +43,11 @@ readtable(path) = begin
 end
 fcol(d, k) = parse.(Float64, d[k])
 
-ind = readcsv(joinpath(REFDIR, "hainich_individuals_2008.csv"))
+# structure: default the committed 2008 snapshot; ENV `GRASS_STRUCT_CSV` overrides with a per-year
+# structure (the decadal validation feeds each year's OWN tree+grass structure — matched structure +
+# matched forcing, the tightest test of F_diff's grass flux physics).
+const STRUCT_CSV = get(ENV, "GRASS_STRUCT_CSV", joinpath(REFDIR, "hainich_individuals_2008.csv"))
+ind = readcsv(STRUCT_CSV)
 fdec = readcsv(joinpath(REFDIR, "hainich_decadal_forcing.csv"))
 (sd, whcs, rdist) = readtable(joinpath(REFDIR, "hainich_soilcolumn.txt"))
 soil = hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)

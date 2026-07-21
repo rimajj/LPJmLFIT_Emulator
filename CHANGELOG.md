@@ -88,6 +88,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     `test/testitems/references/hainich_grass_daily_2009_2019.csv`, and scripts `run_fdiff_grass_gpp_cell.sh` /
     `extract_fdiff_grass_daily.py` / `grass_daily_curve_fdiff.jl` / `compare_grass_daily_c_vs_fdiff.py`. The
     grass-NPP thread (§20→§26.2) is CLOSED: the grass is faithful. Runtime `[deps]` stays EMPTY.
+    - **Per-year matched-structure check (honest refinement; `scripts/extract_grass_structure_decadal.py` +
+      `grass_daily_curve_fdiff.jl` `GRASS_STRUCT_CSV`).** Feeding F_diff each year's OWN C structure (2009–2019,
+      the tightest matched-structure+forcing test) gives aggregate ΣF/ΣC = **1.10** (mean 1.12, range 0.77–1.87),
+      season faithful (actR≈1.0) with a mild AMPLITUDE overshoot in warm/dry years (2018 European drought F/C
+      1.87). So the two matched-forcing tests BRACKET unity (0.95 with 2008 structure, 1.10 per-year) —
+      robustly confirming no systematic ~0.82× undershoot, but the honest claim is grass faithful to ~±10–15%
+      aggregate with a warm/dry-year amplitude residual (a grass drought-response effect, partly confounded by
+      per-year structure reconstruction), not a clean 1.0.
 - **Independent adversarial verification of the §24 → §25 grass re-diagnosis chain + §24 superseded-banner /
   factual fixes (Phase-3 scale-up step 11 follow-up #2 verification; docs §24 banner + §25 "Independently
   verified").** A 4-lens refutation workflow (each lens tried to REFUTE a load-bearing claim) + an all-25-patch

@@ -1676,8 +1676,21 @@ reference from the `.nc`), `grass_daily_curve_fdiff.jl` (F_diff's daily grass NP
 `/p/tmp` needed). Runtime `[deps]` stays EMPTY; no `src/`/`test/` F_diff code change (the finding validates the
 already-committed §26 mechanism).
 
-**★ Residual + next.** The year-to-year F/C scatter (0.72–1.19) is F_diff holding the 2008 structure while the
-C's grass structure evolves each year; feeding F_diff the C's per-year grass structure (sliceable from the
-on-disk `ind` parquet) would tighten it — a refinement, not a gap. The demand-gate + establishment can now be
-flipped to the coupled-rollout DEFAULT, validated against this multi-year grass reference. The grass-NPP thread
-(§20→§26.2) is closed: the grass is faithful.
+**★ Residual + the per-year matched-structure check (honest refinement).** The 2008-held comparison above
+holds F_diff at the 2008 structure while the C's grass evolves, so its year-to-year scatter (0.72–1.19)
+partly reflects structure mismatch. Feeding F_diff **each year's OWN** C structure (2009–2019, sliced from
+the `ind` parquet via `scripts/extract_grass_structure_decadal.py`; the tightest matched-structure +
+matched-forcing test of the grass FLUX physics) does **not** tighten to ~1.0 — it gives **aggregate ΣF/ΣC =
+1.10, mean per-year 1.12 (range 0.77–1.87)**, with season length still faithful (actR ≈ 1.0) but a mild
+AMPLITUDE overshoot concentrated in warm/dry years — most starkly **2018** (the European drought: C grass NPP
+31.5 low, F_diff 58.9 → F/C 1.87, ampR 1.69). **So the two matched-forcing tests BRACKET unity** (0.95 with
+the 2008 structure, 1.10 per-year), which robustly confirms there is **no systematic ~0.82× undershoot** (the
+§26/§26.1 gap was a reference artifact), but the honest statement is that **F_diff's grass is faithful to
+~±10–15% aggregate with real year-to-year scatter**, not a clean 1.0. The residual is an amplitude (not
+season) effect suggesting F_diff's grass under-responds to extreme drought/heat stress relative to the C
+(2018) — partly confounded by the per-year `ind` structure reconstruction (less individually validated than
+the 2008 snapshot). That grass drought-response amplitude is the one remaining grass refinement (a genuine but
+modest, extreme-year effect); the systematic-level question (§20→§26.2) is settled — no systematic gap. The
+demand-gate + establishment + faithful grass params can be flipped to the coupled-rollout DEFAULT (a scientific
+default change touching ~6 grass-inclusive test baselines + the Enzyme canopy path), validated against
+`hainich_grass_daily_2009_2019.csv`.
