@@ -1107,20 +1107,25 @@ work is **physics coverage** to close the two MEASURED level gaps, in priority o
    (`WaterParams.grass_demand_gate`), grass establishment (`grass_estab`), the `:exp` mode (inert) — see the
    session-22 landing log above. Docs §26.
 
-   **★ NEXT (corrected again — session 22 / §26): CLOSE THE GRASS-NPP LEVEL GAP on the ABOVE-threshold days.**
-   The demand-gate EXPOSED that F_diff's faithfully-gated grass NPP is aggregate **0.83× the C** (matched
-   structure; the §25 "1.13×" was inflated by the soft-`βflux` floor producing grass GPP on the sub-threshold
-   days the C gates off). The cross-patch corr is right (~0.973) — only the LEVEL is low, on the days the grass
-   IS photosynthesizing. The grass shares the beech photosynthesis params (`temp_photos` 10/30 vs the tree 20/30,
-   `alphaa` 0.5 vs 0.55, `sla` 0.042242) — check the grass per-day above-threshold GPP / Vcmax / λ vs the C
-   directly (a matched-leaf, matched-light, single-patch daily decomposition). Then **flip the demand-gate +
-   establishment to the coupled-rollout DEFAULT** once validated against a **MULTI-YEAR C grass reference** (the
-   §26 self-driven metric compares only to the 2008 snapshot — extract the C's per-year grass leaf/NPP over
-   2009–2019, as the decadal tree reference §21 did). **NOT** a hard GPP floor (§26 Finding 1), **NOT** `:exp`
-   forest-floor light (§26 Finding 6 — negative with the gate), **NOT** per-PFT conductance (§22), cover
-   competition (§24), or a respiration/CUE change (§25). Keep grass-specific (`daily_step_canopy` shared with the
-   VALIDATED tree path — decadal GPP ×1.066, §21 — byte-identical) and AD-safe (Enzyme canopy/multi-year trainers;
-   the demand-gate sigmoid is smooth/differentiable but very steep — check the Enzyme gradient when it goes live).
+   **(§26 follow-up) ✅ DONE (session 22) — the level gap is NOT the grass temp/albedo params** (`scripts/grass_npp_level_probe.jl`,
+   SLURM 1540628). The grass probes built the grass `Individual` with BEECH photo params (§15 v1 simplification):
+   `temp_photos` 20/30, `albedo_leaf` 0.15. The ACTIVE grass id 8 has `temp_photos {10,30}` (lower optimum ⇒ RAISES
+   cool-temp NPP: matched-structure agg F/C 0.833 → 0.901, gate ON) and `albedo_leaf 0.23` (⇒ LESS absorbed PAR ⇒
+   LOWERS GPP → 0.757). **Together ≈ 0.82 — the two nearly CANCEL, so the ~18 % undershoot PERSISTS** (corr ~0.975).
+   So temp/albedo are ruled out; the faithful grass `temp_photos {10,30}` + `albedo_leaf 0.23` remain a fidelity
+   improvement for a canonical grass-`Individual` builder but don't close the level.
+
+   **★ NEXT (corrected again — session 22 / §26 follow-up): CLOSE THE LEVEL GAP via the grass GPP-vs-LIGHT
+   response** (Vcmax / co-limitation `theta` / λ), worst at intermediate shade (patch 6, ff 0.29 → F/C 0.57). This
+   needs the C's **daily GRASS GPP** for a matched-leaf/matched-light DAILY decomposition — the committed references
+   carry annual grass NPP + cell daily GPP, NOT per-PFT daily GPP; extract per-PFT daily GPP from the single-cell C
+   output (as `extract_fdiff_decadal.py` sliced the cell GPP), or a targeted C re-run. Then **flip the demand-gate +
+   establishment to the coupled-rollout DEFAULT** once validated against a **MULTI-YEAR C grass reference** (the §26
+   self-driven metric compares only to the 2008 snapshot; extract the C's per-year grass leaf/NPP 2009–2019 as the
+   decadal tree reference §21 did). **NOT** a hard GPP floor (§26 F1), **NOT** `:exp` light (§26 F6), **NOT** the
+   grass temp/albedo params (§26 follow-up), **NOT** per-PFT conductance (§22) / cover competition (§24) /
+   respiration-CUE (§25). Keep grass-specific + AD-safe (the demand-gate sigmoid is smooth but very steep — check
+   the Enzyme gradient when it goes live as a default).
    Then: below-ground root-sapwood (`sapwood_bg`) + carbon-debt
    (**scouted: a GENUINE SEPARATE carbon pool, `tree.h:50`, NOT a fraction of the sapwood pool — needs the
    per-soil-layer lateral-root-sapwood demand `root_sapwood_layer` (`allocation_tree.c:160-209`, so soil layers

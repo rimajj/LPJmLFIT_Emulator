@@ -1526,3 +1526,21 @@ Then flip the demand-gate + establishment to the coupled-rollout DEFAULT once va
 C grass reference** (the current self-driven metric compares only to the 2008 snapshot). NOT a hard GPP floor
 (§26 Finding 1), NOT `:exp` light (§26 Finding 6). Then: below-ground `sapwood_bg` + carbon-debt; whole-tree
 mortality/establishment; the upstream-Enzyme-≥1.11 guard-lift.
+
+**★ Follow-up (session 22) — the level gap is NOT the grass-specific photosynthesis params** (temp/albedo
+RULED OUT; `scripts/grass_npp_level_probe.jl`, SLURM 1540628). The grass probes so far built the grass
+`Individual` with the BEECH photosynthesis params (a v1 simplification, §15): `temp_photos` 20/30 (the tree
+optimum) and `albedo_leaf` 0.15. The ACTIVE `par/pft_lpjmlfit.js` temperate C3 grass (id 8) has its OWN
+`temp_photos {10,30}` (a LOWER optimum ⇒ RAISES NPP at cool Hainich temps) and `albedo_leaf 0.23` (⇒ LESS
+absorbed PAR ⇒ LOWERS GPP — both feed `apar = par·(1−albedo_leaf)·alphaa·fpar`, `water_stressed.c`). Matched
+structure, demand-gate ON: the faithful `temp_photos` alone lifts aggregate F/C **0.833 → 0.901** (bright
+patches 0.88/0.84/0.70/0.56 → 0.93/0.91/0.77/0.63), but the faithful `albedo_leaf` alone drops it to **0.757**;
+**together (both faithful) ≈ 0.82** — the two corrections nearly CANCEL, so the ~18 % aggregate undershoot
+PERSISTS (corr unchanged ~0.975; the §26 probes' `albedo_leaf` 0.15 was over-absorbing, partly masking it).
+So the residual is NOT the grass temp/albedo params; it is a deeper grass GPP-per-above-threshold-day gap,
+worst at intermediate shade (patch 6, ff 0.29: F/C 0.57). **Next lever = the grass GPP-vs-light response
+(Vcmax / co-limitation / λ) via a matched-leaf/matched-light DAILY decomposition — which needs the C's daily
+GRASS GPP (the committed references carry annual grass NPP + cell daily GPP, not per-PFT daily GPP; extract
+per-PFT daily GPP from the single-cell C output as `extract_fdiff_decadal.py` sliced the cell GPP).** NB the
+faithful grass `temp_photos {10,30}` + `albedo_leaf 0.23` are a genuine fidelity improvement to carry into any
+canonical grass-`Individual` builder even though they don't close the level gap alone.

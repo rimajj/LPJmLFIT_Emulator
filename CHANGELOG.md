@@ -46,6 +46,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     `scripts/grass_cocalibration_probe.jl` (self-checking, SLURM). Runtime `[deps]` stays EMPTY. **Next:** close
     the grass-NPP LEVEL gap on the above-threshold days (grass shares the beech photo params); then flip the
     gate + establishment to the coupled-rollout DEFAULT once validated against a MULTI-YEAR C grass reference.
+  - **Follow-up (`scripts/grass_npp_level_probe.jl`): the level gap is NOT the grass temp/albedo params.** The
+    ACTIVE grass id 8 has `temp_photos {10,30}` (raises cool-temp NPP: agg 0.833 → 0.901) and `albedo_leaf 0.23`
+    (lowers GPP: → 0.757) — **together ≈ 0.82**, the two nearly cancel and the ~18 % undershoot PERSISTS
+    (corr ~0.975). So the residual is a deeper grass GPP-vs-light gap (Vcmax / co-limitation / λ), worst at
+    intermediate shade — needs the C's daily GRASS GPP for a matched-leaf/light decomposition. The faithful
+    grass `temp_photos {10,30}` + `albedo_leaf 0.23` remain a fidelity improvement for a canonical grass builder.
 - **Independent adversarial verification of the §24 → §25 grass re-diagnosis chain + §24 superseded-banner /
   factual fixes (Phase-3 scale-up step 11 follow-up #2 verification; docs §24 banner + §25 "Independently
   verified").** A 4-lens refutation workflow (each lens tried to REFUTE a load-bearing claim) + an all-25-patch
