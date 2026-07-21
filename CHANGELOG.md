@@ -52,6 +52,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     (corr ~0.975). So the residual is a deeper grass GPP-vs-light gap (Vcmax / co-limitation / λ), worst at
     intermediate shade — needs the C's daily GRASS GPP for a matched-leaf/light decomposition. The faithful
     grass `temp_photos {10,30}` + `albedo_leaf 0.23` remain a fidelity improvement for a canonical grass builder.
+  - **Follow-up #2 (session 23; docs §26.1): the proposed "C re-run" is really a C RECOMPILE, and the residual
+    is param-faithful + season-shaped — NOT the forest-floor light or the GSI cold-start.** No physics change;
+    diagnosis + roadmap correction + two committed self-checking SLURM reproductions
+    (`scripts/grass_npp_light_response_probe.jl` 1540816, `scripts/grass_gsi_warmstart_probe.jl` 1540819).
+    (1) **LPJmL-FIT has NO per-PFT/per-individual DAILY GPP output** (`par/outputvars.js`: only annual `PFT_NPP`
+    /`ind` + cell-total `d_gpp`/`d_npp`), so "extract per-PFT daily GPP" is impossible and a config-only re-run
+    cannot make it — it needs a C-SOURCE change + RECOMPILE (a new class of work). (2) Source audit: the grass
+    photosynthesis KERNEL is byte-faithful (co-limitation the exact quadratic `photosynthesis.c:150`), `apar` is
+    validated (§20), and grass id 8 respiration params (`respcoeff 1.2`, `cn_ratio.root CTON_ROOT`,
+    `ratio.root 1.16`) are LITERALLY beech's — so the ~18 % gap is not a parameter. (3) The undershoot is
+    **gate-independent, above-threshold, and tracks the grass ACTIVE-DAY fraction**, growing with shade
+    (brightest-half agg F/C 0.861; F/C 0.86 at ff 0.50 → 0.57 at ff 0.29; active-day frac 0.66 → 0.30) — a
+    season-shape residual, not GPP-per-active-leaf. (4) The faithful `:exp` forest-floor light is **REFUTED** as
+    the fix (brightest-half F/C 0.861 → 0.755, 7 deep-shade negatives — refutes §26's deferred `:exp` lever).
+    (5) The grass GSI **cold-start is REFUTED** (5-yr continuous warm-up: year 1 == year 5 to every digit).
+    **Recommendation: DEFER to the learned canopy Vcmax/λ correction (§16/§18, proven on trees) rather than
+    recompile;** if a hard-coded fix is later wanted, validate a grass-phenology-season fit against a multi-year
+    grass NPP reference sliced from the on-disk production `ind` output (no C re-run).
 - **Independent adversarial verification of the §24 → §25 grass re-diagnosis chain + §24 superseded-banner /
   factual fixes (Phase-3 scale-up step 11 follow-up #2 verification; docs §24 banner + §25 "Independently
   verified").** A 4-lens refutation workflow (each lens tried to REFUTE a load-bearing claim) + an all-25-patch

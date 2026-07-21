@@ -1538,9 +1538,82 @@ patches 0.88/0.84/0.70/0.56 → 0.93/0.91/0.77/0.63), but the faithful `albedo_l
 **together (both faithful) ≈ 0.82** — the two corrections nearly CANCEL, so the ~18 % aggregate undershoot
 PERSISTS (corr unchanged ~0.975; the §26 probes' `albedo_leaf` 0.15 was over-absorbing, partly masking it).
 So the residual is NOT the grass temp/albedo params; it is a deeper grass GPP-per-above-threshold-day gap,
-worst at intermediate shade (patch 6, ff 0.29: F/C 0.57). **Next lever = the grass GPP-vs-light response
-(Vcmax / co-limitation / λ) via a matched-leaf/matched-light DAILY decomposition — which needs the C's daily
-GRASS GPP (the committed references carry annual grass NPP + cell daily GPP, not per-PFT daily GPP; extract
-per-PFT daily GPP from the single-cell C output as `extract_fdiff_decadal.py` sliced the cell GPP).** NB the
-faithful grass `temp_photos {10,30}` + `albedo_leaf 0.23` are a genuine fidelity improvement to carry into any
-canonical grass-`Individual` builder even though they don't close the level gap alone.
+worst at intermediate shade (patch 6, ff 0.29: F/C 0.57). NB the faithful grass `temp_photos {10,30}` +
+`albedo_leaf 0.23` are a genuine fidelity improvement to carry into any canonical grass-`Individual` builder
+even though they don't close the level gap alone.
+
+### 26.1 Follow-up #2 (session 23) — the proposed "C re-run" is really a C RECOMPILE; the residual is param-faithful and season-shaped, NOT the forest-floor light or the GSI cold-start
+
+Session 22's "Next" scoped the level gap as a grass GPP-vs-light decomposition needing "the C's daily GRASS
+GPP", to be obtained by "extract[ing] per-PFT daily GPP from the single-cell C output" or a targeted re-run.
+This session first **re-verified that scoping and found it mis-scoped**, then ran two zero-core-change SLURM
+probes that refute the leading candidate levers and re-localize the residual. No physics change: the
+deliverable is the corrected diagnosis + two committed self-checking reproductions + a corrected roadmap.
+
+**★ Finding 1 — there is NO per-PFT/per-individual DAILY GPP output in LPJmL-FIT, so the proposed "re-run" is
+actually a C-SOURCE change + RECOMPILE.** `par/outputvars.js` carries only: annual `PFT_NPP` (id 18) and the
+annual per-individual `ind` output (the matched-structure ground truth), and cell-total daily `D_GPP`/`D_NPP`.
+There is no per-PFT daily GPP variable and no place to slice one from — so nothing can be "extracted", and a
+config-only re-run cannot produce it. Getting the C's daily grass GPP requires adding an output slot to the C
+source and rebuilding the binary — a NEW class of work (the project has only ever *run* the FIT binary, never
+modified it). This corrects session 22's premise.
+
+**★ Finding 2 — the residual is NOT a photosynthesis/respiration PARAMETER** (full C-source audit,
+`photosynthesis.c` / `water_stressed.c` / `gp_sum.c` / `npp_grass.c` / `par/pft_lpjmlfit.js`). The grass
+photosynthesis KERNEL is byte-faithful: the Haxeltine–Prentice co-limitation is the *exact* quadratic
+`agd=(je+jc−√((je+jc)²−4·θ·je·jc))/(2θ)·daylength` (`photosynthesis.c:150` == `fdiff.jl:431`, NOT a smooth-min
+surrogate), and the `vm`/`rd`/`adt` formulas match. `apar` (the layered forest-floor light) is validated to
+5–6 s.f. (§20/§21). temp/albedo were ruled out (follow-up #1). And the grass respiration params are **literally
+beech's**: temperate C3 grass (id 8) has `respcoeff 1.2`, `cn_ratio.root = CTON_ROOT`, `ratio.root 1.16` —
+identical to beech (id 3) — so "grass maintenance reuses the beech `RespParams`" (§15 v1 note) is *faithful*,
+and CUE is faithful. So the ~18 % above-threshold undershoot is not a mis-set parameter.
+
+**★ Finding 3 — the undershoot is gate-independent, ABOVE-threshold, and tracks the grass ACTIVE-DAY fraction,
+GROWING with shade** (`scripts/grass_npp_light_response_probe.jl`, SLURM 1540816; matched structure, faithful
+grass photo params, demand-gate ON `βgpd_gate=1e8`, per-patch F/C sorted by forest-floor light `ff`). The
+brightest-half (above-threshold) aggregate F/C is **0.861** and is essentially unchanged gate-ON vs gate-OFF
+(the gate only zeroes the near-zero sub-threshold days) — so this is a genuine per-active-day LEVEL gap, not a
+gate/floor artifact. Per-patch F/C declines monotonically with shade (0.86 at the brightest ff 0.50 → 0.57 at
+ff 0.29 → ~0.2–0.5 at the dimmest), and it **tracks the grass active-day fraction** (grass NPP > 1e-4 on only
+~0.49–0.66 of days at the productive patches, ~0.30 at shade). So the grass is leaf-on / above-threshold too
+FEW days — a season-shape residual, not a GPP-per-active-leaf one. (The median F/C 0.51 is dominated by the
+dimmest patches, where the C's own grass NPP is ~0.01–0.9 gC/m²/yr and the ratio is a noisy small/small — the
+aggregate 0.82× is the meaningful number, set by the intermediate/bright patches.)
+
+**★ Finding 4 — the FAITHFUL `:exp` forest-floor light is REFUTED as the level fix** (same probe). §26's
+Finding 6 kept `:linear` (`grass_lf = 1 − Σ fpar·phen`) over the faithful Lambert–Beer `:exp`
+(`exp(−k·Σ plai·phen)`) only because `:exp`+gate drove *deep-shade* NPP negative, and deferred `:exp` as a
+future grass-phen-timing lever. This probe checked the ABOVE-threshold patches for the first time: `:exp` makes
+them **worse** (brightest-half aggregate F/C 0.861 → 0.755) and produces 7 deep-shade negatives, because the
+faithful (dimmer) forest-floor light makes the understory grass leaf-on *fewer* days. So `:exp` moves the level
+the wrong way — the deferred `:exp` lever is refuted for closing the level gap.
+
+**★ Finding 5 — the grass GSI COLD-START is REFUTED as the lever** (`scripts/grass_gsi_warmstart_probe.jl`,
+SLURM 1540819). Hypothesis: the matched-structure metric runs one year from a cold-start GSI (the coupled
+rollout cold-starts the per-PFT GSI each year, a v1 simplification) while the C warm-starts it continuously, so
+a slowly-ramping cold GSI would shorten the grass season. Test: a 5-year continuous `rollout_daily_canopy`
+(the GSI + soil water + lag-1 grass light warm up across years; structure fixed) — year 1 (cold) and year 5
+(warm) grass NPP F/C **and** active-day fraction are **identical to every digit at all patches**. The grass GSI
+equilibrates within year 1; the active-day fraction is F_diff's stable equilibrium, not a spin-up artifact.
+
+**★ Net + corrected next step.** The above-threshold grass-NPP level gap is a **gate-independent,
+parameter-faithful, shade-growing residual that tracks the self-computed grass GSI active-day fraction** — i.e.
+F_diff's grass is leaf-on / photosynthesizing on somewhat fewer (growing-season) days than the C's grass. It is
+NOT temp/albedo (follow-up #1), NOT respcoeff/CN (Finding 2), NOT the forest-floor light shape (Finding 4), NOT
+the GSI cold-start (Finding 5), NOT the demand-gate/softplus floor (gate-independent), NOT per-PFT conductance
+(§22) / cover competition (§24). Disambiguating the last step (a residual grass GPP-per-active-day gap vs a
+grass GSI season that is genuinely too short) definitively needs the C's daily per-PFT grass GPP/phenology — for
+which the existing binary has NO output (Finding 1), so it would take a C recompile.
+
+**★ Recommendation — DEFER, do not recompile.** (a) The gap is a grass-NPP LEVEL bias (cross-patch corr ~0.975,
+so the ranking is right) on a minority-carbon PFT; the hybrid emulator's learned **canopy Vcmax/λ correction**
+(§16/§18) is designed to absorb exactly this class of above-threshold level bias and demonstrably closes the
+*tree* GPP level against the C (1.09 → 1.01). The grass level gap is a natural target for that ML correction,
+not a hard-coded C-faithful fix. (b) If a hard-coded fix is later wanted, the lever is the grass phenology
+season, and it can be validated **without a C re-run** against a MULTI-YEAR (2009–2019) per-patch grass NPP
+reference sliced from the on-disk production `ind` output
+(`/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet`; annual per-PFT NPP, the way
+`extract_fdiff_decadal.py` sliced the decadal cell GPP). The C recompile is only justified if a phenology fit
+against that reference proves insufficient and per-day per-PFT ground truth is genuinely required.
+Reproductions: `scripts/grass_npp_light_response_probe.jl`, `scripts/grass_gsi_warmstart_probe.jl` (both
+self-checking, SLURM, `--project=.`; runtime `[deps]` stays EMPTY).
