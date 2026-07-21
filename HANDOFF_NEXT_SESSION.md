@@ -255,6 +255,66 @@ for HEAD.
   item is separate). Full suite **26205 pass / 0 fail / 4 broken** (SLURM 1542299). Reworked two
   `grass_structure_tests.jl` testitems + a new "default is now faithful-grass" gate. Report §26.3; CHANGELOG.
   Runtime `[deps]` still EMPTY.
+- **Phase-3 (session 26) — DIAGNOSED the 2018 grass drought-amplitude residual: a GENUINE grass water-supply
+  gap (per-PFT `wscal` + competitive supply depletion collapsed to a stand aggregate).** §26.2's last honest
+  grass residual (matched per-year structure → F/C 1.87 in the 2018 European drought). Three matched-structure
+  SLURM probes + an adversarial C-source cross-check: it is NOT structure (`corr(F/C, fed_leaf)=−0.12`) and NOT
+  the fresh-soil annual reset (carrying F_diff's own multi-year soil column → byte-identical 2018 numbers); it
+  IS a water-supply effect — 2018 `wscal` 0.939 vs 0.976 normal, per-leaf grass NPP stays high (F/leaf 2.591 vs
+  the C's 1.386). Root cause (code-verified): `daily_step_canopy` runs ONE stand-level water balance — `wr` from
+  a single shared `soil.rootdist`, grass `supply_i` the UNCAPPED potential, `wscal = min(1, Σsupply·fpc/
+  Σdemand·fpc)` one FPC-weighted scalar saturating near 1 (`fdiff.jl:1467-1473,1528,1587`); it barely moves in
+  2018 via demand-saturation + top-layer over-recharge (`_infiltrate` :812-832). The C keeps a per-PFT `wscal`
+  (`water_stressed.c:130-140`) AND a sequential competitive per-layer cap `aet_cor` (`:153-177,264-275`, per PFT
+  at `daily_natural.c:181`) — trees deplete the shared column first, grass's realized supply collapses.
+  **CORRECTION (cross-check overturned the first reading):** the C's grass is FULL-depth-rooted, `beta_root=0.8`
+  identical to trees (`new_grass.c:40`; `pft.js:494/1110`) — no shallow grass rooting to lose; `gp_stand` is
+  FAITHFUL. The rooting counterfactual (shallow → 2018 F/C 1.87→1.13) is a LEVER localizing the channel, not the
+  C mechanism. Same family as §20/§22 (per-PFT state aggregated to stand), water-SUPPLY axis; fix = per-PFT
+  `wscal` + `aet_cor` competitive cap (deferred, coupled structural item). Diagnosis only — no `src/`/`test/`
+  change. Report §26.4; CHANGELOG. Probes `scripts/grass_drought_{amplitude,soilmemory,rooting}_probe.jl`.
+  Runtime `[deps]` EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 26 (on `main`) — DIAGNOSED THE 2018 GRASS DROUGHT-AMPLITUDE RESIDUAL: A GENUINE GRASS WATER-SUPPLY GAP (per-PFT `wscal` + competitive supply depletion collapsed to a stand aggregate)
+
+**§26.2's one remaining honest grass residual — the matched per-year structure gives F/C 1.87 in the 2018
+European drought (F_diff's grass over-produces) — is now DIAGNOSED (diagnosis-first, because this thread has a
+history of mis-attributed grass diagnoses; an adversarial C-source cross-check OVERTURNED a plausible-but-wrong
+first reading). It is a GENUINE grass water-supply gap: F_diff collapses the C's per-PFT water-stress state
+(per-PFT `wscal` + sequential competitive supply depletion) into one stand aggregate. Diagnosis only — no
+`src/`/`test/` change.** (Report §26.4; CHANGELOG.)
+
+- **★ THREE MATCHED-STRUCTURE PROBES (SLURM) + C-SOURCE CROSS-CHECK.** (1) `grass_drought_amplitude_probe.jl` —
+  NOT structure (`corr(F/C, fed_leaf)=−0.12`), IS water: 2018 `F/leaf` 2.591 vs the C's `C/leaf` 1.386, 2018
+  `wscal` 0.939 vs wet-year 0.976, `corr(F/C,−wscal)=0.66`. (2) `grass_drought_soilmemory_probe.jl` — the
+  decisive artifact test: carrying F_diff's OWN multi-year soil column 2009→2019 gives BYTE-IDENTICAL 2018 (F/C
+  1.87, wscal 0.939) ⇒ GENUINE (not the fresh-soil reset), soil re-equilibrates within-year (no multi-year
+  legacy). (3) `grass_drought_rooting_probe.jl` — a LEVER localizing the channel: shallowing the stand rooting
+  DEEP→MID→SHALLOW grows the 2018 `wscal` drop ~6× (−0.037→−0.195→−0.218), F/C 1.87→1.30→1.13. Read as a
+  channel-localizer, NOT the C mechanism (it shallows trees too; the C's grass is deep-rooted).
+- **★ ROOT CAUSE (both sides, code-verified).** F_diff `daily_step_canopy` runs ONE stand-level water balance:
+  `wr` from a single shared `soil.rootdist`, each grass `supply_i` the UNCAPPED potential, `wscal = min(1,
+  Σsupply·fpc/Σdemand·fpc)` one FPC-weighted (tree-dominated) scalar saturating near 1 (`src/fdiff.jl:1467-1473,
+  1528, 1587`); it barely moves in 2018 via demand-saturation (Σsupply > Σdemand) + top-layer over-recharge
+  (`_infiltrate` fills to FC each rain, `:812-832`, no competitive depletion). The C shares the SAME soil column
+  but keeps a per-PFT `pft->wscal` (`water_stressed.c:130-140`) AND a sequential competitive per-layer
+  availability cap `aet_cor` (`:153-177,264-275`, per PFT at `daily_natural.c:181`): the dominant trees deplete
+  the shared layers first, so grass's realized supply collapses in drought — F_diff's grass instead takes the
+  uncapped potential.
+- **★ CORRECTION (adversarial cross-check).** The C's grass is FULL-depth-rooted, `beta_root=0.8` identical to
+  trees (`new_grass.c:40`; `pft.js:494/1110`) — NO shallow grass rooting to lose; and `gp_stand` is FAITHFUL
+  (the C also uses it for demand + the GPP-solve gc, `:118,180-194`). So the gap is per-PFT `wscal` + the
+  competitive supply depletion, NOT rooting depth and NOT the conductance.
+- **★ CLASSIFICATION + FIX.** Same FAMILY as §20/§22 (F_diff aggregates the C's per-PFT state into stand
+  quantities) but on the water-SUPPLY axis specifically; NOT a GPP-response/parameter/soil-memory gap (all ruled
+  out). Modest extreme-year effect (aggregate grass fidelity ~0.95–1.10). FIX = a per-PFT realized-supply water
+  balance porting `water_stressed.c`'s per-PFT `wscal` + the `aet_cor` competitive per-layer cap — a coupled
+  structural item, deferred.
+- **★ COMMITTED.** Docs §26.4 + CHANGELOG + JOURNAL + HANDOFF + MEMORY; the three reproduction probes. No
+  `src/`/`test/` change; `[deps]` EMPTY. SLURM outputs ephemeral (`logs/` git-ignored). Probe jobs 1542639 +
+  1542679.
 
 ---
 
