@@ -1852,3 +1852,52 @@ lever that demonstrates the channel, not the fix.
 `grass_drought_soilmemory_probe.jl`, `grass_drought_rooting_probe.jl`). Diagnosis only — **no `src/`/`test/`
 change**; the runtime `[deps]` stays EMPTY. SLURM outputs are ephemeral (`logs/` is git-ignored); the numbers
 above are the committed record.
+
+### 27. (session 26) — the `FDiffFastCore` deployment adapter reaches `rollout_canopy_years` GRASS parity (scale-up step 11 follow-up #8)
+
+§26.3 flipped the coupled self-driven path `rollout_canopy_years` to the validated-faithful grass config
+(demand-gate + per-PFT phenology + grass allocation + establishment) but noted the `FDiffFastCore`
+SharedState **deployment adapter** (`src/components/fast.jl`) still grew grass with the TREE machinery — a
+documented v1 scaffold gap. This step closes it: the adapter now mirrors `rollout_canopy_years`'s grass
+handling, so the coupling surface an ESM would drive matches the reference-faithful path.
+
+**★ THE CHANGE (surgical, grass-only), in `src/components/fast.jl`:**
+- **Per-PFT GSI phenology** — the single patch-wide beech `PhenState`/`PhenParams` is replaced by
+  per-DISTINCT-PFT filters (`pft_params`/`pft_states`/`pft_isg`/`pft_slot` + `pft_ids`), advanced each day
+  by `FDiff._step_pft_phen_day!` with the lag-1 forest-floor light `grass_lf·swdown` for grass (`:linear`
+  default, `:exp` supported) — carried as persisted struct state because the adapter is day-by-day
+  (`step!`), not batched like `rollout_daily_canopy`. `pft_ids` defaults `t.is_grass ? 8 : 3`, and
+  `pft_phenparams(3) === tebs_phenparams`, so an all-tree patch reduces EXACTLY to the old single-beech GSI.
+- **§26 demand-gate ON** — the constructor wraps `params` with `FDiff._with_grass_gate(params, true)` (the
+  C's sharp `βgpd_gate=1e8`); grass-gated in `daily_step_canopy`, so trees are ungated.
+- **Grass allocation** — `annual_step!` grows grass with `FDiff.grow_grass_individual` (vs the tree
+  `grow_individual`), keyed on `is_grass`.
+- **Grass establishment** — `annual_step!` re-seeds grass when the patch FPC < 1 (`FDiff._treepools_fpc` +
+  `grass_estabparams`), the anti-extinction mechanism §26.3 needs.
+- The within-year reset cold-starts the per-PFT filters (+ `grass_lf`), mirroring `rollout_canopy_years`.
+
+**★ NOTHING REGRESSES.** All four changes are **grass-gated / `is_grass`-branched**, so a **tree-only core is
+byte-identical** to the pre-§27 adapter (per-PFT phenology for an all-id-3 patch issues the same
+`phenology_gsi_step` call; the gate multiplies only grass outputs; the grow branch keys on `is_grass`;
+establishment is a no-op at `n_est=0`). The **AD/gradient trainer path is untouched** — that is
+`rollout_canopy_years_gpp` (a separate function that reads `p.water` directly, gate off, and never touches
+`fast.jl`); this adapter is the non-AD deployment surface (DESIGN §8; AD through the coupled rollout uses
+`rollout_canopy_years` directly). No new exports (`fast.jl` reaches the FDiff internals via the `FDiff.`
+prefix); runtime `[deps]` stays EMPTY.
+
+**★ TEST.** The single `FDiffFastCore` gate (`test/testitems/coupling_tests.jl`) — previously tree-only — now
+also drives a **mixed tree+grass core** 4 coupled years: grass mapped to PFT 8 (tree 3), demand-gate on;
+the grass stays finite + non-negative and carries **no woody pools/height** (proof the grass allocation ran,
+not the tree pipe-model), while the trees still grow and are physical. Grass SURVIVAL is not asserted (it is
+light-dependent — the gate correctly lets a shaded understory grass decline where `fpc_total ≥ 1`, §26.3);
+establishment's payoff is checked as a provably-≥ differential (grass carbon with establishment ON ≥ OFF).
+
+**★ VALIDATION.** Full CI-faithful suite **26,214 pass / 0 fail / 4 broken**; the tree-only coupling
+assertions are unchanged (byte-identical tree behaviour). Runic-clean. Committed: `src/components/fast.jl`,
+the reworked `coupling_tests.jl` gate, this §27, CHANGELOG, HANDOFF.
+
+**★ HONEST SCOPE.** This brings the adapter's grass FLUX + structure handling to `rollout_canopy_years`
+parity. The remaining adapter v1 notes are unchanged (the `SharedState` scalar veg-C/snow fields still live
+in the core, a Phase-4 mutability refactor; `bc::SToF`'s aggregate fields are diagnostics until S attaches
+the individual set). The grass structural-equilibrium fidelity vs the C per-patch (§24) and the water-supply
+per-PFT `wscal` gap (§26.4) are separate open items, unaffected by this deployment-path change.

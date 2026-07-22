@@ -274,10 +274,19 @@ for HEAD.
   `wscal` + `aet_cor` competitive cap (deferred, coupled structural item). Diagnosis only — no `src/`/`test/`
   change. Report §26.4; CHANGELOG. Probes `scripts/grass_drought_{amplitude,soilmemory,rooting}_probe.jl`.
   Runtime `[deps]` EMPTY.
+- **Phase-3 (session 26) — the `FDiffFastCore` deployment adapter reaches `rollout_canopy_years` GRASS
+  parity (§27).** The `FDiffFastCore` SharedState adapter (`src/components/fast.jl`, the ESM coupling surface)
+  still grew grass with the TREE machinery; now it mirrors `rollout_canopy_years`, all **grass-only**: per-PFT
+  GSI phenology (persisted per-DISTINCT-PFT filters + lag-1 `grass_lf`, since the adapter is day-by-day), the
+  §26 demand-gate (constructor `_with_grass_gate`), grass allocation (`grow_grass_individual`), grass
+  establishment. **Tree-only core BYTE-IDENTICAL** (all `is_grass`-gated); the AD trainer
+  `rollout_canopy_years_gpp` is untouched (this adapter is the non-AD deployment surface). `coupling_tests.jl`
+  now also drives a mixed tree+grass core. Full suite **26,214 pass / 0 fail / 4 broken**. Report §27;
+  CHANGELOG. Runtime `[deps]` EMPTY.
 
 ---
 
-## ⭐ WHAT LANDED IN SESSION 26 (on `main`) — DIAGNOSED THE 2018 GRASS DROUGHT-AMPLITUDE RESIDUAL: A GENUINE GRASS WATER-SUPPLY GAP (per-PFT `wscal` + competitive supply depletion collapsed to a stand aggregate)
+## ⭐ WHAT LANDED IN SESSION 26 (on `main`) — DIAGNOSED THE 2018 GRASS DROUGHT-AMPLITUDE RESIDUAL (per-PFT `wscal` + competitive supply depletion collapsed to a stand aggregate) + `FDiffFastCore` GRASS PARITY
 
 **§26.2's one remaining honest grass residual — the matched per-year structure gives F/C 1.87 in the 2018
 European drought (F_diff's grass over-produces) — is now DIAGNOSED (diagnosis-first, because this thread has a
@@ -315,6 +324,26 @@ first reading). It is a GENUINE grass water-supply gap: F_diff collapses the C's
 - **★ COMMITTED.** Docs §26.4 + CHANGELOG + JOURNAL + HANDOFF + MEMORY; the three reproduction probes. No
   `src/`/`test/` change; `[deps]` EMPTY. SLURM outputs ephemeral (`logs/` git-ignored). Probe jobs 1542639 +
   1542679.
+
+**PLUS — `FDiffFastCore` GRASS PARITY (§27).** The deployment adapter (`src/components/fast.jl`) now mirrors
+`rollout_canopy_years`'s grass handling — per-PFT GSI phenology (persisted per-DISTINCT-PFT filters + lag-1
+`grass_lf`), the §26 demand-gate (`_with_grass_gate`), grass allocation (`grow_grass_individual`), grass
+establishment — all **grass-only** ⇒ a tree-only core is BYTE-IDENTICAL and the AD trainer
+`rollout_canopy_years_gpp` is untouched (the adapter is the non-AD deployment surface). The `coupling_tests.jl`
+gate now also drives a mixed tree+grass core (grass finite/non-negative, no woody pools/height, trees grow;
+establishment differential). Full CI-faithful suite **26,214 pass / 0 fail / 4 broken**; Runic-clean. The
+`sapwood_bg` frontier is now scoped (see `docs/sapwood_bg_design.md`).
+
+- **★ NEXT (session 27).** The grass thread is CLOSED (flux faithful §26.2, default flipped §26.3, drought
+  residual diagnosed §26.4, deployment adapter at parity §27). Remaining frontiers: **(a) the tree
+  `sapwood_bg` + carbon-debt** — the design is scoped (`docs/sapwood_bg_design.md`); START with the
+  quantification probe (§7 there: predict the CUE decrement from the committed `sapwood_c/height/wooddens`
+  before the invasive AD-path struct change), because seeding is mandatory (a 0-seed never bootstraps) and an
+  over-large seed pushes CUE below the 0.42 gate floor. **(b) the per-PFT water-supply balance** (§26.4 fix:
+  per-PFT `wscal` + the `aet_cor` competitive per-layer cap) — a coupled structural item, the water-supply
+  analog of the §20/§22 per-PFT machinery. **(c)** the upstream-Enzyme-≥1.11 guard-lift (still blocked) and
+  committing `test/Manifest.toml` for reproducible CI resolution (a fresh re-resolve now needs a git clone the
+  compute nodes can't reach — the login node has pkg-server access; see below).
 
 ---
 

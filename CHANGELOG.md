@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- **The `FDiffFastCore` deployment adapter reaches `rollout_canopy_years` GRASS parity (Phase-3 scale-up step
+  11 follow-up #8; docs §27).** §26.3 flipped the self-driven rollout to the validated-faithful grass config
+  but the `FDiffFastCore` SharedState adapter (`src/components/fast.jl`, the ESM coupling surface) still grew
+  grass with the TREE machinery. Now it mirrors `rollout_canopy_years`, all **grass-only**:
+  - **Per-PFT GSI phenology** (per-DISTINCT-PFT filters + lag-1 forest-floor light `grass_lf` for grass,
+    carried as persisted struct state since the adapter is day-by-day), the **§26 demand-gate** (constructor
+    wraps `params` via `_with_grass_gate`), **grass allocation** (`grow_grass_individual`), and **grass
+    establishment** (re-seed when patch FPC < 1).
+  - **Nothing regresses:** a tree-only core is **byte-identical** (per-PFT phenology for an all-id-3 patch is
+    the same beech GSI; gate/alloc/establishment are `is_grass`-gated). The **AD trainer**
+    `rollout_canopy_years_gpp` is untouched (a separate function; this adapter is the non-AD deployment
+    surface). No new exports; runtime `[deps]` still EMPTY.
+  - **Test:** the `FDiffFastCore` gate (`test/testitems/coupling_tests.jl`), previously tree-only, now also
+    drives a mixed tree+grass core 4 coupled years — grass finite, non-negative, no woody pools/height (grass
+    allocation ran), trees grow; establishment payoff checked as a provably-≥ differential (survival is
+    light-dependent, so not asserted). Full suite **26,214 pass / 0 fail / 4 broken**.
 - **DIAGNOSED the 2018 warm/dry-year grass-NPP amplitude residual — a GENUINE grass water-supply gap (Phase-3
   scale-up step 11 follow-up #7; docs §26.4).** §26.2's last honest grass residual — the matched per-year
   structure gives F/C 1.87 in the 2018 European drought (F_diff's grass over-produces) — is diagnosed with

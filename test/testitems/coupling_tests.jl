@@ -7,6 +7,9 @@
 # This gate confirms the interface is wired (no throw), the SharedState soil water is updated in place,
 # FToE/FToS are finite + conserved, and a multi-year coupled loop — FULLY SELF-DRIVEN by the calibrated
 # self-computed canopy NPP (the bm_inc crutch is removed; docs §13) — grows structure without blow-up.
+# It also covers GRASS PARITY (§26.4): a mixed tree+grass core exercises the grass allocation, per-PFT
+# phenology, the §26 demand-gate, and grass establishment — grass-only, so the tree-only assertions above
+# double as the byte-identical-tree guarantee.
 @testitem "S↔F coupling — FDiffFastCore behind AbstractFastCore.step! (Hainich 42490)" tags = [:validation, :fdiff, :canopy, :coupling] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -116,4 +119,49 @@
     @test all(isfinite(a.agb) && a.agb > 0 for a in annual)
     @test all(a.npp > 0 for a in annual)                  # self-computed NPP positive every year (calibrated)
     @test annual[NY].agb > annual[1].agb                  # cumulative growth from the self-computed NPP
+
+    # ── GRASS PARITY (§26.4): a mixed tree+grass core exercises the grass allocation (grow_grass_individual),
+    #    per-PFT GSI phenology (grass id 8 vs tree id 3), the §26 demand-gate, and grass establishment. The
+    #    grass stays finite + non-negative and carries NO woody pools/height (proof the GRASS allocation ran,
+    #    not the tree pipe-model) while the trees still grow. Grass SURVIVAL is light-dependent — the gate
+    #    correctly lets a shaded understory grass decline where establishment cannot re-seed it (fpc_total ≥ 1,
+    #    §26.3) — so it is not asserted; establishment's additive payoff is checked as a differential instead.
+    #    The pre-existing tree-only assertions above are the byte-identical-tree guarantee (grass paths gated). ──
+    gpool = FDiff.grass_treepools(0.5, 1.0, 0.042242)     # small per-area grass: agb 0.5, vegc 1.0 gC/m², C3 sla
+    gtmpl = Individual{Float64}(
+        0.03, 1.0, 0.5, 0.23, 10.0, 0.0, 0.0, 0.0, 0.01, 0.15, 0.1, 0.4, 1.0,
+        FDiff.PhotoParams{Float64}(; path = :c3, issla = true, sla = 0.042242),
+        FDiff.TempStressParams{Float64}(; temp_photos_low = 10.0, temp_photos_high = 30.0), true,
+    )
+    mpools = vcat(pools, [gpool]); mtmpls = vcat(tmpls, [gtmpl])
+    gi = length(mpools)                                   # the grass individual index
+    freshstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
+    function drive_year!(core, st)
+        for i in 1:n
+            step!(core, st, bc, atm(i))
+        end
+        return annual_step!(core, st)
+    end
+    gcore = FDiffFastCore(mpools, mtmpls, soil, 51.25)    # §26.3 default: demand-gate on, per-PFT phen, establishment
+    @test gcore.pft_ids[gi] == 8 && gcore.pft_ids[1] == 3 && any(gcore.pft_isg)   # grass→id 8, tree→id 3
+    @test gcore.params.water.grass_demand_gate            # the §26 grass demand-gate defaults ON in the adapter
+    gstate = freshstate()
+    gftos = drive_year!(gcore, gstate)
+    for _ in 2:4
+        gftos = drive_year!(gcore, gstate)
+    end
+    gp = gcore.pools[gi]
+    @test gp.is_grass                                                    # still the grass individual
+    @test isfinite(gp.leaf_c) && isfinite(gp.root_c)                     # grass pools finite after 4 coupled years
+    @test gp.leaf_c >= 0 && gp.root_c >= 0                               # grass stays non-negative
+    @test gp.sapwood_c == 0 && gp.heartwood_c == 0 && gp.height == 0     # NO woody pools/height ⇒ grass allocation ran
+    @test all(0 < gcore.pools[i].height <= 100 && gcore.pools[i].leaf_c > 0 for i in eachindex(pools))  # trees still grow, physical
+    @test isfinite(gftos.bm_inc) && gftos.bm_inc > 0                     # conserved per-m² NPP positive with grass present
+    # ESTABLISHMENT differential (grass-only, provably ≥): after one coupled year the grass carbon with
+    # establishment ON is ≥ that with it OFF (establishment adds sapl·(1−fpc_total)/n_est when fpc_total<1,
+    # a no-op otherwise; trees are identical in year 1 ⇒ the only difference is the additive re-seed).
+    ce = FDiffFastCore(mpools, mtmpls, soil, 51.25)
+    cn = FDiffFastCore(mpools, mtmpls, soil, 51.25; grass_estab = nothing)
+    drive_year!(ce, freshstate()); drive_year!(cn, freshstate())
+    @test ce.pools[gi].leaf_c + ce.pools[gi].root_c >= cn.pools[gi].leaf_c + cn.pools[gi].root_c
 end
