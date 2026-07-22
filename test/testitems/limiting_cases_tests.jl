@@ -3,6 +3,8 @@
 # stubs throw (their documented Phase-0 contract).
 @testitem "Limiting cases" tags = [:limits] begin
     using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: PhotoParams, TempStressParams
     using Test
 
     # Zero increments ⇒ flux_then_integrate returns the (clamped) input state unchanged.
@@ -35,7 +37,18 @@
     ftoe = FToE{Float64}(; le = 0.0, gpp = 0.0, npp = 0.0, rh = 0.0, firec = 0.0, flux_estabc = 0.0, ground_heat = 0.0)
     forcing = AtmForcing{Float64}(; swdown = 200.0, lwdown = 300.0, tair = 288.0, qair = 0.01, wind = 2.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0)
 
-    @test_throws ErrorException LPJmLFITEmulator.step!(_StubSlow(), st, fts)
+    # Component S: the coupling entry point is `reconcile_demography!` (ADR 0018; the old `step!` stub was
+    # replaced in P1). It is unimplemented for a bare AbstractSlowEmulator — only `DemographicSlowEmulator`
+    # implements it — so the abstract fallback throws. Build a minimal one-cohort fast core to dispatch on.
+    _pool = TreePools{Float64}(100.0, 200.0, 0.0, 100.0, 5.0, 1.0, 0.01, 0.02, 2.0e5, false)
+    _tmpl = Individual{Float64}(
+        0.5, 0.0, 1.0, 0.15, 10.0, 200.0, 100.0, 0.0, 0.02, 0.04, 0.1, 0.4, 0.01,
+        PhotoParams{Float64}(; path = :c3, issla = true, sla = 0.02),
+        TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    _soil = hainich_soilcolumn(; whcs = [100.0], rootdist = [1.0], soildepth = [1000.0])
+    _fc = FDiffFastCore([_pool], [_tmpl], _soil, 51.25)
+    @test_throws ErrorException reconcile_demography!(_StubSlow(), _fc, grow_annual_accounted!(_fc), st)
     @test_throws ErrorException LPJmLFITEmulator.step!(_StubFast(), st, stf, forcing)
     @test_throws ErrorException LPJmLFITEmulator.solve!(_StubEnergy(), st, ftoe, ste, forcing)
 end

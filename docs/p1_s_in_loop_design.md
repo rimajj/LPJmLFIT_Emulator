@@ -128,28 +128,41 @@ BEFORE chasing any miss.
    `fdiff_litter_closure_tests.jl`: `Δvegc_full == bm_net − (leaf_shed+root_shed)` on the normal branch +
    grass; ledger-residual identity + no carbon creation, branch-agnostic. **[DONE — verified]**
 2. **`CarbonLedger` + `handoff_carbon_residual`** (`src/conservation.jl`). Test: synthetic
-   establish(+)/kill(−)/merge with a seeded `sapwood_bg_c>0` cohort ⇒ `|residual| ≤ 1e-6`.
+   establish(+)/kill(−)/merge with a seeded `sapwood_bg_c>0` cohort ⇒ `|residual| ≤ 1e-6`. **[DONE — `carbon_ledger_tests.jl`]**
 3. **`grow_annual_accounted!`** (`src/components/fast.jl`) — grows at fixed `nind`, returns `FToS` + grown
    pools + litterfall; keep `annual_step!` as the byte-identical `slow=nothing` path. Test: existing
    coupled/biome tests re-run UNCHANGED (byte-identical guard) + fixed-N litter closure with grass present.
+   **[DONE — `grow_accounted_tests.jl`]**
 4. **`src/slow_infer.jl`** (pure-Base): GBDT text-walk, `ResidualRegressor.sample_u`, 5×5 Cholesky +
    Acklam `Φ⁻¹` + rational `Φ`, Poisson/NB (Gamma-Poisson) on `Random.Xoshiro`, artifact loader. Test
    `slow_infer_tests.jl`: parity vs committed Python predictions ~1e-6 + a deps-guard (no
    Statistics/LinearAlgebra/Distributions/SpecialFunctions in runtime `[deps]`).
 5. **`scripts/export_slow_hainich.py`** — export the slim PFT-3 artifact (Tier-0 scalar bundle + Tier-1
    boosters/pools/copula/ECO row) to committed `references/slow_hainich_pft3.bin` + `slow_infer_parity.csv`.
-6. **`DemographicSlowEmulator` + `PopulationState` + `reconcile_demography!`** (`src/components/slow.jl`),
-   Tier-0 first (constant count + fixed copula); replace the erroring stub. Test: Gate-2 handoff residual
-   `≤1e-6` on forced N-up / N-down / merge years (incl. `sapwood_bg>0`) + a C-oracle veg-C-delta cross-check.
-7. **`run.jl`**: `stand_structure_tof`; `slow=` kwarg (default `nothing` byte-identical); daily
-   climate-accumulation hook; year-end sequence `grow_annual_accounted!`→`S.step!`→`reconcile_demography!`→
-   `stand_structure_tof`. Test: byte-identical guard + Gate-1 (`slow=DemographicSlowEmulator` runs ≥20 yr,
-   all finite, total N changes year-to-year proving S is in the loop; energy closure preserved).
-8. **Tier-1 wire-up**: ported GBDT count + copula recruit-trait sampler; ML channel from the rolling
-   buffer; `FToS` drives the rate channel. Test: Gate-3 panel + oracle testitems (run residual-diagnosis first).
-9. **`scripts/bench_slow_speedup.jl` + Gate-4 testitem**: assert `S.step!` per-year work below threshold +
-   K≪N; the script records the two wall-time ratios off the login node.
-10. **Docs**: ADR 0019 (done), this doc, MEMORY/CHANGELOG/JOURNAL. Docs build + Runic gate.
+6. **`DemographicSlowEmulator` + `reconcile_demography!`** (`src/components/slow.jl`),
+   Tier-0 first (constant/physical-rate demography; no ML, empty runtime `[deps]`); replace the erroring stub.
+   Test: Gate-2 handoff residual `≤1e-6` on forced N-up / N-down / seeded-`sapwood_bg` + stagnating-cohort
+   years. **[DONE — Tier-0; `slow_demography_tests.jl`.** Fixed roster (no append/merge yet); TREE-only
+   demography — grass stays F-side (open-risk #8). Residual closes to machine precision (~3e-12 gC ≪ the
+   1e-6·C_scale gate). Membership append/merge + the C-oracle veg-C cross-check move to Tier-1.]
+7. **`run.jl`**: `stand_structure_tof`; `slow=` kwarg (default `nothing` byte-identical); year-end sequence
+   `grow_annual_accounted!`→`reconcile_demography!`→`stand_structure_tof`. Test: byte-identical guard + Gate-1
+   (`slow=DemographicSlowEmulator` runs ≥20 yr, all finite, total N changes proving S is in the loop; energy
+   closure preserved). **[DONE — Tier-0.** Byte-identical guard is now DIFFERENTIAL: fixed-N F holds tree N
+   constant, so the N change is causally S. Needed a fix: `SoilColumn` gained a `soildepth` field for the D95
+   rooting-depth in `stand_structure_tof`. Daily climate-accumulation hook deferred to Tier-1 (ADR-0020 ML
+   channel).]
+8. **Tier-1 wire-up (ADR 0020 — now in P1 scope):** the flux-conditioned models — ported GBDT count + copula
+   recruit-trait sampler in `src/slow_infer.jl` (Steps 4/5), conditioned on F's delivered-flux *annual
+   statistics* + AR state + slow bioclimatic boundary per `docs/slow_flux_conditioning_data_spec.md`; extend
+   `FToS`/the accumulators to carry the stress-day/extreme statistics (not just means). Test: Gate-3 panel +
+   oracle testitems + the warm+dry OOD benchmark vs the climate-only `DirectEmulator` (the ADR-0020 falsifiable
+   success test). **Prereq: materialise the extended Phase-1 flux-conditioning data (a C-binary/SLURM job).**
+9. **`scripts/bench_slow_speedup.jl` + Gate-4 testitem**: overhead + K≪N structural invariant; the script
+   records the wall-time ratios off the login node. **[DONE — structural invariant (fixed K-cohort roster) is
+   asserted in `slow_demography_tests.jl`; the overhead/scientific ratios are reported by the script (run via
+   `scripts/sbatch_julia.sh`), not asserted in CI.]**
+10. **Docs**: ADR 0019 (done), ADR 0020 (done), this doc, MEMORY/CHANGELOG/JOURNAL. Docs build + Runic gate.
 
 ## 8. Open risks (carry until closed)
 

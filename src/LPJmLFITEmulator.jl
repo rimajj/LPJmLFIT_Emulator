@@ -37,10 +37,13 @@ using .Allometry
 # ── F_diff — the differentiable fast physical core (ADR 0014) ───────────────
 include("fdiff.jl")
 using .FDiff
-# ── Component abstract types + Phase-N stubs ────────────────────────────────
-include("components/slow.jl")
+# ── Component abstract types + concrete cores ───────────────────────────────
+# NB: `slow.jl` is included AFTER `fast.jl` because the concrete `DemographicSlowEmulator` (P1) applies its
+# demography to an `FDiffFastCore`'s population (ADR 0018 growth-ownership split). fast/energy do not
+# reference S, so the order is sound.
 include("components/fast.jl")
 include("components/energy.jl")
+include("components/slow.jl")
 # ── Component/flux registry — source of truth for code-derived diagrams ─────
 include("registry.jl")
 # ── Coupled S+F+E run loop — the end-to-end "use the emulator" driver (Phase 4) ─
@@ -217,10 +220,12 @@ export CarbonLedger, reset_year!, record_litter!, record_estab!, record_growth!,
 # Components
 export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
 export FDiffFastCore, step!, annual_step!, grow_annual_accounted!
+# Component S — concrete Tier-0 demographic slow emulator + the S↔F handoff (P1; ADR 0018/0019)
+export DemographicSlowEmulator, reconcile_demography!, total_n
 # Component E — self-contained surface-energy-balance + skin-temperature closure (ADR 0017)
 export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
 # Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)
-export run_coupled_cell, couple_day!, stand_structure_toe
+export run_coupled_cell, couple_day!, stand_structure_toe, stand_structure_tof
 # Registry
 export COMPONENTS, FLUXES, Component, Flux
 # Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook

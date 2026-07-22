@@ -70,7 +70,7 @@ function reroot(soil::SoilColumn, keep::Int)
         rd[l] = 0.0
     end
     s = sum(rd); rd ./= s
-    return SoilColumn(soil.whcs, rd, soil.frac_evap, soil.soil_infil)
+    return SoilColumn(soil.whcs, rd, soil.frac_evap, soil.soil_infil, soil.soildepth)
 end
 soil_mid = reroot(soil_deep, 2)      # top-50cm (layers 1-2, 0-based 0-1)
 soil_shallow = reroot(soil_deep, 1)  # top-20cm (layer 0)

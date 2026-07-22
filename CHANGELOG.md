@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Fixed
+- **P1 wiring made runnable + a regression it exposed.** The uncommitted Tier-0 work had never been executed:
+  `stand_structure_tof` referenced a `SoilColumn.soildepth` field that did not exist — added it (populated by
+  `hainich_soilcolumn` from the `soildepth` kwarg it already receives; the one positional `SoilColumn(...)`
+  call in `scripts/grass_drought_rooting_probe.jl` updated to match). Replacing the old
+  `step!(::AbstractSlowEmulator,…)` stub with `reconcile_demography!` broke `limiting_cases_tests.jl:38`
+  (it expected the old stub to throw `ErrorException`, now a `MethodError`) — updated it to assert the new
+  abstract `reconcile_demography!` fallback throws. Caught by the first full SLURM suite run.
 - **Multi-cell biome gate — corrected an over-strict latent-heat assertion to the true, BOUNDED invariant.**
   `test/testitems/biome_coupled_tests.jl` asserted `all(le ≥ −1e-9)`, but F's ET is built from `smoothmin`
   (fdiff_smoothops.jl) and `smoothmin(a, b, β) ≤ min(a, b)` undershoots by ≤ log(2)/β EVEN for `a, b ≥ 0`.
@@ -21,6 +28,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   denominator and `EToF.g_a` is not consumed downstream).
 
 ### Added
+- **P1 — COMPONENT S IS IN THE COUPLED LOOP (Tier-0): the project's novelty now runs (ADR 0018/0019/0020).**
+  `DemographicSlowEmulator` (`src/components/slow.jl`) is the concrete slow emulator wired into
+  `run_coupled_cell(...; slow=)`: each year F grows every representative cohort's CARBON at fixed `nind`
+  (`grow_annual_accounted!`), then S applies its **demography** — count `N`, establishment (fills the open
+  canopy `max(1−Σfpc,0)` into the shortest tree cohort, mixing a fixed sapling), mortality (growth-efficiency
+  rate → litter) — routing every carbon movement through a `CarbonLedger`. **Tier-0 is deterministic,
+  physical-rate, ML-free (runtime `[deps]` stays EMPTY)** and, per ADR 0020, already **flux-driven** (the
+  rate channel reads `FToS.growth_eff`/`water_stress`/`soilmoist` — F's delivered fluxes — not this-year raw
+  climate). **Gates met on Hainich (`test/testitems/slow_demography_tests.jl`):** Gate-1 — S runs ≥20 yr,
+  energy still closes (1.4e-14 W/m²), and the count `N` evolves year-to-year while the fixed-N F baseline
+  holds tree `N` constant (so the change is causally S); Gate-2 — the S↔F handoff conserves carbon to
+  **~3e-12 gC ≪ the 1e-6·C_scale gate** on forced N-up / N-down / seeded-`sapwood_bg` / stagnating-cohort
+  years; Gate-4 — a FIXED roster of K persistent cohorts (the structural basis of the speed-up; timing via
+  `scripts/bench_slow_speedup.jl` off the login node). New `run.jl` `stand_structure_tof` re-derives the full
+  `SToF` (incl. D95 rooting depth) from the S-updated population. `slow=nothing` stays byte-identical to the
+  pre-S self-growing path. Independently verified by three adversarial reviewers (conservation refutation +
+  correctness + test-adequacy). **Tier-1 (flux-conditioned ML inference + the warm+dry OOD benchmark) is the
+  next step, now in P1 scope per ADR 0020.**
+- **Durable SLURM job infrastructure — long jobs survive session teardown.** `scripts/run_tests_slurm.sh`
+  runs the CI-faithful suite (`rm test/Manifest.toml` + fresh re-resolve → `Pkg.test()`) on a compute node,
+  and `scripts/sbatch_julia.sh <tag> ...` submits any Julia work the same way; both warm the shared `~/.julia`
+  depot on the login node first (compute nodes reach the pkg-server but not GitHub), log to `logs/<tag>.<jobid>.out`
+  with a `JOB DONE … exit=N` marker, and are collectable from any later session (`squeue`/`sacct`/the log).
+  Documented as the standing default in CLAUDE.md §2 + the `julia-test` skill. [VERIFIED green end-to-end.]
 - **PHASE 5 — MULTI-CELL / BIOME GENERALIZATION: the coupled emulator runs across the full climate
   envelope, energy closing everywhere (DEVELOPMENT_PLAN §6 Phase 5).** `scripts/extract_biome_forcing.py`
   pulls REAL GSWP3-W5E5 daily forcing (the model-grid `_test` `.clm`, YEARCELL float32 — the validated

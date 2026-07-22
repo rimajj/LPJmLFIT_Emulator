@@ -53,17 +53,34 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
 
 ## 2. Julia — build & test
 
-- **Run the suite (login node, CI-faithful):**
+- **Run the suite — DURABLE + CI-faithful (the DEFAULT; survives session teardown):** submit it to SLURM.
+  A login-node foreground run / `nohup &` / background-shell **dies with the session** (dropped SSH, agent
+  restart, UI stop) and you lose the result — SLURM runs it on a compute node independently and logs to
+  shared `/p`, so any later session can collect it.
+  ```bash
+  scripts/run_tests_slurm.sh [tag]      # warms the shared depot on the login node, then runs the CI-faithful
+                                        # Pkg.test() on a compute node → logs/<tag>.<jobid>.out
+  ```
+  Poll from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` · the log's last line is
+  `=== JOB DONE tag=<tag> exit=<code> ===` (grep it) with the ReTestItems summary just above. Full suite
+  ≈ **48.1k pass / 0 fail / 4 broken** (grew with P1), ~5–6 min after a warm precompile.
+- **Any OTHER long Julia job** (benchmarks, probes, decadal coupled runs, training) → the same durable path:
+  `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`). **Standing rule: anything that
+  takes more than a few seconds goes to SLURM, never a login-node foreground / `nohup` / background shell.**
+- **Quick interactive one-liner (login node)** — only for a fast check you will watch finish in-session:
   ```bash
   rm -f test/Manifest.toml       # MUST delete first (see gotcha) — it is .gitignored but re-created locally
   JULIA_DEPOT_PATH=$HOME/.julia julia --project=. -e 'import Pkg; Pkg.test()'
   ```
-  Full suite ≈ **26.2k pass / 0 fail / 4 broken**, ~5–6 min after a warm precompile. Ignore the benign
-  `curl_easy_setopt: 48` login-node spew.
-- **Why the login node, not a compute node:** `Manifest.toml`/`test/Manifest.toml` are git-ignored, so
-  every run **re-resolves to newest-allowed deps** (exactly like CI). A compute node can then pick a dep
-  version not yet mirrored as a pkg-server tarball, fall back to a github git-clone, and die with
-  `Network is unreachable`. The login node has pkg-server access and warms the shared `~/.julia`.
+  Ignore the benign `curl_easy_setopt: 48` login-node spew.
+- **Compute-node network safety (why the SLURM wrapper warms the depot first):** `Manifest.toml`/
+  `test/Manifest.toml` are git-ignored, so every run **re-resolves to newest-allowed deps** (exactly like
+  CI). Compute nodes have **no GitHub egress but DO reach the Julia pkg-server** (tarballs), so the wrapper
+  first `Pkg.instantiate/precompile`s on the login node to warm the shared `~/.julia`; the node then finds
+  every resolved dep cached and needs no network. Only residual risk: a version so new the pkg-server hasn't
+  mirrored it yet (a git-clone-only race) → fails with a clear `Network is unreachable`, fall back to the
+  login-node one-liner. **[VERIFIED 2026-07-22 — the CI-faithful suite runs green end-to-end on a compute
+  node this way (`run_tests_slurm.sh`, job 1562988/1563007).]**
 - **`test/Manifest.toml` gotcha (load-bearing):** a bare `Pkg.test()` fails with `can not merge projects`
   while a stale dev-path `test/Manifest.toml` exists. `rm -f` it first. **Do NOT commit it** (decided
   session 27, resolved "no"): `Pkg.test()` resolves the test env in a sandbox temp dir so a committed

@@ -796,6 +796,7 @@ struct SoilColumn{T <: Real}
     rootdist::Vector{T}
     frac_evap::Vector{T}
     soil_infil::T
+    soildepth::Vector{T}    # per-layer thickness, mm (retained for D95 rooting-depth diagnostics; see `stand_structure_tof`)
 end
 
 """
@@ -981,12 +982,13 @@ function rollout_daily_ml(
 end
 
 """
-    hainich_soilcolumn(::Type{T}=Float64; whcs, rootdist, soildepth_evap=300.0, soil_infil=2.0) -> SoilColumn{T}
+    hainich_soilcolumn(::Type{T}=Float64; whcs, rootdist, soildepth, soildepth_evap=300.0, soil_infil=2.0) -> SoilColumn{T}
 
-Build a [`SoilColumn`](@ref) from per-layer plant-available capacities `whcs` (mm) and root fractions
-`rootdist`, computing the soil-evaporation layer weights `frac_evap` from `soildepth_evap` (mm) and the
-per-layer thicknesses `soildepth` (mm). Used by the C-binary multi-layer validation (the Hainich column
-is committed in `test/testitems/references/hainich_soilcolumn.txt`).
+Build a [`SoilColumn`](@ref) from per-layer plant-available capacities `whcs` (mm), root fractions
+`rootdist`, and per-layer thicknesses `soildepth` (mm), computing the soil-evaporation layer weights
+`frac_evap` from `soildepth_evap` (mm) and `soildepth`. `soildepth` is also retained on the column (for
+the D95 rooting-depth diagnostic in `stand_structure_tof`). Used by the C-binary multi-layer validation
+(the Hainich column is committed in `test/testitems/references/hainich_soilcolumn.txt`).
 """
 function hainich_soilcolumn(
         ::Type{T} = Float64; whcs, rootdist, soildepth, soildepth_evap = 300.0, soil_infil = 2.0
@@ -1000,7 +1002,7 @@ function hainich_soilcolumn(
         frac_evap[l] = d > 0 ? take / d : zero(T)         # fraction of layer l within the top soildepth_evap
         remaining -= take
     end
-    return SoilColumn{T}(T.(whcs), T.(rootdist), frac_evap, T(soil_infil))
+    return SoilColumn{T}(T.(whcs), T.(rootdist), frac_evap, T(soil_infil), T.(soildepth))
 end
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────

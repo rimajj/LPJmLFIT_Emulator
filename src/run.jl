@@ -34,6 +34,46 @@ function stand_structure_toe(fc::FDiffFastCore{T}) where {T <: AbstractFloat}
 end
 
 """
+    stand_structure_tof(fc::FDiffFastCore) -> SToF
+
+Re-derive the FULL structural boundary conditions ([`SToF`](@ref): `lai, height, z0, rootdepth, vcmax,
+fpc, albedo`) from the fast core's current prognostic population — the S→F handoff (DESIGN §8). Generalises
+[`stand_structure_toe`](@ref): `height` is the foliar-projective-cover-weighted mean; `lai` the
+cover-weighted per-individual leaf-on LAI; `fpc` the (capped) stand foliar projective cover; `z0 =
+0.1·height` (floored); `rootdepth` the D95 depth from the soil column's cumulative root distribution;
+`albedo` the leaf-display-weighted dynamic stand albedo F used last; `vcmax` a beech proxy (no live
+consumer in F v1 — F self-computes photosynthesis from its own individuals; documented). Used as `bc_f`
+each year once the slow emulator S is in the loop (`run_coupled_cell(...; slow=)`), reflecting the
+S-updated population.
+"""
+function stand_structure_tof(fc::FDiffFastCore{T}) where {T <: AbstractFloat}
+    tot_fpc = zero(T)
+    h_w = zero(T)
+    lai = zero(T)
+    @inbounds for i in eachindex(fc.inds)
+        fpc_i = convert(T, fc.inds[i].fpc)
+        h_w += convert(T, fc.pools[i].height) * fpc_i
+        tot_fpc += fpc_i
+        lai += convert(T, fc.inds[i].lai) * fpc_i
+    end
+    height = tot_fpc > zero(T) ? h_w / tot_fpc : zero(T)
+    z0 = max(T(0.1) * height, T(0.01))
+    fpc = min(tot_fpc, one(T))
+    # D95 rooting depth (mm): cumulative root fraction reaching 95% down the soil column
+    rootdepth = zero(T)
+    cum = zero(T)
+    @inbounds for l in eachindex(fc.soil.rootdist)
+        cum += convert(T, fc.soil.rootdist[l])
+        rootdepth += convert(T, fc.soil.soildepth[l])
+        cum >= T(0.95) && break
+    end
+    return SToF{T}(
+        lai = lai, height = height, z0 = z0, rootdepth = rootdepth,
+        vcmax = T(40.0), fpc = fpc, albedo = fc.last_albedo,
+    )
+end
+
+"""
     couple_day!(fc::FDiffFastCore, clo::SEBEnergyClosure, state::SharedState, bc_f::SToF,
                 forcing::AtmForcing; feedback::Bool=true) -> (FToE, EToATM, EToF, SToE)
 
@@ -71,6 +111,14 @@ Returns time series (one entry per day) of the ESM-facing outputs and diagnostic
 
 `bc_f` is F's structural consistency diagnostic (defaults to a plausible mixed-forest `SToF`; F
 self-computes its structure in v1). `feedback` toggles the E→F skin-temperature coupling.
+
+Pass `slow::AbstractSlowEmulator` to put the slow demography emulator S IN THE LOOP (ADR 0018): at each
+year boundary F grows carbon at fixed N with full accounting ([`grow_annual_accounted!`](@ref)), then S
+applies its demography (count N, establishment, mortality) and conserves carbon at the handoff
+([`reconcile_demography!`](@ref)), and F/E use the S-updated population next year (`bc_f` becomes
+[`stand_structure_tof`](@ref)). Default `slow=nothing` keeps F self-growing its canopy — byte-identical to
+before. Read the coupled demography diagnostics from the emulator (`slow.total_n_history`,
+`slow.resid_history`).
 """
 function run_coupled_cell(
         fc::FDiffFastCore{T}, clo::SEBEnergyClosure{T}, state::SharedState,
@@ -79,6 +127,7 @@ function run_coupled_cell(
             lai = 5.0, height = 25.0, z0 = 1.0, rootdepth = 1150.0,
             vcmax = 40.0, fpc = 0.9, albedo = 0.15
         ),
+        slow::Union{Nothing, AbstractSlowEmulator} = nothing,
         days_per_year::Int = 365, feedback::Bool = true
     ) where {T <: AbstractFloat}
     n = length(forcings)
@@ -87,6 +136,10 @@ function run_coupled_cell(
     z0 = Vector{T}(undef, n); albedo = Vector{T}(undef, n); gpp = Vector{T}(undef, n)
     npp = Vector{T}(undef, n); resid = Vector{T}(undef, n)
     p = clo.params
+    # with S in the loop, F's structural boundary conditions come from S's population from day 1
+    if slow !== nothing
+        bc_f = stand_structure_tof(fc)
+    end
     for i in 1:n
         forc = forcings[i]
         (ftoe, atm, _tof, bc_e) = couple_day!(fc, clo, state, bc_f, forc; feedback = feedback)
@@ -98,7 +151,15 @@ function run_coupled_cell(
         gpp[i] = ftoe.gpp; npp[i] = ftoe.npp
         resid[i] = Rn - (atm.le + atm.h + atm.g)
         if i % days_per_year == 0
-            annual_step!(fc, state)
+            if slow === nothing
+                annual_step!(fc, state)                 # F self-grows structure (byte-identical default)
+            else
+                # S in the loop (ADR 0018): F grows carbon at fixed N (accounted), then S applies demography
+                # (mortality/establishment) + conserves at the handoff; next year's structure comes from S.
+                grow = grow_annual_accounted!(fc)
+                reconcile_demography!(slow, fc, grow, state)
+                bc_f = stand_structure_tof(fc)
+            end
         end
     end
     return (; t_skin, le, h, g, rn, nbp_atm = nbp, z0, albedo, gpp, npp, resid)

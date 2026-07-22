@@ -39,10 +39,12 @@ Orders + reasoning: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`. Runboo
 | **6 Online / SpeedyWeather** | ⬜ not started | |
 | **7 ESM packaging** | ⬜ not started | |
 
-**The whole remaining project (not done):** S is **not in the coupled loop** (`components/slow.jl` `step!`
-still throws; `run.jl` grows structure from F itself); E **not validated against FLUXNET/PLUMBER2**;
-nothing runs multi-cell held-out; nothing runs online with SpeedyWeather; wind/psurf forcing not sourced.
-Everything C-validated is **Hainich (DE-Hai) only** — single-cell is scaffolding, not evidence.
+**Remaining project (not done):** S **Tier-0 is now IN the coupled loop** (`run_coupled_cell(...; slow=)`,
+carbon-conserving to ~3e-12 gC, N evolving — Hainich; `slow=nothing` byte-identical) — but the **flux-driven
+ML inference (Tier-1, ADR 0020) is not built yet** (constant/physical-rate demography so far), so the OOD win
+is not demonstrated; E **not validated against FLUXNET/PLUMBER2**; nothing runs multi-cell held-out; nothing
+runs online with SpeedyWeather; wind/psurf forcing not sourced. Everything is **Hainich (DE-Hai) only** —
+single-cell is scaffolding, not evidence.
 
 ---
 
@@ -158,8 +160,17 @@ unresolved and ADR 0017's premise rests on it.
   F owns carbon growth), two tiers (Tier-0 constant models prove wiring + 1e-6 conservation; Tier-1 ports
   ResidualRegressor+copula+NB to pure Julia `src/slow_infer.jl`), opt-in behind `run_coupled_cell(...; slow=)`.
   Conserve at the S↔F handoff to ~1e-6 (litter as the exact growth residual), match the offline-S panel on
-  S-owned axes, and **measure the speed-up vs the deterministic-F baseline**. Progress: Step 1 (carbon
-  accounting foundation — `vegc_full_ind` + `_turnover_litter` + `fdiff_litter_closure_tests.jl`) done.
+  S-owned axes, and **measure the speed-up vs the deterministic-F baseline**. Progress: **Steps 1–3 + 6–7
+  DONE — TIER-0 S IS IN THE COUPLED LOOP** (`run_coupled_cell(...; slow=DemographicSlowEmulator(fc))`,
+  `slow=nothing` byte-identical). Gates on Hainich (`slow_demography_tests.jl`, full suite green 48101/0/4):
+  Gate-1 N evolves year-to-year (fixed-N F holds tree N constant ⇒ causally S); **Gate-2 handoff carbon
+  conserves to ~3e-12 gC ≪ 1e-6·C_scale** on N-up/N-down/seeded-`sapwood_bg`/stagnation; energy still closes
+  (1.4e-14); Gate-4 fixed K-cohort roster (structural speed-up basis; overhead reported off-CI by
+  `scripts/bench_slow_speedup.jl`). Tier-0 demography is deterministic/physical-rate + TREE-only (grass stays
+  F-side, open-risk #8), fixed roster (no append/merge yet), empty runtime `[deps]`. Independently verified
+  (3 adversarial subagents: conservation CLEAN, correctness CLEAN, test-adequacy gaps closed). **NEXT = Tier-1
+  (Steps 4/5/8): the ADR-0020 flux-conditioned inference in `src/slow_infer.jl` + membership append/merge +
+  the warm+dry OOD benchmark — prereq is materialising the flux-conditioning data (a C-binary/SLURM job).**
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw
