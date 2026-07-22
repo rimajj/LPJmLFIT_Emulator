@@ -24,14 +24,26 @@ summary" is a *distribution* summary keyed by (cell, patch), not a per-individua
 ## 2. What is already available (no recompile)
 
 **Annual `ind` output — TXT columns** (`printind`, `Output_ind` in `include/output.h`), already written when
-the `ind` output is enabled:
+the `ind` output is enabled. `[VERIFIED 2026-07-22 against the real 46 GB `ind_2000_2019.csv` + the writer]`:
+the emitted TXT has **exactly 29 columns** (header row present) — `Year, ID(=tree->index), Type(=PFT id),
+Height, Age, agb, vegc, transp, npp, gpp, wscal_mean, SLA, Longevity, Wooddens, LAI, fpc_ind, minwscal, D95,
+D95max, beta_root, k_root, mort_npp, mort_age, mort_water, mort_temp, mort(=mort_prob), isdead, Patch, Cell`.
+This ground truth is also pre-converted to parquet at
+`/p/tmp/jamirp/emulator_global/ind_hist_seed{1,2}_all.parquet` (frozen 29-col schema,
+`python/src/lpjmlfit_emulator/data.py::IND_COLUMNS`) — scan/filter it, do **not** parse the 46 GB CSV.
 
-| Group | Fields (already in the annual `ind` output) |
+| Group | Fields **actually in the annual TXT `ind` output** |
 |---|---|
-| Distribution axes (S-owned + F-derived) | `height, stemdiam, crownarea, lai, leafarea, sla, wooddens, leaf_longevity, D95, D95max, beta_root, k_root, fpc_ind, fpc, agb, vegc, age` |
-| **Mortality drivers (the four + sum)** | **`mort_npp, mort_age, mort_water, mort_temp, mort_prob`** |
-| Per-PFT annual fluxes / state | `npp` (=`pft->anpp`), `gpp` (=`pft->agpp`), `transp` (=`pft->atransp`), `wscal_mean` (=`pft->wscal_mean/365`), `minwscal` |
-| Keys | `year, index, id, patch, cell, isdead` |
+| Distribution axes (S-owned + F-derived) | `Height, LAI, SLA, Wooddens, leaf_longevity(Longevity), D95, D95max, beta_root, k_root, fpc_ind, minwscal, agb, vegc, Age` |
+| **Mortality drivers (the four + sum)** | **`mort_npp, mort_age, mort_water, mort_temp, mort(=mort_prob)`** |
+| Per-PFT annual fluxes / state | `npp` (=`pft->anpp`), `gpp` (=`pft->agpp`), `transp` (=`pft->atransp`), `wscal_mean`, `minwscal` |
+| Keys | `Year, ID(=tree->index), Type(=PFT id), Patch, Cell, isdead` |
+
+> **[CORRECTION 2026-07-22]** An earlier draft of this table listed `stemdiam, crownarea, leafarea, fpc` as
+> present in the annual `ind` output. They are **NOT** in the TXT writer — they are commented out of
+> `printind` and appear only in RAW `ind` output (see the RAW paragraph below). Only `fpc_ind` (not the
+> whole-individual `fpc`) is emitted in TXT. A naive `nind` reconstruction from the FPC relation therefore
+> needs `crownarea`, which is RAW-only.
 
 **Daily set** (the 186 GB `daily_2000_2019_global_...` DVC dataset): `transp, swc(-layer), gpp, npp, rh` and
 the water-balance terms are present. These carry the within-year *timing* the annual `ind` row averages away.
@@ -45,25 +57,67 @@ rootmass, sapwood, heartwood, alphaa, boleh`. `bm_inc_counter` is needed to inve
 
 Three tiers, cheapest first. Pick per how faithful the flux feature must be.
 
-1. **No recompile — use what is emitted.** The four derived drivers (`mort_*`) + `npp`/`gpp`/`transp`/
-   `wscal_mean` + the distribution axes already give a first flux-driven S. `bm_inc` at the **cell/patch**
-   level is approximated by `npp` per unit area; the raw stress accumulators are inverted from the derived
-   drivers where not capped (§4). Sufficient to stand up the retrain and run the OOD benchmark.
-2. **RAW `ind` output (config-only, no source change).** Set the `ind` output format to `RAW` so the full
-   `Output_ind` (incl. `bm_inc_counter`, `stemdiam`, `crownarea`, `leafarea`, `rootmass`, `sapwood`,
-   `heartwood`) is written. Enables exact inversion of `water_stress` from `mort_water` (§4).
-3. **Small C-source addition + rebuild** (only if per-individual `bm_inc`/`turnover`/`nind` must be exact):
-   add `bm_inc` (`= pft->bm_inc.carbon`), `turnover_ind`, and `nind` (`= pft->nind`) to `Output_ind`
-   (`include/output.h`), fill them in `getind` (`src/lpj/fwriteoutput_ind.c`), and print them in `printind`.
-   Follow the existing pattern in `patches/lpjmlfit_daily_grass_gpp.patch` (custom output added by a
-   committed C-source patch + rebuild). Rebuild per the `lpjmlfit-cbinary` skill (json-c **0.13.1**, exact
-   module set). This is the only tier that touches C; keep it a committed patch for reproducibility.
+1. **No recompile — use what is emitted. `[DONE — the Hainich prototype ships on this tier]`** The four
+   derived drivers (`mort_*`) + `npp`/`gpp`/`transp`/`wscal_mean` + the distribution axes already give a first
+   flux-driven S. `bm_inc` is taken as the emitted per-individual `npp` (=`pft->anpp`) — this is
+   **runtime-consistent** with `FToS.bm_inc` (the coupled `bm_inc_cell = sum(npp_ind)`), not the raw
+   `pft->bm_inc.carbon` (which is the post-allocation residual at output time; see the tier-3 caveat).
+   `growth_eff` is **inverted from the emitted `mort_npp`** (monotone in `bm_delta/leafarea_real`; ~86 % of
+   Hainich living-tree rows are invertible, the rest have `mort_npp ≥ mort_max` ⇒ `bm_inc_counter>0` or a
+   cap, needing tier 3). Stress accumulators are inverted from `mort_water`/`mort_temp` (§4) + within-year
+   *statistics* from the daily set (§5). **Builder: `scripts/build_slow_flux_table.py` (validated §7).**
+   Sufficient to stand up the retrain and run the OOD benchmark.
+2. **RAW `ind` output (config-only, no source change).** Set the `ind` output format to `RAW` (`"fmt":"raw"`)
+   so `fwrite(output,sizeof(Output_ind),1,file)` dumps the whole struct — every field commented out of the
+   TXT writer (`bm_inc_counter, stemdiam, crownarea, leafarea, rootmass, sapwood, heartwood, alphaa, fpc,
+   boleh`) then appears with no recompile. Enables exact `water_stress` inversion (needs `bm_inc_counter`)
+   and `nind` reconstruction (needs `crownarea`). **`[VERIFIED — LIMIT]` RAW canNOT yield `bm_inc`, `nind`,
+   or `turnover`: those fields do not exist in `Output_ind`.** RAW is also a flat per-run binary stream with
+   **no header/metafile** and alignment-sensitive layout (no Python reader exists) — so for the three target
+   quantities RAW is *not* enough, and its bespoke binary parser is a real cost. Prefer tier 3.
+3. **Small C-source addition + rebuild** (for exact per-individual `nind`/`turnover` + the clean-CSV path).
+   `[VERIFIED plumbing]` The `ind` output uses the `Output_ind` **struct stream** (`fwriteoutput_ind.c`), NOT
+   the `outputmap`/`NOUT` machinery — so, unlike `patches/lpjmlfit_daily_grass_gpp.patch`, a tier-3 patch does
+   **not** touch `conf.h`/`outputvars.js`/`daily_natural.c` (the `IND` id already exists). Minimal patch
+   (3 files): add `nind` (`= pft->nind`, a durable `Pft` field) and `turnover_ind`
+   (`= Σ pool_c·turnover_rate`, computed in `getind`) to the struct + `getind` + `printind` TXT + the
+   `fopenoutput.c` header; and **uncomment `crownarea`/`leafarea`/`bm_inc_counter`** in the TXT writer (they
+   are already filled by `getind`). **Do NOT copy `pft->bm_inc.carbon` at `getind` time — it is the
+   post-allocation residual (0 for grass); use the emitted `npp`/`anpp` for the budget instead.** Rebuild per
+   the `lpjmlfit-cbinary` skill (json-c **0.13.1**, exact module set); keep it a committed patch. Physics is
+   unchanged ⇒ the rebuilt binary reproduces the same trajectory (guardrail 4).
 
-`nind` (individual density, indiv/m²) is not in the struct but is **reconstructable** from `fpc_ind` and
-`crownarea` via the FPC relation `fpc_ind = crownarea·nind·(1 − exp(−0.5·lai_ind))`; add it directly (tier 3)
-if the reconstruction's precision is inadequate for the carbon-budget check.
+`nind` (individual density, indiv/m²) is **reconstructable** from `fpc_ind`, `crownarea` and the individual
+`lai` via `fpc_ind = crownarea·nind·(1 − exp(−0.5·lai_ind))`, but `crownarea` is **RAW-only** — so exact
+`nind` needs tier 2 (RAW) or tier 3 (the direct field). Add it in tier 3 if reconstruction precision is
+inadequate for the carbon-budget check (§7.3).
 
 ## 4. Exact C-source definitions (`[VERIFIED]`)
+
+> **`[VERIFIED 2026-07-22]` Parameter values + hazards (adversarial re-derivation; recompute passes on real
+> data, §7).** Every formula below matches the C source verbatim. The load-bearing traps a porter MUST heed:
+>
+> - **`longevity` for `mort_age` = the JSON key `"age"` = `TREE_LONGEVITY = 400`** for beech (mapping
+>   `fscanpft_tree.c:271`), **NOT** the JSON field literally named `"longevity"` (`= 2.0`, which is *leaf*
+>   longevity). Using 2.0 is off by ~200×.
+> - **`k_mort = 0.01`** (active `par/lpjparam_fit.js`), NOT the `0.2`/`0.5` in unloaded `lpjparam*.js` or the
+>   commented `#define` in `mortality_tree_ind.c`.
+> - **`mort_max` is the wood-density formula** (`mortality_tree_ind.c:92`); the pft `mort_max`:0.025 and the
+>   `0.005` biomass value on lines 84–87 are **dead assignments** (overwritten). Ignore them.
+> - **`mort_prob` (col `mort`) is saved AFTER** the cap-at-1 + the immediate-death (`bm_inc_counter≥5⇒1`) +
+>   ghost-tree (`leaf<sapling⇒1`) overrides. On override rows the four components do **not** sum to `mort`;
+>   the §7.1 parity check must exclude them (flag `emitted==1 & Σcomponents<1`).
+> - **AGE ALIGNMENT (`[VERIFIED]` this session).** The emitted `Age` is the **post-increment** year-end age
+>   (`getind`, `annual_tree.c:46`), but the same row's `mort_*` were computed with the **pre-increment** age
+>   (`mortality_tree_ind` at `annual_tree.c:31-38`). So the age feeding a row's mortality is **`Age − 1`**.
+>   Recomputing `mort_age` from `Age − 1` matches the emitted column to **~5e-8** (the `%g` rounding floor);
+>   from `Age` it is off by up to ~1.4e-4. Carry `age_mort = Age − 1` in the table.
+>
+> **Beech (PFT id 3) values** (`par/pft_lpjmlfit.js` + `par/lpjparam_fit.js`): `wdmort_1=-2.465`,
+> `wdmort_2=0.148`, `mort_water_factor=5`, `mort_temp_factor=5.0`, `mort_water_res=0.75`, `aphen_min=60`,
+> `temp_stressed=[-20.0, 54.0]`. C constants: `KMORT_2=0.2`, `KMORTBG_LNF=-ln(0.001)`, `KMORTBG_Q=2.0`,
+> `BM_INC_COUNTER_MAX=5`. (The other temperate tree types 1/2/4/5 at Hainich are <6 % of rows and reuse these
+> temperate values with a flag; the scale-up must read each PFT's own params.)
 
 From `src/tree/mortality_tree_ind.c`, `waterstress_tree.c`, `tempstress_tree.c` (`NDAYYEAR = 365`):
 

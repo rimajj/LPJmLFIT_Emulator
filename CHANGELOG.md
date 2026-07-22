@@ -6,7 +6,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **P1 Tier-1 Step 1 — flux-conditioning training data (ADR 0020/0021).** `scripts/build_slow_flux_table.py`
+  builds the per-(cell,year,patch,individual) FToS-mapped table for the flux-driven Component S from the
+  tier-1 annual `ind` parquet (`/p/tmp/jamirp/emulator_global/ind_hist_seed{1,2}_all.parquet`) + the daily set
+  + the slow bioclimatic boundary (`cell_year_feats.parquet`) + CO₂ — no C-binary re-run needed. `bm_inc ← npp`
+  (runtime-consistent with `FToS.bm_inc`), `growth_eff` inverted from `mort_npp`, stress inverted from
+  `mort_water`/`mort_temp` + daily within-year statistics, AR state from the prev-year distribution summary.
+  Parameterised by `CELLS` (Hainich 42490 first, then the biome set). Committed fixture
+  `test/testitems/references/slow_flux_table_hainich.csv` (82 rows) + `slow_flux_table_schema.json`.
+- **Physics re-verified on real data (spec §7):** `mort_age` recompute matches the emitted column to **4.97e-8**
+  and the `mort` additive identity to **8.99e-7** across 5052/5307 real Hainich rows — confirming the
+  `[VERIFIED]` beech mortality parameters against the C oracle.
+
 ### Fixed
+- **`docs/slow_flux_conditioning_data_spec.md` corrections + a new `[VERIFIED]` finding.** (1) §2 wrongly listed
+  `stemdiam/crownarea/leafarea/fpc` as present in the annual TXT `ind` output — they are RAW-only (only
+  `fpc_ind` is TXT). (2) Pinned the parameter hazards: `mort_age` longevity = JSON key `"age"` = 400 (NOT the
+  leaf `"longevity"` = 2.0, a ~200× trap); `k_mort` = 0.01; `mort_prob` is saved AFTER the cap/immediate-death/
+  ghost-tree overrides (components don't sum on override rows). (3) **AGE OFF-BY-ONE:** the emitted `Age` is the
+  post-increment year-end age, but the row's `mort_*` were computed with the pre-increment age (`Age − 1`) —
+  recompute matches to 5e-8 with `Age − 1` vs 1.4e-4 with `Age`; the table carries `age_mort = Age − 1`.
+  (4) Tier-2 RAW cannot yield `bm_inc`/`nind`/`turnover` (absent from `Output_ind`); the exact path is a small
+  tier-3 patch, and the budget signal is the emitted `npp`/`anpp` (not the post-allocation `pft->bm_inc.carbon`).
 - **P1 wiring made runnable + a regression it exposed.** The uncommitted Tier-0 work had never been executed:
   `stand_structure_tof` referenced a `SoilColumn.soildepth` field that did not exist — added it (populated by
   `hainich_soilcolumn` from the `soildepth` kwarg it already receives; the one positional `SoilColumn(...)`
