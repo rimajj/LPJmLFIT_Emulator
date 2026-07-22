@@ -299,17 +299,23 @@ for HEAD.
   Enzyme/ForwardDiff + `determinism_tests`) ⇒ **recommend DEFER behind the `FluxHooks` learned lever**, as the
   grass level gap was. **Ops:** CI green on required checks (`test (lts)`+`test (1)`; `pre` allowed-fail);
   `test/Manifest.toml` stays DEFERRED (Pkg.test sandboxes the test env, root Manifest trivial, Enzyme
-  `[compat]` pin already secures CI). Commits **d773c701** (B) + **ed7c05a6** (A). Diagnosis/probe only — no
-  `src/`/`test/` change; runtime `[deps]` EMPTY.
+  `[compat]` pin already secures CI). **Then IMPLEMENTED the §8-GO'd `sapwood_bg` frontier (C)** — the C's
+  below-ground root-sapwood pool + its phen-gated maintenance, as an OPT-IN / default-byte-identical mechanism
+  (`TreePools`/`Individual` gain the field with backward-compat constructors, `autotrophic_respiration` gains
+  a default-0 maintenance kwarg, `reconstruct_sapwood_bg` seeds from the C_LATERAL demand): seeding moves tree
+  CUE **0.512→0.497** with GPP byte-identical, full suite **26228 pass / 0 fail / 4 broken**. Commits
+  **d773c701** (B) + **ed7c05a6** (A) + **037543d2** (C). Runtime `[deps]` EMPTY.
 
 ---
 
-## ⭐ WHAT LANDED IN SESSION 27 (on `main`) — TWO FRONTIERS IN PARALLEL: (A) `sapwood_bg` QUANTIFICATION PROBE → GO (floor-break fear refuted); (B) per-PFT WATER-SUPPLY FIX SCOPED + §26.4 CORRECTED (mechanism sharpened to `aet_cor` alone; `-DPERMUTE` makes an exact port impossible → DEFER)
+## ⭐ WHAT LANDED IN SESSION 27 (on `main`) — TWO PARALLEL FRONTIER INVESTIGATIONS + the GO'd IMPLEMENTATION: (A) `sapwood_bg` PROBE → GO; (B) per-PFT WATER-SUPPLY SCOPED + §26.4 CORRECTED → DEFER; (C) `sapwood_bg` IMPLEMENTED (opt-in, default byte-identical)
 
 **Chief-investigator session: dispatched the two open substantive frontiers as parallel background
 investigations, independently VERIFIED each against the C source before accepting (this grass/tree thread
-has a documented history of mis-attributions), and integrated + committed each sequentially. Both ops items
-resolved directly. No `src/`/`test/` change; `[deps]` EMPTY; full suite unaffected (26,214/0/4).**
+has a documented history of mis-attributions), integrated + committed each sequentially, resolved both ops
+items directly — and then IMPLEMENTED the frontier the probe (A) cleared (C): the below-ground root-sapwood
+pool + its phen-gated maintenance, landed OPT-IN / default byte-identical so nothing regresses. Full
+CI-faithful suite 26228 pass / 0 fail / 4 broken; `[deps]` EMPTY.**
 
 ### (A) `sapwood_bg` quantification probe → GO — commit `ed7c05a6` (`docs/sapwood_bg_design.md` §8)
 - **The design's §7 gate.** `sapwood_bg_design.md` mandated a scripts-only probe to predict the tree-CUE
@@ -359,17 +365,34 @@ resolved directly. No `src/`/`test/` change; `[deps]` EMPTY; full suite unaffect
   (`[deps]` empty by ADR 0014's train/test-only AD design, so the `.gitignore` un-ignore condition is unmet);
   and the Enzyme `[compat]` pin (`0.13.0 - 0.13.188`) already secures CI against the 0.13.189 regression.
 
-- **★ NEXT (session 28).** Remaining frontiers, in rough value order: **(a) the tree `sapwood_bg` + carbon-debt
-  IMPLEMENTATION** — now GO-cleared (§8) and floor-safe; the design §5 is the ~150–250-line 2–3-session
-  struct-plumbing plan (add `sapwood_bg_c` to `TreePools`/`Individual` + the phen-gated maintenance term + the
-  C_LATERAL demand/debt in `grow_individual` + the Enzyme SoA `sapbgcs` array + baseline regen). NB it's a
-  fidelity refinement of an already-in-band metric that closes ~half the CUE gap — weigh vs. higher-value
-  work. **(b) the `FluxHooks` learned grass water/Vcmax correction** — the deferred lever that BOTH the grass
-  level gap (§26.1) and now the 2018 water-supply amplitude residual (§26.4/water_supply_perpft_design.md)
-  route to; training it against the committed multi-year grass reference would close two deferred residuals at
-  once and is ~0 lines of physics. **(c)** the per-PFT competitive water-supply structural port — DEFERRED
-  (see B; pursue only if (b) proves insufficient, and only after its two de-risking probes). **(d)** the
-  upstream-Enzyme-≥1.11 guard-lift (still blocked upstream).
+### (C) `sapwood_bg` IMPLEMENTATION — commit `037543d2` (`docs/sapwood_bg_design.md` §8.1; new `test/testitems/sapwood_bg_tests.jl`)
+- **Landed the §8-GO'd mechanism as OPT-IN / default byte-identical** (the §26 grass-demand-gate discipline),
+  so nothing existing regresses and NO baseline was regenerated this session:
+  - `TreePools` (10→11) + `Individual` (16→17) gain `sapwood_bg_c`/`c_sapwood_bg`, each with a
+    **backward-compatible constructor** (old arity fills the pool 0) ⇒ all ~33 construction sites — incl. the
+    Enzyme SoA trainer `rollout_canopy_years_gpp` and every committed baseline — are byte-identical.
+  - `autotrophic_respiration` gains a default-0 `c_sapwood_bg` kwarg (`phen·c_sapwood_bg/cn_sapwood`,
+    `npp_tree.c:51`); `daily_step_canopy` passes `ind.c_sapwood_bg·nind` for trees. `reconstruct_sapwood_bg`
+    seeds from the C_LATERAL demand (`allocation_tree.c:163-189`).
+  - **In-model (new gate):** seeding moves tree CUE **0.512→0.497** (the growth-resp-rebated value the model
+    applies), **GPP byte-identical** (maintenance ≠ GPP), CUE in `[0.42,0.56]`; pool 531.4 gC/m² (22.7 %) =
+    the §8 probe. Full CI-faithful suite **26228 pass / 0 fail / 4 broken** (login-node `Pkg.test`).
+- **The pool is STATIC-seeded** (an opt-in, behaviour-unchanged-by-default landing). Its prognostic growth +
+  the default-flip are the next steps (see NEXT).
+
+- **★ NEXT (session 28).** In rough value order: **(a) FINISH `sapwood_bg`** — the opt-in mechanism now exists
+  (C); the remaining design-§5 steps are the prognostic C_LATERAL pool GROWTH + carbon-debt loan in
+  `grow_individual` (§5.4), the Enzyme SoA `sapbgcs` thread (§5.5), adding `sapwood_bg_c` to `vegc_ind` + the
+  `dynamic_structure` conservation assertion, and flipping the seed ON by default (regenerating the
+  `multi_individual` CUE gate to ~0.497 + the coupled/decadal NPP-derived baselines, which drift §4.3) — only
+  after the default-flip does the emulator's default behaviour change. NB it remains a fidelity refinement of
+  an already-in-band metric (~half the 0.51→0.46 gap; full closure needs the `rd`-gate, §6). **(b) the
+  `FluxHooks` learned grass water/Vcmax correction** — the lever both the grass level gap (§26.1) and the 2018
+  water-supply amplitude residual (§26.4) route to; NB (re-checked this session) it needs a grass-SPECIFIC
+  correction (the shared MLP has no PFT/`is_grass` feature, so a `w_soil`-driven fix would wrongly scale tree
+  GPP) — a feature/architecture change + grass-only loss, not "~0 physics" as previously framed. **(c)** the
+  per-PFT competitive water-supply structural port — DEFERRED (see B; only if the learned lever fails, after
+  its two de-risking probes). **(d)** the upstream-Enzyme-≥1.11 guard-lift (still blocked upstream).
 
 ---
 
