@@ -37,6 +37,12 @@ using .Allometry
 # ── F_diff — the differentiable fast physical core (ADR 0014) ───────────────
 include("fdiff.jl")
 using .FDiff
+# ── DRF — the zero-dependency native-Julia distributional random forest (ADR 0021/0022) ─────
+# Pure-Base regression/quantile forest + hand-rolled Xoshiro RNG, used by the flux-driven Component S
+# (`FluxDrivenSlowEmulator`). No new runtime `[deps]`/`[weakdeps]` (ADR 0014); the model is trained AND
+# run natively (ADR 0021), and it is deliberately hand-rolled rather than the EvoTrees package (ADR 0022).
+include("drf.jl")
+using .DRF
 # ── Component abstract types + concrete cores ───────────────────────────────
 # NB: `slow.jl` is included AFTER `fast.jl` because the concrete `DemographicSlowEmulator` (P1) applies its
 # demography to an `FDiffFastCore`'s population (ADR 0018 growth-ownership split). fast/energy do not
@@ -222,6 +228,8 @@ export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
 export FDiffFastCore, step!, annual_step!, grow_annual_accounted!
 # Component S — concrete Tier-0 demographic slow emulator + the S↔F handoff (P1; ADR 0018/0019)
 export DemographicSlowEmulator, reconcile_demography!, total_n
+# Component S — Tier-1 FLUX-DRIVEN slow emulator (the DRF-target demography; ADR 0020/0021/0022)
+export FluxDrivenSlowEmulator, flux_feature_vector, target_history
 # Component E — self-contained surface-energy-balance + skin-temperature closure (ADR 0017)
 export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
 # Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)

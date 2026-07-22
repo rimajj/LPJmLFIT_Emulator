@@ -162,14 +162,22 @@ BEFORE chasing any miss.
    constant, so the N change is causally S. Needed a fix: `SoilColumn` gained a `soildepth` field for the D95
    rooting-depth in `stand_structure_tof`. Daily climate-accumulation hook deferred to Tier-1 (ADR-0020 ML
    channel).]
-8. **Tier-1 wire-up (ADR 0020 + 0021 — now in P1 scope):** the flux-driven S, **trained natively in Julia**
-   (EvoTrees.jl/DRF count + a Julia copula recruit-trait sampler; Lux for any NN part), conditioned on F's
-   delivered-flux *annual statistics* + AR state + slow bioclimatic boundary per
-   `docs/slow_flux_conditioning_data_spec.md`; extend `FToS`/the accumulators to carry the stress-day/extreme
-   statistics (not just means). Plugs into the existing `AbstractSlowEmulator`/`reconcile_demography!`
-   interface (a `FluxDrivenSlowEmulator` in the extension). Test: Gate-3 panel + oracle testitems + the
-   warm+dry OOD benchmark: the **native-Julia** S must beat the climate-only `DirectEmulator` (the ADR-0020 falsifiable
-   success test). **Prereq: materialise the extended Phase-1 flux-conditioning data (a C-binary/SLURM job).**
+8. **Tier-1 wire-up (ADR 0020 + 0021 + 0022 — now in P1 scope). [DONE — v1, 2026-07-22.]** The flux-driven S
+   is **trained + run natively in Julia** on the zero-dependency hand-rolled **DRF** (`src/drf.jl`, ADR 0022 —
+   *not* EvoTrees; EvoTrees verified as a fallback), conditioned on F's delivered fluxes + this-year patch state
+   + the recursive AR count + the baked slow bioclimatic boundary. `FluxDrivenSlowEmulator`
+   (`src/components/slow.jl`, in `src/` not an extension since it has no external dep) plugs into the existing
+   `reconcile_demography!` interface: the DRF predicts a demographic **target**, and the coupled tree density
+   moves toward `target/n_prev` — a UNIT-FREE ratio, so the training-table count ↔ coupled-cohort density gap
+   cancels — through the SAME carbon-conserving mortality/establishment machinery Tier-0 uses (conservation by
+   construction). **The ADR-0020 falsifiable success test is `[VERIFIED] SUPPORTED` OFFLINE**
+   (`scripts/flux_ood_experiment.jl`: on the warm+dry OOD holdout the flux channel beats the climate-only channel
+   2.35×, ood R² 0.76 vs −0.16). The in-loop test (`test/testitems/slow_flux_driven_tests.jl`) verifies the DRF
+   target drives the demography + carbon conserves (~1e-12) + determinism + Float32. **Still open (v2):** train the
+   PRODUCTION DRF on a runtime-consistent feature table + serialize it (the in-loop test uses an in-test DRF); the
+   Gate-3 **oracle** testitem (coupled S-owned marginals vs the LPJmL-FIT C ground truth at Hainich) + the in-loop
+   OOD win; the annual-statistics `FToS` extension (`docs/slow_flux_conditioning_data_spec.md` §5); the copula
+   recruit-trait sampler (traits are still fixed-cohort). Prereq for those: the extended flux-statistics data.
 9. **`scripts/bench_slow_speedup.jl` + Gate-4 testitem**: overhead + K≪N structural invariant; the script
    records the wall-time ratios off the login node. **[DONE — structural invariant (fixed K-cohort roster) is
    asserted in `slow_demography_tests.jl`; the overhead/scientific ratios are reported by the script (run via

@@ -198,11 +198,24 @@ unresolved and ADR 0017's premise rests on it.
     climate **1.25×** OOD; flux+AR (0.76) ≫ climate+AR (0.43). Honest nuance: AR/persistence alone reaches ood R²=0.55,
     but flux-conditioning adds decisive OOD generalisation on top of both. **⇒ ADR 0020 validated.** Verdict:
     `/p/tmp/jamirp/slow_count/ood_verdict_seed1.json`.
-  - **[NEXT — Tier-1 Step 3] Wire `FluxDrivenSlowEmulator` (on the DRF).** Build the emulator + a hand-rolled
-    Gaussian-copula recruit-trait sampler; wire into `reconcile_demography!` (opt-in, default byte-identical) — the
-    count TARGET comes from the DRF instead of Tier-0's constant rate, the carbon-conservation machinery is unchanged;
-    extend `FToS`/the accumulators as needed. Then the full CI-faithful suite green. Design risk #5 (atomic membership
-    append/merge) + grass-ownership #8 still open.
+  - **[DONE — Tier-1 Step 3, 2026-07-22] `FluxDrivenSlowEmulator` IS IN the coupled loop (the flux-driven S runs).**
+    `src/components/slow.jl`: the demography TARGET is the trained flux-conditioned DRF (not Tier-0's constant rate);
+    each year S builds a flux feature vector (F's `FToS` fluxes + patch state + recursive AR count + baked slow
+    boundary), the DRF predicts the target, and the coupled tree density moves toward `target/n_prev` (unit-free
+    ratio ⇒ the count↔density gap cancels) through the SAME carbon-conserving machinery as Tier-0. Plugs into the
+    existing `reconcile_demography!` (no `run.jl` change); opt-in, `slow=nothing` byte-identical; zero new `[deps]`.
+    **[VERIFIED] gates (Hainich, `slow_flux_driven_tests.jl`; full CI-faithful suite green 48127 pass / 0 fail /
+    4 broken, job 1563993):** the DRF target drives N (decline 0.076→0.013 / growth 0.076→0.26, monotone);
+    carbon conserves at the handoff to **~1e-12 gC ≪ 1e-6·C_scale** both directions; energy closes (1.4e-14);
+    deterministic under seed; Float32 type-stable + conserving.
+  - **[NEXT — Tier-1 Step 4 / follow-ups] Production DRF artifact + coupled fidelity + scale-up.** (a) Train the
+    production DRF on a RUNTIME-CONSISTENT feature table (the runtime `flux_feature_vector` order — a training
+    script + a pure-Base serialization of the `DRF.Forest` the coupled app loads; the in-loop test uses an in-test
+    DRF); (b) demonstrate the coupled S-owned marginals match the LPJmL-FIT C oracle at Hainich (the load-bearing
+    gate-3 oracle testitem) and that the coupled flux-driven S beats the climate-only baseline IN THE LOOP (the
+    offline OOD win is `[VERIFIED]`; the in-loop win is the next check); (c) the hand-rolled Gaussian-copula
+    recruit-trait sampler (traits are still fixed-cohort in v1). Design risk #5 (atomic membership append/merge)
+    + grass-ownership #8 still open. Everything is **Hainich-only** — scaffolding, not multi-cell evidence.
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw

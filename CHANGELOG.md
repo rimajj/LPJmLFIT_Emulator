@@ -7,6 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **P1 Tier-1 Step 3 — the FLUX-DRIVEN Component S is IN the coupled loop (ADR 0020/0021/0022).**
+  `FluxDrivenSlowEmulator{T} <: AbstractSlowEmulator` (`src/components/slow.jl`) sets the demography TARGET
+  from the trained flux-conditioned DRF instead of Tier-0's constant rate: each year S builds a flux feature
+  vector (F's delivered `FToS` fluxes + this-year patch state + the recursive AR count + a baked slow
+  bioclimatic boundary), predicts the target with the DRF, and moves the coupled tree density toward
+  `target/n_prev` (a UNIT-FREE ratio — the count↔density gap cancels) through the SAME carbon-conserving
+  mortality/establishment machinery as Tier-0. Wires in via the existing `reconcile_demography!` interface
+  (no change to `run.jl`); opt-in behind `run_coupled_cell(...; slow=)`, `slow=nothing` byte-identical
+  (guardrail 4). Zero new runtime `[deps]`/`[weakdeps]` (the DRF + Xoshiro are pure Base, ADR 0022).
+  - **[VERIFIED] Gates (Hainich 42490, `test/testitems/slow_flux_driven_tests.jl`; full CI-faithful suite
+    green 48127 pass / 0 fail / 4 broken):** the DRF target DRIVES the demography (a decline-predicting
+    forest shrinks N 0.076→0.013 indiv/m², a growth-predicting forest grows it 0.076→0.26, monotone in the
+    predicted direction); the S↔F handoff CONSERVES carbon to **~1e-12 gC ≪ the 1e-6·C_scale gate** in both
+    directions; energy still closes (1.4e-14); the coupled N trajectory is DETERMINISTIC under a seed; and it
+    is type-stable + conserving in **Float32** (the SpeedyWeather-coupling type).
 - **P1 Tier-1 Step 2 — the flux-driven premise is VALIDATED + a zero-dep native-Julia DRF (ADR 0020/0021/0022).**
   The falsifiable ADR-0020 success test now has a result on the warm+dry OOD holdout (space-for-time SSP370
   proxy), and it **supports ADR 0020** three independent ways. New pieces:
