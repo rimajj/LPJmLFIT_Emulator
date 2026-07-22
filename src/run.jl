@@ -75,8 +75,10 @@ self-computes its structure in v1). `feedback` toggles the E→F skin-temperatur
 function run_coupled_cell(
         fc::FDiffFastCore{T}, clo::SEBEnergyClosure{T}, state::SharedState,
         forcings::AbstractVector{<:AtmForcing};
-        bc_f::SToF = SToF(; lai = 5.0, height = 25.0, z0 = 1.0, rootdepth = 1150.0,
-            vcmax = 40.0, fpc = 0.9, albedo = 0.15),
+        bc_f::SToF = SToF(;
+            lai = 5.0, height = 25.0, z0 = 1.0, rootdepth = 1150.0,
+            vcmax = 40.0, fpc = 0.9, albedo = 0.15
+        ),
         days_per_year::Int = 365, feedback::Bool = true
     ) where {T <: AbstractFloat}
     n = length(forcings)

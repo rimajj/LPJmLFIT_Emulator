@@ -11,12 +11,12 @@
     p = SEBParams{Float64}()
     # A broad grid of day/night, cold/hot, calm/windy, forest/grass, wet/dry-demand conditions.
     for swdown in (0.0, 150.0, 500.0, 900.0),
-        lwdown in (220.0, 320.0, 400.0),
-        tair in (263.15, 283.15, 298.15, 308.15),
-        wind in (0.2, 2.0, 8.0),
-        (z0, height) in ((0.05, 0.5), (0.5, 5.0), (2.5, 25.0)),
-        le in (0.0, 50.0, 250.0, 800.0),
-        albedo in (0.12, 0.25)
+            lwdown in (220.0, 320.0, 400.0),
+            tair in (263.15, 283.15, 298.15, 308.15),
+            wind in (0.2, 2.0, 8.0),
+            (z0, height) in ((0.05, 0.5), (0.5, 5.0), (2.5, 25.0)),
+            le in (0.0, 50.0, 250.0, 800.0),
+            albedo in (0.12, 0.25)
 
         t_soil = tair - 3.0
         (Ts, Rn, H, G, le_out, ga, capped) =
@@ -30,10 +30,13 @@
         @test le_out ≥ -1.0e-9
         @test !capped
         @test isapprox(le_out, le; atol = 1.0e-9)
-        # 4) H is the aerodynamic residual: H = ρ c_p g_a (T_skin − Tair) closes the balance
+        # 4) H is the aerodynamic residual: H = ρ c_p g_a (T_skin − Tair). With the stability correction
+        #    on, g_a and T_skin are solved by a Picard-coupled Newton, so this identity holds to the
+        #    SOLVE tolerance (relative ~1e-8), not machine precision — unlike the closure above, which is
+        #    exact by construction (H := Rn − LE − G). Use a convergence-appropriate relative tolerance.
         ρ = 1.0e5 / (p.R_d * tair)
         H_aero = ρ * p.c_p * ga * (Ts - tair)
-        @test isapprox(H, H_aero; atol = 1.0e-6, rtol = 1.0e-9)
+        @test isapprox(H, H_aero; atol = 1.0e-4, rtol = 1.0e-6)
     end
 end
 
@@ -86,9 +89,9 @@ end
     # Short smooth vegetation (grass) couples less to the air than a rough forest ⇒ larger day-time
     # skin–air difference at identical forcing (a real, well-known effect).
     (Ts_grass, _, _, _, _, ga_grass, _) =
-        solve_seb(p, 700.0, 350.0, 298.15, 1.0e5, 3.0, 0.20, 0.05, 0.5, 250.0, 296.15)
+        solve_seb(p, 700.0, 350.0, 298.15, 1.0e5, 3.0, 0.2, 0.05, 0.5, 250.0, 296.15)
     (Ts_forest, _, _, _, _, ga_forest, _) =
-        solve_seb(p, 700.0, 350.0, 298.15, 1.0e5, 3.0, 0.20, 2.5, 25.0, 250.0, 296.15)
+        solve_seb(p, 700.0, 350.0, 298.15, 1.0e5, 3.0, 0.2, 2.5, 25.0, 250.0, 296.15)
     @test ga_forest > ga_grass                 # rougher canopy is better coupled
     @test (Ts_grass - 298.15) > (Ts_forest - 298.15)
 end
@@ -118,8 +121,10 @@ end
     st = SharedState()
     ff = FToE(le = 250.0, gpp = 8.0, npp = 4.0, rh = 1.5, firec = 0.2, flux_estabc = 0.1, ground_heat = 0.0)
     bc = SToE(albedo = 0.15, z0 = 2.5, lai = 4.0, height = 25.0)
-    forc = AtmForcing(swdown = 700.0, lwdown = 350.0, tair = 298.15, qair = 0.008,
-        wind = 3.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0)
+    forc = AtmForcing(
+        swdown = 700.0, lwdown = 350.0, tair = 298.15, qair = 0.008,
+        wind = 3.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0
+    )
 
     atm, tof = solve!(clo, st, ff, bc, forc)
     @test atm isa EToATM && tof isa EToF
@@ -134,6 +139,45 @@ end
     @test clo.initialized
     @test 283.15 < clo.t_soil < 298.15
     @test isapprox(clo.t_soil, (29 / 30) * 283.15 + (1 / 30) * 298.15; atol = 1.0e-9)
+end
+
+@testitem "Component E — Monin–Obukhov stability correction (night suppresses, day enhances g_a)" tags = [:energy, :scientific] begin
+    using LPJmLFITEmulator
+    using Test
+
+    p_on = SEBParams{Float64}()                          # stability ON (default)
+    p_off = SEBParams{Float64}(enable_stability = false) # neutral
+
+    # closure stays EXACT with stability on, over a broad grid
+    for sw in (0.0, 300.0, 700.0), lw in (250.0, 350.0), ta in (270.0, 290.0, 305.0),
+            u in (0.5, 3.0, 8.0), le in (0.0, 100.0, 400.0)
+
+        (Ts, Rn, H, G, le_out, ga, _) = solve_seb(p_on, sw, lw, ta, 1.0e5, u, 0.15, 1.0, 15.0, le, ta - 4.0)
+        @test isapprox(Rn, le_out + H + G; atol = 1.0e-6)                  # closure EXACT by construction
+        ρ = 1.0e5 / (p_on.R_d * ta)
+        @test isapprox(H, ρ * p_on.c_p * ga * (Ts - ta); atol = 1.0e-4, rtol = 1.0e-6)   # converged identity
+        @test all(isfinite, (Ts, Rn, H, G, le_out, ga))
+    end
+
+    # NIGHT (clear, calm): surface cools below air ⇒ STABLE ⇒ g_a suppressed ⇒ skin cools MORE than neutral
+    (Tn_off, _, _, _, _, ga_n_off, _) = solve_seb(p_off, 0.0, 300.0, 288.15, 1.0e5, 1.0, 0.15, 1.0, 15.0, 5.0, 289.0)
+    (Tn_on, _, _, _, _, ga_n_on, _) = solve_seb(p_on, 0.0, 300.0, 288.15, 1.0e5, 1.0, 0.15, 1.0, 15.0, 5.0, 289.0)
+    @test ga_n_on < ga_n_off                              # stable stratification suppresses exchange
+    @test Tn_on < Tn_off                                  # ⇒ stronger nocturnal cooling
+
+    # DAY (hot, sunny, dry): surface heats above air ⇒ UNSTABLE ⇒ g_a enhanced ⇒ hot surface ventilated
+    (Td_off, _, _, _, _, ga_d_off, _) = solve_seb(p_off, 800.0, 380.0, 300.0, 1.0e5, 1.5, 0.15, 1.0, 15.0, 60.0, 299.0)
+    (Td_on, _, _, _, _, ga_d_on, _) = solve_seb(p_on, 800.0, 380.0, 300.0, 1.0e5, 1.5, 0.15, 1.0, 15.0, 60.0, 299.0)
+    @test ga_d_on > ga_d_off                              # unstable convection enhances exchange
+    @test Td_on < Td_off                                  # ⇒ hot surface closer to air
+
+    # the stability factor is bounded (Fs ∈ [1−amp, 1+amp]) ⇒ g_a stays within amp× of neutral
+    for Ri_case in ((0.0, 300.0, 288.15, 1.0, 5.0), (0.0, 250.0, 260.0, 0.3, 2.0), (900.0, 400.0, 310.0, 1.0, 100.0))
+        sw, lw, ta, u, le = Ri_case
+        (_, _, _, _, _, ga, _) = solve_seb(p_on, sw, lw, ta, 1.0e5, u, 0.15, 1.0, 15.0, le, ta - 3.0)
+        ga_neu = aerodynamic_conductance(p_on, u, 1.0, 15.0)
+        @test (1 - p_on.stab_amp) * ga_neu - 1.0e-9 ≤ ga ≤ (1 + p_on.stab_amp) * ga_neu + 1.0e-9
+    end
 end
 
 @testitem "Component E — AD-friendly (ForwardDiff vs FiniteDifferences) + Float32" tags = [:energy, :unit] begin

@@ -44,13 +44,17 @@
         (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
     end
     rows = prows[argmax(Dict(k => length(vv) for (k, vv) in prows))]
-    mkp(r) = TreePools{Float64}(v("leaf_c", r), v("sapwood_c", r),
+    mkp(r) = TreePools{Float64}(
+        v("leaf_c", r), v("sapwood_c", r),
         max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0), v("root_c", r),
-        v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false)
-    mkt(r) = Individual{Float64}(v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
+        v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false
+    )
+    mkt(r) = Individual{Float64}(
+        v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
         v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
         PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
-        TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false)
+        TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
+    )
     pools = [mkp(r) for r in rows]; tmpls = [mkt(r) for r in rows]
 
     # build F core + E closure; seed the deep-soil temp with the site mean annual air temperature
@@ -59,10 +63,13 @@
     clo = SEBEnergyClosure(; t_soil0 = _mean(tair_K))
 
     σ = 5.670374419e-8
-    forcings = [AtmForcing(;
-            swdown = fc_("swdown")[i], lwdown = fc_("lwnet")[i] + σ * tair_K[i]^4,
-            tair = tair_K[i], qair = fc_("huss")[i], wind = 2.0, psurf = 1.0e5,
-            precip = fc_("precip")[i], co2 = fc_("co2")[i]) for i in 1:n]
+    forcings = [
+        AtmForcing(;
+                swdown = fc_("swdown")[i], lwdown = fc_("lwnet")[i] + σ * tair_K[i]^4,
+                tair = tair_K[i], qair = fc_("huss")[i], wind = 2.0, psurf = 1.0e5,
+                precip = fc_("precip")[i], co2 = fc_("co2")[i]
+            ) for i in 1:n
+    ]
 
     state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
     out = run_coupled_cell(core, clo, state, forcings; days_per_year = 365)

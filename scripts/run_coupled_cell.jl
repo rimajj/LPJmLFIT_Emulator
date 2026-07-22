@@ -57,12 +57,16 @@ for r in eachindex(ind["type"])
     (ntyp(r) <= 6 && vv(r, "height") > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
 end
 patches = sort(collect(keys(prows)))
-mkpool(r) = TreePools{Float64}(vv(r, "leaf_c"), vv(r, "sapwood_c"), vv(r, "heartwood_c"), vv(r, "root_c"),
-    vv(r, "height"), vv(r, "crownarea"), vv(r, "nind"), vv(r, "sla"), vv(r, "wooddens"), false)
-mktmpl(r) = Individual{Float64}(vv(r, "fpar_leafon"), 0.0, vv(r, "alphaa"), vv(r, "albedo_leaf"), vv(r, "emax"),
+mkpool(r) = TreePools{Float64}(
+    vv(r, "leaf_c"), vv(r, "sapwood_c"), vv(r, "heartwood_c"), vv(r, "root_c"),
+    vv(r, "height"), vv(r, "crownarea"), vv(r, "nind"), vv(r, "sla"), vv(r, "wooddens"), false
+)
+mktmpl(r) = Individual{Float64}(
+    vv(r, "fpar_leafon"), 0.0, vv(r, "alphaa"), vv(r, "albedo_leaf"), vv(r, "emax"),
     vv(r, "sapwood_c"), vv(r, "root_c"), 0.0, 0.02, 0.04, 0.1, 0.4, vv(r, "nind"),
     PhotoParams{Float64}(; path = :c3, issla = true, sla = vv(r, "sla")),
-    TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false)
+    TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
+)
 
 # per-patch fast cores + per-patch soil-water states (each patch its own water balance)
 cores = [FDiffFastCore([mkpool(r) for r in prows[pn]], [mktmpl(r) for r in prows[pn]], soil, 51.25) for pn in patches]
@@ -89,8 +93,10 @@ doy_in_year = 0
 prev_year = years[1]
 for i in 1:n
     global doy_in_year, prev_year
-    forc = AtmForcing(; swdown = swd[i], lwdown = lwn[i] + σ * tairK[i]^4, tair = tairK[i],
-        qair = huss[i], wind = 2.0, psurf = 1.0e5, precip = prec[i], co2 = co2[i])
+    forc = AtmForcing(;
+        swdown = swd[i], lwdown = lwn[i] + σ * tairK[i]^4, tair = tairK[i],
+        qair = huss[i], wind = 2.0, psurf = 1.0e5, precip = prec[i], co2 = co2[i]
+    )
     # 1) run F for every patch; aggregate to the cell mean latent heat + canopy structure
     le_sum = 0.0; gpp_sum = 0.0; npp_sum = 0.0
     alb_sum = 0.0; h_sum = 0.0; z0_sum = 0.0; lai_sum = 0.0
@@ -102,8 +108,10 @@ for i in 1:n
     end
     le_cell = le_sum / P; gpp_cell = gpp_sum / P; npp_cell = npp_sum / P
     bc_e = SToE(; albedo = alb_sum / P, z0 = z0_sum / P, lai = lai_sum / P, height = h_sum / P)
-    ftoe_cell = FToE(; le = le_cell, gpp = gpp_cell, npp = npp_cell, rh = 0.0, firec = 0.0,
-        flux_estabc = 0.0, ground_heat = 0.0)
+    ftoe_cell = FToE(;
+        le = le_cell, gpp = gpp_cell, npp = npp_cell, rh = 0.0, firec = 0.0,
+        flux_estabc = 0.0, ground_heat = 0.0
+    )
     # 2) ONE cell-level energy-balance solve
     atm, tof = solve!(clo, states[1], ftoe_cell, bc_e, forc)
     # 3) E→F feedback: hand the skin temperature back to every patch's top thermal boundary
@@ -134,29 +142,37 @@ open(outfile, "w") do io
     println(io, "# Energy closed by construction (Rn = LE + H + G). Units: fluxes W/m2, T_skin K, GPP/NPP gC/m2/day, NBP gC/m2/day, z0 m.")
     println(io, "year,doy,tair_K,t_skin_K,LE,H,G,Rn,NBP_atm,z0,albedo,GPP,NPP,resid")
     for i in 1:n
-        @printf(io, "%d,%d,%.3f,%.4f,%.4f,%.4f,%.4f,%.4f,%.5f,%.4f,%.4f,%.5f,%.5f,%.3e\n",
+        @printf(
+            io, "%d,%d,%.3f,%.4f,%.4f,%.4f,%.4f,%.4f,%.5f,%.4f,%.4f,%.5f,%.5f,%.3e\n",
             years[i], i - findfirst(==(years[i]), years) + 1, tairK[i], T_skin[i], LE[i], H[i], G[i],
-            RN[i], NBP[i], Z0[i], ALB[i], GPP[i], NPP[i], RES[i])
+            RN[i], NBP[i], Z0[i], ALB[i], GPP[i], NPP[i], RES[i]
+        )
     end
 end
 
 # ── summary ──
 @printf("\n=== COUPLED S+F+E EMULATOR — Hainich 42490, cell-mean over %d patches, 2009–2019 ===\n", P)
-@printf("days simulated: %d   |   energy closure  max|Rn-(LE+H+G)| = %.3e W/m2  (Phase-4 hard gate)\n",
-    n, maximum(abs, RES))
+@printf(
+    "days simulated: %d   |   energy closure  max|Rn-(LE+H+G)| = %.3e W/m2  (Phase-4 hard gate)\n",
+    n, maximum(abs, RES)
+)
 dT = T_skin .- tairK
 @printf("T_skin - T_air:  mean %+.2f K   range [%+.2f, %+.2f] K\n", mean(dT), minimum(dT), maximum(dT))
-@printf("annual-mean fluxes: LE=%.1f  H=%.1f  G=%.2f  Rn=%.1f W/m2   (G≈0 over the long run ✓)\n",
-    mean(LE), mean(H), mean(G), mean(RN))
+@printf(
+    "annual-mean fluxes: LE=%.1f  H=%.1f  G=%.2f  Rn=%.1f W/m2   (G≈0 over the long run ✓)\n",
+    mean(LE), mean(H), mean(G), mean(RN)
+)
 println("\nPer-year cell-mean summary:")
 println("  year   T_air  T_skin    LE     H      Rn    GPP(gC/m2/yr)  Bowen(sum)")
 uyears = sort(unique(years))
 for y in uyears
     idx = findall(==(y), years)
     sm = idx[152 .≤ (idx .- first(idx) .+ 1) .≤ 243]  # summer subset of this year
-    bowen = mean(H[sm]) / max(mean(LE[sm]), 1e-6)
-    @printf("  %d  %5.1f  %6.1f  %5.1f  %5.1f  %6.1f     %6.0f        %.2f\n",
+    bowen = mean(H[sm]) / max(mean(LE[sm]), 1.0e-6)
+    @printf(
+        "  %d  %5.1f  %6.1f  %5.1f  %5.1f  %6.1f     %6.0f        %.2f\n",
         y, mean(tairK[idx]) - 273.15, mean(T_skin[idx]) - 273.15, mean(LE[idx]), mean(H[idx]),
-        mean(RN[idx]), sum(GPP[idx]), bowen)
+        mean(RN[idx]), sum(GPP[idx]), bowen
+    )
 end
 @printf("\nwrote daily cell-mean series -> %s\n", outfile)

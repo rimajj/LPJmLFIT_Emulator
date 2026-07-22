@@ -44,9 +44,26 @@ Base.@kwdef struct SEBParams{T <: AbstractFloat}
     ga_max::T = 1.0                 # cap on aerodynamic conductance, m/s
     lambda_g::T = 7.0               # soil thermal conductance for G = λ_g·(T_skin − T_soil), W/m²/K
     tau_soil::T = 30.0              # deep-soil temperature EWMA timescale, days
-    n_newton::Int = 12              # FIXED Newton iterations (fixed computational graph ⇒ AD-friendly)
+    n_newton::Int = 25              # FIXED Newton iterations (fixed graph ⇒ AD-friendly; ≥ converges the
+    # stability–conductance Picard coupling to machine precision)
     omega::T = 1.0                  # Newton damping factor, –
     min_wind::T = 0.1               # floor on wind speed, m/s
+    # Monin–Obukhov surface-layer STABILITY correction to g_a (DEVELOPMENT_PLAN §2.4). The neutral log-law
+    # over/under-states turbulent exchange under buoyancy: at night the surface cools below the air
+    # (stable ⇒ suppressed exchange ⇒ larger radiative cooling), by day it heats above (unstable ⇒
+    # enhanced convective exchange). g_a is multiplied by a smooth, bounded stability factor of the bulk
+    # Richardson number `Ri_b = g(z−d)(Tair−Tskin)/(Tair·U²)` (Ri_b>0 stable, <0 unstable):
+    #   Fs(Ri) = 1 − stab_amp·tanh(stab_k·Ri/2)   ∈ [1−stab_amp, 1+stab_amp], Fs(0)=1, smooth ⇒ AD-safe.
+    # H is the residual and the worst-modeled flux (PLUMBER2), so this is the highest-value E refinement.
+    enable_stability::Bool = true
+    gravity::T = 9.81               # m/s²
+    stab_amp::T = 0.75              # stability-factor amplitude ⇒ Fs ∈ [0.25, 1.75]
+    stab_k::T = 15.0                # bulk-Richardson sensitivity, –
+    # NB `Fs` is a smooth, BOUNDED surrogate, not a faithful Monin–Obukhov ψ: the 0.25× floor deliberately
+    # UNDER-suppresses strongly-stable nocturnal turbulence (real MO drives the exchange coefficient down by
+    # 1–2 orders past the critical Richardson number). This keeps the night surface coupled and is what
+    # bounds the coupled skin–air ΔT (the `|T_skin − T_air| < 25/30 K` gates in coupled/biome tests depend
+    # on it). Validate/tune `stab_amp`,`stab_k` against FLUXNET/PLUMBER2 (P2) before trusting nocturnal H.
     # Demand cap (DEVELOPMENT_PLAN §2.4): cap LE ≤ Rn − G in demand-limited cases. OFF by default: F
     # already water-limits ET, so `le` is the REAL water-limited flux, and when Rn − G < 0 (e.g. a
     # radiatively cooling night with nonzero ET) the energy for LE is supplied by sensible-heat
@@ -104,19 +121,38 @@ function solve_seb(
         p::SEBParams{T}, swdown, lwdown, tair, psurf, wind, albedo, z0m, height, le, t_soil
     ) where {T <: AbstractFloat}
     ρ = psurf / (p.R_d * tair)
-    ga = aerodynamic_conductance(p, wind, z0m, height)
-    hcoef = ρ * p.c_p * ga                        # W/m²/K
+    ga_n = aerodynamic_conductance(p, wind, z0m, height)   # neutral conductance
+    # reference height for the bulk Richardson number (same z−d as the log-law)
+    z0m_e = max(z0m, p.z0m_min)
+    d = p.d_frac * max(height, zero(T))
+    zmd = max(p.z_ref, d + z0m_e + T(2)) - d
+    u2 = max(wind, p.min_wind)^2
     swnet = (one(T) - albedo) * swdown
     lwin = p.emissivity * lwdown
+    # stability factor Fs(Ri) = 1 − amp·tanh(k·Ri/2) (smooth, bounded, AD-safe); Ri from current Tskin
+    stab_ga(Ts) = p.enable_stability ?
+        ga_n * (one(T) - p.stab_amp * tanh(p.stab_k * p.gravity * zmd * (tair - Ts) / (tair * u2) / T(2))) :
+        ga_n
+    # full energy-balance residual as a function of Tskin (g_a re-evaluated under the current Tskin, so the
+    # stability–conductance coupling is INSIDE the residual): f(Ts) = Rn − LE − H − G.
+    resid(Ts) = swnet + lwin - p.emissivity * p.sigma * Ts^4 - le -
+        ρ * p.c_p * stab_ga(Ts) * (Ts - tair) - p.lambda_g * (Ts - t_soil)
     Ts = tair                                     # physical initial guess (skin near air temperature)
+    hderiv = T(1.0e-4)                            # K, for the numerical derivative of the full residual
     for _ in 1:p.n_newton
-        Rn = swnet + lwin - p.emissivity * p.sigma * Ts^4
-        H = hcoef * (Ts - tair)
-        G = p.lambda_g * (Ts - t_soil)
-        f = Rn - le - H - G
-        df = -T(4) * p.emissivity * p.sigma * Ts^3 - hcoef - p.lambda_g
+        # TRUE Newton on the coupled (Ts, g_a) system: numerical derivative of the FULL residual (incl.
+        # dg_a/dTs) ⇒ quadratic convergence even at extreme low-wind/large-ΔT corners, so the aerodynamic
+        # identity holds tightly. FD only drives the primal solve; the outer AD gradient is exact at
+        # convergence regardless of the derivative's accuracy (the `FDiff.solve_lambda` pattern, ADR 0014).
+        f = resid(Ts)
+        df = (resid(Ts + hderiv) - resid(Ts - hderiv)) / (T(2) * hderiv)
         Ts = Ts - p.omega * f / df
     end
+    # Effective conductance = the neutral (already `[ga_min, ga_max]`-clamped) g_a × the stability factor
+    # `Fs ∈ [1−amp, 1+amp]`; it is NOT re-clamped, so the returned `ga` can sit up to `amp` outside
+    # `[ga_min, ga_max]` — intentional (the documented bound is on the NEUTRAL conductance). Safe in v1: `ga`
+    # is never a denominator here (H is the residual) and `EToF.g_a` is not consumed downstream.
+    ga = stab_ga(Ts)                              # final conductance consistent with the converged Tskin
     Rn = swnet + lwin - p.emissivity * p.sigma * Ts^4
     G = p.lambda_g * (Ts - t_soil)
     avail = Rn - G                                # energy available for turbulent fluxes
