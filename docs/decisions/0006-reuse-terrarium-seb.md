@@ -1,10 +1,17 @@
 ---
-status: "accepted"
+status: "superseded by ADR 0017"
 date: 2026-07-15
 deciders: "Jamir Priesner (owner)"
 consulted: "ECOSYSTEM_AND_COUPLING.md §2, DEVELOPMENT_PLAN.md §2.4, DESIGN.md §1.2/§3.4"
 informed: "ADR 0007, component E"
 ---
+
+> **Superseded by [ADR 0017](0017-self-contained-energy-closure.md)** (2026-07-22): the *implementation
+> choice* (reuse Terrarium.jl) is superseded — component E is reimplemented self-contained (dependency-free,
+> AD-friendly) because of this ADR's own flagged open AGPL↔EUPL licensing blocker + the zero-runtime-deps /
+> offline-compute-node constraints, exactly as ADR 0014 did for the fast core. **The physics decisions
+> below (one consistent skin temperature, H the residual, G under T_skin, the mandatory E→F feedback) are
+> RETAINED.**
 
 # Reuse Terrarium.jl's surface energy balance + skin temperature for component E
 

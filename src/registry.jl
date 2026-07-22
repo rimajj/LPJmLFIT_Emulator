@@ -33,7 +33,7 @@ const COMPONENTS = [
     ),
     Component(
         id = :E, name = "Energy-balance + skin-T closure", kind = :hybrid, timescale = :subdaily,
-        description = "solve T_skin; partition A=Rn−G into LE,H,G (H residual); reuse Terrarium.jl"
+        description = "solve T_skin; close Rn=LE+H+G (H residual); self-contained SEB (ADR 0017)"
     ),
     Component(
         id = :ATM, name = "Atmosphere (ESM)", kind = :external, timescale = :subdaily,

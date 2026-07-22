@@ -24,7 +24,7 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0003](0003-flux-then-integrate-carbon.md) | Flux-then-integrate carbon conservation (with fire + establishment) | accepted |
 | [0004](0004-constant-co2-regime.md) | Constant-CO₂ regime (inherited from `with_nitrogen="no"`) | accepted |
 | [0005](0005-drf-baseline-escalation.md) | DRF baseline for S + an escalation ladder | accepted |
-| [0006](0006-reuse-terrarium-seb.md) | Reuse Terrarium.jl's SEB + skin temperature for component E | accepted |
+| [0006](0006-reuse-terrarium-seb.md) | Reuse Terrarium.jl's SEB + skin temperature for component E | superseded by ADR 0017 |
 | [0007](0007-julia-primary-stack.md) | Julia-primary stack (Python only for the S prototype) | accepted |
 | [0008](0008-documentation-only.md) | Documentation-only (Documenter.jl); no AI code-wiki | accepted |
 | [0009](0009-ssh-deploy-key-auth.md) | SSH deploy-key auth from the HPC | accepted |
@@ -35,3 +35,4 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0014](0014-differentiable-fast-core-first.md) | Fast core F is differentiable from the start (`F_diff`); C binary is oracle-only (supersedes F1/F2 split) | accepted |
 | [0015](0015-reuse-map.md) | Reuse map for F_diff — what to TAKE/REDO/SKIP from the reference repos, + citations | accepted |
 | [0016](0016-nn-hook-training.md) | Hybrid learned closures in F_diff: NN λ/Vcmax correction hooks, TBPTT online-rollout training, shipped as a package extension | accepted |
+| [0017](0017-self-contained-energy-closure.md) | Implement component E self-contained (reimplement the SEB physics); no Terrarium runtime dep (supersedes 0006's implementation choice, keeps its physics) | accepted |

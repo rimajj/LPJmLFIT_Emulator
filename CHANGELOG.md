@@ -7,6 +7,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **PHASE 4 — COMPONENT E (surface energy balance + skin-temperature closure) IMPLEMENTED, and the
+  end-to-end coupled S+F+E emulator RUNS on a cell (DEVELOPMENT_PLAN §6 Phase 4; ADR 0017).** The
+  ESM-ready closure LPJmL-FIT lacks — the reason the whole project exists — was a stub that only threw;
+  it is now real, and F+E run coupled over a cell producing the atmosphere-facing outputs.
+  - **`src/components/energy.jl`: `SEBEnergyClosure` + the pure kernels `solve_seb` / `aerodynamic_conductance`.**
+    Solves ONE skin temperature `T_skin` from `Rn(T_skin) = SW(1−α) + ε·LW − εσT_skin⁴` and closes
+    `Rn = LE + H + G` with `H = ρc_p g_a (T_skin − Tair)` — **LE fixed by F (water-limited), H the
+    residual** (the documented "no privileged residual" exception). Fixed-iteration damped Newton with a
+    FIXED graph (AD-friendly, the `solve_lambda` pattern); `g_a` from the neutral log-law; `G = λ_g(T_skin
+    − T_soil)` with a deep-soil-temp EWMA state E owns. Demand cap (`LE ≤ Rn − G`) implemented but OFF by
+    default (uncapped ⇒ exact closure + conservation-safe; capping would drop water F committed to until
+    the unused-water return is wired). **Self-contained — no Terrarium.jl runtime dep** (ADR 0017
+    supersedes 0006's reuse: open AGPL↔EUPL licensing blocker + the zero-runtime-deps/offline-node
+    constraints, exactly as ADR 0014 did for the fast core; physics decisions retained).
+  - **`src/run.jl`: the coupled run loop `run_coupled_cell` / `couple_day!` / `stand_structure_toe`.** Per
+    day: F (`FDiffFastCore.step!`) → `FToE`; structure (`SToE`) re-derived from F's own prognostic canopy;
+    E (`solve!`) → `EToATM` (LE, H, G, T_skin, NBP_atm, z0) + `EToF`; **the mandatory E→F skin-temperature
+    feedback** hands `T_skin` back to F's phenology soil-temp gate for the next day. Water & carbon
+    conserved by F; energy closed by construction in E.
+  - **`FDiffFastCore` gains two fields** — `soiltemp_skin` (the E→F feedback; NaN default ⇒ air-temp proxy
+    ⇒ BYTE-IDENTICAL to the pre-feedback adapter) and `last_albedo` (write-only diagnostic so E's Rn uses
+    F's dynamic albedo). Every existing baseline + the AD trainer untouched.
+  - **Verified (`test/testitems/energy_closure_tests.jl` + `test/testitems/coupled_run_tests.jl`):** energy
+    closes to **machine precision** (max |Rn−(LE+H+G)| = 1.4e-14 W/m² over a 13,824-case grid AND every
+    day of a real Hainich year); `solve_seb` is AD-friendly (ForwardDiff vs FiniteDifferences) + Float32;
+    the coupled Hainich year is physically plausible (skin near air, day heating / night cooling, growing-
+    season LE > winter). Full CI-faithful suite green.
+  - **DEPLOYMENT DEMONSTRATION (`scripts/run_coupled_cell.jl`):** the coupled emulator run over the Hainich
+    cell (25 patches, cell-mean) for the committed decade 2009–2019 produces the full ESM output series and
+    **emergently captures the 2018 European drought** — summer Bowen ratio 0.89 vs ~0.15–0.29 in normal
+    years (water stress → ET suppressed → sensible heat up), with annual-mean G ≈ 0 (no spurious heat
+    sink) and no multi-year drift. Writes `logs/coupled_decadal_hainich.csv`.
+  - **Honest scope:** wind + surface pressure are held constant (the underlying LPJmL run never used them;
+    the committed forcing CSV omits them) — sourcing GSWP3-W5E5 `sfcwind`/`ps` is the documented next step;
+    `g_a` is neutral-only (a stability correction is the next fidelity step); LE uses vaporization λ for all
+    ET (a snow-sublimation split is pending); the slow emulator S is not yet wired into deployment (F
+    self-computes its structure); E's LE/H/T_skin against FLUXNET/PLUMBER2 is the external-data-bounded
+    validation still to source (Hainich = DE-Hai). Runtime `[deps]` still EMPTY.
 - **IMPLEMENTED the below-ground root-sapwood pool `sapwood_bg` + its phen-gated maintenance (opt-in,
   default byte-identical) — the §8-GO'd tree-CUE frontier (Phase-3 scale-up step 11 follow-up #11;
   `docs/sapwood_bg_design.md` §8).** F_diff omitted the C's below-ground root-sapwood pool, so it never paid

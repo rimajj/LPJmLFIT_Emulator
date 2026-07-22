@@ -107,6 +107,16 @@ mutable struct FDiffFastCore{T <: AbstractFloat} <: AbstractFastCore
     et_acc::T
     wscal_acc::T
     nday::Int
+    # E→F skin-temperature feedback (DEVELOPMENT_PLAN §2.4, the mandatory top thermal BC). When set (by the
+    # coupled driver from Component E's solved T_skin, in °C), it REPLACES the air-temperature proxy in the
+    # phenology soil-temp gate — the one place F's soil-temp-dependent physics uses the single surface
+    # temperature. `NaN` (the default) ⇒ use air temperature ⇒ BYTE-IDENTICAL to the pre-feedback adapter
+    # (every existing baseline + the AD trainer untouched). See [`couple_day!`](@ref).
+    soiltemp_skin::T
+    # Write-only diagnostic: the leaf-display-weighted DYNAMIC stand albedo F used on the last `step!`
+    # (`FDiff.patch_albedo`). The coupled driver reads it so Component E's net radiation uses the SAME
+    # albedo as F's water balance (consistency). Does not feed back into F ⇒ byte-identical.
+    last_albedo::T
 end
 
 """
@@ -144,6 +154,8 @@ function FDiffFastCore(
         p, alloc, galloc, allom, tmpls, pools, inds, soil, T(lat), grass_estab,
         pids, slot, pparams, pstates, pisg, grass_lf_mode, one(T),
         0, one(T), zero(T), zeros(T, length(pools)), zero(T), zero(T), zero(T), zero(T), 0,
+        T(NaN),                       # soiltemp_skin: NaN ⇒ use air-temp proxy (byte-identical default)
+        T(0.15),                      # last_albedo: reasonable default until the first step! records it
     )
 end
 
@@ -179,10 +191,16 @@ function step!(fc::FDiffFastCore{T}, state::SharedState, bc::SToF, forcing::AtmF
     # then materialize the per-individual leaf-display vector. Mirrors `rollout_daily_canopy`, carried as
     # persisted struct state because the adapter is day-by-day (not batched). `pft_phenparams(3)` is the
     # beech GSI, so an all-tree patch is byte-identical to the old single-beech scalar path.
+    # E→F feedback: the phenology soil-temp GATE (4th arg) uses Component E's skin temperature when the
+    # coupled driver has set it (`soiltemp_skin`, °C); otherwise the native air-temp proxy. The tmin/tmax
+    # GSI filters (1st arg) stay on AIR temperature — only the soil-temp gate takes the surface temperature.
+    soilt_gate = isnan(fc.soiltemp_skin) ? temp : fc.soiltemp_skin
     phen_slot = FDiff._step_pft_phen_day!(
-        fc.pft_states, fc.pft_params, fc.pft_isg, temp, T(forcing.swdown), fc.water_avail, temp, fc.grass_lf,
+        fc.pft_states, fc.pft_params, fc.pft_isg, temp, T(forcing.swdown), fc.water_avail, soilt_gate, fc.grass_lf,
     )
     phen_vec = T[phen_slot[fc.pft_slot[id]] for id in fc.pft_ids]
+    # record the dynamic leaf-display-weighted stand albedo F uses (so E's Rn is consistent with F)
+    fc.last_albedo = FDiff.patch_albedo(fc.inds, phen_vec, st.snowpack)
     (st′, fl) = FDiff.daily_step_canopy(fc.params, fc.inds, fc.soil, st, f; phen = phen_vec)
     # write soil water back into the authoritative shared state (fraction of WHC), in place
     @inbounds for l in 1:nlay

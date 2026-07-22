@@ -7,16 +7,18 @@ Three components around **one authoritative shared state** ([`SharedState`](@ref
 
   - **S** — slow ML trait/size *distribution* emulator (annual): [`AbstractSlowEmulator`](@ref).
   - **F** — fast physical biophysical core kept from LPJmL-FIT (daily): [`AbstractFastCore`](@ref).
-  - **E** — surface-energy-balance + skin-temperature closure (new; reuse Terrarium.jl):
-    [`AbstractEnergyClosure`](@ref).
+  - **E** — surface-energy-balance + skin-temperature closure (new; self-contained, ADR 0017):
+    [`AbstractEnergyClosure`](@ref) / [`SEBEnergyClosure`](@ref).
 
 Water and carbon are conserved by the physical core; the energy budget is closed by
 construction in E. Coupling variables (LE, H, G, T_skin, NEE, roughness) are **derived, not
 co-predicted** — see [`conservation.jl`](@ref LPJmLFITEmulator) helpers.
 
-This is the Phase-0 skeleton: types, the interface contract, and conservation helpers are
-real and tested; the modelling components are stubs that grow under `DEVELOPMENT_PLAN.md` §6.
-Frozen schemas: `DESIGN.md`.
+**Status:** F (`FDiffFastCore`) and E (`SEBEnergyClosure`) are implemented and coupled — the
+end-to-end emulator runs on a cell via [`run_coupled_cell`](@ref), producing the ESM-facing
+outputs with energy closed to machine precision (DEVELOPMENT_PLAN §6 Phase 4). The slow
+distribution emulator S is prototyped (Phase 2) but not yet wired into deployment; F self-computes
+its prognostic canopy structure in the meantime. Frozen schemas: `DESIGN.md`.
 """
 module LPJmLFITEmulator
 
@@ -41,6 +43,8 @@ include("components/fast.jl")
 include("components/energy.jl")
 # ── Component/flux registry — source of truth for code-derived diagrams ─────
 include("registry.jl")
+# ── Coupled S+F+E run loop — the end-to-end "use the emulator" driver (Phase 4) ─
+include("run.jl")
 
 # ── Hybrid NN-hook training API (ADR 0016; scale-up steps 7b + 7b-canopy) ────
 # The gradient-based online-rollout training of the learned Vcmax / λ corrections ([`FDiff.FluxHooks`])
@@ -211,6 +215,10 @@ export softmax_partition, flux_then_integrate,
 # Components
 export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
 export FDiffFastCore, step!, annual_step!
+# Component E — self-contained surface-energy-balance + skin-temperature closure (ADR 0017)
+export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
+# Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)
+export run_coupled_cell, couple_day!, stand_structure_toe
 # Registry
 export COMPONENTS, FLUXES, Component, Flux
 # Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook

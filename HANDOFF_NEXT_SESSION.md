@@ -308,6 +308,47 @@ for HEAD.
 
 ---
 
+## ⭐⭐ PHASE 4 LANDED — COMPONENT E (ENERGY BALANCE + SKIN TEMPERATURE) + THE END-TO-END COUPLED EMULATOR RUNS (the emulator is now USABLE)
+
+**This is the keystone the project existed to build.** The prior ~14 sessions were all Phase-3 *fidelity
+refinements* of an already-in-band fast core (grass overshoot #1/#2/#3, sapwood_bg, water-supply) — while
+the two pieces that make this an actual ESM-ready land component, **Component E (the surface energy balance
++ skin temperature LPJmL-FIT lacks) and the coupled run loop, were never built** (`energy.jl`/`slow.jl` were
+stubs that only threw). Phase 4 builds E and couples F+E end-to-end, so the component now returns the
+atmosphere-facing tuple (LE, H, G, T_skin, NBP, z0) with energy closed by construction. **Landed on `main`.**
+
+- **Component E — self-contained (`src/components/energy.jl`; ADR 0017).** `SEBEnergyClosure` + pure kernels
+  `solve_seb`/`aerodynamic_conductance`. One skin temperature from `Rn(Tₛ)=SW(1−α)+ε·LW−εσTₛ⁴`, closing
+  `Rn=LE+H+G` with `H=ρc_p g_a(Tₛ−Tair)` — **LE fixed by F (water-limited), H the residual** (documented
+  exception). Fixed-graph damped Newton (AD-friendly, `solve_lambda` pattern); `g_a` neutral log-law; `G=λ_g(Tₛ−T_soil)`
+  with a deep-soil-temp EWMA E owns. Demand cap OFF by default (uncapped ⇒ exact closure + conservation-safe).
+  **NO Terrarium runtime dep** — ADR 0017 supersedes 0006's reuse (open AGPL↔EUPL licensing blocker +
+  zero-deps/offline-node constraints, exactly as ADR 0014 for the fast core; physics decisions retained).
+- **Coupled run loop (`src/run.jl`): `run_coupled_cell`/`couple_day!`/`stand_structure_toe`.** Per day F→`FToE`,
+  structure (`SToE`) re-derived from F's own prognostic canopy, E→`EToATM`+`EToF`, and the **mandatory E→F
+  skin-temperature feedback** into F's phenology soil-temp gate. `FDiffFastCore` gains `soiltemp_skin` (NaN
+  default ⇒ air-temp proxy ⇒ **byte-identical**) + `last_albedo` (write-only diagnostic). Every existing
+  baseline + the AD trainer untouched.
+- **Verified.** `test/testitems/energy_closure_tests.jl` (closure to machine precision over a 13,824-case
+  grid; AD via ForwardDiff-vs-FiniteDifferences; Float32; demand-cap opt-in) + `test/testitems/coupled_run_tests.jl`
+  (a real Hainich year closes every day, plausible seasonal cycle, feedback on/off). **Full CI-faithful suite green.**
+- **Deployment demo (`scripts/run_coupled_cell.jl`).** The coupled emulator over the Hainich cell (25 patches,
+  cell-mean) for the committed decade 2009–2019: energy closes to **1.4e-14 W/m²** every day, annual-mean G≈0
+  (no spurious heat sink), no multi-year drift, and it **emergently captures the 2018 European drought** —
+  summer Bowen ratio **0.89** vs ~0.15–0.29 in normal years (water stress → ET suppressed → sensible heat up).
+  Writes `logs/coupled_decadal_hainich.csv`.
+- **★ NEXT (highest value first).** (a) **Strengthen E's fidelity** — a Monin–Obukhov/Richardson **stability
+  correction** on `g_a` (currently neutral-only; H is the residual & worst flux, so this matters most), real
+  **wind (`sfcwind`) + surface pressure** from the GSWP3-W5E5 `.clm` (the `.clm` byte layout is decoded in
+  `scripts/extract_fdiff_validation_inputs.py`), and a **snow-sublimation λ** split. (b) **Phase 5 multi-cell**
+  — extract biome-diverse cells' forcing from the `.clm` + spin F's structure, run the coupled loop, validate
+  generalization. (c) **Wire Component S** into deployment (Phase 2 emulator → `SToF`/`SToE`; F self-computes
+  structure until then). (d) **FLUXNET/PLUMBER2 validation of E's LE/H/T_skin** (external-data-bounded;
+  Hainich = DE-Hai) — the H residual must be validated hardest. (e) the deferred Phase-3 items (sapwood_bg
+  prognostic growth, per-PFT water supply, grass learned lever) remain optional fidelity refinements.
+
+---
+
 ## ⭐ WHAT LANDED IN SESSION 27 (on `main`) — TWO PARALLEL FRONTIER INVESTIGATIONS + the GO'd IMPLEMENTATION: (A) `sapwood_bg` PROBE → GO; (B) per-PFT WATER-SUPPLY SCOPED + §26.4 CORRECTED → DEFER; (C) `sapwood_bg` IMPLEMENTED (opt-in, default byte-identical)
 
 **Chief-investigator session: dispatched the two open substantive frontiers as parallel background
