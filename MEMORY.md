@@ -137,7 +137,8 @@ ADRs are immutable once accepted; supersede, don't edit. Full index: `docs/decis
 | 0015 | Reuse map for F_diff (TAKE/REDO/SKIP + citations) | accepted |
 | 0016 | Learned closures in F_diff: NN λ/Vcmax hooks, TBPTT training, shipped as an extension | accepted |
 | 0017 | Component E **self-contained** (reimplement SEB physics; no Terrarium runtime dep) | accepted |
-| 0018 | **Growth-ownership split**: F_diff owns representative-individual carbon growth; S owns the distribution + demography | proposed (engineering proceeds on the contract; owner holds the `accepted` stamp) |
+| 0018 | **Growth-ownership split**: F_diff owns representative-individual carbon growth; S owns the distribution + demography | accepted (agent decision, delegated; reversible by a later ADR) |
+| 0019 | **Component S: port inference (not call Python); wrap the machinery (not port DirectEmulator wholesale)** — P1 architecture | accepted |
 
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
@@ -150,10 +151,14 @@ unresolved and ADR 0017's premise rests on it.
 ## 5. Open TODOs / frontier (priority per `STEERING_PROMPT.md`)
 
 - **[P1 UNBLOCKED] ADR 0018** documents the growth-ownership contract; engineering proceeds on it (the owner's own §4 recommendation), owner holds the formal `accepted` stamp.
-- **[TODO] P1 (ACTIVE) — put S in the coupled loop** (the novelty): implement `AbstractSlowEmulator` concretely
-  (port the Python LightGBM+copula to Julia or call it — decide in an ADR), wire into `run_coupled_cell`,
-  apply the ADR-0018 split, conserve carbon at the S↔F handoff (flux-then-integrate) to ~1e-6, and
-  **measure the speed-up vs the fixed-N deterministic-F baseline** (the hybrid's whole point).
+- **[TODO] P1 (ACTIVE) — put S in the coupled loop** (the novelty). Design of record + 10-step plan:
+  **`docs/p1_s_in_loop_design.md`** (decisions: ADR 0018 split + ADR 0019 port-not-call). Approach:
+  `DemographicSlowEmulator` (persistent K cohorts; S owns count N + establishment/mortality + trait spread;
+  F owns carbon growth), two tiers (Tier-0 constant models prove wiring + 1e-6 conservation; Tier-1 ports
+  ResidualRegressor+copula+NB to pure Julia `src/slow_infer.jl`), opt-in behind `run_coupled_cell(...; slow=)`.
+  Conserve at the S↔F handoff to ~1e-6 (litter as the exact growth residual), match the offline-S panel on
+  S-owned axes, and **measure the speed-up vs the deterministic-F baseline**. Progress: Step 1 (carbon
+  accounting foundation — `vegc_full_ind` + `_turnover_litter` + `fdiff_litter_closure_tests.jl`) done.
 - **[TODO] P2 — validate E against observations** (parallel to P1): source FLUXNET/PLUMBER2 DE-Hai + real
   `sfcwind`/`ps`; validate LE/H/T_skin within PLUMBER2 bands; add a `g_a` stability correction (partly
   landed). Real wind needs a **cross-grid remap** (raw GSWP3 `.clm` are a different int16 re-ordered grid —

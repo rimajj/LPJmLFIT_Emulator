@@ -36,4 +36,5 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0015](0015-reuse-map.md) | Reuse map for F_diff — what to TAKE/REDO/SKIP from the reference repos, + citations | accepted |
 | [0016](0016-nn-hook-training.md) | Hybrid learned closures in F_diff: NN λ/Vcmax correction hooks, TBPTT online-rollout training, shipped as a package extension | accepted |
 | [0017](0017-self-contained-energy-closure.md) | Implement component E self-contained (reimplement the SEB physics); no Terrarium runtime dep (supersedes 0006's implementation choice, keeps its physics) | accepted |
-| [0018](0018-growth-ownership-split.md) | Growth-ownership split: F_diff owns representative-individual carbon growth; S owns the distribution + demography | proposed |
+| [0018](0018-growth-ownership-split.md) | Growth-ownership split: F_diff owns representative-individual carbon growth; S owns the distribution + demography | accepted |
+| [0019](0019-component-s-port-inference-not-call.md) | Component S: port inference to pure Julia (not call Python); wrap the machinery (not port the DirectEmulator wholesale) | accepted |

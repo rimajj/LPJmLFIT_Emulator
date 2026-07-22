@@ -1,18 +1,18 @@
 ---
-status: "proposed"
+status: "accepted"
 date: 2026-07-22
-deciders: "Jamir Priesner (owner)"
+deciders: "Jamir Priesner (owner) — decision authority delegated to the engineering agent"
 consulted: "PROJECT_REVIEW_2026-07-22.md §4; ADR 0002 (emulate distributions), ADR 0003 (flux-then-integrate), ADR 0014 (F_diff-first); src/fdiff.jl (grow_individual, rollout_canopy_years), src/components/fast.jl (annual_step!), src/components/slow.jl, src/interface.jl"
 informed: "P1 (put S in the coupled loop); the conservation @testitem gates; MEMORY.md; JOURNAL.md"
 ---
 
 # Growth-ownership split: F_diff owns representative-individual carbon growth; S owns the distribution + demography
 
-> **Status note.** `proposed`. This ADR formalises the owner's own recommendation in
-> `PROJECT_REVIEW_2026-07-22.md` §4, and the owner delegated engineering direction ("you call the
-> shots", 2026-07-22) — so **P1 engineering proceeds on this contract now**, while the formal
-> `accepted` stamp is left to the owner (ADRs are the owner's audit/control surface). There is no
-> divergence from the owner's recommendation to escalate.
+> **Status note.** `accepted` 2026-07-22. Formalises the owner's own recommendation
+> (`PROJECT_REVIEW_2026-07-22.md` §4). The owner delegated full decision authority to the engineering
+> agent ("you are the project's decision-maker … decide, record each decision in an ADR, and proceed",
+> 2026-07-22), so this is accepted as the working contract — **reversible only by a superseding ADR**.
+> P1 proceeds on this split.
 
 ## Context and Problem Statement
 

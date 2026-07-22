@@ -1869,6 +1869,17 @@ agb_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c
 vegc_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c + t.root_c
 
 """
+    vegc_full_ind(t::TreePools) -> Real
+
+Total vegetation carbon of one individual INCLUDING the below-ground root-sapwood pool `sapwood_bg_c`
+(gC/individual). Use this — **not** [`vegc_ind`](@ref) — wherever carbon must CONSERVE across the S↔F
+demographic handoff (mortality routing, the flux-then-integrate ledger): `vegc_ind` omits `sapwood_bg_c`
+(a v1 simplification, see its note), so routing mortality carbon on `vegc_ind` would silently leak a
+seeded `sapwood_bg` pool. (bg heartwood is still neglected — the pool is carried but not grown, v1.)
+"""
+vegc_full_ind(t::TreePools) = vegc_ind(t) + t.sapwood_bg_c
+
+"""
     reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist, soildepth) -> Real
 
 Reconstruct the below-ground root-sapwood pool `sapwood_bg` (gC/individual) as the C's C_LATERAL
@@ -2151,6 +2162,51 @@ function grow_grass_individual(alloc::AllocParams, tree::TreePools{T0}, bm_inc_i
         leaf_new, zero(T), zero(T), root_new, zero(T), convert(T, tree.crownarea),
         convert(T, tree.nind), convert(T, tree.sla), convert(T, tree.wooddens), true,
     )
+end
+
+"""
+    _turnover_litter(alloc::AllocParams, tree::TreePools, bm_inc_ind) -> (reprod, leaf_shed, root_shed)
+
+The carbon (gC/individual) that LEAVES one individual's pools during a single annual growth step
+([`grow_individual`](@ref) for trees, [`grow_grass_individual`](@ref) for grass) — as accounted
+reproduction + leaf/root turnover litter fluxes, computed WITHOUT re-running or mutating growth. This is
+the INDEPENDENT measurement used to (a) verify that growth conserves carbon and (b) feed the
+flux-then-integrate carbon ledger (`conservation.jl`) so the S↔F demographic handoff neither creates nor
+destroys carbon.
+
+For a growing individual the annual balance is `Δvegc_full_ind = bm_net − (leaf_shed + root_shed)`, with
+`bm_net = bm_inc_ind·(1 − reprod_cost)` (for `bm_inc_ind ≥ 0`) and reproduction
+`reprod = bm_inc_ind·reprod_cost` a SEPARATE flux (→ establishment/litter). Sapwood→heartwood turnover and
+the height-cap transfer are INTERNAL (pool↔pool, not litter). Turnover: tree summergreen leaf shed =
+`leaf_c/deciduous_leaf_div` (else `leaf_c·turnover_leaf`), grass leaf shed = `leaf_c·turnover_leaf`, root
+shed = `root_c·turnover_root`. A stagnating tree (`bm_net ≤ 0` or `height ≤ 0`) is frozen by
+[`grow_individual`](@ref)'s early return ⇒ all three terms are 0; grass has no stagnation guard (it always
+turns over).
+
+NOTE (edge branches): in the rare negative-leaf allocation branches (`allocation_tree.c:341` /
+`allocation_grass.c:97`) the pool re-derivation can move a little extra leaf carbon to litter beyond these
+three terms. The carbon LEDGER routes per-cohort litter as the EXACT growth residual
+`bm_applied − Δvegc_full` (branch-agnostic, conserves regardless); THIS formula is exact on the normal
+(dominant) growth path — the litter-closure gate asserts the two agree there.
+"""
+function _turnover_litter(alloc::AllocParams, tree::TreePools{T}, bm_inc_ind) where {T}
+    bm = convert(T, bm_inc_ind)
+    rc = convert(T, alloc.reprod_cost)
+    if tree.is_grass
+        reprod = bm >= zero(T) ? bm * rc : zero(T)
+        leaf_shed = convert(T, tree.leaf_c) * convert(T, alloc.turnover_leaf)
+        root_shed = convert(T, tree.root_c) * convert(T, alloc.turnover_root)
+        return (reprod, leaf_shed, root_shed)
+    end
+    # tree stagnation guard mirrors grow_individual (bm_net ≤ 0 or height ≤ 0 ⇒ frozen ⇒ no turnover)
+    bm_net = bm >= zero(T) ? bm * (one(T) - rc) : bm
+    (convert(T, tree.height) <= zero(T) || bm_net <= zero(T)) && return (zero(T), zero(T), zero(T))
+    reprod = bm * rc
+    leaf_shed = alloc.is_deciduous ?
+        convert(T, tree.leaf_c) / convert(T, alloc.deciduous_leaf_div) :
+        convert(T, tree.leaf_c) * convert(T, alloc.turnover_leaf)
+    root_shed = convert(T, tree.root_c) * convert(T, alloc.turnover_root)
+    return (reprod, leaf_shed, root_shed)
 end
 
 # ── per-patch layered Beer–Lambert light (getfpar.c) → per-individual leaf-on fpar ────────────────
