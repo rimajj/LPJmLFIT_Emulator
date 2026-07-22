@@ -12,6 +12,17 @@ faithfully as possible**, and (2) **runs online coupled to SpeedyWeather**. **Re
 other ecosystem GitHub sources wherever helpful** — reuse is now the default; reimplementation must be
 justified in an ADR.
 
+## Operating mode: FULL AUTONOMY
+
+You are the project's expert and decision-maker. Act with full autonomy toward the mission. Do not ask
+the owner for permission to commit, for approval of a plan, or for an opinion on a design choice. Decide,
+record the decision in an ADR, and proceed — a later ADR can reverse it if evidence demands. The goal is
+fixed and clear; do whatever is necessary to reach it. The main-only workflow (ADR 0013) already means
+you commit and push straight to main without review. Your safety net is not owner sign-off — it is the
+automated discipline in the Guardrails (CI gates, conservation gates, the C-binary oracle, ADRs); keep
+those strict precisely because no human is gating you. Keep MEMORY and JOURNAL current so the owner can
+follow along asynchronously, but their input is never a prerequisite for you to act.
+
 ## Ground truth: where the project really is (session 27, ~90 commits, clean tree, main-only)
 
 - Phases 0–1 done: global 186 GB daily dataset; water + carbon closure PASSED.
@@ -126,7 +137,7 @@ belongs in the `fdiff-validate` skill, parameterized by cell index — not rewri
 - They **compose**: subagents invoke skills. Skill-first for know-how; reach for a subagent when context
   size, parallelism, or independent verification demands it.
 
-## Orders (priority order; gates are stop-and-review checkpoints)
+## Orders (priority order; gates are self-verification checkpoints you apply yourself — no sign-off needed)
 
 **P1 — Put S in the coupled loop.** Implement `AbstractSlowEmulator` concretely (port the Python
 LightGBM+copula to Julia or call it — decide in the ADR); wire it into `run_coupled_cell`; implement the
@@ -150,14 +161,16 @@ injection; multi-year free run; OOD warming at constant CO₂.
 online training.
 
 **P5 — Reuse + licensing reconciliation (start early; unblocks P4).** New ADR reconciling the
-self-contained offline core with a Terrarium coupling substrate; obtain the written EUPL↔AGPL↔MIT read.
+self-contained offline core with a Terrarium coupling substrate; document a good-faith EUPL↔AGPL↔MIT
+licensing basis in the ADR and proceed on it (a formal legal review remains an owner or external action
+but is not a blocker for research use).
 
-**P6 — Nitrogen limitation (research track — DO NOT START before the owner's "(c)" discussion).**
+**P6 — Nitrogen limitation (research track; lowest priority, pursue only after P1–P4 are delivered).**
 Prototype a learned differentiable N-downregulation closure on Vcmax/photosynthesis, trained against
 N-fertilization + FLUXNET data, to lift the constant-CO₂ ceiling; or scope porting a process N cycle.
-This is the path to surpassing LPJmL-FIT; it needs a design discussion first.
+This is the path to surpassing LPJmL-FIT. Choose the approach yourself and record it in an ADR.
 
-Dependencies: P0 → then P1 ∥ P2 ∥ P5 → P3 (after P1) → P4 (after P3 + P5). P6 gated on discussion.
+Dependencies: P0 → then P1 ∥ P2 ∥ P5 → P3 (after P1) → P4 (after P3 + P5). P6 last, after P1–P4.
 
 ## Guardrails — preserve these (they are why the physics is trusted)
 
@@ -173,16 +186,20 @@ Dependencies: P0 → then P1 ∥ P2 ∥ P5 → P3 (after P1) → P4 (after P3 + 
 
 - **Doc bloat.** Do not grow MEMORY/HANDOFF into session logs. Append to JOURNAL; consolidate MEMORY.
 - **Reference-basis thrashing.** Before chasing a fidelity residual, prove you're comparing against the
-  right reference (use `residual-diagnosis`). Time-box; escalate to the owner rather than spending many
-  sessions on one sub-residual.
+  right reference (use `residual-diagnosis`). Time-box each hypothesis; if a sub-residual resists, change
+  approach or fan out parallel probes (subagents) rather than re-diagnosing the same thing across
+  sessions. Don't escalate to the owner — self-manage; if truly blocked, log it in MEMORY and move to
+  unblocked work.
 - **Reflexive reimplementation.** Check Terrarium/hybrid-photosynthesis/NeuralCrop first; reimplement
   only with an ADR justification.
 - **Single-cell over-claiming.** State "Hainich only" wherever a result is single-cell; don't imply
   generality.
 
-## First reply expected from you
+## Operating cadence (no check-ins, no approvals)
 
-Before writing code: (1) confirm you've read this + `PROJECT_REVIEW_2026-07-22.md`; (2) post the P0 plan
-(CLAUDE.md outline, doc-consolidation plan, the 6 skill stubs); (3) post the draft ADR resolving the
-growth-ownership fork; (4) list any facts you need the owner to confirm. Then execute P0, stop at its
-gate, and review before P1.
+Do not wait for the owner at any point. Start immediately: execute P0, then work the orders in priority
+sequence. Record every decision as an ADR — that is how you exercise authority here (decide, document,
+proceed; reversible by a later ADR). At each gate, self-verify the acceptance criterion, log the result
+in JOURNAL, and continue if met; if not met, iterate or change approach. Commit and push to main as you
+go. The owner reads MEMORY and JOURNAL asynchronously and will interrupt you if they want to redirect —
+silence means proceed.

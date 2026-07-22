@@ -209,12 +209,12 @@ multi-year free run; OOD warming at constant CO₂. *Gate:* stable coupled multi
 AC-gap/oscillation — conserving; gradients flow for online training.
 
 **P5 — Reuse + licensing reconciliation (enables P4, start early).** New ADR reconciling self-contained
-offline core vs Terrarium coupling substrate; get the EUPL↔AGPL↔MIT written read; reverse the default to
-reuse-first.
+offline core vs Terrarium coupling substrate; document a good-faith EUPL↔AGPL↔MIT basis and proceed;
+reverse the default to reuse-first.
 
-**P6 — Nitrogen limitation (research track; discuss before committing).** Prototype a learned
+**P6 — Nitrogen limitation (research track; lowest priority, after P1–P4).** Prototype a learned
 differentiable N-downregulation closure on Vcmax/photosynthesis trained vs N-fertilization + FLUXNET, to
 lift the constant-CO₂ ceiling — the path to "better than LPJmL-FIT." Alternative: scope porting a process
-N cycle. **Do not start before the "(c)" discussion.**
+N cycle. The agent chooses the approach and records it in an ADR.
 
-Dependencies: P0 first; P1 ∥ P2 ∥ P5; P3 after P1; P4 after P3 + P5. P6 gated on discussion.
+Dependencies: P0 first; P1 ∥ P2 ∥ P5; P3 after P1; P4 after P3 + P5. P6 last.

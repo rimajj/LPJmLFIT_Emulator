@@ -313,3 +313,62 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
     fc.grass_lf = one(T)
     return ftos
 end
+
+"""
+    grow_annual_accounted!(fc::FDiffFastCore) -> NamedTuple
+
+Year-end CARBON growth of F's representative individuals at FIXED `nind`, WITH full per-cell carbon
+accounting — the S-in-the-loop counterpart of [`annual_step!`](@ref) (ADR 0018/0019). Grows each cohort
+EXACTLY as `annual_step!` does (trees via `FDiff.grow_individual`, grass via `FDiff.grow_grass_individual`,
+at the accumulated per-m² `bm_inc` ÷ `nind` and the mean water scalar), but instead of mutating `fc` and
+re-seeding grass by establishment, it returns the grown pools + the EXACT carbon fluxes so the caller can
+apply the slow emulator S's demography (establishment/mortality/merge) and route every flux through a
+[`CarbonLedger`](@ref). Litter is the branch-agnostic growth residual `bm_applied − Δvegc_full` (captures
+the abnormal-branch extra leaf shed exactly; see [`FDiff._turnover_litter`](@ref)); stagnating trees
+(`bm_net ≤ 0` or `height ≤ 0`, frozen by `grow_individual`) contribute `applied = litter = 0` and their
+delivered NPP to `unapplied_bm_cell` (a bounded diagnostic of the fixed-N approximation).
+
+**Does not touch the `slow=nothing` path** — `annual_step!` is unchanged and byte-identical. Pure w.r.t.
+`fc` (reads the within-year accumulators; the caller commits the new population + resets). Returns
+`(; newpools, wscal_mean, bm_inc_cell, applied_bm_cell, unapplied_bm_cell, litter_cell, growth_eff,
+water_stress)`.
+"""
+function grow_annual_accounted!(fc::FDiffFastCore{T}) where {T}
+    wscal_mean = fc.nday > 0 ? fc.wscal_acc / fc.nday : one(T)
+    bm_inc_cell = sum(fc.bm_inc_acc)
+    n = length(fc.pools)
+    newpools = Vector{FDiff.TreePools{T}}(undef, n)
+    reprod = convert(T, fc.alloc.reprod_cost)
+    applied_cell = zero(T)
+    unapplied_cell = zero(T)
+    litter_cell = zero(T)
+    @inbounds for i in 1:n
+        tr = fc.pools[i]
+        bm_acc = fc.bm_inc_acc[i]
+        bm_ind = bm_acc / (convert(T, tr.nind) + T(1.0e-12))
+        grown = tr.is_grass ?
+            FDiff.grow_grass_individual(fc.galloc, tr, bm_ind, wscal_mean) :
+            FDiff.grow_individual(fc.alloc, fc.allom, tr, bm_ind, wscal_mean)
+        newpools[i] = grown
+        # stagnation guard (mirrors grow_individual): a deficit / zero-height TREE is frozen ⇒ nothing applied.
+        bm_net = bm_ind >= zero(T) ? bm_ind * (one(T) - reprod) : bm_ind
+        stagnated = !tr.is_grass && (convert(T, tr.height) <= zero(T) || bm_net <= zero(T))
+        if stagnated
+            unapplied_cell += bm_acc
+        else
+            dveg_cell = (FDiff.vegc_full_ind(grown) - FDiff.vegc_full_ind(tr)) * convert(T, tr.nind)
+            applied_cell += bm_acc
+            litter_cell += bm_acc - dveg_cell         # exact residual: reprod + leaf/root turnover (+ abnormal extra)
+        end
+    end
+    # growth efficiency (a mortality driver S conditions on), on the GROWN pools
+    leaf_area = sum(
+        FDiff.agb_ind(newpools[i]) > 0 ? newpools[i].leaf_c * newpools[i].sla * newpools[i].nind : zero(T)
+            for i in 1:n
+    )
+    growth_eff = leaf_area > 0 ? applied_cell / leaf_area : zero(T)
+    return (;
+        newpools, wscal_mean, bm_inc_cell, applied_bm_cell = applied_cell,
+        unapplied_bm_cell = unapplied_cell, litter_cell, growth_eff, water_stress = one(T) - wscal_mean,
+    )
+end

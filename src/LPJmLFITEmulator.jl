@@ -216,7 +216,7 @@ export softmax_partition, flux_then_integrate,
 export CarbonLedger, reset_year!, record_litter!, record_estab!, record_growth!, handoff_carbon_residual
 # Components
 export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
-export FDiffFastCore, step!, annual_step!
+export FDiffFastCore, step!, annual_step!, grow_annual_accounted!
 # Component E — self-contained surface-energy-balance + skin-temperature closure (ADR 0017)
 export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
 # Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)
