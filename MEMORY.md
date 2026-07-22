@@ -140,8 +140,9 @@ ADRs are immutable once accepted; supersede, don't edit. Full index: `docs/decis
 | 0016 | Learned closures in F_diff: NN λ/Vcmax hooks, TBPTT training, shipped as an extension | accepted |
 | 0017 | Component E **self-contained** (reimplement SEB physics; no Terrarium runtime dep) | accepted |
 | 0018 | **Growth-ownership split**: F_diff owns representative-individual carbon growth; S owns the distribution + demography | accepted (agent decision, delegated; reversible by a later ADR) |
-| 0019 | **Component S: port inference (not call Python); wrap the machinery (not port DirectEmulator wholesale)** — P1 architecture | accepted |
+| 0019 | **Component S: port inference (not call Python); wrap the machinery** — P1 architecture (**mechanism superseded by 0021**) | accepted |
 | 0020 | **Component S is FLUX-DRIVEN (flux-then-integrate), not climate-equilibrium** — condition on F's delivered fluxes (annual *statistics*, not means) + AR state + slow bioclimatic boundary; **drop this-year raw climate**; climate-only DirectEmulator kept as the **OOD benchmark** (the falsifiable success test). Refines 0002/0003/0018; overrides 0019's "climate-only weights in P1" clause | accepted (agent decision, delegated; reversible by a later ADR) |
+| 0021 | **Component S is trained + run in NATIVE JULIA** (EvoTrees.jl/DRF + Lux + Julia copula), dependency-light, **no Python at runtime**; Python only builds the training table + runs the DirectEmulator OOD benchmark; **build S once** (supersedes 0019's "port Python inference" mechanism; learned S ships via a package extension per 0014) | accepted (owner refinement) |
 
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
@@ -169,8 +170,11 @@ unresolved and ADR 0017's premise rests on it.
   `scripts/bench_slow_speedup.jl`). Tier-0 demography is deterministic/physical-rate + TREE-only (grass stays
   F-side, open-risk #8), fixed roster (no append/merge yet), empty runtime `[deps]`. Independently verified
   (3 adversarial subagents: conservation CLEAN, correctness CLEAN, test-adequacy gaps closed). **NEXT = Tier-1
-  (Steps 4/5/8): the ADR-0020 flux-conditioned inference in `src/slow_infer.jl` + membership append/merge +
-  the warm+dry OOD benchmark — prereq is materialising the flux-conditioning data (a C-binary/SLURM job).**
+  (Steps 4/5/8, ADR 0020+0021): the flux-driven S trained + run in NATIVE JULIA (EvoTrees.jl/DRF + Lux + Julia
+  copula; no Python at runtime; ships via a package extension per ADR 0014 — NOT the obsoleted `slow_infer.jl`
+  Python-port) + membership append/merge + the warm+dry OOD benchmark vs the climate-only DirectEmulator.
+  Python only builds the training table + runs the benchmark. Prereq: materialise the flux-conditioning data
+  (`docs/slow_flux_conditioning_data_spec.md`; a C-binary/SLURM job).**
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw

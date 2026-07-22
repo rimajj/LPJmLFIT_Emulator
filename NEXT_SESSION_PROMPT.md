@@ -16,8 +16,9 @@ session** — you own the whole thing now.
 ## Onboard fast (target < 15k tokens)
 
 `CLAUDE.md` (runbook) → `00_START_HERE.md` → `MEMORY.md` (durable state) → then the P1 specifics:
-ADR **0018** (growth-ownership), **0019** (port-not-call), **0020** (S is flux-driven — the governing
-conditioning contract), `docs/p1_s_in_loop_design.md`, `docs/slow_flux_conditioning_data_spec.md`.
+ADR **0018** (growth-ownership), **0020** (S is flux-driven — the governing conditioning contract),
+**0021** (S is native Julia; supersedes 0019's port mechanism), `docs/p1_s_in_loop_design.md`,
+`docs/slow_flux_conditioning_data_spec.md`.
 
 ## Where things stand (main @ `0d380f03`, clean, CI green)
 
@@ -37,6 +38,12 @@ conditioning contract), `docs/p1_s_in_loop_design.md`, `docs/slow_flux_condition
   CO₂, soil, stand age). **Drop this-year raw climate** as a primary driver. `bm_inc` is both a feature and
   the conservation budget. It **overrides ADR 0019's "climate-only weights in P1" clause** — the
   flux-conditioned retrain is now in P1 scope.
+- **★ ADR 0021 accepted (governing, owner refinement):** S is **trained AND run in NATIVE JULIA**
+  (EvoTrees.jl/DRF + Lux + hand-rolled Julia copula), dependency-light, **no Python at runtime**, shipped via
+  a package extension (empty core `[deps]`, ADR 0014). Python is confined to (a) building the training table
+  and (b) running the climate-only DirectEmulator as the OOD benchmark. **Build S once** — no
+  `src/slow_infer.jl` Python-inference port (supersedes ADR 0019's mechanism). A quick Python feature
+  prototype is throwaway; port the design to Julia before the P1 gate.
 - **★ Durable SLURM job infra (USE IT):** anything that takes more than a few seconds goes to SLURM so it
   survives session teardown — `scripts/run_tests_slurm.sh [tag]` (CI-faithful suite on a compute node) and
   `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (any Julia job). Both warm the shared depot on the
@@ -77,11 +84,14 @@ the equilibrium-ML baseline.
    patch+rebuild). **Start on the Hainich prototype cell (global-grid 42490) via SLURM**, then scale to the
    6000-cell biome set. Definitions are `[VERIFIED]` vs `mortality_tree_ind.c`/`waterstress_tree.c`/
    `tempstress_tree.c`.
-2. **Port flux-conditioned inference → `src/slow_infer.jl`** (pure-Base Julia; Steps 4/5 of the P1 design
-   doc): GBDT text-walk, `ResidualRegressor.sample_u`, 5×5 copula Cholesky + Acklam `Φ⁻¹`/rational `Φ`,
-   Poisson/NB (Gamma-Poisson) on `Random.Xoshiro`, artifact loader. *Gate:* parity vs committed Python
-   predictions ~1e-6 + a deps-guard (no Statistics/LinearAlgebra/Distributions in runtime `[deps]`). Training
-   stays Python; export a slim PFT-3 artifact + parity CSV to `test/testitems/references/`.
+2. **Train S NATIVELY in Julia (ADR 0021 — do NOT build `src/slow_infer.jl` / do NOT port a Python model).**
+   Distributional/count model = **EvoTrees.jl** (or a Julia DRF); NN parts (if any) = **Lux**; Gaussian
+   copula Cholesky + inverse-CDF + Poisson/NB sampler = **hand-rolled Julia on `Random.Xoshiro`**. Train
+   directly off the aligned table from step 1. Ship the learned S via a **package extension** (weakdeps
+   EvoTrees/Lux) so the core keeps empty runtime `[deps]` (ADR 0014), and it runs with **no Python at
+   runtime**. Python is confined to step 1's table build + the DirectEmulator OOD benchmark (a quick Python
+   feature prototype is throwaway — port the design to Julia before the P1 gate; do not build S twice).
+   *Gate:* the native model's Gate-3 accuracy + seeded reproducibility + core `[deps]` stays empty.
 3. **Wire the ML channel into `DemographicSlowEmulator` (Tier-1):** extend `FToS` + the within-year
    accumulators to carry the annual **statistics** ADR 0020 specifies (not just means); condition on fluxes +
    AR state + slow bioclimatic boundary. Add K-cap membership **append/merge** (Tier-0 is a fixed roster) —
@@ -126,6 +136,7 @@ to lift the constant-CO₂ ceiling.
 
 Pick up **P1 Tier-1 step 1**: implement the flux-conditioning data extraction for Hainich cell 42490 per
 `docs/slow_flux_conditioning_data_spec.md` (start at the cheapest tier that yields the per-individual
-`bm_inc`/`nind` + stress accumulators), submitted via `scripts/sbatch_julia.sh` / the C-binary SLURM helper —
-then build `src/slow_infer.jl` against it. Log progress in JOURNAL; open an ADR only if you change a
-governing decision.
+`bm_inc`/`nind` + stress accumulators), submitted via the C-binary SLURM helper / `scripts/sbatch_julia.sh` —
+then **train the flux-driven S natively in Julia** (EvoTrees.jl/DRF + Julia copula, in a package extension;
+ADR 0021) directly off that table. Python only builds the table + runs the DirectEmulator OOD benchmark. Log
+progress in JOURNAL; open an ADR only if you change a governing decision.

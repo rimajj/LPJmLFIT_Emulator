@@ -16,13 +16,16 @@ recursive, demography-only, non-differentiable, outside the AD loop. The whole p
 
 ## 2. Why not the obvious things (ADR 0019)
 
-- **Port, don't call Python.** Empty runtime `[deps]` (ADR 0014) + offline compute nodes rule out
-  PythonCall/CondaPkg and `LightGBM.jl`/`Distributions`. Port *inference* to pure-Base Julia; training stays
-  Python. Stdlib (`Random`) is offline-safe.
+- **[SUPERSEDED by ADR 0021] Port, don't call Python.** *Original 0019 reasoning: port Python-LightGBM
+  inference to pure-Base Julia; training stays Python.* **ADR 0021 replaces this:** S is **trained AND run in
+  native Julia** (EvoTrees.jl/DRF + Lux + hand-rolled Julia copula on `Random`), so there is **no port and no
+  Python at runtime** — the model that is validated is the model that runs. Python is confined to building
+  the training table + running the DirectEmulator OOD benchmark. The learned S ships via a package extension
+  (weakdeps), keeping the core's runtime `[deps]` empty (ADR 0014). **Do not build `src/slow_infer.jl`.**
 - **Wrap the machinery, don't port the `DirectEmulator` wholesale.** It is climate-only, non-recursive, and
-  emits the carbon fan-outs F now owns — porting it as-is is the ADR-0018-rejected "regenerate each year"
-  and re-introduces the double-count. Reuse only ResidualRegressor + Gaussian copula + Poisson/NB count +
-  GBDT tree-walk, driven by a new recursive demography-only adapter.
+  emits the carbon fan-outs F now owns — using it as-is is the ADR-0018-rejected "regenerate each year" and
+  re-introduces the double-count. The native-Julia S reuses only the *design pattern* (a distributional/count
+  model + Gaussian copula + Poisson/NB), driven by a recursive, flux-conditioned, demography-only adapter.
 
 ## 3. Architecture
 
@@ -133,12 +136,19 @@ BEFORE chasing any miss.
    pools + litterfall; keep `annual_step!` as the byte-identical `slow=nothing` path. Test: existing
    coupled/biome tests re-run UNCHANGED (byte-identical guard) + fixed-N litter closure with grass present.
    **[DONE — `grow_accounted_tests.jl`]**
-4. **`src/slow_infer.jl`** (pure-Base): GBDT text-walk, `ResidualRegressor.sample_u`, 5×5 Cholesky +
-   Acklam `Φ⁻¹` + rational `Φ`, Poisson/NB (Gamma-Poisson) on `Random.Xoshiro`, artifact loader. Test
-   `slow_infer_tests.jl`: parity vs committed Python predictions ~1e-6 + a deps-guard (no
-   Statistics/LinearAlgebra/Distributions/SpecialFunctions in runtime `[deps]`).
-5. **`scripts/export_slow_hainich.py`** — export the slim PFT-3 artifact (Tier-0 scalar bundle + Tier-1
-   boosters/pools/copula/ECO row) to committed `references/slow_hainich_pft3.bin` + `slow_infer_parity.csv`.
+4. **[SUPERSEDED by ADR 0021 — do NOT build `src/slow_infer.jl`.]** The original plan (port a Python
+   LightGBM model's inference to a pure-Base Julia GBDT text-walk with a ~1e-6 parity fixture) is dropped:
+   S is now **trained AND run in native Julia** (no Python at runtime, no double build). The Julia
+   distributional/count model is **EvoTrees.jl** (or a Julia DRF); NN parts (if any) **Lux**; the
+   Gaussian-copula Cholesky + inverse-CDF + Poisson/NB sampler stay **hand-rolled Julia on `Random.Xoshiro`**.
+   It ships via a **package extension** (weakdeps EvoTrees/Lux) so the core keeps empty runtime `[deps]`
+   (ADR 0014). Test: the native model's Gate-3 accuracy (below), a deps-guard (core `[deps]` stays empty),
+   and reproducibility under a seeded `Xoshiro`.
+5. **`scripts/build_slow_training_table.py` (rescoped from `export_slow_hainich.py`, ADR 0021):** Python's
+   ONLY S roles — (a) build + align the training table (the F-flux + mortality-driver features, ADR 0020,
+   against the `ind` trait/size distribution) and (b) run the climate-only `DirectEmulator` to produce the
+   OOD-benchmark predictions. Commit the aligned table + benchmark predictions to `references/`. No model
+   artifact to port; the Julia S trains directly off the table.
 6. **`DemographicSlowEmulator` + `reconcile_demography!`** (`src/components/slow.jl`),
    Tier-0 first (constant/physical-rate demography; no ML, empty runtime `[deps]`); replace the erroring stub.
    Test: Gate-2 handoff residual `≤1e-6` on forced N-up / N-down / seeded-`sapwood_bg` + stagnating-cohort
@@ -152,11 +162,13 @@ BEFORE chasing any miss.
    constant, so the N change is causally S. Needed a fix: `SoilColumn` gained a `soildepth` field for the D95
    rooting-depth in `stand_structure_tof`. Daily climate-accumulation hook deferred to Tier-1 (ADR-0020 ML
    channel).]
-8. **Tier-1 wire-up (ADR 0020 — now in P1 scope):** the flux-conditioned models — ported GBDT count + copula
-   recruit-trait sampler in `src/slow_infer.jl` (Steps 4/5), conditioned on F's delivered-flux *annual
-   statistics* + AR state + slow bioclimatic boundary per `docs/slow_flux_conditioning_data_spec.md`; extend
-   `FToS`/the accumulators to carry the stress-day/extreme statistics (not just means). Test: Gate-3 panel +
-   oracle testitems + the warm+dry OOD benchmark vs the climate-only `DirectEmulator` (the ADR-0020 falsifiable
+8. **Tier-1 wire-up (ADR 0020 + 0021 — now in P1 scope):** the flux-driven S, **trained natively in Julia**
+   (EvoTrees.jl/DRF count + a Julia copula recruit-trait sampler; Lux for any NN part), conditioned on F's
+   delivered-flux *annual statistics* + AR state + slow bioclimatic boundary per
+   `docs/slow_flux_conditioning_data_spec.md`; extend `FToS`/the accumulators to carry the stress-day/extreme
+   statistics (not just means). Plugs into the existing `AbstractSlowEmulator`/`reconcile_demography!`
+   interface (a `FluxDrivenSlowEmulator` in the extension). Test: Gate-3 panel + oracle testitems + the
+   warm+dry OOD benchmark: the **native-Julia** S must beat the climate-only `DirectEmulator` (the ADR-0020 falsifiable
    success test). **Prereq: materialise the extended Phase-1 flux-conditioning data (a C-binary/SLURM job).**
 9. **`scripts/bench_slow_speedup.jl` + Gate-4 testitem**: overhead + K≪N structural invariant; the script
    records the wall-time ratios off the login node. **[DONE — structural invariant (fixed K-cohort roster) is
