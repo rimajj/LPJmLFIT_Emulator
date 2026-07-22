@@ -221,14 +221,15 @@ total_n(s::DemographicSlowEmulator) = isempty(s.total_n_history) ? nothing : las
 """
     FluxDrivenSlowEmulator{T} <: AbstractSlowEmulator
 
-Tier-1 concrete slow emulator whose demography target is a trained flux-conditioned [`DRF`](@ref) forest
-rather than a constant rate. Holds the `forest`, the baked per-cell slow-boundary feature tail
-(`boundary`), the recursive count-space AR state `n_prev`, per-year mortality/establishment caps
-(`max_mort`/`max_estab`, bounding the demographic change so a mis-scaled prediction cannot blow up the
-stand), the fixed recruit sapling pools (`sapl`, the shortest-tree cohort `recruit_idx`), the
-carbon `ledger`, per-cohort `age`, and a seeded `Random`-free `DRF.Xoshiro256pp` `rng`. Carbon conserves
-at the handoff exactly as Tier-0 (`last_resid` ≤ 1e-6·C_scale). Build with
-[`FluxDrivenSlowEmulator(fc, forest; boundary, ...)`](@ref); wire via `run_coupled_cell(...; slow=)`.
+Tier-1 concrete slow emulator whose demography target is a trained flux-conditioned `DRF` forest (the
+zero-dependency native-Julia distributional random forest in `src/drf.jl`) rather than a constant rate.
+Holds the `forest`, the baked per-cell slow-boundary feature tail (`boundary`), the recursive count-space
+AR state `n_prev`, per-year mortality/establishment caps (`max_mort`/`max_estab`, bounding the demographic
+change so a mis-scaled prediction cannot blow up the stand), the fixed recruit sapling pools (`sapl`, the
+shortest-tree cohort `recruit_idx`), the carbon `ledger`, per-cohort `age`, and a seeded `Random`-free
+`DRF.Xoshiro256pp` `rng`. Carbon conserves at the handoff exactly as Tier-0 (`last_resid` ≤ 1e-6·C_scale).
+Build with [`FluxDrivenSlowEmulator`](@ref)`(fc, forest; boundary, ...)`; wire via
+`run_coupled_cell(...; slow=)`.
 """
 mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulator
     forest::DRF.Forest

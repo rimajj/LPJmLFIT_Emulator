@@ -48,6 +48,7 @@ makedocs(;
     # documented in source (REPL `?`) and summarized in docs/phase3_fdiff_spike.md.
     checkdocs_ignored_modules = [
         LPJmLFITEmulator.SmoothOps, LPJmLFITEmulator.Allometry, LPJmLFITEmulator.FDiff,
+        LPJmLFITEmulator.DRF,   # the zero-dep DRF (ADR 0022): its exported helpers are documented in source
     ],
     doctest = true,         # execute all jldoctest blocks; fail on output mismatch
     # every external link must resolve (ENGINEERING_STANDARDS §4/§9). Guarded so a local build on the
