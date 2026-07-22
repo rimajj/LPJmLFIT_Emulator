@@ -1,6 +1,7 @@
 # Design — tree below-ground sapwood (`sapwood_bg`) + carbon-debt (frontier scoping)
 
-**Status: SCOPED + QUANTIFICATION PROBE DONE → GO (a 2–3 session frontier).** This is the verified design for
+**Status: PROBE → GO; MECHANISM IMPLEMENTED (opt-in, default byte-identical); GROWTH + DEFAULT-FLIP DEFERRED.**
+This is the verified design for
 closing the small remaining tree CUE (NPP/GPP) bias documented in §13 of
 `phase3_fdiff_cbinary_validation.md`. Produced by an adversarial-workflow investigation (deep-read of the
 LPJmL-FIT C + F_diff, then an independent verify pass); the verify surfaced load-bearing corrections and
@@ -188,3 +189,34 @@ carbon pool the C carries (structural completeness for carbon accounting), and i
 eventual full closure with the `rd` gate. Its cost is real — 2–3 sessions of invasive AD-path struct churn
 (§5) + baseline regeneration + Enzyme re-verification. GO is on the physics + de-risking; whether to spend
 the 2–3 sessions now vs. after higher-value frontiers is a sequencing call for the PM/owner.
+
+### 8.1 IMPLEMENTATION landed (session 27) — opt-in, default byte-identical
+
+The struct plumbing + maintenance term + seed helper are implemented (§5 steps 1–3 + the §5.0 seed), as an
+**opt-in mechanism that is byte-identical by default** — the project's proven discipline (cf. the §26
+grass demand-gate). This lands the physics + de-risks the struct churn WITHOUT regenerating any baseline:
+
+- **Structs.** `TreePools` (10→11) + `Individual` (16→17) gain `sapwood_bg_c` / `c_sapwood_bg`. Each has a
+  **backward-compatible constructor** (the pre-`sapwood_bg` arity fills the pool with 0), so all ~33 existing
+  construction sites — the tests, the grass paths, `src/components/fast.jl`, AND the Enzyme SoA trainer
+  `rollout_canopy_years_gpp` (which builds its `TreePools` from the SoA arrays with the 10-arg form) — stay
+  **byte-identical**. Only `individual_from_pools` (carries the seed into `Individual`) and `grow_individual`
+  (carries the static pool through annual growth) use the new arity.
+- **Maintenance.** `autotrophic_respiration` gains a default-0 `c_sapwood_bg` kwarg adding
+  `phen·c_sapwood_bg/cn_sapwood` on the (proxied) soil-temp response (`npp_tree.c:51`). `daily_step_canopy`
+  passes `ind.c_sapwood_bg·nind` for trees (grass 0). `daily_step`/`daily_step_ml` keep the default 0.
+- **Seed.** `reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist, soildepth)` ports the C_LATERAL
+  demand (`allocation_tree.c:163-189`) verbatim.
+- **In-model verification** (`test/testitems/sapwood_bg_tests.jl`, committed Hainich 2010): seeding moves
+  tree CUE **0.512 → 0.497** (the growth-respiration-rebated decrement the model applies inside
+  `autotrophic_respiration` — closer to the probe's realistic 0.4973 than its conservative 0.4924), with
+  **GPP byte-identical** (maintenance ≠ GPP) and CUE inside `[0.42, 0.56]`; the reconstructed pool is
+  531.4 gC/m² (22.7 %). Grass seeds 0.
+
+**Deferred (the remaining §5 steps, next sessions).** (1) the prognostic pool GROWTH from the C_LATERAL
+demand + the carbon-debt loan in `grow_individual` (§5.4) — the pool is currently STATIC-seeded; (2) the
+Enzyme SoA `sapbgcs` array thread (§5.5), needed only once the pool grows on the trained path; (3) adding
+`sapwood_bg_c` to `vegc_ind` + reworking the `dynamic_structure` conservation assertion (tied to the growth
+step — a static seed is not drawn from `bm_inc`, so it is not carbon-conservative yet); (4) flipping the
+seed on by DEFAULT (regenerating the `multi_individual` CUE gate to ~0.497 + the coupled/decadal
+NPP-derived baselines, which drift per §4.3). Only after (4) does the emulator's default behaviour change.

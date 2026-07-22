@@ -540,13 +540,16 @@ term is **phen-gated** (`npp_tree.c:51`). `Rgrowth = r_growth·max(0, GPP − Rl
 for every carbon-negative individual/day, which aggregated over the multi-PFT canopy drives NPP strongly
 negative. `rd` is the leaf respiration already returned by [`photosynthesis`](@ref).
 """
-function autotrophic_respiration(p::RespParams, temp, gpp, rd, c_sapwood, c_root; phen = one(temp))
+function autotrophic_respiration(p::RespParams, temp, gpp, rd, c_sapwood, c_root; phen = one(temp), c_sapwood_bg = zero(temp))
     gate = sigmoid(10 * (temp + 40))                       # smooth of temp ≥ −40 °C
     gtemp = gate * exp(p.e0 * (1 / (p.temp_response + 10) - 1 / (temp + p.temp_response)))
-    # Aboveground sapwood maintenance runs year-round (gtemp_air, NO phen); the fine-root term is
-    # PHEN-GATED (`npp_tree.c:51` `(root·nc_root)·…·gtemp_soil·phen`) — a deciduous canopy stops
-    # respiring roots when leaves are off. `gtemp_soil` is proxied by `gtemp_air` (no soil-thermal model).
-    rmaint = p.respcoeff * p.k * gtemp * (c_sapwood / p.cn_sapwood + phen * c_root / p.cn_root)
+    # Aboveground sapwood maintenance runs year-round (gtemp_air, NO phen); the fine-root AND the
+    # below-ground root-sapwood (`c_sapwood_bg`) terms are PHEN-GATED on the (proxied) soil-temperature
+    # response (`npp_tree.c:51` `(root·nc_root + sapwood_bg·nc_sapwood)·…·gtemp_soil·phen`) — a deciduous
+    # canopy stops respiring its below-ground pools when leaves are off. `gtemp_soil` is proxied by
+    # `gtemp_air` (no soil-thermal model). `c_sapwood_bg` defaults to 0 ⇒ every caller without a seeded
+    # below-ground sapwood pool is byte-identical; the pool respires at the N-poor sapwood C:N (`cn_sapwood`).
+    rmaint = p.respcoeff * p.k * gtemp * (c_sapwood / p.cn_sapwood + phen * (c_root / p.cn_root + c_sapwood_bg / p.cn_sapwood))
     # Growth respiration only on POSITIVE net-of-maintenance carbon: `npp_tree.c:52`
     # `(assim<mresp) ? assim−mresp : (assim−mresp)·(1−r_growth)` ⇒ `rgrowth = r_growth·max(0, assim−mresp)`.
     # A SHARP softplus (βgrowth) — a soft β≈1 floor injects a spurious ~log(2) growth resp into every
@@ -1357,6 +1360,10 @@ struct Individual{T <: Real}
     emax::T
     c_sapwood::T
     c_root::T
+    c_sapwood_bg::T               # below-ground root-sapwood maintenance pool (gC/individual; formed per-m²
+    # via nind at the call site, `npp_tree.c:51`). 0 by default (the pre-
+    # sapwood_bg 16-arg constructor ⇒ byte-identical); seeded from the C_LATERAL
+    # demand — see [`TreePools`](@ref) / docs/sapwood_bg_design.md.
     lai::T                        # leaf-on crown LAI (leaf_c·sla/crownarea) → actual_lai = lai·phen
     intc::T                       # PFT interception coefficient (par->intc)
     albedo_stem::T                # PFT stem/branch albedo (leaf-off; par->albedo_stem)
@@ -1368,6 +1375,16 @@ struct Individual{T <: Real}
     is_grass::Bool
 end
 _wt(::Individual{T}) where {T} = T
+
+# Backward-compatible constructor (pre-`c_sapwood_bg`): fills the below-ground root-sapwood pool with 0, so
+# every existing 16-arg call site is byte-identical. Seed the pool with the explicit 17-arg constructor.
+Individual{T}(
+    fpar, fpc, alphaa, albedo_leaf, emax, c_sapwood, c_root, lai, intc, albedo_stem,
+    albedo_litter, snowcanopyfrac, nind, photo::PhotoParams, tstress::TempStressParams, is_grass::Bool,
+) where {T <: Real} = Individual{T}(
+    fpar, fpc, alphaa, albedo_leaf, emax, c_sapwood, c_root, zero(T), lai, intc, albedo_stem,
+    albedo_litter, snowcanopyfrac, nind, photo, tstress, is_grass,
+)
 
 # ── wet-canopy interception (interception.c) ─────────────────────────────────────────────────────
 # Relative canopy wetness `wet = min(intc·actual_lai·rain/(eeq·α_PT), 0.9999)` with `actual_lai = lai·phen`
@@ -1568,7 +1585,8 @@ function daily_step_canopy(
         # annual allocation (`allocation_tree.c:236` `bm_inc_ind = bm_inc/nind`) divides back out.
         nind_i = convert(T, ind.nind)
         c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood) * nind_i
-        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = phi)
+        c_sapbg = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood_bg) * nind_i   # bg root-sapwood (per-m²), trees only
+        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = phi, c_sapwood_bg = c_sapbg)
         npp_tot += npp_i
         npp_inds[ii] = npp_i
     end
@@ -1821,6 +1839,11 @@ struct TreePools{T <: Real}
     sapwood_c::T
     heartwood_c::T
     root_c::T
+    sapwood_bg_c::T               # below-ground root-sapwood pool (gC/individual; the C's `Treephys2.sapwood_bg`).
+    # Pays phen-gated maintenance (`npp_tree.c:51`) + grows from the C_LATERAL
+    # demand (`allocation_tree.c:163-209`). 0 by default (the pre-sapwood_bg
+    # 10-arg constructor ⇒ byte-identical); seed at init via
+    # [`reconstruct_sapwood_bg`](@ref) — see docs/sapwood_bg_design.md §4.1/§8.
     height::T
     crownarea::T
     nind::T
@@ -1830,10 +1853,50 @@ struct TreePools{T <: Real}
 end
 _wt(::TreePools{T}) where {T} = T
 
+# Backward-compatible constructor (pre-`sapwood_bg_c`): fills the below-ground sapwood pool with 0, so every
+# existing 10-arg call site is byte-identical. Seed the pool with the explicit 11-arg constructor.
+TreePools{T}(
+    leaf_c, sapwood_c, heartwood_c, root_c, height, crownarea, nind, sla, wooddens, is_grass::Bool,
+) where {T <: Real} =
+    TreePools{T}(leaf_c, sapwood_c, heartwood_c, root_c, zero(T), height, crownarea, nind, sla, wooddens, is_grass)
+
 "aboveground biomass of one individual (gC): leaf + sapwood + heartwood (`agb_tree_sum`, `tree.h:249`)."
 agb_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c
+# NB: `sapwood_bg_c` is NOT yet in `vegc_ind` — the seed is static (its growth from `bm_inc` is the deferred
+# design-§5.4 step), so adding it would break carbon conservation of a seeded multi-year run. Add it together
+# with the C_LATERAL growth/debt. (bg heartwood also neglected, v1.)
 "total vegetation carbon of one individual (gC): + fine root (bg sapwood/heartwood neglected, v1)."
 vegc_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c + t.root_c
+
+"""
+    reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist, soildepth) -> Real
+
+Reconstruct the below-ground root-sapwood pool `sapwood_bg` (gC/individual) as the C's C_LATERAL
+allocation demand `root_sapwood_layer` at this individual's sapwood cross-sectional area
+(`allocation_tree.c:163-189`): per soil layer `l`, a vertical requirement `(soildepth[l]/1000)·
+sap_xs_area·root_sum·wooddens` plus a lateral requirement scaled by `2π/C_LATERAL²` (C_LATERAL=0.9),
+where `sap_xs_area = sapwood_c/wooddens/height` and `root_sum` is the cumulative root fraction at-and-below
+layer `l`. The C only grows/seeds the pool once it is already `> 0` (`allocation_tree.c:206`); the
+emulator's demography is FIXED, so the pool must be seeded here at init to this equilibrium demand — see
+docs/sapwood_bg_design.md §4.1/§8. `rootdist` is the per-layer root fraction, `soildepth` the per-layer
+thickness (mm). Grass (no woody sapwood) seeds 0. Verified by `scripts/sapwood_bg_quantification_probe.jl`.
+"""
+function reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist::AbstractVector, soildepth::AbstractVector)
+    (height <= 0 || wooddens <= 0 || sapwood_c <= 0) && return zero(sapwood_c * height)
+    C_LATERAL = 0.9                                        # allocation_tree.c:113
+    lateral = 2 * π / (C_LATERAL * C_LATERAL)              # ≈ 7.757 (allocation_tree.c:180)
+    sap_xs_area = max(sapwood_c / wooddens / height, zero(sapwood_c))   # :163, :170-171
+    root_sum = sum(rootdist)                               # :165-167
+    rsl = zero(sap_xs_area * wooddens)
+    for l in eachindex(rootdist)
+        dz = soildepth[l] / 1000                           # mm → m
+        rsl += dz * sap_xs_area * root_sum * wooddens                    # vertical (:179)
+        rsl += dz * sap_xs_area * rootdist[l] * wooddens * lateral       # lateral  (:180)
+        root_sum -= rootdist[l]                            # :186
+        root_sum < 0 && (root_sum = zero(root_sum))        # :187-188
+    end
+    return rsl
+end
 
 # ── the allocation residual f(leaf_inc)=0 (allocation_tree.c:120-125) ─────────────────────────────
 # f(x) = k1·(b − x·lm_coef + ind_heart) − ((b − x·lm_coef)/(ind_leaf + x)·k3)^(1 + 2/allom3)
@@ -1970,7 +2033,9 @@ function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tre
         height_new = convert(T, allom.height_max)
     end
     crownarea_new = height_new > 0 ? min(allom.allom1 * (height_new / allom2)^(allom.kpr / allom3), convert(T, allom.crownarea_max)) : zero(T)
-    return TreePools{T}(lm, sm, hm, rm, height_new, crownarea_new, convert(T, tree.nind), sla, wd, tree.is_grass)
+    # carry the below-ground root-sapwood pool through growth unchanged (its prognostic C_LATERAL growth +
+    # carbon-debt is the deferred design-§5.4 step; static-seed carry is byte-identical when the pool is 0).
+    return TreePools{T}(lm, sm, hm, rm, tree.sapwood_bg_c, height_new, crownarea_new, convert(T, tree.nind), sla, wd, tree.is_grass)
 end
 
 """
@@ -2186,8 +2251,8 @@ function individual_from_pools(tmpl::Individual{T}, tree::TreePools{T}, allom::A
     laival = (tree.leaf_c > 0 && ca > 0) ? tree.leaf_c * tree.sla / ca : zero(T)
     fpc_i = ca > 0 ? ca * tree.nind * (one(T) - exp(-convert(T, allom.k_beer) * laival)) : zero(T)
     return Individual{T}(
-        fpar, fpc_i, tmpl.alphaa, tmpl.albedo_leaf, tmpl.emax, tree.sapwood_c, tree.root_c, laival,
-        tmpl.intc, tmpl.albedo_stem, tmpl.albedo_litter, tmpl.snowcanopyfrac, tree.nind,
+        fpar, fpc_i, tmpl.alphaa, tmpl.albedo_leaf, tmpl.emax, tree.sapwood_c, tree.root_c, tree.sapwood_bg_c,
+        laival, tmpl.intc, tmpl.albedo_stem, tmpl.albedo_litter, tmpl.snowcanopyfrac, tree.nind,
         tmpl.photo, tmpl.tstress, tree.is_grass,
     )
 end

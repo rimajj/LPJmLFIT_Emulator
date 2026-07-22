@@ -6,6 +6,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **IMPLEMENTED the below-ground root-sapwood pool `sapwood_bg` + its phen-gated maintenance (opt-in,
+  default byte-identical) — the §8-GO'd tree-CUE frontier (Phase-3 scale-up step 11 follow-up #11;
+  `docs/sapwood_bg_design.md` §8).** F_diff omitted the C's below-ground root-sapwood pool, so it never paid
+  that pool's phen-gated maintenance respiration and its tree CUE (NPP/GPP) sat ~0.51 vs the C's ~0.46.
+  - **`TreePools` (10→11 fields) + `Individual` (16→17 fields)** gain `sapwood_bg_c` / `c_sapwood_bg`, each
+    with a **backward-compatible constructor** (the old arity fills the pool with 0), so all ~33 existing
+    construction sites — including the Enzyme SoA trainer `rollout_canopy_years_gpp` and every committed
+    baseline — are **byte-identical**. `autotrophic_respiration` gains a default-0 `c_sapwood_bg` kwarg adding
+    the phen-gated soil-temp maintenance `phen·c_sapwood_bg/cn_sapwood` (`npp_tree.c:51`); `daily_step_canopy`
+    passes `ind.c_sapwood_bg·nind` (trees only). `individual_from_pools` + `grow_individual` carry the pool.
+  - **`reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist, soildepth)`** seeds the pool at init from
+    the C's C_LATERAL allocation demand (`allocation_tree.c:163-189`, verbatim), required because the
+    emulator's fixed demography can't bootstrap the C's `>0`-gated pool growth (design §4.1).
+  - **Verified in-model (new `test/testitems/sapwood_bg_tests.jl`):** on the committed Hainich 2010 cell,
+    seeding the pool moves tree CUE **0.512 → 0.497** (the growth-respiration-rebated decrement the model
+    applies), **GPP byte-identical** (maintenance changes NPP, not GPP), CUE stays inside the gate band
+    `[0.42, 0.56]`; the reconstructed pool is 531.4 gC/m² (22.7 % of above-ground sapwood) — matching the §8
+    probe. Grass seeds 0 (a tree pool). Full CI-faithful suite green.
+  - **Scope:** the pool is STATIC-seeded; its prognostic C_LATERAL growth + carbon-debt (design §5.4), the
+    Enzyme SoA `sapbgcs` thread, and flipping the seed on by default (with baseline regeneration) are the
+    deferred next steps. Runtime `[deps]` still EMPTY.
+
 ### Changed
 - **RAN the mandated `sapwood_bg` quantification probe → GO (Phase-3 scale-up step 11 follow-up #10;
   `docs/sapwood_bg_design.md` §8).** The design (`sapwood_bg_design.md` §7) required a scripts-only probe to
