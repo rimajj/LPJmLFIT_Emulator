@@ -324,7 +324,7 @@ at the accumulated per-m² `bm_inc` ÷ `nind` and the mean water scalar), but in
 re-seeding grass by establishment, it returns the grown pools + the EXACT carbon fluxes so the caller can
 apply the slow emulator S's demography (establishment/mortality/merge) and route every flux through a
 [`CarbonLedger`](@ref). Litter is the branch-agnostic growth residual `bm_applied − Δvegc_full` (captures
-the abnormal-branch extra leaf shed exactly; see [`FDiff._turnover_litter`](@ref)); stagnating trees
+the abnormal-branch extra leaf shed exactly; see `FDiff._turnover_litter`); stagnating trees
 (`bm_net ≤ 0` or `height ≤ 0`, frozen by `grow_individual`) contribute `applied = litter = 0` and their
 delivered NPP to `unapplied_bm_cell` (a bounded diagnostic of the fixed-N approximation).
 

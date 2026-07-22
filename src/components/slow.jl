@@ -195,7 +195,7 @@ function reconcile_demography!(
     )
 end
 
-"Rebuild a [`FDiff.TreePools`](@ref) with a new `nind` (all other fields unchanged)."
+"Rebuild a `FDiff.TreePools` with a new `nind` (all other fields unchanged)."
 _with_nind(p::FDiff.TreePools{T}, n) where {T} = FDiff.TreePools{T}(
     p.leaf_c, p.sapwood_c, p.heartwood_c, p.root_c, p.sapwood_bg_c,
     p.height, p.crownarea, convert(T, n), p.sla, p.wooddens, p.is_grass,
