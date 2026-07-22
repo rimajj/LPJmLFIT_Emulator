@@ -1853,6 +1853,35 @@ lever that demonstrates the channel, not the fix.
 change**; the runtime `[deps]` stays EMPTY. SLURM outputs are ephemeral (`logs/` is git-ignored); the numbers
 above are the committed record.
 
+**★ CORRECTION #2 + SCOPING (session 27; full design in `docs/water_supply_perpft_design.md`).** Turning the
+above "FIX DIRECTION" into an implementable design (a code-verified deep-read of `water_stressed.c` +
+`daily_natural.c` vs `daily_step_canopy`) surfaced two load-bearing refinements to this §26.4 framing:
+- **The mechanism SHARPENS to the `aet_cor` competitive cap ALONE — the per-PFT `wscal` half is degenerate
+  here.** `EMAX_ANGIO = EMAX_GRASS = 10.0` (`par/pft_lpjmlfit.js:116-118`) and grass shares beech's
+  `beta_root=0.8`, so the per-PFT `wr` and hence `pft->wscal = emax·wr/demand_leafon` are ≈identical between
+  grass and trees; `wscal` feeds only phenology + allocation `lmtorm`, not the within-day GPP solve. So the
+  entire 2018 grass GPP overshoot rides on the sequential competitive per-layer supply cap (`aet_cor`,
+  `water_stressed.c:153-177`) that recomputes each PFT's realized supply — NOT on "per-PFT `wscal` + the cap"
+  as written above. (Good news for scoping: one mechanism, not two.)
+- **★ PERMUTE makes an EXACT faithful port structurally impossible on F_diff's AD/deterministic path.** The
+  FIT build compiles with `-DPERMUTE` (`/home/jamirp/lpjml56fit/Makefile.inc:22`; all `config/Makefile.*`
+  platform templates carry it), so `daily_natural.c` re-draws the PFT depletion order **every day** via a
+  Fisher-Yates shuffle on the cell's RAND48 seed. There is no deterministic "trees deplete first" to port —
+  the C's grass suppression is the **order-AVERAGED stochastic outcome**. A deterministic F_diff order would
+  over-suppress grass (fires every day, not just the random days grass draws after trees), and replicating
+  PERMUTE faithfully is non-differentiable + non-deterministic (breaks the Enzyme/ForwardDiff path AND
+  `determinism_tests`). The `aet_cor` cap also sits directly on the trained-GPP reverse path
+  (`rollout_canopy_years_gpp`) as a loop-carried read-modify-write per-layer accumulator — the riskiest AD
+  pattern the canopy path would carry.
+- **RECOMMENDATION CHANGE → DEFER behind the learned lever.** Given no faithful port exists under PERMUTE, the
+  AD risk on the trained output, and a modest extreme-year-only residual on the subdominant PFT, the standing
+  recommendation is to close the 2018 grass amplitude residual with the `FluxHooks` learned per-individual
+  correction (its feature vector already sees the shared `wr` + per-individual `apar`, `fdiff.jl:56,68`) —
+  exactly as the §26/§26.1 grass LEVEL gap was deferred — and pursue the structural cap only if the learned
+  lever proves insufficient. `docs/water_supply_perpft_design.md` §7 specifies the two scripts-only
+  de-risking probes (a deterministic-vs-Monte-Carlo-PERMUTE `aet_cor` magnitude probe + an Enzyme-feasibility
+  spike) to run before any `src/` edit.
+
 ### 27. (session 26) — the `FDiffFastCore` deployment adapter reaches `rollout_canopy_years` GRASS parity (scale-up step 11 follow-up #8)
 
 §26.3 flipped the coupled self-driven path `rollout_canopy_years` to the validated-faithful grass config

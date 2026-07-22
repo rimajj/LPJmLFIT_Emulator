@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- **SCOPED the per-PFT competitive water-supply fix + CORRECTED the §26.4 diagnosis in two load-bearing ways
+  (Phase-3 scale-up step 11 follow-up #9; `docs/water_supply_perpft_design.md`, docs §26.4 CORRECTION #2).**
+  A code-verified deep-read of `water_stressed.c` + `daily_natural.c` vs `daily_step_canopy`, turning §26.4's
+  "FIX DIRECTION" into an implementable design. Diagnosis/design only — **no `src/`/`test/` change**, `[deps]`
+  still EMPTY.
+  - **The mechanism sharpens to the `aet_cor` competitive per-layer supply cap ALONE.** §26.4 bundled the fix
+    as "per-PFT `wscal` + the sequential competitive cap"; the source shows the `wscal` half is DEGENERATE in
+    this FIT config — `EMAX_ANGIO = EMAX_GRASS = 10.0` (`par/pft_lpjmlfit.js:116-118`) and grass shares beech's
+    `beta_root=0.8`, so per-PFT `wscal` is ≈identical between grass and trees and feeds only phenology +
+    allocation, not the within-day GPP solve. The entire 2018 grass overshoot rides on `aet_cor`.
+  - **`-DPERMUTE` makes an exact faithful port structurally impossible on the AD/deterministic path.** The FIT
+    build (`/home/jamirp/lpjml56fit/Makefile.inc:22`; all `config/Makefile.*` platform templates) re-draws the
+    PFT depletion order EVERY day via Fisher-Yates on the cell RAND48 seed, so there is no deterministic
+    "trees-first" to port — the C's grass suppression is an order-averaged stochastic outcome. A deterministic
+    approximation would over-suppress; a faithful replication is non-differentiable + non-deterministic (breaks
+    Enzyme/ForwardDiff + `determinism_tests`); and the `aet_cor` cap is a loop-carried read-modify-write
+    accumulator directly on the trained-GPP reverse path.
+  - **Recommendation: DEFER** behind the `FluxHooks` learned per-individual correction (already sees `wr` +
+    per-individual `apar`), exactly as the §26/§26.1 grass LEVEL gap was deferred; pursue the structural cap
+    only if the learned lever proves insufficient. Two scripts-only de-risking probes specified before any
+    `src/` edit (a deterministic-vs-Monte-Carlo-PERMUTE `aet_cor` magnitude probe + an Enzyme-feasibility spike).
 - **The `FDiffFastCore` deployment adapter reaches `rollout_canopy_years` GRASS parity (Phase-3 scale-up step
   11 follow-up #8; docs §27).** §26.3 flipped the self-driven rollout to the validated-faithful grass config
   but the `FDiffFastCore` SharedState adapter (`src/components/fast.jl`, the ESM coupling surface) still grew
