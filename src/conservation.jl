@@ -84,3 +84,80 @@ independently (DESIGN.md §2.4). `et` in kg/m²/s ⇒ `LE` in W/m².
 """
 latent_heat(et::Real; sublimation::Bool = false) =
     et * (sublimation ? LAMBDA_SUBLIMATION : LAMBDA_VAPORIZATION)
+
+# ── The flux-then-integrate carbon LEDGER for the S↔F demographic handoff (P1; ADR 0018/0019) ──────
+# When the slow emulator S changes the population (establishment / mortality / merge), every carbon
+# movement must be an ACCOUNTED flux so nothing is created or destroyed at the handoff. `SharedState`'s
+# scalar litter/veg fields are immutable in v1, so the handoff carries its OWN mutable carbon sink.
+# Type-agnostic (scalars only — this file is included BEFORE `fdiff.jl`): the caller computes per-cohort
+# vegetation carbon via `FDiff.vegc_full_ind` (which INCLUDES `sapwood_bg_c`; routing mortality on
+# `vegc_ind` would silently leak a seeded below-ground pool). See `docs/p1_s_in_loop_design.md` §4.
+
+"""
+    CarbonLedger{T}
+
+Mutable per-cell carbon ledger for the annual S↔F demographic handoff (ADR 0018). Holds the running
+litter sink `litter_total` plus the CURRENT-YEAR flux tallies [`handoff_carbon_residual`](@ref) closes on:
+`litter_year` (carbon moved vegetation→litter this year — turnover litterfall + whole-individual
+mortality), `estab_year` (establishment carbon influx = `flux_estabc`), `applied_bm_year` (NPP actually
+integrated into pools by F this year), and `unapplied_bm_year` (delivered-but-unapplied NPP of stagnating
+cohorts — a BOUNDED DIAGNOSTIC of the fixed-N F approximation, not a closed flux). [`reset_year!`](@ref)
+the tallies each year; `litter_total` accumulates (no litter decomposition in v1).
+"""
+mutable struct CarbonLedger{T <: AbstractFloat}
+    litter_total::T
+    litter_year::T
+    estab_year::T
+    applied_bm_year::T
+    unapplied_bm_year::T
+end
+CarbonLedger{T}() where {T <: AbstractFloat} = CarbonLedger{T}(zero(T), zero(T), zero(T), zero(T), zero(T))
+CarbonLedger() = CarbonLedger{Float64}()
+
+"Zero the current-year flux tallies of a [`CarbonLedger`](@ref) (the running `litter_total` is kept)."
+function reset_year!(l::CarbonLedger{T}) where {T}
+    l.litter_year = zero(T)
+    l.estab_year = zero(T)
+    l.applied_bm_year = zero(T)
+    l.unapplied_bm_year = zero(T)
+    return l
+end
+
+"Route `c` gC/m² of carbon vegetation→litter (turnover litterfall or whole-individual mortality)."
+function record_litter!(l::CarbonLedger{T}, c) where {T}
+    Δ = convert(T, c)
+    l.litter_total += Δ
+    l.litter_year += Δ
+    return l
+end
+
+"Record `c` gC/m² of establishment carbon influx (the `flux_estabc` debited for new saplings)."
+record_estab!(l::CarbonLedger{T}, c) where {T} = (l.estab_year += convert(T, c); l)
+
+"Record F's delivered NPP: `applied` gC/m² integrated into pools + `unapplied` gC/m² left on stagnating cohorts."
+function record_growth!(l::CarbonLedger{T}, applied, unapplied) where {T}
+    l.applied_bm_year += convert(T, applied)
+    l.unapplied_bm_year += convert(T, unapplied)
+    return l
+end
+
+"""
+    handoff_carbon_residual(l::CarbonLedger; c_veg_delta) -> Real
+
+The S↔F handoff carbon-closure residual (ADR 0018). With fire and heterotrophic respiration OUT of the
+demographic handoff (v1), the total ecosystem carbon change `Δ(C_veg + C_litter)` must equal the external
+influxes `applied_bm + flux_estabc` — mortality and turnover are internal vegetation→litter moves that
+cancel. So
+
+    residual = carbon_budget_residual(; npp = applied_bm_year, rh = 0, firec = 0,
+                                        flux_estabc = estab_year, dC = c_veg_delta + litter_year)
+
+where `c_veg_delta` is the caller-supplied change in total vegetation carbon `Σ vegc_full_ind·nind`
+(gC/m²) across the year. The conservation gate asserts `|residual| ≤ 1e-6·C_scale`.
+"""
+function handoff_carbon_residual(l::CarbonLedger{T}; c_veg_delta) where {T}
+    return carbon_budget_residual(;
+        npp = l.applied_bm_year, rh = zero(T), firec = zero(T),
+        flux_estabc = l.estab_year, dC = convert(T, c_veg_delta) + l.litter_year,
+    )
+end

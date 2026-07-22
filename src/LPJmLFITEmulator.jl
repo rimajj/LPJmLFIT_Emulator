@@ -212,6 +212,8 @@ export SToF, SToE, FToS, FToE, EToF, EToATM, AtmForcing
 export softmax_partition, flux_then_integrate,
     carbon_budget_residual, water_budget_residual, nbp_atm, latent_heat,
     LAMBDA_VAPORIZATION, LAMBDA_SUBLIMATION
+# S↔F demographic-handoff carbon ledger (P1; ADR 0018/0019)
+export CarbonLedger, reset_year!, record_litter!, record_estab!, record_growth!, handoff_carbon_residual
 # Components
 export AbstractSlowEmulator, AbstractFastCore, AbstractEnergyClosure
 export FDiffFastCore, step!, annual_step!
