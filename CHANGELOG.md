@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **P1 Tier-1 Step 2 — the flux-driven premise is VALIDATED + a zero-dep native-Julia DRF (ADR 0020/0021/0022).**
+  The falsifiable ADR-0020 success test now has a result on the warm+dry OOD holdout (space-for-time SSP370
+  proxy), and it **supports ADR 0020** three independent ways. New pieces:
+  - `src/drf.jl` (`module DRF`) — a **zero-dependency** distributional random forest in pure Base Julia
+    (hand-rolled Xoshiro256++ RNG; subbagged variance-reduction trees; leaves optionally store sample values
+    for quantile/distributional queries; per-tree-seeded ⇒ multithreaded fit is bit-reproducible). This is the
+    model the flux-driven S will use — trained AND run natively, no new `[deps]`/`[weakdeps]`
+    (**[ADR 0022](docs/decisions/0022-component-s-handrolled-drf.md)**; EvoTrees verified available as a fallback
+    but deliberately not adopted, to keep the trusted-physics CI free of dependency-churn risk).
+  - `scripts/build_slow_count_table.py` — the biome-scale count-model table (1,323,905 rows / 4000 lat-stratified
+    tree cells / 400 warm+dry holdout cells) carrying BOTH channels (flux drivers + patch state + AR + slow
+    boundary; and the DirectEmulator's raw climate + climatology + the SAME boundary) so the comparison is
+    apples-to-apples; `scripts/export_count_matrices.py` dumps a zero-dep raw-Float64 payload;
+    `scripts/flux_ood_experiment.jl` fits the DRF on each channel and scores in-distribution vs OOD;
+    `scripts/sbatch_python.sh` (the Python twin of `sbatch_julia.sh`).
+  - **[VERIFIED 2026-07-22] OOD verdict** (living-tree count / patch; DRF, seed 1): climate-only fails OOD
+    (**R²=−0.16**, ≈ the boundary floor — the documented equilibrium-ML failure, reproduced); the flux-driven S
+    as designed beats it **2.35×** (OOD MAE 0.68 vs 1.59, **R²=0.76 vs −0.16**); fluxes ISOLATED (no AR/state)
+    still beat climate **1.25×** OOD; and holding recursion fixed, flux+AR (R²=0.76) far exceeds climate+AR
+    (R²=0.43). Honest nuance: AR/persistence alone reaches OOD R²=0.55, but flux-conditioning adds decisive OOD
+    generalisation on top of both climate and recursion. `⇒ ADR 0020's flux-driven premise is validated.`
 - **P1 Tier-1 Step 1 — flux-conditioning training data (ADR 0020/0021).** `scripts/build_slow_flux_table.py`
   builds the per-(cell,year,patch,individual) FToS-mapped table for the flux-driven Component S from the
   tier-1 annual `ind` parquet (`/p/tmp/jamirp/emulator_global/ind_hist_seed{1,2}_all.parquet`) + the daily set

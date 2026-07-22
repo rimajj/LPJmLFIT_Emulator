@@ -143,6 +143,7 @@ ADRs are immutable once accepted; supersede, don't edit. Full index: `docs/decis
 | 0019 | **Component S: port inference (not call Python); wrap the machinery** — P1 architecture (**mechanism superseded by 0021**) | accepted |
 | 0020 | **Component S is FLUX-DRIVEN (flux-then-integrate), not climate-equilibrium** — condition on F's delivered fluxes (annual *statistics*, not means) + AR state + slow bioclimatic boundary; **drop this-year raw climate**; climate-only DirectEmulator kept as the **OOD benchmark** (the falsifiable success test). Refines 0002/0003/0018; overrides 0019's "climate-only weights in P1" clause | accepted (agent decision, delegated; reversible by a later ADR) |
 | 0021 | **Component S is trained + run in NATIVE JULIA** (EvoTrees.jl/DRF + Lux + Julia copula), dependency-light, **no Python at runtime**; Python only builds the training table + runs the DirectEmulator OOD benchmark; **build S once** (supersedes 0019's "port Python inference" mechanism; learned S ships via a package extension per 0014) | accepted (owner refinement) |
+| 0022 | **S's learned count/marginal model is a hand-rolled ZERO-DEP Julia DRF** (`src/drf.jl` + hand-rolled Xoshiro), not the EvoTrees package — keeps `[deps]`/`[weakdeps]` empty + CI free of dependency-churn risk (refines 0021's "EvoTrees.jl **/DRF**"; EvoTrees verified as a fallback) | accepted (agent decision, delegated) |
 
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
@@ -184,13 +185,23 @@ unresolved and ADR 0017's premise rests on it.
     Committed fixture `test/testitems/references/slow_flux_table_hainich.csv` + schema. Tier decision: tier-1 is
     the prototype path; a minimal tier-3 C patch (`nind`+`turnover_ind`; NOT the risky `bm_inc` snapshot) is
     staged **off the critical path** (tier-1 suffices per the spec).
-  - **[NEXT — Tier-1 Steps 2/3/4] Native-Julia flux-driven S.** (a) scale `build_slow_flux_table.py` to the
-    biome set (reuse `train_slow_emulator.py`'s lat-decile selection + `T.climate_zone_holdout` warm+dry split so
-    the flux-S and the DirectEmulator benchmark share cells; add a `NO_DAILY` fast path); (b) train EvoTrees/DRF
-    count + hand-rolled Julia copula recruit-trait sampler, ship as a package extension (weakdeps EvoTrees/Lux,
-    core `[deps]` empty); (c) add the daily-flux-statistics accumulation hook + extend `FToS`
-    (opt-in, byte-identical) and wire `FluxDrivenSlowEmulator` into `reconcile_demography!`; (d) the warm+dry OOD
-    benchmark vs the climate-only DirectEmulator (ADR-0020 falsifiable test). Design risk #5 (atomic membership
+  - **[DONE — Tier-1 Step 2, 2026-07-22] The flux-driven premise is VALIDATED + the zero-dep native-Julia DRF is built.**
+    (a) `scripts/build_slow_count_table.py` (+ `sbatch_python.sh`) built the biome-scale count table
+    (**1,323,905 rows / 4000 lat-stratified tree cells / 400 warm+dry holdout cells**) carrying BOTH channels on
+    the SAME 20-col slow boundary; `export_count_matrices.py` → a zero-dep raw-Float64 payload. (b) `src/drf.jl`
+    (`module DRF`): a hand-rolled **zero-dependency** distributional random forest (Xoshiro256++ RNG, subbagged
+    variance-reduction trees, optional leaf-value storage for quantiles, per-tree-seeded ⇒ deterministic
+    multithreaded fit) — **ADR 0022** (not EvoTrees; EvoTrees verified as a fallback). (c) **`scripts/flux_ood_experiment.jl`
+    (SLURM) — the falsifiable ADR-0020 test result `[VERIFIED]`:** on the warm+dry OOD holdout (living-tree count/patch,
+    DRF seed 1) the climate-only channel FAILS (ood R²=**−0.16** ≈ the boundary floor — the equilibrium-ML failure,
+    reproduced), while flux_full beats it **2.35×** (ood R²=**0.76** vs −0.16); fluxes ISOLATED (no AR/state) still beat
+    climate **1.25×** OOD; flux+AR (0.76) ≫ climate+AR (0.43). Honest nuance: AR/persistence alone reaches ood R²=0.55,
+    but flux-conditioning adds decisive OOD generalisation on top of both. **⇒ ADR 0020 validated.** Verdict:
+    `/p/tmp/jamirp/slow_count/ood_verdict_seed1.json`.
+  - **[NEXT — Tier-1 Step 3] Wire `FluxDrivenSlowEmulator` (on the DRF).** Build the emulator + a hand-rolled
+    Gaussian-copula recruit-trait sampler; wire into `reconcile_demography!` (opt-in, default byte-identical) — the
+    count TARGET comes from the DRF instead of Tier-0's constant rate, the carbon-conservation machinery is unchanged;
+    extend `FToS`/the accumulators as needed. Then the full CI-faithful suite green. Design risk #5 (atomic membership
     append/merge) + grass-ownership #8 still open.
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
@@ -200,8 +211,9 @@ unresolved and ADR 0017's premise rests on it.
     Data task (extends Phase 1): `docs/slow_flux_conditioning_data_spec.md` — **the four mortality drivers
     are ALREADY in the annual `ind` output**; the gap is per-individual `bm_inc`/`nind` + the raw
     `water_stress`/`temp_stress` accumulators (mostly reconstructable from the daily set). **Falsifiable
-    success test:** flux-driven S beats the climate-only `DirectEmulator` on the warm+dry OOD holdout
-    (closes the ~32×-floor gap). Definitions `[VERIFIED]` vs `mortality_tree_ind.c`/`waterstress_tree.c`/
+    success test — `[VERIFIED 2026-07-22] SUPPORTED`:** on the warm+dry OOD holdout (count/patch, DRF) the
+    flux-driven channel beats the climate-only channel **2.35×** (ood R² 0.76 vs −0.16, climate ≈ the
+    boundary floor); confirmed by `scripts/flux_ood_experiment.jl` (see §5 Tier-1 Step 2). Definitions `[VERIFIED]` vs `mortality_tree_ind.c`/`waterstress_tree.c`/
     `tempstress_tree.c`. Train offline on LPJmL true fluxes (teacher forcing); fine-tune online vs F_diff's
     delivered fluxes (P4).
 - **[TODO] P2 — validate E against observations** (parallel to P1): source FLUXNET/PLUMBER2 DE-Hai + real
