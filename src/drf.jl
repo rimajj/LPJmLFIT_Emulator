@@ -29,16 +29,24 @@ mutable struct Xoshiro256pp
     s3::UInt64
 end
 
+# splitmix64 finalizer: mix one already-incremented state word into a well-distributed UInt64.
+@inline function _splitmix64_final(x::UInt64)
+    z = x
+    z = (z ⊻ (z >> 30)) * 0xBF58476D1CE4E5B9
+    z = (z ⊻ (z >> 27)) * 0x94D049BB133111EB
+    return z ⊻ (z >> 31)
+end
+
 function Xoshiro256pp(seed::Integer)
+    # splitmix64-seed the four state words. Inlined (no inner mutating closure — that would box the
+    # captured `x` and trip JET's type-stability gate on ≥1.11); byte-identical stream to the closure form.
     x = UInt64(seed % typemax(UInt64))
-    @inline function sm()
-        x += 0x9E3779B97F4A7C15
-        z = x
-        z = (z ⊻ (z >> 30)) * 0xBF58476D1CE4E5B9
-        z = (z ⊻ (z >> 27)) * 0x94D049BB133111EB
-        return z ⊻ (z >> 31)
-    end
-    return Xoshiro256pp(sm(), sm(), sm(), sm())
+    c = 0x9E3779B97F4A7C15
+    x += c; z0 = _splitmix64_final(x)
+    x += c; z1 = _splitmix64_final(x)
+    x += c; z2 = _splitmix64_final(x)
+    x += c; z3 = _splitmix64_final(x)
+    return Xoshiro256pp(z0, z1, z2, z3)
 end
 
 @inline _rotl(x::UInt64, k::Int) = (x << k) | (x >> (64 - k))
