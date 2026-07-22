@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- **RAN the mandated `sapwood_bg` quantification probe → GO (Phase-3 scale-up step 11 follow-up #10;
+  `docs/sapwood_bg_design.md` §8).** The design (`sapwood_bg_design.md` §7) required a scripts-only probe to
+  predict the tree-CUE decrement of adding the C's below-ground root-sapwood pool BEFORE the invasive
+  `TreePools`/`Individual` struct change. `scripts/sapwood_bg_quantification_probe.jl` reuses the validated
+  F_diff kernels for the baseline (the CUE-gate's own `mkind` + `rollout_daily_canopy`), reconstructs
+  `sapwood_bg` per tree from the C_LATERAL demand (`allocation_tree.c:163-189`, verbatim), and adds only the
+  phen-gated maintenance term (`npp_tree.c:51`). Reproduced twice, identical. No `src/`/`test/` change;
+  `[deps]` still EMPTY.
+  - **GO, and the design §4.2 floor-break fear is REFUTED.** Pool = 531.4 gC/m² (22.7 % of above-ground
+    sapwood); ΔRa_bg = 24.3 gC/m²/yr (1.94 % of GPP); CUE moves 0.5118 → 0.4924 (conservative) / 0.4973
+    (growth-resp-adjusted). Every prediction incl. the ±30 % band (0.487–0.498) stays inside the gate
+    `[0.42, 0.56]` with large margin — no floor-break, struct plumbing de-risked.
+  - **HONEST CAVEAT:** `sapwood_bg` ALONE closes only ~40–50 % of the 0.51→0.46 gap (lands ~0.49, ~0.03 above
+    the C) — a validated fidelity refinement of an already-in-band metric, not a full closure. Full closure
+    needs the coupled `rd`-gate too (design §6, which partially cancels). GO is on the physics + de-risking;
+    spending the 2–3 implementation sessions now vs. after higher-value frontiers is a sequencing call.
 - **SCOPED the per-PFT competitive water-supply fix + CORRECTED the §26.4 diagnosis in two load-bearing ways
   (Phase-3 scale-up step 11 follow-up #9; `docs/water_supply_perpft_design.md`, docs §26.4 CORRECTION #2).**
   A code-verified deep-read of `water_stressed.c` + `daily_natural.c` vs `daily_step_canopy`, turning §26.4's

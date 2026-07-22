@@ -1,11 +1,14 @@
 # Design — tree below-ground sapwood (`sapwood_bg`) + carbon-debt (frontier scoping)
 
-**Status: SCOPED, NOT IMPLEMENTED (a 2–3 session frontier).** This is the verified design for closing the
-small remaining tree CUE (NPP/GPP) bias documented in §13 of
+**Status: SCOPED + QUANTIFICATION PROBE DONE → GO (a 2–3 session frontier).** This is the verified design for
+closing the small remaining tree CUE (NPP/GPP) bias documented in §13 of
 `phase3_fdiff_cbinary_validation.md`. Produced by an adversarial-workflow investigation (deep-read of the
 LPJmL-FIT C + F_diff, then an independent verify pass); the verify surfaced load-bearing corrections and
 open questions, folded in below. **Read the "Crux / decision-first" section before touching code — one
 open question (seeding) determines whether the whole change does anything at all.**
+**§8 (session 27) records the mandated §7 quantification-probe result: GO — the pool is moderate (23 % of
+above-ground sapwood), the CUE decrement is safe (0.512 → ~0.49, no floor-break even at ±30 % pool), but it
+closes only ~half the 0.51→0.46 gap (a fidelity refinement, not a full closure). Read §8 before §5.**
 
 ## 1. Goal
 
@@ -144,3 +147,44 @@ Hainich rootdist, compute the resulting phen-gated maintenance, and predict the 
 lands CUE ~0.46 inside `[0.42, 0.56]` (§4.2) does the invasive, AD-path struct change (§5) pay off; if it
 overshoots below 0.42, the seed/gate strategy must be revisited before any `src/` edit. This mirrors the
 diagnosis-first discipline that caught the §26.4 grass mis-attribution.
+
+## 8. Quantification-probe RESULT (session 27) — GO, with an honest partial-closure caveat
+
+`scripts/sapwood_bg_quantification_probe.jl` executes §7: it reuses the VALIDATED F_diff kernels for the
+baseline (builds the committed Hainich-2010 individuals via the CUE gate's own `mkind`, runs
+`rollout_daily_canopy` with no `pft_ids` — the exact gate basis), reconstructs `sapwood_bg` per tree from
+the C_LATERAL demand (`allocation_tree.c:163-189`, verbatim: vertical + lateral with `2π/0.81≈7.757`, the
+`root_sum` decrement), and adds ONLY the new phen-gated maintenance term analytically (`npp_tree.c:51`:
+`nind·sapwood_bg·respcoeff·k·gtemp·phen/cn_sapwood`, `cn_sapwood=330` from `CTON_SAP`). Reproduced twice
+(the probe author + an independent PM re-run), identical numbers:
+
+| quantity | value |
+|---|---|
+| **CUE_baseline** (= the gate basis) | **0.5118** (GPP 1250.1, NPP 639.9 gC/m²/yr — matches §13's ~0.51) |
+| reconstructed `sapwood_bg` pool | **531.4 gC/m²** cell-mean = **22.7 %** of above-ground sapwood (2342.6) |
+| **ΔRa_bg** | **24.3 gC/m²/yr** = **1.94 %** of GPP |
+| **CUE_new** (design formula, conservative) | **0.4924** |
+| CUE_new (growth-resp-adjusted, realistic) | 0.4973 |
+| CUE_new (post-turnover sapwood ×0.96, §4.5) | 0.4932 |
+| ±30 % pool sensitivity | 0.4866 (+30 %) … 0.4982 (−30 %) |
+
+**DECISION = GO, and the §4.2 floor-break fear is REFUTED.** The design worried the lateral factor
+`2π/0.81≈7.76` could make the pool large enough to push CUE below the 0.42 gate floor. It does not: the pool
+is moderate (23 %) and, respiring at the N-poor sapwood C:N=330, costs only ~2 % of GPP. Every prediction —
+design formula AND its ±30 % band — sits inside `[0.42, 0.56]` with large margin (worst case 0.487, far
+above 0.42). No floor-break risk; the struct plumbing (§5) is de-risked.
+
+**★ HONEST CAVEAT (load-bearing for the go-ahead decision).** `sapwood_bg` ALONE does not fully close the
+§13 gap: it moves CUE **0.512 → ~0.492–0.497**, i.e. it closes only ~40–50 % of the 0.51→0.46 residual and
+lands ~0.03 ABOVE the C's 0.46. So §7's "only if it lands CUE ~0.46" criterion is met only *partially*: it
+lands INSIDE the band (the real gate concern) but not AT 0.46. This is exactly consistent with §6 — F_diff's
+ungated rare-day `rd` pushes CUE the OTHER way and partially cancels `sapwood_bg`, so full closure needs
+BOTH (land `sapwood_bg` first, keep `rd` deferred, §6). The `gtemp_soil`-by-`gtemp_air` proxy (§4.4) is
+correct for predicting F_diff's own CUE (the gate) but not the C's true decrement.
+
+**★ PM framing of the GO.** This is a validated FIDELITY REFINEMENT of an ALREADY-IN-BAND metric (CUE 0.51
+already passes the gate), not a gate fix: it makes tree CUE more faithful to the C, adds the below-ground
+carbon pool the C carries (structural completeness for carbon accounting), and is the prerequisite for the
+eventual full closure with the `rd` gate. Its cost is real — 2–3 sessions of invasive AD-path struct churn
+(§5) + baseline regeneration + Enzyme re-verification. GO is on the physics + de-risking; whether to spend
+the 2–3 sessions now vs. after higher-value frontiers is a sequencing call for the PM/owner.
