@@ -78,6 +78,13 @@ deterministic allocation/growth. Don't discard either. Recommended split, to be 
   the count N, establishment, mortality, and the trait×size *spread* across the population, conditioned
   on climate + state + the delivered `bm_inc`. This is S's genuine novelty and is exactly what the
   offline emulator already predicts.
+  **[UPDATE — ADR 0020, S is flux-driven]** "conditioned on climate + state + `bm_inc`" is refined: S is
+  conditioned on **F's delivered fluxes** (annual statistics of `bm_inc` + the four mortality drivers +
+  soil moisture — extremes/timing, not just means) + AR state + the **slow bioclimatic boundary only**
+  (Climbuf, coldest-month T, gdd5, CO₂, soil, stand age). **This-year raw climate is dropped as a primary
+  driver** — F already turned it into fluxes, so re-feeding it double-counts and re-opens the very
+  equilibrium-ML OOD failure (§3) the hybrid exists to fix. The climate-only `DirectEmulator` is kept only
+  as the OOD benchmark the flux-driven S must beat.
 - Each year: S sets population membership + trait distribution; F_diff advances each representative
   individual's carbon; the flux-then-integrate reconciliation conserves at the handoff.
 
@@ -190,10 +197,13 @@ create the 6 skills; housekeeping. *Gate:* onboarding < 15k tokens; skills exist
 run.
 
 **P1 — Put S in the loop (the novelty).** Implement `AbstractSlowEmulator` concretely (port the Python
-LightGBM+copula to Julia, or call it, per an ADR); wire into `run_coupled_cell`; resolve the growth
-fork per §4; conserve carbon at the handoff (flux-then-integrate). *Gate:* S+F+E runs on Hainich;
-carbon conserved to ~1e-6; coupled distribution matches offline S on the panel; **speed-up measured vs
-the deterministic-F baseline.**
+LightGBM+copula to Julia — ADR 0019); wire into `run_coupled_cell`; resolve the growth fork per §4
+(ADR 0018); conserve carbon at the handoff (flux-then-integrate). **S is FLUX-DRIVEN (ADR 0020):** retrain
+it on F's delivered fluxes (annual statistics) + AR state + the slow bioclimatic boundary, dropping
+this-year raw climate; keep the climate-only `DirectEmulator` as the OOD benchmark. *Gate:* S+F+E runs on
+Hainich; carbon conserved to ~1e-6; coupled distribution matches offline S on the panel; **the flux-driven
+S beats the climate-only baseline on the warm+dry OOD holdout** (the ADR-0020 falsifiable success test);
+**speed-up measured vs the deterministic-F baseline.**
 
 **P2 — Validate E against observations (parallel to P1).** Source FLUXNET/PLUMBER2 DE-Hai + `sfcwind`/
 `ps` forcing; validate LE/H/T_skin; add a stability correction to `g_a`. *Gate:* LE/H/T_skin within

@@ -27,7 +27,9 @@ follow along asynchronously, but their input is never a prerequisite for you to 
 
 - Phases 0–1 done: global 186 GB daily dataset; water + carbon closure PASSED.
 - Phase 2 (slow emulator S, **offline only**): baseline gate met (LightGBM+copula, 6000 cells);
-  warm+dry OOD fails (KS ~32× floor) — expected, it's the hybrid's job to fix.
+  warm+dry OOD fails (KS ~32× floor) — expected, it's the hybrid's job to fix. **The fix is ADR 0020:**
+  retrain S **flux-driven** (on F's delivered fluxes, not raw climate); the climate-only baseline is
+  demoted to the OOD benchmark it must beat.
 - Phase 3 (F_diff, differentiable fast core): C-validated on **Hainich only**; multi-layer soil,
   multi-PFT canopy, prognostic structure, calibrated NPP, NN λ/Vcmax hooks, grass ±10–15%, `sapwood_bg`.
 - Phase 4 (E, energy balance): landed, self-contained (ADR 0017), closes to 1.4e-14 W/m²; coupled
@@ -140,10 +142,19 @@ belongs in the `fdiff-validate` skill, parameterized by cell index — not rewri
 ## Orders (priority order; gates are self-verification checkpoints you apply yourself — no sign-off needed)
 
 **P1 — Put S in the coupled loop.** Implement `AbstractSlowEmulator` concretely (port the Python
-LightGBM+copula to Julia or call it — decide in the ADR); wire it into `run_coupled_cell`; implement the
-§ growth split; conserve carbon at the handoff via flux-then-integrate.
+LightGBM+copula to Julia — ADR 0019); wire it into `run_coupled_cell`; implement the §growth split
+(ADR 0018); conserve carbon at the handoff via flux-then-integrate.
+**S is FLUX-DRIVEN, not climate-equilibrium (ADR 0020, the governing conditioning/training spec):** S maps
+*fluxes + state → demography*; condition it on F's delivered fluxes as annual *statistics* (extremes/timing/
+stress-day counts) + AR state + the slow bioclimatic boundary (Climbuf, coldest-month T, gdd5, CO₂, soil,
+stand age); **drop this-year raw climate** (F already turned it into fluxes → re-feeding double-counts and
+re-opens the OOD failure). Retrain S flux-conditioned (teacher-forced on LPJmL's true fluxes; the extended
+Phase-1 data is `docs/slow_flux_conditioning_data_spec.md`), keeping the climate-only `DirectEmulator` only
+as the OOD benchmark; fine-tune online vs F_diff's delivered fluxes at P4.
 *Gate:* S+F+E runs on Hainich; carbon conserved ~1e-6; coupled trait/size distribution matches the
-offline-S panel; **speed-up measured against the deterministic-F baseline** (the hybrid's raison d'être).
+offline-S panel; **the flux-driven S beats the climate-only `DirectEmulator` on the warm+dry OOD holdout**
+(closes the ~32×-floor gap — the ADR-0020 falsifiable success test, reported side by side); **speed-up
+measured against the deterministic-F baseline** (the hybrid's raison d'être).
 
 **P2 — Validate E against observations (run in parallel with P1).** Source FLUXNET/PLUMBER2 DE-Hai and
 the `sfcwind`/`ps` forcing; validate LE/H/T_skin; add a stability correction to `g_a`.

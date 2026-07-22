@@ -139,6 +139,7 @@ ADRs are immutable once accepted; supersede, don't edit. Full index: `docs/decis
 | 0017 | Component E **self-contained** (reimplement SEB physics; no Terrarium runtime dep) | accepted |
 | 0018 | **Growth-ownership split**: F_diff owns representative-individual carbon growth; S owns the distribution + demography | accepted (agent decision, delegated; reversible by a later ADR) |
 | 0019 | **Component S: port inference (not call Python); wrap the machinery (not port DirectEmulator wholesale)** — P1 architecture | accepted |
+| 0020 | **Component S is FLUX-DRIVEN (flux-then-integrate), not climate-equilibrium** — condition on F's delivered fluxes (annual *statistics*, not means) + AR state + slow bioclimatic boundary; **drop this-year raw climate**; climate-only DirectEmulator kept as the **OOD benchmark** (the falsifiable success test). Refines 0002/0003/0018; overrides 0019's "climate-only weights in P1" clause | accepted (agent decision, delegated; reversible by a later ADR) |
 
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
@@ -159,6 +160,18 @@ unresolved and ADR 0017's premise rests on it.
   Conserve at the S↔F handoff to ~1e-6 (litter as the exact growth residual), match the offline-S panel on
   S-owned axes, and **measure the speed-up vs the deterministic-F baseline**. Progress: Step 1 (carbon
   accounting foundation — `vegc_full_ind` + `_turnover_litter` + `fdiff_litter_closure_tests.jl`) done.
+  - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
+    demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
+    (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw
+    climate is dropped as a primary driver** (F already transformed it → double-count + OOD failure). This
+    **closes the FToS-conditioning gap** ADR 0019 deferred and moves the flux-conditioned retrain into scope.
+    Data task (extends Phase 1): `docs/slow_flux_conditioning_data_spec.md` — **the four mortality drivers
+    are ALREADY in the annual `ind` output**; the gap is per-individual `bm_inc`/`nind` + the raw
+    `water_stress`/`temp_stress` accumulators (mostly reconstructable from the daily set). **Falsifiable
+    success test:** flux-driven S beats the climate-only `DirectEmulator` on the warm+dry OOD holdout
+    (closes the ~32×-floor gap). Definitions `[VERIFIED]` vs `mortality_tree_ind.c`/`waterstress_tree.c`/
+    `tempstress_tree.c`. Train offline on LPJmL true fluxes (teacher forcing); fine-tune online vs F_diff's
+    delivered fluxes (P4).
 - **[TODO] P2 — validate E against observations** (parallel to P1): source FLUXNET/PLUMBER2 DE-Hai + real
   `sfcwind`/`ps`; validate LE/H/T_skin within PLUMBER2 bands; add a `g_a` stability correction (partly
   landed). Real wind needs a **cross-grid remap** (raw GSWP3 `.clm` are a different int16 re-ordered grid —

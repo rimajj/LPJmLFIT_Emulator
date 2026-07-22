@@ -41,9 +41,14 @@ hand-rolled.
 current-year climate aggregate (accumulated daily from `AtmForcing`) + baked ECO/STATIC constants → the
 ported boosters/copula predict the target envelope. *Physical-rate channel*: `FToS.growth_eff` drives the
 greff mortality rate `mort = mort_max/(1+k_mort·growth_eff)`; `FToS.water_stress`/`soilmoist` + patch
-`(1−Σfpc)` gate establishment. P1 ships climate-only trained weights (documented gap: the interface is
-`bm_inc`-aware, the weights are not yet — an FToS-conditioned retrain is post-P1); `FToS` drives only the
-rate channel for now.
+`(1−Σfpc)` gate establishment. **[UPDATED — ADR 0020]** S is now governed as **flux-driven, not
+climate-equilibrium**: the Tier-1 ML weights must be **retrained flux-conditioned** (on F's delivered fluxes
++ AR state + slow bioclimatic boundary; this-year raw climate dropped), and the climate-only `DirectEmulator`
+is demoted to the **OOD benchmark**. The FToS-conditioned retrain that this design doc had deferred as
+"post-P1" is **in scope** — its data task is `docs/slow_flux_conditioning_data_spec.md`, and the flux-driven
+S beating the climate-only baseline on the warm+dry OOD holdout is the falsifiable P1/P2 success test.
+(Tier-0's physical-rate channel — `FToS.growth_eff`/`water_stress`/`soilmoist` — is already flux-driven; the
+change is that the ML channel is retrained on fluxes rather than climate.)
 
 **Count / establishment / mortality.** Ported count model → per-patch mean μ, NB draw (Gamma-Poisson;
 Poisson when `r≥1e5`), clip `[0,80]`, ×npatch → target N. Reconcile against realised N as a *difference*:
@@ -151,8 +156,11 @@ BEFORE chasing any miss.
 1. Pure-Julia GBDT text-walk fidelity (categorical splits, missing-value default direction, float32 vs 64
    thresholds) must match LightGBM to ~1e-6 — gated by the Step-4 parity fixture + a version string in the
    artifact header.
-2. Climate-only trained weights vs the `bm_inc`-aware interface — a documented fidelity gap under novel
-   climate/state until an FToS-conditioned retrain (needs `bm_inc`/stress labels on the ground-truth table).
+2. ~~Climate-only trained weights vs the `bm_inc`-aware interface — a documented fidelity gap under novel
+   climate/state until an FToS-conditioned retrain.~~ **CLOSED by [ADR 0020](decisions/0020-component-s-flux-driven.md):**
+   the flux-conditioned retrain is now the governing spec, not a deferred gap. The residual risk is that the
+   flux-driven S must actually *close* the warm+dry OOD gap (else ADR 0020 is falsified) — and that the
+   extended Phase-1 data (`docs/slow_flux_conditioning_data_spec.md`) must be materialised first.
 3. Gate-3 recursive-vs-non-recursive basis mismatch: the coupled Height marginal may miss the offline
    panel's 0.020 floor with no bug — the oracle testitem (vs LPJmL truth) is the real test; re-derive its
    yardstick; use residual-diagnosis + honest tolerance framing.
