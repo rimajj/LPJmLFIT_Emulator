@@ -251,7 +251,9 @@ function fit_forest(
     )
     n, p = size(X)
     length(y) == n || throw(DimensionMismatch("size(X,1) != length(y)"))
-    mtry <= 0 && (mtry = max(1, round(Int, sqrt(p))))
+    # single-assignment local (do NOT reassign the `mtry` kwarg): a reassigned variable captured by the
+    # `Threads.@threads` closure below is boxed, which JET flags as possibly-undefined on ≥1.12.
+    mtry_eff = mtry <= 0 ? max(1, round(Int, sqrt(p))) : mtry
     # fill missing (NaN) with per-feature mean of finite entries
     fill = Vector{Float64}(undef, p)
     @inbounds for f in 1:p
@@ -280,7 +282,7 @@ function fit_forest(
         @inbounds for k in 1:ss
             boot[k] = rand_range!(rng, n)
         end
-        trees[t] = _build_tree(Xf, y, boot, rng, max_depth, min_leaf, mtry, store_values, p)
+        trees[t] = _build_tree(Xf, y, boot, rng, max_depth, min_leaf, mtry_eff, store_values, p)
     end
     return Forest(trees, p, store_values, fill)
 end

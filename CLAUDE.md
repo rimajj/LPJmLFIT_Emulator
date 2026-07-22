@@ -101,6 +101,17 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   Enzyme 0.13 raises an internal LLVM/`EnzymeInternalError` on ≥1.11 for the mutating multi-individual
   path. Those gate parts are guarded `VERSION < v"1.11"` (identity/forward runs everywhere). Guard-lift
   is blocked upstream.
+- **`test (1)` is now Julia 1.12 + JET 0.11.6 (`[VERIFIED 2026-07-22]`).** The CI matrix `test (1)` job uses
+  `julia-version: "1"` = the newest stable, which now resolves to **1.12.x** (the cluster has 1.12.2), and CI
+  resolves deps fresh so it pulls **JET 0.11.6** (JET 0.11 needs ≥1.12 — on 1.11 the resolver caps at JET
+  0.9.20, which is laxer). So a JET failure can appear ONLY on `test (1)` while `test (lts)` (1.10, JET 0.9.x)
+  is green — reproduce it locally with `/p/system/packages_rhel9/tools/julia/1.12.2/bin/julia` (a temp env +
+  `Pkg.develop(path=".")` + `Pkg.add("JET")` + `JET.report_package(LPJmLFITEmulator; target_defined_modules=true)`);
+  ReTestItems does NOT capture JET's report body in the CI log. **JET-0.11.6 boxed-capture trap (load-bearing):**
+  a local variable that is **reassigned** and then **captured by a `Threads.@threads` closure** (or any inner
+  closure) is boxed, and JET 0.11.6 reports it as `local variable X is not defined`. Fix: use a **single-assignment**
+  local (assign once, never reassign) — e.g. `mtry_eff = mtry <= 0 ? … : mtry` instead of `mtry = …` (this bit
+  `src/drf.jl::fit_forest`).
 - **Runtime `[deps]` stays EMPTY (ADR 0014):** F_diff (`src/`) is pure-Base Julia. AD (Enzyme/ForwardDiff/
   FiniteDifferences) is a **test/train-time** dep only. Learned-closure training ships as the package
   **extension** `ext/FDiffTrainingExt.jl` (weakdeps Lux/Zygote/Optimisers/Enzyme). Aqua enforces no stale
