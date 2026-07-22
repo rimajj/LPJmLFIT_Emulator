@@ -20,7 +20,12 @@ ADR **0018** (growth-ownership), **0020** (S is flux-driven — the governing co
 **0021** (S is native Julia; supersedes 0019's port mechanism), `docs/p1_s_in_loop_design.md`,
 `docs/slow_flux_conditioning_data_spec.md`.
 
-## Where things stand (main @ `0d380f03`, clean, CI green)
+## Where things stand (main @ `4054f14d`, clean, CI green)
+
+- **★ P1 Tier-1 STEP 1 DONE (2026-07-22):** the flux-conditioning training data is materialised (tier-1, no C
+  re-run) — `scripts/build_slow_flux_table.py` + committed Hainich fixture/schema; the `[VERIFIED]` mortality
+  physics is re-confirmed on real data and the **`Age` off-by-one** was caught. Next = the native-Julia
+  flux-driven S (see *First concrete action* below).
 
 - **Phases 0–4 done; Phase 5 started.** Global daily dataset + water/carbon closure PASSED; S offline
   baseline met (climate-only, warm+dry OOD fails ~32× floor — the gap the hybrid must close); F_diff
@@ -134,9 +139,34 @@ to lift the constant-CO₂ ceiling.
 
 ## First concrete action
 
-Pick up **P1 Tier-1 step 1**: implement the flux-conditioning data extraction for Hainich cell 42490 per
-`docs/slow_flux_conditioning_data_spec.md` (start at the cheapest tier that yields the per-individual
-`bm_inc`/`nind` + stress accumulators), submitted via the C-binary SLURM helper / `scripts/sbatch_julia.sh` —
-then **train the flux-driven S natively in Julia** (EvoTrees.jl/DRF + Julia copula, in a package extension;
-ADR 0021) directly off that table. Python only builds the table + runs the DirectEmulator OOD benchmark. Log
-progress in JOURNAL; open an ADR only if you change a governing decision.
+**P1 Tier-1 step 1 (flux-conditioning data) is DONE** (2026-07-22, commit `4054f14d`): the annual `ind` ground
+truth is already parquet at `/p/tmp/jamirp/emulator_global/ind_hist_seed{1,2}_all.parquet` (no C re-run
+needed); `scripts/build_slow_flux_table.py` builds the FToS-mapped tier-1 table (parameterized by `CELLS`),
+physics re-verified on real data (`mort_age` 4.97e-8, `mort` identity 8.99e-7 — PASS; caught the **`Age`
+off-by-one** → the table carries `age_mort = Age − 1`). Fixture + schema committed under
+`test/testitems/references/`. See CLAUDE.md §3, `docs/slow_flux_conditioning_data_spec.md` §4, MEMORY §5,
+`[[ind-output-age-offbyone]]`.
+
+Pick up **P1 Tier-1 steps 2–4 — the native-Julia flux-driven S** (the novelty + the P1 gate):
+1. **Scale the table to the biome set.** Extend `scripts/build_slow_flux_table.py` to reuse
+   `train_slow_emulator.py`'s lat-decile cell selection + `T.climate_zone_holdout` (warm+dry) so the flux-S and
+   the climate-only DirectEmulator benchmark share the SAME cells/holdout; add a `NO_DAILY` fast path (annual
+   features are complete for all cells; the daily within-year stats read the 186 GB global set — verify its
+   `[time,ncell]` layout in `_read_daily_1d` before scaling). Run via SLURM (durable).
+2. **Train S natively in Julia (ADR 0021).** EvoTrees.jl/DRF count model + hand-rolled Gaussian-copula
+   recruit-trait sampler on `Random.Xoshiro` (+ Lux only if an NN part is needed). Ship as a **package
+   extension** (weakdeps EvoTrees/Lux, following `ext/FDiffTrainingExt.jl`; core `[deps]` stays empty, Aqua).
+   EvoTrees is pkg-server-fetchable but NOT yet in the depot — warm it on the login node first (compute nodes
+   have no GitHub egress).
+3. **Wire `FluxDrivenSlowEmulator` into `reconcile_demography!`** (the ONLY method the interface needs; there
+   is no `step!` for slow emulators — `run.jl` discards the returned `FToS`, the real surface is the in-place
+   `fc` mutation + `CarbonLedger` closure). Add the deferred **daily-flux-statistics accumulation hook** +
+   extend `FToS` (opt-in, default byte-identical, guardrail 4). Handle membership append/merge atomically
+   (design risk #5) and decide grass ownership (#8).
+4. **The falsifiable ADR-0020 gate:** the native-Julia flux-driven S must beat the climate-only DirectEmulator
+   on the warm+dry OOD holdout, at matched in-distribution error. Run `residual-diagnosis` before chasing a miss.
+
+Deferred (off the critical path): the minimal tier-3 C patch (`nind`+`turnover_ind`; uncomment
+`crownarea/leafarea/bm_inc_counter`; NOT the risky `bm_inc` snapshot) + rebuild + Hainich re-run, for the exact
+per-individual budget + the ~14 % non-invertible `growth_eff` rows — do it only when the §7.3 budget tie-out or
+the scale-up demonstrably needs it. Log progress in JOURNAL; open an ADR only if you change a governing decision.

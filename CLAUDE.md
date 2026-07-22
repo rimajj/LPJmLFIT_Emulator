@@ -33,6 +33,7 @@ SpeedyWeather. Current phase status and the prioritized orders live in `MEMORY.m
 | Ground truth (annual; 67,420 cells; seed1+seed2) | `/p/projects/waldspektrum/priesner/clustering/global` |
 | Spin-up-end restart (use for Historical 2000–2019 re-run) | `.../Historical/ground_truth/.../restart/restart_1999.lpj` |
 | Global 186 GB daily F/E dataset | `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output` (DVC, not git) |
+| **Slow-S derived tables** (parquet; the S training data — scan these, NOT the 46 GB CSV) | `/p/tmp/jamirp/emulator_global/` : `ind_hist_seed{1,2}_all.parquet` (annual `ind`, frozen **29-col** schema = `python/.../data.py::IND_COLUMNS`); `tables/cell_year_feats.parquet` (49-col climate/soil/ECO **boundary** features per cell/year); `cell_npatch.parquet` |
 | Sibling **frozen** Component-S emulator (port source) | `/p/projects/open/Jamir/emulator` |
 | Reference repos (reuse targets) | `/p/tmp/jamirp/esm_reference_repos` (LPJmL-hybrid-photosynthesis, NeuralCrop.jl, Terrarium.jl) |
 | Julia 1.10.0 (lts) | `/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia` |
@@ -159,6 +160,17 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - **Custom daily grass GPP/NPP** (`D_GRASS_GPP`/`D_GRASS_NPP`, ids 419/420) was added by a committed
   C-source change (`patches/lpjmlfit_daily_grass_gpp.patch`) + rebuild; stock LPJmL-FIT has no per-PFT
   daily GPP output.
+- **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
+  writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
+  **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age
+  (`getind`, `annual_tree.c:46`) but the same row's `mort_*` used the *pre-increment* age (`Age − 1`,
+  `annual_tree.c:31-38`) — recompute `mort_age` from `Age − 1` (matches to 5e-8, not 1.4e-4). **Tier-2 RAW
+  cannot yield `bm_inc`/`nind`/`turnover`** (absent from the `Output_ind` struct); the budget signal is the
+  emitted `npp` (`= pft->anpp`, runtime-consistent with `FToS.bm_inc`), NOT `pft->bm_inc.carbon` (the
+  post-allocation residual, 0 for grass at output time). Mortality params for beech: `k_mort`=0.01,
+  `longevity`=**JSON key `"age"`**=400 (NOT the leaf `"longevity"`=2.0), `wdmort_1/2`=−2.465/0.148,
+  `mort_water_factor`/`mort_temp_factor`=5, `mort_water_res`=0.75. The flux-conditioning table builder is
+  `scripts/build_slow_flux_table.py` (tier-1, parameterized by `CELLS`; §7-validated).
 
 ---
 

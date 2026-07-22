@@ -173,8 +173,25 @@ unresolved and ADR 0017's premise rests on it.
   (Steps 4/5/8, ADR 0020+0021): the flux-driven S trained + run in NATIVE JULIA (EvoTrees.jl/DRF + Lux + Julia
   copula; no Python at runtime; ships via a package extension per ADR 0014 — NOT the obsoleted `slow_infer.jl`
   Python-port) + membership append/merge + the warm+dry OOD benchmark vs the climate-only DirectEmulator.
-  Python only builds the training table + runs the benchmark. Prereq: materialise the flux-conditioning data
-  (`docs/slow_flux_conditioning_data_spec.md`; a C-binary/SLURM job).**
+  Python only builds the training table + runs the benchmark.**
+  - **[DONE — Tier-1 Step 1, 2026-07-22] Flux-conditioning data MATERIALISED (no C re-run needed).** The annual
+    `ind` ground truth is already parquet at `/p/tmp/jamirp/emulator_global/ind_hist_seed{1,2}_all.parquet`
+    (all cells/years, both seeds); `scripts/build_slow_flux_table.py` builds the per-(cell,year,patch,individual)
+    FToS-mapped table (tier-1: `bm_inc←npp`, `growth_eff` inverted from `mort_npp` [86 % invertible], stress
+    inverted from `mort_*` + daily within-year stats, AR state, slow boundary from `cell_year_feats.parquet`).
+    **Physics re-verified on real data:** `mort_age` recompute 4.97e-8, `mort` additive identity 8.99e-7 (PASS).
+    **New `[VERIFIED]` gotcha:** emitted `Age` is post-increment; `mort_*` use `Age − 1` (→ CLAUDE.md §3).
+    Committed fixture `test/testitems/references/slow_flux_table_hainich.csv` + schema. Tier decision: tier-1 is
+    the prototype path; a minimal tier-3 C patch (`nind`+`turnover_ind`; NOT the risky `bm_inc` snapshot) is
+    staged **off the critical path** (tier-1 suffices per the spec).
+  - **[NEXT — Tier-1 Steps 2/3/4] Native-Julia flux-driven S.** (a) scale `build_slow_flux_table.py` to the
+    biome set (reuse `train_slow_emulator.py`'s lat-decile selection + `T.climate_zone_holdout` warm+dry split so
+    the flux-S and the DirectEmulator benchmark share cells; add a `NO_DAILY` fast path); (b) train EvoTrees/DRF
+    count + hand-rolled Julia copula recruit-trait sampler, ship as a package extension (weakdeps EvoTrees/Lux,
+    core `[deps]` empty); (c) add the daily-flux-statistics accumulation hook + extend `FToS`
+    (opt-in, byte-identical) and wire `FluxDrivenSlowEmulator` into `reconcile_demography!`; (d) the warm+dry OOD
+    benchmark vs the climate-only DirectEmulator (ADR-0020 falsifiable test). Design risk #5 (atomic membership
+    append/merge) + grass-ownership #8 still open.
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw
