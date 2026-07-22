@@ -283,6 +283,93 @@ for HEAD.
   `rollout_canopy_years_gpp` is untouched (this adapter is the non-AD deployment surface). `coupling_tests.jl`
   now also drives a mixed tree+grass core. Full suite **26,214 pass / 0 fail / 4 broken**. Report §27;
   CHANGELOG. Runtime `[deps]` EMPTY.
+- **Phase-3 (session 27) — TWO FRONTIERS run in parallel + both ops items resolved: (A) the mandated
+  `sapwood_bg` quantification probe → GO; (B) the per-PFT competitive water-supply fix SCOPED + §26.4
+  CORRECTED in two load-bearing ways.** **(A)** The §7-mandated probe
+  (`scripts/sapwood_bg_quantification_probe.jl`, no `src/` change) reconstructs the C's below-ground
+  root-sapwood pool from the C_LATERAL demand (`allocation_tree.c:163-189`, verbatim) + adds the phen-gated
+  maintenance (`npp_tree.c:51`): pool **531.4 gC/m² (22.7% of ag sapwood)**, **CUE 0.512→~0.49** (ΔRa_bg
+  1.94% GPP), every prediction incl. ±30% inside `[0.42,0.56]` with margin ⇒ **GO, the §4.2 floor-break fear
+  REFUTED** — but it closes only ~40–50% of the 0.51→0.46 gap (a fidelity refinement, not full closure;
+  needs the coupled `rd`-gate §6). Reproduced twice, Runic-clean. **(B)**
+  `docs/water_supply_perpft_design.md` + §26.4 CORRECTION #2: the fix is the **`aet_cor` competitive
+  per-layer supply cap ALONE** (per-PFT `wscal` DEGENERATE — `EMAX_ANGIO=EMAX_GRASS=10.0`
+  `par/pft_lpjmlfit.js:116-118`, shared `beta_root=0.8`), and the build's **`-DPERMUTE`** (daily Fisher-Yates
+  PFT-depletion order) makes an exact port **non-differentiable + non-deterministic** (breaks
+  Enzyme/ForwardDiff + `determinism_tests`) ⇒ **recommend DEFER behind the `FluxHooks` learned lever**, as the
+  grass level gap was. **Ops:** CI green on required checks (`test (lts)`+`test (1)`; `pre` allowed-fail);
+  `test/Manifest.toml` stays DEFERRED (Pkg.test sandboxes the test env, root Manifest trivial, Enzyme
+  `[compat]` pin already secures CI). Commits **d773c701** (B) + **ed7c05a6** (A). Diagnosis/probe only — no
+  `src/`/`test/` change; runtime `[deps]` EMPTY.
+
+---
+
+## ⭐ WHAT LANDED IN SESSION 27 (on `main`) — TWO FRONTIERS IN PARALLEL: (A) `sapwood_bg` QUANTIFICATION PROBE → GO (floor-break fear refuted); (B) per-PFT WATER-SUPPLY FIX SCOPED + §26.4 CORRECTED (mechanism sharpened to `aet_cor` alone; `-DPERMUTE` makes an exact port impossible → DEFER)
+
+**Chief-investigator session: dispatched the two open substantive frontiers as parallel background
+investigations, independently VERIFIED each against the C source before accepting (this grass/tree thread
+has a documented history of mis-attributions), and integrated + committed each sequentially. Both ops items
+resolved directly. No `src/`/`test/` change; `[deps]` EMPTY; full suite unaffected (26,214/0/4).**
+
+### (A) `sapwood_bg` quantification probe → GO — commit `ed7c05a6` (`docs/sapwood_bg_design.md` §8)
+- **The design's §7 gate.** `sapwood_bg_design.md` mandated a scripts-only probe to predict the tree-CUE
+  decrement BEFORE the invasive `TreePools`/`Individual` struct change (§5), because seeding is mandatory
+  (a 0-seed is inert, §4.1) and an over-large seed could push CUE below the 0.42 gate floor (§4.2).
+- **Method (faithful, PM-reproduced).** `scripts/sapwood_bg_quantification_probe.jl` reuses the VALIDATED
+  F_diff kernels for the baseline (the CUE gate's own `mkind` + `rollout_daily_canopy`, no `pft_ids`),
+  reconstructs `sapwood_bg` per tree from the C_LATERAL demand (`allocation_tree.c:163-189` — vertical +
+  lateral `2π/0.81≈7.757` + the `root_sum` decrement) and adds ONLY the phen-gated maintenance analytically
+  (`npp_tree.c:51`, `cn_sapwood=330`). I independently reproduced the run and re-verified both C equations.
+- **RESULT = GO.** CUE_baseline **0.5118** (GPP 1250.1, NPP 639.9; matches §13's ~0.51); pool **531.4 gC/m²
+  = 22.7% of ag sapwood**; ΔRa_bg **24.3 gC/m²/yr = 1.94% GPP**; CUE_new **0.4924** (conservative) /
+  **0.4973** (growth-resp-adjusted); ±30% band **0.487–0.498** — all inside `[0.42,0.56]` with large margin.
+  The §4.2 fear that the `2π/0.81` lateral factor makes the pool floor-breakingly large is **REFUTED**.
+- **★ HONEST CAVEAT (load-bearing for the go-ahead).** `sapwood_bg` ALONE closes only ~40–50% of the
+  0.51→0.46 gap (lands ~0.49, ~0.03 above the C). It is a validated FIDELITY REFINEMENT of an ALREADY-IN-BAND
+  metric (CUE 0.51 already passes the gate), NOT a gate fix; full closure needs the coupled `rd`-gate too
+  (§6, which partially cancels). The probe's own question ("does it break the floor?") is answered NO; the
+  design's "lands CUE ~0.46" is met only partially. The struct plumbing is de-risked, but whether to spend
+  the 2–3 implementation sessions now vs. after a higher-value frontier is a SEQUENCING call (see NEXT).
+
+### (B) per-PFT competitive water-supply fix — commit `d773c701` (`docs/water_supply_perpft_design.md`; §26.4 CORRECTION #2)
+- **Turned §26.4's "FIX DIRECTION" into an implementable design and, in doing so, CORRECTED §26.4 twice
+  (both source-verified by me, not paraphrase-trusted):**
+  1. **The mechanism SHARPENS to the `aet_cor` competitive per-layer supply cap ALONE.** §26.4 bundled it as
+     "per-PFT `wscal` + the cap"; the `wscal` half is DEGENERATE here — `EMAX_ANGIO = EMAX_GRASS = 10.0`
+     (`par/pft_lpjmlfit.js:116-118`) + grass shares beech's `beta_root=0.8`, so per-PFT `wscal` is ≈identical
+     grass-vs-tree and feeds only phenology + allocation, not the within-day GPP solve.
+  2. **`-DPERMUTE` makes an exact faithful port structurally impossible.** The FIT build (active
+     `Makefile.inc:22`; all `config/Makefile.*` platform templates carry it) re-draws the PFT depletion order
+     EVERY day via Fisher-Yates on the cell RAND48 seed — no deterministic "trees-first"; the C's grass
+     suppression is an order-AVERAGED stochastic outcome. A deterministic F_diff order over-suppresses; a
+     faithful replication is non-differentiable + non-deterministic (breaks Enzyme/ForwardDiff +
+     `determinism_tests`); and `aet_cor` is a loop-carried read-modify-write accumulator directly on the
+     trained-GPP reverse path.
+- **RECOMMENDATION = DEFER** behind the `FluxHooks` learned per-individual correction (already sees `wr` +
+  per-individual `apar`, `fdiff.jl:56,68`), exactly as the §26/§26.1 grass LEVEL gap was deferred. Two
+  scripts-only de-risking probes specified in §7 (a deterministic-vs-Monte-Carlo-PERMUTE `aet_cor` magnitude
+  probe + an Enzyme-feasibility spike) BEFORE any `src/` edit, if ever pursued.
+
+### Ops (resolved directly)
+- **CI green on HEAD** — required checks `test (lts)` + `test (1)` pass; `test (pre)` is `continue-on-error`
+  (Julia pre-release, allowed to fail); macOS is a non-required extra.
+- **`test/Manifest.toml` stays DEFERRED (the handoff's "commit it for reproducibility" rests on a
+  misconception).** `Pkg.test()` resolves the test env in a sandbox temp dir (a committed test manifest would
+  not feed CI and would embed a machine-specific `Pkg.develop` path); the root Manifest is genuinely trivial
+  (`[deps]` empty by ADR 0014's train/test-only AD design, so the `.gitignore` un-ignore condition is unmet);
+  and the Enzyme `[compat]` pin (`0.13.0 - 0.13.188`) already secures CI against the 0.13.189 regression.
+
+- **★ NEXT (session 28).** Remaining frontiers, in rough value order: **(a) the tree `sapwood_bg` + carbon-debt
+  IMPLEMENTATION** — now GO-cleared (§8) and floor-safe; the design §5 is the ~150–250-line 2–3-session
+  struct-plumbing plan (add `sapwood_bg_c` to `TreePools`/`Individual` + the phen-gated maintenance term + the
+  C_LATERAL demand/debt in `grow_individual` + the Enzyme SoA `sapbgcs` array + baseline regen). NB it's a
+  fidelity refinement of an already-in-band metric that closes ~half the CUE gap — weigh vs. higher-value
+  work. **(b) the `FluxHooks` learned grass water/Vcmax correction** — the deferred lever that BOTH the grass
+  level gap (§26.1) and now the 2018 water-supply amplitude residual (§26.4/water_supply_perpft_design.md)
+  route to; training it against the committed multi-year grass reference would close two deferred residuals at
+  once and is ~0 lines of physics. **(c)** the per-PFT competitive water-supply structural port — DEFERRED
+  (see B; pursue only if (b) proves insufficient, and only after its two de-risking probes). **(d)** the
+  upstream-Enzyme-≥1.11 guard-lift (still blocked upstream).
 
 ---
 
