@@ -63,29 +63,39 @@
     ]
 
     forest = DRF.load_forest(joinpath(refdir, "drf_forest_hainich.drf"))
-    boundary = Float64[]; n_init = 1.0
+    boundary = Float64[]; n_init = 1.0; age0 = 0.0
     for ln in eachline(joinpath(refdir, "drf_forest_hainich_meta.txt"))
         (isempty(strip(ln)) || startswith(strip(ln), "#")) && continue
         parts = split(ln, '\t')
         parts[1] == "boundary" && (boundary = parse.(Float64, split(strip(parts[2]))))
         parts[1] == "n_init" && (n_init = parse(Float64, strip(parts[2])))
+        parts[1] == "age0" && (age0 = parse(Float64, strip(parts[2])))
     end
+    # age0 meta must be present (ADR 0024 §3): a dropped/renamed line leaves age0=0 (the pre-0024 degenerate
+    # seed) → s.age seeded at 0 → the coupled run drifts into the OOD age band, silently. Fail loudly instead.
+    @test age0 > 0.0
 
-    # coupled decadal-scale run driven by the loaded production DRF
+    # coupled decadal-scale run driven by the loaded production DRF (age0 seed keeps age_mean in-band, ADR 0024)
     core = FDiffFastCore([mkp(r) for r in rows], [mkt(r) for r in rows], soil, 51.25)
-    s = FluxDrivenSlowEmulator(core, forest; boundary = boundary, n_init = n_init, seed = 1)
+    s = FluxDrivenSlowEmulator(core, forest; boundary = boundary, n_init = n_init, age0 = age0, seed = 1)
     forcings = repeat(year_forc, 20)
     run_coupled_cell(
         core, SEBEnergyClosure(; t_soil0 = _mean(tair_K)),
         SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER)), forcings; slow = s, days_per_year = n
     )
 
-    # nind-weighted Height quantiles from the coupled S-shaped population
+    # nind-weighted Height quantiles from the coupled S-shaped population. REFERENCE-BASIS ALIGNMENT
+    # (residual-diagnosis): the C `ind` output — hence hainich_slow_oracle_traits.csv — EXCLUDES sub-5m
+    # saplings (fixture note; the C-truth Height q05 = 5.21 m). Since ADR 0024 establishment APPENDS genuine
+    # ~1 m recruit cohorts, we must compare on the SAME basis and count only cohorts at/above the C output
+    # floor (≥5 m); recruits enter this window once F grows them past 5 m, exactly as the C writer reports them.
+    h_ind_floor = 5.0
     hs = Float64[]; ws = Float64[]
     for p in core.pools
-        (!p.is_grass && p.height > 0) || continue
+        (!p.is_grass && p.height ≥ h_ind_floor) || continue
         push!(hs, p.height); push!(ws, p.nind)
     end
+    @test !isempty(hs)                                     # established cohorts populate the ≥5 m window
     ord = sortperm(hs); hs = hs[ord]; ws = ws[ord]; cw = cumsum(ws) ./ sum(ws)
     wq(q) = hs[findfirst(>=(q), cw)]
     qs = (0.05, 0.25, 0.5, 0.75, 0.95)
@@ -103,8 +113,15 @@
 
     @test truth_iqr > 0
     @test all(isfinite, coupled_h)
-    @test nqrmse ≤ 0.4                                    # measured ~0.31; a real drift trips this
-    @test 0.6 ≤ coupled_h[3] / truth_h[3] ≤ 1.6            # median Height within a factor
+    # RE-MEASURED under ADR 0024 (residual-diagnosis): with genuine ~1 m recruits (APPEND), a true per-cohort
+    # age, and the DRF retrained on mean(Age−1), the coupled Height distribution drifts a bit further from the
+    # C's non-recursive pooled distribution — nqrmse ≈ 0.39 on the ≥5 m C-`ind` basis (was ~0.31 with the old
+    # mix+counter). This is the honest recursive-vs-non-recursive DRIFT (median ratio ≈1.25, count ratio ≈0.67
+    # BOTH well in-band), NOT a fidelity regression. The alarm sits at 0.45 (≈15 % over the re-measured
+    # baseline) so it still trips on a REAL drift; a future increase toward 0.45 is a signal to diagnose, not
+    # to widen further. Hainich-only.
+    @test nqrmse ≤ 0.45
+    @test 0.6 ≤ coupled_h[3] / truth_h[3] ≤ 1.6            # median Height within a factor (measured ≈1.25)
 
     # COUNT magnitude sanity — the DRF's settled count vs the C-truth per-patch beech count
     cnt = readcsv(joinpath(refdir, "hainich_slow_oracle_counts.csv"))

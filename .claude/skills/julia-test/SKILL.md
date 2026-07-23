@@ -60,6 +60,14 @@ Ignore benign `curl_easy_setopt: 48` spew.
   `*_probe.jl` / `*_diagnosis.jl` / `*_decomp.jl`.
 - **Runtime `[deps]` stays EMPTY** (ADR 0014). Aqua fails on stale deps. New training backends go in the
   extension `ext/FDiffTrainingExt.jl` (weakdeps), not `[deps]`.
+- **Float32 coupled-loop test trap:** `run_coupled_cell(fc::FDiffFastCore{T}, clo::SEBEnergyClosure{T}, …)`
+  dispatches on a SHARED `T` across `(fc, clo)`, but the bare `SEBEnergyClosure(; …)` / `SharedState(; …)`
+  constructors DEFAULT to `{Float64}`. A test that builds a `{Float32}` core/slow/forcings but a bare-ctor
+  closure/state hits a `MethodError: no method matching run_coupled_cell(::FDiffFastCore{Float32}, …
+  ::SEBEnergyClosure{Float64}, …)`. Build them explicitly: `SEBEnergyClosure{Float32}(; …)` /
+  `SharedState{Float32}(; …)`. Sibling Float32 tests that only call `reconcile_demography!` never surface
+  this — the first test to drive the FULL coupled loop in Float32 will (bit `slow_membership_tests.jl`).
+  A green suite is the check; the plain compile smoke won't catch a dispatch gap only the Float32 path hits.
 
 ## Layout & gates
 

@@ -9,7 +9,8 @@ description: >
   recruit-trait sampler. Names the artifacts: scripts/build_slow_runtime_table.py,
   scripts/train_slow_drf.jl, scripts/build_slow_oracle_reference.py, DRF.save_forest/load_forest,
   test/testitems/references/drf_forest_hainich.drf, hainich_slow_oracle_{traits,counts}.csv, cell 42490,
-  the flux_feature_vector order, and the age_mean-counter train/inference trap. ADR 0023.
+  the flux_feature_vector order, the age_mean train/inference trap, the dynamic-roster append/merge, and the
+  age0 seed. ADR 0023/0024.
 ---
 
 # slow-drf-pipeline — train / serialize / load / oracle-gate the Component-S DRF
@@ -41,9 +42,15 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   (ADR 0020 §6 — S is conditioned at runtime on the channel it was trained on). A mismatch ⇒ the DRF is fed
   OOD inputs and predicts nonsense while STILL conserving carbon (the error is masked). The in-loop test's
   "targets inside the training band" assertion is the runtime-consistency check.
-- **`age_mean` is a DEGENERATE runtime elapsed-year counter** (`s.age` is a fixed roster, +1/yr, never reset
-  on recruitment) — train it as `Year − firstyear`, **NOT** mean tree `Age`. Training on mean(Age) is a
-  silent train/inference feature-distribution shift (the single biggest correctness risk; ADR 0023 §3).
+- **`age_mean` is a TRUE nind-weighted mean cohort age (ADR 0024 — supersedes ADR 0023 §3's counter).** Since
+  the roster is now dynamic (recruits APPEND at age 0), `s.age` is a genuine per-cohort age, so train
+  `age_mean = mean(Age − 1)` per living tree stem (start-of-year age: the runtime feature is built BEFORE the
+  `s.age .+= 1` increment; emitted `Age` is post-increment, CLAUDE.md §3). Each `ind` row is one stem, so the
+  per-stem mean equals the runtime nind-weighted cohort mean. `build_slow_runtime_table.py` also emits
+  `age0 = median(age_mean)` into the DRF meta; the coupled builders read it and pass `age0=` to
+  `FluxDrivenSlowEmulator` so the runtime age_mean starts inside the trained band (the gates assert `age0 > 0`
+  — a dropped wire-up would silently re-open the OOD shift, since the DRF leaf-clamps OOD inputs). Retraining
+  MUST regenerate `drf_forest_hainich.drf` + `_meta.txt` (golden pairs) TOGETHER.
 - **`water_stress` = 1 − wscal_mean** (matches `fast.jl`), NOT the `mort_water` inversion the OOD-experiment
   table used. **`soilmoist`/`lai` are documented PROXIES** (const 0.7 / Σ per-crown ind-LAI) until the global
   pipeline sources `soilmoist` from daily `swc` and `lai` from the C annual `LAI_STAND` (Phase-2 SLURM).
@@ -54,11 +61,26 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   boxed-closure gate (CLAUDE.md §2). The committed Hainich `.drf` is a DEMO (≤~200 KB); the global forest is
   DVC on `/p/tmp/jamirp/emulator_global/drf/`, not git.
 
-## Copula recruit-trait sampler (built, not yet wired)
+## Copula recruit-trait sampler (WIRED as an opt-in hook, ADR 0024)
 
 `DRF.GaussianCopula`/`chol_lower`/`norminv`/`normcdf`/`copula_uniforms!`/`sample_copula!` draw correlated
 recruit traits {logHeight, Age, SLA, Wooddens, beta_root} via the Cholesky of a correlation matrix mapped
 through per-axis flux-conditioned `predict_quantile` marginals. `GaussianCopula(R)` FACTORS a correlation
-matrix (`from_corr=true` default); pass `from_corr=false` for a raw Cholesky `L`. Its consumer — assigning
-drawn traits to APPENDED recruit cohorts — needs the membership append/merge path (design risk #5); until
-then the fixed-roster establishment keeps frozen traits, so the sampler is not yet in `reconcile_demography!`.
+matrix (`from_corr=true` default); pass `from_corr=false` for a raw Cholesky `L`. As of **ADR 0024** the
+consumer exists: the `FluxDrivenSlowEmulator` carries an OPT-IN `recruit_copula::RecruitCopula` field
+(default `nothing`); when set, establishment's APPEND path draws `sample_copula!(s.rng, cop, axis_forests, x)`
+(deterministic on the seeded RNG) and maps the traits to the recruit pools via `RecruitCopula.to_pools`.
+Default `nothing` ⇒ the fixed sapling (committed gates unaffected). The **production** axis-forest artifacts
+(one `store_values=true` DRF per trait axis) + the correlation matrix `R` are a **P3 (multi-cell)** follow-up
+— at single-cell beech the trait axes are near-degenerate; `test/testitems/slow_membership_tests.jl` exercises
+the hook end-to-end (Float64 + Float32) with in-test axis forests.
+
+## Membership + age retrain (ADR 0024) — the recurring loop
+
+When you change the roster/age/feature semantics: (1) edit `build_slow_runtime_table.py` (age_mean = mean(Age−1),
+emit `age0`), (2) rebuild the table (`CELLS=42490 SEED=1 OUT=/p/tmp/jamirp/slow_runtime python3
+scripts/build_slow_runtime_table.py`), (3) retrain (`ALLOW_LOGIN_HEAVY=1 OUT=/p/tmp/jamirp/slow_runtime julia
+scripts/train_slow_drf.jl` — it includes only `drf.jl`, pure-Base, so no package precompile), (4) confirm the
+meta carries `age0`, (5) the Gate-3 oracle compares coupled Height on the C `ind`-output basis (≥5 m; the C
+writer excludes sub-5 m saplings, truth q05≈5.2 m) — re-measure nqrmse and widen only WITH a documented
+reference-basis re-measurement (residual-diagnosis), never silently.

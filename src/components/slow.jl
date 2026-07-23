@@ -204,7 +204,170 @@ _with_nind(p::FDiff.TreePools{T}, n) where {T} = FDiff.TreePools{T}(
 "Total live individual density Σ`nind` (indiv/m²) across the emulator's population history — the count N."
 total_n(s::DemographicSlowEmulator) = isempty(s.total_n_history) ? nothing : last(s.total_n_history)
 
-# ── FluxDrivenSlowEmulator — the Tier-1 FLUX-DRIVEN S (ADR 0020 / 0021 / 0022) ─────────────────────
+# ── Membership machinery for the flux-driven S (ADR 0024): recruit-cohort APPEND, K-cap MERGE, and the
+#    ATOMIC roster rebuild that keeps every length-K `FDiffFastCore` field + `s.age` mutually consistent
+#    when the cohort count changes (design risk #5). Confined to `FluxDrivenSlowEmulator` — Tier-0 stays
+#    fixed-roster. All carbon routing is on `vegc_full_ind` (incl `sapwood_bg_c`); MERGE is carbon-neutral.
+
+"""
+    RecruitCopula{T}
+
+Opt-in Gaussian-copula recruit-trait sampler for establishment. Bundles a fitted `DRF.GaussianCopula`
+`cop`, the per-axis marginal forests `axis_forests` (each `store_values=true`, in the copula's axis order),
+the conditioning feature row `x` the marginals were trained on, and `to_pools`, a mapping
+`(traits::Vector{Float64}, sapl::FDiff.TreePools{T}, allom) -> FDiff.TreePools{T}` turning one drawn trait
+vector into a recruit's per-individual pools. When a `FluxDrivenSlowEmulator` carries one, establishment
+draws recruit traits from `s.rng` (deterministic) instead of using the fixed `sapl`. Production axis
+artifacts + the correlation matrix are a multi-cell (P3) concern; at a single beech cell the trait axes are
+near-degenerate, so the default is `nothing` (fixed sapling).
+"""
+struct RecruitCopula{T <: AbstractFloat}
+    cop::DRF.GaussianCopula
+    axis_forests::Vector{DRF.Forest}
+    x::Vector{Float64}
+    to_pools::Any
+end
+
+"nind-weighted mean age over the TREE cohorts (the demographic mean-age DRF feature); 0 if no living tree."
+function _mean_age_weighted(ages, pools::AbstractVector{FDiff.TreePools{T}}) where {T}
+    num = zero(T)
+    den = zero(T)
+    for i in eachindex(pools)
+        pools[i].is_grass && continue
+        n = convert(T, pools[i].nind)
+        num += convert(T, ages[i]) * n
+        den += n
+    end
+    return den > zero(T) ? num / den : zero(T)
+end
+
+"Index of the shortest living TREE cohort (the recruit target); 0 if none (e.g. an all-grass patch)."
+function _shortest_tree_idx(pools::AbstractVector{FDiff.TreePools{T}}) where {T}
+    ridx = 0
+    hmin = typemax(T)
+    for i in eachindex(pools)
+        p = pools[i]
+        if !p.is_grass && p.height > 0 && convert(T, p.height) < hmin
+            hmin = convert(T, p.height)
+            ridx = i
+        end
+    end
+    return ridx
+end
+
+"""
+    _merge_pair!(pools, ages, tmpls, pft_ids, i, j, allom)
+
+Fold tree cohort `j` into `i` (`i<j`): `nind_m = n_i+n_j`; each of the FIVE carbon pools nind-weighted
+(so `vegc_full_ind(m)·nind_m == Σ vegc_full_ind(parent)·nind_parent` to floating-point rounding —
+carbon-neutral, NO ledger entry); age nind-weighted; the dominant (higher-nind) parent's `sla`/`wooddens`/
+`tmpl`/`pft_id` inherited (keeps `tmpl.photo.sla` consistent with `pools.sla`); height re-derived from the
+pipe model (guarded `leaf>0`) and crownarea from the Jucker allometry (both carbon-free). Deletes slot `j`
+from all four roster vectors.
+"""
+function _merge_pair!(
+        pools::Vector{FDiff.TreePools{T}}, ages::Vector{T}, tmpls, pft_ids, i::Int, j::Int, allom
+    ) where {T}
+    a = pools[i]
+    b = pools[j]
+    na = convert(T, a.nind)
+    nb = convert(T, b.nind)
+    nm = na + nb
+    w(fa, fb) = (convert(T, fa) * na + convert(T, fb) * nb) / nm
+    leaf_m = w(a.leaf_c, b.leaf_c)
+    sapw_m = w(a.sapwood_c, b.sapwood_c)
+    heart_m = w(a.heartwood_c, b.heartwood_c)
+    root_m = w(a.root_c, b.root_c)
+    sbg_m = w(a.sapwood_bg_c, b.sapwood_bg_c)
+    age_m = (convert(T, ages[i]) * na + convert(T, ages[j]) * nb) / nm
+    dom = na >= nb ? i : j
+    sla_m = convert(T, pools[dom].sla)
+    wd_m = convert(T, pools[dom].wooddens)
+    tmpl_m = tmpls[dom]
+    pft_m = pft_ids[dom]
+    h_m = leaf_m > zero(T) ?
+        convert(T, allom.k_latosa) * sapw_m / (leaf_m * sla_m * wd_m) :
+        convert(T, pools[dom].height)
+    crown_m = convert(T, Allometry.crown_area(allom, h_m))
+    pools[i] = FDiff.TreePools{T}(leaf_m, sapw_m, heart_m, root_m, sbg_m, h_m, crown_m, nm, sla_m, wd_m, false)
+    ages[i] = age_m
+    tmpls[i] = tmpl_m
+    pft_ids[i] = pft_m
+    deleteat!(pools, j)
+    deleteat!(ages, j)
+    deleteat!(tmpls, j)
+    deleteat!(pft_ids, j)
+    return nothing
+end
+
+"""
+    _apply_kcap_merge!(pools, ages, tmpls, pft_ids, k_cap, allom)
+
+While the roster exceeds `k_cap`, merge the tree-cohort pair with the smallest `|Δheight|` (deterministic
+single-pass index-order scan; strict `<` keeps the first argmin ⇒ reproducible on ties). Bounds K (the
+structural speed-up invariant) with minimal size-distribution distortion. Stops if fewer than two live
+tree cohorts remain.
+"""
+function _apply_kcap_merge!(
+        pools::Vector{FDiff.TreePools{T}}, ages, tmpls, pft_ids, k_cap::Int, allom
+    ) where {T}
+    while length(pools) > k_cap
+        bi = 0
+        bj = 0
+        bd = typemax(T)
+        for i in eachindex(pools)
+            (pools[i].is_grass || pools[i].nind <= 0) && continue
+            for j in (i + 1):length(pools)
+                (pools[j].is_grass || pools[j].nind <= 0) && continue
+                d = abs(convert(T, pools[i].height) - convert(T, pools[j].height))
+                if d < bd
+                    bd = d
+                    bi = i
+                    bj = j
+                end
+            end
+        end
+        bi == 0 && break
+        _merge_pair!(pools, ages, tmpls, pft_ids, bi, bj, allom)
+    end
+    return nothing
+end
+
+"""
+    _commit_membership!(s, fc, pools, tmpls, pft_ids, ages)
+
+The ATOMIC year-end roster rebuild (design risk #5). Replaces, in one shot, every length-K field of `fc`:
+`pools`, `tmpls`, `pft_ids`, a REALLOCATED `bm_inc_acc = zeros(T, K′)` (never `fill!` — that keeps the old
+length and the daily `bm_inc_acc[i] += npp_ind[i]` accumulation would read out of bounds), and `inds`,
+rebuilt LAST from the layered `_patch_fpars` over the FULL new roster (light is cohort-coupled). Then resets
+the within-year accumulators + per-PFT phenology cold-start (mirrors `annual_step!`) and sets the S-side
+roster state (`s.age = ages` start-of-year; `s.recruit_idx` recomputed). Every appended/merged cohort
+reuses an existing PFT id, so `pft_slot`/`pft_params`/`pft_states`/`pft_isg` (keyed by distinct PFT, not K)
+need no change; a genuinely new id errors here rather than `KeyError`-ing later inside `step!`.
+"""
+function _commit_membership!(
+        s, fc::FDiffFastCore{T}, pools::Vector{FDiff.TreePools{T}}, tmpls, pft_ids, ages::Vector{T},
+    ) where {T}
+    all(id -> haskey(fc.pft_slot, id), pft_ids) ||
+        error("_commit_membership!: an appended/merged cohort introduced a PFT id absent from fc.pft_slot")
+    fc.pools = pools
+    fc.tmpls = collect(FDiff.Individual{T}, tmpls)
+    fc.pft_ids = collect(Int, pft_ids)
+    fc.bm_inc_acc = zeros(T, length(pools))
+    fpars = FDiff._patch_fpars(pools, fc.allom)
+    fc.inds = FDiff.Individual{T}[FDiff.individual_from_pools(fc.tmpls[i], pools[i], fc.allom, fpars[i]) for i in eachindex(pools)]
+    fc.gpp_acc = fc.npp_acc = fc.et_acc = fc.wscal_acc = zero(T)
+    fc.nday = 0
+    fc.doy = 0
+    fc.water_avail = one(T)
+    fc.pft_states = FDiff.PhenState{T}[FDiff.PhenState{T}() for _ in eachindex(fc.pft_states)]
+    fc.grass_lf = one(T)
+    s.age = ages
+    s.recruit_idx = _shortest_tree_idx(pools)
+    return nothing
+end
+
+# ── FluxDrivenSlowEmulator — the Tier-1 FLUX-DRIVEN S (ADR 0020 / 0021 / 0022 / 0024) ───────────────
 # The scientific step past Tier-0: the demography TARGET is set by a trained, FLUX-CONDITIONED model (the
 # zero-dependency native-Julia DRF, `src/drf.jl`, ADR 0022) instead of a constant physical rate. Each year
 # S builds a flux feature vector from F's delivered fluxes (`FToS`-consistent: bm_inc / growth_eff /
@@ -215,8 +378,11 @@ total_n(s::DemographicSlowEmulator) = isempty(s.total_n_history) ? nothing : las
 # cancels — through the SAME carbon-conserving mortality/establishment machinery Tier-0 uses, so the S↔F
 # handoff conserves carbon BY CONSTRUCTION (the ledger + `vegc_full_ind` routing are identical). ADR 0020's
 # premise — flux-conditioning generalises to warm+dry OOD far better than climate-conditioning — is
-# validated offline (`scripts/flux_ood_experiment.jl`: flux 2.35× climate OOD). TREE-only demography in v1
-# (grass stays F-side, design risk #8); fixed cohort roster (no append/merge yet — design risk #5).
+# validated offline (`scripts/flux_ood_experiment.jl`: flux 2.35× climate OOD). TREE-only demography
+# (grass stays F-side, design risk #8). As of ADR 0024 the roster is DYNAMIC: establishment APPENDS a real
+# age-0 recruit cohort (copula-sampled traits if the opt-in `recruit_copula` hook is set, else the fixed
+# `sapl`), a K-cap MERGE bounds the cohort count, and `age` is a genuine per-cohort age — so `age_mean` is a
+# true nind-weighted demographic mean (the DRF is retrained on it; closes the ADR-0023 §3 counter trap).
 
 """
     FluxDrivenSlowEmulator{T} <: AbstractSlowEmulator
@@ -247,23 +413,32 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     target_history::Vector{T}
     year::Int
     rng::DRF.Xoshiro256pp
+    k_cap::Int
+    recruit_copula::Union{Nothing, RecruitCopula{T}}
 end
 
 """
     FluxDrivenSlowEmulator(fc::FDiffFastCore{T}, forest::DRF.Forest; boundary=Float64[],
-                           max_mort=0.3, max_estab=0.3, n_init=1.0, sapl=nothing, seed=1)
+                           max_mort=0.3, max_estab=0.3, n_init=1.0, sapl=nothing, seed=1,
+                           age0=0, k_cap=nothing, recruit_copula=nothing)
 
 Construct the Tier-1 flux-driven slow emulator for a fast core: the K cohorts are `fc.pools`;
 `recruit_idx` is the shortest living TREE cohort; `sapl` defaults to a small beech sapling (as Tier-0);
 `boundary` is the baked per-cell slow bioclimatic feature tail appended to the flux/state/AR features (its
 length + 11 must equal `forest.nfeat`); `n_init` seeds the count-space AR state (year 0 forces the
 demographic-change ratio to 1, so `n_init` only sets the year-0 feature and is self-corrected by the
-`max_*` clamp thereafter). Deterministic given `seed`.
+`max_*` clamp thereafter). `age0` (a scalar stand age or a per-cohort vector) seeds `s.age` so the runtime
+`age_mean` feature starts inside the DRF's trained age band (ADR 0024 §3 — a scalar 0, the default,
+reproduces the pre-0024 zero-init; the coupled app reads `age0` from the DRF meta). `k_cap` bounds the
+cohort roster (default `max(2·K, 40)`); `recruit_copula` (default `nothing`) opts establishment into
+copula-sampled recruit traits. Deterministic given `seed`.
 """
 function FluxDrivenSlowEmulator(
         fc::FDiffFastCore{T}, forest::DRF.Forest; boundary::AbstractVector{<:Real} = Float64[],
         max_mort = T(0.3), max_estab = T(0.3), n_init = one(T),
         sapl::Union{Nothing, FDiff.TreePools{T}} = nothing, seed::Integer = 1,
+        age0::Union{Real, AbstractVector} = 0, k_cap::Union{Nothing, Integer} = nothing,
+        recruit_copula::Union{Nothing, RecruitCopula{T}} = nothing,
     ) where {T <: AbstractFloat}
     ridx = 0
     hmin = typemax(T)
@@ -282,10 +457,14 @@ function FluxDrivenSlowEmulator(
         h = leaf > 0 ? convert(T, fc.allom.k_latosa) * sapw / (leaf * sla * wd) : T(1.0)
         FDiff.TreePools{T}(leaf, sapw, zero(T), root, zero(T), h, T(0.5), one(T), sla, wd, false)
     end
+    age_init = age0 isa Real ? fill(T(age0), length(fc.pools)) : collect(T, age0)
+    length(age_init) == length(fc.pools) ||
+        error("age0 vector length ($(length(age_init))) must equal the number of cohorts ($(length(fc.pools)))")
+    kcap = k_cap === nothing ? max(2 * length(fc.pools), 40) : Int(k_cap)
     return FluxDrivenSlowEmulator{T}(
         forest, collect(Float64, boundary), convert(T, n_init), T(max_mort), T(max_estab),
-        sap, ridx, CarbonLedger{T}(), zeros(T, length(fc.pools)), zero(T), T[], T[], T[], 0,
-        DRF.Xoshiro256pp(seed),
+        sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], 0,
+        DRF.Xoshiro256pp(seed), kcap, recruit_copula,
     )
 end
 
@@ -315,7 +494,7 @@ function flux_feature_vector(
     for p in pools
         (!p.is_grass && convert(T, p.height) > hmax) && (hmax = convert(T, p.height))
     end
-    age_mean = isempty(s.age) ? zero(T) : sum(s.age) / length(s.age)
+    age_mean = _mean_age_weighted(s.age, pools)   # nind-weighted tree-only demographic mean age (ADR 0024)
     soilmoist = sum(state.w) / length(state.w)
     head = Float64[
         grow.bm_inc_cell, grow.growth_eff, grow.water_stress, soilmoist,
@@ -334,6 +513,9 @@ function reconcile_demography!(
     record_litter!(s.ledger, grow.litter_cell)
 
     pools = collect(grow.newpools)                 # grown at OLD nind (mutable working copy)
+    tmpls = copy(fc.tmpls)                          # length-K working roster (rebuilt atomically on commit)
+    pft_ids = copy(fc.pft_ids)
+    ages = copy(s.age)                              # start-of-year per-cohort ages (incremented after commit)
 
     # ── DRF TARGET → demographic-change ratio ρ (unit-free; count↔density cancels) ──
     feats = flux_feature_vector(s, grow, pools, state, fc.allom)
@@ -358,42 +540,32 @@ function reconcile_demography!(
             pools[i] = _with_nind(p, convert(T, p.nind) - dn)
         end
     elseif ρ > one(T) && s.recruit_idx > 0
-        # ── ESTABLISHMENT: add (ρ−1)·D density to the shortest tree cohort; mix the fixed sapling pools ──
+        # ── ESTABLISHMENT: APPEND a real age-0 recruit cohort of (ρ−1)·D density (ADR 0024). The recruit's
+        #    per-individual pools are the fixed `sapl`, or a copula draw if the opt-in hook is set. The whole
+        #    cohort's veg C is an establishment influx (0 contribution to cveg_start, no growth accounted). ──
         dn = (ρ - one(T)) * dtree
         if dn > 0
-            r = s.recruit_idx
-            old = pools[r]
-            sap = s.sapl
-            n_new = convert(T, old.nind) + dn
-            mix(fo, fs) = (convert(T, fo) * convert(T, old.nind) + convert(T, fs) * dn) / n_new
-            leaf_n = mix(old.leaf_c, sap.leaf_c)
-            sapw_n = mix(old.sapwood_c, sap.sapwood_c)
-            heart_n = mix(old.heartwood_c, sap.heartwood_c)
-            root_n = mix(old.root_c, sap.root_c)
-            sbg_n = mix(old.sapwood_bg_c, sap.sapwood_bg_c)
-            crown_n = mix(old.crownarea, sap.crownarea)
-            h_n = leaf_n > 0 ?
-                convert(T, fc.allom.k_latosa) * sapw_n / (leaf_n * convert(T, old.sla) * convert(T, old.wooddens)) :
-                convert(T, old.height)
-            pools[r] = FDiff.TreePools{T}(
-                leaf_n, sapw_n, heart_n, root_n, sbg_n, h_n, crown_n, n_new,
-                convert(T, old.sla), convert(T, old.wooddens), false,
-            )
-            record_estab!(s.ledger, FDiff.vegc_full_ind(sap) * dn)
+            recruit_ind = if s.recruit_copula === nothing
+                s.sapl
+            else
+                rc = s.recruit_copula
+                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, rc.x)
+                rc.to_pools(traits, s.sapl, fc.allom)::FDiff.TreePools{T}
+            end
+            recruit = _with_nind(recruit_ind, dn)
+            push!(pools, recruit)
+            push!(tmpls, fc.tmpls[s.recruit_idx])
+            push!(pft_ids, fc.pft_ids[s.recruit_idx])
+            push!(ages, zero(T))
+            record_estab!(s.ledger, FDiff.vegc_full_ind(recruit) * dn)
         end
     end
 
-    # ── COMMIT (fixed roster) + rebuild inds; reset within-year accumulators (mirrors Tier-0) ──
-    fc.pools = pools
-    fpars = FDiff._patch_fpars(pools, fc.allom)
-    fc.inds = FDiff.Individual{T}[FDiff.individual_from_pools(fc.tmpls[i], pools[i], fc.allom, fpars[i]) for i in eachindex(pools)]
-    fill!(fc.bm_inc_acc, zero(T))
-    fc.gpp_acc = fc.npp_acc = fc.et_acc = fc.wscal_acc = zero(T)
-    fc.nday = 0
-    fc.doy = 0
-    fc.water_avail = one(T)
-    fc.pft_states = FDiff.PhenState{T}[FDiff.PhenState{T}() for _ in eachindex(fc.pft_states)]
-    fc.grass_lf = one(T)
+    # ── K-cap MERGE: bound the roster (carbon-neutral; no ledger entry) ──
+    _apply_kcap_merge!(pools, ages, tmpls, pft_ids, s.k_cap, fc.allom)
+
+    # ── ATOMIC roster rebuild: replaces every length-K fc field + s.age in lockstep (design risk #5) ──
+    _commit_membership!(s, fc, pools, tmpls, pft_ids, ages)
 
     cveg_end = sum(FDiff.vegc_full_ind(pools[i]) * convert(T, pools[i].nind) for i in eachindex(pools))
     s.last_resid = handoff_carbon_residual(s.ledger; c_veg_delta = cveg_end - cveg_start)

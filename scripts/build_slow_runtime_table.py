@@ -23,10 +23,14 @@ Feature provenance (see the workflow synthesis + runtime-features report):
   agb         = sum(agb)                           CLOSE   (per-m²; minor C turn_litt/debt offset)
   lai         = sum(LAI)                            PROXY   (ind LAI is per-CROWN; stand LAI needs leaf_c*nind)
   fpc         = min(sum(fpc_ind), 1)               NEAR-EXACT
-  age_mean    = Year - firstyear                   RUNTIME-CONSISTENT COUNTER (NOT mean tree Age — the
-                                                    runtime s.age is a degenerate uniform elapsed-year
-                                                    counter; training on mean(Age) would be a silent
-                                                    train/inference shift — the synthesis's biggest risk)
+  age_mean    = mean(Age - 1)                      TRUE per-stem mean START-OF-YEAR age (ADR 0024 supersedes
+                                                    ADR 0023's elapsed-year counter). Emitted `Age` is
+                                                    post-increment year-end; the runtime flux_feature_vector
+                                                    is built BEFORE s.age is aged, so train on mean(Age-1).
+                                                    Each ind row is one living stem => per-stem mean ==
+                                                    runtime nind-weighted cohort mean. (training on mean(Age)
+                                                    would be a silent train/inference shift; age0 seeds s.age
+                                                    so inference starts inside this trained band.)
   n_prev      = previous-year n_living (same patch) AR state (target space)
   target      = n_living                            demographic count
 
@@ -35,7 +39,7 @@ runtime; the fully runtime-consistent GLOBAL table (C `LAI_STAND` + daily `swc`,
 Phase-2 SLURM follow-up. This Hainich-scale table drives the committed demonstration artifact.
 
 Writes to $OUT (default /p/tmp/jamirp/slow_runtime): X.f64 (row-major n x p Float64), y.f64 (n),
-manifest.txt (n, p, colnames, boundary values, n_init) — a zero-dep payload train_slow_drf.jl reads with
+manifest.txt (n, p, colnames, boundary values, n_init, age0) — a zero-dep payload train_slow_drf.jl reads with
 pure Base IO. Deterministic. Run inside the py311_new conda env.
 
 Usage:
@@ -90,13 +94,17 @@ def main() -> int:
         pl.col("Height").max().alias("hmax"),
         pl.col("agb").sum().alias("agb"),
         pl.col("wscal_mean").mean().alias("_wscal_mean"),
+        # age_mean = TRUE per-stem mean START-OF-YEAR age (ADR 0024 supersedes ADR 0023 §3's counter).
+        # Emitted `Age` is the post-increment year-end age (CLAUDE.md §3); the runtime `flux_feature_vector`
+        # is built BEFORE s.age is incremented (start-of-year), so train on mean(Age-1). Each ind row is one
+        # living stem ⇒ this per-stem mean equals the runtime nind-weighted cohort mean by construction.
+        ((pl.col("Age") - 1).mean()).cast(pl.Float64).alias("age_mean"),
     ).with_columns(
         (pl.col("bm_inc_cell") / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"),
         (1.0 - pl.col("_wscal_mean")).alias("water_stress"),
         pl.lit(SOILMOIST_PROXY).alias("soilmoist"),
         (pl.col("_hfpc") / pl.max_horizontal(pl.col("_fpc_sum"), pl.lit(EPS))).alias("hmean"),
         pl.min_horizontal(pl.col("_fpc_sum"), pl.lit(1.0)).alias("fpc"),
-        (pl.col("Year") - firstyear).cast(pl.Float64).alias("age_mean"),
     )
 
     # AR state: previous-year n_living for the SAME (Cell,Patch)
@@ -129,6 +137,10 @@ def main() -> int:
         X[:, len(HEAD_COLS) + k] = boundary_vals[k]
     y = tbl["n_living"].to_numpy().astype("<f8")
     n_init = float(np.median(y))
+    # age0: the stand-age seed the runtime uses to initialise s.age so the age_mean feature starts INSIDE
+    # the trained band (ADR 0024 §3). Median of the true mean-age column — robust to the age distribution's
+    # right tail. The coupled app reads this from the DRF meta and passes age0= to FluxDrivenSlowEmulator.
+    age0 = float(np.median(tbl["age_mean"].to_numpy()))
 
     X.tofile(os.path.join(out_dir, "X.f64"))
     y.tofile(os.path.join(out_dir, "y.f64"))
@@ -140,6 +152,7 @@ def main() -> int:
         f.write("colnames\t" + " ".join(colnames) + "\n")
         f.write("boundary\t" + " ".join(repr(v) for v in boundary_vals) + "\n")
         f.write(f"n_init\t{n_init}\n")
+        f.write(f"age0\t{age0}\n")
         f.write(f"target\tn_living\n")
         f.write(f"cells\t{','.join(str(c) for c in cells)}\n")
         f.write(f"firstyear\t{firstyear}\n")

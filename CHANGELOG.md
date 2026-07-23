@@ -7,6 +7,37 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **P1 Tier-1 v3 — Component S owns establishment as REAL cohorts: dynamic roster (recruit APPEND + K-cap MERGE),
+  a TRUE per-cohort age, and the copula recruit-trait sampler wired in ([ADR 0024](docs/decisions/0024-component-s-dynamic-membership-and-true-age.md), supersedes ADR 0023 §3).**
+  The last structural piece of P1 — the flux-driven S now genuinely owns count/establishment/mortality/trait
+  spread (ADR 0018), not just a fixed-roster density nudge. Confined to `FluxDrivenSlowEmulator` (Tier-0 stays
+  fixed-roster); opt-in, zero new runtime `[deps]`.
+  - **Dynamic cohort roster (design risk #5 closed).** Establishment now APPENDS a real age-0 recruit cohort
+    (`dn=(ρ−1)·dtree`; fixed sapling or copula-sampled traits) instead of mixing into an existing cohort; a
+    K-cap MERGE (`_apply_kcap_merge!`, deterministic smallest-|Δheight| scan) bounds the roster; and
+    `_commit_membership!` atomically rebuilds EVERY length-K `FDiffFastCore` field (pools/tmpls/inds/pft_ids +
+    a REALLOCATED `bm_inc_acc`, `inds` last over `_patch_fpars`) plus `s.age`/`recruit_idx`. Carbon routes on
+    `vegc_full_ind`: APPEND→`record_estab!`, MERGE→carbon-neutral (nind-weights all 5 pools incl `sapwood_bg_c`,
+    re-derives pipe-model height + Jucker crownarea).
+  - **True per-cohort age (supersedes ADR 0023 §3's counter).** Recruits enter at age 0, merges nind-weight
+    parent ages, `s.age .+= 1` is the sole increment; `flux_feature_vector`'s `age_mean` is now the nind-weighted
+    tree-only mean. The DRF is retrained on `mean(Age−1)` per living stem (start-of-year age; ind `Age` is
+    post-increment), and `build_slow_runtime_table.py`/`train_slow_drf.jl` carry an `age0` seed (median training
+    age ≈43.6) into the DRF meta that the coupled builders read (`age0=`) so the runtime feature starts inside
+    the trained band — the coupled gates assert `age0>0` (a dropped wire-up would silently re-open the OOD shift).
+    Retrained `drf_forest_hainich.drf` + `_meta.txt` (40 trees, in-sample R²=0.977, nfeat unchanged=15).
+  - **Copula recruit-trait sampler WIRED (ADR 0023 §4c consumer).** `FluxDrivenSlowEmulator` gains an opt-in
+    `recruit_copula::RecruitCopula` (default `nothing` ⇒ fixed sapling, gates unaffected); when set, the APPEND
+    path draws `sample_copula!(s.rng, …)` deterministically and maps traits→recruit pools. Production axis
+    artifacts + correlation matrix deferred to P3 (single-cell beech trait axes are near-degenerate).
+  - **[VERIFIED] `test/testitems/slow_membership_tests.jl` (4 testitems, incl Float32).** A coupled run that
+    APPENDS and MERGES completes with all six roster arrays mutually length-consistent (risk #5); carbon
+    conserves ~2e-12 gC (Float64) / ≤1e-5·C_scale (Float32) across append+merge incl a seeded `sapwood_bg`
+    cohort; age develops genuine per-cohort spread (survivors age +N, recruits enter at 0); the copula hook is
+    live + deterministic. Gate-3 oracle RE-MEASURED on the C `ind` ≥5 m basis (the C writer excludes sub-5 m
+    saplings; residual-diagnosis basis alignment): nqrmse ≈0.39 (was ~0.31), median ratio ≈1.25, count ratio
+    ≈0.67 — the honest recursive-vs-non-recursive drift, all in-band; the drift alarm moved to 0.45 with the
+    documented re-measurement. Hainich-only scaffolding.
 - **P1 Tier-1 Step 4 — the PRODUCTION Component-S DRF loads from a serialized artifact + a runtime-consistent
   training table + the Gate-3 oracle + the copula recruit-trait sampler ([ADR 0023](docs/decisions/0023-component-s-production-drf-runtime-consistency.md)).**
   Closes the gap that Step 3's in-loop test used an in-test DRF — the model that is validated is now the model

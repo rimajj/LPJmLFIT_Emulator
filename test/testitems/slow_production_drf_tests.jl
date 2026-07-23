@@ -71,15 +71,19 @@
 
     # ── load the COMMITTED production DRF + its baked boundary / n_init from the meta ──
     forest = DRF.load_forest(joinpath(refdir, "drf_forest_hainich.drf"))
-    boundary = Float64[]; n_init = 1.0
+    boundary = Float64[]; n_init = 1.0; age0 = 0.0
     for ln in eachline(joinpath(refdir, "drf_forest_hainich_meta.txt"))
         (isempty(strip(ln)) || startswith(strip(ln), "#")) && continue
         parts = split(ln, '\t')
         parts[1] == "boundary" && (boundary = parse.(Float64, split(strip(parts[2]))))
         parts[1] == "n_init" && (n_init = parse(Float64, strip(parts[2])))
+        parts[1] == "age0" && (age0 = parse(Float64, strip(parts[2])))
     end
     @test forest isa DRF.Forest
     @test length(boundary) + 11 == forest.nfeat        # 11 head + baked boundary tail
+    # ADR 0024 §3: age0 seeds s.age so the runtime age_mean starts INSIDE the DRF's trained mean-age band.
+    # A missing meta/wire-up would leave age0=0 (the pre-0024 degenerate seed) → silent train/inference OOD.
+    @test age0 > 0.0
 
     nyears = 12
     forcings = repeat(year_forc, nyears)
@@ -93,8 +97,9 @@
     # ── coupled run driven by the LOADED production DRF ──
     core = mkcore()
     cscale = sum(FDiff.vegc_full_ind(p) * p.nind for p in core.pools)
-    s = FluxDrivenSlowEmulator(core, forest; boundary = boundary, n_init = n_init, seed = 1)
+    s = FluxDrivenSlowEmulator(core, forest; boundary = boundary, n_init = n_init, age0 = age0, seed = 1)
     @test s.recruit_idx > 0
+    @test all(a -> isapprox(a, age0), s.age)           # age0 seed took (ADR 0024 §3)
     out = run_coupled_cell(core, mkclo(), mkstate(), forcings; slow = s, days_per_year = n)
 
     @test all(isfinite, out.t_skin) && all(isfinite, out.npp) && all(isfinite, out.le)
@@ -115,7 +120,7 @@
 
     # DETERMINISM: same seed ⇒ identical coupled trajectory
     core2 = mkcore()
-    s2 = FluxDrivenSlowEmulator(core2, DRF.load_forest(joinpath(refdir, "drf_forest_hainich.drf")); boundary = boundary, n_init = n_init, seed = 1)
+    s2 = FluxDrivenSlowEmulator(core2, DRF.load_forest(joinpath(refdir, "drf_forest_hainich.drf")); boundary = boundary, n_init = n_init, age0 = age0, seed = 1)
     run_coupled_cell(core2, mkclo(), mkstate(), forcings; slow = s2, days_per_year = n)
     @test s.total_n_history == s2.total_n_history
     @test s.target_history == s2.target_history

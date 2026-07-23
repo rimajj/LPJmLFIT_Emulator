@@ -223,11 +223,28 @@ unresolved and ADR 0017's premise rests on it.
     (4c) **Copula recruit-trait sampler BUILT** (`chol_lower`/`norminv`/`normcdf`/`GaussianCopula`/`sample_copula!`,
     `src/drf.jl`) `[VERIFIED drf_copula_tests.jl]`: recovers a target correlation, deterministic; NOT yet wired into
     establishment (its consumer is recruit-cohort APPEND, risk #5). JET-1.12 clean; Runic clean.
-  - **[NEXT — Tier-1 v3 / follow-ups]** (a) the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc` across
-    cells + C-truth demography target — a Phase-2 SLURM data pipeline; the two proxy channels need it); (b) WIRE the
-    copula into establishment (needs atomic membership append/merge, design risk #5); (c) the in-loop OOD win (the
-    offline OOD win is `[VERIFIED]`); (d) promote the runtime `age_mean` to a true per-cohort mean age + retrain
-    (ADR 0023 §3); grass-ownership #8 + multi-cell scale-up (P3) still open. Everything **Hainich-only** — scaffolding.
+  - **[DONE — Tier-1 v3, 2026-07-23, ADR 0024] DYNAMIC roster (recruit APPEND + K-cap MERGE) + TRUE per-cohort age
+    + copula wired.** The flux-driven S now genuinely owns establishment as REAL age-0 recruit cohorts (was: a
+    fixed-roster mix), mortality (thin), and roster size (K-cap MERGE, deterministic smallest-|Δheight|). The
+    ATOMIC `_commit_membership!` rebuilds every length-K `FDiffFastCore` field (pools/tmpls/inds/pft_ids +
+    REALLOCATED `bm_inc_acc`, `inds` last over `_patch_fpars`) + `s.age`/`recruit_idx` in lockstep — **design
+    risk #5 CLOSED**. `age_mean` is now a true nind-weighted mean cohort age (recruits at 0, merges nind-weight,
+    `s.age .+= 1` sole increment); the DRF is **retrained on `mean(Age−1)`** (start-of-year; ind `Age` is
+    post-increment) with an `age0`≈43.6 seed carried in the DRF meta and read by the coupled builders (gates
+    assert `age0>0`) — **supersedes ADR 0023 §3's counter**; retrained `drf_forest_hainich.drf` R²=0.977, nfeat=15.
+    The Gaussian-copula recruit sampler (ADR 0023 §4c) is **WIRED** as an opt-in `recruit_copula` hook (default
+    `nothing`=fixed sapling). `[VERIFIED slow_membership_tests.jl` (4 items incl Float32)`]`: append+merge run
+    completes with all six roster arrays consistent, carbon ~2e-12 gC (Float64)/≤1e-5·C_scale (Float32) incl a
+    seeded `sapwood_bg` cohort, genuine age spread, copula deterministic. **Gate-3 oracle RE-MEASURED** on the C
+    `ind` ≥5 m basis (C excludes sub-5 m saplings; residual-diagnosis): nqrmse≈**0.39** (was ~0.31), median
+    ratio≈1.25, count ratio≈0.67 — honest recursive drift, all in-band; alarm moved to 0.45 with documented
+    re-measurement.
+  - **[NEXT — Tier-1 v4 / follow-ups]** (a) the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc` across
+    cells + C-truth demography target — a Phase-2 SLURM data pipeline; the two proxy channels need it); (b) the
+    copula PRODUCTION artifacts (per-axis marginal forests + correlation matrix R) + its multi-PFT payoff (P3;
+    single-cell beech axes are near-degenerate); (c) the in-loop OOD win (the offline OOD win is `[VERIFIED]`);
+    grass-ownership #8 + whole-cohort DROP + multi-cell scale-up (P3) still open. Everything **Hainich-only** —
+    scaffolding.
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw
