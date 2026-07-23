@@ -75,10 +75,18 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
 - **Any OTHER long Julia job** (benchmarks, probes, decadal coupled runs, training) → the same durable path:
   `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`). **Standing rule: anything that
   takes more than a few seconds goes to SLURM, never a login-node foreground / `nohup` / background shell.**
-- **Quick interactive one-liner (login node)** — only for a fast check you will watch finish in-session:
+  This is **hook-enforced** (`slurm-guard`, `.claude/hooks/slurm-guard.sh` in `.claude/settings.json`): a
+  `PreToolUse` guard that BLOCKS login-node `Pkg.test()`/`test/runtests.jl`, a direct `bin/lpjml`, and
+  `nohup`/backgrounded or heavy foreground Julia jobs (`train`/`bench`/`probe`/`coupl`/`decad`/… scripts),
+  redirecting to the wrappers. SLURM tooling (`sbatch`/`srun`/`squeue`/…), the wrapper scripts, `lpjcheck`,
+  file reads, and quick `julia -e` checks pass through.
+- **No full suite on the login node.** The old `julia -e 'import Pkg; Pkg.test()'` login-node one-liner is
+  exactly the overload / session-loss trap and is now blocked by `slurm-guard`. Quick REPL/compile sanity
+  checks (a few seconds) are still fine on the login node. **Deliberate override** for a genuine quick run or
+  the pkg-server-not-mirrored fallback below — prefix `ALLOW_LOGIN_HEAVY=1`:
   ```bash
   rm -f test/Manifest.toml       # MUST delete first (see gotcha) — it is .gitignored but re-created locally
-  JULIA_DEPOT_PATH=$HOME/.julia julia --project=. -e 'import Pkg; Pkg.test()'
+  ALLOW_LOGIN_HEAVY=1 JULIA_DEPOT_PATH=$HOME/.julia julia --project=. -e 'import Pkg; Pkg.test()'
   ```
   Ignore the benign `curl_easy_setopt: 48` login-node spew.
 - **Compute-node network safety (why the SLURM wrapper warms the depot first):** `Manifest.toml`/
@@ -87,7 +95,7 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   first `Pkg.instantiate/precompile`s on the login node to warm the shared `~/.julia`; the node then finds
   every resolved dep cached and needs no network. Only residual risk: a version so new the pkg-server hasn't
   mirrored it yet (a git-clone-only race) → fails with a clear `Network is unreachable`, fall back to the
-  login-node one-liner. **[VERIFIED 2026-07-22 — the CI-faithful suite runs green end-to-end on a compute
+  `ALLOW_LOGIN_HEAVY=1` login-node `Pkg.test()` above. **[VERIFIED 2026-07-22 — the CI-faithful suite runs green end-to-end on a compute
   node this way (`run_tests_slurm.sh`, job 1562988/1563007).]**
 - **`test/Manifest.toml` gotcha (load-bearing):** a bare `Pkg.test()` fails with `can not merge projects`
   while a stale dev-path `test/Manifest.toml` exists. `rm -f` it first. **Do NOT commit it** (decided

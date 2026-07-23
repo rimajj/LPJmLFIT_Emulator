@@ -73,7 +73,10 @@ ADR **0018** (growth-ownership), **0020** (S is flux-driven — the governing co
 
 ## Hard operating rules (do not relax — they are why the physics is trusted)
 
-1. **Long jobs → SLURM** (above). C-binary runs → the `lpjmlfit-cbinary` skill (exact module set, json-c
+1. **Long jobs → SLURM** (above) — now **hook-enforced**: the `slurm-guard` PreToolUse hook blocks
+   login-node `Pkg.test()`/`runtests.jl`, direct `bin/lpjml`, and `nohup`/backgrounded or heavy foreground
+   Julia jobs, redirecting to `run_tests_slurm.sh` / `sbatch_julia.sh`. Override a genuine quick run with the
+   `ALLOW_LOGIN_HEAVY=1` prefix. C-binary runs → the `lpjmlfit-cbinary` skill (exact module set, json-c
    0.13.1, restart-from-spinup, config-only daily output).
 2. **Conservation is a CI gate:** carbon handoff ~1e-6·C_scale, water ~1e-12, energy ~1e-14. Never merge
    red. `ΔC = NPP − Rh − firec + flux_estabc`.

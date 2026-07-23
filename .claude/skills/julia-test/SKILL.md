@@ -29,13 +29,19 @@ path: `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`)
 re-resolves to newest-allowed deps (like CI). Compute nodes have no GitHub egress but DO reach the Julia
 pkg-server (tarballs), so the wrapper `Pkg.instantiate/precompile`s on the login node first; the node then
 finds every resolved dep cached and needs no network. Residual risk: a not-yet-mirrored version → git-clone
-race → clear `Network is unreachable`; fall back to the login-node one-liner below.
+race → clear `Network is unreachable`; fall back to the `ALLOW_LOGIN_HEAVY=1` login-node one-liner below.
 
-## Quick interactive one-liner (login node) — only for a fast check you'll watch finish in-session
+## Login node: NO full suite (hook-enforced)
 
+The full `Pkg.test()` suite on the login node overloads the node and dies with a dropped session — the
+`slurm-guard` PreToolUse hook (`.claude/hooks/slurm-guard.sh`) **blocks** it (also `test/runtests.jl`,
+`bin/lpjml`, and `nohup`/backgrounded or heavy foreground Julia jobs). Use `run_tests_slurm.sh` /
+`sbatch_julia.sh`. Quick REPL/compile checks (seconds) still run fine on the login node.
+
+**Deliberate override** — only for the pkg-server-not-mirrored fallback above, prefix `ALLOW_LOGIN_HEAVY=1`:
 ```bash
 rm -f test/Manifest.toml     # REQUIRED — a stale dev-path manifest makes Pkg.test() fail "can not merge projects"
-JULIA_DEPOT_PATH=$HOME/.julia julia --project=. -e 'import Pkg; Pkg.test()'
+ALLOW_LOGIN_HEAVY=1 JULIA_DEPOT_PATH=$HOME/.julia julia --project=. -e 'import Pkg; Pkg.test()'
 ```
 Ignore benign `curl_easy_setopt: 48` spew.
 
