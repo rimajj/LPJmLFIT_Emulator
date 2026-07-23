@@ -64,6 +64,29 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
    `test/testitems/slow_oracle_tests.jl` compares the coupled S Height distribution to the C truth as an
    IQR-normalized quantile-RMSE **drift alarm** (~0.31; recursive-vs-nonrecursive, Hainich-only — NOT parity).
 
+## Global-build gotchas (from the adversarial review; verified against fast.jl/slow.jl)
+
+- **`growth_eff` numerator = APPLIED npp, NOT total.** The runtime `growth_eff = applied_cell / leaf_area`
+  (`fast.jl:353-369`) sums bm only over NON-stagnating cohorts (a cohort with `bm_net<=0` i.e. `bm_ind<=0`,
+  or `height<=0`, contributes 0). Train it as `sum(npp | npp>0 & Height>0) / max(lai,EPS)` — NOT
+  `sum(npp)/lai`. `bm_inc_cell` (head[0]) stays TOTAL `sum(npp)`. Reusing total npp for growth_eff is a
+  silent train/inference shift on a primary mortality driver (the two are collinear in training but not at
+  inference). Exact per-cohort `bm_net` parity isn't reconstructable from the 29-col ind — documented approx.
+- **`lai`/`soilmoist` are per-CELL (patch-averaged) joined onto per-PATCH rows.** `soilmoist` is cell-level
+  at runtime too (OK). `lai` (C `LAI_STAND`) is cell-mean but the single-stand runtime forms a per-patch
+  stand LAI — per-patch LAI is NOT reconstructable from ind (no `leaf_c`/`nind`), so cell-mean is the best
+  available BASIS (right magnitude ~4-7 vs the old per-crown-sum ~1000 proxy). Don't overclaim per-patch
+  consistency; the per-patch-LAI-output vs per-cell-training-aggregation choice is an OPEN Phase-5 decision.
+- **Silent-truncation guards are mandatory at global scale.** The soilmoist/lai inner-joins FAIL LOUD on a
+  coverage hole (`drop_frac>0.02` or any cell fully lost) — never train on a biome-truncated set. The
+  feature derivers gate PER-YEAR (reject if any year's real fraction << median → a timed-out run leaves late
+  years at fill), NOT on an absolute floor (most land is legitimately low-LAI). **polars `is_not_null` is a
+  NO-OP for NaN** (a NaN float IS "not null") — use `is_not_nan()`/`drop_nans()` to drop fill-marked cells.
+- **Boundary is per-CELL and TIME-CONSTANT** (climatological mean, `slow.jl:503` re-appends `s.boundary`
+  unchanged each year). A per-(Cell,Year) boundary would itself be a train/inference shift. One pooled
+  cell-agnostic forest + `cell_meta.parquet` sidecar (per-cell boundary/n_init/age0); the AR ratio
+  `target/n_prev` cancels count magnitude so pooling cells is sound.
+
 ## Load-bearing gotchas (this is why the DRF is trusted)
 
 - **Feature order MUST match the runtime `flux_feature_vector`** (`src/components/slow.jl`): `[bm_inc_cell,
