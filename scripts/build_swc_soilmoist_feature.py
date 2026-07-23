@@ -77,23 +77,39 @@ def main() -> int:
     cells = cid[valid].astype(np.int64)  # [ncell] orderA index, grid order
 
     rows = []
+    per_year_frac = []
     for y in years:
         day_pos = np.nonzero(year_idx == y)[0]
         # mean over (days-in-year, 23 layers) -> [lat, lon]; dask streams the ~6.8 GB/yr chunk
         sm = da.isel(time=slice(int(day_pos[0]), int(day_pos[-1]) + 1)).mean(dim=["time", "layer"]).values
+        cell_vals = sm[valid].astype(np.float64)
+        # swc is a fraction of saturation ∈ [0,1]; fill is the -1e32 missing value. Keep [0, 1.05] (a
+        # bone-dry cell can reach ~0), drop fill/garbage → NaN.
+        real = np.isfinite(cell_vals) & (cell_vals >= 0.0) & (cell_vals <= 1.05)
+        per_year_frac.append(float(real.mean()))
+        cell_vals = np.where(real, cell_vals, np.nan)
         rows.append(
             pl.DataFrame(
                 {
                     "Cell": cells,
                     "Year": np.full(cells.shape, firstyear + int(y), dtype=np.int64),
-                    "soilmoist": sm[valid].astype(np.float64),
+                    "soilmoist": cell_vals,
                 }
             )
         )
-        print(f"  year {firstyear + int(y)}: {len(cells)} cells, "
-              f"soilmoist mean={float(np.nanmean(sm[valid])):.4f}")
+        print(f"  year {firstyear + int(y)}: {len(cells)} cells, real fraction={per_year_frac[-1]:.3f}, "
+              f"soilmoist mean(real)={float(np.nanmean(cell_vals)):.4f}")
+
+    # per-year coverage gate (same rationale as build_laistand_lai_feature.py): reject an incomplete/all-fill
+    # cube (a timed-out run leaves late years at fill) rather than silently writing a truncated feature.
+    med = float(np.median(per_year_frac))
+    if med < 0.5 or min(per_year_frac) < 0.5 * med:
+        print(f"FATAL: per-year real fraction ranges [{min(per_year_frac):.3f}, {max(per_year_frac):.3f}] "
+              f"(median {med:.3f}) — incomplete/all-fill swc cube. REFUSING to write {out}.", file=sys.stderr)
+        return 5
 
     tbl = pl.concat(rows).sort(["Cell", "Year"])
+    tbl = tbl.filter(pl.col("soilmoist").is_not_nan())  # drop fill cells (is_not_nan, NOT is_not_null)
     tbl.write_parquet(out)
     print(f"wrote {out}: {tbl.height} (Cell,Year) rows, "
           f"soilmoist range [{tbl['soilmoist'].min():.4f}, {tbl['soilmoist'].max():.4f}]")

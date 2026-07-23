@@ -19,10 +19,22 @@ RUNTIME-CONSISTENT features (was the Hainich-proxy demo; now real, ADR 0023/0024
   hmean       = sum(Height*fpc_ind)/sum(fpc_ind) NEAR-EXACT (fpc-weighted mean height)
   hmax        = max(Height)                       EXACT
   agb         = sum(agb)                           CLOSE   (per-m²; minor C turn_litt/debt offset)
-  lai         = C LAI_STAND                        REAL    join cell_year_lai_{scen}.parquet (Cell,Year)
-                                                          == runtime stand LAI Σ leaf_c·sla·nind (slow.jl:489)
-  growth_eff  = bm_inc_cell / max(lai, eps)      FAITHFUL now that lai is stand-LAI (runtime divides by the
-                                                          same leaf area)
+  lai         = C LAI_STAND                        REAL basis, CELL-mean  the C LAI_STAND is emitted per grid
+                                                          CELL (patch-averaged); it is joined on (Cell,Year)
+                                                          so every one of a cell's ~25 patches shares the
+                                                          cell-mean stand LAI. This is the right stand-LAI
+                                                          BASIS (vs the old per-crown-sum proxy), but NOT the
+                                                          per-patch value the single-stand runtime forms
+                                                          (slow.jl:489). Per-patch stand LAI is NOT
+                                                          reconstructable from the 29-col ind (no leaf_c/nind;
+                                                          CLAUDE.md §3), so cell-mean is the best available —
+                                                          a documented approximation for multi-patch cells.
+                                                          [OPEN Phase-5 decision: per-patch LAI output, or
+                                                          per-CELL training aggregation, to close this.]
+  growth_eff  = applied_npp / max(lai, eps)      APPROX  numerator = APPLIED npp (npp>0 & Height>0 stems),
+                                                          mirroring the runtime applied_cell/leaf_area
+                                                          (fast.jl:353-369) — NOT total bm_inc_cell. Shares
+                                                          lai's cell-mean caveat in its denominator.
   fpc         = min(sum(fpc_ind), 1)               NEAR-EXACT
   age_mean    = mean(Age - 1)                      TRUE per-stem mean START-OF-YEAR age (ADR 0024; emitted
                                                           Age is post-increment, runtime feature is pre-aging).
@@ -38,7 +50,10 @@ context (boundary, n_init, age0) in a `cell_meta.parquet` SIDECAR the coupled dr
 `FluxDrivenSlowEmulator` per cell. Sound because the AR ratio target/n_prev (slow.jl:526) cancels count
 magnitude, so pooling cells does not conflate their absolute densities.
 
-Writes to $OUT: X.f64 (row-major n×p Float64), y.f64 (n), manifest.txt, cell_meta.parquet. Deterministic.
+Writes to $OUT: X.f64 (row-major n×p Float64), y.f64 (n), manifest.txt, cell_meta.parquet. The X ROW ORDER
+is deterministic (final sort on Cell,Patch,Year); the streaming aggregate SUMS jitter at ~1e-13 relative
+(parallel partial-sum combine order under collect(engine="streaming") is not fixed) — bit-identical output
+across runs is NOT guaranteed, only row order + values to ~1e-13.
 
 Usage (SLURM — see slow-drf-pipeline skill §7 for sizing):
   # global historic:
@@ -96,6 +111,11 @@ def main() -> int:
         .group_by(["Cell", "Patch", "Year"]).agg(
             pl.len().alias("n_living"),
             pl.col("npp").sum().alias("bm_inc_cell"),
+            # APPLIED npp = non-stagnating stems only (npp>0 & Height>0), mirroring the runtime applied_cell
+            # (fast.jl:353-369: a cohort with bm_net<=0 i.e. bm_ind<=0, or height<=0, contributes 0). This is
+            # the growth_eff numerator; bm_inc_cell (total) stays the head[0] flux. Approximation of the
+            # per-cohort bm_net rule — exact parity is not reconstructable from the 29-col ind output.
+            pl.col("npp").filter((pl.col("npp") > 0) & (pl.col("Height") > 0)).sum().alias("_applied_npp"),
             (pl.col("Height") * pl.col("fpc_ind")).sum().alias("_hfpc"),
             pl.col("fpc_ind").sum().alias("_fpc_sum"),
             pl.col("Height").max().alias("hmax"),
@@ -119,11 +139,23 @@ def main() -> int:
     sm = pl.read_parquet(os.environ.get("SOIL_TBL_PATH", SOIL_TBL[scenario])).select(["Cell", "Year", "soilmoist"])
     lai = pl.read_parquet(os.environ.get("LAI_TBL_PATH", LAI_TBL[scenario])).select(["Cell", "Year", "lai"])
     h0 = agg.height
+    cells_before = set(agg["Cell"].unique().to_list())
     agg = agg.join(sm, on=["Cell", "Year"], how="inner").join(lai, on=["Cell", "Year"], how="inner")
     dropped = h0 - agg.height
-    print(f"== after soilmoist+lai inner-join: {agg.height} rows ({dropped} dropped for missing coverage)")
+    drop_frac = dropped / max(h0, 1)
+    cells_lost = cells_before - set(agg["Cell"].unique().to_list())
+    print(f"== after soilmoist+lai inner-join: {agg.height} rows ({dropped} dropped, {drop_frac:.4f}); "
+          f"{len(cells_lost)} cells fully lost")
+    # COVERAGE GATE (the anti-silent-drop guard): soilmoist+lai should cover every tree (Cell,Year). A large
+    # drop or an entirely-lost cell = a coverage hole in a feature table (e.g. an incomplete LAI_STAND run) —
+    # fail loud rather than silently train on a biome-truncated global set.
+    if drop_frac > 0.02 or cells_lost:
+        raise SystemExit(
+            f"FATAL: feature-join coverage hole — {dropped} rows ({drop_frac:.3f}) dropped, "
+            f"{len(cells_lost)} cells fully lost (e.g. {sorted(cells_lost)[:10]}). "
+            f"Check cell_year_soilmoist/cell_year_lai completeness for scenario={scenario}.")
     agg = agg.with_columns(
-        (pl.col("bm_inc_cell") / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"))
+        (pl.col("_applied_npp").fill_null(0.0) / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"))
 
     # --- AR state: previous-year n_living for the SAME (Cell,Patch) ---
     ar = (agg.select(["Cell", "Patch", "Year", "n_living"])
@@ -143,8 +175,8 @@ def main() -> int:
 
     # --- X / y ---
     colnames = HEAD_COLS + BOUNDARY_COLS
-    X = tbl.select(colnames).to_numpy().astype("<f8")  # C-contiguous row-major n×15
-    y = tbl["n_living"].to_numpy().astype("<f8")
+    X = tbl.select(colnames).to_numpy().astype("<f8", copy=False)  # C-contiguous row-major n×15 (no-op copy on x86 LE)
+    y = tbl["n_living"].to_numpy().astype("<f8", copy=False)
     assert not np.isnan(X).any(), "NaN in X (join coverage hole slipped through)"
     assert np.isfinite(X).all(), "non-finite in X"
 

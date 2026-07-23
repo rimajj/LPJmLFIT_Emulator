@@ -72,13 +72,13 @@ def main() -> int:
     nyear = da.sizes["time"]
 
     rows = []
-    real_frac_total = 0.0
+    per_year_frac = []
     for i in range(nyear):
         arr = da.isel(time=i).values  # [lat, lon]
         cell_vals = arr[valid].astype(np.float64)
-        # mark fill/garbage as NaN, then gate on the real fraction
+        # mark fill/garbage as NaN; a real LAI cell is finite, below the ~1e37 fill, and <= the 30 output cap
         real = np.isfinite(cell_vals) & (cell_vals < FILL_THRESH) & (cell_vals <= LAI_MAX)
-        real_frac_total += real.mean()
+        per_year_frac.append(float(real.mean()))
         cell_vals = np.where(real, cell_vals, np.nan)
         rows.append(
             pl.DataFrame(
@@ -89,18 +89,28 @@ def main() -> int:
                 }
             )
         )
-        print(f"  year {firstyear + i}: real fraction={real.mean():.3f}, "
+        print(f"  year {firstyear + i}: real fraction={per_year_frac[-1]:.3f}, "
               f"lai mean(real)={float(np.nanmean(cell_vals)):.3f}")
 
-    real_frac = real_frac_total / max(nyear, 1)
-    if real_frac < 0.05:
-        print(f"FATAL: only {real_frac:.4f} of the LAI field is real (non-fill) — the LAI_STAND run is "
-              f"incomplete/all-fill (a timed-out job leaves fill). REFUSING to write {out}.", file=sys.stderr)
+    # GATE (per-YEAR, not cross-year-averaged): (a) not all-fill; (b) EVERY year has coverage consistent with
+    # the median — a timed-out/incomplete run leaves LATE years at fill (~0) while early years are real, so the
+    # cross-year AVERAGE can still clear a low floor. We do NOT assume a high absolute land fraction (most land
+    # is legitimately low/zero LAI); we require inter-year CONSISTENCY.
+    med = float(np.median(per_year_frac))
+    if med < 0.02:
+        print(f"FATAL: median per-year real fraction {med:.4f} — LAI_STAND is all-fill. REFUSING to write {out}.",
+              file=sys.stderr)
+        return 4
+    if min(per_year_frac) < 0.5 * med:
+        print(f"FATAL: per-year real fraction ranges [{min(per_year_frac):.3f}, {max(per_year_frac):.3f}] "
+              f"(median {med:.3f}) — an incomplete/timed-out run leaves late years at fill. REFUSING to write {out}.",
+              file=sys.stderr)
         return 4
 
     tbl = pl.concat(rows).sort(["Cell", "Year"])
-    # drop rows whose lai is NaN (ocean-edge / no-veg cells) so the downstream inner join is clean
-    tbl = tbl.filter(pl.col("lai").is_not_null())
+    # drop fill/ocean cells. is_not_NAN (NOT is_not_null — in polars a NaN float IS 'not null', so is_not_null
+    # would be a no-op and let fill-marked NaNs through into the training join).
+    tbl = tbl.filter(pl.col("lai").is_not_nan())
     tbl.write_parquet(out)
     print(f"wrote {out}: {tbl.height} (Cell,Year) rows (real-fraction {real_frac:.3f}), "
           f"lai range [{tbl['lai'].min():.3f}, {tbl['lai'].max():.3f}]")
