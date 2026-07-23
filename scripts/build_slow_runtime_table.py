@@ -1,166 +1,195 @@
 #!/usr/bin/env python3
-"""Build a RUNTIME-CONSISTENT Component-S training table for the production DRF (P1 Tier-1 Step 4a).
+"""Build a RUNTIME-CONSISTENT Component-S training table for the production DRF — GLOBAL multi-cell.
 
-The runtime feeds the DRF a feature row assembled by `flux_feature_vector` (src/components/slow.jl):
+The runtime feeds the DRF a feature row assembled by `flux_feature_vector` (src/components/slow.jl:499-503):
 
     [bm_inc_cell, growth_eff, water_stress, soilmoist, hmean, hmax, agb, lai, fpc, age_mean, n_prev,
      <boundary tail...>]
 
 ADR 0020 §6 requires S be conditioned at runtime on the SAME channel it was trained on, so this table
-reproduces that exact 11-head order (then a baked per-cell slow-boundary tail) from the annual `ind`
-ground truth. Each `ind` row is one living stem in `individual=true`, and the emitted `npp`/`agb` are
-already per-m² (×nind baked in by the C writer — npp_tree.c / agb_tree.c), so per-patch ROW SUMS give
-per-m² stand totals matching the runtime aggregates without any `nind` factor (which the 29-col schema
-lacks; CLAUDE.md §3).
+reproduces that exact 11-head order + a per-cell slow-boundary tail. Each `ind` row is one living stem in
+`individual=true`; emitted `npp`/`agb` are already per-m² (×nind baked in by the C writer), so per-patch
+ROW SUMS give per-m² stand totals matching the runtime aggregates (no `nind` factor; CLAUDE.md §3).
 
-Feature provenance (see the workflow synthesis + runtime-features report):
+RUNTIME-CONSISTENT features (was the Hainich-proxy demo; now real, ADR 0023/0024, global-table spec):
   bm_inc_cell = sum(npp)                         EXACT   (per-m², tree-only patch)
-  growth_eff  = bm_inc_cell / max(lai, eps)      FAITHFUL (runtime = applied_bm/leaf_area)
-  water_stress= 1 - mean(wscal_mean)             EXACT-in-definition (fast.jl:372: 1 - wscal_mean)
-  soilmoist   = SOILMOIST_PROXY (const)          PROXY   (coupled-state WHC-fraction; no annual-ind analog)
+  water_stress= 1 - mean(wscal_mean)             EXACT-in-definition (fast.jl: 1 - wscal_mean)
+  soilmoist   = mean over 23 soil layers of swc  REAL    join cell_year_soilmoist_{scen}.parquet (Cell,Year)
+                                                          == runtime sum(state.w)/length(state.w) (slow.jl:498)
   hmean       = sum(Height*fpc_ind)/sum(fpc_ind) NEAR-EXACT (fpc-weighted mean height)
   hmax        = max(Height)                       EXACT
   agb         = sum(agb)                           CLOSE   (per-m²; minor C turn_litt/debt offset)
-  lai         = sum(LAI)                            PROXY   (ind LAI is per-CROWN; stand LAI needs leaf_c*nind)
+  lai         = C LAI_STAND                        REAL    join cell_year_lai_{scen}.parquet (Cell,Year)
+                                                          == runtime stand LAI Σ leaf_c·sla·nind (slow.jl:489)
+  growth_eff  = bm_inc_cell / max(lai, eps)      FAITHFUL now that lai is stand-LAI (runtime divides by the
+                                                          same leaf area)
   fpc         = min(sum(fpc_ind), 1)               NEAR-EXACT
-  age_mean    = mean(Age - 1)                      TRUE per-stem mean START-OF-YEAR age (ADR 0024 supersedes
-                                                    ADR 0023's elapsed-year counter). Emitted `Age` is
-                                                    post-increment year-end; the runtime flux_feature_vector
-                                                    is built BEFORE s.age is aged, so train on mean(Age-1).
-                                                    Each ind row is one living stem => per-stem mean ==
-                                                    runtime nind-weighted cohort mean. (training on mean(Age)
-                                                    would be a silent train/inference shift; age0 seeds s.age
-                                                    so inference starts inside this trained band.)
-  n_prev      = previous-year n_living (same patch) AR state (target space)
+  age_mean    = mean(Age - 1)                      TRUE per-stem mean START-OF-YEAR age (ADR 0024; emitted
+                                                          Age is post-increment, runtime feature is pre-aging).
+  n_prev      = previous-year n_living (same Cell,Patch)  AR state
   target      = n_living                            demographic count
+  boundary    = per-CELL climatological mean of [gdd_5, tas_cold_month, soil_depth] + co2=369 (constant-CO2,
+                ADR 0004). Appended TIME-CONSTANT per cell — matches the runtime, which sets s.boundary once
+                and re-appends it unchanged every year (slow.jl:503). A per-YEAR boundary would be a
+                train/inference shift.
 
-The two PROXY channels (soilmoist, lai) and the FAITHFUL growth_eff are documented approximations of the
-runtime; the fully runtime-consistent GLOBAL table (C `LAI_STAND` + daily `swc`, many cells) is the
-Phase-2 SLURM follow-up. This Hainich-scale table drives the committed demonstration artifact.
+Cell-agnostic pooled training: ONE global forest (the .drf carries no cell identity), with all per-cell
+context (boundary, n_init, age0) in a `cell_meta.parquet` SIDECAR the coupled driver reads to build one
+`FluxDrivenSlowEmulator` per cell. Sound because the AR ratio target/n_prev (slow.jl:526) cancels count
+magnitude, so pooling cells does not conflate their absolute densities.
 
-Writes to $OUT (default /p/tmp/jamirp/slow_runtime): X.f64 (row-major n x p Float64), y.f64 (n),
-manifest.txt (n, p, colnames, boundary values, n_init, age0) — a zero-dep payload train_slow_drf.jl reads with
-pure Base IO. Deterministic. Run inside the py311_new conda env.
+Writes to $OUT: X.f64 (row-major n×p Float64), y.f64 (n), manifest.txt, cell_meta.parquet. Deterministic.
 
-Usage:
-    CELLS=42490 SEED=1 OUT=/p/tmp/jamirp/slow_runtime python3 scripts/build_slow_runtime_table.py
+Usage (SLURM — see slow-drf-pipeline skill §7 for sizing):
+  # global historic:
+  SCENARIO=historic SEED=1 OUT=/p/tmp/jamirp/emulator_global/slow_runtime_hist python3 scripts/build_slow_runtime_table.py
+  # a biome-stratified subset (verification): CELLS=42490,<tropical>,<boreal>,<arid>
+  # single-cell Hainich demo (also emits scalar meta for the committed .drf path): CELLS=42490
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import numpy as np
 import polars as pl
 
 TREE_TYPES = [1, 2, 3, 4, 5]
-IND_PARQUET = "/p/tmp/jamirp/emulator_global/ind_hist_seed{seed}_all.parquet"
-CELL_YEAR_FEATS = "/p/tmp/jamirp/emulator_global/tables/cell_year_feats.parquet"
+BASE = "/p/tmp/jamirp/emulator_global"
+IND = {
+    "historic": f"{BASE}/ind_hist_seed{{seed}}_all.parquet",
+    "ssp370": f"{BASE}/ind_ssp370_seed{{seed}}_all.parquet",
+}
+SOIL_TBL = {"historic": f"{BASE}/tables/cell_year_soilmoist_hist.parquet",
+            "ssp370": f"{BASE}/tables/cell_year_soilmoist_ssp.parquet"}
+LAI_TBL = {"historic": f"{BASE}/tables/cell_year_lai_hist.parquet",
+           "ssp370": f"{BASE}/tables/cell_year_lai_ssp.parquet"}
+CELL_YEAR_FEATS = f"{BASE}/tables/cell_year_feats.parquet"
+FIRSTYEAR = {"historic": 2000, "ssp370": 2020}
 
 # runtime head order — MUST equal src/components/slow.jl::flux_feature_vector
 HEAD_COLS = ["bm_inc_cell", "growth_eff", "water_stress", "soilmoist",
              "hmean", "hmax", "agb", "lai", "fpc", "age_mean", "n_prev"]
-# baked per-cell slow bioclimatic boundary tail (constant per cell → the DRF sees it as constants)
 BOUNDARY_COLS = ["eco_diag_gdd_5", "tas_cold_month", "soil_depth", "co2"]
-
-SOILMOIST_PROXY = 0.7   # matches the coupled test SharedState init w = fill(0.7, NSOILLAYER)
+CO2_CONST = 369.0        # constant-CO2 regime (ADR 0004); the runtime boundary has no co2 input
 EPS = 1.0e-6
+MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 median
 
 
 def main() -> int:
     seed = int(os.environ.get("SEED", "1"))
-    cells = [int(c) for c in os.environ.get("CELLS", "42490").split(",") if c.strip()]
-    out_dir = os.environ.get("OUT", "/p/tmp/jamirp/slow_runtime")
+    scenario = os.environ.get("SCENARIO", "historic")
+    if scenario not in IND:
+        raise SystemExit(f"SCENARIO must be one of {list(IND)} (got {scenario!r})")
+    cells = [int(c) for c in os.environ.get("CELLS", "").split(",") if c.strip()] or None
+    default_out = f"{BASE}/slow_runtime_{scenario}" + (f"_seed{seed}" if seed != 1 else "")
+    out_dir = os.environ.get("OUT", default_out)
     os.makedirs(out_dir, exist_ok=True)
+    firstyear = FIRSTYEAR[scenario]
 
-    lf = pl.scan_parquet(IND_PARQUET.format(seed=seed))
-    living = (
-        lf.filter(pl.col("Cell").is_in(cells) & pl.col("Type").is_in(TREE_TYPES) & (pl.col("isdead") == 0))
-        .select(["Cell", "Patch", "Year", "Height", "Age", "npp", "agb", "LAI", "fpc_ind", "wscal_mean"])
-        .collect()
+    # --- streaming aggregate straight from the LazyFrame (projection+predicate pushdown) ---
+    filt = pl.col("Type").is_in(TREE_TYPES) & (pl.col("isdead") == 0)
+    if cells:
+        filt = filt & pl.col("Cell").is_in(cells)
+    agg = (
+        pl.scan_parquet(IND[scenario].format(seed=seed)).filter(filt)
+        .group_by(["Cell", "Patch", "Year"]).agg(
+            pl.len().alias("n_living"),
+            pl.col("npp").sum().alias("bm_inc_cell"),
+            (pl.col("Height") * pl.col("fpc_ind")).sum().alias("_hfpc"),
+            pl.col("fpc_ind").sum().alias("_fpc_sum"),
+            pl.col("Height").max().alias("hmax"),
+            pl.col("agb").sum().alias("agb"),
+            pl.col("wscal_mean").mean().alias("_wscal_mean"),
+            ((pl.col("Age") - 1).mean()).cast(pl.Float64).alias("age_mean"),
+        )
+        .collect(engine="streaming")
     )
-    years = sorted(living["Year"].unique().to_list())
-    firstyear = years[0]
-    print(f"== cells {cells}: {living.height} living-tree rows, years {firstyear}-{years[-1]}")
+    print(f"== scenario={scenario} seed={seed} cells={'ALL' if not cells else cells}: "
+          f"{agg.height} (Cell,Patch,Year) groups")
 
-    # per (Cell,Patch,Year) runtime-order aggregates
-    agg = living.group_by(["Cell", "Patch", "Year"]).agg(
-        pl.len().alias("n_living"),
-        pl.col("npp").sum().alias("bm_inc_cell"),
-        pl.col("LAI").sum().alias("lai"),
-        (pl.col("Height") * pl.col("fpc_ind")).sum().alias("_hfpc"),
-        pl.col("fpc_ind").sum().alias("_fpc_sum"),
-        pl.col("Height").max().alias("hmax"),
-        pl.col("agb").sum().alias("agb"),
-        pl.col("wscal_mean").mean().alias("_wscal_mean"),
-        # age_mean = TRUE per-stem mean START-OF-YEAR age (ADR 0024 supersedes ADR 0023 §3's counter).
-        # Emitted `Age` is the post-increment year-end age (CLAUDE.md §3); the runtime `flux_feature_vector`
-        # is built BEFORE s.age is incremented (start-of-year), so train on mean(Age-1). Each ind row is one
-        # living stem ⇒ this per-stem mean equals the runtime nind-weighted cohort mean by construction.
-        ((pl.col("Age") - 1).mean()).cast(pl.Float64).alias("age_mean"),
-    ).with_columns(
-        (pl.col("bm_inc_cell") / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"),
+    agg = agg.with_columns(
         (1.0 - pl.col("_wscal_mean")).alias("water_stress"),
-        pl.lit(SOILMOIST_PROXY).alias("soilmoist"),
         (pl.col("_hfpc") / pl.max_horizontal(pl.col("_fpc_sum"), pl.lit(EPS))).alias("hmean"),
         pl.min_horizontal(pl.col("_fpc_sum"), pl.lit(1.0)).alias("fpc"),
     )
 
-    # AR state: previous-year n_living for the SAME (Cell,Patch)
+    # --- REAL feature joins (soilmoist, lai); inner + height-assert = the anti-NaN guard ---
+    # SOIL_TBL_PATH/LAI_TBL_PATH override the scenario defaults (subset verification, seed/scenario variants).
+    sm = pl.read_parquet(os.environ.get("SOIL_TBL_PATH", SOIL_TBL[scenario])).select(["Cell", "Year", "soilmoist"])
+    lai = pl.read_parquet(os.environ.get("LAI_TBL_PATH", LAI_TBL[scenario])).select(["Cell", "Year", "lai"])
+    h0 = agg.height
+    agg = agg.join(sm, on=["Cell", "Year"], how="inner").join(lai, on=["Cell", "Year"], how="inner")
+    dropped = h0 - agg.height
+    print(f"== after soilmoist+lai inner-join: {agg.height} rows ({dropped} dropped for missing coverage)")
+    agg = agg.with_columns(
+        (pl.col("bm_inc_cell") / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"))
+
+    # --- AR state: previous-year n_living for the SAME (Cell,Patch) ---
     ar = (agg.select(["Cell", "Patch", "Year", "n_living"])
-          .with_columns((pl.col("Year") + 1).alias("Year"))
-          .rename({"n_living": "n_prev"}))
-    tbl = agg.join(ar, on=["Cell", "Patch", "Year"], how="inner")  # inner → drops the first year (no AR)
-    tbl = tbl.sort(["Cell", "Patch", "Year"])
-    print(f"== {tbl.height} training rows (with AR state)")
+          .with_columns((pl.col("Year") + 1).alias("Year")).rename({"n_living": "n_prev"}))
+    tbl = agg.join(ar, on=["Cell", "Patch", "Year"], how="inner")  # drops the first year per (Cell,Patch)
 
-    # per-cell baked boundary (climatological mean over years) — constant across training rows
-    cyf = (pl.scan_parquet(CELL_YEAR_FEATS).filter(pl.col("Cell").is_in(cells))
-           .select(["Cell", "Year"] + [c for c in BOUNDARY_COLS if c != "co2"]).collect())
-    # co2 is not in cell_year_feats — use a representative constant (constant-CO2 regime, ADR 0004)
-    boundary_vals = []
-    for c in BOUNDARY_COLS:
-        if c == "co2":
-            boundary_vals.append(369.0)  # ~year-2000 CO2 ppm (constant-CO2 regime)
-        else:
-            boundary_vals.append(float(cyf[c].mean()))
-    print(f"== baked boundary {BOUNDARY_COLS} = {boundary_vals}")
-
-    colnames = HEAD_COLS + BOUNDARY_COLS
-    p = len(colnames)
+    # --- per-CELL boundary (climatological mean; time-constant → matches runtime s.boundary) ---
+    cyf = (pl.scan_parquet(CELL_YEAR_FEATS)
+           .select(["Cell", "eco_diag_gdd_5", "tas_cold_month", "soil_depth"])
+           .group_by("Cell").mean().collect())
+    tbl = (tbl.join(cyf, on="Cell", how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
+    tbl = tbl.sort(["Cell", "Patch", "Year"])  # MUST sort AFTER all joins → deterministic X row order
     n = tbl.height
-    X = np.empty((n, p), dtype="<f8")
-    for j, c in enumerate(HEAD_COLS):
-        X[:, j] = tbl[c].to_numpy().astype("float64")
-    for k, c in enumerate(BOUNDARY_COLS):
-        X[:, len(HEAD_COLS) + k] = boundary_vals[k]
+    if n == 0:
+        raise SystemExit("FATAL: 0 training rows after joins (check feature-table coverage / cells).")
+    print(f"== {n} training rows (with AR state)")
+
+    # --- X / y ---
+    colnames = HEAD_COLS + BOUNDARY_COLS
+    X = tbl.select(colnames).to_numpy().astype("<f8")  # C-contiguous row-major n×15
     y = tbl["n_living"].to_numpy().astype("<f8")
-    n_init = float(np.median(y))
-    # age0: the stand-age seed the runtime uses to initialise s.age so the age_mean feature starts INSIDE
-    # the trained band (ADR 0024 §3). Median of the true mean-age column — robust to the age distribution's
-    # right tail. The coupled app reads this from the DRF meta and passes age0= to FluxDrivenSlowEmulator.
-    age0 = float(np.median(tbl["age_mean"].to_numpy()))
+    assert not np.isnan(X).any(), "NaN in X (join coverage hole slipped through)"
+    assert np.isfinite(X).all(), "non-finite in X"
+
+    # --- per-cell seed sidecar (n_init/age0/boundary) with a MIN_YEARS floor ---
+    cell_meta = (tbl.group_by("Cell").agg(
+        pl.col("n_living").median().alias("n_init"),
+        pl.col("age_mean").median().alias("age0"),
+        pl.col("eco_diag_gdd_5").first(),
+        pl.col("tas_cold_month").first(),
+        pl.col("soil_depth").first(),
+        pl.col("co2").first(),
+        pl.len().alias("n_rows"),
+    ).sort("Cell"))
+    weak = cell_meta.filter(pl.col("n_rows") < MIN_YEARS).height
+    if weak:
+        print(f"== NOTE: {weak} cells have < {MIN_YEARS} rows (their n_init/age0 medians are less robust)")
+    cell_meta.write_parquet(os.path.join(out_dir, "cell_meta.parquet"))
 
     X.tofile(os.path.join(out_dir, "X.f64"))
     y.tofile(os.path.join(out_dir, "y.f64"))
+    p = len(colnames)
     with open(os.path.join(out_dir, "manifest.txt"), "w") as f:
         f.write(f"n\t{n}\n")
         f.write(f"p\t{p}\n")
         f.write(f"nhead\t{len(HEAD_COLS)}\n")
         f.write(f"nboundary\t{len(BOUNDARY_COLS)}\n")
         f.write("colnames\t" + " ".join(colnames) + "\n")
-        f.write("boundary\t" + " ".join(repr(v) for v in boundary_vals) + "\n")
-        f.write(f"n_init\t{n_init}\n")
-        f.write(f"age0\t{age0}\n")
         f.write(f"target\tn_living\n")
-        f.write(f"cells\t{','.join(str(c) for c in cells)}\n")
+        f.write(f"scenario\t{scenario}\n")
+        f.write(f"ncells\t{tbl['Cell'].n_unique()}\n")
         f.write(f"firstyear\t{firstyear}\n")
-    print(f"== wrote X {X.shape}, y ({n},), manifest to {out_dir}")
-    print(f"== target n_living: min={int(y.min())} max={int(y.max())} median={n_init} mean={y.mean():.2f}")
-    print(f"== feature ranges:")
+        f.write("cell_meta\tcell_meta.parquet\n")
+        # single-cell demo: ALSO emit the scalar boundary/n_init/age0 so train_slow_drf.jl (unchanged)
+        # still produces the committed Hainich demo meta (slow-drf-pipeline step 2).
+        if cells and len(cells) == 1:
+            bvals = [float(cell_meta[c][0]) for c in ["eco_diag_gdd_5", "tas_cold_month", "soil_depth"]] + [CO2_CONST]
+            f.write("boundary\t" + " ".join(repr(v) for v in bvals) + "\n")
+            f.write(f"n_init\t{float(cell_meta['n_init'][0])}\n")
+            f.write(f"age0\t{float(cell_meta['age0'][0])}\n")
+            f.write(f"cells\t{','.join(str(c) for c in cells)}\n")
+
+    print(f"== wrote X {X.shape}, y ({n},), cell_meta ({cell_meta.height} cells), manifest to {out_dir}")
+    print(f"== target n_living: min={int(y.min())} max={int(y.max())} median={np.median(y):.1f} mean={y.mean():.2f}")
     for j, c in enumerate(colnames):
-        print(f"     {c:14s} min={X[:, j].min():12.4g} max={X[:, j].max():12.4g} mean={X[:, j].mean():12.4g}")
+        print(f"     {c:16s} min={X[:, j].min():12.4g} max={X[:, j].max():12.4g} mean={X[:, j].mean():12.4g}")
     return 0
 
 

@@ -39,10 +39,20 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
      is via `grid.nc` `cellid[lat,lon]` = the authoritative orderA index** (VERIFIED cellid[51.25,10.25]==42490,
      Hainich) — never the flatten order (the 42490-vs-28008 trap). Anchor a change with `SUBSET_DEG=2` (fast,
      login-node) and confirm Hainich(42490) is present with a plausible fraction before the global SLURM run.
-1. **Build the runtime-consistent training table** — `conda activate py311_new; CELLS=42490 SEED=1
-   OUT=/p/tmp/jamirp/slow_runtime python3 scripts/build_slow_runtime_table.py`. Writes `X.f64`/`y.f64`/
-   `manifest.txt` (a zero-dep raw-Float64 payload the Julia trainer reads with pure Base IO). Join the step-0
-   `soilmoist`/`lai_stand` per (Cell,Year) to replace the proxies when scaling global.
+   - **Derive `lai` from C `LAI_STAND`** → `scripts/build_laistand_lai_feature.py` (env `RUN_DIR`, `GRID`,
+     `FIRSTYEAR`, `OUT`). Maps the annual `lai_stand.nc` `LAI[time,lat,lon]` → per (Cell,Year) stand LAI =
+     the runtime `Σ leaf_c·sla·nind` (slow.jl:489). **Uses the GLOBAL daily run's `grid.nc` by default** —
+     the ANNUAL_ONLY laistand run's own `grid.nc` has been observed corrupt (all-NaN). HARD-GATES on the
+     real (non-fill, <30) fraction so a timed-out/all-fill `lai_stand.nc` can NEVER be silently written.
+1. **Build the runtime-consistent training table** — `SCENARIO=historic|ssp370 SEED=1 [CELLS=<subset>]
+   OUT=... python3 scripts/build_slow_runtime_table.py`. GLOBAL multi-cell: streams the ind agg, inner-joins
+   the step-0 `soilmoist`/`lai` per (Cell,Year) (`SOIL_TBL_PATH`/`LAI_TBL_PATH` override for tests), bakes a
+   **per-CELL** climatological boundary (time-constant → matches the runtime's re-appended `s.boundary`), and
+   writes `X.f64`/`y.f64`/`manifest.txt` + a `cell_meta.parquet` sidecar (per-cell `n_init`/`age0`/boundary
+   the coupled driver reads to build one emulator per cell — ONE pooled cell-agnostic forest; the AR ratio
+   `target/n_prev` cancels count magnitude). `CELLS=<one>` also emits scalar meta = the committed Hainich demo
+   path. VERIFY on a biome-stratified subset (per-cell equivalence vs solo builds; boundary varies-across /
+   constant-within; no NaN) before the global run.
 2. **Fit + serialize** — `OUT=/p/tmp/jamirp/slow_runtime julia --project=. scripts/train_slow_drf.jl`
    (login-node fast for one cell; `scripts/sbatch_julia.sh` for global). Writes the COMMITTED artifacts
    `test/testitems/references/drf_forest_hainich.drf` + `..._meta.txt` (nfeat/nhead/boundary/n_init/golden).
