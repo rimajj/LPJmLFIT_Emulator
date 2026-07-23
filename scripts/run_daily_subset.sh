@@ -38,8 +38,8 @@ set -euo pipefail
 # ---- parameters (env-overridable) -------------------------------------------
 STARTGRID="${STARTGRID:?set STARTGRID (0-based grid row)}"
 ENDGRID="${ENDGRID:?set ENDGRID (>= STARTGRID, <= 67419)}"
-FIRSTYEAR="${FIRSTYEAR:-2000}"
-LASTYEAR="${LASTYEAR:-2002}"
+SCENARIO="${SCENARIO:-historic}"  # historic (obsclim 2000-2019, restart_1999, VARYING TRENDY CO2)
+                                  #  |  ssp370 (MPI-ESM1-2-HR ssp370 2020-2100, restart_2019, CONSTANT 409.63 ppm CO2)
 NTASKS="${NTASKS:-16}"
 RUNTAG="${RUNTAG:-subset}"
 SUBMIT="${SUBMIT:-no}"
@@ -49,22 +49,57 @@ EXCLUSIVE="${EXCLUSIVE:-no}"      # yes -> whole-node allocation (recommended fo
 
 LPJROOT=/home/jamirp/lpjml56fit
 GLOBAL=/p/projects/waldspektrum/priesner/clustering/global
-RESTART_1999="${GLOBAL}/Historical/ground_truth/model_output/transient_2000_2019_npatch25_nspinup1000_nspinyear30_random_seed1/restart/restart_1999.lpj"
+HIST_RESTART_DIR="${GLOBAL}/Historical/ground_truth/model_output/transient_2000_2019_npatch25_nspinup1000_nspinyear30_random_seed1/restart"
 RUN_ROOT=/p/tmp/jamirp/esm_land_daily
 
-runname="daily_${FIRSTYEAR}_${LASTYEAR}_${RUNTAG}_c${STARTGRID}_${ENDGRID}_seed${RANDOM_SEED}"
+# ---- scenario dispatch: forcing block, restart, CO2, default years ----------
+# Both scenarios keep the SAME physics config (sections I & II) as their production
+# transient, so the daily re-run is byte-consistent with the annual `ind` truth.
+case "${SCENARIO}" in
+  historic)
+    RESTART="${HIST_RESTART_DIR}/restart_1999.lpj"     # spinup end -> 2000-2019 re-run
+    FIRSTYEAR="${FIRSTYEAR:-2000}"; LASTYEAR="${LASTYEAR:-2019}"
+    # obsclim GSWP3-W5E5 inputs (relative to GLOBAL/); VARYING TRENDY v12 CO2
+    read -r -d '' FORCING_BLOCK <<EOF || true
+  "temp" :      { "fmt" : "clm", "name" : "temperature_test.clm"},
+  "prec" :      { "fmt" : "clm", "name" : "precipitation_test.clm"},
+  "lwnet" :     { "fmt" : "clm", "name" : "long_wave_radiation_test.clm"},
+  "swdown" :    { "fmt" : "clm", "name" : "short_wave_radiation_test.clm"},
+  "humid" :     { "fmt" : "clm", "name" : "humid_test.clm"},
+  "co2" :       { "fmt" : "txt", "name" : "/p/projects/lpjml/inputs/co2/global/TRENDY/v12/global_co2_ann_1700_2022.txt"},
+EOF
+    ;;
+  ssp370)
+    RESTART="${HIST_RESTART_DIR}/restart_2019.lpj"     # historical end -> 2020-2100 SSP370 continuation
+    FIRSTYEAR="${FIRSTYEAR:-2020}"; LASTYEAR="${LASTYEAR:-2100}"
+    # MPI-ESM1-2-HR ssp370 forcings (relative to GLOBAL/); CONSTANT 409.63 ppm CO2 (2019 value,
+    # held flat 2020-2100 -> the with_nitrogen="no" constant-CO2 regime, DEVELOPMENT_PLAN §3).
+    # EXACT match to the annual run: .../ssp370/ground_truth/.../transient_2020_2100_npatch25_random_seed1.
+    read -r -d '' FORCING_BLOCK <<EOF || true
+  "temp" :      { "fmt" : "clm", "name" : "ssp370/tas_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
+  "prec" :      { "fmt" : "clm", "name" : "ssp370/pr_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
+  "lwnet" :     { "fmt" : "clm", "name" : "ssp370/lwnet_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
+  "swdown" :    { "fmt" : "clm", "name" : "ssp370/rsds_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
+  "humid" :     { "fmt" : "clm", "name" : "ssp370/huss_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
+  "co2" :       { "fmt" : "txt", "name" : "/home/jamirp/scripts/clustering/climclusterpy_package/global_co2_ann_1700_2019_const_2100.txt"},
+EOF
+    ;;
+  *) echo "FATAL: SCENARIO must be 'historic' or 'ssp370' (got '${SCENARIO}')"; exit 1 ;;
+esac
+
+runname="daily_${FIRSTYEAR}_${LASTYEAR}_${SCENARIO}_${RUNTAG}_c${STARTGRID}_${ENDGRID}_seed${RANDOM_SEED}"
 outpath="${RUN_ROOT}/${runname}"
 out_script="${outpath}/scripts_for_running_the_model"
 mkdir -p "${outpath}/output" "${out_script}"
 
-echo "== run: ${runname}"
+echo "== run: ${runname}  (scenario=${SCENARIO})"
 echo "   cells [${STARTGRID},${ENDGRID}] (n=$((ENDGRID-STARTGRID+1))), years ${FIRSTYEAR}-${LASTYEAR}, ntasks ${NTASKS}"
-echo "   restart: ${RESTART_1999}"
+echo "   restart: ${RESTART}"
 echo "   outpath: ${outpath}"
 
-[ -f "${RESTART_1999}" ] || { echo "FATAL: restart_1999.lpj not found"; exit 1; }
+[ -f "${RESTART}" ] || { echo "FATAL: restart file not found: ${RESTART}"; exit 1; }
 
-# ---- input file (identical global Historical obsclim inputs) -----------------
+# ---- input file (scenario forcing; soil/coord/soildepth identical global grid) --
 cat > "${out_script}/input.js" <<EOF
 "inpath" : "${GLOBAL}/",
 "soilmap" : [null,"clay", "silty clay", "sandy clay", "clay loam", "silty clay loam",
@@ -74,13 +109,8 @@ cat > "${out_script}/input.js" <<EOF
 {
   "soil" :      { "fmt" : "raw", "name" : "soil_code_test.soil.bin"},
   "coord" :     { "fmt" : "clm", "name" : "soil_code_test.grid.clm"},
-  "temp" :      { "fmt" : "clm", "name" : "temperature_test.clm"},
   "soildepth" : { "fmt" : "clm", "name" : "soil_depth_test.clm"},
-  "prec" :      { "fmt" : "clm", "name" : "precipitation_test.clm"},
-  "lwnet" :     { "fmt" : "clm", "name" : "long_wave_radiation_test.clm"},
-  "swdown" :    { "fmt" : "clm", "name" : "short_wave_radiation_test.clm"},
-  "humid" :     { "fmt" : "clm", "name" : "humid_test.clm"},
-  "co2" :       { "fmt" : "txt", "name" : "/p/projects/lpjml/inputs/co2/global/TRENDY/v12/global_co2_ann_1700_2022.txt"},
+${FORCING_BLOCK}
 },
 EOF
 
@@ -207,6 +237,10 @@ cat > "${out_script}/lpjml.js" <<EOF
     { "id" : "pet",      "file" : { "fmt" : "cdf", "name" : "output/d_pet.nc",      "timestep" : "daily" }},
     { "id" : "npp",      "file" : { "fmt" : "cdf", "name" : "output/d_npp.nc",      "timestep" : "daily" }},
     { "id" : "gpp",      "file" : { "fmt" : "cdf", "name" : "output/d_gpp.nc",      "timestep" : "daily" }},
+    /* ANNUAL stand structure -> the runtime-consistent S features (replaces the lai proxy; ADR 0023/0024).
+       lai_stand = FIT stand LAI; fpc_stand = FIT effective stand FPC. Cheap (annual) even at global scale. */
+    { "id" : "lai_stand","file" : { "fmt" : "cdf", "name" : "output/lai_stand.nc" }},
+    { "id" : "fpc_stand","file" : { "fmt" : "cdf", "name" : "output/fpc_stand.nc" }},
   ],
 
 /*==== V. Run settings section ====*/
@@ -219,7 +253,7 @@ cat > "${out_script}/lpjml.js" <<EOF
   "lastyear" : ${LASTYEAR},
   "outputyear": ${FIRSTYEAR},
   "restart" :  true,
-  "restart_filename" : "${RESTART_1999}",
+  "restart_filename" : "${RESTART}",
   "write_restart" : false,
   "write_restart_filename" : "restart/restart_${LASTYEAR}.lpj",
   "restart_year": ${LASTYEAR}
