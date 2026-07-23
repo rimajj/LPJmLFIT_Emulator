@@ -173,11 +173,25 @@ BEFORE chasing any miss.
    construction). **The ADR-0020 falsifiable success test is `[VERIFIED] SUPPORTED` OFFLINE**
    (`scripts/flux_ood_experiment.jl`: on the warm+dry OOD holdout the flux channel beats the climate-only channel
    2.35×, ood R² 0.76 vs −0.16). The in-loop test (`test/testitems/slow_flux_driven_tests.jl`) verifies the DRF
-   target drives the demography + carbon conserves (~1e-12) + determinism + Float32. **Still open (v2):** train the
-   PRODUCTION DRF on a runtime-consistent feature table + serialize it (the in-loop test uses an in-test DRF); the
-   Gate-3 **oracle** testitem (coupled S-owned marginals vs the LPJmL-FIT C ground truth at Hainich) + the in-loop
-   OOD win; the annual-statistics `FToS` extension (`docs/slow_flux_conditioning_data_spec.md` §5); the copula
-   recruit-trait sampler (traits are still fixed-cohort). Prereq for those: the extended flux-statistics data.
+   target drives the demography + carbon conserves (~1e-12) + determinism + Float32.
+   **[DONE — v2 (Step 4a/b/c), 2026-07-23, ADR 0023]:**
+   (a) **Production DRF loads from a serialized artifact.** `DRF.save_forest`/`load_forest` (`src/drf.jl`) is a
+   pure-Base text round-trip (bitwise; ADR 0014 — no dep). `scripts/build_slow_runtime_table.py` builds a
+   **runtime-consistent** feature table (exact `flux_feature_vector` order; `water_stress`=1−wscal_mean fixing the
+   OOD-table mismatch; `age_mean` = elapsed-year counter, NOT mean Age — the biggest train/inference-shift risk;
+   `soilmoist`/`lai` documented proxies pending the global C-`LAI_STAND`/`swc` pipeline), `scripts/train_slow_drf.jl`
+   fits + serializes the committed Hainich demo artifact `references/drf_forest_hainich.drf` (40 trees, in-sample
+   R²=0.975), and `test/testitems/slow_production_drf_tests.jl` **loads it and drives the coupled Hainich loop**
+   (targets 9.5→6.9 inside the training band, N moves, carbon conserves ~1e-12, energy 7e-15, deterministic) — this
+   closes the "in-test DRF" gap. (b) **Gate-3 oracle** (`test/testitems/slow_oracle_tests.jl` +
+   `scripts/build_slow_oracle_reference.py` → `references/hainich_slow_oracle_{traits,counts}.csv`): the coupled S
+   Height distribution matches the LPJmL-FIT C truth at Hainich to IQR-normalized quantile-RMSE ~0.31 (median 8.9
+   vs 7.9 m), framed as a recursive-vs-nonrecursive drift alarm. (c) **Copula recruit-trait sampler BUILT** (`chol_lower`/
+   `norminv`/`normcdf`/`GaussianCopula`/`sample_copula!` in `src/drf.jl`; recovers a target correlation, deterministic).
+   **Still open (v3):** the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc`, many cells, C-truth demography
+   target — a Phase-2 SLURM data pipeline); WIRING the copula into establishment (needs recruit-cohort APPEND, risk #5);
+   the annual-statistics `FToS` extension (`docs/slow_flux_conditioning_data_spec.md` §5); the in-loop OOD win; promoting
+   the runtime `age_mean` to a true per-cohort mean age + retrain (ADR 0023 §3).
 9. **`scripts/bench_slow_speedup.jl` + Gate-4 testitem**: overhead + K≪N structural invariant; the script
    records the wall-time ratios off the login node. **[DONE — structural invariant (fixed K-cohort roster) is
    asserted in `slow_demography_tests.jl`; the overhead/scientific ratios are reported by the script (run via

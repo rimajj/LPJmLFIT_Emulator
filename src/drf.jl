@@ -19,7 +19,8 @@
 module DRF
 
 export Xoshiro256pp, next_u64!, rand01!, rand_range!, Forest, fit_forest, predict,
-    predict_quantile, feature_importance
+    predict_quantile, feature_importance, save_forest, load_forest,
+    chol_lower, norminv, normcdf, GaussianCopula, copula_uniforms!, sample_copula!
 
 # ── RNG: Xoshiro256++ (public domain algorithm), seeded via splitmix64 ─────────────────────────
 mutable struct Xoshiro256pp
@@ -349,5 +350,265 @@ function feature_importance(forest::Forest)
     s = sum(imp)
     return s > 0 ? imp ./ s : imp
 end
+
+# ── Gaussian copula for correlated recruit-trait draws (pure Base; ADR 0022) ─────────────────────
+# Component S draws NEW recruit traits from a per-PFT Gaussian copula: correlated standard normals
+# (z ~ N(0,I) → zc = L·z via the Cholesky of a committed correlation R) mapped to uniforms u = Φ(zc),
+# then through per-axis FLUX-CONDITIONED empirical marginals (`predict_quantile` on per-axis DRFs — the
+# Julia analog of the sibling emulator's `ResidualRegressor.sample_u`). Axes/order (sibling
+# `direct_features.py`): {logHeight, Age, SLA, Wooddens, beta_root}. Hand-rolled Cholesky + normal
+# CDF/inverse-CDF keep the runtime `[deps]` empty (ADR 0014). Deterministic under `Xoshiro256pp`.
+# NOTE: the sampler is complete + tested here; its consumer — assigning drawn traits to APPENDED recruit
+# cohorts — lands with the membership append/merge path (design risk #5, docs/p1_s_in_loop_design.md §3).
+# Until then the fixed-roster establishment blends recruits into an existing cohort that keeps its frozen
+# traits, so the sampler is not yet wired into `reconcile_demography!`.
+
+"Lower-triangular Cholesky `L` (with `L·Lᵀ = A`) of a symmetric positive-definite matrix (Cholesky–Banachiewicz)."
+function chol_lower(A::AbstractMatrix{Float64})
+    n = size(A, 1)
+    size(A, 2) == n || throw(DimensionMismatch("chol_lower: matrix must be square"))
+    L = zeros(Float64, n, n)
+    @inbounds for i in 1:n
+        for j in 1:i
+            s = A[i, j]
+            for k in 1:(j - 1)
+                s -= L[i, k] * L[j, k]
+            end
+            if i == j
+                s <= 0 && error("chol_lower: matrix is not positive definite (nonpositive pivot at $i)")
+                L[i, i] = sqrt(s)
+            else
+                L[i, j] = s / L[j, j]
+            end
+        end
+    end
+    return L
+end
+
+# Acklam rational approximation to the standard-normal inverse CDF Φ⁻¹ (max relative error ~1.15e-9).
+const _NI_A = (
+    -3.969683028665376e+1, 2.209460984245205e+2, -2.759285104469687e+2,
+    1.38357751867269e+2, -3.066479806614716e+1, 2.506628277459239e+0,
+)
+const _NI_B = (
+    -5.447609879822406e+1, 1.615858368580409e+2, -1.556989798598866e+2,
+    6.680131188771972e+1, -1.328068155288572e+1,
+)
+const _NI_C = (
+    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e+0,
+    -2.549732539343734e+0, 4.374664141464968e+0, 2.938163982698783e+0,
+)
+const _NI_D = (7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e+0, 3.754408661907416e+0)
+
+"Standard-normal inverse CDF Φ⁻¹(p), p ∈ (0,1) (Acklam rational approximation; p clamped to (1e-15, 1−1e-15))."
+function norminv(p::Float64)
+    p = clamp(p, 1.0e-15, 1 - 1.0e-15)
+    plow = 0.02425
+    phigh = 1 - plow
+    if p < plow
+        q = sqrt(-2 * log(p))
+        return (((((_NI_C[1] * q + _NI_C[2]) * q + _NI_C[3]) * q + _NI_C[4]) * q + _NI_C[5]) * q + _NI_C[6]) /
+            ((((_NI_D[1] * q + _NI_D[2]) * q + _NI_D[3]) * q + _NI_D[4]) * q + 1)
+    elseif p <= phigh
+        q = p - 0.5
+        r = q * q
+        return (((((_NI_A[1] * r + _NI_A[2]) * r + _NI_A[3]) * r + _NI_A[4]) * r + _NI_A[5]) * r + _NI_A[6]) * q /
+            (((((_NI_B[1] * r + _NI_B[2]) * r + _NI_B[3]) * r + _NI_B[4]) * r + _NI_B[5]) * r + 1)
+    else
+        q = sqrt(-2 * log(1 - p))
+        return -(((((_NI_C[1] * q + _NI_C[2]) * q + _NI_C[3]) * q + _NI_C[4]) * q + _NI_C[5]) * q + _NI_C[6]) /
+            ((((_NI_D[1] * q + _NI_D[2]) * q + _NI_D[3]) * q + _NI_D[4]) * q + 1)
+    end
+end
+
+"Standard-normal CDF Φ(x) (Abramowitz–Stegun 26.2.17; absolute error < 7.5e-8)."
+function normcdf(x::Float64)
+    b1 = 0.31938153
+    b2 = -0.356563782
+    b3 = 1.781477937
+    b4 = -1.821255978
+    b5 = 1.330274429
+    ax = abs(x)
+    t = 1 / (1 + 0.2316419 * ax)
+    ϕ = exp(-0.5 * ax * ax) / sqrt(2π)
+    y = 1 - ϕ * (((((b5 * t + b4) * t + b3) * t + b2) * t + b1) * t)
+    return x >= 0 ? y : 1 - y
+end
+
+"""
+    GaussianCopula(R::AbstractMatrix{<:Real}; from_corr=true)
+
+A `d`-dimensional Gaussian copula defined by the lower-triangular Cholesky `L` of its correlation matrix
+`R = L·Lᵀ`. The single-matrix argument is interpreted as a **correlation matrix** and factored with
+[`chol_lower`](@ref) (`from_corr=true`, the default); pass `from_corr=false` to supply an already
+lower-triangular Cholesky factor `L` directly. Fields: `L` (the Cholesky), `d` (dimension).
+"""
+struct GaussianCopula
+    L::Matrix{Float64}
+    d::Int
+end
+function GaussianCopula(R::AbstractMatrix{<:Real}; from_corr::Bool = true)
+    Rf = Matrix{Float64}(R)
+    L = from_corr ? chol_lower(Rf) : Rf
+    return GaussianCopula(L, size(L, 1))
+end
+
+"""
+    copula_uniforms!(rng::Xoshiro256pp, cop::GaussianCopula) -> Vector{Float64}
+
+Draw one correlated uniform vector `u ∈ (0,1)^d`: `z ~ N(0,I)^d` (one `rand01!` per axis, in axis order),
+`zc = L·z`, `u = Φ(zc)`. Deterministic under `rng`; consumes exactly `d` uniforms per call.
+"""
+function copula_uniforms!(rng::Xoshiro256pp, cop::GaussianCopula)
+    d = cop.d
+    z = Vector{Float64}(undef, d)
+    @inbounds for i in 1:d
+        z[i] = norminv(rand01!(rng))
+    end
+    u = Vector{Float64}(undef, d)
+    @inbounds for i in 1:d
+        zc = 0.0
+        for k in 1:i
+            zc += cop.L[i, k] * z[k]
+        end
+        u[i] = normcdf(zc)
+    end
+    return u
+end
+
+"""
+    sample_copula!(rng, cop::GaussianCopula, axis_forests, x::AbstractVector{Float64}) -> Vector{Float64}
+
+Draw one correlated recruit-trait vector: correlated copula uniforms from `cop`, each mapped through the
+matching per-axis FLUX-CONDITIONED empirical marginal `predict_quantile(axis_forests[i], x, u[i])`.
+`axis_forests` must hold `cop.d` DRFs (each fit with `store_values=true`); `x` is the flux/boundary
+feature row those marginals were conditioned on. Deterministic under `rng`.
+"""
+function sample_copula!(rng::Xoshiro256pp, cop::GaussianCopula, axis_forests, x::AbstractVector{Float64})
+    length(axis_forests) == cop.d ||
+        throw(DimensionMismatch("sample_copula!: need $(cop.d) axis forests, got $(length(axis_forests))"))
+    u = copula_uniforms!(rng, cop)
+    out = Vector{Float64}(undef, cop.d)
+    @inbounds for i in 1:cop.d
+        out[i] = predict_quantile(axis_forests[i], x, u[i])
+    end
+    return out
+end
+
+# ── Serialization: pure-Base text round-trip of a Forest (ADR 0014 — no runtime dep) ─────────────
+# A PRODUCTION DRF is trained offline (SLURM), then LOADED by the coupled Component S at runtime. The
+# core's runtime `[deps]` stay EMPTY, and committed fixtures are text (never `*.bin` — that pattern is
+# git-ignored). So the on-disk format is a self-describing, whitespace-separated text stream with a
+# magic + version header. Float64 fields use Julia's SHORTEST round-trippable decimal (`string`/`parse`
+# — exact since Julia 1.0, i.e. `parse(Float64, string(x)) === x`); the round-trip testitem proves it by
+# asserting BITWISE-identical predictions after save→load. Int fields are decimal. The ragged leaf
+# `values` (present only when `store_values`) are written as a per-node `<count> <v…>` block.
+const _DRF_MAGIC = "LPJMLFIT_DRF"
+const _DRF_VERSION = 1
+
+"""
+    save_forest(path::AbstractString, f::Forest) -> path
+    save_forest(io::IO, f::Forest) -> io
+
+Serialize `f` to a pure-Base text stream (magic `LPJMLFIT_DRF`, version 1). Round-trips EXACTLY through
+[`load_forest`](@ref) (bitwise-identical predictions). The learned count/quantile forest the coupled
+Component S loads at runtime is produced this way; committed fixtures are text (never `*.bin`).
+"""
+function save_forest(io::IO, f::Forest)
+    println(io, _DRF_MAGIC, " ", _DRF_VERSION)
+    println(io, f.nfeat, " ", f.store_values ? 1 : 0, " ", length(f.trees))
+    println(io, join((string(x) for x in f.fill), " "))
+    for t in f.trees
+        n = length(t.feat)
+        println(io, n)
+        println(io, join((string(x) for x in t.feat), " "))
+        println(io, join((string(x) for x in t.thr), " "))
+        println(io, join((string(x) for x in t.left), " "))
+        println(io, join((string(x) for x in t.right), " "))
+        println(io, join((string(x) for x in t.value), " "))
+        if f.store_values
+            for nid in 1:n
+                v = t.values[nid]
+                println(io, length(v), isempty(v) ? "" : " ", join((string(x) for x in v), " "))
+            end
+        end
+    end
+    return io
+end
+
+function save_forest(path::AbstractString, f::Forest)
+    open(io -> save_forest(io, f), path, "w")
+    return path
+end
+
+"""
+    load_forest(path::AbstractString) -> Forest
+    load_forest(io::IO) -> Forest
+
+Deserialize a [`Forest`](@ref) written by [`save_forest`](@ref). Pure Base; validates the magic/version.
+The token cursor `pos` is a plain reassigned local that is NEVER captured by a closure (the reader is
+fully inlined) — a reassigned local captured by a closure is what trips JET 0.11.6 on Julia ≥1.12
+(CLAUDE.md §2), so keeping the parse loop closure-free sidesteps that gate entirely.
+"""
+function load_forest(io::IO)
+    toks = split(read(io, String))
+    toks[1] == _DRF_MAGIC || error("load_forest: bad magic (expected $_DRF_MAGIC)")
+    ver = parse(Int, toks[2])
+    ver == _DRF_VERSION || error("load_forest: unsupported version $ver (expected $_DRF_VERSION)")
+    nfeat = parse(Int, toks[3])
+    sv = parse(Int, toks[4]) == 1
+    ntrees = parse(Int, toks[5])
+    pos = 6
+    fill = Vector{Float64}(undef, nfeat)
+    @inbounds for i in 1:nfeat
+        fill[i] = parse(Float64, toks[pos])
+        pos += 1
+    end
+    trees = Vector{RegTree}(undef, ntrees)
+    for ti in 1:ntrees
+        n = parse(Int, toks[pos])
+        pos += 1
+        feat = Vector{Int}(undef, n)
+        thr = Vector{Float64}(undef, n)
+        left = Vector{Int}(undef, n)
+        right = Vector{Int}(undef, n)
+        value = Vector{Float64}(undef, n)
+        @inbounds for i in 1:n
+            feat[i] = parse(Int, toks[pos]); pos += 1
+        end
+        @inbounds for i in 1:n
+            thr[i] = parse(Float64, toks[pos]); pos += 1
+        end
+        @inbounds for i in 1:n
+            left[i] = parse(Int, toks[pos]); pos += 1
+        end
+        @inbounds for i in 1:n
+            right[i] = parse(Int, toks[pos]); pos += 1
+        end
+        @inbounds for i in 1:n
+            value[i] = parse(Float64, toks[pos]); pos += 1
+        end
+        values = Vector{Vector{Float64}}(undef, n)
+        if sv
+            for nid in 1:n
+                c = parse(Int, toks[pos])
+                pos += 1
+                vi = Vector{Float64}(undef, c)
+                @inbounds for k in 1:c
+                    vi[k] = parse(Float64, toks[pos]); pos += 1
+                end
+                values[nid] = vi
+            end
+        else
+            for nid in 1:n
+                values[nid] = Float64[]
+            end
+        end
+        trees[ti] = RegTree(feat, thr, left, right, value, values)
+    end
+    return Forest(trees, nfeat, sv, fill)
+end
+
+load_forest(path::AbstractString) = open(load_forest, path, "r")
 
 end # module DRF

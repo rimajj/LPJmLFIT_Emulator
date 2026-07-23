@@ -208,14 +208,26 @@ unresolved and ADR 0017's premise rests on it.
     4 broken, job 1563993):** the DRF target drives N (decline 0.076→0.013 / growth 0.076→0.26, monotone);
     carbon conserves at the handoff to **~1e-12 gC ≪ 1e-6·C_scale** both directions; energy closes (1.4e-14);
     deterministic under seed; Float32 type-stable + conserving.
-  - **[NEXT — Tier-1 Step 4 / follow-ups] Production DRF artifact + coupled fidelity + scale-up.** (a) Train the
-    production DRF on a RUNTIME-CONSISTENT feature table (the runtime `flux_feature_vector` order — a training
-    script + a pure-Base serialization of the `DRF.Forest` the coupled app loads; the in-loop test uses an in-test
-    DRF); (b) demonstrate the coupled S-owned marginals match the LPJmL-FIT C oracle at Hainich (the load-bearing
-    gate-3 oracle testitem) and that the coupled flux-driven S beats the climate-only baseline IN THE LOOP (the
-    offline OOD win is `[VERIFIED]`; the in-loop win is the next check); (c) the hand-rolled Gaussian-copula
-    recruit-trait sampler (traits are still fixed-cohort in v1). Design risk #5 (atomic membership append/merge)
-    + grass-ownership #8 still open. Everything is **Hainich-only** — scaffolding, not multi-cell evidence.
+  - **[DONE — Tier-1 Step 4 (4a/b/c), 2026-07-23, ADR 0023] Production DRF artifact + Gate-3 oracle + copula sampler.**
+    (4a) **The production DRF now LOADS from a serialized artifact** (closing the "in-test DRF" gap): `DRF.save_forest`/
+    `load_forest` (`src/drf.jl`) is a pure-Base text round-trip verified BITWISE; `scripts/build_slow_runtime_table.py`
+    builds a RUNTIME-CONSISTENT table (exact `flux_feature_vector` order — ind `npp`/`agb` are already per-m² so
+    per-patch row-sums match; `water_stress`=1−wscal_mean fixes the OOD-table mismatch; **`age_mean` trained as the
+    elapsed-year counter, NOT mean Age** — the biggest train/inference-shift risk; `soilmoist`/`lai` documented
+    proxies); `scripts/train_slow_drf.jl` → committed `references/drf_forest_hainich.drf` (40 trees, R²=0.975).
+    `[VERIFIED slow_production_drf_tests.jl]`: the loaded DRF drives the coupled Hainich loop (targets 9.5→6.9 INSIDE
+    the training band ⇒ runtime-consistent; N moves; carbon ~1e-12 gC; energy 7e-15; deterministic). (4b) **Gate-3
+    oracle** `[VERIFIED slow_oracle_tests.jl]`: coupled S Height distribution vs the C truth at Hainich to
+    IQR-normalized quantile-RMSE **~0.31** (median 8.9 vs 7.9 m) — an honest recursive-vs-nonrecursive DRIFT ALARM,
+    Hainich-only. Reference `references/hainich_slow_oracle_{traits,counts}.csv` (`scripts/build_slow_oracle_reference.py`).
+    (4c) **Copula recruit-trait sampler BUILT** (`chol_lower`/`norminv`/`normcdf`/`GaussianCopula`/`sample_copula!`,
+    `src/drf.jl`) `[VERIFIED drf_copula_tests.jl]`: recovers a target correlation, deterministic; NOT yet wired into
+    establishment (its consumer is recruit-cohort APPEND, risk #5). JET-1.12 clean; Runic clean.
+  - **[NEXT — Tier-1 v3 / follow-ups]** (a) the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc` across
+    cells + C-truth demography target — a Phase-2 SLURM data pipeline; the two proxy channels need it); (b) WIRE the
+    copula into establishment (needs atomic membership append/merge, design risk #5); (c) the in-loop OOD win (the
+    offline OOD win is `[VERIFIED]`); (d) promote the runtime `age_mean` to a true per-cohort mean age + retrain
+    (ADR 0023 §3); grass-ownership #8 + multi-cell scale-up (P3) still open. Everything **Hainich-only** — scaffolding.
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw

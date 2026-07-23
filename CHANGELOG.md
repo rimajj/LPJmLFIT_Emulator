@@ -7,6 +7,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **P1 Tier-1 Step 4 — the PRODUCTION Component-S DRF loads from a serialized artifact + a runtime-consistent
+  training table + the Gate-3 oracle + the copula recruit-trait sampler ([ADR 0023](docs/decisions/0023-component-s-production-drf-runtime-consistency.md)).**
+  Closes the gap that Step 3's in-loop test used an in-test DRF — the model that is validated is now the model
+  that runs. Zero new runtime `[deps]` (all pure Base, ADR 0014).
+  - **(4a) DRF serialization + production artifact.** `DRF.save_forest`/`load_forest` (`src/drf.jl`) — a pure-Base
+    text round-trip (magic `LPJMLFIT_DRF` + version; Float64 via Julia's shortest round-trippable decimal),
+    verified **BITWISE** (predictions strict `==`, both `store_values` modes, NaN fill, ragged leaf values).
+    `scripts/build_slow_runtime_table.py` builds a **runtime-consistent** feature table (exact
+    `flux_feature_vector` order; `water_stress`=1−wscal_mean — fixing the OOD-table `mort_water`-inversion
+    mismatch; `age_mean`=elapsed-year counter, NOT mean Age — closing the biggest train/inference-shift risk;
+    `soilmoist`/`lai` documented proxies pending the global C-`LAI_STAND`/`swc` pipeline). `scripts/train_slow_drf.jl`
+    fits + serializes the committed Hainich demo artifact `test/testitems/references/drf_forest_hainich.drf`
+    (40 trees, ~95 KB, in-sample R²=0.975) + a meta/golden file.
+    - **[VERIFIED] `test/testitems/slow_production_drf_tests.jl`:** the LOADED production DRF drives the coupled
+      Hainich loop — predicts counts INSIDE its training band (targets 9.5→6.9, no wild extrapolation ⇒
+      runtime-consistent), MOVES tree N (F alone holds it fixed), conserves carbon at the S↔F handoff to ~1e-12 gC,
+      energy closes (7e-15), deterministic under seed. `drf_serialization_tests.jl` gates the round-trip + the
+      committed artifact's golden (feature→prediction) pairs bitwise.
+  - **(4b) Gate-3 oracle** (`test/testitems/slow_oracle_tests.jl`; `scripts/build_slow_oracle_reference.py` →
+    `references/hainich_slow_oracle_{traits,counts}.csv`). The coupled flux-driven S size distribution matches the
+    LPJmL-FIT C ground truth at Hainich (cell 42490): nind-weighted Height quantiles vs the C truth to
+    IQR-normalized quantile-RMSE **~0.31** (median 8.9 vs 7.9 m), framed honestly as a recursive-coupled-S
+    vs non-recursive-C-truth **drift alarm** (Hainich-only), not a parity gate.
+  - **(4c) Gaussian-copula recruit-trait sampler BUILT** (`src/drf.jl`: `chol_lower`, `norminv` [Acklam],
+    `normcdf` [A&S 26.2.17], `GaussianCopula`, `copula_uniforms!`, `sample_copula!`). Draws correlated recruit
+    traits {logHeight, Age, SLA, Wooddens, beta_root} via the Cholesky of a committed correlation matrix mapped
+    through the per-axis flux-conditioned `predict_quantile` marginals — the pure-Base analog of the sibling's
+    `ResidualRegressor.sample_u`. **[VERIFIED] `test/testitems/drf_copula_tests.jl`:** recovers a target
+    correlation from draws (±0.03), induces positive trait correlation, deterministic under `Xoshiro256pp`,
+    Cholesky round-trips + guards non-PD. Its consumer (assigning drawn traits to APPENDED recruit cohorts) lands
+    with the membership append/merge path (design risk #5); until then survivors keep frozen traits.
+  - **Still open (v3, documented):** the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc`, many cells,
+    C-truth demography target — a Phase-2 SLURM pipeline); wiring the copula into establishment; the in-loop OOD
+    win; promoting the runtime `age_mean` to a true per-cohort mean age + retrain (ADR 0023 §3).
 - **P1 Tier-1 Step 3 — the FLUX-DRIVEN Component S is IN the coupled loop (ADR 0020/0021/0022).**
   `FluxDrivenSlowEmulator{T} <: AbstractSlowEmulator` (`src/components/slow.jl`) sets the demography TARGET
   from the trained flux-conditioned DRF instead of Tier-0's constant rate: each year S builds a flux feature
