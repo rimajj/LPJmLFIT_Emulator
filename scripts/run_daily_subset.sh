@@ -40,6 +40,9 @@ STARTGRID="${STARTGRID:?set STARTGRID (0-based grid row)}"
 ENDGRID="${ENDGRID:?set ENDGRID (>= STARTGRID, <= 67419)}"
 SCENARIO="${SCENARIO:-historic}"  # historic (obsclim 2000-2019, restart_1999, VARYING TRENDY CO2)
                                   #  |  ssp370 (MPI-ESM1-2-HR ssp370 2020-2100, restart_2019, CONSTANT 409.63 ppm CO2)
+ANNUAL_ONLY="${ANNUAL_ONLY:-no}"  # yes -> emit ONLY the annual stand-structure block (lai_stand/fpc_stand),
+                                  # skip the daily d_* water/carbon block. Use to add lai_stand to a scenario
+                                  # whose daily set already exists (e.g. historic) without regenerating ~186 GB.
 NTASKS="${NTASKS:-16}"
 RUNTAG="${RUNTAG:-subset}"
 SUBMIT="${SUBMIT:-no}"
@@ -86,6 +89,28 @@ EOF
     ;;
   *) echo "FATAL: SCENARIO must be 'historic' or 'ssp370' (got '${SCENARIO}')"; exit 1 ;;
 esac
+
+# ---- daily output block (empty under ANNUAL_ONLY=yes) -----------------------
+DAILY_BLOCK=""
+if [ "${ANNUAL_ONLY}" != "yes" ]; then
+  read -r -d '' DAILY_BLOCK <<'EOF' || true
+    /* daily water-balance terms (mm/day) */
+    { "id" : "prec",     "file" : { "fmt" : "cdf", "name" : "output/d_prec.nc",     "timestep" : "daily" }},
+    { "id" : "transp",   "file" : { "fmt" : "cdf", "name" : "output/d_transp.nc",   "timestep" : "daily" }},
+    { "id" : "evap",     "file" : { "fmt" : "cdf", "name" : "output/d_evap.nc",     "timestep" : "daily" }},
+    { "id" : "interc",   "file" : { "fmt" : "cdf", "name" : "output/d_interc.nc",   "timestep" : "daily" }},
+    { "id" : "runoff",   "file" : { "fmt" : "cdf", "name" : "output/d_runoff.nc",   "timestep" : "daily" }},
+    /* storage terms: swe (snow, mm), swc (fractional/layer), whc_nat (capacity mm), rootmoist (mm) */
+    { "id" : "swe",      "file" : { "fmt" : "cdf", "name" : "output/d_swe.nc",      "timestep" : "daily" }},
+    { "id" : "swc",      "file" : { "fmt" : "cdf", "name" : "output/d_swc.nc",      "timestep" : "daily" }},
+    { "id" : "rootmoist","file" : { "fmt" : "cdf", "name" : "output/d_rootmoist.nc","timestep" : "daily" }},
+    { "id" : "whc_nat",  "file" : { "fmt" : "cdf", "name" : "output/whc_nat.nc" }},
+    /* diagnostics + sub-annual carbon */
+    { "id" : "pet",      "file" : { "fmt" : "cdf", "name" : "output/d_pet.nc",      "timestep" : "daily" }},
+    { "id" : "npp",      "file" : { "fmt" : "cdf", "name" : "output/d_npp.nc",      "timestep" : "daily" }},
+    { "id" : "gpp",      "file" : { "fmt" : "cdf", "name" : "output/d_gpp.nc",      "timestep" : "daily" }},
+EOF
+fi
 
 runname="daily_${FIRSTYEAR}_${LASTYEAR}_${SCENARIO}_${RUNTAG}_c${STARTGRID}_${ENDGRID}_seed${RANDOM_SEED}"
 outpath="${RUN_ROOT}/${runname}"
@@ -222,21 +247,7 @@ cat > "${out_script}/lpjml.js" <<EOF
   [
     { "id" : "grid",       "file" : { "fmt" : "cdf", "name" : "output/grid.nc" }},
     { "id" : "globalflux", "file" : { "fmt" : "txt", "name" : "output/globalflux_${FIRSTYEAR}_${LASTYEAR}.csv" }},
-    /* daily water-balance terms (mm/day) */
-    { "id" : "prec",     "file" : { "fmt" : "cdf", "name" : "output/d_prec.nc",     "timestep" : "daily" }},
-    { "id" : "transp",   "file" : { "fmt" : "cdf", "name" : "output/d_transp.nc",   "timestep" : "daily" }},
-    { "id" : "evap",     "file" : { "fmt" : "cdf", "name" : "output/d_evap.nc",     "timestep" : "daily" }},
-    { "id" : "interc",   "file" : { "fmt" : "cdf", "name" : "output/d_interc.nc",   "timestep" : "daily" }},
-    { "id" : "runoff",   "file" : { "fmt" : "cdf", "name" : "output/d_runoff.nc",   "timestep" : "daily" }},
-    /* storage terms: swe (snow, mm), swc (fractional/layer), whc_nat (capacity mm), rootmoist (mm) */
-    { "id" : "swe",      "file" : { "fmt" : "cdf", "name" : "output/d_swe.nc",      "timestep" : "daily" }},
-    { "id" : "swc",      "file" : { "fmt" : "cdf", "name" : "output/d_swc.nc",      "timestep" : "daily" }},
-    { "id" : "rootmoist","file" : { "fmt" : "cdf", "name" : "output/d_rootmoist.nc","timestep" : "daily" }},
-    { "id" : "whc_nat",  "file" : { "fmt" : "cdf", "name" : "output/whc_nat.nc" }},
-    /* diagnostics + sub-annual carbon */
-    { "id" : "pet",      "file" : { "fmt" : "cdf", "name" : "output/d_pet.nc",      "timestep" : "daily" }},
-    { "id" : "npp",      "file" : { "fmt" : "cdf", "name" : "output/d_npp.nc",      "timestep" : "daily" }},
-    { "id" : "gpp",      "file" : { "fmt" : "cdf", "name" : "output/d_gpp.nc",      "timestep" : "daily" }},
+${DAILY_BLOCK}
     /* ANNUAL stand structure -> the runtime-consistent S features (replaces the lai proxy; ADR 0023/0024).
        lai_stand = FIT stand LAI; fpc_stand = FIT effective stand FPC. Cheap (annual) even at global scale. */
     { "id" : "lai_stand","file" : { "fmt" : "cdf", "name" : "output/lai_stand.nc" }},

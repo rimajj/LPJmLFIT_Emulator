@@ -5,8 +5,11 @@ description: >
   learned count/marginal model): build a RUNTIME-CONSISTENT training table, fit + SERIALIZE the zero-dep
   native-Julia DRF, load it into the coupled loop, and run the Gate-3 oracle vs the LPJmL-FIT C truth at
   Hainich. Use whenever training/retraining the Component-S DRF, changing its feature set, serializing or
-  loading a DRF.Forest artifact, scaling the DRF from Hainich to global, or wiring the Gaussian copula
-  recruit-trait sampler. Names the artifacts: scripts/build_slow_runtime_table.py,
+  loading a DRF.Forest artifact, scaling the DRF from Hainich to global, GENERATING/DERIVING the global
+  training-data inputs (running a scenario's C data via run_daily_subset.sh SCENARIO=historic|ssp370, and
+  deriving the runtime-consistent soilmoist feature from daily swc + lai from LAI_STAND), or wiring the
+  Gaussian copula recruit-trait sampler. Names the artifacts: scripts/build_slow_runtime_table.py,
+  scripts/build_swc_soilmoist_feature.py (swc->soilmoist, grid.nc cellid orderA mapping),
   scripts/train_slow_drf.jl, scripts/build_slow_oracle_reference.py, DRF.save_forest/load_forest,
   test/testitems/references/drf_forest_hainich.drf, hainich_slow_oracle_{traits,counts}.csv, cell 42490,
   the flux_feature_vector order, the age_mean train/inference trap, the dynamic-roster append/merge, and the
@@ -21,9 +24,25 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
 
 ## The pipeline (each step names its script + gate)
 
+0. **Generate + derive the runtime-consistent feature INPUTS (the global data-creation front).** The table
+   in step 1 needs, per (Cell, Year), the real `soilmoist` and `lai` — not the historic proxies. Two sources,
+   per scenario (`historic` obsclim 2000-2019 · `ssp370` 2020-2100 constant-CO2):
+   - **Run the C model for the scenario** → `scripts/run_daily_subset.sh` with `SCENARIO=historic|ssp370`
+     (see the **`lpjmlfit-cbinary`** skill for the mechanics: modules, `lpjcheck`, restart, SLURM). It now
+     emits annual `lai_stand`/`fpc_stand` alongside the daily `d_swc` block. `ANNUAL_ONLY=yes` adds
+     `lai_stand` to a scenario whose daily set already exists (e.g. historic) without regenerating ~186 GB.
+     Full-global SSP370 daily ≈ 768 GB / ~2-3 h on 2048 tasks.
+   - **Derive `soilmoist` from daily `swc`** → `scripts/build_swc_soilmoist_feature.py` (env `RUN_DIR`,
+     `FIRSTYEAR`, `OUT`; SUBMIT to SLURM — it streams the ~135 GB `d_swc` cube dask-lazy, one year at a time).
+     It reduces `SWC[time,layer=23,lat,lon]` → per (Cell,Year) mean over (days-in-year × 23 layers) = the
+     runtime's `sum(state.w)/length(state.w)` (slow.jl:498) EXACTLY (NSOILLAYER=23, unweighted). **Cell mapping
+     is via `grid.nc` `cellid[lat,lon]` = the authoritative orderA index** (VERIFIED cellid[51.25,10.25]==42490,
+     Hainich) — never the flatten order (the 42490-vs-28008 trap). Anchor a change with `SUBSET_DEG=2` (fast,
+     login-node) and confirm Hainich(42490) is present with a plausible fraction before the global SLURM run.
 1. **Build the runtime-consistent training table** — `conda activate py311_new; CELLS=42490 SEED=1
    OUT=/p/tmp/jamirp/slow_runtime python3 scripts/build_slow_runtime_table.py`. Writes `X.f64`/`y.f64`/
-   `manifest.txt` (a zero-dep raw-Float64 payload the Julia trainer reads with pure Base IO).
+   `manifest.txt` (a zero-dep raw-Float64 payload the Julia trainer reads with pure Base IO). Join the step-0
+   `soilmoist`/`lai_stand` per (Cell,Year) to replace the proxies when scaling global.
 2. **Fit + serialize** — `OUT=/p/tmp/jamirp/slow_runtime julia --project=. scripts/train_slow_drf.jl`
    (login-node fast for one cell; `scripts/sbatch_julia.sh` for global). Writes the COMMITTED artifacts
    `test/testitems/references/drf_forest_hainich.drf` + `..._meta.txt` (nfeat/nhead/boundary/n_init/golden).
@@ -52,8 +71,11 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   — a dropped wire-up would silently re-open the OOD shift, since the DRF leaf-clamps OOD inputs). Retraining
   MUST regenerate `drf_forest_hainich.drf` + `_meta.txt` (golden pairs) TOGETHER.
 - **`water_stress` = 1 − wscal_mean** (matches `fast.jl`), NOT the `mort_water` inversion the OOD-experiment
-  table used. **`soilmoist`/`lai` are documented PROXIES** (const 0.7 / Σ per-crown ind-LAI) until the global
-  pipeline sources `soilmoist` from daily `swc` and `lai` from the C annual `LAI_STAND` (Phase-2 SLURM).
+  table used. **`soilmoist`/`lai` are proxies (const 0.7 / Σ per-crown ind-LAI) ONLY in the Hainich demo
+  table** (`build_slow_runtime_table.py`); the GLOBAL runtime-consistent pipeline now sources them for real —
+  `soilmoist` from daily `swc` via `scripts/build_swc_soilmoist_feature.py` (step 0), `lai` from the C annual
+  `LAI_STAND` (`run_daily_subset.sh` now emits `lai_stand`). Historic is derivable now; SSP370 waits on the
+  daily run. Match the runtime definition when you wire either in (soilmoist = unweighted 23-layer mean).
 - **Ind `npp`/`agb` are already per-m²** (×nind baked in by the C writer), so per-patch ROW SUMS are per-m²
   stand totals matching the runtime — no `nind` factor (there is no `nind` column; CLAUDE.md §3).
 - **Serialization is TEXT `.drf`, never `*.bin`** (git-ignored). `DRF.save_forest`/`load_forest` round-trip
