@@ -5,9 +5,10 @@ description: Commit/push discipline for the LPJmL-FIT emulator — main-only wor
 
 # repo-commit — main-only commit & push
 
-**Only commit or push when the user asks.** Work on `main` directly (ADR 0013 — no branches, PRs, or
-branch protection; owner declined). CI on `push:main` is a smoke alarm: run the equivalent checks locally
-first, fix-forward if red.
+**Commit and push to main as you go** — full autonomy (`STEERING_PROMPT.md`); no owner sign-off is needed
+or expected. Work on `main` directly (ADR 0013 — no branches, PRs, or branch protection; owner declined).
+CI on `push:main` is a smoke alarm: run the equivalent checks locally first, fix-forward if red — that
+automated discipline is the safety net, not a human gate.
 
 ## Pre-push checklist (mirror the 5 CI gates locally)
 

@@ -89,8 +89,12 @@ ADR **0018** (growth-ownership), **0020** (S is flux-driven — the governing co
    PATH) — see the `repo-commit` skill / CLAUDE.md §5.
 7. **Before chasing any residual:** invoke the `residual-diagnosis` skill (state the reference basis + a
    falsifiable hypothesis + time-box). Say "Hainich only" wherever a result is single-cell.
-8. **Capture knowledge as you go** (procedure→skill, gotcha→CLAUDE.md, decision→ADR, state→MEMORY,
-   narrative→JOURNAL); end-of-session retrospective; consolidate MEMORY every ~5 sessions.
+8. **Build skills as you go — checkable at commit time, not "later" (agents here under-do this).** Route:
+   procedure→skill, gotcha→CLAUDE.md, decision→ADR, state→MEMORY, narrative→JOURNAL. **Before every commit**
+   ask: did this include a rerunnable script, a non-obvious fix, or a re-derivation? If yes, create/update
+   the skill **in the same commit** (use the `skill-creator` skill; prefer updating an existing one). A
+   post-commit hook injects this check as a backstop, so a follow-up `chore(skill:)` commit is fine.
+   Consolidate MEMORY every ~5 sessions (the `consolidate-memory` skill). See CLAUDE.md §8 for the gate.
 
 ## The plan to finish (priority order; each names its gate)
 

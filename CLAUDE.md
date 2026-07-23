@@ -8,6 +8,13 @@ the observation and fix this file.
 the relevant `docs/decisions/ADR-*`. Target: productive in < 15k tokens. `JOURNAL.md` / `CHANGELOG.md`
 are append-only history — read them only when you need the story behind a specific decision.
 
+**Standing reflex — build skills (do not skip; agents here under-do this).** The moment you write a
+rerunnable script, solve a non-obvious error, or re-derive something a past session already knew, **stop
+and capture it** — a *procedure* → a skill in `.claude/skills/` (use the **`skill-creator`** skill; prefer
+updating an existing one), a *gotcha* → this file, a *decision* → an ADR (§8 has the full routing).
+Creating skills is part of the task, not a favor to a future session. The **commit-time capture gate**
+(§8) makes this checkable — apply it on every commit.
+
 ---
 
 ## 0. What this project is (one paragraph)
@@ -203,7 +210,9 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 - **Main-only workflow (ADR 0013):** commit and push straight to `main`. No feature branches, PRs, or
   branch protection (owner declined). CI on `push:main` is a smoke alarm — run CI-equivalent checks
-  locally first; fix-forward if red. Commit or push **only when the user asks**.
+  locally first; fix-forward if red. **Commit and push to main as you go** (full autonomy per
+  `STEERING_PROMPT.md` — no owner sign-off needed or expected); your safety net is the CI/conservation
+  gates and ADRs, not a human gate.
 - **Commit trailer:** end every commit message with
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - **The 5 CI gates:** `CI` (Julia tests), `format` (Runic), `docs` (Documenter), `python` (ruff+pytest),
@@ -260,8 +269,17 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `allometry.jl`, `fdiff.jl` (the differentiable daily core + canopy rollout + allocation/growth),
   `fdiff_smoothops.jl` (smooth surrogates for non-smooth ops), `registry.jl`, `run.jl` (coupled
   `run_coupled_cell`/`couple_day!`), `components/fast.jl` (`FDiffFastCore`, `annual_step!`),
-  `components/slow.jl` (`AbstractSlowEmulator` — `step!` still a stub; P1 fills it), `components/energy.jl`
-  (`SEBEnergyClosure`).
+  `components/slow.jl` (`AbstractSlowEmulator`; `DemographicSlowEmulator` Tier-0 + `FluxDrivenSlowEmulator`
+  Tier-1 — P1), `components/energy.jl` (`SEBEnergyClosure`), `drf.jl` (`module DRF` — zero-dep DRF +
+  `save_forest`/`load_forest` pure-Base text serialization + Gaussian-copula sampler; ADR 0022/0023).
+- **Component-S production DRF (ADR 0023):** the coupled `FluxDrivenSlowEmulator` loads a serialized
+  `DRF.Forest` (`DRF.load_forest`). Committed demo artifact = `test/testitems/references/drf_forest_hainich.drf`
+  (**text, never `*.bin` — that's git-ignored**; regen: `scripts/build_slow_runtime_table.py` →
+  `scripts/train_slow_drf.jl`). The training table MUST match the runtime `flux_feature_vector` order
+  (`slow.jl`); **`age_mean` is a degenerate runtime elapsed-year counter — train it as the counter, NOT mean
+  `Age`** (the silent train/inference-shift trap). `soilmoist`/`lai` are documented proxies until the global
+  C-`LAI_STAND`/`swc` pipeline. Gate-3 oracle ref: `references/hainich_slow_oracle_{traits,counts}.csv`
+  (`scripts/build_slow_oracle_reference.py`).
 
 ---
 
@@ -282,12 +300,26 @@ and capture whenever you: (a) write a script you'd run again; (b) do the same mu
 | Session narrative / what-happened | **JOURNAL.md** |
 
 **Capture minimally in the moment** — a 10-line `SKILL.md` pointing at your existing script beats nothing.
-Parameterize, don't fork: e.g. single-cell forcing+restart extraction for a test fixture belongs in the
-`fdiff-validate` skill **parameterized by cell index**, not rewritten each time.
+Use the **`skill-creator`** skill for the mechanics (frontmatter, the trigger-rich description that makes a
+skill actually fire, point-at-the-script). Parameterize, don't fork: e.g. single-cell forcing+restart
+extraction for a test fixture belongs in the `fdiff-validate` skill **parameterized by cell index**, not
+rewritten each time.
 
-**Standing tasks:** (1) an **end-of-session retrospective** — ask "what would a future session re-derive,
-and where does it go?" and file it before wrapping; (2) **consolidate-memory every ~5 sessions** — reshape
-MEMORY.md back to durable-state-only under the cap, archive (don't delete) what you remove.
+**The commit-time capture gate (checkable — this is the enforcement point, not the retrospective).** Before
+every commit, ask: *did this change include a script I'd rerun, a non-obvious fix, or a re-derivation of
+something a past session knew?* If yes, create/update the skill (or CLAUDE.md/ADR) **in the same commit**
+and note it in the commit body (`+ skill: <name>`). This rides the mandated commit (ADR 0013) instead of a
+session "end" that never cleanly arrives — do not defer capture to "later." A `PostToolUse` hook
+(`.claude/hooks/skill-capture-gate.sh`, wired in `.claude/settings.json`) injects this checklist
+automatically *after* each commit as a backstop, so a follow-up `chore(skill:)` commit is fine when it
+fires post-hoc. The `SessionStart` hook lists the current skills each session and reminds you to consult a
+matching one before doing a task by hand (that is how created skills stay used); `skill-usage.log` records
+invocations for the `consolidate-memory` dedup/prune pass.
+
+**Standing tasks:** (1) the commit-time gate above, every commit; (2) **consolidate MEMORY every ~5
+sessions** — reshape MEMORY.md back to durable-state-only under the cap, archive (don't delete) what you
+remove (a manual reshape; there is no `consolidate-memory` skill yet — create one via `skill-creator` if
+the reshape stabilizes into a fixed procedure).
 
 **Use subagents** for isolation, parallelism, a read-only reviewer, or independent verification — and note
 that subagents can invoke skills.

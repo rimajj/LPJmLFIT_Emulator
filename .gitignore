@@ -88,3 +88,6 @@ core-*
 
 # SLURM job logs (scripts/sbatch_*.sh, scripts run off the login node)
 logs/
+
+# Claude Code hook: per-session skill-usage log (local churn, not team state)
+.claude/skill-usage.log
