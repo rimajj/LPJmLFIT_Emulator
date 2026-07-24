@@ -64,6 +64,11 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
      `drf_forest_global_<scen>.drf` under `/p/tmp/jamirp/emulator_global/`. This is the preferred global path
      (atomic, no dependency chaining; logs to `logs/gslow_<scen>.<jobid>.out`). Defaults NTREES=150,
      MAX_DEPTH=16, MIN_LEAF=20, SUBSAMPLE=200000, 32 cpus, 4 h.
+   - **Held-out generalization (the honest Phase-5 number, NOT in-sample R²):** `HOLDOUT_FRAC=0.2` (through
+     the orchestrator or train_slow_drf.jl). The builder emits `cells.i64` (per-row Cell); the trainer holds
+     out whole CELLS (`hash(cell) mod 1000 < FRAC*1000` — row-holdout leaks a cell into train+test and reads
+     optimistically), fits an eval forest on train cells, prints `HELD-OUT-CELL eval: train R²=.. TEST R²=..`.
+     Does NOT touch the production artifact (always fit on all rows). In-sample R² alone is NOT a Phase-5 gate.
 3. **In-loop gate** — `test/testitems/slow_production_drf_tests.jl` loads the `.drf` and drives the coupled
    Hainich decade (targets INSIDE the training band ⇒ runtime-consistent; N moves; carbon ~1e-12; energy
    ~7e-15; deterministic). `drf_serialization_tests.jl` gates the bitwise round-trip + the committed golden pairs.
