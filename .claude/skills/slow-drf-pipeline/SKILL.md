@@ -53,9 +53,17 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
    `target/n_prev` cancels count magnitude). `CELLS=<one>` also emits scalar meta = the committed Hainich demo
    path. VERIFY on a biome-stratified subset (per-cell equivalence vs solo builds; boundary varies-across /
    constant-within; no NaN) before the global run.
-2. **Fit + serialize** — `OUT=/p/tmp/jamirp/slow_runtime julia --project=. scripts/train_slow_drf.jl`
-   (login-node fast for one cell; `scripts/sbatch_julia.sh` for global). Writes the COMMITTED artifacts
-   `test/testitems/references/drf_forest_hainich.drf` + `..._meta.txt` (nfeat/nhead/boundary/n_init/golden).
+2. **Fit + serialize** — `train_slow_drf.jl` auto-detects mode from the manifest (global lacks the scalar
+   `boundary`). **Hainich demo** (defaults): `OUT=/p/tmp/jamirp/slow_runtime julia scripts/train_slow_drf.jl`
+   → COMMITTED `test/testitems/references/drf_forest_hainich.drf` + `..._meta.txt` (nfeat/nhead/boundary/
+   n_init/golden). **GLOBAL**: set `DRF_OUT_PATH` to a SEPARATE artifact (NEVER the committed fixture) +
+   larger `NTREES`/`MAX_DEPTH`/`MIN_LEAF`/`SUBSAMPLE`; per-cell n_init/age0/boundary stay in
+   `cell_meta.parquet` (meta writes a `cell_meta` pointer, not scalars).
+   - **ONE-SHOT GLOBAL (build table → train, one SLURM job, disconnect-proof):**
+     `SCENARIO=historic|ssp370 scripts/run_global_slow_training.sh` → `slow_runtime_<scen>/` +
+     `drf_forest_global_<scen>.drf` under `/p/tmp/jamirp/emulator_global/`. This is the preferred global path
+     (atomic, no dependency chaining; logs to `logs/gslow_<scen>.<jobid>.out`). Defaults NTREES=150,
+     MAX_DEPTH=16, MIN_LEAF=20, SUBSAMPLE=200000, 32 cpus, 4 h.
 3. **In-loop gate** — `test/testitems/slow_production_drf_tests.jl` loads the `.drf` and drives the coupled
    Hainich decade (targets INSIDE the training band ⇒ runtime-consistent; N moves; carbon ~1e-12; energy
    ~7e-15; deterministic). `drf_serialization_tests.jl` gates the bitwise round-trip + the committed golden pairs.
