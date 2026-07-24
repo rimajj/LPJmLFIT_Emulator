@@ -91,3 +91,6 @@ logs/
 
 # Claude Code hook: per-session skill-usage log (local churn, not team state)
 .claude/skill-usage.log
+
+# Emulator-validation figures (regenerable via the emulator-validation-figures skill; binary churn)
+figures/
