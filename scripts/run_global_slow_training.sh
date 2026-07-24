@@ -45,6 +45,12 @@ TABLE_DIR="/p/tmp/jamirp/emulator_global/slow_runtime_${SCENARIO}"
 DRF_OUT="/p/tmp/jamirp/emulator_global/drf_forest_global_${SCENARIO}.drf"
 mkdir -p "${TABLE_DIR}"
 
+# DEPENDENCY (e.g. afterok:<jid>): chain after a feature-derivation job. Injected as a #SBATCH directive
+# because the SBATCH_DEPENDENCY env var does NOT reliably propagate through this wrapper's sbatch call.
+DEPENDENCY="${DEPENDENCY:-}"
+dep_directive=""
+[ -n "${DEPENDENCY}" ] && dep_directive="#SBATCH --dependency=${DEPENDENCY}"
+
 jcf="$(mktemp)"
 cat > "${jcf}" <<EOF
 #!/usr/bin/env bash
@@ -58,6 +64,7 @@ cat > "${jcf}" <<EOF
 #SBATCH --time=${TIME}
 #SBATCH --output=${LOGDIR}/gslow_${SCENARIO}.%j.out
 #SBATCH --error=${LOGDIR}/gslow_${SCENARIO}.%j.out
+${dep_directive}
 set -uo pipefail
 cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
