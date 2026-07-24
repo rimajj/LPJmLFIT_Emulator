@@ -68,6 +68,38 @@ function main()
     max_depth = parse(Int, get(ENV, "MAX_DEPTH", "8"))
     min_leaf = parse(Int, get(ENV, "MIN_LEAF", "8"))
     subsample = parse(Int, get(ENV, "SUBSAMPLE", string(n)))
+
+    r2score(yt, pt) = (ss = sum((pt .- yt) .^ 2); st = sum((yt .- sum(yt) / length(yt)) .^ 2); st > 0 ? 1 - ss / st : 0.0)
+
+    # OPTIONAL held-out-BY-CELL generalization eval (DEVELOPMENT_PLAN §5: hold out CELLS, not rows — a
+    # row-holdout leaks the same cell into train+test and reads optimistically). Fits an eval forest on the
+    # train cells with the SAME hyperparameters and scores the held-out cells; reports the honest TEST R²
+    # alongside the in-sample one. Does NOT touch the production artifact (always fit on ALL rows below).
+    holdout = parse(Float64, get(ENV, "HOLDOUT_FRAC", "0.0"))
+    cells_path = joinpath(DATA, "cells.i64")
+    if holdout > 0 && isfile(cells_path)
+        cells = Vector{Int64}(undef, n)
+        read!(cells_path, cells)
+        thr = round(Int, holdout * 1000)
+        istest = Dict(c => (mod(hash(c), 1000) < thr) for c in unique(cells))   # deterministic cell→split
+        testmask = Bool[istest[c] for c in cells]
+        nte = count(testmask)
+        ntr = n - nte
+        ncell_te = count(values(istest))
+        @info "held-out-cell eval" holdout test_cells = ncell_te train_cells = (length(istest) - ncell_te) test_rows = nte train_rows = ntr
+        if nte > 0 && ntr > 0
+            trainmask = .!testmask
+            efor = DRF.fit_forest(
+                X[trainmask, :], y[trainmask]; ntrees = ntrees, max_depth = max_depth,
+                min_leaf = min_leaf, subsample = min(subsample, ntr), seed = 1, store_values = false
+            )
+            r2_tr = r2score(y[trainmask], DRF.predict(efor, X[trainmask, :]))
+            r2_te = r2score(y[testmask], DRF.predict(efor, X[testmask, :]))
+            println("== HELD-OUT-CELL eval: train R²=", round(r2_tr, digits = 4),
+                "  TEST R²=", round(r2_te, digits = 4), "  ($ncell_te test cells / $nte rows)")
+        end
+    end
+
     forest = DRF.fit_forest(
         X, y; ntrees = ntrees, max_depth = max_depth, min_leaf = min_leaf, subsample = subsample, seed = 1, store_values = false
     )

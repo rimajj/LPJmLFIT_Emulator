@@ -32,6 +32,7 @@ SCENARIO="${SCENARIO:-historic}"
 case "${SCENARIO}" in historic|ssp370) ;; *) echo "FATAL: SCENARIO must be historic|ssp370"; exit 1;; esac
 SEED="${SEED:-1}"
 NTREES="${NTREES:-150}"; MAX_DEPTH="${MAX_DEPTH:-16}"; MIN_LEAF="${MIN_LEAF:-20}"; SUBSAMPLE="${SUBSAMPLE:-200000}"
+HOLDOUT_FRAC="${HOLDOUT_FRAC:-0}"   # >0 ⇒ also report held-out-BY-CELL generalization R² (DEVELOPMENT_PLAN §5)
 TIME="${TIME:-04:00:00}"; NCPUS="${NCPUS:-32}"; SUBMIT="${SUBMIT:-yes}"
 ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${QOS:-short}"
 
@@ -69,7 +70,7 @@ rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gslow_${SCENARIO} exit=\$rc (
 
 echo "--- [2/2] train + serialize global DRF -> ${DRF_OUT} ---"
 OUT=${TABLE_DIR} DRF_OUT_PATH=${DRF_OUT} NTREES=${NTREES} MAX_DEPTH=${MAX_DEPTH} \
-  MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} ${JULIA} scripts/train_slow_drf.jl
+  MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} HOLDOUT_FRAC=${HOLDOUT_FRAC} ${JULIA} scripts/train_slow_drf.jl
 rc=\$?
 echo "=== JOB DONE tag=gslow_${SCENARIO} exit=\${rc} ==="
 exit \${rc}

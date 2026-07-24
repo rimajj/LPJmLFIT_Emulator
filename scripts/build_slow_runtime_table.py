@@ -197,6 +197,9 @@ def main() -> int:
 
     X.tofile(os.path.join(out_dir, "X.f64"))
     y.tofile(os.path.join(out_dir, "y.f64"))
+    # per-row Cell id (aligned to X rows, same Cell,Patch,Year sort) → enables a rigorous held-out-BY-CELL
+    # generalization eval in train_slow_drf.jl (DEVELOPMENT_PLAN §5: hold out CELLS, not rows).
+    tbl["Cell"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "cells.i64"))
     p = len(colnames)
     with open(os.path.join(out_dir, "manifest.txt"), "w") as f:
         f.write(f"n\t{n}\n")
