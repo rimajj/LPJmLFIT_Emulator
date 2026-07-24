@@ -62,8 +62,12 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
    - **ONE-SHOT GLOBAL (build table → train, one SLURM job, disconnect-proof):**
      `SCENARIO=historic|ssp370 scripts/run_global_slow_training.sh` → `slow_runtime_<scen>/` +
      `drf_forest_global_<scen>.drf` under `/p/tmp/jamirp/emulator_global/`. This is the preferred global path
-     (atomic, no dependency chaining; logs to `logs/gslow_<scen>.<jobid>.out`). Defaults NTREES=150,
-     MAX_DEPTH=16, MIN_LEAF=20, SUBSAMPLE=200000, 32 cpus, 4 h.
+     (atomic; logs to `logs/gslow_<scen>.<jobid>.out`). Defaults NTREES=150, MAX_DEPTH=16, MIN_LEAF=20,
+     SUBSAMPLE=200000, 32 cpus, 4 h. **Chain after a feature-derivation job with `DEPENDENCY=afterok:<jid>`**
+     (an arg to the script — the `SBATCH_DEPENDENCY` env does NOT propagate through the wrapper's sbatch, so
+     it comes up `Dependency=(null)`; fix a live pending job with `scontrol update jobid=<j> dependency=...`).
+     For SCENARIO=ssp370 you must first derive `cell_year_{soilmoist,lai}_ssp.parquet` (the swc + lai_stand
+     derivers, FIRSTYEAR=2020, RUN_DIR = the ssp370 daily output dir which holds BOTH d_swc.nc and lai_stand.nc).
    - **Held-out generalization (the honest Phase-5 number, NOT in-sample R²):** `HOLDOUT_FRAC=0.2` (through
      the orchestrator or train_slow_drf.jl). The builder emits `cells.i64` (per-row Cell); the trainer holds
      out whole CELLS (`hash(cell) mod 1000 < FRAC*1000` — row-holdout leaks a cell into train+test and reads
