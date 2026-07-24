@@ -112,7 +112,7 @@ def main() -> int:
     # would be a no-op and let fill-marked NaNs through into the training join).
     tbl = tbl.filter(pl.col("lai").is_not_nan())
     tbl.write_parquet(out)
-    print(f"wrote {out}: {tbl.height} (Cell,Year) rows (real-fraction {real_frac:.3f}), "
+    print(f"wrote {out}: {tbl.height} (Cell,Year) rows (median per-year real-fraction {med:.3f}), "
           f"lai range [{tbl['lai'].min():.3f}, {tbl['lai'].max():.3f}]")
     h = tbl.filter(pl.col("Cell") == 42490)
     if h.height:
