@@ -217,3 +217,129 @@ end
     @test bc isa SToF{Float32}
     @test all(isfinite, (bc.lai, bc.height, bc.z0, bc.rootdepth, bc.vcmax, bc.fpc, bc.albedo))
 end
+
+# ADR 0026 — the TRANSIENT (time-varying) bioclimatic boundary. `FluxDrivenSlowEmulator` gains an OPT-IN
+# per-year `boundary_series`; `reconcile_demography!` advances `s.boundary` to this year's row (indexed by
+# `s.year`, clamped) BEFORE building the feature row, so a warming cell's establishment gate SHIFTS over the
+# transient instead of freezing at the climatological mean. Gates: (A) a CONSTANT series reproduces the
+# static boundary byte-for-byte (guardrail 4 — default OFF stays byte-identical, a constant series is a
+# no-op); (B) the boundary genuinely enters the feature row — a RAMPING series drives the DRF target; (C)
+# a series shorter than the run reuses its last row (clamp, no bounds error) and `s.boundary` ends there;
+# (D) carbon still conserves. The forest here keys on the FIRST boundary feature (full-vector index 12) so
+# the boundary is causally the driver. Hainich (cell 42490) Float64 harness.
+@testitem "Transient boundary (ADR 0026): constant series == static (byte-identical) + ramp drives target + clamp + conserves" tags = [:conservation, :coupling, :scientific] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: PhotoParams, TempStressParams
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    _mean(x) = sum(x) / length(x)
+    refdir = joinpath(@__DIR__, "references")
+    function readcsv(path)
+        lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
+        hdr = split(strip(lines[1]), ',')
+        rows = [split(strip(l), ',') for l in lines[2:end]]
+        return Dict(String(hdr[j]) => [r[j] for r in rows] for j in eachindex(hdr))
+    end
+    ind = readcsv(joinpath(refdir, "hainich_individuals_2010.csv"))
+    f = readcsv(joinpath(refdir, "hainich_forcing_2010.csv"))
+    fc_(k) = parse.(Float64, f[k])
+    v(k, r) = parse(Float64, ind[k][r]); nt(r) = parse(Int, ind["type"][r])
+    n = length(fc_("doy"))
+    sd = Float64[]; whcs = Float64[]; rdist = Float64[]
+    for ln in eachline(joinpath(refdir, "hainich_soilcolumn.txt"))
+        s = strip(ln); (isempty(s) || startswith(s, "#")) && continue
+        x = parse.(Float64, split(s)); push!(sd, x[2]); push!(whcs, x[3]); push!(rdist, x[4])
+    end
+    soil = hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
+    prows = Dict{Int, Vector{Int}}()
+    for r in eachindex(ind["type"])
+        (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
+    end
+    rows = prows[argmax(Dict(k => length(vv) for (k, vv) in prows))]
+    mkp(r) = TreePools{Float64}(
+        v("leaf_c", r), v("sapwood_c", r),
+        max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0), v("root_c", r),
+        v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false,
+    )
+    mkt(r) = Individual{Float64}(
+        v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
+        v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
+        PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
+        TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    tair_K = fc_("temp") .+ 273.15
+    σ = 5.670374419e-8
+    year_forc = [
+        AtmForcing(;
+                swdown = fc_("swdown")[i], lwdown = fc_("lwnet")[i] + σ * tair_K[i]^4,
+                tair = tair_K[i], qair = fc_("huss")[i], wind = 2.0, psurf = 1.0e5,
+                precip = fc_("precip")[i], co2 = fc_("co2")[i]
+            ) for i in 1:n
+    ]
+    mkcore() = FDiffFastCore([mkp(r) for r in rows], [mkt(r) for r in rows], soil, 51.25)
+    mkclo() = SEBEnergyClosure(; t_soil0 = _mean(tair_K))
+    mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
+
+    # a forest whose target keys on the FIRST BOUNDARY feature (full-vector index 12 = head[11] + boundary[1]):
+    # target ≈ 10 + 40·b1, so the demographic target tracks the boundary and the transient boundary is the
+    # causal driver. Other columns (incl. the AR feature 11) are noise the forest ignores.
+    nbound = 3
+    nfeat = 11 + nbound
+    r = DRF.Xoshiro256pp(11)
+    m = 4000
+    X = Matrix{Float64}(undef, m, nfeat); y = Vector{Float64}(undef, m)
+    for i in 1:m
+        for ff in 1:nfeat
+            X[i, ff] = DRF.rand01!(r)
+        end
+        b1 = 0.05 + 0.95 * DRF.rand01!(r); X[i, 12] = b1            # first boundary feature spans [0.05,1.0]
+        y[i] = 10.0 + 40.0 * b1 + 0.01 * (DRF.rand01!(r) - 0.5)
+    end
+    forest = DRF.fit_forest(X, y; ntrees = 80, subsample = 2000, max_depth = 16, min_leaf = 6, mtry = nfeat, seed = 11)
+
+    B0 = [0.5, 0.4, 0.7]                                            # static boundary (b1 = 0.5 ⇒ target ≈ 30)
+    nyears = 8
+    forcings = repeat(year_forc, nyears)
+
+    # ── (A) a CONSTANT series == the static boundary, byte-for-byte (default OFF stays byte-identical) ──
+    cs = mkcore(); s_static = FluxDrivenSlowEmulator(cs, forest; boundary = B0, n_init = 10.0, seed = 1)
+    run_coupled_cell(cs, mkclo(), mkstate(), forcings; slow = s_static, days_per_year = n)
+    cc = mkcore()
+    s_const = FluxDrivenSlowEmulator(cc, forest; boundary_series = [copy(B0) for _ in 1:nyears], n_init = 10.0, seed = 1)
+    @test s_const.boundary == B0                                   # seeded from the first series row
+    run_coupled_cell(cc, mkclo(), mkstate(), forcings; slow = s_const, days_per_year = n)
+    @test s_const.total_n_history == s_static.total_n_history      # a constant series is an exact no-op
+    @test s_const.target_history == s_static.target_history
+    @test s_const.resid_history == s_static.resid_history
+
+    # ── (B) a RAMPING series drives the DRF target (the boundary genuinely enters the feature row) ──
+    ramp = [[0.1 + 0.1 * (yy - 1), 0.4, 0.7] for yy in 1:nyears]   # b1: 0.1 → 0.8 across the run
+    cr = mkcore(); s_ramp = FluxDrivenSlowEmulator(cr, forest; boundary_series = ramp, n_init = 10.0, seed = 1)
+    run_coupled_cell(cr, mkclo(), mkstate(), forcings; slow = s_ramp, days_per_year = n)
+    @test s_ramp.boundary == ramp[end]                             # ended on the last row
+    # target ≈ 10 + 40·b1 ⇒ a rising b1 ⇒ a rising target trajectory, and each year matches the forest map
+    @test issorted(s_ramp.target_history)
+    @test s_ramp.target_history[end] > s_ramp.target_history[1] + 10.0
+    for yy in 1:nyears
+        @test isapprox(s_ramp.target_history[yy], 10.0 + 40.0 * ramp[yy][1]; atol = 4.0)
+    end
+    @test s_ramp.target_history != s_static.target_history         # transient ≠ static
+    @test s_ramp.total_n_history[end] > s_ramp.total_n_history[1]  # N grew as the gate opened
+
+    # ── (C) a series SHORTER than the run reuses its last row (clamp; no bounds error) ──
+    short = [[0.2, 0.4, 0.7], [0.6, 0.4, 0.7], [0.9, 0.4, 0.7]]    # 3 rows, run is nyears=8
+    csh = mkcore(); s_short = FluxDrivenSlowEmulator(csh, forest; boundary_series = short, n_init = 10.0, seed = 1)
+    run_coupled_cell(csh, mkclo(), mkstate(), forcings; slow = s_short, days_per_year = n)
+    @test s_short.boundary == short[end]                           # tail years reused the last row
+    @test all(isapprox(s_short.target_history[yy], 10.0 + 40.0 * 0.9; atol = 4.0) for yy in 3:nyears)
+
+    # ── (D) carbon conserves under the transient boundary ──
+    cscale = sum(FDiff.vegc_full_ind(p) * p.nind for p in cr.pools)
+    @test maximum(abs, s_ramp.resid_history) ≤ 1.0e-6 * max(cscale, 1.0)
+    @test all(isfinite, s_ramp.target_history) && all(isfinite, s_ramp.total_n_history)
+
+    # empty series rejected; the length invariant is enforced
+    @test_throws ErrorException FluxDrivenSlowEmulator(mkcore(), forest; boundary_series = Vector{Float64}[])
+end

@@ -483,6 +483,7 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     rng::DRF.Xoshiro256pp
     k_cap::Int
     recruit_copula::Union{Nothing, RecruitCopula{T}}
+    boundary_series::Union{Nothing, Vector{Vector{Float64}}}
 end
 
 """
@@ -499,7 +500,16 @@ demographic-change ratio to 1, so `n_init` only sets the year-0 feature and is s
 `age_mean` feature starts inside the DRF's trained age band (ADR 0024 §3 — a scalar 0, the default,
 reproduces the pre-0024 zero-init; the coupled app reads `age0` from the DRF meta). `k_cap` bounds the
 cohort roster (default `max(2·K, 40)`); `recruit_copula` (default `nothing`) opts establishment into
-copula-sampled recruit traits. Deterministic given `seed`.
+copula-sampled recruit traits.
+
+`boundary_series` (default `nothing`; ADR 0026) opts into a **TRANSIENT** time-varying boundary: a per-year
+`Vector` of boundary rows (each the same length as `boundary`) that `reconcile_demography!` advances into
+`s.boundary` by simulation year (`s.year`, 1-based into the series, clamped so post-series years reuse the
+last row) BEFORE building the feature row — so both the count-DRF features and the copula's `live_flux_cond`
+conditioning track the year's bioclimate (a warming cell's establishment gate shifts instead of freezing at
+the climatological mean; refines ADR 0020's time-constant boundary). Default `nothing` leaves `s.boundary`
+constant every year ⇒ byte-identical to the pre-0026 static boundary. If `boundary` is empty and a
+`boundary_series` is given, `boundary` is seeded from its first row. Deterministic given `seed`.
 """
 function FluxDrivenSlowEmulator(
         fc::FDiffFastCore{T}, forest::DRF.Forest; boundary::AbstractVector{<:Real} = Float64[],
@@ -507,6 +517,7 @@ function FluxDrivenSlowEmulator(
         sapl::Union{Nothing, FDiff.TreePools{T}} = nothing, seed::Integer = 1,
         age0::Union{Real, AbstractVector} = 0, k_cap::Union{Nothing, Integer} = nothing,
         recruit_copula::Union{Nothing, RecruitCopula{T}} = nothing,
+        boundary_series::Union{Nothing, AbstractVector} = nothing,
     ) where {T <: AbstractFloat}
     ridx = 0
     hmin = typemax(T)
@@ -529,10 +540,23 @@ function FluxDrivenSlowEmulator(
     length(age_init) == length(fc.pools) ||
         error("age0 vector length ($(length(age_init))) must equal the number of cohorts ($(length(fc.pools)))")
     kcap = k_cap === nothing ? max(2 * length(fc.pools), 40) : Int(k_cap)
+    # TRANSIENT boundary (ADR 0026): normalise the opt-in per-year series to `Vector{Vector{Float64}}`; seed
+    # the year-0 `boundary` from its first row if `boundary` was omitted; every row must match `boundary`'s
+    # length (the `+11 == forest.nfeat` tail invariant is checked once, on `bnd`, downstream by the readers).
+    # `bnd`/`bser` are SINGLE-ASSIGNMENT (never reassigned) so the `all(... for r in bser)` generator closure
+    # does not box them — JET 0.11.6's boxed-capture trap (CLAUDE.md §2).
+    bser = boundary_series === nothing ? nothing : [collect(Float64, row) for row in boundary_series]
+    (bser !== nothing && isempty(bser)) && error("boundary_series must be non-empty when provided")
+    bnd0 = collect(Float64, boundary)
+    bnd = (bser !== nothing && isempty(bnd0)) ? copy(bser[1]) : bnd0
+    if bser !== nothing
+        all(length(r) == length(bnd) for r in bser) ||
+            error("every boundary_series row must have length $(length(bnd)) (== length(boundary))")
+    end
     return FluxDrivenSlowEmulator{T}(
-        forest, collect(Float64, boundary), convert(T, n_init), T(max_mort), T(max_estab),
+        forest, bnd, convert(T, n_init), T(max_mort), T(max_estab),
         sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], 0,
-        DRF.Xoshiro256pp(seed), kcap, recruit_copula,
+        DRF.Xoshiro256pp(seed), kcap, recruit_copula, bser,
     )
 end
 
@@ -584,6 +608,16 @@ function reconcile_demography!(
     tmpls = copy(fc.tmpls)                          # length-K working roster (rebuilt atomically on commit)
     pft_ids = copy(fc.pft_ids)
     ages = copy(s.age)                              # start-of-year per-cohort ages (incremented after commit)
+
+    # ── TRANSIENT boundary (ADR 0026): if a per-year series is set, advance `s.boundary` to THIS year's row
+    #    (1-based index `s.year+1`, clamped so post-series years reuse the last row) BEFORE building `feats`,
+    #    so both the count-DRF feature row and the copula's `live_flux_cond` conditioning see the year's
+    #    bioclimate. `s.boundary` is a `Vector{Float64}` field; the readers re-vcat it fresh each call, so
+    #    the reassignment propagates. Default (no series) leaves it constant ⇒ byte-identical to pre-0026. ──
+    bs = s.boundary_series                          # bind first, THEN narrow (a struct-field `!== nothing`
+    if bs !== nothing                               # guard doesn't refine a re-read field; the local does)
+        s.boundary = bs[clamp(s.year + 1, 1, length(bs))]
+    end
 
     # ── DRF TARGET → demographic-change ratio ρ (unit-free; count↔density cancels) ──
     feats = flux_feature_vector(s, grow, pools, state, fc.allom)

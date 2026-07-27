@@ -40,10 +40,12 @@ RUNTIME-CONSISTENT features (was the Hainich-proxy demo; now real, ADR 0023/0024
                                                           Age is post-increment, runtime feature is pre-aging).
   n_prev      = previous-year n_living (same Cell,Patch)  AR state
   target      = n_living                            demographic count
-  boundary    = per-CELL climatological mean of [gdd_5, tas_cold_month, soil_depth] + co2=369 (constant-CO2,
-                ADR 0004). Appended TIME-CONSTANT per cell — matches the runtime, which sets s.boundary once
-                and re-appends it unchanged every year (slow.jl:503). A per-YEAR boundary would be a
-                train/inference shift.
+  boundary    = [gdd_5, tas_cold_month, soil_depth] + co2=369 (constant-CO2, ADR 0004). DEFAULT = per-CELL
+                climatological mean (TIME-CONSTANT; matches the pre-0026 runtime `s.boundary` baked once).
+                OPT-IN `BOUNDARY_WINDOW=W` (ADR 0026): per-(Cell,Year) TRANSIENT gdd5/tas_cold_month on a
+                trailing-W-yr window (soil_depth static) so a warming cell's establishment gate SHIFTS over
+                the transient; the runtime consumes it via `FluxDrivenSlowEmulator`'s `boundary_series`
+                (train/inference stay consistent — same per-(cell,year) boundary in the table and the loop).
 
 Cell-agnostic pooled training: ONE global forest (the .drf carries no cell identity), with all per-cell
 context (boundary, n_init, age0) in a `cell_meta.parquet` SIDECAR the coupled driver reads to build one
@@ -80,6 +82,8 @@ SOIL_TBL = {"historic": f"{BASE}/tables/cell_year_soilmoist_hist.parquet",
 LAI_TBL = {"historic": f"{BASE}/tables/cell_year_lai_hist.parquet",
            "ssp370": f"{BASE}/tables/cell_year_lai_ssp.parquet"}
 CELL_YEAR_FEATS = f"{BASE}/tables/cell_year_feats.parquet"
+# TRANSIENT boundary (ADR 0026): per-(Cell,Year) trailing-window gdd5/tas_cold_month (scripts/build_transient_boundary.py)
+TRANSIENT_BOUNDARY = f"{BASE}/tables/cell_year_boundary_{{scenario}}_w{{w}}.parquet"
 FIRSTYEAR = {"historic": 2000, "ssp370": 2020}
 
 # runtime head order — MUST equal src/components/slow.jl::flux_feature_vector
@@ -101,22 +105,50 @@ COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS
 COPULA_AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
 
 
+def _boundary_source(scenario):
+    """The boundary join source + its keys, honoring the opt-in TRANSIENT boundary (ADR 0026).
+
+    Default (env `BOUNDARY_WINDOW` unset): the per-CELL climatological MEAN of [gdd5, tas_cold_month,
+    soil_depth] — time-constant, joined on ["Cell"] — i.e. byte-identical to the pre-0026 static boundary.
+
+    `BOUNDARY_WINDOW=W`: the TRANSIENT boundary — per-(Cell,Year) `gdd5`/`tas_cold_month` from the
+    trailing-W-year table `cell_year_boundary_<scenario>_wW.parquet` (build_transient_boundary.py), joined on
+    ["Cell","Year"], plus the STATIC per-cell `soil_depth` (soil is not time-varying). The boundary COLUMN
+    order/names are unchanged — only the values become year-specific — so the `flux_feature_vector` /
+    `live_flux_cond` feature-order contract (ADR 0023/0025) is preserved. co2 is appended by the caller
+    (constant 369, ADR 0004). Returns (frame, join_keys)."""
+    w = os.environ.get("BOUNDARY_WINDOW", "").strip()
+    if not w:
+        cyf = (pl.scan_parquet(CELL_YEAR_FEATS)
+               .select(["Cell", "eco_diag_gdd_5", "tas_cold_month", "soil_depth"])
+               .group_by("Cell").mean().collect())
+        return cyf, ["Cell"]
+    path = TRANSIENT_BOUNDARY.format(scenario=scenario, w=int(w))
+    if not os.path.exists(path):
+        raise SystemExit(f"FATAL: BOUNDARY_WINDOW={w} but transient boundary table missing: {path} "
+                         f"(run: SCENARIO={scenario} WINDOW={w} python3 scripts/build_transient_boundary.py)")
+    soil = (pl.scan_parquet(CELL_YEAR_FEATS).select(["Cell", "soil_depth"]).group_by("Cell").mean().collect())
+    tb = (pl.read_parquet(path).select(["Cell", "Year", "eco_diag_gdd_5", "tas_cold_month"])
+          .join(soil, on="Cell", how="left"))
+    print(f"== TRANSIENT boundary (ADR 0026) W={w}: {path} ({tb.height} cell-years)")
+    return tb, ["Cell", "Year"]
+
+
 def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     """MODE=copula (ADR 0025): per-STEM trait targets + the runtime-consistent flux+boundary conditioning.
 
     `agg` carries the per-(Cell,Patch,Year) flux drivers with the soilmoist/lai coverage gate applied. Here:
-    (1) attach the per-cell boundary tail (climatological, time-constant → matches the runtime `s.boundary`);
+    (1) attach the boundary tail via `_boundary_source` (static per-cell mean by default; per-(Cell,Year)
+        TRANSIENT under `BOUNDARY_WINDOW`, ADR 0026);
     (2) scan the SURVIVING tree stems (`isdead==0`) for the trait axes — one row per living stem, the
         distribution to reproduce (mortality is trait-blind ⇒ community dist == establishment dist);
     (3) broadcast the conditioning onto each stem via an inner join.
     Conditioning column order == COPULA_COND_COLS == the runtime `live_flux_cond(s, feats)`. Writes Xc.f64
     (n×ncond row-major), one Y_<axis>.f64 per COPULA_AXES, cells.i64, manifest_copula.txt.
     """
-    cyf = (pl.scan_parquet(CELL_YEAR_FEATS)
-           .select(["Cell", "eco_diag_gdd_5", "tas_cold_month", "soil_depth"])
-           .group_by("Cell").mean().collect())
+    cyf, bkeys = _boundary_source(scenario)
     cond = (agg.select(["Cell", "Patch", "Year"] + HEAD_COLS[:4])
-            .join(cyf, on="Cell", how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
+            .join(cyf, on=bkeys, how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
 
     stem_filt = pl.col("Type").is_in(TREE_TYPES) & (pl.col("isdead") == 0)
     if cells:
@@ -248,11 +280,9 @@ def main() -> int:
           .with_columns((pl.col("Year") + 1).alias("Year")).rename({"n_living": "n_prev"}))
     tbl = agg.join(ar, on=["Cell", "Patch", "Year"], how="inner")  # drops the first year per (Cell,Patch)
 
-    # --- per-CELL boundary (climatological mean; time-constant → matches runtime s.boundary) ---
-    cyf = (pl.scan_parquet(CELL_YEAR_FEATS)
-           .select(["Cell", "eco_diag_gdd_5", "tas_cold_month", "soil_depth"])
-           .group_by("Cell").mean().collect())
-    tbl = (tbl.join(cyf, on="Cell", how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
+    # --- boundary: per-CELL climatological mean (static, default) OR per-(Cell,Year) TRANSIENT (ADR 0026) ---
+    cyf, bkeys = _boundary_source(scenario)
+    tbl = (tbl.join(cyf, on=bkeys, how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
     tbl = tbl.sort(["Cell", "Patch", "Year"])  # MUST sort AFTER all joins → deterministic X row order
     n = tbl.height
     if n == 0:

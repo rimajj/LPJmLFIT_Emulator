@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Component S — TRANSIENT (time-varying) bioclimatic boundary + the pooled-multi-regime design ([ADR 0026](docs/decisions/0026-component-s-pooled-multiregime-transient-boundary.md), refines ADR 0020, keeps ADR 0004).**
+  The slow bioclimatic boundary (`gdd5`/`tas_cold_month`) was a per-cell CLIMATOLOGICAL-STATIC normal — identical
+  every year (Hainich = 1863.70/0.2184 across all 20 historic years) — so a warming cell's establishment gate was
+  FROZEN over the transient (the SSP feature table never even populated it → SSP ran on the historic climate mean).
+  ADR 0026 makes it a **trailing-W-yr climatology** per (cell,year), mirroring FIT's ~20-yr Climbuf; scenarios pool
+  into ONE environment-conditioned model (CO₂ stays constant, ADR 0004); eval adds hold-out-by-scenario. Default OFF
+  ⇒ every committed baseline byte-identical (guardrail 4).
+  - **Runtime (`src/components/slow.jl`).** `FluxDrivenSlowEmulator` gains an opt-in per-year `boundary_series`;
+    `reconcile_demography!` advances `s.boundary` to this year's row (indexed by `s.year`, clamped) BEFORE building
+    the feature row, so both the count-DRF features and the copula's `live_flux_cond` conditioning track the year's
+    bioclimate. `boundary_series=nothing` (default) leaves `s.boundary` constant ⇒ byte-identical; a CONSTANT series
+    reproduces the static boundary bit-for-bit (tested). JET-clean (bind-then-narrow the `Union{Nothing,…}` field).
+  - **Data-gen (`scripts/build_transient_boundary.py`).** Recomputes `gdd5` (Thom-1966 monthly, identical to the
+    static climclusterpy method) + `tas_cold_month` on a trailing window from the orderA daily temperature `.clm`,
+    header-driven (handles the v3-float32 HIST + the v2-int16 SSP °C×10 layouts). VERIFIED: a W=20 window ending 2019
+    reproduces the static Hainich `gdd5=1863.695`/`tas_cold=0.2184` bit-for-bit; global tables built for both
+    scenarios (SSP370 Hainich warms Δgdd5=+605, Δtas_cold=+1.79 °C over 2020→2100; global mean Δgdd5 +672).
+  - **Build table (`scripts/build_slow_runtime_table.py`).** `BOUNDARY_WINDOW=W` opt-in swaps the per-cell static
+    boundary mean for the per-(Cell,Year) transient join (count + copula modes); boundary column order/names
+    unchanged (feature-order contract preserved); default (unset) = static = byte-identical.
 - **P1 Tier-1 v3 — Component S owns establishment as REAL cohorts: dynamic roster (recruit APPEND + K-cap MERGE),
   a TRUE per-cohort age, and the copula recruit-trait sampler wired in ([ADR 0024](docs/decisions/0024-component-s-dynamic-membership-and-true-age.md), supersedes ADR 0023 §3).**
   The last structural piece of P1 — the flux-driven S now genuinely owns count/establishment/mortality/trait

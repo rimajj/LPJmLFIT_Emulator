@@ -104,10 +104,18 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   feature derivers gate PER-YEAR (reject if any year's real fraction << median → a timed-out run leaves late
   years at fill), NOT on an absolute floor (most land is legitimately low-LAI). **polars `is_not_null` is a
   NO-OP for NaN** (a NaN float IS "not null") — use `is_not_nan()`/`drop_nans()` to drop fill-marked cells.
-- **Boundary is per-CELL and TIME-CONSTANT** (climatological mean, `slow.jl:503` re-appends `s.boundary`
-  unchanged each year). A per-(Cell,Year) boundary would itself be a train/inference shift. One pooled
-  cell-agnostic forest + `cell_meta.parquet` sidecar (per-cell boundary/n_init/age0); the AR ratio
-  `target/n_prev` cancels count magnitude so pooling cells is sound.
+- **Boundary — DEFAULT per-CELL TIME-CONSTANT (climatological mean); OPT-IN TRANSIENT per-(Cell,Year) via
+  ADR 0026.** Default: per-cell mean, re-appended unchanged each year. `BOUNDARY_WINDOW=W` on
+  `build_slow_runtime_table.py` swaps in the per-(Cell,Year) TRANSIENT `gdd5`/`tas_cold_month` (trailing-W-yr
+  window, `scripts/build_transient_boundary.py` → `tables/cell_year_boundary_<scen>_wW.parquet`; soil_depth
+  static, co2 369) so a warming cell's establishment gate SHIFTS (`_boundary_source` helper, both count +
+  copula modes; column order unchanged ⇒ feature-order contract preserved). The runtime consumes it via
+  `FluxDrivenSlowEmulator`'s opt-in `boundary_series` (advanced by `s.year` in `reconcile_demography!`), which
+  keeps train/inference consistent. **`build_transient_boundary.py` gotchas:** header-driven `.clm` reader
+  (v3-float32 HDR 51 vs v2-int16 HDR 43 °C×10 — see CLAUDE.md §3); gdd5 = Thom-1966 monthly (identical to the
+  static climclusterpy method) so a W=20 window ending 2019 reproduces the static Hainich value bit-for-bit.
+  One pooled cell-agnostic forest + `cell_meta.parquet` sidecar; the AR ratio `target/n_prev` cancels count
+  magnitude so pooling cells (and — ADR 0026 — pooling SCENARIOS) is sound.
 
 ## Load-bearing gotchas (this is why the DRF is trusted)
 

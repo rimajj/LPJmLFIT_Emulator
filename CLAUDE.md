@@ -126,7 +126,10 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   a local variable that is **reassigned** and then **captured by a `Threads.@threads` closure** (or any inner
   closure) is boxed, and JET 0.11.6 reports it as `local variable X is not defined`. Fix: use a **single-assignment**
   local (assign once, never reassign) — e.g. `mtry_eff = mtry <= 0 ? … : mtry` instead of `mtry = …` (this bit
-  `src/drf.jl::fit_forest`).
+  `src/drf.jl::fit_forest`). **Sibling JET trap — `Union{Nothing,…}` struct-field narrowing:** guarding on the
+  FIELD (`if s.x !== nothing; use s.x…`) does NOT refine the type — JET flags `no matching method
+  length(::Nothing)` on the re-read. Bind to a local FIRST, then narrow it: `x = s.x; if x !== nothing; use x`
+  (bit `slow.jl::reconcile_demography!`, ADR 0026 `boundary_series`).
 - **Runtime `[deps]` stays EMPTY (ADR 0014):** F_diff (`src/`) is pure-Base Julia. AD (Enzyme/ForwardDiff/
   FiniteDifferences) is a **test/train-time** dep only. Learned-closure training ships as the package
   **extension** `ext/FDiffTrainingExt.jl` (weakdeps Lux/Zygote/Optimisers/Enzyme). Aqua enforces no stale
@@ -166,6 +169,15 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   historical end → only the SSP370 continuation.
 - **Daily output is config-only (no recompile):** put `"timestep":"daily"` inside each output entry's
   `"file"` object. Keep the `ind` tree table **annual**.
+- **`.clm` climate forcing — PARSE THE HEADER, don't assume float32/HDR=51 (`[VERIFIED]`).** LPJmL `.clm`
+  layout is version-dependent: **v3** (`name[7]"LPJCLIM"` + 7 ints + 3 floats + datatype = **HDR 51**, e.g.
+  historic `temperature_test.clm` float32 scalar 1.0, and ssp370 `huss_…orderA.clm`) vs **v2** (no datatype
+  field = **HDR 43**, stored **int16**, e.g. ssp370 `tas_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm` with
+  **scalar 0.1 ⇒ °C×10** — that's why it's half the byte size of the v3 files). Read `version` at byte-offset
+  7, branch HDR/dtype, and APPLY `scalar` (`raw·scalar` = the physical value). Header-driven reader:
+  `scripts/build_transient_boundary.py::open_clm`; per-cell-year reader `read_clm_year`
+  (`scripts/extract_fdiff_validation_inputs.py`). orderA `.clm` cell index == the parquet `Cell` (Hainich
+  42490) — no grid.nc map needed. The orderA grid is 67420 cells, YEARCELL order, 365 noleap bands.
 - **Water balance is the closure check:** `-DSAFE` `check_fluxes.c` aborts a cell if `|balanceW| > 1.5
   mm/yr` — **a clean run IS water closure.** `swc` output is FRACTIONAL saturation (no `wsats` output ⇒
   absolute mm not reconstructable); `swe`/`rootmoist` are mm.
