@@ -53,6 +53,13 @@ The count DRF above predicts `n_living`; the **recruit-trait copula** predicts t
 distribution (`{SLA, Wooddens, D95max, minwscal}`). Its OOS evaluator is `scripts/eval_slow_copula.jl`
 (K-fold-BY-CELL, one copula draw per surviving stem per axis → `pred_<axis>.f64`); build+eval+train the
 global copula in ONE SLURM job via `scripts/run_global_slow_copula.sh` (see `slow-drf-pipeline` step 4).
+**Global-scale perf/monitoring (bit me):** the OOS quantile-draw loop dominates cost (~naxes·kfolds·n forest
+traversals — hundreds of millions at the 133M-stem global table); it is `Threads.@threads`-parallel over
+`JULIA_NUM_THREADS` (the orchestrator exports 32) and bit-identical to serial (per-(row,axis) RNG seed). If
+the log looks frozen mid-eval, that's Julia BLOCK-BUFFERING the file, NOT a hang — confirm live compute with
+`sstat -j <jobid>.batch --format=AveCPU,MaxRSS` (AveCPU≈wall ⇒ burning CPU). `pred_<axis>.f64` are written
+only AFTER all folds finish, so a mid-run timeout yields NOTHING — size the wall to the parallel (not serial)
+runtime, and keep the per-fold `flush(stdout)`.
 Then set **`COPULA_OUT=<copula table dir>`** when running `plot_slow_emulator_validation.py` (alongside the
 usual count `OUT=`) and it ALSO emits:
 - `09_trait_marginals` — per-axis pooled observed-vs-OOS-predicted histograms (+ nqrmse, KS).
