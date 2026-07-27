@@ -457,3 +457,119 @@ end
     @test length(core.pools) == length(core.inds) == length(core.tmpls) == length(core.bm_inc_acc) == length(s.age)
     @test maximum(abs, s.resid_history) ≤ 1.0f-5 * cscale         # Float32 conservation floor
 end
+
+@testitem "Live-flux copula conditioning — coupled run conditions on feats+boundary, conserves, is deterministic (ADR 0025)" tags = [:conservation, :coupling, :scientific] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: PhotoParams, TempStressParams
+    using LPJmLFITEmulator.DRF
+    using LPJmLFITEmulator.Allometry
+    using Test
+
+    _mean(x) = sum(x) / length(x)
+    refdir = joinpath(@__DIR__, "references")
+    function readcsv(path)
+        lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
+        hdr = split(strip(lines[1]), ',')
+        rows = [split(strip(l), ',') for l in lines[2:end]]
+        return Dict(String(hdr[j]) => [r[j] for r in rows] for j in eachindex(hdr))
+    end
+    ind = readcsv(joinpath(refdir, "hainich_individuals_2010.csv"))
+    f = readcsv(joinpath(refdir, "hainich_forcing_2010.csv"))
+    fc_(k) = parse.(Float64, f[k])
+    v(k, r) = parse(Float64, ind[k][r]); nt(r) = parse(Int, ind["type"][r])
+    n = length(fc_("doy"))
+    sd = Float64[]; whcs = Float64[]; rdist = Float64[]
+    for ln in eachline(joinpath(refdir, "hainich_soilcolumn.txt"))
+        s = strip(ln); (isempty(s) || startswith(s, "#")) && continue
+        x = parse.(Float64, split(s)); push!(sd, x[2]); push!(whcs, x[3]); push!(rdist, x[4])
+    end
+    soil = hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
+    prows = Dict{Int, Vector{Int}}()
+    for r in eachindex(ind["type"])
+        (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
+    end
+    rows = prows[argmax(Dict(k => length(vv) for (k, vv) in prows))]
+    mkp(r) = TreePools{Float64}(
+        v("leaf_c", r), v("sapwood_c", r),
+        max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0), v("root_c", r),
+        v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false,
+    )
+    mkt(r) = Individual{Float64}(
+        v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
+        v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
+        PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
+        TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    tair_K = fc_("temp") .+ 273.15
+    σ = 5.670374419e-8
+    year_forc = [
+        AtmForcing(;
+                swdown = fc_("swdown")[i], lwdown = fc_("lwnet")[i] + σ * tair_K[i]^4,
+                tair = tair_K[i], qair = fc_("huss")[i], wind = 2.0, psurf = 1.0e5,
+                precip = fc_("precip")[i], co2 = fc_("co2")[i]
+            ) for i in 1:n
+    ]
+    mkcore() = FDiffFastCore([mkp(r) for r in rows], [mkt(r) for r in rows], soil, 51.25)
+    mkclo() = SEBEnergyClosure(; t_soil0 = _mean(tair_K))
+    mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
+    function growth_forest(c; seed = 7)
+        r = DRF.Xoshiro256pp(seed); m = 3000; X = Matrix{Float64}(undef, m, 11); y = Vector{Float64}(undef, m)
+        for i in 1:m
+            for ff in 1:11
+                X[i, ff] = DRF.rand01!(r)
+            end
+            ar = 0.5 + 59.5 * DRF.rand01!(r); X[i, 11] = ar; y[i] = c * ar
+        end
+        return DRF.fit_forest(X, y; ntrees = 60, subsample = 1500, max_depth = 16, min_leaf = 6, mtry = 11, seed = seed)
+    end
+    # a per-axis marginal conditioned on FOUR features (the live_flux_cond width for an empty-boundary cell:
+    # feats[1:4] = bm_inc_cell, growth_eff, water_stress, soilmoist), store_values for predict_quantile
+    function axis_forest4(seed, lo, hi)
+        r = DRF.Xoshiro256pp(seed); m = 2000; X = Matrix{Float64}(undef, m, 4); y = Vector{Float64}(undef, m)
+        for i in 1:m
+            for ff in 1:4
+                X[i, ff] = DRF.rand01!(r)
+            end
+            # spread the marginal across all 4 conditioning features so a change in feats moves the draw
+            y[i] = lo + (hi - lo) * (0.25 * (X[i, 1] + X[i, 2] + X[i, 3] + X[i, 4]))
+        end
+        return DRF.fit_forest(X, y; ntrees = 40, subsample = 1000, mtry = 4, seed = seed, store_values = true)
+    end
+    # {SLA, Wooddens} copula, conditioned via the PRODUCTION policy live_flux_cond; x is an unused fallback
+    mklivecopula() = RecruitCopula{Float64}(
+        DRF.GaussianCopula([1.0 0.3; 0.3 1.0]),
+        [axis_forest4(21, 0.005, 0.07), axis_forest4(22, 7.0e4, 6.5e5)],
+        [0.5, 0.5, 0.5, 0.5],
+        make_recruit_to_pools(["SLA", "Wooddens"]),
+        live_flux_cond,
+    )
+
+    forcings = repeat(year_forc, 10)
+    kcap = length(rows) + 3
+
+    # ── WITH the live-conditioned copula: coupled run completes, appends, conserves ──
+    core_l = mkcore()
+    cscale = sum(FDiff.vegc_full_ind(p) * p.nind for p in core_l.pools)
+    s_l = FluxDrivenSlowEmulator(core_l, growth_forest(1.12); n_init = 10.0, k_cap = kcap, age0 = 40.0, seed = 1, recruit_copula = mklivecopula())
+    out = run_coupled_cell(core_l, mkclo(), mkstate(), forcings; slow = s_l, days_per_year = n)
+    @test length(core_l.pools) > length(rows)                    # recruits appended via the live-cond copula
+    @test maximum(abs, s_l.resid_history) < 1.0e-6               # conserves (estab debit is draw-independent)
+    @test maximum(abs, s_l.resid_history) ≤ 1.0e-6 * cscale
+    @test all(isfinite, out.t_skin) && all(isfinite, out.npp)
+    @test all(p -> 0.005 ≤ p.sla ≤ 0.07 || p.sla == mkp(rows[1]).sla, core_l.pools[(length(rows) + 1):end])  # recruit SLA in the drawn band
+
+    # ── DETERMINISM: same seed ⇒ identical population ──
+    core_l2 = mkcore()
+    s_l2 = FluxDrivenSlowEmulator(core_l2, growth_forest(1.12); n_init = 10.0, k_cap = kcap, age0 = 40.0, seed = 1, recruit_copula = mklivecopula())
+    run_coupled_cell(core_l2, mkclo(), mkstate(), forcings; slow = s_l2, days_per_year = n)
+    @test s_l.total_n_history == s_l2.total_n_history
+    @test [p.height for p in core_l.pools] == [p.height for p in core_l2.pools]
+
+    # ── the live-cond copula recruits differ from the fixed sapling (the hook is genuinely live) ──
+    core_nc = mkcore()
+    s_nc = FluxDrivenSlowEmulator(core_nc, growth_forest(1.12); n_init = 10.0, k_cap = kcap, age0 = 40.0, seed = 1)
+    run_coupled_cell(core_nc, mkclo(), mkstate(), forcings; slow = s_nc, days_per_year = n)
+    @test sum(FDiff.vegc_full_ind(p) * p.nind for p in core_l.pools) !=
+        sum(FDiff.vegc_full_ind(p) * p.nind for p in core_nc.pools)
+end

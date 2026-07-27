@@ -231,7 +231,7 @@ export DemographicSlowEmulator, reconcile_demography!, total_n
 # Component S — Tier-1 FLUX-DRIVEN slow emulator (the DRF-target demography; ADR 0020/0021/0022)
 export FluxDrivenSlowEmulator, flux_feature_vector, target_history
 # Component S — dynamic-membership + copula recruit-trait sampler (ADR 0024)
-export RecruitCopula, make_recruit_to_pools
+export RecruitCopula, make_recruit_to_pools, live_flux_cond
 # Component E — self-contained surface-energy-balance + skin-temperature closure (ADR 0017)
 export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
 # Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)

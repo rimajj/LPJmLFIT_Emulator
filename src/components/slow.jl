@@ -214,19 +214,51 @@ total_n(s::DemographicSlowEmulator) = isempty(s.total_n_history) ? nothing : las
 
 Opt-in Gaussian-copula recruit-trait sampler for establishment. Bundles a fitted `DRF.GaussianCopula`
 `cop`, the per-axis marginal forests `axis_forests` (each `store_values=true`, in the copula's axis order),
-the conditioning feature row `x` the marginals were trained on, and `to_pools`, a mapping
+a fallback conditioning row `x`, `to_pools` (a mapping
 `(traits::Vector{Float64}, sapl::FDiff.TreePools{T}, allom) -> FDiff.TreePools{T}` turning one drawn trait
-vector into a recruit's per-individual pools. When a `FluxDrivenSlowEmulator` carries one, establishment
-draws recruit traits from `s.rng` (deterministic) instead of using the fixed `sapl`. Production axis
-artifacts + the correlation matrix are a multi-cell (P3) concern; at a single beech cell the trait axes are
-near-degenerate, so the default is `nothing` (fixed sapling).
+vector into a recruit's per-individual pools; see [`make_recruit_to_pools`](@ref)), and `cond`, the
+CONDITIONING POLICY `(s, feats) -> AbstractVector{Float64}` that builds the row the axis marginals are keyed
+on each year from the live DRF feature vector (ADR 0025). When a `FluxDrivenSlowEmulator` carries one,
+establishment draws recruit traits from `s.rng` (deterministic) instead of using the fixed `sapl`.
+
+The 4-argument constructor `RecruitCopula{T}(cop, axis_forests, x, to_pools)` defaults `cond` to a STATIC
+policy that returns the baked `x` every year (the pre-ADR-0025 behaviour ⇒ existing gates byte-identical);
+production copulas pass [`live_flux_cond`](@ref) so recruit traits track the cell's climate/flux year to
+year. Production axis artifacts + the correlation matrix are a multi-cell concern; at a single beech cell
+the trait axes are near-degenerate, so the emulator default is `nothing` (fixed sapling).
 """
 struct RecruitCopula{T <: AbstractFloat}
     cop::DRF.GaussianCopula
     axis_forests::Vector{DRF.Forest}
     x::Vector{Float64}
     to_pools::Any
+    cond::Any
 end
+
+"Static conditioning policy: ignore `(s, feats)` and return the baked row `x` (the pre-ADR-0025 behaviour)."
+_static_cond(x::Vector{Float64}) = (_s, _feats) -> x
+
+# Backward-compatible 4-arg constructor: STATIC conditioning on `x` (feats ignored) ⇒ every pre-ADR-0025
+# `RecruitCopula` (incl. the committed copula gates) is byte-identical. Production passes `live_flux_cond`.
+function RecruitCopula{T}(
+        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools
+    ) where {T <: AbstractFloat}
+    return RecruitCopula{T}(cop, axis_forests, x, to_pools, _static_cond(x))
+end
+
+"""
+    live_flux_cond(s, feats) -> Vector{Float64}
+
+The production recruit-copula conditioning policy (ADR 0025): condition the axis marginals on climate/flux +
+bioclimate ONLY — the four `FToS` flux drivers `feats[1:4]` (`bm_inc_cell, growth_eff, water_stress,
+soilmoist`) followed by the per-cell `s.boundary` tail — and DELIBERATELY exclude the six this-year
+patch-state aggregates + `n_prev` (`feats[5:11]`). Establishment traits respond to the ENVIRONMENT, not to
+the stand's own recursive state (which would be a feedback loop, and is the emergent quantity S predicts
+rather than conditions on). This subset + ORDER is the copula's feature-order contract: the axis forests
+(`scripts/train_slow_copula.jl`) MUST be trained on exactly `[bm_inc_cell, growth_eff, water_stress,
+soilmoist, <boundary…>]`. `feats` is always `Float64` (the DRF channel), so the returned row is too.
+"""
+live_flux_cond(s, feats::AbstractVector) = vcat(Vector{Float64}(feats[1:4]), s.boundary)
 
 """
     make_recruit_to_pools(axis_names) -> to_pools
@@ -585,7 +617,10 @@ function reconcile_demography!(
                 s.sapl
             else
                 rc = s.recruit_copula
-                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, rc.x)
+                # condition the axis marginals on the LIVE feature row via the copula's policy (ADR 0025):
+                # `live_flux_cond` reads climate/flux + boundary; the default static policy returns `rc.x`.
+                xcond = rc.cond(s, feats)
+                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, xcond)
                 rc.to_pools(traits, s.sapl, fc.allom)::FDiff.TreePools{T}
             end
             recruit = _with_nind(recruit_ind, dn)

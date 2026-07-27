@@ -117,3 +117,43 @@ end
     @test_throws ErrorException make_recruit_to_pools(["SLA", "minwscal"])       # no Wooddens
     @test_throws ErrorException make_recruit_to_pools(["Wooddens", "D95max"])    # no SLA
 end
+
+@testitem "Recruit copula conditioning policy — 4-arg ctor static (byte-identical); live_flux_cond reads flux+boundary (ADR 0025)" tags = [:scientific] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    function axis_forest(seed; nf = 4)
+        r = DRF.Xoshiro256pp(seed); m = 400
+        X = Matrix{Float64}(undef, m, nf); y = Vector{Float64}(undef, m)
+        for i in 1:m
+            for ff in 1:nf
+                X[i, ff] = DRF.rand01!(r)
+            end
+            y[i] = X[i, 1]
+        end
+        return DRF.fit_forest(X, y; ntrees = 8, subsample = 200, mtry = nf, seed = seed, store_values = true)
+    end
+    cop = DRF.GaussianCopula([1.0 0.2; 0.2 1.0])
+    af = [axis_forest(1), axis_forest(2)]
+    xstatic = [0.11, 0.22, 0.33, 0.44]
+    dummy_to_pools = (_traits, sapl, _allom) -> sapl
+
+    # a lightweight stand-in for the emulator (live_flux_cond only reads s.boundary); an 11-head + 2-boundary feats
+    s_stub = (; boundary = [7.0, 9.0])
+    feats = collect(1.0:13.0)      # feats[1:4] = flux drivers; feats[12:13] mirror s.boundary in a real run
+
+    # 4-ARG constructor ⇒ STATIC policy: cond returns the baked x regardless of feats (pre-ADR-0025 behaviour)
+    rc_static = RecruitCopula{Float64}(cop, af, xstatic, dummy_to_pools)
+    @test rc_static.cond(s_stub, feats) == xstatic
+    @test rc_static.cond(s_stub, feats .* 100) == xstatic      # feats-independent ⇒ byte-identical to old path
+
+    # live_flux_cond: the 4 flux drivers (feats[1:4]) + the per-cell boundary tail, EXCLUDING feats[5:11]
+    @test live_flux_cond(s_stub, feats) == vcat(feats[1:4], s_stub.boundary)
+    @test length(live_flux_cond(s_stub, feats)) == 4 + length(s_stub.boundary)
+
+    # 5-arg constructor with the production policy ⇒ cond tracks feats
+    rc_live = RecruitCopula{Float64}(cop, af, xstatic, dummy_to_pools, live_flux_cond)
+    @test rc_live.cond(s_stub, feats) == vcat(feats[1:4], s_stub.boundary)
+    @test rc_live.cond(s_stub, feats) != rc_static.cond(s_stub, feats)   # the two policies genuinely differ
+end
