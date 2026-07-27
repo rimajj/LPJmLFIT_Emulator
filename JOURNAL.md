@@ -737,3 +737,65 @@ Entry template:
   (S only reads `s.boundary`) and mirror the offline path 1:1. Follow-up: populate the mirror from it (E's
   soil-temp init) + source the SpeedyWeather cold-start spin-up climatology (P4). Design doc
   `docs/online_transient_boundary_climbuf.md` flipped design→BUILT with the verification outcome recorded.
+
+## 2026-07-27 (cont.) — DIAGNOSIS: the trait per-cell-median figure (fig 10) is NOT "totally off" — axis-dependent skill (residual-diagnosis)
+- **Trigger:** owner flagged `figures/emulator_validation/historic/10_trait_percell_median.png` — "the majority
+  of prediction is totally off for the traits." Applied `residual-diagnosis` before concluding.
+- **Reference basis (confirmed by reading the code):** fig 10 = per-cell median of the OOS copula-predicted
+  trait vs per-cell median of the OBSERVED (LPJmL-FIT survivor) trait, computed over the IDENTICAL stems/cells
+  (`plot_slow_emulator_validation.py:250` groups one dfc; `eval_slow_copula.jl:82-83` draws one deterministic
+  per-stem quantile with the cell's OWN conditioning row `Xc[i,:]`). K-fold-by-cell, ≥20 stems, 38009 cells.
+- **Hypotheses killed:** (H_B) conditioning bypassed / static-x fallback → RULED OUT (per-cell `Xc[i,:]` +
+  per-stem `u`; SLA r=0.87 proves the conditioning is active + informative). (H_C) obs/pred basis mismatch →
+  RULED OUT (identical stems/cells). Pooled marginals (fig 09) overlay near-perfectly (KS 0.004-0.015) — the
+  ADR-0025/0026 validated claim HOLDS.
+- **Decisive numbers (per-cell-median correlation across 38009 cells, `slow_copula_historic`):**
+  SLA Pearson r=**0.87** (r²0.75) ρ0.81 spread-ratio 0.94; minwscal r=0.78 (0.61) ρ0.72 ratio 0.73; D95max
+  r=0.74 (0.55) ρ0.77 ratio 0.73; **Wooddens r=0.52 (0.27) ρ0.53 ratio 0.53**. So it is NOT "totally off" —
+  SLA is strongly predicted and 3/4 axes have r≥0.74; Wooddens is the genuinely weak axis (predicted per-cell
+  spread only 53% of observed ⇒ regression toward the global mean).
+- **Why the figure READS as "off":** 38k semi-transparent points saturate a scatter and hide the diagonal
+  density; only the off-diagonal plumes are visible. FIXED the figure — density (hexbin, log) + per-cell
+  Pearson r / Spearman ρ annotated in each panel title; added `median_percell_r`/`_spearman` to
+  `metrics_traits.txt` (`plot_slow_emulator_validation.py`).
+- **VERDICT — (c) accepted limitation, not a bug, not an artifact.** The copula conditions on flux+boundary
+  ONLY and DELIBERATELY excludes stand-state (`live_flux_cond`, ADR 0025 — to avoid an establishment-feedback
+  loop). That reproduces the POOLED trait distribution excellently but under-determines per-cell trait medians
+  for the low-signal axes (Wooddens especially: wood density is set by PFT/biome composition, which flux+gdd5+
+  tas_cold only coarsely encode). Documented, and it correctly CAVEATS any multi-cell trait-skill claim (#3).
+- **Falsifiable improvement (scoped, NOT done here — P3):** does adding environmental covariates (or per-PFT
+  copulas) raise Wooddens per-cell-median skill? Needs a copula table rebuilt with expanded `COPULA_COND_COLS`
+  + a global K-fold re-fit + an ADR (the `live_flux_cond` contract is frozen). Degenerate at single-cell
+  Hainich (beech) — inherently a multi-PFT/multi-cell concern, which is why it surfaced only at global scale.
+- **Figure FIXED** so it stops misleading: `10_trait_percell_median` is now a DENSITY hexbin (38k cells no
+  longer saturate) with the per-cell Pearson r / Spearman ρ in each panel title; `median_percell_r` +
+  `_spearman` added to `metrics_traits.txt` (`plot_slow_emulator_validation.py`). The diagonal mass is now
+  visible: SLA/D95max/minwscal clearly track, Wooddens is honestly the flat/weak axis.
+
+## 2026-07-27 (cont.) — #3 P3 NOISE-FLOOR GATE: counts AT the floor; trait per-cell medians are LEARNABLE (model headroom, not noise)
+- **The P3 gate's literal metric** ("per-cell error vs the seed1-vs-seed2 noise floor"). LPJmL-FIT is
+  stochastic (RAND48 + -DPERMUTE), so seed1 vs seed2 is the IRREDUCIBLE per-cell spread — no environment-
+  conditioned emulator can beat it. `scripts/noise_floor_vs_emulator.py` (SLURM job 1604840, 52165 cells with
+  ≥20 survivor tree stems in BOTH seeds; survivor filter = the copula's own Type≤6 & isdead==0).
+- **COUNTS — AT the floor (SOLVED).** Emulator per-cell-mean r²=**0.9994** (per-row 0.9852); seed1-vs-seed2
+  count floor r²=**0.953**. The emulator predicts the seed-expected value ⇒ it even SMOOTHS past the raw
+  seed-to-seed count spread. Counts generalize to the noise floor globally.
+- **TRAITS — the per-cell-median floor is HIGH (0.90-0.97) ⇒ LEARNABLE, not RNG-noise.** seed1-vs-seed2
+  per-cell-median r: SLA 0.965, Wooddens 0.923, D95max 0.895, minwscal 0.973. So FIT's per-cell trait medians
+  ARE reproducible across seeds — there is real per-cell signal to capture. Emulator r (copula basis): SLA
+  0.866, Wooddens 0.523, D95max 0.746, minwscal 0.781 — all BELOW the floor ⇒ genuine MODEL HEADROOM. This
+  DECISIVELY answers the fig-10 concern: the trait weakness (esp. Wooddens) is NOT irreducible noise; it is an
+  addressable conditioning gap (flux+boundary under-determine PFT/biome-driven per-cell medians, ADR 0025).
+  SLA is closest to its (basis-clean) floor (0.866 vs 0.965 ⇒ modest headroom).
+- **BASIS CAVEAT (residual-diagnosis: confirmed, not assumed).** A `seed1-basis` cross-check (parquet all-years
+  median vs copula-table Y median) is clean for SLA (0.97) but low for Wooddens (0.49) and minwscal (0.09) —
+  RULED OUT the coverage gate (drops ≤2%, `build_slow_runtime_table.py:164`); the ordering tracks per-cell-
+  median STABILITY (minwscal is clamped/discrete → median flips on tiny stem-set diffs; Wooddens year-variable).
+  So the emu-vs-floor GAP for those two is read qualitatively (floor high ⇒ headroom), not as an exact number;
+  a basis-clean per-axis floor needs the seed2 copula table rebuilt (MODE=copula SEED=2) — scoped follow-up.
+- **Net #3 outcome:** the OFFLINE global S emulator (count DRF + recruit copula, K-fold-BY-CELL OOS over 45009
+  cells) is the multi-cell generalization evidence — COUNTS at the noise floor; TRAITS pooled-marginal-perfect
+  with learnable-but-not-yet-captured per-cell medians (headroom, esp. Wooddens). The COUPLED in-loop S+F+E
+  beyond Hainich is a SEPARATE remaining piece: `biome_coupled_tests.jl` runs F+E across 5 biomes (energy
+  closes everywhere) but `slow=nothing` — wiring the flux-driven S across biomes + a per-cell C-truth
+  demography comparison is the next coupled increment (needs per-cell forcing/vegetation at scale).

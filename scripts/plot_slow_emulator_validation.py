@@ -246,13 +246,25 @@ def main() -> int:
             ax9[ai].hist(prd, bins=bins, density=True, alpha=0.5, label="copula OOS", color="#ee6677")
             ax9[ai].set_title(f"{ax}  nqrmse={nq:.3f}  KS={pooled_ks:.3f}", fontsize=10)
             ax9[ai].legend(fontsize=8)
-            # per-cell medians + per-cell KS (≥20 stems); fig 10 scatter on the 1:1 line
+            # per-cell medians (≥20 stems): how well each cell's trait MEDIAN is predicted. DENSITY-coloured
+            # (38k cells saturate a plain scatter, hiding the diagonal — the "totally off" misread) + the
+            # per-cell-median Pearson r / Spearman ρ annotated. This is the HONEST per-cell trait skill: SLA
+            # strong (r~0.87), D95max/minwscal moderate (~0.75), Wooddens weak (~0.52, regresses to the mean) —
+            # the flux+boundary conditioning (which deliberately excludes stand-state, ADR 0025) under-
+            # determines the low-signal axes; the POOLED marginal (fig 09) is excellent regardless.
             dfc = pl.DataFrame({"cell": ccells, "obs": obs, "pred": prd})
-            med = dfc.group_by("cell").agg(pl.col("obs").median().alias("o"), pl.col("pred").median().alias("p")).sort("cell")
-            ax10[ai].scatter(med["o"].to_numpy(), med["p"].to_numpy(), s=8, alpha=0.5)
-            lim = [float(min(med["o"].min(), med["p"].min())), float(max(med["o"].max(), med["p"].max()))]
+            medg = (dfc.group_by("cell")
+                    .agg(pl.col("obs").median().alias("o"), pl.col("pred").median().alias("p"), pl.len().alias("n"))
+                    .filter(pl.col("n") >= 20).sort("cell"))
+            mo = medg["o"].to_numpy(); mp = medg["p"].to_numpy()
+            r_med = float(np.corrcoef(mo, mp)[0, 1]) if len(mo) > 2 else float("nan")
+            ro = np.argsort(np.argsort(mo)); rp = np.argsort(np.argsort(mp))
+            rho_med = float(np.corrcoef(ro, rp)[0, 1]) if len(mo) > 2 else float("nan")
+            lim = [float(min(mo.min(), mp.min())), float(max(mo.max(), mp.max()))]
+            ax10[ai].hexbin(mo, mp, gridsize=60, bins="log", cmap="viridis", mincnt=1,
+                            extent=(lim[0], lim[1], lim[0], lim[1]))
             ax10[ai].plot(lim, lim, "k--", lw=0.8)
-            ax10[ai].set_title(f"{ax} per-cell median (OOS)", fontsize=10)
+            ax10[ai].set_title(f"{ax} per-cell median  r={r_med:.2f} ρ={rho_med:.2f} (n={len(mo)})", fontsize=10)
             ax10[ai].set_xlabel("observed"); ax10[ai].set_ylabel("predicted")
             ks_pc = np.full(NCELL_GLOBAL, np.nan)
             kss = []
@@ -267,8 +279,9 @@ def main() -> int:
                 if e - s >= 20:
                     k = ks2(po[s:e], oo[s:e]); ks_pc[int(uniq[gi])] = k; kss.append(k)
             ks_maps.append((ax, ks_pc))
-            tm.write(f"{ax}\tpooled_nqrmse\t{nq:.4f}\tpooled_KS\t{pooled_ks:.4f}\tmedian_percell_KS\t{np.median(kss):.4f}\tn_cells\t{len(kss)}\n")
-            print(f"   trait {ax:10s} pooled nqrmse={nq:.3f} KS={pooled_ks:.3f} median-per-cell KS={np.median(kss):.3f}")
+            tm.write(f"{ax}\tpooled_nqrmse\t{nq:.4f}\tpooled_KS\t{pooled_ks:.4f}\tmedian_percell_KS\t{np.median(kss):.4f}"
+                     f"\tmedian_percell_r\t{r_med:.4f}\tmedian_percell_spearman\t{rho_med:.4f}\tn_cells\t{len(kss)}\n")
+            print(f"   trait {ax:10s} pooled nqrmse={nq:.3f} KS={pooled_ks:.3f} median-per-cell KS={np.median(kss):.3f} r={r_med:.3f} ρ={rho_med:.3f}")
         fig9.suptitle(f"Recruit-trait copula — pooled OOS marginals vs LPJmL-FIT ({scen})")
         fig9.tight_layout(); fig9.savefig(os.path.join(figdir, "09_trait_marginals.png"), dpi=130); plt.close(fig9)
         fig10.suptitle(f"Recruit-trait copula — per-cell OOS median vs LPJmL-FIT ({scen})")

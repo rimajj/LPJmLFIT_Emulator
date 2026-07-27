@@ -63,10 +63,19 @@ runtime, and keep the per-fold `flush(stdout)`.
 Then set **`COPULA_OUT=<copula table dir>`** when running `plot_slow_emulator_validation.py` (alongside the
 usual count `OUT=`) and it ALSO emits:
 - `09_trait_marginals` — per-axis pooled observed-vs-OOS-predicted histograms (+ nqrmse, KS).
-- `10_trait_percell_median` — per-axis per-cell predicted-vs-observed median scatter (1:1 line).
+- `10_trait_percell_median` — per-axis per-cell predicted-vs-observed median (DENSITY hexbin + per-cell
+  Pearson r / Spearman ρ in the title). **READ IT RIGHT (bit the owner):** 38k cells saturate a plain
+  scatter and hide the diagonal → it LOOKS "totally off" when it isn't. The honest per-cell-median skill is
+  axis-dependent — GLOBAL historic: SLA r=**0.87** (strong), minwscal 0.78, D95max 0.74, **Wooddens 0.52
+  (weak** — predicted per-cell spread only ~0.5× observed ⇒ regresses to the global mean). Root cause is NOT
+  a bug: the copula conditions on flux+boundary and DELIBERATELY excludes stand-state (`live_flux_cond`,
+  ADR 0025), so it nails the POOLED marginal (fig 09) but under-determines per-cell medians of PFT-composition-
+  driven axes (esp. wood density). Improving it = richer environmental / per-PFT conditioning (P3; a frozen-
+  `live_flux_cond`-contract change + global re-fit + ADR; degenerate at single-cell Hainich).
 - `11_trait_ks_map` — per-axis per-cell KS map (spatial where the marginal is reproduced well/poorly).
-- `metrics_traits.txt` — per-axis pooled nqrmse + pooled KS + median-per-cell KS. **The headline trait
-  proof numbers.** KS + 1-Wasserstein are dependency-light (no scipy). Only SLA/Wooddens feed dynamics;
+- `metrics_traits.txt` — per-axis pooled nqrmse + pooled KS + median-per-cell KS + **median_percell_r /
+  median_percell_spearman** (the paired per-cell-median skill — the honest per-cell number; pooled KS alone
+  can look great while per-cell medians regress to the mean, see fig 10). **The headline trait proof numbers.** KS + 1-Wasserstein are dependency-light (no scipy). Only SLA/Wooddens feed dynamics;
   D95max/minwscal are sample+validate-only. (13-cell dev check: OOS pooled KS SLA 0.044, Wooddens 0.017,
   D95max 0.029, minwscal 0.021. GLOBAL historic OOS nqrmse SLA 0.016 / Wd 0.022 / D95max 0.028 / minwscal
   0.038; GLOBAL pooled+transient nqrmse 0.010-0.020.)
