@@ -1,6 +1,6 @@
 ---
 name: emulator-validation-figures
-description: Produce the reproducible validation-figure set that PROVES how well the global Component-S emulator reproduces LPJmL-FIT — global maps (observed / predicted / bias tree density), per-row + per-cell prediction scatter, count-distribution comparison, and skill-by-latitude / skill-by-gdd5 breakdowns — from HONEST K-fold-by-cell out-of-sample predictions. Use whenever the historic OR future (SSP370) emulator is (re)trained, its features/DRF change, or you need publication-style proof-of-skill figures. Names: scripts/eval_slow_drf.jl, scripts/plot_slow_emulator_validation.py, preds_oos.f64, figures/emulator_validation/<scenario>/, cell 42490, grid.nc cellid orderA. Complements slow-drf-pipeline (which TRAINS the DRF).
+description: Produce the reproducible validation-figure set that PROVES how well the global Component-S emulator reproduces LPJmL-FIT — global maps (observed / predicted / bias tree density), per-row + per-cell prediction scatter, count-distribution comparison, and skill-by-latitude / skill-by-gdd5 breakdowns — from HONEST K-fold-by-cell out-of-sample predictions. Use whenever the historic OR future (SSP370) emulator is (re)trained, its features/DRF change, or you need publication-style proof-of-skill figures. Also the recruit-trait COPULA trait-distribution figures (ADR 0025): per-axis pooled marginals, per-cell median scatter, per-cell KS maps (figs 09-11 + metrics_traits.txt), gated on COPULA_OUT, from scripts/eval_slow_copula.jl K-fold-by-cell OOS. Names: scripts/eval_slow_drf.jl, scripts/eval_slow_copula.jl, scripts/plot_slow_emulator_validation.py, scripts/run_global_slow_copula.sh, preds_oos.f64, pred_<axis>.f64, COPULA_OUT, figures/emulator_validation/<scenario>/, cell 42490, grid.nc cellid orderA. Complements slow-drf-pipeline (which TRAINS the DRF + copula).
 ---
 
 # emulator-validation-figures — reproducible proof-of-skill figures for the global Component-S emulator
@@ -47,6 +47,22 @@ are averaged over patches+years → one number per cell for the maps. Writes to
   works / fails).
 - `metrics.txt` — OOS per-row R², RMSE, per-cell-mean R², bias, n. **This is the headline proof number.**
 
+## Trait-distribution figures — the recruit-trait copula (ADR 0025)
+
+The count DRF above predicts `n_living`; the **recruit-trait copula** predicts the within-cell TRAIT
+distribution (`{SLA, Wooddens, D95max, minwscal}`). Its OOS evaluator is `scripts/eval_slow_copula.jl`
+(K-fold-BY-CELL, one copula draw per surviving stem per axis → `pred_<axis>.f64`); build+eval+train the
+global copula in ONE SLURM job via `scripts/run_global_slow_copula.sh` (see `slow-drf-pipeline` step 4).
+Then set **`COPULA_OUT=<copula table dir>`** when running `plot_slow_emulator_validation.py` (alongside the
+usual count `OUT=`) and it ALSO emits:
+- `09_trait_marginals` — per-axis pooled observed-vs-OOS-predicted histograms (+ nqrmse, KS).
+- `10_trait_percell_median` — per-axis per-cell predicted-vs-observed median scatter (1:1 line).
+- `11_trait_ks_map` — per-axis per-cell KS map (spatial where the marginal is reproduced well/poorly).
+- `metrics_traits.txt` — per-axis pooled nqrmse + pooled KS + median-per-cell KS. **The headline trait
+  proof numbers.** KS + 1-Wasserstein are dependency-light (no scipy). Only SLA/Wooddens feed dynamics;
+  D95max/minwscal are sample+validate-only. (13-cell dev check: OOS pooled KS SLA 0.044, Wooddens 0.017,
+  D95max 0.029, minwscal 0.021.)
+
 ## Interpreting / what "works well" looks like
 
 - `metrics.txt` OOS per-row R² should be ≈ the `HOLDOUT_FRAC` train/test R² from the DRF train (historic:
@@ -56,8 +72,9 @@ are averaged over patches+years → one number per cell for the maps. Writes to
 
 ## Scope + extension points (honest)
 
-- This validates the **count** (`n_living`) DRF — the piece trained globally. The **trait marginals + copula**
-  (height, SLA, …) are NOT yet predicted globally; add their distribution-comparison figures here once trained.
+- Figures 01-08 validate the **count** (`n_living`) DRF; figures 09-11 validate the **recruit-trait copula**
+  marginals (ADR 0025, gated on `COPULA_OUT`). A per-axis JOINT-correlation check (SLA-Wooddens scatter) and a
+  copula-vs-fixed-sapling A/B are natural further additions.
 - A **skill-vs-baseline** panel (the climate-only `DirectEmulator`, `tables/direct_count_global.parquet`; the
   ADR-0020 falsifiable test) and a **coupled in-loop global** figure (S+F+E vs C trajectories) are natural
   additions — wire them into `plot_slow_emulator_validation.py` as figures 09+.

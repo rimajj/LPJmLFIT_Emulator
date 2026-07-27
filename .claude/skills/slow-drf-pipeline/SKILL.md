@@ -13,7 +13,12 @@ description: >
   scripts/train_slow_drf.jl, scripts/build_slow_oracle_reference.py, DRF.save_forest/load_forest,
   test/testitems/references/drf_forest_hainich.drf, hainich_slow_oracle_{traits,counts}.csv, cell 42490,
   the flux_feature_vector order, the age_mean train/inference trap, the dynamic-roster append/merge, and the
-  age0 seed. ADR 0023/0024.
+  age0 seed. ALSO the RECRUIT-TRAIT COPULA production pipeline (ADR 0025 — reproduce FIT's within-cell TRAIT
+  distribution: 4 live axes SLA/Wooddens/D95max/minwscal, beta_2 is compile-time dead, trained on the
+  SURVIVOR marginal, conditioned by live_flux_cond): build_slow_runtime_table.py MODE=copula,
+  scripts/train_slow_copula.jl, scripts/eval_slow_copula.jl (K-fold-by-cell OOS), scripts/run_global_slow_copula.sh,
+  DRF.save_copula/load_copula, recruit_copula_hainich.rcop, make_recruit_to_pools, live_flux_cond,
+  slow_oracle_traits_tests.jl. ADR 0023/0024/0025.
 ---
 
 # slow-drf-pipeline — train / serialize / load / oracle-gate the Component-S DRF
@@ -133,19 +138,40 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   boxed-closure gate (CLAUDE.md §2). The committed Hainich `.drf` is a DEMO (≤~200 KB); the global forest is
   DVC on `/p/tmp/jamirp/emulator_global/drf/`, not git.
 
-## Copula recruit-trait sampler (WIRED as an opt-in hook, ADR 0024)
+## Copula recruit-trait PIPELINE (ADR 0025 — trained / serialized / validated production model)
 
-`DRF.GaussianCopula`/`chol_lower`/`norminv`/`normcdf`/`copula_uniforms!`/`sample_copula!` draw correlated
-recruit traits {logHeight, Age, SLA, Wooddens, beta_root} via the Cholesky of a correlation matrix mapped
-through per-axis flux-conditioned `predict_quantile` marginals. `GaussianCopula(R)` FACTORS a correlation
-matrix (`from_corr=true` default); pass `from_corr=false` for a raw Cholesky `L`. As of **ADR 0024** the
-consumer exists: the `FluxDrivenSlowEmulator` carries an OPT-IN `recruit_copula::RecruitCopula` field
-(default `nothing`); when set, establishment's APPEND path draws `sample_copula!(s.rng, cop, axis_forests, x)`
-(deterministic on the seeded RNG) and maps the traits to the recruit pools via `RecruitCopula.to_pools`.
-Default `nothing` ⇒ the fixed sapling (committed gates unaffected). The **production** axis-forest artifacts
-(one `store_values=true` DRF per trait axis) + the correlation matrix `R` are a **P3 (multi-cell)** follow-up
-— at single-cell beech the trait axes are near-degenerate; `test/testitems/slow_membership_tests.jl` exercises
-the hook end-to-end (Float64 + Float32) with in-test axis forests.
+The recruit-trait Gaussian copula reproduces LPJmL-FIT's within-cell TRAIT distribution (the count DRF does
+counts/size). **4 live axes `{SLA, Wooddens, D95max, minwscal}`** — `beta_2` is compile-time DEAD
+(`getrootdist.c` `#ifdef USE_BETA2`, never defined), and use `D95max` NOT the collinear `beta_root`. Trained
+on FIT's **SURVIVING** stems (`isdead==0`): mortality is trait-blind ⇒ community dist == establishment dist ==
+survivor marginal. Conditioned on the `live_flux_cond` subset (4 flux drivers + per-cell boundary; NOT the
+6 patch-state aggregates / `n_prev`). Only SLA+Wooddens feed dynamics; D95max/minwscal are sample+validate-only.
+
+Pipeline (mirrors the count-DRF one; the scripts are axis-count-agnostic):
+1. **Per-stem table** — `MODE=copula SCENARIO=historic SEED=1 [CELLS=<subset>] OUT=... python3
+   scripts/build_slow_runtime_table.py`. Forks the count path after the flux-driver agg; broadcasts the
+   conditioning (`COPULA_COND_COLS` = the `live_flux_cond` order) onto every surviving stem's 4 trait targets.
+   Writes `Xc.f64` / `Y_<axis>.f64` / `cells.i64` / `manifest_copula.txt`.
+2. **Fit + serialize** — `OUT=... [RCOP_OUT_PATH=...] $JULIA scripts/train_slow_copula.jl`: one
+   `store_values=true` marginal DRF per axis + the LATENT-NORMAL copula correlation (rank→`norminv`→Pearson,
+   zero-var guard + ridge) → `DRF.save_copula` `.rcop` + `_meta` (golden seed→draw pairs). Default = the
+   COMMITTED demo `test/testitems/references/recruit_copula_hainich.rcop` (~311 KB); `RCOP_OUT_PATH` overrides
+   for the GLOBAL artifact (DVC, not git — `store_values` is large). Bitwise round-trip self-check.
+3. **Single-cell gate** — `test/testitems/slow_oracle_traits_tests.jl`: loads the `.rcop`, rebuilds `to_pools`
+   via `make_recruit_to_pools(axes)` + `live_flux_cond`, runs the coupled Hainich decade. Asserts golden pairs
+   (bitwise), conservation, a TIGHT **direct-draw** marginal check (openlibm ⇒ platform-independent: SLA
+   nqrmse≈0.13, Wooddens≈0.035) + a COARSE coupled-community alarm (≤0.45, median-ratio-led — the 20-yr Float64
+   coupled trajectory's tails diverge by CPU microarch, so it is NOT tight). Plumbing, NOT cross-cell skill.
+4. **GLOBAL + OOS (the real fidelity proof)** — `SCENARIO=historic scripts/run_global_slow_copula.sh` = one
+   SLURM job: build `MODE=copula` table → `eval_slow_copula.jl` (K-fold-BY-CELL OOS, per-axis `pred_<axis>.f64`)
+   → train the pooled global `.rcop`. Then the trait figures 09-11 (see the **emulator-validation-figures**
+   skill: `COPULA_OUT=<table dir>` → `metrics_traits.txt`). SSP370 after its features exist.
+
+**Load-bearing:** the copula conditioning order MUST match `src/components/slow.jl::live_flux_cond` (4 flux +
+boundary) — the same channel-consistency trap as the count DRF's `flux_feature_vector`. Retraining the `.rcop`
+⇒ re-measure the `slow_oracle_traits_tests` thresholds (residual-diagnosis). The sampler primitives
+(`DRF.GaussianCopula`/`sample_copula!`/`predict_quantile`, `save_copula`/`load_copula`) are pure-Base (ADR
+0014); `RecruitCopula` (default `nothing`) keeps committed gates byte-identical until deliberately enabled.
 
 ## Membership + age retrain (ADR 0024) — the recurring loop
 
