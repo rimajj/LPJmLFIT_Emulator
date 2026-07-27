@@ -2,9 +2,8 @@
 
 > **Current durable state only.** Verified facts, frozen-decision index, phase status, open TODOs.
 > Environment/runbook facts live in `CLAUDE.md`; session narrative in `JOURNAL.md`; the story of any
-> single change in `CHANGELOG.md`. Reshaped from a 127 KB session-log on 2026-07-22 (consolidation P0), and
-> again 2026-07-27 (collapsed the per-step Tier-0/Tier-1 narrative once Component-S landed globally).
-> Pre-consolidation copies: `docs/archive/MEMORY_2026-07-{22,27}_pre-consolidation.md` (and in git).
+> single change in `CHANGELOG.md`. Reshaped from a 127 KB session-log on 2026-07-22 (consolidation P0);
+> the pre-consolidation copy is `docs/archive/MEMORY_2026-07-22_pre-consolidation.md` (and in git).
 > Cap: ≤ 400 lines / ≤ 15k tokens — keep it that way; new narrative goes to JOURNAL, not here.
 >
 > Tags: **[VERIFIED]** confirmed against source/data · **[DECISION]** frozen unless reopened via ADR ·
@@ -27,26 +26,25 @@ Orders + reasoning: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`. Runboo
 
 ---
 
-## 2. Phase status (as of 2026-07-27, main-only)
+## 2. Phase status (as of 2026-07-22, ~90 commits, main-only)
 
 | Phase | State | Evidence / gate |
 |---|---|---|
 | **0 DESIGN** | ✅ done | schemas + interface contract frozen (`DESIGN.md`); both load-bearing findings re-verified |
 | **1 Carbon+water closure** | ✅ PASSED | carbon flux identity 7.3e-5 PgC/yr, 0.6% cumulative drift; water proven by `-DSAFE` per-cell abort over all 67,420 cells × 20 yr (global cumulative \|Σprec−Σ(ET+runoff)\|/Σprec median 0.87%); 186 GB daily dataset generated |
-| **2 S offline** | ✅ done — **GLOBAL flux-driven** (ADR 0020-0027) | native-Julia count DRF + recruit copula, K-fold-BY-CELL OOS over **45009 cells**. Counts **AT the seed1-vs-seed2 noise floor** (per-cell-mean r²=0.9994); pooled+transient held-out-BY-SCENARIO R²=0.9847 (unseen regime). Traits: pooled marginal KS 0.004-0.015; **per-cell median has model HEADROOM** (r SLA 0.87 / Wd 0.52 / D95max 0.74 / minwscal 0.78 — the floor is 0.90-0.97 ⇒ learnable, not noise). The climate-only `DirectEmulator` is retained ONLY as the OOD benchmark it beats **2.35×** (ADR 0020) |
+| **2 S offline** | ✅ baseline gate met | `DirectEmulator` (LightGBM+copula), 6000 biome-stratified cells. In-distribution KS **0.023** vs **0.0049** floor; **warm+dry OOD KS ~32× floor** — the documented equilibrium-ML failure the hybrid exists to fix (not an S-escalation trigger, ADR 0005) |
 | **3 F_diff** | ✅ scale-up steps 1–11 done; C-validated **Hainich only** | multi-layer soil, multi-PFT canopy, prognostic structure, self-computed calibrated NPP, NN λ/Vcmax hooks (Enzyme/Zygote gradients verified), grass faithful to ±10–15%, `sapwood_bg` pool added. Decadal (2009–2019) mean GPP ratio 1.066, interannual r=0.86, no drift |
 | **4 E energy** | ✅ landed, self-contained (ADR 0017) | `SEBEnergyClosure` closes `Rn=LE+H+G` to **1.4e-14 W/m²**; H the residual; Monin–Obukhov g_a stability correction ON by default; coupled Hainich decade emergently reproduces the **2018 drought** (summer Bowen 0.89 vs ~0.2) |
-| **5 Multi-cell** | 🟡 offline S done; COUPLED still 5-biome F+E | OFFLINE S generalizes globally (K-fold-BY-CELL, 45009 cells — Phase 2). COUPLED S+F+E runs across 5 biomes but `slow=nothing` (F+E only; energy ≤3e-14, climate-correct partitioning); **not yet** the coupled flux-driven S across cells vs C-truth demography, nor the resilience battery |
+| **5 Multi-cell** | 🟡 started | coupled run across 5 biomes closes energy ≤3e-14 W/m² with climate-correct partitioning; **not yet** the 6000-cell held-out evaluation or resilience battery |
 | **6 Online / SpeedyWeather** | ⬜ not started | |
 | **7 ESM packaging** | ⬜ not started | |
 
-**Remaining project (not done):** the flux-driven Component-S is IN the coupled loop and validated GLOBALLY
-**offline** (counts at the noise floor; the OOD win is `[VERIFIED]` 2.35×) — but the **coupled** S+F+E run
-beyond Hainich is F+E-only so far (S not yet driven across cells vs C-truth demography); the **trait per-cell
-median has model headroom** (esp. Wooddens — richer conditioning, P3); E is **not validated against
-FLUXNET/PLUMBER2**; nothing runs online with SpeedyWeather; wind/psurf forcing not sourced. F_diff and the
-coupled loop remain **Hainich-C-validated only** — single-cell fidelity is scaffolding, the global evidence
-is the offline S.
+**Remaining project (not done):** S **Tier-0 is now IN the coupled loop** (`run_coupled_cell(...; slow=)`,
+carbon-conserving to ~3e-12 gC, N evolving — Hainich; `slow=nothing` byte-identical) — but the **flux-driven
+ML inference (Tier-1, ADR 0020) is not built yet** (constant/physical-rate demography so far), so the OOD win
+is not demonstrated; E **not validated against FLUXNET/PLUMBER2**; nothing runs multi-cell held-out; nothing
+runs online with SpeedyWeather; wind/psurf forcing not sourced. Everything is **Hainich (DE-Hai) only** —
+single-cell is scaffolding, not evidence.
 
 ---
 
@@ -162,43 +160,129 @@ unresolved and ADR 0017's premise rests on it.
 
 ## 5. Open TODOs / frontier (priority per `STEERING_PROMPT.md`)
 
-- **[DONE] P1 — the flux-driven Component-S is IN the coupled loop (the novelty).** Design: `docs/p1_s_in_loop_design.md`;
-  decisions ADR 0018 (growth-ownership split: F owns representative-individual carbon growth, S owns the
-  distribution + demography) → 0019 → **0020** (S is FLUX-DRIVEN: maps F's delivered fluxes + AR state + slow
-  bioclimatic boundary → demography, NOT climate → distribution; this-year raw climate dropped) → 0021 (native
-  Julia, no Python at runtime) → 0022 (hand-rolled zero-dep `src/drf.jl` DRF) → 0023 (serialized runtime-
-  consistent artifact) → 0024 (dynamic roster: recruit APPEND + K-cap MERGE + true per-cohort age) → 0025
-  (recruit-trait Gaussian copula) → 0026/0027 (pooled multi-regime + transient boundary). Concrete types in
-  `src/components/slow.jl`: `DemographicSlowEmulator` (Tier-0, deterministic) and `FluxDrivenSlowEmulator`
-  (Tier-1, DRF-target demography + copula recruit traits), opt-in behind `run_coupled_cell(...; slow=)`,
-  `slow=nothing` byte-identical. **S↔F handoff conserves carbon to ~1e-12 gC ≪ 1e-6·C_scale** by construction
-  (the `CarbonLedger` + `vegc_full_ind` routing); energy still closes (1.4e-14); deterministic; empty runtime
-  `[deps]`. The full step-by-step build (Tier-0 → Tier-1 v4) is in JOURNAL (2026-07-22 … 07-27) + the ADRs.
-  - **[VERIFIED — the ADR-0020 falsifiable test] flux-conditioning beats climate 2.35× on the warm+dry OOD holdout**
-    (ood R² 0.76 vs −0.16; `scripts/flux_ood_experiment.jl`). The climate-only `DirectEmulator` is retained ONLY
-    as this OOD benchmark. Definitions verified vs `mortality_tree_ind.c`/`waterstress_tree.c`/`tempstress_tree.c`.
-  - **[VERIFIED — GLOBAL, offline] the production count DRF + recruit copula generalize across cells** (K-fold-
-    BY-CELL OOS, 45009 cells; real C-`LAI_STAND` + daily `swc` features, no proxies): counts per-cell-mean
-    **r²=0.9994 — AT the seed1-vs-seed2 noise floor** (`scripts/noise_floor_vs_emulator.py`); pooled+transient
-    held-out-BY-SCENARIO **R²=0.9847** (reproduces an UNSEEN climate regime); trait pooled marginals KS
-    0.004-0.015. Artifacts `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); committed `.drf`/`.rcop` = Hainich demo.
-    Figures: `emulator-validation-figures` skill.
-  - **[TODO — the remaining S gaps]** (a) **trait per-cell-median HEADROOM** (r SLA 0.87 / Wooddens 0.52 / D95max
-    0.74 / minwscal 0.78, vs a 0.90-0.97 noise floor ⇒ learnable, not captured): the copula conditions on
-    flux+boundary and excludes stand-state (ADR 0025) — improve via richer environmental / per-PFT conditioning
-    (needs a `COPULA_COND_COLS` expansion + global re-fit + an ADR; degenerate at single-cell Hainich). (b) the
-    **COUPLED** flux-driven S across cells vs C-truth demography (offline is done; coupled is still Hainich +
-    5-biome-F+E-only). (c) grass-ownership (open-risk #8) + whole-cohort DROP. (d) the transient boundary's
-    ONLINE Climbuf is BUILT (`src/climbuf.jl`, ADR 0027); the SpeedyWeather cold-start spin-up climatology is P4.
+- **[P1 UNBLOCKED] ADR 0018** documents the growth-ownership contract; engineering proceeds on it (the owner's own §4 recommendation), owner holds the formal `accepted` stamp.
+- **[TODO] P1 (ACTIVE) — put S in the coupled loop** (the novelty). Design of record + 10-step plan:
+  **`docs/p1_s_in_loop_design.md`** (decisions: ADR 0018 split + ADR 0019 port-not-call). Approach:
+  `DemographicSlowEmulator` (persistent K cohorts; S owns count N + establishment/mortality + trait spread;
+  F owns carbon growth), two tiers (Tier-0 constant models prove wiring + 1e-6 conservation; Tier-1 ports
+  ResidualRegressor+copula+NB to pure Julia `src/slow_infer.jl`), opt-in behind `run_coupled_cell(...; slow=)`.
+  Conserve at the S↔F handoff to ~1e-6 (litter as the exact growth residual), match the offline-S panel on
+  S-owned axes, and **measure the speed-up vs the deterministic-F baseline**. Progress: **Steps 1–3 + 6–7
+  DONE — TIER-0 S IS IN THE COUPLED LOOP** (`run_coupled_cell(...; slow=DemographicSlowEmulator(fc))`,
+  `slow=nothing` byte-identical). Gates on Hainich (`slow_demography_tests.jl`, full suite green 48101/0/4):
+  Gate-1 N evolves year-to-year (fixed-N F holds tree N constant ⇒ causally S); **Gate-2 handoff carbon
+  conserves to ~3e-12 gC ≪ 1e-6·C_scale** on N-up/N-down/seeded-`sapwood_bg`/stagnation; energy still closes
+  (1.4e-14); Gate-4 fixed K-cohort roster (structural speed-up basis; overhead reported off-CI by
+  `scripts/bench_slow_speedup.jl`). Tier-0 demography is deterministic/physical-rate + TREE-only (grass stays
+  F-side, open-risk #8), fixed roster (no append/merge yet), empty runtime `[deps]`. Independently verified
+  (3 adversarial subagents: conservation CLEAN, correctness CLEAN, test-adequacy gaps closed). **NEXT = Tier-1
+  (Steps 4/5/8, ADR 0020+0021): the flux-driven S trained + run in NATIVE JULIA (EvoTrees.jl/DRF + Lux + Julia
+  copula; no Python at runtime; ships via a package extension per ADR 0014 — NOT the obsoleted `slow_infer.jl`
+  Python-port) + membership append/merge + the warm+dry OOD benchmark vs the climate-only DirectEmulator.
+  Python only builds the training table + runs the benchmark.**
+  - **[DONE — Tier-1 Step 1, 2026-07-22] Flux-conditioning data MATERIALISED (no C re-run needed).** The annual
+    `ind` ground truth is already parquet at `/p/tmp/jamirp/emulator_global/ind_hist_seed{1,2}_all.parquet`
+    (all cells/years, both seeds); `scripts/build_slow_flux_table.py` builds the per-(cell,year,patch,individual)
+    FToS-mapped table (tier-1: `bm_inc←npp`, `growth_eff` inverted from `mort_npp` [86 % invertible], stress
+    inverted from `mort_*` + daily within-year stats, AR state, slow boundary from `cell_year_feats.parquet`).
+    **Physics re-verified on real data:** `mort_age` recompute 4.97e-8, `mort` additive identity 8.99e-7 (PASS).
+    **New `[VERIFIED]` gotcha:** emitted `Age` is post-increment; `mort_*` use `Age − 1` (→ CLAUDE.md §3).
+    Committed fixture `test/testitems/references/slow_flux_table_hainich.csv` + schema. Tier decision: tier-1 is
+    the prototype path; a minimal tier-3 C patch (`nind`+`turnover_ind`; NOT the risky `bm_inc` snapshot) is
+    staged **off the critical path** (tier-1 suffices per the spec).
+  - **[DONE — Tier-1 Step 2, 2026-07-22] The flux-driven premise is VALIDATED + the zero-dep native-Julia DRF is built.**
+    (a) `scripts/build_slow_count_table.py` (+ `sbatch_python.sh`) built the biome-scale count table
+    (**1,323,905 rows / 4000 lat-stratified tree cells / 400 warm+dry holdout cells**) carrying BOTH channels on
+    the SAME 20-col slow boundary; `export_count_matrices.py` → a zero-dep raw-Float64 payload. (b) `src/drf.jl`
+    (`module DRF`): a hand-rolled **zero-dependency** distributional random forest (Xoshiro256++ RNG, subbagged
+    variance-reduction trees, optional leaf-value storage for quantiles, per-tree-seeded ⇒ deterministic
+    multithreaded fit) — **ADR 0022** (not EvoTrees; EvoTrees verified as a fallback). (c) **`scripts/flux_ood_experiment.jl`
+    (SLURM) — the falsifiable ADR-0020 test result `[VERIFIED]`:** on the warm+dry OOD holdout (living-tree count/patch,
+    DRF seed 1) the climate-only channel FAILS (ood R²=**−0.16** ≈ the boundary floor — the equilibrium-ML failure,
+    reproduced), while flux_full beats it **2.35×** (ood R²=**0.76** vs −0.16); fluxes ISOLATED (no AR/state) still beat
+    climate **1.25×** OOD; flux+AR (0.76) ≫ climate+AR (0.43). Honest nuance: AR/persistence alone reaches ood R²=0.55,
+    but flux-conditioning adds decisive OOD generalisation on top of both. **⇒ ADR 0020 validated.** Verdict:
+    `/p/tmp/jamirp/slow_count/ood_verdict_seed1.json`.
+  - **[DONE — Tier-1 Step 3, 2026-07-22] `FluxDrivenSlowEmulator` IS IN the coupled loop (the flux-driven S runs).**
+    `src/components/slow.jl`: the demography TARGET is the trained flux-conditioned DRF (not Tier-0's constant rate);
+    each year S builds a flux feature vector (F's `FToS` fluxes + patch state + recursive AR count + baked slow
+    boundary), the DRF predicts the target, and the coupled tree density moves toward `target/n_prev` (unit-free
+    ratio ⇒ the count↔density gap cancels) through the SAME carbon-conserving machinery as Tier-0. Plugs into the
+    existing `reconcile_demography!` (no `run.jl` change); opt-in, `slow=nothing` byte-identical; zero new `[deps]`.
+    **[VERIFIED] gates (Hainich, `slow_flux_driven_tests.jl`; full CI-faithful suite green 48127 pass / 0 fail /
+    4 broken, job 1563993):** the DRF target drives N (decline 0.076→0.013 / growth 0.076→0.26, monotone);
+    carbon conserves at the handoff to **~1e-12 gC ≪ 1e-6·C_scale** both directions; energy closes (1.4e-14);
+    deterministic under seed; Float32 type-stable + conserving.
+  - **[DONE — Tier-1 Step 4 (4a/b/c), 2026-07-23, ADR 0023] Production DRF artifact + Gate-3 oracle + copula sampler.**
+    (4a) **The production DRF now LOADS from a serialized artifact** (closing the "in-test DRF" gap): `DRF.save_forest`/
+    `load_forest` (`src/drf.jl`) is a pure-Base text round-trip verified BITWISE; `scripts/build_slow_runtime_table.py`
+    builds a RUNTIME-CONSISTENT table (exact `flux_feature_vector` order — ind `npp`/`agb` are already per-m² so
+    per-patch row-sums match; `water_stress`=1−wscal_mean fixes the OOD-table mismatch; **`age_mean` trained as the
+    elapsed-year counter, NOT mean Age** — the biggest train/inference-shift risk; `soilmoist`/`lai` documented
+    proxies); `scripts/train_slow_drf.jl` → committed `references/drf_forest_hainich.drf` (40 trees, R²=0.975).
+    `[VERIFIED slow_production_drf_tests.jl]`: the loaded DRF drives the coupled Hainich loop (targets 9.5→6.9 INSIDE
+    the training band ⇒ runtime-consistent; N moves; carbon ~1e-12 gC; energy 7e-15; deterministic). (4b) **Gate-3
+    oracle** `[VERIFIED slow_oracle_tests.jl]`: coupled S Height distribution vs the C truth at Hainich to
+    IQR-normalized quantile-RMSE **~0.31** (median 8.9 vs 7.9 m) — an honest recursive-vs-nonrecursive DRIFT ALARM,
+    Hainich-only. Reference `references/hainich_slow_oracle_{traits,counts}.csv` (`scripts/build_slow_oracle_reference.py`).
+    (4c) **Copula recruit-trait sampler BUILT** (`chol_lower`/`norminv`/`normcdf`/`GaussianCopula`/`sample_copula!`,
+    `src/drf.jl`) `[VERIFIED drf_copula_tests.jl]`: recovers a target correlation, deterministic; NOT yet wired into
+    establishment (its consumer is recruit-cohort APPEND, risk #5). JET-1.12 clean; Runic clean.
+  - **[DONE — Tier-1 v3, 2026-07-23, ADR 0024] DYNAMIC roster (recruit APPEND + K-cap MERGE) + TRUE per-cohort age
+    + copula wired.** The flux-driven S now genuinely owns establishment as REAL age-0 recruit cohorts (was: a
+    fixed-roster mix), mortality (thin), and roster size (K-cap MERGE, deterministic smallest-|Δheight|). The
+    ATOMIC `_commit_membership!` rebuilds every length-K `FDiffFastCore` field (pools/tmpls/inds/pft_ids +
+    REALLOCATED `bm_inc_acc`, `inds` last over `_patch_fpars`) + `s.age`/`recruit_idx` in lockstep — **design
+    risk #5 CLOSED**. `age_mean` is now a true nind-weighted mean cohort age (recruits at 0, merges nind-weight,
+    `s.age .+= 1` sole increment); the DRF is **retrained on `mean(Age−1)`** (start-of-year; ind `Age` is
+    post-increment) with an `age0`≈43.6 seed carried in the DRF meta and read by the coupled builders (gates
+    assert `age0>0`) — **supersedes ADR 0023 §3's counter**; retrained `drf_forest_hainich.drf` R²=0.977, nfeat=15.
+    The Gaussian-copula recruit sampler (ADR 0023 §4c) is **WIRED** as an opt-in `recruit_copula` hook (default
+    `nothing`=fixed sapling). `[VERIFIED slow_membership_tests.jl` (4 items incl Float32)`]`: append+merge run
+    completes with all six roster arrays consistent, carbon ~2e-12 gC (Float64)/≤1e-5·C_scale (Float32) incl a
+    seeded `sapwood_bg` cohort, genuine age spread, copula deterministic. **Gate-3 oracle RE-MEASURED** on the C
+    `ind` ≥5 m basis (C excludes sub-5 m saplings; residual-diagnosis): nqrmse≈**0.39** (was ~0.31), median
+    ratio≈1.25, count ratio≈0.67 — honest recursive drift, all in-band; alarm moved to 0.45 with documented
+    re-measurement.
+  - **[NEXT — Tier-1 v4 / follow-ups]** (a) the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc` across
+    cells + C-truth demography target — a Phase-2 SLURM data pipeline; the two proxy channels need it); (b) the
+    copula PRODUCTION artifacts (per-axis marginal forests + correlation matrix R) + its multi-PFT payoff (P3;
+    single-cell beech axes are near-degenerate); (c) the in-loop OOD win (the offline OOD win is `[VERIFIED]`);
+    grass-ownership #8 + whole-cohort DROP + multi-cell scale-up (P3) still open. Everything **Hainich-only** —
+    scaffolding.
+  - **[DONE — ADR 0023-0027, 2026-07-23…27] GLOBAL pooled multi-regime flux-driven S + transient boundary.**
+    (a) GLOBAL count DRF trained (held-out-BY-CELL R²=0.985; pooled historic+ssp370 held-out-BY-SCENARIO
+    R²=0.9847 both directions — one model reproduces an UNSEEN climate regime) + GLOBAL recruit copula (pooled
+    OOS nqrmse SLA 0.010/Wd 0.013/D95max 0.017/minwscal 0.020). Real features (C-`LAI_STAND` + daily `swc`), no
+    proxies. Artifacts `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); committed `.drf` stays the Hainich demo.
+    (b) **Honest ablation:** the TRANSIENT boundary is a WASH vs static for counts AND traits (flux drivers
+    carry the climate signal, ADR 0020 doubly-confirmed) → **ADR 0027** keeps it opt-in/default-off, adopted for
+    PHYSICAL CORRECTNESS (a frozen establishment gate is wrong under +80 yr warming), NOT empirical payoff.
+    (c) **[DONE 2026-07-27] Online Climbuf** — the coupled-run counterpart of the offline `boundary_series`:
+    `src/climbuf.jl` `ClimBuf` + opt-in `run_coupled_cell(...; climbuf=)`; reproduces `build_transient_boundary.py`
+    to float32-summation-order (W=20 window ending 2019 == the DRF meta boundary 1863.695/0.2184); conserves,
+    deterministic, default-off byte-identical (`test/testitems/climbuf_tests.jl`). Closes ADR 0027's "to build."
+    **NOTE: MEMORY §2 phase table + this §5 block predate ADR 0023-0027 — a `consolidate-memory` pass is DUE.**
+  - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
+    demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
+    (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw
+    climate is dropped as a primary driver** (F already transformed it → double-count + OOD failure). This
+    **closes the FToS-conditioning gap** ADR 0019 deferred and moves the flux-conditioned retrain into scope.
+    Data task (extends Phase 1): `docs/slow_flux_conditioning_data_spec.md` — **the four mortality drivers
+    are ALREADY in the annual `ind` output**; the gap is per-individual `bm_inc`/`nind` + the raw
+    `water_stress`/`temp_stress` accumulators (mostly reconstructable from the daily set). **Falsifiable
+    success test — `[VERIFIED 2026-07-22] SUPPORTED`:** on the warm+dry OOD holdout (count/patch, DRF) the
+    flux-driven channel beats the climate-only channel **2.35×** (ood R² 0.76 vs −0.16, climate ≈ the
+    boundary floor); confirmed by `scripts/flux_ood_experiment.jl` (see §5 Tier-1 Step 2). Definitions `[VERIFIED]` vs `mortality_tree_ind.c`/`waterstress_tree.c`/
+    `tempstress_tree.c`. Train offline on LPJmL true fluxes (teacher forcing); fine-tune online vs F_diff's
+    delivered fluxes (P4).
 - **[TODO] P2 — validate E against observations** (parallel to P1): source FLUXNET/PLUMBER2 DE-Hai + real
   `sfcwind`/`ps`; validate LE/H/T_skin within PLUMBER2 bands; add a `g_a` stability correction (partly
   landed). Real wind needs a **cross-grid remap** (raw GSWP3 `.clm` are a different int16 re-ordered grid —
   raw cell 42490 ≠ Hainich); sublimation λ split pending.
-- **[TODO] P3 — multi-cell generalization**: OFFLINE S is DONE (K-fold-BY-CELL over 45009 cells; counts at
-  the seed1-vs-seed2 noise floor — `scripts/noise_floor_vs_emulator.py`). REMAINING: run **coupled** S+F+E
-  across the biome-stratified set vs C-truth demography (held-out cells + scenarios); the LPJ_resilience
-  battery (shuffle test + climate-dependent ACF); close the trait per-cell-median headroom (esp. Wooddens);
-  biome-calibrated PFT params + spin-up.
+- **[TODO] P3 — multi-cell generalization**: coupled S+F+E on the 6000-cell biome-stratified set; held-out
+  **cells and scenarios**; the LPJ_resilience battery (shuffle test + climate-dependent ACF). Error vs the
+  seed1-vs-seed2 noise floor. Also: biome-calibrated PFT params + spin-up.
 - **[TODO] P4 — online coupling with SpeedyWeather** via Terrarium `Abstract*` processes + the
   `SpeedyWeatherTerrariumExt` interface; rollout curriculum + noise injection; multi-year free run; OOD
   warming at constant CO₂. Contact Terrarium/SpeedyWeather authors.
@@ -230,9 +314,8 @@ unresolved and ADR 0017's premise rests on it.
 - **Source map** (`src/` + `ext/`) → `CLAUDE.md` §7. In brief: `fdiff.jl` = the differentiable daily core
   + canopy rollout + allocation/growth (`grow_individual`, `rollout_canopy_years`; `annual_step!` lives in
   `components/fast.jl`); `conservation.jl` = softmax/flux-then-integrate/budget residuals; `interface.jl` =
-  the S↔F↔E I/O contract; `run.jl` = the coupled loop (+ opt-in `climbuf=`); `components/slow.jl` = S
-  (`DemographicSlowEmulator` Tier-0 + `FluxDrivenSlowEmulator` Tier-1 + `RecruitCopula`); `climbuf.jl` = the
-  online transient boundary; `components/energy.jl` = `SEBEnergyClosure`; `ext/FDiffTrainingExt.jl` = the NN-hook trainers.
+  the S↔F↔E I/O contract; `run.jl` = the coupled loop; `components/slow.jl` = S (stub, P1 fills it);
+  `components/energy.jl` = `SEBEnergyClosure`; `ext/FDiffTrainingExt.jl` = the NN-hook trainers.
 - **Deep dives**: `docs/phase1_p3b_water_closure.md`, `docs/phase2_slow_emulator.md`,
   `docs/phase3_fdiff_cbinary_validation.md`, `docs/sapwood_bg_design.md`, `docs/water_supply_perpft_design.md`.
 - **Session narrative** → `JOURNAL.md` (append-only). **Change log** → `CHANGELOG.md` (newest on top).

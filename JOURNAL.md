@@ -799,3 +799,16 @@ Entry template:
   beyond Hainich is a SEPARATE remaining piece: `biome_coupled_tests.jl` runs F+E across 5 biomes (energy
   closes everywhere) but `slow=nothing` — wiring the flux-driven S across biomes + a per-cell C-truth
   demography comparison is the next coupled increment (needs per-cell forcing/vegetation at scale).
+
+## 2026-07-27 (cont.) — #1 consolidate-memory pass (MEMORY reshape + skill audit)
+- **MEMORY.md 322→239 lines (~9k→~6.3k tokens), still durable-state-only.** It was UNDER the cap but had
+  accreted session narrative in §5 (the per-step "[DONE — Tier-1 Step 1/2/3/4/v3]" bullets, ~64 lines,
+  fully in JOURNAL + ADRs). Collapsed the whole P1 block to a compact durable summary (P1 DONE; the ADR
+  0018→0027 chain; the two `[VERIFIED]` global results — OOD 2.35× + counts at the noise floor; the remaining
+  S gaps = trait per-cell headroom + coupled multi-cell). Refreshed §2 phase table (Phase 2 = GLOBAL flux-
+  driven done; Phase 5 = offline S done / coupled still 5-biome F+E) and the P3 TODO; fixed the stale §6
+  source-map ("slow.jl = stub" → the real S types + climbuf.jl). §4 ADR index already carries 0023-0027.
+  Pre-reshape copy archived to `docs/archive/MEMORY_2026-07-27_pre-consolidation.md`.
+- **Skill audit: no changes.** 10 skills, all distinct purposes, no duplicates/overlap; `skill-usage.log`
+  only began 2026-07-23 (too young to flag "zero use over many sessions"). Nothing deleted/merged; all
+  descriptions still trigger-appropriate. Re-audit next ~5-session cadence once the usage log has depth.
