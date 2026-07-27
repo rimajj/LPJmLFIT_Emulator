@@ -28,6 +28,18 @@ checked later.
 can confirm or kill. "Something is off in grass" is not a hypothesis. "The gap is the below-ground
 sapwood respiration term missing from Ra, which should shift CUE by ~2%" is.
 
+## 2b. For a SMALL effect, prove it's REAL (not run-to-run noise) BEFORE hunting a mechanism
+
+A small metric delta (e.g. a KS/nqrmse difference of ~0.01–0.02, or an ablation A-vs-B gap) can be a real
+signal OR just stochastic wobble (forest subsample seed, RNG draw, fold assignment). **Establish which first
+— re-run with a perturbed seed** (`SEED_OFFSET`-style) and check whether the sign/ordering is STABLE. If it
+flips → it's noise; stop theorizing. If it reproduces → it's real; now the mechanism hunt is warranted. This
+cuts both ways: don't dismiss a small effect as noise without the check either. (ADR 0027 SLA/minwscal: my
+"it's noise" guess was refuted by a seed+100 re-run — the per-axis pattern was seed-stable, i.e. real; and I
+then also refuted the two obvious mechanisms — boundary-importance and space-for-time — and honestly reported
+"real but mechanism not cleanly identified" rather than inventing one. Reporting an unconfirmed mechanism is
+worse than reporting a characterized-but-unexplained effect.)
+
 ## 3. Confirm the comparison basis is correct — one cheap check first
 
 Before the expensive probe: reproduce a *known* number (e.g. the C run's own reported annual total, or a
