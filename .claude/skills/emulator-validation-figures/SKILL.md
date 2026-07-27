@@ -93,6 +93,21 @@ Run each on BOTH the transient- and static-boundary pooled tables — the static
 attributes the boundary's payoff (the count scenario-holdout showed transient==static ⇒ the flux drivers,
 not the boundary, carry COUNTS; the boundary's value, if any, must show on TRAITS here).
 
+## NOISE-FLOOR gate (the P3 metric — is the emulator as good as the stochastic data allows?)
+
+`scripts/noise_floor_vs_emulator.py` (SLURM via `sbatch_python.sh noisefloor`) compares the emulator's
+per-cell skill to the **seed1-vs-seed2** irreducible spread (LPJmL-FIT is stochastic — RAND48 + -DPERMUTE —
+so two seeds of the SAME cell disagree; no environment-conditioned emulator can beat that). Reads both
+`ind_hist_seed{1,2}_all.parquet` (survivor TREE stems, Type≤6 & isdead==0 — the copula's own filter) +
+`slow_copula_historic/{Y_,pred_}<axis>.f64`. Reports, per trait axis, emulator per-cell-median r vs the
+seed1↔seed2 floor r, plus the count floor. **Result (2026-07-27):** COUNTS at the floor (emu r²=0.9994 vs
+floor 0.953); TRAIT per-cell-median floor is HIGH (0.90-0.97 ⇒ learnable, NOT RNG-noise) while the emulator
+is 0.52-0.87 ⇒ genuine model HEADROOM (esp. Wooddens). **Basis gotcha:** the script prints a `seed1-basis`
+cross-check (parquet all-years median vs copula-table Y median) — it is LOW for discrete/year-variable axes
+(minwscal 0.09, Wooddens 0.49) because their per-cell median is unstable, NOT a coverage bug; read those
+axes' emu-vs-floor gap qualitatively. A basis-clean per-axis floor needs the seed2 copula table
+(`build_slow_runtime_table.py MODE=copula SEED=2`). Re-run whenever the emulator is retrained.
+
 ## Interpreting / what "works well" looks like
 
 - `metrics.txt` OOS per-row R² should be ≈ the `HOLDOUT_FRAC` train/test R² from the DRF train (historic:
