@@ -27,6 +27,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   - **Build table (`scripts/build_slow_runtime_table.py`).** `BOUNDARY_WINDOW=W` opt-in swaps the per-cell static
     boundary mean for the per-(Cell,Year) transient join (count + copula modes); boundary column order/names
     unchanged (feature-order contract preserved); default (unset) = static = byte-identical.
+  - **Pooling (`scripts/pool_slow_tables.py` + `scripts/run_pooled_slow_training.sh` + `scripts/eval_slow_scenario_holdout.jl`).**
+    Row-concatenate per-scenario transient tables into ONE multi-regime table (per-row `scenario.i64` tag; AR
+    `n_prev` stays within-scenario so it never splices two climate models); the orchestration builds both
+    scenarios' transient count tables → pools → trains ONE cell-agnostic count DRF → runs the HOLD-OUT-BY-SCENARIO
+    unseen-regime eval (train on the other regime, test the held-out one) + a pooled by-cell baseline. Validated
+    on the Hainich pooled table.
 - **P1 Tier-1 v3 — Component S owns establishment as REAL cohorts: dynamic roster (recruit APPEND + K-cap MERGE),
   a TRUE per-cohort age, and the copula recruit-trait sampler wired in ([ADR 0024](docs/decisions/0024-component-s-dynamic-membership-and-true-age.md), supersedes ADR 0023 §3).**
   The last structural piece of P1 — the flux-driven S now genuinely owns count/establishment/mortality/trait
