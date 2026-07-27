@@ -68,7 +68,21 @@ usual count `OUT=`) and it ALSO emits:
 - `metrics_traits.txt` — per-axis pooled nqrmse + pooled KS + median-per-cell KS. **The headline trait
   proof numbers.** KS + 1-Wasserstein are dependency-light (no scipy). Only SLA/Wooddens feed dynamics;
   D95max/minwscal are sample+validate-only. (13-cell dev check: OOS pooled KS SLA 0.044, Wooddens 0.017,
-  D95max 0.029, minwscal 0.021.)
+  D95max 0.029, minwscal 0.021. GLOBAL historic OOS nqrmse SLA 0.016 / Wd 0.022 / D95max 0.028 / minwscal
+  0.038; GLOBAL pooled+transient nqrmse 0.010-0.020.)
+
+**Plot per-cell KS was O(ncells·N) → fixed to O(N log N) (sort-group once).** The old fig-11 loop did
+`ccells == c` per cell (a full scan over all N stems each) → ~6e12 ops at 45009 cells × 133M stems → the plot
+TIMED OUT at 1h. Now `np.argsort(ccells)` once + contiguous-group slices. Regenerating trait figs at global
+scale is minutes; give the plot job a ≥1h wall anyway (it also reads 4×~1GB `pred_<axis>.f64`).
+
+**HOLD-OUT-BY-SCENARIO evals (ADR 0026 §5, the unseen-regime proof — train on one regime, test the
+held-out other).** COUNT: `scripts/eval_slow_scenario_holdout.jl` on a POOLED count table (needs
+`scenario.i64` from `pool_slow_tables.py`) → per-direction R². COPULA/TRAITS:
+`scripts/eval_slow_copula_scenario_holdout.jl` on a POOLED copula table → per-axis per-direction nqrmse + KS.
+Run each on BOTH the transient- and static-boundary pooled tables — the static-vs-transient DELTA is what
+attributes the boundary's payoff (the count scenario-holdout showed transient==static ⇒ the flux drivers,
+not the boundary, carry COUNTS; the boundary's value, if any, must show on TRAITS here).
 
 ## Interpreting / what "works well" looks like
 

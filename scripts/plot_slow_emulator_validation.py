@@ -256,10 +256,16 @@ def main() -> int:
             ax10[ai].set_xlabel("observed"); ax10[ai].set_ylabel("predicted")
             ks_pc = np.full(NCELL_GLOBAL, np.nan)
             kss = []
-            for c in np.unique(ccells):
-                m = ccells == c
-                if int(m.sum()) >= 20:
-                    k = ks2(prd[m], obs[m]); ks_pc[int(c)] = k; kss.append(k)
+            # per-cell KS: SORT-GROUP ONCE (O(N log N)) instead of a per-cell boolean mask over all N stems
+            # (the old `ccells == c` in a loop was O(ncells·N) ≈ 6e12 ops at global scale → the plot timed out).
+            order = np.argsort(ccells, kind="stable")
+            cs = ccells[order]; po = prd[order]; oo = obs[order]
+            uniq, starts = np.unique(cs, return_index=True)
+            starts = np.append(starts, len(cs))
+            for gi in range(len(uniq)):
+                s, e = int(starts[gi]), int(starts[gi + 1])
+                if e - s >= 20:
+                    k = ks2(po[s:e], oo[s:e]); ks_pc[int(uniq[gi])] = k; kss.append(k)
             ks_maps.append((ax, ks_pc))
             tm.write(f"{ax}\tpooled_nqrmse\t{nq:.4f}\tpooled_KS\t{pooled_ks:.4f}\tmedian_percell_KS\t{np.median(kss):.4f}\tn_cells\t{len(kss)}\n")
             print(f"   trait {ax:10s} pooled nqrmse={nq:.3f} KS={pooled_ks:.3f} median-per-cell KS={np.median(kss):.3f}")
