@@ -206,7 +206,80 @@ def main() -> int:
         ax.legend(); fig.tight_layout()
         fig.savefig(os.path.join(figdir, "08_error_by_gdd5.png"), dpi=130); plt.close(fig)
 
-    print(f"== wrote figures to {figdir}/ (01..08 + metrics.txt)")
+    # ================= TRAIT-DISTRIBUTION figures (09+) — recruit-trait copula OOS (ADR 0025) =============
+    # Gated on COPULA_OUT (the MODE=copula table dir with pred_<axis>.f64 from eval_slow_copula.jl). The
+    # copula's fidelity target is the per-axis MARGINAL: for each held-out cell, the OOS-predicted marginal
+    # (one copula draw per surviving stem, from forests that never saw the cell) vs the LPJmL-FIT survivor
+    # marginal (Y_<axis>). KS + 1-Wasserstein are computed dependency-light (no scipy).
+    copula_out = os.environ.get("COPULA_OUT", "")
+    if copula_out and os.path.isfile(os.path.join(copula_out, "manifest_copula.txt")):
+        cman = {}
+        for ln in open(os.path.join(copula_out, "manifest_copula.txt")):
+            parts = ln.rstrip("\n").split("\t")
+            if len(parts) == 2:
+                cman[parts[0]] = parts[1]
+        caxes = cman["axes"].split()
+        ccells = np.fromfile(os.path.join(copula_out, "cells.i64"), dtype="<i8")
+
+        def ks2(a, b):  # two-sample Kolmogorov–Smirnov statistic
+            a = np.sort(a)
+            b = np.sort(b)
+            v = np.concatenate([a, b])
+            return float(np.max(np.abs(np.searchsorted(a, v, "right") / len(a) - np.searchsorted(b, v, "right") / len(b))))
+
+        qs = np.array([0.05, 0.25, 0.5, 0.75, 0.95])
+        tm = open(os.path.join(figdir, "metrics_traits.txt"), "w")
+        tm.write(f"scenario\t{scen}\naxes\t{' '.join(caxes)}\n")
+        fig9, ax9 = plt.subplots(2, 2, figsize=(11, 8)); ax9 = np.ravel(ax9)
+        fig10, ax10 = plt.subplots(2, 2, figsize=(11, 8)); ax10 = np.ravel(ax10)
+        ks_maps = []
+        for ai, ax in enumerate(caxes):
+            obs = np.fromfile(os.path.join(copula_out, f"Y_{ax}.f64"), dtype="<f8")
+            prd = np.fromfile(os.path.join(copula_out, f"pred_{ax}.f64"), dtype="<f8")
+            oq = np.quantile(obs, qs); pq = np.quantile(prd, qs); iqr = oq[3] - oq[1]
+            nq = float(np.sqrt(np.mean((pq - oq) ** 2)) / iqr) if iqr > 0 else float("nan")
+            pooled_ks = ks2(prd, obs)
+            # fig 09 — pooled obs-vs-pred marginal histogram (do the distributions overlap)
+            lo, hi = np.percentile(obs, [0.5, 99.5])
+            bins = np.linspace(lo, hi, 50)
+            ax9[ai].hist(obs, bins=bins, density=True, alpha=0.5, label="LPJmL-FIT (obs)", color="#4477aa")
+            ax9[ai].hist(prd, bins=bins, density=True, alpha=0.5, label="copula OOS", color="#ee6677")
+            ax9[ai].set_title(f"{ax}  nqrmse={nq:.3f}  KS={pooled_ks:.3f}", fontsize=10)
+            ax9[ai].legend(fontsize=8)
+            # per-cell medians + per-cell KS (≥20 stems); fig 10 scatter on the 1:1 line
+            dfc = pl.DataFrame({"cell": ccells, "obs": obs, "pred": prd})
+            med = dfc.group_by("cell").agg(pl.col("obs").median().alias("o"), pl.col("pred").median().alias("p")).sort("cell")
+            ax10[ai].scatter(med["o"].to_numpy(), med["p"].to_numpy(), s=8, alpha=0.5)
+            lim = [float(min(med["o"].min(), med["p"].min())), float(max(med["o"].max(), med["p"].max()))]
+            ax10[ai].plot(lim, lim, "k--", lw=0.8)
+            ax10[ai].set_title(f"{ax} per-cell median (OOS)", fontsize=10)
+            ax10[ai].set_xlabel("observed"); ax10[ai].set_ylabel("predicted")
+            ks_pc = np.full(NCELL_GLOBAL, np.nan)
+            kss = []
+            for c in np.unique(ccells):
+                m = ccells == c
+                if int(m.sum()) >= 20:
+                    k = ks2(prd[m], obs[m]); ks_pc[int(c)] = k; kss.append(k)
+            ks_maps.append((ax, ks_pc))
+            tm.write(f"{ax}\tpooled_nqrmse\t{nq:.4f}\tpooled_KS\t{pooled_ks:.4f}\tmedian_percell_KS\t{np.median(kss):.4f}\tn_cells\t{len(kss)}\n")
+            print(f"   trait {ax:10s} pooled nqrmse={nq:.3f} KS={pooled_ks:.3f} median-per-cell KS={np.median(kss):.3f}")
+        fig9.suptitle(f"Recruit-trait copula — pooled OOS marginals vs LPJmL-FIT ({scen})")
+        fig9.tight_layout(); fig9.savefig(os.path.join(figdir, "09_trait_marginals.png"), dpi=130); plt.close(fig9)
+        fig10.suptitle(f"Recruit-trait copula — per-cell OOS median vs LPJmL-FIT ({scen})")
+        fig10.tight_layout(); fig10.savefig(os.path.join(figdir, "10_trait_percell_median.png"), dpi=130); plt.close(fig10)
+        # fig 11 — per-cell KS maps (where the marginal reproduction is good/poor, per axis)
+        fig11, ax11 = plt.subplots(2, 2, figsize=(15, 8)); ax11 = np.ravel(ax11)
+        for ai, (ax, ks_pc) in enumerate(ks_maps):
+            pm = ax11[ai].pcolormesh(lon, lat, to_map(ks_pc), cmap="magma_r", vmin=0, vmax=0.6, shading="auto")
+            ax11[ai].set_title(f"{ax} per-cell KS", fontsize=10)
+            ax11[ai].set_xlim(-180, 180); ax11[ai].set_ylim(lat.min(), lat.max())
+            fig11.colorbar(pm, ax=ax11[ai], shrink=0.7, label="KS")
+        fig11.suptitle(f"Recruit-trait copula — per-cell OOS KS statistic ({scen})")
+        fig11.tight_layout(); fig11.savefig(os.path.join(figdir, "11_trait_ks_map.png"), dpi=130); plt.close(fig11)
+        tm.close()
+        print(f"== wrote trait figures 09-11 + metrics_traits.txt ({len(caxes)} axes)")
+
+    print(f"== wrote figures to {figdir}/ (01..08 + metrics.txt" + (", 09..11 + metrics_traits.txt" if copula_out else "") + ")")
     return 0
 
 
