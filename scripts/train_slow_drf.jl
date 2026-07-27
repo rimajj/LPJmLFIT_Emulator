@@ -95,8 +95,10 @@ function main()
             )
             r2_tr = r2score(y[trainmask], DRF.predict(efor, X[trainmask, :]))
             r2_te = r2score(y[testmask], DRF.predict(efor, X[testmask, :]))
-            println("== HELD-OUT-CELL eval: train R²=", round(r2_tr, digits = 4),
-                "  TEST R²=", round(r2_te, digits = 4), "  ($ncell_te test cells / $nte rows)")
+            println(
+                "== HELD-OUT-CELL eval: train R²=", round(r2_tr, digits = 4),
+                "  TEST R²=", round(r2_te, digits = 4), "  ($ncell_te test cells / $nte rows)"
+            )
         end
     end
 

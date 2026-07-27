@@ -264,7 +264,7 @@ live_flux_cond(s, feats::AbstractVector) = vcat(Vector{Float64}(feats[1:4]), s.b
     make_recruit_to_pools(axis_names) -> to_pools
 
 Build the canonical `RecruitCopula.to_pools` mapping for a production copula bundle (the function is NOT
-serialized — [`DRF.load_copula`](@ref) returns `axis_names`, and this reconstructs the mapping from them).
+serialized — `DRF.load_copula` returns `axis_names`, and this reconstructs the mapping from them).
 The returned `to_pools(traits, sapl, allom)` overwrites only the two trait axes that F_diff actually consumes
 — `SLA`→`sla`, `Wooddens`→`wooddens` (located by name in `axis_names`, so axis ORDER is irrelevant) — keeps
 every carbon pool of the fixed `sapl` UNCHANGED (so the establishment carbon debit is independent of the

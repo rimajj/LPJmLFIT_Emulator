@@ -1,0 +1,12 @@
+# Production Component-S recruit-trait copula (Hainich cell 42490 (single-cell DEMO)) — metadata for the load test.
+# Built by scripts/train_slow_copula.jl from scripts/build_slow_runtime_table.py MODE=copula.
+# Conditioning order = src/components/slow.jl::live_flux_cond (4 flux drivers + boundary tail).
+naxes	4
+ncond	8
+axes	SLA Wooddens D95max minwscal
+cond_cols	bm_inc_cell growth_eff water_stress soilmoist eco_diag_gdd_5 tas_cold_month soil_depth co2
+scenario	historic
+x	458.1896026546071 150.5326668153044 0.0009358507631430172 0.8539031584293847 1863.695068359375 0.21838709712028503 1.5173755884170532 369.0
+golden	1	0.0330585 252625.0 55.9576 0.130935
+golden	7	0.0242077 167069.0 296.079 0.118752
+golden	42	0.0331375 206157.0 486.104 0.134185

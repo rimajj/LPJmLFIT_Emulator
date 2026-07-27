@@ -66,9 +66,11 @@ function main()
     open(joinpath(DATA, "preds_oos.f64"), "w") do io
         write(io, preds)
     end
-    println("== OOS ($kfolds-fold-by-cell) R² = ", round(r2score(y, preds), digits = 4),
+    println(
+        "== OOS ($kfolds-fold-by-cell) R² = ", round(r2score(y, preds), digits = 4),
         "  RMSE = ", round(sqrt(sum((preds .- y) .^ 2) / n), digits = 3),
-        "  → wrote preds_oos.f64 ($n rows)")
+        "  → wrote preds_oos.f64 ($n rows)"
+    )
     return nothing
 end
 

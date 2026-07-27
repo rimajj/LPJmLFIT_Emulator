@@ -90,6 +90,84 @@ CO2_CONST = 369.0        # constant-CO2 regime (ADR 0004); the runtime boundary 
 EPS = 1.0e-6
 MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 median
 
+# MODE=copula (recruit-trait distribution, ADR 0025): a per-STEM table whose conditioning is EXACTLY the
+# subset the runtime live_flux_cond(s, feats) builds — the 4 flux drivers + the per-cell boundary tail,
+# DELIBERATELY excluding the 6 patch-state aggregates + n_prev (src/components/slow.jl::live_flux_cond).
+# This order IS the copula feature-order contract. Targets = FIT's 4 LIVE sampled trait primaries (beta_2
+# is compile-time dead in this build, so it is NOT an axis; ADR 0025). Trained on SURVIVING stems only
+# (isdead==0): the emulator's mortality is trait-blind, so the community distribution = the establishment
+# distribution, which must therefore be FIT's SURVIVOR marginal.
+COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS
+COPULA_AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
+
+
+def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
+    """MODE=copula (ADR 0025): per-STEM trait targets + the runtime-consistent flux+boundary conditioning.
+
+    `agg` carries the per-(Cell,Patch,Year) flux drivers with the soilmoist/lai coverage gate applied. Here:
+    (1) attach the per-cell boundary tail (climatological, time-constant → matches the runtime `s.boundary`);
+    (2) scan the SURVIVING tree stems (`isdead==0`) for the trait axes — one row per living stem, the
+        distribution to reproduce (mortality is trait-blind ⇒ community dist == establishment dist);
+    (3) broadcast the conditioning onto each stem via an inner join.
+    Conditioning column order == COPULA_COND_COLS == the runtime `live_flux_cond(s, feats)`. Writes Xc.f64
+    (n×ncond row-major), one Y_<axis>.f64 per COPULA_AXES, cells.i64, manifest_copula.txt.
+    """
+    cyf = (pl.scan_parquet(CELL_YEAR_FEATS)
+           .select(["Cell", "eco_diag_gdd_5", "tas_cold_month", "soil_depth"])
+           .group_by("Cell").mean().collect())
+    cond = (agg.select(["Cell", "Patch", "Year"] + HEAD_COLS[:4])
+            .join(cyf, on="Cell", how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
+
+    stem_filt = pl.col("Type").is_in(TREE_TYPES) & (pl.col("isdead") == 0)
+    if cells:
+        stem_filt = stem_filt & pl.col("Cell").is_in(cells)
+    stems = (pl.scan_parquet(IND[scenario].format(seed=seed)).filter(stem_filt)
+             .select(["Cell", "Patch", "Year"] + COPULA_AXES).collect(engine="streaming"))
+    h0 = stems.height
+    tbl = stems.join(cond, on=["Cell", "Patch", "Year"], how="inner").sort(["Cell", "Patch", "Year"])
+    dropped = h0 - tbl.height
+    drop_frac = dropped / max(h0, 1)
+    print(f"== copula: {h0} surviving stems, {tbl.height} after conditioning-join "
+          f"({dropped} dropped, {drop_frac:.4f})")
+    if drop_frac > 0.02:  # same anti-silent-truncation guard as the count path
+        raise SystemExit(f"FATAL: copula conditioning-join dropped {drop_frac:.3f} of stems "
+                         f"(soilmoist/lai coverage hole). scenario={scenario}.")
+    n = tbl.height
+    if n == 0:
+        raise SystemExit("FATAL: 0 copula stems after conditioning-join.")
+
+    Xc = tbl.select(COPULA_COND_COLS).to_numpy().astype("<f8", copy=False)  # C-contiguous row-major n×ncond
+    assert not np.isnan(Xc).any() and np.isfinite(Xc).all(), "non-finite in copula Xc"
+    Xc.tofile(os.path.join(out_dir, "Xc.f64"))
+    for ax in COPULA_AXES:
+        col = tbl[ax].to_numpy().astype("<f8", copy=False)
+        assert np.isfinite(col).all(), f"non-finite in axis {ax}"
+        col.tofile(os.path.join(out_dir, f"Y_{ax}.f64"))
+    tbl["Cell"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "cells.i64"))
+
+    with open(os.path.join(out_dir, "manifest_copula.txt"), "w") as f:
+        f.write(f"n\t{n}\n")
+        f.write(f"ncond\t{len(COPULA_COND_COLS)}\n")
+        f.write(f"naxes\t{len(COPULA_AXES)}\n")
+        f.write("cond_cols\t" + " ".join(COPULA_COND_COLS) + "\n")
+        f.write("axes\t" + " ".join(COPULA_AXES) + "\n")
+        f.write(f"scenario\t{scenario}\n")
+        f.write(f"ncells\t{tbl['Cell'].n_unique()}\n")
+        f.write(f"firstyear\t{firstyear}\n")
+        # fallback conditioning row x = column MEAN (a climatological center for the .rcop fallback field).
+        xmean = [float(tbl[c].mean()) for c in COPULA_COND_COLS]
+        f.write("x\t" + " ".join(repr(v) for v in xmean) + "\n")
+        if cells and len(cells) == 1:
+            f.write(f"cells\t{','.join(str(c) for c in cells)}\n")
+
+    print(f"== wrote copula table Xc {Xc.shape} + {len(COPULA_AXES)} axes ({tbl['Cell'].n_unique()} cells) to {out_dir}")
+    for j, c in enumerate(COPULA_COND_COLS):
+        print(f"   cond {c:16s} min={Xc[:, j].min():12.4g} max={Xc[:, j].max():12.4g} mean={Xc[:, j].mean():12.4g}")
+    for ax in COPULA_AXES:
+        col = tbl[ax].to_numpy()
+        print(f"   axis {ax:10s} min={col.min():12.4g} max={col.max():12.4g} mean={col.mean():12.4g} std={col.std():12.4g}")
+    return 0
+
 
 def main() -> int:
     seed = int(os.environ.get("SEED", "1"))
@@ -97,6 +175,9 @@ def main() -> int:
     if scenario not in IND:
         raise SystemExit(f"SCENARIO must be one of {list(IND)} (got {scenario!r})")
     cells = [int(c) for c in os.environ.get("CELLS", "").split(",") if c.strip()] or None
+    mode = os.environ.get("MODE", "count")
+    if mode not in ("count", "copula"):
+        raise SystemExit(f"MODE must be 'count' or 'copula' (got {mode!r})")
     default_out = f"{BASE}/slow_runtime_{scenario}" + (f"_seed{seed}" if seed != 1 else "")
     out_dir = os.environ.get("OUT", default_out)
     os.makedirs(out_dir, exist_ok=True)
@@ -156,6 +237,11 @@ def main() -> int:
             f"Check cell_year_soilmoist/cell_year_lai completeness for scenario={scenario}.")
     agg = agg.with_columns(
         (pl.col("_applied_npp").fill_null(0.0) / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"))
+
+    # MODE=copula forks here: `agg` already carries the 4 flux drivers (with the soilmoist/lai coverage gate
+    # applied); the copula path needs those + the per-cell boundary, broadcast onto per-STEM trait targets.
+    if mode == "copula":
+        return _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear)
 
     # --- AR state: previous-year n_living for the SAME (Cell,Patch) ---
     ar = (agg.select(["Cell", "Patch", "Year", "n_living"])
