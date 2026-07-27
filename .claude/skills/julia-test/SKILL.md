@@ -1,9 +1,22 @@
 ---
 name: julia-test
-description: Run the Julia test suite for the LPJmL-FIT emulator correctly (delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, or gradient/conservation gates.
+description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path).
 ---
 
 # julia-test — run the suite the way CI does
+
+## ⚠️ `julia` is NOT on PATH (every session — stop hitting `bash: julia: command not found`)
+
+There is no `julia` on the login-node PATH. **Always use the absolute path**, or set a shorthand at the
+start of the Bash call (shell state does NOT persist between calls, so re-set it each call):
+```bash
+JULIA=/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia   # lts 1.10.0 — the CI-faithful one
+$JULIA --startup-file=no -e '...'
+```
+Every `julia ...` command in this skill (format gate, docs, gen_diagrams, the `ALLOW_LOGIN_HEAVY=1`
+fallback, quick REPL checks) means **`$JULIA`** / the absolute path. The SLURM wrappers
+(`run_tests_slurm.sh`, `sbatch_julia.sh`) already hard-code it, so they Just Work. Julia 1.12 (for
+reproducing a `test (1)`-only JET failure, CLAUDE.md §2) is `/p/system/packages_rhel9/tools/julia/1.12.2/bin/julia`.
 
 ## Run the full suite — DURABLE + CI-faithful (the DEFAULT; survives session teardown)
 
@@ -79,10 +92,13 @@ Ignore benign `curl_easy_setopt: 48` spew.
 
 ## Format gate (Runic) — CI installs Runic 1.7.0
 
+`julia` is not on PATH (see the ⚠️ note at the top) — use the absolute path / `$JULIA`:
 ```bash
-julia --project=@runic -e 'import Pkg; Pkg.activate(temp=true); Pkg.add(name="Runic", version="1"); using Runic; exit(Runic.main(["--check", "src", "test", "ext", "scripts"]))'
+JULIA=/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia
+$JULIA --startup-file=no -e 'import Pkg; Pkg.activate(temp=true); Pkg.add(name="Runic", version="1"); using Runic; exit(Runic.main(["--check", "src", "test", "ext", "scripts"]))'
 ```
-Reformat (drop `--check`) with the same Runic version before pushing.
+Pass specific files instead of the dirs for a fast targeted check. Reformat (drop `--check`) with the same
+Runic version before pushing.
 
 ## Docs (local, egress-safe)
 

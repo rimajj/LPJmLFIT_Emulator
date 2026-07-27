@@ -228,6 +228,42 @@ struct RecruitCopula{T <: AbstractFloat}
     to_pools::Any
 end
 
+"""
+    make_recruit_to_pools(axis_names) -> to_pools
+
+Build the canonical `RecruitCopula.to_pools` mapping for a production copula bundle (the function is NOT
+serialized — [`DRF.load_copula`](@ref) returns `axis_names`, and this reconstructs the mapping from them).
+The returned `to_pools(traits, sapl, allom)` overwrites only the two trait axes that F_diff actually consumes
+— `SLA`→`sla`, `Wooddens`→`wooddens` (located by name in `axis_names`, so axis ORDER is irrelevant) — keeps
+every carbon pool of the fixed `sapl` UNCHANGED (so the establishment carbon debit is independent of the
+draw ⇒ conservation is unaffected), and re-derives height from the pipe model + crownarea from the Jucker
+allometry (matching `_merge_pair!`). Other axes (e.g. `D95max`, `minwscal`) are sampled + validated but have
+no per-tree consumer yet, so they do not enter `TreePools`. Errors if `SLA`/`Wooddens` are absent.
+"""
+function make_recruit_to_pools(axis_names::AbstractVector{<:AbstractString})
+    isla = findfirst(==("SLA"), axis_names)
+    iwd = findfirst(==("Wooddens"), axis_names)
+    (isla === nothing || iwd === nothing) &&
+        error("make_recruit_to_pools: axes must include \"SLA\" and \"Wooddens\"; got $(axis_names)")
+    i_sla = Int(isla)                                # single-assignment Int captures (JET-safe, type-stable)
+    i_wd = Int(iwd)
+    function to_pools(traits, sapl::FDiff.TreePools{T}, allom) where {T <: AbstractFloat}
+        sla_n = clamp(convert(T, traits[i_sla]), convert(T, 1.0e-3), convert(T, 0.1))
+        wd_n = clamp(convert(T, traits[i_wd]), convert(T, 5.0e4), convert(T, 7.0e5))
+        leaf = convert(T, sapl.leaf_c)
+        sapw = convert(T, sapl.sapwood_c)
+        h = leaf > zero(T) ?
+            convert(T, allom.k_latosa) * sapw / (leaf * sla_n * wd_n) :
+            convert(T, sapl.height)
+        crown = convert(T, Allometry.crown_area(allom, h))
+        return FDiff.TreePools{T}(
+            leaf, sapw, convert(T, sapl.heartwood_c), convert(T, sapl.root_c),
+            convert(T, sapl.sapwood_bg_c), h, crown, one(T), sla_n, wd_n, false,
+        )
+    end
+    return to_pools
+end
+
 "nind-weighted mean age over the TREE cohorts (the demographic mean-age DRF feature); 0 if no living tree."
 function _mean_age_weighted(ages, pools::AbstractVector{FDiff.TreePools{T}}) where {T}
     num = zero(T)

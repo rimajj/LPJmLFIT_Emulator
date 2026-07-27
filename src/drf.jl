@@ -542,23 +542,23 @@ function save_forest(path::AbstractString, f::Forest)
 end
 
 """
-    load_forest(path::AbstractString) -> Forest
-    load_forest(io::IO) -> Forest
+    _parse_forest(toks, pos::Int) -> (Forest, next_pos)
 
-Deserialize a [`Forest`](@ref) written by [`save_forest`](@ref). Pure Base; validates the magic/version.
-The token cursor `pos` is a plain reassigned local that is NEVER captured by a closure (the reader is
-fully inlined) — a reassigned local captured by a closure is what trips JET 0.11.6 on Julia ≥1.12
+Parse ONE `save_forest`-format forest from the whitespace-split token vector `toks`, starting at token
+index `pos` (which must point at the `LPJMLFIT_DRF` magic), and return the `Forest` plus the index of the
+first token AFTER it. Shared by [`load_forest`](@ref) (single forest) and [`load_copula`](@ref) (which walks
+several embedded forests in one token stream). The cursor `pos` is a plain reassigned local NEVER captured
+by a closure — a reassigned local captured by a closure is what trips JET 0.11.6 on Julia ≥1.12
 (CLAUDE.md §2), so keeping the parse loop closure-free sidesteps that gate entirely.
 """
-function load_forest(io::IO)
-    toks = split(read(io, String))
-    toks[1] == _DRF_MAGIC || error("load_forest: bad magic (expected $_DRF_MAGIC)")
-    ver = parse(Int, toks[2])
+function _parse_forest(toks::AbstractVector{<:AbstractString}, pos::Int)
+    toks[pos] == _DRF_MAGIC || error("load_forest: bad magic (expected $_DRF_MAGIC)")
+    ver = parse(Int, toks[pos + 1])
     ver == _DRF_VERSION || error("load_forest: unsupported version $ver (expected $_DRF_VERSION)")
-    nfeat = parse(Int, toks[3])
-    sv = parse(Int, toks[4]) == 1
-    ntrees = parse(Int, toks[5])
-    pos = 6
+    nfeat = parse(Int, toks[pos + 2])
+    sv = parse(Int, toks[pos + 3]) == 1
+    ntrees = parse(Int, toks[pos + 4])
+    pos += 5
     fill = Vector{Float64}(undef, nfeat)
     @inbounds for i in 1:nfeat
         fill[i] = parse(Float64, toks[pos])
@@ -606,9 +606,120 @@ function load_forest(io::IO)
         end
         trees[ti] = RegTree(feat, thr, left, right, value, values)
     end
-    return Forest(trees, nfeat, sv, fill)
+    return Forest(trees, nfeat, sv, fill), pos
+end
+
+"""
+    load_forest(path::AbstractString) -> Forest
+    load_forest(io::IO) -> Forest
+
+Deserialize a [`Forest`](@ref) written by [`save_forest`](@ref). Pure Base; validates the magic/version
+(via [`_parse_forest`](@ref)).
+"""
+function load_forest(io::IO)
+    toks = split(read(io, String))
+    f, _ = _parse_forest(toks, 1)
+    return f
 end
 
 load_forest(path::AbstractString) = open(load_forest, path, "r")
+
+# ── Serialization: the recruit-trait Gaussian copula bundle (ADR 0025) ───────────────────────────
+# A production `RecruitCopula` (src/components/slow.jl) = numeric parts (serialized here) + a `to_pools`
+# function that is RECONSTRUCTED in Julia from the axis names (never serialized). This writes the numeric
+# parts — the Cholesky `L`, the per-axis flux-conditioned marginal forests (each `store_values=true`), the
+# axis names, the conditioning-feature column names, and a fallback conditioning row `x` — to a
+# self-describing text stream (magic `LPJMLFIT_RCOP`; the `.rcop` sibling of `.drf`). Each axis forest is
+# embedded verbatim via `save_forest`; `load_copula` walks the shared token stream with `_parse_forest`
+# (closure-free, JET-safe like `load_forest`). Round-trips a `sample_copula!` draw BITWISE.
+const _RCOP_MAGIC = "LPJMLFIT_RCOP"
+const _RCOP_VERSION = 1
+
+"""
+    save_copula(io_or_path, cop::GaussianCopula, axis_forests, axis_names, cond_cols, x) -> io_or_path
+
+Serialize the numeric parts of a recruit-trait copula bundle: the copula `cop` (its Cholesky `L`), the
+`cop.d` per-axis marginal `axis_forests` (each fit with `store_values=true`, in axis order), the `axis_names`
+(the `to_pools` mapping is rebuilt from these on load), and the conditioning-feature column names `cond_cols`
+with a fallback row `x` (`length(cond_cols)==length(x)`). Text format, magic `LPJMLFIT_RCOP`. Pairs with
+[`load_copula`](@ref).
+"""
+function save_copula(
+        io::IO, cop::GaussianCopula, axis_forests::AbstractVector{Forest},
+        axis_names::AbstractVector{<:AbstractString}, cond_cols::AbstractVector{<:AbstractString},
+        x::AbstractVector{<:Real},
+    )
+    d = cop.d
+    length(axis_forests) == d ||
+        throw(DimensionMismatch("save_copula: need $d axis forests, got $(length(axis_forests))"))
+    length(axis_names) == d ||
+        throw(DimensionMismatch("save_copula: need $d axis names, got $(length(axis_names))"))
+    length(cond_cols) == length(x) ||
+        throw(DimensionMismatch("save_copula: cond_cols ($(length(cond_cols))) ≠ x ($(length(x)))"))
+    println(io, _RCOP_MAGIC, " ", _RCOP_VERSION)
+    println(io, d, " ", length(cond_cols))
+    println(io, join(axis_names, " "))
+    println(io, join(cond_cols, " "))
+    println(io, join((string(v) for v in x), " "))
+    @inbounds for i in 1:d
+        println(io, join((string(cop.L[i, j]) for j in 1:d), " "))
+    end
+    for f in axis_forests
+        save_forest(io, f)
+    end
+    return io
+end
+
+function save_copula(
+        path::AbstractString, cop::GaussianCopula, axis_forests::AbstractVector{Forest},
+        axis_names::AbstractVector{<:AbstractString}, cond_cols::AbstractVector{<:AbstractString},
+        x::AbstractVector{<:Real},
+    )
+    open(io -> save_copula(io, cop, axis_forests, axis_names, cond_cols, x), path, "w")
+    return path
+end
+
+"""
+    load_copula(path_or_io) -> (cop::GaussianCopula, axis_forests, x, axis_names, cond_cols)
+
+Deserialize a copula bundle written by [`save_copula`](@ref). Returns the tuple a `RecruitCopula` is
+assembled from: the caller reconstructs the `to_pools` mapping from `axis_names` (e.g. via
+`make_recruit_to_pools`). Closure-free token walk (`_parse_forest`), JET-safe like [`load_forest`](@ref).
+"""
+function load_copula(io::IO)
+    toks = split(read(io, String))
+    toks[1] == _RCOP_MAGIC || error("load_copula: bad magic (expected $_RCOP_MAGIC)")
+    ver = parse(Int, toks[2])
+    ver == _RCOP_VERSION || error("load_copula: unsupported version $ver (expected $_RCOP_VERSION)")
+    d = parse(Int, toks[3])
+    ncond = parse(Int, toks[4])
+    pos = 5
+    axis_names = Vector{String}(undef, d)
+    @inbounds for i in 1:d
+        axis_names[i] = String(toks[pos]); pos += 1
+    end
+    cond_cols = Vector{String}(undef, ncond)
+    @inbounds for i in 1:ncond
+        cond_cols[i] = String(toks[pos]); pos += 1
+    end
+    x = Vector{Float64}(undef, ncond)
+    @inbounds for i in 1:ncond
+        x[i] = parse(Float64, toks[pos]); pos += 1
+    end
+    L = Matrix{Float64}(undef, d, d)
+    @inbounds for i in 1:d
+        for j in 1:d
+            L[i, j] = parse(Float64, toks[pos]); pos += 1
+        end
+    end
+    axis_forests = Vector{Forest}(undef, d)
+    for k in 1:d
+        f, pos = _parse_forest(toks, pos)
+        axis_forests[k] = f
+    end
+    return GaussianCopula(L, d), axis_forests, x, axis_names, cond_cols
+end
+
+load_copula(path::AbstractString) = open(load_copula, path, "r")
 
 end # module DRF
