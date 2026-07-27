@@ -670,3 +670,34 @@ Entry template:
   default-off mechanism stays (guardrail 4, byte-identical demo/baselines); the SLA/minwscal per-cell-KS dip is
   a follow-on diagnosis (not blocking). To build: the online-coupling Climbuf. Production artifacts already
   transient (`*_pooled_w20.{drf,rcop}`).
+
+## 2026-07-27 (cont.) — SLA/minwscal caveat diagnosed + online Climbuf design sketch  [ADR 0027 follow-ons]
+- **The transient-vs-static per-axis effect is REAL + SEED-ROBUST (NOT noise).** `diagnose_boundary_axes.jl`
+  + a seed+100 re-run of `eval_slow_copula_scenario_holdout.jl`: seed+0 and seed+100 give near-identical KS
+  and NO winner flips — transient reliably HELPS Wooddens (KS ~0.008 vs static ~0.020) + D95max (~0.012 vs
+  ~0.019), HURTS SLA (~0.049 vs ~0.028) + minwscal (~0.025 vs ~0.012); all ≤ 0.05. (My first guess — "noise" —
+  was refuted by the seed check: the residual-diagnosis "confirm robustness" step earned its keep.)
+- **Not explained by the obvious mechanisms.** (a) Boundary feature-importance is ~IDENTICAL (~0.44) across all
+  4 axes → no "some axes ignore the boundary" split (H2 refuted). (b) Trait marginals are largely
+  regime-INVARIANT (between-regime KS 0.011-0.046; SLA shifts most yet is hurt — H1 refuted). (c) `diagnose_
+  space_for_time.py`: spatial vs temporal gdd5→trait gradients do NOT map cleanly to help/hurt (SLA disagree
+  → hurt ✓, but Wooddens disagrees yet is helped ✗; temporal gradients weak, consistent with invariant
+  traits) → space-for-time NOT confirmed; I do not claim it.
+- **Honest mechanism class (what IS supported):** on the held-out regime the transient boundary presents
+  OUT-OF-TRAINING-RANGE values (ssp gdd5 ~+672 above the historic range), so the copula EXTRAPOLATES the
+  boundary→trait relationship; the sign of that extrapolation error is axis-specific → a modest net WASH. Not
+  reducible to a single-feature gradient; the exact per-axis cause is subtle and not essential to the decision.
+- **Decision impact: NONE.** ADR 0027 (adopt transient) stands — net wash, helps Wooddens (a dynamic axis),
+  hurts SLA (the other dynamic axis) → a genuine wash even for the dynamically-consumed axes; physical
+  correctness is the tiebreaker. Caveat now precisely characterized: real, seed-robust, modest (KS ≤ 0.05).
+- **Actionable refinement (future, not needed now):** the copula conditions ALL axes on the same
+  `live_flux_cond`; since the boundary helps 2 / hurts 2, PER-AXIS conditioning (exclude the boundary from
+  SLA/minwscal's marginals) could keep transient's Wooddens/D95max gains at static-level SLA/minwscal.
+- **Online Climbuf design sketch** (`docs/online_transient_boundary_climbuf.md`): the coupled-run counterpart
+  of `boundary_series` — a per-cell trailing-W-yr climate buffer (mirrors FIT's Climbuf) maintained driver-side
+  from the daily temperature F already consumes; recomputes gdd5(Thom)/tas_cold each year and sets `s.boundary`
+  BEFORE `reconcile_demography!`. MUST reproduce `build_transient_boundary.py` bit-for-bit (train/inference
+  consistency); ~0% slower (few thousand FLOPs/cell/yr vs F's millions); conservation-safe (boundary is a
+  conditioning feature only); gated on the online coupled driver (not yet built).
+- **Tooling committed:** `diagnose_boundary_axes.jl`, `diagnose_space_for_time.py`, `SEED_OFFSET` hook in
+  `eval_slow_copula_scenario_holdout.jl` (opt-in, default 0 = unchanged).

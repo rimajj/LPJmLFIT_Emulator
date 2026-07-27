@@ -78,6 +78,7 @@ function main()
     max_depth = parse(Int, get(ENV, "MAX_DEPTH", "14"))
     min_leaf = parse(Int, get(ENV, "MIN_LEAF", "20"))
     subsample = parse(Int, get(ENV, "SUBSAMPLE", "50000"))
+    seed_off = parse(Int, get(ENV, "SEED_OFFSET", "0"))   # vary forest+draw RNG to test noise-robustness (default 0 = unchanged)
     sids = sort(unique(scen))
     name(s) = (s + 1 <= length(tags)) ? tags[s + 1] : "scenario$s"
     qs = (0.05, 0.25, 0.5, 0.75, 0.95)
@@ -94,13 +95,13 @@ function main()
         for a in 1:naxes
             f = DRF.fit_forest(
                 Xtr, Ys[a][tr]; ntrees = ntrees, max_depth = max_depth, min_leaf = min_leaf,
-                subsample = min(subsample, count(tr)), seed = a, store_values = true,
+                subsample = min(subsample, count(tr)), seed = a + seed_off, store_values = true,
             )
             pred = Vector{Float64}(undef, length(teidx))
-            let a = a, f = f, ti = teidx, pr = pred
+            let a = a, f = f, ti = teidx, pr = pred, so = seed_off
                 Threads.@threads for q in eachindex(ti)
                     i = ti[q]
-                    u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a))
+                    u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a + so * 7919))
                     @inbounds pr[q] = DRF.predict_quantile(f, (@view Xc[i, :]), u)
                 end
             end

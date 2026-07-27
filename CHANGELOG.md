@@ -21,6 +21,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   retained for physical correctness (a frozen establishment gate is wrong under +80 yr warming) and prospective
   N-limited / varying-CO₂ regimes where the slow bioclimate should matter — not promoted to default (its
   build/runtime/data-gen infra is kept at zero baseline cost). Reported honestly, no over-crediting.
+  **Diagnosis follow-up ([ADR 0027](docs/decisions/0027-adopt-transient-boundary-production.md)):** the
+  SLA/minwscal dip is REAL + seed-robust (a seed+100 re-run reproduces it, no winner flips — NOT noise), but
+  is explained by neither boundary usage (importance ~identical ~0.44 across axes) nor space-for-time (spatial
+  vs temporal gdd5→trait gradients don't map cleanly; traits are largely regime-invariant). Defensible read:
+  out-of-range extrapolation of the copula's boundary→trait map on the held-out regime (ssp gdd5 ~+672 above
+  the historic range) — axis-specific, net a wash (KS ≤0.05), decision unchanged. Tooling:
+  `scripts/diagnose_boundary_axes.jl`, `scripts/diagnose_space_for_time.py`, a `SEED_OFFSET` hook in
+  `eval_slow_copula_scenario_holdout.jl`. Future refinement: PER-AXIS copula conditioning (drop the boundary
+  from SLA/minwscal). The **online-coupling Climbuf** (transient boundary under SpeedyWeather) is spec'd in
+  `docs/online_transient_boundary_climbuf.md` (driver-side trailing-W buffer, reproduces
+  `build_transient_boundary.py`, ~0% slower, conservation-safe; gated on the online driver).
   **Perf:** parallelized the copula OOS eval AND `DRF.predict(::Matrix)` (both were single-threaded → the
   global evals now run in minutes, bit-identically; suite green 106820 pass).
 - **Component S — TRANSIENT (time-varying) bioclimatic boundary + the pooled-multi-regime design ([ADR 0026](docs/decisions/0026-component-s-pooled-multiregime-transient-boundary.md), refines ADR 0020, keeps ADR 0004).**
