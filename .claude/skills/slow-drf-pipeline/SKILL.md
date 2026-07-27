@@ -190,3 +190,18 @@ scripts/train_slow_drf.jl` — it includes only `drf.jl`, pure-Base, so no packa
 meta carries `age0`, (5) the Gate-3 oracle compares coupled Height on the C `ind`-output basis (≥5 m; the C
 writer excludes sub-5 m saplings, truth q05≈5.2 m) — re-measure nqrmse and widen only WITH a documented
 reference-basis re-measurement (residual-diagnosis), never silently.
+
+## Pooled MULTI-REGIME + TRANSIENT boundary (ADR 0026) — ONE model across scenarios
+
+The long-term goal is ONE environment-conditioned emulator across CLIMATE regimes + the transient, not a
+model per scenario. Prereq = the TRANSIENT boundary (opt-in, above): `scripts/build_transient_boundary.py`
+(trailing-W-yr gdd5/tas_cold from the orderA temperature `.clm`) → `BOUNDARY_WINDOW=W` on
+`build_slow_runtime_table.py`. Pipeline (`scripts/run_pooled_slow_training.sh`, ONE SLURM job):
+build historic + ssp370 transient count tables → `scripts/pool_slow_tables.py` (row-concat + per-row
+`scenario.i64`; each scenario built INDEPENDENTLY so AR `n_prev` never crosses the historic↔ssp
+discontinuity / splices two climate models) → `train_slow_drf.jl` on the pooled table (consumes it unchanged —
+reads X/y/cells/manifest, no cell_meta) → `scripts/eval_slow_scenario_holdout.jl` (the HOLD-OUT-BY-SCENARIO
+unseen-regime proof: train on the other regime, test the held-out one; + a pooled by-cell baseline). CO2 stays
+constant (ADR 0004 — NOT a feature). Copula pooling is the same `pool_slow_tables.py` on `MODE=copula` dirs
+(it auto-detects Xc.f64 / manifest_copula.txt). `pool_slow_tables.py` asserts matching p/colnames (count) or
+ncond/axes/cond_cols (copula) — a mismatch means the two scenarios were built with different feature contracts.
