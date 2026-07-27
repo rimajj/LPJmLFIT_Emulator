@@ -659,3 +659,14 @@ Entry template:
   here, ADR 0004). Promote the POOLED MULTI-REGIME flux-driven emulator as the validated production design.
 - **Also:** plot per-cell KS was O(ncells·N) → fixed to O(N log N) (historic trait figs now generate in
   minutes: pooled KS SLA 0.012 / Wd 0.005 / D95max 0.004 / minwscal 0.015).
+
+## 2026-07-27 (cont.) — OWNER DECISION: adopt the transient boundary → ADR 0027
+- After reviewing the ablation (wash/mixed) + the cost/interaction analysis (offline ~1 min data-gen + a
+  vector/year; ONLINE Climbuf ~0% slower — a few thousand FLOPs/cell/yr vs F's millions/cell/yr; the boundary
+  CONDITIONS S, does NOT feed F — F carries the fast climate signal, the boundary is the slow-memory residual),
+  the owner chose the **transient boundary** as the production config. **ADR 0027 accepted:** pooled
+  multi-regime flux-driven = production; transient boundary adopted on physical-correctness-at-negligible-cost
+  grounds (a frozen establishment gate is wrong under +80 yr warming; matches FIT's Climbuf); code opt-in/
+  default-off mechanism stays (guardrail 4, byte-identical demo/baselines); the SLA/minwscal per-cell-KS dip is
+  a follow-on diagnosis (not blocking). To build: the online-coupling Climbuf. Production artifacts already
+  transient (`*_pooled_w20.{drf,rcop}`).
