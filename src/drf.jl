@@ -312,8 +312,13 @@ end
 function predict(forest::Forest, X::AbstractMatrix{Float64})
     n = size(X, 1)
     out = Vector{Float64}(undef, n)
-    @inbounds for i in 1:n
-        out[i] = predict(forest, @view X[i, :])
+    # Per-row prediction is independent (each writes a distinct `out[i]`) ⇒ `Threads.@threads` is race-free
+    # and BIT-IDENTICAL to the serial loop regardless of thread count — the batch predict dominates the
+    # global OOS evals (tens of millions of rows). `forest`/`out`/`X` are single-assignment so the closure
+    # does not box them (JET boxed-capture trap; cf. `fit_forest`). The scalar `predict(forest, x::Vector)`
+    # (the coupled-loop path) is unchanged.
+    Threads.@threads for i in 1:n
+        @inbounds out[i] = predict(forest, @view X[i, :])
     end
     return out
 end
