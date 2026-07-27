@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **GLOBAL pooled multi-regime results + the honest static-vs-transient ablation.** The pooled+transient
+  COUNT DRF generalizes to an UNSEEN climate regime almost perfectly — **hold-out-by-scenario R²=0.9847**
+  (train on one regime, test the held-out other; both directions) ≈ the within-regime by-cell R²=0.9852. The
+  pooled+transient COPULA reproduces both regimes' trait distributions (pooled OOS nqrmse 0.010–0.020).
+  **Honest ablation:** a STATIC-boundary pooled model gives the SAME scenario-holdout (R²=0.9844/0.9848) — so
+  for COUNTS the FLUX DRIVERS (ADR 0020), not the boundary, drive the generalization; the transient boundary
+  is retained for physical correctness (a frozen establishment gate is wrong under +80 yr of warming) and its
+  prospective trait/establishment value (the decisive copula scenario-holdout ablation is the next test).
+  **Perf:** parallelized the copula OOS eval AND `DRF.predict(::Matrix)` (both were single-threaded → the
+  global evals now run in minutes, bit-identically; suite green 106820 pass).
 - **Component S — TRANSIENT (time-varying) bioclimatic boundary + the pooled-multi-regime design ([ADR 0026](docs/decisions/0026-component-s-pooled-multiregime-transient-boundary.md), refines ADR 0020, keeps ADR 0004).**
   The slow bioclimatic boundary (`gdd5`/`tas_cold_month`) was a per-cell CLIMATOLOGICAL-STATIC normal — identical
   every year (Hainich = 1863.70/0.2184 across all 20 historic years) — so a warming cell's establishment gate was

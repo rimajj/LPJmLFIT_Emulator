@@ -603,3 +603,31 @@ Entry template:
 - **Transient signal magnitude** (why the frozen boundary was wrong): SSP370 global mean Δgdd5 +672 over 2020→2100 (Hainich +605), Δtas_cold +3.6 °C mean — ~22% of the cross-cell spatial spread, entirely discarded by the old static boundary.
 - **Perf:** parallelized `DRF.predict(::Matrix)` (bit-identical, JET-clean; job 1600391 validating) so future global evals aren't single-threaded-predict-bound.
 - **Next:** collect the count hold-out-by-scenario numbers + the copula historic per-cell KS figures (jobs running); pooled-model proof figures; wire `boundary_series` through a coupled driver end-to-end.
+
+## 2026-07-27 (cont.) — HOLD-OUT-BY-SCENARIO + the honest static-vs-transient ABLATION  [phase 2 validation]
+- **Count HOLD-OUT-BY-SCENARIO (ADR 0026 §5, the falsifiable unseen-regime test), threaded eval 4.5 min:**
+  train on ONE regime, test the completely held-out other → **R²=0.9847 both directions** (held-out historic:
+  0.9847; held-out ssp370: 0.9847), ≈ the within-regime by-cell R²=0.9852. The pooled flux-driven emulator
+  generalizes to an UNSEEN climate regime almost perfectly — trained on present climate it reproduces the
+  strongly-warmed SSP370 future tree density, and vice versa.
+- **HONEST ABLATION (static vs transient boundary), same eval on the STATIC-boundary pooled table:**
+  static-boundary held-out historic R²=**0.9844**, held-out ssp370 R²=**0.9848** — **statistically identical to
+  transient (0.9847)**. ⇒ **For COUNTS the transient boundary makes NO material difference; the FLUX DRIVERS
+  (bm_inc/growth_eff/water_stress/soilmoist, ADR 0020) carry the climate signal and ARE what deliver the
+  unseen-regime generalization.** This is the ADR-0020 flux-driven premise confirmed, and it means the count
+  scenario-holdout does NOT by itself justify the transient boundary (ADR 0026 §5's "materially better" is NOT
+  met for counts). The ablation was worth running precisely to avoid over-crediting the boundary.
+- **What the transient boundary IS still justified by (unchanged):** (1) PHYSICAL CORRECTNESS — a frozen
+  establishment gate (gdd5/tas_cold_month) is wrong-by-construction under an 80-yr warming (Δgdd5 +672 global
+  mean); counts happening to be flux-robust doesn't make a frozen gate right. (2) The TRAIT/ESTABLISHMENT
+  distribution — the copula conditions on `live_flux_cond` = flux drivers + boundary; the boundary gates WHICH
+  traits can establish, a signal the flux channel does not fully carry. ADR 0026 stands (opt-in, default-off,
+  byte-identical); the boundary is retained as the correct choice, but its EMPIRICAL payoff must be shown on
+  TRAITS, not counts.
+- **THE decisive follow-on (well-defined):** a COPULA scenario-holdout static-vs-transient ablation — train the
+  recruit copula on regime A's stems, predict regime B cells' trait marginals (KS), transient vs static
+  boundary. If transient materially beats static there, the boundary earns its keep on establishment/traits;
+  if not, the whole boundary channel (for this constant-CO2, flux-driven design) is near-redundant and ADR 0026
+  should be revisited. (Needs a copula scenario-holdout eval variant; the tables/infra exist.)
+- **Perf:** `DRF.predict(::Matrix)` parallelized (bit-identical, suite green 106820 pass) — the count
+  scenario-holdout dropped from hours to 4.5 min.
