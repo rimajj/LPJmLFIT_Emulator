@@ -32,7 +32,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     `n_prev` stays within-scenario so it never splices two climate models); the orchestration builds both
     scenarios' transient count tables → pools → trains ONE cell-agnostic count DRF → runs the HOLD-OUT-BY-SCENARIO
     unseen-regime eval (train on the other regime, test the held-out one) + a pooled by-cell baseline. Validated
-    on the Hainich pooled table.
+    on the Hainich pooled table. The pooled+transient count DRF **held-out-by-cell TEST R²=0.9852** (5295 test
+    cells / 7.6M rows on the 77.6M-row pooled table).
+  - **Pooled copula (`scripts/run_pooled_slow_copula.sh` + build-script `STEM_CAP`).** The same pooling for the
+    recruit-trait copula: an opt-in per-cell `STEM_CAP` (default 0 = keep all → byte-identical) random-subsamples
+    each cell's surviving stems (a marginal + per-cell KS needs only a few hundred), so the pooled copula
+    (~730M stems un-capped) stays tractable; `pool_slow_tables.py` auto-detects the copula table (Xc / Y_axis).
+    Global historic copula OOS (pre-pooling, K-fold-by-cell, 133M stems): nqrmse SLA 0.016 / Wooddens 0.022 /
+    D95max 0.028 / minwscal 0.038.
 - **P1 Tier-1 v3 — Component S owns establishment as REAL cohorts: dynamic roster (recruit APPEND + K-cap MERGE),
   a TRUE per-cohort age, and the copula recruit-trait sampler wired in ([ADR 0024](docs/decisions/0024-component-s-dynamic-membership-and-true-age.md), supersedes ADR 0023 §3).**
   The last structural piece of P1 — the flux-driven S now genuinely owns count/establishment/mortality/trait

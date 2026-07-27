@@ -164,6 +164,21 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     if drop_frac > 0.02:  # same anti-silent-truncation guard as the count path
         raise SystemExit(f"FATAL: copula conditioning-join dropped {drop_frac:.3f} of stems "
                          f"(soilmoist/lai coverage hole). scenario={scenario}.")
+    # STEM_CAP (opt-in, default 0 = keep all → byte-identical): per-CELL random subsample to at most STEM_CAP
+    # stems. A cell's trait MARGINAL (+ its per-cell KS) is fully estimated by a few hundred stems, so capping
+    # keeps the distribution while making the POOLED multi-regime copula (~730M stems across scenarios)
+    # tractable (ADR 0026). Deterministic: a per-row hash of (Cell,Patch,Year)+row-index seeded by SEED gives
+    # a stable pseudo-random rank within each cell; keep the lowest STEM_CAP. Applied AFTER the coverage gate
+    # so the drop_frac guard still sees the true join coverage.
+    cap = int(os.environ.get("STEM_CAP", "0"))
+    if cap > 0:
+        h_before = tbl.height
+        tbl = (tbl.with_columns(
+                   (pl.struct(["Cell", "Patch", "Year"]).hash(seed=seed) + pl.int_range(pl.len(), dtype=pl.UInt64))
+                   .rank("ordinal").over("Cell").alias("_rk"))
+               .filter(pl.col("_rk") <= cap).drop("_rk").sort(["Cell", "Patch", "Year"]))
+        print(f"== STEM_CAP={cap}: {h_before} -> {tbl.height} stems "
+              f"({tbl['Cell'].n_unique()} cells, median {tbl.height / max(tbl['Cell'].n_unique(), 1):.0f} stems/cell)")
     n = tbl.height
     if n == 0:
         raise SystemExit("FATAL: 0 copula stems after conditioning-join.")

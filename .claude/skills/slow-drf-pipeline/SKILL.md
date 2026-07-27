@@ -202,6 +202,11 @@ build historic + ssp370 transient count tables → `scripts/pool_slow_tables.py`
 discontinuity / splices two climate models) → `train_slow_drf.jl` on the pooled table (consumes it unchanged —
 reads X/y/cells/manifest, no cell_meta) → `scripts/eval_slow_scenario_holdout.jl` (the HOLD-OUT-BY-SCENARIO
 unseen-regime proof: train on the other regime, test the held-out one; + a pooled by-cell baseline). CO2 stays
-constant (ADR 0004 — NOT a feature). Copula pooling is the same `pool_slow_tables.py` on `MODE=copula` dirs
-(it auto-detects Xc.f64 / manifest_copula.txt). `pool_slow_tables.py` asserts matching p/colnames (count) or
+constant (ADR 0004 — NOT a feature). `pool_slow_tables.py` asserts matching p/colnames (count) or
 ncond/axes/cond_cols (copula) — a mismatch means the two scenarios were built with different feature contracts.
+**Pooled COPULA:** `scripts/run_pooled_slow_copula.sh` (build both scenarios' `MODE=copula BOUNDARY_WINDOW=W
+STEM_CAP` tables → pool → `eval_slow_copula.jl` K-fold → `train_slow_copula.jl`). The un-capped pooled copula
+is ~730M stems (historic 133M + ssp ~600M) — busts the 4h qos — so `STEM_CAP=N` (opt-in, default 0=all;
+per-cell random subsample) caps each cell's stems (a marginal/KS needs only a few hundred; 700 GB nodes so the
+~600M-stem ssp collect fits regardless). Applied AFTER the coverage gate; deterministic (hash(Cell,Patch,Year,
+seed)+row rank per cell).
