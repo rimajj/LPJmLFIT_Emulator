@@ -631,3 +631,31 @@ Entry template:
   should be revisited. (Needs a copula scenario-holdout eval variant; the tables/infra exist.)
 - **Perf:** `DRF.predict(::Matrix)` parallelized (bit-identical, suite green 106820 pass) — the count
   scenario-holdout dropped from hours to 4.5 min.
+
+## 2026-07-27 (cont.) — DECISIVE copula scenario-holdout ablation: the transient boundary's empirical payoff is MARGINAL  [phase 2 validation — honest outcome]
+- **Test (ADR 0026 §5 for TRAITS):** `eval_slow_copula_scenario_holdout.jl` — train the recruit copula on ONE
+  regime's stems, draw the OOS trait quantile for the UNSEEN regime, KS vs FIT's marginal. Run on BOTH the
+  transient- and static-boundary pooled copula tables (STEM_CAP=400; 12.85M historic + 15.88M ssp stems).
+- **Result — TRANSIENT vs STATIC (avg of both directions, KS):** SLA 0.049 vs 0.028 (static better),
+  Wooddens 0.008 vs 0.020 (transient better), D95max 0.012 vs 0.019 (transient better), minwscal 0.026 vs
+  0.012 (static better). **MIXED, axis-dependent, both excellent (all KS ≤ 0.05, nqrmse ≤ 0.09).** For the two
+  dynamically-consumed axes it's a wash (SLA→static, Wooddens→transient). The transient boundary does NOT
+  materially beat static on traits.
+- **HONEST OVERALL CONCLUSION (both ablations):** in this **constant-CO2, flux-driven** design the TRANSIENT
+  boundary delivers NO clear, consistent empirical improvement over a STATIC boundary — for COUNTS (transient
+  0.9847 == static 0.9844/0.9848) OR TRAITS (mixed). By ADR 0026 §5's OWN falsifiability criterion the
+  transient boundary is NOT empirically justified over static here. **What DOES win, decisively, is the POOLED
+  MULTI-REGIME + FLUX-DRIVEN design (ADR 0026 §4 + ADR 0020):** ONE model, trained on one climate regime,
+  reproduces the UNSEEN regime — counts R²=0.9847, traits KS ≤0.05. The flux drivers (bm_inc/growth_eff/
+  water_stress/soilmoist), which DO vary and carry F's transformed climate, are what generalize; the boundary
+  (gdd5/tas_cold_month) is a weak secondary conditioner in this design.
+- **Why (physical read):** (1) F already turns the changing climate into changing fluxes, so S sees the regime
+  shift through the flux channel regardless of the boundary (the ADR-0020 premise, now doubly confirmed).
+  (2) mortality is trait-blind + establishment traits are broadly regime-similar, so the SURVIVOR marginal
+  the copula targets doesn't shift dramatically between historic and ssp → little for the boundary to add.
+- **Decision (→ ADR 0027):** KEEP the transient boundary opt-in / default-OFF (do NOT promote to default — it
+  doesn't earn it empirically), retained for PHYSICAL CORRECTNESS (a frozen establishment gate is wrong under
+  +80 yr warming) and for regimes where it may matter more (N-limited / varying-CO2 futures — out of scope
+  here, ADR 0004). Promote the POOLED MULTI-REGIME flux-driven emulator as the validated production design.
+- **Also:** plot per-cell KS was O(ncells·N) → fixed to O(N log N) (historic trait figs now generate in
+  minutes: pooled KS SLA 0.012 / Wd 0.005 / D95max 0.004 / minwscal 0.015).
