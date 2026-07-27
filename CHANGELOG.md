@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Component S — ONLINE transient boundary "Climbuf" BUILT ([ADR 0027](docs/decisions/0027-adopt-transient-boundary-production.md)'s "to build").**
+  The coupled-run counterpart of S's offline pre-baked `boundary_series`: `ClimBuf` (`src/climbuf.jl`) is a
+  per-cell trailing-W-yr climate ring (default `W=CLIMBUFSIZE=20`, mirroring FIT's Climbuf) the coupled driver
+  feeds F's daily air temperature; each year end it recomputes the two TIME-VARYING boundary axes
+  (`gdd5`/`tas_cold_month`, Thom-1966 monthly method) from the trailing-window climatology and refreshes the
+  `FluxDrivenSlowEmulator`'s `s.boundary` BEFORE `reconcile_demography!` — so a warming cell's establishment
+  gate shifts instead of freezing at the initial climatology. Wired as the opt-in `run_coupled_cell(...; climbuf=)`
+  (default `nothing` ⇒ `s.boundary` constant, byte-identical, ADR 0027's static fallback); needs no
+  SpeedyWeather (runs in the existing multi-year driver; P4 will reuse the object). **Offline parity (the
+  ADR-0023 train/inference contract):** reproduces `scripts/build_transient_boundary.py` to
+  float32-summation-order — daily→monthly max\|Δ\| 1.9e-6 °C; per-year window boundary 2000-2019 max\|Δgdd5\|
+  3.7e-4 / max\|Δtcm\| 1.8e-7; the W=20 window ending 2019 == the committed DRF meta boundary
+  (gdd5=1863.695 / tas_cold=0.2184). Conditioning-only (touches no carbon/water/energy). Gated by
+  `test/testitems/climbuf_tests.jl` (parity + coupled wiring: conserves, deterministic, warming shifts the
+  gate, guards) against the committed Hainich fixture `test/testitems/references/climbuf_hainich_*.csv`
+  (`scripts/build_climbuf_parity_fixture.py`). Design doc flipped design→BUILT.
 - **GLOBAL pooled multi-regime results + the honest static-vs-transient ablation.** The pooled+transient
   COUNT DRF generalizes to an UNSEEN climate regime almost perfectly — **hold-out-by-scenario R²=0.9847**
   (train on one regime, test the held-out other; both directions) ≈ the within-regime by-cell R²=0.9852. The
@@ -29,9 +45,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   the historic range) — axis-specific, net a wash (KS ≤0.05), decision unchanged. Tooling:
   `scripts/diagnose_boundary_axes.jl`, `scripts/diagnose_space_for_time.py`, a `SEED_OFFSET` hook in
   `eval_slow_copula_scenario_holdout.jl`. Future refinement: PER-AXIS copula conditioning (drop the boundary
-  from SLA/minwscal). The **online-coupling Climbuf** (transient boundary under SpeedyWeather) is spec'd in
-  `docs/online_transient_boundary_climbuf.md` (driver-side trailing-W buffer, reproduces
-  `build_transient_boundary.py`, ~0% slower, conservation-safe; gated on the online driver).
+  from SLA/minwscal). The **online-coupling Climbuf** was spec'd in
+  `docs/online_transient_boundary_climbuf.md` and is now **BUILT** (see the top Climbuf entry).
   **Perf:** parallelized the copula OOS eval AND `DRF.predict(::Matrix)` (both were single-threaded → the
   global evals now run in minutes, bit-identically; suite green 106820 pass).
 - **Component S — TRANSIENT (time-varying) bioclimatic boundary + the pooled-multi-regime design ([ADR 0026](docs/decisions/0026-component-s-pooled-multiregime-transient-boundary.md), refines ADR 0020, keeps ADR 0004).**

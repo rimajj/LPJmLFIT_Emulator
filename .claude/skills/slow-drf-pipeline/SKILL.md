@@ -210,3 +210,25 @@ is ~730M stems (historic 133M + ssp ~600M) — busts the 4h qos — so `STEM_CAP
 per-cell random subsample) caps each cell's stems (a marginal/KS needs only a few hundred; 700 GB nodes so the
 ~600M-stem ssp collect fits regardless). Applied AFTER the coverage gate; deterministic (hash(Cell,Patch,Year,
 seed)+row rank per cell).
+
+## ONLINE transient boundary — the coupled-run Climbuf (ADR 0027; the runtime counterpart of `boundary_series`)
+
+Offline, the transient boundary ships as a per-(cell,year) `boundary_series` baked by
+`build_transient_boundary.py`. ONLINE (coupled runs / P4), climate evolves as the run proceeds, so the
+boundary is recomputed live by **`ClimBuf`** (`src/climbuf.jl`) — a per-cell trailing-W-yr ring the driver
+feeds daily air temperature; each year end it recomputes `gdd5`/`tas_cold_month` and refreshes the
+`FluxDrivenSlowEmulator`'s `s.boundary`. Wired as the opt-in **`run_coupled_cell(...; climbuf=ClimBuf{T}())`**
+(default `nothing` ⇒ static, byte-identical). Seed the ring with the pre-run climatology
+(`climbuf_seed!`) so year 1 has a full window. **Load-bearing contract: it MUST reproduce
+`build_transient_boundary.py`** (Thom-1966 monthly gdd5 + coldest-month over the trailing window) or train
+(offline table) and inference (online loop) diverge — verified to float32-summation-order (NOT bitwise:
+numpy pairwise vs the buffer's sequential reductions).
+- **Regenerate the parity fixture (needs cluster `.clm`; login node, seconds):**
+  `/home/jamirp/.conda/envs/py311_new/bin/python scripts/build_climbuf_parity_fixture.py` → committed
+  `test/testitems/references/climbuf_hainich_{monthly,boundary_w20,daily_2010}.csv`. It reuses
+  `build_transient_boundary.py`'s reader + method for cell 42490 only (cheap strided memmap read, NOT the
+  global all-cell reduction). Gate: `test/testitems/climbuf_tests.jl` (offline parity + coupled wiring).
+- **Gotchas:** `AtmForcing.tair` is KELVIN — the driver converts `tair-273.15` (as F does) before accumulating.
+  The Climbuf assumes a **365-day noleap** year (the offline month binning) and requires `boundary_series ===
+  nothing` (mutually exclusive) — both are guarded in `run_coupled_cell`. Conditioning-only: no carbon/water/
+  energy, so it cannot affect conservation.

@@ -50,6 +50,13 @@ using .DRF
 include("components/fast.jl")
 include("components/energy.jl")
 include("components/slow.jl")
+# ── Online transient bioclimatic boundary — the coupled-run "Climbuf" (ADR 0026/0027) ─────
+# The online counterpart of S's offline `boundary_series`: a per-cell trailing-W-yr climate buffer the
+# coupled driver feeds daily temperature; each year it recomputes S's establishment gate (gdd5/tas_cold_month)
+# from the climate F actually consumed — reproducing `scripts/build_transient_boundary.py` for train/inference
+# consistency. Included after `slow.jl` (it writes the emulator's `s.boundary`) and before `run.jl` (which
+# drives it). Conditioning-only: touches no carbon/water/energy.
+include("climbuf.jl")
 # ── Component/flux registry — source of truth for code-derived diagrams ─────
 include("registry.jl")
 # ── Coupled S+F+E run loop — the end-to-end "use the emulator" driver (Phase 4) ─
@@ -232,6 +239,9 @@ export DemographicSlowEmulator, reconcile_demography!, total_n
 export FluxDrivenSlowEmulator, flux_feature_vector, target_history
 # Component S — dynamic-membership + copula recruit-trait sampler (ADR 0024)
 export RecruitCopula, make_recruit_to_pools, live_flux_cond
+# Component S — online transient bioclimatic boundary (the coupled-run Climbuf; ADR 0026/0027)
+export ClimBuf, climbuf_accumulate!, climbuf_finalize_year!, climbuf_boundary,
+    climbuf_seed!, climbuf_push_monthly!, climbuf_window_climatology, climbuf_gdd5_tcm
 # Component E — self-contained surface-energy-balance + skin-temperature closure (ADR 0017)
 export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
 # Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)

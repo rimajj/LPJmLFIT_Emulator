@@ -701,3 +701,39 @@ Entry template:
   conditioning feature only); gated on the online coupled driver (not yet built).
 - **Tooling committed:** `diagnose_boundary_axes.jl`, `diagnose_space_for_time.py`, `SEED_OFFSET` hook in
   `eval_slow_copula_scenario_holdout.jl` (opt-in, default 0 = unchanged).
+
+## 2026-07-27 (cont.) — BUILT the online-coupling Climbuf (ADR 0027's "to build") — transient boundary end-to-end
+- **What & why.** ADR 0027 adopted the transient boundary as production and named ONE thing to build: the
+  online-coupling **Climbuf** — the coupled-run counterpart of S's offline pre-baked `boundary_series`. Offline,
+  `FluxDrivenSlowEmulator` reads a per-(cell,year) boundary vector; online, climate evolves as the run proceeds,
+  so the two TIME-VARYING boundary axes (`gdd5`/`tas_cold_month`) must be recomputed each year from the
+  temperature F actually consumes (else the establishment gate freezes at the initial climatology — the static
+  fallback). This closes the transient boundary loop END-TO-END and is the P4-coupling prerequisite; it needs NO
+  SpeedyWeather (it runs inside the existing multi-year `run_coupled_cell`).
+- **Did.** (1) **`src/climbuf.jl`** — `ClimBuf{T}`, a per-cell trailing-W-yr ring (default `W=CLIMBUFSIZE=20`,
+  mirroring FIT's Climbuf) with `climbuf_accumulate!` (daily), `climbuf_finalize_year!` (year-end monthly-mean
+  push + reset), `climbuf_window_climatology`/`climbuf_gdd5_tcm` (trailing-window Thom-1966 monthly gdd5 +
+  coldest-month — the EXACT `build_transient_boundary.py` method), `climbuf_boundary` (overwrites only the two
+  time-varying axes in a copy of `s.boundary`, static soil_depth/co2 pass through), + `climbuf_seed!` (spin-up
+  climatology). Zero-dep, conditioning-only (touches no carbon/water/energy ⇒ cannot affect conservation).
+  (2) **`run_coupled_cell(...; climbuf=)`** (opt-in) — the driver folds `forcing.tair` (K→°C, as F does) daily,
+  and each year end BEFORE `reconcile_demography!` finalizes the year + writes `slow.boundary`. Pre-flight guards:
+  requires a `FluxDrivenSlowEmulator`, `boundary_series===nothing` (mutually exclusive), 365-day noleap year.
+  Default `climbuf=nothing` ⇒ byte-identical (s.boundary constant, ADR 0027's static fallback). (3) Parity
+  fixture `scripts/build_climbuf_parity_fixture.py` (reuses `build_transient_boundary.py`'s reader/method for
+  cell 42490) → committed `test/testitems/references/climbuf_hainich_{monthly,boundary_w20,daily_2010}.csv`
+  (CI has no cluster `.clm`). (4) `test/testitems/climbuf_tests.jl` — offline parity + coupled wiring.
+- **Result / evidence.** OFFLINE PARITY (the ADR-0023 train/inference contract): reproduces
+  `build_transient_boundary.py` to float32-summation-order — daily→monthly max|Δ| 1.9e-6 °C; per-year window
+  boundary 2000-2019 max|Δgdd5| 3.7e-4 (of ~1800), max|Δtcm| 1.8e-7; the W=20 window ending 2019 == the committed
+  DRF meta boundary (gdd5=1863.695 / tas_cold=0.2184) ⇒ the online buffer and the offline `boundary_series` ARE
+  the same boundary. NOT claimed bitwise (numpy pairwise vs sequential reductions) — residuals are orders below
+  any DRF split. COUPLED WIRING: drives s.boundary to the offline-consistent value (≠ static init), static tail
+  preserved, carbon ~handoff ≤1e-6·C_scale, energy <1e-6, deterministic, +2 K/yr warming raises the gate; guards
+  fire. Runic 1.7.0 clean (all CI dirs); docs build (checkdocs=:exports + @ref) green locally; CI-faithful SLURM
+  suite job 1604447 (collect ↓).
+- **Notes.** `state.jl` already scaffolds an inert LPJmL Climbuf MIRROR (`climbuf_mtemp20`/`CLIMBUFSIZE=20`);
+  `ClimBuf` is the ACTIVE mechanism, kept driver-side (not a SharedState field) to keep S's surface minimal
+  (S only reads `s.boundary`) and mirror the offline path 1:1. Follow-up: populate the mirror from it (E's
+  soil-temp init) + source the SpeedyWeather cold-start spin-up climatology (P4). Design doc
+  `docs/online_transient_boundary_climbuf.md` flipped design→BUILT with the verification outcome recorded.

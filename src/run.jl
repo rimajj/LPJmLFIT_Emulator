@@ -119,6 +119,17 @@ applies its demography (count N, establishment, mortality) and conserves carbon 
 [`stand_structure_tof`](@ref)). Default `slow=nothing` keeps F self-growing its canopy — byte-identical to
 before. Read the coupled demography diagnostics from the emulator (`slow.total_n_history`,
 `slow.resid_history`).
+
+Pass `climbuf::ClimBuf` (ADR 0026/0027, the online counterpart of the offline `boundary_series`) to
+recompute S's TIME-VARYING establishment boundary (`gdd5`/`tas_cold_month`) live from the temperature F
+consumes: the driver accumulates each day's `forcing.tair` (K→°C) into the buffer ([`climbuf_accumulate!`](@ref))
+and, at each year end BEFORE [`reconcile_demography!`](@ref), finalizes the year and writes the freshly
+recomputed trailing-W-yr boundary into `slow.boundary` ([`climbuf_boundary`](@ref)) — so a warming cell's
+gate shifts instead of freezing at the initial climatology. Requires `slow::FluxDrivenSlowEmulator` with
+`boundary_series === nothing` (the two transient mechanisms are mutually exclusive) and a 365-day noleap year
+(the offline builder's month binning). Seed the buffer's ring with the spin-up climatology
+([`climbuf_seed!`](@ref)) beforehand so year 1 already has a full window. Default `climbuf=nothing` leaves
+`slow.boundary` at its initial (static) value — byte-identical, ADR 0027's documented fallback.
 """
 function run_coupled_cell(
         fc::FDiffFastCore{T}, clo::SEBEnergyClosure{T}, state::SharedState,
@@ -128,9 +139,21 @@ function run_coupled_cell(
             vcmax = 40.0, fpc = 0.9, albedo = 0.15
         ),
         slow::Union{Nothing, AbstractSlowEmulator} = nothing,
+        climbuf::Union{Nothing, ClimBuf} = nothing,
         days_per_year::Int = 365, feedback::Bool = true
     ) where {T <: AbstractFloat}
     n = length(forcings)
+    # ── online transient boundary (ADR 0026/0027) pre-flight: the Climbuf writes a FluxDrivenSlowEmulator's
+    #    `s.boundary`, is mutually exclusive with a baked `boundary_series`, and its month binning is the
+    #    offline builder's 365-day noleap calendar. Guard up front so a misuse errors clearly, not silently. ──
+    if climbuf !== nothing
+        slow isa FluxDrivenSlowEmulator ||
+            error("run_coupled_cell: `climbuf` requires `slow::FluxDrivenSlowEmulator` (it writes s.boundary)")
+        slow.boundary_series === nothing ||
+            error("run_coupled_cell: `climbuf` and a baked `boundary_series` are mutually exclusive (both drive s.boundary)")
+        days_per_year == 365 ||
+            error("run_coupled_cell: the online Climbuf assumes a 365-day noleap year (got days_per_year=$days_per_year)")
+    end
     t_skin = Vector{T}(undef, n); le = Vector{T}(undef, n); h = Vector{T}(undef, n)
     g = Vector{T}(undef, n); rn = Vector{T}(undef, n); nbp = Vector{T}(undef, n)
     z0 = Vector{T}(undef, n); albedo = Vector{T}(undef, n); gpp = Vector{T}(undef, n)
@@ -143,6 +166,11 @@ function run_coupled_cell(
     for i in 1:n
         forc = forcings[i]
         (ftoe, atm, _tof, bc_e) = couple_day!(fc, clo, state, bc_f, forc; feedback = feedback)
+        # online transient boundary: fold today's air temperature (K→°C, as F does) into the trailing buffer
+        if climbuf !== nothing
+            doy = ((i - 1) % days_per_year) + 1
+            climbuf_accumulate!(climbuf, T(forc.tair) - T(273.15), doy)
+        end
         # net radiation at the solved skin temperature (independent recompute for the closure check)
         Rn = (one(T) - T(bc_e.albedo)) * T(forc.swdown) + p.emissivity * T(forc.lwdown) -
             p.emissivity * p.sigma * atm.t_skin^4
@@ -156,6 +184,15 @@ function run_coupled_cell(
             else
                 # S in the loop (ADR 0018): F grows carbon at fixed N (accounted), then S applies demography
                 # (mortality/establishment) + conserves at the handoff; next year's structure comes from S.
+                # With a Climbuf, first close the climate year and refresh S's transient boundary (ADR 0026/0027)
+                # BEFORE reconcile_demography! builds the DRF/copula feature row from `slow.boundary`. The
+                # `slow isa FluxDrivenSlowEmulator` guard (redundant after the pre-flight, always true here) is
+                # what UNION-SPLITS `slow` to the concrete type so `slow.boundary` is a type-stable field access
+                # (an abstract-typed `slow.boundary` would be dynamic + a JET-0.11.6 flag — CLAUDE.md §2).
+                if climbuf !== nothing && slow isa FluxDrivenSlowEmulator
+                    climbuf_finalize_year!(climbuf)
+                    slow.boundary = climbuf_boundary(climbuf, slow.boundary)
+                end
                 grow = grow_annual_accounted!(fc)
                 reconcile_demography!(slow, fc, grow, state)
                 bc_f = stand_structure_tof(fc)

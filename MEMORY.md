@@ -144,6 +144,11 @@ ADRs are immutable once accepted; supersede, don't edit. Full index: `docs/decis
 | 0020 | **Component S is FLUX-DRIVEN (flux-then-integrate), not climate-equilibrium** — condition on F's delivered fluxes (annual *statistics*, not means) + AR state + slow bioclimatic boundary; **drop this-year raw climate**; climate-only DirectEmulator kept as the **OOD benchmark** (the falsifiable success test). Refines 0002/0003/0018; overrides 0019's "climate-only weights in P1" clause | accepted (agent decision, delegated; reversible by a later ADR) |
 | 0021 | **Component S is trained + run in NATIVE JULIA** (EvoTrees.jl/DRF + Lux + Julia copula), dependency-light, **no Python at runtime**; Python only builds the training table + runs the DirectEmulator OOD benchmark; **build S once** (supersedes 0019's "port Python inference" mechanism; learned S ships via a package extension per 0014) | accepted (owner refinement) |
 | 0022 | **S's learned count/marginal model is a hand-rolled ZERO-DEP Julia DRF** (`src/drf.jl` + hand-rolled Xoshiro), not the EvoTrees package — keeps `[deps]`/`[weakdeps]` empty + CI free of dependency-churn risk (refines 0021's "EvoTrees.jl **/DRF**"; EvoTrees verified as a fallback) | accepted (agent decision, delegated) |
+| 0023 | **Production DRF is a SERIALIZED runtime-consistent artifact** (`DRF.save/load_forest`; `age_mean`=elapsed-year counter; committed Hainich `.drf`) | accepted (§3 counter superseded by 0024) |
+| 0024 | **DYNAMIC roster** (recruit APPEND + K-cap MERGE) + TRUE per-cohort age; DRF retrained on `mean(Age−1)` + `age0` seed | accepted (agent decision, delegated) |
+| 0025 | **Recruit-trait Gaussian COPULA** (4 live axes SLA/Wooddens/D95max/minwscal; trained on the survivor marginal; conditioned by `live_flux_cond`) | accepted (agent decision, delegated) |
+| 0026 | **Pooled MULTI-REGIME + TRANSIENT (time-varying) boundary** (one count DRF + one copula, scenarios pooled, CO₂ constant; trailing-W-yr gdd5/tas_cold; hold-out-by-scenario eval) — refines 0020, keeps 0004 | accepted (agent decision, delegated) |
+| 0027 | **Adopt the transient boundary as production** (pooled multi-regime flux-driven = production; transient boundary on physical-correctness-at-negligible-cost grounds; opt-in/default-off mechanism kept) | accepted (owner decision) |
 
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
@@ -245,6 +250,19 @@ unresolved and ADR 0017's premise rests on it.
     single-cell beech axes are near-degenerate); (c) the in-loop OOD win (the offline OOD win is `[VERIFIED]`);
     grass-ownership #8 + whole-cohort DROP + multi-cell scale-up (P3) still open. Everything **Hainich-only** —
     scaffolding.
+  - **[DONE — ADR 0023-0027, 2026-07-23…27] GLOBAL pooled multi-regime flux-driven S + transient boundary.**
+    (a) GLOBAL count DRF trained (held-out-BY-CELL R²=0.985; pooled historic+ssp370 held-out-BY-SCENARIO
+    R²=0.9847 both directions — one model reproduces an UNSEEN climate regime) + GLOBAL recruit copula (pooled
+    OOS nqrmse SLA 0.010/Wd 0.013/D95max 0.017/minwscal 0.020). Real features (C-`LAI_STAND` + daily `swc`), no
+    proxies. Artifacts `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); committed `.drf` stays the Hainich demo.
+    (b) **Honest ablation:** the TRANSIENT boundary is a WASH vs static for counts AND traits (flux drivers
+    carry the climate signal, ADR 0020 doubly-confirmed) → **ADR 0027** keeps it opt-in/default-off, adopted for
+    PHYSICAL CORRECTNESS (a frozen establishment gate is wrong under +80 yr warming), NOT empirical payoff.
+    (c) **[DONE 2026-07-27] Online Climbuf** — the coupled-run counterpart of the offline `boundary_series`:
+    `src/climbuf.jl` `ClimBuf` + opt-in `run_coupled_cell(...; climbuf=)`; reproduces `build_transient_boundary.py`
+    to float32-summation-order (W=20 window ending 2019 == the DRF meta boundary 1863.695/0.2184); conserves,
+    deterministic, default-off byte-identical (`test/testitems/climbuf_tests.jl`). Closes ADR 0027's "to build."
+    **NOTE: MEMORY §2 phase table + this §5 block predate ADR 0023-0027 — a `consolidate-memory` pass is DUE.**
   - **[GOVERNING SPEC] ADR 0020 — S is FLUX-DRIVEN, not climate-equilibrium.** S maps *fluxes + state →
     demography* (not climate → distribution); condition on F's delivered fluxes as **annual statistics**
     (extremes/timing/stress-day counts, not means) + AR state + slow bioclimatic boundary; **this-year raw
