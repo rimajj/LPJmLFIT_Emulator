@@ -97,8 +97,16 @@ Ignore benign `curl_easy_setopt: 48` spew.
 JULIA=/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia
 $JULIA --startup-file=no -e 'import Pkg; Pkg.activate(temp=true); Pkg.add(name="Runic", version="1"); using Runic; exit(Runic.main(["--check", "src", "test", "ext", "scripts"]))'
 ```
-Pass specific files instead of the dirs for a fast targeted check. Reformat (drop `--check`) with the same
-Runic version before pushing.
+Pass specific files instead of the dirs for a fast targeted check. Reformat with `--inplace` (or drop
+`--check`) with the same Runic version before pushing.
+
+**Two traps that let an unformatted file reach CI (both bit ADR 0026):** (1) CI checks ALL of
+`src test ext scripts` — a targeted single-file check misses a sibling you also touched (a NEW
+`scripts/*.jl` is the usual culprit). Check the DIRS, or every touched file. (2) **NEVER pipe the check to
+`tail`/`grep`** — `$JULIA -e 'exit(Runic.main([...]))' | tail` returns *tail's* exit code (0), MASKING
+Runic's non-zero exit, so a broken file looks formatted. Capture Runic's exit directly (`… ; echo rc=$?`),
+no pipe. Runic wants multi-line function calls with each arg group on its own indented line and the closing
+`)` on its own line — a common miss when hand-editing a multi-line `println(...)`.
 
 ## Docs (local, egress-safe)
 

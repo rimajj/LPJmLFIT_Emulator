@@ -65,9 +65,11 @@ function main()
             subsample = min(subsample, count(tr)), seed = 1, store_values = false,
         )
         pt = DRF.predict(f, X[te, :])
-        println("   held out $(rpad(name(s), 12)) test_rows=$(count(te))  R²=", round(r2score(y[te], pt), digits = 4),
-                "  RMSE=", round(rmse(y[te], pt), digits = 3),
-                "  (trained on $(count(tr)) rows from the other regime(s))")
+        println(
+            "   held out $(rpad(name(s), 12)) test_rows=$(count(te))  R²=", round(r2score(y[te], pt), digits = 4),
+            "  RMSE=", round(rmse(y[te], pt), digits = 3),
+            "  (trained on $(count(tr)) rows from the other regime(s))"
+        )
     end
 
     # ── POOLED held-out-BY-CELL baseline (train on all scenarios, hold cells out) for context ──
@@ -89,8 +91,10 @@ function main()
         preds[te] = DRF.predict(f, X[te, :])
     end
     done = .!isnan.(preds)
-    println("   pooled by-cell OOS R²=", round(r2score(y[done], preds[done]), digits = 4),
-            "  RMSE=", round(rmse(y[done], preds[done]), digits = 3), "  (over $(count(done))/$n rows)")
+    println(
+        "   pooled by-cell OOS R²=", round(r2score(y[done], preds[done]), digits = 4),
+        "  RMSE=", round(rmse(y[done], preds[done]), digits = 3), "  (over $(count(done))/$n rows)"
+    )
     # per-scenario slice of the pooled by-cell predictions (does the pooled model serve each regime well?)
     for s in sids
         m = (scen .== s) .& done
