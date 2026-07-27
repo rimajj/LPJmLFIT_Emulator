@@ -70,12 +70,22 @@ function main()
                 Xtr, Ys[a][tr]; ntrees = ntrees, max_depth = max_depth, min_leaf = min_leaf,
                 subsample = min(subsample, ntr), seed = a, store_values = true,
             )
-            @inbounds for i in teidx
-                u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a))     # deterministic OOS draw per (row, axis)
-                preds[a][i] = DRF.predict_quantile(f, (@view Xc[i, :]), u)
+            # The OOS quantile draw per (row, axis) is the eval's dominant cost (~naxes·kfolds·n forest
+            # traversals — millions at global scale). PARALLELISE across JULIA_NUM_THREADS: each test row
+            # writes a distinct `pa[i]` (no race), and its RNG is seeded per (row, axis) so the result is
+            # bit-identical to the serial loop regardless of thread count / schedule. `let` binds
+            # single-assignment locals so the `@threads` closure does not box the reassigned `a`/`f`/`teidx`
+            # (JET boxed-capture trap, CLAUDE.md §2).
+            pa = preds[a]
+            let a = a, f = f, pa = pa, ti = teidx
+                Threads.@threads for i in ti
+                    u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a))
+                    @inbounds pa[i] = DRF.predict_quantile(f, (@view Xc[i, :]), u)
+                end
             end
+            println("   axis $(rpad(String(ax), 10)) done (fold $k)"); flush(stdout)
         end
-        println("== fold $k/$(kfolds - 1): test_rows=$nte train_rows=$ntr")
+        println("== fold $k/$(kfolds - 1): test_rows=$nte train_rows=$ntr"); flush(stdout)
     end
     for a in 1:naxes
         @assert !any(isnan, preds[a]) "axis $(axes[a]): some rows never in a test fold"
