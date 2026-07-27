@@ -103,9 +103,21 @@ Runic version before pushing.
 ## Docs (local, egress-safe)
 
 ```bash
-DOCS_LINKCHECK=false julia --project=docs docs/make.jl      # CI keeps linkcheck ON
+DOCS_LINKCHECK=false julia --project=docs docs/make.jl      # CI keeps linkcheck ON ($JULIA — not on PATH)
 julia scripts/gen_diagrams.jl --check                       # diagram drift alarm
 ```
+First run in a fresh checkout: `$JULIA --project=docs -e 'import Pkg; Pkg.develop(path="."); Pkg.instantiate()'`.
+
+**Strict-docs gotcha (`warnonly=false`, `checkdocs=:exports`) — a docstring change can turn `docs` RED while
+all tests stay green.** Two ways it bites:
+1. A NEW EXPORTED symbol with no docstring → `checkdocs=:exports` fails. `docs/src/reference/api.md` uses
+   `@autodocs Modules=[LPJmLFITEmulator]`, so any exported symbol is auto-listed once it HAS a docstring.
+2. An `@ref` **inside a rendered docstring** (i.e. an `LPJmLFITEmulator` symbol) pointing at a symbol that is
+   NOT rendered → broken cross-ref → strict-build failure. The `DRF` submodule is NOT in api.md's `@autodocs`,
+   so `` [`DRF.foo`](@ref) `` from a top-module docstring breaks it — use a plain `` `DRF.foo` `` code span.
+   (`@ref`s BETWEEN `DRF` docstrings are harmless: DRF docstrings aren't rendered, so Documenter never
+   processes them — that's why the pre-existing `save_forest`↔`load_forest` @refs are fine.)
+Reproduce with the local docs build above; CI surfaces it only as a red `docs` check (not in the test log).
 
 ## Regenerating ReferenceTests baselines
 
