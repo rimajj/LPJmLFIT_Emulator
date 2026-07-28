@@ -5,7 +5,7 @@ flowchart TB
     %% Component overview (kind / timescale) — derived from COMPONENTS.
     S["<b>S</b> — Slow distribution emulator<br/>kind: ml · timescale: annual<br/>p(traits,size / drivers,state) + count N; allocates delivered NPP (flux-then-integrate)"]
     F["<b>F</b> — Fast physical core (LPJmL-FIT)<br/>kind: physics · timescale: daily<br/>photosynthesis→GPP→NPP, water balance, snow, soil thermal; conserving"]
-    E["<b>E</b> — Energy-balance + skin-T closure<br/>kind: hybrid · timescale: subdaily<br/>solve T_skin; partition A=Rn−G into LE,H,G (H residual); reuse Terrarium.jl"]
+    E["<b>E</b> — Energy-balance + skin-T closure<br/>kind: hybrid · timescale: subdaily<br/>solve T_skin; close Rn=LE+H+G (H residual); self-contained SEB (ADR 0017)"]
     ATM["<b>ATM</b> — Atmosphere (ESM)<br/>kind: external · timescale: subdaily<br/>SpeedyWeather.jl / FLUXNET forcing; NEE diagnostic-only (no carbon cycle)"]
     classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
     classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
