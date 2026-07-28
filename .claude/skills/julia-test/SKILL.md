@@ -25,13 +25,25 @@ Submit it to SLURM. A login-node foreground run / `nohup &` / background-shell *
 on a compute node independently and logs to shared `/p`, so ANY later session can collect the result.
 
 ```bash
-cd /p/projects/open/Jamir/esm_land_emulator
+cd <YOUR worktree>                   # e.g. /p/projects/open/Jamir/wt-M — NOT a hard-coded path (see below)
 scripts/run_tests_slurm.sh [tag]     # warms the shared depot on the login node, then runs the CI-faithful
                                      # Pkg.test() (rm test/Manifest.toml + re-resolve) on a compute node
 ```
 Collect from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` · the log's LAST line is
 `=== JOB DONE tag=<tag> exit=<code> ===` (grep it; the ReTestItems `N pass, M fail` summary is just above).
 Expect ≈ **48.1k pass / 0 fail / 4 broken**, ~5–6 min. Julia = `/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia` (lts).
+
+**Run it from YOUR OWN worktree, and tag with your line prefix** (ADR 0028; this line used to read
+`cd /p/projects/open/Jamir/esm_land_emulator`, which is now the **integrator** worktree). The wrapper resolves
+its own root — `REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` — so `wt-M/scripts/run_tests_slurm.sh`
+tests `wt-M` and logs to `wt-M/logs/`; invoking the *integrator's* copy would silently test `main` instead of
+your branch and litter the one shared checkout. Verified 2026-07-28 (`M-suite-jetpin`, job 1622318). Same
+class as CLAUDE.md §9 item 6 ("a script with a hard-coded absolute repo path writes into the integrator
+worktree") — the difference is that here the hard-coded path is in the *instructions*, not the script.
+
+**A `test/Project.toml` `[compat]` change forces a fresh resolve**, so expect the wrapper to spend an extra
+minute or two re-resolving + precompiling both envs on the login node before it submits. That is the warm
+working (it is what keeps the compute node off the network), not a hang.
 
 **Any OTHER long job (>a few seconds)** — benchmarks, probes, decadal runs, training — uses the same durable
 path: `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`); heavy NN training →
