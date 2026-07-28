@@ -17,7 +17,7 @@ ADR 0031 predicted the population change would bite.
 | job | tag / log | produces | status at handoff |
 |---|---|---|---|
 | 1622131 | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | RUNNING (K-fold, ~5 folds × 4 axes) |
-| **1622337** | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** (the artifact M pins) | RUNNING at **NCPUS=96** — the 32-cpu attempt (1622330) was **OOM-killed** (exit 137) on the ssp370 build; see the gotcha below |
+| **1622337** | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** (the artifact M pins) | RUNNING at **NCPUS=96** — the 32-cpu attempt (1622330) was **OOM-killed** (exit 137) on the ssp370 build — `STEM_CAP` does NOT bound peak memory (gotcha in the `slow-drf-pipeline` skill) |
 
 `grep -E 'JOB DONE|VERDICT' logs/<tag>.*.out`; last line carries the exit code. **If either died on a node
 fault** (exit `0:53`/no log — see MEMORY.md) just resubmit: `VERSION=t7 SCENARIO=historic
@@ -106,6 +106,10 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
 | cells | 45 072 | **54 058** (+8 986) |
 | `minwscal` span | [0.025, **0.30**] | [0.025, **0.75**] — FIT's true range (id 0's interval) |
 | `growth_eff` max / mean | 1.19e9 / 264 495 | **43 138 / 146.7** (the guard; seed1 reads 31 183 / 120.6) |
+
+Seed1 equivalents `[VERIFIED]`: historic w20 = **197 721 867 stems / 54 020 cells** (exactly ADR 0031's census),
+`growth_eff` max 31 183 with **0** `lai<=0` rows — the cross-seed-join diagnosis confirmed in production.
+ssp370 w20 = **828 818 873 stems / 58 683 cells** (this is what OOM-kills a 32-cpu build; use `NCPUS=96`).
 
 ### Count DRF — before/after (like-for-like, same script + hyperparameters)
 
