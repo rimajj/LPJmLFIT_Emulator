@@ -158,8 +158,8 @@ inventoried there with their obligations:
   LPJmL-FIT. Fine under AGPL-3.0 outbound; needs the notice, which §4 provides.
 - `patches/json_object_iterator.h.shim` — self-described as "verbatim declarations from json-c's public
   `json_object_iterator.h`". json-c is **MIT** (© 2009–2012 Eric Haszlakiewicz; © 2004–2005 Metaparadigm
-  Pte Ltd). The file documents its provenance in a comment but **carries no MIT copyright + permission
-  notice**, which MIT requires. Concrete fix listed in §4.
+  Pte Ltd). The file documented its provenance in a comment but **carried no MIT copyright + permission
+  notice**, which MIT requires; that notice is now reproduced in it (§4).
 
 ### 3. NeuralCrop.jl: method-only, and one provenance claim corrected
 
@@ -177,7 +177,9 @@ than assumed. **[VERIFIED 2026-07-28** — direct comparison of
 
 - **Shared:** `Zygote.withgradient` → non-finite-loss skip guard → `Optimisers.update` inside a windowed day
   loop, and `best_ps = deepcopy(ps)`. That is the documented public-API idiom of Zygote/Optimisers plus
-  truncated backprop through time itself (Williams & Zipser 1990) — unprotectable method, not expression.
+  truncated backprop through time itself — a technique long predating both codebases (BPTT: Werbos 1990;
+  truncated BPTT: Williams & Peng, *Neural Computation* 2(4):490–501, 1990) — i.e. unprotectable method,
+  not expression.
 - **Different:** everything else. NeuralCrop takes 19 positional arguments plus 4 keywords and interleaves
   `jld2` climate-chunk loading, per-cell batching, `ps_frozen`, device dispatch, a learning-rate schedule, a
   validation split, `ProgressMeter` and checkpointing. Ours takes 6 positional arguments plus keywords, has

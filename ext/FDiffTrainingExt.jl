@@ -3,7 +3,7 @@
 # correction MLPs that plug into [`FDiff.FluxHooks`] and trains them end-to-end THROUGH the
 # differentiable daily rollout against a target GPP trajectory (the LPJmL-FIT C-binary daily GPP).
 # PROVENANCE (ADR 0080 §3). This is an INDEPENDENT implementation of the standard Lux-MLP + Zygote +
-# Optimisers + truncated-backprop-through-time (TBPTT) rollout idiom — TBPTT itself is Williams & Zipser
+# Optimisers + truncated-backprop-through-time (TBPTT) rollout idiom — TBPTT itself is Williams & Peng
 # (1990) and the gradient/update calls are Zygote's and Optimisers' documented public API. NeuralCrop.jl
 # (Yunan Lin, arXiv:2512.20177) is cited as PRIOR ART for applying that idiom to a differentiable LPJmL:
 # it is a METHOD reference only — it is CC BY-NC, whose NonCommercial term cannot be combined with this

@@ -28,7 +28,7 @@
   is CC-BY-NC, so an inaccurate provenance claim is itself the exposure. A direct comparison against
   `NeuralCrop.jl/src/training/training_loop.jl` confirmed **no shared expression**: the only overlap is
   `Zygote.withgradient` → finite-loss guard → `Optimisers.update` in a windowed day loop, i.e. those
-  libraries' documented API plus TBPTT itself (Williams & Zipser 1990), while the reference spreads jld2
+  libraries' documented API plus TBPTT itself (Williams & Peng 1990), while the reference spreads jld2
   chunk loading, per-cell batching, `ps_frozen`, device dispatch, an LR schedule, a validation split and
   checkpointing across 19 positional arguments and lacks our detached-state carry (`_advance_state`). The
   wording now states independent implementation with NeuralCrop cited as prior art. (2)
