@@ -29,6 +29,9 @@ schema:
 
 # --- Variable groupings (from EDA; mirror lpjmlfit_emulator.data / .features) ------
 variables:
+  # DEFECT — see ADR 0031: ids 0-6 are ALL SEVEN tree PFTs (7/8/9 grass), so this list drops the tropical
+  # broadleaved evergreen (0) and the boreal larch (6) = 32.5% of survivor tree stems / 16.7% of tree cells.
+  # Corrected to [0, 1, 2, 3, 4, 5, 6] together with the ADR-0031 table re-derivation, not before.
   tree_types: [1, 2, 3, 4, 5]
   grass_type: 8
   # Path-dependent size/state vars, heavy right-skew -> log1p

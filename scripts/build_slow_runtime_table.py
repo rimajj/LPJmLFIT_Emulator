@@ -71,6 +71,12 @@ import os
 import numpy as np
 import polars as pl
 
+# DEFECT, ADR 0031: `Type` is the 0-based `pftpar` index and ids 0-6 are ALL SEVEN tree PFTs (7/8/9 grass),
+# so this list silently drops id 0 (tropical broadleaved evergreen) + id 6 (boreal larch) = 32.5% of survivor
+# tree stems and 16.7% of tree-bearing cells (measured: scripts/diagnose_ind_type_composition.py). Every table
+# built here — and therefore every global .drf/.rcop artifact and every published fidelity number — is on that
+# TRUNCATED population. ADR 0031 widens it to [0..6] as one re-derivation + retrain + re-validation; do not
+# change it here in isolation (train/inference and artifact/table populations must move together).
 TREE_TYPES = [1, 2, 3, 4, 5]
 BASE = "/p/tmp/jamirp/emulator_global"
 IND = {

@@ -95,7 +95,10 @@ _TEMPERATE_TREE = dict(
     verified=False,  # only beech is verified this session
 )
 PFT_PARAMS: dict[int, dict] = {
-    t: dict(_TEMPERATE_TREE) for t in ind_data.TREE_TYPES  # (1,2,3,4,5)
+    # (1,2,3,4,5) — the TRUNCATED tree set (ADR 0031: ids 0-6 are all seven tree PFTs). Note this dict also
+    # assumes TEMPERATE mortality params for every id, so widening to [0..6] needs per-PFT params for the
+    # tropical evergreen (0) and larch (6), not just a longer key list.
+    t: dict(_TEMPERATE_TREE) for t in ind_data.TREE_TYPES
 }
 PFT_PARAMS[3]["verified"] = True  # beech
 

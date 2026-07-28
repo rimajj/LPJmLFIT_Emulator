@@ -24,6 +24,9 @@ import numpy as np
 import polars as pl
 
 CELL = 42490
+# ADR 0031: ids 0-6 are all seven tree PFTs; this truncated list is the known defect. Harmless HERE (Hainich
+# 42490 contains only ids 1-5 + grass 8, verified in hainich_individuals_2010_meta.json) — which is exactly why
+# every single-cell gate stayed green while the global tables were truncated. Widen with ADR 0031, not alone.
 TREE_TYPES = [1, 2, 3, 4, 5]
 BEECH = 3
 IND_PARQUET = "/p/tmp/jamirp/emulator_global/ind_hist_seed{seed}_all.parquet"

@@ -117,6 +117,38 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   One pooled cell-agnostic forest + `cell_meta.parquet` sidecar; the AR ratio `target/n_prev` cancels count
   magnitude so pooling cells (and — ADR 0026 — pooling SCENARIOS) is sound.
 
+## The STEM POPULATION — check it before you build anything (ADR 0031)
+
+**`Type` is the 0-based `pftpar` index; ids 0–6 are ALL SEVEN tree PFTs** (7/8/9 grass — emitted with the tree
+fields *zeroed*; 10–21 crops, never emitted). Every builder here selects `TREE_TYPES=[1,2,3,4,5]`, which is a
+**known DEFECT**: it drops id 0 (tropical broadleaved evergreen) + id 6 (larch) = **32.5 % of survivor tree
+stems**, makes **16.7 % of tree-bearing cells invisible** (45 009 of 54 020), and biases the cells it keeps
+(traits are drawn from per-PFT `[low,high]` intervals, so any per-cell trait statistic is a *composition*
+statistic). `python/.../features.py:50` already has the correct `[0..6]`; `data.py:68` has the truncated one.
+- **Census / reproducer:** `scripts/sbatch_python.sh S-typecomp scripts/diagnose_ind_type_composition.py`
+  (~2 min) — per-`Type` stems/cells/trait medians, cells lost entirely, and the per-cell median shift a PFT-set
+  change induces. **Run it whenever you change the stem filter**, and never mix populations across a
+  train/eval/floor comparison (that mix is what made the pre-S1 noise floor unreadable).
+- Hainich (42490) has only ids 1–5 + grass 8 ⇒ every single-cell gate is blind to this. A green Gate-3 says
+  nothing about the global population.
+- **`lai == 0` hazard:** `growth_eff = applied_npp/max(lai,EPS)` divides by `EPS=1e-6` where the joined
+  `LAI_STAND` is exactly 0 (202 106 of 1 348 400 historic cell-years) → a `growth_eff` of ~1e9 in the
+  conditioning. The coverage guards CANNOT catch it: the feature tables are complete, so a zero is *present*,
+  not missing. Guard `lai > 0` explicitly and assert a sane `growth_eff` max.
+
+## The NOISE-FLOOR companion table (ADR 0030)
+
+The trait gate needs a **SEED=2 copula table built identically to seed1** — only `SEED` may differ, and
+**`STEM_CAP` must stay OFF** (it subsamples `Y`, which would inject subsampling noise into the floor; the
+boundary window is free, it touches only `Xc`):
+```bash
+MODE=copula SCENARIO=historic SEED=2 OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2 \
+  TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-copula2 scripts/build_slow_runtime_table.py   # ~70 s
+```
+Then `scripts/noise_floor_vs_emulator.py` (see the **emulator-validation-figures** skill for the gate's
+semantics). **`sbatch_python.sh` forwards `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW` only since
+2026-07-28** — an older session's copy of this command silently built a *count* table into a copula dir.
+
 ## Load-bearing gotchas (this is why the DRF is trusted)
 
 - **Feature order MUST match the runtime `flux_feature_vector`** (`src/components/slow.jl`): `[bm_inc_cell,
