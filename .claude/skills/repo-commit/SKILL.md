@@ -203,3 +203,19 @@ grep -oE "<Pkg> v[0-9.]+" /tmp/ci.log | sort -u      # the resolved version, to 
 own latest run is still green (it often is, simply because it predates the release), which tells you the break
 will hit every branch on its next push and is not yours. `[compat]` is **integrator-only** (ADR 0029), so a
 line records the one-line pin as a blocker rather than applying it.
+
+**Confirm it is repo-wide before you touch `main`, then land the pin THERE, not on your branch.** Pull the
+same failing job log for a *sibling* line's latest sha: an identical failure on a completely unrelated diff is
+the proof. `[VERIFIED 2026-07-28]` JET 0.12.0 failed identically on line/M `693322fa` (docs+tests only) and
+line/O `11ef8d89`. Because the file is integrator-owned, the fix belongs on `main` (drive the integration
+worktree with `git -C "$INT"` under the `flock`, never `git switch main`); putting it on your branch instead
+leaves the other three lines broken and duplicates the change at merge time.
+
+**⚠️ Then expect a CONCURRENT DUPLICATE FIX, and check the merge for a duplicate TOML key.** A repo-wide break
+is visible to all four lines at once, so two sessions independently pinned JET the same afternoon
+(`47c6407a` from M, `51529464` from E). Git merges two *identical* `[compat]` lines cleanly, but two lines
+that differ only in bound or comment merge into **two `JET = …` entries in one `[compat]` table**, which is a
+duplicate-key TOML error that reds every job — a worse break than the one being fixed. After any merge that
+touched `Project.toml`/`test/Project.toml`, run `grep -n '^<Pkg> = ' test/Project.toml` and confirm exactly one
+entry. The narrative conflict shows up in `MEMORY.md` instead (both sides append a TODO in the same list) —
+resolve by keeping ONE entry and the newer sibling bullets, not by taking a whole side.
