@@ -31,6 +31,15 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 Enzyme = "0.13.0 - 0.13.188"
 FiniteDifferences = "0.12"
 ForwardDiff = "1"
+# PINNED to exclude JET 0.12: it REMOVED the `target_defined_modules` configuration option that
+# `test/jet_tests.jl` passes, so `JET.test_package(...; target_defined_modules=true)` dies with
+# `JETConfigError: Given unexpected configuration: target_defined_modules = true` — 106848 tests pass,
+# 0 fail, and that single config rejection is the only error. It surfaces ONLY on `test (1)`
+# (Julia 1.12, which resolves JET 0.11+); `test (lts)` (Julia 1.10) caps at JET 0.9.x and stays green,
+# which is the documented "red on test (1) only" dependency-bump signature (CLAUDE.md §2/§5).
+# 0.9 for the lts job, 0.11 for `test (1)` — both accept the option. Lift by migrating the call to
+# JET 0.12's replacement API, then widening this bound.
+JET = "0.9, 0.11"
 Lux = "1"
 Optimisers = "0.4"
 Zygote = "0.6, 0.7"
