@@ -69,6 +69,32 @@ PFT sets, and the "weak" axis' floor was inflated ~3×.
   (`sd(pred)/sd(truth)`) alongside the correlation — a correlation is scale-blind and hides a model that
   regresses everything toward the mean.
 
+## 3c. A regenerated fixture that MOVED: run the CONTROL before blaming your edit (2026-07-28)
+
+When a "regenerate it and it must come back byte-identical" gate fails, you have **two** candidate causes and a
+one-tier gate cannot tell them apart:
+
+  (a) your edit changed the computation, or
+  (b) **the committed fixture was already stale** — regenerating it from *unchanged* code would move it too.
+
+Do NOT widen the gate, and do NOT write it off as "run-to-run jitter" (§2b). Run the **control**: rebuild the
+same artifact with the generator **as of a git ref** (`git show REF:path/to/builder > /tmp/...`, then run that
+copy) and diff it against your working tree's output field-by-field. A generator that hard-codes its own
+constants is self-contained, so this works even when your edit moved which module a constant comes from.
+Interpretation: identical ⇒ your edit is a no-op and the fixture is stale (fix that separately, as its own
+deliberate change); different ⇒ that diff *is* your answer, and it names the moved field for you.
+
+The measurement is cheap and it converts an ambiguous red gate into a specific finding. In the case that taught
+this, the moved fields (`soilmoist` 0.7→0.86, `lai` 21.2→2.77, everything else bit-identical) named the cause —
+a retired proxy→real feature migration — and the control proved the edit under test was innocent
+(max|abs diff| = 0 on all 15 columns). Reference implementations:
+`scripts/diagnose_slow_table_drift.py` (the control) + `scripts/verify_hainich_demo_artifacts.sh` (a gate with
+a three-way `PASS` / `FAIL` / `STALE-FIXTURE` verdict); ADR 0032 for the write-up.
+
+**Generalization worth remembering:** a golden fixture is only a gate on *change* if it is itself current. Two
+fixtures that a single consumer loads together (there: a count `.drf` + a recruit `.rcop` sharing four
+conditioning columns) must be regenerated together, or they silently drift onto different bases.
+
 ## 4. Time-box and set an escalation trigger
 
 Decide up front: "N hours / M probes; if the hypothesis isn't confirmed by then, escalate to the owner
