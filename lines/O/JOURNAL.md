@@ -138,3 +138,34 @@
 - **Also:** corrected the NeuralCrop stance — CC-BY-NC permits non-commercial use and this is research, so its
   code IS usable, cited. Owner corrected me; I had over-applied the restriction.
 - **Next:** O3 — implement `FDiffPhotosynthesis` per design §4 and quantify online-vs-offline GPP at Hainich.
+
+## 2026-07-28 (cont.) — ADR 0082 + two silent-failure findings in Terrarium's vegetation path  [O2/O3a]
+- **Owner steering:** online = best possible ESM, NOT LPJmL-FIT fidelity; validate against observed
+  climate/vegetation; and do the soil-moisture validation/retraining.
+- **ADR 0082** records it: two explicit configurations. OFFLINE unchanged (guardrail 3, C-binary oracle).
+  ONLINE = Terrarium owns skin temperature + SEB + soil water/thermal, we own vegetation (S + FIT
+  photosynthesis + FIT water-limited ET via the pluggable `AbstractEvapotranspiration`), scored against
+  PLUMBER2/FLUXNET + observed vegetation. Guardrail 3 SCOPED not weakened; conservation binds both.
+  ClimBuf cold-starts from a SpeedyWeather-only spin-up on ITS OWN climate (obsclim seeding rejected).
+- **Deciding evidence for handing over the SEB:** `surface_energy_balance.jl:128` computes LE *through* the
+  ET scheme INSIDE the skin-temperature solve, then :149-151 recomputes ET at the CONVERGED T_skin ⇒ LE and
+  T_skin mutually consistent. Component E takes LE from F at a DIFFERENT temperature and makes H the residual
+  (ADR 0017's own "no privileged residual" exception). Offline a caveat; online a defect.
+- **TWO SILENT-FAILURE FINDINGS in Terrarium's vegetation path — both would have wasted runs:**
+  1. `[VERIFIED job 1622826]` Enabling the default `VegetationCarbon` CRASHES a coupled run:
+     `AssertionError: vapor pressure deficit must be greater than zero` (`MedlynStomatalConductance`
+     asserts `abs(vpd) > 0`, medlyn_stomatal_conductance.jl:51). VPD=0 is physically realizable.
+  2. `[VERIFIED job 1622830]` **The default stratigraphy is pure sand (`clay=0`), which collapses SURFEX's
+     `wilting_point = 37.13e-3·√(clay·100)` and `field_capacity = 89.0e-3·(clay·100)^0.35` to EXACTLY ZERO**,
+     so `plant_available_water = min(1, θw/0) ≡ 1.0` wherever there's water. **It does not error — it
+     silently reports "fully unstressed everywhere"**, deleting the drought response while looking plausible.
+     This is the more dangerous of the two. Promoted to a PREREQUISITE (O3a): prescribe a real clay/porosity
+     field via `PrescribedSoilHorizon`, and add a guard rejecting `field_capacity <= wilting_point`.
+- **soilmoist mapping settled semantically:** `soilmoist` ← layer-mean **`plant_available_water`**, NOT
+  `saturation_water_ice` (porosity- vs WHC-normalized = a DEFINITIONAL mismatch, not a distribution shift).
+  LPJmL training reference measured for the comparison (historic, 1348400 cell-years): min 0.0167, q50 0.4635,
+  mean 0.5075. The comparison itself is blocked on O3a — cannot compare against a degenerate PAW ≡ 1.
+- **The 2-day coupled run itself worked** (135 s, soil state `(4608,1,30)`) — the harness is solid; both
+  failures were in Terrarium's vegetation/soil defaults, not the coupling.
+- **Next:** O3a (real soil texture + the degeneracy guard) → O3b (finish the soilmoist comparison, raise the
+  line-S integration point) → O3c (the photosynthesis spike).
