@@ -22,10 +22,14 @@ Order matters — do NOT publish anything from a mixed-basis state:
    `build_slow_flux_table.py::PFT_PARAMS` — it assumes TEMPERATE mortality params for every id, so ids 0/6
    need their own from `par/pft_lpjmlfit.js`, not just a longer key list.
 2. **Add the `lai == 0` guard FIRST** (also ADR 0031): `growth_eff = applied_npp/max(lai,EPS)` divides by
-   `EPS=1e-6` where the joined `LAI_STAND` is exactly 0 (202 106 of 1 348 400 historic cell-years) — it
-   produced a `growth_eff` max of **1.19e9** in the new seed2 table vs 3.1e4 in seed1. The coverage guards
-   CANNOT catch it (the feature tables are complete; a zero is *present*, not missing). Drop or floor those
-   rows and assert a sane maximum.
+   `EPS=1e-6` where the joined `LAI_STAND` is exactly 0 (**202 106 of 1 348 400** historic cell-years,
+   verified). Measured (`/p/tmp/jamirp/emulator_global/probe_growth_eff_lai0.py`, job 1617052): the seed1
+   **production table is CLEAN** (max 31 183, zero rows >1e6 ⇒ no published number is affected), but the seed2
+   table has **204 867 rows (0.15 %) >1e6, max 1.19e9**. That asymmetry is **unexplained** — same lai table
+   both times; falsify this first: the rows may exist in both but with `applied_npp == 0` in seed1, where
+   `0/EPS = 0` hides them. The coverage guards CANNOT catch any of it (the feature tables are complete, so a
+   zero is *present*, not missing). Add an explicit `lai > 0` guard + a `growth_eff` max assertion. ADR 0030's
+   floor is unaffected either way (it reads `Y` only, never `Xc`).
 3. **Re-derive → retrain → re-validate:** count + copula tables (historic, ssp370, pooled) →
    `run_global_slow_{training,copula}.sh` → K-fold-by-cell OOS + hold-out-by-scenario → figures.
    **Version, never overwrite** (`…_t7.drf` / `…_t7.rcop` or a meta version bump): line M pins these, so this
@@ -77,7 +81,7 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
   number above and below is on ids 1–5 / **45 009** of 54 020 tree cells: id 0 (tropical broadleaved evergreen)
   and id 6 (larch) are dropped = 32.5 % of survivor tree stems, 16.7 % of tree cells invisible. Not a decision
   — a stale-yaml port defect. **S1b fixes it and everything below must then be re-measured.**
-- **The open gap — trait per-cell medians, now EXACT (`[VERIFIED 2026-07-28]`, ADR 0030, job 1616690;
+- **The open gap — trait per-cell medians, now EXACT (`[VERIFIED 2026-07-28]`, ADR 0030, job 1617055;
   ids-1..5 population).** Both sides on the copula basis (`seed1-basis` = **1.000** on all 4 axes ⇒
   apples-to-apples; the pre-S1 0.49/0.09 cross-checks were the truncation, not "median instability"):
 

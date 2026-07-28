@@ -156,9 +156,12 @@ def percell_table(table_dir, with_pred, with_halves=False):
 
 
 def verdict(gap):
+    """Label for the RAW floor−emu gap. This gap is a LOWER BOUND on the headroom (it is the ceiling only for
+    a predictor that is itself a fresh stochastic realization) — the ATTENUATION block below carries the
+    verdict that counts. Hence "≥": never read a small raw gap as "nothing left to gain"."""
     if gap <= 0.05:
-        return "AT FLOOR (irreducible)"
-    return f"HEADROOM (+{gap:.3f})" if gap > 0.10 else f"near floor (+{gap:.3f})"
+        return f"≥{gap:.3f} — at the third-realization floor (see ATTENUATION for the real gap)"
+    return f"≥{gap:.3f} HEADROOM (lower bound)" if gap > 0.10 else f"≥{gap:.3f} (lower bound)"
 
 
 def report(name, note, floor1, floor2, emu, show_basis=False, same_population=True):

@@ -62,7 +62,7 @@ Those are the pre-S1 `seed1-basis` numbers (0.973/0.488/0.761/0.092) to three de
 were measuring different PFT mixtures — and the complete tree set carries **1.3–2.7× more between-cell
 spread** on three of the four axes.
 
-## The measurement, made basis-clean (evidence — job 1616690)
+## The measurement, made basis-clean (evidence — job 1617055; identical numbers in 1616690 and 1617044)
 
 Three bases, most authoritative first:
 

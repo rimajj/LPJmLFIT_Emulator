@@ -122,13 +122,25 @@ subset of LPJmL-FIT's forest**, and every global Component-S fidelity number is 
 - Compute is modest and known: a copula table is ~70 s, a count table minutes, a global retrain ≈ 1–4 h on 32
   cpus (the `run_global_slow_*.sh` orchestrators already do build→eval→train in one job). The 186 GB daily
   F/E data and the C runs are **not** re-run — this is a re-derivation from the existing `ind` parquets.
-- **A related latent defect is recorded here, not fixed:** `growth_eff = applied_npp / max(lai, EPS)` divides
-  by `EPS = 1e-6` where the joined `LAI_STAND` is exactly 0 (202 106 of 1 348 400 historic cell-years have
-  `lai == 0`), which produced a `growth_eff` maximum of **1.19e9** in the seed2 copula table against 3.1e4 in
-  seed1. The soilmoist/lai tables are *complete* (all 67 420 cells × 20 yr), so the `drop_frac`/`cells_lost`
-  coverage guards cannot fire on a zero — a zero is present, not missing. The re-derivation must add an
-  explicit `lai > 0` guard (drop or floor the row) and assert a sane `growth_eff` maximum; conditioning on a
-  1e9 outlier is a live train/inference hazard.
+- **A related defect is recorded here, measured but NOT fixed:** `growth_eff = applied_npp / max(lai, EPS)`
+  divides by `EPS = 1e-6` where the joined `LAI_STAND` is exactly 0 — **202 106 of 1 348 400 historic
+  cell-years have `lai == 0`** (verified directly: `cell_year_lai_hist.parquet`, 67 420 cells × 20 yr,
+  min 0.0, no NaN). Measured on the conditioning columns themselves
+  (`/p/tmp/jamirp/emulator_global/probe_growth_eff_lai0.py`, job 1617052):
+  - **the seed1 PRODUCTION table is CLEAN** — `growth_eff` max **31 183**, mean 121.6, and **zero** rows above
+    1e6. So the trained global artifacts are not contaminated, and no published number needs revisiting on
+    this account.
+  - the **seed2** table has **204 867 rows (0.15 %) above 1e6**, max **1.19e9**, mean 264 495 — so when this
+    fires it is broad, not one outlier. It cannot affect ADR 0030's floor, which uses the trait targets `Y`
+    only and never reads `Xc`.
+  - **The seed-to-seed asymmetry (0 vs 204 867) is UNEXPLAINED and is the first thing to diagnose**, since
+    both builds joined the *same* lai table. Leading hypothesis to falsify: such rows exist in both seeds, but
+    in seed1 every one has `applied_npp == 0` (all its stems stagnating or `Height<=0`), and `0/EPS = 0`
+    produces no blow-up — i.e. the trigger is `lai == 0` **and** positive applied npp. Do not assume the
+    mechanism; the probe above plus a per-(Cell,Year) join against the lai table settles it in one pass.
+  The coverage guards structurally cannot catch any of this: the feature tables are *complete*, so a zero is
+  **present**, not missing. The re-derivation must add an explicit `lai > 0` guard (drop or floor the row) and
+  assert a sane `growth_eff` maximum — conditioning on a 1e9 value is a live train/inference hazard.
 - Until the re-derivation lands, **S2 is blocked** (ADR 0030 §5): tuning conditioning against a truncated
   population would optimise the wrong target.
 
