@@ -174,7 +174,7 @@ no pipe. Runic wants multi-line function calls with each arg group on its own in
 
 ```bash
 DOCS_LINKCHECK=false julia --project=docs docs/make.jl      # CI keeps linkcheck ON ($JULIA — not on PATH)
-julia scripts/gen_diagrams.jl --check                       # diagram drift alarm
+julia --project=. scripts/gen_diagrams.jl --check           # diagram drift alarm — NEEDS --project=.
 ```
 First run in a fresh checkout: `$JULIA --project=docs -e 'import Pkg; Pkg.develop(path="."); Pkg.instantiate()'`.
 **Do that BEFORE submitting the docs build to SLURM too** — `scripts/sbatch_julia.sh` warms only `--project=.`
@@ -183,6 +183,15 @@ with `ArgumentError: Package Documenter … is required but does not seem to be 
 missing dependency but is an unwarmed environment (and a bare `Pkg.instantiate()` without the `Pkg.develop`
 first fails earlier still, with `expected package LPJmLFITEmulator [e4cfba23] to be registered` — it is a
 local path dep, exactly as `.github/workflows/docs.yml` does it).
+(`docs/Manifest.toml` is gitignored, so that `Pkg.develop` is safe to run in any worktree.)
+
+**Two traps in the diagram alarm, both hit on 2026-07-28:** (1) `gen_diagrams.jl` does `using
+LPJmLFITEmulator`, so without **`--project=.`** it dies with `ArgumentError: Package LPJmLFITEmulator not found
+in current path` — which reads like a broken checkout, not a missing flag. (2) **NO CI job runs this check**
+(grep `.github/workflows` for `gen_diagrams` — nothing), so CLAUDE.md §9's "the diagram-staleness gate reds
+`main`" means the LOCAL alarm only. `docs/src/generated/components.mmd` had consequently been stale since the
+Phase-4 commit `773945fb` — the rendered diagram contradicted `src/registry.jl` for weeks. **Run it whenever you
+touch `src/registry.jl`, and don't assume CI will catch it.**
 
 **Strict-docs gotcha (`warnonly=false`, `checkdocs=:exports`) — a docstring change can turn `docs` RED while
 all tests stay green.** Two ways it bites:
