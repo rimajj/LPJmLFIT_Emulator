@@ -40,6 +40,36 @@ then also refuted the two obvious mechanisms — boundary-importance and space-f
 "real but mechanism not cleanly identified" rather than inventing one. Reporting an unconfirmed mechanism is
 worse than reporting a characterized-but-unexplained effect.)
 
+## 2c. If the quantity is a RESIDUAL, decompose it algebraically BEFORE sweeping anything
+
+When the thing you are diagnosing is defined as a residual — Component E's `H = Rn − LE − G`, a carbon
+closure term, any "everything else" bucket — its error is **algebraically constrained**, and writing that
+constraint down costs nothing and settles the attribution outright. For E (ADR 0073):
+
+    H_m = Rn_m − LE − G_m   (exact)   ⇒   ΔH = ΔRn − ΔG + ε_obs,   ε_obs ≡ Rn_o − LE − H_o − G_o
+
+Every W/m² of the error had to be one of three terms, **and `g_a` was in none of them** — so no `g_a`
+sweep could ever have identified the cause, even though sweeping it visibly moved the metric.
+
+- **A monotone sweep on a residual is usually BIAS CANCELLATION, not evidence.** ADR 0072 read a
+  `stab_amp` sweep that improved monotonically to its bound as "the stability form is the limitation".
+  It wasn't: the parameter shifted the solved state in whichever direction offset a *different* term's
+  error. Measured afterwards, the modelled conductance was within **0.7 %** of the tower's measured value.
+- **Include the REFERENCE's own inconsistency as a named term.** `ε_obs` (the tower's failure to close)
+  was −62 W/m² at one site — larger than the entire "model error" being chased there. A model that closes
+  exactly *cannot* match a reference that doesn't, so that part is unclosable by construction and the site
+  simply cannot score that quantity. Don't let it dilute a mean; say which sites can constrain the thing.
+- **Perturb parameters through the REAL solver, never a re-implementation.** Find an existing input the
+  target is exactly proportional to (for `g_a` under `enable_stability=false`, that is `wind`) and scale
+  that. A diagnostic re-implementation introduces exactly the basis mismatch §1 is about.
+- **Compare levers over each parameter's OBSERVATIONALLY-IMPLIED range, not over equal multiples.** A 100×
+  bracket on a parameter known to ±20 % proves nothing; the honest ranking used ±(0.8–1.7)× for the
+  measured conductance against 1.0-vs-7.0 for the unconstrained one.
+- **Check the model's NATIVE STEP before calling a sub-daily miss a bug.** The coupled driver called the
+  closure once per DAY, so the half-hourly diagnosis was of a regime the model never runs in — and the
+  defect turned out to be a *timescale* mismatch in a coefficient, visible only once the comparison was
+  redone at the native step.
+
 ## 3. Confirm the comparison basis is correct — one cheap check first
 
 Before the expensive probe: reproduce a *known* number (e.g. the C run's own reported annual total, or a
