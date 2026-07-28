@@ -931,3 +931,52 @@ Entry template:
   `test/Manifest.toml` and separate `logs/`.
 - **All four Phase-0 acceptance criteria now PASS** (1 hook self-identification · 2 branch-CI targeting ·
   3 concurrent suites · 4 conflict-free two-line merge). The scaffolding is live and exercised.
+
+## 2026-07-28 — ADVERSARIAL REVIEW of the Phase-0 scaffolding: 2 HIGH + 18 defects found and fixed  [integration]
+- **Why:** I authored the entire parallel-line protocol solo in one pass, and any error in it multiplies across
+  four lines. So before letting a single line session act on it, I ran a 10-agent adversarial review
+  (5 dimensions × find-then-independently-verify): hook robustness · collision-surface completeness ·
+  STATE.md factual accuracy · CI/git mechanics · doc coherence. 20 findings survived verification. I then
+  re-confirmed the load-bearing ones myself rather than trusting the agents.
+- **HIGH-1 — the merge ritual could not execute at all.** `git switch main` from a line worktree fails
+  `fatal: 'main' is already used by worktree at …` (exit 128). Reproduced directly in `wt-S`. The broken
+  command was in FOUR places **including the hook text every session reads**. It had never run because both
+  acceptance merges were done from the integration worktree, where it happens to work — a textbook case of a
+  verification that exercised the one path where the bug is invisible. Fixed: `git -C "$INT"`, no switch-back.
+- **HIGH-2 — rebase-then-plain-push is self-contradictory.** The mandated `pull --rebase` rewrites
+  already-pushed commits ⇒ plain push rejected non-fast-forward ⇒ git's hint leads to `pull --no-rebase`,
+  which **duplicates every rebased commit**. Confirmed: `line/S` was already 10 ahead of its remote. Fixed:
+  `--force-with-lease`, and **merge `origin/line/<X>`** so what lands is the sha CI verified (branch CI is
+  ~10 min — long enough for a sibling push to force another rebase and invalidate a pre-rebase verdict).
+- **Other confirmed fixes:** `flock` on the integration worktree (the merge step had reintroduced exactly the
+  shared-checkout contention worktrees were adopted to remove); "check main's NEWEST CI run" (green branch ≠
+  green main — format/docs/python/Aqua/JET are whole-package gates, `docs` never runs on a branch, and
+  **GitHub keeps only ONE pending run per branch** — verified in the API: 2 cancelled `main` CI runs, one of
+  them my own `6f53c158`); hook detached-HEAD recovery (mid-rebase previously printed the INTEGRATOR block
+  inside a line worktree, silently dropping the handoff); hook NEXT extraction now fence-aware (a `## ` line
+  inside a code fence truncated the handoff).
+- **Ownership gaps closed.** 7 of 14 `src/` files were **unowned** — the entire F core (`fdiff.jl`,
+  `fdiff_smoothops.jl`, `components/fast.jl`) plus the shared libraries — while S4/S6 and M's roadmap both
+  require touching them; and `.claude/skills/**` (40 commits, and §8's capture gate pushes *every* session to
+  edit one) was absent entirely. `CLAUDE.md` §9 now carries the complete map: F core → **M** (an S need is an
+  integration point), shared libraries → additive-only, skills → primary owner per skill with the cross-cutting
+  ones append-only, infrastructure (`Project.toml`, workflows, `.gitignore`, `config/**`, the sbatch wrappers)
+  → integrator-only.
+- **Doc contradictions fixed:** CLAUDE.md §5 still mandated main-only; §8's routing table still sent narrative
+  to the root JOURNAL and state to MEMORY; §7 still carried ADR-0023's superseded `age_mean` instruction; the
+  `consolidate-memory` skill still said main-only and had no integrator-only gate on the shared MEMORY reshape;
+  MEMORY.md called itself both "shared, additive" and integrator-owned. ADRs 0028/0029 got **Errata** sections
+  (bodies preserved — immutability) pointing at `CLAUDE.md` §9 as authoritative.
+- **STATE.md factual errors fixed — one of them changes a line's plan.** Line M's "no `whc_nat` exists yet"
+  was misleading: **`whc_nat.nc` (4.5 GB, all cells) is already on disk** in the daily output, so M1 is an
+  extractor-writing job, not data generation — materially easier than written. Line S's S1 gate was
+  unachievable-then-vacuous (and omitted a fourth failing axis, D95max 0.761); replaced with a same-basis
+  deliverable.
+- **Then synced all four line worktrees to the fixed `main`** (`d67c1874`). This mattered: each worktree had
+  the OLD broken hook checked out, so a session launched in `wt-S` would have read the broken ritual. Verified
+  post-sync: all four have the fix and none has the broken command.
+- **Verdict on the review itself:** worth it. Two defects would have hit the first line session immediately,
+  and neither was findable by the acceptance checks I had designed — they only showed up because independent
+  reviewers attacked the *documented procedure* rather than the *observed behaviour*.
+- **Next (owner):** the protocol is now correct and every worktree carries it. `cd /p/projects/open/Jamir/wt-<X>
+  && claude` starts a line; the hook names it and hands over its NEXT action.
