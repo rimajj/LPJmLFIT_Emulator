@@ -1,6 +1,6 @@
 ---
 name: plumber2-reference
-description: Stage and load the PLUMBER2 / FLUXNET observational reference that Component E (the surface-energy-balance + skin-temperature closure) is validated against — anonymous NCI THREDDS download, the 9-site biome-matched set, the model-facing half-hourly/daily/diurnal tables, and the unit/coverage/closure sanity report. Use whenever working with observed LE / H / Rn / T_skin / Ustar or tower forcing (wind, psurf, SWdown, LWdown, Tair, Qair, precip), adding a site, validating Component E against observations (line E, milestones E1/E4), or hitting the PLUMBER2 `_FillValue = -9999` masked-array trap. ALSO the P2 validation itself — scoring the SEB closure against the towers (Experiment A: tower forcing + the tower's own LE ⇒ H / T_skin / Rn skill, the |h_cor_uc| acceptance band, the diurnal cycle, the stability sweep). Names scripts/fetch_plumber2_sites.py, scripts/validate_e_plumber2_load.py, scripts/build_e_seb_validation_table.py, scripts/validate_e_seb_vs_plumber2.jl, data.energy_reference, ADR 0070/0072.
+description: Stage and load the PLUMBER2 / FLUXNET observational reference that Component E (the surface-energy-balance + skin-temperature closure) is validated against — anonymous NCI THREDDS download, the 9-site biome-matched set, the model-facing half-hourly/daily/diurnal tables, and the unit/coverage/closure sanity report. Use whenever working with observed LE / H / Rn / T_skin / Ustar or tower forcing (wind, psurf, SWdown, LWdown, Tair, Qair, precip), adding a site, validating Component E against observations (line E, milestones E1/E4), or hitting the PLUMBER2 `_FillValue = -9999` masked-array trap. ALSO the P2 validation itself — scoring the SEB closure against the towers (Experiment A: tower forcing + the tower's own LE ⇒ H / T_skin / Rn skill, the |h_cor_uc| acceptance band, the diurnal cycle, the stability sweep). ALSO diagnosing a MISS in H / T_skin / G against the towers — the exact decomposition `ΔH = ΔRn − ΔG + ε_obs` (H is the residual, so `g_a` is in NONE of those terms), injecting an arbitrary or measured-`u*` `g_a` through the real solver, the tower-non-closure `ε_obs` trap that makes AU-Tum/AU-Rob unable to score nocturnal H, fitting `lambda_g`, and the check-the-native-DAILY-step rule. Use before ANY `stab_amp`/`lambda_g` sweep or retune. Names scripts/fetch_plumber2_sites.py, scripts/validate_e_plumber2_load.py, scripts/build_e_seb_validation_table.py, scripts/validate_e_seb_vs_plumber2.jl, scripts/e_nocturnal_h_decomp.jl, data.energy_reference, ADR 0070/0072/0073.
 ---
 
 # plumber2-reference — the observational reference for Component E
@@ -133,6 +133,52 @@ excludes F's ET error by construction — a miss is E's. Experiment **B** feeds 
 
 **Current verdict to compare against** (ADR 0072, 497 936 steps, 4 sites): `Rn` R² 0.986–0.996 · `T_skin` daily
 RMSE 1.41–1.97 K / R² 0.76–0.95 · `H` bias +6.4…−19.2 W/m² with 76.4 % of DE-Hai daily means inside the band,
-daily R² 0.125–0.778, **nocturnal R² −1.0…−5.6** (the closure runs 1–2 K too cold at night). The CI regression
-gate lives in `test/testitems/energy_closure_tests.jl`; the night-cold bias is pinned as a **sign** assertion,
-so a genuine fix trips it — update the test and supersede ADR 0072 together.
+daily R² 0.125–0.778, **nocturnal R² −1.0…−5.6**. The CI regression gate lives in
+`test/testitems/energy_closure_tests.jl`. ADR 0072's *diagnosis* of that failure (items 4 + 6) is **superseded
+by ADR 0073** — see the next section before touching `stab_amp`.
+
+## Diagnosing a residual in H — do this BEFORE any sweep (ADR 0073)
+
+```bash
+scripts/sbatch_julia.sh E-e6decomp --project=. scripts/e_nocturnal_h_decomp.jl
+# -> <energy_reference>/derived/seb_validation/e6_nocturnal_h_decomp.txt
+```
+
+**`H` is not predicted — it is the EXACT residual `Rn_m − LE − G_m`.** So writing the tower's own non-closure
+as `ε_obs ≡ Rn_o − LE − H_o − G_o`, the H error obeys *identically* (algebra, not a hypothesis):
+
+    ΔH = ΔRn − ΔG + ε_obs  =  ΔRn − (G_m − G_res),   G_res ≡ Rn_o − LE − H_o
+
+**`g_a` is in none of those terms** — it acts only by moving the solved `T_skin`. Decompose first; a
+parameter sweep on `H` cannot tell you which term it is moving. The drive tables already carry `g_obs` and
+`rn_obs`, so the decomposition costs nothing.
+
+- **A `stab_amp`/`g_a` sweep that looks monotone is usually BIAS CANCELLATION.** Measured (ADR 0073): the
+  closure's nocturnal `g_a` is within **0.7 %** of DE-Hai's measured-`u*` value, substituting the measurement
+  makes night H **worse at all 4 sites**, and a **100× `g_a` bracket** never reaches positive nocturnal R².
+  Suppressing `g_a` merely shifts the skin in the direction that offsets the ground-heat error.
+- **Inject an arbitrary `g_a` through the REAL solver — never re-implement it.** With
+  `enable_stability=false`, `g_a = k²U/(lm·lh)` is exactly proportional to wind, so scaling `wind` is an exact
+  `g_a` multiplier, and `U_eq = g_a_target·lm·lh/k²` reproduces any target (e.g. the tower's
+  `g_a* = 1/(U/u*² + ln(z0m/z0h)/(k·u*))` from the `ustar` column). Report how often `U_eq` hits the 0.1 m/s
+  `min_wind` floor — it binds on 1–9 % of steps.
+- **`ε_obs` is a first-class term, not noise.** Mean nocturnal `ε_obs`: DE-Hai **−0.32** (the tower closes),
+  AU-ASM −12.0, AU-Rob −47.5, AU-Tum **−62.3** W/m². A model that closes exactly *cannot* match `H_o` where
+  `ε_obs` is large ⇒ **AU-Tum and AU-Rob cannot score nocturnal H at all** (they stay valid for `T_skin`).
+  Score H at DE-Hai and AU-ASM.
+- **Fit `λ_g` against BOTH targets and compare** — the measured plate `G_o` and the budget-implied `G_res`.
+  They agree only where `ε_obs ≈ 0` (DE-Hai 0.94 vs 1.27) and diverge 10× where it is not (AU-Tum 0.90 vs 9.67,
+  AU-Rob 1.46 vs 19.92). That divergence is the `residual-diagnosis` §3b population signal, and it is how you
+  decide which sites can constrain a parameter at all.
+- **CHECK THE MODEL'S NATIVE STEP BEFORE CALLING A SUB-DAILY MISS A BUG.** `run.jl::couple_day!` calls
+  `solve!` **once per day** (`src/run.jl:93`), so a half-hourly diagnosis is of a regime the coupled model
+  never runs in. Aggregate the drive table to daily means and solve once per day — that is the operational
+  number. Doing this is what turned "nocturnal H is broken" into "`λ_g = 7.0` is a *diurnal-amplitude*
+  conductance applied to a *daily-mean* gradient".
+- **The standing finding:** `λ_g ≈ 1.0`, not the 7.0 default, at the daily step — implied `λ_g` 0.83–1.10 at
+  all four sites, it reproduces the observed daily sd(`G_o`) 4.3–6.3 W/m² (the default gives 14–31), and daily
+  H R² goes 0.03 → **0.64** (DE-Hai) / 0.33 → **0.74** (AU-ASM). **No default was changed** — `lambda_g` is an
+  E→M integration point; `SEBEnergyClosure(params = SEBParams(lambda_g = 1.0))` already works today.
+- **Nocturnal R² > 0 is NOT reachable by any `λ_g`** in the present form (`ε_obs` scatter alone is the size of
+  the night H RMSE). That needs a force-restore / two-layer soil scheme + canopy heat storage — a design
+  change, and the blocker for line O's sub-daily online coupling.

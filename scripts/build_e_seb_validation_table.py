@@ -20,6 +20,9 @@ This script writes one plain CSV per site that a pure-Base Julia driver can read
             z_ref    = reference_height [m] from the NetCDF — the height the forcing was MEASURED at, which
                        must override `SEBParams.z_ref = 10.0` or `g_a` is evaluated at the wrong level
   target    h_obs (`h_cor` where present, else `h`), rn_obs, g_obs, t_skin_obs (OzFlux `LWup` sites only)
+  diag      ustar [m/s] — the tower's MEASURED friction velocity. Not used by Experiment A; carried so the
+                       nocturnal-H diagnosis (`scripts/e_nocturnal_h_decomp.jl`, E6) can replace the modelled
+                       `g_a` with an observation-derived one, `1/(U/u*² + ln(z0m/z0h)/(k u*))`
   band      h_uc = |`h_cor_uc`| — PLUMBER2's own joint uncertainty, the E4 acceptance band (FLUXNET2015
                        sites only; OzFlux files ship none)
   context   t_soil — the deep-soil reference E's `solve!` maintains as a τ=30 d EWMA of daily-mean Tair,
@@ -133,6 +136,9 @@ def main() -> int:
         out["rn_obs"] = df["rn"] if "rn" in df else np.nan
         out["g_obs"] = df["g"] if "g" in df else 0.0
         out["t_skin_obs"] = df["t_skin"] if "t_skin" in df else np.nan
+        # Measured friction velocity — diagnosis-only (E6). u* ≤ 0 is a documented OzFlux artifact
+        # (AU-ASM, 0.51 % of steps); NaN it here rather than let a negative u* reach a 1/u* resistance.
+        out["ustar"] = df["ustar"].where(df["ustar"] > 0) if "ustar" in df else np.nan
         out["h_uc"] = df["h_cor_uc"].abs() if "h_cor_uc" in df else np.nan
         out["le_uc"] = df["le_cor_uc"].abs() if "le_cor_uc" in df else np.nan
         out["albedo"] = daily_albedo(df) if "swup" in df else 0.15
