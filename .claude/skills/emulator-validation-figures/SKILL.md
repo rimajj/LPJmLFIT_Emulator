@@ -66,12 +66,17 @@ usual count `OUT=`) and it ALSO emits:
 - `10_trait_percell_median` — per-axis per-cell predicted-vs-observed median (DENSITY hexbin + per-cell
   Pearson r / Spearman ρ in the title). **READ IT RIGHT (bit the owner):** 38k cells saturate a plain
   scatter and hide the diagonal → it LOOKS "totally off" when it isn't. The honest per-cell-median skill is
-  axis-dependent — GLOBAL historic: SLA r=**0.87** (strong), minwscal 0.78, D95max 0.74, **Wooddens 0.52
-  (weak** — predicted per-cell spread only ~0.5× observed ⇒ regresses to the global mean). Root cause is NOT
-  a bug: the copula conditions on flux+boundary and DELIBERATELY excludes stand-state (`live_flux_cond`,
-  ADR 0025), so it nails the POOLED marginal (fig 09) but under-determines per-cell medians of PFT-composition-
-  driven axes (esp. wood density). Improving it = richer environmental / per-PFT conditioning (P3; a frozen-
-  `live_flux_cond`-contract change + global re-fit + ADR; degenerate at single-cell Hainich).
+  axis-dependent — GLOBAL historic on the emulator's own basis: SLA **0.866**, minwscal 0.793, D95max 0.771,
+  **Wooddens 0.567 (weak)**. *(The older 0.87/0.78/0.74/0.52 figures are the same run scored on a `Type<=6`
+  cell set — see the noise-floor section: always state the population.)* **Quote the dispersion too:** the
+  predicted per-cell spread is only **0.55×** observed for Wooddens (a second seed gives 1.00) ⇒ it regresses
+  cells toward the global mean; a correlation alone hides that. Root cause is structural, not a bug: the copula
+  conditions on flux+boundary and DELIBERATELY excludes stand-state (`live_flux_cond`, ADR 0025), and FIT draws
+  traits from **per-PFT** intervals, so a per-cell trait median is a *composition* statistic that neither a
+  composition covariate nor a per-PFT marginal is available to explain. Fixes, in order: **ADR 0031** (train on
+  all seven tree PFTs — today's tables drop ids 0/6, so the tropics are absent) → per-PFT/mixture marginal (S3)
+  → richer conditioning (S2; a frozen-`live_flux_cond`-contract change + global re-fit + ADR; degenerate at
+  single-cell Hainich).
 - `11_trait_ks_map` — per-axis per-cell KS map (spatial where the marginal is reproduced well/poorly).
 - `metrics_traits.txt` — per-axis pooled nqrmse + pooled KS + median-per-cell KS + **median_percell_r /
   median_percell_spearman** (the paired per-cell-median skill — the honest per-cell number; pooled KS alone
@@ -114,7 +119,7 @@ reports three BASES and two ceilings:
   `r_center = emu_r/ceiling`. Report `(GAP, r_center)` **plus `sd(pred)/sd(Y1)`** — correlation is
   scale-blind and the copula is badly UNDER-dispersed between cells (Wooddens 0.55 vs a second seed's 1.00).
 
-**Result (2026-07-28, ADR 0030, job 1616690 — on the ids-1..5 population):** per-axis GAP to the reachable
+**Result (2026-07-28, ADR 0030, job 1617055 — on the ids-1..5 population):** per-axis GAP to the reachable
 ceiling **Wooddens +0.226 · minwscal +0.153 · SLA +0.115 · D95max +0.102** (`r_center` 0.72/0.84/0.88/0.88);
 `tree5` floor 0.694/0.909/0.964/0.791; split-half 0.978-0.999 ⇒ the floor is **trajectory divergence**, not
 finite-stem noise. COUNTS: floor r²=0.962 vs emu 0.9994, but that comparison is still NOT like-for-like
