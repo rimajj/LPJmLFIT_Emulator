@@ -6,30 +6,47 @@
 
 ## NEXT — start here
 
-**S1 — basis-clean noise floor (do this first; cheap, high information).**
-Rebuild the **seed2** copula table so the per-axis trait headroom becomes an exact number instead of a
-qualitative one:
-```bash
-# in wt-S, per the slow-drf-pipeline skill; writes a SEPARATE dir (never clobber seed1)
-MODE=copula SEED=2 BOUNDARY_WINDOW=20 STEM_CAP=400 \
-  OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2 \
-  scripts/sbatch_python.sh S-copula2 scripts/build_slow_runtime_table.py
-```
-Then extend `scripts/noise_floor_vs_emulator.py` to read the seed2 **copula-table** basis (instead of the
-all-years parquet median) so the `seed1-basis` cross-check clears >0.9 on all four axes.
-**Why:** the current `seed1-basis` cross-check (parquet all-years median vs copula-table Y median) is
-**SLA 0.973 · D95max 0.761 · Wooddens 0.488 · minwscal 0.092** — so for three of four axes the
-floor-vs-emulator gap is only qualitative, and S2's success metric is not yet exactly measurable.
+**S1b — widen the training population to FIT's COMPLETE tree set (ADR 0031). This now BLOCKS S2.**
+S1 is DONE (see §Status) and it uncovered a defect that makes S2 premature: every `build_slow_*.py` filters
+`TREE_TYPES=[1,2,3,4,5]`, but `Type` is the 0-based `pftpar` index and **ids 0–6 are all seven tree PFTs**, so
+we drop id 0 (tropical broadleaved evergreen) + id 6 (boreal larch) = **32.5 % of 197.7 M survivor tree stems**,
+and **9 011 of 54 020 tree-bearing cells (16.7 %) are invisible to Component S** — the tropical belt and the
+Siberian larch zone. Read **ADR 0031** (full census, provenance, ordered plan) and **ADR 0030** (the gate you
+re-measure at the end) first. Census reproducer: `scripts/diagnose_ind_type_composition.py` (~2 min).
 
-*Gate (revised 2026-07-28 — the earlier "seed1-basis r > 0.9 on all 4 axes" was a bad gate: it is not
-something S1 can *achieve*, it is the DIAGNOSTIC that S1 makes unnecessary):* after this milestone the floor
-must be computed on the **same basis as the emulator** — i.e. per-cell medians of the seed2 **copula table**
-vs the seed1 copula table, not the all-years parquet — so the `seed1-basis` column becomes structurally 1.0
-and drops out. Deliverable: a per-axis table of `emulator_r`, `floor_r`, and `gap = floor_r − emulator_r` with
-both sides on the copula basis, for all 4 axes. If some axis's floor cannot be put on that basis, say so and
-report that axis's gap as qualitative rather than quoting a number.
+Order matters — do NOT publish anything from a mixed-basis state:
+1. **One imported constant.** Correct `python/src/lpjmlfit_emulator/data.py::TREE_TYPES` and
+   `python/config/config.yaml` to `[0..6]`, and replace the hard-coded copies in
+   `scripts/build_slow_{runtime_table,count_table,flux_table,oracle_reference}.py` with an import so they can
+   never drift again (each site currently carries an ADR-0031 pointer comment). Watch
+   `build_slow_flux_table.py::PFT_PARAMS` — it assumes TEMPERATE mortality params for every id, so ids 0/6
+   need their own from `par/pft_lpjmlfit.js`, not just a longer key list.
+2. **Add the `lai == 0` guard FIRST** (also ADR 0031): `growth_eff = applied_npp/max(lai,EPS)` divides by
+   `EPS=1e-6` where the joined `LAI_STAND` is exactly 0 (**202 106 of 1 348 400** historic cell-years,
+   verified). Measured (`/p/tmp/jamirp/emulator_global/probe_growth_eff_lai0.py`, job 1617052): the seed1
+   **production table is CLEAN** (max 31 183, zero rows >1e6 ⇒ no published number is affected), but the seed2
+   table has **204 867 rows (0.15 %) >1e6, max 1.19e9**. That asymmetry is **unexplained** — same lai table
+   both times; falsify this first: the rows may exist in both but with `applied_npp == 0` in seed1, where
+   `0/EPS = 0` hides them. The coverage guards CANNOT catch any of it (the feature tables are complete, so a
+   zero is *present*, not missing). Add an explicit `lai > 0` guard + a `growth_eff` max assertion. ADR 0030's
+   floor is unaffected either way (it reads `Y` only, never `Xc`).
+3. **Re-derive → retrain → re-validate:** count + copula tables (historic, ssp370, pooled) →
+   `run_global_slow_{training,copula}.sh` → K-fold-by-cell OOS + hold-out-by-scenario → figures.
+   **Version, never overwrite** (`…_t7.drf` / `…_t7.rcop` or a meta version bump): line M pins these, so this
+   is an **integration point** — note it in `lines/M/STATE.md` as well and land both sides together.
+4. **Re-measure the ADR-0030 gate:** `TIME=01:00:00 NCPUS=32 scripts/sbatch_python.sh S-noisefloor
+   scripts/noise_floor_vs_emulator.py`, after building a SEED=2 copula table on the NEW population
+   (`MODE=copula SCENARIO=historic SEED=2 OUT=…_seed2`, ~70 s — and note `sbatch_python.sh` now forwards
+   `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW`, which it silently did NOT before). The floor moves to the
+   `tree7` numbers (Wooddens 0.694 → 0.923), so every headroom figure in §Status is superseded by that run.
 
-Then → **S2** (the big one, below).
+*Gate:* Hainich demo artifacts + golden fixtures **byte-identical** (Hainich has only ids 1–5 — if they move,
+STOP and find out why); `seed1-basis ≥ 0.99` on the new population; cell coverage ≈ 54 020; and a documented
+before/after table of every fidelity number that changed.
+
+Then → **S2/S3** (below). ADR 0031's census makes **S3 the leading hypothesis, not S2**: per-cell trait
+medians are *composition* statistics (FIT samples traits from per-PFT intervals), and the copula has neither a
+composition covariate nor a per-PFT marginal.
 
 ## Scope + ownership (ADR 0029)
 
@@ -60,25 +77,47 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
 - **P1 is DONE**: the flux-driven S runs in the coupled loop, carbon-conserving to ~1e-12 gC (ADR 0018→0027).
 - **GLOBAL offline validation** (K-fold-BY-CELL, 45009 cells, real features): counts per-cell-mean
   **r²=0.9994**, held-out-BY-SCENARIO **R²=0.9847**; trait pooled marginals KS **0.004–0.015**.
-- **The open gap — trait per-cell medians.** `[VERIFIED 2026-07-27]` per-cell-median Pearson r:
-  SLA **0.87** · minwscal **0.78** · D95max **0.74** · **Wooddens 0.52**; the seed1-vs-seed2 **noise floor is
-  0.90–0.97** ⇒ the signal is **learnable, not RNG-limited** ⇒ genuine model headroom. Cause (not a bug): the
-  copula conditions on flux+boundary and *deliberately excludes stand-state* (ADR 0025), which
-  under-determines PFT/biome-composition-driven axes (wood density most).
+- **⚠ The training population is TRUNCATED — ADR 0031 (found 2026-07-28, S1's main outcome).** Every global S
+  number above and below is on ids 1–5 / **45 009** of 54 020 tree cells: id 0 (tropical broadleaved evergreen)
+  and id 6 (larch) are dropped = 32.5 % of survivor tree stems, 16.7 % of tree cells invisible. Not a decision
+  — a stale-yaml port defect. **S1b fixes it and everything below must then be re-measured.**
+- **The open gap — trait per-cell medians, now EXACT (`[VERIFIED 2026-07-28]`, ADR 0030, job 1617055;
+  ids-1..5 population).** Both sides on the copula basis (`seed1-basis` = **1.000** on all 4 axes ⇒
+  apples-to-apples; the pre-S1 0.49/0.09 cross-checks were the truncation, not "median instability"):
+
+  | axis | emu_r | floor (rel_Y) | rel_P | ceiling √(rel_P·rel_Y) | **GAP** | r_center | sd(pred)/sd(Y1) |
+  |---|---|---|---|---|---|---|---|
+  | SLA | 0.866 | 0.964 | 0.997 | 0.981 | **+0.115** | 0.883 | 0.946 |
+  | Wooddens | 0.567 | 0.694 | 0.907 | 0.794 | **+0.226** | 0.715 | **0.546** |
+  | D95max | 0.771 | 0.791 | 0.962 | 0.873 | **+0.102** | 0.883 | 0.732 |
+  | minwscal | 0.793 | 0.909 | 0.986 | 0.947 | **+0.153** | 0.838 | 0.736 |
+
+  Every axis has real headroom (D95max was NOT "at floor" — the raw floor−emu gap of +0.021 is a lower bound;
+  `floor_r` is a realization-vs-realization r, not a predictor ceiling). Split-half 0.978–0.999 vs a floor of
+  0.694–0.964 ⇒ the floor is **trajectory divergence**, not finite-stem noise. The copula reproduces only
+  **0.55** of the true between-cell Wooddens spread (a second seed reproduces 1.00) ⇒ it regresses cells toward
+  the global mean: missing between-cell *composition* signal, exactly as ADR 0025's caveat predicted.
+- Seed2 floor artifact: `/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2` (133 562 549 stems / 45 072
+  cells; rebuild in ~70 s).
 - Artifacts: `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); the committed `.drf`/`.rcop` are the Hainich demo.
 - The online transient boundary (`src/climbuf.jl`, ADR 0027) is BUILT and offline-parity verified.
 
 ## Milestones
 
-- **S1** Basis-clean noise floor → exact per-axis headroom. *(NEXT, above)*
+- **S1** Basis-clean noise floor → exact per-axis headroom. **DONE 2026-07-28 (ADR 0030)** — gate met
+  (`seed1-basis` 1.000 ×4), headroom table in §Status, and it is what uncovered S1b.
+- **S1b** **Widen the training population to FIT's complete tree set (ADR 0031).** *(NEXT, above.)* Blocks S2.
 - **S2** **Close the trait headroom.** Expand the copula conditioning — `COPULA_COND_COLS` in
   `scripts/build_slow_runtime_table.py` **and** `live_flux_cond` in `src/components/slow.jl` **in lockstep** —
   with environment / PFT-composition covariates; global K-fold re-fit (`run_pooled_slow_copula.sh`); measure
-  the per-cell-median r recovered against the S1 floor. **Needs an ADR (0030) + an integration point with M**
-  (artifact version bump). *Gate:* Wooddens per-cell-median r materially up (target ≥0.75) with pooled KS not
-  degraded (≤0.02); report honestly if the conditioning does not deliver.
-- **S3** Per-PFT / mixture copula, if S2 under-delivers — wood density is set by PFT composition, so a
-  per-PFT-mixture marginal may be the right structure rather than more covariates.
+  against the **re-measured** ADR-0030 gate. **Needs an ADR (0032) + an integration point with M** (artifact
+  version bump). *Gate (ADR 0030 §4, replacing "r ≥ 0.75"):* close ≥50 % of the Wooddens GAP to the ceiling
+  **and** lift `sd(pred)/sd(Y1)` to ≥0.75 on that axis, with pooled KS not degraded (≤0.02) and no other axis
+  losing >0.01 of `r_center`. Report honestly if the conditioning does not deliver.
+- **S3** Per-PFT / mixture copula. **Now the LEADING hypothesis, not a fallback** (ADR 0031): FIT draws traits
+  from per-PFT `[low,high]` intervals, so a per-cell trait median is a *composition* statistic — and the copula
+  has neither a composition covariate nor a per-PFT marginal, while predicting only 0.55 of the true
+  between-cell Wooddens spread. Consider running S3 *with* S2 rather than after it.
 - **S4** **Grass ownership** (open risk #8): S owns grass demography; today grass stays F-side and S is
   TREE-only. Needs an ADR + a carbon-conservation gate for grass at the handoff.
 - **S5** Whole-cohort **DROP** + the Gate-3 recursive drift (nqrmse 0.39 vs the documented 0.45 alarm).

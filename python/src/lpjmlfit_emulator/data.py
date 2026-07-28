@@ -65,7 +65,22 @@ assert len(IND_COLUMNS) == 29, "ind schema must have exactly 29 columns"
 
 #: PFT type codes (``Type`` column). Grass PFTs are written with tree fields zeroed;
 #: tree PFTs carry the full trait/size record (config ``variables``; DESIGN.md §3.1).
+#:
+#: .. warning::
+#:    **This value is a KNOWN DEFECT — see ADR 0031.** ``Type`` is the 0-based index into
+#:    the active ``par/pft_lpjmlfit.js`` ``pftpar`` array, where ids **0-6 are all seven
+#:    tree PFTs** (7/8/9 grass, 10-21 crops). ``(1, 2, 3, 4, 5)`` therefore omits id 0
+#:    (tropical broadleaved evergreen) and id 6 (boreal larch) = **32.5 % of all survivor
+#:    tree stems** and **16.7 % of tree-bearing cells entirely** (measured:
+#:    ``scripts/diagnose_ind_type_composition.py``).
+#:    :data:`lpjmlfit_emulator.features.TREE_TYPES` has the correct ``[0..6]``. Do NOT copy
+#:    this constant into new code; ADR 0031 corrects it to ``[0..6]`` together with the
+#:    global table re-derivation (changing it here alone would put the committed
+#:    ``.drf``/``.rcop`` artifacts on a different population than their training tables).
 TREE_TYPES: tuple[int, ...] = (1, 2, 3, 4, 5)
+#: Grass PFT ids are 7 (tropical C4), 8 (temperate C3) and 9 (polar C3); this single-id
+#: constant covers only the temperate one (callers needing all three declare a local set,
+#: e.g. ``scripts/train_slow_emulator.py:45``).
 GRASS_TYPE: int = 8
 
 #: Size/diagnostic pools re-derived by allometric fan-out (heavy right-skew → log1p).

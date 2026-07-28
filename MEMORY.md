@@ -140,6 +140,21 @@ is the offline S.
 - [VERIFIED] Sibling offline S emulator at `/p/projects/open/Jamir/emulator`. Published noise floor
   {Height 0.020, agb 0.113, npp 0.062, LAI 0.025} — ~11% cell-mean agb noise floor is the yardstick.
   PFT types 0–6 = trees, 7–9 = grass. S is **not differentiable** and stays out of the gradient loop (ADR 0014).
+- **[VERIFIED 2026-07-28] The Component-S training population is TRUNCATED — ADR 0031.** Every
+  `build_slow_*.py` selects `TREE_TYPES=[1,2,3,4,5]`, but `Type` is the 0-based `pftpar` index and **ids 0–6
+  are all seven tree PFTs** — so id 0 (tropical broadleaved evergreen) and id 6 (boreal larch) are dropped:
+  **32.5 % of 197.7 M survivor tree stems, and 9 011 of 54 020 tree-bearing cells (16.7 %) are invisible**
+  (the tropical belt + Siberian larch). Provenance = a stale sibling `configs/config.yaml`, never an ADR; the
+  correct constant already exists at `python/.../features.py:50`. Every "global" S number so far is on the
+  ids-1..5 population / 45 009 cells. Fix = re-derive → retrain → re-validate (integration point with M,
+  versioned artifacts). Hainich has only ids 1–5, which is why all single-cell gates stayed green.
+- **[VERIFIED 2026-07-28] How to score a stochastic-truth emulator (ADR 0030).** A seed1-vs-seed2 per-cell
+  correlation is a *realization-vs-realization* r, NOT a predictor ceiling: with `m = μ(env)+δ(RNG)` and a
+  prediction of reliability `rel_P`, the reachable ceiling is `√(rel_P·rel_Y)` where `rel_Y` = the two-seed r,
+  and `r_center = emu_r/ceiling`. Always also report `sd(pred)/sd(truth)` (a correlation is scale-blind — the
+  copula reproduces only 0.55 of the true between-cell Wooddens spread), and gate the comparison with a
+  same-population cross-check (`seed1-basis ≥ 0.99`). Split-half (Spearman-Brown) separates finite-sample
+  noise from trajectory divergence: here 0.978–0.999 vs a floor of 0.694–0.964 ⇒ **trajectory divergence**.
 
 ---
 

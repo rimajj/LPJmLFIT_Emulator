@@ -206,6 +206,20 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - **Custom daily grass GPP/NPP** (`D_GRASS_GPP`/`D_GRASS_NPP`, ids 419/420) was added by a committed
   C-source change (`patches/lpjmlfit_daily_grass_gpp.patch`) + rebuild; stock LPJmL-FIT has no per-PFT
   daily GPP output.
+- **`Type` in the `ind` output is the 0-based `pftpar` INDEX, and ids 0–6 are ALL SEVEN tree PFTs
+  (`[VERIFIED 2026-07-28]`).** `par/pft_lpjmlfit.js` order: 0 tropical broadleaved evergreen · 1 temperate
+  needleleaved evergreen · 2 temperate broadleaved evergreen · 3 temperate broadleaved summergreen (**the
+  Hainich beech**) · 4 boreal needleleaved evergreen · 5 boreal broadleaved summergreen · 6 boreal
+  needleleaved summergreen (larch) ‖ **7/8/9 grass** (emitted with the tree fields **zeroed** —
+  `fwriteoutput_ind.c:139-189`, so wooddens/D95max/minwscal are literally 0) ‖ 10–21 crops (never emitted:
+  `landuse:"no"`). So the correct tree filter is `Type <= 6`. **`TREE_TYPES = [1,2,3,4,5]`
+  (`python/.../data.py`, every `build_slow_*.py`) is a KNOWN DEFECT — ADR 0031:** it drops 32.5 % of survivor
+  tree stems and makes 16.7 % of tree-bearing cells (the tropical belt + Siberian larch) invisible. The
+  correct list already exists at `python/.../features.py:50`. Traits are drawn **uniformly from per-PFT `[low,high]` intervals**
+  (`new_tree.c:195-206` / `getrndinterval`; the par `median` field is unused there), so any per-cell trait
+  statistic is a *composition* statistic — mixing two PFT sets makes two such statistics incomparable (id 0's
+  minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which
+  is why every single-cell gate stayed green.
 - **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
   writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
   **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age

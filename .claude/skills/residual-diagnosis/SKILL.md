@@ -46,6 +46,29 @@ Before the expensive probe: reproduce a *known* number (e.g. the C run's own rep
 byte-identical baseline) through your comparison harness. If your harness can't reproduce a number you
 already trust, fix the harness before interpreting any residual.
 
+## 3b. A basis cross-check below ~0.99 is a STOP signal, not a footnote (learned the hard way, 2026-07-28)
+
+If you compute the *same* quantity two ways and they disagree, you are comparing two **populations**, not
+observing "instability" in one. Do not write a caveat and read the residual "qualitatively" — that ships a
+wrong number with an explanation attached. What went wrong in ADR 0030/0031: a published gate carried
+`seed1-basis` cross-checks of 0.973 / 0.488 / 0.761 / 0.092 with a committed docstring blaming per-cell-median
+instability; the real cause was a stem filter (`Type<=6` vs `TREE_TYPES=[1,2,3,4,5]`) selecting two different
+PFT sets, and the "weak" axis' floor was inflated ~3×.
+- **The ordering across axes/variables names the mechanism.** Cross-checks that rank SLA ≫ D95max > Wooddens ≫
+  minwscal ranked exactly by how disjoint each trait's per-PFT sampling interval is. If one variable's
+  cross-check collapses while another's is ~1, ask what *subset* differs, not what is noisy.
+- **Cheapest decisive probe:** recompute the statistic on BOTH candidate populations over the rows they share
+  and correlate the two versions. If that reproduces the bad cross-check, the population is the bug — done, no
+  further probing. (`scripts/diagnose_ind_type_composition.py` is that probe for `ind`-table populations.)
+- **Then ask which population is RIGHT** — not just which one matches. Matching the model's own basis makes a
+  gap *measurable*; it does not make the basis *correct*. Check the authoritative source (here: the active
+  `par/` file + the C writer), because "make the floor match the model" can quietly codify the model's bug.
+- **A ceiling from two stochastic realizations is not a predictor ceiling.** With `m = μ(env) + δ(RNG)`,
+  `r(seed1,seed2) = var(μ)/(var(μ)+var(δ))`, so a predictor of `μ` scores up to `√` that. Use each side's
+  split-half (Spearman-Brown) reliability for the honest ceiling, and always report a **dispersion ratio**
+  (`sd(pred)/sd(truth)`) alongside the correlation — a correlation is scale-blind and hides a model that
+  regresses everything toward the mean.
+
 ## 4. Time-box and set an escalation trigger
 
 Decide up front: "N hours / M probes; if the hypothesis isn't confirmed by then, escalate to the owner
