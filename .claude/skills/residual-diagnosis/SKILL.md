@@ -193,6 +193,37 @@ So when a residual survives behind a green gate:
   physics gap — bundling them into the current milestone would have re-created the entanglement the milestone
   was carved out to avoid. (ADR 0034 is the write-up; ADR 0032 is the defect it closes.)
 
+## 3f. Same NAME ≠ same QUANTITY — check that before you argue about aggregation (2026-07-28, ADR 0035)
+
+Two sides of a comparison can carry the same column name, plausible units, and **overlapping numeric
+ranges** and still be different physical variables. When they are, every aggregation story (annual mean vs
+instant, cell mean vs patch, weighted vs unweighted) will *sound* like it explains the gap — and "fixing"
+the aggregation turns the alarm green over a mismatch, which is strictly worse than the documented residual
+it replaces, because you have now spent the alarm.
+
+This is not hypothetical: a Component-S conditioning feature was diagnosed and routed as a temporal
+aggregation mismatch, and the training column was actually the C's `swc` (**total** water over
+**saturation** capacity) against a runtime `w` (**plant-available** water over **WHC**). Hainich values
+0.84–0.87 vs 0.79–1.00 — close enough to look like the same thing sampled differently.
+
+The check, before choosing between bases:
+
+1. **Open the source on BOTH sides and read the expression, not the name.** For a C output that means the
+   accumulation line (`getoutput(...,X,config) += …`), not the `outputvars.js` `descr`.
+2. **Ask what normalises it** — fraction *of what*? Summed *over which* index set? Two fractions on
+   different denominators are different variables even when both live in [0,1].
+3. **Ask whether it is invertible to the one you want.** If recovering it needs quantities the model never
+   emits, no reduction of it will ever work; go find the output that carries your variable directly.
+4. Only once both sides are the SAME quantity does the aggregation question become well-posed.
+
+Corollary, same milestone: **"quantity X is not reconstructable from the output" is a claim to RE-DERIVE,
+not to inherit.** A skill and a builder docstring both asserted a per-patch stand LAI was unrecoverable
+from a 29-column table; two of the emitted columns carried it exactly. When you do reconstruct something,
+validate it against an **independent** expression in the source (crown area from `fpc_ind` vs from the
+height allometry), never against a quantity that differs from it for a *second* reason — and set the
+tolerance at the data's own precision floor (a `%g` text writer gives six significant digits, so an
+inversion cannot beat ~1e-5; a genuinely wrong constant shows as a percent-level bias in the MEDIAN).
+
 ## 4. Time-box and set an escalation trigger
 
 Decide up front: "N hours / M probes; if the hypothesis isn't confirmed by then, escalate to the owner

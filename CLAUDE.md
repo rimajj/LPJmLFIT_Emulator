@@ -192,6 +192,30 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - **Water balance is the closure check:** `-DSAFE` `check_fluxes.c` aborts a cell if `|balanceW| > 1.5
   mm/yr` — **a clean run IS water closure.** `swc` output is FRACTIONAL saturation (no `wsats` output ⇒
   absolute mm not reconstructable); `swe`/`rootmoist` are mm.
+- **`swc` is NOT the model's `w` — they are different variables, and confusing them cost a milestone
+  (`[VERIFIED 2026-07-28]`, ADR 0035).** `update_daily.c:411` writes
+  `SWC[l] = (w[l]·whcs[l] + w_fw[l] + wpwps[l] + ice_depth[l] + ice_fw[l]) / wsats[l]` — **total** water
+  (plant-available **plus** the wilting-point reservoir, free water and ice) over **saturation** capacity,
+  so it lives on ~`[wpwp/wsat, 1]` and never approaches 0. The emulator's `state.w` (and the C's own
+  `soil.w[l]`) is **plant-available water over WHC**, on `[0, 1]`. `swc` **cannot be inverted back** to `w`
+  (needs `wsats`/`wpwps`/`w_fw`/`ice`, none emitted). The ONE output carrying `w` is **`rootmoist`**
+  (`update_daily.c:414`) `= Σ_{l<3} w[l]·whcs[l]` mm over `forrootmoist` = the **top 1 m only**
+  (`soil.h:353`), so `rootmoist / Σ_{l<3} whc_nat[l]·soildepth[l]` recovers a `whcs`-weighted root-zone `w`.
+  The trap is that the two overlap numerically (Hainich `swc` 0.84–0.87 vs `w` 0.79–1.00), so an aggregation
+  argument will *look* like it explains a train/inference gap. Deriver:
+  `scripts/build_rootmoist_soilmoist_feature.py`.
+- **Per-patch stand LAI IS reconstructable from the 29-col `ind`, despite having no `leaf_c`/`nind`
+  (`[VERIFIED 2026-07-28]`, ADR 0035).** `LAI` (within-crown individual LAI, `lai_tree.c:18`) and `fpc_ind`
+  (`= crownarea·nind·(1−exp(−k_pft·LAI))`, `fpc_tree.c:28`) between them carry the crown area, and with
+  `nind = 1/patcharea` (`new_tree.c:209`) the patcharea cancels:
+  `stand_lai(patch) = Σ_stems LAI·fpc_ind/(1−exp(−k_pft·LAI))`. `k_pft` is **per-PFT** — `K_LAMBERT_BEER_BL`
+  **0.59** (ids 0,2,3,5) / `_NL` **0.45** (ids 1,4,6). Validated against the C's own height allometry
+  (`allometry_tree.c:53` `min(allom1·(H/allom2)^(kpr/allom3), CA_MAX=225)`) at median rel err 1.8e-8 by
+  `scripts/diagnose_patch_lai_reconstruction.py`. It reads BELOW the gridded `LAI_STAND` (0.77–1.01
+  depending on biome) because **the `ind` writer emits only stems `height > height_min = 5 m`**
+  (`fwriteoutput_ind.c:84`) while `LAI_STAND` sums all trees — the same >5 m population every other `ind`
+  aggregate is on. The TXT writer's `%g` gives only **6 significant digits** (`fwriteoutput_ind.c:27`), so
+  any inversion from `ind` has a ~1e-5 precision floor — do not set a tolerance below it.
 - **Soil geometry & `whc_nat` (`[VERIFIED]`; the per-cell soil column basis — ADR 0050, skill
   `provision-coupled-cell`).** Layer thicknesses are a **C global, not per-cell**: `fscansoilpar.c:36-39`
   reads `soildepth[NSOILLAYER]` once from `par/soil_20m.js` = `200,300,500,1000×19,3000` mm. The `soildepth`

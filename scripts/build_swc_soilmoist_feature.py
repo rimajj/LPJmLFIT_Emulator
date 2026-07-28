@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""SUPERSEDED by scripts/build_rootmoist_soilmoist_feature.py (ADR 0035) — DO NOT USE FOR TRAINING.
+
+This script reduces the C `swc` output, which is **fractional SATURATION**
+(`(w*whcs + w_fw + wpwps + ice)/wsats`, `update_daily.c:411`) — a DIFFERENT PHYSICAL QUANTITY from the
+`soilmoist` the runtime feeds Component S (`state.w` = plant-available water as a fraction of WHC,
+`state.jl:38`; `FToS.soilmoist` is documented "root-zone soil moisture state, fraction of WHC"). ADR 0034
+recorded the resulting 5.1x band shift as a TEMPORAL aggregation mismatch; re-deriving both definitions
+against the C source showed that was the smaller half — no time-reduction of `swc` can ever agree with a
+fraction-of-WHC, and `swc` cannot be inverted back (that needs `wsats`/`wpwps`/`w_fw`/`ice`, none of which
+LPJmL-FIT emits). The replacement uses the one C output that carries `w` itself, `rootmoist`.
+
+RETAINED so the superseded `cell_year_soilmoist_{hist,ssp}.parquet` tables — and every artifact trained on
+them — stay reproducible. The original docstring follows.
+"""
 """build_swc_soilmoist_feature.py — derive the RUNTIME-CONSISTENT `soilmoist` feature per (Cell, Year)
 from a daily-`swc` LPJmL-FIT run, replacing the constant proxy in build_slow_runtime_table.py.
 

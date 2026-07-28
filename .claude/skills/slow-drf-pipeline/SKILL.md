@@ -7,9 +7,11 @@ description: >
   Hainich. Use whenever training/retraining the Component-S DRF, changing its feature set, serializing or
   loading a DRF.Forest artifact, scaling the DRF from Hainich to global, GENERATING/DERIVING the global
   training-data inputs (running a scenario's C data via run_daily_subset.sh SCENARIO=historic|ssp370, and
-  deriving the runtime-consistent soilmoist feature from daily swc + lai from LAI_STAND), or wiring the
+  deriving the runtime-consistent soilmoist feature from daily rootmoist + whc_nat, and the per-patch stand
+  LAI reconstructed in-row from the ind LAI/fpc_ind columns), or wiring the
   Gaussian copula recruit-trait sampler. Names the artifacts: scripts/build_slow_runtime_table.py,
-  scripts/build_swc_soilmoist_feature.py (swc->soilmoist, grid.nc cellid orderA mapping),
+  scripts/build_rootmoist_soilmoist_feature.py (rootmoist->soilmoist, grid.nc cellid orderA mapping),
+  scripts/diagnose_patch_lai_reconstruction.py (the per-patch stand-LAI reconstruction gate),
   scripts/train_slow_drf.jl, scripts/build_slow_oracle_reference.py, DRF.save_forest/load_forest,
   test/testitems/references/drf_forest_hainich.drf, hainich_slow_oracle_{traits,counts}.csv, cell 42490,
   the flux_feature_vector order, the age_mean train/inference trap, the dynamic-roster append/merge, and the
@@ -37,21 +39,31 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
      emits annual `lai_stand`/`fpc_stand` alongside the daily `d_swc` block. `ANNUAL_ONLY=yes` adds
      `lai_stand` to a scenario whose daily set already exists (e.g. historic) without regenerating ~186 GB.
      Full-global SSP370 daily ≈ 768 GB / ~2-3 h on 2048 tasks.
-   - **Derive `soilmoist` from daily `swc`** → `scripts/build_swc_soilmoist_feature.py` (env `RUN_DIR`,
-     `FIRSTYEAR`, `OUT`; SUBMIT to SLURM — it streams the ~135 GB `d_swc` cube dask-lazy, one year at a time).
-     It reduces `SWC[time,layer=23,lat,lon]` → per (Cell,Year) mean over (days-in-year × 23 layers) = the
-     runtime's `sum(state.w)/length(state.w)` (slow.jl:498) EXACTLY (NSOILLAYER=23, unweighted). **Cell mapping
-     is via `grid.nc` `cellid[lat,lon]` = the authoritative orderA index** (VERIFIED cellid[51.25,10.25]==42490,
-     Hainich) — never the flatten order (the 42490-vs-28008 trap). Anchor a change with `SUBSET_DEG=2` (fast,
-     login-node) and confirm Hainich(42490) is present with a plausible fraction before the global SLURM run.
-   - **Derive `lai` from C `LAI_STAND`** → `scripts/build_laistand_lai_feature.py` (env `RUN_DIR`, `GRID`,
-     `FIRSTYEAR`, `OUT`). Maps the annual `lai_stand.nc` `LAI[time,lat,lon]` → per (Cell,Year) stand LAI =
-     the runtime `Σ leaf_c·sla·nind` (slow.jl:489). **Uses the GLOBAL daily run's `grid.nc` by default** —
-     the ANNUAL_ONLY laistand run's own `grid.nc` has been observed corrupt (all-NaN). HARD-GATES on the
-     real (non-fill, <30) fraction so a timed-out/all-fill `lai_stand.nc` can NEVER be silently written.
+   - **Derive `soilmoist` from daily `rootmoist` + `whc_nat`** → `scripts/build_rootmoist_soilmoist_feature.py`
+     (env `RUN_DIR`, `FIRSTYEAR`, `OUT`, `SUBSET_DEG`). Per (Cell,Year):
+     `ROOTMOIST(31 Dec) / Σ_{l<3} whc_nat[l]·thickness[l]` = the root-zone (top 1 m), `whcs`-weighted mean of
+     the C's `w` at YEAR END == the runtime `root_zone_soilmoist(state, fc.soil)` (slow.jl). Light (20 of 7300
+     time slices + a 3-layer whc read). **Cell mapping is via `grid.nc` `cellid[lat,lon]`** = the authoritative
+     orderA index (VERIFIED cellid[51.25,10.25]==42490) — never the flatten order (the 42490-vs-28008 trap).
+     Anchor a change with `SUBSET_DEG=2` on the login node before the global SLURM run.
+     - **DO NOT go back to `swc` (ADR 0035).** `build_swc_soilmoist_feature.py` is SUPERSEDED: `swc` is total
+       water over SATURATION capacity, a DIFFERENT VARIABLE from the runtime's plant-available fraction of
+       WHC, and it is not invertible (no `wsats`/`wpwps` output). See CLAUDE.md §3. The two overlap
+       numerically, which is exactly why this survived as an "aggregation" bug for a milestone.
+     - `RUN_DIR`/`FIRSTYEAR` are NOT in `sbatch_python.sh`'s explicit forward list, so `export` them (the
+       wrapper is integrator-owned; `--export=ALL` carries exported vars).
+   - **`lai` needs NO deriver — it is reconstructed per-PATCH in the table builder (ADR 0035).**
+     `build_slow_runtime_table.py::patch_stand_lai_expr` computes
+     `Σ_stems LAI·fpc_ind/(1−exp(−k_pft·LAI))` from the emitted columns (per-PFT k: 0.59 BL / 0.45 NL;
+     `patcharea` cancels). Validated against the C's own crown allometry by
+     `scripts/diagnose_patch_lai_reconstruction.py` (median rel err 1.8e-8) — **run it if you touch the stem
+     filter or the reconstruction.** `build_laistand_lai_feature.py` (the C `LAI_STAND` cell-mean) is
+     SUPERSEDED for training and retained only as that diagnostic's all-trees reference: it is a
+     patch-ensemble CELL-mean, which broadcast onto per-PATCH rows was the S1d spatial mismatch.
 1. **Build the runtime-consistent training table** — `SCENARIO=historic|ssp370 SEED=1 [CELLS=<subset>]
    OUT=... python3 scripts/build_slow_runtime_table.py`. GLOBAL multi-cell: streams the ind agg, inner-joins
-   the step-0 `soilmoist`/`lai` per (Cell,Year) (`SOIL_TBL_PATH`/`LAI_TBL_PATH` override for tests), bakes a
+   the step-0 `soilmoist` per (Cell,Year) (`SOIL_TBL_PATH` overrides for tests; `lai` is reconstructed in-row,
+   not joined — ADR 0035), bakes a
    **per-CELL** climatological boundary (time-constant → matches the runtime's re-appended `s.boundary`), and
    writes `X.f64`/`y.f64`/`manifest.txt` + a `cell_meta.parquet` sidecar (per-cell `n_init`/`age0`/boundary
    the coupled driver reads to build one emulator per cell — ONE pooled cell-agnostic forest; the AR ratio
@@ -99,11 +111,13 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   `sum(npp)/lai`. `bm_inc_cell` (head[0]) stays TOTAL `sum(npp)`. Reusing total npp for growth_eff is a
   silent train/inference shift on a primary mortality driver (the two are collinear in training but not at
   inference). Exact per-cohort `bm_net` parity isn't reconstructable from the 29-col ind — documented approx.
-- **`lai`/`soilmoist` are per-CELL (patch-averaged) joined onto per-PATCH rows.** `soilmoist` is cell-level
-  at runtime too (OK). `lai` (C `LAI_STAND`) is cell-mean but the single-stand runtime forms a per-patch
-  stand LAI — per-patch LAI is NOT reconstructable from ind (no `leaf_c`/`nind`), so cell-mean is the best
-  available BASIS (right magnitude ~4-7 vs the old per-crown-sum ~1000 proxy). Don't overclaim per-patch
-  consistency; the per-patch-LAI-output vs per-cell-training-aggregation choice is an OPEN Phase-5 decision.
+- **`lai` is per-PATCH and `soilmoist` is root-zone year-end — both CLOSED by ADR 0035 (S1d).** This bullet
+  used to say "per-patch LAI is NOT reconstructable from ind (no `leaf_c`/`nind`), so cell-mean is the best
+  available" and to call it an open Phase-5 decision. **That was wrong, and it cost a milestone**: `LAI` +
+  `fpc_ind` between them carry the crown area, so the per-patch stand LAI is exact (see step 0). The lesson
+  worth keeping: "column X is not reconstructable" is a claim to RE-DERIVE against the C source, not to
+  inherit — as is "the two sides differ only in aggregation" (`soilmoist` was a different VARIABLE, not a
+  different time reduction). Check they are the same QUANTITY before arguing about bases.
 - **Silent-truncation guards are mandatory at global scale.** The soilmoist/lai inner-joins FAIL LOUD on a
   coverage hole (`drop_frac>0.02` or any cell fully lost) — never train on a biome-truncated set. The
   feature derivers gate PER-YEAR (reject if any year's real fraction << median → a timed-out run leaves late
@@ -247,9 +261,11 @@ semantics). **`sbatch_python.sh` forwards `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY
 - **`water_stress` = 1 − wscal_mean** (matches `fast.jl`), NOT the `mort_water` inversion the OOD-experiment
   table used. **`soilmoist`/`lai` are proxies (const 0.7 / Σ per-crown ind-LAI) ONLY in the Hainich demo
   table** (`build_slow_runtime_table.py`); the GLOBAL runtime-consistent pipeline now sources them for real —
-  `soilmoist` from daily `swc` via `scripts/build_swc_soilmoist_feature.py` (step 0), `lai` from the C annual
-  `LAI_STAND` (`run_daily_subset.sh` now emits `lai_stand`). Historic is derivable now; SSP370 waits on the
-  daily run. Match the runtime definition when you wire either in (soilmoist = unweighted 23-layer mean).
+  `soilmoist` from daily `rootmoist`+`whc_nat` via `scripts/build_rootmoist_soilmoist_feature.py` (step 0),
+  `lai` reconstructed per-patch in the builder. Historic is derived (`cell_year_soilmoist_ye_hist.parquet`);
+  SSP370 still needs its `_ye` table. Match the runtime definition when you wire either in — since ADR 0035
+  that is `soilmoist` = root-zone (top 1 m) `whcs`-weighted mean of `w` at YEAR END, NOT a 23-layer mean and
+  NOT an annual mean.
 - **Ind `npp`/`agb` are already per-m²** (×nind baked in by the C writer), so per-patch ROW SUMS are per-m²
   stand totals matching the runtime — no `nind` factor (there is no `nind` column; CLAUDE.md §3).
 - **Serialization is TEXT `.drf`, never `*.bin`** (git-ignored). `DRF.save_forest`/`load_forest` round-trip

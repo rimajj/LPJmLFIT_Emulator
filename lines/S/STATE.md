@@ -6,52 +6,49 @@
 
 ## NEXT — start here
 
-**S1c is COMPLETE (ADR 0032 closed → ADR 0034). Start with S1d — it is now the thing that blocks S2.**
+**S1d is COMPLETE (ADR 0035). The next task is the `t8` global re-derivation — it is the thing that now
+blocks BOTH S2 and line M's M3.**
 
-Everything S1c promised is delivered and merged: both committed Hainich demo artifacts rebuilt from ONE table
-build, the two metas asserted to agree (**8/8** shared conditioning columns, 0 violations), all four gates
-re-measured with a before/after table, the Gate-3 alarm **tightened** 0.45 → 0.40 (nothing widened), and the
-suite green at **107 065 pass / 0 fail / 4 broken** (job 1622741). All numbers are in §Status — don't re-derive
-them. Line M is notified in `lines/M/STATE.md` (both the fixture move and the new `water_stress` finding).
+S1d is delivered and merged: `soilmoist` and `lai` are on ONE basis in the training table and the coupled
+runtime, `soilmoist` is **IN** band, `lai` fell 2.9× → 0.021×, the pinned out-of-band set is
+**`{water_stress}` alone** (line M's F core), and two thresholds were tightened with none widened. All
+numbers are in §Status — **don't re-derive them.** Read **ADR 0035** before touching the S pipeline: both of
+ADR 0034's S-side diagnoses were wrong, and the reasons generalize (see §Line-local gotchas).
 
-**Why S1d is now first.** S1c proved that regenerating the artifact closes the artifact-vs-artifact *split* but
-not the runtime↔training *shift*: **4 of 15 runtime feature columns are still outside the trained band**
-(`water_stress` 6.6× band width, `soilmoist` 5.1×, `lai` 2.9×, `fpc` 0.03×). Two of those are S's, and they are
-S1d. Starting S2's conditioning expansion first would let S2 take credit for a basis fix — exactly what ADR
-0033 recorded when S1b silently delivered 30 % of S2's gate. The full step list is **§Milestones → S1d**; the
-reasoning and what was rejected is **ADR 0034**.
+### The task: `t8` — re-derive the GLOBAL tables on the S1d bases
 
-### The task: S1d — one aggregation basis for `soilmoist` and `lai`/`fpc`
+The demo artifacts are fixed; the **global `_t7` tables and artifacts are still on the retired
+`soilmoist`/`lai` bases**, because they come from the same builder. Their published OOS numbers stay valid as
+*offline* measurements (table vs table, ADR 0034 §7) — but a **coupled** global run inherits the shift, and
+line M needs a clean global pin before M3. Never mutate `_t7` in place; every orchestrator takes `VERSION=t8`.
 
-Two independent decisions, each of which must pick a side and then hold it in BOTH train and inference
-(ADR 0023 — a conditioning change is by definition a both-sides change with M):
+Steps, in order:
 
-1. **`soilmoist` — TEMPORAL.** Training is the C `swc` mean over 365 days × 23 layers
-   (`build_swc_soilmoist_feature.py`); the runtime is `sum(state.w)/length(state.w)` at the instant
-   `reconcile_demography!` runs, i.e. one year-end layer mean that reaches 0.999 (near-saturation). An annual
-   mean's range cannot contain an instantaneous value's range even with identical physics, so this is a
-   *training-basis choice that was never made*, not a bug. Cheaper side: re-reduce to year-end `swc` in the
-   deriver. Cleaner side: accumulate the annual mean in the runtime (`ClimBuf`, ADR 0027, is the template).
-2. **`lai`/`fpc` — SPATIAL.** Training joins the C's patch-ensemble **cell-mean** `LAI_STAND`; the runtime forms
-   a **single-patch** stand LAI on the most-populous patch (~1.4× the cell mean). This is the open Phase-5
-   per-patch-vs-per-cell decision the `slow-drf-pipeline` skill already flagged — now quantified. Note the C
-   `ind` output carries no `leaf_c`/`nind`, so a per-PATCH training LAI is **not** reconstructable from it;
-   deciding "per-patch" therefore means changing what the C emits or accepting a documented approximation.
+1. **SSP370's `soilmoist` table does not exist yet.** Derive it first — the historic one is
+   `/p/tmp/jamirp/emulator_global/tables/cell_year_soilmoist_ye_hist.parquet` (job 1622917, 1 348 400 rows).
+   The ssp370 daily run holds `d_rootmoist.nc` + `whc_nat.nc`; `FIRSTYEAR=2020`,
+   `OUT=.../cell_year_soilmoist_ye_ssp.parquet`. **`RUN_DIR`/`FIRSTYEAR` are NOT in `sbatch_python.sh`'s
+   explicit forward list — `export` them** (the wrapper is integrator-owned). `lai` needs no deriver any more.
+2. **Re-run the four global orchestrators with `VERSION=t8`** (`run_global_slow_training.sh`,
+   `run_global_slow_copula.sh`, `run_pooled_slow_training.sh`, `run_pooled_slow_copula.sh`) — the
+   `slow-drf-pipeline` skill has the sizing. **Use `NCPUS=96` for anything pooled/ssp370 copula** (32 OOM-kills
+   at exit 137 on `tree7`; `STEM_CAP` does not bound peak memory).
+3. **LOAD-VERIFY the pair before telling M** (`.drf` `nfeat==15`; `load_copula` returns a 5-TUPLE, 4 axes,
+   8 cond cols) — "the job exited 0" is not "the runtime can consume it". The three API traps are in the skill.
+4. **Re-measure ADR 0030's noise-floor gate on `t8`** (the seed2 companion table must be rebuilt identically —
+   only `SEED` may differ, `STEM_CAP` OFF) and re-baseline the S2 gate against the result, per ADR 0033.
+5. **Hand M the new artifact names** in `lines/M/STATE.md`; M re-pins deliberately. Do **not** re-point M's
+   pinned path from this line.
 
-Write the ADR (next free S number: **0035**), then: rebuild the Hainich demo tables → retrain BOTH artifacts
-together (never one) → re-run `scripts/verify_hainich_demo_artifacts.sh` → re-measure with
-`scripts/measure_hainich_gate_bands_probe.jl` (BEFORE column via `DRF_ART=`) → SHRINK the pinned out-of-band set
-in `slow_production_drf_tests.jl`, never widen it → full suite on SLURM → notify M.
+*Gate:* the `t8` pair load-verifies, the ADR-0030 gate reports `seed1-basis ≥ 0.99` on all four axes, and the
+before/after count + trait tables are written into §Status the way the `t7` ones are.
 
-*Gate — cleanly checkable:* the probe reports `soilmoist`, `lai` and `fpc` **IN** band, the pinned set in
-`slow_production_drf_tests.jl` is down to `{water_stress}` alone, every moved Gate-3 threshold has a written
-before/after measurement, and the suite is green. `water_stress` is **not** S's to close (it is line M's F core,
-ADR 0029) — leave it in the pinned set and do not chase it from here.
+**Then S2** (copula conditioning expansion) — and re-baseline its gate against the `t8` numbers first, or S2
+will again take credit for someone else's fix (ADR 0033; it already happened once with S1b).
 
-**A global consequence to decide inside S1d, not after:** the same two aggregation choices apply to the global
-`_t7` tables (same builder), so fixing them means a **versioned re-derivation** (`VERSION=t8`) and a re-pin by
-M — never mutate `_t7` in place. The published `_t7` OOS numbers are unaffected as *offline* measurements
-(table vs table); only a coupled global run inherits the shift.
+**Not S's to chase:** `water_stress` (6.6× band width) is line M's F core, ADR 0029 — leave it pinned.
+**Also not a basis problem:** `fpc`'s 0.084× residual is the coupled patch settling denser than the training
+upper tail, i.e. dynamics; ADR 0035 §3.3 explains why no basis fix closes it.
 
 **Cheap and still open (unchanged, optional):** trait FIGURES 09–11 on `tree7`
 (`COPULA_OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7`, `emulator-validation-figures` skill).
@@ -97,6 +94,16 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
   `1622741` + `1622792` (post-rebase) suite · `1622811` the gate re-run that returned **`PASS` (exit 0)** on the
   committed fixtures — S1c's binary success signal, so a `STALE-FIXTURE` exit 2 is now a NEW finding, not the
   expected state.
+  *S1d cross-line:* line O's ADR 0082 §4 reached the SAME porosity-vs-WHC insight independently, online —
+  and was calibrating against the RETIRED `swc` table (its quoted `mean 0.5075 / q50 0.4635` is exactly
+  `cell_year_soilmoist_hist.parquet`). Notified in `lines/O/STATE.md` O3b. The two distributions have
+  near-equal means (0.5075 vs **0.4780**) and completely different SHAPE — new: q10 **0.0000**, q25 0.0000,
+  q50 0.4980, q75 0.8770, q90 0.9999. **A quarter of global cell-years have a fully dry root zone at year
+  end**, which also answers whether a year-end reading is degenerate: it is not, globally (it saturates
+  only at wet-winter cells like Hainich).
+  *S1d:* `1622917` the root-zone soilmoist deriver (global, 1 348 400 rows) · `1622921` regeneration +
+  drift control (`FAIL`/exit 1 = the CORRECT verdict — the edit is SUPPOSED to move the table here) ·
+  `1622923` the gate-band re-measurement · `1622924` suite **107 076 pass / 0 fail / 4 broken**.
 - **The committed Hainich demo artifacts are on ONE feature basis (S1c DONE, ADR 0032 closed → ADR 0034).**
   The `.rcop` + meta and both `hainich_slow_oracle_*.csv` regenerated **byte-identical**; only the count `.drf`
   + `_meta.txt` moved. The `.rcop`'s conditioning row is now inside the `.drf`'s trained band on **8/8** shared
@@ -115,23 +122,43 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
   count 6.8 → 12.9 stems/patch, and more stems on the same carbon are smaller trees ⇒ Height moves *down*
   toward the C truth. Re-measure with `scripts/measure_hainich_gate_bands_probe.jl` (`DRF_ART=` for a BEFORE
   column; it reproduced the documented 0.39/1.25/0.67 exactly, which is what validated the harness).
-- **⚠ The demo emulator is NOT runtime-consistent — 11 of 15 columns only (ADR 0034). Do not cite the table
-  above as evidence of a clean conditioning basis.** With the runtime rows now recorded
-  (`FluxDrivenSlowEmulator.feature_history`, diagnostic-only) and the trained band now in the meta
-  (`feat_min`/`feat_max`), 4 of 15 columns sit outside the band the forest was trained on, identically in all
-  three coupled harnesses:
+- **The demo emulator is runtime-consistent on 14 of 15 columns (S1d DONE, ADR 0035). The one remaining
+  out-of-band column, `water_stress`, is LINE M's.** ADR 0034's four-column shift is closed on both S-owned
+  causes — and neither was the cause ADR 0034 named (§S1d below). Measured job 1622923:
 
-  | column | runtime | trained band | excursion | cause / owner |
-  |---|---|---|---|---|
-  | `water_stress` | 0.323 … 0.331 | [0, 0.0432] | **6.6× band width** | F_diff vs the C — **line M** |
-  | `soilmoist` | 0.792 … 0.999 | [0.8416, 0.8674] | **5.1×** | TEMPORAL aggregation — S1d |
-  | `lai` | 3.63 … 5.17 | [2.758, 3.369] | **2.9×** | SPATIAL aggregation — S1d |
-  | `fpc` | … 0.784 | [0.155, 0.741] | 0.03× | SPATIAL (marginal) — S1d |
+  | column | runtime | trained band | S1c excursion | **S1d** | cause / owner |
+  |---|---|---|---|---|---|
+  | `water_stress` | 0.323 … 0.331 | [0, 0.0432] | 6.6× | **6.60×** (unchanged) | F_diff vs the C — **line M** |
+  | `soilmoist` | 0.9962 … 0.9968 | [0.7908, 1.0000] | 5.1× | **IN** | was the wrong VARIABLE — CLOSED |
+  | `lai` | 3.63 … 5.12 | [0.7766, 4.7809] | 2.9× | **0.021×** (12-yr) / 0.086× (20-yr) | per-patch basis — CLOSED |
+  | `fpc` | 0.607 … 0.791 | [0.1548, 0.7414] | 0.03× | 0.084× | never a basis error — DYNAMICS, see below |
 
-  The set is **pinned** by `slow_production_drf_tests.jl` at a 0.5-band-width cut, so a NEW column drifting out
-  reds CI while the known three are named debt. **Why the old gate never saw this is a proof, not a caveat:** a
-  DRF prediction is a convex combination of training leaf means, so "predicted targets are inside the training
-  band" can never fail — it is artifact integrity, not conditioning. Check the INPUT side.
+  The pinned set in `slow_production_drf_tests.jl` is now **`Set(["water_stress"])`** alone, plus new bounds
+  asserting `soilmoist` exactly inside and `lai`/`fpc` ≤ 0.2 band widths. **`fpc` is not S1d debt:** it was
+  already `min(Σ fpc_ind, 1)` per-patch on both sides, so its residual is the coupled patch settling denser
+  than the training upper tail — a dynamics outcome no basis fix can close. **Why the old gate never saw any
+  of this is a proof, not a caveat:** a DRF prediction is a convex combination of training leaf means, so
+  "predicted targets are inside the training band" can never fail — it is artifact integrity, not
+  conditioning. Check the INPUT side.
+- **S1d re-measurement (`[VERIFIED 2026-07-28]`, jobs 1622921 regeneration / 1622923 bands / 1622924 suite).**
+  Both committed demo artifacts moved, regenerated TOGETHER from one table build; both oracle CSVs unchanged.
+  The regeneration control confirms **only** `soilmoist`, `lai` and `growth_eff` (via its `lai` divisor)
+  moved — every other column and the target `n_living` are byte-identical.
+
+  | Hainich gate quantity | assertion | S1c | **S1d** |
+  |---|---|---|---|
+  | Gate-3 Height `nqrmse` | ≤ 0.40 | 0.2998 | **0.2990** |
+  | median Height ratio | 0.6 … 1.6 | 1.1316 | 1.1547 |
+  | settled count ratio | 0.25 … 4.0 | 1.2808 | **1.1597** |
+  | `target_history` band | meta `y`-band [3, 19] | 12.28 … 13.64 | 11.66 … 12.52 |
+  | DIRECT draws SLA / Wooddens | ≤ 0.22→**0.10** / ≤ 0.12→**0.06** | 0.1274 / 0.0346 | **0.0391 / 0.0273** |
+  | coupled community SLA / Wooddens | ≤ 0.45 | 0.2634 / 0.2203 | unchanged |
+  | carbon residual | < 1e-6 | 1.7e-12 | 1.9e-12 |
+  | basis-agreement violations | 0 | 0 | **0** |
+
+  **The Height drift did NOT move (0.2998 → 0.2990), and that is a finding:** the remaining Gate-3 residual
+  is not a conditioning-basis artifact, so S5 must not budget a basis fix to pay for it. Two thresholds were
+  **tightened**, none widened.
 
 ### Population widening — measured effect (historic copula table, seed2, `[VERIFIED]` job 1622132)
 
@@ -236,19 +263,23 @@ copula + 0030 re-measurement will show.
   Every drift threshold improved and the Gate-3 alarm was **tightened** 0.45 → 0.40 (numbers in §Status). Side
   outcome that became S1d: regenerating the artifact does NOT close the runtime↔training shift — 4 of 15
   columns are still out of band, from three causes, one of which is line M's.
-- **S1d** **Put `soilmoist` and `lai`/`fpc` on ONE aggregation basis, runtime and training (ADR 0034 §4).**
-  Needs an ADR + an integration point with M (a conditioning change is a both-sides change, ADR 0023).
-  Two independent choices, each of which must pick a side and then hold it in train AND inference:
-  - **`soilmoist` — TEMPORAL.** Training = the C `swc` mean over 365 days × 23 layers; runtime =
-    `sum(state.w)/length(state.w)` at the instant `reconcile_demography!` runs (year end). Either train on
-    year-end `swc` (cheap: re-reduce in `build_swc_soilmoist_feature.py`) or accumulate an annual mean in the
-    runtime (the `ClimBuf` pattern of ADR 0027 is the template). Measured excursion **5.1× band width**.
-  - **`lai`/`fpc` — SPATIAL.** Training joins the C's patch-ensemble **cell-mean** `LAI_STAND`; the runtime
-    forms a **single-patch** stand LAI. This is the open Phase-5 per-patch-vs-per-cell decision the
-    `slow-drf-pipeline` skill flagged, now quantified at ~1.4× (`lai` **2.9×** band width, `fpc` 0.03×).
-  *Gate:* `scripts/measure_hainich_gate_bands_probe.jl` reports these columns IN band, the pinned out-of-band
-  set in `slow_production_drf_tests.jl` shrinks accordingly (never widen it), and the Gate-3 numbers are
-  re-measured with a before/after table. **Do it BEFORE S2** — see the S2 warning below.
+- **S1d** **Put `soilmoist` and `lai` on ONE basis, runtime and training. DONE 2026-07-28 (ADR 0035).**
+  Both of ADR 0034's S-owned diagnoses were **wrong**, and re-deriving them against the C source before
+  writing the fix is what saved the milestone (`residual-diagnosis` §3):
+  - **`soilmoist` was the wrong VARIABLE, not the wrong clock.** Training reduced the C `swc` = total water
+    over **saturation** capacity; the runtime fed `state.w` = plant-available water over **WHC**. The
+    handoff's "cheap side" (re-reduce `swc` to year-end) would have turned the alarm green over a mismatch.
+    Both sides are now `ROOTMOIST / Σ_{l<3} whcs[l]` — root-zone, `whcs`-weighted, YEAR-END (a state, like
+    the other seven state columns; the annual water integral is already `water_stress`). New deriver
+    `scripts/build_rootmoist_soilmoist_feature.py`; new `root_zone_soilmoist` used at all three `slow.jl`
+    sites. **Rejected** the ADR-0034 "clean" runtime annual-mean accumulator: it needs a daily hook in
+    `run.jl`, which is line M's, so it would have parked this gate on another line's schedule.
+  - **`lai` IS reconstructable per-patch** — the skill and the builder docstring both said it was not.
+    `Σ LAI·fpc_ind/(1−exp(−k_pft·LAI))`, patcharea cancels; validated against the C's own crown allometry at
+    median rel err **1.8e-8** (`scripts/diagnose_patch_lai_reconstruction.py`). Fixes the `growth_eff`
+    divisor with it. **`fpc` needed no change** (already per-patch both sides — ADR 0034 mis-grouped it).
+  *Gate met:* `soilmoist` IN band, `lai` 2.9× → 0.021×/0.086×, pinned set = `{water_stress}` alone, two
+  thresholds tightened and none widened, suite green. Numbers in §Status; M notified in `lines/M/STATE.md`.
 - **S2** **Close the trait headroom.** Expand the copula conditioning — `COPULA_COND_COLS` in
   `scripts/build_slow_runtime_table.py` **and** `live_flux_cond` in `src/components/slow.jl` **in lockstep** —
   with environment / PFT-composition covariates; global K-fold re-fit (`run_pooled_slow_copula.sh`); measure
@@ -278,6 +309,22 @@ copula + 0030 re-measurement will show.
 
 ## Line-local gotchas
 
+- **Before arguing about AGGREGATION, check the two sides are the same QUANTITY (ADR 0035).** `soilmoist`
+  spent a milestone mis-scoped as annual-mean-vs-year-end when the training column was the C `swc` (total
+  water over SATURATION) and the runtime was `state.w` (plant-available over WHC). They overlap numerically
+  (0.84–0.87 vs 0.79–1.00), which is exactly why the aggregation story looked right. See CLAUDE.md §3 for
+  the `swc`/`rootmoist` formulas and why `swc` is not invertible.
+- **"Quantity X is not reconstructable from the `ind` output" is a claim to RE-DERIVE, not to inherit
+  (ADR 0035).** Both this skill and the builder docstring asserted per-patch LAI was unrecoverable; it was
+  recoverable exactly, from two columns already emitted. Validate any such reconstruction against an
+  INDEPENDENT C expression (crown area from `fpc_ind` vs from the height allometry), not against a quantity
+  that differs from it for a *second* reason.
+- **Anything inverted from the TXT `ind` table has a ~1e-5 precision floor** — `printind` uses `%g` = six
+  significant digits (`fwriteoutput_ind.c:27`), and an inversion amplifies that. Don't set a tolerance below
+  it; a genuinely wrong constant shows as a percent-level bias in the MEDIAN, not as a large max.
+- **The `ind` writer emits only stems `height > height_min` = 5 m** (`fwriteoutput_ind.c:84`). Every training
+  column is on that >5 m population, so it is self-consistent — but any comparison against an all-trees C
+  grid output (`LAI_STAND`, `fpc_stand`) will show a biome-dependent deficit (0.77–1.01) that is NOT an error.
 - **`age_mean` is the classic train/inference-shift trap** — train it as the nind-weighted mean cohort age
   (`mean(Age−1)`, start-of-year), NOT the elapsed-year counter (ADR 0024 supersedes 0023 §3).
 - Never rename/clobber `test/testitems/references/drf_forest_hainich.drf` (+ `_meta.txt`) or

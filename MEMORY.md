@@ -225,6 +225,18 @@ is the offline S.
   **seed2** `ind` parquet is a cross-seed join (0 affected groups in seed1 vs 21 501 in seed2 — that was the
   "unexplained" asymmetry). A seed2 table's `Xc` can never be fully runtime-consistent; fine for the ADR-0030
   floor, which reads `Y` only.
+- **[VERIFIED 2026-07-28] Before arguing about AGGREGATION, check the two sides are the same QUANTITY
+  (ADR 0035, S1d — the general lesson, and it cost a milestone's worth of mis-scoping).** ADR 0034 diagnosed
+  the S `soilmoist` train/inference shift as annual-mean-vs-year-end. It was not: the training column reduced
+  the C `swc` output = **total water over SATURATION capacity** (`update_daily.c:411`) while the runtime fed
+  `state.w` = **plant-available water over WHC**. Two different variables that happen to overlap numerically
+  (Hainich 0.84–0.87 vs 0.79–1.00), which is exactly why an aggregation story looked like it explained the
+  gap — and no time re-reduction of `swc` could ever have closed it. `swc` is **not invertible** back to `w`
+  (needs `wsats`/`wpwps`, never emitted); the one C output carrying `w` is `rootmoist` (top 1 m). Second
+  corollary from the same milestone: **"quantity X is not reconstructable from the output" is a claim to
+  re-derive, not to inherit** — the per-patch stand LAI *was* recoverable from the 29-col `ind` all along
+  (`LAI` + `fpc_ind` carry the crown area), despite a skill and a builder docstring both asserting otherwise.
+  Mechanics + the exact formulas: CLAUDE.md §3.
 - **[VERIFIED 2026-07-28] How to score a stochastic-truth emulator (ADR 0030).** A seed1-vs-seed2 per-cell
   correlation is a *realization-vs-realization* r, NOT a predictor ceiling: with `m = μ(env)+δ(RNG)` and a
   prediction of reliability `rel_P`, the reachable ceiling is `√(rel_P·rel_Y)` where `rel_Y` = the two-seed r,

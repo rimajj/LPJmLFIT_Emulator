@@ -14,31 +14,46 @@ ROW SUMS give per-m² stand totals matching the runtime aggregates (no `nind` fa
 RUNTIME-CONSISTENT features (was the Hainich-proxy demo; now real, ADR 0023/0024, global-table spec):
   bm_inc_cell = sum(npp)                         EXACT   (per-m², tree-only patch)
   water_stress= 1 - mean(wscal_mean)             EXACT-in-definition (fast.jl: 1 - wscal_mean)
-  soilmoist   = mean over 23 soil layers of swc  REAL    join cell_year_soilmoist_{scen}.parquet (Cell,Year)
-                                                          == runtime sum(state.w)/length(state.w) (slow.jl:498)
+  soilmoist   = ROOTMOIST / sum_{l<3} whcs[l]    REAL    join cell_year_soilmoist_ye_{scen}.parquet, built by
+                                                          scripts/build_rootmoist_soilmoist_feature.py. The
+                                                          whcs-weighted mean of the C's own `w` over the top
+                                                          1 m at YEAR END == the runtime
+                                                          `root_zone_soilmoist(state, fc.soil)` (slow.jl).
+                                                          ADR 0035 REPLACED the old `swc`-based column: `swc`
+                                                          is TOTAL water over SATURATION capacity
+                                                          (update_daily.c:411), a DIFFERENT QUANTITY from the
+                                                          runtime's plant-available fraction-of-WHC — not a
+                                                          mere time-aggregation difference (ADR 0034's
+                                                          diagnosis, corrected). Never re-point this at
+                                                          cell_year_soilmoist_{scen}.parquet.
   hmean       = sum(Height*fpc_ind)/sum(fpc_ind) NEAR-EXACT (fpc-weighted mean height)
   hmax        = max(Height)                       EXACT
   agb         = sum(agb)                           CLOSE   (per-m²; minor C turn_litt/debt offset)
-  lai         = C LAI_STAND                        REAL basis, CELL-mean  the C LAI_STAND is emitted per grid
-                                                          CELL (patch-averaged); it is joined on (Cell,Year)
-                                                          so every one of a cell's ~25 patches shares the
-                                                          cell-mean stand LAI. This is the right stand-LAI
-                                                          BASIS (vs the old per-crown-sum proxy), but NOT the
-                                                          per-patch value the single-stand runtime forms
-                                                          (slow.jl:489). Per-patch stand LAI is NOT
-                                                          reconstructable from the 29-col ind (no leaf_c/nind;
-                                                          CLAUDE.md §3), so cell-mean is the best available —
-                                                          a documented approximation for multi-patch cells.
-                                                          [OPEN Phase-5 decision: per-patch LAI output, or
-                                                          per-CELL training aggregation, to close this.]
+  lai         = PER-PATCH stand LAI                EXACT (to the ind writer's %g precision) — reconstructed
+                                                          in-row from the emitted `LAI` + `fpc_ind` by
+                                                          `patch_stand_lai_expr()` below, NOT joined. ADR 0035
+                                                          replaced the C `LAI_STAND` join, which was a
+                                                          patch-ensemble CELL-mean broadcast onto per-PATCH
+                                                          rows while every other state column in the row is
+                                                          per-patch. Validated against the C's own allometry
+                                                          by scripts/diagnose_patch_lai_reconstruction.py
+                                                          (median rel err 1.8e-8). Caveat, shared with every
+                                                          other column here: the ind writer emits only stems
+                                                          `height > height_min` (5 m), so this is the >5 m
+                                                          stand LAI — 0.77..1.01 of the all-trees LAI_STAND
+                                                          depending on biome. That is the training
+                                                          population, consistently, by construction.
   growth_eff  = lai > 0 ? applied_npp/lai : 0     APPROX  numerator = APPLIED npp (npp>0 & Height>0 stems),
                                                           mirroring the runtime applied_cell/leaf_area
                                                           (fast.jl:353-369) — NOT total bm_inc_cell. The
                                                           zero-leaf-area branch MATCHES fast.jl:369 exactly
                                                           (`leaf_area > 0 ? … : zero(T)`); it must not be a
                                                           `max(lai, EPS)` divisor (ADR 0031 — that turned a
-                                                          joined LAI_STAND==0 into applied_npp*1e6). Shares
-                                                          lai's cell-mean caveat in its denominator.
+                                                          joined LAI_STAND==0 into applied_npp*1e6). Since
+                                                          ADR 0035 the divisor is the SAME per-patch, >5 m
+                                                          population as the numerator (it used to be a
+                                                          cell-mean over all stems — a real inconsistency in
+                                                          a primary mortality driver).
   fpc         = min(sum(fpc_ind), 1)               NEAR-EXACT
   age_mean    = mean(Age - 1)                      TRUE per-stem mean START-OF-YEAR age (ADR 0024; emitted
                                                           Age is post-increment, runtime feature is pre-aging).
@@ -91,10 +106,12 @@ IND = {
     "historic": f"{BASE}/ind_hist_seed{{seed}}_all.parquet",
     "ssp370": f"{BASE}/ind_ssp370_seed{{seed}}_all.parquet",
 }
-SOIL_TBL = {"historic": f"{BASE}/tables/cell_year_soilmoist_hist.parquet",
-            "ssp370": f"{BASE}/tables/cell_year_soilmoist_ssp.parquet"}
-LAI_TBL = {"historic": f"{BASE}/tables/cell_year_lai_hist.parquet",
-           "ssp370": f"{BASE}/tables/cell_year_lai_ssp.parquet"}
+# ADR 0035: the `_ye` tables are the ROOT-ZONE year-end soilmoist (build_rootmoist_soilmoist_feature.py).
+# The pre-0035 `cell_year_soilmoist_{hist,ssp}.parquet` are on the C `swc` variable (fractional SATURATION)
+# and are NOT interchangeable with these — they are retained only so the superseded artifacts stay
+# reproducible. Never point SOIL_TBL_PATH back at them.
+SOIL_TBL = {"historic": f"{BASE}/tables/cell_year_soilmoist_ye_hist.parquet",
+            "ssp370": f"{BASE}/tables/cell_year_soilmoist_ye_ssp.parquet"}
 CELL_YEAR_FEATS = f"{BASE}/tables/cell_year_feats.parquet"
 # TRANSIENT boundary (ADR 0026): per-(Cell,Year) trailing-window gdd5/tas_cold_month (scripts/build_transient_boundary.py)
 TRANSIENT_BOUNDARY = f"{BASE}/tables/cell_year_boundary_{{scenario}}_w{{w}}.parquet"
@@ -120,6 +137,42 @@ MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 med
 # distribution, which must therefore be FIT's SURVIVOR marginal.
 COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS
 COPULA_AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
+
+#: PER-PFT Lambert-Beer light-extinction coefficient (`par/pft_lpjmlfit.js`: `K_LAMBERT_BEER_BL` 0.59
+#: broadleaf ids {0,2,3,5} / `K_LAMBERT_BEER_NL` 0.45 needleleaf ids {1,4,6}; Zhang et al. 2014), keyed by
+#: the 0-based `Type` = pftpar index. The C reads it PER PFT (`fpc_tree.c:28`
+#: `getpftpar(pft, lightextcoeff)`), so one global k would bias every needleleaf stem's inverted crown area.
+K_LIGHTEXT = {0: 0.59, 1: 0.45, 2: 0.59, 3: 0.59, 4: 0.45, 5: 0.59, 6: 0.45}
+
+
+def patch_stand_lai_expr() -> pl.Expr:
+    """Per-stem contribution to the PER-PATCH stand LAI, from the emitted `LAI` / `fpc_ind` / `Type`.
+
+    THE CANONICAL DEFINITION (ADR 0035) — `scripts/diagnose_patch_lai_reconstruction.py` imports THIS, so
+    the training column and its validation can never drift apart (the ADR-0031 lesson: two independent
+    copies of one definition is exactly what caused the tree-PFT truncation).
+
+    The `slow-drf-pipeline` skill used to record "per-patch LAI is NOT reconstructable from ind (no
+    leaf_c/nind)". True literally, false in effect — `LAI` (the within-crown individual LAI) and `fpc_ind`
+    between them carry the crown area:
+
+        fpc_ind = crownarea * nind * (1 - exp(-k_pft * LAI))     fpc_tree.c:28
+        nind    = 1 / param.patcharea                            new_tree.c:209 (individual = true)
+        LAI     = leaf_c * sla / crownarea                       lai_tree.c:18
+      => leaf_c * sla / patcharea = LAI * fpc_ind / (1 - exp(-k_pft * LAI))
+
+    and summing that over a patch's stems gives `sum(leaf_c*sla)/patcharea` = the stand LAI the runtime
+    forms as `sum(leaf_c*sla*nind)` (slow.jl::flux_feature_vector). `patcharea` cancels — it is never used.
+
+    Guarded at LAI<=0: a leafless stem has leaf_c==0 so its true contribution is 0, while the
+    `1 - exp(-k*LAI)` denominator goes to 0 there (0/0).
+    """
+    k = pl.col("Type").replace_strict(K_LIGHTEXT, return_dtype=pl.Float64)
+    return (
+        pl.when(pl.col("LAI") > 0.0)
+        .then(pl.col("LAI") * pl.col("fpc_ind") / (1.0 - (-k * pl.col("LAI")).exp()))
+        .otherwise(0.0)
+    )
 
 
 def _boundary_source(scenario):
@@ -154,7 +207,7 @@ def _boundary_source(scenario):
 def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     """MODE=copula (ADR 0025): per-STEM trait targets + the runtime-consistent flux+boundary conditioning.
 
-    `agg` carries the per-(Cell,Patch,Year) flux drivers with the soilmoist/lai coverage gate applied. Here:
+    `agg` carries the per-(Cell,Patch,Year) flux drivers with the soilmoist coverage gate applied. Here:
     (1) attach the boundary tail via `_boundary_source` (static per-cell mean by default; per-(Cell,Year)
         TRANSIENT under `BOUNDARY_WINDOW`, ADR 0026);
     (2) scan the SURVIVING tree stems (`isdead==0`) for the trait axes — one row per living stem, the
@@ -180,7 +233,7 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
           f"({dropped} dropped, {drop_frac:.4f})")
     if drop_frac > 0.02:  # same anti-silent-truncation guard as the count path
         raise SystemExit(f"FATAL: copula conditioning-join dropped {drop_frac:.3f} of stems "
-                         f"(soilmoist/lai coverage hole). scenario={scenario}.")
+                         f"(soilmoist coverage hole). scenario={scenario}.")
     # STEM_CAP (opt-in, default 0 = keep all → byte-identical): per-CELL random subsample to at most STEM_CAP
     # stems. A cell's trait MARGINAL (+ its per-cell KS) is fully estimated by a few hundred stems, so capping
     # keeps the distribution while making the POOLED multi-regime copula (~730M stems across scenarios)
@@ -267,6 +320,9 @@ def main() -> int:
             pl.col("agb").sum().alias("agb"),
             pl.col("wscal_mean").mean().alias("_wscal_mean"),
             ((pl.col("Age") - 1).mean()).cast(pl.Float64).alias("age_mean"),
+            # PER-PATCH stand LAI, reconstructed in-row (ADR 0035) — same patch, same >5 m stem population
+            # as every other aggregate here. Replaces the joined cell-mean C LAI_STAND.
+            patch_stand_lai_expr().sum().alias("lai"),
         )
         .collect(engine="streaming")
     )
@@ -279,36 +335,39 @@ def main() -> int:
         pl.min_horizontal(pl.col("_fpc_sum"), pl.lit(1.0)).alias("fpc"),
     )
 
-    # --- REAL feature joins (soilmoist, lai); inner + height-assert = the anti-NaN guard ---
-    # SOIL_TBL_PATH/LAI_TBL_PATH override the scenario defaults (subset verification, seed/scenario variants).
+    # --- REAL feature join (soilmoist); inner + height-assert = the anti-NaN guard ---
+    # `lai` is NO LONGER joined (ADR 0035) — it is reconstructed per-patch in the aggregate above, so the
+    # only remaining external feature table is the root-zone year-end soilmoist. SOIL_TBL_PATH overrides the
+    # scenario default (subset verification, seed/scenario variants).
     sm = pl.read_parquet(os.environ.get("SOIL_TBL_PATH", SOIL_TBL[scenario])).select(["Cell", "Year", "soilmoist"])
-    lai = pl.read_parquet(os.environ.get("LAI_TBL_PATH", LAI_TBL[scenario])).select(["Cell", "Year", "lai"])
     h0 = agg.height
     cells_before = set(agg["Cell"].unique().to_list())
-    agg = agg.join(sm, on=["Cell", "Year"], how="inner").join(lai, on=["Cell", "Year"], how="inner")
+    agg = agg.join(sm, on=["Cell", "Year"], how="inner")
     dropped = h0 - agg.height
     drop_frac = dropped / max(h0, 1)
     cells_lost = cells_before - set(agg["Cell"].unique().to_list())
-    print(f"== after soilmoist+lai inner-join: {agg.height} rows ({dropped} dropped, {drop_frac:.4f}); "
+    print(f"== after soilmoist inner-join: {agg.height} rows ({dropped} dropped, {drop_frac:.4f}); "
           f"{len(cells_lost)} cells fully lost")
-    # COVERAGE GATE (the anti-silent-drop guard): soilmoist+lai should cover every tree (Cell,Year). A large
-    # drop or an entirely-lost cell = a coverage hole in a feature table (e.g. an incomplete LAI_STAND run) —
+    # COVERAGE GATE (the anti-silent-drop guard): soilmoist should cover every tree (Cell,Year). A large
+    # drop or an entirely-lost cell = a coverage hole in the feature table (e.g. an incomplete daily run) —
     # fail loud rather than silently train on a biome-truncated global set.
     if drop_frac > 0.02 or cells_lost:
         raise SystemExit(
             f"FATAL: feature-join coverage hole — {dropped} rows ({drop_frac:.3f}) dropped, "
             f"{len(cells_lost)} cells fully lost (e.g. {sorted(cells_lost)[:10]}). "
-            f"Check cell_year_soilmoist/cell_year_lai completeness for scenario={scenario}.")
+            f"Check cell_year_soilmoist_ye completeness for scenario={scenario}.")
     # growth_eff — MATCH THE RUNTIME's zero-leaf-area guard (fast.jl:369):
     #     growth_eff = leaf_area > 0 ? applied_cell / leaf_area : zero(T)
     # The C oracle guards it the same way (`if(leafarea_real > 1e-6) … else mort_npp = 1`,
     # mortality_tree_ind.c:95-99). This USED to be `applied_npp / max(lai, EPS)`, which turns a joined
     # `LAI_STAND == 0` into `applied_npp * 1e6` — a train/inference shift on a primary mortality driver
-    # (ADR 0023). Measured by scripts/diagnose_lai0_growth_eff.py: it never fires on a seed1 table (0 of
-    # 23.9M tree groups — the lai table is derived from the SAME seed1 C run, so a cell-year with living
-    # leafy stems is never lai==0), but a seed2 `ind` joined against that seed1 lai table hits 21 501
-    # groups / 204 867 stems and max 1.19e9. Under this rule that same seed2 build maxes at 4.3e4,
-    # i.e. right at seed1's 3.1e4 — the blow-up was entirely the divisor.
+    # (ADR 0023). Measured by scripts/diagnose_lai0_growth_eff.py: it never fired on a seed1 table (0 of
+    # 23.9M tree groups) but a seed2 `ind` joined against that seed1 lai table hit 21 501 groups /
+    # 204 867 stems and max 1.19e9 — a CROSS-SEED join artifact (one lai table existed, seed1-derived).
+    # ADR 0035 makes that class STRUCTURALLY IMPOSSIBLE: `lai` is now reconstructed from the same `ind`
+    # rows being aggregated, so it cannot come from another trajectory, and `lai == 0` for a group with
+    # positive npp cannot occur (a stem with npp>0 and Height>5 m has leaf carbon). The guard + the
+    # GROWTH_EFF_MAX assertion stay as the standing alarm, not because a known path can still trip them.
     agg = agg.with_columns(
         pl.when(pl.col("lai") > 0.0)
         .then(pl.col("_applied_npp").fill_null(0.0) / pl.col("lai"))
@@ -326,9 +385,10 @@ def main() -> int:
         raise SystemExit(
             f"FATAL: growth_eff max {ge_max:.6g} exceeds GROWTH_EFF_MAX={GROWTH_EFF_MAX:.6g} — a tiny-lai "
             f"divisor blow-up (conditioning on it is a live train/inference hazard). {n_lai0} rows had "
-            f"lai<=0. Check that the lai table's seed/scenario matches the ind parquet's.")
+            f"lai<=0 — since ADR 0035 that should be unreachable (lai is reconstructed in-row), so a hit here "
+            f"means the reconstruction or the stem filter changed.")
 
-    # MODE=copula forks here: `agg` already carries the 4 flux drivers (with the soilmoist/lai coverage gate
+    # MODE=copula forks here: `agg` already carries the 4 flux drivers (with the soilmoist coverage gate
     # applied); the copula path needs those + the per-cell boundary, broadcast onto per-STEM trait targets.
     if mode == "copula":
         return _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear)

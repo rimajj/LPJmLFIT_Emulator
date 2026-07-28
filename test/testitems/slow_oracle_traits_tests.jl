@@ -10,11 +10,13 @@
 # recruits, conserve carbon — and checks the emulated community SLA/Wooddens distribution lands on the C
 # survivor marginal (which it should: recruits are drawn from exactly that flux-conditioned marginal, and
 # the emulator's mortality is trait-blind so the community distribution == the establishment distribution).
-# Measured this session: SLA nqrmse ≈ 0.13 (median ratio ≈ 1.02), Wooddens ≈ 0.20 (≈ 1.10). Deterministic.
-# S1c re-measurement (ADR 0032/0034): the `.rcop` came back BYTE-IDENTICAL from the regeneration, so both
-# DIRECT-draw numbers are unchanged (SLA 0.1274 / ratio 0.9715; Wooddens 0.0346 / 1.0000). Only the COUPLED
-# community numbers see the regenerated count DRF, and they barely moved (SLA nqrmse 0.2558 → 0.2634, Wooddens
-# 0.2203 → 0.2203; both median ratios unchanged at 1.0624 / 1.1113) — so no threshold here changes.
+# S1d re-measurement (ADR 0035, job 1622923) — the current numbers. Unlike S1c, where the `.rcop` came back
+# byte-identical, S1d moved two of the copula's four `live_flux_cond` conditioning columns onto their real
+# bases (`soilmoist` = root-zone year-end `w`; `growth_eff` via the per-patch `lai` divisor), so the copula
+# was retrained and the DIRECT draws moved — markedly CLOSER to the C oracle:
+#   DIRECT   SLA 0.1274 → 0.0391 (ratio 0.9715 → 0.9985) · Wooddens 0.0346 → 0.0273 (1.0000 → 1.0032)
+#   COUPLED  SLA 0.2634 (ratio 1.0624) · Wooddens 0.2203 (1.1113) — both UNCHANGED from S1c
+# Only the two DIRECT bounds move, and both TIGHTEN (0.22 → 0.10, 0.12 → 0.06); nothing here is widened.
 
 @testitem "Gate-3 traits — coupled S recruit-copula community SLA/Wooddens vs LPJmL-FIT C truth (Hainich 42490)" tags = [:scientific, :coupling] begin
     using LPJmLFITEmulator
@@ -136,9 +138,15 @@
 
     # ── PRIMARY fidelity check: the DIRECT copula-draw marginals vs the C oracle. Uses ONLY the deterministic
     #    RNG + the .rcop forest leaves + norminv/normcdf (Julia's bundled openlibm) → BITWISE-reproducible
-    #    across platforms, so it carries the TIGHT tolerance. Measured this session: SLA nqrmse ≈ 0.13
-    #    (median ratio ≈ 0.97), Wooddens ≈ 0.035 (≈ 1.00) at the fallback conditioning row. A marginal
-    #    regression or a stale/rebuilt .rcop trips it; a creep toward the bound is a signal to re-measure.
+    #    across platforms, so it carries the TIGHT tolerance. A marginal regression or a stale/rebuilt .rcop
+    #    trips it; a creep toward the bound is a signal to re-measure.
+    #    RE-MEASURED 2026-07-28 (S1d / ADR 0035, job 1622923) and both bounds TIGHTENED, neither widened —
+    #    putting `soilmoist` and `growth_eff` (two of the copula's four `live_flux_cond` columns) on their
+    #    real bases moved the draws markedly CLOSER to the C oracle:
+    #      SLA       nqrmse 0.1274 → 0.0391  (median ratio 0.9715 → 0.9985);  bound 0.22 → 0.10
+    #      Wooddens  nqrmse 0.0346 → 0.0273  (median ratio 1.0000 → 1.0032);  bound 0.12 → 0.06
+    #    Each new bound keeps a >2× cushion over the measurement — deliberately not shrink-wrapped, since a
+    #    future basis change should be able to move these a little without a red suite.
     qd(vals) = (v = sort(vals); [v[clamp(round(Int, q * length(v)), 1, length(v))] for q in qs])
     Ndraw = 4000
     draws = [DRF.sample_copula!(DRF.Xoshiro256pp(sd_), cop, af, xcop) for sd_ in 1:Ndraw]
@@ -152,9 +160,9 @@
     end
     dnq_sla, dmr_sla = draw_nqrmse("SLA", 1)          # axis 1 = SLA
     dnq_wd, dmr_wd = draw_nqrmse("Wooddens", 2)       # axis 2 = Wooddens
-    @test dnq_sla ≤ 0.22
+    @test dnq_sla ≤ 0.1
     @test 0.85 ≤ dmr_sla ≤ 1.15
-    @test dnq_wd ≤ 0.12
+    @test dnq_wd ≤ 0.06
     @test 0.85 ≤ dmr_wd ≤ 1.15
 
     # ── COARSE coupled-community alarm (platform-sensitive → generous, like the Gate-3 Height oracle's 0.45).

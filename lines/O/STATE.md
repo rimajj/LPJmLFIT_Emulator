@@ -46,6 +46,33 @@ WHC-normalized = a definitional mismatch, ADR 0082 §4).
 must be retrained on Terrarium-derived `soilmoist` as a **version-bumped ONLINE artifact** (never an in-place
 mutation — ADR 0029's S→M contract). `slow.jl`/`drf.jl`/`scripts/*slow*` are line S's exclusive paths.
 
+> **⚠ UPDATE from line S, 2026-07-28 — ADR 0035 (S1d) MOVED BOTH SIDES OF THIS COMPARISON. Read before O3b.**
+> You reached the same insight we did, independently and on the online side: fraction-of-porosity vs
+> fraction-of-WHC is a definitional mismatch, not a calibration offset. Two concrete consequences for O3b:
+>
+> 1. **The reference numbers quoted above are from the RETIRED table.** `min 0.0167 / q50 0.4635 /
+>    q90 0.8080 / mean 0.5075` is exactly `tables/cell_year_soilmoist_hist.parquet` — which we verified is
+>    the C **`swc`** output = total water over **SATURATION** capacity (`update_daily.c:411`). That is the
+>    porosity-normalized quantity you are deliberately trying NOT to map onto. Calibrating
+>    `plant_available_water` against it would reintroduce the mismatch from the offline side.
+>    The live reference is `tables/cell_year_soilmoist_ye_hist.parquet` (same 1 348 400 cell-years):
+>    **min 0.0000 · q10 0.0000 · q25 0.0000 · q50 0.4980 · q75 0.8770 · q90 0.9999 · max 1.0078 · mean
+>    0.4780.** Note the means are close (0.5075 vs 0.4780) while the SHAPE is completely different — a
+>    quarter of cell-years now sit at a fully dry root zone. Matching on mean alone would have hidden it.
+> 2. **The runtime target changed too, so `slow.jl:191` no longer says what your script's header says.**
+>    It is no longer `sum(state.w)/length(state.w)` (an unweighted mean over all 23 layers). It is
+>    `root_zone_soilmoist(state, fc.soil)` = the **`whcs`-weighted mean over the top 3 layers (~1 m)**, read
+>    at **year end**. Your `FieldCapacityLimitedPAW` choice is still right on the VARIABLE
+>    (`min((θw−θwp)/(θfc−θwp), 1)` is exactly LPJmL's `w`) — but to be the same quantity the mapping must
+>    also be depth-restricted to ~1 m, capacity-weighted, and sampled at the same instant, not a
+>    whole-column annual mean.
+>
+> Formulas + why `swc` cannot simply be converted: **CLAUDE.md §3** and **ADR 0035**. Nothing here changes
+> ADR 0082's decision — it sharpens the target it points at. No action needed from S unless O3b shows the
+> Terrarium distribution differs materially from the NEW reference, in which case the version-bumped online
+> artifact above is still the right shape; raise it in `lines/S/STATE.md` and S will fold it into the `t8`
+> re-derivation that is already queued.
+
 ### O3c — the photosynthesis spike (recipe fully worked out in design doc §4)
 
 `FDiffPhotosynthesis{NF} <: Terrarium.AbstractPhotosynthesis{NF}`; implement only `variables(...)` +

@@ -188,11 +188,53 @@ function reconcile_demography!(
     push!(s.total_n_history, sum(convert(T, p.nind) for p in pools))
     push!(s.resid_history, s.last_resid)
 
-    soilmoist = sum(state.w) / length(state.w)
+    # ADR 0035 — root-zone, whcs-weighted (NOT the pre-0035 unweighted 23-layer mean)
+    soilmoist = root_zone_soilmoist(state, fc.soil)
     return FToS{T}(
         bm_inc = grow.bm_inc_cell, water_stress = grow.water_stress, temp_stress = zero(T),
         growth_eff = grow.growth_eff, soilmoist = convert(T, soilmoist),
     )
+end
+
+"""
+    ROOT_ZONE_LAYERS
+
+Number of top soil layers that constitute the **root zone** for the `soilmoist` conditioning feature —
+the C's `forrootmoist` (`include/soil.h:353`, `for(l=0;l<3;l++)`, "here defined for the first 1 m"), i.e.
+the 200 + 300 + 500 mm layers of `par/soil_20m.js`. Load-bearing: the training feature is derived from the
+C's `rootmoist` output, which is summed over exactly this layer set (ADR 0035).
+"""
+const ROOT_ZONE_LAYERS = 3
+
+"""
+    root_zone_soilmoist(state::SharedState, soil) -> Float64
+
+The `soilmoist` conditioning feature: plant-available soil water in the **root zone** (the top
+[`ROOT_ZONE_LAYERS`](@ref) layers ≈ 1 m) as a fraction of that zone's water-holding capacity, i.e. the
+`whcs`-weighted mean of `state.w` — which is what `FToS.soilmoist` has always been documented to be
+("root-zone soil moisture state, fraction of WHC", `interface.jl`).
+
+**This is the runtime half of an ADR-0035 train/inference contract, so it must not drift.** The training
+column is the C's own `ROOTMOIST / Σ_{l<3} whcs[l]` (`scripts/build_rootmoist_soilmoist_feature.py`), where
+`ROOTMOIST = Σ_{l<3} w[l]·whcs[l]` (`update_daily.c:414`) — the same weighted mean of the same variable
+over the same layers. It replaces the pre-0035 unweighted 23-layer mean `sum(state.w)/length(state.w)`,
+which was matched against the C's `swc` output — a DIFFERENT QUANTITY (total water over SATURATION
+capacity, `update_daily.c:411`), not merely a different time aggregation as ADR 0034 assumed.
+
+Degenerate columns are tolerated because unit harnesses build short ones: the layer count is capped at
+`length(whcs)`, and a zero-capacity root zone returns 0.
+"""
+function root_zone_soilmoist(state::SharedState, soil)
+    whcs = soil.whcs
+    nr = min(ROOT_ZONE_LAYERS, length(whcs), length(state.w))
+    nr <= 0 && return 0.0
+    num = 0.0; den = 0.0
+    for l in 1:nr
+        c = Float64(whcs[l])
+        num += Float64(state.w[l]) * c
+        den += c
+    end
+    return den > 0 ? num / den : 0.0
 end
 
 "Rebuild a `FDiff.TreePools` with a new `nind` (all other fields unchanged)."
@@ -569,16 +611,25 @@ function FluxDrivenSlowEmulator(
 end
 
 """
-    flux_feature_vector(s::FluxDrivenSlowEmulator, grow, pools, state, allom) -> Vector{Float64}
+    flux_feature_vector(s::FluxDrivenSlowEmulator, grow, pools, state, allom, soil) -> Vector{Float64}
 
 Assemble the DRF feature row (fixed order): the four `FToS`-consistent flux drivers (bm_inc, growth_eff,
 water_stress, soilmoist), the six this-year patch-state aggregates from the grown tree pools (fpc-weighted
 mean height, max height, stand AGB, stand LAI, capped FPC, mean cohort age), the recursive AR state
 `n_prev`, then the baked slow-boundary tail. The training table must use this SAME order (ADR 0020 §6:
 S is conditioned at runtime on the channel it was trained on).
+
+`soil` is the fast core's `FDiff.SoilColumn`; only its `whcs` is read, by
+[`root_zone_soilmoist`](@ref) (ADR 0035 — the root-zone, `whcs`-weighted basis that the training column
+is derived on). It became a parameter in ADR 0035: the pre-0035 `soilmoist` was an unweighted mean over
+all 23 layers and needed no soil geometry.
+
+Everything here is a YEAR-END STATE except the three annual integrals F delivers in `grow`
+(`bm_inc_cell`, `growth_eff`, `water_stress`) — that split is deliberate and is why `soilmoist` is read as
+an instantaneous state rather than accumulated over the year (ADR 0035 §4).
 """
 function flux_feature_vector(
-        s::FluxDrivenSlowEmulator{T}, grow, pools, state, allom
+        s::FluxDrivenSlowEmulator{T}, grow, pools, state, allom, soil
     ) where {T <: AbstractFloat}
     fpc = zero(T); hw = zero(T); lai = zero(T); agb = zero(T)
     for p in pools
@@ -595,7 +646,8 @@ function flux_feature_vector(
         (!p.is_grass && convert(T, p.height) > hmax) && (hmax = convert(T, p.height))
     end
     age_mean = _mean_age_weighted(s.age, pools)   # nind-weighted tree-only demographic mean age (ADR 0024)
-    soilmoist = sum(state.w) / length(state.w)
+    # ADR 0035 — root-zone, whcs-weighted (NOT the pre-0035 unweighted 23-layer mean)
+    soilmoist = root_zone_soilmoist(state, soil)
     head = Float64[
         grow.bm_inc_cell, grow.growth_eff, grow.water_stress, soilmoist,
         hmean, hmax, agb, lai, min(fpc, one(T)), age_mean, s.n_prev,
@@ -628,7 +680,7 @@ function reconcile_demography!(
     end
 
     # ── DRF TARGET → demographic-change ratio ρ (unit-free; count↔density cancels) ──
-    feats = flux_feature_vector(s, grow, pools, state, fc.allom)
+    feats = flux_feature_vector(s, grow, pools, state, fc.allom, fc.soil)
     push!(s.feature_history, feats)                # diagnostic-only record of the row the forest was fed
     target = DRF.predict(s.forest, feats)
     ρ = if s.year == 0
@@ -690,7 +742,8 @@ function reconcile_demography!(
     push!(s.resid_history, s.last_resid)
     push!(s.target_history, convert(T, target))
 
-    soilmoist = sum(state.w) / length(state.w)
+    # ADR 0035 — root-zone, whcs-weighted (NOT the pre-0035 unweighted 23-layer mean)
+    soilmoist = root_zone_soilmoist(state, fc.soil)
     return FToS{T}(
         bm_inc = grow.bm_inc_cell, water_stress = grow.water_stress, temp_stress = zero(T),
         growth_eff = grow.growth_eff, soilmoist = convert(T, soilmoist),

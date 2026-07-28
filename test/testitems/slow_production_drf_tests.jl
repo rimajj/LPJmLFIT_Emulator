@@ -126,20 +126,31 @@
     # meta's own y-band instead of the old hand-picked 0.5..40 cushion makes that explicit: the old bound
     # could not fail, which is why a two-order-of-magnitude proxy-basis shift survived every green gate for
     # five days. The check that CAN see a shift is the feature-band one below.
-    @test all(t -> y_min ≤ t ≤ y_max, s.target_history)     # measured 12.28..13.64 on y ∈ [3, 19]
+    @test all(t -> y_min ≤ t ≤ y_max, s.target_history)     # measured 11.66..12.52 on y ∈ [3, 19] (S1d)
 
     # RUNTIME-vs-TRAINED FEATURE BAND — the real ADR-0023 train/inference-consistency gate. `feature_history`
     # is the exact row handed to the forest each year; compare it column-by-column with the artifact's trained
     # band, in units of band width so the measure is scale-free.
     #
-    # MEASURED 2026-07-28 (S1c, ADR 0034), and this is a KNOWN, DOCUMENTED residual shift, not a pass:
-    #   water_stress  runtime 0.323..0.331  vs trained [0, 0.043]    → 6.6× band width  (F_diff vs the C)
-    #   soilmoist     runtime 0.792..0.999  vs trained [0.842, 0.867] → 5.1×  (year-end instant vs annual mean)
-    #   lai           runtime 3.63..5.17    vs trained [2.76, 3.37]   → 2.9×  (one patch vs the cell mean)
-    #   fpc           runtime  ..0.784      vs trained [0.155, 0.741] → 0.03× (marginal; below the 0.5 cut)
-    # Every other column, INCLUDING the two that ADR 0032's regeneration moved into band (`bm_inc_cell`,
-    # `growth_eff`), is inside. So this asserts the shift is exactly where it is known to be: a NEW column
-    # drifting out, or these growing, trips it. Tighten the set as ADR 0034's three causes are closed.
+    # MEASURED 2026-07-28 (S1d, ADR 0035 — job 1622923), superseding the S1c/ADR-0034 numbers:
+    #   column        S1c excursion                    → S1d excursion    cause / owner
+    #   water_stress  6.6× band width                  → 6.60× (12-yr)    F_diff vs the C — LINE M, untouched
+    #   soilmoist     5.1×  [0.842, 0.867] vs 0.79..1.0 → IN              CLOSED: it was the wrong VARIABLE
+    #                                                                     (C `swc` = fraction of SATURATION vs
+    #                                                                     the runtime's fraction of WHC), not a
+    #                                                                     time-aggregation gap. Both sides are
+    #                                                                     now root-zone `w`, year-end.
+    #   lai           2.9×  [2.76, 3.37] vs 3.63..5.17 → 0.021× (12-yr)   CLOSED as a BASIS error: training is
+    #                                                    0.086× (20-yr)   now the per-patch stand LAI, so the
+    #                                                                     band is [0.78, 4.78] not [2.76, 3.37].
+    #   fpc           0.03×                            → 0.084× (20-yr)   never a basis error (already
+    #                                                                     per-patch both sides); a DYNAMICS
+    #                                                                     residual — the coupled patch settles
+    #                                                                     denser than the training upper tail.
+    # So the pinned set is now `water_stress` ALONE. `lai`/`fpc` sit at <0.1 band width — real but marginal,
+    # left unpinned at the 0.5 cut so they cannot flap across CPU microarchitectures, and bounded below.
+    # Every other column, INCLUDING the two ADR 0032's regeneration moved in (`bm_inc_cell`, `growth_eff`),
+    # is inside. A NEW column drifting out, or these growing, trips this.
     exc = [
         begin
                 w = feat_max[j] - feat_min[j]
@@ -154,11 +165,16 @@
     @info "runtime-vs-trained feature band (excursion in band widths; 0 = inside)" pairs = [
         colnames[j] => round(exc[j], digits = 3) for j in eachindex(colnames) if exc[j] > 0
     ]
-    @test Set(colnames[j] for j in eachindex(colnames) if exc[j] > 0.5) ==
-        Set(["water_stress", "soilmoist", "lai"])
-    @test maximum(exc) ≤ 10.0                                              # measured worst 6.64
+    @test Set(colnames[j] for j in eachindex(colnames) if exc[j] > 0.5) == Set(["water_stress"])
+    @test maximum(exc) ≤ 10.0                                              # measured worst 6.60
     @test exc[findfirst(==("bm_inc_cell"), colnames)] == 0.0                # ADR 0032's fix, held
     @test exc[findfirst(==("growth_eff"), colnames)] == 0.0                 # (was ~8× on the proxy basis)
+    # ADR 0035's two closures, asserted so they cannot silently regress: `soilmoist` fully inside, and the
+    # residual `lai`/`fpc` excursions bounded an order of magnitude below the 0.5 pin (measured 0.021/0.000
+    # here on the 12-yr harness, 0.086/0.084 on the 20-yr one).
+    @test exc[findfirst(==("soilmoist"), colnames)] == 0.0
+    @test exc[findfirst(==("lai"), colnames)] ≤ 0.2
+    @test exc[findfirst(==("fpc"), colnames)] ≤ 0.2
 
     # MECHANISM: the loaded DRF moved tree N (F alone held it fixed above)
     @test s.total_n_history[end] != s.total_n_history[1]
