@@ -261,6 +261,21 @@ Pipeline (mirrors the count-DRF one; the scripts are axis-count-agnostic):
    → train the pooled global `.rcop`. Then the trait figures 09-11 (see the **emulator-validation-figures**
    skill: `COPULA_OUT=<table dir>` → `metrics_traits.txt`). SSP370 after its features exist.
 
+**"Published" means LOAD-VERIFIED, not "the job exited 0".** Before telling line M an artifact pair is ready,
+deserialize both halves and assert the contract — a training job can exit 0 having written a file the runtime
+cannot consume, and M pins these. One login-node check, seconds:
+```julia
+include("src/drf.jl"); using .DRF
+f = DRF.load_forest("…_t7.drf");              @assert f.nfeat == 15    # 11 head + 4 boundary
+(cop, marg, xfb, ax, cc) = DRF.load_copula("…_t7.rcop")                # NOTE: returns a 5-TUPLE, not a struct
+@assert length(ax) == 4 && length(cc) == 8 && length(marg) == 4        # axes / live_flux_cond / marginals
+```
+Three API traps in that snippet, each of which fails on the first attempt: `load_copula` returns
+`(GaussianCopula, Vector{Forest}, Vector{Float64}, axes, cond_cols)` — **a tuple, so `x.axes` throws
+`type Tuple has no field axes`**; `GaussianCopula`'s fields are `(:L, :d)`, **not** `corr`; and binding the
+axes to a variable literally named `axes` fails with `cannot assign a value to imported variable Base.axes`.
+Reference numbers for the `t7` pair: `.drf` 150 trees / `nfeat=15` / 1.5 s · `.rcop` 128 MB / 2.9 s.
+
 **Load-bearing:** the copula conditioning order MUST match `src/components/slow.jl::live_flux_cond` (4 flux +
 boundary) — the same channel-consistency trap as the count DRF's `flux_feature_vector`. Retraining the `.rcop`
 ⇒ re-measure the `slow_oracle_traits_tests` thresholds (residual-diagnosis). The sampler primitives
