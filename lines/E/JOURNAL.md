@@ -178,3 +178,67 @@
   — the diurnal test must scale it or drive `solve_seb` directly.
 - **Decisions:** none new (ADR 0070/0071 stand); this is a scope correction inside the line plan.
 - **Next:** E4 as re-specified in `lines/E/STATE.md` `## NEXT`.
+
+## 2026-07-28 — E4 Experiment A: the P2 gate RAN. Rn + T_skin verified, H only in the mean, nocturnal H is the failure mode  [milestone E4]
+
+- **Goal:** run the P2 gate — score Component E against flux towers — and say precisely what may now be claimed.
+
+- **Design (the part that decides everything):** `FToE` hands E `le` **already formed** as λ·ET
+  (`components/fast.jl:236`), so **LE is F's number**; E's own outputs are **T_skin, H, G**. Experiment A
+  therefore drives `solve_seb` with a tower's own forcing **and the tower's own `le_cor`** — F's ET error is
+  excluded by construction, and a miss is unambiguously E's. Every boundary value comes from the observation
+  where one exists: **albedo** = the tower's Σ SWup/Σ SWdown, canopy height and — load-bearing — `z_ref` =
+  the site's **measurement** height (43.5 m at DE-Hai; the 10 m default would evaluate `g_a` at a level the
+  forcing was never measured at). `t_soil` reproduces `solve!`'s τ = 30 d EWMA on **daily-mean** Tair (the
+  per-step recursion at 30 min would decay ~48× too fast).
+
+- **Did:** `scripts/build_e_seb_validation_table.py` (tower-forced driving tables, 4 sites) →
+  `scripts/validate_e_seb_vs_plumber2.jl` (pure-Base driver: `solve_seb` per step; bias/RMSE/MAE/R²/slope for
+  H, T_skin and Rn; all / day / **night**; **half-hourly and daily**; the fraction inside PLUMBER2's own
+  `|h_cor_uc|`; the mean diurnal cycle; a `stab_amp`/`stab_k` sweep). Jobs `E-sebtable2` 1622120,
+  `E-e4a3` 1622127. **497 936 tower steps.**
+
+- **Result / evidence:**
+
+  | site | steps | H bias | H RMSE | H R² all/day/**night** | H daily bias/RMSE/R² | T_skin RMSE / R² | Rn R² |
+  |---|---|---|---|---|---|---|---|
+  | DE-Hai | 175 344 | **+6.4** | 54.8 | 0.647 / 0.535 / **−1.02** | +6.4 / 33.4 / 0.257 | — (no LWup) | **0.986** |
+  | AU-Tum | 134 898 | −19.2 | 80.3 | 0.569 / 0.390 / **−1.70** | −19.2 / 37.8 / 0.125 | 3.21 K / 0.773 | 0.989 |
+  | AU-ASM | 122 736 | −6.8 | 59.2 | 0.898 / 0.780 / **−1.01** | −6.8 / 18.3 / **0.778** | 2.59 K / 0.941 | **0.996** |
+  | AU-Rob | 64 958 | −7.8 | 110.7 | −0.01 / −0.22 / **−5.62** | −7.8 / 34.5 / 0.256 | 3.34 K / 0.385 | 0.995 |
+
+  Daily T_skin RMSE **1.41–1.97 K**, R² 0.76–0.95. At DE-Hai (the only site with a band): **76.4 % of 3 653
+  daily means** and 57.2 % of 175 344 half-hours inside `|h_cor_uc|` (±40.94 W/m²).
+  ⇒ **Rn VERIFIED · T_skin VERIFIED where observable · H verified in the MEAN, not in variability.**
+
+- **The failure mode, named:** the closure runs **1–2 K too cold at night** — modelled night `T_skin − Tair`
+  −3.38 / −2.62 / −1.82 K (AU-Tum / AU-ASM / AU-Rob) vs observed −1.39 / −1.67 / −0.74 K — and nocturnal H has
+  R² < 0 at **every** site. The stability correction is right to be ON (night RMSE 37.0 vs 41.7 DE-Hai, 29.7 vs
+  46.4 AU-ASM) but its `stab_amp = 0.75` is **too weak**: the sweep is **monotone up to 0.9** at both sites, i.e.
+  the optimum sits at the parameter's bound ⇒ suspect the bounded-tanh *form*, not the coefficient. **No default
+  was changed** (guardrail 4; a flip is an M integration point).
+
+- **Methodological finding worth keeping:** the half-hourly H R² (0.647 at DE-Hai) is **inflated by the diurnal
+  cycle** — most half-hourly variance *is* the day/night swing, which any closure driven by observed SWdown
+  reproduces. The daily-mean R² (0.257) is the honest number. Quote daily.
+
+- **The bug the new regression fixture caught on its first run (and it was MINE, in the verdict):** committing a
+  single-year fixture (DE-Hai 2010) reported an H bias of **+39.8 W/m²** where the record said +11.4. Cause:
+  at DE-Hai the **uncorrected `le` is all-NaN for 2010–2012** (that is where the site's 23.1 % missing LE sits)
+  and PLUMBER2's EB correction emitted **≈0 instead of a fill value** there (annual mean `le_cor` 0.39 / −0.09 /
+  0.04 W/m² vs 30–40 in 2000–2009), while `h_cor_uc` vanishes. My completeness filter only tested `le_cor` for
+  finiteness, so it kept **36 550 rows of garbage**, and feeding the closure LE ≈ 0 pushes all available energy
+  into H. Fixed by also requiring the **uncorrected** `le` to be finite (DE-Hai → 175 344 rows = exactly ADR
+  0070's jointly-valid count), and the fixtures are now **stratified every 12th day × every 3rd hour across the
+  whole record**. The whole DE-Hai verdict was recomputed: bias +11.4 → **+6.4**, daily R² 0.087 → **0.257**,
+  all-R² 0.573 → 0.647. Other sites unaffected.
+
+- **AU-Rob is a suspect site, not an E failure:** its own tower budget is the worst of the nine staged (closure
+  slope 0.599) and its H is unpredictable even in daylight (R² −0.22) while its T_skin still scores 0.762 daily.
+
+- **Decisions:** **ADR 0072** — the P2 verdict, with the pre-fix baseline numbers, the named failure mode, the
+  stability finding, and the gate frozen as a CI regression test (the night-cold bias pinned as a *sign*
+  assertion, so a genuine fix trips it and forces a supersede).
+
+- **Next:** **E6 — diagnose the nocturnal H failure** (start by forcing `g_a` from the towers' measured `u*`:
+  that one experiment separates "wrong `g_a`" from "wrong G / wrong radiative loss"). See STATE `## NEXT`.
