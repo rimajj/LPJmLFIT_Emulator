@@ -75,12 +75,42 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
 ## Status (2026-07-28)
 
 - **P1 is DONE**: the flux-driven S runs in the coupled loop, carbon-conserving to ~1e-12 gC (ADR 0018→0027).
-- **GLOBAL offline validation** (K-fold-BY-CELL, 45009 cells, real features): counts per-cell-mean
-  **r²=0.9994**, held-out-BY-SCENARIO **R²=0.9847**; trait pooled marginals KS **0.004–0.015**.
-- **⚠ The training population is TRUNCATED — ADR 0031 (found 2026-07-28, S1's main outcome).** Every global S
-  number above and below is on ids 1–5 / **45 009** of 54 020 tree cells: id 0 (tropical broadleaved evergreen)
-  and id 6 (larch) are dropped = 32.5 % of survivor tree stems, 16.7 % of tree cells invisible. Not a decision
-  — a stale-yaml port defect. **S1b fixes it and everything below must then be re-measured.**
+- **The tree-PFT truncation is FIXED in code (ADR 0031, S1b).** `TREE_TYPES` now lives in ONE place
+  (`lpjmlfit_emulator.data`) and `features.py` / `config.yaml` / all four `build_slow_*.py` /
+  `noise_floor_vs_emulator.py` **import** it. The `growth_eff` `÷max(lai,EPS)` shift is fixed to the runtime
+  rule (`fast.jl:369`) with a `GROWTH_EFF_MAX` assertion. Per-PFT mortality params are all seven `[VERIFIED]`.
+  The **global re-derivation on the `t7` generation is IN FLIGHT** — see §NEXT for the job table.
+- **⚠ EVERY global S number below with a "tree5" label is on the TRUNCATED population** (ids 1–5) and is
+  superseded by its `t7` counterpart, not silently restated (ADR 0031 §5).
+
+### Population widening — measured effect (historic copula table, seed2, `[VERIFIED]` job 1622132)
+
+| | tree5 (pre-0031) | **tree7 (t7)** |
+|---|---|---|
+| survivor tree stems | 133 562 549 | **197 802 377** (+48 %) |
+| cells | 45 072 | **54 058** (+8 986) |
+| `minwscal` span | [0.025, **0.30**] | [0.025, **0.75**] — FIT's true range (id 0's interval) |
+| `growth_eff` max / mean | 1.19e9 / 264 495 | **43 138 / 146.7** (the guard; seed1 reads 31 183 / 120.6) |
+
+### Count DRF — before/after (like-for-like, same script + hyperparameters)
+
+| metric | tree5 | **t7** | Δ | source |
+|---|---|---|---|---|
+| pooled table rows (historic+ssp370, w20) | 77 636 574 | **121 495 487** | +56 % | |
+| pooled cells | 53 993 | **58 587** | +4 594 | |
+| pooled held-out-BY-CELL TEST R² | 0.9852 | **0.9818** | −0.0034 | 1597387 → 1622134 |
+| pooled in-sample R² | 0.9852 | **0.9819** | −0.0033 | |
+| pooled by-cell OOS R² / RMSE | 0.9852 / 0.702 | **0.9819 / 0.707** | −0.0033 | |
+| HOLD-OUT-BY-SCENARIO R², held out historic | 0.9847 (RMSE 0.714) | **0.9816** (0.709) | −0.0031 | 1600416 → 1622134 |
+| HOLD-OUT-BY-SCENARIO R², held out ssp370 | 0.9847 (RMSE 0.714) | **0.9814** (0.716) | −0.0033 | |
+| historic K-fold-by-cell per-row R² / per-cell-mean R² | 0.9852 / **0.9994** (44 328 cells) | *pending* | | 1581897 → 1622242 |
+
+**Counts survive the widening essentially intact:** every count metric moves by ≈ −0.003 R² on a 56 %-larger,
+markedly more heterogeneous population (the tropical belt + Siberian larch added), and the unseen-regime
+generalization gap stays flat (holdout-by-scenario is within 0.0005 of the by-cell baseline, as before). So the
+truncation was **not** materially inflating the count skill — the count DRF's headline claim is robust. The
+trait side is where the population change was predicted to bite (ADR 0031), and that is what the in-flight
+copula + 0030 re-measurement will show.
 - **The open gap — trait per-cell medians, now EXACT (`[VERIFIED 2026-07-28]`, ADR 0030, job 1617055;
   ids-1..5 population).** Both sides on the copula basis (`seed1-basis` = **1.000** on all 4 axes ⇒
   apples-to-apples; the pre-S1 0.49/0.09 cross-checks were the truncation, not "median instability"):
@@ -106,7 +136,19 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
 
 - **S1** Basis-clean noise floor → exact per-axis headroom. **DONE 2026-07-28 (ADR 0030)** — gate met
   (`seed1-basis` 1.000 ×4), headroom table in §Status, and it is what uncovered S1b.
-- **S1b** **Widen the training population to FIT's complete tree set (ADR 0031).** *(NEXT, above.)* Blocks S2.
+- **S1b** **Widen the training population to FIT's complete tree set (ADR 0031).** Code + gates + docs **DONE
+  2026-07-28**; the global re-derivation / re-validation / 0030 re-measurement is **IN FLIGHT** (§NEXT).
+  Blocks S2. Side outcomes: the `lai==0` seed asymmetry is diagnosed (cross-seed feature join), all seven PFTs'
+  mortality params are `[VERIFIED]` (ids 1/2/4/5 were also wrong, not just the two new ones), and the byte-identity
+  gate exists as `scripts/verify_hainich_demo_artifacts.sh` + `scripts/diagnose_slow_table_drift.py`.
+- **S1c** **Regenerate the committed Hainich demo `.drf` + `.rcop` onto ONE feature basis (ADR 0032).** The
+  committed `.drf` is on the RETIRED PROXY features (`soilmoist` 0.7, `lai` 21.2, `growth_eff` 19) while the
+  `.rcop` beside it is on the REAL ones (0.85, 3.07, ~151) — one emulator, two conditioning bases, a live
+  ADR-0023 shift masked by the DRF's OOD leaf-clamping. **Proven independent of S1b** (control build agrees to
+  max|abs diff| = 0 on all 15 columns). Regenerate BOTH from one table build; **re-measure** the
+  `slow_production_drf_tests.jl` + `slow_oracle_tests.jl` drift thresholds and document the move
+  (`residual-diagnosis`) — never widen them silently. **Integration point with M**; do NOT fold into another
+  milestone (that is exactly what ADR 0031 §3 forbids).
 - **S2** **Close the trait headroom.** Expand the copula conditioning — `COPULA_COND_COLS` in
   `scripts/build_slow_runtime_table.py` **and** `live_flux_cond` in `src/components/slow.jl` **in lockstep** —
   with environment / PFT-composition covariates; global K-fold re-fit (`run_pooled_slow_copula.sh`); measure

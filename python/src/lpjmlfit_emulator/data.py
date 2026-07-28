@@ -63,21 +63,33 @@ IND_COLUMNS: tuple[str, ...] = (
 
 assert len(IND_COLUMNS) == 29, "ind schema must have exactly 29 columns"
 
-#: PFT type codes (``Type`` column). Grass PFTs are written with tree fields zeroed;
-#: tree PFTs carry the full trait/size record (config ``variables``; DESIGN.md §3.1).
+#: LPJmL-FIT's COMPLETE tree PFT set — the single source of truth for the ``Type`` filter
+#: (ADR 0031). ``Type`` is the 0-based index into the active ``par/pft_lpjmlfit.js``
+#: ``pftpar`` array (``fscanpftpar.c:177``, written by ``fwriteoutput_ind.c:82``), where:
 #:
-#: .. warning::
-#:    **This value is a KNOWN DEFECT — see ADR 0031.** ``Type`` is the 0-based index into
-#:    the active ``par/pft_lpjmlfit.js`` ``pftpar`` array, where ids **0-6 are all seven
-#:    tree PFTs** (7/8/9 grass, 10-21 crops). ``(1, 2, 3, 4, 5)`` therefore omits id 0
-#:    (tropical broadleaved evergreen) and id 6 (boreal larch) = **32.5 % of all survivor
-#:    tree stems** and **16.7 % of tree-bearing cells entirely** (measured:
-#:    ``scripts/diagnose_ind_type_composition.py``).
-#:    :data:`lpjmlfit_emulator.features.TREE_TYPES` has the correct ``[0..6]``. Do NOT copy
-#:    this constant into new code; ADR 0031 corrects it to ``[0..6]`` together with the
-#:    global table re-derivation (changing it here alone would put the committed
-#:    ``.drf``/``.rcop`` artifacts on a different population than their training tables).
-TREE_TYPES: tuple[int, ...] = (1, 2, 3, 4, 5)
+#: ==== ==========================================================  =====
+#: id   PFT                                                         class
+#: ==== ==========================================================  =====
+#: 0    tropical broadleaved evergreen                              tree
+#: 1    temperate needleleaved evergreen                            tree
+#: 2    temperate broadleaved evergreen                             tree
+#: 3    temperate broadleaved summergreen (the Hainich beech)       tree
+#: 4    boreal needleleaved evergreen                               tree
+#: 5    boreal broadleaved summergreen                              tree
+#: 6    boreal needleleaved summergreen (larch)                     tree
+#: 7-9  Tropical C4 / Temperate C3 / Polar C3 grass                 grass
+#: ==== ==========================================================  =====
+#:
+#: (10-21 are crops, never emitted: ``landuse:"no"``.) Grass rows ARE emitted, but with the
+#: tree fields zeroed (``fwriteoutput_ind.c:139-189``), so they must stay excluded until the
+#: separate grass-ownership decision — including them injects structural zeros, not signal.
+#:
+#: History: this was ``(1, 2, 3, 4, 5)`` until 2026-07-28, a stale-yaml port defect (ADR 0031)
+#: that silently dropped id 0 + id 6 = **32.5 % of survivor tree stems** and made **16.7 % of
+#: tree-bearing cells** (the tropical belt + the Siberian larch zone) invisible to Component S.
+#: Every ``scripts/build_slow_*.py`` now IMPORTS this constant rather than re-declaring it, so
+#: the two cannot drift again; :data:`lpjmlfit_emulator.features.TREE_TYPES` always had ``[0..6]``.
+TREE_TYPES: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6)
 #: Grass PFT ids are 7 (tropical C4), 8 (temperate C3) and 9 (polar C3); this single-id
 #: constant covers only the temperate one (callers needing all three declare a local set,
 #: e.g. ``scripts/train_slow_emulator.py:45``).

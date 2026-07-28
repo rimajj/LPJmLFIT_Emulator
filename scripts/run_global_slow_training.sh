@@ -41,8 +41,12 @@ PY="/home/jamirp/.conda/envs/py311_new/bin/python"
 JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"  # DRF is zero-dep pure-Base
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 
-TABLE_DIR="/p/tmp/jamirp/emulator_global/slow_runtime_${SCENARIO}"
-DRF_OUT="/p/tmp/jamirp/emulator_global/drf_forest_global_${SCENARIO}.drf"
+# VERSION (default empty = the legacy unsuffixed paths): appends `_<VERSION>` to the table dir, the .drf and
+# the log name. ADR 0029/0031 — line M PINS these artifacts, so a retrain on a changed basis must write a NEW
+# versioned file, never overwrite one in place. `VERSION=t7` is the ADR-0031 complete-tree-set generation.
+VERSION="${VERSION:-}"; VER_SFX="${VERSION:+_${VERSION}}"
+TABLE_DIR="/p/tmp/jamirp/emulator_global/slow_runtime_${SCENARIO}${VER_SFX}"
+DRF_OUT="/p/tmp/jamirp/emulator_global/drf_forest_global_${SCENARIO}${VER_SFX}.drf"
 mkdir -p "${TABLE_DIR}"
 
 # DEPENDENCY (e.g. afterok:<jid>): chain after a feature-derivation job. Injected as a #SBATCH directive
@@ -54,7 +58,7 @@ dep_directive=""
 jcf="$(mktemp)"
 cat > "${jcf}" <<EOF
 #!/usr/bin/env bash
-#SBATCH --job-name=gslow_${SCENARIO}
+#SBATCH --job-name=gslow_${SCENARIO}${VER_SFX}
 #SBATCH --account=${ACCOUNT}
 #SBATCH --partition=${PARTITION}
 #SBATCH --qos=${QOS}
@@ -62,24 +66,24 @@ cat > "${jcf}" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NCPUS}
 #SBATCH --time=${TIME}
-#SBATCH --output=${LOGDIR}/gslow_${SCENARIO}.%j.out
-#SBATCH --error=${LOGDIR}/gslow_${SCENARIO}.%j.out
+#SBATCH --output=${LOGDIR}/gslow_${SCENARIO}${VER_SFX}.%j.out
+#SBATCH --error=${LOGDIR}/gslow_${SCENARIO}${VER_SFX}.%j.out
 ${dep_directive}
 set -uo pipefail
 cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
-echo "=== gslow_${SCENARIO} on \$(hostname) at \$(date) ==="
+echo "=== gslow_${SCENARIO}${VER_SFX} on \$(hostname) at \$(date) ==="
 
 echo "--- [1/2] build global ${SCENARIO} table -> ${TABLE_DIR} ---"
 SCENARIO=${SCENARIO} SEED=${SEED} OUT=${TABLE_DIR} ${PY} scripts/build_slow_runtime_table.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gslow_${SCENARIO} exit=\$rc (table build failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gslow_${SCENARIO}${VER_SFX} exit=\$rc (table build failed) ==="; exit \$rc; }
 
 echo "--- [2/2] train + serialize global DRF -> ${DRF_OUT} ---"
 OUT=${TABLE_DIR} DRF_OUT_PATH=${DRF_OUT} NTREES=${NTREES} MAX_DEPTH=${MAX_DEPTH} \
   MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} HOLDOUT_FRAC=${HOLDOUT_FRAC} ${JULIA} scripts/train_slow_drf.jl
 rc=\$?
-echo "=== JOB DONE tag=gslow_${SCENARIO} exit=\${rc} ==="
+echo "=== JOB DONE tag=gslow_${SCENARIO}${VER_SFX} exit=\${rc} ==="
 exit \${rc}
 EOF
 
@@ -88,8 +92,8 @@ if [ "${SUBMIT}" = "yes" ]; then
   rm -f "${jcf}"
   echo "submitted global ${SCENARIO} slow-training job ${jid} (${NCPUS} cpus, ${TIME})"
   echo "  table: ${TABLE_DIR}    drf: ${DRF_OUT}"
-  echo "  log:   ${LOGDIR}/gslow_${SCENARIO}.${jid}.out"
-  echo "  done?: grep 'JOB DONE' ${LOGDIR}/gslow_${SCENARIO}.${jid}.out"
+  echo "  log:   ${LOGDIR}/gslow_${SCENARIO}${VER_SFX}.${jid}.out"
+  echo "  done?: grep 'JOB DONE' ${LOGDIR}/gslow_${SCENARIO}${VER_SFX}.${jid}.out"
 else
   echo "== SUBMIT=no — generated jcf:"; cat "${jcf}"; rm -f "${jcf}"
 fi

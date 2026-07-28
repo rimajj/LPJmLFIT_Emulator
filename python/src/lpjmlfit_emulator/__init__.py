@@ -41,9 +41,12 @@ from .transforms import MonotoneLink, VarTransformer, expm1_clip, log1p_signed
 
 __version__ = "0.1.0"
 
-# NB: ``TREE_TYPES`` intentionally NOT re-exported here — ``data.TREE_TYPES`` (the
-# schema tree PFTs 1-5) and ``features.TREE_TYPES`` (the modelling PFT range 0-6) are
-# distinct by design; access them via their submodule to avoid ambiguity.
+# NB: ``TREE_TYPES`` intentionally NOT re-exported here — ``data.TREE_TYPES`` and
+# ``features.TREE_TYPES`` are two declarations of the SAME quantity (FIT's tree PFT ids
+# ``0..6``); access them via their submodule so a future divergence stays visible. They
+# disagreed until 2026-07-28, when ``data``'s stale ``(1,2,3,4,5)`` was found to have
+# truncated every Component-S training table by a third of the forest (ADR 0031) — the
+# "distinct by design" rationalization that used to sit here is what let it survive.
 __all__ = [
     "__version__",
     # submodules

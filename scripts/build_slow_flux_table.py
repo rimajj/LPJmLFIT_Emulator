@@ -64,43 +64,66 @@ DAILY_ROOT = "/p/tmp/jamirp/esm_land_daily"
 NDAYYEAR = 365
 
 # --------------------------------------------------------------------------------------
-# [VERIFIED] beech (temperate broadleaved summergreen, PFT id 3) mortality parameters.
-# mortality_tree_ind.c / waterstress_tree.c / tempstress_tree.c + par/pft_lpjmlfit.js +
-# par/lpjparam_fit.js. See docs/slow_flux_conditioning_data_spec.md §4.
-#   k_mort            = 0.01   (lpjparam_fit.js "k_mort"; NOT the 0.2/0.5 in unloaded files)
-#   wdmort_1/2        = -2.465 / 0.148   (WD_mort1_temp / WD_mort2_temp)
-#   mort_water_factor = 5      mort_temp_factor = 5.0
-#   mort_water_res    = 0.75   (MORT_WATER_RES_ANGIO)   aphen_min = 60
-#   longevity         = 400    (JSON key "age" = TREE_LONGEVITY; NOT the leaf "longevity"=2.0)
-#   temp_stressed     = [-20.0, 54.0]
+# [VERIFIED 2026-07-28] mortality parameters for ALL SEVEN tree PFTs, read from the ACTIVE
+# par/pft_lpjmlfit.js (NOT par/pft.js, whose WD_mort/TREE_LONGEVITY macros differ) with a
+# brace-depth parse so each key is bound to the right `pftpar` entry; the id-3 row reproduces
+# the previously-verified beech values, which is the parse's own cross-check.
+# Consumers: mortality_tree_ind.c / waterstress_tree.c / tempstress_tree.c.
+#   k_mort = 0.01  (lpjparam_fit.js "k_mort"; NOT the 0.2/0.5 in unloaded files)  aphen_min = 60
+#   longevity  = JSON key "age" (= TREE_LONGEVITY 400, except id 5 which overrides it to 125);
+#                NOT the leaf "longevity" = 2.0
+#   mort_water_res macros: ANGIO 0.75 · GYMNO 0.65 · XERIC 0.25    MORT_TEMP_FACTOR = 5.0
+#   wdmort macros: trop -2.458/0.129 · mediterranean -2.625/0.236 · temp -2.465/0.148 ·
+#                  boreal -2.430/0.143
 # hardcoded C constants: KMORT_2=0.2, KMORTBG_LNF=-ln(0.001), KMORTBG_Q=2.0, BM_INC_COUNTER_MAX=5
+#
+# ADR 0031 required ids 0 and 6 to be ADDED here. Measuring them exposed more: the old dict applied
+# the TEMPERATE/ANGIO values to every id, which was also wrong for ids 1, 2, 4 and 5 — id 5's
+# longevity is 125 not 400 (a 3.2x age-mortality error), id 5's mort_water_factor is 20 not 5, ids
+# 1/2 are XERIC (0.25) not ANGIO (0.75), and ids 1/2/4/5 all carry non-temperate wdmort pairs. The
+# old `verified=False` flag was load-bearing and is now True for every row.
 # --------------------------------------------------------------------------------------
 K_MORT = 0.01
 KMORT_2 = 0.2
 KMORTBG_LNF = -math.log(0.001)
 KMORTBG_Q = 2.0
 
-# per-PFT-type params. Beech (3) is [VERIFIED]; the other temperate tree types at Hainich
-# (1,2,4,5) are <6% of rows -> reuse the temperate values and FLAG them (scale-up must read
-# each PFT's own wdmort/longevity/factors before trusting non-beech growth_eff/mort recompute).
-_TEMPERATE_TREE = dict(
-    wdmort_1=-2.465,
-    wdmort_2=0.148,
-    mort_water_factor=5.0,
-    mort_temp_factor=5.0,
-    mort_water_res=0.75,
-    longevity=400.0,
-    temp_low=-20.0,
-    temp_high=54.0,
-    verified=False,  # only beech is verified this session
-)
-PFT_PARAMS: dict[int, dict] = {
-    # (1,2,3,4,5) — the TRUNCATED tree set (ADR 0031: ids 0-6 are all seven tree PFTs). Note this dict also
-    # assumes TEMPERATE mortality params for every id, so widening to [0..6] needs per-PFT params for the
-    # tropical evergreen (0) and larch (6), not just a longer key list.
-    t: dict(_TEMPERATE_TREE) for t in ind_data.TREE_TYPES
+_MORT_TEMP_FACTOR = 5.0
+_WDMORT = {  # (wdmort_1, wdmort_2) macro pairs from par/pft_lpjmlfit.js:102-109
+    "trop": (-2.458, 0.129),
+    "mediterranean": (-2.625, 0.236),
+    "temp": (-2.465, 0.148),
+    "boreal": (-2.430, 0.143),
 }
-PFT_PARAMS[3]["verified"] = True  # beech
+_MORT_WATER_RES = {"ANGIO": 0.75, "GYMNO": 0.65, "XERIC": 0.25}  # :112-114
+
+
+def _tree_pft(wdmort: str, mort_water_factor: float, water_res: str, longevity: float,
+              temp_low: float, temp_high: float = 54.0) -> dict:
+    w1, w2 = _WDMORT[wdmort]
+    return dict(
+        wdmort_1=w1, wdmort_2=w2, mort_water_factor=mort_water_factor,
+        mort_temp_factor=_MORT_TEMP_FACTOR, mort_water_res=_MORT_WATER_RES[water_res],
+        longevity=longevity, temp_low=temp_low, temp_high=temp_high, verified=True,
+    )
+
+
+#: Per-`Type` mortality parameters, keyed by the 0-based `pftpar` index (ADR 0031: ids 0-6 are the
+#: complete tree set). `temp_low`/`temp_high` are the "temp_stressed" interval, not the
+#: establishment "temp" gate.
+PFT_PARAMS: dict[int, dict] = {
+    0: _tree_pft("trop", 10.0, "ANGIO", 400.0, 12.5),           # tropical broadleaved evergreen
+    1: _tree_pft("mediterranean", 5.0, "XERIC", 400.0, -15.0),  # temperate needleleaved evergreen
+    2: _tree_pft("mediterranean", 10.0, "XERIC", 400.0, -10.0),  # temperate broadleaved evergreen
+    3: _tree_pft("temp", 5.0, "ANGIO", 400.0, -20.0),           # temperate broadleaved summergreen (beech)
+    4: _tree_pft("boreal", 7.5, "GYMNO", 400.0, -45.0),         # boreal needleleaved evergreen
+    5: _tree_pft("boreal", 20.0, "ANGIO", 125.0, -45.0),        # boreal broadleaved summergreen ("age":125)
+    6: _tree_pft("boreal", 5.0, "GYMNO", 400.0, -70.0),         # boreal needleleaved summergreen (larch)
+}
+assert set(PFT_PARAMS) == set(ind_data.TREE_TYPES), (
+    f"PFT_PARAMS keys {sorted(PFT_PARAMS)} must cover exactly TREE_TYPES {sorted(ind_data.TREE_TYPES)} "
+    f"— a widened tree set needs each new PFT's OWN params from par/pft_lpjmlfit.js (ADR 0031)."
+)
 
 
 def mort_max_of(wooddens: np.ndarray, p: dict) -> np.ndarray:
@@ -329,8 +352,11 @@ def build(cells: list[int], seed: int, out_dir: str) -> dict:
 
     # water/temp stress inverted from the emitted drivers (counter==0 assumption; flagged).
     # mort_water = (factor*water_stress/365)*(1+counter);  mort_temp = factor*temp_stress/365.
-    mwf = np.array([PFT_PARAMS.get(t, _TEMPERATE_TREE)["mort_water_factor"] for t in df["Type"]])
-    mtf = np.array([PFT_PARAMS.get(t, _TEMPERATE_TREE)["mort_temp_factor"] for t in df["Type"]])
+    # direct lookup, NOT a `.get(t, <temperate default>)`: `living` is already filtered to PFT_PARAMS'
+    # keys, so a KeyError here means the tree set and the param table drifted apart (ADR 0031) — which is
+    # exactly what a silent temperate fallback used to hide.
+    mwf = np.array([PFT_PARAMS[t]["mort_water_factor"] for t in df["Type"]])
+    mtf = np.array([PFT_PARAMS[t]["mort_temp_factor"] for t in df["Type"]])
     water_stress = df["mort_water"].to_numpy() * NDAYYEAR / mwf  # counter==0
     temp_stress = df["mort_temp"].to_numpy() * NDAYYEAR / mtf
 

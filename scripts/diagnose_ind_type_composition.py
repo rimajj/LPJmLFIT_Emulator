@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Which PFT `Type` ids actually carry stems in the global `ind` ground truth — and what the Component-S
-training basis `TREE_TYPES = [1,2,3,4,5]` therefore DROPS.
+"""Which PFT `Type` ids actually carry stems in the global `ind` ground truth — and what a truncated
+Component-S training basis `TREE_TYPES = [1,2,3,4,5]` therefore DROPS.
 
-Why this exists (S1, 2026-07-28). Two conflicting tree-PFT constants live in this repo:
-  • `python/src/lpjmlfit_emulator/data.py:68`      TREE_TYPES = (1, 2, 3, 4, 5)   ← used by every slow-* builder
-  • `python/src/lpjmlfit_emulator/features.py:50`  TREE_TYPES = [0, 1, 2, 3, 4, 5, 6]
+Why this exists (S1, 2026-07-28). Two conflicting tree-PFT constants lived in this repo:
+  • `python/src/lpjmlfit_emulator/data.py`      TREE_TYPES = (1, 2, 3, 4, 5)   ← used by every slow-* builder
+  • `python/src/lpjmlfit_emulator/features.py`  TREE_TYPES = [0, 1, 2, 3, 4, 5, 6]
+ADR 0031 resolved this to the complete `[0..6]` in ONE place (`data.py`), which `features.py` and every
+builder now import. This script remains the reproducer for the census that justified it, and the check to
+re-run whenever the stem filter changes again.
 The ACTIVE parameter file `/home/jamirp/lpjml56fit/par/pft_lpjmlfit.js` (`"pftpar"` array, id == 0-based array
 index via `fscanpftpar.c:177`) lists SEVEN tree PFTs then three grasses:
   0 tropical broadleaved evergreen · 1 temperate needleleaved evergreen · 2 temperate broadleaved evergreen
@@ -26,8 +29,8 @@ import polars as pl
 BASE = "/p/tmp/jamirp/emulator_global"
 IND = os.environ.get("IND", f"{BASE}/ind_hist_seed1_all.parquet")
 AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
-SLOW_TYPES = [1, 2, 3, 4, 5]          # data.py:68 — the slow-* / copula / count-DRF training basis
-ALL_TREES = [0, 1, 2, 3, 4, 5, 6]     # features.py:50 / par/pft_lpjmlfit.js — the real tree set
+SLOW_TYPES = [1, 2, 3, 4, 5]          # the PRE-ADR-0031 slow-* / copula / count-DRF basis (the defect)
+ALL_TREES = [0, 1, 2, 3, 4, 5, 6]     # par/pft_lpjmlfit.js — the real tree set, and the basis since 0031
 MINSTEM = int(os.environ.get("MINSTEM", "20"))
 NAMES = {
     0: "tropical broadleaved evergreen", 1: "temperate needleleaved evergreen",

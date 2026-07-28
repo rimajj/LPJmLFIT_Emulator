@@ -36,8 +36,12 @@ PY="/home/jamirp/.conda/envs/py311_new/bin/python"
 JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"   # DRF is zero-dep pure-Base
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 
-TABLE_DIR="/p/tmp/jamirp/emulator_global/slow_copula_${SCENARIO}"
-RCOP_OUT="/p/tmp/jamirp/emulator_global/recruit_copula_global_${SCENARIO}.rcop"
+# VERSION (default empty = the legacy unsuffixed paths): appends `_<VERSION>` to the table dir, the .rcop and
+# the log name. ADR 0029/0031 — line M PINS these artifacts, so a retrain on a changed basis must write a NEW
+# versioned file, never overwrite one in place. `VERSION=t7` is the ADR-0031 complete-tree-set generation.
+VERSION="${VERSION:-}"; VER_SFX="${VERSION:+_${VERSION}}"
+TABLE_DIR="/p/tmp/jamirp/emulator_global/slow_copula_${SCENARIO}${VER_SFX}"
+RCOP_OUT="/p/tmp/jamirp/emulator_global/recruit_copula_global_${SCENARIO}${VER_SFX}.rcop"
 mkdir -p "${TABLE_DIR}"
 
 DEPENDENCY="${DEPENDENCY:-}"
@@ -47,7 +51,7 @@ dep_directive=""
 jcf="$(mktemp)"
 cat > "${jcf}" <<EOF
 #!/usr/bin/env bash
-#SBATCH --job-name=gcopula_${SCENARIO}
+#SBATCH --job-name=gcopula_${SCENARIO}${VER_SFX}
 #SBATCH --account=${ACCOUNT}
 #SBATCH --partition=${PARTITION}
 #SBATCH --qos=${QOS}
@@ -55,29 +59,29 @@ cat > "${jcf}" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NCPUS}
 #SBATCH --time=${TIME}
-#SBATCH --output=${LOGDIR}/gcopula_${SCENARIO}.%j.out
-#SBATCH --error=${LOGDIR}/gcopula_${SCENARIO}.%j.out
+#SBATCH --output=${LOGDIR}/gcopula_${SCENARIO}${VER_SFX}.%j.out
+#SBATCH --error=${LOGDIR}/gcopula_${SCENARIO}${VER_SFX}.%j.out
 ${dep_directive}
 set -uo pipefail
 cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
-echo "=== gcopula_${SCENARIO} on \$(hostname) at \$(date) ==="
+echo "=== gcopula_${SCENARIO}${VER_SFX} on \$(hostname) at \$(date) ==="
 
 echo "--- [1/3] build global ${SCENARIO} copula table -> ${TABLE_DIR} ---"
 MODE=copula SCENARIO=${SCENARIO} SEED=${SEED} OUT=${TABLE_DIR} ${PY} scripts/build_slow_runtime_table.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gcopula_${SCENARIO} exit=\$rc (table build failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gcopula_${SCENARIO}${VER_SFX} exit=\$rc (table build failed) ==="; exit \$rc; }
 
 echo "--- [2/3] K-fold-by-cell OOS trait-distribution eval -> pred_<axis>.f64 ---"
 OUT=${TABLE_DIR} KFOLDS=${KFOLDS} NTREES=${EVAL_NTREES} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} \
   SUBSAMPLE=${EVAL_SUBSAMPLE} ${JULIA} scripts/eval_slow_copula.jl
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gcopula_${SCENARIO} exit=\$rc (eval failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gcopula_${SCENARIO}${VER_SFX} exit=\$rc (eval failed) ==="; exit \$rc; }
 
 echo "--- [3/3] train + serialize global copula -> ${RCOP_OUT} ---"
 OUT=${TABLE_DIR} RCOP_OUT_PATH=${RCOP_OUT} NTREES=${NTREES} MAX_DEPTH=${MAX_DEPTH} \
   MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} ${JULIA} scripts/train_slow_copula.jl
 rc=\$?
-echo "=== JOB DONE tag=gcopula_${SCENARIO} exit=\${rc} ==="
+echo "=== JOB DONE tag=gcopula_${SCENARIO}${VER_SFX} exit=\${rc} ==="
 exit \${rc}
 EOF
 
@@ -86,8 +90,8 @@ if [ "${SUBMIT}" = "yes" ]; then
   rm -f "${jcf}"
   echo "submitted global ${SCENARIO} copula job ${jid} (${NCPUS} cpus, ${TIME})"
   echo "  table: ${TABLE_DIR}    rcop: ${RCOP_OUT}"
-  echo "  log:   ${LOGDIR}/gcopula_${SCENARIO}.${jid}.out"
-  echo "  done?: grep 'JOB DONE' ${LOGDIR}/gcopula_${SCENARIO}.${jid}.out"
+  echo "  log:   ${LOGDIR}/gcopula_${SCENARIO}${VER_SFX}.${jid}.out"
+  echo "  done?: grep 'JOB DONE' ${LOGDIR}/gcopula_${SCENARIO}${VER_SFX}.${jid}.out"
 else
   echo "== SUBMIT=no — generated jcf:"; cat "${jcf}"; rm -f "${jcf}"
 fi

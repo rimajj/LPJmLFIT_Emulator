@@ -31,9 +31,13 @@ RUNTIME-CONSISTENT features (was the Hainich-proxy demo; now real, ADR 0023/0024
                                                           a documented approximation for multi-patch cells.
                                                           [OPEN Phase-5 decision: per-patch LAI output, or
                                                           per-CELL training aggregation, to close this.]
-  growth_eff  = applied_npp / max(lai, eps)      APPROX  numerator = APPLIED npp (npp>0 & Height>0 stems),
+  growth_eff  = lai > 0 ? applied_npp/lai : 0     APPROX  numerator = APPLIED npp (npp>0 & Height>0 stems),
                                                           mirroring the runtime applied_cell/leaf_area
-                                                          (fast.jl:353-369) — NOT total bm_inc_cell. Shares
+                                                          (fast.jl:353-369) — NOT total bm_inc_cell. The
+                                                          zero-leaf-area branch MATCHES fast.jl:369 exactly
+                                                          (`leaf_area > 0 ? … : zero(T)`); it must not be a
+                                                          `max(lai, EPS)` divisor (ADR 0031 — that turned a
+                                                          joined LAI_STAND==0 into applied_npp*1e6). Shares
                                                           lai's cell-mean caveat in its denominator.
   fpc         = min(sum(fpc_ind), 1)               NEAR-EXACT
   age_mean    = mean(Age - 1)                      TRUE per-stem mean START-OF-YEAR age (ADR 0024; emitted
@@ -67,17 +71,21 @@ Usage (SLURM — see slow-drf-pipeline skill §7 for sizing):
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import polars as pl
 
-# DEFECT, ADR 0031: `Type` is the 0-based `pftpar` index and ids 0-6 are ALL SEVEN tree PFTs (7/8/9 grass),
-# so this list silently drops id 0 (tropical broadleaved evergreen) + id 6 (boreal larch) = 32.5% of survivor
-# tree stems and 16.7% of tree-bearing cells (measured: scripts/diagnose_ind_type_composition.py). Every table
-# built here — and therefore every global .drf/.rcop artifact and every published fidelity number — is on that
-# TRUNCATED population. ADR 0031 widens it to [0..6] as one re-derivation + retrain + re-validation; do not
-# change it here in isolation (train/inference and artifact/table populations must move together).
-TREE_TYPES = [1, 2, 3, 4, 5]
+_REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO / "python" / "src"))
+from lpjmlfit_emulator import data as ind_data  # noqa: E402
+
+# FIT's COMPLETE tree set, IMPORTED — never re-declared here (ADR 0031). A local copy is what drifted:
+# `[1,2,3,4,5]` dropped id 0 (tropical broadleaved evergreen) + id 6 (larch) = 32.5% of survivor tree stems and
+# made 16.7% of tree-bearing cells invisible, so every table/artifact/fidelity number built before 2026-07-28
+# is on that truncated population. Census: scripts/diagnose_ind_type_composition.py.
+TREE_TYPES = list(ind_data.TREE_TYPES)
 BASE = "/p/tmp/jamirp/emulator_global"
 IND = {
     "historic": f"{BASE}/ind_hist_seed{{seed}}_all.parquet",
@@ -98,6 +106,9 @@ HEAD_COLS = ["bm_inc_cell", "growth_eff", "water_stress", "soilmoist",
 BOUNDARY_COLS = ["eco_diag_gdd_5", "tas_cold_month", "soil_depth", "co2"]
 CO2_CONST = 369.0        # constant-CO2 regime (ADR 0004); the runtime boundary has no co2 input
 EPS = 1.0e-6
+# growth_eff sanity ceiling (ADR 0031). Measured maxima are 3.1e4 (seed1) / 4.3e4 (seed2) under the runtime
+# zero-leaf-area rule; the old `max(lai, EPS)` divisor produced >=1e6 whenever lai==0 met positive npp.
+GROWTH_EFF_MAX = float(os.environ.get("GROWTH_EFF_MAX", "1e6"))
 MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 median
 
 # MODE=copula (recruit-trait distribution, ADR 0025): a per-STEM table whose conditioning is EXACTLY the
@@ -288,8 +299,34 @@ def main() -> int:
             f"FATAL: feature-join coverage hole — {dropped} rows ({drop_frac:.3f}) dropped, "
             f"{len(cells_lost)} cells fully lost (e.g. {sorted(cells_lost)[:10]}). "
             f"Check cell_year_soilmoist/cell_year_lai completeness for scenario={scenario}.")
+    # growth_eff — MATCH THE RUNTIME's zero-leaf-area guard (fast.jl:369):
+    #     growth_eff = leaf_area > 0 ? applied_cell / leaf_area : zero(T)
+    # The C oracle guards it the same way (`if(leafarea_real > 1e-6) … else mort_npp = 1`,
+    # mortality_tree_ind.c:95-99). This USED to be `applied_npp / max(lai, EPS)`, which turns a joined
+    # `LAI_STAND == 0` into `applied_npp * 1e6` — a train/inference shift on a primary mortality driver
+    # (ADR 0023). Measured by scripts/diagnose_lai0_growth_eff.py: it never fires on a seed1 table (0 of
+    # 23.9M tree groups — the lai table is derived from the SAME seed1 C run, so a cell-year with living
+    # leafy stems is never lai==0), but a seed2 `ind` joined against that seed1 lai table hits 21 501
+    # groups / 204 867 stems and max 1.19e9. Under this rule that same seed2 build maxes at 4.3e4,
+    # i.e. right at seed1's 3.1e4 — the blow-up was entirely the divisor.
     agg = agg.with_columns(
-        (pl.col("_applied_npp").fill_null(0.0) / pl.max_horizontal(pl.col("lai"), pl.lit(EPS))).alias("growth_eff"))
+        pl.when(pl.col("lai") > 0.0)
+        .then(pl.col("_applied_npp").fill_null(0.0) / pl.col("lai"))
+        .otherwise(0.0)
+        .alias("growth_eff")
+    )
+    ge_max = float(agg["growth_eff"].max())
+    n_lai0 = int(agg.filter(pl.col("lai") <= 0.0).height)
+    print(f"== growth_eff: max={ge_max:.6g} mean={float(agg['growth_eff'].mean()):.6g}; "
+          f"{n_lai0} rows with lai<=0 forced to 0 ({n_lai0 / max(agg.height, 1):.5f})")
+    # A sane-magnitude assertion, because the coverage guards structurally CANNOT catch this: the feature
+    # tables are complete, so a zero lai is PRESENT, not missing (drop_frac/cells_lost both stay clean).
+    # Observed maxima are ~3-4e4; 1e6 is the EPS-class blow-up floor, so this fails loud with wide margin.
+    if ge_max > GROWTH_EFF_MAX:
+        raise SystemExit(
+            f"FATAL: growth_eff max {ge_max:.6g} exceeds GROWTH_EFF_MAX={GROWTH_EFF_MAX:.6g} — a tiny-lai "
+            f"divisor blow-up (conditioning on it is a live train/inference hazard). {n_lai0} rows had "
+            f"lai<=0. Check that the lai table's seed/scenario matches the ind parquet's.")
 
     # MODE=copula forks here: `agg` already carries the 4 flux drivers (with the soilmoist/lai coverage gate
     # applied); the copula path needs those + the per-cell boundary, broadcast onto per-STEM trait targets.

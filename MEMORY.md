@@ -185,14 +185,27 @@ is the offline S.
 - [VERIFIED] Sibling offline S emulator at `/p/projects/open/Jamir/emulator`. Published noise floor
   {Height 0.020, agb 0.113, npp 0.062, LAI 0.025} — ~11% cell-mean agb noise floor is the yardstick.
   PFT types 0–6 = trees, 7–9 = grass. S is **not differentiable** and stays out of the gradient loop (ADR 0014).
-- **[VERIFIED 2026-07-28] The Component-S training population is TRUNCATED — ADR 0031.** Every
-  `build_slow_*.py` selects `TREE_TYPES=[1,2,3,4,5]`, but `Type` is the 0-based `pftpar` index and **ids 0–6
-  are all seven tree PFTs** — so id 0 (tropical broadleaved evergreen) and id 6 (boreal larch) are dropped:
-  **32.5 % of 197.7 M survivor tree stems, and 9 011 of 54 020 tree-bearing cells (16.7 %) are invisible**
-  (the tropical belt + Siberian larch). Provenance = a stale sibling `configs/config.yaml`, never an ADR; the
-  correct constant already exists at `python/.../features.py:50`. Every "global" S number so far is on the
-  ids-1..5 population / 45 009 cells. Fix = re-derive → retrain → re-validate (integration point with M,
-  versioned artifacts). Hainich has only ids 1–5, which is why all single-cell gates stayed green.
+- **[VERIFIED 2026-07-28] The Component-S training population WAS truncated; fixed — ADR 0031.** Every
+  `build_slow_*.py` selected `TREE_TYPES=[1,2,3,4,5]`, but `Type` is the 0-based `pftpar` index and **ids 0–6
+  are all seven tree PFTs** — so id 0 (tropical broadleaved evergreen) and id 6 (boreal larch) were dropped:
+  **32.5 % of 197.7 M survivor tree stems, and 9 011 of 54 020 tree-bearing cells (16.7 %) invisible** (the
+  tropical belt + Siberian larch). Provenance = a stale sibling `configs/config.yaml`, never an ADR. **Now ONE
+  imported constant** (`lpjmlfit_emulator.data.TREE_TYPES`; `features.py`, `config.yaml` and every builder
+  import it — never re-declare it). Hainich has only ids 1–5, which is why all single-cell gates stayed green.
+  **Every "global" S number published before 2026-07-28 is on the ids-1..5 population** and is superseded by
+  the `t7` artifact generation, not restated. Measured: the historic copula table goes 133.5 M → **197.8 M
+  stems** / 45 072 → **54 058 cells**, and counts survive intact (every count-DRF metric within ≈0.003 R²).
+- **[VERIFIED 2026-07-28] A degenerate-denominator feature must copy the RUNTIME's guard, not floor the
+  divisor** (ADR 0031/0032; the general lesson). The S table computed `growth_eff = applied_npp/max(lai,EPS)`
+  with `EPS=1e-6`, so a joined `LAI_STAND == 0` became `applied_npp × 1e6` (max 1.19e9). Both the Julia runtime
+  (`fast.jl:369` `leaf_area > 0 ? applied/leaf_area : 0`) and the C oracle (`mortality_tree_ind.c:95`) return a
+  *guarded* value instead of dividing — so matching them is the fix, and there is no policy choice to make.
+  Two durable corollaries: (1) **coverage guards structurally cannot catch this class** — the feature tables are
+  complete, so a degenerate zero is *present*, not missing (assert the feature's MAX instead); (2) **there is
+  exactly ONE `cell_year_{soilmoist,lai}` table per scenario and it is seed1-derived**, so joining it onto a
+  **seed2** `ind` parquet is a cross-seed join (0 affected groups in seed1 vs 21 501 in seed2 — that was the
+  "unexplained" asymmetry). A seed2 table's `Xc` can never be fully runtime-consistent; fine for the ADR-0030
+  floor, which reads `Y` only.
 - **[VERIFIED 2026-07-28] How to score a stochastic-truth emulator (ADR 0030).** A seed1-vs-seed2 per-cell
   correlation is a *realization-vs-realization* r, NOT a predictor ceiling: with `m = μ(env)+δ(RNG)` and a
   prediction of reliability `rel_P`, the reachable ceiling is `√(rel_P·rel_Y)` where `rel_Y` = the two-seed r,

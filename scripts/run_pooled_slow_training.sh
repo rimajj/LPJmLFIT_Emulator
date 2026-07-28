@@ -20,7 +20,7 @@
 #   SUBMIT=no scripts/run_pooled_slow_training.sh       # print the jcf only
 # Env: WINDOW (20), SEED (1), NTREES (150) MAX_DEPTH (16) MIN_LEAF (20) SUBSAMPLE (200000),
 #      HOLDOUT_FRAC (0.1), TIME (08:00:00), NCPUS (32), SUBMIT (yes).
-# Collect: tail -f logs/gpool_slow.<jobid>.out ; last line "=== JOB DONE ... ===".
+# Collect: tail -f logs/gpool_slow[_<VERSION>].<jobid>.out ; last line "=== JOB DONE ... ===".
 # Artifacts: /p/tmp/jamirp/emulator_global/{slow_count_<scen>_w<W>/, slow_count_pooled_w<W>/,
 #            drf_forest_global_pooled_w<W>.drf}  (DVC, not git).
 # =============================================================================
@@ -38,16 +38,20 @@ JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 BASE="/p/tmp/jamirp/emulator_global"
 
-HIST_DIR="${BASE}/slow_count_historic_w${WINDOW}"
-SSP_DIR="${BASE}/slow_count_ssp370_w${WINDOW}"
-POOL_DIR="${BASE}/slow_count_pooled_w${WINDOW}"
-DRF_OUT="${BASE}/drf_forest_global_pooled_w${WINDOW}.drf"
+# VERSION (default empty = the legacy unsuffixed paths): appends `_<VERSION>` to every table dir, the .drf and
+# the log name. ADR 0029/0031 — line M PINS `drf_forest_global_pooled_w<W>.drf`, so a retrain on a changed
+# basis MUST write a new versioned file and let M re-pin deliberately. `VERSION=t7` = ADR 0031's complete tree set.
+VERSION="${VERSION:-}"; VER_SFX="${VERSION:+_${VERSION}}"
+HIST_DIR="${BASE}/slow_count_historic_w${WINDOW}${VER_SFX}"
+SSP_DIR="${BASE}/slow_count_ssp370_w${WINDOW}${VER_SFX}"
+POOL_DIR="${BASE}/slow_count_pooled_w${WINDOW}${VER_SFX}"
+DRF_OUT="${BASE}/drf_forest_global_pooled_w${WINDOW}${VER_SFX}.drf"
 mkdir -p "${HIST_DIR}" "${SSP_DIR}" "${POOL_DIR}"
 
 jcf="$(mktemp)"
 cat > "${jcf}" <<EOF
 #!/usr/bin/env bash
-#SBATCH --job-name=gpool_slow
+#SBATCH --job-name=gpool_slow${VER_SFX}
 #SBATCH --account=${ACCOUNT}
 #SBATCH --partition=${PARTITION}
 #SBATCH --qos=${QOS}
@@ -55,36 +59,36 @@ cat > "${jcf}" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NCPUS}
 #SBATCH --time=${TIME}
-#SBATCH --output=${LOGDIR}/gpool_slow.%j.out
-#SBATCH --error=${LOGDIR}/gpool_slow.%j.out
+#SBATCH --output=${LOGDIR}/gpool_slow${VER_SFX}.%j.out
+#SBATCH --error=${LOGDIR}/gpool_slow${VER_SFX}.%j.out
 set -uo pipefail
 cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
-echo "=== gpool_slow on \$(hostname) at \$(date)  W=${WINDOW} ==="
+echo "=== gpool_slow${VER_SFX} on \$(hostname) at \$(date)  W=${WINDOW} ==="
 
 echo "--- [1/5] build historic transient count table -> ${HIST_DIR} ---"
 SCENARIO=historic SEED=${SEED} BOUNDARY_WINDOW=${WINDOW} OUT=${HIST_DIR} ${PY} scripts/build_slow_runtime_table.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow exit=\$rc (historic build failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow${VER_SFX} exit=\$rc (historic build failed) ==="; exit \$rc; }
 
 echo "--- [2/5] build ssp370 transient count table -> ${SSP_DIR} ---"
 SCENARIO=ssp370 SEED=${SEED} BOUNDARY_WINDOW=${WINDOW} OUT=${SSP_DIR} ${PY} scripts/build_slow_runtime_table.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow exit=\$rc (ssp370 build failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow${VER_SFX} exit=\$rc (ssp370 build failed) ==="; exit \$rc; }
 
 echo "--- [3/5] pool -> ${POOL_DIR} ---"
 IN_DIRS=${HIST_DIR},${SSP_DIR} TAGS=historic,ssp370 OUT=${POOL_DIR} ${PY} scripts/pool_slow_tables.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow exit=\$rc (pool failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow${VER_SFX} exit=\$rc (pool failed) ==="; exit \$rc; }
 
 echo "--- [4/5] train ONE pooled+transient count DRF -> ${DRF_OUT} ---"
 OUT=${POOL_DIR} DRF_OUT_PATH=${DRF_OUT} NTREES=${NTREES} MAX_DEPTH=${MAX_DEPTH} \
   MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} HOLDOUT_FRAC=${HOLDOUT_FRAC} ${JULIA} scripts/train_slow_drf.jl
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow exit=\$rc (train failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpool_slow${VER_SFX} exit=\$rc (train failed) ==="; exit \$rc; }
 
 echo "--- [5/5] HOLD-OUT-BY-SCENARIO unseen-regime eval ---"
 OUT=${POOL_DIR} NTREES=${NTREES} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} \
   ${JULIA} scripts/eval_slow_scenario_holdout.jl
 rc=\$?
-echo "=== JOB DONE tag=gpool_slow exit=\${rc} ==="
+echo "=== JOB DONE tag=gpool_slow${VER_SFX} exit=\${rc} ==="
 exit \${rc}
 EOF
 
@@ -93,8 +97,8 @@ if [ "${SUBMIT}" = "yes" ]; then
   rm -f "${jcf}"
   echo "submitted POOLED+TRANSIENT slow-training job ${jid} (W=${WINDOW}, ${NCPUS} cpus, ${TIME})"
   echo "  tables: ${HIST_DIR} + ${SSP_DIR} -> ${POOL_DIR}    drf: ${DRF_OUT}"
-  echo "  log:    ${LOGDIR}/gpool_slow.${jid}.out"
-  echo "  done?:  grep -E 'JOB DONE|HOLD-OUT-BY-SCENARIO|R²' ${LOGDIR}/gpool_slow.${jid}.out"
+  echo "  log:    ${LOGDIR}/gpool_slow${VER_SFX}.${jid}.out"
+  echo "  done?:  grep -E 'JOB DONE|HOLD-OUT-BY-SCENARIO|R²' ${LOGDIR}/gpool_slow${VER_SFX}.${jid}.out"
 else
   echo "== SUBMIT=no — generated jcf:"; cat "${jcf}"; rm -f "${jcf}"
 fi
