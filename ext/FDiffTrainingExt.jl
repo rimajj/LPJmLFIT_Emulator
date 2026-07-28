@@ -2,10 +2,16 @@
 # Package EXTENSION (activated by `using Lux, Zygote, Optimisers`): builds the learned Vcmax / λ
 # correction MLPs that plug into [`FDiff.FluxHooks`] and trains them end-to-end THROUGH the
 # differentiable daily rollout against a target GPP trajectory (the LPJmL-FIT C-binary daily GPP).
-# This is the finished port of NeuralCrop.jl's `train_loop_rollout!` scaffold (Yunan Lin, arXiv:2512.20177,
-# CC BY-NC — patterns reused, no code copied): the same Lux-MLP + Zygote + Optimisers + truncated-
-# backprop-through-time (TBPTT) rollout idiom, adapted to F_diff's tree/FIT physics and made to actually
-# run (the reference's `ps_frozen`/`dailyWeather` scaffold was inconsistent).
+# PROVENANCE (ADR 0080 §3). This is an INDEPENDENT implementation of the standard Lux-MLP + Zygote +
+# Optimisers + truncated-backprop-through-time (TBPTT) rollout idiom — TBPTT itself is Williams & Peng
+# (1990) and the gradient/update calls are Zygote's and Optimisers' documented public API. NeuralCrop.jl
+# (Yunan Lin, arXiv:2512.20177) is cited as PRIOR ART for applying that idiom to a differentiable LPJmL:
+# it is a METHOD reference only — it is CC BY-NC, whose NonCommercial term cannot be combined with this
+# repo's AGPL-3.0-or-later outbound licence (AGPL §7), so no line of it is copied. A direct comparison of
+# `train_loop_rollout!` against `train_fdiff_rollout!` below found no shared expression: the reference
+# interleaves jld2 chunk loading, per-cell batching, `ps_frozen`, device dispatch, an LR schedule, a
+# validation split and checkpointing across 19 positional arguments, while this takes 6 and adds the
+# detached-state carry (`_advance_state`) that the reference does not do.
 #
 # WHY REVERSE-MODE. The NN has many parameters, so reverse-mode is the right tool; and F_diff computes
 # its working type `T` from its declared inputs (params/state/structure/forcing) and `convert(T, …)`s its
@@ -14,7 +20,7 @@
 #
 # TWO AD BACKENDS, TWO ROLLOUT PATHS.
 #  • SINGLE-REPRESENTATIVE (`train_fdiff_rollout!`): the allocation-free `daily_step` differentiates with
-#    ZYGOTE (the NeuralCrop TBPTT idiom). Its gate checks Zygote vs FiniteDifferences.
+#    ZYGOTE (the standard TBPTT idiom). Its gate checks Zygote vs FiniteDifferences.
 #  • MULTI-INDIVIDUAL CANOPY (`train_fdiff_canopy_rollout!`): `daily_step_canopy` MUTATES the per-layer
 #    soil arrays + its `npp_ind` buffer, which Zygote cannot cross — so it differentiates with ENZYME
 #    reverse (`Duplicated` params + `make_zero` shadow + `set_runtime_activity`, exactly Lux's own
@@ -153,7 +159,7 @@ function _advance_state(ps, nn::FDiffNN, phys::FDiffParams, st0::FDiffState, str
     return st
 end
 
-# ── TBPTT online-rollout training loop (finished port of NeuralCrop's train_loop_rollout!) ────────
+# ── TBPTT online-rollout training loop (independent implementation; provenance in the header) ─────
 """
     train_fdiff_rollout!(nn, phys, st0, str, forcings, targets;
                          fapars=nothing, chunk=73, epochs=30, lr=1e-2, opt=Optimisers.Adam(lr),
