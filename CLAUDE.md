@@ -561,6 +561,18 @@ next session. A session that ends without refreshing it has silently broken the 
   `logs/<tag>.<jobid>.out` stay attributable. Each worktree has its own (gitignored) `logs/`.
 - **Write only to `/p/tmp` paths your line created**; another line's artifacts are **read-only**. Never
   overwrite a shared artifact in place — version it.
+- **To CHAIN a job after another, write a raw `.jcf` — do NOT edit the wrappers.** `sbatch_python.sh` /
+  `sbatch_julia.sh` have **no** `DEPENDENCY` knob, and `scripts/sbatch_*.sh` are **integrator-owned** (§9 Gap 3),
+  so a line cannot add one. Emit your own job file with `#SBATCH --dependency=afterok:<jid>` (log to your
+  worktree's `logs/`, keep the `<line>-` tag) and `sbatch` it; confirm with
+  `scontrol show job <new> | grep -o 'Dependency=[^ ]*'`. Worth doing whenever a long job's *result* needs a
+  follow-up analysis: the chained job measures itself instead of waiting for a session to notice
+  (`[VERIFIED 2026-07-28]`, S chained the ADR-0030 gate onto its copula job this way). `afterok` means a failed
+  parent leaves the child pending/cancelled — that is the desired behaviour, but say so in the handoff so the
+  next session knows a missing result may mean the parent died, not that nothing was scheduled. The
+  *orchestrators* (`run_global_slow_*.sh`, `run_pooled_slow_*.sh`) DO take `DEPENDENCY=afterok:<jid>` as an env
+  knob, because they inject it as a `#SBATCH` directive — the `SBATCH_DEPENDENCY` env var does **not** propagate
+  through a wrapper's own `sbatch` call and silently comes up `Dependency=(null)`.
 - Stagger heavy submissions as a courtesy, not a requirement: four lines share one account, the queue, and the
   `~/.julia` depot. `[VERIFIED 2026-07-28]` two full CI-faithful suites from different worktrees ran
   **simultaneously on the SAME node** sharing one depot and both came out clean (106918 pass / 0 fail, zero
