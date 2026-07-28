@@ -293,8 +293,8 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - Decisions: `docs/decisions/README.md` (ADR index). Steering: `STEERING_PROMPT.md` +
   `PROJECT_REVIEW_2026-07-22.md`.
 - **Skills** (`.claude/skills/`): `julia-test`, `lpjmlfit-cbinary`, `fdiff-validate`, `python-env`,
-  `residual-diagnosis`, `repo-commit`. Invoke the one that matches the mechanical task instead of
-  re-deriving its steps.
+  `residual-diagnosis`, `repo-commit`, `plumber2-reference` (line E: the PLUMBER2 observational reference for
+  Component E). Invoke the one that matches the mechanical task instead of re-deriving its steps.
 - **Source map** (`src/`): `LPJmLFITEmulator.jl` (module), `state.jl` (`SharedState`), `interface.jl`
   (S↔F↔E I/O structs), `conservation.jl` (softmax/flux-then-integrate/budget residuals),
   `allometry.jl`, `fdiff.jl` (the differentiable daily core + canopy rollout + allocation/growth),

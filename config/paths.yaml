@@ -102,7 +102,16 @@ data:
     tree_table_source: ${lpjml.ind_csv_historical_seed1}   # existing annual ind CSV (subset to prototype cell)
   slow_table: ${data.root}/slow_emulator_table             # (cell,year) conditioning + trait/size distribution + N
   fast_validation: ${data.root}/fast_core_validation       # daily forcing -> daily fluxes+pools (from daily re-run)
-  energy_reference: ${data.root}/fluxnet_plumber2           # TODO: external FLUXNET/PLUMBER2 site data for component E
+  # Component-E observational reference [VERIFIED 2026-07-28; ADR 0070]: PLUMBER2 v1-0 (Ukkola et al. 2022
+  # ESSD 14, 449; doi:10.25914/5fdb0902607e1), staged by scripts/fetch_plumber2_sites.py from the
+  # ANONYMOUSLY readable NCI THREDDS ks32 collection (reachable from the PIK login node, no registration):
+  #   https://thredds.nci.org.au/thredds/fileServer/ks32/CLEX_Data/PLUMBER2/v1-0/{Flux,Met}/<stem>_{Flux,Met}.nc
+  # 9 sites, half-hourly (AU-Tum hourly), 300 MB: DE-Hai (= the prototype cell) + one site per biome slot of
+  # test/testitems/biome_coupled_tests.jl + the 4 OzFlux sites that carry LWup — the ONLY T_skin source, as
+  # the FLUXNET2015/LaThuile-sourced files have no upwelling longwave at all.
+  energy_reference: ${data.root}/fluxnet_plumber2                     # raw Flux/ + Met/ NetCDF, per site
+  energy_reference_manifest: ${data.energy_reference}/manifest.json   # site metadata + per-file sha256/bytes
+  energy_reference_derived: ${data.energy_reference}/derived          # halfhourly_/daily_/diurnal_<site>.parquet, sanity report, site_summary.csv
   # Prior emulator's large derived tables (reusable): 63119-cell parquet on /p/tmp/jamirp/emulator_global/
   prior_derived: /p/tmp/jamirp/emulator_global
 

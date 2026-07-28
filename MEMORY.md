@@ -135,6 +135,17 @@ is the offline S.
 - [ASSUMPTION] LE/H/T_skin are physically plausible but **invented quantities validated only out-of-model**;
   the FLUXNET/PLUMBER2 validation (P2) has **not** happened. `g_a` had been neutral-only until the stability
   correction landed.
+- [VERIFIED 2026-07-28, line E, ADR 0070] The **observational reference now exists on disk**: PLUMBER2 v1-0,
+  9 sites (DE-Hai + one tower per biome slot + 4 OzFlux), `config/paths.yaml` `data.energy_reference*`;
+  re-stage with `scripts/fetch_plumber2_sites.py` → `scripts/validate_e_plumber2_load.py` (skill
+  `plumber2-reference`). The NCI THREDDS `ks32` collection is **anonymously readable from the PIK login node**
+  (general HTTPS egress works — zenodo / ICOS / fluxnet.org / NCI all reachable; only GitHub-HTTPS-for-git is
+  the blocked case). Observed daytime Bowen reproduces the 5-biome ordering (tropical 0.30 → semi-arid 4.57).
+- [VERIFIED 2026-07-28] **T_skin is NOT observable at Hainich**: PLUMBER2's FLUXNET2015/LaThuile files carry no
+  `LWup` (only `SWup`); the OzFlux files do ⇒ T_skin validation is biome-analogous (AU-Tum/AU-ASM/AU-Rob;
+  AU-How suspect, no boreal source). Two loader traps: PLUMBER2 `_FillValue = -9999` **leaks through
+  `np.asarray()`** (masked array → use `np.ma.filled(x, np.nan)`), and a `*_qc == 5` flag in the *Flux* files
+  marks data left **MISSING**, not gap-filled.
 
 ### S (slow) — offline only
 - [VERIFIED] Sibling offline S emulator at `/p/projects/open/Jamir/emulator`. Published noise floor
