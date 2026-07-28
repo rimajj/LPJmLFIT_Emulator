@@ -86,6 +86,11 @@ broken the chain — this is the single most important line in this skill.
 - Push: `git push origin line/<X>` from a line worktree (remote
   `git@github-esm:rimajj/LPJmLFIT_Emulator.git`, SSH alias, deploy key — no manual auth). GitHub HTTPS is
   blocked on the cluster; SSH works.
+- **`slurm-guard` can false-positive on the COMMIT MESSAGE (bit on 2026-07-28).** The `PreToolUse` guard
+  pattern-matches the whole Bash command, so a heredoc commit message that merely *mentions* the suite runner
+  or "test suite" is blocked as if you were running the suite on the login node. Fix: put the message in a file
+  and `git commit -F <file>` (write the file with the Write tool, so the text never appears in the command),
+  or prefix `ALLOW_LOGIN_HEAVY=1` if you are certain. Don't reword the message to appease the matcher.
 - Commits show **"Unverified"** on GitHub by design (locally `G`-signed; owner declined enforcement).
   Don't chase it.
 
