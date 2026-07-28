@@ -49,6 +49,14 @@ duplicate it.
 - **Then the suite:** `scripts/run_tests_slurm.sh M-<tag>`. `biome_coupled_tests.jl` asserts the columns are
   well-formed (23 layers, `whcs > 0`, `sum(rootdist) ≈ 1`), **pairwise distinct** (the guard against
   silently falling back to Hainich's inputs), and that the rooting gradient stays ecologically ordered.
+- **The mapping check the Hainich gate CANNOT give you.** A wrong `cellid` lookup or the wrong per-cell run
+  still reproduces Hainich, so cross-check the new cell against its **soil code**
+  (`soil_code_test.soil.bin`, 1 uint8/cell, orderA-indexed): the DEEP layers carry ~no organic matter, so
+  Saxton–Rawls leaves `whc = f(sand, clay)` — **cells sharing a soil code must share their deep-layer
+  `whc` to ~1e-5, and cells with different codes must differ.** [VERIFIED 2026-07-28] boreal 52059 /
+  mediterranean 33335 / tropical 12045 are all code 7 (loam) on three continents and agree to 3.6e-5
+  (0.15124–0.15128), vs code 4 clay loam 0.17421 (Hainich) and code 9 sandy loam 0.11545 (Sahel). The **top**
+  layer legitimately differs within one code (the organic-matter term: 0.2099 boreal vs 0.1676 Iberia).
 
 ## 5. Wire it in
 

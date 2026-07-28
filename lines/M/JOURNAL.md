@@ -72,3 +72,20 @@
   not sum to 1 for deep-rooted communities (0.99999999 for the boreal cell) — which is silently physical, since
   F_diff's water supply scales linearly with `sum(rootdist)`.
 - **Next:** M2 — wire the flux-driven S into the multi-cell driver (see STATE.md's NEXT block).
+
+### Addendum — independent cross-check of the per-cell chain (2026-07-28)
+The Hainich gate proves the *derivation*, but it cannot catch a **mis-mapped cell** (a wrong `grid.nc`
+`cellid` lookup or the wrong per-cell run would still reproduce Hainich). Falsifiable second check, from the
+soil codes in `soil_code_test.soil.bin`: three biome cells share **soil code 7 (loam)** — boreal Siberia
+(52059), mediterranean Iberia (33335), tropical Amazon (12045) — on three different continents. Since the
+deep layers carry ~no organic matter, Saxton–Rawls gives `whc = f(sand, clay)` only, so their DEEP-layer
+`whc` must be identical.
+- layers 10/15/21: `0.15127945 / 0.15124385 / 0.15124735` — spread **3.6e-5** (2.4e-4 relative).
+- layer 22: spread **1.3e-5**.
+- and they must differ from the other soil types, which they do: code 4 (clay loam, Hainich) **0.17421**,
+  code 9 (sandy loam, Sahel) **0.11545**. Ordering sandy loam < loam < clay loam is pedotransfer-correct.
+- meanwhile the **top** layer legitimately differs *within* code 7 — 0.2099 (boreal) / 0.1977 (Amazon) /
+  0.1676 (Iberia) — the organic-matter term, highest where soil carbon is highest (cold boreal), lowest in
+  dry Iberia. So the chain reproduces both the invariant and the variable part for the right reasons.
+Conclusion: the `cellid` mapping, the per-cell run selection and the layer indexing are all independently
+confirmed — not just the arithmetic.

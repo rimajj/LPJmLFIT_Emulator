@@ -142,3 +142,11 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   and `biome_coupled_tests.jl` do.
 - **Never hard-code the repo root in a script** — it writes into the integrator worktree from here
   (CLAUDE.md §9 item 6). Derive it from `__file__` / `@__FILE__`.
+
+## Observed, NOT ours to fix (raise with the owner/integrator)
+
+- `scripts/gen_diagrams.jl --check` reports `docs/src/generated/components.mmd` **STALE** — pre-existing,
+  unrelated to any line-M change: the committed diagram still says component E will "reuse Terrarium.jl",
+  while `src/registry.jl` now says "self-contained SEB (ADR 0017)". One line. It is **not** a CI gate (`docs`
+  CI runs doctests + `makedocs`, never the diagram alarm), so nothing is red. The text belongs to component E,
+  so regenerating it is line E's or the integrator's call — line M left it untouched deliberately.
