@@ -231,3 +231,16 @@ expansion while three conditioning columns are on the wrong basis would let S2 t
 exactly the failure ADR 0033 recorded, where S1b silently delivered 30 % of S2's gate. Rejected outright:
 retraining on runtime-produced features, which would make every band assertion pass by construction while
 teaching the emulator F's bias instead of the C's demography (the C is the oracle, guardrail 3).
+- **Closed the loop on S1c's own gate:** `scripts/verify_hainich_demo_artifacts.sh` re-run against the committed
+  regenerated fixtures returned **`VERDICT: PASS` — exit 0** (job 1622811, all four artifacts byte-identical,
+  working tree clean, no `git checkout --` needed). So the milestone's stated binary signal is verified, not
+  asserted, and the `slow-drf-pipeline` skill's long-standing "expect exit 2 here" note is retired.
+- **Merge friction worth remembering:** the mandated `git pull --rebase origin main` conflicted with line E's
+  `ca1e78c6`, which had edited the SAME docs section of the shared `julia-test` skill hours earlier — the
+  append-only rule for shared skills does not prevent a conflict when two lines append to the *same* section.
+  Resolved by keeping BOTH contributions (E's "warm `--project=docs` before submitting to SLURM", mine "the
+  diagram alarm needs `--project=.` and no CI job runs it"). Also: I ran the rebase and the push in one chained
+  command, so the push fired while the rebase was still conflicted and shipped the UN-rebased tip; harmless here
+  (the forced re-push after `--continue` corrected it) but the lesson is to never chain a push behind a rebase in
+  one command. Branch CI was re-verified on the post-rebase sha `e3fa102a` (the pre-rebase verdict does not carry
+  over), and `main` at `78fec71e` is green on all five required gates including `docs`.
