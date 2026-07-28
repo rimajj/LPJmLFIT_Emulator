@@ -6,94 +6,58 @@
 
 ## NEXT — start here
 
-**S1b is CODE-COMPLETE and MERGED; finish the TRAIT half of the re-validation.** The ADR-0031 widening, the
-`growth_eff` runtime guard, the per-PFT params, the versioning knob and the byte-identity gate all landed
-(see §Status for the before/after tables). **The count side is DONE and holds up** (every metric within ≈0.003 R²
-on a 56 %-larger population, +9 371 cells scored). What is left is the trait side, which is exactly where
-ADR 0031 predicted the population change would bite.
+**S1b is COMPLETE (ADR 0031 + 0033). Start with S1c (ADR 0032) — its blocking condition has now expired.**
 
-### 0. The S1b gate, item by item (ADR 0031 §3) — what is closed and what is not
+Everything S1b promised is measured and merged: the widening, the `growth_eff` runtime guard, the per-PFT
+params, artifact versioning, the byte-identity gate, the count before/after table, the trait before/after table,
+and the ADR-0030 gate re-measured and **PASSED** (`seed1-basis` = 1.000 ×4). Headline: counts held (≈0.003 R²),
+and traits **improved on every axis**, falsifying ADR 0031's degradation prediction → **ADR 0033**, which also
+de-prioritizes S3 and re-baselines the S2 gate. All numbers are in §Status; don't re-derive them.
 
-| gate item | state |
+**Why S1c is now first:** its only reason for deferral was basis entanglement with S1b's before/after tables.
+Those are published, so the reason is gone. Carrying it into S2 would re-entangle it with a conditioning change.
+The full step list, the four gates to re-measure and the binary success signal are in **§5 below** — that is the
+whole task; nothing needs re-deriving. It is **S-executable** (all four fixture consumers are S-owned; notify M,
+don't wait for M).
+
+*Everything below in §1–§4 is DONE — kept only as the audit trail for the numbers in §Status.*
+
+### S1b audit trail (all DONE — kept for provenance; the NUMBERS live in §Status)
+
+| gate item (ADR 0031 §3) | outcome |
 |---|---|
-| Hainich demo artifacts + golden fixtures byte-identical | **INVESTIGATED, not simply "passed"** → ADR 0032. The `.drf` moved; the control build proves the ADR-0031 edits are a no-op here (max\|abs diff\| = **0** on all 15 columns + target), so the fixture was ALREADY stale. Oracle CSVs + `.rcop` byte-identical. Scoped as **S1c**. |
+| Hainich fixtures byte-identical | **investigated, not merely passed** → ADR 0032. The `.drf` moved; the control build proved the edits a no-op here (max\|abs diff\| = **0**, all 15 columns + target) ⇒ the fixture was ALREADY stale. Oracle CSVs + `.rcop` byte-identical. → **S1c**, §5 |
 | cell coverage ≈ 54 020 | ✅ **exactly 54 020** (historic w20 seed1) |
-| `seed1-basis ≥ 0.99` on the new population | ⏳ pending — chained job **1622436** (step 2) |
-| documented before/after table of every changed fidelity number — **counts** | ✅ done (§Status) |
-| documented before/after table — **traits** | ⏳ pending — same chain (step 3) |
+| `seed1-basis ≥ 0.99` on the new population | ✅ **1.000 on all four axes** (job 1622436) |
+| before/after table — counts | ✅ §Status |
+| before/after table — traits | ✅ §Status + **ADR 0033** |
 
-### 1. Collect the ONE remaining in-flight job (the pooled pair already landed — see below)
+Jobs: `1622131` historic copula (+ its chained gate `1622436`) · `1622337` pooled copula at **NCPUS=96** after
+`1622330` was **OOM-killed** (exit 137 — `STEM_CAP` does NOT bound peak memory; gotcha in the
+`slow-drf-pipeline` skill) · `1622134` pooled count DRF · `1622242`+`1622305` historic count + K-fold ·
+`1622132` seed2 floor table.
 
-| job | tag / log | produces | status at handoff |
-|---|---|---|---|
-| **1622131** | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | **RUNNING** — 10/20 axis-folds at handoff (~6 min each, so ≈1 h left of a 10 h allocation). This is the ONLY thing blocking steps 2 and 3. |
-| ~~1622337~~ | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** | ✅ **DONE** at NCPUS=96 (the 32-cpu attempt 1622330 was **OOM-killed**, exit 137 — `STEM_CAP` does NOT bound peak memory; gotcha in the `slow-drf-pipeline` skill) |
+**Published + load-verified `t7` artifacts** (line M informed in `lines/M/STATE.md`, and M's own coverage gate
+independently confirmed the payoff: `semiarid_sahel` 18371 is in **neither** pre-0031 table, so only `_t7`
+serves all five biome cells, 5/5 vs 3/5):
+`drf_forest_global_pooled_w20_t7.drf` (150 trees, `nfeat=15`) · `recruit_copula_global_pooled_w20_t7.rcop`
+(128 MB, 4 axes, 8 cond cols in `live_flux_cond` order) · `drf_forest_global_historic_t7.drf` ·
+`recruit_copula_global_historic_t7.rcop` · tables `slow_{count,copula,runtime}_*_t7/`.
 
-**✅ The COMPLETE pooled `t7` pair is PUBLISHED and load-verified** — `drf_forest_global_pooled_w20_t7.drf`
-(150 trees, `nfeat=15`, loads 1.5 s) + `recruit_copula_global_pooled_w20_t7.rcop` (128 MB, 4 axes, 8 cond cols
-in exactly `live_flux_cond` order, loads 2.9 s). Pooled K-fold-by-cell OOS trait nqrmse: **SLA 0.005 ·
-Wooddens 0.016 · D95max 0.012 · minwscal 0.004** (42.2 M stems after `STEM_CAP=400`, 58 766 cells).
-**Line M was BLOCKED on exactly this** and has been told (`lines/M/STATE.md`) — and M's own coverage gate
-independently confirmed why the widening mattered: `semiarid_sahel` (cell 18371) is in **neither** table the
-pre-0031 `pooled_w20` pin was trained on, so only the `_t7` family serves all five biome cells (5/5 vs 3/5).
+**Not done, cheap, optional:** trait FIGURES 09–11 on `tree7`
+(`COPULA_OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7`, `emulator-validation-figures` skill).
 
-`grep -E 'JOB DONE|VERDICT' logs/<tag>.*.out`; last line carries the exit code. **If either died on a node
-fault** (exit `0:53`/no log — see MEMORY.md) just resubmit: `VERSION=t7 SCENARIO=historic
-scripts/run_global_slow_copula.sh` / `VERSION=t7 scripts/run_pooled_slow_copula.sh`. Everything is versioned,
-so a resubmit cannot clobber a pre-0031 artifact.
-
-### 2. Re-measure the ADR-0030 trait gate on the new population
-
-**This is ALREADY CHAINED — check for its result before re-running.** Job **1622436** was submitted with
-`--dependency=afterok:1622131`, so it fires automatically when the copula above succeeds and writes
-`logs/S-noisefloor-t7.<jobid>.out`. Read that first:
-```bash
-grep -E "seed1-basis|GAP|floor|r_center|sd\(pred\)|VERDICT|JOB DONE" logs/S-noisefloor-t7.*.out
-```
-If the copula job failed, the dependency is never satisfied (`afterok`) and 1622436 stays pending or is
-cancelled — `squeue -u $USER` / `scontrol show job 1622436`. In that case fix the copula, then submit by hand.
-Both halves must be `tree7`. The seed2 floor table is **already built** (job 1622132,
-`slow_copula_historic_seed2_t7`, 197.8 M stems / 54 058 cells):
-```bash
-COPULA_DIR=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7 \
-COPULA2_DIR=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2_t7 \
-  TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-noisefloor-t7 scripts/noise_floor_vs_emulator.py
-```
-The script now derives which of its `tree7`/`tree5` bases is `same_population` from the **imported**
-`TREE_TYPES`, so `tree7` is the basis carrying the quotable GAP and `tree5` is the cross-population
-before/after row. **Gate: `seed1-basis ≥ 0.99` on `tree7`** — below that, STOP (`residual-diagnosis` §3b).
-Expect the floor to move to the `tree7` numbers (ADR 0031 predicted Wooddens 0.694 → ~0.923), so **every
-headroom figure in §Status's trait table is superseded by this run** — replace it, don't append.
-
-### 3. Trait figures + the before/after trait table
-
-`COPULA_OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7` → figs 09–11 + `metrics_traits.txt`
-(see the `emulator-validation-figures` skill). Then extend §Status with a trait before/after table in the same
-shape as the count one. Pooled marginal KS was **0.004–0.015** on tree5 — ADR 0031 expects it to WORSEN, because
-one pooled marginal per axis is a poorer structural fit once id 0's very different trait intervals are in
-(`minwscal` now spans `[0.025, 0.75]`, not `[0.025, 0.30]`). **Report that honestly if it happens** — it is
-evidence FOR S3, not a regression to hide.
-
-### 4. Hand the artifacts to M, then unblock S2/S3
-
-`lines/M/STATE.md` already carries the integration point. Once the pooled `.rcop` exists, tell M the `t7` pair
-is complete (`drf_forest_global_pooled_w20_t7.drf` is **already built + validated**) so M re-pins deliberately.
-
-Then → **S2/S3**. ADR 0031's census plus the count/trait asymmetry make **S3 the leading hypothesis, not S2**:
-per-cell trait medians are *composition* statistics (FIT samples traits from per-PFT `[low,high]` intervals),
-the copula has neither a composition covariate nor a per-PFT marginal, and the widening just made the
-composition spread much larger. Consider running S3 *with* S2 rather than after it.
-
-### 5. S1c (ADR 0032) — do this IMMEDIATELY after step 3, same session if possible
+### THE TASK: S1c (ADR 0032) — start here, the deferral condition has expired
 
 The committed Hainich demo `.drf` is on the retired PROXY feature basis (`soilmoist` 0.7, `lai` 21.2,
 `growth_eff` 19) while the `.rcop` beside it is on the REAL one (0.85, 3.07, ~151) — one emulator, two
 conditioning bases, a live ADR-0023 shift masked by the DRF's OOD leaf-clamping.
 
-**Why it was deferred, and why that reason EXPIRES at step 3:** the only argument for waiting was that
-regenerating the fixture inside the ADR-0031 widening would leave two entangled causes behind every moved
-Hainich number (ADR 0031 §3). Once the trait before/after table is published, S1b is closed and that
-entanglement is gone. **Do not carry S1c into S2/S3** — it would then entangle with a conditioning change instead.
+**The deferral condition has EXPIRED (2026-07-28).** The only argument for waiting was that regenerating the
+fixture inside the ADR-0031 widening would leave two entangled causes behind every moved Hainich number
+(ADR 0031 §3). S1b's before/after tables are now published, so that is gone. **Do not carry S1c into S2/S3** —
+it would then entangle with a conditioning change instead. **Not started only because a half-executed S1c leaves
+regenerated golden fixtures sitting in the worktree with no re-measurement** — worse than a clean start.
 
 **Scope is smaller than ADR 0032 implies** (`[VERIFIED 2026-07-28]` by grep): every consumer of the committed
 fixtures is **S-owned** — `test/testitems/{slow_oracle_tests,slow_oracle_traits_tests,slow_production_drf_tests,
