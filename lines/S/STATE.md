@@ -84,12 +84,49 @@ per-cell trait medians are *composition* statistics (FIT samples traits from per
 the copula has neither a composition covariate nor a per-PFT marginal, and the widening just made the
 composition spread much larger. Consider running S3 *with* S2 rather than after it.
 
-**Also open, independent of the above: S1c (ADR 0032)** — the committed Hainich demo `.drf` is on the retired
-PROXY feature basis while the `.rcop` beside it is on the REAL one. Don't fold it into S2/S3; it needs
-re-measured drift thresholds and a joint landing with M. `scripts/verify_hainich_demo_artifacts.sh` reports
-exit 2 (`STALE-FIXTURE`) until it is done — that is **expected**, not a new failure (`[VERIFIED 2026-07-28]`,
-job 1622370: control exit 0 / NO-OP → `VERDICT: STALE-FIXTURE`). The gate restores nothing itself, so after
-running it: `git checkout -- test/testitems/references/`.
+### 5. S1c (ADR 0032) — do this IMMEDIATELY after step 3, same session if possible
+
+The committed Hainich demo `.drf` is on the retired PROXY feature basis (`soilmoist` 0.7, `lai` 21.2,
+`growth_eff` 19) while the `.rcop` beside it is on the REAL one (0.85, 3.07, ~151) — one emulator, two
+conditioning bases, a live ADR-0023 shift masked by the DRF's OOD leaf-clamping.
+
+**Why it was deferred, and why that reason EXPIRES at step 3:** the only argument for waiting was that
+regenerating the fixture inside the ADR-0031 widening would leave two entangled causes behind every moved
+Hainich number (ADR 0031 §3). Once the trait before/after table is published, S1b is closed and that
+entanglement is gone. **Do not carry S1c into S2/S3** — it would then entangle with a conditioning change instead.
+
+**Scope is smaller than ADR 0032 implies** (`[VERIFIED 2026-07-28]` by grep): every consumer of the committed
+fixtures is **S-owned** — `test/testitems/{slow_oracle_tests,slow_oracle_traits_tests,slow_production_drf_tests,
+drf_serialization_tests}.jl`. **No M-owned test loads them today** (M only *plans* to, for its M2 CI gate). So
+this is S-executable with a NOTIFICATION to M, not a both-sides landing. Tell M before you push, because M's
+M2 gate design assumes the current fixture.
+
+Steps:
+1. **Rebuild both demo tables from ONE build** so they cannot disagree again: `CELLS=42490 SEED=1` with
+   `MODE=count` → `/p/tmp/jamirp/slow_runtime`, and `MODE=copula` → `/p/tmp/jamirp/slow_copula_hainich`.
+2. **Retrain BOTH artifacts together** to their committed paths: `train_slow_drf.jl` (→ `drf_forest_hainich.drf`
+   + `_meta.txt`) and `train_slow_copula.jl` (→ `recruit_copula_hainich.rcop` + `_meta`). Regenerating the
+   artifact and its meta together is what keeps the golden pairs consistent.
+3. **Assert the fix, don't assume it:** the two metas must now agree on the shared conditioning columns
+   (`growth_eff`, `soilmoist`, and the boundary tail). That agreement IS the defect being closed — check it
+   explicitly. The `.rcop` is already on the real basis, so expect it byte-identical; if it MOVES, stop.
+4. **Re-measure the four gates, and document every threshold that moves** (`residual-diagnosis` — never widen
+   an alarm silently):
+   - `drf_serialization_tests.jl` — bitwise round-trip + committed golden pairs (structural; should pass).
+   - `slow_production_drf_tests.jl` — the "targets INSIDE the training band" assertion. The band moves with the
+     basis, so re-derive its bounds from the NEW meta. This is the assertion that was quietly toothless.
+   - `slow_oracle_tests.jl` — the IQR-normalized quantile-RMSE drift alarm (documented ~0.31; 0.39 observed vs
+     a 0.45 threshold, §Milestones S5). **Direction is genuinely unpredictable**: the DRF will be in-domain for
+     the first time (should help), but the threshold was tuned against the OOD-clamped behaviour.
+   - `slow_oracle_traits_tests.jl` — the `.rcop` gates; untouched if the `.rcop` is byte-identical.
+5. **Full suite CI-faithfully on SLURM** (`scripts/run_tests_slurm.sh S-s1c`), then commit as ONE change with a
+   before/after threshold table, and notify M in `lines/M/STATE.md`.
+
+*Gate — cleanly checkable:* `scripts/verify_hainich_demo_artifacts.sh` flips from **exit 2 (`STALE-FIXTURE`)**
+to **exit 0 (`PASS`)**, the two metas agree on the shared conditioning, the suite is green, and every moved
+threshold has a written measurement. Until then exit 2 is **expected**, not a new failure
+(`[VERIFIED 2026-07-28]`, job 1622370). The gate does not restore what it writes — afterwards:
+`git checkout -- test/testitems/references/`.
 
 ## Scope + ownership (ADR 0029)
 
