@@ -17,9 +17,17 @@ MODE=copula SEED=2 BOUNDARY_WINDOW=20 STEM_CAP=400 \
 ```
 Then extend `scripts/noise_floor_vs_emulator.py` to read the seed2 **copula-table** basis (instead of the
 all-years parquet median) so the `seed1-basis` cross-check clears >0.9 on all four axes.
-**Why:** today that cross-check is 0.97 (SLA) but **0.49 (Wooddens) / 0.09 (minwscal)** — those two axes'
-floor-vs-emulator gap is only qualitative, so S2's success metric isn't yet exactly measurable.
-*Gate:* `seed1-basis` r > 0.9 for all 4 axes; report the exact per-axis emulator-vs-floor gap.
+**Why:** the current `seed1-basis` cross-check (parquet all-years median vs copula-table Y median) is
+**SLA 0.973 · D95max 0.761 · Wooddens 0.488 · minwscal 0.092** — so for three of four axes the
+floor-vs-emulator gap is only qualitative, and S2's success metric is not yet exactly measurable.
+
+*Gate (revised 2026-07-28 — the earlier "seed1-basis r > 0.9 on all 4 axes" was a bad gate: it is not
+something S1 can *achieve*, it is the DIAGNOSTIC that S1 makes unnecessary):* after this milestone the floor
+must be computed on the **same basis as the emulator** — i.e. per-cell medians of the seed2 **copula table**
+vs the seed1 copula table, not the all-years parquet — so the `seed1-basis` column becomes structurally 1.0
+and drops out. Deliverable: a per-axis table of `emulator_r`, `floor_r`, and `gap = floor_r − emulator_r` with
+both sides on the copula basis, for all 4 axes. If some axis's floor cannot be put on that basis, say so and
+report that axis's gap as qualitative rather than quoting a number.
 
 Then → **S2** (the big one, below).
 

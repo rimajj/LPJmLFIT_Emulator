@@ -11,6 +11,15 @@ makes onboarding slower and buries the signal.
 
 ## Part A — reshape MEMORY.md
 
+**⚠️ Under parallel work lines (ADR 0028/0029) this skill has TWO scopes — pick the right one:**
+- **Your line's `lines/<X>/STATE.md`** — routine line housekeeping, do it from your own worktree. Move that
+  line's narrative to `lines/<X>/JOURNAL.md`; keep the `## NEXT — start here` block at the top intact (it is
+  the handoff the SessionStart hook replays).
+- **The shared repo-root `MEMORY.md`** — **INTEGRATOR ONLY**, from the `main` worktree. It is a destructive
+  in-place reshape, so running it from a line branch can silently auto-merge away another line's edits. It now
+  holds SHARED/cross-cutting state only (a §0 router + cross-cutting `[VERIFIED]` facts + an ADR pointer);
+  per-line state is NOT its job.
+
 `MEMORY.md` is the repo-root durable-state file (NOT `JOURNAL.md`, NOT the runbook `CLAUDE.md`). Cap:
 **≤ 400 lines / ≤ 15k tokens** (stated in its own header).
 
@@ -19,8 +28,10 @@ makes onboarding slower and buries the signal.
 2. **Keep only durable state:** verified facts (`[VERIFIED]`), the frozen-decision *index* (one line per
    ADR, pointing at `docs/decisions/`, not the reasoning), phase status, open `[TODO]`s.
 3. **Move everything else out — don't delete it:**
-   - session narrative / "what happened this session" → append to `JOURNAL.md`;
-   - the story behind one change → `CHANGELOG.md`;
+   - session narrative / "what happened this session" → append to **`lines/<X>/JOURNAL.md`** (the root
+     `JOURNAL.md` is pre-2026-07-28 history + the INTEGRATION journal, integrator-only);
+   - the story behind one change → a **`changelog.d/<X>-<slug>.md` fragment** (never edit `CHANGELOG.md` from a
+     line; the integrator collates it);
    - a resolved decision's full reasoning → its ADR (MEMORY keeps just the index line).
 4. **Archive big removals** (don't delete — git has it, but leave a human pointer): write the pre-reshape
    copy to `docs/archive/MEMORY_<YYYY-MM-DD>_pre-consolidation.md` and note it in the MEMORY.md header
@@ -39,14 +50,16 @@ makes onboarding slower and buries the signal.
    `description` (the field that decides whether it triggers). Rewrite the description with the exact verbs
    and artifact names of the task (use the `skill-creator` skill), then keep it one more cycle before
    deciding to delete.
-5. **Promote:** recurring notes/scripts that keep reappearing in `JOURNAL.md` but have no skill → create
+5. **Promote:** recurring notes/scripts that keep reappearing in a JOURNAL but have no skill → create
    one (via `skill-creator`).
-6. **Record what you removed** in `JOURNAL.md` (deleted/merged skill X because zero use over N sessions),
+6. **Record what you removed** in your line's JOURNAL (or the integration journal if you are the integrator)
+   (deleted/merged skill X because zero use over N sessions),
    so the decision is auditable.
 
 ## Wrap
 
-Commit the reshaped `MEMORY.md`, any archived copy, and skill changes together (main-only, ADR 0013;
+Commit the reshaped state file, any archived copy, and skill changes together (branch-per-line + self-merge on
+green, ADR 0028 — NOT the superseded main-only rule;
 `repo-commit` skill). Note in the commit body what was archived and which skills were merged/deleted.
 This skill did not exist before 2026-07-23 — the docs referenced it (`STEERING_PROMPT.md`, `repo-commit`)
 before it was written.

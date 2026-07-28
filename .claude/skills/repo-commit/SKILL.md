@@ -17,14 +17,36 @@ Your line = the branch in the worktree you launched from (the `SessionStart` hoo
 ## The ritual
 
 ```bash
+INT=/p/projects/open/Jamir/esm_land_emulator   # integration worktree; `main` is checked out HERE
+
 git pull --rebase origin main          # at session START, and again before merging
 # ... work; commit (Conventional Commits, one logical change per commit) ...
-git push origin line/<X>               # branch CI: test (lts), test (1), format, python
-# `docs` does NOT run on branches by design (gh-pages deploy race) → build it locally instead
-# green? integrate:
-git switch main && git pull && git merge --no-ff line/<X> && git push origin main
-git switch line/<X>                    # back to your line
+git push --force-with-lease origin line/<X>    # NOT a plain push (the rebase rewrote pushed commits)
+# branch CI on that sha: test (lts), test (1), format, python.
+# `docs` does NOT run on branches by design (gh-pages deploy race) → build it locally instead.
+# green? integrate — WITHOUT switching branches in your worktree:
+flock "$INT/.git/esm-integrate.lock" bash -eu -c '
+  git -C "$0" pull --ff-only origin main
+  git -C "$0" merge --no-ff --no-edit "origin/line/$1"
+  git -C "$0" push origin main
+' "$INT" <X>
+# finally: check main's OWN latest CI run.
 ```
+
+**The five traps (all were wrong in the first draft of this protocol; fixed 2026-07-28 after an adversarial review):**
+1. **`git switch main` FAILS in a line worktree** — `fatal: 'main' is already used by worktree at …` (exit 128),
+   because `main` is permanently checked out in `$INT`. Use `git -C "$INT"`. There is no "switch back" step.
+   Never reach for `git switch --ignore-other-worktrees` or `git checkout -B main` to get around it.
+2. **Plain `git push` is rejected after the mandated rebase** (non-fast-forward), and git's hint leads to
+   `git pull --no-rebase`, which **duplicates every rebased commit** into a self-merge. Use
+   `--force-with-lease` (safe: one session per line, ADR 0028).
+3. **Merge `origin/line/<X>`** so the sha that lands is the sha CI verified — a pre-rebase green verdict does
+   not transfer, and branch CI takes ~10 min, plenty of time for a sibling `main` push to force another rebase.
+4. **`flock`** the integration worktree: it is the last shared checkout, and unserialised
+   `pull`/`merge`/`push` from four lines reintroduces the contention worktrees exist to prevent.
+5. **Green branch ≠ green main.** `format`, `docs`, `python`, Aqua and JET are whole-package gates and `docs`
+   never ran on your branch. Check **main's newest** run after merging — GitHub keeps only one *pending* run per
+   branch, so a quick follow-up push can cancel an intermediate `main` verdict (observed twice on 2026-07-27/28).
 
 **Merge at every milestone, never hoard** — a stale branch is the only real conflict source left. `test (pre)`
 is `continue-on-error` and currently red for unrelated Julia-prerelease churn; don't chase it.

@@ -14,9 +14,12 @@ per-cell `FDiffFastCore` + latitude. What is missing is per-cell **inputs**: tod
 Start with the one piece that has no script at all — a **per-cell soil-column extractor** producing the same
 3-column layout as `test/testitems/references/hainich_soilcolumn.txt`
 (`layer soildepth_mm whcs_mm rootdist`):
-- `whcs_mm` = per-layer plant-available capacity = `whc_nat`(fraction) × `soildepth`(mm). Sources per
-  `config/paths.yaml`: `soil_code_test.soil.bin`, `soil_depth_test.clm`, and the C run's own `whc_nat` output.
-  (`grep -rl whc_nat scripts/` → nothing exists yet.)
+- `whcs_mm` = per-layer plant-available capacity = `whc_nat`(fraction) × `soildepth`(mm).
+  **GOOD NEWS — the global field already exists on disk** (verified 2026-07-28):
+  `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output/whc_nat.nc` (4.5 GB, the C run's
+  own output for ALL cells). So M1 is an EXTRACTOR-writing job, not a data-generation job — no C re-run needed.
+  Also available per `config/paths.yaml`: `soil_code_test.soil.bin`, `soil_depth_test.clm`.
+  What does *not* exist is any script that reads it: `grep -rl whc_nat scripts/` → no hits.
 - `rootdist` = Jackson-1996 beta profile from D95 — **vegetation-dependent**, so co-derive it per cell.
 *Gate:* re-extracting cell **42490** reproduces the committed `hainich_soilcolumn.txt` to round-off — that is
 the correctness proof before trusting any other cell.

@@ -144,6 +144,29 @@ ceremony ADR 0013 deliberately removed. Concretely:
   correct line per worktree; a branch push running `test (lts)`/`test (1)`/`format`/`python` but **not**
   `docs`; two concurrent `run_tests_slurm.sh` submissions from different worktrees both reaching
   `=== JOB DONE … exit=0 ===`; and a conflict-free merge of two lines into `main`.
+## Errata (2026-07-28, same day — recorded rather than editing the decision text above)
+
+An adversarial review of this ADR's rollout found the **merge-ritual snippet in §Decision Outcome is not
+executable as written**. The decision (branch + worktree per line, self-merge on green branch CI) stands; the
+mechanics are corrected in **`CLAUDE.md` §9**, which is authoritative:
+
+1. `git switch main` **fails in a line worktree** — `main` is permanently checked out in the integration
+   worktree, so git refuses with `fatal: 'main' is already used by worktree at …` (exit 128). Drive the
+   integration worktree with `git -C "$INT"`; there is no "switch back" step.
+2. The mandated `git pull --rebase origin main` **rewrites already-pushed commits**, so the snippet's plain
+   `git push origin line/<X>` is rejected non-fast-forward — and git's own hint leads to a `--no-rebase` merge
+   that duplicates every rebased commit. Use `git push --force-with-lease` (safe: one session per line).
+3. Merge **`origin/line/<X>`**, not the local branch, so the sha that lands on `main` is the sha branch CI
+   actually verified (a pre-rebase verdict does not transfer).
+4. **`flock`** the integration worktree: it is the one remaining shared checkout, and four lines merging into
+   it unserialised reintroduces the contention this ADR adopted worktrees to remove.
+5. A green branch does **not** imply a green `main` (`format`/`docs`/`python`/Aqua/JET are whole-package gates
+   and `docs` never runs on a branch), and GitHub keeps only one *pending* run per branch, so a rapid
+   follow-up push can cancel an intermediate `main` verdict — check `main`'s **newest** run after merging.
+
+None of these had run before the review: both acceptance merges were performed from the integration worktree,
+where step 1 happens to work.
+
 - **Revisit when** the number of lines changes materially, a line needs a dependency added to `Project.toml`
   (integrator-gated), or the repo goes public with external consumers — at which point option D becomes the
   right answer and should supersede this ADR.

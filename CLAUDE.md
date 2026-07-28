@@ -236,11 +236,14 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 ## 5. Git / CI
 
-- **Main-only workflow (ADR 0013):** commit and push straight to `main`. No feature branches, PRs, or
-  branch protection (owner declined). CI on `push:main` is a smoke alarm — run CI-equivalent checks
-  locally first; fix-forward if red. **Commit and push to main as you go** (full autonomy per
-  `STEERING_PROMPT.md` — no owner sign-off needed or expected); your safety net is the CI/conservation
-  gates and ADRs, not a human gate.
+- **BRANCH-PER-LINE workflow (ADR 0028, which SUPERSEDED ADR 0013's main-only rule on 2026-07-28).** Work on
+  your line's branch in its own worktree and **self-merge to `main` when that branch's CI is green** — the
+  exact ritual, and the five traps in it, are **§9** (read them: `git switch main` does not work from a line
+  worktree, and a plain push after the mandated rebase is rejected). Still **no PRs, no branch protection, no
+  review gate**, and still full autonomy per `STEERING_PROMPT.md` — no owner sign-off is needed or expected;
+  your safety net is the CI/conservation gates and ADRs, not a human gate. Retained from ADR 0013:
+  Conventional Commits, Keep-a-Changelog, one logical change per commit, no data/weights/secrets, and run the
+  CI-equivalent checks (CI-faithfully on SLURM) before pushing.
 - **Commit trailer:** end every commit message with
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - **The 5 CI gates:** `CI` (Julia tests), `format` (Runic), `docs` (Documenter), `python` (ruff+pytest),
@@ -304,8 +307,11 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `DRF.Forest` (`DRF.load_forest`). Committed demo artifact = `test/testitems/references/drf_forest_hainich.drf`
   (**text, never `*.bin` — that's git-ignored**; regen: `scripts/build_slow_runtime_table.py` →
   `scripts/train_slow_drf.jl`). The training table MUST match the runtime `flux_feature_vector` order
-  (`slow.jl`); **`age_mean` is a degenerate runtime elapsed-year counter — train it as the counter, NOT mean
-  `Age`** (the silent train/inference-shift trap). `soilmoist`/`lai` are documented proxies until the global
+  (`slow.jl`); **`age_mean`: ADR 0023 §3's "train it as the elapsed-year counter" is SUPERSEDED by ADR 0024** —
+  it is now a TRUE nind-weighted mean cohort age, and the DRF is retrained on `mean(Age−1)` (start-of-year;
+  emitted `Age` is post-increment) with an `age0` seed carried in the DRF meta. Either way the rule behind it
+  stands: the runtime feature and the training column must be the SAME quantity (the silent
+  train/inference-shift trap). `soilmoist`/`lai` are documented proxies until the global
   C-`LAI_STAND`/`swc` pipeline. Gate-3 oracle ref: `references/hainich_slow_oracle_{traits,counts}.csv`
   (`scripts/build_slow_oracle_reference.py`).
 
@@ -324,8 +330,8 @@ and capture whenever you: (a) write a script you'd run again; (b) do the same mu
 | A procedure / how-to for your own context | a **skill** (`.claude/skills/`) — prefer *updating* an existing one over adding a new one |
 | An environment fact / gotcha | **CLAUDE.md** (this file) |
 | A decision | an **ADR** (`docs/decisions/`) |
-| Current durable state | **MEMORY.md** |
-| Session narrative / what-happened | **JOURNAL.md** |
+| Current durable state | **`lines/<X>/STATE.md`** for line state (incl. the `## NEXT` handoff); **`MEMORY.md`** only for CROSS-CUTTING facts (§9) |
+| Session narrative / what-happened | **`lines/<X>/JOURNAL.md`** (your line; the root `JOURNAL.md` is history + the INTEGRATION journal — §9) |
 
 **Capture minimally in the moment** — a 10-line `SKILL.md` pointing at your existing script beats nothing.
 Use the **`skill-creator`** skill for the mechanics (frontmatter, the trigger-rich description that makes a
@@ -392,7 +398,22 @@ rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (i
 
 ### Ownership + contracts
 
-The per-path ownership map is **ADR 0029** (also summarized in each `lines/<X>/STATE.md`). Rules:
+The per-path ownership map is **ADR 0029**, **extended here** for three gaps the adversarial review found
+(2026-07-28) — this section is the authoritative, complete map:
+
+| Path | Owner | Note |
+|---|---|---|
+| `src/components/slow.jl`, `src/drf.jl`, `src/climbuf.jl` | **S** | exclusive |
+| `src/run.jl`, `src/interface.jl` | **M** | the coupling seam |
+| `src/components/energy.jl` | **E** | exclusive |
+| `ext/**` | **O** | exclusive (new extension files) |
+| **`src/fdiff.jl`, `src/fdiff_smoothops.jl`, `src/components/fast.jl` — the F core** | **M**, by default | *Gap 1: 60% of `src/` was unowned.* M is the physics/coupling line, so it holds F. **S may not edit F directly** even though S4 (grass ownership) and S6 need it — that is an **integration point**: S specifies the change, M lands it (or M explicitly hands the file over for one milestone, recorded in both STATE.md files). The parked F-fidelity work (`sapwood_bg` growth, per-PFT water supply) is unstaffed — don't start it inside another milestone. |
+| **`src/state.jl`, `src/conservation.jl`, `src/allometry.jl`, `src/registry.jl`** | **shared, additive-only** | Cross-component libraries used across the interface. Add; never restructure. `registry.jl` additionally drives `docs/src/generated/*.mmd` — regenerate with `scripts/gen_diagrams.jl` in the SAME commit or the diagram-staleness gate reds `main`. |
+| **`.claude/skills/<name>/SKILL.md`** | **primary owner by domain** | *Gap 2: 40 commits touch skills, and the §8 capture gate pushes EVERY session to edit one.* Primary: `slow-drf-pipeline` + `emulator-validation-figures` → **S**; `fdiff-validate` + `lpjmlfit-cbinary` → **M**; `python-env` → **E**. `julia-test`, `repo-commit`, `residual-diagnosis`, `skill-creator`, `consolidate-memory` are **shared, append-only** (add a bullet/gotcha at the end of the relevant section; do not reorganise, and do not rewrite another line's section). |
+| `test/testitems/**` | by subsystem (see ADR 0029) | `references/**` shared; regenerating an existing baseline is an integration point |
+| `Project.toml`, `test/Project.toml`, `CHANGELOG.md`, shared `MEMORY.md`, root `JOURNAL.md`, `.claude/settings.json`, `.github/workflows/**`, `.gitignore`, `config/**` (except E's energy keys), `scripts/sbatch_*.sh` + `run_tests_slurm.sh` | **integrator only** | *Gap 3: these were unassigned.* Request the change; the integrator lands it on `main`. |
+
+Rules:
 
 - **Never edit another line's exclusive path.** Need a change there? Raise an **integration point**: note it in
   both lines' STATE.md and land both sides together.
@@ -411,15 +432,44 @@ The per-path ownership map is **ADR 0029** (also summarized in each `lines/<X>/S
 ### The ritual (mechanics + gotchas in the `repo-commit` skill)
 
 ```bash
-git pull --rebase origin main        # at session START, and before merging
+INT=/p/projects/open/Jamir/esm_land_emulator   # the integration worktree; `main` lives HERE
+
+git pull --rebase origin main        # at session START, and again before merging
 # ... work, commit (Conventional Commits, one logical change) ...
-git push origin line/<X>             # branch CI: test (lts), test (1), format, python
+git push --force-with-lease origin line/<X>    # NOT a plain push — see (2) below
+#   branch CI: test (lts), test (1), format, python.
 #   `docs` deliberately does NOT run on branches (gh-pages deploy race) — build locally:
 #   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
-# green? then:
-git switch main && git pull && git merge --no-ff line/<X> && git push origin main
-git switch line/<X>                  # back to your line
+# green on THAT sha? integrate — never switch branches in your worktree:
+flock "$INT/.git/esm-integrate.lock" bash -eu -c '
+  git -C "$0" pull --ff-only origin main
+  git -C "$0" merge --no-ff --no-edit "origin/line/$1"
+  git -C "$0" push origin main
+' "$INT" <X>
+# then check main's OWN latest CI run (see (5)).
 ```
+
+Four things here are load-bearing — all three were **wrong in the first version of this protocol** and caught by
+an adversarial review on 2026-07-28 before any line ran them:
+
+1. **Never `git switch main` in a line worktree.** `main` is permanently checked out in `$INT`, so git refuses:
+   `fatal: 'main' is already used by worktree at …` (exit 128). Drive the integration worktree with `git -C`
+   instead; nothing ever leaves your own worktree, so there is no "switch back" step.
+2. **`--force-with-lease`, not a plain push.** The mandated `pull --rebase` *rewrites commits you already
+   pushed*, so a plain `git push` is rejected non-fast-forward — and git's own hint ("use 'git pull'") leads to
+   a `--no-rebase` merge that **duplicates every rebased commit**. The lease is safe because ADR 0028 mandates
+   one session per line. Never "fix" the rejection with `git pull --no-rebase`.
+3. **Merge `origin/line/<X>`, not the local branch.** That is the exact sha branch CI verified. A pre-rebase
+   green verdict does **not** carry over to a post-rebase sha, and branch CI takes ~10 min here — long enough
+   for a sibling's `main` push to force another rebase.
+4. **`flock` the integration worktree.** It is the one shared checkout left; without the lock four lines can
+   interleave `pull`/`merge`/`push` in it and reintroduce exactly the contention worktrees were adopted to
+   remove.
+5. **Then verify `main`'s own latest CI.** Green branches do **not** guarantee a green `main`: `format`, `docs`,
+   `python`, Aqua and JET are **whole-package** gates, and `docs` never ran on your branch at all. Also GitHub
+   keeps only one *pending* run per branch, so a rapid follow-up push can cancel an intermediate `main` run
+   (observed twice) — the **newest** `main` sha is the one that carries a verdict.
+
 `test (pre)` is `continue-on-error` and is currently red for unrelated Julia-prerelease churn — don't chase it.
 **Merge at every milestone, never hoard.** Rebase early; a stale branch is the only real conflict source left.
 

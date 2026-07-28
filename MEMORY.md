@@ -1,7 +1,10 @@
 # MEMORY.md — SHARED durable state for the LPJmL-FIT hybrid land-component emulator
 
-> **Shared, cross-cutting durable state only** (ADR 0029). Facts and status that every work line needs:
-> what this is, the `[VERIFIED]` facts, the ADR index pointer, and the cross-line frontier.
+> **Shared, cross-cutting durable state only** (ADR 0029) — the facts and status every work line needs: what
+> this is, the `[VERIFIED]` facts, the load-bearing ADR constraints, and the cross-line frontier.
+> **Any line may APPEND a cross-cutting `[VERIFIED]` fact here**; *restructuring* this file (the
+> `consolidate-memory` reshape) is **integrator-only**, because it is a destructive in-place rewrite that can
+> silently auto-merge away another line's edit.
 > **Per-line state lives in `lines/<X>/STATE.md`** — see the router below. Environment/runbook facts live in
 > `CLAUDE.md` (+ §9 for the parallel-line protocol); per-line narrative in `lines/<X>/JOURNAL.md`; the story
 > of one change in a `changelog.d/<X>-*.md` fragment.
@@ -230,8 +233,9 @@ copula conditions on flux+boundary and deliberately excludes stand-state (ADR 00
   online transient boundary; `components/energy.jl` = `SEBEnergyClosure`; `ext/FDiffTrainingExt.jl` = the NN-hook trainers.
 - **Deep dives**: `docs/phase1_p3b_water_closure.md`, `docs/phase2_slow_emulator.md`,
   `docs/phase3_fdiff_cbinary_validation.md`, `docs/sapwood_bg_design.md`, `docs/water_supply_perpft_design.md`.
-- **Session narrative** → **`lines/<X>/JOURNAL.md`** (per line, append-only). The root `JOURNAL.md` is the
-  **pre-2026-07-28 history** — preserved, no longer appended (ADR 0029).
+- **Session narrative** → **`lines/<X>/JOURNAL.md`** (per line, append-only). The root `JOURNAL.md` holds the
+  **pre-2026-07-28 history** and is now the **INTEGRATION journal** — appended only from the `main` worktree
+  (single-writer ⇒ conflict-free). Never append line narrative there.
 - **Change log** → write a **`changelog.d/<X>-<slug>.md` fragment**; the integrator collates into
   `CHANGELOG.md` (newest on top). **Never edit `CHANGELOG.md` from a line branch.**
 - **Parallel-line protocol** → `CLAUDE.md` §9 + ADR 0028/0029; ownership map in ADR 0029; mechanics in the

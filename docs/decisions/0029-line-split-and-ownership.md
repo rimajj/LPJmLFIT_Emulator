@@ -178,3 +178,26 @@ lines' STATE.md:
 - **Revisit when** a line finishes its scope (retire or repurpose the branch), when a fifth line is wanted
   (allocate the next ADR block), or when the S→M contract needs to change structurally rather than
   incrementally.
+
+## Errata (2026-07-28, same day — recorded rather than editing the decision text above)
+
+An adversarial review of this ADR's own rollout found three points where the text above is wrong or
+incomplete. The DECISION stands; these are corrections to its detail, and `CLAUDE.md` §9 carries the
+authoritative version:
+
+1. **The root `JOURNAL.md` is NOT "never appended again"** (§Coordination files). It is the **integration
+   journal**, appended only from the `main` worktree — which is single-writer, so it cannot conflict. Only
+   *line* narrative is forbidden there.
+2. **The ownership map above is incomplete.** It left ~60% of `src/` unassigned (the F core `fdiff.jl`,
+   `fdiff_smoothops.jl`, `components/fast.jl`, plus the shared libraries `state.jl`, `conservation.jl`,
+   `allometry.jl`, `registry.jl`) and omitted `.claude/skills/**` (40 commits — and §8's capture gate pushes
+   every session to touch one). `CLAUDE.md` §9 now assigns all of them: the **F core → line M** (an S need is
+   an integration point), the shared libraries → additive-only, skills → a primary owner per skill with the
+   cross-cutting ones append-only, and the remaining infrastructure (`Project.toml`, workflows, `.gitignore`,
+   `config/**`, the `scripts/sbatch_*`/`run_tests_slurm.sh` wrappers) → integrator-only.
+3. **`MEMORY.md` is described inconsistently** — "shared, additive only" in the ownership map and
+   integrator-owned in the coordination-files section. Resolution: **cross-cutting `[VERIFIED]` facts may be
+   appended by any line**; *restructuring* it (the `consolidate-memory` reshape) is integrator-only.
+
+The merge-ritual snippet in [ADR 0028](0028-parallel-session-lines.md) §Decision Outcome is likewise
+superseded by `CLAUDE.md` §9 — see that ADR's own errata note.
