@@ -12,6 +12,16 @@
 on a 56 %-larger population, +9 371 cells scored). What is left is the trait side, which is exactly where
 ADR 0031 predicted the population change would bite.
 
+### 0. The S1b gate, item by item (ADR 0031 §3) — what is closed and what is not
+
+| gate item | state |
+|---|---|
+| Hainich demo artifacts + golden fixtures byte-identical | **INVESTIGATED, not simply "passed"** → ADR 0032. The `.drf` moved; the control build proves the ADR-0031 edits are a no-op here (max\|abs diff\| = **0** on all 15 columns + target), so the fixture was ALREADY stale. Oracle CSVs + `.rcop` byte-identical. Scoped as **S1c**. |
+| cell coverage ≈ 54 020 | ✅ **exactly 54 020** (historic w20 seed1) |
+| `seed1-basis ≥ 0.99` on the new population | ⏳ pending — chained job **1622436** (step 2) |
+| documented before/after table of every changed fidelity number — **counts** | ✅ done (§Status) |
+| documented before/after table — **traits** | ⏳ pending — same chain (step 3) |
+
 ### 1. Collect the ONE remaining in-flight job (the pooled pair already landed — see below)
 
 | job | tag / log | produces | status at handoff |
