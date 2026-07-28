@@ -6,49 +6,56 @@
 
 ## NEXT — start here
 
-**LICENSING IS CLOSED — do not spend a single minute on it (ADR 0081, owner decision 2026-07-28).** The owner
-is a member of **both** the LPJmL-FIT group and **TUM-PIK-ESM** (which hosts SpeedyWeather.jl / Terrarium.jl),
-so **reuse those models freely.** Do not raise licence questions, do not re-audit upstream licences, do not
-ask for a licence decision. The one obligation is **transparent citation** — skill `reuse-citation`, register
-`docs/third_party_licensing.md`. **Get on with the coupling.**
+**Licensing is CLOSED (ADR 0081) — reuse Terrarium / SpeedyWeather / LPJmL-FIT / NeuralCrop.jl freely, just
+cite them (`reuse-citation`). Do not spend a minute on it.**
 
-**O2 — write `docs/p4_online_coupling_design.md`, the missing design of record.** P4 is currently scoped only
-in prose scattered across `ECOSYSTEM_AND_COUPLING.md` §2/§3/§5, `DEVELOPMENT_PLAN.md` §6 and
-`STEERING_PROMPT.md`. **Validate every API claim against the real cloned Terrarium** at
-`/p/tmp/jamirp/esm_reference_repos/Terrarium.jl` (commit `4f42508`, v0.1.3) — read the code, not your memory of
-it — and start from the working templates `examples/simulations/speedy_{dry,wet}_land.jl`, where
-`vegetation = nothing` is exactly the slot S+F fill. Cover:
+**The harness is VERIFIED WORKING; our physics is not in it yet.** Read the
+**`online-coupling-env`** skill first — it has the environment and the four traps that each cost a failed job.
+Project: `/p/tmp/jamirp/esm_online_coupling` · scripts committed at `scripts/online_coupling/` ·
+design of record: `docs/p4_online_coupling_design.md` (written 2026-07-28, every API claim verified).
 
-- Which Terrarium `Abstract*` interfaces S / F / E each sit behind (8 vegetation interfaces exist; see
-  §What already exists below) and which stay ours.
-- The indirect-coupling variable list (`leaf_area_index`, `gross_primary_production`,
-  `plant_available_water`, `carbon_vegetation`, `ground_temperature`) mapped onto the frozen
-  `src/interface.jl` structs — which you consume **read-only** (line M owns that seam).
-- **The timestep story:** F is daily, SpeedyWeather steps ~300 s. State the sub-cycling scheme explicitly.
-- Float32 throughout (4 testitems already assert this — the only P4 prep that exists in code today).
-- How `ClimBuf` gets its spin-up climatology on a **cold start** (no restart file exists online).
-- The conservation story across the interface (water ~1e-12, carbon, energy ~1e-14 must survive coupling).
-- Pin the Terrarium commit and say what churn is expected (v0.1.x, unstable API).
+*Verified 2026-07-28:* Terrarium 0.1.3 + SpeedyWeather 0.21.1 + `LPJmLFITEmulator` load together on **Julia
+1.10.10**; `run_reference_coupling.jl` ran 6 simulated hours coupled on a compute node (job 1622172) with
+`vegetation = nothing` — 4608/4608 cells finite, Float32 held, T_skin −16.7…25.0 °C,
+`=== REFERENCE COUPLING OK ===`, exit 0. That run is the **control**: any later failure is ours, not the stack's.
 
-*Gate:* the design doc exists, every API claim is traceable to a file+line in the clone, and O3's spike is
-implementable from it without further design work.
+**O3 — the spike: LPJmL-FIT photosynthesis behind Terrarium's `AbstractPhotosynthesis`.** Full recipe,
+including the unit bridge, is `docs/p4_online_coupling_design.md` §4 — follow it, it is already worked out.
 
-Then → **O3** (the de-risking spike: ONE LPJmL-FIT process behind ONE Terrarium `Abstract*` interface, shipped
-as a package extension) → **O4** (wrap `run_coupled_cell` as a SpeedyWeather `LandModel`). When the extension
-actually needs them, **request `Terrarium` + `SpeedyWeather` as `[weakdeps]`** from the integrator — that
-mechanism survives for a purely technical reason (compute nodes have no GitHub egress; runtime `[deps]` stays
-empty per ADR 0014), NOT a licensing one. O2–O4 need nothing from any other line; **O5 needs line M's M1/M2**.
+1. Add `FDiffPhotosynthesis{NF} <: Terrarium.AbstractPhotosynthesis{NF}` wrapping `FDiff.PhotoParams`.
+   Implement **only** `variables(...)` + `compute_photosynthesis(i, j, grid, fields, photo, constants, atmos)
+   -> (Rd, An, GPP)`; `compute_photosynthesis!` and the kernel are generic and come for free.
+2. Bridge the units (§4): LPJmL is a **daily** formulation (`apar` J/m²/day, `agd` gC/m²/day) and Terrarium
+   wants instantaneous gC/m²/s + kgC/m²/s. Use `daylength = 24`, `apar = swdown·PAR_frac·fapar(LAI)·86400`,
+   `co2_Pa = co2_ppm·1e-6·pres`, temp in **°C** (no conversion — Terrarium is Celsius), λ from
+   `fields.leaf_to_air_co2_ratio`. Then `Rd = rd/86400`, `An = (agd−rd)/86400`, `GPP = agd/86400·1e-3`.
+3. Swap it into `VegetationCarbon(NF; photosynthesis = FDiffPhotosynthesis(NF))` and pass that as
+   `Terrarium.LandModel(grid; vegetation = ...)`. Leave their stomatal conductance / respiration / phenology /
+   carbon dynamics / soil / SEB alone — minimum surface area.
+4. Run via `./sbatch_coupling.sh O-fdiffphoto <script>.jl`. **Where the code should live:** `ext/` is line O's
+   (`CLAUDE.md` §9). `Project.toml` is integrator-owned, so either request `Terrarium`/`SpeedyWeather` as
+   `[weakdeps]` + an extension, or keep the spike in `scripts/online_coupling/` until it works and land the
+   dependency once. Prefer the latter — do not block on the integrator.
 
-**Integration point still open** (integrator-owned, so line O left it alone): `docs/make.jl` says "The repo is
-PRIVATE" — stale, it is public; its `linkcheck_ignore` for our own self-links may now be unnecessary. A line
-cannot verify a change to it (the `docs` gate does not run on branches).
+*Gate:* the coupled run completes; GPP finite and positive on vegetated cells; Float32 holds; and the
+daily-integrated ONLINE GPP is compared against OFFLINE F_diff at Hainich **with the gap quantified** — §4
+is explicit that instantaneous-rate mode changes the diurnal weighting, so expect a real discrepancy and
+report it rather than assuming it is small.
+
+Then → **O4** (wrap `run_coupled_cell` as a full `LandModel`, which needs the daily-buffered F of §3) →
+**O5** multi-cell (needs line M's M1/M2).
+
+**Two decisions deliberately left open, flagged in the design doc §5 — do not settle them implicitly:**
+who owns soil water + skin temperature (Terrarium's slots vs our F_diff bucket + Component E), and how
+`ClimBuf` gets its climatology on a coupled cold start (that one gates S, not F).
 
 ## Scope + ownership (ADR 0029)
 
 **You own (exclusive):**
 - `ext/SpeedyWeatherTerrariumExt.jl` (or whatever the extension is named) + any new `ext/` file — and `ext/`
   generally (`CLAUDE.md` §9: "`ext/` to O"), which includes the existing `ext/FDiffTrainingExt.jl`
-- `docs/p4_online_coupling_design.md` (new — no P4 design doc exists today)
+- `docs/p4_online_coupling_design.md` (**written 2026-07-28** — the design of record; keep it current)
+- `scripts/online_coupling/*` (the verified SpeedyWeather+Terrarium harness)
 - `docs/third_party_licensing.md` (the reuse + **citation** register; keep it current — ADR 0081)
 - `lines/O/*`, `changelog.d/O-*.md`, ADRs 0080–0089
 
