@@ -139,3 +139,55 @@ which ADR 0029 makes **integrator-only**, so line M did not apply it — recorde
 `lines/M/STATE.md` and as an integrator TODO in `MEMORY.md`. M1 itself is complete: local suite
 **107039 pass / 0 fail / 4 broken** on Julia 1.10 (job 1621984), Runic clean, docs build green, the 11
 committed artifacts byte-reproducible.
+
+---
+
+## 2026-07-28 — session: unblock CI repo-wide, then open M2 (artifact pin + the coverage gap)
+
+**1. The JET 0.12.0 blocker: diagnosed as repo-wide, fixed on `main`.** Last session left M1 complete and
+green except `test (1)`, red from a fresh JET **0.12.0** resolve that removed the `target_defined_modules`
+config `test/jet_tests.jl:6` passes. Confirmed from the job logs that it was *not* a line-M defect: the
+identical `JETConfigError` appears on line/M `693322fa` (job 90278705919, a docs+tests-only diff) **and**
+line/O `11ef8d89` (job 90275445875), while `test (lts)` stayed green because JET 0.11+ needs Julia ≥1.12 so
+1.10 caps at 0.9.20. `test/Project.toml` `[compat]` is integrator-owned (ADR 0029) and the breakage blocked
+all four lines from merging, so I landed the one-line pin `JET = "0.9, 0.11"` directly on `main` (`47c6407a`)
+rather than on this branch. **Verified: `main` 47c6407a `test (1)` = success.** Both pinned versions were
+already in the shared depot, so the compute-node warm needed no new tarball. `test (pre)` remains red for the
+known unrelated prerelease churn.
+
+**2. Suite green after rebasing onto the pin:** 107,039 pass / 0 fail / 4 broken, 86/86 items, 5m41s
+(`M-suite-jetpin`, job 1622318). Also fixed the `julia-test` skill, whose "run the suite" recipe still said
+`cd /p/projects/open/Jamir/esm_land_emulator` — now the *integrator* worktree, so following it from a line
+session would have submitted a suite testing `main` instead of the branch under test.
+
+**3. M2 step 1 — pinned the S artifact, contracts VERIFIED not assumed.** Chose
+`drf_forest_global_pooled_w20.drf` + `recruit_copula_global_pooled_w20.rcop` (sha256s in STATE.md): the DRF
+meta's `colnames` (nfeat 15 = 11 head + 4 boundary) matches `flux_feature_vector` exactly, and the copula
+meta's `cond_cols` (ncond 8) matches `live_flux_cond` = `vcat(feats[1:4], s.boundary)`. That fixes the
+per-cell boundary vector as `[eco_diag_gdd_5, tas_cold_month, soil_depth, co2]`. Deliberately did **not**
+adopt the `_t7` retrain that appeared today — S was still producing it (job 1622131) and there is no `_t7`
+`.rcop`.
+
+**4. Then the gate I wrote found that the pin cannot serve all five cells.** `scripts/extract_cell_slow_init.py`
+folds the per-cell S seed + boundary out of `cell_meta.parquet` into the committed `M_cells.csv`, and aborts if
+a requested cell is missing. Running it against the pinned artifact's own tables:
+**`semiarid_sahel` (18371) is in NEITHER `slow_count_historic_w20` NOR `slow_count_ssp370_w20`** — the pinned
+DRF never saw the cell. Only the `_t7` family covers 5/5. STATE.md's inherited claim that
+`slow_runtime_historic` contains "all five biome cells" was simply **wrong** (it holds 3/5) — that is the value
+of gating rather than trusting a handoff note.
+
+**5. Two measurements that constrain how per-cell S state may ever be sourced.**
+- `n_init`/`age0` are the per-cell **median over training years** of `n_living` / `age_mean`
+  (`build_slow_runtime_table.py:320-332`), i.e. statistics of the *training window*. Across the 44,328 cells
+  shared by `slow_runtime_historic` and its `_t7` retrain, `n_init` differs for 15,665 cells (max |Δ| 24) and
+  `age0` for 22,542 (max |Δ| 85 years). So they are version-coupled, and — usefully — **not** derivable from
+  the committed single-year canopy, which closes a shortcut I had started to design.
+- The 4 boundary columns are byte-identical across *versions* of the same scenario, but differ across
+  *scenarios* by up to **1513 GDD** and **8.84 °C** (43,901 shared cells) — they are climate diagnostics of
+  different climates. Hence a POOLED artifact has two boundary rows per cell, which promotes the per-cell
+  `ClimBuf` (M2 step 3) from optional to required. The invariance check inside the extractor is what surfaced
+  this: it refused the cross-scenario borrow instead of silently averaging two climates.
+
+**Deliberately left undone:** `M_cells.csv` is NOT yet extended. Emitting it from `_t7` while the pin says
+`pooled_w20` would silently adopt the unpinned retrain — precisely ADR 0023's trap. Resolving the pin is
+step 0 of the next session and is an integration point with line S.
