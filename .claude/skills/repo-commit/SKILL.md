@@ -72,6 +72,19 @@ replays that block verbatim into the next session, so it *is* the handoff. Make 
 (command + gate), not "continue where I left off". A session that ends without refreshing it has silently
 broken the chain — this is the single most important line in this skill.
 
+**Refreshing is not appending — DELETE the superseded predictions.** When a milestone closes, the handoff still
+contains the *expectations* you wrote before measuring, and the next session reads them as current guidance. Hit
+for real on 2026-07-28: after the ADR-0030 re-measurement, line S's own `## NEXT` still said "ADR 0031 expects
+pooled KS to WORSEN", "evidence FOR S3", "expect Wooddens 0.694 → ~0.923" and "S3 the leading hypothesis" —
+every one falsified by the run that had just finished. So, before committing the handoff:
+- **Strike any "expect / should / this will probably" sentence whose measurement has landed**, and replace it
+  with the outcome. Predictions and results must never sit side by side undated.
+- **Collapse completed steps into a short audit trail** (job ids, artifact paths, gotchas) and put the numbers in
+  `## Status`. Keep provenance, drop the instructions.
+- **Say why the next action was NOT started**, if it wasn't — "not started because a half-executed X leaves
+  regenerated golden fixtures in the worktree" is actionable; silence reads as an oversight.
+- `grep` the block for your own hedges before committing; that is how the above were caught.
+
 ## SLURM + scratch under parallel lines
 
 - **Tag every job with your line prefix**: `scripts/run_tests_slurm.sh S-suite`,

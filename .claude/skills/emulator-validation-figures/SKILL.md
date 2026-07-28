@@ -83,7 +83,29 @@ usual count `OUT=`) and it ALSO emits:
   can look great while per-cell medians regress to the mean, see fig 10). **The headline trait proof numbers.** KS + 1-Wasserstein are dependency-light (no scipy). Only SLA/Wooddens feed dynamics;
   D95max/minwscal are sample+validate-only. (13-cell dev check: OOS pooled KS SLA 0.044, Wooddens 0.017,
   D95max 0.029, minwscal 0.021. GLOBAL historic OOS nqrmse SLA 0.016 / Wd 0.022 / D95max 0.028 / minwscal
-  0.038; GLOBAL pooled+transient nqrmse 0.010-0.020.)
+  0.038 **on the pre-ADR-0031 `tree5` population**; the `tree7` retrain reads SLA 0.006 / Wd 0.008 /
+  D95max 0.008 / minwscal 0.008; GLOBAL pooled+transient nqrmse 0.010-0.020, `tree7` pooled 0.004-0.016.)
+
+**⚠ `nqrmse` is IQR-NORMALIZED — never quote a before/after RATIO without checking the normalizer moved.**
+`eval_slow_copula.jl:104`: `nqrmse = RMSE(q05..q95) / IQR(observed)` with `IQR = q75 − q25`. So **any change to
+the POPULATION changes the denominator**, and the headline ratio misleads in *both* directions. Measured across
+the ADR-0031 `tree5 → tree7` widening (`[VERIFIED 2026-07-28]`):
+| axis | nqrmse | headline | IQR × | **real gain** (raw quantile RMSE) |
+|---|---|---|---|---|
+| SLA | 0.016 → 0.006 | 2.67× | 0.89× | **2.99×** — headline UNDERstates it |
+| Wooddens | 0.022 → 0.008 | 2.75× | 1.13× | 2.44× |
+| D95max | 0.028 → 0.008 | 3.50× | 1.20× | 2.92× |
+| minwscal | 0.038 → 0.008 | **4.75×** | **2.47×** | **1.92×** — headline OVERstates it 2.5× |
+Recover the comparable number with `raw_RMSE = nqrmse × IQR_obs` (the `obs_q` array is printed on the same log
+line, so this needs no re-run). Same family as ADR 0030's lesson that a correlation is scale-blind: **a
+scale-free metric can move because its scale moved.**
+
+**A pooled-marginal number does NOT test between-cell composition.** `nqrmse`/pooled KS ask "is the global trait
+histogram right", which is blind to whether the *right cells* got the right traits. A per-cell trait median is a
+*composition* statistic (FIT draws traits from per-PFT `[low,high]` intervals), so a population change can
+improve the pooled marginal while degrading per-cell skill. Use `median_percell_r` and the NOISE-FLOOR gate
+below for that claim — and do not let a good pooled number stand in for it (that conflation is what fig 10 exists
+to expose).
 
 **Plot per-cell KS was O(ncells·N) → fixed to O(N log N) (sort-group once).** The old fig-11 loop did
 `ccells == c` per cell (a full scan over all N stems each) → ~6e12 ops at 45009 cells × 133M stems → the plot
