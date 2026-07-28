@@ -281,6 +281,14 @@ copula conditions on flux+boundary and deliberately excludes stand-state (ADR 00
   and coupled/decadal baselines) closes only ~40–50% of the 0.51→0.46 CUE gap. Design: `docs/sapwood_bg_design.md`.
 - **[TODO] Lift the Enzyme pin / 1.11 canopy guard** when a fixed Enzyme ships (still blocked upstream on
   0.13.187 / Julia 1.11.7; a 0.14 migration is higher-risk).
+- **[TODO] Lift the `JET` pin** (`JET = "0.9, 0.11"`, `test/Project.toml`) by migrating `test/jet_tests.jl` to
+  JET 0.12's replacement scoping API. `[VERIFIED 2026-07-28]` JET **0.12.0** removed the
+  `target_defined_modules` configuration that `jet_tests.jl:6` passes ⇒ `JETConfigError` ⇒ `test (1)`
+  (Julia 1.12) errored **repo-wide** on a fresh resolve — reproduced on line/M `693322fa` (job 90278705919,
+  docs+tests-only diff) and line/O `11ef8d89` (job 90275445875), while `test (lts)` stayed green because JET
+  0.11+ needs ≥1.12 so 1.10 resolves 0.9.20. Pinned on `main` in `47c6407a`. Second instance of the
+  CLAUDE.md §5 "CI resolves deps fresh ⇒ a missing `[compat]` absorbs a breaking bump" class, after Enzyme
+  0.13.189.
 - **[TODO] Owner actions**: ratify ADR 0018; **file `LICENSE` = AGPL-3.0-or-later** (ADR 0080 §4 — the
   licensing *read* is done, only the act remains); the "(c)" N-track discussion; close stray Dependabot PRs;
   the `eval`-filename allow decision.

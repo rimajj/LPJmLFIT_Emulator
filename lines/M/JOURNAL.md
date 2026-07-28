@@ -123,3 +123,19 @@ survived my own inspection and were real. What they found and what I changed:
 **Left open** (in STATE.md "M1 review debt"): item 2 still has no provenance sensitivity — it passes with
 all-Hainich inputs, so a driver-level fallback in M2 would not be caught; `GATE=no` leaves no trace in the
 artifacts; and `CLAUDE.md` §9 contradicts itself on whether `MEMORY.md` is shared-additive or integrator-only.
+
+### Addendum 3 — merge blocked by a JET 0.12.0 dependency bump (2026-07-28)
+After the hardening, `line/M` sha `693322fa` came back with `test (1)` (Julia 1.12) **red** while
+`test (lts)`, `format`, `python` and `test (macOS, lts)` were green. The diff touched only python scripts,
+`biome_coupled_tests.jl` and docs — no `src/` — so this is the "CI red with the test tree unchanged ⇒ suspect
+a dep bump" pattern (CLAUDE.md §5). Diagnosis from the job log:
+`JETConfigError: Given unexpected configuration: `target_defined_modules = true``, with the log's package path
+showing **JET v0.12.0**. `test/Project.toml` has no `JET` entry in `[compat]`, and CI resolves fresh, so 1.12
+picked up the brand-new 0.12.0, which removed the option `test/jet_tests.jl:6` passes.
+Evidence it is not mine: `b106cdae` was green on `test (1)` with JET 0.11.6; `main`'s last run (`c470711e`) is
+still green only because it predates the release. **The next push to `main` or to any line goes red the same
+way.** The one-line fix (`JET = "0.9, 0.11"` beside the Enzyme pin) lives in `test/Project.toml` `[compat]`,
+which ADR 0029 makes **integrator-only**, so line M did not apply it — recorded as the top-line blocker in
+`lines/M/STATE.md` and as an integrator TODO in `MEMORY.md`. M1 itself is complete: local suite
+**107039 pass / 0 fail / 4 broken** on Julia 1.10 (job 1621984), Runic clean, docs build green, the 11
+committed artifacts byte-reproducible.

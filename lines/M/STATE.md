@@ -4,6 +4,38 @@
 > the parallel-line protocol). Narrative: `lines/M/JOURNAL.md` (append-only). Decisions: ADR block **0050–0069**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## ⛔ BLOCKER — M1 is complete and green but CANNOT MERGE: JET 0.12.0 broke `test (1)` repo-wide
+
+**Not caused by any line-M change** — a fresh upstream dependency bump. `test/Project.toml` has **no `JET`
+entry in `[compat]`**, and CI resolves deps fresh (manifests git-ignored), so `test (1)` (Julia 1.12) picked up
+**JET v0.12.0**, which **removed the `target_defined_modules` configuration** that `test/jet_tests.jl:6` passes:
+
+```
+JETConfigError: Given unexpected configuration: `target_defined_modules = true`
+  Expression: (JET.report_package)(LPJmLFITEmulator; toplevel_logger = nothing, target_defined_modules = true)
+Test Summary: JET | 1 errored   =>   106969 passed, 0 failed, 1 errored, 4 broken
+```
+
+Evidence: `line/M` sha `b106cdae` was green on `test (1)` (JET 0.11.6); sha `693322fa`, whose diff touches only
+python scripts, `biome_coupled_tests.jl` and docs, is red with JET **0.12.0**. `main`'s last run
+(`c470711e`) is still green only because it predates the JET release — **the next push to `main` or to ANY
+line will go red the same way.** This is the exact pattern CLAUDE.md §5 documents ("CI red with the test tree
+unchanged ⇒ suspect a dep bump; diff the version line in last-green vs first-red logs and tighten `[compat]`").
+
+**The fix is one line, and it is INTEGRATOR-OWNED** (`test/Project.toml` `[compat]` per ADR 0029), so line M
+did not apply it. Alongside the existing Enzyme pin, add:
+
+```toml
+# PINNED to < 0.12: JET 0.12.0 removed the `target_defined_modules` configuration that
+# test/jet_tests.jl:6 passes (JETConfigError). 0.11.6 is last-good on Julia 1.12 (`test (1)`),
+# 0.9.20 on 1.10-lts. Lift by migrating jet_tests.jl to JET 0.12's replacement API.
+JET = "0.9, 0.11"
+```
+
+Until that lands, `line/M` is pushed and green on `test (lts)` / `format` / `python` / `test (macOS, lts)`,
+with `test (1)` red for this reason alone. **Do not merge on a red required check** — apply the pin (or have
+the integrator do it), re-push, confirm `test (1)` green, then merge `origin/line/M`.
+
 ## NEXT — start here
 
 **M1 is DONE (2026-07-28, ADR 0050).** Every biome cell now runs its OWN soil column, canopy, forcing and
