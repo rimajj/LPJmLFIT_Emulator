@@ -141,6 +141,16 @@ is the offline S.
   `plumber2-reference`). The NCI THREDDS `ks32` collection is **anonymously readable from the PIK login node**
   (general HTTPS egress works — zenodo / ICOS / fluxnet.org / NCI all reachable; only GitHub-HTTPS-for-git is
   the blocked case). Observed daytime Bowen reproduces the 5-biome ordering (tropical 0.30 → semi-arid 4.57).
+- [VERIFIED 2026-07-28, line E, ADR 0071] **The two forcings E needs are sourced and mapped**: daily `sfcwind`
+  [m/s] + `ps` [Pa] from ISIMIP3a obsclim **GSWP3-W5E5** (the same family as the run's own tas/pr/rsds/lwnet/
+  huss; the raw SSP370 GCM set has `sfcwind` but **no `ps`** ⇒ future psurf still open). Remapped onto orderA
+  cells by `scripts/remap_wind_psurf_cells.py`; committed fixtures `test/testitems/references/wind_psurf_
+  <biome>.csv`. **The lat/lon ↔ orderA mapping is now PROVEN**: obsclim `tas` at the cell's lat/lon vs the
+  model-grid `temperature_test.clm` agrees to `max|Δ| = 0.000 °C` over 365 days at all 5 biome cells — reuse
+  that route (`grid.nc cellid → (lat,lon) → source axis`, exactness-asserted) for ANY new per-cell input
+  (skill `obsclim-cell-remap`). Hainich 0.5° cell vs the DE-Hai tower: wind **−10.1 %**, psurf **+1649 Pa**
+  (cell mean ≈143 m below the tower) ⇒ score tower fluxes with TOWER forcing, not grid forcing. Feeding the
+  coupled driver is an **open integration point with line M** (`src/run.jl`).
 - [VERIFIED 2026-07-28] **T_skin is NOT observable at Hainich**: PLUMBER2's FLUXNET2015/LaThuile files carry no
   `LWup` (only `SWup`); the OzFlux files do ⇒ T_skin validation is biome-analogous (AU-Tum/AU-ASM/AU-Rob;
   AU-How suspect, no boreal source). Two loader traps: PLUMBER2 `_FillValue = -9999` **leaks through

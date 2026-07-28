@@ -63,10 +63,20 @@ lpjml:
   ood_forcing: ${lpjml.inputs.ssp370}
 
   # ---- NEW forcings required by energy layer E (not used by LPJmL-FIT core) ----
-  # wind: sfcwind is in the raw GCM NetCDFs (ssp370_raw_gcm) and GSWP3-W5E5 obsclim. ps: source from GCM/obsclim.
+  # RESOLVED [VERIFIED 2026-07-28; ADR 0071]: both come from the ISIMIP3a obsclim GSWP3-W5E5 tree — the SAME
+  # climate product family the LPJmL-FIT run consumed, so wind/psurf are consistent with its tas/pr/rsds/
+  # lwnet/huss. 0.5°, daily, lon ascending / lat DESCENDING, proleptic_gregorian (drop 29 Feb for the model's
+  # noleap-365), `ps` [Pa], `sfcwind` [m s-1], decadal files. There is NO `ps` in the raw SSP370 GCM set and no
+  # LPJmL-prepared `ps` .clm anywhere on the cluster ⇒ the SSP370 psurf remains open (ADR 0071 §consequences).
+  # Remap onto orderA cells + the validation battery: scripts/remap_wind_psurf_cells.py.
   energy_extra_inputs:
-    sfcwind: TODO_extract_from_GCM_or_obsclim   # present in raw GCM; not yet a model-ready .clm
-    ps:      TODO_source_surface_pressure       # required by E; not in current input config
+    obsclim_dir: /p/projects/isimip/isimip/ISIMIP3a/InputData/climate/atmosphere/obsclim/global/daily/historical/GSWP3-W5E5
+    sfcwind: ${lpjml.energy_extra_inputs.obsclim_dir}/gswp3-w5e5_obsclim_sfcwind_global_daily_<y0>_<y1>.nc
+    ps:      ${lpjml.energy_extra_inputs.obsclim_dir}/gswp3-w5e5_obsclim_ps_global_daily_<y0>_<y1>.nc
+    # LPJmL-prepared, already-noleap wind (lat 280, QUANTIZED to 0.01 m/s) — the independent pipeline check only:
+    sfcwind_prepared_lpjml: /p/projects/lpjml/input/historical/ISIMIP3av2/obsclim/GSWP3-W5E5/sfcwind_gswp3-w5e5_obsclim_1901-2019.nc
+    # Per-cell daily fixtures produced from the above (committed, 2010-2019, 365 d/yr, orderA biome cells):
+    cell_fixtures: ${project.root}/test/testitems/references/wind_psurf_<biome>.csv
 
   # ---- Existing GROUND-TRUTH runs (data already generated; ANNUAL output only, no daily) ----
   ground_truth:

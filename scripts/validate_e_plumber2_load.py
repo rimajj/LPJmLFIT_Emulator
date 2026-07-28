@@ -57,7 +57,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fetch_plumber2_sites import resolve_paths_yaml  # noqa: E402  (sibling script, same dir)
+# sibling script in this same dir; the path insert above must run first, hence the E402 exemption
+from fetch_plumber2_sites import resolve_paths_yaml  # noqa: E402
 
 SIGMA = 5.670374419e-8  # Stefan-Boltzmann, W/m²/K⁴ (matches SEBParams.sigma)
 EMISSIVITY = 0.97  # SEBParams.emissivity default — keep the inversion consistent with the closure
