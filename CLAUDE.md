@@ -309,19 +309,21 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - Decisions: `docs/decisions/README.md` (ADR index). Steering: `STEERING_PROMPT.md` +
   `PROJECT_REVIEW_2026-07-22.md`.
 - **Skills** (`.claude/skills/`): `julia-test`, `lpjmlfit-cbinary`, `fdiff-validate`, `python-env`,
-  `residual-diagnosis`, `repo-commit`, `dependency-license-gate`, `plumber2-reference` + `obsclim-cell-remap`
+  `residual-diagnosis`, `repo-commit`, `reuse-citation`, `plumber2-reference` + `obsclim-cell-remap`
   (line E: the PLUMBER2 observational reference for Component E, and getting a gridded forcing onto orderA
   cells). Invoke the one that matches the mechanical task instead of re-deriving its steps.
-- **Licensing (`[VERIFIED 2026-07-28]`, ADR 0080; register + gate: `docs/third_party_licensing.md`, skill
-  `dependency-license-gate`).** Outbound = **AGPL-3.0-or-later** — forced by LPJmL-FIT's AGPL-3.0 copyleft
-  *and* by being an EUPL-1.2 Appendix "Compatible Licence" (Art. 5). **Never state a licence from memory:
-  Terrarium.jl AND SpeedyWeather.jl are both EUPL-1.2, NOT MIT**; Terrarium's `NOTICE` (read it — it is not
-  the `LICENSE`) extends Art. 5 to *any* licence for **normal library use**, which is what unblocks taking it
-  as a `[weakdeps]` extension. **READ / DEPEND / VENDOR are different acts** — vendoring third-party code
-  needs its own ADR; CC-BY-NC (NeuralCrop.jl) and unlicensed (LPJ_resilience) works are **method-only,
-  never a line of code**, because NonCommercial ↔ AGPL §7 is undistributable. **Gotcha:** the repo is
-  **public with no `LICENSE` file** (`docs/make.jl`'s "the repo is PRIVATE" comment is stale) — filing it is
-  the one open owner action (ADR 0080 §4).
+- **Reuse + citation — the licensing question is CLOSED (ADR 0081; owner decision, 2026-07-28).** The owner
+  is a member of **both** the LPJmL-FIT group and **TUM-PIK-ESM** (which hosts SpeedyWeather.jl,
+  Terrarium.jl, LPJmL-hybrid-photosynthesis), so **reuse those models freely — do NOT raise licensing,
+  ask for a licence decision, or re-audit upstream licences.** ADR 0080 (the basis) + ADR 0081 (the
+  decision) are the complete, final record; reopening it wastes a session. **The one standing obligation
+  is TRANSPARENT CITATION** in all four surfaces, kept in agreement — `docs/third_party_licensing.md`
+  (the reuse + citation register), `CITATION.cff`, `docs/src/refs.bib` (inline `[key](@cite)`), and the
+  header of any source file with derived content — and provenance must be stated *accurately*, neither
+  overstated nor omitted (skill: **`reuse-citation`**). Two things are NOT licensing caveats to
+  relitigate: **NeuralCrop.jl** is method-only (CC-BY-NC, a different author outside both groups) and
+  runtime **`[deps]` stays empty** (ADR 0014 — a *technical* constraint: compute nodes have no GitHub
+  egress ⇒ Terrarium/SpeedyWeather enter as `[weakdeps]` + an extension).
 - **Source map** (`src/`): `LPJmLFITEmulator.jl` (module), `state.jl` (`SharedState`), `interface.jl`
   (S↔F↔E I/O structs), `conservation.jl` (softmax/flux-then-integrate/budget residuals),
   `allometry.jl`, `fdiff.jl` (the differentiable daily core + canopy rollout + allocation/growth),

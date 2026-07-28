@@ -72,3 +72,33 @@
   `docs/make.jl`'s stale PRIVATE comment + now-possibly-unneeded `linkcheck_ignore` (integrator — the `docs`
   gate doesn't run on line branches, so a line can't verify a change to it).
 - **Next:** O2 — write `docs/p4_online_coupling_design.md` against the real cloned Terrarium API.
+
+## 2026-07-28 — owner closes licensing; reuse authorized (ADR 0081)  [milestone O1 closed]
+- **Goal:** act on the owner's direct instruction — *"use these models and stop talking about licences; just
+  make sure it's transparently cited wherever these models are used"*.
+- **The fact that settles it:** the owner is a member of **both** the LPJmL-FIT group **and TUM-PIK-ESM**
+  (which hosts SpeedyWeather.jl / Terrarium.jl / LPJmL-hybrid-photosynthesis). That was missing from ADR 0080
+  and from every earlier analysis, and it makes the licence question moot in practice.
+- **Did:** wrote **ADR 0081** (short, deliberately final) and then stripped licensing prominence everywhere a
+  new session actually reads, so this cannot recur:
+  - `CLAUDE.md` §7 and `MEMORY.md` §4: the long licensing blocks → "CLOSED, do not reopen; cite instead".
+    Dropped the `LICENSE` owner-action TODO. `MEMORY.md` P5 row → DONE + CLOSED, no residual.
+  - `lines/O/STATE.md` `## NEXT` → opens with "licensing is closed, do not spend a minute on it", then goes
+    straight to **O2** (the P4 design doc) → O3 → O4.
+  - `docs/third_party_licensing.md` reframed from a licence gate into the **reuse + citation register**: the
+    four citation surfaces, one row per reused work (what it is / what we take / where it's cited), and
+    vendoring-needs-an-ADR kept on *maintenance* grounds only.
+  - Skill `dependency-license-gate` → **`reuse-citation`** (`git mv`): same useful mechanics (find a Julia
+    package's real upstream from the registry tarball; the SpeedyWeather monorepo), reoriented to citation
+    accuracy; the AGPL decision table is gone.
+  - ADR 0080 `status:` now reads "§4's open owner action CLOSED by ADR 0081 — do not reopen licensing". Its
+    factual register and its depend-don't-vendor hygiene are still worth having, so it is not withdrawn.
+- **Result / evidence:** every entry point a session reads (SessionStart hook → STATE.md NEXT, CLAUDE.md,
+  MEMORY.md) now says "closed, cite, get on with the coupling". Nothing in the repo asks for a licence decision.
+- **Decisions:** **ADR 0081** — reuse of LPJmL-FIT / Terrarium / SpeedyWeather / LPJmL-hybrid-photosynthesis
+  authorized; obligation = transparent citation only; supersedes ADR 0080 §4. NOT reopened: NeuralCrop.jl
+  method-only (CC-BY-NC, different author, outside both groups); runtime `[deps]` empty (ADR 0014 — technical).
+- **Lesson for future sessions:** ask the owner for context before writing 300 lines of analysis. The one fact
+  that decided this — his group memberships — was one question away, and no amount of reading upstream
+  LICENSE files could have produced it.
+- **Next:** O2 — `docs/p4_online_coupling_design.md`, validated against the real cloned Terrarium API.

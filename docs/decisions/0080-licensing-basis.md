@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "accepted (§4's open owner action CLOSED by ADR 0081 — do not reopen licensing)"
 date: 2026-07-28
 deciders: "line O (agent, full autonomy per STEERING_PROMPT.md P5)"
 consulted: "STEERING_PROMPT.md P5; ADR 0006 §Consequences, ADR 0014, ADR 0015 §Consequences, ADR 0017 §Decision-Drivers-1; MEMORY.md §4 reuse-posture TODO; DESIGN.md §3.4; README.md §License; CITATION.cff; the upstream LICENSE/NOTICE files themselves"
