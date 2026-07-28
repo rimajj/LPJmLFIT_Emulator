@@ -78,7 +78,15 @@ the EUPL itself names as compatible — the other four each fail on a hard const
 Two independent obligations converge on exactly one licence family:
 
 - **Upstream (LPJmL-FIT, AGPL-3.0).** A derivative work of AGPL-3.0 software must be conveyed under
-  AGPL-3.0 (§5c). This alone eliminates B, C and D.
+  AGPL-3.0 (§5c). This alone eliminates B, C and D. **Why "-or-later" specifically:** the grant that carries
+  the version scope is in LPJmL's `COPYRIGHT` file, not its `LICENSE` — *"under the terms of the GNU Affero
+  Public License … either version 3 of the License, or (at your option) any later version"* (© 2007–2025
+  Potsdam Institute for Climate Impact Research) — whereas the source-file headers say only "licensed under
+  GNU AGPL Version 3" and `README` only "Version 3". So the upstream grant **is** or-later, and
+  `AGPL-3.0-or-later` is the faithful outbound identifier rather than an assumption. (Had it been
+  AGPL-3.0-**only**, the outbound identifier would have to be `AGPL-3.0-only`; the EUPL Appendix names
+  exactly "AGPL v. 3", and EUPL Art. 13 lets the Commission extend the Appendix to later versions, so §1's
+  compatibility argument holds either way.)
 - **Downstream (Terrarium / SpeedyWeather, EUPL-1.2).** EUPL-1.2's **Compatibility clause** (Art. 5,
   quoted verbatim from `Terrarium.jl/LICENSE`) reads:
 

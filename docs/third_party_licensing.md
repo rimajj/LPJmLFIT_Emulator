@@ -29,7 +29,7 @@ GitHub egress — the check must be re-runnable from the login node or the harne
 
 | Work | Licence | Tier used | How verified | Obligation on us |
 |---|---|---|---|---|
-| **LPJmL-FIT v5.6.004** (`/home/jamirp/lpjml56fit`) | **AGPL-3.0** | READ (literal porting permitted) + VENDOR (one patch) | local `LICENSE` (GNU AGPL v3) + `AUTHORS` | Outbound must be AGPL-3.0-or-later; retain notices; state modifications; provide source; §13 network clause |
+| **LPJmL-FIT v5.6.004** (`/home/jamirp/lpjml56fit`) | **AGPL-3.0-or-later** (© 2007–2025 PIK) | READ (literal porting permitted) + VENDOR (one patch) | local `LICENSE` (GNU AGPL v3) + `AUTHORS`; **the version scope is in `COPYRIGHT`** — "either version 3 …, or (at your option) any later version" — *not* in `LICENSE`, and the source headers say only "Version 3" | Outbound must be AGPL-3.0-or-later; retain notices; state modifications; provide source; §13 network clause |
 | **Terrarium.jl** (NumericalEarth) @ `4f42508` | **EUPL-1.2** + a `NOTICE` extending Art. 5 to **any licence** for normal library use | DEPEND (planned, P4) | local `LICENSE` + `NOTICE`; GitHub API `spdx_id: EUPL-1.2` | Keep notices intact; attribute. The `NOTICE` removes copyleft reach for library use — **read it before relying on Art. 5 alone** |
 | **SpeedyWeather.jl** | **EUPL-1.2**, **no `NOTICE`** | DEPEND (planned, P4) | raw `LICENSE` on `main`; `NOTICE` → HTTP 404 | Plain EUPL-1.2. Covered by Art. 5 because our outbound (AGPL-3.0) is an Appendix Compatible Licence |
 | ↳ **RingGrids**, **SpeedyWeatherInternals** | EUPL-1.2 (same monorepo) | DEPEND (transitive) | General-registry `repo` field → `SpeedyWeather/SpeedyWeather.jl.git` for both | As SpeedyWeather.jl |

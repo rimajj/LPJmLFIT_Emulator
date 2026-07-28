@@ -44,6 +44,11 @@ GitHub HTTPS is **blocked from the cluster** (`CLAUDE.md` §1), so use the harne
 null, fetch the file before concluding anything. Also check the *local clone* first when one exists under
 `/p/tmp/jamirp/esm_reference_repos/` — that's authoritative for the commit we actually read.
 
+⚠️ **`LICENSE` often does not carry the version scope.** For a GPL-family work, "v3" vs "v3-**or-later**" is
+decided by the grant notice, which lives in a `COPYRIGHT` file or the source headers — not in the verbatim
+licence text. LPJmL's `LICENSE` and `README` say only "Version 3" while its **`COPYRIGHT`** grants "either
+version 3 …, or (at your option) any later version" ⇒ `AGPL-3.0-or-later`. Read all three.
+
 **Do not state a licence from memory.** SpeedyWeather.jl is **EUPL-1.2, not MIT** — the plausible-sounding
 wrong answer that a whole ADR would have rested on.
 
