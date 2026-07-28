@@ -4,37 +4,49 @@
 > the parallel-line protocol). Narrative: `lines/M/JOURNAL.md` (append-only). Decisions: ADR block **0050–0069**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
-## ⛔ BLOCKER — M1 is complete and green but CANNOT MERGE: JET 0.12.0 broke `test (1)` repo-wide
+## ✅ RESOLVED — the JET 0.12.0 blocker (pinned on `main` in `47c6407a`, 2026-07-28)
 
-**Not caused by any line-M change** — a fresh upstream dependency bump. `test/Project.toml` has **no `JET`
-entry in `[compat]`**, and CI resolves deps fresh (manifests git-ignored), so `test (1)` (Julia 1.12) picked up
-**JET v0.12.0**, which **removed the `target_defined_modules` configuration** that `test/jet_tests.jl:6` passes:
+JET **0.12.0** removed the `target_defined_modules` configuration that `test/jet_tests.jl:6` passes, so
+`JET.test_package` died with `JETConfigError` and `test (1)` (Julia 1.12) errored **repo-wide** on a fresh
+resolve — `test/Project.toml` had no `JET` `[compat]` entry. Confirmed repo-wide, not line-M: identical
+failure on line/M `693322fa` (job 90278705919, a docs+tests-only diff) **and** line/O `11ef8d89`
+(job 90275445875); `test (lts)` stayed green because JET 0.11+ needs Julia ≥1.12 so 1.10 resolves 0.9.20.
 
-```
-JETConfigError: Given unexpected configuration: `target_defined_modules = true`
-  Expression: (JET.report_package)(LPJmLFITEmulator; toplevel_logger = nothing, target_defined_modules = true)
-Test Summary: JET | 1 errored   =>   106969 passed, 0 failed, 1 errored, 4 broken
-```
+Fixed with `JET = "0.9, 0.11"` in `test/Project.toml` `[compat]`. **Landed directly on `main`** rather than on
+this branch, because that file is integrator-owned (ADR 0029) and the breakage blocked all four lines from
+merging; both pinned versions were already in the shared depot, so the compute-node warm needs no new tarball.
+**[TODO, not this line]** lift the pin by migrating `jet_tests.jl` to JET 0.12's replacement scoping API.
 
-Evidence: `line/M` sha `b106cdae` was green on `test (1)` (JET 0.11.6); sha `693322fa`, whose diff touches only
-python scripts, `biome_coupled_tests.jl` and docs, is red with JET **0.12.0**. `main`'s last run
-(`c470711e`) is still green only because it predates the JET release — **the next push to `main` or to ANY
-line will go red the same way.** This is the exact pattern CLAUDE.md §5 documents ("CI red with the test tree
-unchanged ⇒ suspect a dep bump; diff the version line in last-green vs first-red logs and tighten `[compat]`").
+## 📌 The PINNED Component-S artifact (M2 step 1 — frozen S→M contract, ADR 0023)
 
-**The fix is one line, and it is INTEGRATOR-OWNED** (`test/Project.toml` `[compat]` per ADR 0029), so line M
-did not apply it. Alongside the existing Enzyme pin, add:
+**Pinned pair** (`/p/tmp/jamirp/emulator_global/`, line S's, read-only to this line):
 
-```toml
-# PINNED to < 0.12: JET 0.12.0 removed the `target_defined_modules` configuration that
-# test/jet_tests.jl:6 passes (JETConfigError). 0.11.6 is last-good on Julia 1.12 (`test (1)`),
-# 0.9.20 on 1.10-lts. Lift by migrating jet_tests.jl to JET 0.12's replacement API.
-JET = "0.9, 0.11"
-```
+| Artifact | sha256 | bytes | mtime |
+|---|---|---|---|
+| `drf_forest_global_pooled_w20.drf` | `652a13278ff04511b78ab36ce3da178b7b879faa464e0b529a44fc79c2708c8c` | 51771375 | 2026-07-27 14:45 |
+| `recruit_copula_global_pooled_w20.rcop` | `50322b4154c52a951720ad1681f35afd1ffacc794f279465b9fd029ceb122f2f` | 129322844 | 2026-07-27 16:56 |
 
-Until that lands, `line/M` is pushed and green on `test (lts)` / `format` / `python` / `test (macOS, lts)`,
-with `test (1)` red for this reason alone. **Do not merge on a red required check** — apply the pin (or have
-the integrator do it), re-push, confirm `test (1)` green, then merge `origin/line/M`.
+**Contract VERIFIED against the runtime order (2026-07-28), not assumed:**
+- DRF `_meta.txt`: `nfeat 15`, `nhead 11`, `target n_living`, `ntrees 150`, pooled over 53,993 cells;
+  `colnames` = `bm_inc_cell growth_eff water_stress soilmoist hmean hmax agb lai fpc age_mean n_prev` +
+  boundary tail `eco_diag_gdd_5 tas_cold_month soil_depth co2` — **identical** to
+  `slow.jl::flux_feature_vector` (11 head + 4 boundary).
+- Copula `_meta.txt`: `naxes 4` (`SLA Wooddens D95max minwscal`), `ncond 8`, `cond_cols` =
+  the 4 flux drivers + the same boundary tail — **identical** to `slow.jl::live_flux_cond`
+  (`vcat(feats[1:4], s.boundary)`).
+- So the per-cell boundary vector this line must build is exactly
+  `[eco_diag_gdd_5, tas_cold_month, soil_depth, co2]` — precisely the columns `cell_meta.parquet` carries.
+
+**REJECTED — `*_t7` (do not adopt yet):** `drf_forest_global_pooled_w20_t7.drf` and
+`drf_forest_global_historic_t7.drf` appeared **today** (58,587 cells) and line S was still mid-production when
+this was written (job 1622131 `gcopula_historic_t7` RUNNING) — **there is no matching `_t7` `.rcop`**. Adopting
+a half-published retrain is exactly the "never adopt a re-trained artifact silently" trap (ADR 0023). Moving to
+`_t7` is an **integration point with line S** once S publishes a complete, versioned pair.
+
+**Consequence for the M2 gate:** these artifacts live on `/p/tmp` (DVC, not git), so a CI test cannot load
+them — CI runs on GitHub runners with no cluster. Split it: the **committed** demo artifact
+(`test/testitems/references/drf_forest_hainich.drf`) drives the CI conservation/determinism/byte-identity gate
+(closure is artifact-independent), and the pinned global pair drives the cluster-only per-cell science (M3).
 
 ## NEXT — start here
 
@@ -46,13 +58,10 @@ do not re-derive the procedure.
 **M2 — wire the flux-driven Component S into the multi-cell driver.** The next blocker: the driver still runs
 `slow=nothing`, so the coupled evidence for S is offline-only (line S), not coupled.
 
-1. **Pin a versioned S artifact** (frozen S→M contract — never adopt a re-trained artifact silently, ADR 0023).
-   Candidates on `/p/tmp/jamirp/emulator_global/` (read-only to this line):
-   `drf_forest_global_pooled_w20.drf` + `recruit_copula_global_pooled_w20.rcop` (newest, 2026-07-27, pooled
-   historic+ssp) vs `drf_forest_global_historic.drf` + `recruit_copula_global_historic.rcop`. Read the
-   `*_meta.txt` beside each, confirm the `flux_feature_vector` order it was trained on matches
-   `src/components/slow.jl`'s runtime order, and record the chosen path + its sha **in this file**. A mismatch
-   is an integration point with line S, not a local fix.
+1. ~~**Pin a versioned S artifact**~~ — **DONE 2026-07-28**, see *The PINNED Component-S artifact* above:
+   `drf_forest_global_pooled_w20.{drf}` + `recruit_copula_global_pooled_w20.rcop`, sha256s recorded, and BOTH
+   feature-order contracts verified against `flux_feature_vector` / `live_flux_cond` rather than assumed. The
+   newer `_t7` set is deliberately NOT adopted (no matching `.rcop` yet — S was still producing it).
 2. **Per-cell S initial state** from `/p/tmp/jamirp/emulator_global/slow_runtime_historic/cell_meta.parquet`
    (schema `Cell, n_init, age0, eco_diag_gdd_5, tas_cold_month, soil_depth, co2, n_rows`; 44,328 cells; all
    five biome cells present — Hainich = `n_init 11, age0 43.56`). Fold these columns into
