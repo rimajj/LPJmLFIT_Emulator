@@ -60,7 +60,7 @@ Orders + reasoning: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`. Runboo
 | **1 Carbon+water closure** | ✅ PASSED | carbon flux identity 7.3e-5 PgC/yr, 0.6% cumulative drift; water proven by `-DSAFE` per-cell abort over all 67,420 cells × 20 yr (global cumulative \|Σprec−Σ(ET+runoff)\|/Σprec median 0.87%); 186 GB daily dataset generated |
 | **2 S offline** | ✅ done — **GLOBAL flux-driven** (ADR 0020-0027) | native-Julia count DRF + recruit copula, K-fold-BY-CELL OOS over **45009 cells**. Counts **AT the seed1-vs-seed2 noise floor** (per-cell-mean r²=0.9994); pooled+transient held-out-BY-SCENARIO R²=0.9847 (unseen regime). Traits: pooled marginal KS 0.004-0.015; **per-cell median has model HEADROOM** (r SLA 0.87 / Wd 0.52 / D95max 0.74 / minwscal 0.78 — the floor is 0.90-0.97 ⇒ learnable, not noise). The climate-only `DirectEmulator` is retained ONLY as the OOD benchmark it beats **2.35×** (ADR 0020) |
 | **3 F_diff** | ✅ scale-up steps 1–11 done; C-validated **Hainich only** | multi-layer soil, multi-PFT canopy, prognostic structure, self-computed calibrated NPP, NN λ/Vcmax hooks (Enzyme/Zygote gradients verified), grass faithful to ±10–15%, `sapwood_bg` pool added. Decadal (2009–2019) mean GPP ratio 1.066, interannual r=0.86, no drift |
-| **4 E energy** | ✅ landed, self-contained (ADR 0017) | `SEBEnergyClosure` closes `Rn=LE+H+G` to **1.4e-14 W/m²**; H the residual; Monin–Obukhov g_a stability correction ON by default; coupled Hainich decade emergently reproduces the **2018 drought** (summer Bowen 0.89 vs ~0.2) |
+| **4 E energy** | ✅ landed (ADR 0017) + **P2 tower-validated** (ADR 0072), nocturnal H open | `SEBEnergyClosure` closes `Rn=LE+H+G` to **1.4e-14 W/m²**; H the residual; MO g_a stability correction ON. Coupled Hainich decade reproduces the **2018 drought** (summer Bowen 0.89 vs ~0.2). **vs 4 PLUMBER2 towers (498k steps): Rn R² 0.986–0.996, T_skin daily RMSE 1.4–2.0 K / R² 0.76–0.95, H bias inside the observational band (76.4 % of DE-Hai days) but daily R² 0.125–0.778 and nocturnal R² −1.0…−5.6 (1–2 K night over-cooling)** |
 | **5 Multi-cell** | 🟡 offline S done; COUPLED still 5-biome F+E | OFFLINE S generalizes globally (K-fold-BY-CELL, 45009 cells — Phase 2). COUPLED S+F+E runs across 5 biomes but `slow=nothing` (F+E only; energy ≤3e-14, climate-correct partitioning); **not yet** the coupled flux-driven S across cells vs C-truth demography, nor the resilience battery |
 | **6 Online / SpeedyWeather** | ⬜ not started | |
 | **7 ESM packaging** | ⬜ not started | |
@@ -68,8 +68,8 @@ Orders + reasoning: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`. Runboo
 **Remaining project (not done):** the flux-driven Component-S is IN the coupled loop and validated GLOBALLY
 **offline** (counts at the noise floor; the OOD win is `[VERIFIED]` 2.35×) — but the **coupled** S+F+E run
 beyond Hainich is F+E-only so far (S not yet driven across cells vs C-truth demography); the **trait per-cell
-median has model headroom** (esp. Wooddens — richer conditioning, P3); E is **not validated against
-FLUXNET/PLUMBER2**; nothing runs online with SpeedyWeather; wind/psurf forcing not sourced. F_diff and the
+median has model headroom** (esp. Wooddens — richer conditioning, P3); E's **nocturnal H is still unfit**
+(P2 ran: Rn + T_skin verified, H only in the mean — ADR 0072); nothing runs online with SpeedyWeather. F_diff and the
 coupled loop remain **Hainich-C-validated only** — single-cell fidelity is scaffolding, the global evidence
 is the offline S.
 
@@ -82,7 +82,8 @@ is the offline S.
   output is a **runtime config flag** (`"timestep":"daily"`), never a recompile.
 - [VERIFIED] LPJmL-FIT has **no surface energy balance**: ET = Priestley–Taylor equilibrium/demand–supply;
   soil temp uses **air temp** as the top Dirichlet BC; no H, G-as-flux, T_skin, or Rn closure. All of that
-  is component E (new physics), validated **out-of-model** (FLUXNET/PLUMBER2 — still to source).
+  is component E (new physics), validated **out-of-model** against PLUMBER2 towers — sourced and scored,
+  ADR 0070/0072.
 - [VERIFIED] Forcing consumed: tas, precip, swdown, **net** longwave (`lwnet`, downward-positive), `huss`
   (→VPD, hard dependency), CO₂. **Wind is read but unused**; **surface pressure is hard-coded** `p=1e5` in
   `photosynthesis.c`. E needs **wind + psurf** as genuinely new inputs.
@@ -128,13 +129,24 @@ is the offline S.
   **establishment**; these are the coupled-rollout **default** now (tree-only paths byte-identical). One
   residual remains — see §5 water-supply.
 
-### E (energy) — Hainich + 5-biome, no observational validation yet
+### E (energy) — Hainich + 5-biome + the P2 tower validation (ADR 0072)
 - [VERIFIED] Closure to machine precision (13,824 cases; ForwardDiff-vs-FD; Float32); demo daily 1.4e-14,
   biome ≤3e-14 W/m²; Monin–Obukhov aerodynamic identity ~3e-11. Emergent climate-correct Bowen ordering
   (tropical LE-dominated ~0.10; semi-arid/mediterranean H-dominated; boreal low-flux; 2018 drought 0.89).
-- [ASSUMPTION] LE/H/T_skin are physically plausible but **invented quantities validated only out-of-model**;
-  the FLUXNET/PLUMBER2 validation (P2) has **not** happened. `g_a` had been neutral-only until the stability
-  correction landed.
+- **[VERIFIED 2026-07-28, line E, ADR 0072 — this REPLACES the former `[ASSUMPTION]`; the P2 gate has run.]**
+  Experiment A (the closure alone: tower forcing **and the tower's own LE**, so F's ET error is excluded —
+  `FToE` hands E `le` already formed as λ·ET, hence **E's own outputs are T_skin / H / G, not LE**), 497 936
+  half-hours at 4 PLUMBER2 sites: **Rn VERIFIED** (R² 0.986–0.996, bias +1.95…+10.2 W/m² under the towers' own
+  albedo) · **T_skin VERIFIED where observable** (daily RMSE 1.41–1.97 K, R² 0.76–0.95 at AU-Tum/AU-ASM/AU-Rob;
+  **not at Hainich** — no `LWup`) · **H verified in the MEAN only** (bias +6.4…−19.2 W/m², **76.4 % of DE-Hai
+  daily means inside PLUMBER2's own ±40.9 W/m² band**, but daily R² 0.125–0.778 and **nocturnal R² −1.0…−5.6**).
+  Named failure mode: the closure runs **1–2 K too cold at night**. Method note: half-hourly H R² (0.647) is
+  **inflated by the diurnal cycle** — quote the daily number. `stab_amp = 0.75` is **too weak** (sweep monotone
+  to 0.9; ON still beats OFF at night, 37.0 vs 41.7 W/m² RMSE) — retune is an integration point with M, and the
+  monotonicity points at the bounded-tanh *form*. Frozen as a CI gate in `energy_closure_tests.jl`.
+  **Data trap this exposed:** PLUMBER2's `Qle_cor`/`Qh_cor` can be **≈0 garbage rather than a fill value**
+  (DE-Hai 2010–2012, where the uncorrected `le` is all-NaN) — always require the UNCORRECTED `le` to be finite
+  too, or the closure gets fed LE ≈ 0 and its H bias inflates (+39.8 vs +6.4 W/m² at DE-Hai).
 - [VERIFIED 2026-07-28, line E, ADR 0070] The **observational reference now exists on disk**: PLUMBER2 v1-0,
   9 sites (DE-Hai + one tower per biome slot + 4 OzFlux), `config/paths.yaml` `data.energy_reference*`;
   re-stage with `scripts/fetch_plumber2_sites.py` → `scripts/validate_e_plumber2_load.py` (skill

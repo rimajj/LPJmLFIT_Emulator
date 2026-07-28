@@ -1,6 +1,6 @@
 ---
 name: plumber2-reference
-description: Stage and load the PLUMBER2 / FLUXNET observational reference that Component E (the surface-energy-balance + skin-temperature closure) is validated against — anonymous NCI THREDDS download, the 9-site biome-matched set, the model-facing half-hourly/daily/diurnal tables, and the unit/coverage/closure sanity report. Use whenever working with observed LE / H / Rn / T_skin / Ustar or tower forcing (wind, psurf, SWdown, LWdown, Tair, Qair, precip), adding a site, validating Component E against observations (line E, milestones E1/E4), or hitting the PLUMBER2 `_FillValue = -9999` masked-array trap. Names scripts/fetch_plumber2_sites.py, scripts/validate_e_plumber2_load.py, data.energy_reference, ADR 0070.
+description: Stage and load the PLUMBER2 / FLUXNET observational reference that Component E (the surface-energy-balance + skin-temperature closure) is validated against — anonymous NCI THREDDS download, the 9-site biome-matched set, the model-facing half-hourly/daily/diurnal tables, and the unit/coverage/closure sanity report. Use whenever working with observed LE / H / Rn / T_skin / Ustar or tower forcing (wind, psurf, SWdown, LWdown, Tair, Qair, precip), adding a site, validating Component E against observations (line E, milestones E1/E4), or hitting the PLUMBER2 `_FillValue = -9999` masked-array trap. ALSO the P2 validation itself — scoring the SEB closure against the towers (Experiment A: tower forcing + the tower's own LE ⇒ H / T_skin / Rn skill, the |h_cor_uc| acceptance band, the diurnal cycle, the stability sweep). Names scripts/fetch_plumber2_sites.py, scripts/validate_e_plumber2_load.py, scripts/build_e_seb_validation_table.py, scripts/validate_e_seb_vs_plumber2.jl, data.energy_reference, ADR 0070/0072.
 ---
 
 # plumber2-reference — the observational reference for Component E
@@ -90,3 +90,49 @@ unit/range verdicts · observed `Rn/LE/H/G` means, the residual under **both** `
 `T_skin − Tair` day/night. Plus the parquet triple: half-hourly (model-facing names + `*_qc`), daily (means,
 `precip_mm`, `tair_{mean,min,max}`, valid counts, gap-filled fractions, `daily_ok` = ≥5/6 of the day present
 for both LE and H), and the **mean diurnal cycle per month** — the sub-daily signal E4's diurnal test needs.
+
+## Scoring the closure against the towers (the P2 gate — Experiment A; ADR 0072)
+
+```bash
+/home/jamirp/.conda/envs/py311_new/bin/python3 scripts/build_e_seb_validation_table.py   # tower-forced tables
+STAB_SWEEP=1 scripts/sbatch_julia.sh E-e4a --project=. scripts/validate_e_seb_vs_plumber2.jl
+# -> <energy_reference>/derived/seb_validation/{seb_drive_<site>.csv,.meta,e4_experimentA_report.txt}
+```
+
+**Experiment A vs B — get this right or the result means nothing.** `FToE` hands E `le` **already formed** as
+λ·ET (`src/components/fast.jl:236`), so **LE is F's number**; E's own outputs are **T_skin, H (the residual)
+and G**. Experiment **A** drives `solve_seb` with a tower's own forcing *and the tower's own `le_cor`*, which
+excludes F's ET error by construction — a miss is E's. Experiment **B** feeds F's LE (the coupled case); the
+**A − B difference is F's ET error**. Never present LE skill as E's.
+
+**Conventions that make it honest** (all already implemented — don't re-derive):
+
+- **albedo** = the tower's own daytime Σ SWup / Σ SWdown per day (nighttime albedo is undefined; instantaneous
+  low-sun ratios are noise). Site median as the gap fallback.
+- **`z_ref` = the site's MEASUREMENT height**, read from the NetCDF (43.5 m at DE-Hai, 70 m at AU-Tum), not
+  `SEBParams`' 10 m default — `g_a` is evaluated at that level.
+- **`z0m` = 0.1 · canopy height** — the only unobserved boundary value in the whole comparison.
+- **`t_soil` = τ=30 d EWMA of DAILY-MEAN Tair.** `solve!` advances `t_soil` once per coupled step with
+  `a = 1/tau_soil`; running that recursion at 30 min decays ~48× too fast. Same trap applies to any sub-daily
+  use of the closure.
+- **Score against `Qle_cor`/`Qh_cor`** (towers don't close energy: raw slopes 0.60–0.88, corrected 0.87–1.02),
+  and use `|*_cor_uc|` as the acceptance band — it exists **only on FLUXNET2015-sourced sites**.
+- **Report daily as well as half-hourly.** Half-hourly H R² is **inflated by the diurnal cycle** (DE-Hai 0.647
+  half-hourly vs 0.257 daily): any closure driven by observed SWdown reproduces the day/night swing.
+
+**Two traps this pipeline exists to remember:**
+
+1. **`Qle_cor` can be ≈0 GARBAGE rather than a fill value.** At DE-Hai the uncorrected `le` is all-NaN for
+   **2010–2012** and the EB correction emitted ≈0 there (annual mean 0.39 / −0.09 / 0.04 W/m² vs 30–40 in
+   2000–2009) while `h_cor_uc` vanishes. A finiteness filter keeps 36 550 rows of it, and feeding the closure
+   LE ≈ 0 pushes all available energy into H — it inflated DE-Hai's H bias to **+39.8** instead of **+6.4**
+   W/m². **Always require the UNCORRECTED `le` to be finite too.**
+2. **A committed fixture must be stratified ACROSS the record**, not taken from one year — sample every 12th
+   day of year × every 3rd hour. The single-year attempt landed inside DE-Hai's broken window (that is how
+   trap 1 was found), and subsampling every Nth *surviving* row drifts across the diurnal cycle.
+
+**Current verdict to compare against** (ADR 0072, 497 936 steps, 4 sites): `Rn` R² 0.986–0.996 · `T_skin` daily
+RMSE 1.41–1.97 K / R² 0.76–0.95 · `H` bias +6.4…−19.2 W/m² with 76.4 % of DE-Hai daily means inside the band,
+daily R² 0.125–0.778, **nocturnal R² −1.0…−5.6** (the closure runs 1–2 K too cold at night). The CI regression
+gate lives in `test/testitems/energy_closure_tests.jl`; the night-cold bias is pinned as a **sign** assertion,
+so a genuine fix trips it — update the test and supersede ADR 0072 together.

@@ -205,3 +205,114 @@ end
     @test isapprox(Rn, le_out + H + G; atol = 1.0f-1)   # Float32 closure (looser tol)
     @test Ts isa Float32
 end
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+# P2 (milestone E4) — the OBSERVATIONAL gate, frozen as a regression test.
+#
+# The full validation runs over 534k tower half-hours at 4 PLUMBER2 sites
+# (`scripts/build_e_seb_validation_table.py` → `scripts/validate_e_seb_vs_plumber2.jl`, ADR 0072). This
+# testitem re-runs the SAME Experiment-A comparison — the closure driven by a tower's own forcing AND its
+# own measured LE, so nothing of F's ET enters — on two committed 3-hourly one-year extracts, and asserts
+# the skill bounds the full run established. Its job is to catch a REGRESSION in the observational skill,
+# not to re-derive the verdict, so the bounds are deliberately looser than the measured values (quoted in
+# each comment) rather than tight fits.
+#
+# The fixtures are sampled EVERY 12th DAY OF YEAR at every 3rd hour, i.e. stratified across the whole record.
+# A single-year fixture was tried first and was wrong: it landed inside DE-Hai's 2010-2012 window where
+# PLUMBER2's `le_cor` is ≈0 garbage (the uncorrected `le` is all-NaN there), which fed the closure LE ≈ 0 and
+# reported an H bias of +39.8 instead of +4.5 W/m². That failure is what surfaced the trap — see
+# `lines/E/STATE.md` gotchas and `scripts/build_e_seb_validation_table.py`.
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+@testitem "Component E — P2 observational gate vs PLUMBER2 towers (E4 Experiment A)" tags = [:energy, :validation] begin
+    using LPJmLFITEmulator
+    using Test
+
+    "Read a committed e4_seb_drive fixture into column vectors (NaN for blanks)."
+    function read_fixture(path)
+        lines = readlines(path)
+        cols = String.(split(strip(lines[1]), ','))
+        data = [Float64[] for _ in cols]
+        for line in lines[2:end]
+            isempty(strip(line)) && continue
+            f = split(line, ',')
+            length(f) == length(cols) || continue
+            for (j, x) in enumerate(f)
+                v = tryparse(Float64, x)
+                push!(data[j], v === nothing ? NaN : v)
+            end
+        end
+        return Dict(cols[j] => data[j] for j in eachindex(cols))
+    end
+
+    refdir = joinpath(@__DIR__, "references")
+
+    # (site, canopy height m, measurement height m) — geometry read from the PLUMBER2 NetCDF, not assumed.
+    # z_ref MUST be the tower's measurement height: `g_a` is evaluated at that level, and the 10 m default
+    # would score the closure at a height the forcing was never measured at.
+    for (site, h_can, z_ref) in (("DE-Hai", 33.0, 43.5), ("AU-ASM", 6.5, 11.6))
+        tbl = read_fixture(joinpath(refdir, "e4_seb_drive_$site.csv"))
+        n = length(tbl["tair"])
+        @test n > 1500                                     # 2400 / 1680 rows: every 12th day, every 3rd hour
+        p = SEBParams{Float64}(; z_ref = z_ref)
+        z0m = 0.1 * h_can
+
+        h_mod = similar(tbl["tair"])
+        ts_mod = similar(tbl["tair"])
+        rn_mod = similar(tbl["tair"])
+        for i in 1:n
+            (Ts, Rn, H, _G, _le, _ga, _c) = solve_seb(
+                p, tbl["swdown"][i], tbl["lwdown"][i], tbl["tair"][i], tbl["psurf"][i], tbl["wind"][i],
+                tbl["albedo"][i], z0m, h_can, tbl["le_in"][i], tbl["t_soil"][i],
+            )
+            h_mod[i] = H; ts_mod[i] = Ts; rn_mod[i] = Rn
+        end
+        @test all(isfinite, h_mod) && all(isfinite, ts_mod) && all(isfinite, rn_mod)
+
+        mean_(v) = sum(v) / length(v)
+        function r2(model, obs)
+            ok = findall(i -> isfinite(model[i]) && isfinite(obs[i]), eachindex(model))
+            m, o = model[ok], obs[ok]
+            ō = mean_(o)
+            return 1 - sum(abs2, m .- o) / sum(abs2, o .- ō)
+        end
+
+        # ---- H: the residual, and PLUMBER2's hardest flux -------------------------------------------
+        okh = findall(i -> isfinite(tbl["h_obs"][i]), 1:n)
+        bias_h = mean_(h_mod[okh] .- tbl["h_obs"][okh])
+        # Measured on these fixtures: +4.5 (DE-Hai) / −6.4 (AU-ASM) W/m², both far inside PLUMBER2's own
+        # ±40.9 W/m² daytime uncertainty at DE-Hai. Bound at ±20 ⇒ a real drift trips it, sampling noise does not.
+        @test abs(bias_h) < 20.0
+        # Measured on these fixtures: 0.667 (DE-Hai) / 0.910 (AU-ASM); full-record half-hourly is 0.60 / 0.90.
+        # NB this 3-hourly R² is inflated by the diurnal cycle — the daily-mean R² is the honest skill number
+        # (ADR 0072). Here it serves only as a regression tripwire.
+        @test r2(h_mod, tbl["h_obs"]) > 0.5
+
+        # ---- Rn: the radiation path under the tower's OWN albedo — the strongest result --------------
+        if haskey(tbl, "rn_obs") && any(isfinite, tbl["rn_obs"])
+            @test r2(rn_mod, tbl["rn_obs"]) > 0.95        # measured 0.988 (DE-Hai) / 0.996 (AU-ASM)
+            okr = findall(i -> isfinite(tbl["rn_obs"][i]), 1:n)
+            @test abs(mean_(rn_mod[okr] .- tbl["rn_obs"][okr])) < 20.0   # measured +1.6 / +7.7 W/m²
+        end
+
+        # ---- T_skin: only observable where the file carries LWup (OzFlux) ---------------------------
+        if any(isfinite, tbl["t_skin_obs"])
+            @test r2(ts_mod, tbl["t_skin_obs"]) > 0.85     # measured 0.935 on the fixture (0.941 full record)
+            okt = findall(i -> isfinite(tbl["t_skin_obs"][i]), 1:n)
+            dts = ts_mod[okt] .- tbl["t_skin_obs"][okt]
+            @test abs(mean_(dts)) < 3.0                    # measured −1.22 K
+            @test sqrt(mean_(abs2.(dts))) < 5.0            # measured 2.73 K RMSE
+            # The KNOWN failure mode (ADR 0072): the closure runs too COLD at night. Pinned as an
+            # inequality on the sign, so a future fix that removes it will trip this and force the update.
+            night = findall(i -> tbl["swdown"][i] <= 50.0 && isfinite(tbl["t_skin_obs"][i]), 1:n)
+            @test mean_(ts_mod[night] .- tbl["tair"][night]) <
+                mean_(tbl["t_skin_obs"][night] .- tbl["tair"][night])
+        end
+
+        # ---- inside PLUMBER2's own uncertainty band (FLUXNET2015 sites only) ------------------------
+        if haskey(tbl, "h_uc") && any(isfinite, tbl["h_uc"])
+            okb = findall(i -> isfinite(tbl["h_obs"][i]) && isfinite(tbl["h_uc"][i]), 1:n)
+            inside = count(i -> abs(h_mod[i] - tbl["h_obs"][i]) <= tbl["h_uc"][i], okb)
+            @test inside / length(okb) > 0.45              # measured 59.8% on the fixture; 76.3% of daily means
+        end
+    end
+end

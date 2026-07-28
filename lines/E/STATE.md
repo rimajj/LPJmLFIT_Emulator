@@ -6,38 +6,63 @@
 
 ## NEXT — start here
 
-**E4 — the P2 gate. E1 and E2 are DONE; E3 turns out NOT to be an E-only change (see below), so go to E4.**
+**E6 — diagnose the NOCTURNAL H failure. This is now the single thing holding Component E back.**
+E1, E2 and E4-Experiment-A are DONE (ADR 0070 / 0071 / 0072). The P2 gate ran over 497 936 tower half-hours:
+`Rn` is verified (R² 0.986–0.996), `T_skin` is verified where observable (daily RMSE 1.4–2.0 K, R² 0.76–0.95),
+and `H`'s **mean** is inside PLUMBER2's own band (76.4 % of DE-Hai daily means) — but **nocturnal H has R²
+−1.0…−5.6 at every site**, and the closure runs **1–2 K too cold at night**. Everything needed to work on it is
+already staged; do this before adding sites, more experiments, or any retune.
 
-Everything E4 needs is on disk: the PLUMBER2 reference (E1) and the model-grid wind/psurf (E2). **Read "The E4
-recipe" further down before designing anything** — it already fixes the flux basis, the acceptance band, the
-day filter and the pairing hazards, all established from the real files.
+**Start with `residual-diagnosis` (this is exactly its case).** State the reference basis and a falsifiable
+hypothesis first, then test. The three candidate mechanisms, in the order the evidence supports:
 
-**The structural point that decides the experiment design** (verified this session by reading the seam):
-`FToE` hands E **`le` already formed as λ·ET** — `src/components/fast.jl:236` does
-`le = et/86400 · LAMBDA_VAPORIZATION` with `et = transp + evap + interc`. So **LE is F's number, not E's**;
-E's own predictions are **T_skin, H (the residual), G and Rn**. Design accordingly:
+1. **The stability form, not its coefficient.** The sweep is **monotone in `stab_amp` up to 0.9** at both sites
+   (night RMSE 37.0 → 36.1 DE-Hai, 29.7 → 24.2 AU-ASM), i.e. the optimum is at the parameter's bound — a
+   bounded `1 − amp·tanh(k·Ri/2)` surrogate cannot suppress stable-layer exchange by the 1–2 orders real
+   Monin–Obukhov does (`SEBParams`' own comment admits this). Test whether a genuine ψ-function (or a larger
+   bound) removes the night bias *without* breaking the `|T_skin − Tair| < 25/30 K` coupled/biome gates that
+   the 0.25 floor currently protects. Falsifiable: if the night bias is a `g_a` problem, forcing `g_a` from the
+   tower's **measured `u*`** (`ustar` is in the half-hourly parquet — E1) should collapse the nocturnal error.
+   **Run that first: it separates "wrong g_a" from "wrong G / wrong radiative loss" in one experiment.**
+2. **The ground-heat term.** `G = lambda_g·(T_skin − T_soil)` with `lambda_g = 7.0` W/m²/K and a τ = 30 d EWMA
+   `t_soil` is the crudest part of the closure, and at night G is what should limit the surface's cooling. The
+   towers measure `g` (`Qg`, `positive INTO ground` at 7 of 8 sites) — score modelled vs observed G directly,
+   day and night, before touching `lambda_g`.
+3. **Emissivity / longwave.** Less likely: `Rn` already verifies to R² ≥ 0.986, so the radiative terms are
+   right in aggregate.
 
-1. **Experiment A — the closure alone (do this first; it is the honest test of E).** Force `solve_seb` with the
-   tower's own half-hourly `swdown/lwdown/tair/psurf/wind` **and the tower's `le_cor`**, then score E's **H**
-   against the tower `h_cor` and E's **T_skin** against the OzFlux `t_skin` column. This isolates E from F
-   completely — a miss is E's, not F's ET.
-2. **Experiment B — coupled**: F's LE feeding E, scored the same way. The difference between A and B is exactly
-   F's ET error, which is the attribution the P2 gate needs to state honestly.
-3. **Force with TOWER wind/psurf when scoring tower fluxes** (E2's lesson): the 0.5° cell at Hainich is
-   −10.1 % in wind and +1649 Pa in pressure, so grid forcing would charge a forcing difference to the closure.
-   Use the E2 fixtures for model-grid runs instead.
-4. **Sub-daily caveat:** `solve_seb` is instantaneous and fine at 30 min, but `SEBEnergyClosure.solve!`'s
-   `t_soil` EWMA has `tau_soil` in **days** — for the diurnal test either drive `solve_seb` directly with a
-   daily-EWMA `t_soil`, or scale `tau_soil` by the steps per day. Do not silently run a daily τ at 30 min.
-5. New validation scripts are E-owned (`validate_e_*`); assertions belong in `test/testitems/
-   energy_closure_tests.jl` (E-owned). Then flip `MEMORY.md`'s `[ASSUMPTION]` to `[VERIFIED]` with site + bands.
+Constraints while doing this: **opt-in, default byte-identical** (guardrail 4) — the P2 numbers in ADR 0072 are
+the pre-fix baseline and the new testitem *pins the night-bias sign*, so a genuine fix will trip that assertion:
+update the test and **supersede ADR 0072** in the same change. Any default flip (`stab_amp`, `lambda_g`,
+`enable_stability`) moves the coupled/biome baselines ⇒ **integration point with line M**, already raised in
+`lines/M/STATE.md`.
 
-**E3 (sublimation-λ split) is NOT self-contained — it is an integration point with M.** Verified: the λ
-multiplication happens in `src/components/fast.jl` (the F core, **M-owned** per `CLAUDE.md` §9), the ET sum
-there has no snow/ice component to split, and `FToE` (`src/interface.jl`, **M-owned**) carries no snow mass or
-snow fraction — so `energy.jl` cannot see which part of `le` left snow. Doing it right needs F to partition ET
-and either a new `FToE` field or the λ choice moved next to the partition. Raised in `lines/M/STATE.md`; do not
-attempt it from E alone (a "split" that guesses the snow fraction inside E would be invented physics).
+**Then, in order:** E4-**Experiment B** (F's LE → E, the coupled number; its difference from A *is* F's ET
+error) · **E5** (feed the E2 wind/psurf to M's driver) · **E4b** (T_skin at Hainich from ICOS `LW_OUT`) ·
+**AU-Rob** is a suspect site (tower closure slope 0.599, H R² ≈ 0 even by day) — diagnose or drop it, don't let
+it dilute a mean.
+
+## The E4 Experiment-A pipeline (rerun in two commands)
+
+```bash
+/home/jamirp/.conda/envs/py311_new/bin/python3 scripts/build_e_seb_validation_table.py   # tower-forced tables
+STAB_SWEEP=1 scripts/sbatch_julia.sh E-e4a --project=. scripts/validate_e_seb_vs_plumber2.jl
+# report: <energy_reference>/derived/seb_validation/e4_experimentA_report.txt
+```
+`SITES=` / `YEARS=` subset either step. The conventions that make it honest — the tower's own albedo, `z_ref` =
+the site's **measurement** height, `t_soil` as a τ=30 d EWMA of **daily-mean** Tair (a per-step EWMA at 30 min
+decays ~48× too fast) — are documented in the two scripts' headers; don't re-derive them.
+
+## Still-open design notes carried forward
+
+- **Experiment B (coupled)** — F's LE → E, scored exactly as A was. The A−B difference **is** F's ET error; that
+  attribution is the point, so run B only after A's numbers are the reference (they now are: ADR 0072).
+- **Score tower fluxes with TOWER forcing** (E2's lesson): the 0.5° cell at Hainich is −10.1 % in wind and
+  +1649 Pa in pressure. Use the E2 `wind_psurf_<biome>.csv` fixtures for model-grid runs instead.
+- **E3 (sublimation-λ split) is NOT an E-only change — integration point with M.** The λ multiplication happens
+  in `src/components/fast.jl` (F core, M-owned), the ET sum there has no snow/ice component to split, and
+  `FToE` (`src/interface.jl`, M-owned) carries no snow mass or fraction — `energy.jl` cannot see which part of
+  `le` left snow. Raised in `lines/M/STATE.md`; guessing a snow fraction inside E would be invented physics.
 
 ## Scope + ownership (ADR 0029)
 
@@ -107,6 +132,11 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
 
 ## Status (2026-07-28)
 
+- **E4 Experiment A DONE — the P2 gate has run** (ADR 0072): `Rn` R² 0.986–0.996 · `T_skin` daily RMSE
+  1.41–1.97 K / R² 0.76–0.95 (3 OzFlux sites) · `H` bias +6.4…−19.2 W/m² with **76.4 %** of DE-Hai daily means
+  inside PLUMBER2's own band, but daily R² 0.125–0.778 and **nocturnal R² −1.0…−5.6**. Frozen as a CI regression
+  test with two committed fixtures. `MEMORY.md`'s `[ASSUMPTION]` on E is now a quantified `[VERIFIED]`.
+
 - **E1 DONE** — PLUMBER2 v1-0 staged, loaded and sanity-checked at 9 sites; `config/paths.yaml`
   `data.energy_reference` is a resolved path, not a TODO (ADR 0070; `lines/E/JOURNAL.md` 2026-07-28).
 - **E2 DONE** — daily wind + psurf remapped onto the 5 orderA biome cells from obsclim GSWP3-W5E5, with the
@@ -136,7 +166,10 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
   multiplication lives in `components/fast.jl` and `FToE` has no snow field — see NEXT above) — use `LAMBDA_SUBLIMATION` when the flux leaves snow/ice rather than
   vaporization for everything (`conservation.jl` already exports both constants). Opt-in, default
   byte-identical.
-- **E4** *(NEXT, above)* **Validate LE / H / T_skin within PLUMBER2 error bands** at ≥1 site, plus the diurnal cycle, with real
+- **E4** ✅ **Experiment A DONE 2026-07-28** (ADR 0072) — 497 936 tower steps, 4 sites: `Rn` VERIFIED
+  (R² 0.986–0.996), `T_skin` VERIFIED where observable (daily RMSE 1.4–2.0 K), `H` verified in the MEAN only
+  (76.4 % of DE-Hai daily means inside the band) with **nocturnal H the named failure mode**. Experiment B
+  (coupled, F's LE) still open. Original wording: **Validate LE / H / T_skin within PLUMBER2 error bands** at ≥1 site, plus the diurnal cycle, with real
   wind + psurf from E2. Per `DEVELOPMENT_PLAN` §7: **H is the residual and PLUMBER2 flags it as the hardest
   flux to get right — validate it hardest.** *This is the P2 gate.* Then flip `MEMORY.md`'s `[ASSUMPTION]` to
   `[VERIFIED]` with the site + bands quoted. Recipe + the bands/hazards: "The E4 recipe" above. **Split gate**
@@ -156,6 +189,13 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
   `scripts/build_transient_boundary.py::open_clm`; that function already handles both.
 - `AtmForcing.tair` is **Kelvin**; F converts with `tair − 273.15`. PLUMBER2 `Tair` is also K — **verified**
   (200–335 K band, all 9 sites inside).
+- **`Qle_cor`/`Qh_cor` can be ≈0 GARBAGE rather than a fill value.** At DE-Hai the uncorrected `le` is all-NaN
+  for **2010–2012** (that is where the site's 23.1 % missing LE sits) and PLUMBER2's energy-balance correction
+  emitted **≈0** there — annual mean `le_cor` 0.39 / −0.09 / 0.04 W/m² against 30–40 W/m² in 2000–2009 — while
+  `h_cor_uc` disappears. A finiteness filter passes 36 550 rows of that, and feeding the closure LE ≈ 0 pushes
+  all the available energy into H (it inflated DE-Hai's H bias to +39.8 W/m² before it was caught). **Always
+  require the UNCORRECTED `le` to be finite as well**; `scripts/build_e_seb_validation_table.py` does. The other
+  three staged sites are clean. This is also why a P2 fixture must be sampled **across years**, not from one year.
 - **PLUMBER2 `_FillValue = -9999` leaks through `np.asarray()`** — netCDF4 returns a *masked* array and
   `np.asarray` drops the mask, so the fill enters as data (DE-Hai mean LE read −2283 W/m² instead of +32.2).
   Always `np.ma.filled(x, np.nan)`; `scripts/validate_e_plumber2_load.py::_series` is the reference reader.
