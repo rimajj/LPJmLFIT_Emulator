@@ -113,6 +113,12 @@ $JULIA --startup-file=no -e 'import Pkg; Pkg.activate(temp=true); Pkg.add(name="
 Pass specific files instead of the dirs for a fast targeted check. Reformat with `--inplace` (or drop
 `--check`) with the same Runic version before pushing.
 
+**`slurm-guard` false-positives on the format check.** The guard matches the *command text*, so a Runic
+invocation that merely **names** a heavy-looking script (`validate_*.jl`, `train_*.jl`, `*_probe.jl`,
+`run_coupled_*.jl`) is blocked as "a heavy Julia job" even though it only parses files. A format check is a
+genuine seconds-long job: prefix **`ALLOW_LOGIN_HEAVY=1`**. (Same class as the `repo-commit` skill's
+"slurm-guard false-positives on commit MESSAGE text".)
+
 **Two traps that let an unformatted file reach CI (both bit ADR 0026):** (1) CI checks ALL of
 `src test ext scripts` — a targeted single-file check misses a sibling you also touched (a NEW
 `scripts/*.jl` is the usual culprit). Check the DIRS, or every touched file. (2) **NEVER pipe the check to

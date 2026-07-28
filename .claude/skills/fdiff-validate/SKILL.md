@@ -49,5 +49,8 @@ through the whole rollout. Remove the crutch for the end-to-end regression.
   `src/fdiff_smoothops.jl` + a test bounding its deviation.
 - Before chasing a fidelity residual, run the `residual-diagnosis` skill (state the reference basis + a
   falsifiable hypothesis + time-box — this is where the grass saga went wrong).
+- **Provisioning a NEW cell's inputs is a different skill: `provision-coupled-cell`** (soil column from
+  `whc_nat`, per-cell canopy, the `M_*` fixtures, the per-cell `d_fapar` oracle re-run, ADR 0050). This skill
+  covers *validating* F_diff on a cell whose inputs already exist.
 
 Full history of the C-validation work: `docs/phase3_fdiff_cbinary_validation.md`.
