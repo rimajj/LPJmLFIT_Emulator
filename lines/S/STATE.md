@@ -12,11 +12,21 @@
 on a 56 %-larger population, +9 371 cells scored). What is left is the trait side, which is exactly where
 ADR 0031 predicted the population change would bite.
 
-### 1. Collect the in-flight jobs (they were running when the session ended)
+### 0. The S1b gate, item by item (ADR 0031 §3) — what is closed and what is not
+
+| gate item | state |
+|---|---|
+| Hainich demo artifacts + golden fixtures byte-identical | **INVESTIGATED, not simply "passed"** → ADR 0032. The `.drf` moved; the control build proves the ADR-0031 edits are a no-op here (max\|abs diff\| = **0** on all 15 columns + target), so the fixture was ALREADY stale. Oracle CSVs + `.rcop` byte-identical. Scoped as **S1c**. |
+| cell coverage ≈ 54 020 | ✅ **exactly 54 020** (historic w20 seed1) |
+| `seed1-basis ≥ 0.99` on the new population | ⏳ pending — chained job **1622436** (step 2) |
+| documented before/after table of every changed fidelity number — **counts** | ✅ done (§Status) |
+| documented before/after table — **traits** | ⏳ pending — same chain (step 3) |
+
+### 1. Collect the ONE remaining in-flight job (the pooled pair already landed — see below)
 
 | job | tag / log | produces | status at handoff |
 |---|---|---|---|
-| 1622131 | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | RUNNING (K-fold, ~5 folds × 4 axes) |
+| **1622131** | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | **RUNNING** — 10/20 axis-folds at handoff (~6 min each, so ≈1 h left of a 10 h allocation). This is the ONLY thing blocking steps 2 and 3. |
 | ~~1622337~~ | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** | ✅ **DONE** at NCPUS=96 (the 32-cpu attempt 1622330 was **OOM-killed**, exit 137 — `STEM_CAP` does NOT bound peak memory; gotcha in the `slow-drf-pipeline` skill) |
 
 **✅ The COMPLETE pooled `t7` pair is PUBLISHED and load-verified** — `drf_forest_global_pooled_w20_t7.drf`
@@ -34,6 +44,14 @@ so a resubmit cannot clobber a pre-0031 artifact.
 
 ### 2. Re-measure the ADR-0030 trait gate on the new population
 
+**This is ALREADY CHAINED — check for its result before re-running.** Job **1622436** was submitted with
+`--dependency=afterok:1622131`, so it fires automatically when the copula above succeeds and writes
+`logs/S-noisefloor-t7.<jobid>.out`. Read that first:
+```bash
+grep -E "seed1-basis|GAP|floor|r_center|sd\(pred\)|VERDICT|JOB DONE" logs/S-noisefloor-t7.*.out
+```
+If the copula job failed, the dependency is never satisfied (`afterok`) and 1622436 stays pending or is
+cancelled — `squeue -u $USER` / `scontrol show job 1622436`. In that case fix the copula, then submit by hand.
 Both halves must be `tree7`. The seed2 floor table is **already built** (job 1622132,
 `slow_copula_historic_seed2_t7`, 197.8 M stems / 54 058 cells):
 ```bash
