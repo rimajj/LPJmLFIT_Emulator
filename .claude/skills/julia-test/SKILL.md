@@ -44,6 +44,19 @@ pkg-server (tarballs), so the wrapper `Pkg.instantiate/precompile`s on the login
 finds every resolved dep cached and needs no network. Residual risk: a not-yet-mirrored version → git-clone
 race → clear `Network is unreachable`; fall back to the `ALLOW_LOGIN_HEAVY=1` login-node one-liner below.
 
+**⚠️ The warm MUST cover the TEST env, not just `--project=.` (this bit on 2026-07-28; fixed in the wrapper).**
+`Pkg.test()` does **not** use `test/Project.toml` in place — it builds a **SANDBOX** env from it and
+**re-resolves that sandbox** to newest-allowed versions, and that resolve runs **on the compute node**. So every
+test-only dep (Lux/Zygote/Enzyme/JET/Aqua → NNlib …) must already be in the shared depot *at the version the
+fresh resolve picks*. Warming only the main project left that to luck: it worked in a long-lived checkout whose
+depot had accumulated the versions, and **failed instantly in a fresh `git worktree`** with
+`failed to clone from https://github.com/FluxML/NNlib.jl.git … Network is unreachable` inside Pkg's
+`sandbox(...)` — i.e. it would break every new work line's (ADR 0028) first suite run. `run_tests_slurm.sh` now
+also resolves/precompiles `--project=test` (with `Pkg.develop(path=REPO)`) and then **deletes the
+`test/Manifest.toml` that warm creates** (a leftover triggers the `can not merge projects` failure below, and it
+must never be committed). Consequence to expect: the **first** run after a dep bump or in a new worktree spends
+several minutes warming on the login node before it submits — that is the fix working, not a hang.
+
 ## Login node: NO full suite (hook-enforced)
 
 The full `Pkg.test()` suite on the login node overloads the node and dies with a dropped session — the

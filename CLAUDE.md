@@ -93,9 +93,17 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   `test/Manifest.toml` are git-ignored, so every run **re-resolves to newest-allowed deps** (exactly like
   CI). Compute nodes have **no GitHub egress but DO reach the Julia pkg-server** (tarballs), so the wrapper
   first `Pkg.instantiate/precompile`s on the login node to warm the shared `~/.julia`; the node then finds
-  every resolved dep cached and needs no network. Only residual risk: a version so new the pkg-server hasn't
-  mirrored it yet (a git-clone-only race) → fails with a clear `Network is unreachable`, fall back to the
-  `ALLOW_LOGIN_HEAVY=1` login-node `Pkg.test()` above. **[VERIFIED 2026-07-22 — the CI-faithful suite runs green end-to-end on a compute
+  every resolved dep cached and needs no network. **The warm must cover the TEST env, not just `--project=.`
+  (load-bearing; fixed 2026-07-28):** `Pkg.test()` builds a **SANDBOX** from `test/Project.toml` and
+  **re-resolves it on the compute node**, so every test-only dep (Lux/Zygote/Enzyme/JET/Aqua → NNlib …) must
+  already be in the depot at the version that fresh resolve picks. Warming only the main project worked by luck
+  in a long-lived checkout and **failed immediately in a fresh `git worktree`** (`failed to clone from
+  …/NNlib.jl.git … Network is unreachable` inside Pkg's `sandbox(...)`) — it would have blocked every new work
+  line's first suite run. The wrapper now warms `--project=test` too and deletes the `test/Manifest.toml` that
+  creates; expect the first run in a new worktree (or after a dep bump) to spend minutes warming before it
+  submits. Only residual risk: a version so new the pkg-server hasn't mirrored it yet (a git-clone-only race)
+  → fails with a clear `Network is unreachable`, fall back to the `ALLOW_LOGIN_HEAVY=1` login-node `Pkg.test()`
+  above. **[VERIFIED 2026-07-22 — the CI-faithful suite runs green end-to-end on a compute
   node this way (`run_tests_slurm.sh`, job 1562988/1563007).]**
 - **`test/Manifest.toml` gotcha (load-bearing):** a bare `Pkg.test()` fails with `can not merge projects`
   while a stale dev-path `test/Manifest.toml` exists. `rm -f` it first. **Do NOT commit it** (decided
