@@ -12,11 +12,11 @@
 on a 56 %-larger population, +9 371 cells scored). What is left is the trait side, which is exactly where
 ADR 0031 predicted the population change would bite.
 
-### 1. Collect the in-flight jobs (they were running when the session ended)
+### 1. Collect the ONE remaining in-flight job (the pooled pair already landed — see below)
 
 | job | tag / log | produces | status at handoff |
 |---|---|---|---|
-| 1622131 | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | RUNNING (K-fold, ~5 folds × 4 axes) |
+| **1622131** | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | **RUNNING** — 10/20 axis-folds at handoff (~6 min each, so ≈1 h left of a 10 h allocation). This is the ONLY thing blocking steps 2 and 3. |
 | ~~1622337~~ | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** | ✅ **DONE** at NCPUS=96 (the 32-cpu attempt 1622330 was **OOM-killed**, exit 137 — `STEM_CAP` does NOT bound peak memory; gotcha in the `slow-drf-pipeline` skill) |
 
 **✅ The COMPLETE pooled `t7` pair is PUBLISHED and load-verified** — `drf_forest_global_pooled_w20_t7.drf`
