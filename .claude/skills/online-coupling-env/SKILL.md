@@ -1,6 +1,6 @@
 ---
 name: online-coupling-env
-description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the four traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates". Use whenever running, debugging or extending the online coupled model, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
+description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the five traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", and Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion. Use whenever running, debugging or extending the online coupled model, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
 ---
 
 # online-coupling-env — SpeedyWeather + Terrarium on this cluster
@@ -14,7 +14,7 @@ cd /p/tmp/jamirp/esm_online_coupling
 ./sbatch_coupling.sh <O-tag> <script.jl>      # -> logs/<tag>.<jobid>.out on shared /p
 ```
 
-## The four traps (each one cost a failed job)
+## The five traps (each one cost a failed job)
 
 1. **Julia 1.10.0 CANNOT build this stack — use `/p/system/packages_rhel9/tools/julia/1.10.10/bin/julia`.**
    On 1.10.0, Pkg's extension resolution dies with `KeyError: key "KernelAbstractions" not found`
@@ -33,6 +33,16 @@ cd /p/tmp/jamirp/esm_online_coupling
 4. **Never call `Pkg.status()` in a setup script here** — it throws `KeyError: key "Dates" not found` from
    `print_status` when the project has a dev'd package carrying `[weakdeps]` (ours does), aborting the
    script before `Pkg.precompile()`.
+5. **Terrarium's DEFAULT vegetation is not coupled-run-robust.** Switching
+   `vegetation = VegetationCarbon(NF)` on (instead of the template's `nothing`) crashes a coupled run with
+   `AssertionError: vapor pressure deficit must be greater than zero` — `MedlynStomatalConductance`
+   hard-asserts `abs(vpd) > 0` (`medlyn_stomatal_conductance.jl:51`), and **VPD = 0 is physically realizable**
+   in a coupled atmosphere (saturated air, fog, night-time dew). `[VERIFIED 2026-07-28, job 1622826.]` That
+   slot is genuinely unexercised upstream, so expect to harden anything you put in it — and this one is worth
+   reporting to the Terrarium maintainers. Workaround for diagnostics: run `vegetation = nothing` and
+   reconstruct vegetation-side quantities post-hoc from the soil state using Terrarium's own property
+   functions (`scripts/online_coupling/diagnose_soilmoist_shift.jl` does exactly this for
+   plant-available water).
 
 ## The coupling architecture (verified from source, not docs)
 

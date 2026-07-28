@@ -121,7 +121,18 @@ offline daily F_diff rather than assuming it is small.
 *Gate:* the coupled run completes, GPP is finite and positive over vegetated cells, Float32 holds, and the
 daily-integrated online GPP is compared against offline F_diff at Hainich with the gap quantified.
 
-## 5. Open items for the full coupling
+## 5. Open items — §5.1/§5.2 are now DECIDED by ADR 0082
+
+> **[ADR 0082](decisions/0082-online-esm-first-ownership-and-validation.md) settled the two big ones**
+> (owner decision, 2026-07-28): the ONLINE configuration is **ESM-first, not LPJmL-FIT-faithful**, and is
+> validated against **observations** (PLUMBER2/FLUXNET fluxes, observed LAI/biomass/tree-cover), *not* against
+> the C binary. **Terrarium owns skin temperature + the SEB and the soil water/thermal column**; our
+> contribution online is **vegetation** — S, FIT photosynthesis behind `AbstractPhotosynthesis`, and FIT's
+> water-limited ET behind **`AbstractEvapotranspiration`** (a pluggable slot, so LE stays our physics but is
+> solved *consistently with T_skin* by Terrarium's implicit solver — which Component E does not do).
+> **ClimBuf** cold-starts from a ~20–30 yr SpeedyWeather-only spin-up on **its own** climate, not obsclim.
+> The OFFLINE configuration is unchanged and keeps guardrail 3 (C binary is the oracle).
+> Conservation (guardrail 2) binds **both**.
 
 - **`ClimBuf` cold start.** A coupled run has no spin-up restart, so the ~20-yr bioclimatic climatology S
   conditions on must be accumulated online (the `climbuf.jl` online transient-boundary work) or seeded from
