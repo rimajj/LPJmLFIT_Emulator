@@ -61,7 +61,9 @@ composition spread much larger. Consider running S3 *with* S2 rather than after 
 **Also open, independent of the above: S1c (ADR 0032)** — the committed Hainich demo `.drf` is on the retired
 PROXY feature basis while the `.rcop` beside it is on the REAL one. Don't fold it into S2/S3; it needs
 re-measured drift thresholds and a joint landing with M. `scripts/verify_hainich_demo_artifacts.sh` reports
-exit 2 (`STALE-FIXTURE`) until it is done — that is **expected**, not a new failure.
+exit 2 (`STALE-FIXTURE`) until it is done — that is **expected**, not a new failure (`[VERIFIED 2026-07-28]`,
+job 1622370: control exit 0 / NO-OP → `VERDICT: STALE-FIXTURE`). The gate restores nothing itself, so after
+running it: `git checkout -- test/testitems/references/`.
 
 ## Scope + ownership (ADR 0029)
 
