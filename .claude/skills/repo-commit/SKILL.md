@@ -48,6 +48,20 @@ flock "$INT/.git/esm-integrate.lock" bash -eu -c '
    never ran on your branch. Check **main's newest** run after merging — GitHub keeps only one *pending* run per
    branch, so a quick follow-up push can cancel an intermediate `main` verdict (observed twice on 2026-07-27/28).
 
+**Two more, learned in anger on 2026-07-28 (line S, S1c):**
+6. **NEVER chain the push behind the rebase in one shell command.** `git pull --rebase … ; git push …` looks
+   convenient and is a trap: if the rebase stops on a conflict, the branch ref still points at the ORIGINAL tip,
+   so the push fires anyway and ships the **un-rebased** commits — reporting success while leaving you mid-rebase.
+   Recoverable (resolve, `--continue`, re-push with `--force-with-lease`), but you have then triggered a CI run on
+   a sha you are about to replace. Run the rebase, CHECK it finished (`git status` must not say
+   "rebase in progress"), then push.
+7. **"Shared files are append-only" does NOT prevent a conflict when two lines append to the same SECTION.**
+   Line E and line S both appended to the `## Docs` block of `.claude/skills/julia-test/SKILL.md` hours apart and
+   the rebase conflicted. The fix is never to drop one side: read both hunks and **keep both contributions** (they
+   were complementary — "warm `--project=docs` before submitting to SLURM" and "the diagram alarm needs
+   `--project=.`"). Taking `--ours`/`--theirs` on a shared skill silently deletes another line's captured
+   knowledge, which is the one thing the capture gate exists to prevent.
+
 **Merge at every milestone, never hoard** — a stale branch is the only real conflict source left. `test (pre)`
 is `continue-on-error` and currently red for unrelated Julia-prerelease churn; don't chase it.
 
