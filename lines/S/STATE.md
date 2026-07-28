@@ -222,22 +222,30 @@ generalization gap stays flat (holdout-by-scenario is within 0.0005 of the by-ce
 truncation was **not** materially inflating the count skill — the count DRF's headline claim is robust. The
 trait side is where the population change was predicted to bite (ADR 0031), and that is what the in-flight
 copula + 0030 re-measurement will show.
-- **The open gap — trait per-cell medians, now EXACT (`[VERIFIED 2026-07-28]`, ADR 0030, job 1617055;
-  ids-1..5 population).** Both sides on the copula basis (`seed1-basis` = **1.000** on all 4 axes ⇒
-  apples-to-apples; the pre-S1 0.49/0.09 cross-checks were the truncation, not "median instability"):
+- **Trait per-cell medians — RE-MEASURED on `tree7` (`[VERIFIED 2026-07-28]`, ADR 0030 gate, job 1622436).**
+  **Gate PASSED: `seed1-basis` = 1.000 on all four axes** (requirement ≥0.99), 52 165 cells scored (was
+  36 228). Each population measured against its OWN floor and ceiling, which is what makes the columns
+  comparable across a population change (ADR 0030 §4):
 
-  | axis | emu_r | floor (rel_Y) | rel_P | ceiling √(rel_P·rel_Y) | **GAP** | r_center | sd(pred)/sd(Y1) |
-  |---|---|---|---|---|---|---|---|
-  | SLA | 0.866 | 0.964 | 0.997 | 0.981 | **+0.115** | 0.883 | 0.946 |
-  | Wooddens | 0.567 | 0.694 | 0.907 | 0.794 | **+0.226** | 0.715 | **0.546** |
-  | D95max | 0.771 | 0.791 | 0.962 | 0.873 | **+0.102** | 0.883 | 0.732 |
-  | minwscal | 0.793 | 0.909 | 0.986 | 0.947 | **+0.153** | 0.838 | 0.736 |
+  | axis | emu_r | floor (rel_Y) | ceiling | **GAP** | r_center | sd(pred)/sd(Y1) |
+  |---|---|---|---|---|---|---|
+  | SLA | 0.866 → **0.885** | 0.964 → 0.973 | 0.981 → 0.986 | +0.115 → **+0.101** | 0.883 → **0.898** | 0.946 → 0.911 |
+  | Wooddens | **0.567 → 0.807** | 0.694 → 0.937 | 0.794 → 0.965 | +0.226 → **+0.157** | 0.715 → **0.837** | **0.546 → 0.718** |
+  | D95max | 0.771 → **0.812** | 0.791 → 0.833 | 0.873 → 0.909 | +0.102 → **+0.098** | 0.883 → **0.893** | 0.732 → 0.742 |
+  | minwscal | **0.793 → 0.947** | 0.909 → 0.973 | 0.947 → 0.986 | +0.153 → **+0.039** | 0.838 → **0.960** | **0.736 → 0.970** |
 
-  Every axis has real headroom (D95max was NOT "at floor" — the raw floor−emu gap of +0.021 is a lower bound;
-  `floor_r` is a realization-vs-realization r, not a predictor ceiling). Split-half 0.978–0.999 vs a floor of
-  0.694–0.964 ⇒ the floor is **trajectory divergence**, not finite-stem noise. The copula reproduces only
-  **0.55** of the true between-cell Wooddens spread (a second seed reproduces 1.00) ⇒ it regresses cells toward
-  the global mean: missing between-cell *composition* signal, exactly as ADR 0025's caveat predicted.
+  **ADR 0031's degradation prediction is FALSIFIED — see ADR 0033.** It expected a single pooled marginal to fit
+  *worse* once id 0's very different trait intervals entered. Instead per-cell skill improved on **every** axis,
+  and **most on the two that were worst**: Wooddens `emu_r` 0.567 → 0.807 and minwscal +0.153 → **+0.039 (near
+  ceiling)**. The mechanism: the truncation was *destroying* composition signal, not hiding a need for per-PFT
+  structure — the tropical belt is environmentally distinct (hot, wet, frost-free) AND carries id 0's distinct
+  intervals, so with it present the environment↔composition link the copula conditions on is much *stronger*.
+  So the "missing between-cell composition signal" diagnosis was largely an artifact of the truncated basis.
+- Split-half 0.992–0.999 vs a floor of 0.833–0.973 ⇒ the floor remains **trajectory divergence**, not
+  finite-stem noise. `rel_P` (0.993–0.999) still exceeds `rel_Y`, so the raw floor−emu gaps stay lower bounds.
+- **The cross-population `tree5` row is the truncation's size, not a gap** — its `seed1-basis` reads
+  0.976 / 0.556 / 0.814 / **0.174**, i.e. the script's own ≥0.99 guard correctly refuses it. That is the
+  mechanism that made the pre-S1 numbers unreadable, now reproduced deliberately as a control.
 - Seed2 floor artifact: `/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2` (133 562 549 stems / 45 072
   cells; rebuild in ~70 s).
 - Artifacts: `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); the committed `.drf`/`.rcop` are the Hainich demo.
@@ -267,10 +275,17 @@ copula + 0030 re-measurement will show.
   version bump). *Gate (ADR 0030 §4, replacing "r ≥ 0.75"):* close ≥50 % of the Wooddens GAP to the ceiling
   **and** lift `sd(pred)/sd(Y1)` to ≥0.75 on that axis, with pooled KS not degraded (≤0.02) and no other axis
   losing >0.01 of `r_center`. Report honestly if the conditioning does not deliver.
-- **S3** Per-PFT / mixture copula. **Now the LEADING hypothesis, not a fallback** (ADR 0031): FIT draws traits
-  from per-PFT `[low,high]` intervals, so a per-cell trait median is a *composition* statistic — and the copula
-  has neither a composition covariate nor a per-PFT marginal, while predicting only 0.55 of the true
-  between-cell Wooddens spread. Consider running S3 *with* S2 rather than after it.
+  **⚠ S1b already delivered a large share of this gate WITHOUT touching the conditioning (ADR 0033):** the
+  Wooddens GAP closed 0.226 → 0.157 (**30 % of the way**, target 50 %) and `sd(pred)/sd(Y1)` went 0.546 →
+  **0.718** (target ≥0.75 — nearly met), pooled nqrmse improved rather than degraded, and no axis lost
+  `r_center`. So **re-baseline the S2 gate against the `tree7` numbers before starting**, or S2 will take credit
+  for the population fix. The honest remaining target is the last ~20 % of the Wooddens GAP; minwscal (+0.039)
+  and D95max/SLA (+0.098/+0.101, both `r_center` ≈ 0.89) have little left to win.
+- **S3** Per-PFT / mixture copula. **DE-PRIORITIZED back to a fallback (ADR 0033 — reverses ADR 0031).** The
+  argument for promoting it was that the copula predicted only 0.55 of the true between-cell Wooddens spread and
+  had no composition covariate. On the complete population that dispersion ratio is **0.718** and `r_center`
+  0.837 without any structural change, and minwscal went to near-ceiling — so the pooled marginal *does* capture
+  composition once it can see the whole forest. Revisit only if S2's conditioning stalls above ~0.75 dispersion.
 - **S4** **Grass ownership** (open risk #8): S owns grass demography; today grass stays F-side and S is
   TREE-only. Needs an ADR + a carbon-conservation gate for grass at the handoff.
 - **S5** Whole-cohort **DROP** + the Gate-3 recursive drift (nqrmse 0.39 vs the documented 0.45 alarm).

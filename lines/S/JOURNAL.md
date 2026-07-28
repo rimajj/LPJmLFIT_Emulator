@@ -148,3 +148,29 @@
   *failed to run* was reported as "your edit moved the table", the loudest possible wrong conclusion from a gate
   whose entire purpose is telling those two apart — now a distinct `INCONCLUSIVE` (exit 3). Re-run confirms
   control exit 0 / NO-OP → `VERDICT: STALE-FIXTURE` (job 1622370), which is the ADR-0032 diagnosis.
+- **S1b CLOSED — and the trait result reverses ADR 0031's central prediction (→ ADR 0033).** The chained gate
+  (job 1622436, `afterok` on the copula) fired by itself and **passed**: `seed1-basis` = **1.000** on all four
+  axes, 52 165 cells scored (was 36 228). ADR 0031 predicted a pooled single marginal would fit *worse* once id
+  0's very different trait intervals entered. Measured, per-cell skill improved on **every** axis and most on the
+  two that were worst: Wooddens `emu_r` **0.567 → 0.807** (dispersion 0.546 → 0.718, `r_center` 0.715 → 0.837),
+  minwscal GAP **+0.153 → +0.039 (near ceiling)**, SLA +0.115 → +0.101, D95max +0.102 → +0.098.
+  - **Mechanism (the actual defect):** the truncation removed the two PFTs whose composition is *most* predictable
+    from environment — the tropical evergreen (climatically distinctive, the only tree PFT whose establishment
+    gate is unconditionally open in the wet tropics) and the Siberian larch — leaving ids 1–5 competing in
+    overlapping temperate/boreal envelopes where per-cell composition genuinely *is* weakly determined by the
+    boundary features. So it selected the sub-population where the conditioning has least to say, and the low
+    skill there was misread as "a pooled copula cannot represent composition". Two conclusions drawn from that
+    basis are withdrawn: ADR 0030's "regresses cells toward the global mean" and ADR 0031's promotion of S3.
+  - **Consequence for planning:** S1b closed **30 %** of the Wooddens GAP and lifted its dispersion 0.546 → 0.718
+    (S2's gate targets 50 % and ≥0.75) **without touching the conditioning** — so the S2 gate must be re-baselined
+    against `tree7` or S2 will take credit for the population fix. Wooddens is the only axis left with material
+    headroom; the other three are at `r_center` 0.89–0.96.
+- **Nearly mis-reported the pooled-marginal gain as 2.7–4.8×.** `nqrmse` divides by the observed IQR, and the
+  widening moved that denominator (minwscal's IQR grew **2.47×** as id 0's `[0.05,0.75]` interval entered). The
+  real gain is 1.9–3.0× in raw quantile RMSE; minwscal's headline 4.75× is really 1.92×, while SLA's IQR *shrank*
+  so its 2.67× understates a real 2.99×. Recovered with `raw = nqrmse × IQR_obs` from the `obs_q` already in the
+  log — no re-run. Captured in the `emulator-validation-figures` skill: a scale-free metric can move because its
+  scale moved (the same family as ADR 0030's scale-blind-correlation lesson).
+- **Also mis-read my own gate log once:** grepped for verdict patterns that silently dropped the SLA/Wooddens
+  rows and briefly concluded the run was incomplete. It was complete. Read the raw section, not a filtered view,
+  before calling a result missing.
