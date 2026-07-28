@@ -22,6 +22,3 @@
 - **Result / evidence:** see the root `JOURNAL.md` Phase-0 entry for the setup evidence.
 - **Decisions:** ADR 0028 (branch+worktree per line, supersedes 0013), ADR 0029 (the split + ownership).
 - **Next:** the `## NEXT — start here` block in `lines/E/STATE.md`.
-
-## 2026-07-28 — conflict-freedom probe [setup]
-- Verifying two lines can land concurrently without conflicts (ADR 0028 acceptance).
