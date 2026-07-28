@@ -205,12 +205,26 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
     check any hard-coded cell list or expected-count assertion.
   - Count skill is essentially unchanged (every metric within ≈0.003 R²; see `lines/S/STATE.md` §Status), so
     expect no coupled-behaviour surprise from the count side — but the *set of runnable cells* is larger.
-- **From S — SECOND INTEGRATION POINT, not yet actioned (line S milestone S1c, ADR 0032):** the committed
-  `test/testitems/references/drf_forest_hainich.drf` is trained on the RETIRED PROXY features
-  (`soilmoist` 0.7, `lai` 21.2) while `recruit_copula_hainich.rcop` beside it is on the REAL ones (0.85, 3.07)
-  — one emulator, two conditioning bases, a live ADR-0023 shift masked by the DRF's OOD leaf-clamping. S will
-  regenerate BOTH together; that **moves the drift thresholds** in `slow_production_drf_tests.jl` and
-  `slow_oracle_tests.jl`, so land it jointly and re-measure rather than widening the alarms.
+- **From S — ✅ DONE 2026-07-28, S1c landed (ADR 0032 closed → ADR 0034). Two things here concern you.**
+  The committed `test/testitems/references/drf_forest_hainich.drf` + `_meta.txt` were regenerated off the
+  retired proxy features onto the real basis; `recruit_copula_hainich.rcop`, its meta and both
+  `hainich_slow_oracle_*.csv` are **byte-identical**, so only the count `.drf` moved. Re-measured Hainich
+  thresholds all IMPROVED (Gate-3 Height `nqrmse` 0.3895 → **0.2998**, median ratio 1.25 → 1.13, count ratio
+  0.67 → **1.28**) and the alarm was **tightened** 0.45 → 0.40. **If your M2 CI gate was designed against the
+  old fixture, re-read it** — the artifact meta now also carries `y_min`/`y_max`/`feat_min`/`feat_max`, and
+  `FluxDrivenSlowEmulator` gained a diagnostic-only `feature_history` field (no numerical change; every
+  committed baseline byte-identical). Global `_t7` artifacts are untouched — your pin is unaffected.
+- **From S — NEW INTEGRATION POINT raised 2026-07-28 (ADR 0034 §1, cause 1 of 3): the F core's
+  `water_stress` at Hainich is ~330× the C oracle's.** With the runtime feature rows now recorded, the
+  coupled loop feeds the count DRF `water_stress` **0.323–0.331** every year, while the C-derived training
+  rows for the same cell/years span **[0, 0.0432]** (Hainich is essentially unstressed in the C). Same
+  definition on both sides (`1 − wscal_mean`, `fast.jl`), and F_diff's own soil column is *near saturation*
+  for part of the year — so a 1/3 water stress is internally odd, not just a basis difference. `src/fdiff.jl`
+  / `src/components/fast.jl` are **yours** (ADR 0029), so S cannot chase this; it wants an F-vs-C oracle
+  diagnosis (`fdiff-validate`). It is the single largest of the three remaining runtime↔training conditioning
+  shifts (6.6× the trained band width) and it will bias any *coupled* global S run, so it matters before M3.
+  The other two causes (`soilmoist` temporal aggregation, `lai`/`fpc` spatial aggregation) are S's, as
+  milestone S1d.
 - **From E:** the `SEBEnergyClosure(...)` constructor + `solve!` signature.
 - **From E — OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E5, ADR 0071):** real daily
   **wind + surface pressure** now exist for the 5 orderA biome cells —

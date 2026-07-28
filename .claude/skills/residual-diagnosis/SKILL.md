@@ -165,6 +165,34 @@ So, before proposing a structural change to fix a residual:
 - **Say which prior conclusions the fix withdraws.** Two published claims died with this basis; naming them is
   what stops them being re-cited. (ADR 0033 is the write-up; ADR 0030 §4 is the scoring method that survived.)
 
+## 3e. Before trusting a green gate, ask whether that assertion CAN fail (2026-07-28)
+
+A gate on a model's **output** cannot test its **input** basis when the output is bounded by construction. The
+case: "the emulator's predicted counts are inside its training band" guarded runtime-consistency for months and
+was green throughout a two-orders-of-magnitude conditioning shift — because a random-forest prediction is a
+*convex combination of training leaf means*, so it can never leave `[min y, max y]` whatever it is fed. The
+assertion was not weak, it was **incapable of failing**. It was an artifact-integrity check wearing a
+consistency check's name.
+
+So when a residual survives behind a green gate:
+- **Work out the assertion's reachable range before believing it.** If no input can violate it, it is not
+  evidence. Bounded-by-construction outputs (forest/ensemble means, softmax, anything clamped, anything
+  normalized) are the usual offenders; so is a tolerance far looser than the quantity's own spread.
+- **Move the check to the input side, and make the reference explicit.** Record what the model was actually
+  fed (a per-year feature history costs nothing) and ship the trained **per-feature band** inside the artifact
+  itself, so train-vs-inference is comparable at every call site without re-deriving the training table.
+- **PIN the known-bad set rather than asserting perfection or writing prose.** Asserting "zero violations" when
+  three are known reds the suite and pressures you into a rushed fix or a silent widening; documenting them in
+  an ADR alone is exactly how the last one came back. Assert the *exact* set, with a margin cut that keeps a
+  marginal column from flapping across CPU microarchitectures, and tighten it as each cause closes.
+- **A band is a measurement, not a tunable.** "Widen the band so the runtime fits" destroys the only signal
+  that can catch the next shift. Bring the runtime to the reference, or change the reference deliberately with
+  its own decision record.
+- **When one fix exposes several causes, route them by owner and finish the milestone.** Here the surviving
+  shift split into a temporal-aggregation choice, a spatial-aggregation choice, and a *different component's*
+  physics gap — bundling them into the current milestone would have re-created the entanglement the milestone
+  was carved out to avoid. (ADR 0034 is the write-up; ADR 0032 is the defect it closes.)
+
 ## 4. Time-box and set an escalation trigger
 
 Decide up front: "N hours / M probes; if the hypothesis isn't confirmed by then, escalate to the owner

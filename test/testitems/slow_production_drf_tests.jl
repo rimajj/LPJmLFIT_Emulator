@@ -4,8 +4,12 @@
 # `references/drf_forest_hainich.drf` (trained by scripts/train_slow_drf.jl on the runtime-consistent Hainich
 # table from scripts/build_slow_runtime_table.py — features in the exact flux_feature_vector order). The gate:
 #   • LOAD — DRF.load_forest reads the committed artifact; its nfeat matches the baked boundary + 11 head.
-#   • RUNTIME-CONSISTENCY — the DRF, fed the runtime flux_feature_vector each year, predicts counts INSIDE
-#     its training band (no wild extrapolation) — evidence the training features share the runtime's scale.
+#   • RUNTIME-CONSISTENCY (ADR 0023) — the rows the forest is actually fed (`s.feature_history`) are compared
+#     COLUMN-BY-COLUMN against the trained per-feature band in the artifact meta. This replaces the old
+#     "predicted counts inside the training band" check, which could not fail: a DRF prediction is a convex
+#     combination of training leaf means, so it stays in the target band however out-of-domain its input is
+#     (ADR 0032 — that is how a two-order-of-magnitude proxy-basis shift stayed invisible). The target band
+#     is still asserted, now from the meta's own y-band, but as an ARTIFACT-INTEGRITY invariant.
 #   • MECHANISM — the loaded DRF DRIVES the demography (tree N moves; F alone holds it fixed).
 #   • CONSERVATION — the S↔F handoff conserves carbon ≤ 1e-6·C_scale every year (ledger, by construction).
 #   • ENERGY closes; DETERMINISM under seed; all finite. Hainich (DE-Hai, cell 42490) DEMONSTRATION artifact
@@ -69,16 +73,25 @@
     mkclo() = SEBEnergyClosure(; t_soil0 = _mean(tair_K))
     mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
 
-    # ── load the COMMITTED production DRF + its baked boundary / n_init from the meta ──
+    # ── load the COMMITTED production DRF + its baked boundary / n_init / trained bands from the meta ──
     forest = DRF.load_forest(joinpath(refdir, "drf_forest_hainich.drf"))
     boundary = Float64[]; n_init = 1.0; age0 = 0.0
+    colnames = String[]; feat_min = Float64[]; feat_max = Float64[]; y_min = NaN; y_max = NaN
     for ln in eachline(joinpath(refdir, "drf_forest_hainich_meta.txt"))
         (isempty(strip(ln)) || startswith(strip(ln), "#")) && continue
         parts = split(ln, '\t')
         parts[1] == "boundary" && (boundary = parse.(Float64, split(strip(parts[2]))))
         parts[1] == "n_init" && (n_init = parse(Float64, strip(parts[2])))
         parts[1] == "age0" && (age0 = parse(Float64, strip(parts[2])))
+        parts[1] == "colnames" && (colnames = String.(split(strip(parts[2]))))
+        parts[1] == "feat_min" && (feat_min = parse.(Float64, split(strip(parts[2]))))
+        parts[1] == "feat_max" && (feat_max = parse.(Float64, split(strip(parts[2]))))
+        parts[1] == "y_min" && (y_min = parse(Float64, strip(parts[2])))
+        parts[1] == "y_max" && (y_max = parse(Float64, strip(parts[2])))
     end
+    @test length(colnames) == forest.nfeat
+    @test length(feat_min) == forest.nfeat && length(feat_max) == forest.nfeat
+    @test isfinite(y_min) && isfinite(y_max) && y_min < y_max
     @test forest isa DRF.Forest
     @test length(boundary) + 11 == forest.nfeat        # 11 head + baked boundary tail
     # ADR 0024 §3: age0 seeds s.age so the runtime age_mean starts INSIDE the DRF's trained mean-age band.
@@ -106,9 +119,46 @@
     @test maximum(abs, out.resid) < 1.0e-6                       # energy closes by construction
     @test length(s.target_history) == nyears && all(isfinite, s.target_history)
 
-    # RUNTIME-CONSISTENCY: the DRF fed runtime features predicts counts inside its Hainich training band
-    # (n_living was 3..19; allow a modest cushion). Wild extrapolation ⇒ feature-scale mismatch ⇒ fail here.
-    @test all(t -> 0.5 ≤ t ≤ 40.0, s.target_history)
+    # TARGET BAND — a STRUCTURAL invariant, deliberately NOT a runtime-consistency check (ADR 0032 / S1c).
+    # A DRF prediction is a convex combination of training leaf means, so it cannot leave [y_min, y_max]
+    # whatever it is fed. Asserting it therefore proves the ARTIFACT is intact (a corrupted forest or a
+    # feature-count mismatch would break it) and proves nothing about conditioning. Bounding it at the
+    # meta's own y-band instead of the old hand-picked 0.5..40 cushion makes that explicit: the old bound
+    # could not fail, which is why a two-order-of-magnitude proxy-basis shift survived every green gate for
+    # five days. The check that CAN see a shift is the feature-band one below.
+    @test all(t -> y_min ≤ t ≤ y_max, s.target_history)     # measured 12.28..13.64 on y ∈ [3, 19]
+
+    # RUNTIME-vs-TRAINED FEATURE BAND — the real ADR-0023 train/inference-consistency gate. `feature_history`
+    # is the exact row handed to the forest each year; compare it column-by-column with the artifact's trained
+    # band, in units of band width so the measure is scale-free.
+    #
+    # MEASURED 2026-07-28 (S1c, ADR 0034), and this is a KNOWN, DOCUMENTED residual shift, not a pass:
+    #   water_stress  runtime 0.323..0.331  vs trained [0, 0.043]    → 6.6× band width  (F_diff vs the C)
+    #   soilmoist     runtime 0.792..0.999  vs trained [0.842, 0.867] → 5.1×  (year-end instant vs annual mean)
+    #   lai           runtime 3.63..5.17    vs trained [2.76, 3.37]   → 2.9×  (one patch vs the cell mean)
+    #   fpc           runtime  ..0.784      vs trained [0.155, 0.741] → 0.03× (marginal; below the 0.5 cut)
+    # Every other column, INCLUDING the two that ADR 0032's regeneration moved into band (`bm_inc_cell`,
+    # `growth_eff`), is inside. So this asserts the shift is exactly where it is known to be: a NEW column
+    # drifting out, or these growing, trips it. Tighten the set as ADR 0034's three causes are closed.
+    exc = [
+        begin
+                w = feat_max[j] - feat_min[j]
+                scale = w > 0 ? w : max(abs(feat_min[j]), 1.0e-12)
+                rmin = minimum(f[j] for f in s.feature_history)
+                rmax = maximum(f[j] for f in s.feature_history)
+                max(feat_min[j] - rmin, rmax - feat_max[j], 0.0) / scale
+            end for j in eachindex(colnames)
+    ]
+    @test length(s.feature_history) == nyears
+    @test all(isfinite, exc)
+    @info "runtime-vs-trained feature band (excursion in band widths; 0 = inside)" pairs = [
+        colnames[j] => round(exc[j], digits = 3) for j in eachindex(colnames) if exc[j] > 0
+    ]
+    @test Set(colnames[j] for j in eachindex(colnames) if exc[j] > 0.5) ==
+        Set(["water_stress", "soilmoist", "lai"])
+    @test maximum(exc) ≤ 10.0                                              # measured worst 6.64
+    @test exc[findfirst(==("bm_inc_cell"), colnames)] == 0.0                # ADR 0032's fix, held
+    @test exc[findfirst(==("growth_eff"), colnames)] == 0.0                 # (was ~8× on the proxy basis)
 
     # MECHANISM: the loaded DRF moved tree N (F alone held it fixed above)
     @test s.total_n_history[end] != s.total_n_history[1]

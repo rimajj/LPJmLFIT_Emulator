@@ -6,91 +6,55 @@
 
 ## NEXT — start here
 
-**S1b is COMPLETE (ADR 0031 + 0033). Start with S1c (ADR 0032) — its blocking condition has now expired.**
+**S1c is COMPLETE (ADR 0032 closed → ADR 0034). Start with S1d — it is now the thing that blocks S2.**
 
-Everything S1b promised is measured and merged: the widening, the `growth_eff` runtime guard, the per-PFT
-params, artifact versioning, the byte-identity gate, the count before/after table, the trait before/after table,
-and the ADR-0030 gate re-measured and **PASSED** (`seed1-basis` = 1.000 ×4). Headline: counts held (≈0.003 R²),
-and traits **improved on every axis**, falsifying ADR 0031's degradation prediction → **ADR 0033**, which also
-de-prioritizes S3 and re-baselines the S2 gate. All numbers are in §Status; don't re-derive them.
+Everything S1c promised is delivered and merged: both committed Hainich demo artifacts rebuilt from ONE table
+build, the two metas asserted to agree (**8/8** shared conditioning columns, 0 violations), all four gates
+re-measured with a before/after table, the Gate-3 alarm **tightened** 0.45 → 0.40 (nothing widened), and the
+suite green at **107 065 pass / 0 fail / 4 broken** (job 1622741). All numbers are in §Status — don't re-derive
+them. Line M is notified in `lines/M/STATE.md` (both the fixture move and the new `water_stress` finding).
 
-**Why S1c is now first:** its only reason for deferral was basis entanglement with S1b's before/after tables.
-Those are published, so the reason is gone. Carrying it into S2 would re-entangle it with a conditioning change.
-The full step list, the four gates to re-measure and the binary success signal are in **§5 below** — that is the
-whole task; nothing needs re-deriving. It is **S-executable** (all four fixture consumers are S-owned; notify M,
-don't wait for M).
+**Why S1d is now first.** S1c proved that regenerating the artifact closes the artifact-vs-artifact *split* but
+not the runtime↔training *shift*: **4 of 15 runtime feature columns are still outside the trained band**
+(`water_stress` 6.6× band width, `soilmoist` 5.1×, `lai` 2.9×, `fpc` 0.03×). Two of those are S's, and they are
+S1d. Starting S2's conditioning expansion first would let S2 take credit for a basis fix — exactly what ADR
+0033 recorded when S1b silently delivered 30 % of S2's gate. The full step list is **§Milestones → S1d**; the
+reasoning and what was rejected is **ADR 0034**.
 
-*Everything below in §1–§4 is DONE — kept only as the audit trail for the numbers in §Status.*
+### The task: S1d — one aggregation basis for `soilmoist` and `lai`/`fpc`
 
-### S1b audit trail (all DONE — kept for provenance; the NUMBERS live in §Status)
+Two independent decisions, each of which must pick a side and then hold it in BOTH train and inference
+(ADR 0023 — a conditioning change is by definition a both-sides change with M):
 
-| gate item (ADR 0031 §3) | outcome |
-|---|---|
-| Hainich fixtures byte-identical | **investigated, not merely passed** → ADR 0032. The `.drf` moved; the control build proved the edits a no-op here (max\|abs diff\| = **0**, all 15 columns + target) ⇒ the fixture was ALREADY stale. Oracle CSVs + `.rcop` byte-identical. → **S1c**, §5 |
-| cell coverage ≈ 54 020 | ✅ **exactly 54 020** (historic w20 seed1) |
-| `seed1-basis ≥ 0.99` on the new population | ✅ **1.000 on all four axes** (job 1622436) |
-| before/after table — counts | ✅ §Status |
-| before/after table — traits | ✅ §Status + **ADR 0033** |
+1. **`soilmoist` — TEMPORAL.** Training is the C `swc` mean over 365 days × 23 layers
+   (`build_swc_soilmoist_feature.py`); the runtime is `sum(state.w)/length(state.w)` at the instant
+   `reconcile_demography!` runs, i.e. one year-end layer mean that reaches 0.999 (near-saturation). An annual
+   mean's range cannot contain an instantaneous value's range even with identical physics, so this is a
+   *training-basis choice that was never made*, not a bug. Cheaper side: re-reduce to year-end `swc` in the
+   deriver. Cleaner side: accumulate the annual mean in the runtime (`ClimBuf`, ADR 0027, is the template).
+2. **`lai`/`fpc` — SPATIAL.** Training joins the C's patch-ensemble **cell-mean** `LAI_STAND`; the runtime forms
+   a **single-patch** stand LAI on the most-populous patch (~1.4× the cell mean). This is the open Phase-5
+   per-patch-vs-per-cell decision the `slow-drf-pipeline` skill already flagged — now quantified. Note the C
+   `ind` output carries no `leaf_c`/`nind`, so a per-PATCH training LAI is **not** reconstructable from it;
+   deciding "per-patch" therefore means changing what the C emits or accepting a documented approximation.
 
-Jobs: `1622131` historic copula (+ its chained gate `1622436`) · `1622337` pooled copula at **NCPUS=96** after
-`1622330` was **OOM-killed** (exit 137 — `STEM_CAP` does NOT bound peak memory; gotcha in the
-`slow-drf-pipeline` skill) · `1622134` pooled count DRF · `1622242`+`1622305` historic count + K-fold ·
-`1622132` seed2 floor table.
+Write the ADR (next free S number: **0035**), then: rebuild the Hainich demo tables → retrain BOTH artifacts
+together (never one) → re-run `scripts/verify_hainich_demo_artifacts.sh` → re-measure with
+`scripts/measure_hainich_gate_bands_probe.jl` (BEFORE column via `DRF_ART=`) → SHRINK the pinned out-of-band set
+in `slow_production_drf_tests.jl`, never widen it → full suite on SLURM → notify M.
 
-**Published + load-verified `t7` artifacts** (line M informed in `lines/M/STATE.md`, and M's own coverage gate
-independently confirmed the payoff: `semiarid_sahel` 18371 is in **neither** pre-0031 table, so only `_t7`
-serves all five biome cells, 5/5 vs 3/5):
-`drf_forest_global_pooled_w20_t7.drf` (150 trees, `nfeat=15`) · `recruit_copula_global_pooled_w20_t7.rcop`
-(128 MB, 4 axes, 8 cond cols in `live_flux_cond` order) · `drf_forest_global_historic_t7.drf` ·
-`recruit_copula_global_historic_t7.rcop` · tables `slow_{count,copula,runtime}_*_t7/`.
+*Gate — cleanly checkable:* the probe reports `soilmoist`, `lai` and `fpc` **IN** band, the pinned set in
+`slow_production_drf_tests.jl` is down to `{water_stress}` alone, every moved Gate-3 threshold has a written
+before/after measurement, and the suite is green. `water_stress` is **not** S's to close (it is line M's F core,
+ADR 0029) — leave it in the pinned set and do not chase it from here.
 
-**Not done, cheap, optional:** trait FIGURES 09–11 on `tree7`
+**A global consequence to decide inside S1d, not after:** the same two aggregation choices apply to the global
+`_t7` tables (same builder), so fixing them means a **versioned re-derivation** (`VERSION=t8`) and a re-pin by
+M — never mutate `_t7` in place. The published `_t7` OOS numbers are unaffected as *offline* measurements
+(table vs table); only a coupled global run inherits the shift.
+
+**Cheap and still open (unchanged, optional):** trait FIGURES 09–11 on `tree7`
 (`COPULA_OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7`, `emulator-validation-figures` skill).
-
-### THE TASK: S1c (ADR 0032) — start here, the deferral condition has expired
-
-The committed Hainich demo `.drf` is on the retired PROXY feature basis (`soilmoist` 0.7, `lai` 21.2,
-`growth_eff` 19) while the `.rcop` beside it is on the REAL one (0.85, 3.07, ~151) — one emulator, two
-conditioning bases, a live ADR-0023 shift masked by the DRF's OOD leaf-clamping.
-
-**The deferral condition has EXPIRED (2026-07-28).** The only argument for waiting was that regenerating the
-fixture inside the ADR-0031 widening would leave two entangled causes behind every moved Hainich number
-(ADR 0031 §3). S1b's before/after tables are now published, so that is gone. **Do not carry S1c into S2/S3** —
-it would then entangle with a conditioning change instead. **Not started only because a half-executed S1c leaves
-regenerated golden fixtures sitting in the worktree with no re-measurement** — worse than a clean start.
-
-**Scope is smaller than ADR 0032 implies** (`[VERIFIED 2026-07-28]` by grep): every consumer of the committed
-fixtures is **S-owned** — `test/testitems/{slow_oracle_tests,slow_oracle_traits_tests,slow_production_drf_tests,
-drf_serialization_tests}.jl`. **No M-owned test loads them today** (M only *plans* to, for its M2 CI gate). So
-this is S-executable with a NOTIFICATION to M, not a both-sides landing. Tell M before you push, because M's
-M2 gate design assumes the current fixture.
-
-Steps:
-1. **Rebuild both demo tables from ONE build** so they cannot disagree again: `CELLS=42490 SEED=1` with
-   `MODE=count` → `/p/tmp/jamirp/slow_runtime`, and `MODE=copula` → `/p/tmp/jamirp/slow_copula_hainich`.
-2. **Retrain BOTH artifacts together** to their committed paths: `train_slow_drf.jl` (→ `drf_forest_hainich.drf`
-   + `_meta.txt`) and `train_slow_copula.jl` (→ `recruit_copula_hainich.rcop` + `_meta`). Regenerating the
-   artifact and its meta together is what keeps the golden pairs consistent.
-3. **Assert the fix, don't assume it:** the two metas must now agree on the shared conditioning columns
-   (`growth_eff`, `soilmoist`, and the boundary tail). That agreement IS the defect being closed — check it
-   explicitly. The `.rcop` is already on the real basis, so expect it byte-identical; if it MOVES, stop.
-4. **Re-measure the four gates, and document every threshold that moves** (`residual-diagnosis` — never widen
-   an alarm silently):
-   - `drf_serialization_tests.jl` — bitwise round-trip + committed golden pairs (structural; should pass).
-   - `slow_production_drf_tests.jl` — the "targets INSIDE the training band" assertion. The band moves with the
-     basis, so re-derive its bounds from the NEW meta. This is the assertion that was quietly toothless.
-   - `slow_oracle_tests.jl` — the IQR-normalized quantile-RMSE drift alarm (documented ~0.31; 0.39 observed vs
-     a 0.45 threshold, §Milestones S5). **Direction is genuinely unpredictable**: the DRF will be in-domain for
-     the first time (should help), but the threshold was tuned against the OOD-clamped behaviour.
-   - `slow_oracle_traits_tests.jl` — the `.rcop` gates; untouched if the `.rcop` is byte-identical.
-5. **Full suite CI-faithfully on SLURM** (`scripts/run_tests_slurm.sh S-s1c`), then commit as ONE change with a
-   before/after threshold table, and notify M in `lines/M/STATE.md`.
-
-*Gate — cleanly checkable:* `scripts/verify_hainich_demo_artifacts.sh` flips from **exit 2 (`STALE-FIXTURE`)**
-to **exit 0 (`PASS`)**, the two metas agree on the shared conditioning, the suite is green, and every moved
-threshold has a written measurement. Until then exit 2 is **expected**, not a new failure
-(`[VERIFIED 2026-07-28]`, job 1622370). The gate does not restore what it writes — afterwards:
-`git checkout -- test/testitems/references/`.
 
 ## Scope + ownership (ADR 0029)
 
@@ -126,6 +90,46 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
   The **global re-derivation on the `t7` generation is IN FLIGHT** — see §NEXT for the job table.
 - **⚠ EVERY global S number below with a "tree5" label is on the TRUNCATED population** (ids 1–5) and is
   superseded by its `t7` counterpart, not silently restated (ADR 0031 §5).
+- *S1b `t7` job provenance (logs are in this worktree's `logs/`):* `1622131` historic copula + its chained
+  ADR-0030 gate `1622436` · `1622337` pooled copula at `NCPUS=96` after `1622330` OOM-killed at 32 (exit 137) ·
+  `1622134` pooled count DRF · `1622242` historic count + `1622305` its K-fold · `1622132` seed2 floor table.
+  *S1c:* `1622718` regeneration + byte-identity gate · `1622724` after / `1622727` before re-measurement ·
+  `1622741` suite.
+- **The committed Hainich demo artifacts are on ONE feature basis (S1c DONE, ADR 0032 closed → ADR 0034).**
+  The `.rcop` + meta and both `hainich_slow_oracle_*.csv` regenerated **byte-identical**; only the count `.drf`
+  + `_meta.txt` moved. The `.rcop`'s conditioning row is now inside the `.drf`'s trained band on **8/8** shared
+  columns (0 violations), boundary tails equal. Suite **107 065 pass / 0 fail / 4 broken** (job 1622741).
+
+  | Hainich gate quantity | assertion | proxy-basis `.drf` | **real-basis `.drf`** |
+  |---|---|---|---|
+  | Gate-3 Height `nqrmse` | ≤ 0.45 → **0.40** | 0.3895 | **0.2998** |
+  | median Height ratio | 0.6 … 1.6 | 1.2463 | **1.1316** |
+  | settled count ratio | 0.25 … 4.0 | 0.6734 | **1.2808** |
+  | `target_history` band | 0.5…40 → meta `y`-band | 6.62 … 9.72 | 12.28 … 13.64 |
+  | DIRECT draws SLA / Wooddens | ≤ 0.22 / ≤ 0.12 | 0.1274 / 0.0346 | **unchanged** (`.rcop` identical) |
+  | coupled community SLA / Wooddens | ≤ 0.45 | 0.2558 / 0.2203 | 0.2634 / 0.2203 |
+
+  Mechanism, one cause for all three headline moves: in-domain `bm_inc_cell`/`growth_eff` raise the settled
+  count 6.8 → 12.9 stems/patch, and more stems on the same carbon are smaller trees ⇒ Height moves *down*
+  toward the C truth. Re-measure with `scripts/measure_hainich_gate_bands_probe.jl` (`DRF_ART=` for a BEFORE
+  column; it reproduced the documented 0.39/1.25/0.67 exactly, which is what validated the harness).
+- **⚠ The demo emulator is NOT runtime-consistent — 11 of 15 columns only (ADR 0034). Do not cite the table
+  above as evidence of a clean conditioning basis.** With the runtime rows now recorded
+  (`FluxDrivenSlowEmulator.feature_history`, diagnostic-only) and the trained band now in the meta
+  (`feat_min`/`feat_max`), 4 of 15 columns sit outside the band the forest was trained on, identically in all
+  three coupled harnesses:
+
+  | column | runtime | trained band | excursion | cause / owner |
+  |---|---|---|---|---|
+  | `water_stress` | 0.323 … 0.331 | [0, 0.0432] | **6.6× band width** | F_diff vs the C — **line M** |
+  | `soilmoist` | 0.792 … 0.999 | [0.8416, 0.8674] | **5.1×** | TEMPORAL aggregation — S1d |
+  | `lai` | 3.63 … 5.17 | [2.758, 3.369] | **2.9×** | SPATIAL aggregation — S1d |
+  | `fpc` | … 0.784 | [0.155, 0.741] | 0.03× | SPATIAL (marginal) — S1d |
+
+  The set is **pinned** by `slow_production_drf_tests.jl` at a 0.5-band-width cut, so a NEW column drifting out
+  reds CI while the known three are named debt. **Why the old gate never saw this is a proof, not a caveat:** a
+  DRF prediction is a convex combination of training leaf means, so "predicted targets are inside the training
+  band" can never fail — it is artifact integrity, not conditioning. Check the INPUT side.
 
 ### Population widening — measured effect (historic copula table, seed2, `[VERIFIED]` job 1622132)
 
@@ -224,14 +228,25 @@ copula + 0030 re-measurement will show.
   Blocks S2. Side outcomes: the `lai==0` seed asymmetry is diagnosed (cross-seed feature join), all seven PFTs'
   mortality params are `[VERIFIED]` (ids 1/2/4/5 were also wrong, not just the two new ones), and the byte-identity
   gate exists as `scripts/verify_hainich_demo_artifacts.sh` + `scripts/diagnose_slow_table_drift.py`.
-- **S1c** **Regenerate the committed Hainich demo `.drf` + `.rcop` onto ONE feature basis (ADR 0032).** The
-  committed `.drf` is on the RETIRED PROXY features (`soilmoist` 0.7, `lai` 21.2, `growth_eff` 19) while the
-  `.rcop` beside it is on the REAL ones (0.85, 3.07, ~151) — one emulator, two conditioning bases, a live
-  ADR-0023 shift masked by the DRF's OOD leaf-clamping. **Proven independent of S1b** (control build agrees to
-  max|abs diff| = 0 on all 15 columns). Regenerate BOTH from one table build; **re-measure** the
-  `slow_production_drf_tests.jl` + `slow_oracle_tests.jl` drift thresholds and document the move
-  (`residual-diagnosis`) — never widen them silently. **Integration point with M**; do NOT fold into another
-  milestone (that is exactly what ADR 0031 §3 forbids).
+- **S1c** **Regenerate the committed Hainich demo `.drf` + `.rcop` onto ONE feature basis (ADR 0032).**
+  **DONE 2026-07-28 (→ ADR 0034).** Both rebuilt from one table build; the `.rcop` + meta and both oracle CSVs
+  came back byte-identical, only the count `.drf` moved. Basis agreement **8/8 shared columns, 0 violations**.
+  Every drift threshold improved and the Gate-3 alarm was **tightened** 0.45 → 0.40 (numbers in §Status). Side
+  outcome that became S1d: regenerating the artifact does NOT close the runtime↔training shift — 4 of 15
+  columns are still out of band, from three causes, one of which is line M's.
+- **S1d** **Put `soilmoist` and `lai`/`fpc` on ONE aggregation basis, runtime and training (ADR 0034 §4).**
+  Needs an ADR + an integration point with M (a conditioning change is a both-sides change, ADR 0023).
+  Two independent choices, each of which must pick a side and then hold it in train AND inference:
+  - **`soilmoist` — TEMPORAL.** Training = the C `swc` mean over 365 days × 23 layers; runtime =
+    `sum(state.w)/length(state.w)` at the instant `reconcile_demography!` runs (year end). Either train on
+    year-end `swc` (cheap: re-reduce in `build_swc_soilmoist_feature.py`) or accumulate an annual mean in the
+    runtime (the `ClimBuf` pattern of ADR 0027 is the template). Measured excursion **5.1× band width**.
+  - **`lai`/`fpc` — SPATIAL.** Training joins the C's patch-ensemble **cell-mean** `LAI_STAND`; the runtime
+    forms a **single-patch** stand LAI. This is the open Phase-5 per-patch-vs-per-cell decision the
+    `slow-drf-pipeline` skill flagged, now quantified at ~1.4× (`lai` **2.9×** band width, `fpc` 0.03×).
+  *Gate:* `scripts/measure_hainich_gate_bands_probe.jl` reports these columns IN band, the pinned out-of-band
+  set in `slow_production_drf_tests.jl` shrinks accordingly (never widen it), and the Gate-3 numbers are
+  re-measured with a before/after table. **Do it BEFORE S2** — see the S2 warning below.
 - **S2** **Close the trait headroom.** Expand the copula conditioning — `COPULA_COND_COLS` in
   `scripts/build_slow_runtime_table.py` **and** `live_flux_cond` in `src/components/slow.jl` **in lockstep** —
   with environment / PFT-composition covariates; global K-fold re-fit (`run_pooled_slow_copula.sh`); measure
@@ -245,6 +260,9 @@ copula + 0030 re-measurement will show.
   `r_center`. So **re-baseline the S2 gate against the `tree7` numbers before starting**, or S2 will take credit
   for the population fix. The honest remaining target is the last ~20 % of the Wooddens GAP; minwscal (+0.039)
   and D95max/SLA (+0.098/+0.101, both `r_center` ≈ 0.89) have little left to win.
+  **⚠ AND S1d comes first (ADR 0034 §5):** three of the columns S2 would condition on are still on the wrong
+  aggregation basis, so an S2 run started now would again be crediting a basis fix — the same trap ADR 0033
+  recorded when S1b silently delivered 30 % of this gate.
 - **S3** Per-PFT / mixture copula. **DE-PRIORITIZED back to a fallback (ADR 0033 — reverses ADR 0031).** The
   argument for promoting it was that the copula predicted only 0.55 of the true between-cell Wooddens spread and
   had no composition covariate. On the complete population that dispersion ratio is **0.718** and `r_center`
