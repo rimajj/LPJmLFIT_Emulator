@@ -107,6 +107,18 @@ is the offline S.
   PFT type 3). **Index `28008` in the global grid is Sonoran desert** — it is Hainich only in the repo
   `-DSINGLESITE` grid. Single-cell daily re-run: `STARTGRID=ENDGRID=42490`. Byte-verified against grid.nc.
 
+### Per-cell soil + rooting inputs (cross-cutting; ADR 0050, skill `provision-coupled-cell`)
+- [VERIFIED] **Soil layer thicknesses are a C GLOBAL, not per-cell** (`fscansoilpar.c:36-39` ← `par/soil_20m.js`
+  = `200,300,500,1000×19,3000` mm). The per-cell Pelletier `soildepth` input is read and then **discarded** —
+  `newgrid.c:282` sets `grid[i].soildepth=20` unconditionally. Plant-available mm = `whc_nat[l] × soildepth[l]`
+  (the C's own `whcs`, `soil.h:222`), where `whc_nat` is the patch-ensemble-mean **fraction**
+  (`soilpar_output.c:42`) — read it, don't port the pedotransfer. It is **monthly, time-varying** (soil-carbon
+  driven) and **`-DPERMUTE`-nondeterministic between runs** (1.6e-4 relative in layer 0, global vs single-cell).
+- [VERIFIED] **`beta_root` / `D95max` / `D95` are three different `ind` columns, all in cm.** `beta_root` is the
+  C's real root-profile parameter (`new_tree.c:230` → `getrootdist.c`); `D95max` the sampled trait; emitted
+  `D95` the rootdepth-limited realized depth, recoverable as `R_cm = ln(1−(1−β^D95)/0.95)/ln β`. Tree test is
+  **`D95max > 0`**, never a `Type` number (ids differ by biome: Hainich {1,2,3,4,5,8}, Sahel/Amazon {0,7}).
+
 ### F_diff (fast core) — what's validated vs the C oracle (Hainich)
 - [VERIFIED] Gradient gate: Enzyme reverse **and** ForwardDiff match FiniteDifferences to ~1e-11 for
   d(annual NPP)/dx through the full 365-day rollout incl. the λ ci:ca Newton solve; water closes ~1e-12.

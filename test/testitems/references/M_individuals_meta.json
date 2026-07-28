@@ -1,0 +1,130 @@
+{
+  "year": 2010,
+  "ind_parquet": "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet",
+  "peak_days": 30,
+  "cells": [
+    {
+      "name": "boreal_siberia",
+      "cell": 52059,
+      "lat": 61.75,
+      "lon": 104.75,
+      "npatch": 25,
+      "n_ind": 301,
+      "n_trees": 276,
+      "n_grass": 25,
+      "fapar_recon": 0.9563497928399461,
+      "fapar_C_peak": 0.5954096933205922,
+      "tree_fpar": 0.46084739606239444,
+      "grass_fpar": 0.4955023967775517,
+      "fapar_ratio": 1.6062046076314203,
+      "fapar_C_gs150_240": 0.5256984233856201,
+      "fapar_C_annmax": 0.6170626282691956,
+      "c_run": "daily_2000_2019_M_biome_val_c52059_seed1",
+      "file": "M_individuals_boreal_siberia_2010.csv",
+      "pft_type_counts": {
+        "4": 2,
+        "5": 47,
+        "6": 227,
+        "9": 25
+      }
+    },
+    {
+      "name": "temperate_hainich",
+      "cell": 42490,
+      "lat": 51.25,
+      "lon": 10.25,
+      "npatch": 25,
+      "n_ind": 297,
+      "n_trees": 272,
+      "n_grass": 25,
+      "fapar_recon": 0.8339690350379927,
+      "fapar_C_peak": 0.5199780424435934,
+      "tree_fpar": 0.7514519503921846,
+      "grass_fpar": 0.08251708464580809,
+      "fapar_ratio": 1.6038543303075354,
+      "fapar_C_gs150_240": 0.4886037625454284,
+      "fapar_C_annmax": 0.5365374684333801,
+      "c_run": "daily_2000_2019_fdiff_val_c42490_seed1",
+      "file": "M_individuals_temperate_hainich_2010.csv",
+      "pft_type_counts": {
+        "1": 3,
+        "2": 4,
+        "3": 259,
+        "4": 4,
+        "5": 2,
+        "8": 25
+      }
+    },
+    {
+      "name": "mediterranean_iberia",
+      "cell": 33335,
+      "lat": 39.75,
+      "lon": -4.25,
+      "npatch": 25,
+      "n_ind": 239,
+      "n_trees": 214,
+      "n_grass": 25,
+      "fapar_recon": 0.9654365172830661,
+      "fapar_C_peak": 0.726968510945638,
+      "tree_fpar": 0.5649094375220493,
+      "grass_fpar": 0.40052707976101687,
+      "fapar_ratio": 1.3280307231288875,
+      "fapar_C_gs150_240": 0.3987956287769171,
+      "fapar_C_annmax": 0.7593753933906555,
+      "c_run": "daily_2000_2019_M_biome_val_c33335_seed1",
+      "file": "M_individuals_mediterranean_iberia_2010.csv",
+      "pft_type_counts": {
+        "1": 96,
+        "2": 116,
+        "3": 2,
+        "8": 25
+      }
+    },
+    {
+      "name": "semiarid_sahel",
+      "cell": 18371,
+      "lat": 13.75,
+      "lon": 4.75,
+      "npatch": 25,
+      "n_ind": 307,
+      "n_trees": 282,
+      "n_grass": 25,
+      "fapar_recon": 0.7130300302324675,
+      "fapar_C_peak": 0.4358270684878031,
+      "tree_fpar": 0.31437403025910376,
+      "grass_fpar": 0.3986559999733637,
+      "fapar_ratio": 1.6360388828222174,
+      "fapar_C_gs150_240": 0.3013424831493707,
+      "fapar_C_annmax": 0.46476811170578003,
+      "c_run": "daily_2000_2019_M_biome_val_c18371_seed1",
+      "file": "M_individuals_semiarid_sahel_2010.csv",
+      "pft_type_counts": {
+        "0": 282,
+        "7": 25
+      }
+    },
+    {
+      "name": "tropical_amazon",
+      "cell": 12045,
+      "lat": -3.25,
+      "lon": -60.25,
+      "npatch": 25,
+      "n_ind": 147,
+      "n_trees": 122,
+      "n_grass": 25,
+      "fapar_recon": 0.8166295497866275,
+      "fapar_C_peak": 0.6395817557970683,
+      "tree_fpar": 0.8165242613031214,
+      "grass_fpar": 0.0001052884835061052,
+      "fapar_ratio": 1.2768180805422071,
+      "fapar_C_gs150_240": 0.6395811032462906,
+      "fapar_C_annmax": 0.6395831108093262,
+      "c_run": "daily_2000_2019_M_biome_val_c12045_seed1",
+      "file": "M_individuals_tropical_amazon_2010.csv",
+      "pft_type_counts": {
+        "0": 122,
+        "7": 25
+      }
+    }
+  ]
+}

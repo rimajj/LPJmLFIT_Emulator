@@ -1,0 +1,31 @@
+# temperate_hainich (global orderA cell 42490) soil column for the multi-cell coupled S+F+E driver.
+# 23 layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).
+# whcs_mm = whc_nat (patch-mean fraction, mean of 240 monthly steps) x soildepth, from
+#   /p/tmp/jamirp/esm_land_daily/daily_2000_2019_fdiff_val_c42490_seed1/output
+# rootdist = fpc-weighted mean of 272 living trees' own getrootdist.c profiles (mean beta_root 0.974605, median rooted depth 185 cm); effective D95 = 178.2 cm,
+#   87.8% of roots in the top 1 m (2010 canopy).
+# top-1m plant-available = 177.2791 mm; total = 4010.7625 mm. scripts/extract_cell_soilcolumn.py
+# layer soildepth_mm whcs_mm rootdist
+0 200.0 37.0815 0.418265
+1 300.0 52.6782 0.285042
+2 500.0 87.5194 0.175001
+3 1000.0 174.6342 0.091678
+4 1000.0 174.6503 0.021027
+5 1000.0 174.2096 0.006064
+6 1000.0 174.2096 0.002025
+7 1000.0 174.2096 0.000559
+8 1000.0 174.2096 0.000204
+9 1000.0 174.2096 0.000081
+10 1000.0 174.2096 0.000033
+11 1000.0 174.2096 0.000012
+12 1000.0 174.2096 0.000005
+13 1000.0 174.2096 0.000002
+14 1000.0 174.2096 0.000001
+15 1000.0 174.2096 0.000000
+16 1000.0 174.2096 0.000000
+17 1000.0 174.2096 0.000000
+18 1000.0 174.2096 0.000000
+19 1000.0 174.2096 0.000000
+20 1000.0 174.2096 0.000000
+21 1000.0 174.2096 0.000000
+22 3000.0 522.6361 0.000000

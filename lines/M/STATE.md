@@ -6,27 +6,35 @@
 
 ## NEXT — start here
 
-**M1 — per-cell input provisioning (the actual blocker; everything else in this line waits on it).**
-The coupled driver is already N-cell-agnostic — `run_coupled_cell(core, clo, state, forcings; …)` takes a
-per-cell `FDiffFastCore` + latitude. What is missing is per-cell **inputs**: today all five biome cells reuse
-**Hainich's** soil column and **Hainich's** individuals, and the driver runs `slow=nothing`.
+**M1 is DONE (2026-07-28, ADR 0050).** Every biome cell now runs its OWN soil column, canopy, forcing and
+latitude; both extractors are committed and gated (the soil-column extractor reproduces the committed
+`hainich_soilcolumn.txt` **byte-identically**). To add a cell, use the **`provision-coupled-cell`** skill —
+do not re-derive the procedure.
 
-Start with the one piece that has no script at all — a **per-cell soil-column extractor** producing the same
-3-column layout as `test/testitems/references/hainich_soilcolumn.txt`
-(`layer soildepth_mm whcs_mm rootdist`):
-- `whcs_mm` = per-layer plant-available capacity = `whc_nat`(fraction) × `soildepth`(mm).
-  **GOOD NEWS — the global field already exists on disk** (verified 2026-07-28):
-  `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output/whc_nat.nc` (4.5 GB, the C run's
-  own output for ALL cells). So M1 is an EXTRACTOR-writing job, not a data-generation job — no C re-run needed.
-  Also available per `config/paths.yaml`: `soil_code_test.soil.bin`, `soil_depth_test.clm`.
-  What does *not* exist is any script that reads it: `grep -rl whc_nat scripts/` → no hits.
-- `rootdist` = Jackson-1996 beta profile from D95 — **vegetation-dependent**, so co-derive it per cell.
-*Gate:* re-extracting cell **42490** reproduces the committed `hainich_soilcolumn.txt` to round-off — that is
-the correctness proof before trusting any other cell.
+**M2 — wire the flux-driven Component S into the multi-cell driver.** The next blocker: the driver still runs
+`slow=nothing`, so the coupled evidence for S is offline-only (line S), not coupled.
 
-Then the rest of M1: generalize `scripts/extract_fdiff_individuals*.py` to an arbitrary cell; plumb latitude
-from `grid.nc` (`cell_latlon()` already exists in `scripts/extract_biome_forcing.py`); replace the hard-coded
-`BIOMES` dict with an N-cell list; large fixtures → `/p/tmp` (keep the committed set small).
+1. **Pin a versioned S artifact** (frozen S→M contract — never adopt a re-trained artifact silently, ADR 0023).
+   Candidates on `/p/tmp/jamirp/emulator_global/` (read-only to this line):
+   `drf_forest_global_pooled_w20.drf` + `recruit_copula_global_pooled_w20.rcop` (newest, 2026-07-27, pooled
+   historic+ssp) vs `drf_forest_global_historic.drf` + `recruit_copula_global_historic.rcop`. Read the
+   `*_meta.txt` beside each, confirm the `flux_feature_vector` order it was trained on matches
+   `src/components/slow.jl`'s runtime order, and record the chosen path + its sha **in this file**. A mismatch
+   is an integration point with line S, not a local fix.
+2. **Per-cell S initial state** from `/p/tmp/jamirp/emulator_global/slow_runtime_historic/cell_meta.parquet`
+   (schema `Cell, n_init, age0, eco_diag_gdd_5, tas_cold_month, soil_depth, co2, n_rows`; 44,328 cells; all
+   five biome cells present — Hainich = `n_init 11, age0 43.56`). Fold these columns into
+   `references/M_cells.csv` (extend `scripts/extract_cell_individuals.py` or add a sibling) so the driver reads
+   one table. **`age_mean` is a runtime elapsed-year counter, not mean `Age`** — the train/inference-shift trap.
+3. **Per-cell `ClimBuf`** through the `climbuf=` kwarg `src/run.jl` already owns.
+4. *Gate:* carbon ≤1e-6·C_scale **and** energy ≤1e-6 W/m² in **every** cell, deterministic under seed, and
+   **`slow=nothing` still byte-identical** (guardrail 4). Add it as a third test item in
+   `test/testitems/biome_coupled_tests.jl` beside the two that are there now.
+
+**Cheap win available while doing M2:** the four new single-cell C runs
+`/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` also carry
+`a_lai_stand` / `a_fpc_stand` / `d_gpp` / `d_transp` / `d_swc` / `d_fapar` — i.e. a **per-cell F_diff-vs-C
+oracle for four new biomes**, the raw material for M3's per-cell validation with no new HPC run.
 
 ## Scope + ownership (ADR 0029)
 
@@ -75,20 +83,30 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   ~1e-12 gC, energy closes to ~1e-14 W/m², and the opt-in `climbuf=` refreshes S's transient boundary.
 - `test/testitems/biome_coupled_tests.jl` drives **5 biome cells** (boreal/temperate/mediterranean/semi-arid/
   tropical) with real GSWP3-W5E5 forcing — energy closes in every climate and the Bowen ordering is
-  climate-correct — but with **`slow=nothing`** and a **common Hainich canopy + Hainich soil**, deliberately,
-  to isolate the climate effect.
-- So: **F+E generalize across biomes; the coupled S does not run multi-cell yet.** The global evidence for S
-  is offline (line S), not coupled.
+  climate-correct — and since **M1 (ADR 0050)** each cell runs its **own soil column + own canopy + own
+  latitude** (`references/M_soilcolumn_<name>.txt`, `M_individuals_<name>_2010.csv`, `M_cells.csv`), no longer a
+  common Hainich patch. Still **`slow=nothing`**.
+- **M1 evidence:** soil-column extractor gate = byte-identical reproduction of the committed
+  `hainich_soilcolumn.txt` (`max|Δwhcs| 3.7e-5 mm`); emergent top-1 m root fraction 99.3 % (Sahel) → 53.2 %
+  (Amazon), effective D95 72 → 690 cm; vegetation+soil effect vs the legacy common canopy = **+10.8 W/m² LE**
+  (Amazon), **−7.6** (Sahel), mediterranean Bowen **1.27 → 0.65**; energy still closes ≤2.8e-14 W/m² everywhere.
+  Suite 106,987 pass / 0 fail / 4 broken.
+- **New oracle data this line owns (read-only to others):**
+  `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` — single-cell
+  daily re-runs of the four non-Hainich biome cells with `d_fapar` + `a_lai_stand` + `a_fpc_stand` +
+  per-cell `whc_nat`. Water-closure checked (multi-year fractional imbalance ≤3.5 %).
+- So: **F+E generalize across biomes with per-cell vegetation; the coupled S does not run multi-cell yet.** The
+  global evidence for S is offline (line S), not coupled.
 - Resilience battery is scaffold only: 3 `@test_skip false` in `resilience_battery_tests.jl` + 1 in
   `rollout_stability_tests.jl` (the `lag1_autocorr` estimator itself is real and tested).
 
 ## Milestones
 
-- **M1** Per-cell input provisioning. *(NEXT, above)*
+- **M1** Per-cell input provisioning. **DONE 2026-07-28** (ADR 0050; skill `provision-coupled-cell`).
 - **M2** **Wire the flux-driven S into the multi-cell driver**: the global pooled `.drf`/`.rcop` (pinned
   version), a per-cell `ClimBuf`, and per-cell `n_init`/`age0`/boundary from `cell_meta.parquet`.
   *Gate:* carbon ≤1e-6·C_scale **and** energy ≤1e-6 W/m² in **every** cell, deterministic under seed,
-  `slow=nothing` still byte-identical.
+  `slow=nothing` still byte-identical. *(NEXT, above)*
 - **M3** **Coupled multi-cell validation vs the C truth** — per-cell demography + trait distributions against
   the annual `ind` parquet, scored against the seed1-vs-seed2 noise floor (reuse
   `scripts/noise_floor_vs_emulator.py`, line S's script — read-only). **This is the P3 gate.** Report per-cell
@@ -115,3 +133,12 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   byte-identical).
 - The 5-biome test uses a bounded negative-LE tolerance (`@test all(≥(-2.0), out.le)`) for the smooth-min
   undershoot in the fully-depleted Sahel corner — keep that reasoning if you touch the assertions.
+- **Per-cell inputs come from the cell's OWN single-cell C run, not the global one** (ADR 0050): `whc_nat`
+  differs between the 512-task global run and a single-cell re-run by up to 1.6e-4 relative in layer 0 under
+  `-DPERMUTE`, which is 40× the fixture print resolution. `WHC_SRC=percell` is the default for that reason.
+- **A `rootdist` that does not sum to 1 is silently physical**, not an error: F_diff's water supply scales
+  linearly with `sum(rootdist)` (`src/fdiff.jl:846,928`) and `stand_structure_tof`'s D95 loop
+  (`src/run.jl:65`) never terminates below 0.95. `hainich_soilcolumn` validates none of this — the extractor
+  and `biome_coupled_tests.jl` do.
+- **Never hard-code the repo root in a script** — it writes into the integrator worktree from here
+  (CLAUDE.md §9 item 6). Derive it from `__file__` / `@__FILE__`.

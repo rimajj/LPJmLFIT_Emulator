@@ -25,8 +25,10 @@ import xarray as xr
 GLOBAL = "/p/projects/waldspektrum/priesner/clustering/global"
 GRID = "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output/grid.nc"
 CO2_FILE = "/p/projects/lpjml/inputs/co2/global/TRENDY/v12/global_co2_ann_1700_2022.txt"
-REPO = "/p/projects/open/Jamir/esm_land_emulator"
-REF_OUT = os.path.join(REPO, "test/testitems/references")
+# derive the repo root from THIS file — a hard-coded absolute path would write into
+# the integrator worktree when this script is run from a per-line `git worktree`.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REF_OUT = os.environ.get("OUT", os.path.join(REPO, "test/testitems/references"))
 
 HDR, CLM_FIRSTYEAR, NBANDS, NCELL, NDAYYEAR = 51, 1901, 365, 67420, 365
 YEARS = list(range(2010, 2020))          # committed decade (small)
@@ -37,7 +39,11 @@ CLM = {
     "huss": "humid_test.clm",
 }
 
-# biome-representative cells (index resolved from grid.nc; see the docstring). Ordered cold->hot.
+# ── THE canonical N-cell registry for the multi-cell coupled driver ──────────────
+# (index resolved from grid.nc `cellid`; see the docstring). Ordered cold->hot.
+# `scripts/extract_cell_{soilcolumn,individuals}.py` import this list rather than
+# each carrying its own copy — add a cell HERE and every per-cell extractor picks
+# it up. Override per invocation with CELLS="name:idx,name:idx".
 BIOMES = {
     "boreal_siberia": 52059,        # ~61.75 N, 104.75 E  — boreal needleleaf, strong seasonality
     "temperate_hainich": 42490,     # ~51.25 N,  10.25 E  — temperate beech (the prototype)
@@ -45,6 +51,21 @@ BIOMES = {
     "semiarid_sahel": 18371,        # ~13.75 N,   4.75 E  — semi-arid savanna
     "tropical_amazon": 12045,       # ~-3.25 N, -60.25 E  — tropical rainforest
 }
+
+
+def cells_from_env(default=None):
+    """-> [(name, cell)] from `CELLS="name:idx,..."`, else the `BIOMES` registry."""
+    spec = os.environ.get("CELLS", "").strip()
+    if not spec:
+        return list((default or BIOMES).items())
+    out = []
+    for tok in spec.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        name, _, cell = tok.partition(":")
+        out.append((name.strip(), int(cell)))
+    return out
 
 
 def read_clm_year(path, cell, year):
@@ -93,7 +114,7 @@ def cell_latlon(cell):
 
 def main():
     co2 = read_co2(CO2_FILE)
-    for name, cell in BIOMES.items():
+    for name, cell in cells_from_env():
         lat, lon = cell_latlon(cell)
         dl = np.array([daylength_petpar2(lat, day) for day in range(1, NDAYYEAR + 1)])
         cols = {k: [] for k in ("year", "doy", "temp", "swdown", "lwnet", "precip", "huss", "daylength", "co2")}
