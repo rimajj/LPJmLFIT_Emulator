@@ -434,5 +434,8 @@ next session. A session that ends without refreshing it has silently broken the 
   `logs/<tag>.<jobid>.out` stay attributable. Each worktree has its own (gitignored) `logs/`.
 - **Write only to `/p/tmp` paths your line created**; another line's artifacts are **read-only**. Never
   overwrite a shared artifact in place — version it.
-- Stagger heavy submissions: four lines share one account, the queue, and the `~/.julia` depot (Julia locks
-  handle depot concurrency, but simultaneous first-time precompiles are wasteful).
+- Stagger heavy submissions as a courtesy, not a requirement: four lines share one account, the queue, and the
+  `~/.julia` depot. `[VERIFIED 2026-07-28]` two full CI-faithful suites from different worktrees ran
+  **simultaneously on the SAME node** sharing one depot and both came out clean (106918 pass / 0 fail, zero
+  `Network is unreachable` / `can not merge projects` markers) — Julia's depot locking holds. The real cost of
+  piling on is queue time and duplicated first-time precompiles, not corruption.

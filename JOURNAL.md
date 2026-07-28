@@ -916,3 +916,18 @@ Entry template:
 - **Next (owner):** launch a session per line — `cd /p/projects/open/Jamir/wt-<X> && claude` — and the hook
   will state the line and its NEXT action. Each line's first milestone: S1 basis-clean noise floor · M1
   per-cell soil-column extractor · E1 source PLUMBER2/FLUXNET · O1 the P5 licensing ADR.
+
+## 2026-07-28 — ACCEPTANCE 3 closed: concurrent suites from two worktrees both green  [integration]
+- **Re-ran the concurrency check properly** after the depot-warm fix (d34c086f), rather than inferring it from
+  the single-suite pass. Submitted from two different worktrees simultaneously: `wt-S` job 1612932 (tag
+  `S-conc`) and `wt-M` job 1612935 (tag `M-conc`).
+- **Both green, identically:** `106918 pass / 4 broken / 0 fail`, `exit=0`, ~5m40s each.
+- **Harsher than the design assumed, and still clean:** SLURM placed BOTH on the **same node**
+  (`csl14c179`, starts 10:21:16 and 10:21:50), so they overlapped for >5 minutes while sharing the one
+  `~/.julia` depot — the worst case for depot contention. Contention/network markers
+  (`Network is unreachable` / `failed to clone` / `can not merge projects`) in both logs: **0**.
+  ⇒ Julia's depot locking holds under co-located concurrent suites, and CLAUDE.md §9's "stagger heavy
+  submissions" is prudence, not a requirement. Separate worktrees genuinely give separate
+  `test/Manifest.toml` and separate `logs/`.
+- **All four Phase-0 acceptance criteria now PASS** (1 hook self-identification · 2 branch-CI targeting ·
+  3 concurrent suites · 4 conflict-free two-line merge). The scaffolding is live and exercised.
