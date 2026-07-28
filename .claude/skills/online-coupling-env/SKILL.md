@@ -1,6 +1,6 @@
 ---
 name: online-coupling-env
-description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the five traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", and Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion. Use whenever running, debugging or extending the online coupled model, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
+description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the six traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, and its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere). Use whenever running, debugging or extending the online coupled model, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
 ---
 
 # online-coupling-env — SpeedyWeather + Terrarium on this cluster
@@ -14,7 +14,7 @@ cd /p/tmp/jamirp/esm_online_coupling
 ./sbatch_coupling.sh <O-tag> <script.jl>      # -> logs/<tag>.<jobid>.out on shared /p
 ```
 
-## The five traps (each one cost a failed job)
+## The six traps (each one cost a failed job)
 
 1. **Julia 1.10.0 CANNOT build this stack — use `/p/system/packages_rhel9/tools/julia/1.10.10/bin/julia`.**
    On 1.10.0, Pkg's extension resolution dies with `KeyError: key "KernelAbstractions" not found`
@@ -43,6 +43,18 @@ cd /p/tmp/jamirp/esm_online_coupling
    reconstruct vegetation-side quantities post-hoc from the soil state using Terrarium's own property
    functions (`scripts/online_coupling/diagnose_soilmoist_shift.jl` does exactly this for
    plant-available water).
+
+6. **⚠️ THE WORST ONE — Terrarium's DEFAULT SOIL silently deletes water stress.** `ConstantSoilHorizon`
+   defaults to `texture = SoilTexture(NF)` = **`sand=1.0, clay=0.0`**, and `SoilHydraulicsSURFEX` computes
+   `wilting_point = 37.13e-3*sqrt(clay*100)` and `field_capacity = 89.0e-3*(clay*100)^0.35` — **both exactly
+   ZERO when `clay = 0`**. So
+   `plant_available_water = max(min(1, (θw−θwp)/(θfc−θwp)), 0) ≡ 1.0` wherever θw > 0.
+   **It does not error — it reports "fully unstressed everywhere",** deleting the drought response while
+   looking entirely plausible, and it silently feeds Terrarium's own `soil_moisture_limiting_factor` →
+   photosynthesis chain. `[VERIFIED 2026-07-28, job 1622830.]`
+   **Fix: prescribe a real clay fraction + porosity** via `PrescribedSoilHorizon` (`TerrariumRastersExt` reads
+   raster maps), and **add a guard rejecting any soil config with `field_capacity <= wilting_point`** so this
+   class of degeneracy fails loudly. **No online run with default soil may be used to judge vegetation.**
 
 ## The coupling architecture (verified from source, not docs)
 
