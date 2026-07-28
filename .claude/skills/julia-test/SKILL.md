@@ -79,6 +79,14 @@ Ignore benign `curl_easy_setopt: 48` spew.
   regressed the Enzyme-reverse canopy path (`LLVM error: Canonicalization failed`). If `test (lts)` goes
   red with the test tree unchanged, suspect a dep bump — diff `Enzyme vX.Y.Z` in last-green vs first-red
   CI job logs.
+- **JET is pinned `"0.9, 0.11"`** in `test/Project.toml` (added 2026-07-28). **JET 0.12 REMOVED the
+  `target_defined_modules` option** that `test/jet_tests.jl` passes ⇒
+  `JETConfigError: Given unexpected configuration: target_defined_modules = true`. It surfaces **only on
+  `test (1)`** (Julia 1.12 resolves JET 0.11+) while `test (lts)` (Julia 1.10, JET 0.9.x) stays green — the
+  giveaway is a summary like *"106848 passed, 0 failed, 1 errored"* where the lone error is the JET config.
+  Lift by migrating the call to JET 0.12's replacement API, then widening the bound. **JET had no `[compat]`
+  entry at all before this** — that absence was the root cause, so when a gate dep goes red, check whether
+  it is pinned before anything else.
 - **Julia 1.10 vs 1.11:** Enzyme-reverse canopy is verified only on 1.10; canopy gate parts are guarded
   `VERSION < v"1.11"`. Don't "fix" a 1.11 canopy failure by removing the guard.
 - **`*_test(s).jl` naming trap:** ReTestItems scans the whole repo for `*_test.jl`/`*_tests.jl` and fails

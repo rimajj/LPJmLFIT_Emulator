@@ -72,3 +72,69 @@
   `docs/make.jl`'s stale PRIVATE comment + now-possibly-unneeded `linkcheck_ignore` (integrator — the `docs`
   gate doesn't run on line branches, so a line can't verify a change to it).
 - **Next:** O2 — write `docs/p4_online_coupling_design.md` against the real cloned Terrarium API.
+
+## 2026-07-28 — owner closes licensing; reuse authorized (ADR 0081)  [milestone O1 closed]
+- **Goal:** act on the owner's direct instruction — *"use these models and stop talking about licences; just
+  make sure it's transparently cited wherever these models are used"*.
+- **The fact that settles it:** the owner is a member of **both** the LPJmL-FIT group **and TUM-PIK-ESM**
+  (which hosts SpeedyWeather.jl / Terrarium.jl / LPJmL-hybrid-photosynthesis). That was missing from ADR 0080
+  and from every earlier analysis, and it makes the licence question moot in practice.
+- **Did:** wrote **ADR 0081** (short, deliberately final) and then stripped licensing prominence everywhere a
+  new session actually reads, so this cannot recur:
+  - `CLAUDE.md` §7 and `MEMORY.md` §4: the long licensing blocks → "CLOSED, do not reopen; cite instead".
+    Dropped the `LICENSE` owner-action TODO. `MEMORY.md` P5 row → DONE + CLOSED, no residual.
+  - `lines/O/STATE.md` `## NEXT` → opens with "licensing is closed, do not spend a minute on it", then goes
+    straight to **O2** (the P4 design doc) → O3 → O4.
+  - `docs/third_party_licensing.md` reframed from a licence gate into the **reuse + citation register**: the
+    four citation surfaces, one row per reused work (what it is / what we take / where it's cited), and
+    vendoring-needs-an-ADR kept on *maintenance* grounds only.
+  - Skill `dependency-license-gate` → **`reuse-citation`** (`git mv`): same useful mechanics (find a Julia
+    package's real upstream from the registry tarball; the SpeedyWeather monorepo), reoriented to citation
+    accuracy; the AGPL decision table is gone.
+  - ADR 0080 `status:` now reads "§4's open owner action CLOSED by ADR 0081 — do not reopen licensing". Its
+    factual register and its depend-don't-vendor hygiene are still worth having, so it is not withdrawn.
+- **Result / evidence:** every entry point a session reads (SessionStart hook → STATE.md NEXT, CLAUDE.md,
+  MEMORY.md) now says "closed, cite, get on with the coupling". Nothing in the repo asks for a licence decision.
+- **Decisions:** **ADR 0081** — reuse of LPJmL-FIT / Terrarium / SpeedyWeather / LPJmL-hybrid-photosynthesis
+  authorized; obligation = transparent citation only; supersedes ADR 0080 §4. NOT reopened: NeuralCrop.jl
+  method-only (CC-BY-NC, different author, outside both groups); runtime `[deps]` empty (ADR 0014 — technical).
+- **Lesson for future sessions:** ask the owner for context before writing 300 lines of analysis. The one fact
+  that decided this — his group memberships — was one question away, and no amount of reading upstream
+  LICENSE files could have produced it.
+- **Next:** O2 — `docs/p4_online_coupling_design.md`, validated against the real cloned Terrarium API.
+
+## 2026-07-28 — the online coupling HARNESS RUNS (P4 unblocked in practice)  [milestone O2 + O3 groundwork]
+- **Goal:** owner's instruction — "the goal is clear: we want to run the emulator online coupled to
+  SpeedyWeather. Make that happen." So: stop writing about it, get the stack running.
+- **Did / result:**
+  - Installed **Terrarium 0.1.3 + SpeedyWeather 0.21.1** into the shared depot alongside our package.
+    Project `/p/tmp/jamirp/esm_online_coupling`, scripts committed to `scripts/online_coupling/`.
+  - `[VERIFIED]` **SpeedyWeather ships `SpeedyWeatherTerrariumExt`** → `SpeedyWeather.LandModel(::SpectralGrid,
+    ::Terrarium.AbstractModel)`. So Terrarium is the SUPPORTED land-model socket and we write no
+    atmosphere↔land plumbing. That is the answer to "what is Terrarium for".
+  - `[VERIFIED]` **The reference coupling RUNS on a compute node** (job 1622172): 6 simulated hours,
+    `vegetation = nothing`, 4608/4608 cells finite, Float32 held, T_skin −16.7…25.0 °C (mean 4.0),
+    T_soil_top mean 4.7 °C, H mean 84.9 / LE mean 10.7 W/m² (bare rocky planet ⇒ high H, low LE is right).
+    `=== REFERENCE COUPLING OK ===`, exit 0. This is now the CONTROL run.
+  - Wrote `docs/p4_online_coupling_design.md` (the O2 deliverable) from verified source, not memory.
+- **Four traps, each one a failed job — all in the new `online-coupling-env` skill:**
+  1. **Julia 1.10.0 CANNOT precompile this stack** — `KeyError: "KernelAbstractions"` on RingGrids/Speedy,
+     `"GPUArraysCore"` on Terrarium. **1.10.10** does all 272 deps in 81 s. A Pkg bug, not a compat bound.
+  2. **`SpeedyWeather.EarthOrography` DOWNLOADS an artifact inside `initialize!`** → compute nodes have no
+     egress → curl `RequestError`. Fix: `warm_assets.jl` on the LOGIN node caches it. The *asset* analogue
+     of the documented Pkg depot warm.
+  3. **Terrarium state is °C, not Kelvin.** My first plausibility assertion demanded 150–350 K and failed a
+     perfectly good run. `celsius_to_kelvin` is applied only at the Thermodynamics boundary.
+  4. **Never `Pkg.status()`** in a setup script here — `KeyError: "Dates"` from `print_status` when the
+     project has a dev'd package with `[weakdeps]`; it aborts before precompile.
+- **The real design finding:** Terrarium steps at **Δt = 300 s** under ForwardEuler; F is **daily**, S is
+  **annual** (288 and 105 120 land steps respectively). Rate processes (photosynthesis) have **no** mismatch;
+  stateful ones need a buffered **piecewise-constant tendency**, which ForwardEuler integrates to exactly the
+  daily total ⇒ daily conservation survives sub-daily integration by construction. That is why the spike is
+  photosynthesis: it gets our physics genuinely online without solving the hard problem first.
+- **NOT done, stated plainly:** no LPJmL-FIT physics is in the coupled loop yet. The harness is verified; the
+  `FDiffPhotosynthesis` spike is fully specified in the design doc §4 (including the daily→instantaneous unit
+  bridge and its honest cost) and is the next session's first task.
+- **Also:** corrected the NeuralCrop stance — CC-BY-NC permits non-commercial use and this is research, so its
+  code IS usable, cited. Owner corrected me; I had over-applied the restriction.
+- **Next:** O3 — implement `FDiffPhotosynthesis` per design §4 and quantify online-vs-offline GPP at Hainich.
