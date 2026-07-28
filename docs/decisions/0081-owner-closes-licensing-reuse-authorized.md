@@ -38,16 +38,23 @@ wherever they are used.**
 4. **`LICENSE` is no longer a blocker or a tracked TODO.** ADR 0080 §4 stands only as a recommendation the
    owner may action whenever he chooses (`AGPL-3.0-or-later`, justified there). Nothing waits on it.
 
-### Two things that are NOT reopened by this, and are not licensing caveats
+### Amendment, same day — NeuralCrop.jl is usable too
 
-- **NeuralCrop.jl stays method-only.** It is CC-BY-NC and belongs to a different author outside these two
-  groups, so the owner's memberships do not cover it. Cite the paper (arXiv:2512.20177); do not copy code.
-  Likewise LPJ_resilience — reimplement its published metrics from Bathiany et al. (2024).
-- **Runtime `[deps]` still stays empty (ADR 0014), so Terrarium/SpeedyWeather still enter as `[weakdeps]` +
-  a package extension.** This survives for a purely **technical** reason that has nothing to do with
-  licences: the HPC compute nodes have no GitHub egress, and the physics core is deliberately
-  dependency-free. Same for ADR 0017 — component E stays self-contained on its zero-deps and v0.1.x-churn
-  drivers.
+This ADR first said NeuralCrop.jl was method-only. **The owner corrected that immediately and he is right:
+CC-BY-NC permits NON-COMMERCIAL use, and this project is research use.** So **NeuralCrop.jl's code may be
+reused** — cite it (arXiv:2512.20177, Yunan Lin). Only a future *commercial* release would need a rethink,
+and that is not on the table. The earlier "no code" reading over-applied a restriction that does not bind
+research work.
+
+**LPJ_resilience** is the one genuine exception, and not for NonCommercial reasons: it carries **no licence at
+all**, so implement its published metrics from Bathiany et al. (2024, GCB 30(12):e17613) rather than copying.
+
+### What is NOT reopened by this
+**Runtime `[deps]` and ADR 0014.** Keeping the physics core dependency-free is a **technical** choice with no
+licensing content: the HPC compute nodes cannot reach GitHub, and a dependency-free core deploys anywhere.
+Whether the online coupling ships as a package extension or as a plain dependency is now purely an
+engineering call for the P4 design (O2) — not a licence-driven one. Same for ADR 0017: component E stays
+self-contained on its zero-deps and v0.1.x-churn drivers.
 
 ### Consequences
 

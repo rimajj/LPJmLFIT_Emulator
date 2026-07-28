@@ -16,3 +16,9 @@
   licence caveats:** NeuralCrop.jl stays method-only (CC-BY-NC, a different author outside both groups) and
   runtime `[deps]` stays empty (ADR 0014 — a *technical* constraint from the GitHub-egress-free compute nodes,
   so Terrarium/SpeedyWeather still enter as `[weakdeps]` + an extension).
+
+- **Amendment, same day — NeuralCrop.jl is usable too.** ADR 0081 first read CC-BY-NC as "no code"; the owner
+  corrected it and is right: **NonCommercial permits non-commercial use, and this project is research use.**
+  So NeuralCrop.jl's code may be reused, cited (arXiv:2512.20177). Only a future commercial release would
+  need a rethink. The one genuine exception is **LPJ_resilience** — and not for NonCommercial reasons: it
+  carries no licence at all, so its published metrics are implemented from the paper.

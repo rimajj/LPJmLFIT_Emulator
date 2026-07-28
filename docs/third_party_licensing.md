@@ -32,7 +32,7 @@ share no expression with it at all, and the wording was the defect.
 | **Terrarium.jl** (NumericalEarth / TUM-PIK-ESM) @ `4f42508`, v0.1.3 | Differentiable land-surface substrate; the **P4 coupling substrate** | Its `Abstract*` process interfaces and the `speedy_{dry,wet}_land.jl` coupling pattern — S/F/E sit *behind* its interfaces | (P4, pending) `ext/` header · `CITATION.cff` · `refs.bib` |
 | **SpeedyWeather.jl** (incl. `RingGrids`, `SpeedyWeatherInternals` — same monorepo) | The atmosphere for the **online** coupled run | `SpectralGrid` / `RingGrids` / `LandModel` wiring; `PrescribedLand{Heat,Humidity}Flux` for H/LE injection | (P4, pending) `ext/` header · `CITATION.cff` · `refs.bib` |
 | **LPJmL-hybrid-photosynthesis** (TUM-PIK-ESM, Philipp Hess) | Differentiable LPJmL photosynthesis | The differentiable λ (ci:ca) root-find pattern and the C3/C4 coupled kernel (ADR 0015) | `src/fdiff.jl` header · `CITATION.cff` · `refs.bib` |
-| **NeuralCrop.jl** (Yunan Lin, arXiv:2512.20177) | Differentiable Julia LPJmL for **crops** | ⚠️ **METHOD ONLY — no code.** CC-BY-NC, a different author outside both groups, so the owner's memberships do not cover it. Cite the paper; implement from it | `src/fdiff.jl`, `ext/FDiffTrainingExt.jl` headers (as prior art) · `CITATION.cff` · `refs.bib` |
+| **NeuralCrop.jl** (Yunan Lin, arXiv:2512.20177) | Differentiable Julia LPJmL for **crops** | **Usable** — CC-BY-NC permits non-commercial use and this project is research use. Reuse its code (PET/ET/respiration formulations, the daily-rollout idiom) and **cite it**. A future *commercial* release would need a rethink; not on the table | `src/fdiff.jl`, `ext/FDiffTrainingExt.jl` headers (as prior art) · `CITATION.cff` · `refs.bib` |
 | **LPJ_resilience** (TUM-PIK-ESM; Bathiany et al. 2024, GCB 30(12):e17613) | Resilience-indicator battery for LPJmL | ⚠️ **Method from the paper** (no licence upstream). The AC-vs-climate / recovery-rate / shuffle-test metrics | (resilience battery, pending — line M) · `refs.bib` |
 | **json-c 0.13.1** | JSON library the C binary links against | A reconstructed `json_object_iterator.h` compat shim (the cluster's 0.13.1 headers are truncated) | `patches/json_object_iterator.h.shim` header (MIT notice reproduced) |
 
@@ -53,9 +53,9 @@ Current vendored artifacts, both fine:
 ## Adding a new reused work
 
 1. If it is from **LPJmL-FIT or TUM-PIK-ESM** → just use it. Add the row here, then the other three surfaces.
-2. If it is from **anywhere else** → check for a NonCommercial / no-derivatives term or a missing licence,
-   because those two cases mean **method-only, no code** (NeuralCrop.jl and LPJ_resilience are the precedents).
-   That is the whole check; nothing more elaborate is wanted.
+2. If it is from **anywhere else** → a **NonCommercial** term is fine (this is research use — NeuralCrop.jl
+   is the precedent: reuse it, cite it). Only a **missing licence** means implement-from-the-paper
+   (LPJ_resilience). That is the whole check; nothing more elaborate is wanted.
 3. Runtime `[deps]` stays **empty** (ADR 0014) — a new package is `[weakdeps]` + an extension, requested from
    the integrator. This is technical (compute nodes have no GitHub egress), not legal.
 4. Finding the real upstream repo of a Julia package is fiddly on this cluster — the `reuse-citation` skill

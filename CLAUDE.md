@@ -320,10 +320,9 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   is TRANSPARENT CITATION** in all four surfaces, kept in agreement — `docs/third_party_licensing.md`
   (the reuse + citation register), `CITATION.cff`, `docs/src/refs.bib` (inline `[key](@cite)`), and the
   header of any source file with derived content — and provenance must be stated *accurately*, neither
-  overstated nor omitted (skill: **`reuse-citation`**). Two things are NOT licensing caveats to
-  relitigate: **NeuralCrop.jl** is method-only (CC-BY-NC, a different author outside both groups) and
-  runtime **`[deps]` stays empty** (ADR 0014 — a *technical* constraint: compute nodes have no GitHub
-  egress ⇒ Terrarium/SpeedyWeather enter as `[weakdeps]` + an extension).
+  overstated nor omitted (skill: **`reuse-citation`**). **NeuralCrop.jl is usable too** — CC-BY-NC permits
+  non-commercial use and this project is research, so reuse its code as needed and cite it; the only thing
+  that would need a rethink is a future *commercial* release, which is not on the table.
 - **Source map** (`src/`): `LPJmLFITEmulator.jl` (module), `state.jl` (`SharedState`), `interface.jl`
   (S↔F↔E I/O structs), `conservation.jl` (softmax/flux-then-integrate/budget residuals),
   `allometry.jl`, `fdiff.jl` (the differentiable daily core + canopy rollout + allocation/growth),

@@ -203,7 +203,7 @@ The subset that constrains *any* line's work — violating one of these silently
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
 (differentiable-λ, MIT, done), NeuralCrop (methodology; **CC-BY-NC — code is a blocker**, method-only or
-get permission), LPJ_resilience (reimplement from the paper). **Reuse of the TUM-PIK-ESM + LPJmL-FIT
+cite it — CC-BY-NC allows the research use we do), LPJ_resilience (reimplement from the paper; no licence). **Reuse of the TUM-PIK-ESM + LPJmL-FIT
 models is AUTHORIZED — ADR 0081; cite, don't analyse.**
 
 **Licensing — CLOSED, do not reopen (ADR 0081, owner decision 2026-07-28).** The owner is a member of
@@ -212,9 +212,8 @@ LPJmL-hybrid-photosynthesis) ⇒ **reuse those models freely; raise no licence q
 upstream licences.** ADR 0080 (the good-faith basis + the verified upstream register) and ADR 0081 (the
 owner's decision) are the complete and final record. **The one standing obligation is TRANSPARENT
 CITATION** across four surfaces kept in agreement: `docs/third_party_licensing.md`, `CITATION.cff`,
-`docs/src/refs.bib`, and source-file headers (skill `reuse-citation`). Still out of scope for reuse and
-*not* licence caveats: **NeuralCrop.jl** = method-only (CC-BY-NC, different author, outside both groups);
-runtime **`[deps]` stays empty** (ADR 0014 — technical: no GitHub egress on compute nodes).
+`docs/src/refs.bib`, and source-file headers (skill `reuse-citation`). **NeuralCrop.jl is usable as well** —
+CC-BY-NC permits non-commercial use and this is research; cite it and move on.
 
 ---
 

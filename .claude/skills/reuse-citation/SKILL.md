@@ -38,12 +38,12 @@ shared expression** — the only overlap was `Zygote.withgradient` → finite-lo
 inside a windowed day loop, i.e. those libraries' public API plus TBPTT itself (Williams & Peng 1990). The code
 was fine; the *wording* was the defect. When in doubt, read both and compare before writing the header.
 
-## Two works that are method-only, no code (facts, not licence caveats to relitigate)
+## NeuralCrop.jl is usable; LPJ_resilience has no licence
 
-- **NeuralCrop.jl** — CC-BY-NC, a different author outside both groups, so the owner's memberships don't cover
-  it. Cite arXiv:2512.20177; implement from the paper.
-- **LPJ_resilience** — no licence upstream. Implement the published metrics (Bathiany et al. 2024, GCB
-  30(12):e17613).
+- **NeuralCrop.jl** — CC-BY-NC **permits non-commercial use, and this project is research use**, so reuse its
+  code freely and **cite it** (arXiv:2512.20177). Only a future commercial release would need a rethink.
+- **LPJ_resilience** — no licence upstream at all, so implement the published metrics from the paper
+  (Bathiany et al. 2024, GCB 30(12):e17613) rather than copying.
 
 ## Finding a Julia package's real upstream (fiddly on this cluster)
 
