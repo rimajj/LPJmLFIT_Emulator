@@ -143,6 +143,31 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
 - **Never hard-code the repo root in a script** — it writes into the integrator worktree from here
   (CLAUDE.md §9 item 6). Derive it from `__file__` / `@__FILE__`.
 
+## M1 review debt — carry into M2 (from the 2026-07-28 adversarial review)
+
+A 4-lens adversarial review of the M1 commits raised 16 candidate findings; the judge/verification phase
+died on a session limit, so treat these as **unverified candidates, not confirmed defects**. The ones that
+survived my own inspection were fixed in `b106cdae`'s follow-up (gate now also unit-checks the
+`getrootdist` port that `beta_mean` uses; `WHC_SRC != percell` aborts unless `ALLOW_UNGATED_WHC=1`; the
+`nstep`/window is asserted; `find_whc_run`'s glob is pinned to the historical window; subset `CELLS=` runs
+MERGE the registry instead of truncating it; the test pins per-cell provenance and the FAPAR band).
+**Still open:**
+
+1. **Test item 2 has no provenance sensitivity.** It is the only test that feeds the per-cell inputs to the
+   model, and it passes VERBATIM when all five cells revert to Hainich's soil + canopy (measured) — its 12
+   assertions are closure + finiteness + qualitative orderings. Item 1's new pins catch a *fixture* swap but
+   not a *driver-level* fallback (e.g. an M2 edit hoisting `soil`/`pools` out of the per-cell loop, or a
+   per-cell S artifact silently resolving to Hainich's). **Fix while doing M2:** pin a per-cell OUTPUT
+   signature — each cell's mean LE / GPP within a band — so the model actually has to have consumed that
+   cell's inputs. Numbers to use are in `lines/M/JOURNAL.md` (job 1617060).
+2. **`GATE=no` leaves no trace in the emitted artifacts.** It now warns on stderr, but the files and
+   `M_soilcolumn_meta.json` are still structurally indistinguishable from gated output. Consider stamping the
+   gate verdict into the header + meta.
+3. **`CLAUDE.md` §9 contradicts itself on `MEMORY.md`**: the "where things are written" table says
+   cross-cutting `[VERIFIED]` facts go to `MEMORY.md` (shared, additive) while the ownership table lists
+   `MEMORY.md` as **integrator only**. This line appended to it (commit `e9da4d0c`) on the former reading.
+   Integrator's call to reconcile — flagging, not fixing, since `CLAUDE.md` §9 is shared.
+
 ## Observed, NOT ours to fix (raise with the owner/integrator)
 
 - `scripts/gen_diagrams.jl --check` reports `docs/src/generated/components.mmd` **STALE** — pre-existing,

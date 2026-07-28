@@ -112,6 +112,39 @@ def c_fapar(cell, year):
     )
 
 
+def merge_rows(path, hdr, rows):
+    """`rows` updated into the existing CSV's rows (keyed by `name`), order preserved:
+    previously-registered cells first, new ones appended. Keeps a subset `CELLS=` run
+    from truncating the shared registry."""
+    if not os.path.exists(path):
+        return rows
+    new = {r["name"]: r for r in rows}
+    out, seen = [], set()
+    for ln in open(path):
+        s = ln.strip()
+        if not s or s.startswith("#") or s.startswith(hdr[0] + ","):
+            continue
+        f = s.split(",")
+        if len(f) != len(hdr):
+            continue
+        name = f[0]
+        seen.add(name)
+        out.append(new.get(name, dict(zip(hdr, f))))
+    return out + [r for r in rows if r["name"] not in seen]
+
+
+def merge_rows_json(path, cells):
+    """Same merge for the meta JSON's `cells` list."""
+    if not os.path.exists(path):
+        return cells
+    try:
+        old = json.load(open(path)).get("cells", [])
+    except (ValueError, OSError):
+        return cells
+    names = {c["name"] for c in cells}
+    return [c for c in old if c.get("name") not in names] + cells
+
+
 def reconstruct(pdf_rows):
     """Per-patch reconstruction + layered light. `pdf_rows` = the living
     individuals of ONE patch as dicts. Returns their records."""
@@ -215,9 +248,14 @@ def main():
                              for t in sorted(cdf["Type"].unique().to_list())},
         ))
 
-    # the per-cell metadata table that replaces every hard-coded cell/lat list
+    # the per-cell metadata table that replaces every hard-coded cell/lat list.
+    # MERGE, never truncate: a subset run (`CELLS="one_cell:123"` — the documented way to
+    # re-extract a single cell) must not reduce the shared registry to one row, since
+    # M_cells.csv is what biome_coupled_tests.jl and run_coupled_biomes.jl enumerate.
     mcells = os.path.join(out_dir, "M_cells.csv")
     hdr = ["name", "cell", "lat", "lon", "npatch", "n_ind", "n_trees", "n_grass", "fapar_recon", "fapar_C_peak"]
+    rows = merge_rows(mcells, hdr, rows)
+    meta = merge_rows_json(os.path.join(out_dir, "M_individuals_meta.json"), meta)
     with open(mcells, "w") as f:
         f.write("# Per-cell metadata for the multi-cell coupled S+F+E driver (line M, M1). Cell = global orderA\n")
         f.write("# 0-based index; lat/lon from the global run's grid.nc `cellid`. Ordered cold->hot.\n")

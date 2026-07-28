@@ -37,11 +37,23 @@
 
     cells = readcsv(joinpath(refdir, "M_cells.csv"))
     names = String.(cells["name"])
-    @test length(names) == 5
-    @test Set(parse.(Int, cells["cell"])) == Set([52059, 42490, 33335, 18371, 12045])
-    # latitudes come from grid.nc `cellid`, not a hand-typed list
-    @test parse(Float64, cells["lat"][findfirst(==("temperate_hainich"), names)]) == 51.25
-    @test parse(Float64, cells["lon"][findfirst(==("temperate_hainich"), names)]) == 10.25
+    @test length(names) ≥ 5
+    # ── name -> (cell, lat, lon) ROW-WISE, not as a set. A set comparison is order-blind,
+    # so a two-value typo in the BIOMES registry regenerates every fixture consistently
+    # MISLABELLED (e.g. `boreal_siberia,18371,13.75`) and still passes. lat/lon come from
+    # grid.nc `cellid`, so pinning them pins the identity of the cell each name refers to.
+    expect = Dict(
+        "boreal_siberia" => (52059, 61.75, 104.75), "temperate_hainich" => (42490, 51.25, 10.25),
+        "mediterranean_iberia" => (33335, 39.75, -4.25), "semiarid_sahel" => (18371, 13.75, 4.75),
+        "tropical_amazon" => (12045, -3.25, -60.25),
+    )
+    for (nm, (cell, lat, lon)) in expect
+        k = findfirst(==(nm), names)
+        @test k !== nothing
+        @test parse(Int, cells["cell"][k]) == cell
+        @test parse(Float64, cells["lat"][k]) == lat
+        @test parse(Float64, cells["lon"][k]) == lon
+    end
 
     # LPJmL-FIT's cell-invariant layering (par/soil_20m.js) — the same for every cell
     soildepth_C = vcat([200.0, 300.0, 500.0], fill(1000.0, 19), [3000.0])
@@ -54,9 +66,12 @@
         @test all(>(0.0), whcs)
         # F_diff's water supply scales LINEARLY with sum(rootdist), and `stand_structure_tof`'s
         # D95 loop never terminates below 0.95 — so the profile must be normalized. The extractor
-        # normalizes exactly; the tolerance is the `%.6f` print rounding of 23 values (≤ 1.15e-5).
+        # normalizes to 1e-9; every committed column's PRINTED sum is within 1e-6, so 2e-6 is the
+        # right bound (the 1.15e-5 worst-case print rounding of 23 values never materializes, and
+        # a looser bound would admit the legacy form's below-column-bottom leak).
         @test all(≥(0.0), rd)
-        @test isapprox(sum(rd), 1.0; atol = 2.0e-5)
+        @test isapprox(sum(rd), 1.0; atol = 2.0e-6)
+        @test rd[end] == 0.0        # layer 22 (20-23 m) never holds roots (getrootdist.c)
         push!(whcs_all, whcs); push!(rd_all, rd)
     end
 
@@ -72,18 +87,51 @@
     @test top1m("semiarid_sahel") > top1m("temperate_hainich")   # semi-arid = shallow-rooted
     @test top1m("temperate_hainich") > top1m("tropical_amazon")  # tropical = deep-rooted
     @test top1m("mediterranean_iberia") < top1m("boreal_siberia")  # summer-dry => deeper roots
+
+    # ── PROVENANCE PINS: which column belongs to which cell ──────────────────────────────
+    # The ordering assertions above are permutation-INSENSITIVE: an adversarial sweep of all
+    # 120 permutations of the five committed columns found 4 that satisfy every ordering
+    # (identity, boreal<->sahel, med<->amazon, and the 4-cycle of both), so a mis-paired
+    # column would ship green. Pin each cell's own plant-available water and rooting depth
+    # to the value its OWN soil produced (`extract_cell_soilcolumn.py`, gate-verified), which
+    # no permutation can satisfy. Tolerances are the `%.4f`/`%.6f` print resolutions.
+    # Sums of the PRINTED columns (not the extractor's unrounded internals), so the
+    # tolerances are the accumulated print rounding: 3 x 5e-5 and 23 x 5e-5 for whcs
+    # (`%.4f`), 3 x 5e-7 for the root fraction (`%.6f`).
+    pins = Dict(   # name => (top-1m whcs mm, total whcs mm, top-1m root fraction)
+        "boreal_siberia" => (167.5311, 3507.0329, 0.885829),
+        "temperate_hainich" => (177.2791, 4010.7629, 0.878308),
+        "mediterranean_iberia" => (155.5565, 3483.9645, 0.614679),
+        "semiarid_sahel" => (117.1036, 2657.4898, 0.992989),
+        "tropical_amazon" => (162.8281, 3492.5362, 0.532435),
+    )
+    for (nm, (top1, tot, rfrac)) in pins
+        k = idx[nm]
+        @test sum(whcs_all[k][1:3]) ≈ top1 atol = 2.0e-4
+        @test sum(whcs_all[k]) ≈ tot atol = 2.0e-3
+        @test sum(rd_all[k][1:3]) ≈ rfrac atol = 2.0e-6
+    end
     # Hainich's plant-available water is unchanged from the committed column it was derived from
     _, whcs_ref, _ = readsoil(joinpath(refdir, "hainich_soilcolumn.txt"))
     @test whcs_all[idx["temperate_hainich"]] == whcs_ref
 
     # ── per-cell canopies: distinct individual sets, each with its own reconstructed light shares ──
     ninds = Int[]
-    for name in names
+    for (k, name) in enumerate(names)
         ind = readcsv(joinpath(refdir, "M_individuals_$(name)_2010.csv"))
         n = length(ind["type"])
         @test n > 0
         @test all(0.0 .≤ parse.(Float64, ind["fpar_leafon"]) .≤ 1.0)
         @test any(parse.(Int, ind["type"]) .≤ 6)                # at least one tree
+        @test n == parse(Int, cells["n_ind"][k])                # the registry matches the file
+        # The reconstruction is LEAF-ON while the C's FAPAR is phenology-weighted, so the ratio
+        # to the C's own annual peak is systematically > 1 — Hainich's committed value is 1.60.
+        # Assert the BAND: it is the only check that the canopy reconstruction still reproduces
+        # the C at all (a factor-2 light bug keeps every per-individual value inside [0,1]).
+        recon = parse(Float64, cells["fapar_recon"][k])
+        cpeak = parse(Float64, cells["fapar_C_peak"][k])
+        @test recon ≈ sum(parse.(Float64, ind["fpar_leafon"])) / 25 atol = 1.0e-4
+        @test 1.15 < recon / cpeak < 1.85
         push!(ninds, n)
     end
     @test length(unique(ninds)) > 1                             # not one canopy copied five times

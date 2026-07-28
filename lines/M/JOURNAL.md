@@ -89,3 +89,37 @@ deep layers carry ~no organic matter, Saxton–Rawls gives `whc = f(sand, clay)`
   dry Iberia. So the chain reproduces both the invariant and the variable part for the right reasons.
 Conclusion: the `cellid` mapping, the per-cell run selection and the layer indexing are all independently
 confirmed — not just the arithmetic.
+
+### Addendum 2 — adversarial review of M1 and the hardening it forced (2026-07-28)
+Ran a 4-lens adversarial review (physics faithfulness vs the C / does-the-gate-prove-anything /
+would-the-tests-catch-a-regression / protocol+reproducibility) over the four M1 commits. 16 candidate
+findings; the judge phase died on a session limit, so they are **unverified candidates** — but several
+survived my own inspection and were real. What they found and what I changed:
+- **★ The gate certified a path no emitted file takes.** It ran `ROOTDIST=d95_scalar` (the legacy form) while
+  every emitted column uses `beta_mean`, so the entire `getrootdist.c` port + D95 inversion + fpc weighting
+  was covered by *nothing*. Added `gate_getrootdist()`: the port now matches an independent closed-form
+  evaluation of the C algorithm to **0.00e+00** for a case rooted exactly into layer 3, plus invariants
+  (sum==1 to 1e-12, layer 22 == 0, non-negative) over the real committed β range 0.943–0.9991.
+- **★ ADR 0050 contained a factual error.** I wrote that the permafrost root redistribution could not be
+  ported because "no output carries that thaw state". Wrong: `MAXTHAW_DEPTH` is a declared annual output
+  (`par/outputvars.js:201`); our runs merely never requested it. Corrected in the ADR + script header, and the
+  boreal column's deviation is now stated concretely (the C would return exactly 0 below layer 4 for
+  `mean_maxthaw ≈ 2 m`; ours carries 8.4e-4 there).
+- **★ The `[VERIFIED]` inversion claim was overstated.** `dR/dD95 = β^D95/(β^D95−0.05)` diverges at the
+  asymptote, and `D95`/`beta_root` reach the parquet via `%g` (6 sig digits), so a measured
+  1.8/13.2/1.4/2.8/14.8 % of living trees per cell (**35.3 % of the fpc weight at Hainich**) hit `arg ≤ 0` and
+  fall back to `R = ∞`. Quantified in the ADR; `k_root` (ind col 20) noted as the principled fix.
+- `WHC_SRC=global` printed GATE PASS then emitted uncertified whc → now aborts unless `ALLOW_UNGATED_WHC=1`.
+- `find_whc_run`'s glob matched short debug re-runs, which sort FIRST in ASCII order and would silently swap
+  both the whc source and the averaging period → pinned to the historical window + `nstep` asserted.
+- A subset `CELLS=` run (the documented way to re-extract one cell) truncated `M_cells.csv` from 5 rows to 1
+  → both scripts now MERGE by name. Verified: a `CELLS="boreal_siberia:52059"` run leaves all 5 rows.
+- Test item 1's orderings were permutation-insensitive: an adversarial sweep of all 120 permutations of the
+  five committed columns found **4** that satisfy every assertion (identity, boreal↔sahel, med↔amazon, and
+  the 4-cycle) → added per-cell provenance PINS (top-1 m whcs, total whcs, top-1 m root fraction), row-wise
+  name→(cell,lat,lon) instead of an order-blind Set, the FAPAR-ratio band, and `rd[end] == 0`. Tightened the
+  `sum(rootdist)` tolerance 2e-5 → 2e-6 (max committed deviation is 1e-6).
+- Re-verified after all of it: the 11 committed artifacts still reproduce **byte-identically** (0/11 differ).
+**Left open** (in STATE.md "M1 review debt"): item 2 still has no provenance sensitivity — it passes with
+all-Hainich inputs, so a driver-level fallback in M2 would not be caught; `GATE=no` leaves no trace in the
+artifacts; and `CLAUDE.md` §9 contradicts itself on whether `MEMORY.md` is shared-additive or integrator-only.

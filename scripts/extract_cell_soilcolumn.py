@@ -42,19 +42,29 @@
 #        reach, and layer 22 (20-23 m) never holds roots (the C array is
 #        `rootdist_n[LASTLAYER]`, and `getwr` sums only 0..21). `beta_root` IS the
 #        C's profile parameter (`new_tree.c:230`: `getbetaroot(2000 cm, D95max)`).
-#        The rooted depth is not in the 29-col schema but is EXACTLY recoverable
-#        by inverting the emitted `D95` (`fwriteoutput_ind.c:104`,
+#        The rooted depth is not in the 29-col schema but is recoverable by
+#        inverting the emitted `D95` (`fwriteoutput_ind.c:104`,
 #        `D95 = ln(1-0.95*(1-beta**R))/ln beta`):
 #            R_cm = ln(1 - (1-beta**D95)/0.95) / ln beta = min(rootdepth/10, 2000)
-#        [VERIFIED on all 5 biome cells: R >= D95 for every individual, R <= 2000 cm].
+#        [VERIFIED on all 5 biome cells: where well-conditioned, R >= D95 and
+#        R <= 2000 cm]. **NOT exact everywhere:** `dR/dD95 = b**D95/(b**D95-0.05)`
+#        diverges at the unlimited-depth asymptote `ln0.05/ln b`, and `D95`/`beta_root`
+#        reach the parquet via `%g` (6 sig digits), so individuals sitting at that
+#        asymptote give `arg <= 0` and fall back to `R = inf` (= roots through the whole
+#        20 m column — the correct limit, but over-deep for any whose true R was merely
+#        large). Measured share of living trees / of the fpc weight: boreal 1.8/6.8 %,
+#        Hainich 13.2/35.3 %, medit 1.4/4.3 %, Sahel 2.8/10.2 %, Amazon 14.8/20.2 %.
+#        [TODO] `k_root` (ind column 20) may give `rootdepth` directly — the principled fix.
 #        Weight `w_i = fpc_ind / sum(fpc_ind)`: root carbon ~ leaf carbon
 #        (lmro_ratio 1.0) ~ LAI*crownarea, of which `fpc_ind` is the patch-basis
 #        monotone proxy available in the frozen schema.
-#        NOT ported: `getrootdist`'s permafrost redistribution of roots below
-#        `soil.mean_maxthaw` into the last thawed layer (needs the C's soil thaw
-#        state, which no output carries). Its sediment branch is dead here because
-#        `newgrid.c:282` pins every cell's soil depth to 20 m. [TODO if the boreal
-#        cell's root profile turns out to matter.]
+#        NOT ported: `getrootdist.c:59-75`'s PERMAFROST redistribution of roots below
+#        `min(soildepth*1000, soil.mean_maxthaw)` into the last thawed layer — and
+#        `"permafrost": true` IS live here, so the boreal column is knowably not the C's
+#        below layer 4. The running mean `soil.mean_maxthaw` is not an output, but the
+#        annual `maxthaw_depth` IS (`par/outputvars.js:201`) and a re-run can request it.
+#        The sediment branch of that same loop is dead, because `newgrid.c:282` pins
+#        every cell's soil depth to 20 m. [TODO — ADR 0050 Consequences.]
 #      ROOTDIST=d95_scalar (LEGACY, what the committed Hainich column used): one
 #        community scalar D95 -> `beta = 0.05**(1/D95_cm)`, UNNORMALIZED. Kept
 #        because it is the gate below, and because it is the documented v1
@@ -106,6 +116,8 @@ SOILDEPTH_C = np.array([200.0, 300.0, 500.0] + [1000.0] * 19 + [3000.0])  # par/
 NLAYER = 23
 D95_FRAC = 0.05          # Jackson-1996: Y(D95) = 0.95  =>  beta**D95 = 0.05
 WHCS_FLOOR = 1.0e-3      # mm; a zero whcs makes F_diff's `rel = w/whcs` NaN
+WINDOW = "2000_2019"     # the historical run window these columns are derived from
+NSTEP_EXPECTED = 240     # monthly steps in that window — asserted, not assumed
 
 
 def cell_ij(grid_path, cell):
@@ -121,10 +133,17 @@ def cell_ij(grid_path, cell):
 def find_whc_run(cell, src):
     """Which C run's `whc_nat.nc` to read for `cell`. `percell` (default) prefers
     a SINGLE-CELL re-run of that cell — the provenance of the committed Hainich
-    column — and falls back to the global run."""
+    column — and falls back to the global run.
+
+    The glob is pinned to the HISTORICAL WINDOW (`daily_{WINDOW}_*`) on purpose: an
+    unpinned `daily_*_c<cell>_seed1` also matches short debug re-runs (e.g. a
+    `daily_2000_2002_quick_c42490_seed1`), which sort FIRST in ASCII order and would
+    silently swap both the whc source and the number of monthly steps the time mean
+    averages over. `read_soil_geometry_and_whc` additionally asserts NSTEP_EXPECTED.
+    """
     if src == "global":
         return GLOBAL_RUN
-    hits = sorted(glob.glob(f"{RUN_ROOT}/daily_*_c{cell}_seed1/output/whc_nat.nc"))
+    hits = sorted(glob.glob(f"{RUN_ROOT}/daily_{WINDOW}_*_c{cell}_seed1/output/whc_nat.nc"))
     return os.path.dirname(hits[0]) if hits else GLOBAL_RUN
 
 
@@ -142,6 +161,11 @@ def read_soil_geometry_and_whc(run, cell):
         raise ValueError(f"layer thicknesses {sd} != par/soil_20m.js {SOILDEPTH_C}")
     if np.any(w < -1.0e30) or not np.all(np.isfinite(w)):
         raise ValueError(f"cell {cell}: whc_nat holds the -1e32 fill (not a land cell?)")
+    if w.shape[0] != NSTEP_EXPECTED:
+        raise ValueError(
+            f"cell {cell}: {run} has {w.shape[0]} monthly steps, expected {NSTEP_EXPECTED} "
+            f"for window {WINDOW} — the time mean would average a different period"
+        )
     return sd, w.mean(axis=0), int(w.shape[0])
 
 
@@ -268,12 +292,31 @@ def build_rootdist(soildepth_mm, mode, roots, d95_override):
     return rd, src, diag
 
 
+def merge_meta(path, header, rows):
+    """Write `header + cells` to `path`, UPDATING the cells this invocation produced
+    and KEEPING the rest. A subset run (`CELLS="one_cell:123"` — the documented way to
+    re-extract a single cell) must not truncate the shared registry to one entry."""
+    keep = []
+    if os.path.exists(path):
+        try:
+            keep = [c for c in json.load(open(path)).get("cells", [])
+                    if c.get("name") not in {r["name"] for r in rows}]
+        except (ValueError, OSError):
+            keep = []
+    with open(path, "w") as f:
+        json.dump(dict(**header, cells=keep + rows), f, indent=2)
+
+
+def data_rows(path):
+    """The fixture's data lines, stripped. ONE definition of "is a comment" —
+    `s.startswith("#")` on the STRIPPED line — used by both the numeric reader and
+    the byte-identity comparison, so an indented comment cannot make them disagree."""
+    return [s for s in (ln.strip() for ln in open(path)) if s and not s.startswith("#")]
+
+
 def read_fixture(path):
     sd, whcs, rd = [], [], []
-    for ln in open(path):
-        s = ln.strip()
-        if not s or s.startswith("#"):
-            continue
+    for s in data_rows(path):
         x = [float(t) for t in s.split()]
         sd.append(x[1]); whcs.append(x[2]); rd.append(x[3])
     return np.array(sd), np.array(whcs), np.array(rd)
@@ -325,24 +368,65 @@ def write_column(col, out_dir):
     return path
 
 
+def gate_getrootdist():
+    """Unit-gate the `getrootdist.c` PORT that `beta_mean` (the mode every emitted
+    column actually uses) depends on.
+
+    The byte-identity gate below exercises only the LEGACY `d95_scalar` path, so
+    without this the whole faithful-rootdist derivation — the port, the D95
+    inversion, the fpc weighting — would ship covered by nothing. Checks an
+    independent closed-form evaluation of the C algorithm plus its structural
+    invariants.
+    """
+    ok = True
+    top, bot = layer_bounds_cm(SOILDEPTH_C)
+    # (1) an individual whose roots reach exactly into layer 3 (bottom 200 cm).
+    #     C: num_layer_new = #{l in 0..21 : rootdepth > layerbound[l]} = 3 for R=150 cm,
+    #     totalroots = 1 - beta**bot[3], roots in layers 0..3 only.
+    beta, r_cm = 0.97, 150.0
+    k = 3
+    want = np.zeros(NLAYER)
+    want[: k + 1] = (beta ** top[: k + 1] - beta ** bot[: k + 1]) / (1.0 - beta ** bot[k])
+    # feed getrootdist the D95 the C would have PRINTED for that (beta, R)
+    d95 = np.log(1.0 - 0.95 * (1.0 - beta ** r_cm)) / np.log(beta)
+    got = getrootdist(SOILDEPTH_C, beta, d95)
+    d = float(np.max(np.abs(got - want)))
+    ok &= d < 1.0e-12
+    print(f"   port vs closed form (beta {beta}, R {r_cm:.0f} cm -> D95 {d95:.2f} cm): max|d| {d:.2e}")
+    # (2) structural invariants over the real committed range of beta
+    for b in (0.9430, 0.9743, 0.9910, 0.9991):
+        rd = getrootdist(SOILDEPTH_C, b, np.log(0.05) / np.log(b))       # at the asymptote
+        ok &= abs(rd.sum() - 1.0) < 1.0e-12                              # normalized by construction
+        ok &= rd[NLAYER - 1] == 0.0                                      # layer 22 never holds roots
+        ok &= np.all(rd >= 0.0)
+    print(f"   invariants over beta 0.943-0.9991: sum==1, layer22==0, non-negative")
+    return ok
+
+
 def gate():
     """Reproduce the committed Hainich column byte-identically — the correctness
-    proof that must pass before any other cell's column is trusted."""
+    proof that must pass before any other cell's column is trusted. Note the scope:
+    this certifies the whcs/soildepth path and the LEGACY d95_scalar beta profile;
+    `gate_getrootdist` covers the `beta_mean` path the emitted files use."""
     ref = os.path.join(REFDIR, "hainich_soilcolumn.txt")
     sd_r, whcs_r, rd_r = read_fixture(ref)
+    if len(sd_r) != NLAYER:
+        print(f"   GATE FAIL: reference {ref} has {len(sd_r)} data rows, expected {NLAYER}")
+        return False
     col = build("gate_hainich", 42490, 2010, "d95_scalar", None, "115", "percell")
     dsd = float(np.max(np.abs(col["soildepth"] - sd_r)))
     dw = float(np.max(np.abs(col["whcs"] - whcs_r)))
     dr = float(np.max(np.abs(col["rootdist"] - rd_r)))
-    rows_ref = [ln.strip() for ln in open(ref) if ln.strip() and not ln.startswith("#")]
-    identical = rows_ref == fmt_rows(col["soildepth"], col["whcs"], col["rootdist"])
+    identical = data_rows(ref) == fmt_rows(col["soildepth"], col["whcs"], col["rootdist"])
     ok = (dsd == 0.0) and (dw < 1.0e-4) and (dr < 1.0e-6) and identical
     print("== GATE: re-extract cell 42490 (d95_scalar, D95=115) vs committed hainich_soilcolumn.txt")
-    print(f"   whc source           : {col['run']}")
+    print(f"   whc source           : {col['run']} ({col['nstep']} monthly steps)")
     print(f"   max|d soildepth_mm|  : {dsd:.3e}   (exact match required)")
     print(f"   max|d whcs_mm|       : {dw:.3e} mm (tol 1e-4 = the %.4f print resolution)")
     print(f"   max|d rootdist|      : {dr:.3e}    (tol 1e-6 = the %.6f print resolution)")
-    print(f"   all 23 printed data rows byte-identical: {identical}")
+    print(f"   all {NLAYER} printed data rows byte-identical: {identical}")
+    print("== GATE: getrootdist.c port (the beta_mean path every emitted column uses)")
+    ok &= gate_getrootdist()
     print(f"   => GATE {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -355,9 +439,22 @@ def main():
     mode = os.environ.get("ROOTDIST", "beta_mean")
     d95_override = os.environ.get("D95_CM", "").strip()
 
-    if os.environ.get("GATE", "yes") == "yes" and not gate():
-        print("FATAL: gate failed — do not trust any other cell's column", file=sys.stderr)
-        return 2
+    if os.environ.get("GATE", "yes") == "yes":
+        if not gate():
+            print("FATAL: gate failed — do not trust any other cell's column", file=sys.stderr)
+            return 2
+    else:
+        print("WARNING: GATE=no — the emitted columns are UNGATED. Do not commit them.", file=sys.stderr)
+    # The gate certifies the SINGLE-CELL whc provenance (the committed fixture's own
+    # source); `global` whc differs by up to 1.6e-4 relative in layer 0 under -DPERMUTE,
+    # so it cannot inherit the gate's verdict.
+    if whc_src != "percell" and os.environ.get("ALLOW_UNGATED_WHC", "") != "1":
+        print(
+            f"FATAL: WHC_SRC={whc_src!r} is not what the gate certifies (percell). Re-run with "
+            "ALLOW_UNGATED_WHC=1 if you deliberately want global-run whc, and do NOT commit the result "
+            "as a per-cell fixture.", file=sys.stderr
+        )
+        return 3
     if os.environ.get("EMIT", "yes") != "yes":
         return 0
 
@@ -385,9 +482,7 @@ def main():
             whc_run=col["run"], file=os.path.basename(path), **col["diag"],
         ))
     meta = os.path.join(out_dir, "M_soilcolumn_meta.json")
-    with open(meta, "w") as f:
-        json.dump(dict(year=year, rootdist_mode=mode, whc_src=whc_src,
-                       ind_parquet=IND_PARQUET, cells=rows), f, indent=2)
+    merge_meta(meta, dict(year=year, rootdist_mode=mode, whc_src=whc_src, ind_parquet=IND_PARQUET), rows)
     print(f"wrote {meta}")
     return 0
 

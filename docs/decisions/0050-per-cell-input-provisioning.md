@@ -104,11 +104,26 @@ now recorded in the script header:
 `D95 ≠ log(0.05)/log(beta_root)` for 86.6 % of Hainich trees, so B1 conditions the profile on the wrong
 variable and then collapses a whole trait distribution to one scalar.
 
-The rooted depth that `getrootdist` needs is not in the frozen 29-column schema, but it is **exactly
-recoverable** by inverting the emitted `D95`:
+The rooted depth that `getrootdist` needs is not in the frozen 29-column schema, but it is recoverable by
+inverting the emitted `D95`:
 `R_cm = ln(1 − (1 − beta**D95)/0.95) / ln beta = min(rootdepth/10, soildepth·100)`.
-[VERIFIED on all five biome cells: `R ≥ D95` for every individual and `R ≤ 2000 cm` (one Amazon individual
-at 2027 cm, within `getbetaroot`'s own `EPSILON = 1e-4`).]
+[VERIFIED on all five biome cells: wherever the inversion is well-conditioned, `R ≥ D95` for every
+individual and `R ≤ 2000 cm` (one Amazon individual at 2027 cm, within `getbetaroot`'s own
+`EPSILON = 1e-4`).]
+
+**It is NOT exact everywhere, and this bounds the derivation's fidelity.** Since
+`arg = 1 − (1 − beta**D95)/0.95 = (beta**D95 − 0.05)/0.95`, we have
+`dR/dD95 = beta**D95 / (beta**D95 − 0.05)`, which diverges as `D95` approaches its unlimited-depth
+asymptote `ln 0.05 / ln beta`. The `ind` table prints `D95` and `beta_root` through `%g` (6 significant
+digits, `printind`), so for individuals sitting at that asymptote the rounded values give `arg ≤ 0` and the
+inversion degenerates. Those individuals are assigned `R = ∞` — i.e. "roots reach the whole 20 m column",
+the correct limit but an over-deep approximation for any whose true `R` was merely large. Measured share
+per cell (2010, living trees / share of the fpc weight the profile is averaged with):
+boreal 1.8 % / 6.8 % · Hainich 13.2 % / **35.3 %** · mediterranean 1.4 % / 4.3 % · Sahel 2.8 % / 10.2 % ·
+Amazon 14.8 % / 20.2 %. So at Hainich a third of the weight comes from individuals whose rooted depth is
+only bounded below, biasing that cell's profile deeper. `[TODO]` the `ind` table also carries `k_root`
+(column 20), from which `rootdepth` may be derivable directly and unconditionally — the principled fix, and
+the first thing to try if a per-cell water-supply residual appears.
 
 B2 also removes a class of silent error: renormalizing over the rooted depth makes every individual's
 profile sum to 1, so the community mean does too — whereas B1's unnormalized form leaks the tail below the
@@ -135,10 +150,21 @@ own trait distributions.
 - Bad, because the time-mean reduction of `whc_nat` hides a real (if small) drift: layer 0 varies by
   3.3e-4 in fraction (≈ 0.07 mm) over 2000–2019 as topsoil carbon changes. Accepted — `SoilColumn` is a
   static boundary by construction.
-- Neutral: **B3 is not done.** `getrootdist`'s permafrost branch redistributes roots below
-  `soil.mean_maxthaw` into the last thawed layer, and no output carries that thaw state. Its sediment branch
-  is dead here anyway, because `newgrid.c:282` overwrites every cell's Pelletier soil depth with a flat
-  20 m. `[TODO]` if the boreal cell's root profile is ever implicated in a residual.
+- Bad, because **B3 is not done and `"permafrost": true` is live in this config** (`lpjmlfit.js:62` and every
+  run config), so the boreal cell's emitted profile is knowably *not* the C's. `getrootdist.c:59-75`
+  redistributes all roots below `min(soildepth·1000, soil.mean_maxthaw)` into the last thawed layer; with a
+  boreal `mean_maxthaw` of order 2 m the C would return **exactly 0** for every layer from 5 down, whereas
+  `M_soilcolumn_boreal_siberia.txt` carries 8.4e-4 / 1.6e-4 / 4e-6 / 1e-6 there. The mass is tiny, but the
+  boreal column is the one place where "faithful port" is an overstatement.
+  **Correcting the first version of this ADR:** it claimed "no output carries that thaw state" — that is
+  **wrong**. `MAXTHAW_DEPTH` is a declared annual output (`par/outputvars.js:201`, "maximum thawing depth",
+  mm); our runs simply never requested it, and a re-run can. What is genuinely unavailable is the *running
+  mean* `soil.mean_maxthaw` that `getrootdist` actually reads, which would have to be approximated from the
+  annual series. So B3 is a bounded follow-up, not a blocked one: add `maxthaw_depth` to the per-cell
+  `run_fdiff_validation_cell.sh` output list and redistribute. `[TODO]` — do it if the boreal cell is ever
+  implicated in a residual, or before any boreal permafrost claim.
+  The sediment branch of the same loop IS dead here, because `newgrid.c:282` overwrites every cell's
+  Pelletier soil depth with a flat 20 m.
 
 ## More Information
 
