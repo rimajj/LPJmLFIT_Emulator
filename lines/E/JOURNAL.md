@@ -153,3 +153,28 @@
 
 - **Next:** E3 (sublimation-λ split, self-contained) then E4 (the P2 gate). E5 = feed these fields into the
   coupled driver — an **integration point with line M** (`src/run.jl` is M's path); noted in both STATE files.
+
+## 2026-07-28 — E3 re-scoped: the sublimation-λ split is NOT an E-only change  [milestone E3 → integration point]
+
+- **Goal:** start E3 (use `LAMBDA_SUBLIMATION` where the flux leaves snow/ice) — the plan called it
+  self-contained inside `src/components/energy.jl`.
+- **Did:** read the seam before writing code. `FToE` (`src/interface.jl:44`) carries **`le`, already formed as
+  λ·ET** — `src/components/fast.jl:236` does `le = et/86400 · LAMBDA_VAPORIZATION` with
+  `et = transp + evap + interc`. So (i) the λ choice is made in the **F core**, not in E; (ii) that ET sum has
+  no snow/ice component to split; (iii) `FToE` carries no snow mass or snow fraction, so `energy.jl` cannot
+  even see which part of `le` left snow. Both files are **line M's** (`src/interface.jl` explicitly, and the F
+  core per `CLAUDE.md` §9's ownership resolution).
+- **Result:** E3 is an **integration point with M**, not an E milestone — recorded as such in
+  `lines/M/STATE.md` (with the concrete shape: F partitions ET, then either a new `FToE` field or apply
+  `conservation.jl::latent_heat(et; sublimation)` next to the partition; opt-in, default byte-identical).
+  Doing it from E alone would mean inventing a snow fraction — exactly the kind of unfaithful "fix" guardrail 5
+  exists to stop.
+- **Consequence for E4 (now NEXT), same reading:** since LE arrives pre-formed from F, **E's own predictions
+  are T_skin, H and G — not LE**. So the P2 gate must run **Experiment A** first (force `solve_seb` with the
+  tower's own forcing *and the tower's* `le_cor`, then score E's H against `h_cor` and E's T_skin against the
+  OzFlux `t_skin`), which isolates the closure from F's ET error, and only then **Experiment B** (F's LE
+  feeding E). The A−B difference *is* F's ET error, which is the attribution the gate has to state. Also
+  logged: `solve_seb` is instantaneous (fine at 30 min) but `solve!`'s `t_soil` EWMA has `tau_soil` in **days**
+  — the diurnal test must scale it or drive `solve_seb` directly.
+- **Decisions:** none new (ADR 0070/0071 stand); this is a scope correction inside the line plan.
+- **Next:** E4 as re-specified in `lines/E/STATE.md` `## NEXT`.

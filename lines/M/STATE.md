@@ -58,6 +58,15 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   E cannot make. Expect the coupled Hainich/biome baselines to MOVE when it lands (deliberate, not a
   regression): Bowen and the 2018-drought numbers are wind-sensitive. Land it with E (see
   `lines/E/STATE.md` E5).
+- **From E — SECOND OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E3):** the
+  **sublimation-λ split** cannot be done inside `energy.jl`. `src/components/fast.jl:236` forms
+  `le = et/86400 · LAMBDA_VAPORIZATION` from `et = transp + evap + interc` — one λ for everything, and
+  that ET sum has no snow/ice component to split; `FToE` carries no snow mass or snow fraction, so E
+  cannot see which part of `le` left snow. Both files are **yours** (F core + the seam). Doing it right
+  needs F to partition ET into a snow/ice part and either a new `FToE` field or the λ choice applied next
+  to the partition (`conservation.jl::latent_heat(et; sublimation)` already exists for it). Opt-in,
+  default byte-identical (guardrail 4). E will not attempt it alone — guessing a snow fraction inside E
+  would be invented physics.
 - `src/climbuf.jl` (`ClimBuf`, line S) is consumed via the `climbuf=` kwarg you already own in `run.jl`.
 
 ## Status (2026-07-28)

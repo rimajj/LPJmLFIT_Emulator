@@ -6,31 +6,38 @@
 
 ## NEXT — start here
 
-**E3 — the sublimation-λ split (self-contained, opt-in, default byte-identical). E1 and E2 are DONE.**
+**E4 — the P2 gate. E1 and E2 are DONE; E3 turns out NOT to be an E-only change (see below), so go to E4.**
 
-Component E currently divides *every* ET flux by the **vaporization** latent heat, including the part that
-leaves snow or ice. `conservation.jl` already exports both constants, so this is a small, well-bounded physics
-change — and it is the last E-owned physics item before the P2 gate.
+Everything E4 needs is on disk: the PLUMBER2 reference (E1) and the model-grid wind/psurf (E2). **Read "The E4
+recipe" further down before designing anything** — it already fixes the flux basis, the acceptance band, the
+day filter and the pairing hazards, all established from the real files.
 
-1. In `src/components/energy.jl` (E-owned), use `LAMBDA_SUBLIMATION` for the fraction of the flux leaving
-   snow/ice and `LAMBDA_VAPORIZATION` for the rest. The state that tells you which is which comes through the
-   F→E payload — check what is actually available (`src/interface.jl` is **line M's** file: read it, don't edit
-   it; if the split needs a new field, that is an integration point with M, so first try to do it with what is
-   already there, e.g. a snow-mass / snow-fraction term).
-2. **Opt-in, default OFF** (guardrail 4): a `SEBParams` flag defaulted so every committed baseline and
-   `energy_closure_tests.jl` stays byte-identical. Flipping the default later is an integration point with M.
-3. Add the ON-path assertions to `test/testitems/energy_closure_tests.jl` (E-owned): closure still holds to
-   ~1e-14 with the mixed λ, the flux is continuous across the snow/no-snow boundary (no kink that would break
-   AD), and a warm cell is unchanged bit-for-bit with the flag OFF.
+**The structural point that decides the experiment design** (verified this session by reading the seam):
+`FToE` hands E **`le` already formed as λ·ET** — `src/components/fast.jl:236` does
+`le = et/86400 · LAMBDA_VAPORIZATION` with `et = transp + evap + interc`. So **LE is F's number, not E's**;
+E's own predictions are **T_skin, H (the residual), G and Rn**. Design accordingly:
 
-*Gate:* closure residual unchanged (~1e-14), ForwardDiff-vs-FD still clean on the ON path, all committed
-baselines byte-identical with the flag OFF.
+1. **Experiment A — the closure alone (do this first; it is the honest test of E).** Force `solve_seb` with the
+   tower's own half-hourly `swdown/lwdown/tair/psurf/wind` **and the tower's `le_cor`**, then score E's **H**
+   against the tower `h_cor` and E's **T_skin** against the OzFlux `t_skin` column. This isolates E from F
+   completely — a miss is E's, not F's ET.
+2. **Experiment B — coupled**: F's LE feeding E, scored the same way. The difference between A and B is exactly
+   F's ET error, which is the attribution the P2 gate needs to state honestly.
+3. **Force with TOWER wind/psurf when scoring tower fluxes** (E2's lesson): the 0.5° cell at Hainich is
+   −10.1 % in wind and +1649 Pa in pressure, so grid forcing would charge a forcing difference to the closure.
+   Use the E2 fixtures for model-grid runs instead.
+4. **Sub-daily caveat:** `solve_seb` is instantaneous and fine at 30 min, but `SEBEnergyClosure.solve!`'s
+   `t_soil` EWMA has `tau_soil` in **days** — for the diurnal test either drive `solve_seb` directly with a
+   daily-EWMA `t_soil`, or scale `tau_soil` by the steps per day. Do not silently run a daily τ at 30 min.
+5. New validation scripts are E-owned (`validate_e_*`); assertions belong in `test/testitems/
+   energy_closure_tests.jl` (E-owned). Then flip `MEMORY.md`'s `[ASSUMPTION]` to `[VERIFIED]` with site + bands.
 
-**Then E4 — the P2 gate.** Everything it needs is on disk: PLUMBER2 (E1) and the remapped wind/psurf (E2).
-Read "The E4 recipe" below before designing the comparison; it already fixes the flux basis, the acceptance
-band, the day filter and the pairing hazards. One rule that came out of E2: **score against the TOWER's
-measured wind/psurf when scoring against tower fluxes** — the 0.5° grid cell at Hainich is −10.1 % in wind and
-+1649 Pa in pressure, so using the grid forcing would charge a forcing difference to the closure.
+**E3 (sublimation-λ split) is NOT self-contained — it is an integration point with M.** Verified: the λ
+multiplication happens in `src/components/fast.jl` (the F core, **M-owned** per `CLAUDE.md` §9), the ET sum
+there has no snow/ice component to split, and `FToE` (`src/interface.jl`, **M-owned**) carries no snow mass or
+snow fraction — so `energy.jl` cannot see which part of `le` left snow. Doing it right needs F to partition ET
+and either a new `FToE` field or the λ choice moved next to the partition. Raised in `lines/M/STATE.md`; do not
+attempt it from E alone (a "split" that guesses the snow fraction inside E would be invented physics).
 
 ## Scope + ownership (ADR 0029)
 
@@ -125,10 +132,11 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
 - **E2** ✅ **DONE 2026-07-28** — wind + psurf from ISIMIP3a obsclim GSWP3-W5E5 (same family as the run's own
   forcing; the raw SSP370 GCM set has **no `ps`**), remapped onto orderA cells, all four gate checks PASS at all
   5 biome cells (ADR 0071). Committed fixtures `wind_psurf_<biome>.csv`; `paths.yaml` keys filled.
-- **E3** **Sublimation-λ split** *(NEXT, above)* — use `LAMBDA_SUBLIMATION` when the flux leaves snow/ice rather than
+- **E3** **Sublimation-λ split — RE-SCOPED 2026-07-28 to an integration point with M** (not E-only: the λ
+  multiplication lives in `components/fast.jl` and `FToE` has no snow field — see NEXT above) — use `LAMBDA_SUBLIMATION` when the flux leaves snow/ice rather than
   vaporization for everything (`conservation.jl` already exports both constants). Opt-in, default
   byte-identical.
-- **E4** **Validate LE / H / T_skin within PLUMBER2 error bands** at ≥1 site, plus the diurnal cycle, with real
+- **E4** *(NEXT, above)* **Validate LE / H / T_skin within PLUMBER2 error bands** at ≥1 site, plus the diurnal cycle, with real
   wind + psurf from E2. Per `DEVELOPMENT_PLAN` §7: **H is the residual and PLUMBER2 flags it as the hardest
   flux to get right — validate it hardest.** *This is the P2 gate.* Then flip `MEMORY.md`'s `[ASSUMPTION]` to
   `[VERIFIED]` with the site + bands quoted. Recipe + the bands/hazards: "The E4 recipe" above. **Split gate**
