@@ -34,6 +34,14 @@ so a resubmit cannot clobber a pre-0031 artifact.
 
 ### 2. Re-measure the ADR-0030 trait gate on the new population
 
+**This is ALREADY CHAINED — check for its result before re-running.** Job **1622436** was submitted with
+`--dependency=afterok:1622131`, so it fires automatically when the copula above succeeds and writes
+`logs/S-noisefloor-t7.<jobid>.out`. Read that first:
+```bash
+grep -E "seed1-basis|GAP|floor|r_center|sd\(pred\)|VERDICT|JOB DONE" logs/S-noisefloor-t7.*.out
+```
+If the copula job failed, the dependency is never satisfied (`afterok`) and 1622436 stays pending or is
+cancelled — `squeue -u $USER` / `scontrol show job 1622436`. In that case fix the copula, then submit by hand.
 Both halves must be `tree7`. The seed2 floor table is **already built** (job 1622132,
 `slow_copula_historic_seed2_t7`, 197.8 M stems / 54 058 cells):
 ```bash
