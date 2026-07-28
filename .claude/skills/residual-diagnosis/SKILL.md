@@ -78,11 +78,21 @@ one-tier gate cannot tell them apart:
   (b) **the committed fixture was already stale** — regenerating it from *unchanged* code would move it too.
 
 Do NOT widen the gate, and do NOT write it off as "run-to-run jitter" (§2b). Run the **control**: rebuild the
-same artifact with the generator **as of a git ref** (`git show REF:path/to/builder > /tmp/...`, then run that
-copy) and diff it against your working tree's output field-by-field. A generator that hard-codes its own
-constants is self-contained, so this works even when your edit moved which module a constant comes from.
-Interpretation: identical ⇒ your edit is a no-op and the fixture is stale (fix that separately, as its own
-deliberate change); different ⇒ that diff *is* your answer, and it names the moved field for you.
+same artifact with the generator **as of a git ref** (`git show REF:path/to/builder`, then run that copy) and
+diff it against your working tree's output field-by-field. This works even when your edit moved which module a
+constant comes from. Interpretation: identical ⇒ your edit is a no-op and the fixture is stale (fix that
+separately, as its own deliberate change); different ⇒ that diff *is* your answer, and it names the moved field.
+
+Two traps in running the extracted copy, both of which bit on the first attempt:
+- **Extract it into a MIRRORED repo root, not a flat temp dir.** These scripts resolve their own root as
+  `Path(__file__).resolve().parents[1]` and import from it (e.g. the one shared `TREE_TYPES`), so from
+  `/p/tmp/x/foo.py` that root becomes `/p/tmp` and the import dies with `ModuleNotFoundError`. Write it to
+  `<work>/ctlrepo_<sha>/scripts/` with `python/` and `src/` symlinked back to the real repo (and set
+  `PYTHONPATH` too). A generator that hard-codes its constants hides this — which is why it passed once and
+  then broke as soon as the constant became an import.
+- **A control that FAILS TO RUN is INCONCLUSIVE, never a FAIL.** Give it a distinct exit code. Reporting a
+  build error as "your edit moved the table" is the loudest possible wrong conclusion from a gate whose whole
+  job is telling those two apart.
 
 The measurement is cheap and it converts an ambiguous red gate into a specific finding. In the case that taught
 this, the moved fields (`soilmoist` 0.7→0.86, `lai` 21.2→2.77, everything else bit-identical) named the cause —
