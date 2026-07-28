@@ -31,6 +31,13 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 Enzyme = "0.13.0 - 0.13.188"
 FiniteDifferences = "0.12"
 ForwardDiff = "1"
+# PINNED to < 0.12: JET 0.12.0 removed the `target_defined_modules` configuration that
+# test/jet_tests.jl:6 passes, so `JET.test_package` dies with `JETConfigError: Given unexpected
+# configuration` — reproduced identically on line/M (job 90278705919) and line/O (job 90275445875),
+# i.e. repo-wide from a fresh resolve, with no test-tree change. Last-good: 0.11.6 on Julia 1.12
+# (`test (1)`, green on b106cdae), 0.9.20 on 1.10-lts (JET 0.11 requires ≥1.12, so the resolver
+# picks per-version). Lift by migrating jet_tests.jl to JET 0.12's replacement scoping API.
+JET = "0.9, 0.11"
 Lux = "1"
 Optimisers = "0.4"
 Zygote = "0.6, 0.7"
