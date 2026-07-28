@@ -113,6 +113,37 @@ mismatch, not merely a distribution shift. But `FieldCapacityLimitedPAW` compute
 That choice is what makes the trained conditioning transferable at all. It still must be *proven*, not
 assumed: the layer count (30 vs 23), the depth weighting, and the retention parameterization all differ.
 
+#### `[VERIFIED 2026-07-28]` Finding from step 1 — a real soil-texture map is a HARD PREREQUISITE
+
+The diagnosis (job 1622830) ran the coupled model for 2 days and got the soil state out cleanly
+(`saturation_water_ice`, `liquid_water_fraction`, both `(4608, 1, 30)`), then hit the substantive problem:
+
+**Terrarium's DEFAULT stratigraphy is pure sand, which degenerates the SURFEX water-retention formulas to
+zero.** `ConstantSoilHorizon(NF, name)` defaults to `texture = SoilTexture(NF)` = `sand=1.0, clay=0.0`, and
+`SoilHydraulicsSURFEX` computes
+
+```julia
+wilting_point   = 37.13e-3 * sqrt(clay * 100)      # = 0 when clay = 0
+field_capacity  = 89.0e-3  * (clay * 100)^0.35     # = 0 when clay = 0
+```
+
+So `θfc = θwp = 0` **exactly**, and
+`PAW = max(min(1, (θw − θwp)/(θfc − θwp)), 0) = max(min(1, θw/0), 0)` **≡ 1.0 wherever θw > 0**
+(and `NaN` only where bone dry). It does not error — **it silently reports "fully unstressed" everywhere.**
+
+This is the dangerous failure mode, not a blocking one: online vegetation would run with **no water
+limitation at all**, producing plausible-looking output with the drought response deleted. It would also
+silently feed Terrarium's own `soil_moisture_limiting_factor` → `LUEPhotosynthesis` chain, which is further
+evidence that the vegetation path is unexercised upstream (cf. the `MedlynStomatalConductance` VPD ≥ 0
+assertion crash, also found 2026-07-28).
+
+**Consequence — promoted onto the critical path:** prescribing a **real soil-texture (clay fraction) and
+porosity field** is a *prerequisite* for online Component S, not a later refinement. Terrarium provides
+`PrescribedSoilHorizon` and a `TerrariumRastersExt` for exactly this. Until it is in place:
+- `soilmoist` cannot be derived online, so the §4 distribution comparison cannot be completed;
+- **any online run with default soil has no water stress** and must not be used to judge vegetation.
+Add an explicit guard that rejects a soil configuration whose `field_capacity ≤ wilting_point`.
+
 **Required work (integration point — `src/components/slow.jl`, `src/drf.jl`, `scripts/*slow*` are line S's
 exclusive paths, ADR 0029):**
 1. **Diagnose (line O):** dump Terrarium's layer-mean `plant_available_water` from a coupled run and compare

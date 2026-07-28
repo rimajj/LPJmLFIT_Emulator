@@ -6,48 +6,63 @@
 
 ## NEXT — start here
 
-**Licensing is CLOSED (ADR 0081) — reuse Terrarium / SpeedyWeather / LPJmL-FIT / NeuralCrop.jl freely, just
-cite them (`reuse-citation`). Do not spend a minute on it.**
+**Licensing is CLOSED (ADR 0081) — reuse Terrarium / SpeedyWeather / LPJmL-FIT / NeuralCrop.jl freely (yes,
+NeuralCrop too: CC-BY-NC permits our research use), just cite them (`reuse-citation`).**
 
-**The harness is VERIFIED WORKING; our physics is not in it yet.** Read the
-**`online-coupling-env`** skill first — it has the environment and the four traps that each cost a failed job.
-Project: `/p/tmp/jamirp/esm_online_coupling` · scripts committed at `scripts/online_coupling/` ·
-design of record: `docs/p4_online_coupling_design.md` (written 2026-07-28, every API claim verified).
+**Read `online-coupling-env` (5 traps) + `docs/p4_online_coupling_design.md` + ADR 0082 before touching code.**
+Project `/p/tmp/jamirp/esm_online_coupling` · scripts `scripts/online_coupling/`.
 
-*Verified 2026-07-28:* Terrarium 0.1.3 + SpeedyWeather 0.21.1 + `LPJmLFITEmulator` load together on **Julia
-1.10.10**; `run_reference_coupling.jl` ran 6 simulated hours coupled on a compute node (job 1622172) with
-`vegetation = nothing` — 4608/4608 cells finite, Float32 held, T_skin −16.7…25.0 °C,
-`=== REFERENCE COUPLING OK ===`, exit 0. That run is the **control**: any later failure is ours, not the stack's.
+**State of play.** `[VERIFIED 2026-07-28]` The coupled harness RUNS (Terrarium 0.1.3 + SpeedyWeather 0.21.1,
+Julia **1.10.10**): job 1622172, 6 h, `vegetation=nothing`, 4608/4608 finite, Float32 held, exit 0 — the
+CONTROL run. **ADR 0082** set the direction: the ONLINE config is **ESM-first, validated against OBSERVATIONS,
+not LPJmL-FIT**; Terrarium owns skin temperature + SEB + soil; we own **vegetation** (S, FIT photosynthesis,
+FIT water-limited ET). No LPJmL-FIT physics is online yet.
 
-**O3 — the spike: LPJmL-FIT photosynthesis behind Terrarium's `AbstractPhotosynthesis`.** Full recipe,
-including the unit bridge, is `docs/p4_online_coupling_design.md` §4 — follow it, it is already worked out.
+### O3a (DO THIS FIRST) — prescribe a real soil texture. It is a PREREQUISITE, not a refinement.
 
-1. Add `FDiffPhotosynthesis{NF} <: Terrarium.AbstractPhotosynthesis{NF}` wrapping `FDiff.PhotoParams`.
-   Implement **only** `variables(...)` + `compute_photosynthesis(i, j, grid, fields, photo, constants, atmos)
-   -> (Rd, An, GPP)`; `compute_photosynthesis!` and the kernel are generic and come for free.
-2. Bridge the units (§4): LPJmL is a **daily** formulation (`apar` J/m²/day, `agd` gC/m²/day) and Terrarium
-   wants instantaneous gC/m²/s + kgC/m²/s. Use `daylength = 24`, `apar = swdown·PAR_frac·fapar(LAI)·86400`,
-   `co2_Pa = co2_ppm·1e-6·pres`, temp in **°C** (no conversion — Terrarium is Celsius), λ from
-   `fields.leaf_to_air_co2_ratio`. Then `Rd = rd/86400`, `An = (agd−rd)/86400`, `GPP = agd/86400·1e-3`.
-3. Swap it into `VegetationCarbon(NF; photosynthesis = FDiffPhotosynthesis(NF))` and pass that as
-   `Terrarium.LandModel(grid; vegetation = ...)`. Leave their stomatal conductance / respiration / phenology /
-   carbon dynamics / soil / SEB alone — minimum surface area.
-4. Run via `./sbatch_coupling.sh O-fdiffphoto <script>.jl`. **Where the code should live:** `ext/` is line O's
-   (`CLAUDE.md` §9). `Project.toml` is integrator-owned, so either request `Terrarium`/`SpeedyWeather` as
-   `[weakdeps]` + an extension, or keep the spike in `scripts/online_coupling/` until it works and land the
-   dependency once. Prefer the latter — do not block on the integrator.
+`[VERIFIED, job 1622830]` **Terrarium's default stratigraphy is pure sand (`clay = 0`), which collapses the
+SURFEX retention formulas to `field_capacity = wilting_point = 0`**, so
+`plant_available_water = min(1, θw/0) ≡ 1.0` wherever there is water. It does **not** error — it silently
+reports **fully unstressed everywhere**, deleting the drought response while looking plausible. It would also
+silently feed Terrarium's own `soil_moisture_limiting_factor` → photosynthesis chain.
 
-*Gate:* the coupled run completes; GPP finite and positive on vegetated cells; Float32 holds; and the
-daily-integrated ONLINE GPP is compared against OFFLINE F_diff at Hainich **with the gap quantified** — §4
-is explicit that instantaneous-rate mode changes the diurnal weighting, so expect a real discrepancy and
-report it rather than assuming it is small.
+1. Use `PrescribedSoilHorizon` (+ `TerrariumRastersExt`) to supply a real **clay fraction + porosity** field.
+   A global soil-texture map is needed; check what is already on disk from the LPJmL-FIT inputs first.
+2. **Add a guard that rejects any soil config with `field_capacity <= wilting_point`.** This class of silent
+   degeneracy must fail loudly.
+3. *Gate:* PAW is non-degenerate (a real spread, not ≡1) across cells.
 
-Then → **O4** (wrap `run_coupled_cell` as a full `LandModel`, which needs the daily-buffered F of §3) →
-**O5** multi-cell (needs line M's M1/M2).
+**Until O3a is done, no online run may be used to judge vegetation** — there is no water stress in it.
 
-**Two decisions deliberately left open, flagged in the design doc §5 — do not settle them implicitly:**
-who owns soil water + skin temperature (Terrarium's slots vs our F_diff bucket + Component E), and how
-`ClimBuf` gets its climatology on a coupled cold start (that one gates S, not F).
+### O3b — finish the `soilmoist` comparison (ADR 0082 §4 step 1)
+
+`scripts/online_coupling/diagnose_soilmoist_shift.jl` already runs the coupled model and extracts the soil
+state cleanly; it only needs the non-degenerate soil from O3a. Then compare layer-mean `plant_available_water`
+against the LPJmL training reference **already measured**: historic, 1 348 400 cell-years —
+min 0.0167, q10 0.220, q25 0.3186, **q50 0.4635**, q75 0.6644, q90 0.808, max 0.9886, **mean 0.5075**.
+Map `soilmoist` ← layer-mean **`plant_available_water`**, NOT `saturation_water_ice` (porosity- vs
+WHC-normalized = a definitional mismatch, ADR 0082 §4).
+**Then raise the INTEGRATION POINT with line S**: if the distributions differ materially, S's DRF + copula
+must be retrained on Terrarium-derived `soilmoist` as a **version-bumped ONLINE artifact** (never an in-place
+mutation — ADR 0029's S→M contract). `slow.jl`/`drf.jl`/`scripts/*slow*` are line S's exclusive paths.
+
+### O3c — the photosynthesis spike (recipe fully worked out in design doc §4)
+
+`FDiffPhotosynthesis{NF} <: Terrarium.AbstractPhotosynthesis{NF}`; implement only `variables(...)` +
+`compute_photosynthesis(i,j,grid,fields,photo,constants,atmos) -> (Rd,An,GPP)` (the kernel is generic).
+Unit bridge: `daylength=24`, `apar = swdown·PAR_frac·fapar(LAI)·86400`, `co2_Pa = co2_ppm·1e-6·pres`, temp in
+**°C**, λ from `fields.leaf_to_air_co2_ratio`; then `Rd=rd/86400`, `An=(agd−rd)/86400`, `GPP=agd/86400·1e-3`.
+⚠️ Do **not** enable Terrarium's default `VegetationCarbon` as-is — `MedlynStomatalConductance` asserts
+`abs(vpd) > 0` and VPD=0 is physically realizable, so a coupled run crashes (trap 5).
+
+### Then
+**O4** FIT water-limited ET behind **`AbstractEvapotranspiration`** (ADR 0082 — this is where our LE physics
+belongs, solved consistently with T_skin) · the **ClimBuf two-stage spin-up** on SpeedyWeather's own climate ·
+**O5** multi-cell (needs line M's M1/M2) · observed-vegetation datasets (LAI/biomass/tree-cover) are **not on
+disk** and are now on the critical path for the online validation claim.
+
+**Worth reporting upstream** (owner is in TUM-PIK-ESM): the VPD≥0 assertion and the degenerate default soil
+both make Terrarium's vegetation path unusable out of the box.
 
 ## Scope + ownership (ADR 0029)
 
