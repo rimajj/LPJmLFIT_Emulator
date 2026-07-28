@@ -291,10 +291,16 @@ unseen-regime proof: train on the other regime, test the held-out one; + a poole
 constant (ADR 0004 — NOT a feature). `pool_slow_tables.py` asserts matching p/colnames (count) or
 ncond/axes/cond_cols (copula) — a mismatch means the two scenarios were built with different feature contracts.
 **Pooled COPULA:** `scripts/run_pooled_slow_copula.sh` (build both scenarios' `MODE=copula BOUNDARY_WINDOW=W
-STEM_CAP` tables → pool → `eval_slow_copula.jl` K-fold → `train_slow_copula.jl`). The un-capped pooled copula
-is ~730M stems (historic 133M + ssp ~600M) — busts the 4h qos — so `STEM_CAP=N` (opt-in, default 0=all;
-per-cell random subsample) caps each cell's stems (a marginal/KS needs only a few hundred; 700 GB nodes so the
-~600M-stem ssp collect fits regardless). Applied AFTER the coverage gate; deterministic (hash(Cell,Patch,Year,
+STEM_CAP` tables → pool → `eval_slow_copula.jl` K-fold → `train_slow_copula.jl`). `STEM_CAP=N` (opt-in,
+default 0=all; deterministic per-cell random subsample) caps each cell's stems — a marginal/KS needs only a few
+hundred (historic: 197.7M → 19.9M at `STEM_CAP=400`, median 369 stems/cell over 54 020 cells).
+- **`STEM_CAP` does NOT bound the PEAK MEMORY, and on `tree7` the ssp370 build OOM-KILLS at 32 cpus
+  (`[VERIFIED 2026-07-28]`, job 1622330 exit 137 + `Detected 1 oom_kill event`).** The cap is applied *after*
+  the conditioning-join, deliberately, so the `drop_frac` coverage guard still sees true join coverage — so the
+  **full** per-stem collect+join happens in memory first. ssp370 spans 81 years (~99M patch-years) and `tree7`
+  adds 48 % more stems, i.e. ~890M stems ≈ 200-300 GB peak, while 32 of a 128-cpu/700 GB node's cpus only carry
+  ~175 GB. **Use `NCPUS=96` (~525 GB) for any pooled/ssp370 copula build on the complete tree set.** Historic
+  alone (20 years) is fine at 32-48. Symptom to recognise: `Killed` + exit **137**, never a Python traceback. Applied AFTER the coverage gate; deterministic (hash(Cell,Patch,Year,
 seed)+row rank per cell).
 
 ## ONLINE transient boundary — the coupled-run Climbuf (ADR 0027; the runtime counterpart of `boundary_series`)
