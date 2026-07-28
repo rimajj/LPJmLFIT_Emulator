@@ -1,0 +1,31 @@
+# tropical_amazon (global orderA cell 12045) soil column for the multi-cell coupled S+F+E driver.
+# 23 layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).
+# whcs_mm = whc_nat (patch-mean fraction, mean of 240 monthly steps) x soildepth, from
+#   /p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c12045_seed1/output
+# rootdist = fpc-weighted mean of 122 living trees' own getrootdist.c profiles (mean beta_root 0.983952, median rooted depth 381 cm); effective D95 = 690.3 cm,
+#   53.2% of roots in the top 1 m (2010 canopy).
+# top-1m plant-available = 162.8281 mm; total = 3492.5354 mm. scripts/extract_cell_soilcolumn.py
+# layer soildepth_mm whcs_mm rootdist
+0 200.0 39.5411 0.209073
+1 300.0 46.5292 0.169052
+2 500.0 76.7578 0.154310
+3 1000.0 152.3644 0.171607
+4 1000.0 152.3644 0.099149
+5 1000.0 151.2474 0.062365
+6 1000.0 151.2474 0.040618
+7 1000.0 151.2474 0.026978
+8 1000.0 151.2474 0.018649
+9 1000.0 151.2474 0.013137
+10 1000.0 151.2474 0.009397
+11 1000.0 151.2474 0.006674
+12 1000.0 151.2474 0.004925
+13 1000.0 151.2474 0.003666
+14 1000.0 151.2474 0.002778
+15 1000.0 151.2474 0.002115
+16 1000.0 151.2474 0.001640
+17 1000.0 151.2474 0.001285
+18 1000.0 151.2474 0.001015
+19 1000.0 151.2474 0.000805
+20 1000.0 151.2474 0.000445
+21 1000.0 151.2474 0.000318
+22 3000.0 453.7735 0.000000

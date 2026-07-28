@@ -108,6 +108,18 @@ is the offline S.
   PFT type 3). **Index `28008` in the global grid is Sonoran desert** — it is Hainich only in the repo
   `-DSINGLESITE` grid. Single-cell daily re-run: `STARTGRID=ENDGRID=42490`. Byte-verified against grid.nc.
 
+### Per-cell soil + rooting inputs (cross-cutting; ADR 0050, skill `provision-coupled-cell`)
+- [VERIFIED] **Soil layer thicknesses are a C GLOBAL, not per-cell** (`fscansoilpar.c:36-39` ← `par/soil_20m.js`
+  = `200,300,500,1000×19,3000` mm). The per-cell Pelletier `soildepth` input is read and then **discarded** —
+  `newgrid.c:282` sets `grid[i].soildepth=20` unconditionally. Plant-available mm = `whc_nat[l] × soildepth[l]`
+  (the C's own `whcs`, `soil.h:222`), where `whc_nat` is the patch-ensemble-mean **fraction**
+  (`soilpar_output.c:42`) — read it, don't port the pedotransfer. It is **monthly, time-varying** (soil-carbon
+  driven) and **`-DPERMUTE`-nondeterministic between runs** (1.6e-4 relative in layer 0, global vs single-cell).
+- [VERIFIED] **`beta_root` / `D95max` / `D95` are three different `ind` columns, all in cm.** `beta_root` is the
+  C's real root-profile parameter (`new_tree.c:230` → `getrootdist.c`); `D95max` the sampled trait; emitted
+  `D95` the rootdepth-limited realized depth, recoverable as `R_cm = ln(1−(1−β^D95)/0.95)/ln β`. Tree test is
+  **`D95max > 0`**, never a `Type` number (ids differ by biome: Hainich {1,2,3,4,5,8}, Sahel/Amazon {0,7}).
+
 ### F_diff (fast core) — what's validated vs the C oracle (Hainich)
 - [VERIFIED] Gradient gate: Enzyme reverse **and** ForwardDiff match FiniteDifferences to ~1e-11 for
   d(annual NPP)/dx through the full 365-day rollout incl. the λ ci:ca Newton solve; water closes ~1e-12.
@@ -273,6 +285,16 @@ copula conditions on flux+boundary and deliberately excludes stand-state (ADR 00
   and coupled/decadal baselines) closes only ~40–50% of the 0.51→0.46 CUE gap. Design: `docs/sapwood_bg_design.md`.
 - **[TODO] Lift the Enzyme pin / 1.11 canopy guard** when a fixed Enzyme ships (still blocked upstream on
   0.13.187 / Julia 1.11.7; a 0.14 migration is higher-risk).
+- **[TODO] Lift the `JET` pin** (`JET = "0.9, 0.11"`, `test/Project.toml`) by migrating `test/jet_tests.jl` to
+  JET 0.12's replacement scoping API. `[VERIFIED 2026-07-28]` JET **0.12.0** removed the
+  `target_defined_modules` configuration that `jet_tests.jl:6` passes ⇒ `JETConfigError` ⇒ `test (1)`
+  (Julia 1.12) errored **repo-wide** on a fresh resolve — reproduced on line/M `693322fa` (job 90278705919,
+  docs+tests-only diff) and line/O `11ef8d89` (job 90275445875), while `test (lts)` stayed green because JET
+  0.11+ needs ≥1.12 so 1.10 resolves 0.9.20. Second instance of the CLAUDE.md §5 "CI resolves deps fresh ⇒ a
+  missing `[compat]` absorbs a breaking bump" class, after Enzyme 0.13.189. **Two lines pinned it
+  independently and concurrently** (`47c6407a` from M, `51529464` from E) — identical text, so it merged to a
+  single `[compat]` entry, but that is the clearest sign yet that a repo-wide dep break wants ONE integrator
+  action, not four parallel ones.
 - **[TODO] Owner actions**: ratify ADR 0018; the "(c)" N-track discussion; close stray Dependabot PRs;
   the `eval`-filename allow decision. (`LICENSE` is NO LONGER tracked here — ADR 0081 closed it.)
 

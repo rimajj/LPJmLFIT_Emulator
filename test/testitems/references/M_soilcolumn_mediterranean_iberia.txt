@@ -1,0 +1,31 @@
+# mediterranean_iberia (global orderA cell 33335) soil column for the multi-cell coupled S+F+E driver.
+# 23 layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).
+# whcs_mm = whc_nat (patch-mean fraction, mean of 240 monthly steps) x soildepth, from
+#   /p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c33335_seed1/output
+# rootdist = fpc-weighted mean of 214 living trees' own getrootdist.c profiles (mean beta_root 0.990008, median rooted depth 215 cm); effective D95 = 375.8 cm,
+#   61.5% of roots in the top 1 m (2010 canopy).
+# top-1m plant-available = 155.5565 mm; total = 3483.9637 mm. scripts/extract_cell_soilcolumn.py
+# layer soildepth_mm whcs_mm rootdist
+0 200.0 33.5164 0.186892
+1 300.0 45.8998 0.204106
+2 500.0 76.1403 0.223681
+3 1000.0 151.7489 0.217018
+4 1000.0 151.7472 0.088366
+5 1000.0 151.2447 0.039469
+6 1000.0 151.2439 0.019761
+7 1000.0 151.2439 0.009381
+8 1000.0 151.2439 0.005509
+9 1000.0 151.2439 0.002492
+10 1000.0 151.2439 0.001492
+11 1000.0 151.2439 0.000798
+12 1000.0 151.2439 0.000497
+13 1000.0 151.2439 0.000278
+14 1000.0 151.2439 0.000125
+15 1000.0 151.2439 0.000081
+16 1000.0 151.2439 0.000031
+17 1000.0 151.2439 0.000022
+18 1000.0 151.2439 0.000000
+19 1000.0 151.2439 0.000000
+20 1000.0 151.2439 0.000000
+21 1000.0 151.2439 0.000000
+22 3000.0 453.7648 0.000000

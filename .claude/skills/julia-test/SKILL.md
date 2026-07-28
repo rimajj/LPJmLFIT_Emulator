@@ -25,13 +25,25 @@ Submit it to SLURM. A login-node foreground run / `nohup &` / background-shell *
 on a compute node independently and logs to shared `/p`, so ANY later session can collect the result.
 
 ```bash
-cd /p/projects/open/Jamir/esm_land_emulator
+cd <YOUR worktree>                   # e.g. /p/projects/open/Jamir/wt-M — NOT a hard-coded path (see below)
 scripts/run_tests_slurm.sh [tag]     # warms the shared depot on the login node, then runs the CI-faithful
                                      # Pkg.test() (rm test/Manifest.toml + re-resolve) on a compute node
 ```
 Collect from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` · the log's LAST line is
 `=== JOB DONE tag=<tag> exit=<code> ===` (grep it; the ReTestItems `N pass, M fail` summary is just above).
 Expect ≈ **48.1k pass / 0 fail / 4 broken**, ~5–6 min. Julia = `/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia` (lts).
+
+**Run it from YOUR OWN worktree, and tag with your line prefix** (ADR 0028; this line used to read
+`cd /p/projects/open/Jamir/esm_land_emulator`, which is now the **integrator** worktree). The wrapper resolves
+its own root — `REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` — so `wt-M/scripts/run_tests_slurm.sh`
+tests `wt-M` and logs to `wt-M/logs/`; invoking the *integrator's* copy would silently test `main` instead of
+your branch and litter the one shared checkout. Verified 2026-07-28 (`M-suite-jetpin`, job 1622318). Same
+class as CLAUDE.md §9 item 6 ("a script with a hard-coded absolute repo path writes into the integrator
+worktree") — the difference is that here the hard-coded path is in the *instructions*, not the script.
+
+**A `test/Project.toml` `[compat]` change forces a fresh resolve**, so expect the wrapper to spend an extra
+minute or two re-resolving + precompiling both envs on the login node before it submits. That is the warm
+working (it is what keeps the compute node off the network), not a hang.
 
 **Any OTHER long job (>a few seconds)** — benchmarks, probes, decadal runs, training — uses the same durable
 path: `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`); heavy NN training →
@@ -111,6 +123,29 @@ Ignore benign `curl_easy_setopt: 48` spew.
   and `cbinary_validation_tests.jl` (vs the C oracle), `conservation_closure_tests.jl`, `energy_closure_tests.jl`,
   `coupled_run_tests.jl`, `biome_coupled_tests.jl`, plus `aqua_tests.jl` / `jet_tests.jl`.
 
+## Auditing a gate or fixture assertion you just wrote
+
+This repo's trust model IS its gates and committed fixtures, so a gate that looks green while proving
+nothing is the most expensive possible bug. Two checks, both of which have caught a real hole here
+(ADR 0050, 2026-07-28):
+
+1. **Does the gate exercise the code path the ARTIFACTS take?** A generator with modes/flags can certify
+   mode A while every committed file is produced by mode B — then the whole B derivation ships covered by
+   nothing. Diff "what the gate calls" against "what `main()` defaults to", and unit-gate the difference
+   (e.g. check a ported routine against an independent closed-form evaluation of the source algorithm).
+   The same applies to env-var provenance: if `SRC=x` is gate-certified and `SRC=y` is merely *allowed*,
+   make `y` abort rather than inherit the verdict.
+2. **Are ordering assertions permutation-insensitive?** `@test a > b > c` over per-cell fixtures pins the
+   ORDER, not which file belongs to which cell. Enumerate the permutations of your fixture set and count how
+   many satisfy every assertion — if it is more than 1, a mis-paired fixture ships green. Fix with per-item
+   provenance PINS (a numeric value only that item's own data produces) and row-wise identity assertions
+   instead of an order-blind `Set` comparison. Derive pinned numbers FROM the committed file
+   programmatically; transcribing them by hand is its own failure mode (it cost a red suite here).
+
+Also: keep tolerances at the artifact's real precision (accumulated print rounding), not at a round number
+that happens to pass — a tolerance 20× looser than the worst committed deviation admits the very drift the
+assertion exists to catch.
+
 ## Format gate (Runic) — CI installs Runic 1.7.0
 
 `julia` is not on PATH (see the ⚠️ note at the top) — use the absolute path / `$JULIA`:
@@ -120,6 +155,12 @@ $JULIA --startup-file=no -e 'import Pkg; Pkg.activate(temp=true); Pkg.add(name="
 ```
 Pass specific files instead of the dirs for a fast targeted check. Reformat with `--inplace` (or drop
 `--check`) with the same Runic version before pushing.
+
+**`slurm-guard` false-positives on the format check.** The guard matches the *command text*, so a Runic
+invocation that merely **names** a heavy-looking script (`validate_*.jl`, `train_*.jl`, `*_probe.jl`,
+`run_coupled_*.jl`) is blocked as "a heavy Julia job" even though it only parses files. A format check is a
+genuine seconds-long job: prefix **`ALLOW_LOGIN_HEAVY=1`**. (Same class as the `repo-commit` skill's
+"slurm-guard false-positives on commit MESSAGE text".)
 
 **Two traps that let an unformatted file reach CI (both bit ADR 0026):** (1) CI checks ALL of
 `src test ext scripts` — a targeted single-file check misses a sibling you also touched (a NEW

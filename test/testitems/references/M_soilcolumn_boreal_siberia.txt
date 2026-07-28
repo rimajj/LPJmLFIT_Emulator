@@ -1,0 +1,31 @@
+# boreal_siberia (global orderA cell 52059) soil column for the multi-cell coupled S+F+E driver.
+# 23 layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).
+# whcs_mm = whc_nat (patch-mean fraction, mean of 240 monthly steps) x soildepth, from
+#   /p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c52059_seed1/output
+# rootdist = fpc-weighted mean of 276 living trees' own getrootdist.c profiles (mean beta_root 0.979392, median rooted depth 116 cm); effective D95 = 160.4 cm,
+#   88.6% of roots in the top 1 m (2010 canopy).
+# top-1m plant-available = 167.5311 mm; total = 3507.0337 mm. scripts/extract_cell_soilcolumn.py
+# layer soildepth_mm whcs_mm rootdist
+0 200.0 41.9823 0.358047
+1 300.0 47.3040 0.301365
+2 500.0 78.2448 0.226417
+3 1000.0 155.1360 0.106264
+4 1000.0 158.8817 0.006900
+5 1000.0 151.2794 0.000844
+6 1000.0 151.2794 0.000158
+7 1000.0 151.2794 0.000004
+8 1000.0 151.2794 0.000001
+9 1000.0 151.2794 0.000000
+10 1000.0 151.2794 0.000000
+11 1000.0 151.2794 0.000000
+12 1000.0 151.2794 0.000000
+13 1000.0 151.2794 0.000000
+14 1000.0 151.2794 0.000000
+15 1000.0 151.2794 0.000000
+16 1000.0 151.2794 0.000000
+17 1000.0 151.2794 0.000000
+18 1000.0 151.2794 0.000000
+19 1000.0 151.2794 0.000000
+20 1000.0 151.2794 0.000000
+21 1000.0 151.2794 0.000000
+22 3000.0 453.7343 0.000000

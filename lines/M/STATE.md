@@ -4,29 +4,151 @@
 > the parallel-line protocol). Narrative: `lines/M/JOURNAL.md` (append-only). Decisions: ADR block **0050–0069**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## ✅ RESOLVED — the JET 0.12.0 blocker (pinned on `main` in `47c6407a`, 2026-07-28)
+
+JET **0.12.0** removed the `target_defined_modules` configuration that `test/jet_tests.jl:6` passes, so
+`JET.test_package` died with `JETConfigError` and `test (1)` (Julia 1.12) errored **repo-wide** on a fresh
+resolve — `test/Project.toml` had no `JET` `[compat]` entry. Confirmed repo-wide, not line-M: identical
+failure on line/M `693322fa` (job 90278705919, a docs+tests-only diff) **and** line/O `11ef8d89`
+(job 90275445875); `test (lts)` stayed green because JET 0.11+ needs Julia ≥1.12 so 1.10 resolves 0.9.20.
+
+Fixed with `JET = "0.9, 0.11"` in `test/Project.toml` `[compat]`. **Landed directly on `main`** rather than on
+this branch, because that file is integrator-owned (ADR 0029) and the breakage blocked all four lines from
+merging; both pinned versions were already in the shared depot, so the compute-node warm needs no new tarball.
+**[TODO, not this line]** lift the pin by migrating `jet_tests.jl` to JET 0.12's replacement scoping API.
+
+## 📌 The PINNED Component-S artifact (M2 step 1 — frozen S→M contract, ADR 0023)
+
+**Pinned pair** (`/p/tmp/jamirp/emulator_global/`, line S's, read-only to this line):
+
+| Artifact | sha256 | bytes | mtime |
+|---|---|---|---|
+| `drf_forest_global_pooled_w20.drf` | `652a13278ff04511b78ab36ce3da178b7b879faa464e0b529a44fc79c2708c8c` | 51771375 | 2026-07-27 14:45 |
+| `recruit_copula_global_pooled_w20.rcop` | `50322b4154c52a951720ad1681f35afd1ffacc794f279465b9fd029ceb122f2f` | 129322844 | 2026-07-27 16:56 |
+
+**Contract VERIFIED against the runtime order (2026-07-28), not assumed:**
+- DRF `_meta.txt`: `nfeat 15`, `nhead 11`, `target n_living`, `ntrees 150`, pooled over 53,993 cells;
+  `colnames` = `bm_inc_cell growth_eff water_stress soilmoist hmean hmax agb lai fpc age_mean n_prev` +
+  boundary tail `eco_diag_gdd_5 tas_cold_month soil_depth co2` — **identical** to
+  `slow.jl::flux_feature_vector` (11 head + 4 boundary).
+- Copula `_meta.txt`: `naxes 4` (`SLA Wooddens D95max minwscal`), `ncond 8`, `cond_cols` =
+  the 4 flux drivers + the same boundary tail — **identical** to `slow.jl::live_flux_cond`
+  (`vcat(feats[1:4], s.boundary)`).
+- So the per-cell boundary vector this line must build is exactly
+  `[eco_diag_gdd_5, tas_cold_month, soil_depth, co2]` — precisely the columns `cell_meta.parquet` carries.
+
+**REJECTED — `*_t7` (do not adopt yet):** `drf_forest_global_pooled_w20_t7.drf` and
+`drf_forest_global_historic_t7.drf` appeared **today** (58,587 cells) and line S was still mid-production when
+this was written (job 1622131 `gcopula_historic_t7` RUNNING) — **there is no matching `_t7` `.rcop`**. Adopting
+a half-published retrain is exactly the "never adopt a re-trained artifact silently" trap (ADR 0023). Moving to
+`_t7` is an **integration point with line S** once S publishes a complete, versioned pair.
+
+**Consequence for the M2 gate:** these artifacts live on `/p/tmp` (DVC, not git), so a CI test cannot load
+them — CI runs on GitHub runners with no cluster. Split it: the **committed** demo artifact
+(`test/testitems/references/drf_forest_hainich.drf`) drives the CI conservation/determinism/byte-identity gate
+(closure is artifact-independent), and the pinned global pair drives the cluster-only per-cell science (M3).
+
+### ⛔ …but the pinned `pooled_w20` CANNOT SERVE ALL FIVE CELLS — the pin must move to `_t7`
+
+Found 2026-07-28 by `scripts/extract_cell_slow_init.py`'s completeness gate, *not* by inspection. Cell
+coverage of every `cell_meta.parquet` on `/p/tmp/jamirp/emulator_global/`:
+
+| table | ncells | biome cells present |
+|---|---|---|
+| `slow_count_historic_w20/` (pinned pool) | 44,328 | **3/5** — no `semiarid_sahel`, no `tropical_amazon` |
+| `slow_count_ssp370_w20/` (pinned pool) | 53,566 | **4/5** — no `semiarid_sahel` |
+| `slow_runtime_historic/` | 44,328 | 3/5 |
+| `slow_runtime_ssp370/` | 53,566 | 4/5 |
+| **`slow_count_historic_w20_t7/`** | 53,699 | **5/5** |
+| **`slow_runtime_historic_t7/`** | 53,699 | **5/5** |
+| **`slow_count_ssp370_w20_t7/`** | 58,495 | **5/5** |
+
+**`semiarid_sahel` (18371) is in NEITHER table the pinned `pooled_w20` artifact was trained on** — that DRF
+has never seen the cell, so there is no honest `n_init`/`age0` for it at this version. Only the `_t7` family
+covers all five. **So M2's real step 1 is an integration point with line S: adopt the `_t7` pair once S
+publishes a COMPLETE one.** As of this writing `drf_forest_global_pooled_w20_t7.drf` and
+`drf_forest_global_historic_t7.drf` exist (2026-07-28 15:00/15:09) but **no `_t7` `.rcop`** does — S's job
+1622131 `gcopula_historic_t7` was still RUNNING. Do not adopt a half-published retrain (ADR 0023).
+`STATE.md`'s pin table above stays authoritative until that swap is made deliberately.
+
+### Two verified facts that constrain how per-cell S state may be sourced
+
+1. **`n_init`/`age0` are version-COUPLED — never mix them across artifact versions.** They are the per-cell
+   **median over the training years** of the count target `n_living` and of `age_mean`
+   (`build_slow_runtime_table.py:320-332`, `MIN_YEARS=3`), i.e. statistics *of the training window*, not
+   properties of the cell. Measured on the 44,328 cells shared by `slow_runtime_historic` and its `_t7`
+   retrain: `n_init` differs for **15,665** cells (max |Δ| **24** individuals), `age0` for **22,542**
+   (max |Δ| **85** years). Corollary: they are also **not** derivable from the committed single-year
+   `M_individuals_<name>_2010.csv` canopy — different statistic — so that shortcut is closed.
+2. **The 4 boundary columns are invariant across VERSIONS but not across SCENARIOS.** Same-scenario,
+   different training version (`slow_runtime_historic` vs `_t7`): byte-identical for all 44,328 shared cells.
+   Different scenario (`slow_count_historic_w20` vs `slow_count_ssp370_w20`): `eco_diag_gdd_5` differs by up
+   to **1513** GDD and `tas_cold_month` by **8.84 °C** on 43,901 shared cells — physically correct, they are
+   *climate* diagnostics of different climates. **Therefore a POOLED artifact has two boundary rows per cell,
+   and a single baked `boundary` is a historic-climate snapshot.** That promotes M2 step 3 (per-cell
+   `ClimBuf`, or a baked `boundary_series`) from optional to **required** for the pooled pin — it is the only
+   way the boundary tracks the year (ADR 0026/0027). `run.jl` already owns the `climbuf=` kwarg and enforces
+   that a `ClimBuf` and a baked `boundary_series` are mutually exclusive.
+
 ## NEXT — start here
 
-**M1 — per-cell input provisioning (the actual blocker; everything else in this line waits on it).**
-The coupled driver is already N-cell-agnostic — `run_coupled_cell(core, clo, state, forcings; …)` takes a
-per-cell `FDiffFastCore` + latitude. What is missing is per-cell **inputs**: today all five biome cells reuse
-**Hainich's** soil column and **Hainich's** individuals, and the driver runs `slow=nothing`.
+**M1 is DONE (2026-07-28, ADR 0050).** Every biome cell now runs its OWN soil column, canopy, forcing and
+latitude; both extractors are committed and gated (the soil-column extractor reproduces the committed
+`hainich_soilcolumn.txt` **byte-identically**). To add a cell, use the **`provision-coupled-cell`** skill —
+do not re-derive the procedure.
 
-Start with the one piece that has no script at all — a **per-cell soil-column extractor** producing the same
-3-column layout as `test/testitems/references/hainich_soilcolumn.txt`
-(`layer soildepth_mm whcs_mm rootdist`):
-- `whcs_mm` = per-layer plant-available capacity = `whc_nat`(fraction) × `soildepth`(mm).
-  **GOOD NEWS — the global field already exists on disk** (verified 2026-07-28):
-  `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output/whc_nat.nc` (4.5 GB, the C run's
-  own output for ALL cells). So M1 is an EXTRACTOR-writing job, not a data-generation job — no C re-run needed.
-  Also available per `config/paths.yaml`: `soil_code_test.soil.bin`, `soil_depth_test.clm`.
-  What does *not* exist is any script that reads it: `grep -rl whc_nat scripts/` → no hits.
-- `rootdist` = Jackson-1996 beta profile from D95 — **vegetation-dependent**, so co-derive it per cell.
-*Gate:* re-extracting cell **42490** reproduces the committed `hainich_soilcolumn.txt` to round-off — that is
-the correctness proof before trusting any other cell.
+**M2 — wire the flux-driven Component S into the multi-cell driver.** The next blocker: the driver still runs
+`slow=nothing`, so the coupled evidence for S is offline-only (line S), not coupled.
 
-Then the rest of M1: generalize `scripts/extract_fdiff_individuals*.py` to an arbitrary cell; plumb latitude
-from `grid.nc` (`cell_latlon()` already exists in `scripts/extract_biome_forcing.py`); replace the hard-coded
-`BIOMES` dict with an N-cell list; large fixtures → `/p/tmp` (keep the committed set small).
+**Step 1 (pin an artifact) is DONE-but-CONDITIONAL, and step 2's tool is written and proven. Start at step 0.**
+
+0. **RESOLVE THE PIN — the one thing blocking the rest (integration point with line S).** Check whether S has
+   published a **complete** `_t7` pair: `ls /p/tmp/jamirp/emulator_global/*t7*` and look for a
+   `recruit_copula_global_*_t7.rcop` beside the two `_t7` `.drf`s. Why it matters: the currently pinned
+   `pooled_w20` pair **was never trained on `semiarid_sahel`** (see the ⛔ subsection above), so it cannot
+   serve all five cells; every `_t7` table covers 5/5.
+   - **If a complete `_t7` pair exists:** verify its `*_meta.txt` `colnames`/`cond_cols` tails against
+     `flux_feature_vector`/`live_flux_cond` (the extractor's `META_TXT=` does this for you), record the new
+     paths + sha256s in the pin table above, and note the swap in BOTH `lines/M/STATE.md` and `lines/S/STATE.md`
+     — ADR 0023 makes adopting a re-trained artifact a deliberate, two-sided act, never silent.
+   - **If not:** either wait, or proceed on `pooled_w20` for the **four** cells it covers and run the M2 gate
+     with `slow` enabled on those four and `slow=nothing` at Sahel — but say "4 of 5 cells" everywhere, and do
+     NOT paper over Sahel by borrowing another version's `n_init`/`age0` (they are version-coupled; the numbers
+     are in *Two verified facts* above).
+1. ~~**Pin a versioned S artifact**~~ — done, contracts verified (see the pin table). Conditional on step 0.
+2. **Per-cell S initial state — the tool EXISTS and is proven: `scripts/extract_cell_slow_init.py`.** It reads
+   a `cell_meta.parquet`, re-checks the artifact's trained boundary order against the runtime order, and merges
+   `n_init, age0, eco_diag_gdd_5, tas_cold_month, soil_depth, co2` into `references/M_cells.csv`. Run it once
+   the pin is resolved:
+   ```bash
+   SC=/p/tmp/jamirp/emulator_global
+   META=$SC/slow_runtime_historic_t7/cell_meta.parquet META_TXT=$SC/drf_forest_global_historic_t7_meta.txt \
+     /home/jamirp/.conda/envs/py311_new/bin/python scripts/extract_cell_slow_init.py
+   ```
+   **The fixture is deliberately NOT committed yet** — emitting it from `_t7` while the pin says `pooled_w20`
+   would silently adopt the unpinned retrain. Verified working: `_t7` → 5/5 cells; the pinned `pooled_w20`
+   tables → correct ABORT. (STATE.md's old claim that `slow_runtime_historic` holds "all five biome cells" was
+   **wrong** — it holds 3/5. That error is what the gate caught.)
+3. **Per-cell `ClimBuf`** through the `climbuf=` kwarg `src/run.jl` already owns — **now REQUIRED, not
+   optional**, if the pin is a POOLED artifact: the boundary's two climate columns differ by up to 1513 GDD /
+   8.84 °C between historic and ssp370, so one baked row is a single-climate snapshot (see *Two verified facts*).
+4. *Gate:* carbon ≤1e-6·C_scale **and** energy ≤1e-6 W/m² in **every** cell, deterministic under seed, and
+   **`slow=nothing` still byte-identical** (guardrail 4). Add it as a third test item in
+   `test/testitems/biome_coupled_tests.jl` beside the two that are there now. Template to copy:
+   `test/testitems/slow_production_drf_tests.jl` already does exactly this for one cell (loads the committed
+   `drf_forest_hainich.drf` + its meta's `boundary`/`n_init`/`age0`, asserts fixed-N reference vs S-driven
+   mechanism, conservation, energy, determinism). **The CI gate must use the COMMITTED demo forest**, not the
+   pinned `/p/tmp` artifact — CI has no cluster. A useful structural property: a DRF prediction is a mean over
+   leaf values, so it cannot leave the training target range — the `0.5 ≤ target ≤ 40` band assertion therefore
+   still holds per-cell even where the Hainich-trained forest is extrapolating.
+5. **Carry the M1 review debt (below): test item 2 still passes verbatim if all five cells revert to Hainich's
+   inputs.** Pin a per-cell OUTPUT signature (each cell's mean LE/GPP in a band) while you are editing that
+   file — numbers are in `lines/M/JOURNAL.md` (job 1617060).
+
+**Cheap win available while doing M2:** the four new single-cell C runs
+`/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` also carry
+`a_lai_stand` / `a_fpc_stand` / `d_gpp` / `d_transp` / `d_swc` / `d_fapar` — i.e. a **per-cell F_diff-vs-C
+oracle for four new biomes**, the raw material for M3's per-cell validation with no new HPC run.
 
 ## Scope + ownership (ADR 0029)
 
@@ -75,20 +197,30 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   ~1e-12 gC, energy closes to ~1e-14 W/m², and the opt-in `climbuf=` refreshes S's transient boundary.
 - `test/testitems/biome_coupled_tests.jl` drives **5 biome cells** (boreal/temperate/mediterranean/semi-arid/
   tropical) with real GSWP3-W5E5 forcing — energy closes in every climate and the Bowen ordering is
-  climate-correct — but with **`slow=nothing`** and a **common Hainich canopy + Hainich soil**, deliberately,
-  to isolate the climate effect.
-- So: **F+E generalize across biomes; the coupled S does not run multi-cell yet.** The global evidence for S
-  is offline (line S), not coupled.
+  climate-correct — and since **M1 (ADR 0050)** each cell runs its **own soil column + own canopy + own
+  latitude** (`references/M_soilcolumn_<name>.txt`, `M_individuals_<name>_2010.csv`, `M_cells.csv`), no longer a
+  common Hainich patch. Still **`slow=nothing`**.
+- **M1 evidence:** soil-column extractor gate = byte-identical reproduction of the committed
+  `hainich_soilcolumn.txt` (`max|Δwhcs| 3.7e-5 mm`); emergent top-1 m root fraction 99.3 % (Sahel) → 53.2 %
+  (Amazon), effective D95 72 → 690 cm; vegetation+soil effect vs the legacy common canopy = **+10.8 W/m² LE**
+  (Amazon), **−7.6** (Sahel), mediterranean Bowen **1.27 → 0.65**; energy still closes ≤2.8e-14 W/m² everywhere.
+  Suite 106,987 pass / 0 fail / 4 broken.
+- **New oracle data this line owns (read-only to others):**
+  `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` — single-cell
+  daily re-runs of the four non-Hainich biome cells with `d_fapar` + `a_lai_stand` + `a_fpc_stand` +
+  per-cell `whc_nat`. Water-closure checked (multi-year fractional imbalance ≤3.5 %).
+- So: **F+E generalize across biomes with per-cell vegetation; the coupled S does not run multi-cell yet.** The
+  global evidence for S is offline (line S), not coupled.
 - Resilience battery is scaffold only: 3 `@test_skip false` in `resilience_battery_tests.jl` + 1 in
   `rollout_stability_tests.jl` (the `lag1_autocorr` estimator itself is real and tested).
 
 ## Milestones
 
-- **M1** Per-cell input provisioning. *(NEXT, above)*
+- **M1** Per-cell input provisioning. **DONE 2026-07-28** (ADR 0050; skill `provision-coupled-cell`).
 - **M2** **Wire the flux-driven S into the multi-cell driver**: the global pooled `.drf`/`.rcop` (pinned
   version), a per-cell `ClimBuf`, and per-cell `n_init`/`age0`/boundary from `cell_meta.parquet`.
   *Gate:* carbon ≤1e-6·C_scale **and** energy ≤1e-6 W/m² in **every** cell, deterministic under seed,
-  `slow=nothing` still byte-identical.
+  `slow=nothing` still byte-identical. *(NEXT, above)*
 - **M3** **Coupled multi-cell validation vs the C truth** — per-cell demography + trait distributions against
   the annual `ind` parquet, scored against the seed1-vs-seed2 noise floor (reuse
   `scripts/noise_floor_vs_emulator.py`, line S's script — read-only). **This is the P3 gate.** Report per-cell
@@ -115,3 +247,45 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   byte-identical).
 - The 5-biome test uses a bounded negative-LE tolerance (`@test all(≥(-2.0), out.le)`) for the smooth-min
   undershoot in the fully-depleted Sahel corner — keep that reasoning if you touch the assertions.
+- **Per-cell inputs come from the cell's OWN single-cell C run, not the global one** (ADR 0050): `whc_nat`
+  differs between the 512-task global run and a single-cell re-run by up to 1.6e-4 relative in layer 0 under
+  `-DPERMUTE`, which is 40× the fixture print resolution. `WHC_SRC=percell` is the default for that reason.
+- **A `rootdist` that does not sum to 1 is silently physical**, not an error: F_diff's water supply scales
+  linearly with `sum(rootdist)` (`src/fdiff.jl:846,928`) and `stand_structure_tof`'s D95 loop
+  (`src/run.jl:65`) never terminates below 0.95. `hainich_soilcolumn` validates none of this — the extractor
+  and `biome_coupled_tests.jl` do.
+- **Never hard-code the repo root in a script** — it writes into the integrator worktree from here
+  (CLAUDE.md §9 item 6). Derive it from `__file__` / `@__FILE__`.
+
+## M1 review debt — carry into M2 (from the 2026-07-28 adversarial review)
+
+A 4-lens adversarial review of the M1 commits raised 16 candidate findings; the judge/verification phase
+died on a session limit, so treat these as **unverified candidates, not confirmed defects**. The ones that
+survived my own inspection were fixed in `b106cdae`'s follow-up (gate now also unit-checks the
+`getrootdist` port that `beta_mean` uses; `WHC_SRC != percell` aborts unless `ALLOW_UNGATED_WHC=1`; the
+`nstep`/window is asserted; `find_whc_run`'s glob is pinned to the historical window; subset `CELLS=` runs
+MERGE the registry instead of truncating it; the test pins per-cell provenance and the FAPAR band).
+**Still open:**
+
+1. **Test item 2 has no provenance sensitivity.** It is the only test that feeds the per-cell inputs to the
+   model, and it passes VERBATIM when all five cells revert to Hainich's soil + canopy (measured) — its 12
+   assertions are closure + finiteness + qualitative orderings. Item 1's new pins catch a *fixture* swap but
+   not a *driver-level* fallback (e.g. an M2 edit hoisting `soil`/`pools` out of the per-cell loop, or a
+   per-cell S artifact silently resolving to Hainich's). **Fix while doing M2:** pin a per-cell OUTPUT
+   signature — each cell's mean LE / GPP within a band — so the model actually has to have consumed that
+   cell's inputs. Numbers to use are in `lines/M/JOURNAL.md` (job 1617060).
+2. **`GATE=no` leaves no trace in the emitted artifacts.** It now warns on stderr, but the files and
+   `M_soilcolumn_meta.json` are still structurally indistinguishable from gated output. Consider stamping the
+   gate verdict into the header + meta.
+3. **`CLAUDE.md` §9 contradicts itself on `MEMORY.md`**: the "where things are written" table says
+   cross-cutting `[VERIFIED]` facts go to `MEMORY.md` (shared, additive) while the ownership table lists
+   `MEMORY.md` as **integrator only**. This line appended to it (commit `e9da4d0c`) on the former reading.
+   Integrator's call to reconcile — flagging, not fixing, since `CLAUDE.md` §9 is shared.
+
+## Observed, NOT ours to fix (raise with the owner/integrator)
+
+- `scripts/gen_diagrams.jl --check` reports `docs/src/generated/components.mmd` **STALE** — pre-existing,
+  unrelated to any line-M change: the committed diagram still says component E will "reuse Terrarium.jl",
+  while `src/registry.jl` now says "self-contained SEB (ADR 0017)". One line. It is **not** a CI gate (`docs`
+  CI runs doctests + `makedocs`, never the diagram alarm), so nothing is red. The text belongs to component E,
+  so regenerating it is line E's or the integrator's call — line M left it untouched deliberately.

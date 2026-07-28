@@ -1,18 +1,22 @@
 #!/usr/bin/env julia
-# ── USE THE EMULATOR ACROSS BIOMES (Phase 5 — multi-cell generalization) ────────────────────────────
+# ── USE THE EMULATOR ACROSS BIOMES (line M / M1 — per-cell input provisioning) ───────────────────────
 # Drives the coupled S+F+E emulator (Component F + the energy closure E) with the REAL GSWP3-W5E5 daily
-# forcing of five BIOME-REPRESENTATIVE cells (boreal / temperate / mediterranean / semi-arid / tropical;
-# forcing committed by scripts/extract_biome_forcing.py) and reports the emergent, climate-driven
-# ENERGY PARTITIONING contrast — the demonstration that the added surface-energy-balance closure
-# generalizes beyond the Hainich prototype (DEVELOPMENT_PLAN §6 Phase 5).
+# forcing of the biome-representative cells registered in `scripts/extract_biome_forcing.py`
+# (boreal / temperate / mediterranean / semi-arid / tropical) and reports the emergent, climate- AND
+# vegetation-driven ENERGY PARTITIONING contrast.
 #
-# To isolate the CLIMATE effect, a COMMON canopy structure (the committed Hainich patch) is used across
-# all cells and grown by F's own allocation over the decade — so the energy-partitioning differences come
-# purely from the forcing (radiation / temperature / precipitation) through F's water-limited ET driving
-# E's residual-H closure. Biome-specific vegetation (PFT parameters + spin-up) is the documented next
-# step; here the point is that E closes and partitions PLAUSIBLY across the full climate envelope.
+# WHAT CHANGED IN M1: every cell now runs its OWN inputs —
+#   * soil column   `references/M_soilcolumn_<name>.txt`      (scripts/extract_cell_soilcolumn.py:
+#       per-layer whcs from that cell's own C `whc_nat`; rootdist = the fpc-weighted mean of the cell's
+#       living trees' own `getrootdist.c` profiles)
+#   * canopy        `references/M_individuals_<name>_2010.csv` (scripts/extract_cell_individuals.py:
+#       that cell's reconstructed representative individuals + layered-light shares)
+#   * latitude/cell `references/M_cells.csv`                   (from the global run's grid.nc `cellid`)
+# Previously ALL five cells reused **Hainich's** soil and **Hainich's** canopy, deliberately, to isolate
+# the climate effect. Both configurations are run here, so the table shows how much of the biome contrast
+# is CLIMATE and how much is VEGETATION + SOIL.
 #
-# Run:  julia --project=. scripts/run_coupled_biomes.jl
+# Run (SLURM, per CLAUDE.md §2):  scripts/sbatch_julia.sh M-biomes --project=. scripts/run_coupled_biomes.jl
 using LPJmLFITEmulator
 using LPJmLFITEmulator.FDiff
 using LPJmLFITEmulator.FDiff: PhotoParams, TempStressParams
@@ -21,6 +25,7 @@ using Statistics, Printf
 
 const REFDIR = joinpath(@__DIR__, "..", "test", "testitems", "references")
 const σ = 5.670374419e-8
+const YEARS = 10
 
 function readcsv(path)
     lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
@@ -30,67 +35,111 @@ function readcsv(path)
 end
 fcol(d, k) = parse.(Float64, d[k])
 
-# ── common canopy structure (committed Hainich dominant patch) + soil ──
-ind = readcsv(joinpath(REFDIR, "hainich_individuals_2010.csv"))
-v(k, r) = parse(Float64, ind[k][r])
-nt(r) = parse(Int, ind["type"][r])
-prows = Dict{Int, Vector{Int}}()
-for r in eachindex(ind["type"])
-    (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
+"Read a `layer soildepth_mm whcs_mm rootdist` column file into a `SoilColumn`."
+function readsoil(path)
+    sd = Float64[]; whcs = Float64[]; rdist = Float64[]
+    for ln in eachline(path)
+        s = strip(ln)
+        (isempty(s) || startswith(s, "#")) && continue
+        x = parse.(Float64, split(s))
+        push!(sd, x[2]); push!(whcs, x[3]); push!(rdist, x[4])
+    end
+    return hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
 end
-rows = prows[argmax(Dict(k => length(vv) for (k, vv) in prows))]
-mkp(r) = TreePools{Float64}(
-    v("leaf_c", r), v("sapwood_c", r),
-    max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0), v("root_c", r),
-    v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false
-)
-mkt(r) = Individual{Float64}(
-    v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
-    v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
-    PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
-    TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
-)
-sd = Float64[]; whcs = Float64[]; rdist = Float64[]
-for ln in eachline(joinpath(REFDIR, "hainich_soilcolumn.txt"))
-    s = strip(ln); (isempty(s) || startswith(s, "#")) && continue
-    x = parse.(Float64, split(s)); push!(sd, x[2]); push!(whcs, x[3]); push!(rdist, x[4])
+
+"The dominant patch (most living trees) of a reconstructed individual set → (pools, templates)."
+function readcanopy(path)
+    ind = readcsv(path)
+    v(k, r) = parse(Float64, ind[k][r])
+    nt(r) = parse(Int, ind["type"][r])
+    prows = Dict{Int, Vector{Int}}()
+    for r in eachindex(ind["type"])
+        (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
+    end
+    rows = prows[argmax(Dict(k => length(vv) for (k, vv) in prows))]
+    pools = [
+        TreePools{Float64}(
+                v("leaf_c", r), v("sapwood_c", r),
+                max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0), v("root_c", r),
+                v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false
+            ) for r in rows
+    ]
+    tmpls = [
+        Individual{Float64}(
+                v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
+                v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
+                PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
+                TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
+            ) for r in rows
+    ]
+    return pools, tmpls
 end
-soil = hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
 
-biomes = [
-    ("boreal_siberia", 61.75), ("temperate_hainich", 51.25), ("mediterranean_iberia", 39.75),
-    ("semiarid_sahel", 13.75), ("tropical_amazon", -3.25),
-]
-
-@printf("\n=== COUPLED S+F+E EMULATOR ACROSS BIOMES (common canopy; real GSWP3-W5E5 decade 2010–2019) ===\n")
-@printf(
-    "%-22s %6s %6s %7s %7s %7s %7s %7s %8s\n",
-    "biome", "Tair", "Tskin", "LE", "H", "Rn", "Bowen", "maxRes", "GPP"
-)
-for (name, lat) in biomes
+function forcings_of(name)
     f = readcsv(joinpath(REFDIR, "biome_forcing_$(name).csv"))
     tairK = fcol(f, "temp") .+ 273.15
     swd = fcol(f, "swdown"); lwn = fcol(f, "lwnet"); prec = fcol(f, "precip")
     huss = fcol(f, "huss"); co2 = fcol(f, "co2")
-    n = length(tairK)
-    forcings = [
+    n = min(length(tairK), YEARS * 365)
+    forc = [
         AtmForcing(;
                 swdown = swd[i], lwdown = lwn[i] + σ * tairK[i]^4, tair = tairK[i], qair = huss[i],
                 wind = 2.0, psurf = 1.0e5, precip = prec[i], co2 = co2[i]
             ) for i in 1:n
     ]
-    core = FDiffFastCore([mkp(r) for r in rows], [mkt(r) for r in rows], soil, lat)
+    return forc, tairK[1:n]
+end
+
+function run_cell(pools, tmpls, soil, lat, forc, tairK)
+    core = FDiffFastCore(pools, tmpls, soil, lat)
     clo = SEBEnergyClosure(; t_soil0 = mean(tairK))
     state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
-    out = run_coupled_cell(core, clo, state, forcings; days_per_year = 365)
-    gs = 152:243        # boreal/N-hemisphere growing season; a coarse common window
-    bowen = mean(out.h[gs]) / max(mean(out.le[gs]), 1.0e-6)
-    @printf(
-        "%-22s %6.1f %6.1f %7.1f %7.1f %7.1f %7.2f %8.1e %8.0f\n",
-        name, mean(tairK) - 273.15, mean(out.t_skin) - 273.15, mean(out.le), mean(out.h),
-        mean(out.rn), bowen, maximum(abs, out.resid), sum(out.gpp) / (n / 365)
+    out = run_coupled_cell(core, clo, state, forc; days_per_year = 365)
+    gs = 152:243        # a coarse common N-hemisphere growing-season window
+    return (
+        tskin = mean(out.t_skin) - 273.15, le = mean(out.le), h = mean(out.h), rn = mean(out.rn),
+        bowen = mean(out.h[gs]) / max(mean(out.le[gs]), 1.0e-6),
+        res = maximum(abs, out.resid), gpp = sum(out.gpp) / (length(forc) / 365),
     )
 end
-@printf("\nAll biomes: energy closes by construction (maxRes ≈ 0). Partitioning tracks the climate:\n")
-@printf("tropical → LE-dominated (low Bowen); semi-arid/mediterranean → H-dominated (high Bowen);\n")
-@printf("boreal → low fluxes + cold skin. Same canopy ⇒ the contrast is purely climate-driven.\n")
+
+# ── the per-cell registry + the legacy common-Hainich inputs ──
+cells = readcsv(joinpath(REFDIR, "M_cells.csv"))
+names = String.(cells["name"]); lats = fcol(cells, "lat"); ids = fcol(cells, "cell")
+common_soil = readsoil(joinpath(REFDIR, "hainich_soilcolumn.txt"))
+common_pools, common_tmpls = readcanopy(joinpath(REFDIR, "hainich_individuals_2010.csv"))
+
+@printf("\n=== COUPLED S+F+E EMULATOR ACROSS BIOMES — PER-CELL soil + canopy (real GSWP3-W5E5, %d yr) ===\n", YEARS)
+@printf(
+    "%-22s %5s %6s %6s %7s %7s %7s %7s %8s %6s %8s\n",
+    "biome", "lat", "Tair", "Tskin", "LE", "H", "Rn", "Bowen", "maxRes", "ntree", "GPP"
+)
+percell = Dict{String, NamedTuple}(); legacy = Dict{String, NamedTuple}()
+for (k, name) in enumerate(names)
+    forc, tairK = forcings_of(name)
+    soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
+    pools, tmpls = readcanopy(joinpath(REFDIR, "M_individuals_$(name)_2010.csv"))
+    r = run_cell(pools, tmpls, soil, lats[k], forc, tairK)
+    percell[name] = r
+    legacy[name] = run_cell(common_pools, common_tmpls, common_soil, lats[k], forc, tairK)
+    @printf(
+        "%-22s %5.1f %6.1f %6.1f %7.1f %7.1f %7.1f %7.2f %8.1e %6d %8.0f\n",
+        name, lats[k], mean(tairK) - 273.15, r.tskin, r.le, r.h, r.rn, r.bowen, r.res,
+        length(pools), r.gpp
+    )
+end
+
+@printf("\n=== the SAME cells under the LEGACY common Hainich canopy + Hainich soil (climate only) ===\n")
+@printf("%-22s %7s %7s %7s %8s %8s %8s\n", "biome", "LE", "H", "Bowen", "GPP", "dLE", "dBowen")
+for name in names
+    l = legacy[name]; p = percell[name]
+    @printf(
+        "%-22s %7.1f %7.1f %7.2f %8.0f %+8.1f %+8.2f\n",
+        name, l.le, l.h, l.bowen, l.gpp, p.le - l.le, p.bowen - l.bowen
+    )
+end
+
+@printf("\nEnergy closes by construction in every cell and both configurations (maxRes ~ 0).\n")
+@printf("Partitioning still tracks the climate — tropical LE-dominated, dry biomes H-dominated — but each\n")
+@printf("cell now carries ITS OWN rooting depth / plant-available water / canopy, so the dLE column is the\n")
+@printf("VEGETATION+SOIL contribution that the common-canopy design could not show.\n")

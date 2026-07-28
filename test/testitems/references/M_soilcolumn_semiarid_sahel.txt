@@ -1,0 +1,31 @@
+# semiarid_sahel (global orderA cell 18371) soil column for the multi-cell coupled S+F+E driver.
+# 23 layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).
+# whcs_mm = whc_nat (patch-mean fraction, mean of 240 monthly steps) x soildepth, from
+#   /p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c18371_seed1/output
+# rootdist = fpc-weighted mean of 282 living trees' own getrootdist.c profiles (mean beta_root 0.950972, median rooted depth 99 cm); effective D95 = 72.4 cm,
+#   99.3% of roots in the top 1 m (2010 canopy).
+# top-1m plant-available = 117.1036 mm; total = 2657.4891 mm. scripts/extract_cell_soilcolumn.py
+# layer soildepth_mm whcs_mm rootdist
+0 200.0 24.3089 0.633978
+1 300.0 34.8528 0.281087
+2 500.0 57.9419 0.077924
+3 1000.0 115.6661 0.006977
+4 1000.0 115.6661 0.000033
+5 1000.0 115.4505 0.000001
+6 1000.0 115.4505 0.000000
+7 1000.0 115.4505 0.000000
+8 1000.0 115.4505 0.000000
+9 1000.0 115.4505 0.000000
+10 1000.0 115.4505 0.000000
+11 1000.0 115.4505 0.000000
+12 1000.0 115.4505 0.000000
+13 1000.0 115.4505 0.000000
+14 1000.0 115.4505 0.000000
+15 1000.0 115.4505 0.000000
+16 1000.0 115.4505 0.000000
+17 1000.0 115.4505 0.000000
+18 1000.0 115.4505 0.000000
+19 1000.0 115.4505 0.000000
+20 1000.0 115.4505 0.000000
+21 1000.0 115.4505 0.000000
+22 3000.0 346.3955 0.000000

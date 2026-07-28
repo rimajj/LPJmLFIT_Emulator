@@ -191,6 +191,26 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - **Water balance is the closure check:** `-DSAFE` `check_fluxes.c` aborts a cell if `|balanceW| > 1.5
   mm/yr` — **a clean run IS water closure.** `swc` output is FRACTIONAL saturation (no `wsats` output ⇒
   absolute mm not reconstructable); `swe`/`rootmoist` are mm.
+- **Soil geometry & `whc_nat` (`[VERIFIED]`; the per-cell soil column basis — ADR 0050, skill
+  `provision-coupled-cell`).** Layer thicknesses are a **C global, not per-cell**: `fscansoilpar.c:36-39`
+  reads `soildepth[NSOILLAYER]` once from `par/soil_20m.js` = `200,300,500,1000×19,3000` mm. The `soildepth`
+  *input* (`soil_depth_test.clm`, Pelletier) is opened, read, and then **discarded** —
+  `newgrid.c:282` does `grid[i].soildepth=20;` unconditionally, so every cell runs at 20 m and
+  `getrootdist`'s sediment-truncation branch is dead. The `whc_nat` output is the patch-ensemble-mean
+  **fraction** (`soilpar_output.c:42`), so plant-available mm = `whc_nat[l] × soildepth[l]` (the C's own
+  `whcs`, `soil.h:222`) — no pedotransfer port needed. But it is **monthly and time-varying** (`whc =
+  wfc − wpwp` is recomputed 2×/day from the evolving soil carbon via Saxton–Rawls `pedotransfer.c:109`) and
+  **run-to-run nondeterministic under `-DPERMUTE`**: the same cell differs by up to 1.6e-4 relative in layer 0
+  between the 512-task global run and a single-cell re-run. In `whc_nat.nc`, `depth(layer)` is the layer
+  **CENTRE** — thickness = `(depth_bnds[:,1]−depth_bnds[:,0])×1000`.
+- **`ind` rooting columns (`[VERIFIED]`): `D95`, `D95max` and `beta_root` are three different things, all in
+  cm.** `beta_root` is the C's actual profile parameter (`new_tree.c:230`:
+  `getbetaroot(2000 cm, D95max)`; consumed by `getrootdist.c`); `D95max` is the establishment-sampled trait
+  (the `fprint_tree.c:69` "(mm)" label is wrong); the emitted `D95` is the **rootdepth-limited realized**
+  95 % depth (`fwriteoutput_ind.c:104`) and is NOT `log(0.05)/log(beta_root)` for ~87 % of individuals. The
+  rooted depth is recoverable: `R_cm = ln(1−(1−β^D95)/0.95)/ln β`. Tree-vs-grass test is **`D95max > 0`**, not
+  a `Type` number — `Type` ids differ by biome (Hainich {1,2,3,4,5,8} but Sahel/Amazon {0,7}), so
+  `python/.../data.py`'s `TREE_TYPES=(1,2,3,4,5)` is not portable.
 - **This config runs `"individual":true`** (`lpjmlfit.js`), `with_nitrogen="no"`, `landusetype=NATURAL`,
   carbon-only. **Before porting any C routine as "the faithful fix", confirm it actually executes** —
   many paths are gated `if(!config->individual)` or are diagnostic-only. Known dead paths in this config:
@@ -497,6 +517,13 @@ an adversarial review on 2026-07-28 before any line ran them:
    `python`, Aqua and JET are **whole-package** gates, and `docs` never ran on your branch at all. Also GitHub
    keeps only one *pending* run per branch, so a rapid follow-up push can cancel an intermediate `main` run
    (observed twice) — the **newest** `main` sha is the one that carries a verdict.
+
+6. **A script with a hard-coded absolute repo path writes into the INTEGRATOR worktree.** Several older
+   scripts opened with `REPO = "/p/projects/open/Jamir/esm_land_emulator"`, so running one from a line
+   worktree silently emits its fixtures into `$INT`'s working tree — dirtying the one shared checkout and
+   losing the output from your own branch. Always derive the root from the script:
+   `os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` (Python) / `@__DIR__` (Julia). Fixed in
+   `extract_biome_forcing.py`; **grep any script you reuse** (`grep -n 'open/Jamir/esm_land_emulator' scripts/*`).
 
 `test (pre)` is `continue-on-error` and is currently red for unrelated Julia-prerelease churn — don't chase it.
 **Merge at every milestone, never hoard.** Rebase early; a stale branch is the only real conflict source left.

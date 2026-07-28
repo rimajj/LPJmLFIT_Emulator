@@ -144,4 +144,19 @@ shared `MEMORY.md` only as an **integrator** action from the `main` worktree.
 
 Suspect a **dependency bump** — manifests are git-ignored so every CI run re-resolves to newest-allowed
 deps. Diff the `Enzyme vX.Y.Z` (etc.) line in the last-green vs first-red job logs and tighten `[compat]`
-(this is exactly how the Enzyme 0.13.189 regression turned CI red with no code change).
+(this is exactly how the Enzyme 0.13.189 regression turned CI red with no code change, and how **JET 0.12.0**
+broke `test (1)` on 2026-07-28 by removing `target_defined_modules`).
+
+Getting from "which check is red" to the failing line — `curl` must follow the log redirect (`-sL`):
+```bash
+ID=$(curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/$R/commits/<sha>/check-runs" \
+  | python3 -c "import sys,json;print([r['id'] for r in json.load(sys.stdin)['check_runs'] if r['name']=='test (1)'][0])")
+curl -sL -H "Authorization: token $TOKEN" "https://api.github.com/repos/$R/actions/jobs/$ID/logs" -o /tmp/ci.log
+grep -nE "Test Failed|Error During Test|errored|Some tests did not pass" /tmp/ci.log | tail
+grep -oE "<Pkg> v[0-9.]+" /tmp/ci.log | sort -u      # the resolved version, to compare against last-green
+```
+**A red check on a diff that cannot explain it is a dep bump until proven otherwise** — check whether `main`'s
+own latest run is still green (it often is, simply because it predates the release), which tells you the break
+will hit every branch on its next push and is not yours. `[compat]` is **integrator-only** (ADR 0029), so a
+line records the one-line pin as a blocker rather than applying it.

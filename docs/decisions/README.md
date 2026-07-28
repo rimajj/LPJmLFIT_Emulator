@@ -77,6 +77,7 @@ first ADR.
 
 | # | Decision | Status |
 |---|---|---|
+| [0050](0050-per-cell-input-provisioning.md) | Per-cell input provisioning: `whc_nat` time-mean soil column + community-mean `getrootdist` root profile, gated on reproducing the committed Hainich column | accepted |
 
 #### Line E — Component E vs observations (0070–0079)
 
