@@ -100,15 +100,20 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
 
 ## Milestones
 
-- **S1** Basis-clean noise floor → exact per-axis headroom. *(NEXT, above)*
+- **S1** Basis-clean noise floor → exact per-axis headroom. **DONE 2026-07-28 (ADR 0030)** — gate met
+  (`seed1-basis` 1.000 ×4), headroom table in §Status, and it is what uncovered S1b.
+- **S1b** **Widen the training population to FIT's complete tree set (ADR 0031).** *(NEXT, above.)* Blocks S2.
 - **S2** **Close the trait headroom.** Expand the copula conditioning — `COPULA_COND_COLS` in
   `scripts/build_slow_runtime_table.py` **and** `live_flux_cond` in `src/components/slow.jl` **in lockstep** —
   with environment / PFT-composition covariates; global K-fold re-fit (`run_pooled_slow_copula.sh`); measure
-  the per-cell-median r recovered against the S1 floor. **Needs an ADR (0030) + an integration point with M**
-  (artifact version bump). *Gate:* Wooddens per-cell-median r materially up (target ≥0.75) with pooled KS not
-  degraded (≤0.02); report honestly if the conditioning does not deliver.
-- **S3** Per-PFT / mixture copula, if S2 under-delivers — wood density is set by PFT composition, so a
-  per-PFT-mixture marginal may be the right structure rather than more covariates.
+  against the **re-measured** ADR-0030 gate. **Needs an ADR (0032) + an integration point with M** (artifact
+  version bump). *Gate (ADR 0030 §4, replacing "r ≥ 0.75"):* close ≥50 % of the Wooddens GAP to the ceiling
+  **and** lift `sd(pred)/sd(Y1)` to ≥0.75 on that axis, with pooled KS not degraded (≤0.02) and no other axis
+  losing >0.01 of `r_center`. Report honestly if the conditioning does not deliver.
+- **S3** Per-PFT / mixture copula. **Now the LEADING hypothesis, not a fallback** (ADR 0031): FIT draws traits
+  from per-PFT `[low,high]` intervals, so a per-cell trait median is a *composition* statistic — and the copula
+  has neither a composition covariate nor a per-PFT marginal, while predicting only 0.55 of the true
+  between-cell Wooddens spread. Consider running S3 *with* S2 rather than after it.
 - **S4** **Grass ownership** (open risk #8): S owns grass demography; today grass stays F-side and S is
   TREE-only. Needs an ADR + a carbon-conservation gate for grass at the handoff.
 - **S5** Whole-cohort **DROP** + the Gate-3 recursive drift (nqrmse 0.39 vs the documented 0.45 alarm).
