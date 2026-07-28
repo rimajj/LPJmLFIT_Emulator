@@ -103,6 +103,29 @@ Ignore benign `curl_easy_setopt: 48` spew.
   and `cbinary_validation_tests.jl` (vs the C oracle), `conservation_closure_tests.jl`, `energy_closure_tests.jl`,
   `coupled_run_tests.jl`, `biome_coupled_tests.jl`, plus `aqua_tests.jl` / `jet_tests.jl`.
 
+## Auditing a gate or fixture assertion you just wrote
+
+This repo's trust model IS its gates and committed fixtures, so a gate that looks green while proving
+nothing is the most expensive possible bug. Two checks, both of which have caught a real hole here
+(ADR 0050, 2026-07-28):
+
+1. **Does the gate exercise the code path the ARTIFACTS take?** A generator with modes/flags can certify
+   mode A while every committed file is produced by mode B — then the whole B derivation ships covered by
+   nothing. Diff "what the gate calls" against "what `main()` defaults to", and unit-gate the difference
+   (e.g. check a ported routine against an independent closed-form evaluation of the source algorithm).
+   The same applies to env-var provenance: if `SRC=x` is gate-certified and `SRC=y` is merely *allowed*,
+   make `y` abort rather than inherit the verdict.
+2. **Are ordering assertions permutation-insensitive?** `@test a > b > c` over per-cell fixtures pins the
+   ORDER, not which file belongs to which cell. Enumerate the permutations of your fixture set and count how
+   many satisfy every assertion — if it is more than 1, a mis-paired fixture ships green. Fix with per-item
+   provenance PINS (a numeric value only that item's own data produces) and row-wise identity assertions
+   instead of an order-blind `Set` comparison. Derive pinned numbers FROM the committed file
+   programmatically; transcribing them by hand is its own failure mode (it cost a red suite here).
+
+Also: keep tolerances at the artifact's real precision (accumulated print rounding), not at a round number
+that happens to pass — a tolerance 20× looser than the worst committed deviation admits the very drift the
+assertion exists to catch.
+
 ## Format gate (Runic) — CI installs Runic 1.7.0
 
 `julia` is not on PATH (see the ⚠️ note at the top) — use the absolute path / `$JULIA`:
