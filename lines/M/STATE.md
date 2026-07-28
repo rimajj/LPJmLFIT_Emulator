@@ -50,6 +50,14 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   the feature contract it is an integration point (both sides land together) — never adopt a re-trained
   artifact silently, because train/inference consistency is load-bearing (ADR 0023).
 - **From E:** the `SEBEnergyClosure(...)` constructor + `solve!` signature.
+- **From E — OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E5, ADR 0071):** real daily
+  **wind + surface pressure** now exist for the 5 orderA biome cells —
+  `test/testitems/references/wind_psurf_<biome>.csv` (`year,doy,wind,psurf`, 2010–2019 × 365 d, obsclim
+  GSWP3-W5E5, mapping proven by a `tas` round-trip). The coupled driver still builds `AtmForcing` with a
+  CONSTANT wind and a fixed psurf, and `src/run.jl` is **yours** — so wiring these in is an M-side change
+  E cannot make. Expect the coupled Hainich/biome baselines to MOVE when it lands (deliberate, not a
+  regression): Bowen and the 2018-drought numbers are wind-sensitive. Land it with E (see
+  `lines/E/STATE.md` E5).
 - `src/climbuf.jl` (`ClimBuf`, line S) is consumed via the `climbuf=` kwarg you already own in `run.jl`.
 
 ## Status (2026-07-28)

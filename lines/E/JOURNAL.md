@@ -99,3 +99,57 @@
 - **Next:** E2 (the `sfcwind`/`ps` cross-grid remap) is now the critical path — see STATE.md `## NEXT`.
   Note the E4 pairing hazards already found: leap vs noleap-365, local-standard time, and
   `Qle_cor`-vs-`Qle` choice.
+
+## 2026-07-28 — E2 DONE: wind + psurf remapped onto orderA cells, mapping PROVEN by a tas round-trip  [milestone E2]
+
+- **Goal:** kill the named blocker — Component E runs on a constant wind and a fixed psurf, so E4 cannot
+  honestly score LE/H against a tower. Source both forcings, get them onto the model's orderA cells, and prove
+  the mapping instead of assuming it.
+
+- **Did:**
+  1. **Searched for the source rather than accepting the milestone's assumption.** The milestone named the raw
+     SSP370 MPI-ESM1-2-HR NetCDFs — but that set is `hurs huss lwnet pr rsds sfcwind tas tasmax tasmin`:
+     **no `ps` at all**. Found instead
+     `/p/projects/isimip/isimip/ISIMIP3a/InputData/climate/atmosphere/obsclim/global/daily/historical/GSWP3-W5E5/`
+     with **both** `gswp3-w5e5_obsclim_ps_global_daily_*.nc` [Pa] and `…_sfcwind_…` [m/s], daily 1901–2019 —
+     i.e. the **same obsclim family the LPJmL-FIT run itself consumed**. Also checked and rejected: WFDE5_CRU
+     `PSurf` (ends 2018, different family), the LPJmL-prepared obsclim `.clm`/`.nc` (no `ps`, and its wind is
+     quantized), and elevation-derived psurf (no weather).
+  2. **Wrote `scripts/remap_wind_psurf_cells.py`** — `grid.nc cellid` → (lat, lon) → source axis matched **by
+     value with an exactness assertion**, 29 February dropped for the model's noleap-365, one read per
+     (cell, decadal file) because obsclim is chunked `[1,360,720]`+zlib (a single-cell decade read ≈ 8 s).
+     Emits committed fixtures `test/testitems/references/wind_psurf_<biome>.csv` (`year,doy,wind,psurf`,
+     2010–2019 × 365 d) for the same 5 cells and decade as the existing `biome_forcing_<biome>.csv` — a NEW
+     fixture family, so no committed baseline moves.
+  3. Ran the full 5-cell job on SLURM (`E-windps`, job 1617515, exit 0).
+
+- **Result / evidence — the E2 gate PASSES at all five biome cells:**
+
+  | check | result |
+  |---|---|
+  | (a) index arithmetic vs `xarray` label `.sel` | `max|Δ| = 0` for `sfcwind` **and** `ps`, every cell |
+  | (b) obsclim `tas` .nc vs model-grid `temperature_test.clm` | **`max|Δ| = 0.000 °C` over 365 days, all 5 cells** (means −9.552 / 7.381 / 14.926 / 28.303 / 30.231 °C) |
+  | (c) leap-dropped wind vs the LPJmL-prepared **noleap** wind | agrees to `≤3.8e-7 m/s` after matching that file's **0.01 m/s quantization** (raw `max|Δ| ≤ ½` step) |
+  | (d) Hainich cell vs the DE-Hai tower (E1 data) | wind 3.246 vs 3.609 m/s (**−10.1 %**); psurf 97 522 vs 95 873 Pa (**+1649 Pa ⇒ cell mean ≈143 m below the tower's 430 m**) |
+
+  Per-cell 2010–2019 means — wind [m/s] / psurf [Pa]: boreal_siberia 2.868 / 96 718 · temperate_hainich
+  3.220 / 97 548 · mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical_amazon
+  1.490 / 100 638. All inside the physical bands the script asserts.
+
+- **Two traps hit and fixed:**
+  1. **The `.clm` v3 datatype codes are 0-BASED** (`0=byte 1=short 2=int 3=float 4=double`). My reader used a
+     1-based map, read `temperature_test.clm`'s float32 as int32, and check (b) "failed" with a clm mean of
+     **5.9e8 °C**. Fixed → `max|Δ| = 0.000`. Now in `CLAUDE.md` §3 and the new skill.
+  2. **The LPJmL-prepared obsclim wind is quantized to 0.01 m/s** (int16·0.01 in the `.clm` twin), so check (c)
+     "failed" at `max|Δ| = 4.998e-3` — exactly ½ a step. The comparison now rounds to the prepared grid first.
+
+- **Judgement calls:** no global `.clm` written (5 cells × 10 yr is what anything consumes today; a 1.9 GB
+  global daily wind `.clm` before a consumer exists is speculative). SSP370 psurf left unsourced and recorded
+  as such rather than papered over with an elevation formula that has no synoptic variability.
+
+- **Decisions:** **ADR 0071** — obsclim GSWP3-W5E5 as the wind/psurf source, the grid + calendar conventions,
+  the four-part gate, and the open SSP370-psurf gap. `config/paths.yaml`
+  `lpjml.energy_extra_inputs.{sfcwind,ps}` filled.
+
+- **Next:** E3 (sublimation-λ split, self-contained) then E4 (the P2 gate). E5 = feed these fields into the
+  coupled driver — an **integration point with line M** (`src/run.jl` is M's path); noted in both STATE files.

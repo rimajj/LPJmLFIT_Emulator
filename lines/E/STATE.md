@@ -6,27 +6,31 @@
 
 ## NEXT — start here
 
-**E2 — the cross-grid remap for `sfcwind` + `ps` (now the critical path; E1 is DONE).**
-E currently runs on a **constant wind** and an effectively fixed `psurf`, which is the last thing between the
-closure and a defensible site validation: PLUMBER2 gives observed `Wind`/`Psurf` at the towers, but the
-*model* still has none on its own grid, so an E4 run at Hainich would be forced with a constant while the
-observation it is scored against was not.
+**E3 — the sublimation-λ split (self-contained, opt-in, default byte-identical). E1 and E2 are DONE.**
 
-1. **Reuse the header-driven `.clm` reader** — `scripts/build_transient_boundary.py::open_clm` handles both
-   layouts (v3 `LPJCLIM` HDR=51 float32 vs v2 HDR=43 **int16 with `scalar`**). Never assume the layout.
-2. Source `sfcwind` (and `ps`, or derive it from elevation + a standard atmosphere if the GCM lacks it) from
-   `config/paths.yaml` `lpjml.inputs.ssp370_raw_gcm` (MPI-ESM1-2-HR NetCDFs) and the GSWP3-W5E5 obsclim tree.
-   **The raw grid is re-ordered relative to orderA: raw cell 42490 ≠ Hainich.** Remap by lat/lon onto the
-   orderA grid (`grid.nc` `cellid`, the mapping `scripts/build_swc_soilmoist_feature.py` already documents).
-3. Fill `lpjml.energy_extra_inputs.{sfcwind,ps}` in `config/paths.yaml` (E owns those keys).
+Component E currently divides *every* ET flux by the **vaporization** latent heat, including the part that
+leaves snow or ice. `conservation.jl` already exports both constants, so this is a small, well-bounded physics
+change — and it is the last E-owned physics item before the P2 gate.
 
-*Gate:* remapped wind/psurf at Hainich matches an independent lat/lon lookup, **and** a round-trip on a known
-cell reproduces the model-grid `_test.clm` value for a variable present in both. Cross-check of opportunity
-now available: the remapped wind at the DE-Hai grid cell should sit in the same distribution as the **observed**
-`wind` in `derived/halfhourly_DE-Hai.parquet` (monthly means, not half-hours — 0.5° vs a tower).
+1. In `src/components/energy.jl` (E-owned), use `LAMBDA_SUBLIMATION` for the fraction of the flux leaving
+   snow/ice and `LAMBDA_VAPORIZATION` for the rest. The state that tells you which is which comes through the
+   F→E payload — check what is actually available (`src/interface.jl` is **line M's** file: read it, don't edit
+   it; if the split needs a new field, that is an integration point with M, so first try to do it with what is
+   already there, e.g. a snow-mass / snow-fraction term).
+2. **Opt-in, default OFF** (guardrail 4): a `SEBParams` flag defaulted so every committed baseline and
+   `energy_closure_tests.jl` stays byte-identical. Flipping the default later is an integration point with M.
+3. Add the ON-path assertions to `test/testitems/energy_closure_tests.jl` (E-owned): closure still holds to
+   ~1e-14 with the mixed λ, the flux is continuous across the snow/no-snow boundary (no kink that would break
+   AD), and a warm cell is unchanged bit-for-bit with the flag OFF.
 
-Then **E3** (sublimation-λ split, self-contained) and **E4** (the P2 gate). Everything E4 needs from the
-observations is already on disk — see "The E4 recipe" below.
+*Gate:* closure residual unchanged (~1e-14), ForwardDiff-vs-FD still clean on the ON path, all committed
+baselines byte-identical with the flag OFF.
+
+**Then E4 — the P2 gate.** Everything it needs is on disk: PLUMBER2 (E1) and the remapped wind/psurf (E2).
+Read "The E4 recipe" below before designing the comparison; it already fixes the flux basis, the acceptance
+band, the day filter and the pairing hazards. One rule that came out of E2: **score against the TOWER's
+measured wind/psurf when scoring against tower fluxes** — the 0.5° grid cell at Hainich is −10.1 % in wind and
++1649 Pa in pressure, so using the grid forcing would charge a forcing difference to the closure.
 
 ## Scope + ownership (ADR 0029)
 
@@ -82,17 +86,33 @@ Rules the first-look report already established — follow them instead of re-de
   (daytime Σ H/Σ LE here vs the coupled test's summer aggregate), so **make the definitions identical before
   concluding anything** — the honest first step of the comparison, per the `residual-diagnosis` skill.
 
+## The model-grid wind/psurf (E2 output — what E4/E5 drive with)
+
+| what | where |
+|---|---|
+| source (both vars, daily, 0.5°, obsclim GSWP3-W5E5) | `config/paths.yaml` `lpjml.energy_extra_inputs.{sfcwind,ps}` |
+| per-cell fixtures, 2010–2019 × 365 d | `test/testitems/references/wind_psurf_<biome>.csv` (`year,doy,wind,psurf`) |
+| remap + the 4-part gate | `scripts/remap_wind_psurf_cells.py` (skill: `obsclim-cell-remap`; ADR 0071) |
+
+2010–2019 means — wind [m/s] / psurf [Pa]: boreal_siberia 2.868 / 96 718 · temperate_hainich 3.220 / 97 548 ·
+mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical_amazon 1.490 / 100 638.
+**Open:** SSP370 `ps` does not exist in the raw GCM set ⇒ the future branch of E stays on a fixed pressure.
+
 ## Status (2026-07-28)
 
 - **E1 DONE** — PLUMBER2 v1-0 staged, loaded and sanity-checked at 9 sites; `config/paths.yaml`
   `data.energy_reference` is a resolved path, not a TODO (ADR 0070; `lines/E/JOURNAL.md` 2026-07-28).
+- **E2 DONE** — daily wind + psurf remapped onto the 5 orderA biome cells from obsclim GSWP3-W5E5, with the
+  lat/lon ↔ orderA mapping **proven** by a `tas` round-trip against `temperature_test.clm` (`max|Δ| = 0.000 °C`,
+  all 5 cells) and cross-checked against the DE-Hai tower (ADR 0071; job `E-windps` 1617515).
 - `SEBEnergyClosure` (self-contained, ADR 0017 — no Terrarium runtime dep) closes `Rn = LE + H + G` to
   **1.4e-14 W/m²** (13,824 cases; ForwardDiff-vs-FD; Float32 clean), H as the residual.
 - Monin–Obukhov `g_a` stability correction is **ON by default**; the aerodynamic identity checks to ~3e-11.
 - Emergent behaviour is climate-correct: Bowen ordering across 5 biomes (tropical ~0.10 → semi-arid
   H-dominated), and the coupled Hainich decade reproduces the **2018 drought** (summer Bowen 0.89 vs ~0.2).
-- **Not done:** no observational validation *yet* (the reference now exists — E4 is unblocked on the data side),
-  and two forcings E needs are still not model-ready (E2).
+- **Not done:** no observational validation *yet* — but both prerequisites now exist (PLUMBER2 reference E1,
+  model-grid wind/psurf E2), so **E4 is unblocked on the data side**. The coupled driver still uses the
+  constant wind/psurf until the E5 integration point with M lands.
 - Honest scope currently recorded: wind is held **constant** and psurf is effectively fixed (the LPJmL run
   never used them — `photosynthesis.c` hard-codes `p=1e5`), and LE uses the **vaporization** λ for all ET
   (no snow-sublimation split).
@@ -102,13 +122,10 @@ Rules the first-look report already established — follow them instead of re-de
 - **E1** ✅ **DONE 2026-07-28** — PLUMBER2 v1-0, 9 sites, staged + loaded + sanity-checked; `paths.yaml` filled
   (ADR 0070). Finding that reshapes E4: **T_skin is not observable at Hainich** (no `LWup` in the
   FLUXNET2015-sourced files) ⇒ T_skin is validated at the OzFlux sites, biome-analogously.
-- **E2** **The named blocker — cross-grid remap for `sfcwind` + `ps`.** *(NEXT, above)* The raw GCM / GSWP3-W5E5 `.clm` are a
-  **different, int16, re-ordered grid** from the model-grid `_test.clm`: **raw cell 42490 ≠ Hainich**. Write a
-  lat/lon remap onto the orderA grid (sources per `config/paths.yaml`: `ssp370_raw_gcm` MPI-ESM1-2-HR NetCDFs
-  incl. `sfcwind`, and GSWP3-W5E5 obsclim). *Gate:* remapped wind/psurf at Hainich matches an independent
-  lat/lon lookup, and a round-trip on a known cell reproduces the model-grid `_test.clm` value for a variable
-  present in both.
-- **E3** **Sublimation-λ split** — use `LAMBDA_SUBLIMATION` when the flux leaves snow/ice rather than
+- **E2** ✅ **DONE 2026-07-28** — wind + psurf from ISIMIP3a obsclim GSWP3-W5E5 (same family as the run's own
+  forcing; the raw SSP370 GCM set has **no `ps`**), remapped onto orderA cells, all four gate checks PASS at all
+  5 biome cells (ADR 0071). Committed fixtures `wind_psurf_<biome>.csv`; `paths.yaml` keys filled.
+- **E3** **Sublimation-λ split** *(NEXT, above)* — use `LAMBDA_SUBLIMATION` when the flux leaves snow/ice rather than
   vaporization for everything (`conservation.jl` already exports both constants). Opt-in, default
   byte-identical.
 - **E4** **Validate LE / H / T_skin within PLUMBER2 error bands** at ≥1 site, plus the diurnal cycle, with real
@@ -118,8 +135,11 @@ Rules the first-look report already established — follow them instead of re-de
   (ADR 0070): LE/H/Rn/Bowen at DE-Hai + the biome set; T_skin at AU-Tum/AU-ASM/AU-Rob only.
 - **E4b** *(new, optional)* close the **T_skin-at-Hainich** gap from a second source — ICOS `LW_OUT` for DE-Hai
   (`data.icos-cp.eu` is reachable from the login node) or satellite LST — since PLUMBER2 cannot supply it.
-- **E5** Feed the real wind/psurf back to line M as an integration point (the coupled runs currently use
-  constants), and record the improvement.
+- **E5** Feed the real wind/psurf back to line M as an **integration point** — the coupled driver builds
+  `AtmForcing` in `src/run.jl`, which **M owns**, so E supplies `wind_psurf_<biome>.csv` + ADR 0071 and the
+  driver change lands on M's side, both together. Recorded in `lines/M/STATE.md` too. Then record the
+  improvement (the coupled Hainich decade currently runs on a constant wind, so its Bowen/2018-drought numbers
+  will move — that is expected, not a regression, and it is a deliberate baseline change).
 
 ## Line-local gotchas
 
@@ -136,4 +156,11 @@ Rules the first-look report already established — follow them instead of re-de
 - `swc` output from the C run is **fractional** saturation, not mm (`swe`/`rootmoist` are mm).
 - The 5-biome test tolerates LE ≥ −2 W/m² (a bounded smooth-min undershoot in the fully water-depleted corner,
   not a sign bug) — don't "fix" that by changing the physics without reading the comment.
+- **`.clm` v3 datatype codes are 0-BASED** (`0=byte 1=short 2=int 3=float 4=double`). A 1-based map reads
+  `temperature_test.clm`'s float32 as int32 and reports ~5.9e8 "°C" — it looks like a broken cell mapping when
+  it is a broken reader. `scripts/remap_wind_psurf_cells.py::read_test_clm_year` is the correct minimal reader.
+- **The LPJmL-prepared obsclim wind is quantized to 0.01 m/s** (`int16·0.01` in the `.clm`), so a raw
+  `max|Δ| ≈ 5e-3 m/s` against a full-precision source is ½ a quantization step, not a bug.
+- **Never `git stash -u` while a SLURM job is writing fixtures into this worktree** — the stash pulls the
+  files out from under the running job.
 - Any long job → SLURM (`scripts/sbatch_python.sh` / `sbatch_julia.sh`); the login node is hook-blocked.

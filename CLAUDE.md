@@ -186,6 +186,8 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `scripts/build_transient_boundary.py::open_clm`; per-cell-year reader `read_clm_year`
   (`scripts/extract_fdiff_validation_inputs.py`). orderA `.clm` cell index == the parquet `Cell` (Hainich
   42490) — no grid.nc map needed. The orderA grid is 67420 cells, YEARCELL order, 365 noleap bands.
+  **The v3 datatype codes are 0-BASED** — `0=byte 1=short 2=int 3=float 4=double` (`_DT` in `open_clm`);
+  an off-by-one reads `temperature_test.clm`'s float32 as int32 and yields ~5.9e8 "°C" (bit line E, 2026-07-28).
 - **Water balance is the closure check:** `-DSAFE` `check_fluxes.c` aborts a cell if `|balanceW| > 1.5
   mm/yr` — **a clean run IS water closure.** `swc` output is FRACTIONAL saturation (no `wsats` output ⇒
   absolute mm not reconstructable); `swe`/`rootmoist` are mm.
@@ -307,9 +309,9 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - Decisions: `docs/decisions/README.md` (ADR index). Steering: `STEERING_PROMPT.md` +
   `PROJECT_REVIEW_2026-07-22.md`.
 - **Skills** (`.claude/skills/`): `julia-test`, `lpjmlfit-cbinary`, `fdiff-validate`, `python-env`,
-  `residual-diagnosis`, `repo-commit`, `dependency-license-gate`, `plumber2-reference` (line E: the
-  PLUMBER2 observational reference for Component E). Invoke the one that matches the mechanical task
-  instead of re-deriving its steps.
+  `residual-diagnosis`, `repo-commit`, `dependency-license-gate`, `plumber2-reference` + `obsclim-cell-remap`
+  (line E: the PLUMBER2 observational reference for Component E, and getting a gridded forcing onto orderA
+  cells). Invoke the one that matches the mechanical task instead of re-deriving its steps.
 - **Licensing (`[VERIFIED 2026-07-28]`, ADR 0080; register + gate: `docs/third_party_licensing.md`, skill
   `dependency-license-gate`).** Outbound = **AGPL-3.0-or-later** — forced by LPJmL-FIT's AGPL-3.0 copyleft
   *and* by being an EUPL-1.2 Appendix "Compatible Licence" (Art. 5). **Never state a licence from memory:
