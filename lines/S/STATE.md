@@ -191,6 +191,31 @@ ssp370 w20 = **828 818 873 stems / 58 683 cells** (this is what OOM-kills a 32-c
 | historic **per-cell-mean R²** / bias | **0.9994** / 0.005 | **0.9987** / **0.001** | −0.0007 | |
 | historic cells scored | 44 328 | **53 699** | **+9 371** | the previously-invisible tropical + larch cells |
 
+### Trait POOLED-MARGINAL fidelity — before/after (K-fold-by-cell OOS, historic, `[VERIFIED 2026-07-28]`)
+
+Jobs 1597648 (tree5) → 1622131 (tree7), same script + hyperparameters. `nqrmse = RMSE(q05..q95) / IQR(obs)`,
+so it is **spread-normalized** — and the observed IQRs moved, which the headline ratio hides. Both are shown:
+
+| axis | nqrmse tree5 | **nqrmse tree7** | headline | IQR ×  | raw RMSE tree5 → tree7 | **real gain** |
+|---|---|---|---|---|---|---|
+| SLA | 0.016 | **0.006** | 2.67× | 0.89× | 3.14e-4 → 1.05e-4 | **2.99×** |
+| Wooddens | 0.022 | **0.008** | 2.75× | 1.13× | 1771 → 726 | **2.44×** |
+| D95max | 0.028 | **0.008** | 3.50× | 1.20× | 7.29 → 2.50 | **2.92×** |
+| minwscal | 0.038 | **0.008** | 4.75× | **2.47×** | 2.73e-3 → 1.42e-3 | **1.92×** |
+
+**The improvement is real on every axis (1.9–3.0× in absolute quantile error), but do NOT quote the headline
+ratios.** For `minwscal` the 4.75× is mostly its IQR growing 2.47× (the tropical PFT's `[0.05,0.75]` interval
+entering the population); the honest number is 1.9×. `SLA` is the opposite case — its IQR *shrank*, so its
+headline 2.67× **understates** a real 2.99×.
+
+**This does NOT refute or confirm ADR 0031's degradation prediction.** ADR 0031 predicted that a single pooled
+marginal per axis would be a *worse structural fit* once id 0's very different trait intervals were included —
+that is a statement about **between-cell composition**, which is what ADR 0030's **per-cell-median** gate
+measures. The table above is the **pooled global marginal**, a strictly weaker test that is blind to whether the
+right cells got the right traits. The chained job **1622436** is the test of the actual prediction; until it
+reports, the trait verdict is OPEN. Plausible reason the marginal improved anyway: 48 % more stems and 20 % more
+cells is more training data per marginal DRF, and the truncated set was itself an awkward mixture to fit.
+
 **Counts survive the widening essentially intact:** every count metric moves by ≈ −0.003 R² on a 56 %-larger,
 markedly more heterogeneous population (the tropical belt + Siberian larch added), and the unseen-regime
 generalization gap stays flat (holdout-by-scenario is within 0.0005 of the by-cell baseline, as before). So the
