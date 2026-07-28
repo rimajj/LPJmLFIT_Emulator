@@ -6,6 +6,12 @@
 # the linkcheck run inside the build. The explicit doctest step below is a
 # belt-and-braces re-run so doctest failures surface even on PRs from forks.
 name: docs
+#
+# DELIBERATELY NOT triggered on `line/**` (ADR 0028), unlike CI/format/python: this workflow holds
+# `permissions: contents: write` and deploys the built site to the `gh-pages` branch, so running it on four
+# parallel line branches would race that branch. Work lines build docs LOCALLY instead:
+#   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
+# (already the documented local check — CLAUDE.md §2). Do not add `line/**` here.
 
 on:
   push:

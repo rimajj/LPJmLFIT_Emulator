@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - 'line/**'   # parallel work lines (ADR 0028) — CI on every line branch
     tags: ['*']
   pull_request:
     branches:

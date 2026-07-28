@@ -338,8 +338,93 @@ invocations for the `consolidate-memory` dedup/prune pass.
 
 **Standing tasks:** (1) the commit-time gate above, every commit; (2) **consolidate MEMORY every ~5
 sessions** — reshape MEMORY.md back to durable-state-only under the cap, archive (don't delete) what you
-remove (a manual reshape; there is no `consolidate-memory` skill yet — create one via `skill-creator` if
-the reshape stabilizes into a fixed procedure).
+remove — use the **`consolidate-memory`** skill, which also covers the skill-set dedup/prune pass. With
+parallel lines (§9) this applies to the SHARED `MEMORY.md` as an **integrator** action, and to each
+`lines/<X>/STATE.md` as that line's own housekeeping.
 
 **Use subagents** for isolation, parallelism, a read-only reviewer, or independent verification — and note
 that subagents can invoke skills.
+
+---
+
+## 9. Parallel work lines — the protocol (ADR 0028/0029; read this every session)
+
+Work runs as **4 concurrent session lines**, each a long-lived branch checked out in its own **git worktree**.
+This exists because one serial session was too slow, and because two sessions in ONE checkout destroy each
+other (the mandated `rm -f test/Manifest.toml` before `Pkg.test()`, plus `.git/index.lock` and `*.cov` litter —
+none of it tracked, so git never warns).
+
+| Line | Branch · worktree | Scope | State file |
+|---|---|---|---|
+| **S** | `line/S` · `/p/projects/open/Jamir/wt-S` | Component-S science | `lines/S/STATE.md` |
+| **M** | `line/M` · `/p/projects/open/Jamir/wt-M` | Multi-cell coupled S+F+E (P3) | `lines/M/STATE.md` |
+| **E** | `line/E` · `/p/projects/open/Jamir/wt-E` | Component E vs observations (P2) | `lines/E/STATE.md` |
+| **O** | `line/O` · `/p/projects/open/Jamir/wt-O` | Online coupling, Terrarium/SpeedyWeather (P4/P5) | `lines/O/STATE.md` |
+| — | `main` · `esm_land_emulator` | **Integration only** | — |
+
+**One session per line at a time.** Your line = the branch in the worktree you launched from; the
+`SessionStart` hook (`.claude/hooks/session-line-context.sh`) resolves it and injects your line's ownership
+rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (integrator)`.
+
+### Where things are written (this is what keeps merges conflict-free)
+
+**Per-line FILES, not per-line sections** — sections in a shared file still conflict; different files never do.
+
+| Kind | Destination |
+|---|---|
+| Narrative / what happened | `lines/<X>/JOURNAL.md` (append) |
+| Durable line state + the **NEXT handoff** | `lines/<X>/STATE.md` |
+| Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line** |
+| A decision | an ADR from **your block**: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089; add the row to your line's subsection of `docs/decisions/README.md` |
+| Cross-cutting `[VERIFIED]` fact | `MEMORY.md` (shared, additive) |
+| A procedure / gotcha | a skill / this file (§8 routing unchanged) |
+
+`CHANGELOG.md`, the shared `MEMORY.md`, `Project.toml`, and cross-cutting ADRs (0001–0029) are
+**integrator-owned**. The root `JOURNAL.md` is the **integration** journal (single-writer ⇒ conflict-free).
+
+### Ownership + contracts
+
+The per-path ownership map is **ADR 0029** (also summarized in each `lines/<X>/STATE.md`). Rules:
+
+- **Never edit another line's exclusive path.** Need a change there? Raise an **integration point**: note it in
+  both lines' STATE.md and land both sides together.
+- **Shared files are additive-only**, inside your marked region where one exists —
+  `src/LPJmLFITEmulator.jl` has `# ── line S/M/E/O ──` regions in both the include and export blocks.
+- **`src/run.jl` + `src/interface.jl` (the coupling seam) belong to line M.** `src/components/energy.jl` to E,
+  `src/components/slow.jl`/`drf.jl`/`climbuf.jl` to S, `ext/` to O.
+- **Frozen cross-line contracts:** S→M (the `FluxDrivenSlowEmulator` kwargs, `flux_feature_vector` order,
+  `live_flux_cond`, the `.drf`/`.rcop` format, the `cell_meta.parquet` schema) and E→M (`SEBEnergyClosure` /
+  `solve!`). M **pins a versioned artifact**; S **bumps a version** rather than mutating an artifact in place.
+  Train/inference consistency is load-bearing (ADR 0023) ⇒ a conditioning change is a both-sides change.
+- **`test/testitems/references/` is shared:** new fixtures take a line-specific name; **regenerating an
+  existing baseline is an integration point** (guardrail 4 — opt-in, default byte-identical).
+- **`Project.toml` deps are integrator-only** and runtime `[deps]` stays EMPTY (ADR 0014) — request a weakdep.
+
+### The ritual (mechanics + gotchas in the `repo-commit` skill)
+
+```bash
+git pull --rebase origin main        # at session START, and before merging
+# ... work, commit (Conventional Commits, one logical change) ...
+git push origin line/<X>             # branch CI: test (lts), test (1), format, python
+#   `docs` deliberately does NOT run on branches (gh-pages deploy race) — build locally:
+#   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
+# green? then:
+git switch main && git pull && git merge --no-ff line/<X> && git push origin main
+git switch line/<X>                  # back to your line
+```
+`test (pre)` is `continue-on-error` and is currently red for unrelated Julia-prerelease churn — don't chase it.
+**Merge at every milestone, never hoard.** Rebase early; a stale branch is the only real conflict source left.
+
+**BEFORE YOUR SESSION ENDS (or when context runs low): refresh the `## NEXT — start here` block in
+`lines/<X>/STATE.md` and commit it.** That block is the entire handoff — the hook replays it verbatim into the
+next session. A session that ends without refreshing it has silently broken the chain.
+
+### SLURM + scratch under parallel lines
+
+- **Tag every job with your line prefix** (`S-`/`M-`/`E-`/`O-`), e.g.
+  `scripts/run_tests_slurm.sh S-suite`, `scripts/sbatch_python.sh M-soil scripts/....py` — so `squeue` and
+  `logs/<tag>.<jobid>.out` stay attributable. Each worktree has its own (gitignored) `logs/`.
+- **Write only to `/p/tmp` paths your line created**; another line's artifacts are **read-only**. Never
+  overwrite a shared artifact in place — version it.
+- Stagger heavy submissions: four lines share one account, the queue, and the `~/.julia` depot (Julia locks
+  handle depot concurrency, but simultaneous first-time precompiles are wasteful).

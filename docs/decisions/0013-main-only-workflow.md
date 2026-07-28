@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "superseded by ADR-0028"
 date: 2026-07-16
 deciders: "Jamir Priesner (owner)"
 consulted: "ENGINEERING_STANDARDS.md §0/§1; ADR 0009 (deploy-key auth); the session-2 CI-repair experience"
@@ -93,3 +93,10 @@ Retained from §1 even under main-only: **Conventional Commits** (drives SemVer 
 and **run CI-equivalent checks locally before pushing**. Superseded specifically: the PR requirement,
 branch protection, "direct pushes to `main` disabled", and (separately) signed-commit enforcement.
 Revisit when the repo gains a second contributor or goes public — write a superseding ADR then.
+
+**SUPERSEDED 2026-07-28 by [ADR 0028](0028-parallel-session-lines.md)** — exactly via the reinstatement
+clause above: parallel agent session lines are the "second contributor (human or otherwise)". ADR 0028 keeps
+this ADR's no-PR / no-branch-protection / no-review-gate posture but replaces "one shared `main` tip, one
+working copy" with **one long-lived branch + git worktree per line, self-merged to `main` on green branch
+CI**. The retained obligations listed above carry over unchanged. (Body left untouched — ADRs are immutable;
+see `docs/decisions/README.md` §Rules.)

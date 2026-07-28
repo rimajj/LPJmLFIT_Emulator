@@ -9,11 +9,23 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 
 ## Rules
 
-- **One ADR per non-trivial decision.** Numbered sequentially, `NNNN-kebab-title.md`.
+- **One ADR per non-trivial decision.** `NNNN-kebab-title.md`.
 - **Immutable once accepted.** To change a decision, write a **new** ADR that supersedes the old one
   (update the old one's `status:` to `superseded by ADR-XXXX`); never rewrite history.
 - **Cite the source.** Every ADR links the relevant `DESIGN.md` / `DEVELOPMENT_PLAN.md` /
   `RESEARCH_SURVEY.md` / `ECOSYSTEM_AND_COUPLING.md` sections.
+- **Number BLOCKS, not `ls`-then-guess (ADR 0029).** With parallel work lines (ADR 0028) two sessions that
+  both pick "the next number" collide. Take the next free number **from your line's block** and add your row
+  to **your line's subsection** below, so two lines never touch the same lines of this file:
+
+  | Block | Owner |
+  |---|---|
+  | 0001–0029 | shared history + the cross-cutting/workflow decisions (integrator) |
+  | **0030–0049** | **line S** — Component-S science |
+  | **0050–0069** | **line M** — multi-cell coupled S+F+E |
+  | **0070–0079** | **line E** — Component E vs observations |
+  | **0080–0089** | **line O** — online coupling (Terrarium / SpeedyWeather) |
+  | 0090+ | reserved (next line / integrator) |
 
 ## Index — the FROZEN Phase-0 decisions
 
@@ -31,7 +43,7 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0010](0010-s-prototype-biome-stratified.md) | S prototype = biome-stratified multi-cell (F/E single cell) | accepted |
 | [0011](0011-reuse-global-ground-truth.md) | Reuse existing global (annual) ground truth; daily re-run is the gap | accepted |
 | [0012](0012-canonical-slow-emulator-here.md) | Canonicalize component S here; port the sibling once, then abandon it | accepted |
-| [0013](0013-main-only-workflow.md) | Work on `main` directly — no branches/PRs/branch-protection (relaxes §1) | accepted |
+| [0013](0013-main-only-workflow.md) | Work on `main` directly — no branches/PRs/branch-protection (relaxes §1) | **superseded by ADR 0028** |
 | [0014](0014-differentiable-fast-core-first.md) | Fast core F is differentiable from the start (`F_diff`); C binary is oracle-only (supersedes F1/F2 split) | accepted |
 | [0015](0015-reuse-map.md) | Reuse map for F_diff — what to TAKE/REDO/SKIP from the reference repos, + citations | accepted |
 | [0016](0016-nn-hook-training.md) | Hybrid learned closures in F_diff: NN λ/Vcmax correction hooks, TBPTT online-rollout training, shipped as a package extension | accepted |
@@ -44,5 +56,32 @@ Format: **[MADR](https://adr.github.io/madr/)**. Start from [`0000-template.md`]
 | [0023](0023-component-s-production-drf-runtime-consistency.md) | Component S's **production DRF loads from a pure-Base serialized artifact** (`DRF.save_forest`/`load_forest`) and is **trained on a runtime-consistent feature table** (exact `flux_feature_vector` order); `age_mean` trained as the elapsed-year counter (not mean Age); `soilmoist`/`lai` are documented proxies pending the global C-`LAI_STAND`/`swc` pipeline; Gate-3 oracle is a drift alarm (implements P1 Tier-1 Step 4 on ADR 0020/0021/0022/0014) | accepted (`age_mean` §3 superseded by ADR 0024) |
 | [0024](0024-component-s-dynamic-membership-and-true-age.md) | Component S has a **dynamic cohort roster** — establishment APPENDS a real age-0 recruit cohort, a K-cap MERGE bounds it, an atomic rebuild keeps every length-K `FDiffFastCore` field + `s.age` consistent (design risk #5) — and a **true nind-weighted mean cohort age** (DRF retrained on `mean(Age−1)`; `age0` seed carried in the meta); the Gaussian-copula recruit-trait sampler is wired into establishment (opt-in); the Gate-3 oracle compares on the C ≥5 m `ind`-output basis (**supersedes ADR 0023 §3's `age_mean` counter**; completes P1 on ADR 0018/0020) | accepted |
 | [0025](0025-component-s-recruit-trait-copula.md) | Component S reproduces LPJmL-FIT's within-cell **trait distribution** via a trained, serialized **recruit-trait Gaussian copula** — 4 live primaries `{SLA, Wooddens, D95max, minwscal}` (`beta_2` is compile-time dead), trained on FIT's **survivor** marginals (mortality is trait-blind ⇒ community dist == establishment dist), flux-conditioned by `live_flux_cond`, sampled at establishment + derived-not-learned rest; pure-Base `.rcop` serialization; validated single-cell (plumbing) + multi-cell **K-fold-by-cell OOS** (skill); default OFF ⇒ baselines byte-identical (refines ADR 0018/0020/0022/0024) | accepted |
-| [0027](0027-adopt-transient-boundary-production.md) | **Adopt the TRANSIENT boundary as the production config** for the pooled multi-regime flux-driven emulator — records ADR 0026 §5's outcome: hold-out-by-scenario is a **wash** (transient vs static, counts R²=0.9847≈0.9844/0.9848, traits mixed KS≤0.05), and cost is negligible (offline ~1 min; online Climbuf ~0% slower), so **physical correctness breaks the tie** (a frozen establishment gate is wrong under +80 yr warming; matches FIT's Climbuf). The flux drivers (ADR 0020), not the boundary, carry the unseen-regime generalization. Code opt-in/default-off mechanism stays (guardrail 4); SLA/minwscal dip is a follow-on caveat (owner decision) | accepted |
 | [0026](0026-component-s-pooled-multiregime-transient-boundary.md) | Component S is **ONE pooled multi-regime emulator with a TRANSIENT (time-varying) bioclimatic boundary** — `gdd5`/`tas_cold_month` recomputed on a **trailing W-yr window** per (cell,year) (mirrors FIT's ~20-yr Climbuf; W→∞ recovers the static boundary), so the establishment gate tracks the warming; scenarios (+ later climate models) are **pooled** training data conditioned on climate+soil (one copula + one count DRF, not per-scenario); **CO₂ stays constant** (keeps ADR 0004); eval adds **hold-out-by-scenario**; opt-in per-year boundary series, default OFF ⇒ baselines byte-identical (refines ADR 0020/0023/0025, keeps 0004) | accepted |
+| [0027](0027-adopt-transient-boundary-production.md) | **Adopt the TRANSIENT boundary as the production config** for the pooled multi-regime flux-driven emulator — records ADR 0026 §5's outcome: hold-out-by-scenario is a **wash** (transient vs static, counts R²=0.9847≈0.9844/0.9848, traits mixed KS≤0.05), and cost is negligible (offline ~1 min; online Climbuf ~0% slower), so **physical correctness breaks the tie** (a frozen establishment gate is wrong under +80 yr warming; matches FIT's Climbuf). The flux drivers (ADR 0020), not the boundary, carry the unseen-regime generalization. Code opt-in/default-off mechanism stays (guardrail 4); SLA/minwscal dip is a follow-on caveat (owner decision) | accepted |
+| [0028](0028-parallel-session-lines.md) | **Parallel session lines: one long-lived branch + git worktree per line** — `line/{S,M,E,O}` in `wt-{S,M,E,O}`, line identity resolved from the worktree's branch by a `SessionStart` hook, CI on `line/**` (not `docs.yml`), **self-merge to `main` on green branch CI** (still no PRs, no branch protection, no review gate). Fixes the shared-checkout (`test/Manifest.toml` destruction) and shared-tip (non-fast-forward + unattributable CI) failures. **Supersedes ADR 0013** via its own "second contributor (human or otherwise)" reinstatement clause | accepted |
+| [0029](0029-line-split-and-ownership.md) | **Four work lines (S / M / E / O) with per-path exclusive ownership, frozen cross-line contracts, and per-line coordination files** — S=Component-S science, M=multi-cell coupled S+F+E (owns the `run.jl`/`interface.jl` seam), E=Component E vs observations, O=online coupling; `lines/<X>/{STATE.md,JOURNAL.md}` + `changelog.d/` fragments replace same-file section edits (conflict-free by construction); `MEMORY.md` slimmed to shared facts + a router; ADR number blocks; the S→M artifact/feature contract frozen + versioned (companion to 0028) | accepted |
+
+### Line ADRs — append to YOUR line's block (ADR 0029)
+
+Per-line subsections keep two concurrent lines off the same lines of this file. Empty until a line files its
+first ADR.
+
+#### Line S — Component-S science (0030–0049)
+
+| # | Decision | Status |
+|---|---|---|
+
+#### Line M — multi-cell coupled S+F+E (0050–0069)
+
+| # | Decision | Status |
+|---|---|---|
+
+#### Line E — Component E vs observations (0070–0079)
+
+| # | Decision | Status |
+|---|---|---|
+
+#### Line O — online coupling: Terrarium / SpeedyWeather (0080–0089)
+
+| # | Decision | Status |
+|---|---|---|

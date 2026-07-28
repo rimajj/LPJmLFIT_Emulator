@@ -17,6 +17,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-line-context.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-skill-inventory.sh",
             "timeout": 15
           }

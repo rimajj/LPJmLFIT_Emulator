@@ -1,14 +1,36 @@
-# MEMORY.md — durable state for the LPJmL-FIT hybrid land-component emulator
+# MEMORY.md — SHARED durable state for the LPJmL-FIT hybrid land-component emulator
 
-> **Current durable state only.** Verified facts, frozen-decision index, phase status, open TODOs.
-> Environment/runbook facts live in `CLAUDE.md`; session narrative in `JOURNAL.md`; the story of any
-> single change in `CHANGELOG.md`. Reshaped from a 127 KB session-log on 2026-07-22 (consolidation P0), and
-> again 2026-07-27 (collapsed the per-step Tier-0/Tier-1 narrative once Component-S landed globally).
-> Pre-consolidation copies: `docs/archive/MEMORY_2026-07-{22,27}_pre-consolidation.md` (and in git).
-> Cap: ≤ 400 lines / ≤ 15k tokens — keep it that way; new narrative goes to JOURNAL, not here.
+> **Shared, cross-cutting durable state only** (ADR 0029). Facts and status that every work line needs:
+> what this is, the `[VERIFIED]` facts, the ADR index pointer, and the cross-line frontier.
+> **Per-line state lives in `lines/<X>/STATE.md`** — see the router below. Environment/runbook facts live in
+> `CLAUDE.md` (+ §9 for the parallel-line protocol); per-line narrative in `lines/<X>/JOURNAL.md`; the story
+> of one change in a `changelog.d/<X>-*.md` fragment.
+> Reshaped 2026-07-22 (consolidation P0), 2026-07-27 (collapsed the Tier-0/Tier-1 narrative), and 2026-07-28
+> (split per-line state out; ADR 0028/0029). Pre-consolidation copies:
+> `docs/archive/MEMORY_2026-07-{22,27}_pre-consolidation.md` (and in git).
+> Cap: ≤ 400 lines / ≤ 15k tokens — keep it that way; narrative goes to a line JOURNAL, not here.
 >
 > Tags: **[VERIFIED]** confirmed against source/data · **[DECISION]** frozen unless reopened via ADR ·
 > **[TODO]** must be resolved · **[ASSUMPTION]** believed, not confirmed.
+
+---
+
+## 0. Router — which line am I, and where do I continue?
+
+Work runs as **4 parallel lines**, one long-lived branch + git worktree each (ADR 0028/0029). A session's line
+is the branch in the worktree it was launched from; the `SessionStart` hook prints it plus that line's
+`## NEXT` action. **Continue from your line's STATE.md, not from this file.**
+
+| Line | Branch · worktree | Scope | State (start here) |
+|---|---|---|---|
+| **S** | `line/S` · `/p/projects/open/Jamir/wt-S` | Component-S science — close the trait per-cell headroom, grass ownership, in-loop OOD | [`lines/S/STATE.md`](lines/S/STATE.md) |
+| **M** | `line/M` · `/p/projects/open/Jamir/wt-M` | Multi-cell coupled S+F+E (P3) — per-cell inputs, S multi-cell, C-truth validation, resilience | [`lines/M/STATE.md`](lines/M/STATE.md) |
+| **E** | `line/E` · `/p/projects/open/Jamir/wt-E` | Component E vs observations (P2) — PLUMBER2/FLUXNET, wind/psurf remap, sublimation-λ | [`lines/E/STATE.md`](lines/E/STATE.md) |
+| **O** | `line/O` · `/p/projects/open/Jamir/wt-O` | Online coupling (P4/P5) — licensing basis, P4 design, Terrarium `Abstract*`, SpeedyWeather | [`lines/O/STATE.md`](lines/O/STATE.md) |
+
+`main` (this directory) is the **integration** worktree: merges, `changelog.d` collation, shared-file
+reconciliation, `Project.toml` deps, and cross-cutting ADRs (0001–0029). Ownership map + the frozen cross-line
+contracts: **ADR 0029**. Protocol/mechanics: **`CLAUDE.md` §9** + the `repo-commit` skill.
 
 ---
 
@@ -27,7 +49,7 @@ Orders + reasoning: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`. Runboo
 
 ---
 
-## 2. Phase status (as of 2026-07-27, main-only)
+## 2. Phase status (as of 2026-07-28; per-line detail in `lines/<X>/STATE.md`)
 
 | Phase | State | Evidence / gate |
 |---|---|---|
@@ -118,39 +140,26 @@ is the offline S.
 
 ---
 
-## 4. Frozen decisions — index to the ADRs (`docs/decisions/`)
+## 4. Frozen decisions — pointer + the load-bearing constraints
 
-ADRs are immutable once accepted; supersede, don't edit. Full index: `docs/decisions/README.md`.
+**Single source of truth: [`docs/decisions/README.md`](docs/decisions/README.md)** (29 ADRs, with per-line
+number blocks). This file no longer duplicates the index — that duplication was a merge-conflict source and
+drifted out of order (ADR 0029). ADRs are **immutable once accepted**; supersede, don't edit.
 
-| ADR | Decision | Status |
-|---|---|---|
-| 0001 | Phased hybrid (emulate S, keep F, add E) | accepted |
-| 0002 | Emulate the **distribution** + count N, never per-tree | accepted |
-| 0003 | **Flux-then-integrate** carbon conservation (fire + establishment in the budget) | accepted |
-| 0004 | Constant-CO₂ regime | accepted |
-| 0005 | DRF/copula baseline for S + escalation ladder (no generative escalation triggered) | accepted |
-| 0006 | Reuse Terrarium SEB for E | **superseded by 0017** |
-| 0007 | Julia-primary stack (Python only for the S prototype) | accepted |
-| 0008 | Documentation-only (Documenter.jl) | accepted |
-| 0009 | SSH deploy-key auth from HPC | accepted |
-| 0010 | S prototype = biome-stratified multi-cell (F/E single-cell) | accepted |
-| 0011 | Reuse existing global annual ground truth; daily re-run is the gap | accepted |
-| 0012 | Canonicalize component S here; port the sibling once, then abandon | accepted |
-| 0013 | **Main-only** workflow (no branches/PRs/branch-protection) | accepted |
-| 0014 | **F_diff differentiable from the start**; C binary = oracle + data generator only | accepted |
-| 0015 | Reuse map for F_diff (TAKE/REDO/SKIP + citations) | accepted |
-| 0016 | Learned closures in F_diff: NN λ/Vcmax hooks, TBPTT training, shipped as an extension | accepted |
-| 0017 | Component E **self-contained** (reimplement SEB physics; no Terrarium runtime dep) | accepted |
-| 0018 | **Growth-ownership split**: F_diff owns representative-individual carbon growth; S owns the distribution + demography | accepted (agent decision, delegated; reversible by a later ADR) |
-| 0019 | **Component S: port inference (not call Python); wrap the machinery** — P1 architecture (**mechanism superseded by 0021**) | accepted |
-| 0020 | **Component S is FLUX-DRIVEN (flux-then-integrate), not climate-equilibrium** — condition on F's delivered fluxes (annual *statistics*, not means) + AR state + slow bioclimatic boundary; **drop this-year raw climate**; climate-only DirectEmulator kept as the **OOD benchmark** (the falsifiable success test). Refines 0002/0003/0018; overrides 0019's "climate-only weights in P1" clause | accepted (agent decision, delegated; reversible by a later ADR) |
-| 0021 | **Component S is trained + run in NATIVE JULIA** (EvoTrees.jl/DRF + Lux + Julia copula), dependency-light, **no Python at runtime**; Python only builds the training table + runs the DirectEmulator OOD benchmark; **build S once** (supersedes 0019's "port Python inference" mechanism; learned S ships via a package extension per 0014) | accepted (owner refinement) |
-| 0022 | **S's learned count/marginal model is a hand-rolled ZERO-DEP Julia DRF** (`src/drf.jl` + hand-rolled Xoshiro), not the EvoTrees package — keeps `[deps]`/`[weakdeps]` empty + CI free of dependency-churn risk (refines 0021's "EvoTrees.jl **/DRF**"; EvoTrees verified as a fallback) | accepted (agent decision, delegated) |
-| 0023 | **Production DRF is a SERIALIZED runtime-consistent artifact** (`DRF.save/load_forest`; `age_mean`=elapsed-year counter; committed Hainich `.drf`) | accepted (§3 counter superseded by 0024) |
-| 0024 | **DYNAMIC roster** (recruit APPEND + K-cap MERGE) + TRUE per-cohort age; DRF retrained on `mean(Age−1)` + `age0` seed | accepted (agent decision, delegated) |
-| 0025 | **Recruit-trait Gaussian COPULA** (4 live axes SLA/Wooddens/D95max/minwscal; trained on the survivor marginal; conditioned by `live_flux_cond`) | accepted (agent decision, delegated) |
-| 0026 | **Pooled MULTI-REGIME + TRANSIENT (time-varying) boundary** (one count DRF + one copula, scenarios pooled, CO₂ constant; trailing-W-yr gdd5/tas_cold; hold-out-by-scenario eval) — refines 0020, keeps 0004 | accepted (agent decision, delegated) |
-| 0027 | **Adopt the transient boundary as production** (pooled multi-regime flux-driven = production; transient boundary on physical-correctness-at-negligible-cost grounds; opt-in/default-off mechanism kept) | accepted (owner decision) |
+The subset that constrains *any* line's work — violating one of these silently breaks the model or the repo:
+
+| ADR | Constraint you must respect |
+|---|---|
+| 0003 | **Flux-then-integrate** carbon conservation — fire + establishment are IN the budget (`ΔC = NPP − Rh − firec + flux_estabc`) |
+| 0004 | **Constant-CO₂ regime** — CO₂ is not a feature and not a projection axis; OOD means warming/precip at fixed CO₂ |
+| 0014 | **Runtime `[deps]` stays EMPTY** — AD/ML/coupling deps are `[weakdeps]` + extensions; Aqua enforces it |
+| 0018 | **Growth-ownership split** — F_diff owns representative-individual carbon growth; S owns distribution + demography |
+| 0020 | **Component S is FLUX-DRIVEN**, not climate-equilibrium — condition on F's delivered fluxes + AR state + slow boundary; this-year raw climate is dropped |
+| 0023 | **Train/inference consistency is load-bearing** — the runtime feature vector and the training table must match exactly (a silent mismatch is the worst failure mode here) |
+| 0028 | **Branch + worktree per line**, self-merge on green branch CI (supersedes 0013's main-only) |
+| 0029 | **Per-path line ownership + frozen cross-line contracts** — don't edit another line's exclusive paths |
+| guardrail 4 | **Opt-in, default byte-identical** — new physics leaves every committed baseline and the AD trainer unchanged until deliberately enabled |
+
 
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
@@ -160,50 +169,36 @@ unresolved and ADR 0017's premise rests on it.
 
 ---
 
-## 5. Open TODOs / frontier (priority per `STEERING_PROMPT.md`)
+## 5. Frontier — what remains, and which line owns it
 
-- **[DONE] P1 — the flux-driven Component-S is IN the coupled loop (the novelty).** Design: `docs/p1_s_in_loop_design.md`;
-  decisions ADR 0018 (growth-ownership split: F owns representative-individual carbon growth, S owns the
-  distribution + demography) → 0019 → **0020** (S is FLUX-DRIVEN: maps F's delivered fluxes + AR state + slow
-  bioclimatic boundary → demography, NOT climate → distribution; this-year raw climate dropped) → 0021 (native
-  Julia, no Python at runtime) → 0022 (hand-rolled zero-dep `src/drf.jl` DRF) → 0023 (serialized runtime-
-  consistent artifact) → 0024 (dynamic roster: recruit APPEND + K-cap MERGE + true per-cohort age) → 0025
-  (recruit-trait Gaussian copula) → 0026/0027 (pooled multi-regime + transient boundary). Concrete types in
-  `src/components/slow.jl`: `DemographicSlowEmulator` (Tier-0, deterministic) and `FluxDrivenSlowEmulator`
-  (Tier-1, DRF-target demography + copula recruit traits), opt-in behind `run_coupled_cell(...; slow=)`,
-  `slow=nothing` byte-identical. **S↔F handoff conserves carbon to ~1e-12 gC ≪ 1e-6·C_scale** by construction
-  (the `CarbonLedger` + `vegc_full_ind` routing); energy still closes (1.4e-14); deterministic; empty runtime
-  `[deps]`. The full step-by-step build (Tier-0 → Tier-1 v4) is in JOURNAL (2026-07-22 … 07-27) + the ADRs.
-  - **[VERIFIED — the ADR-0020 falsifiable test] flux-conditioning beats climate 2.35× on the warm+dry OOD holdout**
-    (ood R² 0.76 vs −0.16; `scripts/flux_ood_experiment.jl`). The climate-only `DirectEmulator` is retained ONLY
-    as this OOD benchmark. Definitions verified vs `mortality_tree_ind.c`/`waterstress_tree.c`/`tempstress_tree.c`.
-  - **[VERIFIED — GLOBAL, offline] the production count DRF + recruit copula generalize across cells** (K-fold-
-    BY-CELL OOS, 45009 cells; real C-`LAI_STAND` + daily `swc` features, no proxies): counts per-cell-mean
-    **r²=0.9994 — AT the seed1-vs-seed2 noise floor** (`scripts/noise_floor_vs_emulator.py`); pooled+transient
-    held-out-BY-SCENARIO **R²=0.9847** (reproduces an UNSEEN climate regime); trait pooled marginals KS
-    0.004-0.015. Artifacts `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); committed `.drf`/`.rcop` = Hainich demo.
-    Figures: `emulator-validation-figures` skill.
-  - **[TODO — the remaining S gaps]** (a) **trait per-cell-median HEADROOM** (r SLA 0.87 / Wooddens 0.52 / D95max
-    0.74 / minwscal 0.78, vs a 0.90-0.97 noise floor ⇒ learnable, not captured): the copula conditions on
-    flux+boundary and excludes stand-state (ADR 0025) — improve via richer environmental / per-PFT conditioning
-    (needs a `COPULA_COND_COLS` expansion + global re-fit + an ADR; degenerate at single-cell Hainich). (b) the
-    **COUPLED** flux-driven S across cells vs C-truth demography (offline is done; coupled is still Hainich +
-    5-biome-F+E-only). (c) grass-ownership (open-risk #8) + whole-cohort DROP. (d) the transient boundary's
-    ONLINE Climbuf is BUILT (`src/climbuf.jl`, ADR 0027); the SpeedyWeather cold-start spin-up climatology is P4.
-- **[TODO] P2 — validate E against observations** (parallel to P1): source FLUXNET/PLUMBER2 DE-Hai + real
-  `sfcwind`/`ps`; validate LE/H/T_skin within PLUMBER2 bands; add a `g_a` stability correction (partly
-  landed). Real wind needs a **cross-grid remap** (raw GSWP3 `.clm` are a different int16 re-ordered grid —
-  raw cell 42490 ≠ Hainich); sublimation λ split pending.
-- **[TODO] P3 — multi-cell generalization**: OFFLINE S is DONE (K-fold-BY-CELL over 45009 cells; counts at
-  the seed1-vs-seed2 noise floor — `scripts/noise_floor_vs_emulator.py`). REMAINING: run **coupled** S+F+E
-  across the biome-stratified set vs C-truth demography (held-out cells + scenarios); the LPJ_resilience
-  battery (shuffle test + climate-dependent ACF); close the trait per-cell-median headroom (esp. Wooddens);
-  biome-calibrated PFT params + spin-up.
-- **[TODO] P4 — online coupling with SpeedyWeather** via Terrarium `Abstract*` processes + the
-  `SpeedyWeatherTerrariumExt` interface; rollout curriculum + noise injection; multi-year free run; OOD
-  warming at constant CO₂. Contact Terrarium/SpeedyWeather authors.
-- **[TODO] P5 — reuse + licensing reconciliation** (new ADR; get the written licensing read).
-- **[TODO] P6 — nitrogen limitation** (research track) — **do not start before the owner's "(c)" discussion.**
+**Per-line detail (milestones, gates, NEXT) lives in `lines/<X>/STATE.md`** — see the §0 router. This section
+is only the cross-line map, so it stays true no matter which line reads it.
+
+| Order | State | Line | One-line status |
+|---|---|---|---|
+| **P1** S in the coupled loop (the novelty) | ✅ **DONE** | — | flux-driven S runs coupled, carbon-conserving ~1e-12 gC; ADR 0018→0027 |
+| **P2** E vs observations | ⬜ open | **E** | data-bounded: no PLUMBER2/FLUXNET on disk; `sfcwind`/`ps` not model-ready (cross-grid remap) |
+| **P3** multi-cell generalization | 🟡 half | **M** (+**S**) | OFFLINE S generalizes globally; the **coupled** run beyond Hainich is F+E-only (`slow=nothing`); resilience battery is 4 stubs |
+| **P4** online / SpeedyWeather | ⬜ open | **O** | zero code; Terrarium + `speedy_*_land.jl` templates on disk; O5 needs M1/M2 |
+| **P5** reuse + licensing | ⬜ open | **O** | write the good-faith ADR (explicitly *not* blocked on a formal legal review) |
+| **P6** nitrogen limitation | ⛔ gated | — | **do not start before the owner's "(c)" discussion** |
+
+**The two `[VERIFIED]` global results that anchor everything** (don't re-derive these):
+- **ADR-0020's falsifiable test PASSED:** flux-conditioning beats climate-only **2.35×** on the warm+dry OOD
+  holdout (ood R² 0.76 vs −0.16, `scripts/flux_ood_experiment.jl`). The climate-only `DirectEmulator` is
+  retained ONLY as this benchmark.
+- **The global offline S generalizes across cells** (K-fold-BY-CELL, 45009 cells, real features): counts
+  per-cell-mean **r²=0.9994 — AT the seed1-vs-seed2 noise floor**; pooled+transient held-out-BY-SCENARIO
+  **R²=0.9847** (an unseen climate regime); trait pooled marginals KS **0.004–0.015**.
+  Artifacts `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); the committed `.drf`/`.rcop` are the Hainich demo.
+
+**The one open scientific gap worth naming here** (line S owns it): trait **per-cell medians** have model
+headroom — per-cell-median r SLA 0.87 / minwscal 0.78 / D95max 0.74 / **Wooddens 0.52**, against a
+seed1-vs-seed2 floor of **0.90–0.97** ⇒ the signal is **learnable, not RNG-limited**. Cause (not a bug): the
+copula conditions on flux+boundary and deliberately excludes stand-state (ADR 0025).
+
+**Still true across all lines:** F_diff and the coupled loop are **C-validated on Hainich only** — say
+"Hainich only" wherever a result is single-cell; the global evidence is the *offline* S.
 
 ### Deferred / known issues (fidelity refinements of an already-in-band core — not blockers)
 - **[TODO, DEFERRED] Per-PFT competitive grass water-supply** (§26.4): the 2018 grass drought-amplitude
@@ -235,5 +230,10 @@ unresolved and ADR 0017's premise rests on it.
   online transient boundary; `components/energy.jl` = `SEBEnergyClosure`; `ext/FDiffTrainingExt.jl` = the NN-hook trainers.
 - **Deep dives**: `docs/phase1_p3b_water_closure.md`, `docs/phase2_slow_emulator.md`,
   `docs/phase3_fdiff_cbinary_validation.md`, `docs/sapwood_bg_design.md`, `docs/water_supply_perpft_design.md`.
-- **Session narrative** → `JOURNAL.md` (append-only). **Change log** → `CHANGELOG.md` (newest on top).
+- **Session narrative** → **`lines/<X>/JOURNAL.md`** (per line, append-only). The root `JOURNAL.md` is the
+  **pre-2026-07-28 history** — preserved, no longer appended (ADR 0029).
+- **Change log** → write a **`changelog.d/<X>-<slug>.md` fragment**; the integrator collates into
+  `CHANGELOG.md` (newest on top). **Never edit `CHANGELOG.md` from a line branch.**
+- **Parallel-line protocol** → `CLAUDE.md` §9 + ADR 0028/0029; ownership map in ADR 0029; mechanics in the
+  `repo-commit` skill. **Per-line state** → `lines/<X>/STATE.md` (§0 router).
 - **Archived pre-consolidation docs** → `docs/archive/` (also in git history).

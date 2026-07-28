@@ -62,6 +62,17 @@ include("registry.jl")
 # ── Coupled S+F+E run loop — the end-to-end "use the emulator" driver (Phase 4) ─
 include("run.jl")
 
+# ══ PER-LINE INCLUDE REGIONS (ADR 0028/0029) ═══════════════════════════════════════════════════════
+# Parallel work lines each add their NEW `include(...)` lines inside THEIR OWN region below, so two lines
+# never edit the same lines of this file and their merges stay textually disjoint. Keep the markers.
+# Ordering note: everything above is already loaded, so a region may depend on it; regions must NOT depend
+# on each other (that would be a cross-line contract — raise it as an integration point instead).
+# ── line S ── (Component-S science: slow.jl/drf.jl/climbuf.jl are ABOVE; add new S-only files here)
+# ── line M ── (multi-cell coupled: run.jl/interface.jl are ABOVE; add new M-only files here)
+# ── line E ── (Component E: components/energy.jl is ABOVE; add new E-only files here)
+# ── line O ── (online coupling: prefer `ext/` — a weakdep extension, ADR 0014 keeps runtime [deps] empty)
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+
 # ── Hybrid NN-hook training API (ADR 0016; scale-up steps 7b + 7b-canopy) ────
 # The gradient-based online-rollout training of the learned Vcmax / λ corrections ([`FDiff.FluxHooks`])
 # lives in the `FDiffTrainingExt` PACKAGE EXTENSION, so `Lux`/`Zygote`/`Optimisers`/`Enzyme` stay out of
@@ -254,5 +265,15 @@ export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train
     fdiff_canopy_gpp_loss, train_fdiff_canopy_rollout!, fdiff_cell_gpp_loss, train_fdiff_cell_rollout!,
     fdiff_multiyear_gpp_loss, train_fdiff_multiyear_rollout!,
     fdiff_cell_multiyear_gpp_loss, train_fdiff_cell_multiyear_rollout!
+
+# ══ PER-LINE EXPORT REGIONS (ADR 0028/0029) ════════════════════════════════════════════════════════
+# Add a work line's NEW exports inside THAT line's region, so concurrent lines never edit the same lines
+# here. Every exported symbol needs a docstring — `docs/make.jl` runs `checkdocs=:exports` and CI fails
+# otherwise (the API page is `@autodocs`, so a documented export needs no manual docs edit). Keep the markers.
+# ── line S ──
+# ── line M ──
+# ── line E ──
+# ── line O ──
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
 end # module

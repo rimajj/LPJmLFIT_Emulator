@@ -1,6 +1,21 @@
-# JOURNAL.md — running log
+# JOURNAL.md — project history (to 2026-07-27) + the **INTEGRATION** journal
 
-> Append-only, timestamped. What you did, commands, results, checkpoint outcomes, dead ends.
+> ## ⚠️ If you are on a work line, DO NOT append here — use `lines/<X>/JOURNAL.md`
+>
+> Since 2026-07-28 work runs as **4 parallel lines** (ADR 0028/0029). This file would otherwise be the repo's
+> worst merge-conflict point: every session appends at the same EOF (63 of the first 128 commits touched it),
+> so concurrent lines would conflict on every commit.
+>
+> - **Line narrative** → `lines/{S,M,E,O}/JOURNAL.md`. The `SessionStart` hook tells you which line you are.
+> - **This file is now the INTEGRATION journal**, appended **only from the `main` worktree** — which is
+>   inherently single-writer, so it cannot conflict. Record here: line merges, `changelog.d` collations,
+>   shared-file reconciliations, `Project.toml` dependency changes, and cross-cutting ADRs.
+> - Everything below the split marker is the **preserved project history through 2026-07-27** — Phases 0–4,
+>   the F_diff-vs-C validation, the grass saga, and the whole Component-S build. Read it for the story behind a
+>   decision.
+>
+> *(Historic header, for the entries below.)* Append-only, timestamped. What you did, commands, results,
+> checkpoint outcomes, dead ends.
 > Newest entries at the bottom. Keep `MEMORY.md` for durable state; keep this for narrative history.
 
 Entry template:
@@ -812,3 +827,60 @@ Entry template:
 - **Skill audit: no changes.** 10 skills, all distinct purposes, no duplicates/overlap; `skill-usage.log`
   only began 2026-07-23 (too young to flag "zero use over many sessions"). Nothing deleted/merged; all
   descriptions still trigger-appropriate. Re-audit next ~5-session cadence once the usage log has depth.
+
+---
+
+# ══ SPLIT MARKER — 2026-07-28: parallel work lines (ADR 0028/0029) ══
+# Above: the project's serial history through 2026-07-27.
+# Below: INTEGRATION entries only (appended from the `main` worktree). Line narrative lives in
+# `lines/{S,M,E,O}/JOURNAL.md`.
+
+---
+
+## 2026-07-28 — PHASE 0: split the project into 4 parallel work lines  [integration]
+- **Goal (owner):** progress was too slow running everything through one serial session. Set up several
+  concurrent session lines that cannot collide, where a fresh session always knows where to continue.
+- **The decisive finding:** ADR 0013 (main-only) named this exact situation as its own reinstatement trigger —
+  *"if a second contributor (**human or otherwise**) joins … revert … by writing a new ADR that supersedes
+  this one"* — and its whole rationale was *"Solo, single-operator repo"*. So parallel agent lines supersede
+  it by its own terms, not against them. A contention audit showed the code already partitions cleanly by
+  subsystem (S: `slow.jl`/`drf.jl` · E: `energy.jl` · M: `run.jl`/`interface.jl`) while the real collisions
+  are the coordination docs: `CHANGELOG.md` (top-insert ⇒ same-line hunks, 54/128 commits), `MEMORY.md`
+  (in-place rewrite + destructive `consolidate-memory` reshape, 47/128), `JOURNAL.md` (EOF append, 63/128 —
+  the most-touched file), and ADR numbering (no allocator, two duplicate index tables).
+- **Did.** (1) **ADR 0028** — one long-lived branch + **git worktree** per line, line identity resolved from
+  the worktree's branch by a `SessionStart` hook, **self-merge to `main` on green branch CI** (still no PRs,
+  no protection, no review gate); supersedes ADR 0013 (status flipped + a supersession note appended; body
+  untouched per the immutability rule). (2) **ADR 0029** — the 4 lines (**S** Component-S science · **M**
+  multi-cell coupled S+F+E/P3 · **E** Component E vs observations/P2 · **O** online Terrarium+SpeedyWeather/
+  P4+P5), a per-path **ownership map**, the **frozen cross-line contracts** (S→M: the
+  `FluxDrivenSlowEmulator` kwargs / `flux_feature_vector` order / `live_flux_cond` / `.drf`+`.rcop` format /
+  `cell_meta.parquet` schema — M pins a *versioned* artifact, S bumps a version rather than mutating in
+  place, because train/inference consistency is load-bearing per ADR 0023), and **ADR number blocks**
+  (S 0030-0049 · M 0050-0069 · E 0070-0079 · O 0080-0089).
+- **Coordination-file restructure (the anti-conflict core — per-line FILES, not per-line sections):**
+  `lines/<X>/{STATE.md,JOURNAL.md}` per line (exclusive ⇒ zero conflicts), each STATE.md leading with a
+  `## NEXT — start here` block; `changelog.d/<X>-<slug>.md` **fragments** (towncrier pattern) collated by the
+  integrator, so `CHANGELOG.md` is never edited from a line; `MEMORY.md` slimmed 261→~234 lines to
+  **shared-only** — a §0 router table, the cross-cutting `[VERIFIED]` facts, a §4 ADR **pointer** (the
+  duplicate 27-row index dropped; it had also drifted out of numeric order) and a §5 cross-line frontier map;
+  this root `JOURNAL.md` repurposed as the **integration** journal (single-writer ⇒ conflict-free).
+- **The handoff mechanism:** `.claude/hooks/session-line-context.sh` (wired first in `SessionStart`) resolves
+  `git rev-parse --abbrev-ref HEAD` → the line, then injects that line's title, ownership rules,
+  ahead/behind-`main` counts, any uncommitted leftovers, and its `## NEXT` block **verbatim** from STATE.md.
+  Verified on both paths (`main` ⇒ "LINE: none (integrator)"; a `line/S` branch ⇒ the full LINE S block).
+  Corollary duty, enforced in the `repo-commit` skill: the **ending** session refreshes its own NEXT block.
+- **CI:** added `line/**` to the `push` triggers of `CI.yml`/`format.yml`/`python.yml` so branches get CI with
+  no PR ceremony (`cancel-in-progress` already excludes `main`, so branch pushes cancel their own superseded
+  runs). **Deliberately NOT `docs.yml`** — it has `permissions: contents: write` and deploys `gh-pages`, so
+  four line branches would race that branch; a why-note was added there to stop a future session "fixing" it.
+  Lines build docs locally (`DOCS_LINKCHECK=false julia --project=docs docs/make.jl`).
+- **Shared-file edit convention:** marked per-line regions (`# ── line S ──` …) in
+  `src/LPJmLFITEmulator.jl`'s include and export blocks, so two lines adding a file/export never touch the
+  same lines.
+- **Housekeeping:** a **174 GB** `core-csn14c139-2692906` dump was sitting in the repo root burning shared
+  `/p` quota (`STEERING_PROMPT.md` §P0 had asked for this cleanup for an earlier 946 MB one); it is gone and
+  all 38 stale `*.jl.*.cov` files were cleared. Tracked content is **6.9 MB**, which is why a worktree per
+  line is essentially free.
+- **Next:** create the 4 branches + worktrees; verify the acceptance checks (hook per worktree, branch CI
+  without `docs`, two concurrent SLURM suites from different worktrees, a conflict-free two-line merge).
