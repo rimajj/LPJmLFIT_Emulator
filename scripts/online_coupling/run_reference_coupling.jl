@@ -55,17 +55,19 @@ ls = sim.variables.prognostic.land.terrarium
 Terrarium.checkfinite!(ls.prognostic)
 
 Tskin = Array(interior(ls.skin_temperature)[:, 1])
-H     = Array(interior(ls.sensible_heat_flux)[:, 1])
-LE    = Array(interior(ls.latent_heat_flux)[:, 1])
+H = Array(interior(ls.sensible_heat_flux)[:, 1])
+LE = Array(interior(ls.latent_heat_flux)[:, 1])
 Tsoil = Array(interior(ls.temperature)[:, 1, end])
 
 for (nm, v) in (("T_skin", Tskin), ("H", H), ("LE", LE), ("T_soil_top", Tsoil))
     fin = filter(isfinite, v)
     @assert !isempty(fin) "$nm is entirely non-finite"
-    println(rpad(nm, 11), " n=", length(fin), "/", length(v),
+    println(
+        rpad(nm, 11), " n=", length(fin), "/", length(v),
         "  min=", round(minimum(fin); digits = 3),
         "  mean=", round(sum(fin) / length(fin); digits = 3),
-        "  max=", round(maximum(fin); digits = 3))
+        "  max=", round(maximum(fin); digits = 3)
+    )
 end
 @assert all(isfinite, Tskin) "T_skin has non-finite entries"
 # TERRARIUM STATE IS IN °C, NOT KELVIN. `celsius_to_kelvin` is applied only at the Thermodynamics
