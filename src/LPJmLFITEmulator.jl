@@ -117,11 +117,11 @@ function fdiff_gpp_loss end
 """
     train_fdiff_rollout!(nn, ps, phys...; chunk, epochs, opt, ...) -> (ps, history)
 
-Truncated-backprop-through-time (TBPTT) online-rollout training loop (finished port of NeuralCrop.jl's
-`train_loop_rollout!`): sweep the daily rollout in `chunk`-day segments, take a Zygote gradient of the
-segment GPP loss w.r.t. the network parameters, `Optimisers.update`, and carry the (detached) soil-water
-state across segment boundaries. Requires the `FDiffTrainingExt` extension. Returns the trained
-parameters and the per-epoch loss history.
+Truncated-backprop-through-time (TBPTT) online-rollout training loop (an independent implementation of the
+standard TBPTT idiom; NeuralCrop.jl cited as prior art only — see ADR 0080 §3): sweep the daily rollout in
+`chunk`-day segments, take a Zygote gradient of the segment GPP loss w.r.t. the network parameters,
+`Optimisers.update`, and carry the (detached) soil-water state across segment boundaries. Requires the
+`FDiffTrainingExt` extension. Returns the trained parameters and the per-epoch loss history.
 """
 function train_fdiff_rollout! end
 

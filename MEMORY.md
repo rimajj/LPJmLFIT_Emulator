@@ -167,8 +167,25 @@ The subset that constrains *any* line's work — violating one of these silently
 **Reuse posture (steering reversal):** reuse is now the **default**; reimplementation must be justified in
 an ADR. Targets: Terrarium (coupling substrate for P4, SEB cross-check), LPJmL-hybrid-photosynthesis
 (differentiable-λ, MIT, done), NeuralCrop (methodology; **CC-BY-NC — code is a blocker**, method-only or
-get permission), LPJ_resilience (no license — ask). [TODO] the **EUPL↔AGPL↔MIT licensing read** is still
-unresolved and ADR 0017's premise rests on it.
+get permission), LPJ_resilience (no license — reimplement from the paper).
+
+**Licensing — RESOLVED by [ADR 0080](docs/decisions/0080-licensing-basis.md) (P5); register + the
+before-you-take-a-dependency gate = `docs/third_party_licensing.md`.** `[VERIFIED 2026-07-28]`
+**Outbound = AGPL-3.0-or-later**, and it is *forced*, not chosen: it is both what LPJmL-FIT's AGPL-3.0
+copyleft requires of a derivative **and** an EUPL-1.2 Appendix "Compatible Licence", so EUPL Art. 5 sanctions
+combining with Terrarium/SpeedyWeather (**both EUPL-1.2**, not MIT) — valid whether or not a dependency
+counts as a derivative work. **Terrarium's `NOTICE` extends Art. 5 to *any* licence for "normal use of the
+Work as a library"** ⇒ taking it as `[weakdeps]` + an extension is clean, so **P4 is unblocked**.
+Three tiers, never conflated: **READ** (methods are unprotectable — permitted for all references) ·
+**DEPEND** (the P4 mechanism; runtime `[deps]` stays empty, ADR 0014) · **VENDOR** (**not permitted by
+default — needs its own ADR**; this is the only tier ADR 0017's "hard blocker" ever applied to, so 0017 is
+*annotated, not superseded*, and stands on its zero-deps + v0.1.x drivers). CC-BY-NC ↔ AGPL §7 is
+**undistributable**, so NeuralCrop.jl is method-only, permanently.
+**[TODO] Owner action — the licence *act* is all that's left:** the repo is **public with no `LICENSE`**
+(`license: null` via API; never existed in git history), which grants nobody rights *and* ships an
+AGPL-derived patch without AGPL's notices. File `LICENSE` (AGPL-3.0-or-later) + `Project.toml` `license` +
+`CITATION.cff` `license:` + README §License (ADR 0080 §4); or make the repo private again as the interim
+mitigation. A formal legal review is explicitly **not** a blocker (P5).
 
 ---
 
@@ -182,8 +199,8 @@ is only the cross-line map, so it stays true no matter which line reads it.
 | **P1** S in the coupled loop (the novelty) | ✅ **DONE** | — | flux-driven S runs coupled, carbon-conserving ~1e-12 gC; ADR 0018→0027 |
 | **P2** E vs observations | ⬜ open | **E** | data-bounded: no PLUMBER2/FLUXNET on disk; `sfcwind`/`ps` not model-ready (cross-grid remap) |
 | **P3** multi-cell generalization | 🟡 half | **M** (+**S**) | OFFLINE S generalizes globally; the **coupled** run beyond Hainich is F+E-only (`slow=nothing`); resilience battery is 4 stubs |
-| **P4** online / SpeedyWeather | ⬜ open | **O** | zero code; Terrarium + `speedy_*_land.jl` templates on disk; O5 needs M1/M2 |
-| **P5** reuse + licensing | ⬜ open | **O** | write the good-faith ADR (explicitly *not* blocked on a formal legal review) |
+| **P4** online / SpeedyWeather | ⬜ open | **O** | zero code; Terrarium + `speedy_*_land.jl` templates on disk; **licensing basis now in place (ADR 0080)**; O5 needs M1/M2 |
+| **P5** reuse + licensing | ✅ **DONE** | **O** | ADR 0080: AGPL-3.0-or-later outbound, EUPL works as library deps only, never vendored. Residual = the owner *files* `LICENSE` (§4) |
 | **P6** nitrogen limitation | ⛔ gated | — | **do not start before the owner's "(c)" discussion** |
 
 **The two `[VERIFIED]` global results that anchor everything** (don't re-derive these):
@@ -216,8 +233,9 @@ copula conditions on flux+boundary and deliberately excludes stand-state (ADR 00
   and coupled/decadal baselines) closes only ~40–50% of the 0.51→0.46 CUE gap. Design: `docs/sapwood_bg_design.md`.
 - **[TODO] Lift the Enzyme pin / 1.11 canopy guard** when a fixed Enzyme ships (still blocked upstream on
   0.13.187 / Julia 1.11.7; a 0.14 migration is higher-risk).
-- **[TODO] Owner actions**: ratify ADR 0018; the licensing read; the "(c)" N-track discussion; close stray
-  Dependabot PRs; the `eval`-filename allow decision.
+- **[TODO] Owner actions**: ratify ADR 0018; **file `LICENSE` = AGPL-3.0-or-later** (ADR 0080 §4 — the
+  licensing *read* is done, only the act remains); the "(c)" N-track discussion; close stray Dependabot PRs;
+  the `eval`-filename allow decision.
 
 ---
 

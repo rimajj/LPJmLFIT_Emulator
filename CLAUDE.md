@@ -293,8 +293,18 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - Decisions: `docs/decisions/README.md` (ADR index). Steering: `STEERING_PROMPT.md` +
   `PROJECT_REVIEW_2026-07-22.md`.
 - **Skills** (`.claude/skills/`): `julia-test`, `lpjmlfit-cbinary`, `fdiff-validate`, `python-env`,
-  `residual-diagnosis`, `repo-commit`. Invoke the one that matches the mechanical task instead of
-  re-deriving its steps.
+  `residual-diagnosis`, `repo-commit`, `dependency-license-gate`. Invoke the one that matches the mechanical
+  task instead of re-deriving its steps.
+- **Licensing (`[VERIFIED 2026-07-28]`, ADR 0080; register + gate: `docs/third_party_licensing.md`, skill
+  `dependency-license-gate`).** Outbound = **AGPL-3.0-or-later** — forced by LPJmL-FIT's AGPL-3.0 copyleft
+  *and* by being an EUPL-1.2 Appendix "Compatible Licence" (Art. 5). **Never state a licence from memory:
+  Terrarium.jl AND SpeedyWeather.jl are both EUPL-1.2, NOT MIT**; Terrarium's `NOTICE` (read it — it is not
+  the `LICENSE`) extends Art. 5 to *any* licence for **normal library use**, which is what unblocks taking it
+  as a `[weakdeps]` extension. **READ / DEPEND / VENDOR are different acts** — vendoring third-party code
+  needs its own ADR; CC-BY-NC (NeuralCrop.jl) and unlicensed (LPJ_resilience) works are **method-only,
+  never a line of code**, because NonCommercial ↔ AGPL §7 is undistributable. **Gotcha:** the repo is
+  **public with no `LICENSE` file** (`docs/make.jl`'s "the repo is PRIVATE" comment is stale) — filing it is
+  the one open owner action (ADR 0080 §4).
 - **Source map** (`src/`): `LPJmLFITEmulator.jl` (module), `state.jl` (`SharedState`), `interface.jl`
   (S↔F↔E I/O structs), `conservation.jl` (softmax/flux-then-integrate/budget residuals),
   `allometry.jl`, `fdiff.jl` (the differentiable daily core + canopy rollout + allocation/growth),

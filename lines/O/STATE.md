@@ -6,32 +6,50 @@
 
 ## NEXT — start here
 
-**O1 — the P5 licensing ADR (write it first; it is what unblocks taking a Terrarium dependency at all).**
-`STEERING_PROMPT.md` P5 is explicit: *"document a good-faith EUPL↔AGPL↔MIT licensing basis in the ADR and
-proceed on it (a formal legal review remains an owner or external action but is **not a blocker for research
-use**)"*. So this is a writing task the agent can complete, not an owner dependency.
+**O1 is DONE — ADR 0080 landed the P5 licensing basis, so P4 is unblocked.** The standing consequence you
+must respect: outbound is **AGPL-3.0-or-later**; Terrarium/SpeedyWeather (**both EUPL-1.2**) enter as
+**`[weakdeps]` + a package extension** only — never vendored, never runtime `[deps]` (ADR 0014), and adding
+them to `Project.toml` is an **integrator** action you must request. Before touching any new dependency or
+reference repo, run the **`dependency-license-gate`** skill (register: `docs/third_party_licensing.md`).
 
-Write **ADR 0080** covering:
-- This repo's own license and what it can consume; Terrarium.jl's license + `NOTICE`
-  (`/p/tmp/jamirp/esm_reference_repos/Terrarium.jl/{LICENSE,NOTICE}`) and SpeedyWeather's; the EUPL↔AGPL↔MIT
-  compatibility reasoning; the distinction between **reading** a reference implementation, **depending** on a
-  package, and **vendoring** code.
-- Why NeuralCrop.jl stays **method-only** (CC BY-NC 4.0 — a hard code blocker) and LPJ_resilience stays
-  **reimplement-from-paper** (no license at all).
-- The consequence for ADR 0017 (whose premise rests on this read) and for `MEMORY.md`'s open
-  *"EUPL↔AGPL↔MIT licensing read is still unresolved"* TODO.
-- The mechanism: Terrarium/SpeedyWeather enter as **`[weakdeps]` + a package extension**, never runtime
-  `[deps]` (ADR 0014 keeps those empty). Adding them to `Project.toml` is an **integrator** action — request it.
+**O2 — write `docs/p4_online_coupling_design.md`, the missing design of record.** P4 is currently scoped only
+in prose scattered across `ECOSYSTEM_AND_COUPLING.md` §2/§3/§5, `DEVELOPMENT_PLAN.md` §6 and
+`STEERING_PROMPT.md`. **Validate every API claim against the real cloned Terrarium** at
+`/p/tmp/jamirp/esm_reference_repos/Terrarium.jl` (commit `4f42508`, v0.1.3) — read the code, not your memory
+of it — and start from the working templates `examples/simulations/speedy_{dry,wet}_land.jl`, where
+`vegetation = nothing` is exactly the slot S+F fill. Cover:
 
-*Gate:* ADR 0080 accepted; the `MEMORY.md` licensing TODO resolved or narrowed to a named owner action.
+- Which Terrarium `Abstract*` interfaces S / F / E each sit behind (8 vegetation interfaces exist; see
+  §What already exists below) and which stay ours.
+- The indirect-coupling variable list (`leaf_area_index`, `gross_primary_production`,
+  `plant_available_water`, `carbon_vegetation`, `ground_temperature`) mapped onto the frozen
+  `src/interface.jl` structs — which you consume **read-only** (line M owns that seam).
+- **The timestep story:** F is daily, SpeedyWeather steps ~300 s. State the sub-cycling scheme explicitly.
+- Float32 throughout (4 testitems already assert this — the only P4 prep that exists in code today).
+- How `ClimBuf` gets its spin-up climatology on a **cold start** (no restart file exists online).
+- The conservation story across the interface (water ~1e-12, carbon, energy ~1e-14 must survive coupling).
+- Pin the Terrarium commit and say what churn is expected (v0.1.x, unstable API).
 
-Then → **O2** (write the missing P4 design doc) — O1–O4 need nothing from any other line.
+*Gate:* the design doc exists, every API claim is traceable to a file+line in the clone, and O3's spike is
+implementable from it without further design work.
+
+Then → **O3** (the de-risking spike: ONE process behind ONE Terrarium `Abstract*` interface, as an extension).
+O2–O4 need nothing from any other line; **O5 needs line M's M1/M2**.
+
+**Integration points to raise when you next touch `main`** (both found by the ADR 0080 audit, both
+integrator-owned so line O deliberately left them alone):
+1. `docs/make.jl` says "The repo is PRIVATE" — **stale**, it is public; its `linkcheck_ignore` for our own
+   self-links may now be unnecessary. Can't be verified from a line (the `docs` gate doesn't run on branches).
+2. ADR 0080 §4 — the owner still needs to file `LICENSE` (AGPL-3.0-or-later) + `Project.toml` `license` +
+   `CITATION.cff` `license:` + README §License.
 
 ## Scope + ownership (ADR 0029)
 
 **You own (exclusive):**
-- `ext/SpeedyWeatherTerrariumExt.jl` (or whatever the extension is named) + any new `ext/` file
+- `ext/SpeedyWeatherTerrariumExt.jl` (or whatever the extension is named) + any new `ext/` file — and `ext/`
+  generally (`CLAUDE.md` §9: "`ext/` to O"), which includes the existing `ext/FDiffTrainingExt.jl`
 - `docs/p4_online_coupling_design.md` (new — no P4 design doc exists today)
+- `docs/third_party_licensing.md` (new, ADR 0080 — the inbound-licence register; keep it current)
 - `lines/O/*`, `changelog.d/O-*.md`, ADRs 0080–0089
 
 **Do NOT touch:** `src/components/slow.jl`, `src/drf.jl`, `src/climbuf.jl` (line S) ·
@@ -77,14 +95,20 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line O ──
 
 ## Status (2026-07-28)
 
-**Zero online-coupling code exists.** `ext/` contains only `FDiffTrainingExt.jl`; every `SpeedyWeather` /
-`Terrarium` hit in `src/`+`test/` is a comment or a test name. `MEMORY.md` phase table: **6 Online /
-SpeedyWeather = ⬜ not started**, **7 ESM packaging = ⬜ not started**. There is also **no P4 design doc** —
-P4 is scoped only in prose across `ECOSYSTEM_AND_COUPLING.md`, `DEVELOPMENT_PLAN.md` §6 and `STEERING_PROMPT.md`.
+**P5 is DONE (ADR 0080); P4 has zero code.** `ext/` contains only `FDiffTrainingExt.jl`; every
+`SpeedyWeather` / `Terrarium` hit in `src/`+`test/` is a comment or a test name. `MEMORY.md` phase table:
+**6 Online / SpeedyWeather = ⬜ not started**, **7 ESM packaging = ⬜ not started**. There is still **no P4
+design doc** — P4 is scoped only in prose across `ECOSYSTEM_AND_COUPLING.md`, `DEVELOPMENT_PLAN.md` §6 and
+`STEERING_PROMPT.md`. What changed on 2026-07-28: the licensing basis that gates *taking the dependency at
+all* now exists and says yes (as a library dependency).
 
 ## Milestones
 
-- **O1** The **P5 licensing ADR** (0080). *(NEXT, above)*
+- **O1** ✅ **DONE (2026-07-28)** — the **P5 licensing ADR** ([0080](../../docs/decisions/0080-licensing-basis.md)):
+  AGPL-3.0-or-later outbound (*forced* — LPJmL-FIT copyleft ∧ EUPL-1.2 Appendix), EUPL works consumed as
+  **library dependencies only**, never vendored; READ/DEPEND/VENDOR separated; NeuralCrop method-only.
+  Register + gate: `docs/third_party_licensing.md` + the `dependency-license-gate` skill. ADR 0017 annotated,
+  not superseded. Residual = one named owner action (file `LICENSE`, ADR 0080 §4).
 - **O2** **Write `docs/p4_online_coupling_design.md`** — the missing design of record: which Terrarium
   `Abstract*` interfaces S/F/E sit behind, the indirect-coupling variable list, the sub-cycling/timestep story
   (F is daily; SpeedyWeather steps ~300 s), Float32 throughout, how `ClimBuf` gets its spin-up climatology on a
@@ -111,5 +135,10 @@ P4 is scoped only in prose across `ECOSYSTEM_AND_COUPLING.md`, `DEVELOPMENT_PLAN
 - Terrarium is **v0.1.x / unstable API** (one of ADR 0017's two reasons for not depending on it for E). Pin a
   commit in the design doc and expect churn.
 - Don't reintroduce a Terrarium dependency for **component E** — ADR 0017 decided E stays self-contained; this
-  line couples *through* Terrarium, it does not replace E's physics.
+  line couples *through* Terrarium, it does not replace E's physics. ADR 0080 removed 0017's *licensing*
+  objection for the DEPEND tier, but **not** its other two drivers (zero runtime `[deps]`; v0.1.x churn), so
+  0017's outcome is unchanged — don't cite ADR 0080 as a reason to revisit it.
+- **Never state a licence from memory** (`dependency-license-gate`): Terrarium AND SpeedyWeather are both
+  **EUPL-1.2, not MIT**, and Terrarium's decisive Art.-5-for-library-use exception is in its **`NOTICE`**, not
+  its `LICENSE`. **Vendoring** any third-party code needs its own ADR (ADR 0080 §2 Tier 3).
 - Any long job → SLURM; the login node is hook-blocked for heavy Julia.

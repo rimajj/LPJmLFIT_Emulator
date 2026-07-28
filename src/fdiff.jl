@@ -4,8 +4,10 @@
 # solve, Priestley–Taylor PET/ET, a soil-water bucket + snow, and maintenance/growth respiration.
 # Physics constants are the LPJmL-FIT C-source values (the F1 binary is the numerical-regression
 # oracle; the NeuralCrop *crop* constants differ and are NOT used). Ported per ADR 0015 from
-# LPJmL-hybrid-photosynthesis (photosynthesis kernel + differentiable λ pattern) and NeuralCrop.jl
-# (PET/ET/respiration + the daily-rollout idiom), cross-checked against the LPJmL-FIT C source.
+# LPJmL-hybrid-photosynthesis (MIT — photosynthesis kernel + differentiable λ pattern), cross-checked
+# against the LPJmL-FIT C source. NeuralCrop.jl is cited as a METHOD reference only for the PET/ET/
+# respiration formulations and the daily-rollout idiom — it is CC BY-NC, which cannot combine with this
+# repo's AGPL-3.0-or-later outbound licence, so no code is taken from it (ADR 0080 §2/§3).
 #
 # SCOPE (spike): one cell, one representative tree individual, continuous state = soil water + snow;
 # canopy STRUCTURE (LAI, FPC, height) is a fixed S→F boundary condition (S owns the discrete
