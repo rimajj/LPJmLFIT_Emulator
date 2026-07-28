@@ -464,6 +464,13 @@ shortest-tree cohort `recruit_idx`), the carbon `ledger`, per-cohort `age`, and 
 `DRF.Xoshiro256pp` `rng`. Carbon conserves at the handoff exactly as Tier-0 (`last_resid` ≤ 1e-6·C_scale).
 Build with [`FluxDrivenSlowEmulator`](@ref)`(fc, forest; boundary, ...)`; wire via
 `run_coupled_cell(...; slow=)`.
+
+`feature_history` records the exact `flux_feature_vector` row handed to the forest each year (15 `Float64`s
+per year, diagnostic only — it never feeds the dynamics). It exists so RUNTIME-CONSISTENCY (ADR 0023) is
+*observable*: a DRF prediction is a convex combination of training leaf means, so it can never leave the
+trained target band no matter how out-of-domain its input is, and a target-band assertion therefore cannot
+detect a conditioning-basis mismatch. Comparing these rows against the `feat_min`/`feat_max` band in the
+artifact meta can (ADR 0032 / milestone S1c).
 """
 mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulator
     forest::DRF.Forest
@@ -479,6 +486,7 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     total_n_history::Vector{T}
     resid_history::Vector{T}
     target_history::Vector{T}
+    feature_history::Vector{Vector{Float64}}
     year::Int
     rng::DRF.Xoshiro256pp
     k_cap::Int
@@ -555,7 +563,7 @@ function FluxDrivenSlowEmulator(
     end
     return FluxDrivenSlowEmulator{T}(
         forest, bnd, convert(T, n_init), T(max_mort), T(max_estab),
-        sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], 0,
+        sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], Vector{Float64}[], 0,
         DRF.Xoshiro256pp(seed), kcap, recruit_copula, bser,
     )
 end
@@ -621,6 +629,7 @@ function reconcile_demography!(
 
     # ── DRF TARGET → demographic-change ratio ρ (unit-free; count↔density cancels) ──
     feats = flux_feature_vector(s, grow, pools, state, fc.allom)
+    push!(s.feature_history, feats)                # diagnostic-only record of the row the forest was fed
     target = DRF.predict(s.forest, feats)
     ρ = if s.year == 0
         one(T)                                     # year 0: no change (seed the recursive AR state)

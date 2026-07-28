@@ -11,6 +11,10 @@
 # survivor marginal (which it should: recruits are drawn from exactly that flux-conditioned marginal, and
 # the emulator's mortality is trait-blind so the community distribution == the establishment distribution).
 # Measured this session: SLA nqrmse ≈ 0.13 (median ratio ≈ 1.02), Wooddens ≈ 0.20 (≈ 1.10). Deterministic.
+# S1c re-measurement (ADR 0032/0034): the `.rcop` came back BYTE-IDENTICAL from the regeneration, so both
+# DIRECT-draw numbers are unchanged (SLA 0.1274 / ratio 0.9715; Wooddens 0.0346 / 1.0000). Only the COUPLED
+# community numbers see the regenerated count DRF, and they barely moved (SLA nqrmse 0.2558 → 0.2634, Wooddens
+# 0.2203 → 0.2203; both median ratios unchanged at 1.0624 / 1.1113) — so no threshold here changes.
 
 @testitem "Gate-3 traits — coupled S recruit-copula community SLA/Wooddens vs LPJmL-FIT C truth (Hainich 42490)" tags = [:scientific, :coupling] begin
     using LPJmLFITEmulator

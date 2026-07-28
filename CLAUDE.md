@@ -71,7 +71,8 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   ```
   Poll from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` · the log's last line is
   `=== JOB DONE tag=<tag> exit=<code> ===` (grep it) with the ReTestItems summary just above. Full suite
-  ≈ **48.1k pass / 0 fail / 4 broken** (grew with P1), ~5–6 min after a warm precompile.
+  ≈ **107.1k pass / 0 fail / 4 broken** over 87 test items (`[VERIFIED 2026-07-28]`, job 1622741; the older
+  "48.1k" figure predates the parallel lines' P1–P4 growth), ~6 min after a warm precompile.
 - **Any OTHER long Julia job** (benchmarks, probes, decadal coupled runs, training) → the same durable path:
   `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`). **Standing rule: anything that
   takes more than a few seconds goes to SLURM, never a login-node foreground / `nohup` / background shell.**

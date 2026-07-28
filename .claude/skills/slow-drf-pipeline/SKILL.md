@@ -181,12 +181,37 @@ The third tier exists because a bare byte-identity gate **conflates** "my edit m
 fixture was already out of date". The control that separates them is
 `scripts/diagnose_slow_table_drift.py` (`CELL`, `REF`, `MODE`): it builds the same single-cell table with the
 builder at a git ref and with the working tree and diffs `X` column-by-column.
-- **`drf_forest_hainich.drf` is currently STALE and this is EXPECTED to report exit 2 — ADR 0032.** It was
-  trained on the retired PROXY features (`soilmoist` 0.7, `lai` 21.2, `growth_eff` 19) while
-  `recruit_copula_hainich.rcop` and any fresh build are on the REAL ones (0.85, 3.07, ~151). One emulator, two
-  conditioning bases. Regenerating it is **milestone S1c** — both fixtures together, with re-measured drift
-  thresholds, as a deliberate integration point with M. Do NOT fold it into another milestone.
-- Recover from a failed gate with `git checkout -- test/testitems/references/`.
+- **RESOLVED 2026-07-28 (S1c): `drf_forest_hainich.drf` was stale — it is now regenerated onto the REAL basis
+  and the gate reports `PASS` (exit 0).** It had been trained on the retired PROXY features (`soilmoist` 0.7,
+  `lai` 21.2, `growth_eff` 19) while `recruit_copula_hainich.rcop` and any fresh build were on the REAL ones
+  (0.85, 3.07, ~151) — one emulator, two conditioning bases. **A `STALE-FIXTURE` exit 2 is therefore no longer
+  expected; treat it as a new finding.** Regenerating both fixtures from ONE build is the standing rule
+  (ADR 0032 §5): they share four conditioning columns, so regenerated apart they silently re-split.
+- Recover from a failed gate with `git checkout -- test/testitems/references/`. But when the regeneration IS
+  the deliverable, do **not** restore — commit it, and re-measure the gates below in the same change.
+
+### After regenerating a committed artifact: RE-MEASURE the gates with one probe
+
+`scripts/measure_hainich_gate_bands_probe.jl` (SLURM: `scripts/sbatch_julia.sh S-bands --project=.
+scripts/measure_hainich_gate_bands_probe.jl`) reproduces all three coupled harnesses the testitems build and
+prints every quantity they bound — Height `nqrmse`/median/count ratios, the direct-draw + coupled-community
+trait numbers, `target_history`, the carbon residual — plus the two checks the tests structurally cannot do:
+artifact-vs-artifact **basis agreement** and **runtime-vs-trained feature band**.
+- **`DRF_ART`/`DRF_META` point it at an OLD artifact** (`git show HEAD:… > /p/tmp/…`), which is how you get the
+  BEFORE column of a before/after threshold table. **Do this first and check it reproduces the documented
+  numbers** — that is what validates the harness before you trust the after-column (residual-diagnosis §3).
+  It reproduced 0.3895 / 1.2463 / 0.6734 against the documented "≈0.39 / ≈1.25 / ≈0.67".
+- **A target-band assertion CANNOT detect a conditioning shift, and this is a proof, not a caveat:** a DRF
+  prediction is a convex combination of training leaf means, so it can never leave `[y_min, y_max]` however
+  out-of-domain its input is. Runtime-consistency has to be checked on the INPUT side — hence
+  `FluxDrivenSlowEmulator.feature_history` (the exact row fed to the forest each year, diagnostic only) and the
+  `y_min`/`y_max`/`feat_min`/`feat_max` lines `train_slow_drf.jl` now writes into EVERY artifact meta. Keep
+  emitting them: `slow_production_drf_tests.jl` asserts against them.
+- **Known, PINNED out-of-band columns (ADR 0034), not a pass:** `water_stress` 6.6× band width (an F_diff-vs-C
+  difference — line M's file), `soilmoist` 5.1× (year-end instant vs the annual-mean training basis), `lai`
+  2.9× and `fpc` 0.03× (one patch vs the C's cell-mean `LAI_STAND`). The test pins that exact set, so a NEW
+  column drifting out reds CI. Do not "fix" a band violation by widening the band — the band is a measurement
+  of the training data, not a tunable.
 
 ## The NOISE-FLOOR companion table (ADR 0030)
 

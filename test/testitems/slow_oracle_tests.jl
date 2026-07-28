@@ -9,7 +9,8 @@
 # axes {SLA, Wooddens, beta_root} are fixed-cohort in v1 (the copula recruit sampler is built — src/drf.jl
 # — but its consumer, recruit-cohort APPEND, is a later step), so the meaningful v1 oracle axes are the
 # SIZE distribution (Height; F-grown, S-shaped) and the COUNT magnitude. The tolerance is set to the
-# measured margin (~0.31 IQR-normalized quantile-RMSE this session) with cushion; a real drift would trip it.
+# measured margin (0.2998 IQR-normalized quantile-RMSE, re-measured under S1c) with cushion; a real drift
+# would trip it. Re-measure with `scripts/measure_hainich_gate_bands_probe.jl` whenever the artifacts move.
 
 @testitem "Gate-3 oracle — coupled flux-driven S size distribution vs LPJmL-FIT C truth (Hainich 42490)" tags = [:scientific, :coupling] begin
     using LPJmLFITEmulator
@@ -113,17 +114,28 @@
 
     @test truth_iqr > 0
     @test all(isfinite, coupled_h)
-    # RE-MEASURED under ADR 0024 (residual-diagnosis): with genuine ~1 m recruits (APPEND), a true per-cohort
-    # age, and the DRF retrained on mean(Age−1), the coupled Height distribution drifts a bit further from the
-    # C's non-recursive pooled distribution — nqrmse ≈ 0.39 on the ≥5 m C-`ind` basis (was ~0.31 with the old
-    # mix+counter). This is the honest recursive-vs-non-recursive DRIFT (median ratio ≈1.25, count ratio ≈0.67
-    # BOTH well in-band), NOT a fidelity regression. The alarm sits at 0.45 (≈15 % over the re-measured
-    # baseline) so it still trips on a REAL drift; a future increase toward 0.45 is a signal to diagnose, not
-    # to widen further. Hainich-only.
-    @test nqrmse ≤ 0.45
-    @test 0.6 ≤ coupled_h[3] / truth_h[3] ≤ 1.6            # median Height within a factor (measured ≈1.25)
+    # RE-MEASURED under S1c / ADR 0034 (residual-diagnosis, `scripts/measure_hainich_gate_bands_probe.jl`),
+    # after the committed count `.drf` was regenerated off the retired proxy feature basis onto the real one
+    # (ADR 0032). The alarm is TIGHTENED, not widened, because the drift SHRANK on every axis:
+    #
+    #   quantity            proxy-basis .drf   real-basis .drf (now)
+    #   nqrmse                    0.3895              0.2998
+    #   median Height ratio       1.2463              1.1316
+    #   count ratio               0.6734              1.2808
+    #
+    # Mechanism (coherent across the three): in-domain `bm_inc_cell`/`growth_eff` raise the settled count from
+    # ~6.8 to ~12.9 stems per patch, and more stems sharing the same carbon means smaller trees — so the
+    # Height distribution moves DOWN toward the C truth. This is still the honest recursive-vs-non-recursive
+    # DRIFT at one cell, NOT parity, and NOT yet a clean conditioning basis: `water_stress`, `soilmoist` and
+    # `lai` remain outside the trained band (ADR 0034; asserted in slow_production_drf_tests.jl).
+    # The alarm sits at 0.40 — a 0.10 absolute cushion over the measurement, wider in relative terms than the
+    # 0.45/0.39 it replaces, because this 20-yr Float64 trajectory's tails are CPU-microarch-sensitive. A
+    # future creep toward 0.40 is a signal to diagnose, not to widen. Hainich-only.
+    @test nqrmse ≤ 0.4
+    @test 0.6 ≤ coupled_h[3] / truth_h[3] ≤ 1.6            # median Height within a factor (measured ≈1.13)
 
-    # COUNT magnitude sanity — the DRF's settled count vs the C-truth per-patch beech count
+    # COUNT magnitude sanity — the DRF's settled count vs the C-truth per-patch beech count (measured 1.28;
+    # 0.67 on the pre-S1c proxy-basis artifact, i.e. the real basis moved it from under- to slightly over-count)
     cnt = readcsv(joinpath(refdir, "hainich_slow_oracle_counts.csv"))
     truth_npatch = _mean(parse.(Float64, cnt["N_beech_per_patch_mean"]))
     coupled_target = _mean(s.target_history[(end - 4):end])   # settled DRF count target

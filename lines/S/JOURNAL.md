@@ -174,3 +174,60 @@
 - **Also mis-read my own gate log once:** grepped for verdict patterns that silently dropped the SLA/Wooddens
   rows and briefly concluded the run was incomplete. It was complete. Read the raw section, not a filtered view,
   before calling a result missing.
+
+## Session 2026-07-28 (line S) — S1c: one feature basis at last, and the gate that can finally see a shift  [S1c CLOSED → S1d]
+
+**Task from the handoff:** regenerate the committed Hainich demo `.drf` + `.rcop` from ONE table build (ADR
+0032), assert the two metas now agree, re-measure the four gates, document every moved threshold.
+All of that is done, plus a finding the milestone was designed to surface.
+
+**Reference basis + hypotheses, written down BEFORE probing (residual-diagnosis §1/§2):**
+- *Basis:* LPJmL-FIT v5.6.004, historic obsclim 2000–2019, seed1, cell 42490, `individual=true`, carbon-only.
+  Truth = `hainich_slow_oracle_{traits,counts}.csv` (the C `ind` per-stem marginals, ≥5 m = the C writer's own
+  floor, nind-weighted). Training features = `soilmoist` from daily `swc` (23-layer × 365-day mean) and `lai`
+  from annual `LAI_STAND` (cell-mean). Comparison = recursive coupled S (20 yr, repeated 2010 forcing) vs the
+  non-recursive 25-patch C truth ⇒ a DRIFT ALARM, never parity.
+- *H1:* regenerating the `.drf` on the real basis closes the ADR-0023 shift ⇒ the runtime feature rows land
+  inside the retrained band. **Pre-registered risk:** `soilmoist` is the one at risk, because the runtime uses
+  `mean(state.w)` while the trained band is a narrow annual-mean [0.8416, 0.8674].
+- *H2:* the Gate-3 Height nqrmse moves, direction genuinely unpredictable. *H3:* the `.rcop` is byte-identical.
+
+**H3 CONFIRMED, H2 resolved favourably, H1 PARTIALLY FALSIFIED — and that is the session's real result.**
+- Regeneration (job 1622718): `.rcop` + meta and both oracle CSVs **byte-identical**; only `drf_forest_hainich.drf`
+  + `_meta.txt` moved; control re-confirms NO-OP ⇒ `STALE-FIXTURE` exit 2, the expected verdict.
+- Basis agreement now **8/8 shared conditioning columns inside the trained band, 0 violations**, boundary tails
+  equal. ADR 0032's defect is closed and *measured* closed, not assumed.
+- Every drift threshold improved: Height `nqrmse` **0.3895 → 0.2998**, median ratio 1.2463 → 1.1316, count ratio
+  0.6734 → **1.2808**. Coherent single mechanism: in-domain `bm_inc_cell`/`growth_eff` raise the settled count
+  6.8 → 12.9 stems/patch, and more stems on the same carbon are smaller trees, so Height moves *down* toward the
+  C truth. Alarm **tightened 0.45 → 0.40**; nothing widened.
+- **But 4 of 15 runtime columns are STILL outside the trained band** — `water_stress` (6.6× band width),
+  `soilmoist` (5.1×), `lai` (2.9×), `fpc` (0.03×, marginal) — identically in all three coupled harnesses. So
+  regenerating the artifact fixed the artifact-vs-artifact *split*, not the runtime↔training *shift*. Three
+  distinct causes, routed by owner instead of bundled (→ **ADR 0034**): `water_stress` is an F_diff-vs-C
+  difference (line M's file; ~330× the C's value while F's own soil is near saturation — internally odd);
+  `soilmoist` is a TEMPORAL aggregation mismatch (year-end instant vs annual mean); `lai`/`fpc` are a SPATIAL
+  one (one patch vs the C's cell-mean `LAI_STAND`, the known-open Phase-5 choice, now quantified at ~1.4×).
+
+**The mechanism that made this visible is the durable deliverable.** ADR 0032 blamed the green gates on the
+DRF's OOD leaf-clamping, flagged as inferred. The real reason is a *proof*: a DRF prediction is a convex
+combination of training leaf means, so it can never leave `[y_min, y_max]` whatever it is fed — "targets inside
+the training band" is therefore incapable of failing and is an artifact-integrity check, not a conditioning
+check. So: `FluxDrivenSlowEmulator.feature_history` now records the exact row fed to the forest each year
+(diagnostic only, numerically inert), `train_slow_drf.jl` writes `y_min`/`y_max`/`feat_min`/`feat_max` into
+every meta, and `slow_production_drf_tests.jl` asserts the runtime rows against that band with the out-of-band
+set **pinned** to the known three. A new column drifting out now reds CI. Chose pinning over asserting zero:
+asserting zero would have forced either a rushed fix inside S1c or a silently widened gate.
+
+**Harness validated before it was trusted (residual-diagnosis §3).** `measure_hainich_gate_bands_probe.jl`
+pointed at the pre-S1c artifact (`DRF_ART=`, job 1622727) reproduced the three documented numbers exactly —
+0.3895 vs "≈0.39", 1.2463 vs "≈1.25", 0.6734 vs "≈0.67". Only after that did I read the after-column as real.
+It also let me state the *old* shift from the committed artifact itself with no reconstruction: the runtime
+`lai` (3.3–5.1) sat below **all five** golden rows' `lai` (21.2, 59.6, 37.2, 29.1, 56.3) and the runtime
+`growth_eff` (124–179) above all five (19.0, 6.6, 12.3, 20.0, 7.6).
+
+**Planning consequence:** S1d (the two S-side aggregation bases) goes BEFORE S2. Starting S2's conditioning
+expansion while three conditioning columns are on the wrong basis would let S2 take credit for a basis fix —
+exactly the failure ADR 0033 recorded, where S1b silently delivered 30 % of S2's gate. Rejected outright:
+retraining on runtime-produced features, which would make every band assertion pass by construction while
+teaching the emulator F's bias instead of the C's demography (the C is the oracle, guardrail 3).

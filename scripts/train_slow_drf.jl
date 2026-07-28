@@ -143,6 +143,17 @@ function main()
             println(io, "age0\t", age0)
             println(io, "boundary\t", join((string(x) for x in boundary), " "))
         end
+        # TRAINED BANDS (ADR 0032 / S1c). The target band `y_min/y_max` plus the PER-FEATURE band over the
+        # training rows. The per-feature band is what makes runtime-consistency actually testable: a DRF
+        # prediction is a convex combination of training leaf means, so it can NEVER leave [y_min, y_max]
+        # whatever it is fed — a "targets inside the training band" assertion is therefore structurally
+        # incapable of detecting a conditioning-basis mismatch (exactly how the stale proxy basis survived
+        # every green in-loop gate). Comparing the RUNTIME flux_feature_vector against these columns is the
+        # assertion that can see it.
+        println(io, "y_min\t", minimum(y))
+        println(io, "y_max\t", maximum(y))
+        println(io, "feat_min\t", join((string(minimum(view(X, :, j))) for j in 1:p), " "))
+        println(io, "feat_max\t", join((string(maximum(view(X, :, j))) for j in 1:p), " "))
         # golden pairs: <pred> <feat1..featp>  (the load test asserts predict(loaded, feats) == pred bitwise)
         for r in golden_rows
             feats = X[r, :]
