@@ -35,7 +35,9 @@ import xarray as xr
 GLOBAL = "/p/projects/waldspektrum/priesner/clustering/global"
 RUN = "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_fdiff_val_c42490_seed1/output"
 CO2_FILE = "/p/projects/lpjml/inputs/co2/global/TRENDY/v12/global_co2_ann_1700_2022.txt"
-REPO = "/p/projects/open/Jamir/esm_land_emulator"
+# derive the repo root from THIS file — a hard-coded absolute path writes into the
+# INTEGRATOR worktree when this script is run from a per-line `git worktree` (CLAUDE.md §9).
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_OUT = "/p/tmp/jamirp/esm_land_emulator_data/fast_core_validation"
 REF_OUT = os.path.join(REPO, "test/testitems/references")
 

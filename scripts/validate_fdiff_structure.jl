@@ -9,7 +9,9 @@
 #   JULIA_DEPOT_PATH=$HOME/.julia julia --project=. scripts/validate_fdiff_structure.jl
 using LPJmLFITEmulator, LPJmLFITEmulator.FDiff, LPJmLFITEmulator.Allometry
 
-REPO = "/p/projects/open/Jamir/esm_land_emulator"
+# derive the repo root from THIS file — a hard-coded absolute path reads/writes the
+# INTEGRATOR worktree when this script is run from a per-line `git worktree` (CLAUDE.md §9).
+REPO = dirname(dirname(abspath(@__FILE__)))
 TMP = "/p/tmp/jamirp/esm_land_emulator_data/fdiff_structure"
 function rc(p)
     L = readlines(p); i = findfirst(l -> !startswith(strip(l), "#")&&!isempty(strip(l)), L)
