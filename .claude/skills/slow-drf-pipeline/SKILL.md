@@ -64,6 +64,11 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
    n_init/golden). **GLOBAL**: set `DRF_OUT_PATH` to a SEPARATE artifact (NEVER the committed fixture) +
    larger `NTREES`/`MAX_DEPTH`/`MIN_LEAF`/`SUBSAMPLE`; per-cell n_init/age0/boundary stay in
    `cell_meta.parquet` (meta writes a `cell_meta` pointer, not scalars).
+   - **VERSION the artifacts, never overwrite (ADR 0029/0031).** All four `run_*_slow_*.sh` orchestrators take
+     `VERSION=<tag>`, which suffixes every table dir, artifact and log (`VERSION=t7` →
+     `slow_copula_historic_t7/`, `drf_forest_global_pooled_w20_t7.drf`, `logs/gpcop_slow_t7.*`). Line M **pins**
+     `drf_forest_global_pooled_w20.drf` + `recruit_copula_global_pooled_w20.rcop`, so a retrain on a changed
+     basis MUST write new versioned files and let M re-pin deliberately. Default (unset) = the legacy paths.
    - **ONE-SHOT GLOBAL (build table → train, one SLURM job, disconnect-proof):**
      `SCENARIO=historic|ssp370 scripts/run_global_slow_training.sh` → `slow_runtime_<scen>/` +
      `drf_forest_global_<scen>.drf` under `/p/tmp/jamirp/emulator_global/`. This is the preferred global path
@@ -117,35 +122,79 @@ Everything is pure Base (empty runtime `[deps]`, ADR 0014); the DRF submodule is
   One pooled cell-agnostic forest + `cell_meta.parquet` sidecar; the AR ratio `target/n_prev` cancels count
   magnitude so pooling cells (and — ADR 0026 — pooling SCENARIOS) is sound.
 
-## The STEM POPULATION — check it before you build anything (ADR 0031)
+## The STEM POPULATION — ONE imported constant (ADR 0031, fixed 2026-07-28)
 
 **`Type` is the 0-based `pftpar` index; ids 0–6 are ALL SEVEN tree PFTs** (7/8/9 grass — emitted with the tree
-fields *zeroed*; 10–21 crops, never emitted). Every builder here selects `TREE_TYPES=[1,2,3,4,5]`, which is a
-**known DEFECT**: it drops id 0 (tropical broadleaved evergreen) + id 6 (larch) = **32.5 % of survivor tree
-stems**, makes **16.7 % of tree-bearing cells invisible** (45 009 of 54 020), and biases the cells it keeps
-(traits are drawn from per-PFT `[low,high]` intervals, so any per-cell trait statistic is a *composition*
-statistic). `python/.../features.py:50` already has the correct `[0..6]`; `data.py:68` has the truncated one.
+fields *zeroed*, so including them injects structural zeros; 10–21 crops, never emitted).
+
+**`TREE_TYPES` now lives in exactly ONE place — `python/src/lpjmlfit_emulator/data.py` — and every builder
+IMPORTS it** (`features.py`, `python/config/config.yaml`, all four `build_slow_*.py`,
+`noise_floor_vs_emulator.py`). **Never re-declare it in a new script**: two independent copies is precisely what
+caused ADR 0031, where a stale `[1,2,3,4,5]` dropped id 0 (tropical broadleaved evergreen) + id 6 (larch) =
+**32.5 % of survivor tree stems** and made **16.7 % of tree-bearing cells invisible** (45 009 of 54 020) for
+months. Measured effect of the widening on the historic copula table: **133.5 M → 197.8 M stems, 45 072 →
+54 058 cells**, and `minwscal` from the truncated `[0.025, 0.30]` span to FIT's true `[0.025, 0.75]`.
+- Traits are drawn from per-PFT `[low,high]` intervals (`new_tree.c:195-206`), so **any per-cell trait
+  statistic is a *composition* statistic** — never mix populations across a train/eval/floor comparison (that
+  mix is what made the pre-S1 noise floor unreadable). `noise_floor_vs_emulator.py` derives which of its
+  `tree7`/`tree5` bases is `same_population` FROM the imported constant for exactly this reason.
 - **Census / reproducer:** `scripts/sbatch_python.sh S-typecomp scripts/diagnose_ind_type_composition.py`
   (~2 min) — per-`Type` stems/cells/trait medians, cells lost entirely, and the per-cell median shift a PFT-set
-  change induces. **Run it whenever you change the stem filter**, and never mix populations across a
-  train/eval/floor comparison (that mix is what made the pre-S1 noise floor unreadable).
-- Hainich (42490) has only ids 1–5 + grass 8 ⇒ every single-cell gate is blind to this. A green Gate-3 says
-  nothing about the global population.
-- **`lai == 0` hazard:** `growth_eff = applied_npp/max(lai,EPS)` divides by `EPS=1e-6` where the joined
-  `LAI_STAND` is exactly 0 (**202 106 of 1 348 400** historic cell-years — the table is complete, so the
-  `drop_frac`/`cells_lost` guards CANNOT catch it: a zero is *present*, not missing). Measured: the seed1
-  production table is clean (max 31 183, zero rows >1e6) but the seed2 build had **204 867 rows >1e6, max
-  1.19e9** — so **check it, never assume**: `TIME=00:30:00 scripts/sbatch_python.sh S-ge0
-  /p/tmp/jamirp/emulator_global/probe_growth_eff_lai0.py` reads the `growth_eff` column of both tables' `Xc`
-  in ~1 min. Guard `lai > 0` explicitly and assert a sane `growth_eff` max in any new table build.
-  **A single `max=` line in a build log is not enough** — that is what hid this (mean 121 vs 264 495 was the
-  tell), so eyeball the printed cond-column MEAN too.
+  change induces. **Run it whenever you change the stem filter.**
+- **Per-PFT mortality params are per-PFT** (`build_slow_flux_table.py::PFT_PARAMS`, all seven `[VERIFIED]` from
+  the active `par/pft_lpjmlfit.js` by brace-depth parse). Widening a tree set needs each new PFT's OWN params,
+  not a longer key list: the old dict applied temperate/ANGIO values to every id and was wrong for ids 1/2/4/5
+  too — id 5's longevity is **125**, not `TREE_LONGEVITY` 400 (a 3.2× age-mortality error), and its
+  `mort_water_factor` is 20 not 5; ids 1/2 are XERIC (0.25) not ANGIO (0.75). An unknown `Type` now RAISES.
+- Hainich (42490) has only ids 1–5 + grass 8 ⇒ every single-cell gate is blind to the population. A green
+  Gate-3 says nothing about the global population — gate the no-op with
+  `scripts/verify_hainich_demo_artifacts.sh` (below), not with a green test suite.
+
+### `lai == 0` → `growth_eff`: RESOLVED, and the lesson generalizes
+
+**Match the runtime, don't floor the divisor.** `build_slow_runtime_table.py` now computes
+`growth_eff = lai > 0 ? applied_npp/lai : 0.0`, which is exactly `fast.jl:369`
+(`leaf_area > 0 ? applied_cell/leaf_area : zero(T)`); the C oracle guards it the same way
+(`mortality_tree_ind.c:95`: `if(leafarea_real > 1e-6) … else mort_npp = 1`). The old
+`÷ max(lai, EPS)` with `EPS=1e-6` turned a joined `LAI_STAND == 0` into `applied_npp × 1e6` — an ADR-0023
+train/inference shift on a primary mortality driver. A `GROWTH_EFF_MAX` (default 1e6) assertion now fails the
+build loud; observed maxima are 3.1e4 (seed1) / 4.3e4 (seed2).
+- **The seed asymmetry ADR 0031 recorded as UNEXPLAINED is diagnosed** (`scripts/diagnose_lai0_growth_eff.py`,
+  job 1621973): there is exactly **one** `cell_year_lai_*` / `cell_year_soilmoist_*` table per scenario and it
+  is **seed1-derived** (`build_laistand_lai_feature.py RUN_DIR=…_seed1`). Joined onto seed1 `ind` it is
+  self-consistent — **0** of 23.9 M tree groups have `lai == 0`, because a cell-year with living leafy stems in
+  *that* trajectory never has `LAI_STAND == 0`. Joined onto **seed2** `ind` (a different RAND48/`-DPERMUTE`
+  trajectory) it hits 21 501 groups / 204 867 stems with positive npp → max 1.19e9.
+- **So a seed2 table's `Xc` can never be fully runtime-consistent** without deriving seed2 `soilmoist`/`lai`.
+  Harmless for the ADR-0030 noise floor (it reads `Y` only, never `Xc`) — but do not train on a seed2 table.
+- **The generalizable lesson:** the coverage guards (`drop_frac`, `cells_lost`) structurally CANNOT catch this
+  class — the feature tables are *complete*, so a zero is **present**, not missing. And a single `max=` line in
+  a build log is not enough: mean 121 vs 264 495 was the real tell, so eyeball the printed cond-column **MEAN**
+  too. When a feature has a degenerate branch, go read what the RUNTIME does with it.
+
+### Is my pipeline change a no-op at Hainich? — the two-tier gate
+
+`scripts/verify_hainich_demo_artifacts.sh` regenerates all four committed Hainich demo artifacts (oracle
+CSVs, `.drf` + meta, `.rcop` + meta) in one SLURM job and reports `git status` on
+`test/testitems/references/`. Verdicts: `PASS` (byte-identical) · `FAIL` (exit 1) · **`STALE-FIXTURE` (exit 2)**.
+The third tier exists because a bare byte-identity gate **conflates** "my edit moved the table" with "the
+fixture was already out of date". The control that separates them is
+`scripts/diagnose_slow_table_drift.py` (`CELL`, `REF`, `MODE`): it builds the same single-cell table with the
+builder at a git ref and with the working tree and diffs `X` column-by-column.
+- **`drf_forest_hainich.drf` is currently STALE and this is EXPECTED to report exit 2 — ADR 0032.** It was
+  trained on the retired PROXY features (`soilmoist` 0.7, `lai` 21.2, `growth_eff` 19) while
+  `recruit_copula_hainich.rcop` and any fresh build are on the REAL ones (0.85, 3.07, ~151). One emulator, two
+  conditioning bases. Regenerating it is **milestone S1c** — both fixtures together, with re-measured drift
+  thresholds, as a deliberate integration point with M. Do NOT fold it into another milestone.
+- Recover from a failed gate with `git checkout -- test/testitems/references/`.
 
 ## The NOISE-FLOOR companion table (ADR 0030)
 
 The trait gate needs a **SEED=2 copula table built identically to seed1** — only `SEED` may differ, and
 **`STEM_CAP` must stay OFF** (it subsamples `Y`, which would inject subsampling noise into the floor; the
-boundary window is free, it touches only `Xc`):
+boundary window is free, it touches only `Xc`). It must also be on the **same tree population** as the emulator
+it is scored against — mixing `tree5` and `tree7` is what made the pre-S1 floor unreadable, and since 2026-07-28
+the population is the imported `TREE_TYPES = [0..6]` (so the ADR-0030 floor moves to the `tree7` numbers):
 ```bash
 MODE=copula SCENARIO=historic SEED=2 OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2 \
   TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-copula2 scripts/build_slow_runtime_table.py   # ~70 s
@@ -212,6 +261,21 @@ Pipeline (mirrors the count-DRF one; the scripts are axis-count-agnostic):
    → train the pooled global `.rcop`. Then the trait figures 09-11 (see the **emulator-validation-figures**
    skill: `COPULA_OUT=<table dir>` → `metrics_traits.txt`). SSP370 after its features exist.
 
+**"Published" means LOAD-VERIFIED, not "the job exited 0".** Before telling line M an artifact pair is ready,
+deserialize both halves and assert the contract — a training job can exit 0 having written a file the runtime
+cannot consume, and M pins these. One login-node check, seconds:
+```julia
+include("src/drf.jl"); using .DRF
+f = DRF.load_forest("…_t7.drf");              @assert f.nfeat == 15    # 11 head + 4 boundary
+(cop, marg, xfb, ax, cc) = DRF.load_copula("…_t7.rcop")                # NOTE: returns a 5-TUPLE, not a struct
+@assert length(ax) == 4 && length(cc) == 8 && length(marg) == 4        # axes / live_flux_cond / marginals
+```
+Three API traps in that snippet, each of which fails on the first attempt: `load_copula` returns
+`(GaussianCopula, Vector{Forest}, Vector{Float64}, axes, cond_cols)` — **a tuple, so `x.axes` throws
+`type Tuple has no field axes`**; `GaussianCopula`'s fields are `(:L, :d)`, **not** `corr`; and binding the
+axes to a variable literally named `axes` fails with `cannot assign a value to imported variable Base.axes`.
+Reference numbers for the `t7` pair: `.drf` 150 trees / `nfeat=15` / 1.5 s · `.rcop` 128 MB / 2.9 s.
+
 **Load-bearing:** the copula conditioning order MUST match `src/components/slow.jl::live_flux_cond` (4 flux +
 boundary) — the same channel-consistency trap as the count DRF's `flux_feature_vector`. Retraining the `.rcop`
 ⇒ re-measure the `slow_oracle_traits_tests` thresholds (residual-diagnosis). The sampler primitives
@@ -242,10 +306,16 @@ unseen-regime proof: train on the other regime, test the held-out one; + a poole
 constant (ADR 0004 — NOT a feature). `pool_slow_tables.py` asserts matching p/colnames (count) or
 ncond/axes/cond_cols (copula) — a mismatch means the two scenarios were built with different feature contracts.
 **Pooled COPULA:** `scripts/run_pooled_slow_copula.sh` (build both scenarios' `MODE=copula BOUNDARY_WINDOW=W
-STEM_CAP` tables → pool → `eval_slow_copula.jl` K-fold → `train_slow_copula.jl`). The un-capped pooled copula
-is ~730M stems (historic 133M + ssp ~600M) — busts the 4h qos — so `STEM_CAP=N` (opt-in, default 0=all;
-per-cell random subsample) caps each cell's stems (a marginal/KS needs only a few hundred; 700 GB nodes so the
-~600M-stem ssp collect fits regardless). Applied AFTER the coverage gate; deterministic (hash(Cell,Patch,Year,
+STEM_CAP` tables → pool → `eval_slow_copula.jl` K-fold → `train_slow_copula.jl`). `STEM_CAP=N` (opt-in,
+default 0=all; deterministic per-cell random subsample) caps each cell's stems — a marginal/KS needs only a few
+hundred (historic: 197.7M → 19.9M at `STEM_CAP=400`, median 369 stems/cell over 54 020 cells).
+- **`STEM_CAP` does NOT bound the PEAK MEMORY, and on `tree7` the ssp370 build OOM-KILLS at 32 cpus
+  (`[VERIFIED 2026-07-28]`, job 1622330 exit 137 + `Detected 1 oom_kill event`).** The cap is applied *after*
+  the conditioning-join, deliberately, so the `drop_frac` coverage guard still sees true join coverage — so the
+  **full** per-stem collect+join happens in memory first. ssp370 spans 81 years (~99M patch-years) and `tree7`
+  adds 48 % more stems, i.e. ~890M stems ≈ 200-300 GB peak, while 32 of a 128-cpu/700 GB node's cpus only carry
+  ~175 GB. **Use `NCPUS=96` (~525 GB) for any pooled/ssp370 copula build on the complete tree set.** Historic
+  alone (20 years) is fine at 32-48. Symptom to recognise: `Killed` + exit **137**, never a Python traceback. Applied AFTER the coverage gate; deterministic (hash(Cell,Patch,Year,
 seed)+row rank per cell).
 
 ## ONLINE transient boundary — the coupled-run Climbuf (ADR 0027; the runtime counterpart of `boundary_series`)

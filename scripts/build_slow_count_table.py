@@ -52,7 +52,7 @@ import build_slow_flux_table as bsft  # noqa: E402  (reuse daily stats + CO2 + b
 IND_PARQUET = "/p/tmp/jamirp/emulator_global/ind_hist_seed{seed}_all.parquet"
 CELL_YEAR_FEATS = "/p/tmp/jamirp/emulator_global/tables/cell_year_feats.parquet"
 
-TREE_TYPES = list(ind_data.TREE_TYPES)  # (1,2,3,4,5) — a TRUNCATED tree set, not "the schema": ADR 0031
+TREE_TYPES = list(ind_data.TREE_TYPES)  # FIT's complete tree set (0..6), imported — ADR 0031
 # (ids 0-6 are all seven tree PFTs; 0 = tropical evergreen and 6 = larch are dropped, 32.5% of survivor stems)
 
 # ---- the two channels -----------------------------------------------------------------

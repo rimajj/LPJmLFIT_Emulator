@@ -22,7 +22,7 @@
 # Env: WINDOW (20), STEM_CAP (400), SEED (1), NTREES (60) MAX_DEPTH (14) MIN_LEAF (20)
 #      SUBSAMPLE (50000), EVAL_NTREES (40) EVAL_SUBSAMPLE (50000), KFOLDS (5),
 #      TIME (06:00:00), NCPUS (32), SUBMIT (yes).
-# Collect: tail -f logs/gpcop_slow.<jobid>.out ; last line "=== JOB DONE ... ===".
+# Collect: tail -f logs/gpcop_slow[_<VERSION>].<jobid>.out ; last line "=== JOB DONE ... ===".
 # Artifacts: /p/tmp/jamirp/emulator_global/{slow_copula_<scen>_w<W>/, slow_copula_pooled_w<W>/,
 #            recruit_copula_global_pooled_w<W>.rcop}  (DVC, not git).
 # =============================================================================
@@ -40,16 +40,20 @@ JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 BASE="/p/tmp/jamirp/emulator_global"
 
-HIST_DIR="${BASE}/slow_copula_historic_w${WINDOW}"
-SSP_DIR="${BASE}/slow_copula_ssp370_w${WINDOW}"
-POOL_DIR="${BASE}/slow_copula_pooled_w${WINDOW}"
-RCOP_OUT="${BASE}/recruit_copula_global_pooled_w${WINDOW}.rcop"
+# VERSION (default empty = the legacy unsuffixed paths): appends `_<VERSION>` to every table dir, the .rcop and
+# the log name. ADR 0029/0031 — line M PINS `recruit_copula_global_pooled_w<W>.rcop`, so a retrain on a changed
+# basis MUST write a new versioned file and let M re-pin deliberately. `VERSION=t7` = ADR 0031's complete tree set.
+VERSION="${VERSION:-}"; VER_SFX="${VERSION:+_${VERSION}}"
+HIST_DIR="${BASE}/slow_copula_historic_w${WINDOW}${VER_SFX}"
+SSP_DIR="${BASE}/slow_copula_ssp370_w${WINDOW}${VER_SFX}"
+POOL_DIR="${BASE}/slow_copula_pooled_w${WINDOW}${VER_SFX}"
+RCOP_OUT="${BASE}/recruit_copula_global_pooled_w${WINDOW}${VER_SFX}.rcop"
 mkdir -p "${HIST_DIR}" "${SSP_DIR}" "${POOL_DIR}"
 
 jcf="$(mktemp)"
 cat > "${jcf}" <<EOF
 #!/usr/bin/env bash
-#SBATCH --job-name=gpcop_slow
+#SBATCH --job-name=gpcop_slow${VER_SFX}
 #SBATCH --account=${ACCOUNT}
 #SBATCH --partition=${PARTITION}
 #SBATCH --qos=${QOS}
@@ -57,36 +61,36 @@ cat > "${jcf}" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NCPUS}
 #SBATCH --time=${TIME}
-#SBATCH --output=${LOGDIR}/gpcop_slow.%j.out
-#SBATCH --error=${LOGDIR}/gpcop_slow.%j.out
+#SBATCH --output=${LOGDIR}/gpcop_slow${VER_SFX}.%j.out
+#SBATCH --error=${LOGDIR}/gpcop_slow${VER_SFX}.%j.out
 set -uo pipefail
 cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
-echo "=== gpcop_slow on \$(hostname) at \$(date)  W=${WINDOW} STEM_CAP=${STEM_CAP} ==="
+echo "=== gpcop_slow${VER_SFX} on \$(hostname) at \$(date)  W=${WINDOW} STEM_CAP=${STEM_CAP} ==="
 
 echo "--- [1/5] build historic transient copula table -> ${HIST_DIR} ---"
 MODE=copula SCENARIO=historic SEED=${SEED} BOUNDARY_WINDOW=${WINDOW} STEM_CAP=${STEM_CAP} OUT=${HIST_DIR} ${PY} scripts/build_slow_runtime_table.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow exit=\$rc (historic build failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow${VER_SFX} exit=\$rc (historic build failed) ==="; exit \$rc; }
 
 echo "--- [2/5] build ssp370 transient copula table -> ${SSP_DIR} ---"
 MODE=copula SCENARIO=ssp370 SEED=${SEED} BOUNDARY_WINDOW=${WINDOW} STEM_CAP=${STEM_CAP} OUT=${SSP_DIR} ${PY} scripts/build_slow_runtime_table.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow exit=\$rc (ssp370 build failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow${VER_SFX} exit=\$rc (ssp370 build failed) ==="; exit \$rc; }
 
 echo "--- [3/5] pool -> ${POOL_DIR} ---"
 IN_DIRS=${HIST_DIR},${SSP_DIR} TAGS=historic,ssp370 OUT=${POOL_DIR} ${PY} scripts/pool_slow_tables.py
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow exit=\$rc (pool failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow${VER_SFX} exit=\$rc (pool failed) ==="; exit \$rc; }
 
 echo "--- [4/5] K-fold-by-cell OOS trait-distribution eval -> pred_<axis>.f64 ---"
 OUT=${POOL_DIR} KFOLDS=${KFOLDS} NTREES=${EVAL_NTREES} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} \
   SUBSAMPLE=${EVAL_SUBSAMPLE} ${JULIA} scripts/eval_slow_copula.jl
-rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow exit=\$rc (eval failed) ==="; exit \$rc; }
+rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gpcop_slow${VER_SFX} exit=\$rc (eval failed) ==="; exit \$rc; }
 
 echo "--- [5/5] train + serialize ONE pooled+transient copula -> ${RCOP_OUT} ---"
 OUT=${POOL_DIR} RCOP_OUT_PATH=${RCOP_OUT} NTREES=${NTREES} MAX_DEPTH=${MAX_DEPTH} \
   MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${SUBSAMPLE} ${JULIA} scripts/train_slow_copula.jl
 rc=\$?
-echo "=== JOB DONE tag=gpcop_slow exit=\${rc} ==="
+echo "=== JOB DONE tag=gpcop_slow${VER_SFX} exit=\${rc} ==="
 exit \${rc}
 EOF
 
@@ -95,8 +99,8 @@ if [ "${SUBMIT}" = "yes" ]; then
   rm -f "${jcf}"
   echo "submitted POOLED+TRANSIENT copula job ${jid} (W=${WINDOW}, STEM_CAP=${STEM_CAP}, ${NCPUS} cpus, ${TIME})"
   echo "  tables: ${HIST_DIR} + ${SSP_DIR} -> ${POOL_DIR}    rcop: ${RCOP_OUT}"
-  echo "  log:    ${LOGDIR}/gpcop_slow.${jid}.out"
-  echo "  done?:  grep -E 'JOB DONE|pooled OOS|STEM_CAP' ${LOGDIR}/gpcop_slow.${jid}.out"
+  echo "  log:    ${LOGDIR}/gpcop_slow${VER_SFX}.${jid}.out"
+  echo "  done?:  grep -E 'JOB DONE|pooled OOS|STEM_CAP' ${LOGDIR}/gpcop_slow${VER_SFX}.${jid}.out"
 else
   echo "== SUBMIT=no — generated jcf:"; cat "${jcf}"; rm -f "${jcf}"
 fi

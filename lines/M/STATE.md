@@ -37,7 +37,26 @@ merging; both pinned versions were already in the shared depot, so the compute-n
 - So the per-cell boundary vector this line must build is exactly
   `[eco_diag_gdd_5, tas_cold_month, soil_depth, co2]` — precisely the columns `cell_meta.parquet` carries.
 
-**REJECTED — `*_t7` (do not adopt yet):** `drf_forest_global_pooled_w20_t7.drf` and
+> **✅ UPDATE from line S, 2026-07-28 15:46 — the POOLED `_t7` pair is now COMPLETE and verified.** Your
+> rejection below was correct at the time and is now satisfied. Both halves exist and **both deserialize**
+> (checked, not just built):
+> - `drf_forest_global_pooled_w20_t7.drf` — loads in 1.5 s, 150 trees, `nfeat = 15` (11 head + 4 boundary).
+> - `recruit_copula_global_pooled_w20_t7.rcop` (128 MB) — loads in 2.9 s, axes
+>   `[SLA, Wooddens, D95max, minwscal]`, **8 cond cols in exactly the `live_flux_cond` order**
+>   (`bm_inc_cell growth_eff water_stress soilmoist eco_diag_gdd_5 tas_cold_month soil_depth co2`), 4 marginal
+>   forests, latent corr intact. Meta reports 58 766 cells.
+>
+> Pooled K-fold-by-cell OOS trait fidelity on this pair (nqrmse): **SLA 0.005 · Wooddens 0.016 · D95max 0.012 ·
+> minwscal 0.004**. The count side is in `lines/S/STATE.md` §Status (every metric within ≈0.003 R² of `tree5`).
+> Built by `VERSION=t7 scripts/run_pooled_slow_copula.sh` (job 1622337) + `run_pooled_slow_training.sh` (1622134).
+>
+> **Two things to carry into the swap:** (1) `n_init`/`age0` are version-coupled, exactly as you documented —
+> take them from the `_t7` `cell_meta.parquet`, never mixed with the old pin. (2) The `historic`-only `_t7`
+> `.rcop` (job 1622131) was still running at handoff; if you want the historic-only pair rather than the pooled
+> one, check `logs/gcopula_historic_t7.*` for `JOB DONE` first. Nothing about the **feature contract** changed —
+> only the training population (ADR 0031), so this is not an ADR-0023 break.
+
+**REJECTED at the time of writing — `*_t7` (superseded by the update above):** `drf_forest_global_pooled_w20_t7.drf` and
 `drf_forest_global_historic_t7.drf` appeared **today** (58,587 cells) and line S was still mid-production when
 this was written (job 1622131 `gcopula_historic_t7` RUNNING) — **there is no matching `_t7` `.rcop`**. Adopting
 a half-published retrain is exactly the "never adopt a re-trained artifact silently" trap (ADR 0023). Moving to
@@ -171,6 +190,27 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   `cell_meta.parquet` schema. **Pin a specific versioned artifact path** in your driver; if S needs to change
   the feature contract it is an integration point (both sides land together) — never adopt a re-trained
   artifact silently, because train/inference consistency is load-bearing (ADR 0023).
+- **From S — OPEN INTEGRATION POINT raised 2026-07-28 (line S milestone S1b, ADR 0031):** Component S's
+  training population was widened from `TREE_TYPES = [1,2,3,4,5]` to FIT's COMPLETE tree set `[0..6]` — the old
+  list silently dropped the tropical broadleaved evergreen (id 0) + the boreal larch (id 6) = **32.5 % of
+  survivor tree stems** and made **16.7 % of tree-bearing cells** (the tropical belt + Siberian larch)
+  invisible. **The feature contract is UNCHANGED** (`flux_feature_vector` / `live_flux_cond` order, the
+  `.drf`/`.rcop` format, the `cell_meta.parquet` schema) — only the training *population*, so this is not an
+  ADR-0023 break and needs no runtime change. What DOES change for you:
+  - **New versioned artifacts, `t7`** (the orchestrators now take `VERSION=<tag>`; the pre-0031 files are
+    untouched): `drf_forest_global_pooled_w20_t7.drf` (+ meta) is BUILT and validated; the pooled
+    `recruit_copula_global_pooled_w20_t7.rcop` follows. **Re-pin deliberately** — do not adopt silently.
+  - **`cell_meta.parquet` gains ~4 600 cells** (pooled 53 993 → **58 587**), i.e. previously-invisible tropical
+    and larch cells now have `n_init`/`age0`/boundary. Your multi-cell driver's coverage grows accordingly;
+    check any hard-coded cell list or expected-count assertion.
+  - Count skill is essentially unchanged (every metric within ≈0.003 R²; see `lines/S/STATE.md` §Status), so
+    expect no coupled-behaviour surprise from the count side — but the *set of runnable cells* is larger.
+- **From S — SECOND INTEGRATION POINT, not yet actioned (line S milestone S1c, ADR 0032):** the committed
+  `test/testitems/references/drf_forest_hainich.drf` is trained on the RETIRED PROXY features
+  (`soilmoist` 0.7, `lai` 21.2) while `recruit_copula_hainich.rcop` beside it is on the REAL ones (0.85, 3.07)
+  — one emulator, two conditioning bases, a live ADR-0023 shift masked by the DRF's OOD leaf-clamping. S will
+  regenerate BOTH together; that **moves the drift thresholds** in `slow_production_drf_tests.jl` and
+  `slow_oracle_tests.jl`, so land it jointly and re-measure rather than widening the alarms.
 - **From E:** the `SEBEnergyClosure(...)` constructor + `solve!` signature.
 - **From E — OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E5, ADR 0071):** real daily
   **wind + surface pressure** now exist for the 5 orderA biome cells —

@@ -18,16 +18,22 @@ Reads the frozen annual ``ind`` parquet with a single-cell predicate-pushdown sc
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
+_REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO / "python" / "src"))
+from lpjmlfit_emulator import data as ind_data  # noqa: E402
+
 CELL = 42490
-# ADR 0031: ids 0-6 are all seven tree PFTs; this truncated list is the known defect. Harmless HERE (Hainich
-# 42490 contains only ids 1-5 + grass 8, verified in hainich_individuals_2010_meta.json) — which is exactly why
-# every single-cell gate stayed green while the global tables were truncated. Widen with ADR 0031, not alone.
-TREE_TYPES = [1, 2, 3, 4, 5]
+# FIT's complete tree set, IMPORTED — never re-declared (ADR 0031). Widening it from the old `[1,2,3,4,5]` is
+# a NO-OP for this file's committed output: Hainich 42490 contains only ids 1-5 + grass 8 (verified in
+# hainich_individuals_2010_meta.json), which is exactly why every single-cell gate stayed green while the
+# GLOBAL tables were truncated. That no-op is a gate, not a coincidence — if these references move, stop.
+TREE_TYPES = list(ind_data.TREE_TYPES)
 BEECH = 3
 IND_PARQUET = "/p/tmp/jamirp/emulator_global/ind_hist_seed{seed}_all.parquet"
 REFDIR = Path(__file__).resolve().parents[1] / "test" / "testitems" / "references"

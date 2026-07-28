@@ -234,10 +234,13 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   Hainich beech**) · 4 boreal needleleaved evergreen · 5 boreal broadleaved summergreen · 6 boreal
   needleleaved summergreen (larch) ‖ **7/8/9 grass** (emitted with the tree fields **zeroed** —
   `fwriteoutput_ind.c:139-189`, so wooddens/D95max/minwscal are literally 0) ‖ 10–21 crops (never emitted:
-  `landuse:"no"`). So the correct tree filter is `Type <= 6`. **`TREE_TYPES = [1,2,3,4,5]`
-  (`python/.../data.py`, every `build_slow_*.py`) is a KNOWN DEFECT — ADR 0031:** it drops 32.5 % of survivor
-  tree stems and makes 16.7 % of tree-bearing cells (the tropical belt + Siberian larch) invisible. The
-  correct list already exists at `python/.../features.py:50`. Traits are drawn **uniformly from per-PFT `[low,high]` intervals**
+  `landuse:"no"`). So the correct tree filter is `Type <= 6`. **`TREE_TYPES` now lives in exactly ONE place —
+  `python/.../data.py` = `(0,…,6)` — and `features.py`, `python/config/config.yaml` and every
+  `build_slow_*.py` IMPORT it (ADR 0031, fixed 2026-07-28); never re-declare it.** Two independent copies is
+  what caused the defect: a stale `[1,2,3,4,5]` dropped 32.5 % of survivor tree stems and made 16.7 % of
+  tree-bearing cells (the tropical belt + Siberian larch) invisible to Component S for months. **Every global
+  Component-S number published before 2026-07-28 is on that truncated population (ids 1–5, 45 009 of 54 020
+  cells)** — the `t7` artifact generation supersedes them. Traits are drawn **uniformly from per-PFT `[low,high]` intervals**
   (`new_tree.c:195-206` / `getrndinterval`; the par `median` field is unused there), so any per-cell trait
   statistic is a *composition* statistic — mixing two PFT sets makes two such statistics incomparable (id 0's
   minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which
@@ -249,10 +252,29 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `annual_tree.c:31-38`) — recompute `mort_age` from `Age − 1` (matches to 5e-8, not 1.4e-4). **Tier-2 RAW
   cannot yield `bm_inc`/`nind`/`turnover`** (absent from the `Output_ind` struct); the budget signal is the
   emitted `npp` (`= pft->anpp`, runtime-consistent with `FToS.bm_inc`), NOT `pft->bm_inc.carbon` (the
-  post-allocation residual, 0 for grass at output time). Mortality params for beech: `k_mort`=0.01,
-  `longevity`=**JSON key `"age"`**=400 (NOT the leaf `"longevity"`=2.0), `wdmort_1/2`=−2.465/0.148,
-  `mort_water_factor`/`mort_temp_factor`=5, `mort_water_res`=0.75. The flux-conditioning table builder is
+  post-allocation residual, 0 for grass at output time). The flux-conditioning table builder is
   `scripts/build_slow_flux_table.py` (tier-1, parameterized by `CELLS`; §7-validated).
+- **Mortality params are PER-PFT — do not reuse beech's for another id (`[VERIFIED 2026-07-28]`).** `k_mort`=0.01
+  is global (`par/lpjparam_fit.js`); everything else is per-PFT in `par/pft_lpjmlfit.js`, where `longevity` is
+  the **JSON key `"age"`** (NOT the leaf `"longevity"`=2.0) and `temp_low/high` is `"temp_stressed"` (NOT the
+  establishment `"temp"` gate). Macros: `MORT_WATER_RES_` ANGIO 0.75 / GYMNO 0.65 / XERIC 0.25 ·
+  `MORT_TEMP_FACTOR` 5.0 · `WD_mort1/2_` trop −2.458/0.129, mediterranean −2.625/0.236, temp −2.465/0.148,
+  boreal −2.430/0.143 · `TREE_LONGEVITY` 400. (Use `par/pft_lpjmlfit.js`, **not** `par/pft.js` — its
+  `WD_mort*`/`TREE_LONGEVITY` differ.)
+
+  | id | mort_water_factor | mort_water_res | wdmort_1/2 | longevity | temp_stressed low/high |
+  |---|---|---|---|---|---|
+  | 0 tropical BE | 10 | 0.75 ANGIO | trop | 400 | 12.5 / 54 |
+  | 1 temperate NE | 5 | **0.25 XERIC** | mediterranean | 400 | −15 / 54 |
+  | 2 temperate BE | 10 | **0.25 XERIC** | mediterranean | 400 | −10 / 54 |
+  | 3 temperate BS (**beech**) | 5 | 0.75 ANGIO | temp | 400 | −20 / 54 |
+  | 4 boreal NE | 7.5 | 0.65 GYMNO | boreal | 400 | −45 / 54 |
+  | 5 boreal BS | **20** | 0.75 ANGIO | boreal | **125** | −45 / 54 |
+  | 6 boreal NS (larch) | 5 | 0.65 GYMNO | boreal | 400 | −70 / 54 |
+
+  Assuming beech's row for the others is a real error, not a rounding one: id 5's longevity is 125, a **3.2×**
+  age-mortality difference, and its `mort_water_factor` is 4× beech's. `scripts/build_slow_flux_table.py::PFT_PARAMS`
+  carries this table and now RAISES on an unknown `Type` instead of falling back to temperate defaults.
 
 ---
 

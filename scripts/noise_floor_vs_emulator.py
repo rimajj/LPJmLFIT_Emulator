@@ -19,10 +19,12 @@ PFT ids are:
     0 tropical broadleaved evergreen · 1 temperate needleleaved evergreen · 2 temperate broadleaved evergreen
     3 temperate broadleaved summergreen (Hainich beech) · 4 boreal needleleaved evergreen
     5 boreal broadleaved summergreen · 6 boreal needleleaved summergreen (larch) || 7/8/9 grass | 10-21 crops
-so `Type <= 6` is exactly LPJmL-FIT's SEVEN tree PFTs, while every slow-* builder selects only
-TREE_TYPES = [1,2,3,4,5] (build_slow_runtime_table.py:74, python/.../data.py:68 — note the sibling constant
-python/.../features.py:50 has the full [0..6]). The emulator is therefore trained and scored on a TRUNCATED
-tree population that omits the tropical evergreen and the boreal larch — see ADR 0031. That truncation, NOT
+so `Type <= 6` is exactly LPJmL-FIT's SEVEN tree PFTs. Until 2026-07-28 every slow-* builder selected only
+`[1,2,3,4,5]` (a stale copy of `python/.../data.py`, which ADR 0031 corrected to the full `[0..6]` that
+`python/.../features.py:50` always had), so the emulator was trained and scored on a TRUNCATED tree population
+omitting the tropical evergreen and the boreal larch. Both bases are still reported here, because which one is
+the same-population basis depends on WHICH TABLE you point `COPULA_DIR` at: `TREE_TYPES` below is IMPORTED, so
+`same_population` follows the constant instead of a hard-coded id list. That truncation, NOT
 median instability, is what produced the un-interpretable pre-S1 `seed1-basis` cross-checks (SLA 0.973 but
 Wooddens 0.488 / minwscal 0.092): FIT draws each trait UNIFORMLY from a PER-PFT [low, high] interval
 (`new_tree.c:195-206` / `getrndinterval`), and id 0's minwscal interval [0.05, 0.75] (measured per-stem median
@@ -33,14 +35,14 @@ were measuring different PFT mixtures. This script therefore reports the floor o
                  MODE=copula with IDENTICAL settings (static boundary, no STEM_CAP, same soilmoist/lai
                  coverage gate) and only SEED differing. DEFINITIVE FOR SCORING TODAY'S EMULATOR: its observed
                  values ARE seed1's Y, so floor and emulator share one stem-selection code path, byte for byte.
-  2. `tree5`   — the same TRUNCATED population re-derived independently from the annual `ind` parquets
-                 (`Type` in TREE_TYPES). Agreement between 1 and 2 is the cross-check that the comparison is
-                 apples-to-apples (they differ only by the ≤2% conditioning-join coverage gate) — it reads
-                 1.000 on all four axes.
-  3. `tree7`   — `Type <= 6`, i.e. FIT's COMPLETE tree set. This is the population the emulator SHOULD cover
-                 (ADR 0031), so its floor describes the real forest — but its GAP/verdict columns are NOT a
-                 gap, because today's emulator is scored on a different (truncated) population. Read its
-                 `seed1-basis` column as the SIZE of the truncation per axis, not as a defect of the floor.
+  2/3. `tree7` / `tree5` — the two populations re-derived independently from the annual `ind` parquets. The
+                 one matching the IMPORTED `TREE_TYPES` (post-ADR-0031: `tree7`, FIT's complete set) is the
+                 SAME-population basis: agreement between it and basis 1 is the cross-check that the
+                 comparison is apples-to-apples (they differ only by the ≤2% conditioning-join coverage gate)
+                 and its `seed1-basis` must read ≈1.000 for its GAP to be quotable at all. The OTHER
+                 (`tree5`, the pre-0031 truncated basis, kept for the before/after table) is CROSS-population:
+                 its floor is a real floor for its own population, but its GAP/verdict columns are not a gap,
+                 and its `seed1-basis` column reads as the SIZE of the truncation per axis.
 
 Per basis: the per-axis Pearson/Spearman floor, the emulator r on the SAME cell set, the GAP, and the
 `seed1-basis` cross-check r(parquet median, copula-table Y median) — which must be ≈1 for a basis whose GAP is
@@ -67,16 +69,23 @@ are not like-for-like; the count floor is reported as an order-of-magnitude refe
 Run (SLURM; ~2 min, dominated by the two 21.7 GB parquet scans):
   scripts/sbatch_python.sh S-noisefloor scripts/noise_floor_vs_emulator.py
 Env: COPULA_DIR / COPULA2_DIR (the seed1 / seed2 copula table dirs), MINSTEM (20), SKIP_PARQUET=1 (copula
-basis only — seconds), SKIP_LEGACY=1 (skip the complete-tree-set `tree7` basis).
+basis only — seconds), SKIP_LEGACY=1 (skip the CROSS-population basis, i.e. whichever of tree7/tree5 is not
+the imported `TREE_TYPES`).
 Rebuild the seed2 table (the prerequisite for basis 1) exactly like seed1 — nothing but SEED may differ:
   MODE=copula SCENARIO=historic SEED=2 OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2 \
     TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-copula2 scripts/build_slow_runtime_table.py
 """
 
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import polars as pl
+
+_REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO / "python" / "src"))
+from lpjmlfit_emulator import data as ind_data  # noqa: E402
 
 BASE = "/p/tmp/jamirp/emulator_global"
 SEED1 = f"{BASE}/ind_hist_seed1_all.parquet"
@@ -86,7 +95,10 @@ COPULA = os.environ.get("COPULA_DIR", f"{BASE}/slow_copula_historic")
 # seed2 copula table: Y_<axis>.f64 + cells.i64 (same builder, SEED=2 — the definitive floor's other half)
 COPULA2 = os.environ.get("COPULA2_DIR", f"{BASE}/slow_copula_historic_seed2")
 AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
-TREE_TYPES = [1, 2, 3, 4, 5]        # THE emulator's basis (build_slow_runtime_table.py:74)
+# THE emulator's basis, IMPORTED from the one constant every builder now shares (ADR 0031) — so a future
+# population change moves `same_population` here automatically instead of silently mis-labelling a basis.
+TREE_TYPES = list(ind_data.TREE_TYPES)
+LEGACY_TREE_TYPES = [1, 2, 3, 4, 5]  # the pre-ADR-0031 truncated basis, kept for the before/after comparison
 ALL_TREE_MAX_TYPE = 6               # `Type <= 6` == FIT's COMPLETE tree set (ids 0-6); 7/8/9 are grass
 MINSTEM = int(os.environ.get("MINSTEM", "20"))   # match the fig-10 per-cell ≥20-stem filter
 
@@ -99,13 +111,14 @@ def spearman(a, b):
     return pearson(np.argsort(np.argsort(a)), np.argsort(np.argsort(b)))
 
 
-def percell_parquet(parquet, tree_only):
+def percell_parquet(parquet, types):
     """Per-cell survivor-tree median of each trait + survivor count, from an ind parquet (streamed).
 
-    `tree_only=True` → the emulator's TRUNCATED basis (`Type` in TREE_TYPES = ids 1-5); False → FIT's
-    COMPLETE tree set (`Type <= 6`). See ADR 0031: the truncated one is the defect, not this filter.
+    `types` is an explicit `Type` id list — the imported `TREE_TYPES` (FIT's complete set, the emulator's
+    basis post-ADR-0031) or `LEGACY_TREE_TYPES` (the pre-0031 truncated one). Passing it explicitly is what
+    keeps a floor and an emulator from being compared across two different stem populations.
     """
-    filt = (pl.col("Type").is_in(TREE_TYPES) if tree_only else (pl.col("Type") <= ALL_TREE_MAX_TYPE))
+    filt = pl.col("Type").is_in(list(types))
     q = (
         pl.scan_parquet(parquet)
         .select(["Cell", "Type", "isdead", *AXES])
@@ -310,20 +323,27 @@ def main():
     if os.environ.get("SKIP_PARQUET", "") not in ("", "0", "no"):
         print("\n== SKIP_PARQUET set — copula basis only.")
         return 0
-    for tree_only, name, note in (
-        (True, "tree5", f"parquet, Type in TREE_TYPES={TREE_TYPES} — the emulator's TRUNCATED population, "
-                        f"re-derived independently (its `seed1-basis` must read ≈1.000)"),
-        (False, "tree7", f"parquet, Type <= {ALL_TREE_MAX_TYPE} — FIT's COMPLETE tree set (ids 0-6; grass is "
-                         f"7/8/9). The population the emulator SHOULD cover (ADR 0031): its floor is the real "
-                         f"forest's, but its GAP is cross-population. `seed1-basis` = the truncation's size."),
-    ):
-        if not tree_only and os.environ.get("SKIP_LEGACY", "") not in ("", "0", "no"):
+    # Which parquet basis is SAME-population is decided by the IMPORTED constant, never hard-coded: the
+    # emulator's population is whatever `TREE_TYPES` says, so post-ADR-0031 `tree7` carries the quotable GAP
+    # and `tree5` is the cross-population before/after row (pre-0031 it was the other way round).
+    _emu_types = sorted(TREE_TYPES)
+    bases = [(_emu_types, True, "the emulator's population, re-derived independently (its `seed1-basis` must "
+                                "read ≈1.000 for the GAP below to be quotable)")]
+    if sorted(LEGACY_TREE_TYPES) != _emu_types:
+        bases.append((sorted(LEGACY_TREE_TYPES), False,
+                      "the pre-ADR-0031 TRUNCATED population (dropped id 0 tropical evergreen + id 6 larch = "
+                      "32.5% of survivor stems), kept for the before/after — its GAP is CROSS-population"))
+    for types, same_population, note in bases:
+        name = f"tree{len(types)}"
+        if not same_population and os.environ.get("SKIP_LEGACY", "") not in ("", "0", "no"):
             continue
-        print(f"\n== scanning parquets for basis `{name}`...", flush=True)
-        p1 = percell_parquet(SEED1, tree_only)
-        p2 = percell_parquet(SEED2, tree_only)
+        note = f"parquet, Type in {types} — {note}"
+        print(f"\n== scanning parquets for basis `{name}` "
+              f"({'SAME' if same_population else 'CROSS'}-population)...", flush=True)
+        p1 = percell_parquet(SEED1, types)
+        p2 = percell_parquet(SEED2, types)
         print(f"   seed1: {p1.height} cells · seed2: {p2.height} cells", flush=True)
-        report(name, note, p1, p2, emu, show_basis=True, same_population=tree_only)
+        report(name, note, p1, p2, emu, show_basis=True, same_population=same_population)
 
     print("\n== DONE noise_floor_vs_emulator ==", flush=True)
     return 0

@@ -28,6 +28,8 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from .data import TREE_TYPES as _TREE_TYPES
+
 __all__ = [
     "TREE_TYPES",
     "CLIM",
@@ -47,7 +49,12 @@ __all__ = [
     "eco_diagnostics",
 ]
 
-TREE_TYPES = [0, 1, 2, 3, 4, 5, 6]
+#: FIT's tree PFT ids, RE-EXPORTED from :data:`lpjmlfit_emulator.data.TREE_TYPES` as a list
+#: (this module's consumers index and iterate it). Deliberately NOT a second literal: two
+#: independent declarations of this list are what caused ADR 0031 — this module always had
+#: the correct ``[0..6]`` while ``data``'s stale ``(1,2,3,4,5)`` silently truncated every
+#: Component-S training table by a third of the forest.
+TREE_TYPES = list(_TREE_TYPES)
 CLIM = ["temp", "prec", "swrad", "lwrad", "humid"]
 STATIC = [
     "lat",
