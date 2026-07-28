@@ -132,9 +132,14 @@ statistic). `python/.../features.py:50` already has the correct `[0..6]`; `data.
 - Hainich (42490) has only ids 1–5 + grass 8 ⇒ every single-cell gate is blind to this. A green Gate-3 says
   nothing about the global population.
 - **`lai == 0` hazard:** `growth_eff = applied_npp/max(lai,EPS)` divides by `EPS=1e-6` where the joined
-  `LAI_STAND` is exactly 0 (202 106 of 1 348 400 historic cell-years) → a `growth_eff` of ~1e9 in the
-  conditioning. The coverage guards CANNOT catch it: the feature tables are complete, so a zero is *present*,
-  not missing. Guard `lai > 0` explicitly and assert a sane `growth_eff` max.
+  `LAI_STAND` is exactly 0 (**202 106 of 1 348 400** historic cell-years — the table is complete, so the
+  `drop_frac`/`cells_lost` guards CANNOT catch it: a zero is *present*, not missing). Measured: the seed1
+  production table is clean (max 31 183, zero rows >1e6) but the seed2 build had **204 867 rows >1e6, max
+  1.19e9** — so **check it, never assume**: `TIME=00:30:00 scripts/sbatch_python.sh S-ge0
+  /p/tmp/jamirp/emulator_global/probe_growth_eff_lai0.py` reads the `growth_eff` column of both tables' `Xc`
+  in ~1 min. Guard `lai > 0` explicitly and assert a sane `growth_eff` max in any new table build.
+  **A single `max=` line in a build log is not enough** — that is what hid this (mean 121 vs 264 495 was the
+  tell), so eyeball the printed cond-column MEAN too.
 
 ## The NOISE-FLOOR companion table (ADR 0030)
 
