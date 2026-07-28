@@ -82,6 +82,7 @@ first ADR.
 
 | # | Decision | Status |
 |---|---|---|
+| [0070](0070-plumber2-observational-reference.md) | **PLUMBER2 v1-0 is Component E's observational reference** — 9 sites staged script-reproducibly from the anonymously-readable NCI THREDDS `ks32` collection (DE-Hai = the prototype cell + one tower per biome slot of `biome_coupled_tests.jl`); the dataset's own `*_cor_uc` supplies the E4 error band and `Ustar` an independent `g_a` check. Records the finding that **PLUMBER2's FLUXNET2015/LaThuile files carry no `LWup`** ⇒ **T_skin is not observable at Hainich** and is validated at the 4 OzFlux sites only (biome-analogously; no boreal site; AU-How suspect) | accepted |
 
 #### Line O — online coupling: Terrarium / SpeedyWeather (0080–0089)
 

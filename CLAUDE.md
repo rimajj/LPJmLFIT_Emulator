@@ -307,8 +307,9 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - Decisions: `docs/decisions/README.md` (ADR index). Steering: `STEERING_PROMPT.md` +
   `PROJECT_REVIEW_2026-07-22.md`.
 - **Skills** (`.claude/skills/`): `julia-test`, `lpjmlfit-cbinary`, `fdiff-validate`, `python-env`,
-  `residual-diagnosis`, `repo-commit`, `dependency-license-gate`. Invoke the one that matches the mechanical
-  task instead of re-deriving its steps.
+  `residual-diagnosis`, `repo-commit`, `dependency-license-gate`, `plumber2-reference` (line E: the
+  PLUMBER2 observational reference for Component E). Invoke the one that matches the mechanical task
+  instead of re-deriving its steps.
 - **Licensing (`[VERIFIED 2026-07-28]`, ADR 0080; register + gate: `docs/third_party_licensing.md`, skill
   `dependency-license-gate`).** Outbound = **AGPL-3.0-or-later** — forced by LPJmL-FIT's AGPL-3.0 copyleft
   *and* by being an EUPL-1.2 Appendix "Compatible Licence" (Art. 5). **Never state a licence from memory:
