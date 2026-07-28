@@ -17,7 +17,15 @@ ADR 0031 predicted the population change would bite.
 | job | tag / log | produces | status at handoff |
 |---|---|---|---|
 | 1622131 | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | RUNNING (K-fold, ~5 folds × 4 axes) |
-| **1622337** | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** (the artifact M pins) | RUNNING at **NCPUS=96** — the 32-cpu attempt (1622330) was **OOM-killed** (exit 137) on the ssp370 build — `STEM_CAP` does NOT bound peak memory (gotcha in the `slow-drf-pipeline` skill) |
+| ~~1622337~~ | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** | ✅ **DONE** at NCPUS=96 (the 32-cpu attempt 1622330 was **OOM-killed**, exit 137 — `STEM_CAP` does NOT bound peak memory; gotcha in the `slow-drf-pipeline` skill) |
+
+**✅ The COMPLETE pooled `t7` pair is PUBLISHED and load-verified** — `drf_forest_global_pooled_w20_t7.drf`
+(150 trees, `nfeat=15`, loads 1.5 s) + `recruit_copula_global_pooled_w20_t7.rcop` (128 MB, 4 axes, 8 cond cols
+in exactly `live_flux_cond` order, loads 2.9 s). Pooled K-fold-by-cell OOS trait nqrmse: **SLA 0.005 ·
+Wooddens 0.016 · D95max 0.012 · minwscal 0.004** (42.2 M stems after `STEM_CAP=400`, 58 766 cells).
+**Line M was BLOCKED on exactly this** and has been told (`lines/M/STATE.md`) — and M's own coverage gate
+independently confirmed why the widening mattered: `semiarid_sahel` (cell 18371) is in **neither** table the
+pre-0031 `pooled_w20` pin was trained on, so only the `_t7` family serves all five biome cells (5/5 vs 3/5).
 
 `grep -E 'JOB DONE|VERDICT' logs/<tag>.*.out`; last line carries the exit code. **If either died on a node
 fault** (exit `0:53`/no log — see MEMORY.md) just resubmit: `VERSION=t7 SCENARIO=historic

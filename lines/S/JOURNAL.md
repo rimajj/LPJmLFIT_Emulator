@@ -133,3 +133,18 @@
   generation and M re-pins deliberately — never an in-place overwrite.
 - **Global re-derivation launched** on the `t7` basis: `gcopula_historic_t7` (1622131), `gpool_slow_t7`
   (1622134, pooled 22.5 M historic + 99.0 M ssp370 = 121.5 M rows), seed2 floor table t7 (1622132, DONE).
+- **The pooled `t7` pair shipped and unblocked line M the same afternoon.** `recruit_copula_global_pooled_w20_t7.rcop`
+  (job 1622337, after the 32-cpu OOM) completed at 15:46, so the COMPLETE pair now exists and **both halves were
+  load-verified, not just declared built**: the `.drf` loads in 1.5 s with `nfeat=15`, the `.rcop` in 2.9 s with
+  4 axes and 8 cond cols in exactly `live_flux_cond` order. Pooled K-fold-by-cell OOS trait nqrmse **SLA 0.005 ·
+  Wooddens 0.016 · D95max 0.012 · minwscal 0.004**. Line M had, independently and on the same day, run a cell-
+  coverage gate that found `semiarid_sahel` (18371) is in **neither** table the pre-0031 `pooled_w20` pin was
+  trained on — only the `_t7` family covers all five biome cells (5/5 vs 3/5) — and had correctly REFUSED to
+  adopt a half-published retrain with no `.rcop` (ADR 0023). That is external confirmation that the truncation
+  was not a cosmetic scope issue: it was blocking another line's milestone outright.
+- **Two bugs in my OWN new gate, found by running it rather than trusting it** (worth remembering as a habit):
+  the extracted control builder resolved its repo root from `__file__`, so it broke the moment `TREE_TYPES`
+  became an import (`ModuleNotFoundError`) — fixed by extracting into a mirrored repo root; and a control that
+  *failed to run* was reported as "your edit moved the table", the loudest possible wrong conclusion from a gate
+  whose entire purpose is telling those two apart — now a distinct `INCONCLUSIVE` (exit 3). Re-run confirms
+  control exit 0 / NO-OP → `VERDICT: STALE-FIXTURE` (job 1622370), which is the ADR-0032 diagnosis.
