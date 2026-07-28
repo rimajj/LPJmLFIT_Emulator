@@ -28,9 +28,14 @@ ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${Q
 TIME="${TIME:-01:00:00}"; NCPUS="${NCPUS:-16}"
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 
-# forward the table-build env knobs explicitly (so they reach the batch shell)
+# forward the table-build env knobs explicitly (so they reach the batch shell). A knob NOT listed here is
+# only propagated if it was `export`ed (SLURM --export=ALL) — a bare `VAR=v scripts/sbatch_python.sh ...`
+# command-prefix assignment reaches this wrapper but NOT the job, so an unlisted knob SILENTLY takes its
+# default (e.g. MODE=copula omitted ⇒ a COUNT table is built under a copula OUT dir). Keep this list a
+# superset of every knob the submitted scripts read.
 FWD=""
-for v in NCELLS SEED NO_DAILY OUT CELLS; do
+for v in NCELLS SEED NO_DAILY OUT CELLS MODE SCENARIO BOUNDARY_WINDOW STEM_CAP \
+         SOIL_TBL_PATH LAI_TBL_PATH COPULA_DIR COPULA2_DIR MINSTEM; do
     if [ -n "${!v:-}" ]; then FWD="${FWD} ${v}=${!v}"; fi
 done
 

@@ -95,18 +95,32 @@ not the boundary, carry COUNTS; the boundary's value, if any, must show on TRAIT
 
 ## NOISE-FLOOR gate (the P3 metric — is the emulator as good as the stochastic data allows?)
 
-`scripts/noise_floor_vs_emulator.py` (SLURM via `sbatch_python.sh noisefloor`) compares the emulator's
-per-cell skill to the **seed1-vs-seed2** irreducible spread (LPJmL-FIT is stochastic — RAND48 + -DPERMUTE —
-so two seeds of the SAME cell disagree; no environment-conditioned emulator can beat that). Reads both
-`ind_hist_seed{1,2}_all.parquet` (survivor TREE stems, Type≤6 & isdead==0 — the copula's own filter) +
-`slow_copula_historic/{Y_,pred_}<axis>.f64`. Reports, per trait axis, emulator per-cell-median r vs the
-seed1↔seed2 floor r, plus the count floor. **Result (2026-07-27):** COUNTS at the floor (emu r²=0.9994 vs
-floor 0.953); TRAIT per-cell-median floor is HIGH (0.90-0.97 ⇒ learnable, NOT RNG-noise) while the emulator
-is 0.52-0.87 ⇒ genuine model HEADROOM (esp. Wooddens). **Basis gotcha:** the script prints a `seed1-basis`
-cross-check (parquet all-years median vs copula-table Y median) — it is LOW for discrete/year-variable axes
-(minwscal 0.09, Wooddens 0.49) because their per-cell median is unstable, NOT a coverage bug; read those
-axes' emu-vs-floor gap qualitatively. A basis-clean per-axis floor needs the seed2 copula table
-(`build_slow_runtime_table.py MODE=copula SEED=2`). Re-run whenever the emulator is retrained.
+`scripts/noise_floor_vs_emulator.py` (SLURM: `TIME=01:00:00 NCPUS=32 scripts/sbatch_python.sh S-noisefloor
+scripts/noise_floor_vs_emulator.py`, ~10 min) compares the emulator's per-cell skill to the
+**seed1-vs-seed2** irreducible spread (LPJmL-FIT is stochastic — RAND48 + -DPERMUTE — so two seeds of the
+SAME cell disagree). **ADR 0030 rewrote this gate; the pre-S1 numbers below the line are withdrawn.** It now
+reports three BASES and two ceilings:
+
+- **`copula` (definitive)** — seed1 `Y_<axis>` vs **seed2 `Y_<axis>`** from a second `MODE=copula SEED=2`
+  build differing in NOTHING else (no `STEM_CAP` — it would subsample `Y`; the boundary window is free).
+  Prereq artifact: `/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2` (~70 s to rebuild, 32 cpus).
+- **`tree5`** — the same population re-derived from the parquets; its `seed1-basis` column is a **hard gate
+  (≥0.99, reads 1.000)**. A floor failing it is void — never quote its gap.
+- **`tree7`** (`Type ≤ 6`) — FIT's COMPLETE tree set. **`Type ≤ 6` is CORRECT (ids 0-6 are all seven tree
+  PFTs; 7/8/9 are grass, written with tree fields ZEROED); it is `TREE_TYPES=[1,2,3,4,5]` that is truncated
+  (ADR 0031).** So this basis' floor is the real forest's, but its GAP is cross-population until 0031 lands.
+- **Attenuation** — `floor_r` is a realization-vs-realization r, so it is NOT a predictor ceiling. `pred` is
+  one RNG draw per row, so use its own split-half reliability `rel_P`: ceiling `= √(rel_P·rel_Y)`,
+  `r_center = emu_r/ceiling`. Report `(GAP, r_center)` **plus `sd(pred)/sd(Y1)`** — correlation is
+  scale-blind and the copula is badly UNDER-dispersed between cells (Wooddens 0.55 vs a second seed's 1.00).
+
+**Result (2026-07-28, ADR 0030, job 1616690 — on the ids-1..5 population):** per-axis GAP to the reachable
+ceiling **Wooddens +0.226 · minwscal +0.153 · SLA +0.115 · D95max +0.102** (`r_center` 0.72/0.84/0.88/0.88);
+`tree5` floor 0.694/0.909/0.964/0.791; split-half 0.978-0.999 ⇒ the floor is **trajectory divergence**, not
+finite-stem noise. COUNTS: floor r²=0.962 vs emu 0.9994, but that comparison is still NOT like-for-like
+(per-cell pooled total vs per-(Cell,Patch,Year) `n_living`) — an order-of-magnitude statement only.
+Re-run whenever the emulator is retrained, and **re-measure everything after the ADR 0031 re-derivation**
+(the floor moves to the `tree7` numbers).
 
 ## Interpreting / what "works well" looks like
 
