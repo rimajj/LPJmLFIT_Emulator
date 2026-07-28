@@ -28,6 +28,8 @@
 #                         42490 ⇒ the fixtures were already out of date (this is the real state
 #                         of drf_forest_hainich.drf as of 2026-07-28 — ADR 0032).
 #   exit 1  FAIL          the control confirms the edit itself moved the table. STOP.
+#   exit 3  INCONCLUSIVE  the control could not be RUN (a build error). Says nothing either
+#                         way — fix it and re-run before concluding anything.
 #
 # The artifacts are git-tracked, so a FAILED gate is trivially recoverable:
 #   git checkout -- test/testitems/references/
@@ -121,6 +123,11 @@ if [ -s /tmp/hainich_verify_\$\$.status ]; then
         echo "         caused by the change under test. Record it (ADR 0032) and regenerate DELIBERATELY as an"
         echo "         integration point with line M — never as a side effect of another milestone."
         rc_all=2
+    elif [ \${drift_rc} -eq 3 ]; then
+        echo "VERDICT: INCONCLUSIVE — the CONTROL could not be RUN (a build error, not a table difference),"
+        echo "         so it says NOTHING about whether the change under test moved anything. Fix the control"
+        echo "         build and re-run before drawing ANY conclusion from the moved fixtures above."
+        rc_all=3
     else
         echo "VERDICT: FAIL — the CONTROL confirms the change under test moved the table (ADR 0031 §3)."
         echo "         STOP; do not retrain global on a moved basis."

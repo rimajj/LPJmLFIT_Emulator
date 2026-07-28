@@ -24,8 +24,14 @@ once with the working tree (the edit) — and compares `X` column-by-column plus
     the byte-identity gate reports is PRE-EXISTING staleness, not this edit. Proceed, and record the staleness.
   * some column moved                                ⇒ the edit DID change the features. That is the real STOP.
 
-The control builder is extracted with `git show REF:scripts/build_slow_runtime_table.py` and run as a
-standalone file, so this works even when the edit changed which module the constants come from.
+The control builder is extracted with `git show REF:scripts/build_slow_runtime_table.py`, so this works even
+when the edit changed which module the constants come from.
+
+**It is extracted into a MIRRORED repo root, not a bare temp dir** (`WORKDIR/ctlrepo_<sha>/scripts/…` with
+`python/` and `src/` symlinked back to the real repo). The builder resolves its own repo root as
+`Path(__file__).resolve().parents[1]` and uses it to import `lpjmlfit_emulator.data` (the one shared
+`TREE_TYPES`, ADR 0031) — from a bare temp dir that resolves to `/p/tmp/jamirp` and the import dies with
+`ModuleNotFoundError`. `PYTHONPATH` is also set, belt-and-braces.
 
 ## Run
 
@@ -61,16 +67,46 @@ def _git(*args):
     return r.stdout
 
 
+#: Distinct exit code for "the control could not be RUN". A build error says nothing about whether the edit
+#: moved the table, so callers must not read it as a FAIL (verify_hainich_demo_artifacts.sh reports
+#: INCONCLUSIVE on this). Keep it distinct from 0 (no-op) and 1 (the edit moved the table).
+EXIT_INCONCLUSIVE = 3
+
+
+def _mirror_repo_root(script_text, sha):
+    """Materialize the control builder inside a MIRRORED repo root so its `parents[1]` still works.
+
+    `build_slow_runtime_table.py` does `_REPO = Path(__file__).resolve().parents[1]` and imports
+    `lpjmlfit_emulator` from `_REPO/python/src`. Writing it to a flat temp dir makes `_REPO` = that dir's
+    parent, so the import fails. Mirror the two directories the builder can reach for.
+    """
+    root = os.path.join(WORKDIR, f"ctlrepo_{sha}")
+    os.makedirs(os.path.join(root, "scripts"), exist_ok=True)
+    for name in ("python", "src"):
+        link, target = os.path.join(root, name), os.path.join(REPO, name)
+        if not os.path.exists(link) and os.path.exists(target):
+            os.symlink(target, link)
+    path = os.path.join(root, "scripts", BUILDER.split("/")[-1])
+    with open(path, "w") as f:
+        f.write(script_text)
+    return path
+
+
 def build(script, out, label):
     """Run a builder into `out`. Env is inherited so control and edit share every knob."""
     os.makedirs(out, exist_ok=True)
-    env = dict(os.environ, CELLS=CELL, SEED=SEED, MODE=MODE, OUT=out)
+    env = dict(os.environ, CELLS=CELL, SEED=SEED, MODE=MODE, OUT=out,
+               PYTHONPATH=os.pathsep.join(
+                   [os.path.join(REPO, "python", "src")] + ([os.environ["PYTHONPATH"]]
+                                                            if os.environ.get("PYTHONPATH") else [])))
     print(f"\n{'=' * 96}\n== building {label}: {script}\n{'=' * 96}", flush=True)
     r = subprocess.run([PY, script], env=env, cwd=REPO, capture_output=True, text=True)
     if r.returncode != 0:
         print(r.stdout[-4000:])
         print(r.stderr[-4000:], file=sys.stderr)
-        raise SystemExit(f"FATAL: {label} build failed (exit {r.returncode})")
+        print(f"\nCONTROL INCONCLUSIVE: {label} build failed (exit {r.returncode}). This says NOTHING about "
+              f"whether the edit moved the table — fix the build, then re-run.", flush=True)
+        raise SystemExit(EXIT_INCONCLUSIVE)
     for li in r.stdout.splitlines():
         if li.startswith("==") or "growth_eff" in li:
             print("   " + li)
@@ -100,10 +136,8 @@ def main():
     if not dirty:
         print("   NOTE: the builder is unmodified vs REF, so this run is a pure REPRODUCIBILITY check.")
 
-    ctl_script = os.path.join(WORKDIR, f"builder_{head}.py")
     os.makedirs(WORKDIR, exist_ok=True)
-    with open(ctl_script, "w") as f:
-        f.write(_git("show", f"{REF}:{BUILDER}"))
+    ctl_script = _mirror_repo_root(_git("show", f"{REF}:{BUILDER}"), head)
 
     ctl_out, edit_out = f"{WORKDIR}/control", f"{WORKDIR}/edit"
     build(ctl_script, ctl_out, f"CONTROL ({REF} = {head})")
