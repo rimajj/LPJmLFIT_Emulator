@@ -6,47 +6,62 @@
 
 ## NEXT — start here
 
-**S1b — widen the training population to FIT's COMPLETE tree set (ADR 0031). This now BLOCKS S2.**
-S1 is DONE (see §Status) and it uncovered a defect that makes S2 premature: every `build_slow_*.py` filters
-`TREE_TYPES=[1,2,3,4,5]`, but `Type` is the 0-based `pftpar` index and **ids 0–6 are all seven tree PFTs**, so
-we drop id 0 (tropical broadleaved evergreen) + id 6 (boreal larch) = **32.5 % of 197.7 M survivor tree stems**,
-and **9 011 of 54 020 tree-bearing cells (16.7 %) are invisible to Component S** — the tropical belt and the
-Siberian larch zone. Read **ADR 0031** (full census, provenance, ordered plan) and **ADR 0030** (the gate you
-re-measure at the end) first. Census reproducer: `scripts/diagnose_ind_type_composition.py` (~2 min).
+**S1b is CODE-COMPLETE and MERGED; finish the TRAIT half of the re-validation.** The ADR-0031 widening, the
+`growth_eff` runtime guard, the per-PFT params, the versioning knob and the byte-identity gate all landed
+(see §Status for the before/after tables). **The count side is DONE and holds up** (every metric within ≈0.003 R²
+on a 56 %-larger population, +9 371 cells scored). What is left is the trait side, which is exactly where
+ADR 0031 predicted the population change would bite.
 
-Order matters — do NOT publish anything from a mixed-basis state:
-1. **One imported constant.** Correct `python/src/lpjmlfit_emulator/data.py::TREE_TYPES` and
-   `python/config/config.yaml` to `[0..6]`, and replace the hard-coded copies in
-   `scripts/build_slow_{runtime_table,count_table,flux_table,oracle_reference}.py` with an import so they can
-   never drift again (each site currently carries an ADR-0031 pointer comment). Watch
-   `build_slow_flux_table.py::PFT_PARAMS` — it assumes TEMPERATE mortality params for every id, so ids 0/6
-   need their own from `par/pft_lpjmlfit.js`, not just a longer key list.
-2. **Add the `lai == 0` guard FIRST** (also ADR 0031): `growth_eff = applied_npp/max(lai,EPS)` divides by
-   `EPS=1e-6` where the joined `LAI_STAND` is exactly 0 (**202 106 of 1 348 400** historic cell-years,
-   verified). Measured (`/p/tmp/jamirp/emulator_global/probe_growth_eff_lai0.py`, job 1617052): the seed1
-   **production table is CLEAN** (max 31 183, zero rows >1e6 ⇒ no published number is affected), but the seed2
-   table has **204 867 rows (0.15 %) >1e6, max 1.19e9**. That asymmetry is **unexplained** — same lai table
-   both times; falsify this first: the rows may exist in both but with `applied_npp == 0` in seed1, where
-   `0/EPS = 0` hides them. The coverage guards CANNOT catch any of it (the feature tables are complete, so a
-   zero is *present*, not missing). Add an explicit `lai > 0` guard + a `growth_eff` max assertion. ADR 0030's
-   floor is unaffected either way (it reads `Y` only, never `Xc`).
-3. **Re-derive → retrain → re-validate:** count + copula tables (historic, ssp370, pooled) →
-   `run_global_slow_{training,copula}.sh` → K-fold-by-cell OOS + hold-out-by-scenario → figures.
-   **Version, never overwrite** (`…_t7.drf` / `…_t7.rcop` or a meta version bump): line M pins these, so this
-   is an **integration point** — note it in `lines/M/STATE.md` as well and land both sides together.
-4. **Re-measure the ADR-0030 gate:** `TIME=01:00:00 NCPUS=32 scripts/sbatch_python.sh S-noisefloor
-   scripts/noise_floor_vs_emulator.py`, after building a SEED=2 copula table on the NEW population
-   (`MODE=copula SCENARIO=historic SEED=2 OUT=…_seed2`, ~70 s — and note `sbatch_python.sh` now forwards
-   `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW`, which it silently did NOT before). The floor moves to the
-   `tree7` numbers (Wooddens 0.694 → 0.923), so every headroom figure in §Status is superseded by that run.
+### 1. Collect the in-flight jobs (they were running when the session ended)
 
-*Gate:* Hainich demo artifacts + golden fixtures **byte-identical** (Hainich has only ids 1–5 — if they move,
-STOP and find out why); `seed1-basis ≥ 0.99` on the new population; cell coverage ≈ 54 020; and a documented
-before/after table of every fidelity number that changed.
+| job | tag / log | produces | status at handoff |
+|---|---|---|---|
+| 1622131 | `logs/gcopula_historic_t7.*` | `slow_copula_historic_t7/` (197.8 M stems) + `pred_<axis>.f64` K-fold OOS + `recruit_copula_global_historic_t7.rcop` | RUNNING (K-fold, ~5 folds × 4 axes) |
+| 1622330 | `logs/gpcop_slow_t7.*` | `slow_copula_pooled_w20_t7/` + **`recruit_copula_global_pooled_w20_t7.rcop`** (the artifact M pins) | RUNNING |
 
-Then → **S2/S3** (below). ADR 0031's census makes **S3 the leading hypothesis, not S2**: per-cell trait
-medians are *composition* statistics (FIT samples traits from per-PFT intervals), and the copula has neither a
-composition covariate nor a per-PFT marginal.
+`grep -E 'JOB DONE|VERDICT' logs/<tag>.*.out`; last line carries the exit code. **If either died on a node
+fault** (exit `0:53`/no log — see MEMORY.md) just resubmit: `VERSION=t7 SCENARIO=historic
+scripts/run_global_slow_copula.sh` / `VERSION=t7 scripts/run_pooled_slow_copula.sh`. Everything is versioned,
+so a resubmit cannot clobber a pre-0031 artifact.
+
+### 2. Re-measure the ADR-0030 trait gate on the new population
+
+Both halves must be `tree7`. The seed2 floor table is **already built** (job 1622132,
+`slow_copula_historic_seed2_t7`, 197.8 M stems / 54 058 cells):
+```bash
+COPULA_DIR=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7 \
+COPULA2_DIR=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2_t7 \
+  TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-noisefloor-t7 scripts/noise_floor_vs_emulator.py
+```
+The script now derives which of its `tree7`/`tree5` bases is `same_population` from the **imported**
+`TREE_TYPES`, so `tree7` is the basis carrying the quotable GAP and `tree5` is the cross-population
+before/after row. **Gate: `seed1-basis ≥ 0.99` on `tree7`** — below that, STOP (`residual-diagnosis` §3b).
+Expect the floor to move to the `tree7` numbers (ADR 0031 predicted Wooddens 0.694 → ~0.923), so **every
+headroom figure in §Status's trait table is superseded by this run** — replace it, don't append.
+
+### 3. Trait figures + the before/after trait table
+
+`COPULA_OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7` → figs 09–11 + `metrics_traits.txt`
+(see the `emulator-validation-figures` skill). Then extend §Status with a trait before/after table in the same
+shape as the count one. Pooled marginal KS was **0.004–0.015** on tree5 — ADR 0031 expects it to WORSEN, because
+one pooled marginal per axis is a poorer structural fit once id 0's very different trait intervals are in
+(`minwscal` now spans `[0.025, 0.75]`, not `[0.025, 0.30]`). **Report that honestly if it happens** — it is
+evidence FOR S3, not a regression to hide.
+
+### 4. Hand the artifacts to M, then unblock S2/S3
+
+`lines/M/STATE.md` already carries the integration point. Once the pooled `.rcop` exists, tell M the `t7` pair
+is complete (`drf_forest_global_pooled_w20_t7.drf` is **already built + validated**) so M re-pins deliberately.
+
+Then → **S2/S3**. ADR 0031's census plus the count/trait asymmetry make **S3 the leading hypothesis, not S2**:
+per-cell trait medians are *composition* statistics (FIT samples traits from per-PFT `[low,high]` intervals),
+the copula has neither a composition covariate nor a per-PFT marginal, and the widening just made the
+composition spread much larger. Consider running S3 *with* S2 rather than after it.
+
+**Also open, independent of the above: S1c (ADR 0032)** — the committed Hainich demo `.drf` is on the retired
+PROXY feature basis while the `.rcop` beside it is on the REAL one. Don't fold it into S2/S3; it needs
+re-measured drift thresholds and a joint landing with M. `scripts/verify_hainich_demo_artifacts.sh` reports
+exit 2 (`STALE-FIXTURE`) until it is done — that is **expected**, not a new failure.
 
 ## Scope + ownership (ADR 0029)
 
@@ -103,7 +118,9 @@ and coordinate an integration point with M. Never re-point M's pinned artifact p
 | pooled by-cell OOS R² / RMSE | 0.9852 / 0.702 | **0.9819 / 0.707** | −0.0033 | |
 | HOLD-OUT-BY-SCENARIO R², held out historic | 0.9847 (RMSE 0.714) | **0.9816** (0.709) | −0.0031 | 1600416 → 1622134 |
 | HOLD-OUT-BY-SCENARIO R², held out ssp370 | 0.9847 (RMSE 0.714) | **0.9814** (0.716) | −0.0033 | |
-| historic K-fold-by-cell per-row R² / per-cell-mean R² | 0.9852 / **0.9994** (44 328 cells) | *pending* | | 1581897 → 1622242 |
+| historic K-fold-by-cell per-row R² / RMSE | 0.9852 / 0.702 | **0.9821 / 0.699** | −0.0031 | 1581897 → 1622305 |
+| historic **per-cell-mean R²** / bias | **0.9994** / 0.005 | **0.9987** / **0.001** | −0.0007 | |
+| historic cells scored | 44 328 | **53 699** | **+9 371** | the previously-invisible tropical + larch cells |
 
 **Counts survive the widening essentially intact:** every count metric moves by ≈ −0.003 R² on a 56 %-larger,
 markedly more heterogeneous population (the tropical belt + Siberian larch added), and the unseen-regime
