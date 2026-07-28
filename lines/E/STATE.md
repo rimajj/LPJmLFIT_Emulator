@@ -6,41 +6,45 @@
 
 ## NEXT — start here
 
-**E6 — diagnose the NOCTURNAL H failure. This is now the single thing holding Component E back.**
-E1, E2 and E4-Experiment-A are DONE (ADR 0070 / 0071 / 0072). The P2 gate ran over 497 936 tower half-hours:
-`Rn` is verified (R² 0.986–0.996), `T_skin` is verified where observable (daily RMSE 1.4–2.0 K, R² 0.76–0.95),
-and `H`'s **mean** is inside PLUMBER2's own band (76.4 % of DE-Hai daily means) — but **nocturnal H has R²
-−1.0…−5.6 at every site**, and the closure runs **1–2 K too cold at night**. Everything needed to work on it is
-already staged; do this before adding sites, more experiments, or any retune.
+**E6 is DONE (ADR 0073). The next action is an INTEGRATION POINT, not more diagnosis: hand line M
+`lambda_g = 1.0`.**
 
-**Start with `residual-diagnosis` (this is exactly its case).** State the reference basis and a falsifiable
-hypothesis first, then test. The three candidate mechanisms, in the order the evidence supports:
+E1, E2, E4-Experiment-A and E6 are done (ADR 0070 / 0071 / 0072 / 0073). **Do not re-open the nocturnal-H
+question by sweeping `stab_amp` — that hypothesis is measured and refuted** (ADR 0073; the closure's nocturnal
+`g_a` is within **0.7 %** of DE-Hai's measured-`u*` value, substituting the measurement makes night H worse at
+all 4 sites, and a 100× `g_a` bracket never reaches positive nocturnal R²). The mechanism is the ground-heat
+term's **timescale**: `λ_g = 7.0` is a diurnal-amplitude conductance applied to the **daily-mean** gradient the
+coupled model actually runs at (`run.jl:93` calls `solve!` once per day).
 
-1. **The stability form, not its coefficient.** The sweep is **monotone in `stab_amp` up to 0.9** at both sites
-   (night RMSE 37.0 → 36.1 DE-Hai, 29.7 → 24.2 AU-ASM), i.e. the optimum is at the parameter's bound — a
-   bounded `1 − amp·tanh(k·Ri/2)` surrogate cannot suppress stable-layer exchange by the 1–2 orders real
-   Monin–Obukhov does (`SEBParams`' own comment admits this). Test whether a genuine ψ-function (or a larger
-   bound) removes the night bias *without* breaking the `|T_skin − Tair| < 25/30 K` coupled/biome gates that
-   the 0.25 floor currently protects. Falsifiable: if the night bias is a `g_a` problem, forcing `g_a` from the
-   tower's **measured `u*`** (`ustar` is in the half-hourly parquet — E1) should collapse the nocturnal error.
-   **Run that first: it separates "wrong g_a" from "wrong G / wrong radiative loss" in one experiment.**
-2. **The ground-heat term.** `G = lambda_g·(T_skin − T_soil)` with `lambda_g = 7.0` W/m²/K and a τ = 30 d EWMA
-   `t_soil` is the crudest part of the closure, and at night G is what should limit the surface's cooling. The
-   towers measure `g` (`Qg`, `positive INTO ground` at 7 of 8 sites) — score modelled vs observed G directly,
-   day and night, before touching `lambda_g`.
-3. **Emissivity / longwave.** Less likely: `Rn` already verifies to R² ≥ 0.986, so the radiative terms are
-   right in aggregate.
+**1. Raise the `lambda_g` integration point with M (the one open action).** E's recommendation is
+**`lambda_g = 1.0`**, backed by three independent lines (ADR 0073 §3–4): implied `λ_g` 0.83–1.10 at all four
+sites at the daily step · it reproduces the observed daily sd(`G_o`) 4.3–6.3 W/m² (the 7.0 default gives
+14–31) · daily H R² 0.03 → **0.64** (DE-Hai) and 0.33 → **0.74** (AU-ASM), a broad optimum (0.5 ≈ 1.0),
+degrading only the already-suspect AU-Rob. **E must not flip it** — it moves every coupled/biome baseline, so
+M lands it with the baselines in one change, and the ADR 0072 night-cold **sign** assertion in
+`energy_closure_tests.jl` is re-pinned at that moment (it correctly still passes today, since no default
+moved). Note in `lines/M/STATE.md` and **withdraw the `stab_amp` integration point** already recorded there.
 
-Constraints while doing this: **opt-in, default byte-identical** (guardrail 4) — the P2 numbers in ADR 0072 are
-the pre-fix baseline and the new testitem *pins the night-bias sign*, so a genuine fix will trip that assertion:
-update the test and **supersede ADR 0072** in the same change. Any default flip (`stab_amp`, `lambda_g`,
-`enable_stability`) moves the coupled/biome baselines ⇒ **integration point with line M**, already raised in
-`lines/M/STATE.md`.
+**2. Then, in order:**
+- **E4-Experiment B** (F's LE → E, the coupled number; the A−B difference *is* F's ET error). Score H at
+  **DE-Hai and AU-ASM only** — ADR 0073 showed AU-Tum/AU-Rob cannot score a closing model's nocturnal H
+  (`ε_obs` −62.3 / −47.5 W/m²); they stay valid for `T_skin`.
+- **E5** — feed the E2 wind/psurf to M's driver (`AtmForcing` is built in `src/run.jl`, M-owned).
+- **E4b** — T_skin at Hainich from ICOS `LW_OUT` (PLUMBER2 cannot supply it).
+- **AU-Rob:** no longer just "suspect" — quantified. Its tower's nocturnal budget misses by −47.5 W/m² and its
+  two `λ_g` targets disagree 1.46 vs 19.92. Keep it for `T_skin`, exclude it from H means.
 
-**Then, in order:** E4-**Experiment B** (F's LE → E, the coupled number; its difference from A *is* F's ET
-error) · **E5** (feed the E2 wind/psurf to M's driver) · **E4b** (T_skin at Hainich from ICOS `LW_OUT`) ·
-**AU-Rob** is a suspect site (tower closure slope 0.599, H R² ≈ 0 even by day) — diagnose or drop it, don't let
-it dilute a mean.
+**3. Known capture gap (small, worth closing):** the committed fixtures
+`test/testitems/references/e4_seb_drive_{DE-Hai,AU-ASM}.csv` have **no generator script** — they were made ad
+hoc ("every 12th day of year × every 3rd hour", recorded only in a test comment). Write
+`scripts/build_e_seb_fixture.py`, verify it reproduces the existing columns byte-identically, and add `g_obs`
+so the ADR 0073 decomposition can be gated on the fixture too (today only the synthetic lever-ranking testitem
+guards it).
+
+**Do NOT chase:** nocturnal R² > 0 is not reachable by any parameter value in the present form — `ε_obs`
+scatter alone (sd 36 W/m² at DE-Hai) is the size of the night H RMSE. That needs a force-restore / two-layer
+soil scheme with a real diurnal wave plus canopy heat storage: a **design change**, and the blocker for line
+O's sub-daily online coupling, not a tune.
 
 ## The E4 Experiment-A pipeline (rerun in two commands)
 
@@ -132,6 +136,16 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
 
 ## Status (2026-07-28)
 
+- **E6 DONE — the nocturnal-H failure is DIAGNOSED** (ADR 0073, supersedes ADR 0072 items 4 + 6). It is a
+  ground-heat **timescale** error, not an aerodynamic one. Because `H` is the exact residual `Rn_m − LE − G_m`,
+  `ΔH = ΔRn − ΔG + ε_obs` *identically* and `g_a` is in none of those terms. Measured: modelled nocturnal `g_a`
+  within **0.7 %** of DE-Hai's measured-`u*` value; substituting the measurement makes night H worse at all 4
+  sites; a 100× `g_a` bracket never reaches positive nocturnal R². Meanwhile sd(`G_m`) is **5–7×** sd(`G_o`) at
+  the forest sites and **88 %** of DE-Hai's night H bias is `ΔG`. At the daily step `run.jl:93` actually runs,
+  three independent lines give **`λ_g ≈ 1.0`, not 7.0** (daily H R² 0.03 → 0.64 DE-Hai, 0.33 → 0.74 AU-ASM).
+  Also established: `ε_obs` = **−62.3 / −47.5** W/m² at AU-Tum / AU-Rob ⇒ those towers cannot score a closing
+  model's nocturnal H at all. **No default changed** (guardrail 4); probe `scripts/e_nocturnal_h_decomp.jl`,
+  report `<energy_reference>/derived/seb_validation/e6_nocturnal_h_decomp.txt`.
 - **E4 Experiment A DONE — the P2 gate has run** (ADR 0072): `Rn` R² 0.986–0.996 · `T_skin` daily RMSE
   1.41–1.97 K / R² 0.76–0.95 (3 OzFlux sites) · `H` bias +6.4…−19.2 W/m² with **76.4 %** of DE-Hai daily means
   inside PLUMBER2's own band, but daily R² 0.125–0.778 and **nocturnal R² −1.0…−5.6**. Frozen as a CI regression
@@ -174,6 +188,11 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
   flux to get right — validate it hardest.** *This is the P2 gate.* Then flip `MEMORY.md`'s `[ASSUMPTION]` to
   `[VERIFIED]` with the site + bands quoted. Recipe + the bands/hazards: "The E4 recipe" above. **Split gate**
   (ADR 0070): LE/H/Rn/Bowen at DE-Hai + the biome set; T_skin at AU-Tum/AU-ASM/AU-Rob only.
+- **E6** ✅ **DONE 2026-07-28** (ADR 0073) — the nocturnal-H diagnosis. Attributed by **exact algebra**
+  (`ΔH = ΔRn − ΔG + ε_obs`), not by sweep. Refutes the stability/`g_a` hypothesis three ways, identifies the
+  ground-heat term's **timescale** as the mechanism, recommends **`λ_g = 1.0`** (an E→M integration point;
+  `stab_amp` withdrawn as one), and bounds what is achievable: nocturnal R² > 0 needs a force-restore soil
+  scheme, not a tune. Probe `scripts/e_nocturnal_h_decomp.jl`; jobs `E-e6decomp` 1622483 … 1622494.
 - **E4b** *(new, optional)* close the **T_skin-at-Hainich** gap from a second source — ICOS `LW_OUT` for DE-Hai
   (`data.icos-cp.eu` is reachable from the login node) or satellite LST — since PLUMBER2 cannot supply it.
 - **E5** Feed the real wind/psurf back to line M as an **integration point** — the coupled driver builds

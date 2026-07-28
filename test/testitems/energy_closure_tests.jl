@@ -316,3 +316,59 @@ end
         end
     end
 end
+
+# =====================================================================================================
+# E6 / ADR 0073 — the STRUCTURE of the nocturnal-H error: which parameter is actually the lever.
+#
+# `H` is the EXACT residual `Rn − LE − G`, so its error can only come from `ΔRn`, `ΔG`, or the reference's
+# own non-closure. `g_a` is in NONE of those terms — it acts only by moving `T_skin`. That is why ADR 0072
+# item 6's "the stability form is the limitation, raise `stab_amp`" reading was wrong (its monotone sweep
+# was bias cancellation), and the PLUMBER2 decomposition then measured why: the closure's nocturnal `g_a`
+# is within **0.7 %** of DE-Hai's measured-`u*` value (ratio 0.82–1.70 across the four sites), while
+# sd(`G_model`) is **5–7×** sd(`G_observed`) at the forest sites and the towers imply `λ_g ≈ 1.0`, not 7.0.
+#
+# These assertions pin the LEVER RANKING synthetically (no fixture needed) so a future session cannot
+# quietly re-open the refuted hypothesis. The comparison is deliberately made over each parameter's
+# OBSERVATIONALLY-IMPLIED uncertainty — `g_a` across the measured 0.8×–1.7× band vs `λ_g` across the
+# implied 1.0 against the 7.0 default — because a 100× `g_a` bracket is not a real uncertainty and
+# comparing raw sensitivities on unequal ranges would prove nothing. Per-site evidence: ADR 0073.
+# =====================================================================================================
+@testitem "Component E — nocturnal H is a ground-heat lever, not an aerodynamic one (ADR 0073)" tags = [:energy, :scientific] begin
+    using LPJmLFITEmulator
+    using Test
+
+    # A representative clear, calm night at DE-Hai's real geometry: 33 m canopy, forcing measured at
+    # 43.5 m (the tower's height — `SEBParams`' 10 m default would put z−d inside the roughness layer and
+    # inflate `g_a` ~15×, which is exactly the `z_ref` trap ADR 0072's pipeline documents).
+    Z = 43.5
+    night(lg, u) = solve_seb(
+        SEBParams{Float64}(z_ref = Z, enable_stability = false, lambda_g = lg),
+        0.0, 300.0, 278.0, 1.0e5, u, 0.15, 3.3, 33.0, 10.0, 281.0,
+    )
+
+    # --- the identity the whole diagnosis rests on: H really IS Rn − LE − G --------------------------
+    (_Ts, Rn0, H0, G0, le0, _ga0, _c0) = night(7.0, 2.0)
+    @test isapprox(H0, Rn0 - le0 - G0; atol = 1.0e-9)
+
+    # --- lever 1: g_a across the band the towers' measured u* actually permits (0.8×…1.7×) -----------
+    # With stability off, g_a ∝ wind exactly, so scaling wind is an exact g_a multiplier applied through
+    # the real solver — the same trick `scripts/e_nocturnal_h_decomp.jl` uses against the towers.
+    ga_span = abs(night(7.0, 2.0 * 1.7)[3] - night(7.0, 2.0 * 0.8)[3])
+
+    # --- lever 2: lambda_g across the observation-implied 1.0 vs the 7.0 default ---------------------
+    lg_span = abs(night(7.0, 2.0)[3] - night(1.0, 2.0)[3])
+
+    @test lg_span > 3 * ga_span     # measured ≈ 7.0× on this state (18.5 vs 2.6 W/m²)
+
+    # --- the mechanism: the 7.0 default makes G swing several-fold harder than the towers show --------
+    G_default = night(7.0, 2.0)[4]
+    G_implied = night(1.0, 2.0)[4]
+    @test G_default < 0                              # night: heat leaves the ground toward the surface
+    @test abs(G_default) > 4 * abs(G_implied)        # measured ≈ 6.4× (cf. sd(G_m)/sd(G_o) = 5–7× at the towers)
+
+    # --- and the closure stays EXACT at every lambda_g (guardrail 2: no conservation regression) ------
+    for lg in (0.5, 1.0, 7.0, 14.0)
+        (_T, Rn, H, G, le, _g, _cp) = night(lg, 2.0)
+        @test isapprox(Rn, le + H + G; atol = 1.0e-9)
+    end
+end

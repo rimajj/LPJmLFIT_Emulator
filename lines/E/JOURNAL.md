@@ -242,3 +242,57 @@
 
 - **Next:** **E6 — diagnose the nocturnal H failure** (start by forcing `g_a` from the towers' measured `u*`:
   that one experiment separates "wrong `g_a`" from "wrong G / wrong radiative loss"). See STATE `## NEXT`.
+
+## 2026-07-28 — session 2 (line E): E6, the nocturnal-H diagnosis
+
+**Outcome: the failure is a ground-heat *timescale* error, and the hypothesis I was handed was wrong.**
+ADR 0073 (supersedes ADR 0072 items 4 + 6). Probe `scripts/e_nocturnal_h_decomp.jl`, jobs `E-e6decomp`
+1622483 → `E-e6decomp4` 1622494. Report: `<energy_reference>/derived/seb_validation/e6_nocturnal_h_decomp.txt`.
+
+**What made it cheap: refusing to sweep.** The handoff (and ADR 0072 item 6) ranked the stability form
+first, on the strength of a `stab_amp` sweep that was monotone to its bound. But `H` is not *predicted* by
+the closure — it is the **exact residual** `Rn_m − LE − G_m`. So with the tower's own non-closure written
+as `ε_obs = Rn_o − LE − H_o − G_o`, the error obeys **identically** `ΔH = ΔRn − ΔG + ε_obs`, and **`g_a` is
+in none of those three terms**. A hand-integration of one representative DE-Hai night predicted the
+stability-ON-vs-OFF difference as +7.2 W/m² before any code ran; the report said +6.7. That was the signal
+the frame was right, and the whole diagnosis followed from `g_obs`/`rn_obs` columns the drive tables
+*already carried* — one new column (`ustar`) and no new observations.
+
+**Three refutations of the g_a hypothesis** (`residual-diagnosis` P3, stated before the run):
+- the closure's nocturnal `g_a` is within **0.7 %** of DE-Hai's measured-`u*` value (0.05724 vs 0.05685);
+- substituting the measured `g_a` makes nocturnal H **worse at all four sites** (it does *improve* night
+  `T_skin` at AU-Tum, 3.32 → 2.47 K — it is the better `g_a`; H still degrades, because H is the residual);
+- a **100× `g_a` bracket** cannot reach positive nocturnal R² anywhere.
+The monotone sweep was **bias cancellation**: suppressing `g_a` shifts the skin in whichever direction
+offsets the ground-heat error. Time not spent retuning `stab_amp`: probably several sessions.
+
+**The mechanism.** `G = λ_g(T_skin − t_soil)`, `λ_g = 7.0`, τ = 30 d EWMA reference ⇒ no diurnal soil
+inertia, no canopy decoupling. sd(`G_m`) is **5–7×** sd(`G_o`) at the forest sites (34.7 vs 5.7 at DE-Hai);
+**88 %** of DE-Hai's +14.04 night H bias is `ΔG`. Then the scoping fact that reframed everything:
+**`run.jl:93` calls `solve!` ONCE PER DAY** — Parts 1–6 were diagnosing a sub-daily regime the coupled model
+never runs in. Solving on daily-mean forcing, as the driver actually does, three independent lines give
+**`λ_g ≈ 1.0`**: the implied fit is 0.83–1.10 at all four sites, `λ_g ≈ 1.0` reproduces the observed daily
+sd(`G_o`), and daily H R² goes 0.03 → **0.64** (DE-Hai) and 0.33 → **0.74** (AU-ASM).
+
+**The §3b moment.** Fitting `λ_g` against the measured plate `Qg` and against the budget-implied sink
+`G_res = Rn_o − LE − H_o` gave 0.90 vs **9.67** at AU-Tum and 1.46 vs **19.92** at AU-Rob — an order of
+magnitude. Per `residual-diagnosis` §3b that is a STOP signal, not a footnote, and here it *localised which
+sites can be trusted*: the two fits agree only where `ε_obs ≈ 0` (DE-Hai −0.32, AU-ASM −12.0) and diverge
+where the tower's nocturnal budget is broken (AU-Tum −62.3, AU-Rob −47.5). **AU-Tum and AU-Rob cannot score
+a closing model's nocturnal H at all** — that part of ADR 0072's "failure at every site" was never E's.
+
+**What I did NOT do.** No default changed, no line of `energy.jl` touched (guardrail 4) — `lambda_g` is
+already a `SEBParams` field, so the fix is available today as
+`SEBEnergyClosure(params = SEBParams(lambda_g = 1.0))`. Flipping the default moves every coupled/biome
+baseline ⇒ M's call. The ADR 0072 night-cold sign assertion therefore still passes, as it should.
+
+**Honest limit:** nocturnal R² > 0 is **not** reachable by any `λ_g` — `ε_obs` scatter alone (sd 36 W/m² at
+DE-Hai) is the size of the night H RMSE. Real sub-daily fidelity needs a force-restore / two-layer soil
+scheme + canopy heat storage. That is a design change and it **bounds line O**, whose online coupling is the
+sub-daily use case.
+
+**Captured:** ADR 0073 · the `plumber2-reference` skill gained a "diagnosing a residual in H" section (the
+decomposition, the exact-`g_a`-injection-via-wind trick, the `ε_obs` trap, the daily-step scoping check) ·
+a synthetic CI testitem pinning the lever ranking · `build_e_seb_validation_table.py` now emits `ustar`.
+
+- **Next:** hand `λ_g = 1.0` to line M as the integration point, then E4 Experiment B. See STATE `## NEXT`.

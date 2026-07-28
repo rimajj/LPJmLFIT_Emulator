@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "accepted (items 4 and 6 superseded by ADR 0073)"
 date: 2026-07-28
 deciders: "line E (session 1), autonomous per STEERING_PROMPT.md"
 consulted: "DEVELOPMENT_PLAN.md §Phase 4 + §7 (H is the residual, validate it hardest), ADR 0017 (self-contained SEB), ADR 0070 (the reference), ADR 0071 (wind/psurf)"

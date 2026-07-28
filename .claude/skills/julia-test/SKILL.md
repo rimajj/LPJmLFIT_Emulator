@@ -177,6 +177,12 @@ DOCS_LINKCHECK=false julia --project=docs docs/make.jl      # CI keeps linkcheck
 julia scripts/gen_diagrams.jl --check                       # diagram drift alarm
 ```
 First run in a fresh checkout: `$JULIA --project=docs -e 'import Pkg; Pkg.develop(path="."); Pkg.instantiate()'`.
+**Do that BEFORE submitting the docs build to SLURM too** — `scripts/sbatch_julia.sh` warms only `--project=.`
+and `--project=test`, never `--project=docs`, and compute nodes have no egress. Skipping it fails on the node
+with `ArgumentError: Package Documenter … is required but does not seem to be installed`, which reads like a
+missing dependency but is an unwarmed environment (and a bare `Pkg.instantiate()` without the `Pkg.develop`
+first fails earlier still, with `expected package LPJmLFITEmulator [e4cfba23] to be registered` — it is a
+local path dep, exactly as `.github/workflows/docs.yml` does it).
 
 **Strict-docs gotcha (`warnonly=false`, `checkdocs=:exports`) — a docstring change can turn `docs` RED while
 all tests stay green.** Two ways it bites:

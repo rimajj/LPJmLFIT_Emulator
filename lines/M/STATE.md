@@ -229,6 +229,22 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   to the partition (`conservation.jl::latent_heat(et; sublimation)` already exists for it). Opt-in,
   default byte-identical (guardrail 4). E will not attempt it alone — guessing a snow fraction inside E
   would be invented physics.
+- **From E — THIRD OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E6, ADR 0073):** E recommends
+  **`SEBParams.lambda_g = 1.0` (currently 7.0)**. This is E's own file, but flipping a *default* moves every
+  coupled and 5-biome baseline (it is the ground-heat term), so it must land with the baselines in one change
+  — your call, your re-measure. **The evidence** (497 936 PLUMBER2 tower steps, 4 sites): `H` is the exact
+  residual `Rn − LE − G`, so `ΔH = ΔRn − ΔG + ε_obs` identically; the modelled ground heat swings **5–7×**
+  harder than observed at the forest sites, and **88 %** of DE-Hai's nocturnal H bias is the `G` error.
+  `couple_day!` calls `solve!` **once per day** (`run.jl:93`), and at that step three independent lines give
+  `λ_g ≈ 1.0`: the observation-implied fit is 0.83–1.10 at all four sites, `λ_g ≈ 1.0` reproduces the observed
+  daily sd(`G_obs`) of 4.3–6.3 W/m² (the 7.0 default gives 14–31), and **daily H R² goes 0.03 → 0.64 (DE-Hai)
+  and 0.33 → 0.74 (AU-ASM)** — a broad optimum (0.5 ≈ 1.0), degrading only the already-suspect AU-Rob.
+  Expect `T_skin` swings to widen slightly (λ_g is in the Newton denominator), so re-check the
+  `|T_skin − Tair| < 25/30 K` gates; `ρ·c_p·g_a` dominates that denominator, so the effect should be small.
+  Nothing is needed from you until you choose to land it — **no default was changed** and
+  `SEBEnergyClosure(params = SEBParams(lambda_g = 1.0))` already works today if you want to measure first.
+  **Also: do NOT act on ADR 0072's `stab_amp` suggestion — ADR 0073 refutes it** (the closure's nocturnal
+  `g_a` is within 0.7 % of DE-Hai's measured-`u*` value; that sweep was bias cancellation).
 - `src/climbuf.jl` (`ClimBuf`, line S) is consumed via the `climbuf=` kwarg you already own in `run.jl`.
 
 ## Status (2026-07-28)
