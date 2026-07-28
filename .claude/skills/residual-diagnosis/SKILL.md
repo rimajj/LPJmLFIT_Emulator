@@ -105,6 +105,36 @@ a three-way `PASS` / `FAIL` / `STALE-FIXTURE` verdict); ADR 0032 for the write-u
 fixtures that a single consumer loads together (there: a count `.drf` + a recruit `.rcop` sharing four
 conditioning columns) must be regenerated together, or they silently drift onto different bases.
 
+## 3d. A biased basis can make you rebuild the wrong THING, not just misread a number (2026-07-28)
+
+§3b says a basis cross-check below ~0.99 is a STOP. Here is what it costs when you treat it as a footnote —
+because the failure is not "the number was off", it is **"we concluded the model class was wrong."**
+
+Component S scored per-cell trait medians on a silently truncated stem population (2 of 7 tree PFTs dropped).
+On that basis the emulator reproduced only **0.55** of the true between-cell spread on its worst axis, which was
+diagnosed as *missing composition signal → we need a per-PFT/mixture model* — a structural rewrite, promoted to
+leading hypothesis in an ADR. Fixing the population instead moved that axis from `emu_r` 0.567 → **0.807** and
+dispersion 0.546 → **0.718**, and took another axis to near-ceiling, **with no structural change at all**. The
+rewrite was never needed.
+
+The mechanism is worth internalising, because it is not "less data": **the exclusion was correlated with
+predictability.** The dropped PFTs were the two whose composition is *most* determined by environment (a
+climatically distinctive tropical belt; an extreme-continental larch zone). What survived was the sub-population
+where the conditioning genuinely has least to say. A biased basis does not just add noise — it can select for
+exactly the regime where your model looks worst, and then that looks like evidence about the model.
+
+So, before proposing a structural change to fix a residual:
+- **Ask what population the metric was computed on, and whether the exclusion could correlate with the thing
+  being predicted.** "Fewer cells / fewer samples" is benign; "the excluded cells are the easy ones" is not.
+- **Prefer fixing the basis over adding model capacity.** Basis fixes are cheap, reversible and falsifiable;
+  a mixture model is none of those. Reach for capacity only after the basis is known clean.
+- **When the population changes, re-run the scoring gate AND re-baseline every open milestone gate in the same
+  pass.** A population change moves the floor, the ceiling and the metric's normalizer at once, so a gate written
+  against the old basis silently changes difficulty — and the next milestone will take credit for the basis fix
+  (here the population fix alone delivered 30 % of a follow-on milestone's target).
+- **Say which prior conclusions the fix withdraws.** Two published claims died with this basis; naming them is
+  what stops them being re-cited. (ADR 0033 is the write-up; ADR 0030 §4 is the scoring method that survived.)
+
 ## 4. Time-box and set an escalation trigger
 
 Decide up front: "N hours / M probes; if the hypothesis isn't confirmed by then, escalate to the owner
