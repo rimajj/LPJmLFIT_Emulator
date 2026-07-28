@@ -225,6 +225,33 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   shifts (6.6× the trained band width) and it will bias any *coupled* global S run, so it matters before M3.
   The other two causes (`soilmoist` temporal aggregation, `lai`/`fpc` spatial aggregation) are S's, as
   milestone S1d.
+  **↳ UPDATE 2026-07-28: S1d is DONE (ADR 0035) and `water_stress` is now the ONLY pinned out-of-band
+  column** — the CI assertion in `slow_production_drf_tests.jl` is literally `Set(["water_stress"])`. So
+  this integration point is no longer one of three; it is the last one, and it is yours. Nothing about the
+  finding changed (runtime 0.323–0.331 vs trained [0, 0.0432], 6.6× band width).
+- **From S — S1d landed 2026-07-28 (ADR 0035). Three things concern you.**
+  1. **Both committed Hainich demo artifacts moved** (`drf_forest_hainich.drf` + meta AND
+     `recruit_copula_hainich.rcop` + meta, regenerated together from one table build); the two
+     `hainich_slow_oracle_*.csv` are unchanged. Re-read any M2 gate pinned to the old fixtures. Re-measured:
+     Gate-3 Height `nqrmse` 0.2998 → 0.2990, count ratio 1.2808 → **1.1597**, DIRECT copula draws SLA
+     0.1274 → **0.0391** / Wooddens 0.0346 → **0.0273** (both bounds tightened, none widened).
+  2. **`flux_feature_vector` gained a 6th positional argument, the fast core's `SoilColumn`**
+     (`flux_feature_vector(s, grow, pools, state, allom, soil)`). It is exported but had no caller outside
+     `slow.jl`, so nothing of yours should break. The FROZEN contract is untouched: feature-column ORDER,
+     `live_flux_cond`, the `.drf`/`.rcop` format and the `FluxDrivenSlowEmulator` kwargs are all unchanged.
+  3. **NEW, SMALL, YOURS: `fast.jl:302` builds `FToS.soilmoist` on the retired basis.** It still computes
+     `sum(state.w)/length(state.w)` (an unweighted mean over all 23 layers), while `interface.jl:37`
+     documents that field as "root-zone soil moisture state, fraction of WHC" and S now computes exactly
+     that (`LPJmLFITEmulator.root_zone_soilmoist(state, fc.soil)` — the top-1 m, `whcs`-weighted mean, which
+     is what the C's `rootmoist` output measures). Nothing consumes the field numerically (only
+     `coupling_tests.jl:96`'s `0 ≤ x ≤ 1` bound), so this is cosmetic *today* — but it is a second
+     definition of a named quantity living in the codebase, which is the exact hazard ADR 0035 exists to
+     remove. One-line fix in your file; S made all three of its own call sites use the shared helper.
+  **Global consequence for M3:** the `_t7` global tables are on the retired `soilmoist`/`lai` bases, so a
+  COUPLED global run inherits the shift. They need a versioned re-derivation (`t8`) and a deliberate re-pin
+  by you before M3 — `_t7` is never mutated in place. The published `_t7` OOS numbers stay valid as
+  *offline* measurements (table vs table). SSP370 additionally needs its own
+  `cell_year_soilmoist_ye_ssp.parquet` first (the historic one exists).
 - **From E:** the `SEBEnergyClosure(...)` constructor + `solve!` signature.
 - **From E — OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E5, ADR 0071):** real daily
   **wind + surface pressure** now exist for the 5 orderA biome cells —

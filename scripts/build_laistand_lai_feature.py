@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+"""SUPERSEDED for the count/copula training tables by the in-row per-patch reconstruction in
+scripts/build_slow_runtime_table.py::patch_stand_lai_expr (ADR 0035).
+
+`LAI_STAND` is a patch-ensemble CELL-mean; broadcasting it onto per-PATCH training rows put `lai` (and the
+`growth_eff` divisor) on a different spatial basis from every other state column in the same row, and ~1.4x
+off the single-patch value the coupled runtime forms. The per-patch stand LAI IS reconstructable from the
+29-column ind after all (`LAI` + `fpc_ind` carry the crown area) and is validated exact against the C's own
+allometry by scripts/diagnose_patch_lai_reconstruction.py.
+
+RETAINED because `cell_year_lai_{hist,ssp}.parquet` remains the all-trees cell-mean REFERENCE that
+diagnostic CHECK 2 scores the >5 m reconstruction against, and so superseded artifacts stay reproducible.
+The original docstring follows.
+"""
 """build_laistand_lai_feature.py — derive the RUNTIME-CONSISTENT `lai` feature per (Cell, Year) from a
 C `LAI_STAND` annual run, replacing the per-crown-sum proxy in build_slow_runtime_table.py.
 

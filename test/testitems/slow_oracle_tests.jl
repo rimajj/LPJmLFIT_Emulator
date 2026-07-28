@@ -118,16 +118,20 @@
     # after the committed count `.drf` was regenerated off the retired proxy feature basis onto the real one
     # (ADR 0032). The alarm is TIGHTENED, not widened, because the drift SHRANK on every axis:
     #
-    #   quantity            proxy-basis .drf   real-basis .drf (now)
-    #   nqrmse                    0.3895              0.2998
-    #   median Height ratio       1.2463              1.1316
-    #   count ratio               0.6734              1.2808
+    #   quantity            proxy-basis .drf   real-basis (S1c)   ONE-BASIS (S1d / ADR 0035, now)
+    #   nqrmse                    0.3895              0.2998              0.2990
+    #   median Height ratio       1.2463              1.1316              1.1547
+    #   count ratio               0.6734              1.2808              1.1597
     #
-    # Mechanism (coherent across the three): in-domain `bm_inc_cell`/`growth_eff` raise the settled count from
-    # ~6.8 to ~12.9 stems per patch, and more stems sharing the same carbon means smaller trees — so the
-    # Height distribution moves DOWN toward the C truth. This is still the honest recursive-vs-non-recursive
-    # DRIFT at one cell, NOT parity, and NOT yet a clean conditioning basis: `water_stress`, `soilmoist` and
-    # `lai` remain outside the trained band (ADR 0034; asserted in slow_production_drf_tests.jl).
+    # Mechanism for the S1c column (coherent across the three): in-domain `bm_inc_cell`/`growth_eff` raise the
+    # settled count from ~6.8 to ~12.9 stems per patch, and more stems sharing the same carbon means smaller
+    # trees — so the Height distribution moves DOWN toward the C truth. S1d then put `soilmoist` and `lai` on
+    # ONE basis with the runtime (ADR 0035); the Height drift is essentially unchanged (0.2998 → 0.2990) while
+    # the COUNT ratio improves toward 1 (1.2808 → 1.1597). That the size drift did not move is itself the
+    # finding: the remaining Gate-3 residual is NOT a conditioning-basis artifact.
+    # This is still the honest recursive-vs-non-recursive DRIFT at one cell, NOT parity. `soilmoist` is now
+    # inside the trained band and `lai` is down to <0.1 band width; `water_stress` (line M's F core) remains
+    # the one pinned excursion (ADR 0035; asserted in slow_production_drf_tests.jl).
     # The alarm sits at 0.40 — a 0.10 absolute cushion over the measurement, wider in relative terms than the
     # 0.45/0.39 it replaces, because this 20-yr Float64 trajectory's tails are CPU-microarch-sensitive. A
     # future creep toward 0.40 is a signal to diagnose, not to widen. Hainich-only.

@@ -244,3 +244,67 @@ teaching the emulator F's bias instead of the C's demography (the C is the oracl
   (the forced re-push after `--continue` corrected it) but the lesson is to never chain a push behind a rebase in
   one command. Branch CI was re-verified on the post-rebase sha `e3fa102a` (the pre-rebase verdict does not carry
   over), and `main` at `78fec71e` is green on all five required gates including `docs`.
+
+---
+
+## S1d — one basis for `soilmoist` and `lai` (2026-07-28, ADR 0035)
+
+**Both of ADR 0034's S-owned diagnoses were wrong, and finding that out was most of the milestone.** The
+handoff scoped S1d as two aggregation choices — a TEMPORAL one for `soilmoist` (annual mean vs year-end)
+and a SPATIAL one for `lai`/`fpc` (cell-mean vs single patch). Following the `residual-diagnosis` rule
+("confirm the comparison basis is correct" *before* writing the fix) against the C source changed both.
+
+**`soilmoist` was the wrong VARIABLE, not the wrong clock.** `build_swc_soilmoist_feature.py` reduced the C
+`swc` output, which `update_daily.c:411` writes as `(w·whcs + w_fw + wpwps + ice)/wsats` — **total** water
+over **saturation** capacity. The runtime fed `state.w`: **plant-available** water over **WHC**. Different
+quantities; `swc` lives on ~[wpwp/wsat, 1] and `w` on [0,1]. Had I implemented the handoff's "cheap side"
+(re-reduce `swc` to year-end) the band assertion would have gone green over a mismatch — strictly worse
+than the documented shift, because the alarm would have been spent. The tell that this is easy to miss:
+the two overlap numerically (Hainich `swc` 0.84–0.87 vs `w` 0.79–1.00), so an aggregation story *looks*
+like it explains the gap. `swc` is not invertible back to `w` (needs `wsats`/`wpwps`, never emitted); the
+only C output carrying `w` is `rootmoist` = `Σ_{l<3} w·whcs` over the top 1 m (`soil.h:353`).
+
+**`lai` was reconstructable all along, contrary to the skill AND the builder docstring.** Both asserted
+"per-patch LAI is NOT reconstructable from ind (no `leaf_c`/`nind`)". True literally, false in effect —
+`LAI` (within-crown) and `fpc_ind` between them carry the crown area, and `nind = 1/patcharea` makes
+patcharea cancel: `stand_lai(patch) = Σ LAI·fpc_ind/(1−exp(−k_pft·LAI))`. I did **not** take that on faith:
+`scripts/diagnose_patch_lai_reconstruction.py` inverts `fpc_ind` for crown area and compares against the
+C's own *height* allometry — two expressions sharing no algebra — over 22 498 stems in five biomes.
+Median rel err **1.8e-8**, p99 9.2e-6.
+
+Two false starts worth recording, both from validating against the wrong thing:
+- I first gated the reconstruction on matching the gridded `LAI_STAND` and got errors up to 38 %. The cause
+  is that the `ind` writer emits only stems `height > height_min = 5 m` (`fwriteoutput_ind.c:84`) while
+  `LAI_STAND` sums all trees — so the reconstruction is the **>5 m** stand LAI (0.77–1.01 of the cell mean,
+  by biome). That is not an error: every other column in the training row is on that same >5 m population.
+- My first tolerance (1e-6) failed at max 1.2e-5. The TXT writer is `%g` = **six significant digits**, and
+  the inversion amplifies that through a `^≈2.3` power. Any inversion from `ind` has a ~1e-5 precision
+  floor; the honest signal for a wrong constant is a percent-level bias in the MEDIAN, not the max.
+
+**`fpc` needed no change at all.** ADR 0034 grouped it with `lai` as "SPATIAL", but the training `fpc` was
+already `min(Σ fpc_ind, 1)` over the same patch's stems — per-patch on both sides. Its residual excursion is
+a *dynamics* outcome (the coupled patch settles denser than the training upper tail), which no basis fix can
+close, so ADR 0035 does not claim to close it.
+
+**Decisions.** `soilmoist` = root-zone (top 1 m) `whcs`-weighted mean of `w` at YEAR END, both sides —
+because the feature row splits into three annual integrals F delivers and eight year-end states, `soilmoist`
+is a state, and the annual water integral is already `water_stress`. I rejected the runtime annual-mean
+accumulator that ADR 0034 called the clean fix: it needs a daily hook in `run_coupled_cell`, and `run.jl` is
+line M's — it would have parked S1d's gate on another line's schedule for a change that §4 argues is not
+even clearly better. `lai` = the per-patch reconstruction, defined in ONE place
+(`build_slow_runtime_table.py::patch_stand_lai_expr`) which the diagnostic imports (ADR 0031's lesson).
+
+**Measured (job 1622923; regeneration 1622921, control confirms only `soilmoist`/`lai`/`growth_eff` moved,
+targets byte-identical):** `soilmoist` **IN** band (was 5.1× band width); `lai` 2.9× → **0.021×** (12-yr) /
+0.086× (20-yr); pinned out-of-band set down to **`{water_stress}`** alone. Gate-3 Height `nqrmse`
+0.2998 → 0.2990, count ratio 1.2808 → **1.1597**, carbon 1.9e-12, basis-agreement violations 0. DIRECT
+copula draws improved sharply (SLA 0.1274 → **0.0391**, Wooddens 0.0346 → **0.0273**) because two of the
+copula's four conditioning columns moved onto real bases — so those two bounds were **tightened**
+(0.22 → 0.10, 0.12 → 0.06). Nothing was widened.
+
+That the Height drift did **not** move (0.2998 → 0.2990) is itself a result: the remaining Gate-3 residual
+is not a conditioning-basis artifact, so S5's recursive-drift work cannot expect a basis fix to pay for it.
+
+**Side effect:** the `lai == 0 → growth_eff` blow-up class (ADR 0031) is now structurally impossible rather
+than guarded — `lai` comes from the same `ind` rows being aggregated, so it can no longer arrive from a
+different seed's trajectory via a cross-seed join. The `GROWTH_EFF_MAX` assertion stays as a standing alarm.
