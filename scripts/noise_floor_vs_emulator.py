@@ -66,11 +66,31 @@ COUNT CAVEAT (unchanged by S1, still true): the count floor below is a per-cell 
 pooled over all years and patches, whereas the count emulator targets per-(Cell,Patch,Year) `n_living`. They
 are not like-for-like; the count floor is reported as an order-of-magnitude reference only, on all bases.
 
+STRUCT AXES (BIOMASS `agb` + SIZE `Height`) — OPT-IN, DIAGNOSTIC, AND OUTSIDE THE GATE.
+When BOTH copula tables declare the same appended manifest lines `nstruct` / `struct_axes`, every block
+below ALSO prints `[diag]`-labelled rows for those per-stem structural axes: the same floor / emulator r /
+GAP / split-half / attenuation / between-cell-dispersion arithmetic, on exactly the same cells, so the
+owner's "is the emulator's BIOMASS / SIZE distribution matched?" is answered on the very basis ADR 0030
+defined for the traits (`sd(pred)/sd(Y1)` is the distribution-width half of that answer; the correlation
+alone is scale-blind). They are diagnostic in the strict sense:
+  • the PASS/FAIL reading of this gate — the production trait axes' GAP, r_center and the `seed1-basis`
+    ≥0.99 population-consistency check — is computed from the trait axes ONLY and never sees a struct
+    number, and no struct axis can change the exit code (every struct read is wrapped: a missing,
+    short or unreadable struct file is REPORTED and SKIPPED, never fatal);
+  • they are deliberately absent from the serialized production `.rcop` artifact (line M pins it and
+    `slow.jl::make_recruit_to_pools` maps the 4 production axes onto carbon pools — ADR 0025, a frozen
+    cross-line contract), so this script is the only place they are scored;
+  • if the two seeds' tables declare DIFFERENT struct-axis sets (or only one declares any), the
+    disagreement is printed and the struct rows are skipped — the sets are never silently intersected.
+Absent `nstruct`/`struct_axes` ⇒ no struct axes ⇒ this script's output is byte-identical to its pre-struct
+self, so every table dir built before struct axes existed keeps working unchanged.
+
 Run (SLURM; ~2 min, dominated by the two 21.7 GB parquet scans):
   scripts/sbatch_python.sh S-noisefloor scripts/noise_floor_vs_emulator.py
 Env: COPULA_DIR / COPULA2_DIR (the seed1 / seed2 copula table dirs), MINSTEM (20), SKIP_PARQUET=1 (copula
 basis only — seconds), SKIP_LEGACY=1 (skip the CROSS-population basis, i.e. whichever of tree7/tree5 is not
-the imported `TREE_TYPES`).
+the imported `TREE_TYPES`), SKIP_STRUCT=1 (suppress the diagnostic struct rows entirely). The struct rows add
+NO extra parquet scan — they ride along as two more columns of the same per-cell aggregation.
 Rebuild the seed2 table (the prerequisite for basis 1) exactly like seed1 — nothing but SEED may differ:
   MODE=copula SCENARIO=historic SEED=2 OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2 \
     TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-copula2 scripts/build_slow_runtime_table.py
@@ -103,6 +123,59 @@ ALL_TREE_MAX_TYPE = 6               # `Type <= 6` == FIT's COMPLETE tree set (id
 MINSTEM = int(os.environ.get("MINSTEM", "20"))   # match the fig-10 per-cell ≥20-stem filter
 
 
+def _read_manifest(table_dir):
+    """Parse a `key\\tvalue` manifest_copula.txt; {} if absent (a pre-struct-axes table dir)."""
+    p = Path(table_dir) / "manifest_copula.txt"
+    if not p.is_file():
+        return {}
+    d = {}
+    for line in p.read_text().splitlines():
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) >= 2:
+            d[parts[0]] = parts[1]
+    return d
+
+
+def resolve_struct_axes(dir1, dir2):
+    """The DIAGNOSTIC struct axes both copula tables agree on — or [] with the reason printed.
+
+    Never intersects a disagreement (a silently-narrowed column list is the ADR-0031 failure mode): if the
+    two seeds declare different sets, or only one declares any, the sets are printed and NO struct row is
+    produced. Also refuses an axis whose Y file is missing or the wrong length in either table, and an axis
+    whose seed1 `pred_<axis>.f64` is absent (there would be nothing to score it against).
+    """
+    if os.environ.get("SKIP_STRUCT", "") not in ("", "0", "no"):
+        print("== SKIP_STRUCT set — no diagnostic biomass/size rows.")
+        return []
+    s1 = _read_manifest(dir1).get("struct_axes", "").split()
+    s2 = _read_manifest(dir2).get("struct_axes", "").split()
+    if not s1 and not s2:
+        return []
+    if s1 != s2:
+        print(f"== STRUCT AXES DISAGREE between the two tables — seed1 {s1} vs seed2 {s2}; struct rows SKIPPED "
+              "(the sets are never silently intersected). Rebuild the seed2 table with the same STRUCT_AXES.")
+        return []
+    keep = []
+    n1 = (Path(dir1) / "cells.i64").stat().st_size // 8
+    n2 = (Path(dir2) / "cells.i64").stat().st_size // 8
+    for a in s1:
+        ok = True
+        for d, n in ((dir1, n1), (dir2, n2)):
+            f = Path(d) / f"Y_{a}.f64"
+            if not f.is_file() or f.stat().st_size != n * 8:
+                print(f"== struct axis {a!r}: {f} missing or wrong length — SKIPPED (diagnostic, never fatal)")
+                ok = False
+        pf = Path(dir1) / f"pred_{a}.f64"
+        if ok and (not pf.is_file() or pf.stat().st_size != n1 * 8):
+            print(f"== struct axis {a!r}: {pf} missing or wrong length — SKIPPED (nothing to score against)")
+            ok = False
+        if ok:
+            keep.append(a)
+    if keep:
+        print(f"== DIAGNOSTIC struct axes (outside the gate, cannot change the exit code): {keep}")
+    return keep
+
+
 def pearson(a, b):
     return float(np.corrcoef(a, b)[0, 1]) if len(a) > 2 else float("nan")
 
@@ -111,25 +184,28 @@ def spearman(a, b):
     return pearson(np.argsort(np.argsort(a)), np.argsort(np.argsort(b)))
 
 
-def percell_parquet(parquet, types):
-    """Per-cell survivor-tree median of each trait + survivor count, from an ind parquet (streamed).
+def percell_parquet(parquet, types, axes=None):
+    """Per-cell survivor-tree median of each axis + survivor count, from an ind parquet (streamed).
 
     `types` is an explicit `Type` id list — the imported `TREE_TYPES` (FIT's complete set, the emulator's
     basis post-ADR-0031) or `LEGACY_TREE_TYPES` (the pre-0031 truncated one). Passing it explicitly is what
     keeps a floor and an emulator from being compared across two different stem populations.
+    `axes` defaults to the 4 production traits; the diagnostic struct axes ride along as extra columns of
+    THIS scan (they are ordinary `ind` columns), so enabling them costs no additional parquet pass.
     """
+    axes = list(AXES) if axes is None else list(axes)
     filt = pl.col("Type").is_in(list(types))
     q = (
         pl.scan_parquet(parquet)
-        .select(["Cell", "Type", "isdead", *AXES])
+        .select(["Cell", "Type", "isdead", *axes])
         .filter(filt & (pl.col("isdead") == 0))
         .group_by("Cell")
-        .agg([pl.col(a).median().alias(f"med_{a}") for a in AXES] + [pl.len().alias("nstem")])
+        .agg([pl.col(a).median().alias(f"med_{a}") for a in axes] + [pl.len().alias("nstem")])
     )
     return q.collect(engine="streaming")
 
 
-def percell_table(table_dir, with_pred, with_halves=False):
+def percell_table(table_dir, with_pred, with_halves=False, axes=None):
     """Per-cell median of each axis from a copula TABLE dir (Y_<axis>.f64, optional pred_<axis>.f64).
 
     `with_halves` also returns, per axis, the two within-cell rank-parity half-medians (the split-half
@@ -137,9 +213,10 @@ def percell_table(table_dir, with_pred, with_halves=False):
     (Cell, Patch, Year), so parity on the within-cell row rank splits each cell's stems into two
     interleaved halves of near-equal size.
     """
+    axes = list(AXES) if axes is None else list(axes)
     cells = np.fromfile(f"{table_dir}/cells.i64", dtype="<i8")
     out = None
-    for a in AXES:
+    for a in axes:
         cols = {"Cell": cells, "y": np.fromfile(f"{table_dir}/Y_{a}.f64", dtype="<f8")}
         if len(cols["y"]) != len(cells):
             raise SystemExit(f"FATAL: {table_dir}/Y_{a}.f64 has {len(cols['y'])} rows, cells.i64 has {len(cells)}")
@@ -165,7 +242,7 @@ def percell_table(table_dir, with_pred, with_halves=False):
         d = df.group_by("Cell").agg(aggs)
         out = d if out is None else out.join(d, on="Cell", how="inner")
     # a cell's stem count is axis-independent (one row per stem, all axes present) — keep one column
-    return out.rename({f"n_{AXES[0]}": "nstem"}).drop([f"n_{a}" for a in AXES[1:]])
+    return out.rename({f"n_{axes[0]}": "nstem"}).drop([f"n_{a}" for a in axes[1:]])
 
 
 def verdict(gap):
@@ -177,7 +254,7 @@ def verdict(gap):
     return f"≥{gap:.3f} HEADROOM (lower bound)" if gap > 0.10 else f"≥{gap:.3f} (lower bound)"
 
 
-def report(name, note, floor1, floor2, emu, show_basis=False, same_population=True):
+def report(name, note, floor1, floor2, emu, show_basis=False, same_population=True, struct_axes=()):
     """One basis block: per-axis floor (floor1 vs floor2), the emulator r on the SAME cells, and the gap.
 
     `floor1`/`floor2` carry per-cell medians (`med_<axis>`) + `nstem` of the two seeds under THIS basis; `emu`
@@ -195,14 +272,28 @@ def report(name, note, floor1, floor2, emu, show_basis=False, same_population=Tr
         hdr += "   [seed1-basis]"
     print(hdr)
     rows = {}
-    for a in AXES:
+    # The PRODUCTION trait axes decide this gate. The struct axes are printed after them, tagged `[diag]`,
+    # from the same arithmetic on the same cells. They SHARE the returned dict (keyed by axis name), so the
+    # isolation is by caller discipline, not by structure: every block that states a verdict iterates the trait
+    # axes explicitly, and this script has no failure exit code at all, so a struct number cannot flip a
+    # pass/fail. Do not add a gate here that loops the dict's keys without filtering on AXES.
+    for a in list(AXES) + [s for s in struct_axes]:
+        is_struct = a not in AXES
+        if f"med_{a}" not in j.columns or f"p_{a}" not in j.columns:
+            if is_struct:
+                print(f"   {a:10s} [diag] — column absent on this basis, SKIPPED")
+                continue
+            raise SystemExit(f"FATAL: production axis {a} missing from the joined frame")
         m1 = j[f"med_{a}"].to_numpy()
         m2 = j[f"med_{a}_s2"].to_numpy()
         yv, pv = j[f"y_{a}"].to_numpy(), j[f"p_{a}"].to_numpy()
         floor_r, floor_rho = pearson(m1, m2), spearman(m1, m2)
         emu_r, emu_rho = pearson(yv, pv), spearman(yv, pv)
         gap = floor_r - emu_r
-        v = verdict(gap) if same_population else "— cross-population: NOT a gap (see ADR 0031)"
+        if is_struct:
+            v = "[diag] " + (verdict(gap) if same_population else "cross-population: NOT a gap")
+        else:
+            v = verdict(gap) if same_population else "— cross-population: NOT a gap (see ADR 0031)"
         line = (f"   {a:10s} {emu_r:7.3f} {emu_rho:7.3f} | {floor_r:8.3f} {floor_rho:8.3f} | "
                 f"{gap:7.3f} | {v}")
         if show_basis:
@@ -218,21 +309,23 @@ def report(name, note, floor1, floor2, emu, show_basis=False, same_population=Tr
 def main():
     print(f"== copula table (seed1, observed+OOS pred): {COPULA}")
     print(f"== copula table (seed2, the floor's other half): {COPULA2}")
-    e1 = percell_table(COPULA, with_pred=True, with_halves=True)
+    struct = resolve_struct_axes(COPULA, COPULA2)
+    allax = list(AXES) + struct           # production FIRST, diagnostic appended — never interleaved
+    e1 = percell_table(COPULA, with_pred=True, with_halves=True, axes=allax)
     print(f"   seed1 copula basis: {e1.height} cells", flush=True)
-    e2 = percell_table(COPULA2, with_pred=False)
+    e2 = percell_table(COPULA2, with_pred=False, axes=allax)
     print(f"   seed2 copula basis: {e2.height} cells", flush=True)
     # the emulator side is ≥MINSTEM-filtered ONCE here, so every basis block below is scored on cells the
     # emulator itself is evaluated on (this reproduces the pre-S1 `n>=MINSTEM` filter on the copula side).
     emu = (e1.filter(pl.col("nstem") >= MINSTEM)
-           .select(["Cell"] + [c for a in AXES for c in (f"y_{a}", f"p_{a}")]))
+           .select(["Cell"] + [c for a in allax for c in (f"y_{a}", f"p_{a}")]))
 
     # ---- BASIS 1: the copula table itself — identical builder/gate/stem filter, only SEED differs -------
     r_cop = report(
         "copula", "seed1 Y vs seed2 Y — DEFINITIVE (same builder, same coverage gate, only SEED differs)",
-        e1.select(["Cell", "nstem"] + [f"y_{a}" for a in AXES]).rename({f"y_{a}": f"med_{a}" for a in AXES}),
-        e2.select(["Cell", "nstem"] + [f"y_{a}" for a in AXES]).rename({f"y_{a}": f"med_{a}" for a in AXES}),
-        emu,
+        e1.select(["Cell", "nstem"] + [f"y_{a}" for a in allax]).rename({f"y_{a}": f"med_{a}" for a in allax}),
+        e2.select(["Cell", "nstem"] + [f"y_{a}" for a in allax]).rename({f"y_{a}": f"med_{a}" for a in allax}),
+        emu, struct_axes=struct,
     )
 
     # ---- SPLIT-HALF: how much of the floor's shortfall is finite-stem sampling vs trajectory divergence --
@@ -250,7 +343,9 @@ def main():
     h = (e1.filter(pl.col("nstem") >= MINSTEM)
          .join(e2.filter(pl.col("nstem") >= MINSTEM).select("Cell"), on="Cell", how="inner"))
     rel_p = {}
-    for a in AXES:
+    for a in allax:
+        if a not in r_cop:
+            continue
         hr = pearson(h[f"h0_{a}"].to_numpy(), h[f"h1_{a}"].to_numpy())
         sb = 2 * hr / (1 + hr)
         pr = pearson(h[f"ph0_{a}"].to_numpy(), h[f"ph1_{a}"].to_numpy())
@@ -259,7 +354,8 @@ def main():
         interp = ("finite-sample noise EXPLAINS the floor" if abs(sb - fr) <= 0.02 else
                   "trajectory divergence dominates (sampling explains only part)" if sb > fr else
                   "anomaly: half-split noisier than the seed disagreement — check the split")
-        print(f"   {a:10s} {hr:7.3f} {sb:8.3f} | {fr:8.3f} | {interp}  [pred half_r={pr:.4f} "
+        tag = "" if a in AXES else "[diag] "
+        print(f"   {a:10s} {hr:7.3f} {sb:8.3f} | {fr:8.3f} | {tag}{interp}  [pred half_r={pr:.4f} "
               f"SB={rel_p[a]:.4f}]")
 
     # ---- ATTENUATION: the ceiling this emulator can actually reach, and its de-noised center skill ---------
@@ -282,12 +378,16 @@ def main():
     print("\n== ATTENUATION-CORRECTED headroom — the ceiling this emulator can actually reach")
     print(f"   {'axis':10s} {'emu_r':>7s} {'rel_Y':>7s} {'rel_P':>7s} | {'ceiling':>8s} {'GAP':>7s} | "
           f"{'r_center':>8s} {'headroom':>8s} | verdict")
-    for a in AXES:
+    for a in allax:
+        if a not in r_cop or a not in rel_p:
+            continue
         emu_r, fr, _ = r_cop[a]
         ceil = float(np.sqrt(rel_p[a] * fr))
         gap = ceil - emu_r
         r_center = emu_r / ceil
         v = ("AT CEILING" if gap <= 0.02 else "near ceiling" if gap <= 0.05 else f"HEADROOM (+{gap:.3f})")
+        if a not in AXES:
+            v = "[diag] " + v
         print(f"   {a:10s} {emu_r:7.3f} {fr:7.3f} {rel_p[a]:7.3f} | {ceil:8.3f} {gap:7.3f} | "
               f"{r_center:8.3f} {1 - r_center:8.3f} | {v}")
     print("   (rel_P > rel_Y ⇒ the emulator's per-cell median is MORE stable than one seed's — it carries no "
@@ -303,21 +403,22 @@ def main():
           f"{'slope Y1~pred':>14s}")
     j2 = (e1.filter(pl.col("nstem") >= MINSTEM)
           .join(e2.filter(pl.col("nstem") >= MINSTEM), on="Cell", how="inner", suffix="_s2"))
-    for a in AXES:
+    for a in allax:
         v1 = j2[f"y_{a}"].to_numpy()
         v2 = j2[f"y_{a}_s2"].to_numpy()
         vp = j2[f"p_{a}"].to_numpy()
         slope = float(np.polyfit(vp, v1, 1)[0])
         print(f"   {a:10s} {v1.std():12.5g} {v2.std() / v1.std():14.4f} {vp.std() / v1.std():16.4f} "
-              f"{slope:14.4f}")
+              f"{slope:14.4f}{'' if a in AXES else '   [diag]'}")
 
     # ---- per-cell-median distribution shape (the discreteness caveat, quantified) -----------------------
     print("\n== per-cell-median distribution (copula basis, seed1): is the axis discrete/degenerate?")
     print(f"   {'axis':10s} {'n_unique':>9s} {'std':>12s} {'IQR':>12s} {'min':>12s} {'max':>12s}")
-    for a in AXES:
+    for a in allax:
         v = h[f"y_{a}"].to_numpy()
         q1, q3 = np.percentile(v, [25, 75])
-        print(f"   {a:10s} {len(np.unique(v)):9d} {v.std():12.5g} {q3 - q1:12.5g} {v.min():12.5g} {v.max():12.5g}")
+        print(f"   {a:10s} {len(np.unique(v)):9d} {v.std():12.5g} {q3 - q1:12.5g} {v.min():12.5g} "
+              f"{v.max():12.5g}{'' if a in AXES else '   [diag]'}")
 
     # ---- BASIS 2/3: the parquet re-derivations (independent code path; the real cross-check) ------------
     if os.environ.get("SKIP_PARQUET", "") not in ("", "0", "no"):
@@ -340,10 +441,10 @@ def main():
         note = f"parquet, Type in {types} — {note}"
         print(f"\n== scanning parquets for basis `{name}` "
               f"({'SAME' if same_population else 'CROSS'}-population)...", flush=True)
-        p1 = percell_parquet(SEED1, types)
-        p2 = percell_parquet(SEED2, types)
+        p1 = percell_parquet(SEED1, types, axes=allax)
+        p2 = percell_parquet(SEED2, types, axes=allax)
         print(f"   seed1: {p1.height} cells · seed2: {p2.height} cells", flush=True)
-        report(name, note, p1, p2, emu, show_basis=True, same_population=same_population)
+        report(name, note, p1, p2, emu, show_basis=True, same_population=same_population, struct_axes=struct)
 
     print("\n== DONE noise_floor_vs_emulator ==", flush=True)
     return 0

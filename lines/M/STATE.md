@@ -56,6 +56,37 @@ merging; both pinned versions were already in the shared depot, so the compute-n
 > one, check `logs/gcopula_historic_t7.*` for `JOB DONE` first. Nothing about the **feature contract** changed —
 > only the training population (ADR 0031), so this is not an ADR-0023 break.
 
+> **✅ UPDATE from line S, 2026-07-30 — the `_t8` GENERATION supersedes `_t7`. Re-pin deliberately.**
+> `_t7` is intact and readable; nothing was mutated. `_t8` is the same population (ADR 0031's complete seven
+> tree PFTs) re-derived on the **ADR-0035 feature bases** — `soilmoist` = root-zone year-end plant-available
+> fraction of WHC, `lai` = the per-patch reconstruction. **`_t7`'s OOS numbers stay valid as OFFLINE
+> measurements, but a COUPLED run on `_t7` inherits the retired bases**, which is exactly what M3 needs to
+> avoid. Both halves LOAD-VERIFIED (deserialized, not just built):
+> - `drf_forest_global_pooled_w20_t8.drf` — 1.4 s, 150 trees, `nfeat = 15` (11 head + 4 boundary).
+> - `recruit_copula_global_pooled_w20_t8.rcop` (129 MB) — 3.0 s, axes `[SLA, Wooddens, D95max, minwscal]`,
+>   **8 cond cols in exactly the `live_flux_cond` order**, 4 marginal forests, latent corr intact.
+> - Tables: `slow_count_pooled_w20_t8/` (121 495 658 rows / 58 588 cells) + `slow_copula_pooled_w20_t8/`.
+>
+> Pooled K-fold-by-cell OOS: count **R² 0.9824 / RMSE 0.697** (held-out-CELL test R² 0.9824; hold-out-by-
+> SCENARIO 0.982 / 0.9818, so the unseen-regime gap stays flat); trait `nqrmse` **SLA 0.004 · Wooddens 0.021 ·
+> D95max 0.008 · minwscal 0.004**. Per-scenario `_t8` pairs also exist (`historic`, `ssp370`) if you want one.
+>
+> **Nothing about the FEATURE CONTRACT changed** — same 15 count features in the same order, same 8
+> `live_flux_cond` cond cols, same 4 axes. So this is not an ADR-0023 break: it is a basis + version bump.
+>
+> **Three things to carry into the swap:**
+> 1. `n_init`/`age0` are version-coupled — take them from the **`_t8`** `cell_meta.parquet`, never mixed with
+>    a `_t7` or older pin. All five biome cells are covered (the `_t8` historic table has 53 699 cells, the
+>    ssp370 one 58 496, same as `_t7`).
+> 2. The **copula table now carries two extra DIAGNOSTIC axes** (`agb`, `Height` — ADR 0036) for validating the
+>    emulator's biomass/size distributions. They are **NOT in the `.rcop`**: it declares exactly the 4
+>    production axes, verified by deserializing it. `make_recruit_to_pools` is untouched. Nothing for M to do.
+> 3. A `polars` streaming-determinism defect was found and fixed while building this generation (CLAUDE.md §4,
+>    ADR 0036 §5b). **The pooled artifacts you pin were never affected** — the pooled table's row count is
+>    exactly `22 467 348 + 99 028 310`, the correct ssp370 row set. Only the per-scenario static ssp370 table
+>    was hit, and it has been rebuilt. If you build any table of your own with a streamed `group_by` over the
+>    `ind` parquets, assert your own key set: the usual `drop_frac` guard cannot detect duplication.
+
 **REJECTED at the time of writing — `*_t7` (superseded by the update above):** `drf_forest_global_pooled_w20_t7.drf` and
 `drf_forest_global_historic_t7.drf` appeared **today** (58,587 cells) and line S was still mid-production when
 this was written (job 1622131 `gcopula_historic_t7` RUNNING) — **there is no matching `_t7` `.rcop`**. Adopting

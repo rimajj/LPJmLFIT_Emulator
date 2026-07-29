@@ -317,6 +317,17 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 ---
 
+- **`polars` `collect(engine="streaming")` is NOT deterministic in the KEY SET it emits at global scale
+  (`[VERIFIED 2026-07-29]`, ADR 0036 §5b).** Two runs of the same `group_by` over the same 92 GB `ind` parquet
+  produced **99 023 397** vs **99 028 310** rows — 141 of 58 496 cells differed, 4 913 rows missing net, and
+  **12 cells with DUPLICATED keys**. This is not the ~1e-13 float-sum jitter that was already documented; whole
+  groups appear and vanish, in contiguous cell blocks (a partition-boundary artifact). Any pipeline that
+  `group_by(...).collect(engine="streaming")` over these tables must **assert its own key set**
+  (`df.select(keys).n_unique() == df.height`) — the usual `dropped = h_before - h_after` coverage guard
+  CANNOT catch it, because duplication makes that statistic go negative so a `drop_frac > threshold` test never
+  fires. Worse, a later self-join AMPLIFIES a duplicated key (present twice on both sides ⇒ four rows), so
+  prefer a window function (`shift(1).over([...])`) to a self-join on a streamed aggregate.
+
 ## 5. Git / CI
 
 - **BRANCH-PER-LINE workflow (ADR 0028, which SUPERSEDED ADR 0013's main-only rule on 2026-07-28).** Work on

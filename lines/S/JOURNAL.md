@@ -308,3 +308,63 @@ is not a conditioning-basis artifact, so S5's recursive-drift work cannot expect
 **Side effect:** the `lai == 0 → growth_eff` blow-up class (ADR 0031) is now structurally impossible rather
 than guarded — `lai` comes from the same `ind` rows being aggregated, so it can no longer arrive from a
 different seed's trajectory via a cross-seed join. The `GROWTH_EFF_MAX` assertion stays as a standing alarm.
+
+---
+
+## Session 2026-07-29 — the `t8` global generation, and biomass/size become measurable (ADR 0036)
+
+The task was the `t8` re-derivation the S1d handoff left. An earlier session today had already landed the
+COUNT half (jobs 1633248 the ssp370 root-zone soilmoist deriver, 1633254/1633255 the two scenario DRFs,
+1633273 the pooled DRF + scenario-holdout, 1633275/1633276 the K-fold OOS preds) but had not updated
+`STATE.md`, so the handoff understated the state — **check the artifact directory's mtimes and `logs/`, not
+only the handoff.** It had also left uncommitted work in the tree: the STRUCT-axes plumbing in the builder,
+the pooler, `eval_slow_copula.jl` and `run_global_slow_copula.sh`, plus a new report script — and, in two
+files, a **docstring describing behaviour that was not implemented** (`noise_floor_vs_emulator.py` promised
+`[diag]` struct rows; `plot_slow_emulator_validation.py` had no biomass block at all). Reading the diff
+before extending it is what caught that.
+
+**Why biomass needed a decision rather than a metric.** Neither model predicts stand biomass: the count DRF
+predicts `n_living`, the copula predicts four *recruit traits*. The obvious move — add `agb`/`Height` as
+production copula axes — is wrong three ways: `make_recruit_to_pools` maps exactly four axes onto carbon
+pools (ADR 0025, frozen; line M pins the artifact), and `agb`/`Height` are *outcomes* of the dynamics, so
+sampling them at recruitment would double-count F's allocation. They are therefore APPENDED diagnostic axes,
+excluded from the `.rcop` structurally (the trainer reads the manifest's `axes` line; the struct set is a
+separate `nstruct`/`struct_axes` pair) — and the "production predictions stay bit-identical" claim was
+**measured, not asserted**: job 1641319 builds the same 50-cell table with the option off and on and `cmp`s
+every shared file and every production `pred_<axis>.f64`. All four identical.
+
+**The 5-cell smoke that failed for the right reason.** My first gate used 5 cells and died on
+`AssertionError: axis SLA: some rows never in a test fold`. That is not a coverage bug: folds are
+`hash(cell) mod K`, all 5 cells hashed into fold 0, the other fold fitted a forest on **0 rows**, and its
+predictions came back `NaN`. Captured in the skill — never smoke `eval_slow_copula.jl` on a handful of cells.
+
+**Stand biomass is a composite, and the cross-check is what makes it quotable.**
+`pred = mean_OOS(n_living) × mean_OOS(per-stem agb)` per cell, against the C's own per-patch `sum(agb)`.
+`mean(N)·mean(A) ≠ mean(N·A)` — they differ by a negative within-cell covariance (denser patches, smaller
+trees) *and* by a year-set mismatch (the count table drops each scenario's first year for `n_prev`; the
+copula table keeps it). Rather than argue either away, `basis_ratio` measures both: **0.992**, so the
+identity holds to 0.8 % across three decades and the composite is a fidelity claim, not a diagnostic. The
+right-hand panel of fig 12 IS that cross-check, and it sits on the 1:1 line.
+
+**Two metrics that would have misled, fixed in the same change.**
+- `nqrmse` on a heavy-tailed axis is meaningless: per-stem `agb` reads **0.75** while every one of its five
+  quantiles is within 3–8 % (`pred [8.8, 19.5, 43.1, 160, 3047]` vs `obs [9.0, 20.0, 44.5, 171, 3301]`) and
+  its KS is **0.011**. `nqrmse` divides every quantile error by ONE IQR, and here `q95/IQR ≈ 10`. Added
+  `median_rel_q_err` (agb: **0.025**) and made the panel title say which number to read. Same family as the
+  ADR-0031 lesson that a scale-free metric can move because its scale moved.
+- Figure 06 was captioned "the distributional check the count DRF exists to pass". It is not: the count eval
+  scores `DRF.predict`, a **conditional mean**, so the predicted histogram is narrower than observed BY
+  CONSTRUCTION. Both the panel and the report now say so — and this is why I did **not** add the per-cell
+  count-KS figure that would have been symmetric with the trait figure 11: a conditional mean cannot be
+  scored against an observed within-cell spread.
+
+Also: figures 09-11 sized their panel grid from a hard-coded 2×2, which would have silently dropped any axis
+past the fourth; heavy-tailed axes now auto-switch to log scaling (on a linear axis both curves collapse into
+one spike, which hides a mismatch instead of showing it); and the biomass R² is reported linear AND log10,
+because stand AGB spans 3+ decades and a linear R² is nearly blind to the semi-arid/boreal tail that is most
+of the land area.
+
+Captured as reusable procedure: `scripts/run_slow_validation_figures.sh` (the whole figure set + report for a
+generation, one submission — its real content is the input-dir mapping, which does not follow one pattern),
+the two skills' new sections, and `DEPENDENCY=` on `run_pooled_slow_copula.sh` so it matches its three
+siblings.

@@ -12,8 +12,8 @@ LPJmL-FIT emits). The replacement uses the one C output that carries `w` itself,
 
 RETAINED so the superseded `cell_year_soilmoist_{hist,ssp}.parquet` tables — and every artifact trained on
 them — stay reproducible. The original docstring follows.
-"""
-"""build_swc_soilmoist_feature.py — derive the RUNTIME-CONSISTENT `soilmoist` feature per (Cell, Year)
+
+build_swc_soilmoist_feature.py — derive the RUNTIME-CONSISTENT `soilmoist` feature per (Cell, Year)
 from a daily-`swc` LPJmL-FIT run, replacing the constant proxy in build_slow_runtime_table.py.
 
 WHY (train/inference consistency — the documented slow-DRF trap):

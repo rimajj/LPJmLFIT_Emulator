@@ -6,52 +6,58 @@
 
 ## NEXT — start here
 
-**S1d is COMPLETE (ADR 0035). The next task is the `t8` global re-derivation — it is the thing that now
-blocks BOTH S2 and line M's M3.**
+**The `t8` global generation is COMPLETE and the ADR-0030 gate PASSES on it. Biomass and size are now
+measured too (ADR 0036). The next task is S2** — but read §Status's `t8` tables first and re-baseline S2's
+gate against them, or S2 will take credit for a basis fix again (ADR 0033).
 
-S1d is delivered and merged: `soilmoist` and `lai` are on ONE basis in the training table and the coupled
-runtime, `soilmoist` is **IN** band, `lai` fell 2.9× → 0.021×, the pinned out-of-band set is
-**`{water_stress}` alone** (line M's F core), and two thresholds were tightened with none widened. All
-numbers are in §Status — **don't re-derive them.** Read **ADR 0035** before touching the S pipeline: both of
-ADR 0034's S-side diagnoses were wrong, and the reasons generalize (see §Line-local gotchas).
+### What landed (don't re-derive any of it — numbers are in §Status)
 
-### The task: `t8` — re-derive the GLOBAL tables on the S1d bases
+- **`t8` = every global table + artifact on the ADR-0035 bases**, for historic, SSP370 and the pooled
+  multi-regime pair. All six artifacts LOAD-VERIFIED (`.drf` `nfeat==15`/150 trees; `.rcop` a 5-TUPLE with
+  4 axes / 8 cond cols / 4 marginals). `_t7` untouched. **Line M is notified in `lines/M/STATE.md` and
+  re-pins deliberately — do NOT re-point M's path from here.**
+- **ADR-0030 gate on `t8`: `seed1-basis` = 1.000 on all four axes, 52 165 cells — PASS.**
+- **ADR 0036: biomass + size are validated as APPENDED DIAGNOSTIC copula axes** (`STRUCT_AXES=agb,Height`),
+  never in the `.rcop`, production predictions proven **bit-identical** with the option on/off (job 1641319).
+  Both are **AT CEILING** on the ADR-0030 gate (`r_center` 0.987 / 0.986).
 
-The demo artifacts are fixed; the **global `_t7` tables and artifacts are still on the retired
-`soilmoist`/`lai` bases**, because they come from the same builder. Their published OOS numbers stay valid as
-*offline* measurements (table vs table, ADR 0034 §7) — but a **coupled** global run inherits the shift, and
-line M needs a clean global pin before M3. Never mutate `_t7` in place; every orchestrator takes `VERSION=t8`.
+### Two defects this generation exposed — both fixed, both worth remembering
 
-Steps, in order:
+1. **`polars` `collect(engine="streaming")` is non-deterministic in its emitted KEY SET** at global scale, not
+   just in float-sum order (CLAUDE.md §4, ADR 0036 §5b). Two ssp370 builds gave 99 023 397 vs **99 028 310**
+   rows: 141 cells differed, 4 913 rows missing, **12 cells DUPLICATED**. The coverage guards structurally
+   cannot catch it — `dropped = h0 − height` goes NEGATIVE under duplication, so `drop_frac > 0.02` never
+   fires — and the AR self-join amplified each duplicate 1→4. Now: a hard key-set invariant plus a window
+   shift replacing the self-join, **gated byte-identical on historic** (job 1642638, X rel diff 0.000e+00).
+   The defective ssp370 artifact was rebuilt (job 1642642, now 99 028 310 rows = truth, OOS R² unchanged);
+   the old files are kept as `*_defective*`.
+2. **A plausible statistical story that was algebraically false.** The biomass composite's `basis_ratio` was
+   documented as measuring a negative `Cov(N, mean stem size)`. It is an **exact identity** on matched rows —
+   the per-cell per-stem mean is stem-weighted, so the `Σ N` factors cancel. It is really a **row-universe
+   consistency check** between the count and copula tables. Four independent audit lenses caught this after it
+   had already reached a figure caption. *Do the algebra on the estimator you implemented, not on the story.*
 
-1. **SSP370's `soilmoist` table does not exist yet.** Derive it first — the historic one is
-   `/p/tmp/jamirp/emulator_global/tables/cell_year_soilmoist_ye_hist.parquet` (job 1622917, 1 348 400 rows).
-   The ssp370 daily run holds `d_rootmoist.nc` + `whc_nat.nc`; `FIRSTYEAR=2020`,
-   `OUT=.../cell_year_soilmoist_ye_ssp.parquet`. **`RUN_DIR`/`FIRSTYEAR` are NOT in `sbatch_python.sh`'s
-   explicit forward list — `export` them** (the wrapper is integrator-owned). `lai` needs no deriver any more.
-2. **Re-run the four global orchestrators with `VERSION=t8`** (`run_global_slow_training.sh`,
-   `run_global_slow_copula.sh`, `run_pooled_slow_training.sh`, `run_pooled_slow_copula.sh`) — the
-   `slow-drf-pipeline` skill has the sizing. **Use `NCPUS=96` for anything pooled/ssp370 copula** (32 OOM-kills
-   at exit 137 on `tree7`; `STEM_CAP` does not bound peak memory).
-3. **LOAD-VERIFY the pair before telling M** (`.drf` `nfeat==15`; `load_copula` returns a 5-TUPLE, 4 axes,
-   8 cond cols) — "the job exited 0" is not "the runtime can consume it". The three API traps are in the skill.
-4. **Re-measure ADR 0030's noise-floor gate on `t8`** (the seed2 companion table must be rebuilt identically —
-   only `SEED` may differ, `STEM_CAP` OFF) and re-baseline the S2 gate against the result, per ADR 0033.
-5. **Hand M the new artifact names** in `lines/M/STATE.md`; M re-pins deliberately. Do **not** re-point M's
-   pinned path from this line.
+### S2 — the copula conditioning expansion (unchanged in scope, re-baselined here)
 
-*Gate:* the `t8` pair load-verifies, the ADR-0030 gate reports `seed1-basis ≥ 0.99` on all four axes, and the
-before/after count + trait tables are written into §Status the way the `t7` ones are.
+Expand `COPULA_COND_COLS` (`scripts/build_slow_runtime_table.py`) **and** `live_flux_cond`
+(`src/components/slow.jl`) **in lockstep** with environment / PFT-composition covariates; global K-fold re-fit;
+measure against the `t8` gate. Needs an ADR + an integration point with M (artifact version bump).
+*Gate, re-baselined on `t8`:* close ≥50 % of the **Wooddens** GAP (now **+0.150** to a ceiling of 0.964) and
+lift `sd(pred)/sd(Y1)` on that axis to ≥0.75 (now **0.678**), with pooled KS not degraded and no other axis
+losing >0.01 of `r_center`. `D95max` is the other real target (`sd` ratio **0.714**, GAP +0.118). `minwscal`
+(+0.041) and `SLA` (+0.104, `sd` ratio 0.907) have little left. Report honestly if conditioning does not deliver.
 
-**Then S2** (copula conditioning expansion) — and re-baseline its gate against the `t8` numbers first, or S2
-will again take credit for someone else's fix (ADR 0033; it already happened once with S1b).
+### Cheap and open
+
+- **Emit `Year` in the `MODE=copula` table** so the stand-biomass composite can be computed on matched rows.
+  That is the one thing blocking figures 12/13 for the POOLED pair (refused today: the pooled count table is
+  ~81 % ssp370 rows while its capped copula table is ~53 % ssp370 stems, so the two factors are averaged over
+  different scenario mixes — a correctness stop, not caution). ADR 0036 §6.
+- `STEM_CAP` is a patch-year **CLUSTER** subsample, not per-stem (ADR 0036 §6). Effective sample size is
+  patch-years; never call a capped per-cell mean an unbiased per-stem mean.
 
 **Not S's to chase:** `water_stress` (6.6× band width) is line M's F core, ADR 0029 — leave it pinned.
-**Also not a basis problem:** `fpc`'s 0.084× residual is the coupled patch settling denser than the training
-upper tail, i.e. dynamics; ADR 0035 §3.3 explains why no basis fix closes it.
-
-**Cheap and still open (unchanged, optional):** trait FIGURES 09–11 on `tree7`
-(`COPULA_OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_t7`, `emulator-validation-figures` skill).
+`fpc`'s residual is dynamics, not basis (ADR 0035 §3.3).
 
 ## Scope + ownership (ADR 0029)
 
@@ -247,6 +253,89 @@ copula + 0030 re-measurement will show.
   cells; rebuild in ~70 s).
 - Artifacts: `*_pooled_w20.{drf,rcop}` on `/p/tmp` (DVC); the committed `.drf`/`.rcop` are the Hainich demo.
 - The online transient boundary (`src/climbuf.jl`, ADR 0027) is BUILT and offline-parity verified.
+
+### `t8` — the GLOBAL generation on the ADR-0035 bases (`[VERIFIED 2026-07-30]`, ADR 0036)
+
+Jobs: `1633248` ssp370 root-zone soilmoist deriver · `1633254`/`1633255` per-scenario count DRFs ·
+`1633273` pooled count + scenario holdout · `1633275`/`1633276` count K-fold · `1641319` the STRUCT-axes
+byte-identity gate · `1641321`/`1641322`/`1641323` the three copulas · `1641324` pooled count K-fold ·
+`1641325` the seed2 companion · `1641372` the ADR-0030 gate · `1642638` the AR-rewrite gate ·
+`1642642` the ssp370 rebuild · `1641863` the suite (**107 076 pass / 0 fail / 4 broken**).
+
+**COUNT** — the population is intact and the basis move did not cost skill:
+
+| | historic | ssp370 | pooled (w20 transient) |
+|---|---|---|---|
+| rows / cells | 22 467 348 / 53 699 | 99 028 310 / 58 496 | 121 495 658 / 58 588 |
+| in-sample R² | 0.9827 | 0.9823 | 0.9824 |
+| **K-fold-by-cell OOS R² / RMSE** | **0.9826 / 0.689** | **0.9823 / 0.698** | **0.9824 / 0.697** |
+| held-out-CELL test R² | — | — | 0.9824 (5 744 cells) |
+| hold-out-by-SCENARIO R² | 0.982 (held out historic) | 0.9818 (held out ssp370) | — |
+| per-cell-mean R² / bias | 0.9988 / 0.0027 | — | — |
+
+The pooled row count is exactly `22 467 348 + 99 028 310`, i.e. the pooled table always had the CORRECT
+ssp370 row set — the streaming defect hit only the per-scenario static build (§NEXT).
+
+**COPULA** — pooled OOS `nqrmse` (4 production traits) and the two diagnostic struct axes:
+
+| scenario | SLA | Wooddens | D95max | minwscal | `agb` [diag] | `Height` [diag] |
+|---|---|---|---|---|---|---|
+| historic (uncapped, 197 721 867 stems / 54 020 cells) | 0.004 | 0.013 | 0.006 | 0.007 | 0.643 | 0.032 |
+| ssp370 (`STEM_CAP=400`, 22 283 459 / 58 683) | 0.006 | 0.018 | 0.006 | 0.005 | 0.752 | 0.028 |
+| pooled (`STEM_CAP=400`, 42 227 077 / 58 683) | 0.004 | 0.021 | 0.008 | 0.004 | 0.618 | 0.027 |
+
+**`agb`'s `nqrmse` ≈ 0.6-0.75 is a METRIC ARTEFACT, not a miss** — read its quantiles: historic
+`pred [10.15, 22.02, 47.53, 163.0, 2656]` vs `obs [10.30, 22.61, 49.51, 176.3, 2876]`, i.e. every quantile
+within **1.5-7.6 %**, and pooled `KS ≈ 0.011`. `nqrmse` divides every quantile error by ONE IQR and per-stem
+`agb` has `q95/IQR ≈ 10`. New `median_rel_q_err` reports it directly (**0.025**). Height matches to 0.2-1.2 %.
+
+**ADR-0030 per-cell gate on `t8`** (historic, 52 165 cells, **`seed1-basis` = 1.000 on all six axes ⇒ PASS**):
+
+| axis | emu_r | floor (rel_Y) | ceiling | GAP | r_center | sd(pred)/sd(Y1) |
+|---|---|---|---|---|---|---|
+| SLA | 0.881 | 0.973 | 0.986 | +0.104 | 0.894 | 0.907 |
+| Wooddens | 0.814 | 0.937 | 0.964 | **+0.150** | 0.844 | **0.678** |
+| D95max | 0.791 | 0.833 | 0.909 | +0.118 | 0.870 | 0.714 |
+| minwscal | 0.945 | 0.973 | 0.986 | +0.041 | 0.958 | 0.970 |
+| **`agb` [diag]** | 0.864 | 0.776 | 0.875 | **+0.011** | **0.987** | 0.822 |
+| **`Height` [diag]** | 0.954 | 0.939 | 0.967 | **+0.013** | **0.986** | 0.967 |
+
+**The VALIDATION FIGURE SET** (job 1641373 → `figures/emulator_validation/{historic,ssp370,pooled}_t8/`
++ `report_t8.html`; figures are git-ignored, the report inlines them all). Per-cell OOS skill, 6 axes:
+
+| | count per-cell-mean R² | SLA | Wooddens | D95max | minwscal | **`agb`** | **`Height`** |
+|---|---|---|---|---|---|---|---|
+| historic — per-cell `r` | **0.9988** | 0.880 | 0.812 | 0.789 | 0.944 | **0.864** | **0.954** |
+| ssp370 — per-cell `r` | **0.9989** | 0.903 | 0.814 | 0.770 | 0.962 | **0.869** | **0.954** |
+| **pooled** — per-cell `r` | **0.9989** | 0.899 | 0.826 | 0.776 | 0.967 | **0.906** | **0.966** |
+| pooled — median per-cell KS | — | 0.173 | 0.129 | 0.158 | 0.149 | **0.091** | **0.065** |
+| pooled — pooled KS | — | 0.0039 | 0.0065 | 0.0020 | 0.0040 | 0.0099 | 0.0062 |
+| pooled — median rel. quantile err | — | 0.0019 | 0.0059 | 0.0029 | 0.0050 | 0.0348 | 0.0048 |
+
+**The two STRUCT axes have the LOWEST per-cell KS of all six** — the emulator reproduces a cell's biomass and
+size distribution *better* than its trait distributions, which makes sense: `agb`/`Height` are dynamical
+outcomes the flux conditioning speaks to directly, while a trait median is a PFT-composition statistic.
+
+**STAND BIOMASS** (composite: OOS count × OOS per-stem `agb`, vs the C's own per-patch `sum(agb)`):
+
+| | per-cell R² | log₁₀ R² | median pred:obs | basis_ratio | p10 / p90 | cells >10 % off | cells |
+|---|---|---|---|---|---|---|---|
+| historic | **0.931** | 0.945 | 1.020 | 0.995 | 0.961 / 1.004 | **3.0 %** | 53 699 |
+| ssp370 | **0.920** | 0.963 | 1.013 | 0.982 | 0.868 / 1.124 | **30.7 %** | 58 496 |
+| pooled | — REFUSED — | | | | | | |
+
+**ssp370's 10× looser basis spread (30.7 % vs 3.0 %) is the `STEM_CAP` CLUSTER subsample showing up, exactly
+as predicted** — historic is uncapped, ssp370 caps at 400 stems/cell and the cap keeps whole patch-years, so
+its copula factor is over a different row subset than its count factor. The medians still agree (0.982), which
+is why `basis_ok` passes; but quote ssp370's biomass number with that spread attached. **Pooled is REFUSED
+outright** (its two tables weight the scenarios 81 % vs 53 % ssp370 — ADR 0036 §6).
+
+**The trait axes are within ±0.02 of their `t7` values** (SLA 0.885→0.881, Wooddens 0.807→**0.814**,
+D95max 0.812→0.791, minwscal 0.947→0.945) — expected, since `t8` changes the conditioning BASIS, not the
+population. **Biomass and size are AT CEILING**: their per-cell medians are as reproducible as the model's own
+seed-to-seed irreducibility allows. `agb`'s NEGATIVE raw gap (−0.088) is not a paradox — the emulator carries
+no trajectory divergence, so it is *more* stable than one seed; the attenuation-corrected ceiling (0.875) is
+the fair comparison and `emu_r` 0.864 sits just under it.
 
 ## Milestones
 

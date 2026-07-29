@@ -71,6 +71,19 @@ context (boundary, n_init, age0) in a `cell_meta.parquet` SIDECAR the coupled dr
 `FluxDrivenSlowEmulator` per cell. Sound because the AR ratio target/n_prev (slow.jl:526) cancels count
 magnitude, so pooling cells does not conflate their absolute densities.
 
+MODE=copula STRUCT axes (opt-in `STRUCT_AXES`, default OFF, DIAGNOSTIC ONLY): besides the 4 production
+recruit-TRAIT axes the copula table can carry per-stem stand-STRUCTURE targets — `STRUCT_AXES=1` ⇒
+["agb", "Height"] — so the global emulator's BIOMASS and SIZE distributions get the same per-cell,
+K-fold-BY-CELL out-of-sample validation the traits get. They are built/evaluated identically (one marginal
+DRF per axis, conditioned on the runtime `live_flux_cond` subset) but must NEVER enter the serialized
+production `.rcop`: line M pins that artifact and `slow.jl::make_recruit_to_pools` maps exactly the 4 trait
+axes onto carbon pools (ADR 0025, a frozen cross-line contract). They are APPENDED after the production
+axes — `naxes`/`axes` keep meaning the 4 production axes, the new `nstruct`/`struct_axes` manifest lines
+describe the diagnostic tail — so the production axes' predictions stay BIT-IDENTICAL (guardrail 4; the
+evaluator's per-axis RNG/forest seeds are functions of the axis INDEX). Both are existing columns of the
+29-col `ind` table and already in the runtime's units: `agb` is per-m² (×nind baked in by the C writer,
+CLAUDE.md §3) so a per-patch ROW SUM is the per-m² stand total, and `Height` is metres.
+
 Writes to $OUT: X.f64 (row-major n×p Float64), y.f64 (n), manifest.txt, cell_meta.parquet. The X ROW ORDER
 is deterministic (final sort on Cell,Patch,Year); the streaming aggregate SUMS jitter at ~1e-13 relative
 (parallel partial-sum combine order under collect(engine="streaming") is not fixed) — bit-identical output
@@ -138,6 +151,18 @@ MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 med
 COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS
 COPULA_AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
 
+# DIAGNOSTIC-ONLY per-stem axes (opt-in, env STRUCT_AXES): the stand-STRUCTURE validation targets — per-stem
+# aboveground biomass and height — so the global emulator's BIOMASS and SIZE distributions are validated
+# per-cell out-of-sample exactly like the traits (same conditioning, same K-fold-BY-CELL split). Both are
+# already columns of the 29-col `ind` table in the runtime's own units: `agb` is per-m² (×nind baked in by the
+# C writer, CLAUDE.md §3), so a per-patch ROW SUM is the per-m² stand total; `Height` is metres.
+# WHY DIAGNOSTIC ONLY: they must never reach the serialized production `.rcop`. Line M PINS that artifact and
+# `src/components/slow.jl::make_recruit_to_pools` maps the 4 PRODUCTION axes onto carbon pools (ADR 0025, a
+# frozen cross-line contract) — a 5th/6th axis there would silently redefine that mapping.
+# WHY APPENDED: `eval_slow_copula.jl` seeds each axis's RNG/forest from the axis INDEX, so appending after
+# the production axes leaves their predictions BIT-IDENTICAL (guardrail 4). Never interleave or reorder.
+STRUCT_AXES_DEFAULT = ["agb", "Height"]
+
 #: PER-PFT Lambert-Beer light-extinction coefficient (`par/pft_lpjmlfit.js`: `K_LAMBERT_BEER_BL` 0.59
 #: broadleaf ids {0,2,3,5} / `K_LAMBERT_BEER_NL` 0.45 needleleaf ids {1,4,6}; Zhang et al. 2014), keyed by
 #: the 0-based `Type` = pftpar index. The C reads it PER PFT (`fpc_tree.c:28`
@@ -181,6 +206,13 @@ def _boundary_source(scenario):
     Default (env `BOUNDARY_WINDOW` unset): the per-CELL climatological MEAN of [gdd5, tas_cold_month,
     soil_depth] — time-constant, joined on ["Cell"] — i.e. byte-identical to the pre-0026 static boundary.
 
+    ⚠ THE STATIC BRANCH IS SCENARIO-BLIND: it reads `tables/cell_year_feats.parquet`, which is the
+    2000-2019 HISTORIC climatology, for BOTH scenarios. So a default-boundary `SCENARIO=ssp370` table
+    conditions 2020-2100 rows on a frozen PRESENT-DAY establishment gate while its flux and state columns are
+    genuinely transient. That is intended only for the per-scenario diagnostic artifacts; the multi-regime
+    production path is `BOUNDARY_WINDOW=20` (ADR 0026), which is exactly why `run_pooled_slow_*.sh` require it.
+    Do not read a default-boundary ssp370 artifact as a transient-boundary model.
+
     `BOUNDARY_WINDOW=W`: the TRANSIENT boundary — per-(Cell,Year) `gdd5`/`tas_cold_month` from the
     trailing-W-year table `cell_year_boundary_<scenario>_wW.parquet` (build_transient_boundary.py), joined on
     ["Cell","Year"], plus the STATIC per-cell `soil_depth` (soil is not time-varying). The boundary COLUMN
@@ -204,6 +236,39 @@ def _boundary_source(scenario):
     return tb, ["Cell", "Year"]
 
 
+def _struct_axes_from_env() -> list[str]:
+    """The requested DIAGNOSTIC struct axes, from env `STRUCT_AXES` (default OFF ⇒ byte-identical output).
+
+    unset / empty  -> []                      (no Y_ files, no manifest lines — today's behaviour exactly)
+    "1"/"yes"/"all"-> STRUCT_AXES_DEFAULT     (["agb", "Height"])
+    otherwise      -> a comma list of `ind` column names, in the order given (appended in that order).
+
+    Every name is VALIDATED against the frozen 29-col `ind_data.IND_COLUMNS` and rejected if it duplicates a
+    production axis (that would write a second Y_<axis>.f64 over the trait one) or repeats within the list.
+    Unknown/duplicate names FAIL LOUD rather than silently yielding a truncated or mislabelled table — the
+    ADR-0031 lesson (a silently wrong column list cost months of artifacts).
+    """
+    raw = os.environ.get("STRUCT_AXES", "").strip()
+    if not raw:
+        return []
+    if raw.lower() in ("1", "yes", "all"):
+        axes = list(STRUCT_AXES_DEFAULT)
+    else:
+        axes = [a.strip() for a in raw.split(",") if a.strip()]
+    known = set(ind_data.IND_COLUMNS)
+    for i, ax in enumerate(axes):
+        if ax not in known:
+            raise SystemExit(f"FATAL: STRUCT_AXES={raw!r} names {ax!r}, which is not a column of the 29-col "
+                             f"ind table (ind_data.IND_COLUMNS = {sorted(known)}).")
+        if ax in COPULA_AXES:
+            raise SystemExit(f"FATAL: STRUCT_AXES={raw!r} names {ax!r}, which is already a PRODUCTION copula "
+                             f"axis ({COPULA_AXES}) — it would overwrite that axis's Y_{ax}.f64.")
+        if ax in axes[:i]:
+            raise SystemExit(f"FATAL: STRUCT_AXES={raw!r} repeats {ax!r}; each axis writes one Y_<axis>.f64.")
+    print(f"== STRUCT axes (DIAGNOSTIC ONLY, never in the .rcop): {axes}")
+    return axes
+
+
 def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     """MODE=copula (ADR 0025): per-STEM trait targets + the runtime-consistent flux+boundary conditioning.
 
@@ -215,7 +280,14 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     (3) broadcast the conditioning onto each stem via an inner join.
     Conditioning column order == COPULA_COND_COLS == the runtime `live_flux_cond(s, feats)`. Writes Xc.f64
     (n×ncond row-major), one Y_<axis>.f64 per COPULA_AXES, cells.i64, manifest_copula.txt.
+
+    Under the opt-in `STRUCT_AXES` (default OFF) the same per-stem rows also yield one Y_<axis>.f64 per
+    DIAGNOSTIC struct axis, selected from the SAME stem scan and APPENDED after the production axes, plus the
+    `nstruct`/`struct_axes` manifest lines. Everything else — Xc, cells.i64, the existing manifest lines, the
+    STEM_CAP subsample (it operates on the whole `tbl`) — is unchanged, so the default output stays
+    byte-identical and the production axes' downstream predictions stay bit-identical.
     """
+    struct_axes = _struct_axes_from_env()
     cyf, bkeys = _boundary_source(scenario)
     cond = (agg.select(["Cell", "Patch", "Year"] + HEAD_COLS[:4])
             .join(cyf, on=bkeys, how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
@@ -224,7 +296,7 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     if cells:
         stem_filt = stem_filt & pl.col("Cell").is_in(cells)
     stems = (pl.scan_parquet(IND[scenario].format(seed=seed)).filter(stem_filt)
-             .select(["Cell", "Patch", "Year"] + COPULA_AXES).collect(engine="streaming"))
+             .select(["Cell", "Patch", "Year"] + COPULA_AXES + struct_axes).collect(engine="streaming"))
     h0 = stems.height
     tbl = stems.join(cond, on=["Cell", "Patch", "Year"], how="inner").sort(["Cell", "Patch", "Year"])
     dropped = h0 - tbl.height
@@ -234,12 +306,22 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     if drop_frac > 0.02:  # same anti-silent-truncation guard as the count path
         raise SystemExit(f"FATAL: copula conditioning-join dropped {drop_frac:.3f} of stems "
                          f"(soilmoist coverage hole). scenario={scenario}.")
-    # STEM_CAP (opt-in, default 0 = keep all → byte-identical): per-CELL random subsample to at most STEM_CAP
-    # stems. A cell's trait MARGINAL (+ its per-cell KS) is fully estimated by a few hundred stems, so capping
-    # keeps the distribution while making the POOLED multi-regime copula (~730M stems across scenarios)
-    # tractable (ADR 0026). Deterministic: a per-row hash of (Cell,Patch,Year)+row-index seeded by SEED gives
-    # a stable pseudo-random rank within each cell; keep the lowest STEM_CAP. Applied AFTER the coverage gate
-    # so the drop_frac guard still sees the true join coverage.
+    # STEM_CAP (opt-in, default 0 = keep all → byte-identical): per-CELL subsample to at most STEM_CAP stems.
+    # A cell's trait MARGINAL (+ its per-cell KS) is fully estimated by a few hundred stems, so capping keeps
+    # the distribution while making the POOLED multi-regime copula (~730M stems across scenarios) tractable
+    # (ADR 0026). Deterministic: a per-row hash of (Cell,Patch,Year) + row index, seeded by SEED, gives a
+    # stable pseudo-random rank within each cell; keep the lowest STEM_CAP. Applied AFTER the coverage gate so
+    # the drop_frac guard still sees the true join coverage.
+    # ⚠ IT IS A CLUSTER SUBSAMPLE, NOT A PER-STEM ONE (corrected 2026-07-29). The hash is of
+    # (Cell,Patch,Year), so every stem in one patch-year gets the SAME hash, and the `+ int_range` tiebreak
+    # spans only 0..n while the hashes span the full u64 — so the rank orders whole PATCH-YEAR groups and the
+    # cap keeps entire patch-years (plus one partial group at the boundary). For a trait marginal that is
+    # acceptable (traits are drawn per PFT at establishment and mortality is trait-blind, so patch-years within
+    # a cell are exchangeable), but it means (a) the effective sample size is patch-years, not stems, so
+    # per-cell statistics from a capped table are noisier than the stem count suggests, and (b) any statistic
+    # that must be reconciled with a per-patch-year quantity from the COUNT table (e.g. the stand-biomass
+    # composite in plot_slow_emulator_validation.py) is on a DIFFERENT row universe. Never describe a capped
+    # per-cell mean as an unbiased per-stem mean.
     cap = int(os.environ.get("STEM_CAP", "0"))
     if cap > 0:
         h_before = tbl.height
@@ -260,6 +342,12 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
         col = tbl[ax].to_numpy().astype("<f8", copy=False)
         assert np.isfinite(col).all(), f"non-finite in axis {ax}"
         col.tofile(os.path.join(out_dir, f"Y_{ax}.f64"))
+    # DIAGNOSTIC struct axes, same Y_<axis>.f64 layout and the same Xc row alignment, written AFTER the
+    # production axes (the append order the manifest's struct_axes line records).
+    for ax in struct_axes:
+        col = tbl[ax].to_numpy().astype("<f8", copy=False)
+        assert np.isfinite(col).all(), f"non-finite in struct axis {ax}"
+        col.tofile(os.path.join(out_dir, f"Y_{ax}.f64"))
     tbl["Cell"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "cells.i64"))
 
     with open(os.path.join(out_dir, "manifest_copula.txt"), "w") as f:
@@ -268,7 +356,16 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
         f.write(f"naxes\t{len(COPULA_AXES)}\n")
         f.write("cond_cols\t" + " ".join(COPULA_COND_COLS) + "\n")
         f.write("axes\t" + " ".join(COPULA_AXES) + "\n")
+        # The DIAGNOSTIC tail, emitted ONLY when requested — absent nstruct/struct_axes ⇔ no struct axes, so
+        # every pre-existing table dir keeps parsing unchanged and `naxes`/`axes` keep meaning the 4
+        # PRODUCTION axes. Consumers must default to zero/empty.
+        if struct_axes:
+            f.write(f"nstruct\t{len(struct_axes)}\n")
+            f.write("struct_axes\t" + " ".join(struct_axes) + "\n")
         f.write(f"scenario\t{scenario}\n")
+        # Record the cap IN the artifact: a capped and an uncapped table are NOT interchangeable (the cap is a
+        # patch-year cluster subsample), and a consumer previously could not tell them apart at all.
+        f.write(f"stem_cap\t{cap}\n")
         f.write(f"ncells\t{tbl['Cell'].n_unique()}\n")
         f.write(f"firstyear\t{firstyear}\n")
         # fallback conditioning row x = column MEAN (a climatological center for the .rcop fallback field).
@@ -277,12 +374,18 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
         if cells and len(cells) == 1:
             f.write(f"cells\t{','.join(str(c) for c in cells)}\n")
 
-    print(f"== wrote copula table Xc {Xc.shape} + {len(COPULA_AXES)} axes ({tbl['Cell'].n_unique()} cells) to {out_dir}")
+    struct_note = f" + {len(struct_axes)} struct axes {struct_axes}" if struct_axes else ""
+    print(f"== wrote copula table Xc {Xc.shape} + {len(COPULA_AXES)} axes{struct_note} "
+          f"({tbl['Cell'].n_unique()} cells) to {out_dir}")
     for j, c in enumerate(COPULA_COND_COLS):
         print(f"   cond {c:16s} min={Xc[:, j].min():12.4g} max={Xc[:, j].max():12.4g} mean={Xc[:, j].mean():12.4g}")
     for ax in COPULA_AXES:
         col = tbl[ax].to_numpy()
         print(f"   axis {ax:10s} min={col.min():12.4g} max={col.max():12.4g} mean={col.mean():12.4g} std={col.std():12.4g}")
+    for ax in struct_axes:
+        col = tbl[ax].to_numpy()
+        print(f"   struct-axis {ax:10s} min={col.min():12.4g} max={col.max():12.4g} "
+              f"mean={col.mean():12.4g} std={col.std():12.4g}")
     return 0
 
 
@@ -393,10 +496,32 @@ def main() -> int:
     if mode == "copula":
         return _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear)
 
+    # --- KEY-SET INVARIANT (added 2026-07-29; this class of corruption was SILENT and shipped) ---
+    # `collect(engine="streaming")` on the group_by above is not deterministic in the KEY SET it emits at
+    # global scale, not merely in float summation order as the module docstring used to say. Two runs of the
+    # ssp370 build over the SAME `ind` parquet produced 99 023 397 and 99 028 310 rows: 141 cells differed,
+    # 4 913 rows were missing net, and 12 cells came out with EXTRA rows. Nothing caught it — the two coverage
+    # gates only watch the FEATURE joins, and `dropped = h0 - height` goes negative on duplication so
+    # `drop_frac > 0.02` can never fire. A duplicated key is then AMPLIFIED by the AR self-join below (a key
+    # present twice on both sides yields four rows), and a missing key silently removes two training rows.
+    # So: assert the key set, and take the AR lag with a window shift instead of a 100M x 100M self-join, which
+    # removes the amplification path entirely. Equivalent to the old inner join whenever keys are unique —
+    # verified by rebuilding the historic table and comparing it byte-for-byte.
+    nkeys = agg.select(["Cell", "Patch", "Year"]).n_unique()
+    if nkeys != agg.height:
+        raise SystemExit(
+            f"FATAL: the streaming aggregate emitted {agg.height - nkeys} DUPLICATE (Cell,Patch,Year) keys "
+            f"({agg.height} rows, {nkeys} distinct). This is a polars streaming-group_by determinism failure, "
+            f"not a data property — the ind table has one row per stem per patch-year. Re-run; if it recurs, "
+            f"drop engine='streaming' for the aggregate or partition the scan by cell block.")
+
     # --- AR state: previous-year n_living for the SAME (Cell,Patch) ---
-    ar = (agg.select(["Cell", "Patch", "Year", "n_living"])
-          .with_columns((pl.col("Year") + 1).alias("Year")).rename({"n_living": "n_prev"}))
-    tbl = agg.join(ar, on=["Cell", "Patch", "Year"], how="inner")  # drops the first year per (Cell,Patch)
+    agg = agg.sort(["Cell", "Patch", "Year"])
+    tbl = (agg.with_columns(
+               pl.col("n_living").shift(1).over(["Cell", "Patch"]).alias("n_prev"),
+               pl.col("Year").shift(1).over(["Cell", "Patch"]).alias("_prev_year"))
+           .filter(pl.col("_prev_year") + 1 == pl.col("Year"))   # drops the first year per (Cell,Patch),
+           .drop("_prev_year"))                                  # and any gap in a (Cell,Patch) year run
 
     # --- boundary: per-CELL climatological mean (static, default) OR per-(Cell,Year) TRANSIENT (ADR 0026) ---
     cyf, bkeys = _boundary_source(scenario)
@@ -405,7 +530,10 @@ def main() -> int:
     n = tbl.height
     if n == 0:
         raise SystemExit("FATAL: 0 training rows after joins (check feature-table coverage / cells).")
-    print(f"== {n} training rows (with AR state)")
+    print(f"== {n} training rows (with AR state); {nkeys} distinct (Cell,Patch,Year) keys in the aggregate")
+    if tbl.select(["Cell", "Patch", "Year"]).n_unique() != n:
+        raise SystemExit("FATAL: duplicate (Cell,Patch,Year) rows AFTER the AR/boundary joins — a boundary "
+                         "table with a non-unique key would do this; check tables/cell_year_*.parquet.")
 
     # --- X / y ---
     colnames = HEAD_COLS + BOUNDARY_COLS
@@ -441,7 +569,7 @@ def main() -> int:
         f.write(f"nhead\t{len(HEAD_COLS)}\n")
         f.write(f"nboundary\t{len(BOUNDARY_COLS)}\n")
         f.write("colnames\t" + " ".join(colnames) + "\n")
-        f.write(f"target\tn_living\n")
+        f.write("target\tn_living\n")
         f.write(f"scenario\t{scenario}\n")
         f.write(f"ncells\t{tbl['Cell'].n_unique()}\n")
         f.write(f"firstyear\t{firstyear}\n")

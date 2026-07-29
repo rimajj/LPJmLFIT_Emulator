@@ -227,6 +227,38 @@ artifact-vs-artifact **basis agreement** and **runtime-vs-trained feature band**
   column drifting out reds CI. Do not "fix" a band violation by widening the band — the band is a measurement
   of the training data, not a tunable.
 
+## STRUCT axes — validating the emulator's BIOMASS and SIZE distributions (opt-in, ADR 0036)
+
+"Are the trait distributions matched?" is figs 09-11. "Is the **biomass** matched? are the **tree sizes**
+matched?" needed one more thing: `STRUCT_AXES` adds per-stem **`agb`** and **`Height`** to the `MODE=copula`
+table as extra `Y_<axis>.f64` columns, so they get the *same* per-cell K-fold-BY-CELL OOS validation the four
+production traits get (own marginal DRF, same `live_flux_cond` conditioning, own `pred_<axis>.f64`).
+```bash
+VERSION=t8 SCENARIO=historic STRUCT_AXES=agb,Height STEM_CAP=0 NCPUS=64 scripts/run_global_slow_copula.sh
+VERSION=t8              STRUCT_AXES=agb,Height STEM_CAP=400 NCPUS=96 scripts/run_pooled_slow_copula.sh
+```
+- **They are DIAGNOSTIC ONLY and must never reach the `.rcop`.** Line M pins that artifact and
+  `slow.jl::make_recruit_to_pools` maps exactly the 4 production axes onto carbon pools (ADR 0025, frozen).
+  This holds *structurally*, not by care: `train_slow_copula.jl` reads the manifest's `axes` line, while the
+  struct set is a SEPARATE `nstruct`/`struct_axes` pair — so `axes`/`naxes` keep meaning the production axes.
+- **They are APPENDED, never interleaved, and that is load-bearing.** `eval_slow_copula.jl` seeds each axis's
+  forest (`seed = a`) and per-row draw RNG (`Xoshiro256pp(i*131 + a)`) from the axis **INDEX**, so appending
+  leaves every production prediction **bit-identical** (guardrail 4). Any reorder silently moves them.
+- **The two defaults differ ON PURPOSE:** `build_slow_runtime_table.py` defaults `STRUCT_AXES` EMPTY (so its
+  own output stays byte-identical), while both copula ORCHESTRATORS default it to `agb,Height` (producing the
+  validation generation is their job). `STRUCT_AXES=` opts out.
+- **Gate it with the 50-cell smoke, don't trust the claim:** `/p/tmp/jamirp/emulator_global/smoke_struct_t8.jcf`
+  builds the same table with the axes OFF and ON, `cmp`s every shared file and every production
+  `pred_<axis>.f64`, asserts the `.rcop` meta declares no struct axis, and asserts `pool_slow_tables.py`
+  REFUSES a mismatched struct set. `[VERIFIED 2026-07-29]` all four production predictions identical.
+- **`eval_slow_copula.jl` FOLD TRAP — never smoke-test it on a handful of cells.** Folds are
+  `hash(cell) mod K`, so 5 cells can all land in fold 0: the other fold then fits a forest on **0 rows**, its
+  predictions come back `NaN`, and the failure surfaces as the misleading
+  `AssertionError: axis SLA: some rows never in a test fold` — which sounds like a coverage bug in the split
+  and is not. Use ≥~50 stratified cells (the smoke jcf's list), or raise `KFOLDS` awareness of `ncells`.
+- **`agb` can be slightly NEGATIVE** (a carbon-debt stem; historic seed2 min −0.31 gC m⁻²), so any log-scaled
+  plot or ratio over it needs a strict-positive mask, not just `isfinite`.
+
 ## The NOISE-FLOOR companion table (ADR 0030)
 
 The trait gate needs a **SEED=2 copula table built identically to seed1** — only `SEED` may differ, and
@@ -238,6 +270,12 @@ the population is the imported `TREE_TYPES = [0..6]` (so the ADR-0030 floor move
 MODE=copula SCENARIO=historic SEED=2 OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic_seed2 \
   TIME=02:00:00 NCPUS=32 scripts/sbatch_python.sh S-copula2 scripts/build_slow_runtime_table.py   # ~70 s
 ```
+**"Identically" now includes `STRUCT_AXES`.** If seed1's table carries the struct axes and seed2's does not,
+`noise_floor_vs_emulator.py` prints the disagreement and SKIPS every struct row rather than intersecting the
+two sets (a silently-narrowed column list is the ADR-0031 failure mode). The t8 pair was built as
+`STEM_CAP=0 STRUCT_AXES=agb,Height`, seed 1 vs 2 the only difference — `slow_copula_historic_seed2_t8`,
+197 802 377 stems / 54 058 cells, 1.5 min at 64 cpus (job 1641325). `sbatch_python.sh` does NOT forward
+`STRUCT_AXES` (integrator-owned list), so `export` it or use a raw `.jcf`.
 Then `scripts/noise_floor_vs_emulator.py` (see the **emulator-validation-figures** skill for the gate's
 semantics). **`sbatch_python.sh` forwards `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW` only since
 2026-07-28** — an older session's copy of this command silently built a *count* table into a copula dir.
