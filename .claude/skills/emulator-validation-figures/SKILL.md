@@ -28,6 +28,22 @@ complete-looking table dir with no predictions — hence the explicit `pred_SLA.
 Use `DEPENDENCY=afterany:` (not `afterok:`) when chaining several scenarios' jobs: one failed scenario then
 still lets the others' figures be produced, and the per-scenario guards report the gap.
 
+**VERIFY a generated report by stripping the images, not by eyeballing it.** The page is ~10 MB of which
+~21 KB is content, so nothing is readable end-to-end and a markup bug hides perfectly. Strip the payloads and
+inspect what is left — this found a caption containing a bare `<20 stems`, which a browser parses as an open
+tag and which silently swallows the rest of that caption:
+```bash
+python3 - report.html <<'EOF'
+import re, sys
+s = re.sub(r'src="data:image/png;base64,[^"]+"', 'src="[PNG]"', open(sys.argv[1], encoding="utf-8").read())
+print("tags:", sorted(set(re.findall(r'<(\w+)', s))))          # a NUMERIC "tag" == an unescaped `<`
+print("external refs?", bool(re.search(r'https?://|@import|<script|<iframe|<link', s)))
+print(s[:2000])
+EOF
+```
+A numeric entry in the tag list is the tell. The second check matters because the page must stay
+self-contained (the Artifact CSP blocks every external host, so a stray CDN reference fails silently).
+
 **The HTML report — `scripts/build_slow_validation_report.py`.** Figure dirs are git-ignored and live only on
 the cluster, so the report inlines every PNG as a data URI into ONE page (`report_<VER>.html`) that can be read
 anywhere and published directly as an Artifact. It is a REPORTER: every number is read verbatim from the
