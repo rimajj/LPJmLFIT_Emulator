@@ -6,9 +6,14 @@
 
 ## NEXT — start here
 
-**The `t8` global generation is COMPLETE and the ADR-0030 gate PASSES on it. Biomass and size are now
-measured too (ADR 0036). The next task is S2** — but read §Status's `t8` tables first and re-baseline S2's
-gate against them, or S2 will take credit for a basis fix again (ADR 0033).
+**`t8` is COMPLETE, VALIDATED and MERGED (`main` bf84a219, ADR 0036). The next task is S2** — but read
+§Status's `t8` tables first and re-baseline S2's gate against them, or S2 will take credit for a basis fix
+again (ADR 0033).
+
+The full figure set + a self-contained HTML report exist for all three scenarios
+(`figures/emulator_validation/{historic,ssp370,pooled}_t8/`, `report_t8.html`; git-ignored, regenerate with
+`VERSION=t8 scripts/run_slow_validation_figures.sh`). Published copy:
+<https://claude.ai/code/artifact/3f46df14-68ab-43f0-af75-c29d456cce2a>.
 
 ### What landed (don't re-derive any of it — numbers are in §Status)
 

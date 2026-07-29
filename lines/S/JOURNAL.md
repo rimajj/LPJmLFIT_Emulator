@@ -368,3 +368,17 @@ Captured as reusable procedure: `scripts/run_slow_validation_figures.sh` (the wh
 generation, one submission — its real content is the input-dir mapping, which does not follow one pattern),
 the two skills' new sections, and `DEPENDENCY=` on `run_pooled_slow_copula.sh` so it matches its three
 siblings.
+
+**Outcome.** `t8` merged to `main` as `bf84a219`, all required gates green (`test (lts)`, `test (1)`,
+`format`, `python`; `test (pre)` is the allowed-to-fail prerelease job and I touched no Julia source). The
+headline: counts OOS R² 0.9826/0.9823/0.9824 with per-cell-mean R² 0.9989; traits pooled `nqrmse` 0.004-0.021
+and the ADR-0030 gate PASSING at `seed1-basis` 1.000 ×4 over 52 165 cells; **biomass per-cell R² 0.931
+(log₁₀ 0.945), median pred:obs 1.020** and both structure axes AT CEILING (`r_center` 0.987 / 0.986) with the
+lowest per-cell KS of all six axes.
+
+**Two process notes for whoever is next.** (1) The handoff understated the state — an earlier session the
+same day had already landed the whole COUNT half and not updated `STATE.md`. Check artifact mtimes and
+`logs/` before re-running anything expensive. (2) The shared integration worktree had a **stale 0-byte
+`index.lock` from 21:40** with no git process behind it, which blocks every line from merging; I cleared it
+inside the `flock` after checking size, age, process table and tree cleanliness. If a merge fails that way,
+verify those four things rather than either forcing it blindly or giving up.
