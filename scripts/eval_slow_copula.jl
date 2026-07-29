@@ -11,6 +11,12 @@
 # Reads the MODE=copula table (Xc.f64 / Y_<axis>.f64 / cells.i64 / manifest_copula.txt) and writes one
 # pred_<axis>.f64 (n Float64, aligned to Xc rows) per axis for scripts/plot_slow_emulator_validation.py.
 #
+# STRUCT axes (`nstruct`/`struct_axes` in the manifest — the OPT-IN diagnostic biomass/size axes, e.g.
+# agb/Height) are evaluated here exactly like a production trait axis: same conditioning, same K-fold-BY-CELL
+# split, their own pred_<axis>.f64. They are DIAGNOSTIC ONLY (they never enter the production .rcop, which
+# line M pins). Both manifest keys are optional: absent ⇒ zero struct axes ⇒ this script behaves exactly as
+# it did before they existed, so every pre-existing table dir keeps working unchanged.
+#
 #   OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic KFOLDS=5 julia scripts/eval_slow_copula.jl
 # ENV: OUT, KFOLDS (5), NTREES/MAX_DEPTH/MIN_LEAF/SUBSAMPLE. Heavy (K×naxes forest fits, store_values) → SLURM.
 
@@ -28,22 +34,45 @@ function read_manifest(path)
     return d
 end
 
+# Struct axes are APPENDED after the production axes (see the ORDER note in main), so an axis index
+# beyond `naxes` marks a DIAGNOSTIC axis. A plain function, not a loop-local, so nothing extra gets
+# captured by the `Threads.@threads` closure below (JET boxed-capture trap, CLAUDE.md §2).
+axis_kind(a::Int, naxes::Int) = a > naxes ? "struct" : "trait"
+
 function main()
     man = read_manifest(joinpath(DATA, "manifest_copula.txt"))
     n = parse(Int, man["n"])
     ncond = parse(Int, man["ncond"])
     naxes = parse(Int, man["naxes"])
-    axes = String.(split(strip(man["axes"])))
+    prod_axes = String.(split(strip(man["axes"])))
+    # `nstruct`/`struct_axes` are OPT-IN and OPTIONAL: absent ⇒ 0/empty, i.e. production-axes-only, which is
+    # byte-identical to the pre-struct-axes behaviour on every table dir built before they existed.
+    nstruct = haskey(man, "nstruct") ? parse(Int, strip(man["nstruct"])) : 0
+    struct_axes = haskey(man, "struct_axes") ? String.(split(strip(man["struct_axes"]))) : String[]
+    # ORDER IS LOAD-BEARING — production axes FIRST, struct axes APPENDED, never interleaved or reordered.
+    # Both the per-axis forest seed (`seed = a`) and the per-row draw RNG (`Xoshiro256pp(i * 131 + a)`) are
+    # functions of the axis INDEX `a`, so appending keeps every production axis's index — and therefore its
+    # OOS prediction — BIT-IDENTICAL (guardrail 4: opt-in, default byte-identical). Any permutation of this
+    # vector silently moves the production predictions.
+    all_axes = vcat(prod_axes, struct_axes)
+    nall = naxes + nstruct
+    @assert length(struct_axes) == nstruct "struct_axes/nstruct mismatch: $(length(struct_axes)) names vs $nstruct"
+    @assert length(all_axes) == nall "axes/naxes+nstruct mismatch: $(length(all_axes)) names vs $nall"
     cells_path = joinpath(DATA, "cells.i64")
     isfile(cells_path) || error("cells.i64 not found in $DATA (rebuild with MODE=copula).")
 
     Xt = Matrix{Float64}(undef, ncond, n)      # Xc.f64 row-major n×ncond
     read!(joinpath(DATA, "Xc.f64"), Xt)
     Xc = permutedims(Xt)
-    Ys = Vector{Vector{Float64}}(undef, naxes)
-    for (a, ax) in enumerate(axes)
+    Ys = Vector{Vector{Float64}}(undef, nall)
+    for (a, ax) in enumerate(all_axes)
+        ypath = joinpath(DATA, "Y_$(ax).f64")
+        isfile(ypath) || error(
+            "Y_$(ax).f64 not found in $DATA — axis \"$ax\" ($(axis_kind(a, naxes))) is declared in " *
+                "manifest_copula.txt but its column was not written (rebuild the table with MODE=copula)."
+        )
         y = Vector{Float64}(undef, n)
-        read!(joinpath(DATA, "Y_$(ax).f64"), y)
+        read!(ypath, y)
         Ys[a] = y
     end
     cells = Vector{Int64}(undef, n)
@@ -54,10 +83,10 @@ function main()
     max_depth = parse(Int, get(ENV, "MAX_DEPTH", "14"))
     min_leaf = parse(Int, get(ENV, "MIN_LEAF", "20"))
     subsample = parse(Int, get(ENV, "SUBSAMPLE", "50000"))
-    @info "loaded copula table" n ncond naxes axes ncells = length(unique(cells)) kfolds
+    @info "loaded copula table" n ncond naxes prod_axes nstruct struct_axes ncells = length(unique(cells)) kfolds
 
     fold = Int[mod(hash(c), kfolds) for c in cells]        # each cell in exactly ONE test fold
-    preds = [fill(NaN, n) for _ in 1:naxes]
+    preds = [fill(NaN, n) for _ in 1:nall]
     for k in 0:(kfolds - 1)
         te = fold .== k
         tr = .!te
@@ -65,7 +94,7 @@ function main()
         nte = count(te)
         teidx = findall(te)
         Xtr = Xc[tr, :]
-        for (a, ax) in enumerate(axes)
+        for (a, ax) in enumerate(all_axes)
             f = DRF.fit_forest(
                 Xtr, Ys[a][tr]; ntrees = ntrees, max_depth = max_depth, min_leaf = min_leaf,
                 subsample = min(subsample, ntr), seed = a, store_values = true,
@@ -83,13 +112,13 @@ function main()
                     @inbounds pa[i] = DRF.predict_quantile(f, (@view Xc[i, :]), u)
                 end
             end
-            println("   axis $(rpad(String(ax), 10)) done (fold $k)"); flush(stdout)
+            println("   axis $(rpad(String(ax), 10)) [$(axis_kind(a, naxes))] done (fold $k)"); flush(stdout)
         end
         println("== fold $k/$(kfolds - 1): test_rows=$nte train_rows=$ntr"); flush(stdout)
     end
-    for a in 1:naxes
-        @assert !any(isnan, preds[a]) "axis $(axes[a]): some rows never in a test fold"
-        open(joinpath(DATA, "pred_$(axes[a]).f64"), "w") do io
+    for a in 1:nall
+        @assert !any(isnan, preds[a]) "axis $(all_axes[a]): some rows never in a test fold"
+        open(joinpath(DATA, "pred_$(all_axes[a]).f64"), "w") do io
             write(io, preds[a])
         end
     end
@@ -97,17 +126,20 @@ function main()
     # pooled per-axis OOS quantile-match (a headline number; the per-cell figures are the real story)
     qs = (0.05, 0.25, 0.5, 0.75, 0.95)
     qof(v) = (s = sort(v); [s[clamp(round(Int, q * length(s)), 1, length(s))] for q in qs])
-    for (a, ax) in enumerate(axes)
+    for (a, ax) in enumerate(all_axes)
         pq = qof(preds[a])
         oq = qof(Ys[a])
         iqr = oq[4] - oq[2]
         nq = iqr > 0 ? sqrt(sum((pq .- oq) .^ 2) / length(qs)) / iqr : NaN
         println(
-            "== $(rpad(ax, 10)) pooled OOS: pred_q=", round.(pq, sigdigits = 4),
+            "== $(rpad(ax, 10)) [$(axis_kind(a, naxes))] pooled OOS: pred_q=", round.(pq, sigdigits = 4),
             " obs_q=", round.(oq, sigdigits = 4), " nqrmse=", round(nq, digits = 3)
         )
     end
-    println("== wrote pred_<axis>.f64 for $(axes) ($n rows, $kfolds-fold-by-cell)")
+    println(
+        "== wrote pred_<axis>.f64 for $(all_axes) ($n rows, $kfolds-fold-by-cell; ",
+        "$naxes production trait + $nstruct struct/diagnostic axes)"
+    )
     return nothing
 end
 

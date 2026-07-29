@@ -11,8 +11,8 @@ allometry by scripts/diagnose_patch_lai_reconstruction.py.
 RETAINED because `cell_year_lai_{hist,ssp}.parquet` remains the all-trees cell-mean REFERENCE that
 diagnostic CHECK 2 scores the >5 m reconstruction against, and so superseded artifacts stay reproducible.
 The original docstring follows.
-"""
-"""build_laistand_lai_feature.py — derive the RUNTIME-CONSISTENT `lai` feature per (Cell, Year) from a
+
+build_laistand_lai_feature.py — derive the RUNTIME-CONSISTENT `lai` feature per (Cell, Year) from a
 C `LAI_STAND` annual run, replacing the per-crown-sum proxy in build_slow_runtime_table.py.
 
 WHY (train/inference consistency):

@@ -12,11 +12,30 @@
 #      SEPARATE artifact (RCOP_OUT_PATH; NEVER the committed Hainich demo .rcop).
 # Figures come after (locally): scripts/plot_slow_emulator_validation.py.
 #
+# STRUCT_AXES — the two opt-in DIAGNOSTIC per-stem axes, BIOMASS (`agb`) and SIZE
+# (`Height`). They are built/OOS-evaluated exactly like the 4 production trait axes
+# (a per-axis marginal DRF on live_flux_cond, K-fold BY CELL) but are APPENDED after
+# them and NEVER enter the serialized .rcop: line M pins that artifact and
+# slow.jl::make_recruit_to_pools maps the 4 production axes onto carbon pools (ADR 0025,
+# a frozen cross-line contract). NOTE THE DELIBERATE ASYMMETRY — `build_slow_runtime_table.py`
+# defaults STRUCT_AXES to EMPTY so its own output stays byte-identical (guardrail 4:
+# opt-in, default byte-identical), while THIS orchestrator defaults it to `agb,Height`
+# because its whole purpose is producing the validation generation, where the biomass and
+# size distributions are part of the deliverable. Set STRUCT_AXES= (empty) to opt out.
+#
+# STEM_CAP (default 0 = keep every stem = today's behaviour) is forwarded to the builder.
+# It matters because an UNCAPPED global ssp370 copula table is ~830M stems and OOM-kills a
+# 32-cpu build (exit 137, no traceback). STEM_CAP does NOT bound peak memory — the cap is
+# applied AFTER the conditioning join — so use NCPUS=96 for anything pooled/ssp370.
+#
 # Usage:
 #   SCENARIO=historic scripts/run_global_slow_copula.sh              # submit
 #   SCENARIO=historic SUBMIT=no scripts/run_global_slow_copula.sh    # print jcf only
 #   SCENARIO=ssp370 scripts/run_global_slow_copula.sh                # after its features exist
+#   SCENARIO=ssp370 STEM_CAP=400 NCPUS=96 scripts/run_global_slow_copula.sh   # ~830M stems uncapped
+#   STRUCT_AXES= scripts/run_global_slow_copula.sh                   # production trait axes only
 # Env: SCENARIO (historic|ssp370; default historic), SEED (1), KFOLDS (5),
+#      STEM_CAP (0 = keep all stems), STRUCT_AXES (agb,Height; empty = none),
 #      NTREES (60), MAX_DEPTH (14), MIN_LEAF (20), SUBSAMPLE (50000),
 #      EVAL_NTREES (40), EVAL_SUBSAMPLE (50000), TIME (04:00:00), NCPUS (32), SUBMIT (yes).
 # Artifacts: /p/tmp/jamirp/emulator_global/{slow_copula_<scen>/, recruit_copula_global_<scen>.rcop}.
@@ -26,6 +45,8 @@ set -euo pipefail
 SCENARIO="${SCENARIO:-historic}"
 case "${SCENARIO}" in historic|ssp370) ;; *) echo "FATAL: SCENARIO must be historic|ssp370"; exit 1;; esac
 SEED="${SEED:-1}"; KFOLDS="${KFOLDS:-5}"
+STEM_CAP="${STEM_CAP:-0}"                       # 0 = keep every stem (today's behaviour)
+STRUCT_AXES="${STRUCT_AXES-agb,Height}"         # diagnostic biomass/size axes; `STRUCT_AXES=` opts out
 NTREES="${NTREES:-60}"; MAX_DEPTH="${MAX_DEPTH:-14}"; MIN_LEAF="${MIN_LEAF:-20}"; SUBSAMPLE="${SUBSAMPLE:-50000}"
 EVAL_NTREES="${EVAL_NTREES:-40}"; EVAL_SUBSAMPLE="${EVAL_SUBSAMPLE:-50000}"
 TIME="${TIME:-04:00:00}"; NCPUS="${NCPUS:-32}"; SUBMIT="${SUBMIT:-yes}"
@@ -66,10 +87,10 @@ set -uo pipefail
 cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
-echo "=== gcopula_${SCENARIO}${VER_SFX} on \$(hostname) at \$(date) ==="
+echo "=== gcopula_${SCENARIO}${VER_SFX} on \$(hostname) at \$(date)  STEM_CAP=${STEM_CAP} STRUCT_AXES=${STRUCT_AXES} ==="
 
 echo "--- [1/3] build global ${SCENARIO} copula table -> ${TABLE_DIR} ---"
-MODE=copula SCENARIO=${SCENARIO} SEED=${SEED} OUT=${TABLE_DIR} ${PY} scripts/build_slow_runtime_table.py
+MODE=copula SCENARIO=${SCENARIO} SEED=${SEED} STEM_CAP=${STEM_CAP} STRUCT_AXES="${STRUCT_AXES}" OUT=${TABLE_DIR} ${PY} scripts/build_slow_runtime_table.py
 rc=\$?; [ \$rc -ne 0 ] && { echo "=== JOB DONE tag=gcopula_${SCENARIO}${VER_SFX} exit=\$rc (table build failed) ==="; exit \$rc; }
 
 echo "--- [2/3] K-fold-by-cell OOS trait-distribution eval -> pred_<axis>.f64 ---"

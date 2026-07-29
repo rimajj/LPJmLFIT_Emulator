@@ -12,6 +12,12 @@ honest hold-out-BY-SCENARIO eval, ADR 0026 §5) — column order is identical ac
 Works for BOTH the count table (X.f64 / y.f64 / cells.i64 / manifest.txt) and the copula table
 (Xc.f64 / Y_<axis>.f64 / cells.i64 / manifest_copula.txt) — detected by which manifest is present.
 
+Copula STRUCT axes (the opt-in diagnostic BIOMASS/SIZE axes, `nstruct`/`struct_axes` in the manifest) are
+pooled exactly like the production trait axes and re-declared in the pooled manifest. They are APPENDED
+after the production axes, never interleaved: `naxes`/`axes` keep meaning "the production axes" so the
+serialized .rcop contract (ADR 0025) is untouched. A manifest WITHOUT `struct_axes` means none, so every
+pre-existing table dir pools byte-identically to before.
+
 Env:
   IN_DIRS  = comma-list of per-scenario table dirs (e.g. slow_runtime_historic_w20,slow_runtime_ssp370_w20)
   OUT      = pooled output dir
@@ -92,35 +98,50 @@ def main():
     else:  # copula
         ncond = int(mans[0]["ncond"])
         axes = mans[0]["axes"].split()
+        # Diagnostic STRUCT axes (absent `struct_axes` == none). A MISMATCHED struct set is as fatal as a
+        # mismatched axes/cond_cols set: it means the two scenarios were built under different feature
+        # contracts, so their rows are not comparable and pooling them would fabricate a table.
+        struct = mans[0].get("struct_axes", "").split()
         for m in mans:
-            if int(m["ncond"]) != ncond or m["axes"].split() != axes or m["cond_cols"] != mans[0]["cond_cols"]:
-                raise SystemExit("FATAL: copula tables have mismatched ncond/axes/cond_cols — cannot pool")
+            if (int(m["ncond"]) != ncond or m["axes"].split() != axes
+                    or m["cond_cols"] != mans[0]["cond_cols"]
+                    or m.get("struct_axes", "").split() != struct):
+                raise SystemExit(
+                    "FATAL: copula tables have mismatched ncond/axes/cond_cols/struct_axes — cannot pool"
+                )
+        all_axes = axes + struct  # production first, struct APPENDED — order is load-bearing (eval seeds by index)
         Xcs, cs, ss = [], [], []
-        Ys = {ax: [] for ax in axes}
+        Ys = {ax: [] for ax in all_axes}
         for i, d in enumerate(in_dirs):
             n = int(mans[i]["n"])
             Xc = np.fromfile(os.path.join(d, "Xc.f64"), dtype="<f8").reshape(n, ncond)
             Xcs.append(Xc); cs.append(np.fromfile(os.path.join(d, "cells.i64"), dtype="<i8"))
             ss.append(np.full(n, i, dtype="<i8"))
-            for ax in axes:
-                Ys[ax].append(np.fromfile(os.path.join(d, f"Y_{ax}.f64"), dtype="<f8"))
+            for ax in all_axes:
+                col = np.fromfile(os.path.join(d, f"Y_{ax}.f64"), dtype="<f8")
+                assert col.shape[0] == n, f"{d}: Y_{ax}.f64 has {col.shape[0]} rows, manifest says n={n}"
+                Ys[ax].append(col)
             print(f"   + {tags[i]:10s} {d}: {n} stems")
         Xc = np.concatenate(Xcs); c = np.concatenate(cs); s = np.concatenate(ss)
         Xc.astype("<f8", copy=False).tofile(os.path.join(out, "Xc.f64"))
         c.astype("<i8", copy=False).tofile(os.path.join(out, "cells.i64"))
         s.astype("<i8", copy=False).tofile(os.path.join(out, "scenario.i64"))
-        for ax in axes:
+        for ax in all_axes:
             np.concatenate(Ys[ax]).astype("<f8", copy=False).tofile(os.path.join(out, f"Y_{ax}.f64"))
         ntot = Xc.shape[0]
         xmean = [float(Xc[:, j].mean()) for j in range(ncond)]
         with open(os.path.join(out, "manifest_copula.txt"), "w") as f:
             f.write(f"n\t{ntot}\n"); f.write(f"ncond\t{ncond}\n"); f.write(f"naxes\t{len(axes)}\n")
             f.write(f"cond_cols\t{mans[0]['cond_cols']}\n"); f.write("axes\t" + " ".join(axes) + "\n")
+            if struct:  # only when present — absent lines == no struct axes, keeping old dirs valid
+                f.write(f"nstruct\t{len(struct)}\n")
+                f.write("struct_axes\t" + " ".join(struct) + "\n")
             f.write("scenario\tpooled\n"); f.write("pooled_scenarios\t" + " ".join(tags) + "\n")
             f.write("scenario_tag\tscenario.i64\n")
             f.write(f"ncells\t{len(np.unique(c))}\n")
             f.write("x\t" + " ".join(repr(v) for v in xmean) + "\n")
-        print(f"== POOLED copula table: {ntot} stems (ncond={ncond}, axes={axes}) -> {out}")
+        print(f"== POOLED copula table: {ntot} stems (ncond={ncond}, axes={axes}"
+              + (f", struct_axes={struct}" if struct else ", struct_axes=[]") + f") -> {out}")
     return 0
 
 

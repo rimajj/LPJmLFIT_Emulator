@@ -10,6 +10,29 @@ reproduces LPJmL-FIT tree density (`n_living` per patch) globally, using **out-o
 figures are genuine generalization, not in-sample fit. Rerun it verbatim whenever the emulator changes — the
 whole thing is deterministic and parameterized by `SCENARIO`.
 
+## THE one command for a whole generation (`scripts/run_slow_validation_figures.sh`)
+
+Once the count `preds_oos.f64` and the copula `pred_<axis>.f64` exist for a generation, the entire figure set
+across all three scenarios plus one self-contained HTML report is ONE submission:
+```bash
+VERSION=t8 scripts/run_slow_validation_figures.sh                      # historic + ssp370 + pooled + report
+VERSION=t8 DEPENDENCY=afterany:<copula jids> scripts/run_slow_validation_figures.sh   # chain it
+VERSION=t8 SCENARIOS=historic SUBMIT=no scripts/run_slow_validation_figures.sh        # inspect the jcf
+```
+The knowledge it carries is the **input-dir mapping**, which does not follow one pattern and was re-derived by
+hand every time: `historic`/`ssp370` read `slow_runtime_<scen>_<VER>` + `slow_copula_<scen>_<VER>`, while
+`pooled` reads **`slow_count_pooled_w20_<VER>`** + `slow_copula_pooled_w20_<VER>` (ADR 0026's transient pair).
+It also SKIPS a scenario loudly instead of emitting a half-empty figure dir, and it knows the trap that
+`eval_slow_copula.jl` writes every `pred_<axis>.f64` **only after the last fold**, so a killed eval leaves a
+complete-looking table dir with no predictions — hence the explicit `pred_SLA.f64` precondition check.
+Use `DEPENDENCY=afterany:` (not `afterok:`) when chaining several scenarios' jobs: one failed scenario then
+still lets the others' figures be produced, and the per-scenario guards report the gap.
+
+**The HTML report — `scripts/build_slow_validation_report.py`.** Figure dirs are git-ignored and live only on
+the cluster, so the report inlines every PNG as a data URI into ONE page (`report_<VER>.html`) that can be read
+anywhere and published directly as an Artifact. It is a REPORTER: every number is read verbatim from the
+`metrics*.txt` files, so it can never disagree with the figures.
+
 ## One command (disconnect-proof, SLURM)
 
 The two steps below run heavy work → submit them as ONE SLURM job (survives a dropped connection; the
@@ -85,6 +108,33 @@ usual count `OUT=`) and it ALSO emits:
   D95max 0.029, minwscal 0.021. GLOBAL historic OOS nqrmse SLA 0.016 / Wd 0.022 / D95max 0.028 / minwscal
   0.038 **on the pre-ADR-0031 `tree5` population**; the `tree7` retrain reads SLA 0.006 / Wd 0.008 /
   D95max 0.008 / minwscal 0.008; GLOBAL pooled+transient nqrmse 0.010-0.020, `tree7` pooled 0.004-0.016.)
+
+## STAND BIOMASS + SIZE — figures 12/13 and `metrics_biomass.txt` (ADR 0036)
+
+The opt-in `STRUCT_AXES=agb,Height` copula axes (see the `slow-drf-pipeline` skill) make the biomass and size
+distributions first-class in this figure set. Two things appear:
+- **figs 09/10/11 grow from 4 to 6 panels**, the two extra tagged **`[diag]`** in every panel title and given
+  `kind=struct` in `metrics_traits.txt`. The panel grid is sized from the axis count — it was a hard-coded 2x2
+  that would have silently dropped any axis past the fourth.
+- **figs 12/13 + `metrics_biomass.txt`** — stand biomass, composed from the emulator's two halves, both OOS:
+  `pred = mean_OOS(n_living) x mean_OOS(per-stem agb)` per cell, against the C's own per-patch `sum(agb)`
+  (X column `agb`, index read from the manifest's `colnames`, never hard-coded).
+
+**Read `basis_ratio` before quoting a biomass number.** `mean(N) x mean(A)` is not identically
+`mean(N x A)` — they differ by the within-cell covariance of stem count and mean stem size, which is negative
+(denser patches hold smaller trees). `basis_ratio = median(obs_prod / true_stand)` MEASURES that definitional
+gap on the observed side instead of assuming it away; `[VERIFIED 2026-07-29]` it is **0.992**, i.e. the identity
+holds to 0.8 %, so the composite is a fidelity claim rather than a diagnostic. If a future run reports
+`basis_ok no`, the report page says so and the number becomes a diagnostic — do not quote it as fidelity.
+- Report **both** `percell_r2` (linear) and `percell_r2_log10`. Stand AGB spans 3+ decades across cells, so the
+  linear R² is dominated by the highest-biomass cells and is nearly blind to the semi-arid/boreal tail that is
+  most of the land area.
+- **For a heavy-tailed axis, read KS, not `nqrmse`.** Per-stem `agb` reads `nqrmse ≈ 0.68` while `KS ≈ 0.011`
+  and the two histograms are visually indistinguishable — the IQR-normalized quantile RMSE is dominated by its
+  q95 term when q95/IQR is of order 10. The panel title now says so itself. Same family as the warning below.
+- Figures 09/10/12 switch to LOG axes automatically when an axis is heavy-tailed (detected as
+  `p99.5/median > 20`), because on a linear axis 99 % of the mass lands in the first bin and BOTH curves look
+  like one spike — which would hide a real mismatch rather than reveal it.
 
 **⚠ `nqrmse` is IQR-NORMALIZED — never quote a before/after RATIO without checking the normalizer moved.**
 `eval_slow_copula.jl:104`: `nqrmse = RMSE(q05..q95) / IQR(observed)` with `IQR = q75 − q25`. So **any change to
