@@ -48,6 +48,22 @@ flock "$INT/.git/esm-integrate.lock" bash -eu -c '
    never ran on your branch. Check **main's newest** run after merging — GitHub keeps only one *pending* run per
    branch, so a quick follow-up push can cancel an intermediate `main` verdict (observed twice on 2026-07-27/28).
 
+**A STALE `index.lock` in the integration worktree blocks EVERY line — clear it, but prove it is stale first
+(line S, 2026-07-30).** The merge died with `Unable to create '<INT>/.git/index.lock': File exists`, and git's
+own advice ("a git process may have crashed earlier: remove the file manually") is right here but must be
+earned, because removing a LIVE lock can corrupt the shared index. Check all four, then clear it INSIDE the
+`flock` so a protocol-following sibling cannot race you:
+```bash
+INT=/p/projects/open/Jamir/esm_land_emulator
+[ ! -s "$INT/.git/index.lock" ]                     # 1. zero bytes (a live git writes its pid//content)
+find "$INT/.git/index.lock" -mmin +30               # 2. older than any plausible in-flight operation
+pgrep -a -u "$USER" git                             # 3. no git process at all (beware: `ps|grep git` matches
+                                                    #    your OWN grep — use pgrep, or a [g]it bracket class)
+git -C "$INT" diff --stat HEAD; git -C "$INT" ls-files --others --exclude-standard   # 4. tree is clean
+```
+Observed: 0 bytes, 3 h old, no process, clean tree — an interrupted `pull`, and `main` was left behind
+`origin/main`. Leaving it costs every line its merge path, so this is worth fixing rather than waiting out.
+
 **Two more, learned in anger on 2026-07-28 (line S, S1c):**
 6. **NEVER chain the push behind the rebase in one shell command.** `git pull --rebase … ; git push …` looks
    convenient and is a trap: if the rebase stops on a conflict, the branch ref still points at the ORIGINAL tip,
