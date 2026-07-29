@@ -82,7 +82,7 @@ CAPTIONS = {
                                 "global mean. Density-coloured on purpose: tens of thousands of cells saturate a "
                                 "plain scatter and hide the diagonal."),
     "11_trait_ks_map": ("Per-cell KS statistic", "Where each cell's whole distribution is reproduced (dark = good). "
-                        "Cells with <20 stems are blank."),
+                        "Cells with &lt;20 stems are blank."),
     "12_biomass_percell": ("Stand biomass, observed vs predicted (+ basis cross-check)", "Left: per-cell mean stand "
                            "AGB, predicted as (count-DRF OOS stems) × (copula OOS per-stem biomass) — a COMPOSITE of "
                            "the emulator's two halves, each out-of-sample. Right: the basis cross-check. That "
@@ -107,35 +107,59 @@ HEADLINE = [
 ]
 
 CSS = """
-:root { --fg:#1a1a1a; --mut:#5b6672; --bg:#ffffff; --card:#f6f7f9; --line:#dfe3e8; --acc:#2f6f9f; }
-@media (prefers-color-scheme: dark) {
-  :root { --fg:#e8e9eb; --mut:#a3adb8; --bg:#14161a; --card:#1c1f25; --line:#2c313a; --acc:#7fb2dc; }
+/* Palette grounded in the subject (forest structure): neutrals carry a faint warm-green bias rather than a
+   pure grey, and the accent is pine rather than the default UI blue. Tokens are defined ONCE on :root and
+   redefined for dark, so components never reference a colour directly and the viewer's theme toggle
+   (data-theme) wins over the OS media query in both directions. */
+:root {
+  --ground:#fbfbf9; --ink:#1b1f1c; --mut:#5d6b60; --card:#f1f3ee; --rule:#dde2d8;
+  --acc:#2f6b4f; --acc-soft:#e4ede7; --warn:#8a5a1f;
+  --serif: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
-:root[data-theme="dark"] { --fg:#e8e9eb; --mut:#a3adb8; --bg:#14161a; --card:#1c1f25; --line:#2c313a; --acc:#7fb2dc; }
-:root[data-theme="light"] { --fg:#1a1a1a; --mut:#5b6672; --bg:#ffffff; --card:#f6f7f9; --line:#dfe3e8; --acc:#2f6f9f; }
+@media (prefers-color-scheme: dark) {
+  :root { --ground:#131614; --ink:#e6eae4; --mut:#9aa89e; --card:#1b1f1c; --rule:#2b322c;
+          --acc:#7fc39b; --acc-soft:#1d2a22; --warn:#d8a457; }
+}
+:root[data-theme="dark"] { --ground:#131614; --ink:#e6eae4; --mut:#9aa89e; --card:#1b1f1c; --rule:#2b322c;
+                           --acc:#7fc39b; --acc-soft:#1d2a22; --warn:#d8a457; }
+:root[data-theme="light"] { --ground:#fbfbf9; --ink:#1b1f1c; --mut:#5d6b60; --card:#f1f3ee; --rule:#dde2d8;
+                            --acc:#2f6b4f; --acc-soft:#e4ede7; --warn:#8a5a1f; }
 * { box-sizing:border-box; }
-body { margin:0; padding:2rem 1.25rem 4rem; background:var(--bg); color:var(--fg);
-  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-.wrap { max-width:1120px; margin:0 auto; }
-h1 { font-size:1.7rem; line-height:1.25; margin:0 0 .4rem; letter-spacing:-.01em; }
-h2 { font-size:1.25rem; margin:2.6rem 0 .6rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
-h3 { font-size:1.02rem; margin:1.8rem 0 .3rem; }
-p, li { color:var(--fg); }
-.sub { color:var(--mut); margin:0 0 1.6rem; }
-.note { background:var(--card); border-left:3px solid var(--acc); padding:.8rem 1rem; border-radius:0 6px 6px 0;
-  margin:1.2rem 0; font-size:.94rem; }
-.cap { color:var(--mut); font-size:.9rem; margin:.15rem 0 1.4rem; }
-figure { margin:0 0 .2rem; }
-img { max-width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:6px; background:#fff; }
-.tablewrap { overflow-x:auto; margin:1rem 0 1.6rem; }
-table { border-collapse:collapse; font-size:.9rem; min-width:100%; }
-th, td { text-align:right; padding:.42rem .7rem; border-bottom:1px solid var(--line); white-space:nowrap; }
-th:first-child, td:first-child { text-align:left; }
-thead th { color:var(--mut); font-weight:600; }
+body { margin:0; padding:3rem 1.25rem 5rem; background:var(--ground); color:var(--ink);
+  font:400 16.5px/1.65 var(--sans); -webkit-font-smoothing:antialiased; }
+.wrap { max-width:1120px; margin:0 auto; display:flex; flex-direction:column; gap:0; }
+h1 { font:600 2.05rem/1.15 var(--serif); margin:0 0 .5rem; letter-spacing:-.015em; text-wrap:balance; }
+h2 { font:600 1.4rem/1.25 var(--serif); margin:3.2rem 0 .5rem; padding-bottom:.4rem;
+  border-bottom:2px solid var(--acc); letter-spacing:-.01em; text-wrap:balance; }
+h3 { font:600 1.02rem/1.3 var(--sans); margin:2.2rem 0 .35rem; letter-spacing:.005em; text-wrap:balance; }
+p { margin:0 0 1rem; max-width:72ch; }
+.sub { color:var(--mut); margin:0 0 1.8rem; font-size:1.02rem; max-width:70ch; }
+.note { background:var(--acc-soft); border-left:3px solid var(--acc); padding:.9rem 1.1rem;
+  border-radius:0 5px 5px 0; margin:1.4rem 0; font-size:.94rem; }
+.note strong { color:var(--acc); }
+.cap { color:var(--mut); font-size:.9rem; line-height:1.55; margin:.4rem 0 2rem; max-width:78ch; }
+figure { margin:0; }
+img { max-width:100%; height:auto; display:block; border:1px solid var(--rule); border-radius:4px;
+  background:#fff; }
+/* Wide tables scroll in their OWN container so the page body never scrolls sideways. */
+.tablewrap { overflow-x:auto; margin:1rem 0 1.8rem; border:1px solid var(--rule); border-radius:5px; }
+table { border-collapse:collapse; font-size:.9rem; min-width:100%;
+  font-variant-numeric:tabular-nums; font-family:var(--mono); }
+th, td { text-align:right; padding:.5rem .85rem; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; font-family:var(--sans); }
+thead th { color:var(--mut); font:600 .78rem/1.4 var(--sans); text-transform:uppercase;
+  letter-spacing:.06em; background:var(--card); }
+tbody tr:last-child td { border-bottom:none; }
 tbody tr:hover { background:var(--card); }
-code { background:var(--card); padding:.1rem .3rem; border-radius:3px; font-size:.88em; }
+code { font:.87em/1.4 var(--mono); background:var(--card); padding:.12rem .32rem; border-radius:3px; }
 .miss { color:var(--mut); font-style:italic; }
-footer { margin-top:3rem; color:var(--mut); font-size:.85rem; border-top:1px solid var(--line); padding-top:1rem; }
+footer { margin-top:3.5rem; padding-top:1.2rem; border-top:1px solid var(--rule);
+  color:var(--mut); font-size:.86rem; max-width:78ch; }
+a { color:var(--acc); }
+a:focus-visible, :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 """
 
 
