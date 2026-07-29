@@ -6,7 +6,7 @@
 [![code style: runic](https://img.shields.io/badge/code_style-runic-000000.svg)](https://github.com/fredrikekre/Runic.jl)
 
 > **Status:** Phase 0 (DESIGN) complete — schemas frozen, engineering scaffold in place. Modelling code grows from here under the phased plan.
-> Private repo: `github.com/rimajj/LPJmLFIT_Emulator`. Badges render in the owner's authenticated view (private repo). Julia package name: `LPJmLFITEmulator`.
+> Julia package name: `LPJmLFITEmulator`.
 
 A **hybrid** land-surface component derived from **LPJmL-FIT** (LPJmL 5.6.004 + flexible individual traits), built to drive an Earth-System-Model atmosphere. Three components around **one authoritative shared state**:
 
@@ -18,9 +18,9 @@ A **hybrid** land-surface component derived from **LPJmL-FIT** (LPJmL 5.6.004 + 
 
 Carbon and water conservation are **inherited from the physical core**; the energy budget is **closed by construction** in E. The coupling variables (LE, H, G, T_skin, NEE, roughness) are **derived, not co-predicted**.
 
-## How to read this repository (for the owner / non-coder)
+## How to read this repository
 
-You do **not** need to read code. Everything is designed so you can understand and control the project from documentation that is **kept honest by CI** (if the code and the docs diverge, the build fails).
+Everything is designed so you can understand and control the project from documentation that is **kept honest by CI** (if the code and the docs diverge, the build fails).
 
 1. **Start with the docs site** (Documenter.jl — the single source of truth). Build locally with `julia --project=docs docs/make.jl`, then open `docs/build/index.html`. Read the **Explanation** and **Model description** sections.
 2. **The science**, in order: [`DESIGN.md`](DESIGN.md) (what is frozen and why) → `docs` *Explanation* → the GMD-style *Model description*.
