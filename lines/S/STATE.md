@@ -8,8 +8,13 @@
 
 **S2 turned out to be THREE separable levers, not one, and the one it was scoped around is the smallest.**
 Everything below is measured on the `t8` historic generation (52 165 cells) with each probe reproducing the
-documented ADR-0030 numbers before reporting. Two commits are on this branch: `2632e340` (the diagnosis +
-both probes) and `534d615f` (the QRF estimator fix + the extended conditioning, both opt-in).
+documented ADR-0030 numbers before reporting.
+
+**ALL OF IT IS MERGED — `main` `518ebc26`, every gate green** (`format`, `python`, **`docs`**, `test (lts)`,
+`test (1)`, `test (macOS, lts)`; `test (pre)` red for the verified-unrelated churn below). **ADR 0037 is
+WRITTEN and indexed.** What merged is the CAPABILITY — three levers, individually switchable, each
+default-byte-identical — **not a tuned result: S2's gate is still UNMET** and ADR 0037 §7 deliberately defers
+the production-enablement decision to a follow-up (ADR 0038) until the matrix below completes.
 
 ### The GAP decomposition — what each lever is worth (`[VERIFIED 2026-07-30]`)
 
@@ -95,8 +100,11 @@ against `ncond`.
    `RecruitCopula`** that `reconcile_demography!` passes to `sample_copula!`. Defaulted in BOTH legacy
    constructors (4-arg and 5-arg, verified) ⇒ line M's call sites are byte-identical. So `t9` only needs
    `QRF=1` set on the train step; do NOT hand-edit the meta.
-5. **ADR 0037** (next free in S's block) recording all three levers with their separate measurements, then
-   notify `lines/M/STATE.md` to re-pin deliberately. Do NOT collapse the three into one number.
+5. ~~ADR 0037~~ **DONE** (`docs/decisions/0037-the-trait-gap-is-an-estimator-defect.md`, merged). The
+   follow-up is **ADR 0038**: record which configuration ships and what each lever contributed — do NOT
+   collapse the three into one number. **No M integration point is open yet** and none is needed until a `t9`
+   artifact exists: the count `.drf` is untouched and every copula change is opt-in and default-identical, so
+   M's pinned artifacts keep working. Notify `lines/M/STATE.md` only when `t9` is real.
 
 ### CI reading for this branch (do not re-diagnose)
 
