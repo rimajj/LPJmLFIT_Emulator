@@ -6,58 +6,114 @@
 
 ## NEXT — start here
 
-**`t8` is COMPLETE, VALIDATED and MERGED (`main` bf84a219, ADR 0036). The next task is S2** — but read
-§Status's `t8` tables first and re-baseline S2's gate against them, or S2 will take credit for a basis fix
-again (ADR 0033).
+**S2 is IN FLIGHT and its premise has been REFUTED as the primary cause. Do not "expand the conditioning"
+until you have read this block.** The measurement said the ADR-0030 trait GAP is dominated by **estimator
+capacity**, not by a missing covariate — so S2 became a capacity fix, which needs **no** conditioning change,
+**no** `.rcop` format change and **no** break of M's frozen contract.
 
-The full figure set + a self-contained HTML report exist for all three scenarios
-(`figures/emulator_validation/{historic,ssp370,pooled}_t8/`, `report_t8.html`; git-ignored, regenerate with
-`VERSION=t8 scripts/run_slow_validation_figures.sh`). Published copy:
-<https://claude.ai/code/artifact/3f46df14-68ab-43f0-af75-c29d456cce2a>.
+### What is measured and settled (`[VERIFIED 2026-07-30]`)
 
-### What landed (don't re-derive any of it — numbers are in §Status)
+Two probes, both reproducing the documented `t8` gate numbers exactly before reporting anything (harness
+validation first — `residual-diagnosis` §3):
 
-- **`t8` = every global table + artifact on the ADR-0035 bases**, for historic, SSP370 and the pooled
-  multi-regime pair. All six artifacts LOAD-VERIFIED (`.drf` `nfeat==15`/150 trees; `.rcop` a 5-TUPLE with
-  4 axes / 8 cond cols / 4 marginals). `_t7` untouched. **Line M is notified in `lines/M/STATE.md` and
-  re-pins deliberately — do NOT re-point M's path from here.**
-- **ADR-0030 gate on `t8`: `seed1-basis` = 1.000 on all four axes, 52 165 cells — PASS.**
-- **ADR 0036: biomass + size are validated as APPENDED DIAGNOSTIC copula axes** (`STRUCT_AXES=agb,Height`),
-  never in the `.rcop`, production predictions proven **bit-identical** with the option on/off (job 1641319).
-  Both are **AT CEILING** on the ADR-0030 gate (`r_center` 0.987 / 0.986).
+- `scripts/diagnose_copula_cond_ceiling.py` (jobs **1643090** means / **1643095** `FLUX_QUANTILES=1`) —
+  decomposes the GAP by fitting a DIRECT per-cell regressor (LightGBM, K-fold BY CELL) on per-cell
+  covariate sets. **An UPPER BOUND, not a forecast** (it optimizes the scored statistic on 52k rows instead
+  of ~198M) — used only to bound headroom and rank covariates.
 
-### Two defects this generation exposed — both fixed, both worth remembering
+  | axis | copula `emu_r` | r(same 8 cond cols) | r(+28 env) | **estimator share** | covariate share |
+  |---|---|---|---|---|---|
+  | SLA | 0.881 | 0.962 | 0.973 | **+0.080** | +0.011 |
+  | Wooddens | 0.814 | **0.916** | 0.941 | **+0.102** | +0.025 |
+  | D95max | 0.791 | 0.879 | 0.922 | **+0.089** | +0.042 |
+  | minwscal | 0.945 | 0.977 | 0.981 | +0.032 | +0.004 |
 
-1. **`polars` `collect(engine="streaming")` is non-deterministic in its emitted KEY SET** at global scale, not
-   just in float-sum order (CLAUDE.md §4, ADR 0036 §5b). Two ssp370 builds gave 99 023 397 vs **99 028 310**
-   rows: 141 cells differed, 4 913 rows missing, **12 cells DUPLICATED**. The coverage guards structurally
-   cannot catch it — `dropped = h0 − height` goes NEGATIVE under duplication, so `drop_frac > 0.02` never
-   fires — and the AR self-join amplified each duplicate 1→4. Now: a hard key-set invariant plus a window
-   shift replacing the self-join, **gated byte-identical on historic** (job 1642638, X rel diff 0.000e+00).
-   The defective ssp370 artifact was rebuilt (job 1642642, now 99 028 310 rows = truth, OOS R² unchanged);
-   the old files are kept as `*_defective*`.
-2. **A plausible statistical story that was algebraically false.** The biomass composite's `basis_ratio` was
-   documented as measuring a negative `Cov(N, mean stem size)`. It is an **exact identity** on matched rows —
-   the per-cell per-stem mean is stem-weighted, so the `Σ N` factors cancel. It is really a **row-universe
-   consistency check** between the count and copula tables. Four independent audit lenses caught this after it
-   had already reached a figure caption. *Do the algebra on the estimator you implemented, not on the story.*
+  (`FLUX_QUANTILES=1` numbers. The means-only run gave Wooddens +0.079 / +0.045.) **Wooddens' r(cond8)=0.916
+  already clears the S2 gate target of 0.889, and its `sd_ratio` 0.896 clears the ≥0.75 target — with ZERO new
+  columns.** The caveat run moved the split FURTHER toward the estimator, which is the strongest form of this
+  evidence: it added information the copula *already receives* (it conditions per (Cell,Year), not per cell).
 
-### S2 — the copula conditioning expansion (unchanged in scope, re-baselined here)
+- **The mechanism, measured on the artifact line M actually pins** (`recruit_copula_global_historic_t8.rcop`,
+  login-node check): **1063 leaves per tree for 54 020 cells** — every leaf hands ~51 cells ONE identical
+  conditional distribution — 47.1 values/leaf, 12.0M stored values, loads in 2.92 s (42 MB/s). Cause:
+  `EVAL_SUBSAMPLE`/`SUBSAMPLE`**=50000** against ~158M training rows, i.e. ~1 row per cell per tree.
 
-Expand `COPULA_COND_COLS` (`scripts/build_slow_runtime_table.py`) **and** `live_flux_cond`
-(`src/components/slow.jl`) **in lockstep** with environment / PFT-composition covariates; global K-fold re-fit;
-measure against the `t8` gate. Needs an ADR + an integration point with M (artifact version bump).
-*Gate, re-baselined on `t8`:* close ≥50 % of the **Wooddens** GAP (now **+0.150** to a ceiling of 0.964) and
-lift `sd(pred)/sd(Y1)` on that axis to ≥0.75 (now **0.678**), with pooled KS not degraded and no other axis
-losing >0.01 of `r_center`. `D95max` is the other real target (`sd` ratio **0.714**, GAP +0.118). `minwscal`
-(+0.041) and `SLA` (+0.104, `sd` ratio 0.907) have little left. Report honestly if conditioning does not deliver.
+- **Why the pooled metrics never caught it (read `src/drf.jl::predict_quantile`).** It POOLS the leaf values
+  of all trees into one sorted array and takes the u-quantile of that MIXTURE. A mixture over 40 leaves each
+  spanning ~51 cells reproduces the GLOBAL marginal beautifully (pooled `nqrmse` 0.013, KS 0.0065) while the
+  per-cell conditional stays under-resolved (`sd(pred)/sd(Y1)` 0.678, slope `Y1~pred` **1.20** — the textbook
+  attenuation signature). **Pooled-marginal metrics are STRUCTURALLY BLIND to this defect.** `sd(Y2)/sd(Y1)`
+  ≈ 1.00 on every axis, so the under-dispersion is the emulator's, not a property of the target.
 
-### Cheap and open
+### The ladder in flight — collect these first
 
-- **Emit `Year` in the `MODE=copula` table** so the stand-biomass composite can be computed on matched rows.
-  That is the one thing blocking figures 12/13 for the POOLED pair (refused today: the pooled count table is
-  ~81 % ssp370 rows while its capped copula table is ~53 % ssp370 stems, so the two factors are averaged over
-  different scenario mixes — a correctness stop, not caution). ADR 0036 §6.
+`scripts/diagnose_copula_capacity.sh` re-runs the K-fold OOS at a chosen capacity on an **unchanged** table
+(a SHADOW dir of input-only symlinks, so the validated `t8` predictions cannot be touched) and scores the
+ADR-0030 gate. Capacity is measured in ISOLATION from any conditioning change — deliberately, because ADR 0033
+records this line twice crediting one change with another's effect.
+
+| rung | job | gate job | ntrees × subsample, depth | leaves/tree | `.rcop` if productionised |
+|---|---|---|---|---|---|
+| baseline (= `t8`) | 1643092 | **1644235 DONE** | 40 × 50 000, d14 | ~1 063 | 122 MB |
+| `b12x500k` | 1644118 | 1644237 | 12 × 500 000, d18 | ~12 500 | ~257 MB |
+| `b6x2M` | 1644119 | 1644238 | 6 × 2 000 000, d22 | ~50 000 | ~514 MB |
+| `b24x500k` | 1644120 | 1644239 | 24 × 500 000, d18 | ~12 500 | ~514 MB |
+
+**The baseline gate REPRODUCED `t8` bit-for-bit** (GAP 0.104/0.150/0.118/0.041, `r_center`
+0.894/0.844/0.870/0.958, both struct axes AT CEILING, pooled `nqrmse` identical to `logs/gcopula_historic_t8.1641321.out`)
+— that is what licenses trusting the other three. **`b24x500k` vs `b12x500k` is the CONTROLLED contrast**
+(identical resolution, 2× the tree count) that isolates whether tree-mixing drives the under-dispersion.
+
+*Cost model, measured:* fit ∝ `ntrees·subsample`, predict over ~198M rows ∝ `ntrees`. So raising the subsample
+at constant `ntrees` is expensive (40 × 500k was ~4× baseline per axis-fold — I cancelled 1643093/1643094 for
+this reason), while trading trees for depth at a fixed budget is CHEAPER than baseline AND multiplies
+resolution. `.rcop` bytes ≈ `10.7 · ntrees · subsample · naxes`. `TRAIT_ONLY=1` drops the 2 diagnostic struct
+axes (−33 %; they cannot change the gate).
+
+### Then do this
+
+1. Pick the rung that maximises `r_center`/`sd_ratio` **subject to a `.rcop` the coupled runtime can load**
+   (≤ ~512 MB ⇒ ~12 s at the measured 42 MB/s). Watch for the opposite failure: too few trees ⇒ a noisy
+   per-cell quantile ⇒ `sd_ratio` rises while `emu_r` FALLS. The gate measures both; report both.
+2. Promote it into `scripts/eval_slow_copula.jl` + `scripts/train_slow_copula.jl` + the two orchestrator
+   defaults (all `scripts/*slow*` = S-owned). **The committed Hainich fixtures are SAFE by construction:** they
+   come from `train_slow_copula.jl`'s OWN defaults, not the orchestrators, and no committed test references a
+   global artifact (both verified) ⇒ guardrail 4 holds trivially.
+3. Retrain the production `.rcop` as a **versioned `t9`** (never in place); LOAD-VERIFY it (5-tuple, 4 axes,
+   8 cond cols, 4 marginals) and re-measure the gate. `nfeat`/`cond_cols`/`axes` are UNCHANGED, so this is an
+   artifact re-pin for M, **not** a contract change — notify `lines/M/STATE.md` and let M re-pin deliberately.
+4. Write **ADR 0037** (next free in S's block) + a `changelog.d/S-*.md` fragment + a `lines/S/JOURNAL.md` entry.
+   Capture both probes in `.claude/skills/slow-drf-pipeline/SKILL.md`.
+
+### Two traps found today — one of them in my own guard
+
+- **A clobber guard that cries wolf is a liability.** `diagnose_copula_capacity.sh` hashed
+  `ls pred_*.f64 | sort`; the login node collates `en_US.UTF-8` (case-insensitive) and the SLURM batch shell
+  `C` (uppercase first), so the SAME six untouched files hashed differently and it reported
+  `FATAL: the shadow leaked` on the baseline. **`t8` was never touched** (6 real files, original mtimes,
+  checksum matching submit time). Fixed with `LC_ALL=C` on both sides **and** the failure now prints the
+  mtime triples so a real leak is distinguishable from a guard artefact. The guard fires AFTER the expensive
+  eval, so nothing was lost — the gate step was re-run separately against the preserved shadow preds, and the
+  three live rungs have `afterany` gate jobs chained for the same reason.
+- **`sbatch_python.sh` forwards only its explicit list.** `SKIP_PARQUET`/`SKIP_LEGACY`/`FLUX_QUANTILES`/
+  `STRUCT_AXES` are NOT on it, so a `VAR=v scripts/sbatch_python.sh …` command prefix silently takes the
+  default. `export` them or use a raw `.jcf`.
+
+### The SECOND-order finding, deliberately NOT folded into S2 (candidate S2b)
+
+The wider covariates DO buy a real +0.025 (Wooddens) / +0.042 (D95max), and the reason is physical: the
+boundary tail carries **no moisture or precipitation climatology at all** (`gdd_5`, `tas_cold_month`,
+`soil_depth`, `co2`), yet FIT's establishment gates are temperature AND moisture. `env_only` (0.910) even
+BEATS the 8 production columns (0.893, means-only) on Wooddens, and the top env gains are `prec_mean`,
+`eco_diag_p_pet_ratio`, `humid_mean`. **But this is a genuine contract change** — the boundary tail is shared
+with the count DRF, so its length changes `forest.nfeat` on BOTH models and the `cell_meta.parquet` schema.
+Keep it a separate milestone with its own ADR and M integration point; do NOT smuggle it into the capacity fix,
+or neither effect will be attributable (ADR 0033, twice).
+
+### Cheap and open (unchanged)
+
+- **Emit `Year` in the `MODE=copula` table** so the stand-biomass composite can be computed on matched rows —
+  the one thing blocking figures 12/13 for the POOLED pair (ADR 0036 §6).
 - `STEM_CAP` is a patch-year **CLUSTER** subsample, not per-stem (ADR 0036 §6). Effective sample size is
   patch-years; never call a capped per-cell mean an unbiased per-stem mean.
 
