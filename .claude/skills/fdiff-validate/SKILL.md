@@ -37,6 +37,32 @@ When validating one kernel (photosynthesis, PET/ET, water, respiration) in isola
 the C-run's own FAPAR / PET as a "crutch" so a discrepancy localizes to that kernel instead of compounding
 through the whole rollout. Remove the crutch for the end-to-end regression.
 
+## The cheapest global check on F_diff's SOIL WATER — the C's `rootmoist` (ADR 0052)
+
+Measure **any** soil-water residual against this FIRST; it needs **no new HPC run** and works for **any
+cell on the global grid** (`d_rootmoist.nc` is already in the global daily output).
+
+    w_C(cell, day) = rootmoist / Σ_{l<3} whc_nat[l, month] · soildepth[l]      soildepth = 200,300,500 mm
+
+That is exactly `slow.jl::root_zone_soilmoist(state, soil)` (`ROOT_ZONE_LAYERS = 3`), so the two sides are
+the SAME quantity — the §3f test is already passed. Reference pair, copy them:
+`scripts/boreal_soilice_diagnosis.py` (C side, gridded lat/lon → nearest cell from `M_cells.csv`) +
+`scripts/boreal_soilice_probe.jl` (F side). Report a **monthly climatology per cell**, not an annual mean —
+that is what makes a seasonal mechanism (freezing, drying) legible at a glance.
+
+Two things it settled at once, and both matter for any F-water claim:
+
+- **F_diff has NO soil ice.** The C's root-zone `w` at boreal Siberia is **exactly 0.000 for Nov–Apr**
+  (all of it ice — `rootmoist = Σ w·whcs` and `w` excludes ice) while F_diff's is flat at 0.67–0.91. So
+  every water-stress-like quantity is unreliable in a seasonally frozen cell, and it fails *silently* in
+  the unstressed direction (a supply/demand cap just binds all year). Flag cold cells explicitly.
+- **F_diff's root-zone water runs too DRY in dry cells** — Sahel Jan 0.361 vs the C's 0.533, mediterranean
+  Jul 0.239 vs 0.369, same seasonal shape. Candidate terms: the `_infiltrate` cascade (no surface /
+  infiltration-excess runoff — a documented v2 item), `_soil_evap`, the absent free-water `w_fw` reservoir.
+
+**Use `rootmoist`, never `swc`** — `swc` is total water over *saturation* capacity and is NOT invertible to
+the model's `w` (ADR 0035). Two variables, overlapping numeric ranges, different denominators.
+
 ## Rules
 
 - **Confirm the C path actually runs in the `individual=true` config before porting it** (see the

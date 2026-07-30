@@ -191,9 +191,15 @@ is on disk; no new HPC run is required. In priority order:
 3. **The cheap win, STILL unclaimed:** the four single-cell C runs
    `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` carry
    `a_lai_stand` / `a_fpc_stand` / `d_gpp` / `d_transp` / `d_swc` / `d_fapar` — a per-cell **F_diff-vs-C**
-   oracle for four new biomes, i.e. M3's F-side evidence with no new HPC run. Use the `fdiff-validate` skill.
-   **Do cell 52059 first and include `rootmoist`:** it doubles as the falsifiable test of the boreal
-   soil-ice hypothesis (gotcha list above), which is the one part of ADR 0051 left open.
+   oracle for four new biomes, i.e. M3's F-side evidence with no new HPC run. Use the `fdiff-validate`
+   skill. **The water side of this is already done** — ADR 0052's `rootmoist` comparison is the root-zone
+   water check for all five cells; extend the same pattern to GPP/transp/LAI/FPC.
+   **Two ADR-0052 findings M3 MUST carry into its reporting:** (a) the boreal cell's `water_stress` is a
+   known bias (`≡ 0` where the C is 0.31) because F_diff cannot freeze soil — do not average it into a
+   headline number, and the caveat extends to the whole permafrost belt in a global run; (b) F_diff's
+   root-zone water runs too dry in dry cells, which is what is left of the Sahel/mediterranean gap.
+   **(b) is the higher-value follow-on** for a global run and is the best-scoped next F-core diagnosis
+   (reference basis already established; use `residual-diagnosis`).
 
 **Then M4 (resilience battery)** — 4 stubs still `@test_skip`; reimplement from Bathiany et al. 2024
 (doi:10.1111/gcb.17613), never from LPJ_resilience (no licence).
@@ -406,17 +412,27 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   and `biome_coupled_tests.jl` do.
 - **Never hard-code the repo root in a script** — it writes into the integrator worktree from here
   (CLAUDE.md §9 item 6). Derive it from `__file__` / `@__FILE__`.
-- **`[ASSUMPTION]` F_diff has NO soil-ice / permafrost representation, and that is the leading (UNVERIFIED)
-  explanation for the one cell ADR 0051 does not close.** The C says `boreal_siberia` (52059) *is* water
-  stressed (`water_stress` 0.3146); the realized ratio over-stressed it (0.664) and the C-faithful
-  expression **under**-stresses it to exactly 0.000 — the `min(…,1)` cap binds on **100 %** of days, so
-  F_diff's `emax·wr` exceeds the leaf-on demand every day. The C's `wr` is over **plant-available** water
-  and the C's soil carries ice (`ice_depth`/`ice_fw`, `getrootdist(…, config->permafrost)`), so a frozen
-  profile has little available water; F_diff's `wr` never collapses. **Verified:** the absence of any ice
-  state in `src/fdiff.jl`/`src/state.jl`. **Not verified:** that this is the cause. Falsifiable test —
-  compare F_diff's root-zone `w` against the C's `rootmoist` for cell 52059 over winter/spring (that
-  single-cell run exists: `daily_2000_2019_M_biome_val_c52059_seed1`); if F_diff's stays high while the C's
-  collapses, confirmed. Note `swc` is NOT invertible to `w` (ADR 0035) — use `rootmoist`.
+- **`[VERIFIED 2026-07-30]` F_diff has NO soil ice, and that IS the cause of the boreal water-stress
+  residual ADR 0051 left open (now ADR 0052).** The C's root-zone plant-available fraction at
+  `boreal_siberia` (52059) is **exactly 0.000 for Nov–Apr** — every drop in the top metre is ice — while
+  F_diff's sits flat at **0.67–0.91 all year**, so `emax·wr` beats the leaf-on demand every day and the
+  leaf-on `wscal` is pinned at **1.000 in all twelve months**. Measured by
+  `scripts/boreal_soilice_diagnosis.py` (C side, from `d_rootmoist.nc` + `whc_nat.nc`) and
+  `scripts/boreal_soilice_probe.jl` (F side, `root_zone_soilmoist`). It is not a bad `wscal` — it is the
+  right `wscal` of a soil column that cannot freeze.
+- **`[VERIFIED 2026-07-30]` SECOND, DISTINCT residual: F_diff's root-zone water runs too DRY in dry cells**
+  (ADR 0052). Same seasonal shape as the C, systematically lower: Sahel Jan **0.361 vs 0.533**, Jul 0.564
+  vs 0.770; mediterranean Jul 0.239 vs 0.369. That — not the `wscal` definition — is what remains of those
+  two cells' ADR-0051 gap (Sahel 36.5× the noise floor, mediterranean 7.5×), and it points the **opposite**
+  way from boreal: F_diff **over**-stresses where it runs too dry. Higher-value than soil ice for a global
+  run (semi-arid cells vastly outnumber permafrost ones). Candidate terms: the `_infiltrate` cascade (no
+  surface/infiltration-excess runoff — a documented v2 item), `_soil_evap`, and the absent free-water
+  (`w_fw`) reservoir.
+- **The C's `rootmoist` + `whc_nat` are a per-cell, per-day reference for the emulator's root-zone water
+  ANYWHERE on the global grid, with no new HPC run** (`d_rootmoist.nc` is in the global daily output).
+  `w_C = rootmoist / Σ_{l<3} whc_nat[l]·soildepth[l]`, `soildepth = 200,300,500` mm. This is the cheapest
+  check on F_diff's soil water balance — measure any soil-water residual against it FIRST. `swc` is NOT
+  invertible to `w` (ADR 0035); `rootmoist` is the only output carrying it.
 - **A "conditioning shift" and "extrapolation out of the trained band" are different failure modes, and the
   global band cannot tell them apart.** Against the **global pooled `_t8`** band (`water_stress ∈
   [0, 0.9618]`) the shifted runtime values were *inside* range; only the **Hainich demo artifact's** band
