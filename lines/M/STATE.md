@@ -158,48 +158,68 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
-**M1, M2 DONE. The M3 BLOCKER is now DIAGNOSED AND FIXED (2026-07-30, ADR 0051)** — the `water_stress`
-runtime↔training shift that the last two handoffs said must be settled *before* M3 draws per-cell
-conclusions. It was a **quantity** mismatch, not an aggregation one: the C's `wscal` is a POTENTIAL leaf-on
-index, F_diff's was the realized supply/demand ratio. Landed opt-in (`WaterParams.wscal_leafon`, default
-`false` ⇒ every baseline byte-identical); Hainich's `water_stress` goes 0.3050 → 0.0034 against a C truth
-of 0.0014. Full write-up: ADR 0051; the two-sided default flip and the boreal caveat are in "the contracts
-you consume" and "Line-local gotchas" above. **Read those two before running M3.**
+**M1, M2 DONE. M3's F-SIDE IS DONE (2026-07-30, ADR 0053). The remaining M3 work is the S-SIDE
+(per-cell demography vs the `ind` parquet + noise floor) — item 1 below.**
 
-**M3 — coupled multi-cell validation vs the C truth. The P3 gate, and now unblocked.** Everything it needs
-is on disk; no new HPC run is required. In priority order:
+**The `wscal_leafon` question is SETTLED as option (b), and stays settled until line S moves.** S did not
+answer: `lines/S/STATE.md` still reads "Not S's to chase: `water_stress` is line M's F core, leave it
+pinned", and S is mid-flight on S2 (copula estimator capacity, four rungs queued, a `t9` `.rcop` likely).
+So: **default stays `false`; pass `wscal_leafon = true` EXPLICITLY in every M3 run and label every number
+with it.** Do not flip the default unilaterally — it makes S's `slow_production_drf_tests.jl:168` assertion
+(`Set(["water_stress"])`) fail and moves every coupled baseline. M's recommendation to flip still stands;
+it is S's to schedule.
 
-1. **DECIDE THE `wscal_leafon` QUESTION FIRST — it changes every number M3 will report.** Options: (a) raise
-   the two-sided integration with line S and flip the default (M's recommendation — it is the C's actual
-   expression, and it is better in 4 of 5 cells, one to within the noise floor); or (b) run M3 with
-   `wscal_leafon=true` passed explicitly while the default stays off, and say so in every result. **Do not
-   run M3 on the default `false` and report it as fidelity** — the Sahel loses 36 % of its trees to the
-   shift. If you take (a): flip `WaterParams.wscal_leafon` to `true`, have S change
-   `slow_production_drf_tests.jl:168` to `Set(String[])` in the same integration, and re-measure/regenerate
-   every coupled baseline in that one change (guardrail 4 — deliberate, not incidental).
-2. **Then score per-cell demography + trait distributions** against the annual `ind` parquet and the
-   **seed1-vs-seed2 noise floor** — reuse `scripts/noise_floor_vs_emulator.py` (line S's, read-only), and
-   `scripts/wscal_c_truth_diagnosis.py` is this line's worked example of the pattern (derive the C column
-   exactly as the training table forms it, report error in units of the floor). Report held-out **cells and
-   scenarios** separately. Use the PINNED `_t8` pair (`drf_forest_global_pooled_w20_t8.drf` +
-   `recruit_copula_global_pooled_w20_t8.rcop`); wire the copula with
-   `RecruitCopula{Float64}(cop, af, x, make_recruit_to_pools(axes), live_flux_cond)` — pattern in
-   `test/testitems/slow_oracle_traits_tests.jl:89`. SLURM only (~180 MB, ~4.5 s just to deserialize);
-   `scripts/wscal_leafon_probe.jl` is a ready 5-cell coupled driver to copy.
-   **Caveat to carry:** the CI gate deliberately uses the committed Hainich demo forest (CI has no cluster),
-   so it proves conservation/determinism, NOT per-cell count skill.
-3. **The cheap win, STILL unclaimed:** the four single-cell C runs
-   `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` carry
-   `a_lai_stand` / `a_fpc_stand` / `d_gpp` / `d_transp` / `d_swc` / `d_fapar` — a per-cell **F_diff-vs-C**
-   oracle for four new biomes, i.e. M3's F-side evidence with no new HPC run. Use the `fdiff-validate`
-   skill. **The water side of this is already done** — ADR 0052's `rootmoist` comparison is the root-zone
-   water check for all five cells; extend the same pattern to GPP/transp/LAI/FPC.
-   **Two ADR-0052 findings M3 MUST carry into its reporting:** (a) the boreal cell's `water_stress` is a
-   known bias (`≡ 0` where the C is 0.31) because F_diff cannot freeze soil — do not average it into a
-   headline number, and the caveat extends to the whole permafrost belt in a global run; (b) F_diff's
-   root-zone water runs too dry in dry cells, which is what is left of the Sahel/mediterranean gap.
-   **(b) is the higher-value follow-on** for a global run and is the best-scoped next F-core diagnosis
-   (reference basis already established; use `residual-diagnosis`).
+### 1. M3 S-SIDE — per-cell demography + trait distributions (THE REMAINING P3 GATE)
+
+Score against the annual `ind` parquet and the **seed1-vs-seed2 noise floor** — reuse
+`scripts/noise_floor_vs_emulator.py` (line S's, read-only); `scripts/wscal_c_truth_diagnosis.py` is this
+line's worked example of the pattern (derive the C column exactly as the training table forms it, report
+error in units of the floor). Report held-out **cells and scenarios** separately. Use the PINNED `_t8` pair
+(`drf_forest_global_pooled_w20_t8.drf` + `recruit_copula_global_pooled_w20_t8.rcop`); wire the copula with
+`RecruitCopula{Float64}(cop, af, x, make_recruit_to_pools(axes), live_flux_cond)` — pattern in
+`test/testitems/slow_oracle_traits_tests.jl:89`. SLURM only (~180 MB, ~4.5 s just to deserialize);
+`scripts/wscal_leafon_probe.jl` is a ready 5-cell coupled driver to copy.
+**Two caveats to carry:** the CI gate deliberately uses the committed Hainich demo forest (CI has no
+cluster), so it proves conservation/determinism, NOT per-cell count skill. And **check whether S has
+published a `t9` `.rcop`** before you start — if so, re-pin deliberately (never silently; ADR 0023).
+
+**⚠️ APPLY ADR 0053's FOUR BASIS CHECKS to the S side too** — they are now a pre-flight checklist in the
+`fdiff-validate` skill. Two of the four (all-PFT vs tree-only; modal patch vs the C's 25-patch ensemble
+mean) bit the F side hard enough to *flip a verdict*, and both apply verbatim to any per-cell count or
+trait comparison against the `ind` tables.
+
+### 2. F-side follow-ons, in value order (all reference bases now established)
+
+ADR 0053's verdict, so you do not re-measure it: **seasonal phase is excellent in all 5 biomes** (monthly
+r 0.870–0.999 GPP, 0.858–0.999 ET). The level verdict DECOMPOSES per cell, and three of the five 10-yr
+means are actively misleading — read the year-matched ratio series' SHAPE:
+
+| cell | year-matched GPP ratio 2010→2019 | diagnosis |
+|---|---|---|
+| `tropical_amazon` | flat ≈ 0.97 | **F is right**, within 3 % |
+| `temperate_hainich` | flat, +12 % → +25 % | a genuine FLUX-LEVEL bias — the one clean one |
+| `boreal_siberia` | 0.80 → **1.70** monotone | DRIFT: unbounded canopy growth (FPC +64.5 %) |
+| `semiarid_sahel` | 1.10 → **0.59** monotone | DRIFT: canopy dieback (FPC −13.5 %) |
+| `mediterranean_iberia` | noisy 1.09–1.72 | excessive interannual volatility |
+
+a. **ET is 11–35 % HIGH while F carries NO grass transpiration** ⇒ the tree-only bias is larger still. This
+   is the best-scoped candidate for ADR 0052's too-dry root zone and it is the **demand** side, which ADR
+   0052 never considered (it guessed `_infiltrate` / the absent `w_fw`). Cheapest high-value F diagnosis
+   left; `residual-diagnosis` first.
+b. **Attribute Hainich's flat +12 %** with the kernel-isolation drive (`fdiff-validate`): drive F with the
+   C run's own daily FAPAR so a GPP gap cannot come from the canopy. `d_fapar` is already in all 5 runs.
+c. **The Sahel decline IS ADR 0052's dry-cell bias seen end-to-end** (canopy starts correct, dies back) —
+   one mechanism, two points in the chain. Fixing (a) may fix this; measure before assuming.
+d. **F under-predicts tree FPC in all 5 cells (0.31–0.72×)** *despite* starting from a patch 1.12–1.72×
+   denser than the ensemble — the most robust structural finding in the set, and unattributed.
+
+### 3. Deliberately NOT done — move the production driver to the patch ensemble
+
+`readcanopy` in `run_coupled_biomes.jl` / `wscal_leafon_probe.jl` picks the **modal** patch, which is
+1.12–1.72× denser in FPC than the 25-patch ensemble mean the C's outputs report. `biome_fdiff_oracle_probe.jl`
+already has the correct `readcanopy_patches` + `run_cell` ensemble driver to lift across. **This will move
+`biome_coupled_tests.jl` item 2's pinned per-cell LE and GPP (±2 %/±3 %)** ⇒ a deliberate baseline
+regeneration under guardrail 4, in its own change with its own commit. Do it before any global coupled run.
 
 **Then M4 (resilience battery)** — 4 stubs still `@test_skip`; reimplement from Bathiany et al. 2024
 (doi:10.1111/gcb.17613), never from LPJ_resilience (no licence).
@@ -362,6 +382,15 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` — single-cell
   daily re-runs of the four non-Hainich biome cells with `d_fapar` + `a_lai_stand` + `a_fpc_stand` +
   per-cell `whc_nat`. Water-closure checked (multi-year fractional imbalance ≤3.5 %).
+  **Plus, 2026-07-30 (ADR 0053):** `daily_2000_2019_M_grass_val_c{52059,33335,18371,12045}_seed1` — the same
+  four cells re-run with the custom per-PFT daily **grass** GPP/NPP (`conf.h` ids 419/420), which is what
+  makes `gpp_tree = d_gpp − d_grass_gpp` possible. Hainich's equivalent is the pre-existing
+  `daily_2000_2019_grassgpp_c42490_seed1`. ~9 s per cell to regenerate
+  (`CELL=<c> RUNTAG=M_grass_val SUBMIT=yes bash scripts/run_fdiff_grass_gpp_cell.sh`).
+- **Committed F-vs-C oracle tables (ADR 0053):** `test/testitems/references/M_fdiff_oracle_biomes.csv`
+  (monthly climatology) + `M_fdiff_oracle_biomes_annual.csv` (per-year, for year-matched scoring) +
+  `M_fdiff_oracle_meta.json`. Built by `scripts/extract_biome_fdiff_oracle.py`; the F side is
+  `scripts/biome_fdiff_oracle_probe.jl` (25-patch ensemble, `wscal_leafon=true`).
 - So: **F+E generalize across biomes with per-cell vegetation; the coupled S does not run multi-cell yet.** The
   global evidence for S is offline (line S), not coupled.
 - Resilience battery is scaffold only: 3 `@test_skip false` in `resilience_battery_tests.jl` + 1 in
@@ -377,10 +406,15 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   AND <1e-6 · energy <1e-6 W/m² · deterministic under seed · a fixed-N control proving F alone cannot move
   tree N · the `ClimBuf` drives only the two climate axes and its recomputed gdd5 orders the cells the same
   way their baked C-derived gdd5 does. Suite 107,192 pass / 0 fail / 4 broken (job 1643130).
-- **M3** **Coupled multi-cell validation vs the C truth** — per-cell demography + trait distributions against
-  the annual `ind` parquet, scored against the seed1-vs-seed2 noise floor (reuse
-  `scripts/noise_floor_vs_emulator.py`, line S's script — read-only). **This is the P3 gate.** Report per-cell
-  error vs floor, and held-out **cells and scenarios**.
+- **M3** **Coupled multi-cell validation vs the C truth. This is the P3 gate.**
+  - **F-side: DONE 2026-07-30 (ADR 0053).** Per-cell tree GPP / ET / FPC / stand LAI vs the C oracle for all
+    five biomes, on bases fixed by construction rather than caveated (grass removed exactly via the id-419
+    output; the C's own 25-patch ensemble; year-matched levels). Verdict: seasonal phase excellent everywhere
+    (monthly r 0.870–0.999), level decomposes per cell into one genuine flux bias (Hainich +12 %), two pure
+    drifts (boreal, Sahel), one volatility case (mediterranean) and one clean pass (Amazon 0.97).
+  - **S-side: REMAINING.** Per-cell demography + trait distributions against the annual `ind` parquet, scored
+    against the seed1-vs-seed2 noise floor (reuse `scripts/noise_floor_vs_emulator.py`, line S's script —
+    read-only). Report per-cell error vs floor, and held-out **cells and scenarios**.
 - **M4** **Resilience battery** — fill the 4 stubs: (a) lag-1 autocorrelation vs climate (the documented
   ~0.2-wet → ~0.75-dry gradient), (b) recovery/restoring rate from a pool-perturbation experiment,
   (c) the **shuffle test** (S0 vs S1 — proves the memory is genuinely internal, not inherited from

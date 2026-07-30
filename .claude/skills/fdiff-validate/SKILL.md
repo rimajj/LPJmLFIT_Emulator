@@ -1,6 +1,6 @@
 ---
 name: fdiff-validate
-description: The recurring extract -> validate -> baseline loop for checking the differentiable fast core F_diff against the LPJmL-FIT C oracle (kernel-isolation drive, Hainich cell 42490 harness, the extract_fdiff_* / validate_fdiff_* scripts, ReferenceTests baselines). Use whenever validating or refining F_diff fidelity vs the C binary, or wiring a new physics term into the daily/canopy rollout.
+description: The recurring extract -> validate -> baseline loop for checking the differentiable fast core F_diff against the LPJmL-FIT C oracle (kernel-isolation drive, Hainich cell 42490 harness, the extract_fdiff_* / validate_fdiff_* scripts, ReferenceTests baselines). Use whenever validating or refining F_diff fidelity vs the C binary, or wiring a new physics term into the daily/canopy rollout. ALSO the four MANDATORY basis checks before comparing ANY C output to F_diff (ADR 0053): the C's daily fluxes are ALL-PFT so grass must be removed via d_grass_gpp (up to 42 % of GPP); the driver's modal patch is 1.12-1.72x denser than the C's 25-patch ensemble mean; a 10-yr-mean ratio hides canopy drift so score year-matched and read the ratio SHAPE; and the daily NetCDF `units` attribute lies (says /month, values are per-day). Names scripts/extract_biome_fdiff_oracle.py, scripts/biome_fdiff_oracle_probe.jl, M_fdiff_oracle_biomes.csv, the rootmoist soil-water check.
 ---
 
 # fdiff-validate — cross-check F_diff against the C oracle
@@ -62,6 +62,43 @@ Two things it settled at once, and both matter for any F-water claim:
 
 **Use `rootmoist`, never `swc`** — `swc` is total water over *saturation* capacity and is NOT invertible to
 the model's `w` (ADR 0035). Two variables, overlapping numeric ranges, different denominators.
+
+## The FOUR basis checks to run BEFORE comparing any C output to F_diff (ADR 0053)
+
+Each of these produced a confident, wrong fidelity number in the M3 F-side work before it was caught. Run
+them as a checklist; three are one-liners. The reusable pair is `scripts/extract_biome_fdiff_oracle.py`
+(C side → the committed `M_fdiff_oracle_biomes.csv` + `..._annual.csv`) and
+`scripts/biome_fdiff_oracle_probe.jl` (F side, 25-patch ensemble) — copy them, don't re-derive.
+
+1. **The C's daily fluxes are ALL-PFT; the coupled driver's canopy is TREE-ONLY** (`M_individuals_*.csv`
+   keeps `type <= 6`). Grass carries **42.4 %** of GPP at boreal Siberia, 28.4 % mediterranean, 19.3 %
+   Sahel, 5.8 % Hainich, 0.2 % Amazon. Remove it *exactly* — the binary already emits per-PFT daily grass
+   GPP (`conf.h` id 419) and a single-cell re-run costs ~9 s:
+   `CELL=<orderA> RUNTAG=M_grass_val SUBMIT=yes bash scripts/run_fdiff_grass_gpp_cell.sh`
+   ⇒ `gpp_tree = d_gpp − d_grass_gpp`. **Do NOT correct by the FPC share instead** — grass under a closed
+   canopy is light-limited, so the FPC share over-states the flux share in every cell: 1.31× boreal, 1.86×
+   mediterranean, 2.08× Sahel, 2.98× Hainich (5.6× Amazon, where both numbers are ~0 and the ratio is noise).
+   `transp` and `a_lai_stand` have NO per-PFT daily equivalent and are simply not splittable; say so.
+2. **The driver runs ONE patch; the C reports the 25-patch ENSEMBLE MEAN.** The modal patch (most stems)
+   that `run_coupled_biomes.jl` picks is denser than the ensemble by FPC **1.72×** (Sahel), 1.48× (boreal),
+   1.19×, 1.14×, 1.12× — the same magnitude as the biases being measured. Run each patch independently and
+   average the OUTPUTS (`readcanopy_patches` in the probe); never put 25 patches' stems in one core, which
+   would make them compete for light inside a single canopy (the C's `getfpar.c` is per-patch too).
+   This is load-bearing: it flips Sahel's GPP verdict from **1.03 ("exact") to 0.75 (−25 %)**, and flips its
+   sign relative to ADR 0052.
+3. **A 10-yr-mean ratio hides canopy drift.** Under `slow = nothing` F's canopy is free-running and drifts
+   −13.5 % to +64.5 % in FPC. Score **F year k against C year k** and read the ratio series' SHAPE:
+   monotone = structural drift, flat-but-offset = a genuine flux-level bias. They need different fixes, and
+   a mean cannot tell them apart — boreal's 1.18 mean is a run from 0.80 to 1.70; Sahel's 0.75 is a collapse
+   from 1.10 to 0.59.
+4. **The daily NetCDF `units` attribute lies.** It reads `gC/m2/month` / `mm/month` on files written with
+   `"timestep":"daily"`; the values ARE per-day. Check by magnitude (Hainich GPP 3.27 ⇒ ~1195 gC/m²/yr,
+   correct for a temperate forest) and never divide by 30.
+
+Also: `d_nv_lai` is NOT a per-PFT stand LAI. `daily_natural.c:340` accumulates `actual_lai(pft)/npatch` and
+`actual_lai_tree` (`lai_tree.c:29`) is `leaf_c*sla/crownarea*phen` — the **within-crown** LAI, no `nind`, no
+crown-area weighting. Summing its bands gives a sum of within-crown LAIs. The stand basis needs the
+`1/(1−exp(−k·LAI))` factor (which F already forms as `plai_i`, `fast.jl:219`).
 
 ## Rules
 
