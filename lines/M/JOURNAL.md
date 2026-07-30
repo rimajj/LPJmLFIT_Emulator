@@ -315,3 +315,40 @@ it unilaterally.
 **Also closed the small S1d item S handed over:** `FToS.soilmoist` was an unweighted mean over all 23
 layers while `interface.jl:37` documents it as root-zone and S computes exactly that. Now uses the shared
 `root_zone_soilmoist`. Nothing consumed it numerically — a definition alignment, not physics.
+
+### Same day — ADR 0052: ran ADR 0051's own falsifiable test, and it CONFIRMED
+
+ADR 0051 shipped with one tagged `[ASSUMPTION]` and the exact test to kill it. Ran it rather than leaving it
+for a future session, because the test was cheap (`d_rootmoist.nc` is already in the global daily output —
+no new HPC run) and a published assumption tends to get cited as a fact.
+
+`rootmoist / Σ_{l<3} whc_nat[l]·soildepth[l]` recovers the C's own root-zone plant-available fraction — the
+same quantity as `root_zone_soilmoist` — and the answer is unambiguous. At `boreal_siberia` the C's `w` is
+**exactly 0.000 for Nov–Apr** (every drop in the top metre is ice, which is what `rootmoist = Σ w·whcs`
+reports when `w` excludes ice) while F_diff's sits flat at **0.67–0.91 all year**. Hence `emax·wr` beats the
+leaf-on demand on every single day and the leaf-on `wscal` is pinned at **1.000 in all twelve months**.
+So it is not a bad `wscal` — it is the *correct* `wscal` of a soil column that cannot freeze. Confirmed.
+
+**The same measurement then handed me a second residual I was not looking for.** The four control cells were
+supposed to be a sanity check; instead they showed F_diff's root-zone `w` is systematically **drier than the
+C's in the two dry cells** — Sahel Jan 0.361 vs 0.533, Jul 0.564 vs 0.770; mediterranean Jul 0.239 vs 0.369
+— with the same seasonal shape. That is what remains of *their* ADR-0051 gap (Sahel 36.5× the noise floor,
+mediterranean 7.5×), and it points the **opposite** way from boreal: F_diff over-stresses where it runs too
+dry. Hainich and Amazon agree well, which is exactly why the ADR-0051 fix landed cleanly there and not in
+the other three.
+
+So the five-cell `water_stress` picture is now **fully attributed to three separate causes**, one fixed:
+the `wscal` *definition* (ADR 0051 — Hainich, Amazon), **missing soil ice** (boreal), and **an F_diff
+root-zone water balance that runs too dry** (mediterranean, Sahel). Worth stating plainly because the
+tempting move after ADR 0051 was to read the remaining 36.5× as "the fix didn't really work" — it did; two
+different physics gaps sit underneath it, and neither is a `wscal` problem.
+
+**Deliberately did NOT start either fix.** Soil ice needs per-layer frozen water, a freeze/thaw energy path
+and `w`-excluding-ice everywhere `wr` is formed; the dry-cell bias needs its own `residual-diagnosis` pass
+(candidates: the `_infiltrate` cascade's missing infiltration-excess runoff, `_soil_evap`, the absent `w_fw`
+free-water reservoir). Both are ADR-0052 consequences with reference bases already established. Starting
+one here is precisely the entanglement the milestone split exists to prevent — and the dry-cell one is the
+higher-value of the two for a global run, since semi-arid cells vastly outnumber permafrost ones.
+
+**Net for M3:** it can now report per-cell demography with the conditioning *understood* rather than merely
+in-band — including which two cells carry a named, quantified water bias and which way it points.

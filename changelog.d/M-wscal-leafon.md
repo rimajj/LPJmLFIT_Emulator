@@ -37,3 +37,23 @@
   (`root_zone_soilmoist` — the top 1 m, `whcs`-weighted, what the C's `rootmoist` measures). Two
   definitions of one named quantity is the hazard ADR 0035 exists to remove. Nothing consumed the field
   numerically, so this is a definition alignment, not a physics change.
+
+- **Line M / ADR 0052 — F_diff has no soil ice, and that is the CONFIRMED cause of the boreal
+  water-stress residual ADR 0051 left open.** Ran ADR 0051's own recorded falsifiable test (no new HPC
+  run — `d_rootmoist.nc` is already in the global daily output). Recovering the C's root-zone
+  plant-available fraction as `rootmoist / Σ_{l<3} whc_nat[l]·soildepth[l]` (per ADR 0035 `rootmoist` is
+  the only C output carrying the model's `w`) gives **exactly 0.000 for Nov–Apr** at `boreal_siberia` —
+  every drop in the top metre is ice — against F_diff's flat **0.67–0.91 all year**, so `emax·wr` beats
+  the leaf-on demand every day and the leaf-on `wscal` is pinned at **1.000 in all twelve months**. Not a
+  bad `wscal`: the right `wscal` of a soil column that cannot freeze.
+
+  The same measurement identified a **second, distinct residual**: F_diff's root-zone water runs
+  systematically **too dry in dry cells** (Sahel Jan 0.361 vs the C's 0.533; mediterranean Jul 0.239 vs
+  0.369), same seasonal shape — which is what remains of those two cells' ADR-0051 gap and points the
+  opposite way (over-stress). The five-cell `water_stress` picture is now fully attributed to three
+  separate causes, one of them fixed. No code change; both fixes are deliberately left scoped as
+  ADR-0052 consequences with their reference bases established.
+
+  New reusable check: the C's `rootmoist` + `whc_nat` give a per-cell, per-day reference for the
+  emulator's root-zone water anywhere on the global grid, with no new HPC run —
+  `scripts/boreal_soilice_diagnosis.py` (C side) and `scripts/boreal_soilice_probe.jl` (F side).
