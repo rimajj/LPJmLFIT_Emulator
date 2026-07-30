@@ -313,14 +313,22 @@ distributional-path-only defect.
 **Before implementing a weighting fix, TEST THAT IT IS NOT INERT.** The two estimators coincide exactly when
 all leaves are the same size, so the fix is worthless unless leaf sizes are skewed. Measure it on the real
 artifact, not in principle: over the `t8` Wooddens marginal's 70 854 leaves the sizes are min 20 / median 26 /
-q99 371 / **max 4016**, CV **2.01**, and per query the largest of 60 leaves takes **17–21 %** of the weight
-against QRF's **1.7 %** — a 10–12× over-weight. That is the number that justified the change.
+q99 371 / **max 4016**, CV **2.01**. **Route REAL rows to size it — do not reason from the leaf-size
+distribution.** `scripts/rcop_leaf_geometry_probe.jl` gives the largest leaf hit a share of median **11.1 %** /
+mean 12.2 % / q90 **18.9 %** against QRF's **1.7 % = 1/60**, i.e. **6.7× typical and 11.3× only in the
+sparse-conditioning decile** (5.8–6.7× / 10.5–12.2× across the four axes). An earlier "17–21 %, 10–12×"
+figure was that upper decile quoted as the typical case, and it is what ADR 0038 corrects — the fix is still
+justified, just by a 7× rather than an 11× skew.
 
-**The bias has a DIRECTION, and that is why it mattered rather than being untidy.** A large leaf is one that
-stopped splitting early, so it spans a wide region of conditioning space and its values approximate the
+**The bias has a DIRECTION, and that is why it mattered rather than being untidy.** A big leaf spans a wide
+region of conditioning space, so its values approximate the
 GLOBAL marginal. Over-weighting it drags every cell's conditional toward that marginal — an ATTENUATION
 mechanism. It also explains an otherwise puzzling ladder result: **more trees did not improve per-cell
-dispersion**, because more trees means more chances to land in one dominating big leaf.
+dispersion** (12/24/40 trees at 500k/d18 give `emu_r` 0.844/0.843/0.842), because more trees means more
+chances to land in one dominating big leaf.
+- **Why those leaves are big is NOT "they stopped splitting early"** — see §Leaf geometry: they are
+  **depth-capped**. Do not restate the gain-exhaustion version; it is what made `max_depth` look like a free
+  fix for the under-dispersion, which it measurably is not.
 
 **SEPARATE THE CONFOUND before believing any measurement.** Switching to QRF also switches the quantile
 CONVENTION (the default indexes `1 + floor(u·(n−1))`; a weighted ECDF must be inverted instead). Measure the
@@ -388,9 +396,17 @@ when on its own criterion statistic it **improves on all four axes** (0.0051→0
 
 ### Leaf geometry: `max_depth` is a FREE lever and every rung so far confounded it (`[VERIFIED 2026-07-30]`)
 
-`eval_slow_copula.jl::leaf_geometry` now prints, per axis on fold 0, leaves/tree · leaf-size
-min/median/q90/q99/max · the count and stored-value SHARE at `depth == max_depth` · the size-biased pool
-`E[s²]/E[s]`. **Read it on every rung** — without it the ladder is uninterpretable:
+Two measurements, and you should never do either by hand — both published figures that were derived inline
+turned out wrong-basis:
+- **TRAINING rungs self-report.** `eval_slow_copula.jl::leaf_geometry` prints, per axis on fold 0, leaves/tree ·
+  leaf-size min/median/q90/q99/max · the count and stored-value SHARE at `depth == max_depth` · the size-biased
+  pool `E[s²]/E[s]`. **Read it on every rung.**
+- **A SERIALIZED artifact:** `scripts/rcop_leaf_geometry_probe.jl` (`RCOP=`, plus `TABLE=` for real `Xc` rows,
+  `NROWS≥4000` for a publishable figure — below ~1000 the weight multiplier jitters ~0.2×). It reports the same
+  geometry **plus** the largest leaf's share of the pooled-default prediction weight, routed through the real
+  forest. Use it for any artifact whose training log you don't have, and after the artifact rotates.
+
+Without them the ladder is uninterpretable:
 
 - Measured on the t8 production `.rcop` (60 × 50 000, d14): **99.9–100 % of leaves holding ≥ 2·min_leaf values
   sit at exactly `depth == max_depth`** (Wooddens 9 702 of 9 703) and **57–67 % of ALL stored values** are in
