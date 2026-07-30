@@ -78,6 +78,26 @@ Observed: 0 bytes, 3 h old, no process, clean tree — an interrupted `pull`, an
    `--project=.`"). Taking `--ours`/`--theirs` on a shared skill silently deletes another line's captured
    knowledge, which is the one thing the capture gate exists to prevent.
 
+**Two more, learned in anger on 2026-07-30 (line S, a documentation session):**
+8. **Check `git log origin/line/<X>..HEAD` before assuming the only unpushed commit is yours.** A prior
+   session can leave a fully legitimate, already-committed piece of work sitting locally unpushed — nothing
+   wrong with the commit itself, just not yet pushed. The routine "N ahead of / M behind `origin/main`" the
+   `SessionStart` hook reports does **not** surface this, because it compares against `origin/main`, not
+   `origin/line/<X>`. Pushing ships BOTH commits together, which is fine mechanically (same branch, sequential
+   sessions, ADR 0028's "one session at a time" model expects exactly this) — but you must recognize whose
+   work is whose before reporting "done," not silently take credit for or bury a foreign commit. Observed: a
+   full "S2 copula-gap-is-estimator-capacity" diagnosis commit (`Co-Authored-By: Claude Opus 5`) was sitting
+   unpushed when an unrelated Sonnet-5 documentation session went to commit — caught only because `git log`
+   was checked before push, not assumed clean.
+9. **A Workflow/Agent subagent's RETURNED value is not the only thing it did.** A subagent with Bash/Write
+   tool access can write side-effect files directly into the shared repo that never pass through the task's
+   own review pipeline — a fact-check stage that only inspects the returned string never sees a file the
+   agent wrote to disk on the side. Always `git status` after a Workflow run that touched this worktree,
+   before trusting "the returned text is the deliverable." Such a file can look like a bonus (real embedded
+   figures, in one case) while still failing the task's own hard constraints (it had formulas the
+   fact-checked returned text did not, and was missing whole sections) — verify it against the source before
+   reusing any part of it, don't just delete it unread and don't just trust it either.
+
 **Merge at every milestone, never hoard** — a stale branch is the only real conflict source left. `test (pre)`
 is `continue-on-error` and currently red for unrelated Julia-prerelease churn; don't chase it.
 
