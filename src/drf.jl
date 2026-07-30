@@ -393,10 +393,14 @@ BUT NOT FOR THE REASON ADR 0037 GAVE, and the difference is load-bearing. A larg
 9 703** Wooddens leaves holding >= 2*min_leaf values sit at exactly `depth == max_depth == 14` (99.9-100 % on
 every axis), and **57-67 % of ALL stored values** live in such a depth-capped leaf. They are large because the
 DEPTH BUDGET ran out while the mass was still splittable. That matters because it made `max_depth` look like
-a free fix — `.rcop` bytes scale as `ntrees*subsample*naxes` and depth is free — but raising it to 22 at
-constant subsample cuts the depth-capped share to 6-12 % and moves the per-cell dispersion `sd(pred)/sd(Y1)`
-only 0.6775 -> 0.6796. The binding constraint is rows-per-cell (~0.93 at subsample 50 000 over 54 020 cells),
-not how finely a tree may cut them; deeper trees just make leaves smaller and noisier (mean size 47 -> 27).
+a free fix — `.rcop` bytes scale as `ntrees*subsample*naxes` and depth is free — but its payoff is CONDITIONAL on the
+subsample: at subsample 50 000 an eight-level increase (d14->d22) cuts the depth-capped share to 6-12 % yet
+moves the per-cell dispersion `sd(pred)/sd(Y1)` only 0.6775 -> 0.6796, while at 500 000 a four-level increase
+(d14->d18) moves it 0.7275 -> 0.7490 — 10x the effect from a smaller change. Depth only converts splittable
+mass the subsample actually provides; the primary lever is rows-per-cell (~0.93 at subsample 50 000 over
+54 020 cells), where cutting finer just makes leaves smaller and noisier (mean size 47 -> 27). So raise depth
+to match the subsample — it is free, and at 500k/d14 fully 90.8 % of stored values are needlessly capped —
+but do not expect depth alone to buy dispersion.
 
 Both paths share the endpoint convention (`u = 0` → the minimum, `u = 1` → the maximum) and both return
 `NaN` when no tree contributed a value. `qrf = true` normalizes by the weight actually accumulated, so a
