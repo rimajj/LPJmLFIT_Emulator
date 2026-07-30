@@ -303,6 +303,38 @@ soilmoist, <boundary…>]`. `feats` is always `Float64` (the DRF channel), so th
 live_flux_cond(s, feats::AbstractVector) = vcat(Vector{Float64}(feats[1:4]), s.boundary)
 
 """
+    live_flux_cond_env(env) -> (s, feats) -> Vector{Float64}
+
+ADR 0037 — the EXTENDED recruit-copula conditioning policy: exactly [`live_flux_cond`](@ref)'s row
+(`feats[1:4]` + `s.boundary`) with a per-cell ENVIRONMENTAL tail `env` APPENDED.
+
+Why it exists. The boundary tail carries `eco_diag_gdd_5`, `tas_cold_month`, `soil_depth`, `co2` — i.e. a
+temperature and a soil axis and **no moisture or precipitation climatology at all** — while FIT's
+establishment gates are temperature AND moisture. Measured on the `t8` global generation, adding the wider
+climate descriptors lifts the attainable per-cell trait skill by +0.011 (SLA) / +0.025 (Wooddens) /
++0.042 (D95max), and on Wooddens an environment-only predictor (0.910) BEATS the eight production
+conditioning columns (0.893).
+
+Why it is a FACTORY rather than a new field. `RecruitCopula.cond` is already a pluggable policy
+`(s, feats) -> AbstractVector{Float64}` (ADR 0025), so extending the conditioning needs NO change to any
+struct, to the `.rcop` format, or to `live_flux_cond` itself — every existing construction stays
+byte-identical (guardrail 4) and line M's pinned artifacts keep working untouched. The extended
+conditioning arrives only when a caller deliberately passes this policy together with a `.rcop` whose
+`cond_cols` declare the same columns in the same order.
+
+LOAD-BEARING: `env` MUST be the same columns, in the same order and on the same basis, as the tail of
+`COPULA_COND_COLS` that the `.rcop` was trained on (`scripts/build_slow_runtime_table.py`, env knob
+`COPULA_ENV_COLS`; the artifact's `cond_cols` line is the contract). A mismatch is the ADR-0023
+train/inference shift, and it is SILENT — the marginal forests would simply be read at the wrong
+coordinates while still returning in-range traits. Check `length(env) + 4 + length(s.boundary)` against the
+`.rcop`'s `ncond` before trusting a coupled run.
+"""
+function live_flux_cond_env(env::AbstractVector{<:Real})
+    envv = Vector{Float64}(env)
+    return (s, feats) -> vcat(Vector{Float64}(feats[1:4]), s.boundary, envv)
+end
+
+"""
     make_recruit_to_pools(axis_names) -> to_pools
 
 Build the canonical `RecruitCopula.to_pools` mapping for a production copula bundle (the function is NOT

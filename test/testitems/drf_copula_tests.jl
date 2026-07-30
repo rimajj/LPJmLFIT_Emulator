@@ -145,3 +145,104 @@ end
     # dimension guard
     @test_throws DimensionMismatch DRF.sample_copula!(DRF.Xoshiro256pp(1), cop, (axes[1], axes[2]), x)
 end
+
+# ── ADR 0037: the QRF (Meinshausen 2006) leaf weighting, opt-in ────────────────────────────────────
+# `predict_quantile`'s default CONCATENATES every tree's leaf values and takes an unweighted quantile, so a
+# value's weight is 1/Σ_t|L_t(x)| and a tree that lands x in a LARGE leaf contributes proportionally more of
+# the answer. A distributional forest is defined by the opposite: each tree contributes 1/T, spread evenly
+# inside its own leaf. `qrf = true` implements that. These gate (a) the weighting arithmetic against
+# hand-computed values, (b) that the default is untouched, and (c) that the difference is a WEIGHTING effect
+# and not the accompanying quantile-convention change.
+
+@testitem "DRF predict_quantile — opt-in QRF leaf weighting (ADR 0037)" tags = [:unit] begin
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    # A hand-built 2-tree forest, each tree a single leaf, with DELIBERATELY unequal leaf sizes.
+    leafonly(vals) = DRF.RegTree([0], [0.0], [0], [0], [sum(vals) / length(vals)], [vals])
+    f = DRF.Forest([leafonly([1.0, 2.0]), leafonly([10.0, 20.0, 30.0, 40.0])], 1, true, [0.0])
+    x = [0.0]
+
+    # Pooled default: 6 values, equal weight 1/6 -> the 4-value leaf owns 4/6 of the mass.
+    # QRF (T = 2): leaf A values weigh 1/(2·2) = 0.25 each, leaf B values 1/(2·4) = 0.125 each; total 1.0.
+    #   cumulative: 1 -> 0.25, 2 -> 0.50, 10 -> 0.625, 20 -> 0.75, 30 -> 0.875, 40 -> 1.0
+    for (u, want) in [
+            (0.0, 1.0), (0.2, 1.0), (0.25, 1.0), (0.3, 2.0), (0.5, 2.0),
+            (0.6, 10.0), (0.7, 20.0), (0.8, 30.0), (1.0, 40.0),
+        ]
+        @test DRF.predict_quantile(f, x, u; qrf = true) == want
+    end
+
+    # THE HEADLINE CONSEQUENCE: the median. Pooled puts it at 10 because the big leaf owns 67 % of the mass;
+    # QRF gives the two trees an equal say and puts it at 2.
+    @test DRF.predict_quantile(f, x, 0.5) == 10.0
+    @test DRF.predict_quantile(f, x, 0.5; qrf = true) == 2.0
+
+    # Endpoints hold under both estimators.
+    @test DRF.predict_quantile(f, x, 0.0; qrf = true) == 1.0
+    @test DRF.predict_quantile(f, x, 1.0; qrf = true) == 40.0
+
+    # DEFAULT IS UNCHANGED (guardrail 4): omitting the kwarg must equal explicitly passing false, for every u.
+    for u in 0.0:0.05:1.0
+        @test DRF.predict_quantile(f, x, u) === DRF.predict_quantile(f, x, u; qrf = false)
+    end
+
+    # store_values guard still applies on the QRF path.
+    g = DRF.fit_forest(reshape(collect(1.0:20.0), 20, 1), collect(1.0:20.0); ntrees = 2, store_values = false)
+    @test_throws ErrorException DRF.predict_quantile(g, [1.0], 0.5; qrf = true)
+end
+
+@testitem "DRF QRF weighting — equal leaf sizes make the WEIGHTS agree (isolates weighting from convention)" tags = [:unit] begin
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    # With EQUAL leaf sizes the two estimators place identical mass on every value, so they can differ only
+    # by the quantile CONVENTION (the default indexes `1 + floor(u·(n−1))`; QRF inverts the weighted CDF).
+    # That residual is bounded by ONE order statistic — which is what makes the large differences seen on
+    # unequal leaves attributable to the weighting rather than to the convention. On the production global
+    # copula the same separation measures 0.002–0.014 % (convention) against 1.7–4.4 % (weighting).
+    leafonly(vals) = DRF.RegTree([0], [0.0], [0], [0], [sum(vals) / length(vals)], [vals])
+    a = [1.0, 2.0, 3.0, 4.0, 5.0]
+    b = [10.0, 20.0, 30.0, 40.0, 50.0]
+    f = DRF.Forest([leafonly(a), leafonly(b)], 1, true, [0.0])
+    x = [0.0]
+    pool = sort(vcat(a, b))
+    n = length(pool)
+
+    for u in 0.0:0.02:1.0
+        qv = DRF.predict_quantile(f, x, u; qrf = true)
+        pv = DRF.predict_quantile(f, x, u)
+        # Both must return an actual pooled order statistic, and their RANKS may differ by at most 1.
+        iq = findfirst(==(qv), pool)
+        ip = findfirst(==(pv), pool)
+        @test iq !== nothing && ip !== nothing
+        @test abs(iq - ip) <= 1
+    end
+
+    # And with unequal sizes the ranks separate far beyond that one-step bound, i.e. the weighting bites.
+    h = DRF.Forest([leafonly([1.0, 2.0]), leafonly(collect(10.0:1.0:60.0))], 1, true, [0.0])
+    @test DRF.predict_quantile(h, x, 0.5) > 10.0                  # pooled: swamped by the 51-value leaf
+    @test DRF.predict_quantile(h, x, 0.5; qrf = true) <= 2.0       # QRF: the 2-value tree keeps half the mass
+end
+
+@testitem "DRF sample_copula! threads the QRF option through every axis (ADR 0037)" tags = [:unit] begin
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    leafonly(vals) = DRF.RegTree([0], [0.0], [0], [0], [sum(vals) / length(vals)], [vals])
+    # Two axes, each with unequal leaf sizes so the two estimators must disagree.
+    f1 = DRF.Forest([leafonly([1.0, 2.0]), leafonly(collect(10.0:1.0:40.0))], 1, true, [0.0])
+    f2 = DRF.Forest([leafonly([100.0, 200.0]), leafonly(collect(1000.0:100.0:4000.0))], 1, true, [0.0])
+    cop = DRF.GaussianCopula([1.0 0.3; 0.3 1.0])
+    x = [0.0]
+
+    d_def = DRF.sample_copula!(DRF.Xoshiro256pp(11), cop, [f1, f2], x)
+    d_off = DRF.sample_copula!(DRF.Xoshiro256pp(11), cop, [f1, f2], x; qrf = false)
+    d_qrf = DRF.sample_copula!(DRF.Xoshiro256pp(11), cop, [f1, f2], x; qrf = true)
+
+    @test d_def == d_off                      # default unchanged (guardrail 4)
+    @test length(d_qrf) == 2
+    @test all(isfinite, d_qrf)
+    # Same RNG stream, so the uniforms are identical and any difference is the marginal estimator alone.
+    @test d_qrf != d_def
+end

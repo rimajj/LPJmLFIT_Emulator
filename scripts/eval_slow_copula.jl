@@ -18,7 +18,8 @@
 # it did before they existed, so every pre-existing table dir keeps working unchanged.
 #
 #   OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic KFOLDS=5 julia scripts/eval_slow_copula.jl
-# ENV: OUT, KFOLDS (5), NTREES/MAX_DEPTH/MIN_LEAF/SUBSAMPLE. Heavy (K×naxes forest fits, store_values) → SLURM.
+# ENV: OUT, KFOLDS (5), NTREES/MAX_DEPTH/MIN_LEAF/SUBSAMPLE, QRF (0; 1 = Meinshausen QRF leaf weighting,
+#      ADR 0037). Heavy (K×naxes forest fits, store_values) → SLURM.
 
 include(joinpath(@__DIR__, "..", "src", "drf.jl"))
 using .DRF
@@ -83,6 +84,11 @@ function main()
     max_depth = parse(Int, get(ENV, "MAX_DEPTH", "14"))
     min_leaf = parse(Int, get(ENV, "MIN_LEAF", "20"))
     subsample = parse(Int, get(ENV, "SUBSAMPLE", "50000"))
+    # ADR 0037: QRF=1 selects the Meinshausen quantile-regression-forest weighting in
+    # DRF.predict_quantile (each tree contributes 1/T, spread inside ITS leaf) instead of the
+    # default equal-weight concatenation of all leaf values, which over-weights whichever tree
+    # happened to land x in a LARGE leaf. Default 0 => this script stays byte-identical.
+    qrf = get(ENV, "QRF", "0") == "1"
     @info "loaded copula table" n ncond naxes prod_axes nstruct struct_axes ncells = length(unique(cells)) kfolds
 
     fold = Int[mod(hash(c), kfolds) for c in cells]        # each cell in exactly ONE test fold
@@ -106,10 +112,10 @@ function main()
             # single-assignment locals so the `@threads` closure does not box the reassigned `a`/`f`/`teidx`
             # (JET boxed-capture trap, CLAUDE.md §2).
             pa = preds[a]
-            let a = a, f = f, pa = pa, ti = teidx
+            let a = a, f = f, pa = pa, ti = teidx, qrf = qrf
                 Threads.@threads for i in ti
                     u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a))
-                    @inbounds pa[i] = DRF.predict_quantile(f, (@view Xc[i, :]), u)
+                    @inbounds pa[i] = DRF.predict_quantile(f, (@view Xc[i, :]), u; qrf = qrf)
                 end
             end
             println("   axis $(rpad(String(ax), 10)) [$(axis_kind(a, naxes))] done (fold $k)"); flush(stdout)

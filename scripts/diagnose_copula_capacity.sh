@@ -44,6 +44,9 @@
 #      SRC2 (seed2 floor dir), EVAL_NTREES (40), EVAL_SUBSAMPLE (50000),
 #      MAX_DEPTH (14), MIN_LEAF (20), KFOLDS (5), TIME (04:00:00),
 #      NCPUS (64), SUBMIT (yes),
+#      QRF (0; 1 = the Meinshausen QRF leaf weighting in DRF.predict_quantile instead of the
+#        default equal-weight concatenation of all leaf values — ADR 0037. Isolate it by holding
+#        the capacity at the baseline and flipping ONLY this.)
 #      TRAIT_ONLY (0; 1 = write a trimmed manifest WITHOUT nstruct/struct_axes so
 #        only the 4 PRODUCTION trait axes are evaluated -- the ADR-0030 gate axes.
 #        Cuts the eval ~33%. The struct axes are diagnostic (ADR 0036) and cannot
@@ -71,7 +74,7 @@ SRC2="${SRC2:-${BASE}/slow_copula_historic_seed2_t8}"
 EVAL_NTREES="${EVAL_NTREES:-40}"; EVAL_SUBSAMPLE="${EVAL_SUBSAMPLE:-50000}"
 MAX_DEPTH="${MAX_DEPTH:-14}"; MIN_LEAF="${MIN_LEAF:-20}"; KFOLDS="${KFOLDS:-5}"
 TIME="${TIME:-04:00:00}"; NCPUS="${NCPUS:-64}"; SUBMIT="${SUBMIT:-yes}"
-TRAIT_ONLY="${TRAIT_ONLY:-0}"
+TRAIT_ONLY="${TRAIT_ONLY:-0}"; QRF="${QRF:-0}"
 ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${QOS:-short}"
 JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"   # DRF is zero-dep pure-Base
 PY="${PY:-/home/jamirp/.conda/envs/py311_new/bin/python}"
@@ -137,12 +140,12 @@ cd "${REPO}"
 export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
 echo "=== ${TAG} on \$(hostname) at \$(date) ==="
-echo "=== CAPACITY: NTREES=${EVAL_NTREES} SUBSAMPLE=${EVAL_SUBSAMPLE} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} ==="
+echo "=== CAPACITY: NTREES=${EVAL_NTREES} SUBSAMPLE=${EVAL_SUBSAMPLE} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} QRF=${QRF} ==="
 echo "=== shadow=${SHADOW}  src=${SRC} (inputs symlinked; preds land in the shadow) ==="
 
 echo; echo "== [1/3] K-fold-by-cell OOS at this capacity =========================="
 OUT=${SHADOW} KFOLDS=${KFOLDS} NTREES=${EVAL_NTREES} MAX_DEPTH=${MAX_DEPTH} \\
-  MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${EVAL_SUBSAMPLE} ${JULIA} scripts/eval_slow_copula.jl
+  MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${EVAL_SUBSAMPLE} QRF=${QRF} ${JULIA} scripts/eval_slow_copula.jl
 rc=\$?; [ \$rc -ne 0 ] && { echo "eval_slow_copula.jl FAILED rc=\$rc"; echo "=== JOB DONE tag=${TAG} exit=\$rc ==="; exit \$rc; }
 
 echo; echo "== [2/3] the source table's own predictions must be UNTOUCHED ========="

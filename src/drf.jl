@@ -324,14 +324,49 @@ function predict(forest::Forest, X::AbstractMatrix{Float64})
 end
 
 """
-    predict_quantile(forest, x, u) -> value
+    predict_quantile(forest, x, u; qrf::Bool = false) -> value
 
-Distributional draw: pool the leaf sample values of every tree for row `x`, return the empirical
-`u`-quantile (u in [0,1]). Requires `store_values=true` at fit time. Used to map a copula uniform
-onto a climate/flux-conditioned marginal (recruit traits).
+Distributional draw: the empirical `u`-quantile (u in [0,1]) of the conditional distribution the forest
+assigns to row `x`. Requires `store_values=true` at fit time. Used to map a copula uniform onto a
+climate/flux-conditioned marginal (recruit traits).
+
+Two estimators, selected by `qrf`:
+
+  * **`qrf = false` (DEFAULT, the pre-ADR-0037 behaviour)** — CONCATENATE every tree's leaf values into one
+    pool and take the unweighted `u`-quantile. Every stored value carries the same weight
+    `1 / Σ_t |L_t(x)|`, so a tree whose leaf happens to be LARGE contributes proportionally more of the
+    answer. Kept as the default so every committed artifact, golden draw pair and reference baseline stays
+    BITWISE unchanged (guardrail 4).
+  * **`qrf = true` — the Meinshausen (2006) quantile-regression-forest weighting**, which is the estimator
+    a distributional forest is *defined* by: each tree contributes `1/T` of the total mass, spread evenly
+    over the values in ITS leaf, i.e. observation `i` gets
+
+        w_i(x) = (1/T) · Σ_t  1{i ∈ L_t(x)} / |L_t(x)|
+
+    and the answer is the `u`-quantile of `F̂(y|x) = Σ_i w_i(x) · 1{Y_i ≤ y}`.
+
+WHY THE DEFAULT IS WRONG, AND WHY IT BIASES ONE WAY (ADR 0037; measured, not argued). The two agree only
+when every leaf `L_t(x)` has the SAME size. In the production global copula they do not: over the Wooddens
+marginal's 70 854 leaves the sizes run min 20 / median 26 / q90 55 / q99 371 / **max 4016** (coefficient of
+variation **2.01**). Per query point the largest of the 60 leaves typically holds ~1400-1750 values against a
+median leaf's ~35, so under the pooled default that ONE leaf takes **17-21 %** of the prediction weight where
+QRF gives it **1.7 % = 1/60** — a 10-12x over-weighting.
+
+The bias has a direction, which is what makes it matter here rather than merely being untidy: a large leaf is
+by construction a leaf that stopped splitting early, so it spans a WIDE region of conditioning space and its
+value distribution is close to the GLOBAL marginal. Over-weighting it drags every cell's conditional toward
+that global marginal — i.e. it is an ATTENUATION mechanism, and it is why adding trees did not help the
+per-cell dispersion (more trees = more chances to land in one dominating big leaf).
+
+Both paths share the endpoint convention (`u = 0` → the minimum, `u = 1` → the maximum) and both return
+`NaN` when no tree contributed a value. `qrf = true` normalizes by the weight actually accumulated, so a
+tree with an empty leaf is skipped rather than silently shrinking the distribution.
 """
-function predict_quantile(forest::Forest, x::AbstractVector{Float64}, u::Float64)
+function predict_quantile(forest::Forest, x::AbstractVector{Float64}, u::Float64; qrf::Bool = false)
     forest.store_values || error("predict_quantile requires fit_forest(...; store_values=true)")
+    if qrf
+        return _predict_quantile_qrf(forest, x, u)
+    end
     pool = Float64[]
     @inbounds for tree in forest.trees
         append!(pool, tree.values[_leaf(tree, x, forest.fill)])
@@ -341,6 +376,35 @@ function predict_quantile(forest::Forest, x::AbstractVector{Float64}, u::Float64
     u = clamp(u, 0.0, 1.0)
     idx = clamp(1 + floor(Int, u * (length(pool) - 1)), 1, length(pool))
     return pool[idx]
+end
+
+# Meinshausen (2006) QRF weighting — see `predict_quantile`. Sorting (value, weight) pairs keeps this
+# allocation-comparable to the pooled path (one Vector + one sort!) instead of needing a `sortperm`
+# permutation array; `Tuple{Float64,Float64}` sorts lexicographically, i.e. by value, which is what we want.
+function _predict_quantile_qrf(forest::Forest, x::AbstractVector{Float64}, u::Float64)
+    T = length(forest.trees)
+    vw = Vector{Tuple{Float64, Float64}}()
+    total = 0.0
+    @inbounds for tree in forest.trees
+        lv = tree.values[_leaf(tree, x, forest.fill)]
+        nl = length(lv)
+        nl == 0 && continue
+        w = 1.0 / (T * nl)              # each tree contributes 1/T, spread evenly inside ITS leaf
+        for v in lv
+            push!(vw, (v, w))
+            total += w
+        end
+    end
+    isempty(vw) && return NaN
+    sort!(vw)
+    # Normalize by the mass actually accumulated (empty leaves skipped), so this is a proper quantile.
+    target = clamp(u, 0.0, 1.0) * total
+    cum = 0.0
+    @inbounds for k in eachindex(vw)
+        cum += vw[k][2]
+        cum >= target && return vw[k][1]
+    end
+    return vw[end][1]
 end
 
 "Permutation-free split-gain feature importance (count of splits per feature, tree-averaged)."
@@ -489,13 +553,16 @@ matching per-axis FLUX-CONDITIONED empirical marginal `predict_quantile(axis_for
 `axis_forests` must hold `cop.d` DRFs (each fit with `store_values=true`); `x` is the flux/boundary
 feature row those marginals were conditioned on. Deterministic under `rng`.
 """
-function sample_copula!(rng::Xoshiro256pp, cop::GaussianCopula, axis_forests, x::AbstractVector{Float64})
+function sample_copula!(
+        rng::Xoshiro256pp, cop::GaussianCopula, axis_forests, x::AbstractVector{Float64};
+        qrf::Bool = false,
+    )
     length(axis_forests) == cop.d ||
         throw(DimensionMismatch("sample_copula!: need $(cop.d) axis forests, got $(length(axis_forests))"))
     u = copula_uniforms!(rng, cop)
     out = Vector{Float64}(undef, cop.d)
     @inbounds for i in 1:cop.d
-        out[i] = predict_quantile(axis_forests[i], x, u[i])
+        out[i] = predict_quantile(axis_forests[i], x, u[i]; qrf = qrf)
     end
     return out
 end

@@ -148,7 +148,22 @@ MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 med
 # is compile-time dead in this build, so it is NOT an axis; ADR 0025). Trained on SURVIVING stems only
 # (isdead==0): the emulator's mortality is trait-blind, so the community distribution = the establishment
 # distribution, which must therefore be FIT's SURVIVOR marginal.
-COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS
+# ADR 0037 — OPT-IN EXTENDED conditioning (env `COPULA_ENV_COLS`, comma-separated `cell_year_feats` columns,
+# DEFAULT EMPTY so this builder's output stays byte-identical). Appended AFTER the boundary tail, so the
+# existing 8 columns keep their positions and only the tail grows.
+#
+# WHY: the boundary tail is `eco_diag_gdd_5`, `tas_cold_month`, `soil_depth`, `co2` — one temperature axis and
+# one soil axis, and NO moisture or precipitation climatology — while FIT's establishment gates are
+# temperature AND moisture. Measured on `t8` (scripts/diagnose_copula_cond_ceiling.py): adding the wider
+# climate descriptors lifts attainable per-cell trait skill by +0.011 SLA / +0.025 Wooddens / +0.042 D95max,
+# and on Wooddens an environment-only predictor BEATS the eight production columns (0.910 vs 0.893).
+#
+# LOAD-BEARING (ADR 0023, and it fails SILENTLY): the runtime must build the SAME tail in the SAME order via
+# `src/components/slow.jl::live_flux_cond_env`. The `.rcop`'s `cond_cols` line is the contract between them.
+# These are per-CELL time means, matching the DEFAULT static boundary basis; a transient (per Cell,Year)
+# variant would have to mirror `BOUNDARY_WINDOW` the way `_boundary_source` does.
+COPULA_ENV_COLS = [c.strip() for c in os.environ.get("COPULA_ENV_COLS", "").split(",") if c.strip()]
+COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS + COPULA_ENV_COLS
 COPULA_AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
 
 # DIAGNOSTIC-ONLY per-stem axes (opt-in, env STRUCT_AXES): the stand-STRUCTURE validation targets — per-stem
@@ -291,6 +306,31 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     cyf, bkeys = _boundary_source(scenario)
     cond = (agg.select(["Cell", "Patch", "Year"] + HEAD_COLS[:4])
             .join(cyf, on=bkeys, how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
+    if COPULA_ENV_COLS:
+        # Per-CELL time means over the scenario's years (the static-boundary basis). LEFT-joined like the
+        # boundary, then asserted non-null: a silent null here would become a NaN in Xc, and `is_not_null`
+        # does NOT catch NaN in polars (CLAUDE.md §4), so check both.
+        have = pl.scan_parquet(CELL_YEAR_FEATS).collect_schema().names()
+        missing = [c for c in COPULA_ENV_COLS if c not in have]
+        if missing:
+            raise SystemExit(f"FATAL: COPULA_ENV_COLS not in cell_year_feats: {missing}")
+        envt = (pl.scan_parquet(CELL_YEAR_FEATS)
+                .filter(pl.col("Year") >= FIRSTYEAR[scenario])
+                .select(["Cell"] + COPULA_ENV_COLS)
+                .group_by("Cell")
+                .agg([pl.col(c).cast(pl.Float64).mean().alias(c) for c in COPULA_ENV_COLS])
+                .collect())
+        bad = {c: int(envt[c].is_null().sum() + envt[c].is_nan().sum()) for c in COPULA_ENV_COLS}
+        assert not any(bad.values()), f"null/NaN in COPULA_ENV_COLS per-cell means: {bad}"
+        h_pre = cond.select(pl.len()).collect().item() if hasattr(cond, "collect") else cond.height
+        cond = cond.join(envt.lazy() if hasattr(cond, "collect") else envt, on="Cell", how="inner")
+        h_post = cond.select(pl.len()).collect().item() if hasattr(cond, "collect") else cond.height
+        assert h_post >= 0.98 * h_pre, (
+            f"COPULA_ENV_COLS join dropped {h_pre - h_post} of {h_pre} conditioning rows "
+            f"({100 * (1 - h_post / max(h_pre, 1)):.2f}%) — a coverage hole, not a rounding loss"
+        )
+        print(f"== COPULA_ENV_COLS: appended {len(COPULA_ENV_COLS)} per-cell env column(s) "
+              f"{COPULA_ENV_COLS} -> ncond={len(COPULA_COND_COLS)}")
 
     stem_filt = pl.col("Type").is_in(TREE_TYPES) & (pl.col("isdead") == 0)
     if cells:
