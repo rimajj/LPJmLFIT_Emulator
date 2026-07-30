@@ -275,6 +275,21 @@ struct RecruitCopula{T <: AbstractFloat}
     x::Vector{Float64}
     to_pools::Any
     cond::Any
+    qrf::Bool
+end
+
+# ADR 0037: `qrf` selects the marginal estimator used at establishment — `false` (DEFAULT) the historical
+# equal-weight pooling of every tree's leaf values, `true` the Meinshausen quantile-regression-forest
+# weighting (see `DRF.predict_quantile`). It MUST match the estimator the artifact's published skill numbers
+# and golden draw pairs were produced under (`scripts/train_slow_copula.jl` writes `qrf_weighting` into the
+# `.rcop` meta for exactly this reason) — otherwise the runtime samples a different conditional distribution
+# than was evaluated, which is the ADR-0023 train/inference shift and is SILENT: the draws stay in range.
+# Defaulted in EVERY constructor so all pre-ADR-0037 call sites (including line M's) are byte-identical.
+function RecruitCopula{T}(
+        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools, cond;
+        qrf::Bool = false,
+    ) where {T <: AbstractFloat}
+    return RecruitCopula{T}(cop, axis_forests, x, to_pools, cond, qrf)
 end
 
 "Static conditioning policy: ignore `(s, feats)` and return the baked row `x` (the pre-ADR-0025 behaviour)."
@@ -283,9 +298,10 @@ _static_cond(x::Vector{Float64}) = (_s, _feats) -> x
 # Backward-compatible 4-arg constructor: STATIC conditioning on `x` (feats ignored) ⇒ every pre-ADR-0025
 # `RecruitCopula` (incl. the committed copula gates) is byte-identical. Production passes `live_flux_cond`.
 function RecruitCopula{T}(
-        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools
+        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools;
+        qrf::Bool = false,
     ) where {T <: AbstractFloat}
-    return RecruitCopula{T}(cop, axis_forests, x, to_pools, _static_cond(x))
+    return RecruitCopula{T}(cop, axis_forests, x, to_pools, _static_cond(x), qrf)
 end
 
 """
@@ -747,7 +763,7 @@ function reconcile_demography!(
                 # condition the axis marginals on the LIVE feature row via the copula's policy (ADR 0025):
                 # `live_flux_cond` reads climate/flux + boundary; the default static policy returns `rc.x`.
                 xcond = rc.cond(s, feats)
-                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, xcond)
+                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, xcond; qrf = rc.qrf)
                 rc.to_pools(traits, s.sapl, fc.allom)::FDiff.TreePools{T}
             end
             recruit = _with_nind(recruit_ind, dn)
