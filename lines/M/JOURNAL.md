@@ -191,3 +191,59 @@ of gating rather than trusting a handoff note.
 **Deliberately left undone:** `M_cells.csv` is NOT yet extended. Emitting it from `_t7` while the pin says
 `pooled_w20` would silently adopt the unpinned retrain — precisely ADR 0023's trap. Resolving the pin is
 step 0 of the next session and is an integration point with line S.
+
+---
+
+## 2026-07-30 — M2 DONE: the flux-driven S runs multi-cell; re-pinned to `_t8`
+
+**The pin resolved itself favourably.** Last session ended blocked: the pinned `pooled_w20` pair had never
+been trained on `semiarid_sahel`, and the `_t7` retrain had no published `.rcop`. S has since finished the
+**`_t8`** generation (merged to `main`, ADR 0036) and left a detailed handoff note in this file's STATE.md.
+`_t8` is the right pin for a *coupled* run for a reason beyond coverage: it re-derives the population on the
+**ADR-0035 feature bases**, so a coupled run does not inherit the retired `soilmoist`/`lai` bases that `_t7`
+was built on. `_t7`'s OOS numbers remain valid as offline measurements.
+
+**I verified it rather than trusting the note** — not from suspicion (S's note was accurate in every
+particular) but because the ADR-0023 pin exists precisely so M owns what it runs:
+- `DRF.load_forest` → `nfeat 15`, 150 trees; `DRF.load_copula` → 4 axes, and **`nfeat = 8` on every axis
+  forest**. That last check is the one that actually proves ADR 0036's new diagnostic axes (`agb`, `Height`)
+  are absent from the `.rcop` — the meta only *claims* 4 axes, so reading the meta would have been circular.
+- Coverage read out of `cell_meta.parquet` directly: 5/5 biome cells on both `_t8` tables.
+
+**An unplanned bit-identity check turned into the strongest provenance assertion in the file.** The committed
+`drf_forest_hainich_meta.txt` bakes its own `boundary`/`n_init`/`age0`, and those are the *same quantity from
+the same upstream* as what my extractor pulls from `cell_meta.parquet`. They agreed — but only after I fixed
+the extractor's `%.6f` formatting, which truncated `1863.695068359375` → `1863.695068`. Since these values
+are compared against DRF split thresholds, display precision is not good enough. Emitting `repr` (`%.17g`)
+made the row bit-identical, so the test now asserts `==` rather than `isapprox`. An off-by-one in the
+boundary tail, or a scenario/version mix-up, still produces four plausible-looking numbers; only the equality
+catches it.
+
+**One real failure, and it was the test's fault, not the model's** (job 1643115, caught by the suite rather
+than by inspection). The S→F feedback assertion `npp_with_S != npp_without_S` failed in all five cells.
+Cause: `reconcile_demography!` FORCES `ρ = 1` on its year-0 call to seed the recursive AR state, so the first
+year-end is a deliberate no-op and the first real demographic change lands at the *second* year-end — which,
+in a 2-year run, is after the last simulated day. S provably could not move F's fluxes. Fixed by running 4
+years. The general lesson (captured in `julia-test`): before asserting a slow/annual mechanism changed
+something, count the steps between when it first *acts* and when the run *ends*.
+
+**Also closed M1 review debt #1.** Test item 2 was measured last session to pass verbatim when all five cells
+revert to Hainich's inputs — its assertions were closure, finiteness and qualitative orderings, none of which
+can see a driver-level fallback. It now pins each cell's own mean LE/GPP (±2 %/±3 %) against a 24.9…119.3
+W/m² between-cell spread, plus a mutual-distinguishability assertion so the pins function as a fallback
+detector rather than five independent smoke checks.
+
+**Deliberately NOT claimed:** the CI gate loads the *committed Hainich demo forest*, not the pinned 180 MB
+global pair, because CI has no cluster. Conservation, determinism and the transient-boundary mechanism are
+artifact-independent, so that is sound — but it means this gate says nothing about per-cell count *skill*.
+A DRF prediction is a convex combination of leaf means and therefore cannot leave `[y_min, y_max]` however
+out-of-domain its input, so the target-band assertion is structural. Per-cell science vs the C truth is M3.
+
+**Evidence:** suite 107,192 pass / 0 fail / 4 broken (job 1643130, 5m57s), +153 assertions over the 107,039
+baseline. Runic clean over `src test ext scripts`.
+
+**Next:** M3 — coupled multi-cell validation vs the C truth, scored against the seed1-vs-seed2 noise floor.
+Everything it needs is already on disk. The `water_stress` runtime-vs-trained shift (6.6× the trained band
+width, now the ONLY out-of-band column after ADR 0035) is line M's to diagnose and should be scoped *before*
+M3 draws per-cell conclusions — `feature_history` plus the `_t8` meta's `feat_min`/`feat_max` make it
+directly measurable per cell.
