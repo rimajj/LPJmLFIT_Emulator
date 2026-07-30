@@ -65,6 +65,35 @@ duplicate it.
 `biome_forcing_<name>.csv` by name — a registered + extracted cell needs no Julia edit. The driver also runs
 the legacy common-Hainich configuration, so its `dLE`/`dBowen` columns isolate the vegetation+soil effect.
 
+### 5b. A/B-ing an F-core change across all five cells — COPY, don't re-derive
+
+Whenever you change F physics or add a `WaterParams`/`FDiffParams` flag, the honest measurement is the same
+five-cell A/B every time, and `residual-diagnosis` §3g is explicit that one cell will name the wrong
+dominant mechanism. **`scripts/wscal_leafon_probe.jl` (ADR 0051) is the canonical driver — copy it.** It
+already has: the four per-cell readers, a `mkparams(flag)` that starts from `FDiff.tebs_params` and flips
+**only** your field, a daily loop replicating `run_coupled_cell`'s (`couple_day!` + `fc.water_avail`) for
+per-day diagnostics with `slow=nothing`, and a full coupled `FluxDrivenSlowEmulator` run on the pinned
+`_t8` forest reading `s.feature_history` for the exact row the DRF was fed, plus `s.n_prev` for the
+demographic consequence.
+
+Three traps it encodes, each of which cost a failed run:
+
+- **`mkparams` must start from `FDiff.tebs_params(Float64)`, never a bare `FDiffParams{Float64}()`** — the
+  fast core defaults to the *calibrated* set, so a bare constructor silently swaps every other constant
+  (e.g. `emax` 10.0 → 5.0) and the A/B measures the wrong thing. Rebuild the inner params via
+  `NamedTuple`+`merge` and the POSITIONAL `FDiffParams` constructor (field order `photo, tstress, water,
+  resp, allom, nlambda, ω`).
+- **The per-cell readers are duplicated in four places** (`run_coupled_biomes.jl`, the three
+  `biome_coupled_tests.jl` items, and this probe) because testitems must be self-contained. Copy the block;
+  do not try to factor it into a module the testitems can share.
+- **`Statistics` is NOT in the test env.** Scripts may `using Statistics`; a `@testitem` must define
+  `_mean(x) = sum(x)/length(x)` (the sibling convention) or it errors at load.
+
+The reference side is `scripts/wscal_c_truth_diagnosis.py`: derive the C's own column per cell/year
+**exactly as the training-table builder forms it**, and report error in units of the **seed1-vs-seed2 noise
+floor** — filtering to 5 cells makes the aggregate small enough to `collect()` non-streaming, which also
+sidesteps CLAUDE.md §4's streaming key-set nondeterminism (assert your key set anyway).
+
 ## 6. The per-cell Component-S seed + boundary (M2) — and how to ADOPT an S artifact version
 
 A cell also needs the S side: `n_init`, `age0`, and the 4-column slow boundary
