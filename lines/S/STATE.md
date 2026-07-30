@@ -89,10 +89,23 @@ against `ncond`.
    `recruit_copula_global_historic_t9.rcop`. Do NOT re-run the orchestrator: it rebuilds the table, and ADR
    0036 §5b established polars streaming is non-deterministic in its emitted KEY SET, so a rebuild risks a
    DIFFERENT row set. (A `COPULA_ENV_COLS` table, however, must be built fresh — assert its key set.)
-4. **`train_slow_copula.jl` needs the same `QRF` knob `eval_slow_copula.jl` now has**, or the shipped artifact
-   is fit/served under a different estimator than it was scored with — record it in the `.rcop` meta.
+4. ~~`train_slow_copula.jl` needs the same `QRF` knob~~ **DONE (`e8eb0e89`)** — the estimator now travels the
+   whole way: `QRF` on both `eval_slow_copula.jl` and `train_slow_copula.jl`, a **`qrf_weighting 0|1`** line in
+   the `.rcop` meta (so the artifact declares what produced its golden pairs), and a **`qrf` field on
+   `RecruitCopula`** that `reconcile_demography!` passes to `sample_copula!`. Defaulted in BOTH legacy
+   constructors (4-arg and 5-arg, verified) ⇒ line M's call sites are byte-identical. So `t9` only needs
+   `QRF=1` set on the train step; do NOT hand-edit the meta.
 5. **ADR 0037** (next free in S's block) recording all three levers with their separate measurements, then
    notify `lines/M/STATE.md` to re-pin deliberately. Do NOT collapse the three into one number.
+
+### CI reading for this branch (do not re-diagnose)
+
+`test (pre)` is red for **unrelated Julia-prerelease churn** — verified, not assumed: it dies inside
+ReTestItems' own `runtests` with `MethodError: no method matching
+setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)`, i.e. the test RUNNER breaks at collection time
+before any testitem executes, so it cannot involve `drf.jl`/`slow.jl`/the QRF path. It is `continue-on-error`.
+An intermediate sha's `test (lts)` may also read **cancelled** — a follow-up push cancels the older pending
+run (CLAUDE.md §9 note 5); the NEWEST sha is the one that carries a verdict.
 
 ### Traps found today
 
