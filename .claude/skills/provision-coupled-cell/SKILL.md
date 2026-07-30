@@ -116,7 +116,22 @@ META_TXT=$SC/drf_forest_global_historic_t7_meta.txt \
 `/p/tmp` artifact — CI has no cluster. That is fine because closure/determinism are artifact-independent, and
 a DRF prediction is a mean over leaf values so it cannot leave its training target range even when
 extrapolating. Template: `test/testitems/slow_production_drf_tests.jl` (fixed-N reference vs S-driven
-mechanism, carbon ≤1e-6·C_scale, energy, determinism under seed).
+mechanism, carbon ≤1e-6·C_scale, energy, determinism under seed) — and, for the multi-cell version,
+`biome_coupled_tests.jl`'s M2 item (per-cell seed + per-cell `ClimBuf`).
+
+**Emit the fixture at `repr` (`%.17g`), never `%.6f`.** These values are compared against DRF split
+thresholds, so display precision is not good enough: `%.6f` truncated Hainich's `eco_diag_gdd_5`
+1863.695068359375 → 1863.695068. With exact output, `M_cells.csv`'s Hainich row comes out **bit-identical**
+to the committed `drf_forest_hainich_meta.txt`'s own baked `boundary`/`n_init`/`age0` — the same quantity
+from the same upstream — which turns a fuzzy provenance check into an exact `==`. Assert it: an off-by-one
+in the boundary tail, or a scenario/version mix-up, still produces four plausible-looking numbers.
+
+**Verify the artifact yourself; do not take the publishing line's word for it.** S's handoff note is written
+in good faith and has been accurate, but the whole point of the ADR-0023 pin is that M owns what it runs. Two
+checks, both seconds: deserialize both halves (`DRF.load_forest` → `nfeat`/`ntrees`; `DRF.load_copula` →
+`axis_names`, `cond_cols`, and `nfeat` per axis forest — that last one is what actually proves the ADR-0036
+diagnostic axes `agb`/`Height` are absent from the `.rcop`, since the meta only *claims* it), and read the
+cell coverage out of `cell_meta.parquet` rather than trusting a stated cell count.
 
 ## Traps (each one cost real time)
 
