@@ -64,6 +64,22 @@ def r2(obs, pred):
     return 1.0 - ss / st if st > 0 else 0.0
 
 
+def ks2(a, b):
+    """Two-sample Kolmogorov-Smirnov statistic.
+
+    MODULE-LEVEL ON PURPOSE (was a closure inside `main`): `scripts/score_slow_copula_ks.py` imports THIS
+    function so the ADR-0030 gate's criterion 3 ("pooled KS not degraded, <= 0.02") is scored with the same
+    estimator that produced the published `metrics_traits.txt` numbers. Two independent copies of one
+    definition is the ADR-0031 failure mode -- there is exactly one KS here.
+
+    Closure-free (it reads only its arguments), so hoisting it out of `main` cannot change any figure.
+    """
+    a = np.sort(a)
+    b = np.sort(b)
+    v = np.concatenate([a, b])
+    return float(np.max(np.abs(np.searchsorted(a, v, "right") / len(a) - np.searchsorted(b, v, "right") / len(b))))
+
+
 def rmse(obs, pred):
     m = np.isfinite(obs) & np.isfinite(pred)
     return float(np.sqrt(np.mean((pred[m] - obs[m]) ** 2)))
@@ -258,12 +274,6 @@ def main() -> int:
         cop_scenario = cman.get("scenario", "")
         cop_stem_cap = int(cman.get("stem_cap", "0") or 0)
         ccells = np.fromfile(os.path.join(copula_out, "cells.i64"), dtype="<i8")
-
-        def ks2(a, b):  # two-sample Kolmogorov–Smirnov statistic
-            a = np.sort(a)
-            b = np.sort(b)
-            v = np.concatenate([a, b])
-            return float(np.max(np.abs(np.searchsorted(a, v, "right") / len(a) - np.searchsorted(b, v, "right") / len(b))))
 
         qs = np.array([0.05, 0.25, 0.5, 0.75, 0.95])
         tm = open(os.path.join(figdir, "metrics_traits.txt"), "w")
