@@ -264,8 +264,11 @@ def main():
         vals = rows.get(nm, {})
         for c in add:
             v = vals.get(c)
-            # %.6f matches the table's existing print resolution; the driver parses Float64
-            row.append("" if v is None else f"{v:.6f}")
+            # `repr` (= %.17g) so the Float64 the driver parses is EXACTLY the value the artifact
+            # was trained on. Not cosmetic: these feed DRF split thresholds, and the older %.6f
+            # truncated Hainich's eco_diag_gdd_5 1863.695068359375 -> 1863.695068. Verified against
+            # the committed drf_forest_hainich_meta.txt, whose baked boundary is bit-identical.
+            row.append("" if v is None else repr(v))
 
     note = (
         "# n_init/age0 = per-cell MEDIAN over the training years of n_living / age_mean "
