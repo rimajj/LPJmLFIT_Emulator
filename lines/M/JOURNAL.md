@@ -352,3 +352,56 @@ higher-value of the two for a global run, since semi-arid cells vastly outnumber
 
 **Net for M3:** it can now report per-cell demography with the conditioning *understood* rather than merely
 in-band — including which two cells carry a named, quantified water bias and which way it points.
+
+---
+
+## 2026-07-30 (session 2) — M3's F-side: the basis was the finding (ADR 0053)
+
+Picked up the handoff's item 1 first. **Line S has not answered the `wscal_leafon` flip** — its STATE still
+says "Not S's to chase: `water_stress` is line M's F core, leave it pinned", and it is mid-flight on S2
+(copula estimator capacity, four rungs queued). So the two-sided integration cannot be closed from here, and
+M3 takes **option (b)** from its own handoff: default stays `false`, every M3 number is produced with
+`wscal_leafon = true` passed explicitly and labelled as such. Recorded so S can still take option (a) later.
+
+Then item 3, "the cheap win, still unclaimed": the per-cell F_diff-vs-C oracle for GPP/transp/LAI/FPC. It was
+supposed to be cheap. It was — but almost all of the value turned out to be in the `residual-diagnosis` step
+rather than the measurement, because **two of the four reference bases were wrong**, each by more than the
+physics they were hiding.
+
+**Artifact 1 — the C's daily fluxes are ALL-PFT; F_diff's canopy is tree-only.** `M_individuals_*.csv` keeps
+`type <= 6`, so F has literally zero grass individuals (checked, not assumed). The C cell's grass carries
+**42.4 %** of GPP at boreal Siberia. I did not caveat it: the binary already emits per-PFT daily grass GPP
+(the id-419 output a past session added), and a single-cell re-run is ~9 s, so four re-runs gave
+`gpp_tree = d_gpp − d_grass_gpp` exactly. Worth recording that the *obvious* shortcut — correct by the grass
+FPC share — would have been wrong in every cell and in the same direction: FPC share over-states the flux
+share by 1.3–3.0×, because grass under a closed canopy is light-limited.
+
+**Artifact 2 — the driver runs one patch, the C reports 25.** `readcanopy` picks the modal patch; `d_gpp` and
+`a_fpc_stand` are patch-ensemble means. The modal patch is denser than the ensemble by FPC 1.72× (Sahel),
+1.48× (boreal), 1.12–1.19× elsewhere. That is the same size as the biases being measured, and fixing it
+**flipped a verdict**: Sahel tree GPP went from 1.03 — the best cell in the set, "essentially exact" — to
+**0.75**, a 25 % under-prediction, which also flips its sign relative to ADR 0052. Had I shipped the modal
+numbers I would have published a result that contradicted the previous ADR and looked like good news.
+
+**Then the drift trap.** With `slow = nothing` F's canopy is free-running and drifts −13.5 % to +64.5 % FPC
+over ten years, so a 10-yr-mean ratio mixes flux physics with structural drift. Extracting the C's annual
+series and scoring **year k vs year k** made the ratio *shape* readable, and that is where the actual verdict
+lives: Amazon flat at 0.97 (F is right), Hainich flat and offset (+12 % → +25 %, a genuine flux-level bias),
+boreal monotone 0.80 → 1.70 and Sahel monotone 1.10 → 0.59 (both pure drift, not flux bias), mediterranean
+noisy 1.09–1.72 (excessive interannual volatility). Three of the five 10-yr means are actively misleading.
+
+Two things fell out for free. The **Sahel decline is ADR 0052's dry-cell bias seen end-to-end** — the canopy
+starts correct and then dies back, which is exactly what over-stressing a too-dry column should do; the two
+ADRs are one mechanism at two points in the chain. And **ET is 11–35 % high despite F carrying no grass
+transpiration**, so the tree-only bias is larger still — a cheaper and better-scoped candidate for ADR 0052's
+too-dry root zone than the `_infiltrate`/`w_fw` terms that ADR guessed at, because it is the demand side.
+
+Captured the four basis checks in the `fdiff-validate` skill as a pre-flight checklist, since every one of
+them produced a wrong number here first. The honest scorecard: **F's seasonal phase is excellent in all five
+biomes** (monthly r 0.870–0.999 GPP, 0.858–0.999 ET) and that survives both artifacts; the level verdict now
+decomposes per cell; and F under-predicts tree FPC everywhere (0.31–0.72×) *despite* starting denser than the
+ensemble, which makes that deficit the most robust structural finding in the set.
+
+**Not done deliberately:** moving the production driver to the patch ensemble. It is the right fix, but
+`biome_coupled_tests.jl` item 2 pins per-cell LE and GPP at ±2 %/±3 % on the modal basis, so it is a
+deliberate baseline regeneration (guardrail 4) and belongs in its own change, not smuggled into a measurement.

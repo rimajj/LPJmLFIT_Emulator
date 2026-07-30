@@ -1,0 +1,58 @@
+{
+  "basis": {
+    "et_total": "d_transp + d_evap + d_interc, mm/day \u2014 matches F's et = transp+evap+interc",
+    "fpc_tree": "sum of a_fpc_stand bands 1..7 (the 7 tree PFTs)",
+    "gpp_tree": "d_gpp - d_grass_gpp, gC/m2/day (grass removed EXACTLY; conf.h id 419)",
+    "lai_stand_total": "a_lai_stand, all-PFT stand LAI \u2014 NOT tree-only (d_nv_lai is within-crown)",
+    "transp_total": "d_transp, mm/day, cell total ALL PFTs \u2014 no per-PFT daily transp output exists"
+  },
+  "cells": {
+    "boreal_siberia": {
+      "cell": 52059,
+      "fpc_grass_mean": 0.70295,
+      "fpc_tree_mean": 0.56055,
+      "gpp_grass_share": 0.42423,
+      "gpp_tree_annual_gC_m2_yr": 410.43,
+      "lai_stand_total_mean": 1.61082,
+      "run": "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_grass_val_c52059_seed1/output"
+    },
+    "mediterranean_iberia": {
+      "cell": 33335,
+      "fpc_grass_mean": 0.70404,
+      "fpc_tree_mean": 0.62596,
+      "gpp_grass_share": 0.28446,
+      "gpp_tree_annual_gC_m2_yr": 996.15,
+      "lai_stand_total_mean": 1.50436,
+      "run": "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_grass_val_c33335_seed1/output"
+    },
+    "semiarid_sahel": {
+      "cell": 18371,
+      "fpc_grass_mean": 0.35196,
+      "fpc_tree_mean": 0.52586,
+      "gpp_grass_share": 0.19292,
+      "gpp_tree_annual_gC_m2_yr": 555.69,
+      "lai_stand_total_mean": 1.26415,
+      "run": "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_grass_val_c18371_seed1/output"
+    },
+    "temperate_hainich": {
+      "cell": 42490,
+      "fpc_grass_mean": 0.18168,
+      "fpc_tree_mean": 0.87056,
+      "gpp_grass_share": 0.05762,
+      "gpp_tree_annual_gC_m2_yr": 1125.7,
+      "lai_stand_total_mean": 3.23622,
+      "run": "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_grassgpp_c42490_seed1/output"
+    },
+    "tropical_amazon": {
+      "cell": 12045,
+      "fpc_grass_mean": 0.01148,
+      "fpc_tree_mean": 0.97074,
+      "gpp_grass_share": 0.00174,
+      "gpp_tree_annual_gC_m2_yr": 2518.62,
+      "lai_stand_total_mean": 5.91221,
+      "run": "/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_grass_val_c12045_seed1/output"
+    }
+  },
+  "units_trap": "the NetCDF units attribute says /month; the DAILY files are per-day (see docstring)",
+  "window": "2010-2019"
+}
