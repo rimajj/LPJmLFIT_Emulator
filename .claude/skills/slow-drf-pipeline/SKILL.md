@@ -428,6 +428,11 @@ adjacent heap memory and returned a plausible in-range trait. `predict`/`predict
 `_check_nfeat`, and **`load_copula` fails fast** if any marginal's `nfeat`, `length(cond_cols)` or `length(x)`
 disagrees with the header `ncond`. Keep those checks: they are the only enforcement of the ADR-0023
 train/inference contract when `ncond` changes, and the prose mitigation in `slow.jl` is unenforced.
+- **The gate is `test/testitems/recruit_copula_extended_cond_tests.jl`** (hermetic, synthetic forests): a
+  14-column `.rcop` round-trips bitwise, `live_flux_cond_env` is asserted position-by-position against
+  `cond_cols`, the 8-column policy throws against it, and a half-migrated header is rejected at load.
+  **Before training a production artifact at a NEW `ncond`, extend that testitem first** — the feature had
+  zero coverage at its own width for a whole milestone, and the failure mode returns plausible traits.
 
 ### Two traps this work hit
 
