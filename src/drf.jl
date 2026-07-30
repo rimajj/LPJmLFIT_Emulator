@@ -375,18 +375,27 @@ Two estimators, selected by `qrf`:
 
     and the answer is the `u`-quantile of `F̂(y|x) = Σ_i w_i(x) · 1{Y_i ≤ y}`.
 
-WHY THE DEFAULT IS WRONG, AND WHY IT BIASES ONE WAY (ADR 0037; measured, not argued). The two agree only
-when every leaf `L_t(x)` has the SAME size. In the production global copula they do not: over the Wooddens
-marginal's 70 854 leaves the sizes run min 20 / median 26 / q90 55 / q99 371 / **max 4016** (coefficient of
-variation **2.01**). Per query point the largest of the 60 leaves typically holds ~1400-1750 values against a
-median leaf's ~35, so under the pooled default that ONE leaf takes **17-21 %** of the prediction weight where
-QRF gives it **1.7 % = 1/60** — a 10-12x over-weighting.
+WHY THE DEFAULT IS WRONG, AND WHY IT BIASES ONE WAY (ADR 0037/0038; measured, not argued). The two agree
+only when every leaf `L_t(x)` has the SAME size. In the production global copula they do not: over the
+Wooddens marginal's 70 854 leaves the sizes run min 20 / median 26 / q90 55 / q99 371 / **max 4016**
+(coefficient of variation **2.01**). Routing real `Xc` rows through that 60-tree forest, the largest leaf hit
+takes **median 11.1 % / mean 12.2 % / q90 18.8 %** of the prediction weight where QRF gives it
+**1.7 % = 1/60** — a **~7x typical over-weight, ~11x in the sparse-conditioning decile**. (An earlier
+"17-21 %, 10-12x" figure was that upper decile quoted as the typical case — ADR 0038 corrects it.)
 
-The bias has a direction, which is what makes it matter here rather than merely being untidy: a large leaf is
-by construction a leaf that stopped splitting early, so it spans a WIDE region of conditioning space and its
-value distribution is close to the GLOBAL marginal. Over-weighting it drags every cell's conditional toward
-that global marginal — i.e. it is an ATTENUATION mechanism, and it is why adding trees did not help the
-per-cell dispersion (more trees = more chances to land in one dominating big leaf).
+The bias has a direction, which is what makes it matter here rather than merely being untidy: a big leaf
+spans a WIDE region of conditioning space, so its value distribution is closer to the GLOBAL marginal, and
+over-weighting it drags every cell's conditional toward that marginal — an ATTENUATION mechanism.
+
+BUT NOT FOR THE REASON ADR 0037 GAVE, and the difference is load-bearing. A large leaf is **not** one that
+"stopped splitting early" for want of a gain-positive split: measured on the t8 artifact, **9 702 of the
+9 703** Wooddens leaves holding >= 2*min_leaf values sit at exactly `depth == max_depth == 14` (99.9-100 % on
+every axis), and **57-67 % of ALL stored values** live in such a depth-capped leaf. They are large because the
+DEPTH BUDGET ran out while the mass was still splittable. That matters because it made `max_depth` look like
+a free fix — `.rcop` bytes scale as `ntrees*subsample*naxes` and depth is free — but raising it to 22 at
+constant subsample cuts the depth-capped share to 6-12 % and moves the per-cell dispersion `sd(pred)/sd(Y1)`
+only 0.6775 -> 0.6796. The binding constraint is rows-per-cell (~0.93 at subsample 50 000 over 54 020 cells),
+not how finely a tree may cut them; deeper trees just make leaves smaller and noisier (mean size 47 -> 27).
 
 Both paths share the endpoint convention (`u = 0` → the minimum, `u = 1` → the maximum) and both return
 `NaN` when no tree contributed a value. `qrf = true` normalizes by the weight actually accumulated, so a
