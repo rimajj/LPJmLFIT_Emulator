@@ -158,46 +158,50 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
-**M1 and M2 are both DONE.** M1 (2026-07-28, ADR 0050) gave every biome cell its own soil column, canopy,
-forcing and latitude. **M2 (2026-07-30)** wired the flux-driven Component S into the multi-cell driver: all
-five cells now run their own `FluxDrivenSlowEmulator` (own `n_init`/`age0`/boundary from
-`references/M_cells.csv`) with their own `ClimBuf`, and the gate is the third test item in
-`test/testitems/biome_coupled_tests.jl`. The artifact pin is **`_t8`** (see the pin table above — verified
-independently, not taken from S's note). Suite 107,192 pass / 0 fail / 4 broken (job 1643130).
+**M1, M2 DONE. The M3 BLOCKER is now DIAGNOSED AND FIXED (2026-07-30, ADR 0051)** — the `water_stress`
+runtime↔training shift that the last two handoffs said must be settled *before* M3 draws per-cell
+conclusions. It was a **quantity** mismatch, not an aggregation one: the C's `wscal` is a POTENTIAL leaf-on
+index, F_diff's was the realized supply/demand ratio. Landed opt-in (`WaterParams.wscal_leafon`, default
+`false` ⇒ every baseline byte-identical); Hainich's `water_stress` goes 0.3050 → 0.0034 against a C truth
+of 0.0014. Full write-up: ADR 0051; the two-sided default flip and the boreal caveat are in "the contracts
+you consume" and "Line-local gotchas" above. **Read those two before running M3.**
 
-**M3 — coupled multi-cell validation vs the C truth. This is the P3 gate, and the single most valuable
-thing this line can now do.** Everything M3 needs already exists on disk; no new HPC run is required.
+**M3 — coupled multi-cell validation vs the C truth. The P3 gate, and now unblocked.** Everything it needs
+is on disk; no new HPC run is required. In priority order:
 
-1. **Use the PINNED `_t8` pair for the science run** (the CI gate deliberately uses the committed Hainich
-   demo forest — CI has no cluster — so it proves conservation/determinism, NOT per-cell count skill):
-   `drf_forest_global_pooled_w20_t8.drf` + `recruit_copula_global_pooled_w20_t8.rcop`. Wire the copula with
-   `RecruitCopula{Float64}(cop, af, x, make_recruit_to_pools(axes), live_flux_cond)` — the pattern is in
-   `test/testitems/slow_oracle_traits_tests.jl:89`. Run it on SLURM (`scripts/sbatch_julia.sh M-m3 …`), NOT
-   on the login node: the two artifacts are ~180 MB and take ~4.5 s just to deserialize.
-2. **Score per-cell demography + trait distributions against the annual `ind` parquet**, and against the
-   **seed1-vs-seed2 noise floor** — reuse `scripts/noise_floor_vs_emulator.py` (line S's, read-only). Report
-   per-cell error *relative to the floor*; "close to the truth" means nothing until it is compared to how far
-   seed1 is from seed2. Report held-out **cells and scenarios** separately.
-3. **The cheap win, still unclaimed:** the four single-cell C runs
+1. **DECIDE THE `wscal_leafon` QUESTION FIRST — it changes every number M3 will report.** Options: (a) raise
+   the two-sided integration with line S and flip the default (M's recommendation — it is the C's actual
+   expression, and it is better in 4 of 5 cells, one to within the noise floor); or (b) run M3 with
+   `wscal_leafon=true` passed explicitly while the default stays off, and say so in every result. **Do not
+   run M3 on the default `false` and report it as fidelity** — the Sahel loses 36 % of its trees to the
+   shift. If you take (a): flip `WaterParams.wscal_leafon` to `true`, have S change
+   `slow_production_drf_tests.jl:168` to `Set(String[])` in the same integration, and re-measure/regenerate
+   every coupled baseline in that one change (guardrail 4 — deliberate, not incidental).
+2. **Then score per-cell demography + trait distributions** against the annual `ind` parquet and the
+   **seed1-vs-seed2 noise floor** — reuse `scripts/noise_floor_vs_emulator.py` (line S's, read-only), and
+   `scripts/wscal_c_truth_diagnosis.py` is this line's worked example of the pattern (derive the C column
+   exactly as the training table forms it, report error in units of the floor). Report held-out **cells and
+   scenarios** separately. Use the PINNED `_t8` pair (`drf_forest_global_pooled_w20_t8.drf` +
+   `recruit_copula_global_pooled_w20_t8.rcop`); wire the copula with
+   `RecruitCopula{Float64}(cop, af, x, make_recruit_to_pools(axes), live_flux_cond)` — pattern in
+   `test/testitems/slow_oracle_traits_tests.jl:89`. SLURM only (~180 MB, ~4.5 s just to deserialize);
+   `scripts/wscal_leafon_probe.jl` is a ready 5-cell coupled driver to copy.
+   **Caveat to carry:** the CI gate deliberately uses the committed Hainich demo forest (CI has no cluster),
+   so it proves conservation/determinism, NOT per-cell count skill.
+3. **The cheap win, STILL unclaimed:** the four single-cell C runs
    `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c{52059,33335,18371,12045}_seed1` carry
    `a_lai_stand` / `a_fpc_stand` / `d_gpp` / `d_transp` / `d_swc` / `d_fapar` — a per-cell **F_diff-vs-C**
    oracle for four new biomes, i.e. M3's F-side evidence with no new HPC run. Use the `fdiff-validate` skill.
-4. **Before trusting any per-cell count result, deal with the `water_stress` shift** (below, "the contracts
-   you consume"): the coupled loop feeds the DRF `water_stress` 0.323–0.331 while the trained rows for the
-   same cell/years span [0, 0.0432] — **6.6× the trained band width, and it is now the ONLY out-of-band
-   column** (S1d/ADR 0035 closed the other two). `src/fdiff.jl` and `src/components/fast.jl` are YOURS, so
-   this is line M's to diagnose, and it will bias any coupled global S run. Use `residual-diagnosis` first:
-   state the reference basis and a falsifiable hypothesis before writing probes. `FluxDrivenSlowEmulator`
-   now records `feature_history` (the exact row handed to the forest each year) and the `_t8` meta carries
-   `feat_min`/`feat_max` — so runtime-vs-trained band drift is directly measurable per cell, which is the
-   honest way to scope this before M3 draws conclusions.
+   **Do cell 52059 first and include `rootmoist`:** it doubles as the falsifiable test of the boreal
+   soil-ice hypothesis (gotcha list above), which is the one part of ADR 0051 left open.
 
 **Then M4 (resilience battery)** — 4 stubs still `@test_skip`; reimplement from Bathiany et al. 2024
 (doi:10.1111/gcb.17613), never from LPJ_resilience (no licence).
 
-**Small, still open from the M1 review (item 2 below is now CLOSED — per-cell LE/GPP signatures pinned):**
-`GATE=no` in `extract_cell_soilcolumn.py` still leaves no trace in the emitted artifacts; consider stamping
-the gate verdict into the header + meta.
+**Small, still open:** `GATE=no` in `extract_cell_soilcolumn.py` leaves no trace in the emitted artifacts;
+consider stamping the gate verdict into the header + meta. Also: `daily_step`/`daily_step_ml`
+(`fdiff.jl:662,850`) still use the realized-ratio `wscal` — harmless (their `wscal` feeds no conditioning
+feature) but a second definition in the tree; unify when convenient (ADR 0051 §Consequences).
 
 ## Scope + ownership (ADR 0029)
 
@@ -259,6 +263,22 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   column** — the CI assertion in `slow_production_drf_tests.jl` is literally `Set(["water_stress"])`. So
   this integration point is no longer one of three; it is the last one, and it is yours. Nothing about the
   finding changed (runtime 0.323–0.331 vs trained [0, 0.0432], 6.6× band width).
+  **↳ ✅ DIAGNOSED + FIXED 2026-07-30 by line M — ADR 0051. It was a QUANTITY mismatch, not aggregation.**
+  ADR 0034 §1's "same definition on both sides" was wrong: the C's `pft->wscal`
+  (`water_stressed.c:130-140`) is a **POTENTIAL leaf-on** index (no `phen`, `gp_stand_leafon` normalized by
+  the plain `Σfpc`, no `(1−wet)`, and `= 1` on a no-demand day), while F_diff computed the **realized**
+  supply/demand ratio (`phen` SQUARED in the numerator, degenerating to 0 as leaf display vanishes).
+  Landed as **opt-in `WaterParams.wscal_leafon`, default `false`** ⇒ all baselines byte-identical.
+  **⚠️ FLIPPING THE DEFAULT IS A TWO-SIDED INTEGRATION POINT — line M will not do it unilaterally.**
+  It makes S's pinned set empty (`slow_production_drf_tests.jl:168` asserts exactly
+  `Set(["water_stress"])` ⇒ must become `Set(String[])`), and it moves every coupled baseline because
+  `wscal_mean` also drives the leaf:root allocation `lmtorm` (`allocation_tree.c:233` — the C uses the same
+  accumulator, so this was never *only* a feature-basis bug). **Line M recommends the flip;** S should say
+  when it wants to land both sides together. Measured effect (C truth derived per cell/year by
+  `scripts/wscal_c_truth_diagnosis.py`, scored against the seed1-vs-seed2 noise floor):
+  Hainich `water_stress` 0.3050 → **0.0034** vs a C truth of 0.0014 (**152×** error reduction, inside the
+  trained band); `tropical_amazon` **inside the noise floor** (0.4×); `semiarid_sahel` 6.7× better;
+  `mediterranean_iberia` 2.1×. **`boreal_siberia` is NOT closed** — see the gotcha list below.
 - **From S — S1d landed 2026-07-28 (ADR 0035). Three things concern you.**
   1. **Both committed Hainich demo artifacts moved** (`drf_forest_hainich.drf` + meta AND
      `recruit_copula_hainich.rcop` + meta, regenerated together from one table build); the two
@@ -386,6 +406,24 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   and `biome_coupled_tests.jl` do.
 - **Never hard-code the repo root in a script** — it writes into the integrator worktree from here
   (CLAUDE.md §9 item 6). Derive it from `__file__` / `@__FILE__`.
+- **`[ASSUMPTION]` F_diff has NO soil-ice / permafrost representation, and that is the leading (UNVERIFIED)
+  explanation for the one cell ADR 0051 does not close.** The C says `boreal_siberia` (52059) *is* water
+  stressed (`water_stress` 0.3146); the realized ratio over-stressed it (0.664) and the C-faithful
+  expression **under**-stresses it to exactly 0.000 — the `min(…,1)` cap binds on **100 %** of days, so
+  F_diff's `emax·wr` exceeds the leaf-on demand every day. The C's `wr` is over **plant-available** water
+  and the C's soil carries ice (`ice_depth`/`ice_fw`, `getrootdist(…, config->permafrost)`), so a frozen
+  profile has little available water; F_diff's `wr` never collapses. **Verified:** the absence of any ice
+  state in `src/fdiff.jl`/`src/state.jl`. **Not verified:** that this is the cause. Falsifiable test —
+  compare F_diff's root-zone `w` against the C's `rootmoist` for cell 52059 over winter/spring (that
+  single-cell run exists: `daily_2000_2019_M_biome_val_c52059_seed1`); if F_diff's stays high while the C's
+  collapses, confirmed. Note `swc` is NOT invertible to `w` (ADR 0035) — use `rootmoist`.
+- **A "conditioning shift" and "extrapolation out of the trained band" are different failure modes, and the
+  global band cannot tell them apart.** Against the **global pooled `_t8`** band (`water_stress ∈
+  [0, 0.9618]`) the shifted runtime values were *inside* range; only the **Hainich demo artifact's** band
+  ([0, 0.04315]) exposed them. A global coupled run was therefore evaluating the DRF at a perfectly valid
+  point in feature space belonging to a **much drier cell** — which cost the Sahel 36 % of its trees. When
+  checking a per-cell conditioning feature, score it against **that cell's own C truth**, never against the
+  global band (`residual-diagnosis` §3e).
 
 ## M1 review debt — carry into M2 (from the 2026-07-28 adversarial review)
 

@@ -83,6 +83,7 @@ first ADR.
 | # | Decision | Status |
 |---|---|---|
 | [0050](0050-per-cell-input-provisioning.md) | Per-cell input provisioning: `whc_nat` time-mean soil column + community-mean `getrootdist` root profile, gated on reproducing the committed Hainich column | accepted |
+| [0051](0051-c-faithful-leafon-water-scalar.md) | F_diff's daily `wscal` was the realized supply/demand ratio; the C's is a POTENTIAL leaf-on index — opt-in `WaterParams.wscal_leafon` closes the last runtime↔training conditioning shift | accepted |
 
 #### Line E — Component E vs observations (0070–0079)
 

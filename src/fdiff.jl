@@ -217,6 +217,23 @@ Base.@kwdef struct WaterParams{T <: Real}
     grass_demand_gate::Bool = false
     βgpd_gate::T = 2.0e4     # sigmoid sharpness of the demand gate (in `gpd` units, ≈ 1/threshold)
     gpd_gate::T = 1.0e-5     # C demand threshold (`water_stressed.c:196` `gpd>1e-5`)
+    # ── C-FAITHFUL LEAF-ON WATER SCALAR (ADR 0051; default off ⇒ byte-identical) ────────────────
+    # `wscal` is NOT the realized supply/demand ratio in the C — it is a *potential*, phenology-INDEPENDENT
+    # soil-water-supply index (`water_stressed.c:130-138`):
+    #     wscal = (eeq>0 && gp_stand_leafon>0 && fpc>0) ?
+    #             min(1, emax·wr / (eeq·ALPHAM/(1 + GM·ALPHAM/gp_stand_leafon))) : 1
+    # Three differences from the `sup_acc/dem_acc` form F_diff used through ADR 0050, ALL biasing the
+    # annual mean the same way: (1) the C numerator is `emax·wr` with **no `phen`**, while F_diff's
+    # `sup_acc = Σ emax·wr·φ·fpc·φ` carries `phen` SQUARED (once via `supply_i`, once via `fpc_i`);
+    # (2) the C denominator uses `gp_stand_leafon` — the conductance at FULL leaf cover, FPC-normalized by
+    # the **plain** `Σfpc` (`gp_sum.c:57-67`) — not the actual phen-weighted `gp_stand`, and omits the
+    # `(1−wet)` wet-canopy reduction; (3) on a no-demand day the C sets `wscal = 1` (UNSTRESSED), whereas
+    # `sup_acc/(dem_acc+1e-9)` degenerates to **0** (maximal stress) because supply vanishes faster than
+    # demand as `φ→0`. Consequence at Hainich: every leaf-off day scored as fully water-stressed, giving an
+    # annual `1−wscal_mean` of 0.323–0.331 against a C truth of [0, 0.0432] (ADR 0034 §1 / ADR 0051).
+    # This matters TWICE: `wscal_mean` is both Component S's `water_stress` conditioning feature AND the
+    # F-core's leaf:root allocation driver `lmtorm` (`allocation_tree.c:233` uses the same accumulator).
+    wscal_leafon::Bool = false
 end
 
 """
@@ -858,6 +875,33 @@ function _transpire(w::AbstractVector{T}, whcs, rootdist, emax, phen, demand, β
         actual += take
     end
     return (wnew, actual, wr, wscal)
+end
+
+# ── C-faithful POTENTIAL leaf-on water scalar (`water_stressed.c:130-138`; ADR 0051) ────────────────
+# The C's `pft->wscal` is NOT the realized supply/demand ratio — it asks "if this canopy were at FULL leaf
+# cover, could the soil supply meet the evaporative demand?", so it carries no `phen`, no `(1−wet)`, and
+# equals 1 (unstressed) whenever there is no demand at all. Per-PFT there, the only PFT-dependent term is
+# `pft->emax` (`wr` and `gp_stand_leafon` are stand-level once F_diff's shared community root profile is
+# used, ADR 0050), so this evaluates the C expression per individual and returns the **fpc-weighted** mean
+# of the capped values. That weighting is the one used throughout `daily_step_canopy`; the training column
+# aggregates the C's per-individual `wscal_mean` UNWEIGHTED over living tree stems
+# (`build_slow_runtime_table.py:424`), and the two coincide wherever the `min(...,1)` cap binds — which at
+# Hainich is almost every day. `smoothmin` (not `min`) keeps the path AD-safe.
+function _wscal_leafon(w::WaterParams{TW}, inds, eeq::TE, wr::TR, gp_leafon, fpc_plain) where {TW, TE, TR}
+    T = promote_type(TW, TE, TR)
+    # `water_stressed.c:130` — no demand ⇒ UNSTRESSED (this is the branch F_diff previously scored as 0)
+    (eeq <= zero(eeq) || gp_leafon <= zero(gp_leafon) || fpc_plain <= zero(fpc_plain)) && return one(T)
+    demand_leafon = eeq * w.ALPHAM / (one(T) + w.GM * w.ALPHAM / gp_leafon)
+    demand_leafon <= zero(demand_leafon) && return one(T)
+    acc = zero(T)
+    wsum = zero(T)
+    for ind in inds
+        fpc_i = convert(T, ind.fpc)
+        ws_i = smoothmin(one(T), convert(T, ind.emax) * wr / demand_leafon, w.βwscal)
+        acc += ws_i * fpc_i
+        wsum += fpc_i
+    end
+    return wsum > T(1.0e-20) ? acc / wsum : one(T)
 end
 
 # ── bare-soil evaporation from the top `soildepth_evap` (quadratic moisture limiter; waterbalance.c) ─
@@ -1521,6 +1565,11 @@ function daily_step_canopy(
     # ── pass 1: gp_sum — per-individual potential conductance (FPC-based light, λ_opt) → stand mean ──
     gp_stand_acc = zero(T)
     fpc_tot = zero(T)
+    # C-faithful leaf-on aggregates (`gp_sum.c:57-67`), accumulated only under `w.wscal_leafon`: the
+    # conductance at FULL leaf cover (φ≡1) and the **plain** Σfpc the C normalizes both gp's by.
+    gp_leafon_acc = zero(T)
+    gp_stand_c_acc = zero(T)      # the C's OWN `gp_stand` numerator, `Σ gp_leafon·phen` (gp_sum.c:65)
+    fpc_plain = zero(T)
     for (ii, ind) in enumerate(inds)
         phi = convert(T, _phen_at(phen, ii))
         fpc_i = convert(T, ind.fpc) * phi
@@ -1531,8 +1580,27 @@ function daily_step_canopy(
         gp_i = 1.6 * adtmm_gp / condfac + w.gmin * fpc_i
         gp_stand_acc += gp_i
         fpc_tot += fpc_i
+        if w.wscal_leafon
+            # the same expression at φ ≡ 1 — the C computes `gp` from `par·pft->fpc·alphaa·(1−albedo)`
+            # (NO phen) and only then forms `gp_stand += gp·phen` vs `gp_stand_leafon += gp`.
+            fpc_lo = convert(T, ind.fpc)
+            apar_lo = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_lo
+            (_, _, _, adtmm_lo) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_lo, dl; comp_vm = true, vm_scale = vms)
+            gp_lo_i = 1.6 * adtmm_lo / condfac + w.gmin * fpc_lo
+            gp_leafon_acc += gp_lo_i
+            gp_stand_c_acc += gp_lo_i * phi
+            fpc_plain += fpc_lo
+        end
     end
     gp_stand = fpc_tot > T(1.0e-20) ? gp_stand_acc / fpc_tot : zero(T)
+    # `gp_sum.c:67` gates BOTH returns on the phen-weighted `gp_stand` and on the plain `fpc_total`, so a
+    # fully leaf-off canopy yields `gp_stand_leafon = 0` and hence the C's `else wscal = 1` branch below.
+    # The gate MUST use the C's own numerator `Σ gp_leafon·phen` (`gp_stand_c_acc`), NOT F_diff's
+    # `gp_stand_acc`: the latter sums gp's built from a phen-scaled `apar`, and `photosynthesis(apar=0)`
+    # does not return exactly 0, so at `phen ≡ 0` it stays above the 1e-20 threshold and the no-demand
+    # branch would never fire (caught by `wscal_leafon_tests.jl`'s exact-zero-phen assertion).
+    gp_leafon = (!w.wscal_leafon || gp_stand_c_acc < T(1.0e-20) || fpc_plain < T(1.0e-20)) ?
+        zero(T) : gp_leafon_acc / fpc_plain
 
     # ── pass 2: per-individual layered-light photosynthesis (water-limited by gp_stand) + transp ──
     gpp_tot = zero(T); npp_tot = zero(T); transp_demand_tot = zero(T); fapar_tot = zero(T)
@@ -1605,8 +1673,12 @@ function daily_step_canopy(
     for l in 1:min(n_top1m, N)
         rootmoist += w3[l]
     end
-    # stand water scalar (min(1, Σsupply·fpc / Σdemand·fpc)) — feeds next day's GSI water phenology
-    wscal = smoothmin(one(T), sup_acc / (dem_acc + T(1.0e-9)), w.βwscal)
+    # stand water scalar — feeds next day's GSI water phenology, the annual `wscal_mean` that drives the
+    # leaf:root allocation `lmtorm`, and Component S's `water_stress` feature. Default: the realized
+    # `min(1, Σsupply·fpc / Σdemand·fpc)`. Opt-in `wscal_leafon`: the C's POTENTIAL leaf-on index (ADR 0051).
+    wscal = w.wscal_leafon ?
+        _wscal_leafon(w, inds, eeq, wr, gp_leafon, fpc_plain) :
+        smoothmin(one(T), sup_acc / (dem_acc + T(1.0e-9)), w.βwscal)
     st′ = FDiffStateML{T}(w3, convert(T, snowpack′))
     fluxes = (
         gpp = convert(T, gpp_tot), npp = convert(T, npp_tot), transp = convert(T, transp),
