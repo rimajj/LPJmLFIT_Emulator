@@ -2,9 +2,12 @@
 # 0-based index; lat/lon from the global run's grid.nc `cellid`. Ordered cold->hot.
 # fapar_recon = reconstructed leaf-on cell FAPAR; fapar_C_peak = the C's own top-30-day mean.
 # scripts/extract_cell_individuals.py
-name,cell,lat,lon,npatch,n_ind,n_trees,n_grass,fapar_recon,fapar_C_peak
-boreal_siberia,52059,61.75,104.75,25,301,276,25,0.95635,0.59541
-temperate_hainich,42490,51.25,10.25,25,297,272,25,0.833969,0.519978
-mediterranean_iberia,33335,39.75,-4.25,25,239,214,25,0.965437,0.726969
-semiarid_sahel,18371,13.75,4.75,25,307,282,25,0.71303,0.435827
-tropical_amazon,12045,-3.25,-60.25,25,147,122,25,0.81663,0.639582
+# n_init/age0 = per-cell MEDIAN over the training years of n_living / age_mean (build_slow_runtime_table.py);
+#   version-COUPLED (retraining moves them) => they track the PINNED artifact. boundary = the runtime tail order.
+# scripts/extract_cell_slow_init.py  META=slow_runtime_historic_t8
+name,cell,lat,lon,npatch,n_ind,n_trees,n_grass,fapar_recon,fapar_C_peak,n_init,age0,eco_diag_gdd_5,tas_cold_month,soil_depth,co2
+boreal_siberia,52059,61.75,104.75,25,301,276,25,0.95635,0.59541,10.0,44.75,821.6348876953125,-31.719196319580078,1.518146276473999,369.0
+temperate_hainich,42490,51.25,10.25,25,297,272,25,0.833969,0.519978,11.0,43.55555555555556,1863.695068359375,0.21838709712028503,1.5173755884170532,369.0
+mediterranean_iberia,33335,39.75,-4.25,25,239,214,25,0.965437,0.726969,7.0,33.166666666666664,3777.89013671875,6.689515113830566,5.9810638427734375,369.0
+semiarid_sahel,18371,13.75,4.75,25,307,282,25,0.71303,0.435827,11.0,21.333333333333332,9042.6357421875,24.650484085083008,40.83967590332031,369.0
+tropical_amazon,12045,-3.25,-60.25,25,147,122,25,0.81663,0.639582,4.0,56.285714285714285,8448.814453125,27.29018211364746,33.6850700378418,369.0

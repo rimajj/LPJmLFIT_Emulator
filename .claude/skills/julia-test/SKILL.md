@@ -146,6 +146,25 @@ Also: keep tolerances at the artifact's real precision (accumulated print roundi
 that happens to pass — a tolerance 20× looser than the worst committed deviation admits the very drift the
 assertion exists to catch.
 
+3. **Give the mechanism enough YEARS to happen, or your "it does something" assertion tests the test.**
+   `reconcile_demography!` FORCES `ρ = 1` on its year-0 call (`s.year == 0`) to seed the recursive AR state,
+   so the first year-end is a deliberate no-op and the first real demographic change lands at the **second**
+   year-end. In an `nyears = 2` coupled gate that change is applied *after* the last simulated day, so S
+   provably cannot move F's fluxes and an `npp_with_S != npp_without_S` assertion fails for a reason that is
+   a property of the test, not the model (cost a full suite run, job 1643115 → fixed at `nyears = 4`).
+   Before asserting that a slow/annual mechanism changed something, count the steps between when it FIRST
+   acts and when the run ends. Related: `@test length(s.target_history) == nyears` is the cheap check that
+   the year-end hook fired as often as you think — `run_coupled_cell` only calls it on
+   `i % days_per_year == 0`, so a forcing length that is not a whole number of years silently drops the last.
+
+4. **Pin fixtures at ROUND-TRIPPABLE precision when they feed a model, not at display precision.** A tree
+   ensemble compares features against split thresholds, so a truncated fixture can land on the other side of
+   a split. `%.6f` truncated a committed boundary value 1863.695068359375 → 1863.695068; emitting `repr`
+   (`%.17g`) from the Python extractor made the row bit-identical to the artifact's own baked meta, which
+   then upgraded a fuzzy `isapprox` provenance check into an exact `==`. If two files are supposed to hold
+   the same quantity from the same upstream, make the test an equality — it is a far stronger statement that
+   the derivation pulled the right columns in the right ORDER.
+
 ## Format gate (Runic) — CI installs Runic 1.7.0
 
 `julia` is not on PATH (see the ⚠️ note at the top) — use the absolute path / `$JULIA`:

@@ -1,6 +1,6 @@
 ---
 name: provision-coupled-cell
-description: Provision the PER-CELL inputs the multi-cell coupled S+F+E driver needs for a new grid cell (line M / M1) — daily forcing, the per-layer soil column (whcs from the C's own whc_nat, rootdist from the community-mean getrootdist profile), the reconstructed representative-individual canopy, and the lat/cell registry. Use whenever adding a cell to the coupled biome set, regenerating M_soilcolumn_*/M_individuals_*/M_cells.csv, deciding what "this cell's soil column" or "this cell's root profile" IS, or scaling the coupled driver from 5 cells toward global. Names scripts/extract_cell_soilcolumn.py (and its GATE against hainich_soilcolumn.txt), scripts/extract_cell_individuals.py, scripts/extract_biome_forcing.py (the canonical BIOMES registry + cells_from_env), scripts/run_fdiff_validation_cell.sh RUNTAG=M_biome_val for the per-cell d_fapar oracle, ADR 0050, and the whc_nat float32 / single-cell-vs-global provenance traps. ALSO how to ADOPT/RE-PIN a versioned Component-S artifact for the coupled driver (M2): scripts/extract_cell_slow_init.py folds per-cell n_init/age0 + the 4-column slow boundary out of cell_meta.parquet into the committed M_cells.csv, requires a COMPLETE .drf+.rcop pair, re-checks colnames/cond_cols against flux_feature_vector/live_flux_cond, and GATES on cell coverage (pooled_w20 never saw semiarid_sahel; only the _t7 tables cover all 5) — plus why n_init/age0 are version-coupled medians while the boundary is scenario-coupled.
+description: Provision the PER-CELL inputs the multi-cell coupled S+F+E driver needs for a new grid cell (line M / M1) — daily forcing, the per-layer soil column (whcs from the C's own whc_nat, rootdist from the community-mean getrootdist profile), the reconstructed representative-individual canopy, and the lat/cell registry. Use whenever adding a cell to the coupled biome set, regenerating M_soilcolumn_*/M_individuals_*/M_cells.csv, deciding what "this cell's soil column" or "this cell's root profile" IS, or scaling the coupled driver from 5 cells toward global. Names scripts/extract_cell_soilcolumn.py (and its GATE against hainich_soilcolumn.txt), scripts/extract_cell_individuals.py, scripts/extract_biome_forcing.py (the canonical BIOMES registry + cells_from_env), scripts/run_fdiff_validation_cell.sh RUNTAG=M_biome_val for the per-cell d_fapar oracle, ADR 0050, and the whc_nat float32 / single-cell-vs-global provenance traps. ALSO how to ADOPT/RE-PIN a versioned Component-S artifact for the coupled driver (M2): scripts/extract_cell_slow_init.py folds per-cell n_init/age0 + the 4-column slow boundary out of cell_meta.parquet into the committed M_cells.csv, requires a COMPLETE .drf+.rcop pair, re-checks colnames/cond_cols against flux_feature_vector/live_flux_cond, and GATES on cell coverage (the old pooled_w20 pin never saw semiarid_sahel; the _t7/_t8 tables cover all 5) — plus why n_init/age0 are version-coupled medians while the boundary is scenario-coupled.
 ---
 
 # provision-coupled-cell — per-cell inputs for the multi-cell coupled driver
@@ -74,11 +74,13 @@ A cell also needs the S side: `n_init`, `age0`, and the 4-column slow boundary
 
 ```bash
 SC=/p/tmp/jamirp/emulator_global
-META=$SC/slow_runtime_historic_t7/cell_meta.parquet \
-META_TXT=$SC/drf_forest_global_historic_t7_meta.txt \
+META=$SC/slow_runtime_historic_t8/cell_meta.parquet \
+META_TXT=$SC/drf_forest_global_pooled_w20_t8_meta.txt \
   /home/jamirp/.conda/envs/py311_new/bin/python scripts/extract_cell_slow_init.py
 # env: CELLS="name:idx,..."  OUT  ALLOW_BOUNDARY_FROM=<2nd cell_meta>  GATE=no
 ```
+(`_t8` is the pin as of 2026-07-30 — always use the CURRENT one from `lines/M/STATE.md`'s pin table,
+which is authoritative; the version tag in this example ages.)
 
 **Adopting (or re-pinning) an S artifact is a deliberate, two-sided act (ADR 0023) — never silent.** The order:
 
@@ -88,10 +90,13 @@ META_TXT=$SC/drf_forest_global_historic_t7_meta.txt \
    `slow.jl::flux_feature_vector`, and the copula meta's `cond_cols` tail vs `live_flux_cond`. `META_TXT=`
    makes the extractor do this and abort on a mismatch (a mismatch is an integration point, not a local fix).
 3. **Check CELL COVERAGE before anything else** — `cell_meta` tables do NOT all cover the same cells, and a
-   DRF cannot serve a cell it never saw. This is what the extractor's completeness gate is for. Measured
-   2026-07-28: `slow_*_historic_w20` / `slow_runtime_historic` = 44,328 cells (**3 of the 5 biome cells** — no
-   Sahel, no Amazon), `slow_*_ssp370_w20` = 53,566 (**4/5** — no Sahel), every **`_t7`** table = 53,699/58,495
-   (**5/5**). So `drf_forest_global_pooled_w20` structurally cannot serve `semiarid_sahel`.
+   DRF cannot serve a cell it never saw. This is what the extractor's completeness gate is for, and it is the
+   check that actually blocked an M2 session. Measured: the pre-`_t7` tables
+   (`slow_*_historic_w20` / `slow_runtime_historic`) hold 44,328 cells = **3 of the 5 biome cells** (no Sahel,
+   no Amazon) and `slow_*_ssp370_w20` 53,566 = **4/5** (no Sahel), so `drf_forest_global_pooled_w20`
+   structurally could not serve `semiarid_sahel`; every **`_t7`/`_t8`** table covers **5/5**
+   (53,699 historic / 58,495-58,496 ssp370). Read the coverage out of the parquet yourself — do not infer it
+   from the cell count quoted in a meta or a handoff note.
 4. **Record the path + sha256 + the coverage verdict** in `lines/M/STATE.md`, and note the swap in
    `lines/S/STATE.md` too.
 
@@ -116,7 +121,22 @@ META_TXT=$SC/drf_forest_global_historic_t7_meta.txt \
 `/p/tmp` artifact — CI has no cluster. That is fine because closure/determinism are artifact-independent, and
 a DRF prediction is a mean over leaf values so it cannot leave its training target range even when
 extrapolating. Template: `test/testitems/slow_production_drf_tests.jl` (fixed-N reference vs S-driven
-mechanism, carbon ≤1e-6·C_scale, energy, determinism under seed).
+mechanism, carbon ≤1e-6·C_scale, energy, determinism under seed) — and, for the multi-cell version,
+`biome_coupled_tests.jl`'s M2 item (per-cell seed + per-cell `ClimBuf`).
+
+**Emit the fixture at `repr` (`%.17g`), never `%.6f`.** These values are compared against DRF split
+thresholds, so display precision is not good enough: `%.6f` truncated Hainich's `eco_diag_gdd_5`
+1863.695068359375 → 1863.695068. With exact output, `M_cells.csv`'s Hainich row comes out **bit-identical**
+to the committed `drf_forest_hainich_meta.txt`'s own baked `boundary`/`n_init`/`age0` — the same quantity
+from the same upstream — which turns a fuzzy provenance check into an exact `==`. Assert it: an off-by-one
+in the boundary tail, or a scenario/version mix-up, still produces four plausible-looking numbers.
+
+**Verify the artifact yourself; do not take the publishing line's word for it.** S's handoff note is written
+in good faith and has been accurate, but the whole point of the ADR-0023 pin is that M owns what it runs. Two
+checks, both seconds: deserialize both halves (`DRF.load_forest` → `nfeat`/`ntrees`; `DRF.load_copula` →
+`axis_names`, `cond_cols`, and `nfeat` per axis forest — that last one is what actually proves the ADR-0036
+diagnostic axes `agb`/`Height` are absent from the `.rcop`, since the meta only *claims* it), and read the
+cell coverage out of `cell_meta.parquet` rather than trusting a stated cell count.
 
 ## Traps (each one cost real time)
 

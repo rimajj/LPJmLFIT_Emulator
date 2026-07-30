@@ -1,0 +1,30 @@
+{
+  "artifact_meta_txt": "/p/tmp/jamirp/emulator_global/drf_forest_global_pooled_w20_t8_meta.txt",
+  "boundary_borrowed_from": null,
+  "boundary_order": [
+    "eco_diag_gdd_5",
+    "tas_cold_month",
+    "soil_depth",
+    "co2"
+  ],
+  "boundary_order_rechecked": true,
+  "cell_meta": "/p/tmp/jamirp/emulator_global/slow_runtime_historic_t8/cell_meta.parquet",
+  "cell_meta_mtime": "2026-07-29T13:05:09.216733+00:00",
+  "cell_meta_ncells": 53699,
+  "cell_meta_sha256": "d208ca0797161b86130e8d1d9693a3dcc1c7408946887031e0374db96b88012e",
+  "cells": {
+    "boreal_siberia": 52059,
+    "mediterranean_iberia": 33335,
+    "semiarid_sahel": 18371,
+    "temperate_hainich": 42490,
+    "tropical_amazon": 12045
+  },
+  "cells_absent_from_pinned": {},
+  "completeness_gate": "enforced",
+  "generated_utc": "2026-07-30T07:11:53.509211+00:00",
+  "script": "scripts/extract_cell_slow_init.py",
+  "seed_cols": [
+    "n_init",
+    "age0"
+  ]
+}
