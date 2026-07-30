@@ -314,12 +314,23 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
         missing = [c for c in COPULA_ENV_COLS if c not in have]
         if missing:
             raise SystemExit(f"FATAL: COPULA_ENV_COLS not in cell_year_feats: {missing}")
+        # NO year filter — the SAME basis as the static boundary this tail is appended to.
+        # `cell_year_feats` is a HISTORIC climatology table (Year 2000-2019 only) and `_boundary_source`
+        # reads it whole for every scenario. The original `Year >= FIRSTYEAR[scenario]` here was a no-op for
+        # `historic` (so every historic table is byte-identical under this change) but selected ZERO rows for
+        # `ssp370`, whose FIRSTYEAR is 2020 — making an ssp370 env-conditioned build die downstream with a
+        # message that blamed a coverage hole. An ssp370 env tail is therefore the historic climatology, just
+        # like its boundary; a scenario-varying tail would need the ADR-0026 BOUNDARY_WINDOW treatment.
         envt = (pl.scan_parquet(CELL_YEAR_FEATS)
-                .filter(pl.col("Year") >= FIRSTYEAR[scenario])
                 .select(["Cell"] + COPULA_ENV_COLS)
                 .group_by("Cell")
                 .agg([pl.col(c).cast(pl.Float64).mean().alias(c) for c in COPULA_ENV_COLS])
                 .collect())
+        if envt.height == 0:
+            raise SystemExit(
+                f"FATAL: env aggregation over {CELL_YEAR_FEATS} produced ZERO cells — an EMPTY SOURCE, "
+                f"not a coverage hole."
+            )
         bad = {c: int(envt[c].is_null().sum() + envt[c].is_nan().sum()) for c in COPULA_ENV_COLS}
         assert not any(bad.values()), f"null/NaN in COPULA_ENV_COLS per-cell means: {bad}"
         h_pre = cond.select(pl.len()).collect().item() if hasattr(cond, "collect") else cond.height
