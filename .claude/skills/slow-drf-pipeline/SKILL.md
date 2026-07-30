@@ -330,7 +330,15 @@ attribution is clean. Without that check the whole result would rest on a plausi
 lesson.
 
 Measure the gate effect with `QRF=1` on `diagnose_copula_capacity.sh`, holding the capacity at the BASELINE so
-the weighting is isolated from resolution. **`train_slow_copula.jl` needs the same knob before shipping an
+the weighting is isolated from resolution. **A new ESTIMATOR/config choice has to travel the whole way or it
+is an ADR-0023 shift:** `QRF` on `eval_slow_copula.jl` alone would let an artifact be SCORED under one
+estimator and SERVED under another. Three places, together: the env knob on **both**
+`eval_slow_copula.jl` and `train_slow_copula.jl`; a `qrf_weighting 0|1` line in the **`.rcop` meta** so the
+artifact declares what produced its golden pairs; and a field on **`RecruitCopula`** (defaulted in every
+legacy constructor, so line M's call sites stay byte-identical) that `reconcile_demography!` passes to
+`sample_copula!`. The failure is silent — a DRF prediction is a convex combination of training leaf values,
+so it stays in range however wrong its weights are, which is the same reason a target-band assertion cannot
+detect a conditioning shift (ADR 0032). **`train_slow_copula.jl` needs the same knob before shipping an
 artifact**, or the `.rcop` is fit/served under a different estimator than it was scored with (ADR 0023) —
 record the choice in the `.rcop` meta.
 
