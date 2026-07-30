@@ -25,7 +25,8 @@
   that: over the Wooddens marginal's 70 854 leaves, sizes run min 20 / median 26 / q99 371 / max 4016
   (coefficient of variation 2.01). Routing real conditioning rows through that 60-tree forest, the largest
   leaf hit takes **median 11.1 % / mean 12.2 % / q90 18.8 %** of the prediction weight against QRF's
-  **1.7 % = 1/60** — a **~7x typical over-weight, ~11x in the sparse-conditioning decile**. The bias has a
+  **1.7 % = 1/60** — a **6.7x typical over-weight, 11.3x in the sparse-conditioning decile**
+  (`scripts/rcop_leaf_geometry_probe.jl`; 5.8-6.7x typical across the four axes). The bias has a
   direction: a big leaf spans a wide region of conditioning space, so its values approximate the global
   marginal and over-weighting it drags each cell's conditional toward that marginal — an attenuation
   mechanism. Those large leaves are **depth-capped, not gain-exhausted**: 99.9-100 % of leaves holding at

@@ -378,10 +378,11 @@ Two estimators, selected by `qrf`:
 WHY THE DEFAULT IS WRONG, AND WHY IT BIASES ONE WAY (ADR 0037/0038; measured, not argued). The two agree
 only when every leaf `L_t(x)` has the SAME size. In the production global copula they do not: over the
 Wooddens marginal's 70 854 leaves the sizes run min 20 / median 26 / q90 55 / q99 371 / **max 4016**
-(coefficient of variation **2.01**). Routing real `Xc` rows through that 60-tree forest, the largest leaf hit
-takes **median 11.1 % / mean 12.2 % / q90 18.8 %** of the prediction weight where QRF gives it
-**1.7 % = 1/60** — a **~7x typical over-weight, ~11x in the sparse-conditioning decile**. (An earlier
-"17-21 %, 10-12x" figure was that upper decile quoted as the typical case — ADR 0038 corrects it.)
+(coefficient of variation **2.01**). Routing real `Xc` rows through that 60-tree forest
+(`scripts/rcop_leaf_geometry_probe.jl`), the largest leaf hit takes **median 11.1 % / mean 12.2 % /
+q90 18.9 %** of the prediction weight where QRF gives it **1.7 % = 1/60** — a **6.7x typical over-weight,
+11.3x in the sparse-conditioning decile** (across the four axes: 5.8-6.7x typical, 10.5-12.2x at q90). An
+earlier "17-21 %, 10-12x" figure was that upper decile quoted as the typical case — ADR 0038 corrects it.
 
 The bias has a direction, which is what makes it matter here rather than merely being untidy: a big leaf
 spans a WIDE region of conditioning space, so its value distribution is closer to the GLOBAL marginal, and
