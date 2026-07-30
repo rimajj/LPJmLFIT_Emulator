@@ -259,6 +259,73 @@ VERSION=t8              STRUCT_AXES=agb,Height STEM_CAP=400 NCPUS=96 scripts/run
 - **`agb` can be slightly NEGATIVE** (a carbon-debt stem; historic seed2 min −0.31 gC m⁻²), so any log-scaled
   plot or ratio over it needs a strict-positive mask, not just `isfinite`.
 
+## Is the trait GAP a MISSING COVARIATE or the ESTIMATOR? — decompose it before "expanding the conditioning"
+
+**Run this BEFORE any conditioning change.** Milestone S2 was scoped as "widen `COPULA_COND_COLS` /
+`live_flux_cond`". Measurement refuted that as the primary cause, and the two probes below are how.
+
+1. **`scripts/diagnose_copula_cond_ceiling.py`** — splits the ADR-0030 per-cell GAP into the only two causes
+   it can have, by fitting a DIRECT per-cell regressor (LightGBM, K-fold BY CELL) on per-cell covariate sets:
+   `cond8` (the CURRENT conditioning, time-reduced per cell) · `cond8+env` (plus ~28 climate/bioclimate
+   descriptors already in `tables/cell_year_feats.parquet`) · `env_only`.
+   * `r(cond8) − emu_r` = **ESTIMATOR INEFFICIENCY** — the information is already there and a new column
+     cannot help.
+   * `r(cond8+env) − r(cond8)` = **NEW-COVARIATE headroom** — the only part a conditioning change buys.
+   It VALIDATES ITSELF FIRST by reproducing the documented `emu_r`/`floor_r`/`sd_ratio` and STOPS if they
+   don't match. `FLUX_QUANTILES=1` adds per-cell q10/q90 to bound the "a per-cell time-mean discards
+   within-cell year-to-year conditioning" caveat — **run both**; if the caveat run moves the split further
+   toward the estimator, that is the strongest form of the evidence (it adds information the copula already
+   receives).
+   It is an **UPPER BOUND, not a forecast** — a direct per-cell fit optimizes the very statistic the gate
+   scores, on ~54k rows instead of ~198M. Use it to bound headroom and rank covariates, never as a skill claim.
+   `[VERIFIED 2026-07-30]` on `t8` historic: estimator **+0.080/+0.102/+0.089/+0.032** vs covariates
+   **+0.011/+0.025/+0.042/+0.004** (SLA/Wooddens/D95max/minwscal) ⇒ the GAP is the ESTIMATOR (ADR 0037).
+
+2. **`scripts/diagnose_copula_capacity.sh`** — re-runs the K-fold OOS at a chosen capacity on an **UNCHANGED**
+   table and scores the ADR-0030 gate, so capacity is measured in ISOLATION from any conditioning change
+   (ADR 0033 records this line twice crediting one change with another's effect). `CAPTAG=<tag>
+   EVAL_NTREES=… EVAL_SUBSAMPLE=… MAX_DEPTH=… TRAIT_ONLY=1`.
+
+### The mechanism, and why every pooled metric misses it
+
+`SUBSAMPLE=50000` against ~158M training rows over ~54k cells is **~1 row per cell per tree**. Measured on the
+production artifact (`recruit_copula_global_historic_t8.rcop`): **1063 leaves per tree for 54 020 cells** — each
+leaf hands ~51 cells ONE identical conditional distribution — 47.1 values/leaf, load 2.92 s at 42 MB/s.
+
+`DRF.predict_quantile` **POOLS** the leaf values of all trees into one sorted array and takes the u-quantile of
+that MIXTURE. So a mixture over 40 leaves each spanning ~51 cells reproduces the GLOBAL marginal beautifully
+(pooled `nqrmse` 0.013, KS 0.0065) while the per-cell conditional stays under-resolved (`sd(pred)/sd(Y1)` 0.678,
+slope `Y1~pred` **1.20** = the textbook attenuation signature). **Pooled-marginal metrics — `nqrmse`, pooled KS,
+`median_rel_q_err` — are STRUCTURALLY BLIND to a badly under-resolved conditional.** Check `sd(pred)/sd(Y1)` and
+the `Y1~pred` slope, and confirm `sd(Y2)/sd(Y1)` ≈ 1 so the under-dispersion is the emulator's and not the
+target's. Opposite failure to watch for: too FEW trees ⇒ a noisy per-cell quantile ⇒ `sd_ratio` rises while
+`emu_r` FALLS. The gate measures both — report both.
+
+### Cost model + artifact budget (measured — this decides which rung is shippable)
+
+Fit ∝ `ntrees·subsample`; predict over ~198M rows ∝ `ntrees`. So raising the subsample at CONSTANT `ntrees` is
+expensive (40 × 500k ≈ 4× the 50k baseline per axis-fold, overruns a 4 h wall), while **trading trees for
+depth+subsample at a fixed `ntrees·subsample` budget is CHEAPER than baseline on the predict side and
+multiplies leaf resolution**. `.rcop` bytes ≈ **`10.7 · ntrees · subsample · naxes`** (122 MB at 60 × 50000 × 4),
+so resolution is NOT free — the coupled runtime must load it (≤ ~512 MB ⇒ ~12 s). `TRAIT_ONLY=1` trims the 2
+diagnostic struct axes (−33 %; they cannot change the gate's verdict).
+
+### Two traps this work hit
+
+- **NEVER point `eval_slow_copula.jl` at a real table dir to re-evaluate it** — it writes `pred_<axis>.f64`
+  into `OUT` and would DESTROY the validated generation the figures and ADR rest on. Use the shadow dir of
+  input-only symlinks that `diagnose_copula_capacity.sh` builds; `pred_*` must NEVER be symlinked (the write
+  would follow the link back into the source).
+- **Make a clobber guard LOCALE-PROOF.** That guard hashed `ls pred_*.f64 | sort`; the login node collates
+  `en_US.UTF-8` (case-insensitive) and the SLURM batch shell `C` (uppercase first), so the SAME six untouched
+  files hashed differently and it reported `FATAL: the shadow leaked`. Use `LC_ALL=C sort` on BOTH sides and
+  print the mtime triples on failure — a guard that cries wolf is worse than none, because you cannot tell a
+  real incident from its own bug. (The guard runs AFTER the eval, so a false fire loses only the gate step:
+  re-run it against the preserved shadow preds instead of redoing hours of eval.)
+- **`sbatch_python.sh` forwards only its explicit list** — `SKIP_PARQUET`/`SKIP_LEGACY`/`FLUX_QUANTILES`/
+  `STRUCT_AXES` are NOT on it, so a `VAR=v scripts/sbatch_python.sh …` prefix SILENTLY takes the default.
+  `export` them or write a raw `.jcf` (also the only way to get `--dependency=`).
+
 ## The NOISE-FLOOR companion table (ADR 0030)
 
 The trait gate needs a **SEED=2 copula table built identically to seed1** — only `SEED` may differ, and
