@@ -321,6 +321,28 @@ def main():
         "cond8+env": flux_feats + bnd_feats + env_feats,
         "env_only": bnd_feats + env_feats,
     }
+    # CANDIDATE COMPACT SUBSETS (env ENV_SETS="name:col,col;name2:col,col"). Each is scored as
+    # cond8 + that subset, so the printed delta vs `cond8` is exactly what adding those few columns to
+    # the real conditioning would buy -- the number that decides whether the plumbing is worth it.
+    # Default candidates target the axis the boundary tail is entirely missing: MOISTURE / ARIDITY.
+    # (Column choice is driven by the gain rankings this probe itself printed, not by taste.)
+    default_sets = (
+        "moist2:prec_mean,eco_diag_p_pet_ratio;"
+        "moist4:prec_mean,eco_diag_p_pet_ratio,eco_diag_pet_mean,eco_diag_vpd_mean;"
+        "moist6:prec_mean,eco_diag_p_pet_ratio,eco_diag_pet_mean,eco_diag_vpd_mean,pr_cv_monthly,humid_mean;"
+        "moist6+lat:prec_mean,eco_diag_p_pet_ratio,eco_diag_pet_mean,eco_diag_vpd_mean,pr_cv_monthly,humid_mean,lat"
+    )
+    for spec in os.environ.get("ENV_SETS", default_sets).split(";"):
+        spec = spec.strip()
+        if not spec or ":" not in spec:
+            continue
+        nm, cols = spec.split(":", 1)
+        want = [c.strip() for c in cols.split(",") if c.strip()]
+        miss = [c for c in want if c not in env_feats]
+        if miss:
+            print(f"   [warn] subset {nm}: columns absent from cell_year_feats, skipped: {miss}")
+            continue
+        SETS[f"cond8+{nm}"] = flux_feats + bnd_feats + want
     print("\n" + "=" * 100)
     print("STEP 3 — K-fold-BY-CELL direct per-cell regression (an UPPER BOUND, see the module docstring)")
     print("=" * 100)
@@ -359,6 +381,20 @@ def main():
         rp, _, sp = results[a]["cond8+env"]
         print(f"   {a:10s} {er:7.3f} {r8:8.3f} {rp:8.3f} | {r8 - er:+7.3f} {rp - r8:+7.3f} |"
               f" {sdr:7.3f} {sp:8.3f}")
+    print("\n   COMPACT-SUBSET RANKING — what a FEW added conditioning columns actually buy over cond8")
+    print("   (delta vs cond8 on the same K-fold split; the full 28-column set is the ceiling of this column)")
+    subs = [k for k in results[axes[0]] if k.startswith("cond8+") and k != "cond8+env"]
+    if subs:
+        print(f"   {'axis':10s} " + " ".join(f"{k.replace('cond8+',''):>12s}" for k in subs) + f" {'+env(28)':>10s}")
+        for a in axes:
+            r8 = results[a]["cond8"][0]
+            cells_ = " ".join(f"{results[a][k][0] - r8:>+12.3f}" for k in subs)
+            print(f"   {a:10s} {cells_} {results[a]['cond8+env'][0] - r8:>+10.3f}")
+        print(f"   {'':10s} " + " ".join(f"{'sd:':>12s}" for _ in subs))
+        for a in axes:
+            cells_ = " ".join(f"{results[a][k][2]:>12.3f}" for k in subs)
+            print(f"   {a:10s} {cells_} {results[a]['cond8+env'][2]:>10.3f}   (sd_ratio)")
+
     print("\n   READ: a large 'estim.' column with a small 'covar.' column means S2's premise is WRONG —")
     print("   the information is already in the 8 conditioning columns and the ESTIMATOR must change,")
     print("   not the feature list. A large 'covar.' column is the case for expanding the conditioning.")

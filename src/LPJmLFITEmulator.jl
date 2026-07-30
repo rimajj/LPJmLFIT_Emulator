@@ -249,7 +249,7 @@ export DemographicSlowEmulator, reconcile_demography!, total_n
 # Component S — Tier-1 FLUX-DRIVEN slow emulator (the DRF-target demography; ADR 0020/0021/0022)
 export FluxDrivenSlowEmulator, flux_feature_vector, target_history
 # Component S — dynamic-membership + copula recruit-trait sampler (ADR 0024)
-export RecruitCopula, make_recruit_to_pools, live_flux_cond
+export RecruitCopula, make_recruit_to_pools, live_flux_cond, live_flux_cond_env
 # Component S — online transient bioclimatic boundary (the coupled-run Climbuf; ADR 0026/0027)
 export ClimBuf, climbuf_accumulate!, climbuf_finalize_year!, climbuf_boundary,
     climbuf_seed!, climbuf_push_monthly!, climbuf_window_climatology, climbuf_gdd5_tcm

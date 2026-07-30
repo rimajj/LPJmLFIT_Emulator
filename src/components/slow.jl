@@ -275,6 +275,21 @@ struct RecruitCopula{T <: AbstractFloat}
     x::Vector{Float64}
     to_pools::Any
     cond::Any
+    qrf::Bool
+end
+
+# ADR 0037: `qrf` selects the marginal estimator used at establishment — `false` (DEFAULT) the historical
+# equal-weight pooling of every tree's leaf values, `true` the Meinshausen quantile-regression-forest
+# weighting (see `DRF.predict_quantile`). It MUST match the estimator the artifact's published skill numbers
+# and golden draw pairs were produced under (`scripts/train_slow_copula.jl` writes `qrf_weighting` into the
+# `.rcop` meta for exactly this reason) — otherwise the runtime samples a different conditional distribution
+# than was evaluated, which is the ADR-0023 train/inference shift and is SILENT: the draws stay in range.
+# Defaulted in EVERY constructor so all pre-ADR-0037 call sites (including line M's) are byte-identical.
+function RecruitCopula{T}(
+        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools, cond;
+        qrf::Bool = false,
+    ) where {T <: AbstractFloat}
+    return RecruitCopula{T}(cop, axis_forests, x, to_pools, cond, qrf)
 end
 
 "Static conditioning policy: ignore `(s, feats)` and return the baked row `x` (the pre-ADR-0025 behaviour)."
@@ -283,9 +298,10 @@ _static_cond(x::Vector{Float64}) = (_s, _feats) -> x
 # Backward-compatible 4-arg constructor: STATIC conditioning on `x` (feats ignored) ⇒ every pre-ADR-0025
 # `RecruitCopula` (incl. the committed copula gates) is byte-identical. Production passes `live_flux_cond`.
 function RecruitCopula{T}(
-        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools
+        cop::DRF.GaussianCopula, axis_forests::Vector{DRF.Forest}, x::Vector{Float64}, to_pools;
+        qrf::Bool = false,
     ) where {T <: AbstractFloat}
-    return RecruitCopula{T}(cop, axis_forests, x, to_pools, _static_cond(x))
+    return RecruitCopula{T}(cop, axis_forests, x, to_pools, _static_cond(x), qrf)
 end
 
 """
@@ -301,6 +317,38 @@ rather than conditions on). This subset + ORDER is the copula's feature-order co
 soilmoist, <boundary…>]`. `feats` is always `Float64` (the DRF channel), so the returned row is too.
 """
 live_flux_cond(s, feats::AbstractVector) = vcat(Vector{Float64}(feats[1:4]), s.boundary)
+
+"""
+    live_flux_cond_env(env) -> (s, feats) -> Vector{Float64}
+
+ADR 0037 — the EXTENDED recruit-copula conditioning policy: exactly [`live_flux_cond`](@ref)'s row
+(`feats[1:4]` + `s.boundary`) with a per-cell ENVIRONMENTAL tail `env` APPENDED.
+
+Why it exists. The boundary tail carries `eco_diag_gdd_5`, `tas_cold_month`, `soil_depth`, `co2` — i.e. a
+temperature and a soil axis and **no moisture or precipitation climatology at all** — while FIT's
+establishment gates are temperature AND moisture. Measured on the `t8` global generation, adding the wider
+climate descriptors lifts the attainable per-cell trait skill by +0.011 (SLA) / +0.025 (Wooddens) /
++0.042 (D95max), and on Wooddens an environment-only predictor (0.910) BEATS the eight production
+conditioning columns (0.893).
+
+Why it is a FACTORY rather than a new field. `RecruitCopula.cond` is already a pluggable policy
+`(s, feats) -> AbstractVector{Float64}` (ADR 0025), so extending the conditioning needs NO change to any
+struct, to the `.rcop` format, or to `live_flux_cond` itself — every existing construction stays
+byte-identical (guardrail 4) and line M's pinned artifacts keep working untouched. The extended
+conditioning arrives only when a caller deliberately passes this policy together with a `.rcop` whose
+`cond_cols` declare the same columns in the same order.
+
+LOAD-BEARING: `env` MUST be the same columns, in the same order and on the same basis, as the tail of
+`COPULA_COND_COLS` that the `.rcop` was trained on (`scripts/build_slow_runtime_table.py`, env knob
+`COPULA_ENV_COLS`; the artifact's `cond_cols` line is the contract). A mismatch is the ADR-0023
+train/inference shift, and it is SILENT — the marginal forests would simply be read at the wrong
+coordinates while still returning in-range traits. Check `length(env) + 4 + length(s.boundary)` against the
+`.rcop`'s `ncond` before trusting a coupled run.
+"""
+function live_flux_cond_env(env::AbstractVector{<:Real})
+    envv = Vector{Float64}(env)
+    return (s, feats) -> vcat(Vector{Float64}(feats[1:4]), s.boundary, envv)
+end
 
 """
     make_recruit_to_pools(axis_names) -> to_pools
@@ -715,7 +763,7 @@ function reconcile_demography!(
                 # condition the axis marginals on the LIVE feature row via the copula's policy (ADR 0025):
                 # `live_flux_cond` reads climate/flux + boundary; the default static policy returns `rc.x`.
                 xcond = rc.cond(s, feats)
-                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, xcond)
+                traits = DRF.sample_copula!(s.rng, rc.cop, rc.axis_forests, xcond; qrf = rc.qrf)
                 rc.to_pools(traits, s.sapl, fc.allom)::FDiff.TreePools{T}
             end
             recruit = _with_nind(recruit_ind, dn)

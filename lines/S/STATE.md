@@ -6,119 +6,131 @@
 
 ## NEXT — start here
 
-**S2 is IN FLIGHT and its premise has been REFUTED as the primary cause. Do not "expand the conditioning"
-until you have read this block.** The measurement said the ADR-0030 trait GAP is dominated by **estimator
-capacity**, not by a missing covariate — so S2 became a capacity fix, which needs **no** conditioning change,
-**no** `.rcop` format change and **no** break of M's frozen contract.
+**S2 turned out to be THREE separable levers, not one, and the one it was scoped around is the smallest.**
+Everything below is measured on the `t8` historic generation (52 165 cells) with each probe reproducing the
+documented ADR-0030 numbers before reporting. Two commits are on this branch: `2632e340` (the diagnosis +
+both probes) and `534d615f` (the QRF estimator fix + the extended conditioning, both opt-in).
 
-### What is measured and settled (`[VERIFIED 2026-07-30]`)
+### The GAP decomposition — what each lever is worth (`[VERIFIED 2026-07-30]`)
 
-Two probes, both reproducing the documented `t8` gate numbers exactly before reporting anything (harness
-validation first — `residual-diagnosis` §3):
-
-- `scripts/diagnose_copula_cond_ceiling.py` (jobs **1643090** means / **1643095** `FLUX_QUANTILES=1`) —
-  decomposes the GAP by fitting a DIRECT per-cell regressor (LightGBM, K-fold BY CELL) on per-cell
-  covariate sets. **An UPPER BOUND, not a forecast** (it optimizes the scored statistic on 52k rows instead
-  of ~198M) — used only to bound headroom and rank covariates.
-
-  | axis | copula `emu_r` | r(same 8 cond cols) | r(+28 env) | **estimator share** | covariate share |
-  |---|---|---|---|---|---|
-  | SLA | 0.881 | 0.962 | 0.973 | **+0.080** | +0.011 |
-  | Wooddens | 0.814 | **0.916** | 0.941 | **+0.102** | +0.025 |
-  | D95max | 0.791 | 0.879 | 0.922 | **+0.089** | +0.042 |
-  | minwscal | 0.945 | 0.977 | 0.981 | +0.032 | +0.004 |
-
-  (`FLUX_QUANTILES=1` numbers. The means-only run gave Wooddens +0.079 / +0.045.) **Wooddens' r(cond8)=0.916
-  already clears the S2 gate target of 0.889, and its `sd_ratio` 0.896 clears the ≥0.75 target — with ZERO new
-  columns.** The caveat run moved the split FURTHER toward the estimator, which is the strongest form of this
-  evidence: it added information the copula *already receives* (it conditions per (Cell,Year), not per cell).
-
-- **The mechanism, measured on the artifact line M actually pins** (`recruit_copula_global_historic_t8.rcop`,
-  login-node check): **1063 leaves per tree for 54 020 cells** — every leaf hands ~51 cells ONE identical
-  conditional distribution — 47.1 values/leaf, 12.0M stored values, loads in 2.92 s (42 MB/s). Cause:
-  `EVAL_SUBSAMPLE`/`SUBSAMPLE`**=50000** against ~158M training rows, i.e. ~1 row per cell per tree.
-
-- **Why the pooled metrics never caught it (read `src/drf.jl::predict_quantile`).** It POOLS the leaf values
-  of all trees into one sorted array and takes the u-quantile of that MIXTURE. A mixture over 40 leaves each
-  spanning ~51 cells reproduces the GLOBAL marginal beautifully (pooled `nqrmse` 0.013, KS 0.0065) while the
-  per-cell conditional stays under-resolved (`sd(pred)/sd(Y1)` 0.678, slope `Y1~pred` **1.20** — the textbook
-  attenuation signature). **Pooled-marginal metrics are STRUCTURALLY BLIND to this defect.** `sd(Y2)/sd(Y1)`
-  ≈ 1.00 on every axis, so the under-dispersion is the emulator's, not a property of the target.
-
-### The ladder in flight — collect these first
-
-`scripts/diagnose_copula_capacity.sh` re-runs the K-fold OOS at a chosen capacity on an **unchanged** table
-(a SHADOW dir of input-only symlinks, so the validated `t8` predictions cannot be touched) and scores the
-ADR-0030 gate. Capacity is measured in ISOLATION from any conditioning change — deliberately, because ADR 0033
-records this line twice crediting one change with another's effect.
-
-| rung | job | gate job | ntrees × subsample, depth | leaves/tree | `.rcop` if productionised |
+| axis | copula `emu_r` | r(same 8 cols) | r(+28 env) | **estimator share** | covariate share |
 |---|---|---|---|---|---|
-| baseline (= `t8`) | 1643092 | **1644235 DONE** | 40 × 50 000, d14 | ~1 063 | 122 MB |
-| `b12x500k` | 1644118 | 1644237 | 12 × 500 000, d18 | ~12 500 | ~257 MB |
-| `b6x2M` | 1644119 | 1644238 | 6 × 2 000 000, d22 | ~50 000 | ~514 MB |
-| `b24x500k` | 1644120 | 1644239 | 24 × 500 000, d18 | ~12 500 | ~514 MB |
+| SLA | 0.881 | 0.962 | 0.973 | **+0.080** | +0.011 |
+| Wooddens | 0.814 | **0.916** | 0.941 | **+0.102** | +0.025 |
+| D95max | 0.791 | 0.879 | 0.922 | **+0.089** | +0.042 |
+| minwscal | 0.945 | 0.977 | 0.981 | +0.032 | +0.004 |
 
-**The baseline gate REPRODUCED `t8` bit-for-bit** (GAP 0.104/0.150/0.118/0.041, `r_center`
-0.894/0.844/0.870/0.958, both struct axes AT CEILING, pooled `nqrmse` identical to `logs/gcopula_historic_t8.1641321.out`)
-— that is what licenses trusting the other three. **`b24x500k` vs `b12x500k` is the CONTROLLED contrast**
-(identical resolution, 2× the tree count) that isolates whether tree-mixing drives the under-dispersion.
+`scripts/diagnose_copula_cond_ceiling.py`, jobs 1643090 (means) / 1643095 (`FLUX_QUANTILES=1`, shown) /
+1644676 (subsets). It is an UPPER BOUND, not a forecast. **Wooddens' r=0.916 from the EXISTING eight columns
+already clears the S2 target of 0.889** — the conditioning was never the binding constraint.
 
-*Cost model, measured:* fit ∝ `ntrees·subsample`, predict over ~198M rows ∝ `ntrees`. So raising the subsample
-at constant `ntrees` is expensive (40 × 500k was ~4× baseline per axis-fold — I cancelled 1643093/1643094 for
-this reason), while trading trees for depth at a fixed budget is CHEAPER than baseline AND multiplies
-resolution. `.rcop` bytes ≈ `10.7 · ntrees · subsample · naxes`. `TRAIT_ONLY=1` drops the 2 diagnostic struct
-axes (−33 %; they cannot change the gate).
+### Lever 1 — ESTIMATOR CAPACITY. Real, but bounded, and it trades against the pooled marginal
 
-### Then do this
+`scripts/diagnose_copula_capacity.sh` re-runs the K-fold OOS at a chosen capacity on an UNCHANGED table
+(shadow dir of input-only symlinks; `pred_*` never symlinked) and scores the gate.
 
-1. Pick the rung that maximises `r_center`/`sd_ratio` **subject to a `.rcop` the coupled runtime can load**
-   (≤ ~512 MB ⇒ ~12 s at the measured 42 MB/s). Watch for the opposite failure: too few trees ⇒ a noisy
-   per-cell quantile ⇒ `sd_ratio` rises while `emu_r` FALLS. The gate measures both; report both.
-2. Promote it into `scripts/eval_slow_copula.jl` + `scripts/train_slow_copula.jl` + the two orchestrator
-   defaults (all `scripts/*slow*` = S-owned). **The committed Hainich fixtures are SAFE by construction:** they
-   come from `train_slow_copula.jl`'s OWN defaults, not the orchestrators, and no committed test references a
-   global artifact (both verified) ⇒ guardrail 4 holds trivially.
-3. Retrain the production `.rcop` as a **versioned `t9`** (never in place); LOAD-VERIFY it (5-tuple, 4 axes,
-   8 cond cols, 4 marginals) and re-measure the gate. `nfeat`/`cond_cols`/`axes` are UNCHANGED, so this is an
-   artifact re-pin for M, **not** a contract change — notify `lines/M/STATE.md` and let M re-pin deliberately.
-4. Write **ADR 0037** (next free in S's block) + a `changelog.d/S-*.md` fragment + a `lines/S/JOURNAL.md` entry.
-   Capture both probes in `.claude/skills/slow-drf-pipeline/SKILL.md`.
+| rung | ntrees × subsample, depth | Wooddens `emu_r` | % of GAP | `sd_ratio` | pooled `nqrmse` W / D95 |
+|---|---|---|---|---|---|
+| baseline = `t8` (job 1643092, gate 1644235) | 40 × 50 000, d14 | 0.814 | — | 0.678 | 0.013 / 0.006 |
+| `b12x500k` (1644118, gate 1644237) | 12 × 500 000, d18 | 0.844 | 28 % | 0.749 | — |
+| `b6x2M` (1644119, gate 1644238) | 6 × 2 000 000, d22 | **0.862** | **32 %** | **0.770** | **0.023 / 0.019** |
 
-### Two traps found today — one of them in my own guard
+**The baseline gate reproduced `t8` bit-for-bit** — that is what licenses the other rungs. Every axis improved
+on every rung and `minwscal` reached its ceiling, but **no rung passed all four gate criteria**: `b6x2M` met
+the `sd_ratio` ≥0.75 target and lost criterion 3 (the pooled marginal degraded ~2×), because with 6 trees the
+per-stem draw pools ~240 values instead of ~1880. `b12x500k` was *worse* per-cell than `b6x2M` despite 2× the
+trees ⇒ **resolution matters more than averaging**. STILL RUNNING: `b24x500k` (1644120, gate 1644239) and
+`b40x500k` (1644436, self-gating) — the latter keeps the baseline's 40 trees (so the marginal should hold)
+and takes 12× resolution from subsample+depth alone; it is the rung most likely to pass all four.
+*Measured cost model:* fit ∝ `ntrees·subsample`, predict ∝ `ntrees`, `.rcop` bytes ≈ `10.7·ntrees·subsample·naxes`
+(122 MB at 60×50 000×4, loads at 42 MB/s) ⇒ resolution is NOT free and `b40x500k` implies a ~856 MB artifact.
+
+### Lever 2 — THE ESTIMATOR WAS WRONG (fixed, opt-in, `534d615f`)
+
+`DRF.predict_quantile` concatenated all trees' leaf values and took an UNWEIGHTED quantile, so a value's
+weight was `1/Σ_t|L_t(x)|` and a tree contributed in proportion to how LARGE its leaf happened to be — not the
+`1/T` a quantile-regression forest is defined by (Meinshausen 2006). **Verified non-inert before implementing:**
+over the Wooddens marginal's 70 854 leaves sizes run min 20 / median 26 / q99 371 / **max 4016** (CV **2.01**),
+so per query the largest of 60 leaves took **17–21 %** of the weight vs QRF's **1.7 %** — a 10–12× over-weight.
+The bias has a DIRECTION: a big leaf stopped splitting early, spans a wide region, and its values approximate
+the GLOBAL marginal — so over-weighting it is an ATTENUATION mechanism, and it explains why more trees never
+helped dispersion. **Confound separated:** the accompanying quantile-convention change accounts for
+0.002–0.014 % against the weighting's 1.67–4.43 % (315–1507×), so the attribution is clean.
+`DRF.predict` was ALREADY correct (leaf means at `1/T`) ⇒ **the count DRF and every count number are
+unaffected**; M's pinned count `.drf` needs nothing.
+**PENDING — the two jobs that decide production:** `1644614` QRF at BASELINE capacity (isolates the weighting)
+and `1644615` QRF × `b6x2M` (tests whether the two levers compound). Collect with
+`grep -hE "^   (SLA|Wooddens|D95max|minwscal) +[0-9]" logs/S-cap-qrf-*.out`.
+
+### Lever 3 — EXTENDED CONDITIONING (implemented, opt-in, `534d615f`); 6 columns get most of it
+
+Six columns capture **64–72 %** of the full-28 gain: `prec_mean, eco_diag_p_pet_ratio, eco_diag_pet_mean,
+eco_diag_vpd_mean, pr_cv_monthly, humid_mean` (Wooddens +0.018 of +0.025; D95max +0.027 of +0.042; `+lat`
+adds only +0.002 more). `ncond` 8 → 14 (`Xc` ~22 GB, not 57) and `mtry` 3-of-8 → 4-of-15 rather than 6-of-36 —
+that dilution is why the full set is NOT the right choice. Physically motivated: the boundary tail has NO
+moisture or precipitation climatology while FIT's establishment gates are temperature AND moisture.
+```bash
+COPULA_ENV_COLS=prec_mean,eco_diag_p_pet_ratio,eco_diag_pet_mean,eco_diag_vpd_mean,pr_cv_monthly,humid_mean
+```
+Runtime counterpart = `live_flux_cond_env(env)` (slow.jl) — a policy FACTORY, so NO struct change, NO `.rcop`
+format change, `live_flux_cond` itself untouched, and the count DRF's SHARED boundary tail left alone. Both
+sides default to an EMPTY tail reproducing today's 8 columns exactly (verified). **The `.rcop`'s `cond_cols`
+line is the train/inference contract and a mismatch fails SILENTLY** (ADR 0023) — the forests would be read at
+the wrong coordinates while still returning in-range traits. Check `4 + length(s.boundary) + length(env)`
+against `ncond`.
+
+### Do this next, in this order
+
+1. **Collect `1644614`/`1644615`/`1644120`/`1644239`/`1644436`.** That completes the QRF × capacity matrix.
+2. **Choose the production configuration** on all four gate criteria — `emu_r`, `sd_ratio`, the POOLED
+   marginal, and no `r_center` regression — subject to a `.rcop` the runtime can load. If the pooled marginal
+   is the binding constraint, prefer more trees at high resolution over fewer.
+3. **Build `t9` by REUSING the `t8` tables** — run only `train_slow_copula.jl` into
+   `recruit_copula_global_historic_t9.rcop`. Do NOT re-run the orchestrator: it rebuilds the table, and ADR
+   0036 §5b established polars streaming is non-deterministic in its emitted KEY SET, so a rebuild risks a
+   DIFFERENT row set. (A `COPULA_ENV_COLS` table, however, must be built fresh — assert its key set.)
+4. ~~`train_slow_copula.jl` needs the same `QRF` knob~~ **DONE (`e8eb0e89`)** — the estimator now travels the
+   whole way: `QRF` on both `eval_slow_copula.jl` and `train_slow_copula.jl`, a **`qrf_weighting 0|1`** line in
+   the `.rcop` meta (so the artifact declares what produced its golden pairs), and a **`qrf` field on
+   `RecruitCopula`** that `reconcile_demography!` passes to `sample_copula!`. Defaulted in BOTH legacy
+   constructors (4-arg and 5-arg, verified) ⇒ line M's call sites are byte-identical. So `t9` only needs
+   `QRF=1` set on the train step; do NOT hand-edit the meta.
+5. **ADR 0037** (next free in S's block) recording all three levers with their separate measurements, then
+   notify `lines/M/STATE.md` to re-pin deliberately. Do NOT collapse the three into one number.
+
+### CI reading for this branch (do not re-diagnose)
+
+`test (pre)` is red for **unrelated Julia-prerelease churn** — verified, not assumed: it dies inside
+ReTestItems' own `runtests` with `MethodError: no method matching
+setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)`, i.e. the test RUNNER breaks at collection time
+before any testitem executes, so it cannot involve `drf.jl`/`slow.jl`/the QRF path. It is `continue-on-error`.
+An intermediate sha's `test (lts)` may also read **cancelled** — a follow-up push cancels the older pending
+run (CLAUDE.md §9 note 5); the NEWEST sha is the one that carries a verdict.
+
+### Traps found today
 
 - **A clobber guard that cries wolf is a liability.** `diagnose_copula_capacity.sh` hashed
-  `ls pred_*.f64 | sort`; the login node collates `en_US.UTF-8` (case-insensitive) and the SLURM batch shell
-  `C` (uppercase first), so the SAME six untouched files hashed differently and it reported
-  `FATAL: the shadow leaked` on the baseline. **`t8` was never touched** (6 real files, original mtimes,
-  checksum matching submit time). Fixed with `LC_ALL=C` on both sides **and** the failure now prints the
-  mtime triples so a real leak is distinguishable from a guard artefact. The guard fires AFTER the expensive
-  eval, so nothing was lost — the gate step was re-run separately against the preserved shadow preds, and the
-  three live rungs have `afterany` gate jobs chained for the same reason.
-- **`sbatch_python.sh` forwards only its explicit list.** `SKIP_PARQUET`/`SKIP_LEGACY`/`FLUX_QUANTILES`/
-  `STRUCT_AXES` are NOT on it, so a `VAR=v scripts/sbatch_python.sh …` command prefix silently takes the
-  default. `export` them or use a raw `.jcf`.
-
-### The SECOND-order finding, deliberately NOT folded into S2 (candidate S2b)
-
-The wider covariates DO buy a real +0.025 (Wooddens) / +0.042 (D95max), and the reason is physical: the
-boundary tail carries **no moisture or precipitation climatology at all** (`gdd_5`, `tas_cold_month`,
-`soil_depth`, `co2`), yet FIT's establishment gates are temperature AND moisture. `env_only` (0.910) even
-BEATS the 8 production columns (0.893, means-only) on Wooddens, and the top env gains are `prec_mean`,
-`eco_diag_p_pet_ratio`, `humid_mean`. **But this is a genuine contract change** — the boundary tail is shared
-with the count DRF, so its length changes `forest.nfeat` on BOTH models and the `cell_meta.parquet` schema.
-Keep it a separate milestone with its own ADR and M integration point; do NOT smuggle it into the capacity fix,
-or neither effect will be attributable (ADR 0033, twice).
+  `ls pred_*.f64 | sort`; the login node collates `en_US.UTF-8`, the SLURM batch shell `C`, so the SAME
+  untouched files hashed differently and it reported `FATAL: the shadow leaked`. **`t8` was never touched.**
+  Fixed with `LC_ALL=C` both sides + the failure now prints mtime triples. Jobs submitted BEFORE the fix
+  (1643092/1644118/1644119/1644120) exit 9 after a VALID eval — their gate step is re-runnable against the
+  preserved shadow preds, which is why `afterany` gate jobs were chained rather than `afterok`.
+- **`sbatch_python.sh` forwards only its explicit list** — `SKIP_PARQUET`/`SKIP_LEGACY`/`FLUX_QUANTILES`/
+  `STRUCT_AXES`/`QRF` are NOT on it, so a `VAR=v scripts/sbatch_python.sh …` prefix SILENTLY takes the default.
+  `export` them or use a raw `.jcf` (also the only way to get `--dependency=`).
+- **Runic normalizes float literals** (`0.20` → `0.2`), so a hand-written test table fails `format`. Check
+  `src test ext scripts` and never pipe the check (the pipe's exit code masks Runic's).
+- **Two commits on this branch are not from this session** (`18c09065` docs LaTeX report, `b90939fb`
+  repo-commit skill). CLAUDE.md §9 expects one session per line; they will ride along on the next merge.
 
 ### Cheap and open (unchanged)
 
 - **Emit `Year` in the `MODE=copula` table** so the stand-biomass composite can be computed on matched rows —
-  the one thing blocking figures 12/13 for the POOLED pair (ADR 0036 §6).
-- `STEM_CAP` is a patch-year **CLUSTER** subsample, not per-stem (ADR 0036 §6). Effective sample size is
-  patch-years; never call a capped per-cell mean an unbiased per-stem mean.
+  blocks figures 12/13 for the POOLED pair (ADR 0036 §6).
+- `STEM_CAP` is a patch-year **CLUSTER** subsample, not per-stem (ADR 0036 §6).
 
-**Not S's to chase:** `water_stress` (6.6× band width) is line M's F core, ADR 0029 — leave it pinned.
-`fpc`'s residual is dynamics, not basis (ADR 0035 §3.3).
+**Not S's to chase:** `water_stress` (6.6× band) is line M's F core, ADR 0029. `fpc`'s residual is dynamics
+(ADR 0035 §3.3).
 
 ## Scope + ownership (ADR 0029)
 

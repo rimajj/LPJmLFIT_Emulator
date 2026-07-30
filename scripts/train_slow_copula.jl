@@ -16,7 +16,8 @@
 #   test/testitems/references/recruit_copula_hainich.rcop       serialized copula bundle
 #   test/testitems/references/recruit_copula_hainich_meta.txt   axes/cond_cols + golden (seed,x)->draw pairs
 # GLOBAL: set RCOP_OUT_PATH to a SEPARATE artifact (DVC, not git) + larger NTREES/SUBSAMPLE.
-# ENV: OUT (table dir), RCOP_OUT_PATH, NTREES, MAX_DEPTH, MIN_LEAF, SUBSAMPLE. Heavy runs -> SLURM.
+# ENV: OUT (table dir), RCOP_OUT_PATH, NTREES, MAX_DEPTH, MIN_LEAF, SUBSAMPLE, QRF (0; 1 = Meinshausen
+#      QRF leaf weighting, ADR 0037 — recorded as `qrf_weighting` in the meta). Heavy runs -> SLURM.
 
 include(joinpath(@__DIR__, "..", "src", "drf.jl"))
 using .DRF
@@ -96,6 +97,8 @@ function main()
     max_depth = parse(Int, get(ENV, "MAX_DEPTH", "12"))
     min_leaf = parse(Int, get(ENV, "MIN_LEAF", "8"))
     subsample = parse(Int, get(ENV, "SUBSAMPLE", string(min(n, 300))))
+    # ADR 0037. Default 0 ⇒ this script and the committed Hainich demo `.rcop` stay byte-identical.
+    qrf = get(ENV, "QRF", "0") == "1"
 
     axis_forests = DRF.Forest[]
     for (a, ax) in enumerate(axes)
@@ -138,10 +141,14 @@ function main()
         println(io, "ncond\t", ncond)
         println(io, "axes\t", join(axes, " "))
         println(io, "cond_cols\t", join(cond_cols, " "))
+        # ADR 0037 — WHICH MARGINAL ESTIMATOR this artifact was built and scored under. The runtime must
+        # construct its RecruitCopula with the same value (`qrf=`) or it samples a different conditional
+        # distribution than was evaluated (ADR 0023, and it fails silently: the draws stay in range).
+        println(io, "qrf_weighting\t", qrf ? 1 : 0)
         println(io, "scenario\t", get(man, "scenario", "?"))
         println(io, "x\t", join((string(v) for v in x), " "))
         for s in (1, 7, 42)
-            dr = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, axis_forests, x)
+            dr = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, axis_forests, x; qrf = qrf)
             println(io, "golden\t", s, "\t", join((string(v) for v in dr), " "))
         end
     end
@@ -150,7 +157,7 @@ function main()
     println("== copula: $naxes axes $(axes), $ncond cond, .rcop=$(sz) bytes")
     # marginal sanity (not asserted): the drawn spread vs the training spread at the fallback row x
     for (a, ax) in enumerate(axes)
-        draws = [DRF.sample_copula!(DRF.Xoshiro256pp(1000 + s), cop, axis_forests, x)[a] for s in 1:2000]
+        draws = [DRF.sample_copula!(DRF.Xoshiro256pp(1000 + s), cop, axis_forests, x; qrf = qrf)[a] for s in 1:2000]
         yt = Ys[a]
         μd = sum(draws) / length(draws)
         μt = sum(yt) / length(yt)

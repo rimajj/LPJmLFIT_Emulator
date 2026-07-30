@@ -189,6 +189,13 @@ Runic's non-zero exit, so a broken file looks formatted. Capture Runic's exit di
 no pipe. Runic wants multi-line function calls with each arg group on its own indented line and the closing
 `)` on its own line — a common miss when hand-editing a multi-line `println(...)`.
 
+**Runic NORMALIZES FLOAT LITERALS**, which is easy to miss when hand-writing a numeric test table: it
+rewrites `0.20` -> `0.2` and `0.30` -> `0.3`. A column of aligned literals like
+`(0.0, 1.0), (0.20, 1.0), (0.25, 1.0), (0.30, 2.0)` therefore fails `--check` even though it is
+stylistically fine — the fix is `--inplace` on that file, not hand-editing (bit a `drf_copula_tests.jl`
+table, 2026-07-30). It also rewrites `1.0e-6`-style exponents, so don't fight it: write the test, then run
+`--inplace` with the CI version before committing.
+
 ## Docs (local, egress-safe)
 
 ```bash
