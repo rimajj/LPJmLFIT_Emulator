@@ -216,6 +216,22 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   (`fwriteoutput_ind.c:84`) while `LAI_STAND` sums all trees — the same >5 m population every other `ind`
   aggregate is on. The TXT writer's `%g` gives only **6 significant digits** (`fwriteoutput_ind.c:27`), so
   any inversion from `ind` has a ~1e-5 precision floor — do not set a tolerance below it.
+- **`wscal` is a POTENTIAL leaf-on index, NOT the realized supply/demand ratio — and the `ind` column
+  `wscal_mean` is that index (`[VERIFIED 2026-07-30]`, ADR 0051).** `water_stressed.c:130-138` computes
+  `wscal = min(1, (emax·wr) / (eeq·ALPHAM/(1 + GM·ALPHAM/gp_stand_leafon)))` — **no `phen`** in the
+  numerator, **no `(1−wet)`**, and the denominator uses **`gp_stand_leafon`**, the conductance at *full leaf
+  cover* (`gp_sum.c:57-67`: per-PFT `gp` is built from `apar ∝ pft->fpc` with no phen, then `gp_stand +=
+  gp·phen` while `gp_stand_leafon += gp`, **both** normalized by the **plain** `Σ pft->fpc`). On a
+  no-demand day (`eeq==0 || gp_stand_leafon==0 || fpc==0`) it is **`1` = UNSTRESSED**, and the `gp_sum.c:67`
+  gate keys off the **phen-weighted** `gp_stand`, so a genuinely leafless canopy takes that branch. It
+  accumulates **every** day (`:140`) and is emitted as `pft->wscal_mean/NDAYYEAR` (`fwriteoutput_ind.c:119`)
+  — so `1 − mean(ind.wscal_mean)` is a *potential* water-stress index, not a realized deficit. It is
+  consumed **twice**: as Component S's `water_stress` feature and as the leaf:root allocation driver
+  `lmtorm` (`allocation_tree.c:233`, the non-cotton `/NDAYYEAR` branch — the `growing_days` branch is
+  cotton-only and dead here). A realized `min(1, Σsupply·fpc/Σdemand·fpc)` carries `phen` **squared** and
+  collapses to 0 on a leafless day; that mismatch put the coupled Hainich feature 6.5 band widths out
+  (0.305 vs a C truth of 0.0014) and cost the Sahel 36 % of its trees. `WaterParams.wscal_leafon` (default
+  off) is the faithful port.
 - **Soil geometry & `whc_nat` (`[VERIFIED]`; the per-cell soil column basis — ADR 0050, skill
   `provision-coupled-cell`).** Layer thicknesses are a **C global, not per-cell**: `fscansoilpar.c:36-39`
   reads `soildepth[NSOILLAYER]` once from `par/soil_20m.js` = `200,300,500,1000×19,3000` mm. The `soildepth`

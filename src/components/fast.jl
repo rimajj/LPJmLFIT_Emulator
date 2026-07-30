@@ -299,7 +299,14 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
     # growth efficiency ≈ bm_inc per unit leaf area (a mortality driver S conditions on)
     leaf_area = sum(FDiff.agb_ind(newpools[i]) > 0 ? newpools[i].leaf_c * newpools[i].sla * newpools[i].nind : zero(T) for i in 1:n)
     growth_eff = leaf_area > 0 ? bm_inc_cell / leaf_area : zero(T)
-    soilmoist = sum(state.w) / length(state.w)
+    # `FToS.soilmoist` is documented (`interface.jl:37`) as the ROOT-ZONE fraction of WHC, and ADR 0035
+    # pinned that basis: the top-1 m, `whcs`-weighted mean — which is what the C's `rootmoist` output
+    # measures and what Component S conditions on (`slow.jl` uses this same helper at all three of its
+    # call sites). This used to be `sum(state.w)/length(state.w)`, an UNWEIGHTED mean over all 23 layers,
+    # i.e. a second definition of a named quantity living in the codebase — the exact hazard ADR 0035
+    # exists to remove. Nothing consumes this field numerically today (the coupled path has S compute
+    # `soilmoist` itself), so this is a definition alignment, not a physics change.
+    soilmoist = root_zone_soilmoist(state, fc.soil)
     ftos = FToS{T}(
         bm_inc = bm_inc_cell, water_stress = one(T) - wscal_mean, temp_stress = zero(T),
         growth_eff = growth_eff, soilmoist = soilmoist,

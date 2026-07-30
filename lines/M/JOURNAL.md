@@ -247,3 +247,71 @@ Everything it needs is already on disk. The `water_stress` runtime-vs-trained sh
 width, now the ONLY out-of-band column after ADR 0035) is line M's to diagnose and should be scoped *before*
 M3 draws per-cell conclusions — `feature_history` plus the `_t8` meta's `feat_min`/`feat_max` make it
 directly measurable per cell.
+
+---
+
+## 2026-07-30 — ADR 0051: the `water_stress` shift was a QUANTITY mismatch, not an aggregation one
+
+The blocker M2 handed forward. Both sides carry the column name `water_stress`, both form it as
+`1 − wscal_mean`, and ADR 0034 §1 says in as many words "same definition on both sides (`1 − wscal_mean`,
+`fast.jl`)". They are different physical variables. `residual-diagnosis` §3f is about exactly this, and
+following it — *read the expression on both sides before arguing about aggregation* — settled the whole
+thing before a single probe ran.
+
+The C (`water_stressed.c:130-140`, `gp_sum.c:57-67`) asks **"if this canopy were at FULL leaf cover, could
+the soil meet the evaporative demand?"**: numerator `emax·wr` with no `phen`, denominator built from
+`gp_stand_leafon` (the conductance at full leaf cover, normalized by the **plain** `Σfpc`) with no
+`(1−wet)`, and `wscal = 1` — *unstressed* — on a no-demand day. F_diff computed the **realized** ratio
+`min(1, Σsupply·fpc / Σdemand·fpc)`, whose numerator carries `phen` **squared** and which degenerates to
+**0** — maximally stressed — as leaf display vanishes. Three differences, all biasing the annual mean the
+same way.
+
+**What I got wrong, and why it mattered.** My stated hypothesis was that the no-demand branch dominated,
+predicting a leaf-off day fraction ≈ 0.33 at Hainich. **Refuted at Hainich**: it has *zero* days with
+GPP ≤ 0.05 — its evergreen PFTs assimilate year-round, so no day ever takes that branch, and the shift is
+entirely the other two differences (growing-season daily `wscal` 0.695 → 0.997). The branch I predicted *is*
+dominant at boreal_siberia, where 31.3 % of days score exactly 0 under the realized ratio and exactly 1
+under the C's. Had I probed one cell I would have confidently published the wrong mechanism for Hainich.
+Five cells cost nothing extra and named both.
+
+**Then I derived the reference properly instead of leaning on the one committed band.** ADR 0034's "6.6×"
+was measured against the *Hainich demo artifact's* trained band alone.
+`scripts/wscal_c_truth_diagnosis.py` derives the C's own `water_stress` per cell and per year exactly as
+the training table forms it, and scores against the **seed1-vs-seed2 noise floor** — which is what turned
+a one-cell claim into a five-cell result, and which is what exposed the part that does *not* work:
+
+| cell | C truth | floor | default | leafon | ×floor after |
+|---|---|---|---|---|---|
+| boreal_siberia | 0.3146 | 0.0023 | 0.6640 | 0.0000 | **138.6** |
+| temperate_hainich | 0.0014 | 0.0003 | 0.3050 | 0.0034 | 6.8 |
+| mediterranean_iberia | 0.0984 | 0.0102 | 0.2579 | 0.1748 | 7.5 |
+| semiarid_sahel | 0.3425 | 0.0026 | 0.9830 | 0.4379 | 36.5 |
+| tropical_amazon | 0.0011 | 0.0032 | 0.0054 | 0.0000 | **0.4** |
+
+Hainich 152× better and inside the trained band; tropical inside the noise floor; Sahel 6.7×;
+mediterranean 2.1×. **boreal_siberia is not closed** — the C says Siberia *is* stressed at 0.31, and the
+C-faithful expression under-stresses it to exactly 0.000 (the cap binds on 100 % of days). The error
+changes sign rather than shrinking. Leading hypothesis, tagged `[ASSUMPTION]` and *not* chased: the C's `wr`
+is over plant-available water and the C's soil carries **ice**, while F_diff has no soil-ice or permafrost
+representation at all (verified by inspection), so its `wr` never collapses in a frozen profile. That is a
+separate F-core feature, the falsifiable test is written down in the ADR, and inventing a second fix inside
+this milestone is what §2b/§4 exist to stop.
+
+**Why it gated M3, quantitatively.** Coupled on the pinned `_t8` forest, end-of-run tree N moves **−36.4 %
+in semiarid_sahel** (19 → 12) — the cell with the largest conditioning shift — vs ≤1.7 % elsewhere. A
+per-cell demography score taken before this was reading a badly displaced Sahel. Also worth recording as a
+distinction ADR 0034 never drew: against the **global** `_t8` band the runtime values are *inside* range,
+so for a global run this is a **conditioning shift, not extrapolation** — the DRF was evaluated at a valid
+point in feature space belonging to a much drier cell. `residual-diagnosis` §3e again: no
+band-membership assertion could ever have caught it.
+
+**Landed opt-in** (`WaterParams.wscal_leafon`, default `false`) — every committed baseline byte-identical.
+Flipping the default is a **two-sided integration point**: it makes line S's pinned out-of-band set
+(`slow_production_drf_tests.jl:168`, literally `Set(["water_stress"])`) empty, and it moves every coupled
+baseline because `wscal_mean` also drives the leaf:root allocation `lmtorm` (`allocation_tree.c:233` — the C
+uses the same accumulator, so this was never only a feature-basis bug). I recommend the flip; I did not do
+it unilaterally.
+
+**Also closed the small S1d item S handed over:** `FToS.soilmoist` was an unweighted mean over all 23
+layers while `interface.jl:37` documents it as root-zone and S computes exactly that. Now uses the shared
+`root_zone_soilmoist`. Nothing consumed it numerically — a definition alignment, not physics.

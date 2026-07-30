@@ -224,6 +224,46 @@ height allometry), never against a quantity that differs from it for a *second* 
 tolerance at the data's own precision floor (a `%g` text writer gives six significant digits, so an
 inversion cannot beat ~1e-5; a genuinely wrong constant shows as a percent-level bias in the MEDIAN).
 
+## 3g. Run the probe on EVERY cell you have, not the one with a committed reference (2026-07-30, ADR 0051)
+
+§3f says read the expression on both sides. Do that, and the mechanism is usually obvious *before* any
+probe. The trap that remains is **attributing** it: a definitional gap normally has several independent
+terms, and which one dominates is **climate-dependent** — so a single-cell probe will confidently name the
+wrong one.
+
+Concretely (`water_stress`, ADR 0051): the C's `wscal` differed from F_diff's in three ways at once —
+a missing `phen` in the numerator, a leaf-on vs actual conductance in the denominator, and `wscal = 1`
+instead of `0` on a no-demand day. The stated hypothesis was that the third dominated, predicting a
+leaf-off day fraction ≈ the observed annual stress. At **Hainich** that is flatly wrong: it has *zero*
+zero-GPP days (evergreen PFTs assimilate year-round), so the branch never fires there and the shift is
+entirely the other two terms. The predicted mechanism *is* dominant at the **boreal** cell (31.3 % of days
+score exactly 0 vs exactly 1). Both are real; one cell would have published one of them as "the" cause.
+
+- **Five cells cost nothing extra** once the driver is written — the same loop over a registry. Do it by
+  default for anything the coupled loop feeds, and report the per-cell table, not a single number.
+- **Derive the reference for every cell too, don't lean on the one committed band.** The "6.6× band width"
+  framing existed only because Hainich happened to have a committed artifact meta. Deriving the C column
+  per cell/year (exactly as the training table forms it) + the **seed1-vs-seed2 noise floor** is what
+  turned a one-cell claim into a five-cell result — and it is what exposed the cell the fix does *not*
+  close (boreal: error 0.35 → 0.31, i.e. it changed **sign** rather than shrinking).
+- **Report the cell the fix fails on, with a tagged `[ASSUMPTION]` mechanism and a falsifiable test —
+  never a second same-milestone fix.** Naming "F_diff has no soil ice, and the C's `wr` is over
+  plant-available water" plus "compare F_diff's root-zone `w` to the C's `rootmoist` at cell 52059" is a
+  finding. Guessing a second fix to make all five cells green is how one milestone silently becomes three.
+- **A "conditioning shift" and "out-of-band extrapolation" are different failures, and a GLOBAL band cannot
+  distinguish them.** The shifted values sat *inside* the global pooled band and only violated the
+  single-cell one — i.e. the model was evaluated at a perfectly valid point belonging to a *much drier
+  cell*. Score a per-cell feature against **that cell's own** reference (cf. §3e).
+- **Quantify the downstream consequence, or "the conditioning is wrong" stays arguable.** Carrying the A/B
+  through to end-of-run tree N gave **−36.4 %** in the semi-arid cell vs ≤1.7 % elsewhere — which is what
+  actually justified blocking the milestone, and it landed in the cell with the largest shift.
+
+**And: a probe cannot replace a unit assertion on a branch.** The first implementation wired the
+no-demand gate to the wrong accumulator, so that branch never fired — and **every coupled number was
+byte-identical** either way, because a downstream cap already produced the same value on exactly those
+days. Only an exact-boundary unit test (`phen ≡ 0` ⇒ must be exactly 1.0) caught it. When you port a
+guarded C expression, assert **each guard at its exact boundary**, not just the aggregate it feeds.
+
 ## 4. Time-box and set an escalation trigger
 
 Decide up front: "N hours / M probes; if the hypothesis isn't confirmed by then, escalate to the owner
