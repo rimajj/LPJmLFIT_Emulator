@@ -213,7 +213,7 @@ def kfold_r(df, feats, target, k):
     r = float(np.corrcoef(y, pred)[0, 1])
     ss = float(1.0 - np.sum((y - pred) ** 2) / np.sum((y - y.mean()) ** 2))
     sd = float(pred.std() / y.std())
-    imp = sorted(zip(feats, gains / max(gains.sum(), 1e-30)), key=lambda t: -t[1])
+    imp = sorted(zip(feats, gains / max(gains.sum(), 1e-30), strict=True), key=lambda t: -t[1])
     return r, ss, sd, imp
 
 
