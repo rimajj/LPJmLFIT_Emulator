@@ -301,6 +301,53 @@ the `Y1~pred` slope, and confirm `sd(Y2)/sd(Y1)` ≈ 1 so the under-dispersion i
 target's. Opposite failure to watch for: too FEW trees ⇒ a noisy per-cell quantile ⇒ `sd_ratio` rises while
 `emu_r` FALLS. The gate measures both — report both.
 
+### The forest was not using its own estimator — QRF leaf weighting (ADR 0037, opt-in `qrf=true`)
+
+`DRF.predict_quantile`'s DEFAULT concatenates every tree's leaf values and takes an UNWEIGHTED quantile, so a
+value's weight is `1/Σ_t|L_t(x)|` and **a tree contributes in proportion to how LARGE its leaf happens to
+be**. A quantile-regression forest (Meinshausen 2006) is defined by the opposite — each tree contributes
+`1/T`, spread inside ITS leaf: `w_i(x) = (1/T)·Σ_t 1{i∈L_t(x)}/|L_t(x)|`. `qrf=true` implements that;
+`DRF.predict` was ALREADY correct (leaf means at `1/T`), so **the count DRF is unaffected** — this is a
+distributional-path-only defect.
+
+**Before implementing a weighting fix, TEST THAT IT IS NOT INERT.** The two estimators coincide exactly when
+all leaves are the same size, so the fix is worthless unless leaf sizes are skewed. Measure it on the real
+artifact, not in principle: over the `t8` Wooddens marginal's 70 854 leaves the sizes are min 20 / median 26 /
+q99 371 / **max 4016**, CV **2.01**, and per query the largest of 60 leaves takes **17–21 %** of the weight
+against QRF's **1.7 %** — a 10–12× over-weight. That is the number that justified the change.
+
+**The bias has a DIRECTION, and that is why it mattered rather than being untidy.** A large leaf is one that
+stopped splitting early, so it spans a wide region of conditioning space and its values approximate the
+GLOBAL marginal. Over-weighting it drags every cell's conditional toward that marginal — an ATTENUATION
+mechanism. It also explains an otherwise puzzling ladder result: **more trees did not improve per-cell
+dispersion**, because more trees means more chances to land in one dominating big leaf.
+
+**SEPARATE THE CONFOUND before believing any measurement.** Switching to QRF also switches the quantile
+CONVENTION (the default indexes `1 + floor(u·(n−1))`; a weighted ECDF must be inverted instead). Measure the
+two contributions independently by scoring an equal-weight INVERSE-CDF variant on the same pooled values:
+convention **0.002–0.014 %** vs weighting **1.67–4.43 %** (315–1507×) on the production artifact, so the
+attribution is clean. Without that check the whole result would rest on a plausible story — the ADR-0036
+lesson.
+
+Measure the gate effect with `QRF=1` on `diagnose_copula_capacity.sh`, holding the capacity at the BASELINE so
+the weighting is isolated from resolution. **`train_slow_copula.jl` needs the same knob before shipping an
+artifact**, or the `.rcop` is fit/served under a different estimator than it was scored with (ADR 0023) —
+record the choice in the `.rcop` meta.
+
+### Extended conditioning: 6 columns, not 28 (ADR 0037)
+
+`COPULA_ENV_COLS` (builder) + `live_flux_cond_env(env)` (slow.jl) add a per-cell environmental tail AFTER the
+boundary. Done as a policy FACTORY because `RecruitCopula.cond` is already pluggable ⇒ no struct change, no
+`.rcop` format change, `live_flux_cond` untouched, and the count DRF's SHARED boundary tail (hence its
+`nfeat`) left alone. **Do NOT add all 28 `cell_year_feats` columns**: `Xc` goes 12.6 → ~57 GB and
+`mtry = round(√p)` goes 3-of-8 → 6-of-36, diluting the informative columns among correlated climate ones.
+Measured with the probe's `ENV_SETS` ranking, six columns — `prec_mean, eco_diag_p_pet_ratio,
+eco_diag_pet_mean, eco_diag_vpd_mean, pr_cv_monthly, humid_mean` — capture **64–72 %** of the full-28 gain
+(`+lat` adds only +0.002 more). Physical reason the gain exists at all: the boundary tail carries NO moisture
+or precipitation climatology while FIT's establishment gates are temperature AND moisture.
+**The `.rcop`'s `cond_cols` line is the train/inference contract and a mismatch fails SILENTLY** — the
+marginals get read at the wrong coordinates while still returning in-range traits.
+
 ### Cost model + artifact budget (measured — this decides which rung is shippable)
 
 Fit ∝ `ntrees·subsample`; predict over ~198M rows ∝ `ntrees`. So raising the subsample at CONSTANT `ntrees` is
