@@ -115,7 +115,11 @@ fi
 # and the SLURM batch shell in C (uppercase first), so the SAME six untouched files
 # hash differently on the two nodes and the guard fires a FALSE "shadow leaked".
 # record their checksums now so the job can prove it did not touch them.
-SRC_PRED_SUM="$(cd "${SRC}" && ls pred_*.f64 2>/dev/null | LC_ALL=C sort | xargs -r stat -c '%n %s %Y' | md5sum | cut -d' ' -f1)"
+# `|| true` is LOAD-BEARING: a SRC with NO predictions yet (e.g. a freshly built env-augmented table) makes
+# `ls pred_*.f64` exit 2, and under `set -o pipefail` that aborts the whole script before it ever submits —
+# which is exactly how the first env-conditioning submissions silently failed. An empty list is a legitimate
+# baseline here (nothing to protect yet); it hashes to the md5 of the empty string and stays consistent.
+SRC_PRED_SUM="$(cd "${SRC}" && { ls pred_*.f64 2>/dev/null || true; } | LC_ALL=C sort | xargs -r stat -c '%n %s %Y' | md5sum | cut -d' ' -f1)"
 
 echo "shadow dir : ${SHADOW}"
 echo "  inputs   : symlinked from ${SRC} ($(find "${SHADOW}" -maxdepth 1 -type l | wc -l) links)"
@@ -149,7 +153,7 @@ OUT=${SHADOW} KFOLDS=${KFOLDS} NTREES=${EVAL_NTREES} MAX_DEPTH=${MAX_DEPTH} \\
 rc=\$?; [ \$rc -ne 0 ] && { echo "eval_slow_copula.jl FAILED rc=\$rc"; echo "=== JOB DONE tag=${TAG} exit=\$rc ==="; exit \$rc; }
 
 echo; echo "== [2/3] the source table's own predictions must be UNTOUCHED ========="
-now="\$(cd ${SRC} && ls pred_*.f64 2>/dev/null | LC_ALL=C sort | xargs -r stat -c '%n %s %Y' | md5sum | cut -d' ' -f1)"
+now="\$(cd ${SRC} && { ls pred_*.f64 2>/dev/null || true; } | LC_ALL=C sort | xargs -r stat -c '%n %s %Y' | md5sum | cut -d' ' -f1)"
 if [ "\$now" != "${SRC_PRED_SUM}" ]; then
     echo "FATAL: ${SRC} predictions CHANGED (\$now != ${SRC_PRED_SUM}) — the shadow MAY have leaked!"
     echo "   CURRENT triples (name size mtime) — if the mtimes still match the generation"

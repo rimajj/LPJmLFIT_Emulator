@@ -288,6 +288,35 @@ function fit_forest(
     return Forest(trees, p, store_values, fill)
 end
 
+"""
+    _check_nfeat(forest, x)
+
+Assert the query row has exactly as many features as the forest was fit on.
+
+WHY THIS IS NOT OPTIONAL (ADR 0037/0038). [`_leaf`](@ref) reads `v = x[f]` inside an `@inbounds` block, so
+querying a `nfeat`-feature forest with a SHORTER row is an out-of-bounds heap read — **not** a `BoundsError`.
+It returns whatever bytes follow `x` in memory, routes the traversal on them, and yields a plausible in-range
+trait. Nothing else catches it: [`sample_copula!`](@ref) validates only `length(axis_forests) == cop.d`, and
+[`load_copula`](@ref) never compared its `ncond` against the marginals' `nfeat`.
+
+That is reachable the moment an `ncond > 8` copula ships while a runtime still builds the 8-column
+[`live_flux_cond`](@ref) row instead of `live_flux_cond_env` — exactly the SILENT train/inference mismatch
+ADR 0023 names, but with memory unsafety on top of the wrong answer. One comparison per `predict*` call
+(outside the per-node loop) makes it a loud error; it cannot change the result of any correctly-sized call,
+so every committed baseline and golden draw pair stays bitwise identical (guardrail 4).
+"""
+@inline function _check_nfeat(forest::Forest, x::AbstractVector{Float64})
+    length(x) == forest.nfeat || throw(
+        DimensionMismatch(
+            "DRF query row has $(length(x)) feature(s) but the forest was fit on $(forest.nfeat). " *
+                "A conditioning-length mismatch between training and inference (ADR 0023): check the " *
+                "artifact meta's `cond_cols`/`ncond` against what the runtime builds " *
+                "(4 flux + length(boundary) + length(env) for a recruit copula)."
+        )
+    )
+    return nothing
+end
+
 @inline function _leaf(tree::RegTree, x::AbstractVector{Float64}, fill::Vector{Float64})
     nid = 1
     @inbounds while tree.feat[nid] != 0
@@ -301,6 +330,7 @@ end
 
 "Ensemble-mean prediction for one feature row."
 function predict(forest::Forest, x::AbstractVector{Float64})
+    _check_nfeat(forest, x)
     s = 0.0
     @inbounds for tree in forest.trees
         s += tree.value[_leaf(tree, x, forest.fill)]
@@ -364,6 +394,7 @@ tree with an empty leaf is skipped rather than silently shrinking the distributi
 """
 function predict_quantile(forest::Forest, x::AbstractVector{Float64}, u::Float64; qrf::Bool = false)
     forest.store_values || error("predict_quantile requires fit_forest(...; store_values=true)")
+    _check_nfeat(forest, x)
     if qrf
         return _predict_quantile_qrf(forest, x, u)
     end
@@ -789,6 +820,21 @@ function load_copula(io::IO)
         f, pos = _parse_forest(toks, pos)
         axis_forests[k] = f
     end
+    # FAIL FAST at load, not at the first draw: an artifact whose marginals were fit on `ncond` columns
+    # must be queried with `ncond` columns, and `_check_nfeat` would otherwise only catch it once the
+    # coupled loop reached establishment (ADR 0038). Also catches a truncated/edited `.rcop` header.
+    for k in 1:d
+        axis_forests[k].nfeat == ncond || error(
+            "load_copula: axis $(axis_names[k]) forest was fit on $(axis_forests[k].nfeat) features but the " *
+                "header declares ncond=$ncond ($(length(cond_cols)) cond_cols) — the artifact is inconsistent."
+        )
+    end
+    length(cond_cols) == ncond || error(
+        "load_copula: header declares ncond=$ncond but lists $(length(cond_cols)) cond_cols."
+    )
+    length(x) == ncond || error(
+        "load_copula: fallback row x has $(length(x)) entries but ncond=$ncond."
+    )
     return GaussianCopula(L, d), axis_forests, x, axis_names, cond_cols
 end
 

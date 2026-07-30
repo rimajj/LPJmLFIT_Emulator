@@ -365,6 +365,75 @@ multiplies leaf resolution**. `.rcop` bytes ≈ **`10.7 · ntrees · subsample �
 so resolution is NOT free — the coupled runtime must load it (≤ ~512 MB ⇒ ~12 s). `TRAIT_ONLY=1` trims the 2
 diagnostic struct axes (−33 %; they cannot change the gate's verdict).
 
+### The gate's criterion 3 is POOLED KS — `nqrmse` is NOT a substitute (`[VERIFIED 2026-07-30]`)
+
+ADR 0030 §4's third criterion is "**pooled KS** not degraded (≤ 0.02)". `eval_slow_copula.jl` prints
+`nqrmse`; `noise_floor_vs_emulator.py` prints neither. **So a capacity rung scored by those two scripts alone
+has NO measurement of criterion 3 at all** — score it with `scripts/score_slow_copula_ks.py`
+(`SHADOW=<table|shadow dir>`), which reports pooled KS + median per-cell KS + nqrmse + med_rel_q on one row
+universe and reads the baseline out of `figures/emulator_validation/<scen>_t8/metrics_traits.txt`.
+
+The two statistics disagree in **magnitude** (`agb`: nqrmse 0.6432 vs KS 0.0116, ~55×, because nqrmse divides
+every quantile error by ONE IQR and per-stem `agb` has `q95/IQR ≈ 10`) **and in direction** (b12x500k
+`D95max`: nqrmse 2.0× worse, pooled KS 2.1× *better*). Reading one for the other put a **false verdict into
+ADR 0037 and STATE.md**: `b6x2M` was recorded as having "lost criterion 3 (the pooled marginal degraded ~2×)"
+when on its own criterion statistic it **improves on all four axes** (0.0051→0.0038 / 0.0052→0.0040 /
+0.0069→0.0030 / 0.0115→0.0051). *Score the statistic the criterion names.*
+- **Match the SCENARIO baseline.** historic pooled KS = `0.0051 / 0.0052 / 0.0069 / 0.0115` (52 516 cells);
+  pooled-scenario = `0.0039 / 0.0065 / 0.0020 / 0.0040` (57 719). Hardcoding the pooled row as "historic" makes
+  a rung that improves on all four axes read as degraded on three — which is exactly what the first version of
+  that script did. It now READS the file; never re-hardcode it.
+- **One `ks2`, imported.** It is module-level in `plot_slow_emulator_validation.py` precisely so the scorer
+  imports the same estimator that produced the published numbers (the ADR-0031 two-copies rule).
+
+### Leaf geometry: `max_depth` is a FREE lever and every rung so far confounded it (`[VERIFIED 2026-07-30]`)
+
+`eval_slow_copula.jl::leaf_geometry` now prints, per axis on fold 0, leaves/tree · leaf-size
+min/median/q90/q99/max · the count and stored-value SHARE at `depth == max_depth` · the size-biased pool
+`E[s²]/E[s]`. **Read it on every rung** — without it the ladder is uninterpretable:
+
+- Measured on the t8 production `.rcop` (60 × 50 000, d14): **99.9–100 % of leaves holding ≥ 2·min_leaf values
+  sit at exactly `depth == max_depth`** (Wooddens 9 702 of 9 703) and **57–67 % of ALL stored values** are in
+  such a leaf, with max leaf size 3 589–4 366. The trees are cut off by the **depth budget** with most of the
+  mass still splittable — they did NOT stop for want of a gain-positive split, which is what ADR 0037 §3's
+  mechanism sentence assumed. Correct the prose wherever it appears.
+- **Why it decides the artifact:** bytes ≈ `10.7·ntrees·subsample·naxes` — `max_depth` does not appear. Every
+  rung ever run co-varied them (50k/d14, 500k/d18, 2M/d22, 8M/d26), so run the single-factor 2×2
+  (`40×50k d22` and `12×500k d14`) BEFORE committing to a ≥490 MB artifact; the cheap half may do the work.
+- **Don't quote `ntrees·mean(leafsize)` as the draw pool** — leaf occupancy is size-biased, so the expected
+  pool is `E[s²]/E[s]` per tree: Wooddens' mean leaf is 42.3 values but its size-biased pool is **214.1**, ~5×
+  the naive figure. Publish the RATIO between rungs, not the absolutes.
+
+### Deriving an EXTENDED-conditioning table: append, do not rebuild (`[VERIFIED 2026-07-30]`)
+
+`scripts/build_slow_copula_env_augment.py` (`SRC`, `OUT`, `SCENARIO`, `COPULA_ENV_COLS`) appends the per-cell
+env tail to an EXISTING table's `Xc` and symlinks `Y_*`/`cells.i64`. Use it instead of a fresh
+`COPULA_ENV_COLS=... build_slow_runtime_table.py` whenever you are MEASURING what conditioning is worth:
+polars streaming is non-deterministic in its emitted KEY SET (ADR 0036 §5b), so a rebuild can land on a
+different row universe and confound the conditioning effect with a row-set change. Appending makes the row
+universe identical by construction, and it verifies cols `0..ncond-1` bitwise over ALL rows.
+- **`x` must be EXTENDED, not left short** — it is the `.rcop` fallback conditioning row, and `load_copula`
+  now rejects `length(x) != ncond`.
+- **The env year basis was BROKEN for ssp370 and is now the boundary's basis (no year filter).**
+  `cell_year_feats` is a HISTORIC climatology table (Year 2000-2019) that `_boundary_source` reads whole for
+  every scenario, but the env branch filtered `Year >= FIRSTYEAR[scenario]` — historic 67 420 cells, **ssp370
+  0 cells**, failing downstream with a message blaming a coverage hole. Fixed in BOTH the builder and the
+  augment; proven byte-identical for historic. So an ssp370 env tail is the historic climatology (no scenario
+  signal) — a transient tail needs the ADR-0026 `BOUNDARY_WINDOW` treatment.
+
+### A wrong-length conditioning row was an OUT-OF-BOUNDS READ, not an error (`[VERIFIED 2026-07-30]`)
+
+`DRF._leaf` reads `x[f]` inside `@inbounds`, so querying an `nfeat`-feature forest with a shorter row read
+adjacent heap memory and returned a plausible in-range trait. `predict`/`predict_quantile` now call
+`_check_nfeat`, and **`load_copula` fails fast** if any marginal's `nfeat`, `length(cond_cols)` or `length(x)`
+disagrees with the header `ncond`. Keep those checks: they are the only enforcement of the ADR-0023
+train/inference contract when `ncond` changes, and the prose mitigation in `slow.jl` is unenforced.
+- **The gate is `test/testitems/recruit_copula_extended_cond_tests.jl`** (hermetic, synthetic forests): a
+  14-column `.rcop` round-trips bitwise, `live_flux_cond_env` is asserted position-by-position against
+  `cond_cols`, the 8-column policy throws against it, and a half-migrated header is rejected at load.
+  **Before training a production artifact at a NEW `ncond`, extend that testitem first** — the feature had
+  zero coverage at its own width for a whole milestone, and the failure mode returns plausible traits.
+
 ### Two traps this work hit
 
 - **NEVER point `eval_slow_copula.jl` at a real table dir to re-evaluate it** — it writes `pred_<axis>.f64`
@@ -378,8 +447,14 @@ diagnostic struct axes (−33 %; they cannot change the gate's verdict).
   real incident from its own bug. (The guard runs AFTER the eval, so a false fire loses only the gate step:
   re-run it against the preserved shadow preds instead of redoing hours of eval.)
 - **`sbatch_python.sh` forwards only its explicit list** — `SKIP_PARQUET`/`SKIP_LEGACY`/`FLUX_QUANTILES`/
-  `STRUCT_AXES` are NOT on it, so a `VAR=v scripts/sbatch_python.sh …` prefix SILENTLY takes the default.
-  `export` them or write a raw `.jcf` (also the only way to get `--dependency=`).
+  `STRUCT_AXES`/`QRF`/`SRC`/`SHADOW`/`COPULA_ENV_COLS` are NOT on it, so a `VAR=v scripts/sbatch_python.sh …`
+  prefix SILENTLY takes the default. `export` them or write a raw `.jcf` (also the only way to get
+  `--dependency=`).
+- **Guard a pred-less `SRC`, or the harness dies before it submits.** The same clobber guard fingerprints
+  `ls pred_*.f64`; on a freshly built table (no predictions yet) `ls` exits 2 and `set -o pipefail` aborts
+  `diagnose_copula_capacity.sh` *before* `sbatch` — it prints the shadow lines and silently never queues.
+  `{ ls … || true; }` on BOTH fingerprints. Always confirm a submission with `squeue`, not with the script's
+  own output.
 
 ## The NOISE-FLOOR companion table (ADR 0030)
 

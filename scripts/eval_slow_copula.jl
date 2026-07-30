@@ -40,6 +40,55 @@ end
 # captured by the `Threads.@threads` closure below (JET boxed-capture trap, CLAUDE.md §2).
 axis_kind(a::Int, naxes::Int) = a > naxes ? "struct" : "trait"
 
+# LEAF GEOMETRY — print it, because the capacity ladder is uninterpretable without it (ADR 0038).
+#
+# Every capacity rung run before 2026-07-30 changed `subsample` and `max_depth` TOGETHER (50k/d14,
+# 500k/d18, 2M/d22, 8M/d26), so "resolution" could not be split into its two causes — and they have very
+# different costs: `.rcop` bytes scale as `ntrees·subsample·naxes` while `max_depth` is FREE. Measuring the
+# t8 artifact afterwards showed 99.9-100 % of leaves holding >= 2·min_leaf values sit exactly at
+# `depth == max_depth`, and 57-67 % of ALL stored values live in such a depth-capped leaf — i.e. the trees
+# were truncated by the depth budget with most of the mass still splittable. That is a property every rung
+# should have reported for itself instead of being reconstructed from one serialized artifact.
+#
+# Cheap: one traversal per tree, only on the first fold, and it touches no prediction state.
+# Plain top-level function with single-assignment locals (JET boxed-capture trap, CLAUDE.md §2).
+function leaf_geometry(f::DRF.Forest, max_depth::Int)
+    depths = Int[]
+    sizes = Int[]
+    for t in f.trees
+        stack = Tuple{Int, Int}[(1, 0)]
+        while !isempty(stack)
+            (nid, d) = pop!(stack)
+            if t.feat[nid] == 0
+                push!(depths, d)
+                push!(sizes, length(t.values[nid]))
+            else
+                push!(stack, (t.left[nid], d + 1))
+                push!(stack, (t.right[nid], d + 1))
+            end
+        end
+    end
+    nl = length(depths)
+    nl == 0 && return "   (no leaves?)"
+    srt = sort(sizes)
+    total = sum(sizes)
+    capmass = sum(sizes[i] for i in 1:nl if depths[i] == max_depth; init = 0)
+    ncap = count(==(max_depth), depths)
+    es = total / nl
+    es2 = sum(float(s)^2 for s in sizes) / nl
+    q(p) = srt[max(1, min(nl, ceil(Int, p * nl)))]
+    return string(
+        "   geometry: leaves/tree=", round(nl / length(f.trees), digits = 0),
+        "  size min/med/q90/q99/max=", srt[1], "/", q(0.5), "/", q(0.9), "/", q(0.99), "/", srt[nl],
+        "\n   geometry: at max_depth=", max_depth, ": ", ncap, "/", nl, " leaves (",
+        round(100 * ncap / nl, digits = 1), "%) holding ", round(100 * capmass / total, digits = 1),
+        "% of stored values",
+        "\n   geometry: E[size]=", round(es, digits = 2),
+        "  size-biased pool/tree E[s^2]/E[s]=", round(es2 / es, digits = 1),
+        "  => expected draw pool ~", round(length(f.trees) * es2 / es, digits = 0), " values",
+    )
+end
+
 function main()
     man = read_manifest(joinpath(DATA, "manifest_copula.txt"))
     n = parse(Int, man["n"])
@@ -111,6 +160,8 @@ function main()
             # bit-identical to the serial loop regardless of thread count / schedule. `let` binds
             # single-assignment locals so the `@threads` closure does not box the reassigned `a`/`f`/`teidx`
             # (JET boxed-capture trap, CLAUDE.md §2).
+            # Report the fitted geometry ONCE (first fold) per axis — see `leaf_geometry`.
+            k == 0 && println(leaf_geometry(f, max_depth))
             pa = preds[a]
             let a = a, f = f, pa = pa, ti = teidx, qrf = qrf
                 Threads.@threads for i in ti
