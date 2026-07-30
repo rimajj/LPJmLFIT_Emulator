@@ -397,9 +397,17 @@ min/median/q90/q99/max · the count and stored-value SHARE at `depth == max_dept
   such a leaf, with max leaf size 3 589–4 366. The trees are cut off by the **depth budget** with most of the
   mass still splittable — they did NOT stop for want of a gain-positive split, which is what ADR 0037 §3's
   mechanism sentence assumed. Correct the prose wherever it appears.
-- **Why it decides the artifact:** bytes ≈ `10.7·ntrees·subsample·naxes` — `max_depth` does not appear. Every
-  rung ever run co-varied them (50k/d14, 500k/d18, 2M/d22, 8M/d26), so run the single-factor 2×2
-  (`40×50k d22` and `12×500k d14`) BEFORE committing to a ≥490 MB artifact; the cheap half may do the work.
+- **`max_depth` is FREE but nearly INERT for dispersion — this is ANSWERED, do not re-run it.** Bytes ≈
+  `10.7·ntrees·subsample·naxes`, so depth costs nothing, and the depth cap above is real — which made it look
+  like the cheap fix. It is not. The single-factor rung `40×50 000, d22` (job 1646465) cuts the depth-capped
+  share from 57–67 % to **6–12 %** and lifts leaves/tree 1063 → ~1840, yet `emu_r` moves only 0.814 → **0.829**
+  (10 % of the GAP) and **`sd(pred)/sd(Y1)` moves 0.6775 → 0.6796 — nothing.** Meanwhile subsample
+  50k → 500k → 2M drives `sd_ratio` 0.678 → 0.749 → 0.770.
+  **The binding constraint is ROWS PER CELL, not partition fineness**: at subsample 50 000 over 54 020 cells a
+  tree sees ~0.93 rows/cell, and cutting finer only makes leaves smaller and noisier (mean size 47 → 27,
+  expected draw pool 8564 → 1686), so the ensemble of noisy small leaves still shrinks to the global marginal.
+  ⇒ **there is no cheap-artifact path to criterion 2**; buying dispersion means buying subsample, and bytes
+  scale with it. Raise depth anyway (it is free and worth +0.015 `emu_r`), but do not budget it for dispersion.
 - **Don't quote `ntrees·mean(leafsize)` as the draw pool** — leaf occupancy is size-biased, so the expected
   pool is `E[s²]/E[s]` per tree: Wooddens' mean leaf is 42.3 values but its size-biased pool is **214.1**, ~5×
   the naive figure. Publish the RATIO between rungs, not the absolutes.
