@@ -79,7 +79,7 @@ meta, golden = read_meta(META)
 println("\n== [1/5] load =======================================================================")
 t0 = time_ns()
 cop, forests, x, axes, cond_cols = DRF.load_copula(RCOP)
-dt = (time_ns() - t0) / 1e9
+dt = (time_ns() - t0) / 1.0e9
 mbs = (filesize(RCOP) / 2^20) / dt
 println("   loaded in $(round(dt, digits = 2)) s  =  $(round(mbs, digits = 1)) MiB/s   [MEASURED, not estimated]")
 ncond = length(cond_cols)
@@ -90,13 +90,17 @@ println("   forests  : $(join(("$(a)=$(length(f.trees))t/nfeat$(f.nfeat)" for (a
 
 # ---- [2/5] the HEADER contract ------------------------------------------------------------------------
 println("\n== [2/5] header contract vs the sidecar meta =========================================")
-check("every axis forest's nfeat == ncond", all(f.nfeat == ncond for f in forests),
-    "nfeat = $(join((f.nfeat for f in forests), ","))  ncond = $ncond")
+check(
+    "every axis forest's nfeat == ncond", all(f.nfeat == ncond for f in forests),
+    "nfeat = $(join((f.nfeat for f in forests), ","))  ncond = $ncond"
+)
 check("fallback row x has ncond entries", length(x) == ncond, "length(x) = $(length(x))")
 check("x is all finite", all(isfinite, x))
 if haskey(meta, "ncond")
-    check("meta ncond agrees with the .rcop", parse(Int, meta["ncond"]) == ncond,
-        "meta $(meta["ncond"]) vs rcop $ncond")
+    check(
+        "meta ncond agrees with the .rcop", parse(Int, meta["ncond"]) == ncond,
+        "meta $(meta["ncond"]) vs rcop $ncond"
+    )
 end
 if haskey(meta, "cond_cols")
     check("meta cond_cols agrees with the .rcop", split(strip(meta["cond_cols"])) == cond_cols)
@@ -105,8 +109,10 @@ if haskey(meta, "axes")
     check("meta axes agrees with the .rcop", split(strip(meta["axes"])) == axes)
 end
 qrf_meta = haskey(meta, "qrf_weighting") ? meta["qrf_weighting"] == "1" : nothing
-println("   meta qrf_weighting: ", qrf_meta === nothing ? "ABSENT (pre-ADR-0037 artifact ⇒ treat as 0)" :
-    (qrf_meta ? "1 (QRF leaf weighting)" : "0 (equal-weight)"))
+println(
+    "   meta qrf_weighting: ", qrf_meta === nothing ? "ABSENT (pre-ADR-0037 artifact ⇒ treat as 0)" :
+        (qrf_meta ? "1 (QRF leaf weighting)" : "0 (equal-weight)")
+)
 
 # ---- [3/5] GOLDEN pairs — and whether `qrf` is load-bearing for this artifact -------------------------
 println("\n== [3/5] golden (seed, x) -> draw pairs, under BOTH qrf settings =====================")
@@ -120,13 +126,15 @@ else
     # the JET boxed-capture rule in CLAUDE.md §2: prefer a single assignment over a reassigned local.
     flipped = [
         begin
-            got_declared = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, forests, x; qrf = qrf_use)
-            got_other = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, forests, x; qrf = !qrf_use)
-            # The meta prints draws with `string(v)` (full Float64 round-trip) ⇒ this must be EXACT.
-            check("golden seed $s reproduces at qrf=$(qrf_use)", got_declared == want,
-                got_declared == want ? "" : "got $(got_declared) want $(want)")
-            got_other != want
-        end for (s, want) in golden
+                got_declared = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, forests, x; qrf = qrf_use)
+                got_other = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, forests, x; qrf = !qrf_use)
+                # The meta prints draws with `string(v)` (full Float64 round-trip) ⇒ this must be EXACT.
+                check(
+                    "golden seed $s reproduces at qrf=$(qrf_use)", got_declared == want,
+                    got_declared == want ? "" : "got $(got_declared) want $(want)"
+                )
+                got_other != want
+            end for (s, want) in golden
     ]
     ndiff = count(flipped)
     # If flipping qrf changes the draws, then `qrf_weighting` is a LOAD-BEARING part of the contract that
@@ -189,8 +197,10 @@ for (a, ax) in enumerate(axes)
     μ = sum(v) / length(v)
     sd = sqrt(max(sum((vi - μ)^2 for vi in v) / length(v), 0.0))
     nnf = count(!isfinite, v)
-    println("   $(rpad(ax, 10)) $(rpad(round(μ, sigdigits = 5), 12)) $(rpad(round(sd, sigdigits = 4), 11)) " *
-        "$(rpad(round(minimum(v), sigdigits = 5), 12)) $(rpad(round(maximum(v), sigdigits = 5), 12)) $nnf")
+    println(
+        "   $(rpad(ax, 10)) $(rpad(round(μ, sigdigits = 5), 12)) $(rpad(round(sd, sigdigits = 4), 11)) " *
+            "$(rpad(round(minimum(v), sigdigits = 5), 12)) $(rpad(round(maximum(v), sigdigits = 5), 12)) $nnf"
+    )
     check("$ax draws are all finite", nnf == 0)
 end
 println("   NOTE: the mean here is the CONDITIONAL mean at the average conditioning row, which for a")
@@ -200,7 +210,9 @@ println("         ssp370 + pooled) while single-cell Hainich agrees to 1 % — t
 println("         not a defect. Do not open a residual investigation on it.")
 
 println("\n" * "="^100)
-println(nfail == 0 ? "ACCEPTANCE: PASS — $(basename(RCOP)) is loadable and contract-consistent" :
-    "ACCEPTANCE: $nfail CHECK(S) FAILED for $(basename(RCOP))")
+println(
+    nfail == 0 ? "ACCEPTANCE: PASS — $(basename(RCOP)) is loadable and contract-consistent" :
+        "ACCEPTANCE: $nfail CHECK(S) FAILED for $(basename(RCOP))"
+)
 println("="^100)
 exit(nfail == 0 ? 0 : 1)
