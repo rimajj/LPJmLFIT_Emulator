@@ -196,6 +196,27 @@ stylistically fine — the fix is `--inplace` on that file, not hand-editing (bi
 table, 2026-07-30). It also rewrites `1.0e-6`-style exponents, so don't fight it: write the test, then run
 `--inplace` with the CI version before committing.
 
+**Get the LIST OF OFFENDING FILES, not just a count.** A dir-level `--check` reports that something is
+unformatted but not *what*, and the diff is long enough to bury it. Loop and collect, so you reformat only
+your own files and can prove no sibling regressed (`[VERIFIED 2026-07-31]` — this named `1 of 111`, the one
+new `scripts/*.jl`, in seconds):
+```bash
+JULIA=/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia
+ALLOW_LOGIN_HEAVY=1 $JULIA --startup-file=no --project=<runic-env> -e '
+import Runic
+files = String[]
+for (root, dirs, fs) in walkdir(".")
+    occursin(r"(^|/)\.git(/|$)", root) && continue
+    for f in fs; endswith(f, ".jl") && push!(files, joinpath(root, f)); end
+end
+bad = filter(f -> Runic.main(["--check", f]) != 0, files)
+println("FAILING (", length(bad), " of ", length(files), "):"); foreach(f -> println("  ", f), bad)'
+```
+Walking the tree also covers `.jl` files OUTSIDE `src test ext scripts` — the CI action takes no `paths`
+input, so it formats **every tracked `.jl` in the repo**, which is wider than the four dirs the command
+above this one checks. Keep a persistent Runic env (`Pkg.add(name="Runic", version="1")` into a scratch
+project dir) instead of `Pkg.activate(temp=true)` per call — the temp env re-resolves every time.
+
 ## Docs (local, egress-safe)
 
 ```bash
