@@ -454,6 +454,19 @@ universe identical by construction, and it verifies cols `0..ncond-1` bitwise ov
   0 cells**, failing downstream with a message blaming a coverage hole. Fixed in BOTH the builder and the
   augment; proven byte-identical for historic. So an ssp370 env tail is the historic climatology (no scenario
   signal) — a transient tail needs the ADR-0026 `BOUNDARY_WINDOW` treatment.
+- **`SCENARIO` is a LABEL only** (printed + copied into the manifest); the year filter is gone, so
+  `SCENARIO=pooled` is safe.
+- **Every manifest-named SIDECAR must be carried, not just `Y_*`/`cells.i64` (`[VERIFIED 2026-07-31]`).**
+  `pooled` tables declare `scenario_tag  scenario.i64`; the original symlink loop dropped it, so a pooled
+  augment emitted a manifest naming a 337 MB file that was not in the directory. It TRAINS fine
+  (`train_slow_copula.jl` never reads it) and only fails later in `eval_slow_copula_scenario_holdout.jl`,
+  far from the cause. Sidecars now resolve BY NAME from the manifest, with a post-write assertion.
+- **A POOLED env table carries NO static scenario discriminator (`[VERIFIED 2026-07-31]`).** The env tail is
+  the same per-cell historic climatology for a cell's historic AND ssp370 rows (verified: identical
+  `prec_mean`/`vpd_mean` ranges across both `scenario.i64` values), and `co2` is a hard constant `369.0`
+  (`CO2_CONST`, the ADR-0004 constant-CO₂ regime) — a DEAD conditioning column that can never be split on,
+  so effective width is `ncond − 1`. Only the 4 live flux drivers separate the two scenarios. Say this
+  rather than implying the env tail adds scenario information.
 
 ### A wrong-length conditioning row was an OUT-OF-BOUNDS READ, not an error (`[VERIFIED 2026-07-30]`)
 
@@ -510,6 +523,44 @@ two sets (a silently-narrowed column list is the ADR-0031 failure mode). The t8 
 Then `scripts/noise_floor_vs_emulator.py` (see the **emulator-validation-figures** skill for the gate's
 semantics). **`sbatch_python.sh` forwards `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW` only since
 2026-07-28** — an older session's copy of this command silently built a *count* table into a copula dir.
+
+### A seed2 exists for `historic` ONLY — so two of the four criteria are not computable for `pooled`
+
+`slow_copula_historic_seed2{,_t7,_t8}` are the only seed2 tables; there is **no pooled and no ssp370 seed2**.
+The floor is what defines the attenuation-corrected ceiling, so **criterion 1's `%GAP` and criterion 4's
+`r_center` cannot be measured for the artifact line M pins.** Do not let their absence read as a pass.
+Criteria 2 and 3 need seed1 alone:
+- **criterion 3** — `scripts/score_slow_copula_ks.py`, which auto-reads the baseline from
+  `figures/emulator_validation/<scenario>_t8/metrics_traits.txt` keyed on the manifest's `scenario`, so it
+  compares against the RIGHT scenario row by construction. Never re-hardcode a baseline.
+- **criterion 2** — `scripts/score_slow_copula_dispersion.py` (`TABLE`, `PRED_A`/`LABEL_A`,
+  `PRED_B`/`LABEL_B`, `MINSTEM`, `AXES`): `emu_r`, `sd(pred)/sd(Y1)` and the OLS slope, plus an A/B delta of
+  two prediction sets on ONE basis. It imports `noise_floor_vs_emulator.percell_table` so the per-cell
+  median cannot drift from the gate's own definition. Its `sd_ratio` is on the seed1 `≥MINSTEM` basis, NOT
+  the gate's narrower seed1-INNER-seed2 basis, so **absolute values are not interchangeable with the
+  published historic figures — only deltas measured on one basis are valid.**
+- **`median_percell_r` in `metrics_traits.txt` IS `emu_r`** (`[VERIFIED 2026-07-31]`) — the between-cell
+  Pearson r of per-cell medians, despite a name that reads like a within-cell statistic. Reproduced to 4 dp
+  on an identical cell count (pooled SLA 0.8994 / Wooddens 0.8261 on 57 719 cells). The basis offset to the
+  gate's number is ~0.002 (historic Wooddens 0.8121 there vs 0.814 in the gate). **So every scenario's
+  `emu_r` baseline is ALREADY published** — read it from there instead of assuming it needs a seed2.
+
+## Accept a production `.rcop` in a FRESH process before shipping it
+
+`train_slow_copula.jl`'s built-in round trip runs with the forests still in memory — it proves
+serialization is self-consistent, not that a later process can use the file.
+`RCOP=<path> scripts/sbatch_julia.sh <tag> --project=. scripts/rcop_acceptance_probe.jl` closes the gap:
+timed load, `nfeat` vs header `ncond`, sidecar agreement, golden `(seed,x)→draw` reproduction, the runtime
+row rebuilt through the REAL policy and asserted equal to the artifact's own `x`, and wrong-width rows
+confirmed rejected. On `recruit_copula_global_historic_t9.rcop` (484.5 MiB): **load 6.77 s = 71.6 MiB/s
+measured** — an earlier handoff's "~12 s at 42 MB/s" was never measured; use the real number.
+- **`qrf` is NOT stored in the `.rcop` — only in the sidecar `qrf_weighting` (`[VERIFIED 2026-07-31]`).**
+  Flipping it changes ALL three golden draws on t9, so it is LOAD-BEARING: a runtime that loads the artifact
+  and forgets `qrf=true` samples a different conditional distribution than the gate scored, with every draw
+  still in range. **A pinned `.rcop` path is therefore an INCOMPLETE contract — the sidecar must be pinned
+  with it.** The probe reports this per artifact rather than assuming it.
+- A `.rcop` re-trained from the same `(table, config, seeds)` is byte-identical, so the artifact is
+  reproducible and safe to regenerate for a metadata fix (checked by md5 in the `S-t9-remeta` job pattern).
 
 ## Load-bearing gotchas (this is why the DRF is trusted)
 
