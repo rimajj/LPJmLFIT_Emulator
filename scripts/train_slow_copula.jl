@@ -136,7 +136,18 @@ function main()
             "GLOBAL ($(get(man, "scenario", "?")), $(get(man, "ncells", "?")) cells)"
         println(io, "# Production Component-S recruit-trait copula ($scope) — metadata for the load test.")
         println(io, "# Built by scripts/train_slow_copula.jl from scripts/build_slow_runtime_table.py MODE=copula.")
-        println(io, "# Conditioning order = src/components/slow.jl::live_flux_cond (4 flux drivers + boundary tail).")
+        # WHICH runtime policy reproduces this artifact's conditioning row. Hard-coding `live_flux_cond`
+        # here was correct only while every artifact was 8-wide; a 14-column .rcop (ADR 0038's production
+        # config) is built by `live_flux_cond_env`, and a meta that names the 8-column policy invites
+        # exactly the silent train/inference shift ADR 0023 warns about. Derive it from `ncond` instead:
+        # `live_flux_cond` emits 4 flux drivers + the 4-column boundary tail, so anything wider carries an
+        # env tail. `cond_cols` below is the authoritative contract either way.
+        nboundary = 4
+        policy = ncond == 4 + nboundary ?
+            "live_flux_cond (4 flux drivers + the $(nboundary)-column boundary tail)" :
+            "live_flux_cond_env(env) with length(env) == $(ncond - 4 - nboundary) " *
+            "(4 flux drivers + the $(nboundary)-column boundary tail + the env tail)"
+        println(io, "# Conditioning order = src/components/slow.jl::", policy, ".")
         println(io, "naxes\t", naxes)
         println(io, "ncond\t", ncond)
         println(io, "axes\t", join(axes, " "))
