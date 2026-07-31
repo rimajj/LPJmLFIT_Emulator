@@ -136,6 +136,17 @@ Measured properties of the shipped artifact:
 - **Accepted end to end** (`rcop_acceptance_probe.jl`, job 1647615/1647666): `nfeat` 14 on all four axis
   forests, sidecar agreement, all three golden pairs reproduced, the runtime `live_flux_cond_env(env)` row
   equal to the artifact's own fallback row, and 13-/15-/4-column rows all rejected.
+- **t9 is the FIRST generation whose SHIPPED artifact is the estimator that was SCORED**
+  (`[VERIFIED 2026-07-31]`). `run_global_slow_copula.sh` carries two tree knobs — `NTREES` (60, → the shipped
+  `.rcop` via `train_slow_copula.jl`) and `EVAL_NTREES` (40, → the scored K-fold OOS via
+  `eval_slow_copula.jl`) — so **every published t8 gate number describes a 40-tree estimator while the object
+  line M pins is a 60-tree one.** Read off the artifacts themselves: t8 has `ntrees = 60` and 3 000 000 stored
+  leaf values on axis 1 (= 60 × 50 000); t9 has `ntrees = 6` and 12 000 000 (= 6 × 2 000 000), matching its
+  rung exactly. Tree count is nearly inert for skill (±0.002 over 3.3×), so the t8 mismatch barely moved the
+  headline numbers — but it is **not** inert for the leaf-weight skew that the QRF story rests on (6.7× `1/T`
+  at 60 trees vs 2.9× at 6), so any t8-era weighting figure must be attributed to the 60-tree *artifact*, not
+  to the 40-tree scored estimator. This also resolves the apparent "40 vs 60" contradiction in
+  `diagnose_copula_capacity.sh`'s size comment: both numbers are right, about different objects.
 - **Leaf geometry at the production config, previously unmeasured** (job 1648259): 33 449–46 036 leaves/tree,
   **52.3–67.0 % of stored values still in a depth-capped leaf**, and only 84–86 % of large leaves at
   `max_depth` (against 99.9–100 % at 50k/d14). So depth is **not** exhausted at d22/2M and remains free in

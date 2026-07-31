@@ -77,3 +77,15 @@
   geographic address, and K-fold-**by-cell** CV cannot separate a transferable environmental response from
   spatial interpolation. The +0.037 is a valid offline gain whose generalization is **unestablished**;
   production turns on a spatially blocked re-score, which is now the named next step.
+
+### Documentation
+
+- **Recorded that `run_global_slow_copula.sh` scores a different estimator than it ships**: `NTREES` (60)
+  feeds `train_slow_copula.jl` ⇒ the shipped `.rcop`, while `EVAL_NTREES` (40) feeds `eval_slow_copula.jl` ⇒
+  the scored OOS. So every published **t8** gate number describes a 40-tree estimator while the artifact line
+  M pins is 60-tree (read off the artifacts: t8 `ntrees=60`, 3 000 000 stored leaf values = 60 × 50 000; t9
+  `ntrees=6`, 12 000 000 = 6 × 2 000 000). **t9 is the first generation where the two agree.** Tree count is
+  nearly inert for skill (±0.002 over 3.3×) so the t8 headline barely moved, but it is *not* inert for the
+  leaf-weight skew the QRF argument rests on (6.7× `1/T` at 60 trees vs 2.9× at 6) — attribute weighting
+  figures to the right object. Also resolves the apparent "40 vs 60" contradiction in
+  `diagnose_copula_capacity.sh`'s size comment: both are right, about different objects.

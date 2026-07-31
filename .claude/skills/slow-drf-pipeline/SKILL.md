@@ -550,6 +550,23 @@ the 2000–2019 historic climatology and a cell's historic and ssp370 rows are *
 Combined with `co2` being a hard constant 369.0 (ADR 0004), the only columns separating the two scenarios are
 the 4 live flux drivers. Say that rather than implying the env tail adds scenario information.
 
+### `run_global_slow_copula.sh` SCORES a different estimator than it SHIPS (`[VERIFIED 2026-07-31]`)
+
+It has **two** tree knobs: `NTREES` (default **60**) feeds `train_slow_copula.jl` ⇒ the shipped `.rcop`, and
+`EVAL_NTREES` (default **40**) feeds `eval_slow_copula.jl` ⇒ the scored K-fold OOS. So **every published t8
+gate number describes a 40-tree estimator while the artifact line M pins is 60-tree.** Verified off the
+artifacts: t8 `ntrees=60` with 3 000 000 stored leaf values on axis 1 (= 60 × 50 000); t9 `ntrees=6` with
+12 000 000 (= 6 × 2 000 000, matching its scored rung). Tree count is nearly inert for skill (±0.002 over
+3.3×) so the t8 headline barely moved — but it is **not** inert for the leaf-weight skew the QRF argument
+rests on (6.7× `1/T` at 60 trees vs **2.9× at 6**), so attribute any weighting figure to the right object.
+**When you ship a new generation, set `NTREES == EVAL_NTREES`** (t9 is the first that does). Read the truth
+out of an artifact rather than trusting a log:
+```julia
+_, af, _, ax, cc, qrf = DRF.load_copula(path)   # 6-tuple from format v2
+length(af[1].trees), length(cc), qrf, sum(sum(length(v) for v in t.values) for t in af[1].trees)
+```
+(`RegTree`'s leaf-sample field is `values`, a `Vector{Vector{Float64}}`; there is no `nodes` field.)
+
 ### Criterion 3 = pooled KS, the NUMERIC bound — and publish `nqrmse` beside it (ADR 0038)
 
 ADR 0038 pins it: criterion 3 means pooled KS not worse than the **same-scenario** baseline by more than
