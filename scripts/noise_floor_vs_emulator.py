@@ -152,8 +152,17 @@ def resolve_struct_axes(dir1, dir2):
     if not s1 and not s2:
         return []
     if s1 != s2:
+        # Name BOTH sides and point at whichever is the narrower one. The old wording said "Rebuild the
+        # seed2 table with the same STRUCT_AXES" unconditionally, which is misdirected in the common case:
+        # the seed2 tables DO carry agb+Height, and it is the seed1 SHADOW manifest that got trimmed by
+        # `diagnose_copula_capacity.sh` (`TRAIT_ONLY=1`, which strips nstruct/struct_axes to cut the eval
+        # ~33 %). Following that advice costs a pointless multi-hour rebuild and still does not fix it.
+        narrow = "seed1" if len(s1) < len(s2) else "seed2"
         print(f"== STRUCT AXES DISAGREE between the two tables — seed1 {s1} vs seed2 {s2}; struct rows SKIPPED "
-              "(the sets are never silently intersected). Rebuild the seed2 table with the same STRUCT_AXES.")
+              "(the sets are never silently intersected).")
+        print(f"   The NARROWER side is {narrow}. If it is seed1 and this is a capacity shadow, the cause is "
+              "almost certainly TRAIT_ONLY=1 in diagnose_copula_capacity.sh trimming the shadow manifest — "
+              "re-run that rung with TRAIT_ONLY=0, do NOT rebuild the seed2 table.")
         return []
     keep = []
     n1 = (Path(dir1) / "cells.i64").stat().st_size // 8
@@ -315,6 +324,50 @@ def main():
     print(f"   seed1 copula basis: {e1.height} cells", flush=True)
     e2 = percell_table(COPULA2, with_pred=False, axes=allax)
     print(f"   seed2 copula basis: {e2.height} cells", flush=True)
+
+    # ---- THE TWO SEEDS MUST ACTUALLY BE TWO SEEDS -------------------------------------------------------
+    # This whole gate defines the ceiling as `sqrt(rel_P * rel_Y)` with `rel_Y = floor_r`, the correlation
+    # between two INDEPENDENT realizations. If the "second" realization is a copy of the first, `floor_r`
+    # is 1 by construction, the ceiling goes to ~1, and every axis reports a FABRICATED headroom — with no
+    # error anywhere. Nothing else here can catch that: the `seed1-basis >= 0.99` cross-check compares a
+    # copula table to the parquet of the SAME seed, so it reads 1.000 and is blind to it.
+    #
+    # This is not hypothetical (`[VERIFIED 2026-07-31]`, ADR 0038). The ssp370 ground truth has a
+    # `..._random_seed2` directory whose `ind_2020_2100.csv` is BIT-IDENTICAL to seed1's (same
+    # 193,097,583,638 bytes; equal md5 on blocks at MB 0/30000/120000) because its config sets
+    # `"random_seed": 2` but its `restart_filename` points at the HISTORIC *seed1* `restart_2019.lpj` —
+    # under `-DFROM_RESTART` the per-cell RAND48 state is restored from that file, so the seed setting is
+    # inert. (The historic pair is genuinely independent: each reads its own relative `restart_1999.lpj`,
+    # and its files differ in size and content.) So "an ssp370/pooled seed2 exists" is a trap, and the
+    # cost of falling into it is an invented ceiling in an accepted ADR.
+    dup_axes = []
+    for a in allax:
+        j = e1.select(["Cell", f"y_{a}"]).join(e2.select(["Cell", f"y_{a}"]), on="Cell", how="inner",
+                                               suffix="_s2")
+        v1 = j[f"y_{a}"].to_numpy()
+        v2 = j[f"y_{a}_s2"].to_numpy()
+        if v1.size and np.array_equal(v1, v2):
+            dup_axes.append(a)
+    if dup_axes:
+        raise SystemExit(
+            f"FATAL: seed1 and seed2 per-cell medians are BIT-IDENTICAL on {dup_axes} — these are not two\n"
+            f"   independent realizations, so no floor/ceiling/GAP may be quoted from them.\n"
+            f"   seed1: {COPULA}\n   seed2: {COPULA2}\n"
+            f"   Most likely cause: the seed2 run restarted from the SEED1 restart file, which restores the\n"
+            f"   per-cell RAND48 state and makes `\"random_seed\"` inert under -DFROM_RESTART. Confirmed for\n"
+            f"   the ssp370 ground truth (ADR 0038). A real seed2 needs its own spin-up/restart lineage."
+        )
+    # A weaker but still fatal variant: distinct floats that are nonetheless implausibly close everywhere.
+    # Report rather than abort, because a genuinely tiny floor is a legitimate (if alarming) measurement.
+    for a in AXES:
+        j = e1.select(["Cell", f"y_{a}"]).join(e2.select(["Cell", f"y_{a}"]), on="Cell", how="inner",
+                                               suffix="_s2")
+        v1, v2 = j[f"y_{a}"].to_numpy(), j[f"y_{a}_s2"].to_numpy()
+        if v1.size:
+            same = float(np.mean(v1 == v2))
+            if same > 0.5:
+                print(f"   WARNING: {a}: {same:.1%} of per-cell medians are EXACTLY equal between the two "
+                      f"seeds — suspect a shared restart lineage, not a real floor.")
     # the emulator side is ≥MINSTEM-filtered ONCE here, so every basis block below is scored on cells the
     # emulator itself is evaluated on (this reproduces the pre-S1 `n>=MINSTEM` filter on the copula side).
     emu = (e1.filter(pl.col("nstem") >= MINSTEM)

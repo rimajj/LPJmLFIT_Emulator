@@ -6,143 +6,140 @@
 
 ## NEXT — start here
 
-**S2 is THREE separable levers. Capacity is real but bounded; the conditioning it was scoped around is the
-smallest; and an adversarial audit (75 agents, 68 findings, 52 surviving refutation) found the previous
-handoff's criterion-3 verdict was measured on the WRONG STATISTIC.** Read the corrections before reusing any
-number below. Everything is `t8` historic, 52 165 cells, each probe reproducing the documented ADR-0030
-numbers before reporting.
+**S2's gate is MET — and the win is smaller than it looks, for a reason worth reading before you act on it.**
+`env-qrf-b6x2M` (6 trees x 2M subsample, `max_depth` 22, `min_leaf` 20, `QRF=1`, **`ncond` 14**) clears all
+four ADR-0030 §4 criteria for the first time. **ADR 0038** is the record; it SUPERSEDES ADR 0037's central
+thesis. **Merged to `main`? NOT YET — 9 commits sit on `line/S` awaiting the push/CI/merge ritual.**
 
-### CORRECTIONS to the previous handoff and to ADR 0037 (ADR 0037 is accepted/immutable — ADR 0038 carries these)
+### The result, in one table (all verified against the raw logs, twice)
 
-1. **`b6x2M` did NOT lose criterion 3. It PASSES, improving the pooled marginal on all four axes.** The
-   criterion is **pooled KS** (ADR 0030 §4), not `nqrmse`. Measured (job 1646363, `score_slow_copula_ks.py`):
-   SLA 0.0051→**0.0038**, Wooddens 0.0052→**0.0040**, D95max 0.0069→**0.0030**, minwscal 0.0115→**0.0051**.
-   The recorded "pooled marginal degraded ~2x" was `nqrmse`, which disagrees with KS by ~55x in magnitude
-   (`agb` 0.6432 vs 0.0116) **and in direction** (b12x500k D95max: nqrmse 2.0x worse, KS 2.1x better).
-   ⇒ supersede `ADR 0037:63-67, 71-73`.
-2. **`b12x500k` closed 20.0 % of the GAP, not 28 %.** Formula, now pinned: `(emu_r − 0.814)/0.150`. The full
-   column is **20.0 / 19.3 / 18.7 / 32.0 / 33.3 %**. (Alternative reading `1 − GAP_rung/0.150` gives
-   19.3/18.7/18.0/30.7/32.7 %; they differ only through the 0.964→0.965 ceiling rounding.)
-3. **The scenario baseline matters and is easy to invert.** historic pooled KS = 0.0051/0.0052/0.0069/0.0115
-   (52 516 cells); **pooled-scenario** = 0.0039/0.0065/0.0020/0.0040 (57 719). Comparing a historic rung
-   against the pooled row makes an all-four-axes improvement read as degraded on three.
-4. **"a large leaf stopped splitting early" is the wrong mechanism.** Measured on the t8 `.rcop`: **99.9-100 %**
-   of leaves holding ≥ 2·min_leaf values sit at exactly `depth == max_depth == 14`, and **57-67 %** of ALL
-   stored values are in such a leaf. The trees are cut off by the **depth budget**, not by gain exhaustion.
-   ⇒ supersede `ADR 0037:91-98`. Also `~240 vs ~1880 values` is wrong-basis: leaf occupancy is size-biased, so
-   the pool is `E[s²]/E[s]` = **214.1/tree** (⇒ ~8 600 at 40 trees), and the max-leaf weight share is
-   **median 0.111 (~7x)**, not the 17-21 % (~10-12x) recorded — that is roughly its top decile.
-5. `ncond` 8 → 14 gives `mtry` **4-of-14**, not 4-of-15. The `t8env` table **already exists** — do NOT rebuild
-   it (see below).
+| | Wooddens `emu_r` | %GAP | `sd_ratio` | pooled KS SLA/W/D95/minw |
+|---|---|---|---|---|
+| baseline `t8` (40x50k, d14, ncond 8) | 0.814 | — | 0.6775 ✗ | .0051/.0052/.0069/.0115 |
+| best at **ncond 8** (`qrf-b6x8M`) | **0.867** | 35.3 % ✗ | 0.7633 | not KS-scored |
+| **`env-qrf-b6x2M` (ncond 14) — SHIPPED** | **0.901** | **58.0 % ✓** | **0.8541 ✓** | **.0032/.0024/.0019/.0013 ✓** |
 
-### The three levers, as measured
+Threshold is `emu_r` 0.889. Criterion 1 passes under all five defensible %GAP conventions (min 56.7 %).
+`b6x8M` rejected: +0.002 for 4x the bytes and worse KS on all four axes.
 
-| axis | copula `emu_r` | r(same 8 cols) | r(+28 env) | **estimator share** | covariate share |
-|---|---|---|---|---|---|
-| SLA | 0.881 | 0.962 | 0.973 | **+0.080** | +0.011 |
-| Wooddens | 0.814 | **0.916** | 0.941 | **+0.102** | +0.025 |
-| D95max | 0.791 | 0.879 | 0.922 | **+0.089** | +0.042 |
-| minwscal | 0.945 | 0.977 | 0.981 | +0.032 | +0.004 |
+### The three levers, isolated (matched pairs — do NOT collapse these)
 
-`diagnose_copula_cond_ceiling.py`, jobs 1643090 / 1643095 (`FLUX_QUANTILES=1`, shown) / 1644676. **This is a
-LightGBM UPPER BOUND on a per-cell fit, not a DRF result** — no DRF rung has exceeded 0.864. Quote it only to
-rank levers. Wooddens' 0.916 from the EXISTING eight columns already clears the 0.889 target, so the
-conditioning was never the binding constraint.
+| lever | Δ `emu_r` | Δ `sd_ratio` | crosses the gate? |
+|---|---|---|---|
+| capacity, ncond 8, QRF=1 (50k→2M→8M) | +0.037 then **+0.003** | +0.0884 | **no — saturates at 0.867** |
+| QRF alone (at 50k / at 2M) | +0.013 / +0.002 | **−0.003 / −0.013** | no |
+| **conditioning, at fixed 6x2M+QRF** | **+0.037** | **+0.0966** | **yes** |
 
-### Lever 1 — CAPACITY. Every rung complete; **all four criteria met except criterion 1, by every rung**
+Capacity *provably* cannot reach the gate at ncond 8: fitted asymptote **0.870**; the last marginal rate
+implies ~15 more doublings = ~1000x the whole 197.7M-row table. **Subsample is exhausted past ~2M at BOTH
+widths** (+0.003 / +0.002); the *level* it plateaus at is set by the conditioning. QRF's payoff shrinks
+with capacity because the max-leaf weight share is 6.7x `1/T` at 60 trees but only **2.9x at 6 trees** —
+what QRF fixes is largely absent there, so `qrf-b6x2M` was chosen for consistency with the scored rung, not
+for skill.
 
-Gate (ADR 0030 §4): (1) `emu_r ≥ 0.889` · (2) Wooddens `sd_ratio ≥ 0.75` · (3) pooled KS not degraded (≤0.02)
-· (4) no axis loses >0.01 `r_center`.
+### ⚠ THE CAVEAT THAT GATES PRODUCTION — read before promoting anything
 
-| rung | ntrees × subsample, d | C1 `emu_r` / %GAP | C2 `sd_ratio` | C3 pooled KS SLA/W/D95/minw | C4 |
-|---|---|---|---|---|---|
-| baseline `t8` (1643092, gate 1644235) | 40 × 50 000, d14 | 0.814 / — | 0.678 | .0051/.0052/.0069/.0115 | — |
-| `b12x500k` (1644118, gate 1644237) | 12 × 500 000, d18 | 0.844 / 20.0 % ✗ | 0.749 ✗ | .0041/.0024/.0033/.0074 ✓ | ✓ |
-| `b24x500k` (1644120, gate 1644239) | 24 × 500 000, d18 | 0.843 / 19.3 % ✗ | 0.749 ✗ | .0051/.0029/.0043/.0078 ✓ | ✓ |
-| `b40x500k` (1644436) | 40 × 500 000, d18 | 0.842 / 18.7 % ✗ | 0.751 ✓ | .0055/.0032/.0047/.0082 ✓* | ✓ |
-| **`b6x2M`** (1644119, gate 1644238) | 6 × 2 000 000, d22 | 0.862 / 32.0 % ✗ | **0.770** ✓ | **all four improve** ✓ | ✓ |
-| `qrf-b6x2M` (1644615) | 6 × 2M, d22, QRF=1 | **0.864** / 33.3 % ✗ | 0.758 ✓ | .0058*/.0016/.0022/.0019 ✓ | ✓ |
+**The six env columns are a per-cell spatial ADDRESS, not a climate response.** Verified directly:
+median within-cell sd is **EXACTLY 0, for 100 % of cells**, on all six (`prec_mean`,
+`eco_diag_p_pet_ratio`, `eco_diag_pet_mean`, `eco_diag_vpd_mean`, `pr_cv_monthly`, `humid_mean`) —
+`cell_year_feats` broadcasts a per-cell climatology to every year. So they cannot encode a warming
+response; in the pooled table a cell's historic and ssp370 rows are **bit-identical** on them. A 1-NN
+lookup on those columns reaches Wooddens r = **0.800** with the nearest training neighbour **1.00°** away
+(q25 = 0.50° = the adjacent cell). **`mod(hash(cell), k)` folds cannot detect this** — by-cell CV leaves
+the neighbours in the training fold, so it scores spatial interpolation, not transfer.
 
-\* SLA pooled KS rises slightly vs the historic baseline (b40x500k +0.0004, qrf-b6x2M +0.0007) — far inside
-≤0.02, but a strict "no increase on any axis" reading would fail them. **ADR 0038 must pin which reading
-criterion 3 means.** `b6x2M`/`b12x500k`/`b24x500k` pass either way.
+⇒ `recruit_copula_global_historic_t9.rcop` is the **historic-STATIC** artifact and the S2 evidence. It is
+**NOT** line M's production copula (M pins the **transient** `pooled_w20` basis, ADR 0027). Do not re-pin M
+onto it.
 
-**Tree count is inert**: 12/24/40 at 500k/d18 give 0.844/0.843/0.842 and `sd_ratio` 0.749/0.749/0.751 — ±0.002
-over a 3.3x tree count. **Resolution is everything**, and `b6x2M` beats all of them with SIX trees.
+### DO THIS FIRST
 
-**If you must ship today, `b6x2M` — not `qrf-b6x2M`.** Same capacity, −0.002 `emu_r`, but +0.013 `sd_ratio` (the
-criterion-2 axis) and a clean criterion-3 sweep with no SLA regression. QRF's isolated effect at that capacity
-(identical folds and per-row seeds; only the `qrf` kwarg differs) is **+0.002 `emu_r`, −0.013 `sd_ratio`**,
-pooled marginal much better on 3 axes and worse on SLA. It does **not** deliver the attenuation relief
-ADR 0037 §3 predicted.
+1. **Push + merge the 9 commits.** `git push --force-with-lease origin line/S`, wait for branch CI
+   (`test (lts)`, `test (1)`, `format`, `python`; `test (pre)` is allowed-to-fail), then the `flock` merge of
+   `origin/line/S`, then check **main's own** latest run. Local evidence is already green: full CI-faithful
+   suite **107 394 pass / 0 fail / 4 broken** (job 1647687), Runic 1.7.0 clean 111/111.
+2. **Collect job `1647661` `S-cap-pooled-env`** (started 11:04, 8 h wall) — the SAME config on the
+   **pooled_w20** table M actually pins. It scores criterion 3 (KS, auto-read against the *pooled* baseline)
+   and criterion 2 via `score_slow_copula_dispersion.py`, A/B against pooled t8. **Criteria 1 and 4 are NOT
+   computable for pooled — there is no pooled seed2** (see below). Pooled t8 baseline to compare against:
+   Wooddens `emu_r` **0.8261**, `sd_ratio` **0.6119** (57 719 cells), pooled KS .0039/.0065/.0020/.0040.
+3. **THE decisive experiment, and the gate on production: spatially BLOCKED CV.** Re-score
+   `env-qrf-b6x2M` with contiguous lat/lon block folds instead of `mod(hash(cell), k)`
+   (`eval_slow_copula.jl:143`), plus a lat/lon-only conditioning control. Survives blocking ⇒ a real
+   environmental response, promote it. Decays toward the 1-NN level (r≈0.80) ⇒ it is an address, and S2's
+   framing changes a third time. **Do not promote to M before this runs.**
 
-*Cost, because it decides shippability:* `.rcop` bytes ≈ `10.7·ntrees·subsample·naxes`, loads at 42 MB/s.
-t8 today **122 MB**; `b6x2M` ≈ **490 MB (~12 s)**; `b40x500k` ≈ 816 MB; `6×8M` ≈ **1.9 GB (~49 s)**. Anything
-≥8M is an M-integration conversation, not a drop-in re-pin.
+### Then, in priority order
 
-### IN FLIGHT — six jobs, and what each one decides
+4. **A per-cell env sidecar** — there is NO runtime plumbing supplying the six values per cell; a caller
+   hand-builds them from `cell_year_feats.parquet`, which is unreachable from CI and basis-sensitive. S emits
+   `cell_env.parquet` (same no-year-filter basis); M folds it into `M_cells.csv`. **Until this exists the
+   14-column artifact is not coupled-runnable outside a bespoke script.**
+5. **Depth is NOT exhausted at the production config** — measured on t9 (job 1648259): 33 449–46 036
+   leaves/tree but **52.3–67.0 % of stored values still depth-capped**, and only 84–86 % of large leaves at
+   `max_depth` (vs 99.9–100 % at 50k/d14). Depth is free in bytes. **One `6 x 2M, d32` rung** settles whether
+   the 0.870 asymptote moves.
+6. **Re-run the shipped rung with `TRAIT_ONLY=0`** — `agb`/`Height` were trimmed out of 11 of 12 rungs
+   including the shipped one, and they carry the tightest baseline margins (agb pooled KS 0.0116 vs the 0.02
+   bound; `r_center` headroom 0.011/0.013). "S2 met" must not be read as "biomass and size unchanged".
+7. **The composed coupled path is still unexercised**: emulator + 14-col copula + `qrf=true` + establishment
+   + carbon closure over a multi-year run. Construction is now gated; the run is not.
+8. **Cheap and still open (carried, ADR 0036 §6):** emit **`Year`** in the `MODE=copula` table so the
+   stand-biomass composite is computable on matched rows — it blocks figures 12/13 for the POOLED pair. It is
+   a table SCHEMA change, so it costs a rebuild, and ADR 0036 §5b's streaming key-set nondeterminism means a
+   rebuild lands on a different row universe ⇒ do it when a new generation is being built anyway, never as a
+   standalone rebuild of a validated table. (Related gotcha, don't re-derive: `STEM_CAP` is a patch-year
+   **CLUSTER** subsample, not per-stem — ADR 0036 §178, and it is why ssp370's basis spread is ~10x looser.)
 
-`eval_slow_copula.jl` now prints **leaf geometry** per rung (leaves/tree, size distribution, share of stored
-values at `max_depth`, size-biased pool). Read it on every rung; without it the ladder is uninterpretable.
+### OPEN INTEGRATION POINT with line M (raise it before any re-pin)
 
-| job | rung | what it decides |
-|---|---|---|
-| **1646465** | `40 × 50 000, **d22**` | **THE ARTIFACT-SIZE QUESTION.** Depth is BYTE-FREE; subsample is not. Early geometry: only **4.1 % of leaves / 8.6 % of stored values** still at `max_depth` (vs 100 %/57-67 % at d14), leaves/tree 1063→1843, max leaf 4016→1143. So depth releases the truncation but resolution stays bounded by `subsample/(2·min_leaf)` — if this lands near 0.862 production stays at **122 MB**. |
-| **1646466** | `12 × 500 000, **d14**` | the complementary cell of the single-factor 2×2 (subsample at baseline depth). Every prior rung co-varied subsample with depth. |
-| 1646346 | `40 × 50 000, d14, QRF=1` | QRF isolated at the SHIPPABLE 122 MB size. Replaces 1644614, which **died** (TIME LIMIT at fold 2, wrote **no** preds). |
-| 1646347 | `6 × 8M, d26, QRF=1` | extends the resolution ladder (~+0.009 `emu_r` per doubling, not yet saturating ⇒ predicts ~0.873). |
-| 1646354 | `t8env` `6 × 2M, d22, QRF=1` | **lever 3 ISOLATED** — matched control is `qrf-b6x2M` (0.864). No DRF measurement of lever 3 exists yet; every published number is the LightGBM bound. |
-| 1646355 | `t8env` `6 × 8M, d26, QRF=1` | all three levers at once — the candidate production config. |
+`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`. A 14-column artifact
+fails that **by construction** — its last four are the env tail — so M's re-pin step `sys.exit`s. The correct
+check is **positional**, `cond_cols[4:8]`. **That file is M-owned; S requests, M lands.**
 
-Also 1646468 = the CI-faithful suite on the `drf.jl` length guard.
+### What shipped in code this session (all opt-in, default byte-identical)
 
-### Then, in this order
+- **`.rcop` format v2 carries `qrf`.** It selects a different conditional from the same forests and used to
+  live ONLY in the sidecar, while M's contract pins a `.rcop` *path* ⇒ a consumer that missed the sidecar
+  silently sampled the estimator that was never scored. Flipping it changes all three of t9's golden draws.
+  v1 still loads and means `qrf=false`; `qrf` is the 6th tuple element so all five 5-way `load_copula` call
+  sites are untouched. **This is a VERSION BUMP of the frozen S→M contract — nothing M pinned needs
+  regenerating.**
+- **`FluxDrivenSlowEmulator` rejects a conditioning-width mismatch at CONSTRUCTION.** `_check_nfeat` fires
+  only inside `sample_copula!`, reached only when a patch recruits — so a thinning cell or all-grass patch
+  never draws and a mis-wired run completes "successfully", conserving carbon, silently.
+- **The ADR-0030 gate refuses a floor from two seeds that are the same seed** — see below.
+- `rcop_acceptance_probe.jl` (accept an artifact in a FRESH process; t9 = load **6.77 s / 71.6 MiB/s
+  measured**, all width guards fire) · `score_slow_copula_dispersion.py` (criterion 2 without a seed2).
 
-1. **Collect all six + `score_slow_copula_ks.py` on each new shadow** (criterion 3 is NOT in the rung logs).
-2. **Choose the production config on all four criteria** subject to a loadable `.rcop`. If the pooled marginal
-   binds, prefer more trees at high resolution; if `d22-at-50k` nearly matches `b6x2M`, take the 122 MB.
-3. **Build `t9` by REUSING the `t8` tables** — run only `train_slow_copula.jl` into
-   `recruit_copula_global_historic_t9.rcop` (+ `QRF=` matching what you scored). Do NOT re-run the
-   orchestrator: it rebuilds the table and ADR 0036 §5b's streaming non-determinism risks a different row set.
-   For an env-conditioned `t9` use the EXISTING `slow_copula_historic_t8env` (`scripts/build_slow_copula_env_augment.py`,
-   job 1646343) — it appends to t8's `Xc` so the row universe is identical by construction; cols 0..7 verified
-   bitwise over all 197 721 867 rows. **Do not "build it fresh".**
-4. **ADR 0038** — record which config ships and what EACH lever contributed; do not collapse the three into one
-   number, and carry the five corrections above. **No M integration point is open and none is needed until a
-   `t9` artifact exists** (the count `.drf` is untouched; every copula change is opt-in and default-identical).
-   Notify `lines/M/STATE.md` only when `t9` is real.
+### Traps found this session (do not re-derive)
 
-### Still unmeasured (name it, don't imply coverage)
-
-- **Lever 3 at baseline capacity / QRF=0** — never run, so a conditioning MAIN EFFECT is not identifiable; it
-  is only ever measured combined with QRF at high capacity.
-- **An `ssp370`/`pooled` env table** — now possible (the year-basis bug is fixed) but not built. **M pins the
-  POOLED artifact**, so lever 3 is historic-only until one exists.
-- **`live_flux_cond_env` has ZERO callers** in `src`/`scripts`/`test`, and no `.rcop` has ever been trained at
-  `ncond`=14 — the train→artifact→runtime path is unexercised at that width. The new `load_copula` checks and
-  `DRF._check_nfeat` are what stand between a mismatch and a silent out-of-bounds read.
-
-### Traps found (do not re-derive)
-
-- **`nqrmse` is not pooled KS.** They disagree in magnitude AND direction. Score the statistic the criterion
-  names — this one put a false verdict into an accepted ADR.
-- **A guard that cries wolf is a liability.** The capacity harness's clobber guard hashed `ls pred_* | sort`;
-  login collates `en_US.UTF-8`, the batch shell `C`, so identical untouched files hashed differently and it
-  reported `FATAL: the shadow leaked`. **`t8` was never touched.** `LC_ALL=C` both sides.
-- **A pred-less `SRC` aborted that harness before `sbatch`** (`ls` exits 2 under `pipefail`) — it printed the
-  shadow lines and silently never queued. Confirm every submission with `squeue`, not the script's output.
-- **`sbatch_python.sh` forwards only its explicit list** — `QRF`/`SRC`/`SHADOW`/`COPULA_ENV_COLS`/`SKIP_*`/
-  `STRUCT_AXES`/`FLUX_QUANTILES` are NOT on it; `export` them or use a raw `.jcf`.
-- `test (pre)` is red for **unrelated** Julia-prerelease churn — it dies inside ReTestItems' own `runtests`
-  with `MethodError: setindex!(::ScopedValue{Bool}, ::Bool)`, i.e. the RUNNER breaks at collection before any
-  testitem runs. `continue-on-error`. An intermediate sha's `test (lts)` may read *cancelled* — the NEWEST sha
-  carries the verdict (CLAUDE.md §9 note 5).
-
-### Cheap and open (unchanged)
-
-- **Emit `Year` in the `MODE=copula` table** so the stand-biomass composite is computable on matched rows —
-  blocks figures 12/13 for the POOLED pair (ADR 0036 §6).
-- `STEM_CAP` is a patch-year **CLUSTER** subsample, not per-stem (ADR 0036 §6).
+- **THE ssp370 `random_seed2` GROUND TRUTH IS A BIT-IDENTICAL COPY OF SEED1.** Both `ind_2020_2100.csv` are
+  193 097 583 638 B with equal md5 at MB 0/30000/120000, because the seed2 config sets `"random_seed": 2` but
+  its `restart_filename` points at the **historic seed1** `restart_2019.lpj` — under `-DFROM_RESTART` the
+  RAND48 state is restored, so the seed is inert. (Historic IS independent: each reads its own *relative*
+  `restart/restart_1999.lpj`.) A floor built from it reports `floor_r ≡ 1` ⇒ fabricated headroom, with **no
+  error**; the `seed1-basis ≥ 0.99` check is structurally blind to it. Now guarded + self-tested both ways
+  (job 1648005). **Only `historic` has a usable seed2 ⇒ criteria 1 and 4 are not computable for
+  pooled/ssp370.**
+- **`median_percell_r` in `metrics_traits.txt` IS `emu_r`** (between-cell r of per-cell medians, despite the
+  name) — reproduced to 4 dp. So every scenario's baseline is already published; you do not need a seed2 for
+  it. Basis offset to the gate's own number ~0.002.
+- **Criterion 3 = pooled KS, the NUMERIC ≤0.02 bound** (pinned in ADR 0038). Decisive: `pooled_t8`'s own
+  Wooddens `pooled_nqrmse` is **0.0208**, so applying the bound to `nqrmse` fails the pooled *baseline*.
+  But KS hides a coherent **−0.4 % SLA quantile shift** (SLA KS improves 0.0051→0.0032 while `nqrmse` gets
+  1.8x worse) — score KS, **report both**.
+- **`co2` is a DEAD conditioning column** — a literal constant 369.0 (`CO2_CONST`, ADR 0004) ⇒ effective
+  width is `ncond − 1`, and the pooled table has no static scenario discriminator at all.
+- **The env-augment dropped every manifest-named sidecar but `cells.i64`** — pooled tables declare
+  `scenario_tag scenario.i64`; it trained fine and would have died much later in the scenario-holdout eval.
+  Fixed by resolving sidecars from the manifest.
+- **The `.rcop` is byte-reproducible** from `(table, config, seeds)` — so regenerating it for a metadata fix
+  is safe (md5 verified, job 1647662).
+- **Julia soft scope**: `ndiff += 1` inside a top-level `for` binds a NEW local ⇒ `UndefVarError` at the
+  outer read. Use a single assignment / comprehension.
+- **The `format` CI gate is REPO-WIDE** (the runic-action takes no `paths`), so a new `scripts/*.jl` is
+  checked exactly like `src/`. The per-file loop that NAMES offenders is in the `julia-test` skill.
 
 **Not S's to chase:** `water_stress` (6.6x band) is line M's F core, ADR 0029. `fpc`'s residual is dynamics
 (ADR 0035 §3.3).

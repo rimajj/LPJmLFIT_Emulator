@@ -201,6 +201,19 @@ is the offline S.
   marks data left **MISSING**, not gap-filled.
 
 ### S (slow) — offline only
+- **[VERIFIED 2026-07-31] The ssp370 `random_seed2` GROUND TRUTH IS A BIT-IDENTICAL COPY OF SEED1 — there is
+  no independent second realization of ssp370 (ADR 0038).** `ssp370/.../transient_2020_2100_npatch25_random_seed{1,2}/output/ind_2020_2100.csv`
+  are both **193 097 583 638 B** with equal md5 on 1 MB blocks at MB 0 / 30000 / 120000. Cause: the seed2
+  config sets `"random_seed": 2` but its `restart_filename` points at the **historic seed1**
+  `restart_2019.lpj`, and under `-DFROM_RESTART` the per-cell RAND48 state is restored from the restart, so
+  the seed setting is **inert**. The historic pair IS genuinely independent — each config reads its own
+  *relative* `restart/restart_1999.lpj`, and those files differ in size and at every block sampled.
+  **Why this is cross-cutting:** any noise floor / ceiling / `%GAP` built from it is FABRICATED (`floor_r ≡ 1`
+  ⇒ ceiling ~0.998) and raises **no error**; the `seed1-basis ≥ 0.99` check compares a table to the parquet of
+  the *same* seed and reads 1.000, so it is structurally blind. `scripts/noise_floor_vs_emulator.py` now
+  ABORTS on bit-identical per-cell medians (self-tested both ways, job 1648005). A real ssp370 seed2 needs its
+  own restart lineage, not a re-run of the existing config. Only `historic` has a usable seed2 —
+  so **criterion 1's `%GAP` and criterion 4's `r_center` are NOT computable for the pooled/ssp370 artifacts.**
 - [VERIFIED] Sibling offline S emulator at `/p/projects/open/Jamir/emulator`. Published noise floor
   {Height 0.020, agb 0.113, npp 0.062, LAI 0.025} — ~11% cell-mean agb noise floor is the yardstick.
   PFT types 0–6 = trees, 7–9 = grass. S is **not differentiable** and stays out of the gradient loop (ADR 0014).

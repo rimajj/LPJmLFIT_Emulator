@@ -313,14 +313,22 @@ distributional-path-only defect.
 **Before implementing a weighting fix, TEST THAT IT IS NOT INERT.** The two estimators coincide exactly when
 all leaves are the same size, so the fix is worthless unless leaf sizes are skewed. Measure it on the real
 artifact, not in principle: over the `t8` Wooddens marginal's 70 854 leaves the sizes are min 20 / median 26 /
-q99 371 / **max 4016**, CV **2.01**, and per query the largest of 60 leaves takes **17–21 %** of the weight
-against QRF's **1.7 %** — a 10–12× over-weight. That is the number that justified the change.
+q99 371 / **max 4016**, CV **2.01**. **Route REAL rows to size it — do not reason from the leaf-size
+distribution.** `scripts/rcop_leaf_geometry_probe.jl` gives the largest leaf hit a share of median **11.1 %** /
+mean 12.2 % / q90 **18.9 %** against QRF's **1.7 % = 1/60**, i.e. **6.7× typical and 11.3× only in the
+sparse-conditioning decile** (5.8–6.7× / 10.5–12.2× across the four axes). An earlier "17–21 %, 10–12×"
+figure was that upper decile quoted as the typical case, and it is what ADR 0038 corrects — the fix is still
+justified, just by a 7× rather than an 11× skew.
 
-**The bias has a DIRECTION, and that is why it mattered rather than being untidy.** A large leaf is one that
-stopped splitting early, so it spans a wide region of conditioning space and its values approximate the
+**The bias has a DIRECTION, and that is why it mattered rather than being untidy.** A big leaf spans a wide
+region of conditioning space, so its values approximate the
 GLOBAL marginal. Over-weighting it drags every cell's conditional toward that marginal — an ATTENUATION
 mechanism. It also explains an otherwise puzzling ladder result: **more trees did not improve per-cell
-dispersion**, because more trees means more chances to land in one dominating big leaf.
+dispersion** (12/24/40 trees at 500k/d18 give `emu_r` 0.844/0.843/0.842), because more trees means more
+chances to land in one dominating big leaf.
+- **Why those leaves are big is NOT "they stopped splitting early"** — see §Leaf geometry: they are
+  **depth-capped**. Do not restate the gain-exhaustion version; it is what made `max_depth` look like a free
+  fix for the under-dispersion, which it measurably is not.
 
 **SEPARATE THE CONFOUND before believing any measurement.** Switching to QRF also switches the quantile
 CONVENTION (the default indexes `1 + floor(u·(n−1))`; a weighted ECDF must be inverted instead). Measure the
@@ -388,18 +396,44 @@ when on its own criterion statistic it **improves on all four axes** (0.0051→0
 
 ### Leaf geometry: `max_depth` is a FREE lever and every rung so far confounded it (`[VERIFIED 2026-07-30]`)
 
-`eval_slow_copula.jl::leaf_geometry` now prints, per axis on fold 0, leaves/tree · leaf-size
-min/median/q90/q99/max · the count and stored-value SHARE at `depth == max_depth` · the size-biased pool
-`E[s²]/E[s]`. **Read it on every rung** — without it the ladder is uninterpretable:
+Two measurements, and you should never do either by hand — both published figures that were derived inline
+turned out wrong-basis:
+- **TRAINING rungs self-report.** `eval_slow_copula.jl::leaf_geometry` prints, per axis on fold 0, leaves/tree ·
+  leaf-size min/median/q90/q99/max · the count and stored-value SHARE at `depth == max_depth` · the size-biased
+  pool `E[s²]/E[s]`. **Read it on every rung.**
+- **A SERIALIZED artifact:** `scripts/rcop_leaf_geometry_probe.jl` (`RCOP=`, plus `TABLE=` for real `Xc` rows,
+  `NROWS≥4000` for a publishable figure — below ~1000 the weight multiplier jitters ~0.2×). It reports the same
+  geometry **plus** the largest leaf's share of the pooled-default prediction weight, routed through the real
+  forest. Use it for any artifact whose training log you don't have, and after the artifact rotates.
+
+Without them the ladder is uninterpretable:
 
 - Measured on the t8 production `.rcop` (60 × 50 000, d14): **99.9–100 % of leaves holding ≥ 2·min_leaf values
   sit at exactly `depth == max_depth`** (Wooddens 9 702 of 9 703) and **57–67 % of ALL stored values** are in
   such a leaf, with max leaf size 3 589–4 366. The trees are cut off by the **depth budget** with most of the
   mass still splittable — they did NOT stop for want of a gain-positive split, which is what ADR 0037 §3's
   mechanism sentence assumed. Correct the prose wherever it appears.
-- **Why it decides the artifact:** bytes ≈ `10.7·ntrees·subsample·naxes` — `max_depth` does not appear. Every
-  rung ever run co-varied them (50k/d14, 500k/d18, 2M/d22, 8M/d26), so run the single-factor 2×2
-  (`40×50k d22` and `12×500k d14`) BEFORE committing to a ≥490 MB artifact; the cheap half may do the work.
+- **`max_depth` is FREE, but pays only IN PROPORTION TO THE SUBSAMPLE — the 2×2 is RUN, do not re-run it.**
+  Bytes ≈ `10.7·ntrees·subsample·naxes`, so depth costs nothing, and the depth cap above is real — which made
+  depth look like the cheap route to criterion 2. It is not, and the 2×2 says why. **REFINED 2026-07-31 by the
+  second single-factor cell (job 1646466), which corrected an overstatement:** depth is *not* flatly inert —
+  its payoff is CONDITIONAL on the subsample. Wooddens `emu_r` / `sd(pred)/sd(Y1)` (depth-capped share of
+  stored values):
+
+  | subsample | at d14 | deeper | depth effect on sd |
+  |---|---|---|---|
+  | **50 000** | 0.814 / 0.6775 (57 % capped) | d22: 0.829 / **0.6796** (6 %) | **+0.002** over EIGHT levels |
+  | **500 000** | 0.821 / 0.7275 (**91 %** capped) | d18: 0.844 / **0.7490** | **+0.022** over FOUR levels |
+  | **2 000 000** | — | d22: 0.862 / **0.7704** | |
+
+  **That is an INTERACTION, not two additive levers:** a *smaller* depth increase at the larger subsample buys
+  10× the dispersion. Depth only converts splittable mass the subsample actually provides. The primary lever
+  is **ROWS PER CELL** — subsample at fixed d14 (50k→500k) buys **+0.050 sd** — because at ~0.93 rows/cell
+  (50 000 over 54 020 cells) cutting finer just makes leaves smaller and noisier (mean size 47 → 27, draw pool
+  8564 → 1686) and the ensemble still shrinks to the global marginal.
+  ⇒ **always raise depth to match the subsample** (free, and at 500k/d14 fully 90.8 % of stored values are
+  needlessly capped, max leaf 28 608 values), but **there is no cheap-artifact path to criterion 2**:
+  dispersion is bought with subsample, and bytes scale with it.
 - **Don't quote `ntrees·mean(leafsize)` as the draw pool** — leaf occupancy is size-biased, so the expected
   pool is `E[s²]/E[s]` per tree: Wooddens' mean leaf is 42.3 values but its size-biased pool is **214.1**, ~5×
   the naive figure. Publish the RATIO between rungs, not the absolutes.
@@ -420,6 +454,19 @@ universe identical by construction, and it verifies cols `0..ncond-1` bitwise ov
   0 cells**, failing downstream with a message blaming a coverage hole. Fixed in BOTH the builder and the
   augment; proven byte-identical for historic. So an ssp370 env tail is the historic climatology (no scenario
   signal) — a transient tail needs the ADR-0026 `BOUNDARY_WINDOW` treatment.
+- **`SCENARIO` is a LABEL only** (printed + copied into the manifest); the year filter is gone, so
+  `SCENARIO=pooled` is safe.
+- **Every manifest-named SIDECAR must be carried, not just `Y_*`/`cells.i64` (`[VERIFIED 2026-07-31]`).**
+  `pooled` tables declare `scenario_tag  scenario.i64`; the original symlink loop dropped it, so a pooled
+  augment emitted a manifest naming a 337 MB file that was not in the directory. It TRAINS fine
+  (`train_slow_copula.jl` never reads it) and only fails later in `eval_slow_copula_scenario_holdout.jl`,
+  far from the cause. Sidecars now resolve BY NAME from the manifest, with a post-write assertion.
+- **A POOLED env table carries NO static scenario discriminator (`[VERIFIED 2026-07-31]`).** The env tail is
+  the same per-cell historic climatology for a cell's historic AND ssp370 rows (verified: identical
+  `prec_mean`/`vpd_mean` ranges across both `scenario.i64` values), and `co2` is a hard constant `369.0`
+  (`CO2_CONST`, the ADR-0004 constant-CO₂ regime) — a DEAD conditioning column that can never be split on,
+  so effective width is `ncond − 1`. Only the 4 live flux drivers separate the two scenarios. Say this
+  rather than implying the env tail adds scenario information.
 
 ### A wrong-length conditioning row was an OUT-OF-BOUNDS READ, not an error (`[VERIFIED 2026-07-30]`)
 
@@ -476,6 +523,109 @@ two sets (a silently-narrowed column list is the ADR-0031 failure mode). The t8 
 Then `scripts/noise_floor_vs_emulator.py` (see the **emulator-validation-figures** skill for the gate's
 semantics). **`sbatch_python.sh` forwards `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW` only since
 2026-07-28** — an older session's copy of this command silently built a *count* table into a copula dir.
+
+### Before crediting a CONDITIONING gain: is it a response, or a spatial ADDRESS? (`[VERIFIED 2026-07-31]`)
+
+ADR 0038's central caveat, and it applies to **any** per-cell conditioning column you are about to add.
+Adding the 6-column env tail lifted Wooddens `emu_r` 0.864 → 0.901 and `sd_ratio` 0.7575 → 0.8541 — real,
+paired, reproducible. It is still **not** evidence of a transferable environmental response. Three checks,
+in this order, before you call such a gain a science result:
+
+1. **Is the column time-varying WITHIN a cell?** `cell_year_feats.parquet` broadcasts a per-cell climatology
+   to every year: median within-cell sd is **exactly 0, for 100 % of cells**, on all six env columns
+   (between-cell sds 731.5 / 0.625 / 62.5 / 0.685 / 0.376 / 0.00517). A column with zero within-cell
+   variance is a **cell-level fixed effect** and cannot encode any temporal or warming response, in training
+   or at inference. Check it in one `group_by("Cell").agg(std)` before assuming otherwise.
+2. **Does a nearest-neighbour LOOKUP on those columns do as well?** 1-NN on the 6 env columns predicts a
+   held-out cell's Wooddens median at r = **0.800**, with median great-circle distance to that neighbour of
+   **1.00°** (q25 = 0.50° = the *adjacent* cell) — vs r = 0.445 / 14.51° for the three existing boundary
+   constants. They resolve to a geographic address.
+3. **`mod(hash(cell), k)` folds CANNOT detect this.** By-cell CV leaves the geographic neighbours in the
+   training fold, so it scores spatial interpolation, not transfer. Re-score under **spatially blocked** CV
+   (contiguous lat/lon blocks) and against a lat/lon-only conditioning control. If the gain survives
+   blocking it is a response; if it decays toward the 1-NN level it is an address.
+
+Corollary for `pooled`/`ssp370`: **no ssp370 source exists for those six variables**, so their env tail is
+the 2000–2019 historic climatology and a cell's historic and ssp370 rows are **bit-identical** on them.
+Combined with `co2` being a hard constant 369.0 (ADR 0004), the only columns separating the two scenarios are
+the 4 live flux drivers. Say that rather than implying the env tail adds scenario information.
+
+### `run_global_slow_copula.sh` SCORES a different estimator than it SHIPS (`[VERIFIED 2026-07-31]`)
+
+It has **two** tree knobs: `NTREES` (default **60**) feeds `train_slow_copula.jl` ⇒ the shipped `.rcop`, and
+`EVAL_NTREES` (default **40**) feeds `eval_slow_copula.jl` ⇒ the scored K-fold OOS. So **every published t8
+gate number describes a 40-tree estimator while the artifact line M pins is 60-tree.** Verified off the
+artifacts: t8 `ntrees=60` with 3 000 000 stored leaf values on axis 1 (= 60 × 50 000); t9 `ntrees=6` with
+12 000 000 (= 6 × 2 000 000, matching its scored rung). Tree count is nearly inert for skill (±0.002 over
+3.3×) so the t8 headline barely moved — but it is **not** inert for the leaf-weight skew the QRF argument
+rests on (6.7× `1/T` at 60 trees vs **2.9× at 6**), so attribute any weighting figure to the right object.
+**When you ship a new generation, set `NTREES == EVAL_NTREES`** (t9 is the first that does). Read the truth
+out of an artifact rather than trusting a log:
+```julia
+_, af, _, ax, cc, qrf = DRF.load_copula(path)   # 6-tuple from format v2
+length(af[1].trees), length(cc), qrf, sum(sum(length(v) for v in t.values) for t in af[1].trees)
+```
+(`RegTree`'s leaf-sample field is `values`, a `Vector{Vector{Float64}}`; there is no `nodes` field.)
+
+### Criterion 3 = pooled KS, the NUMERIC bound — and publish `nqrmse` beside it (ADR 0038)
+
+ADR 0038 pins it: criterion 3 means pooled KS not worse than the **same-scenario** baseline by more than
+0.02, **not** a strict "no increase on any axis". The decisive argument for pinning it in words is that
+`pooled_t8`'s own Wooddens `pooled_nqrmse` is **0.0208 — already above 0.02**, so applying the bound to
+`nqrmse` (as ADR 0037 did) fails the pooled *baseline itself*.
+But KS is not a sufficient description of the marginal: at the shipped config SLA's KS **improves**
+(0.0051→0.0032) while its `nqrmse` gets **1.8× worse** (0.0040→0.0071), because all five pooled SLA
+quantiles are biased low by a coherent −0.4…−0.5 % and a max-CDF-distance statistic barely penalizes a
+uniform shift. **Score KS, report both.**
+
+### `TRAIT_ONLY=1` silently removes agb/Height from a rung's verdict
+
+`diagnose_copula_capacity.sh`'s `TRAIT_ONLY=1` strips `nstruct`/`struct_axes` from the shadow manifest to cut
+the eval ~33 %. It was set for **11 of the 12 S2 rungs, including the shipped one**, so the two ADR-0036
+diagnostic axes — which carry the *tightest* baseline margins (agb pooled KS 0.0116 against the 0.02 bound;
+agb/Height `r_center` headroom only 0.011/0.013) — are UNMEASURED at that config. Legitimate for criterion 4
+("no *other* axis"), but never report "the gate is met" as "biomass and size unchanged". Re-run with
+`TRAIT_ONLY=0` to close it. **And the gate's disagreement message used to misdirect you**: it said "Rebuild
+the seed2 table with the same `STRUCT_AXES`" when the seed2 tables DO carry agb+Height and it is the seed1
+shadow that was trimmed — a multi-hour rebuild that fixes nothing. Fixed to name the narrower side.
+
+### A seed2 exists for `historic` ONLY — so two of the four criteria are not computable for `pooled`
+
+`slow_copula_historic_seed2{,_t7,_t8}` are the only seed2 tables; there is **no pooled and no ssp370 seed2**.
+The floor is what defines the attenuation-corrected ceiling, so **criterion 1's `%GAP` and criterion 4's
+`r_center` cannot be measured for the artifact line M pins.** Do not let their absence read as a pass.
+Criteria 2 and 3 need seed1 alone:
+- **criterion 3** — `scripts/score_slow_copula_ks.py`, which auto-reads the baseline from
+  `figures/emulator_validation/<scenario>_t8/metrics_traits.txt` keyed on the manifest's `scenario`, so it
+  compares against the RIGHT scenario row by construction. Never re-hardcode a baseline.
+- **criterion 2** — `scripts/score_slow_copula_dispersion.py` (`TABLE`, `PRED_A`/`LABEL_A`,
+  `PRED_B`/`LABEL_B`, `MINSTEM`, `AXES`): `emu_r`, `sd(pred)/sd(Y1)` and the OLS slope, plus an A/B delta of
+  two prediction sets on ONE basis. It imports `noise_floor_vs_emulator.percell_table` so the per-cell
+  median cannot drift from the gate's own definition. Its `sd_ratio` is on the seed1 `≥MINSTEM` basis, NOT
+  the gate's narrower seed1-INNER-seed2 basis, so **absolute values are not interchangeable with the
+  published historic figures — only deltas measured on one basis are valid.**
+- **`median_percell_r` in `metrics_traits.txt` IS `emu_r`** (`[VERIFIED 2026-07-31]`) — the between-cell
+  Pearson r of per-cell medians, despite a name that reads like a within-cell statistic. Reproduced to 4 dp
+  on an identical cell count (pooled SLA 0.8994 / Wooddens 0.8261 on 57 719 cells). The basis offset to the
+  gate's number is ~0.002 (historic Wooddens 0.8121 there vs 0.814 in the gate). **So every scenario's
+  `emu_r` baseline is ALREADY published** — read it from there instead of assuming it needs a seed2.
+
+## Accept a production `.rcop` in a FRESH process before shipping it
+
+`train_slow_copula.jl`'s built-in round trip runs with the forests still in memory — it proves
+serialization is self-consistent, not that a later process can use the file.
+`RCOP=<path> scripts/sbatch_julia.sh <tag> --project=. scripts/rcop_acceptance_probe.jl` closes the gap:
+timed load, `nfeat` vs header `ncond`, sidecar agreement, golden `(seed,x)→draw` reproduction, the runtime
+row rebuilt through the REAL policy and asserted equal to the artifact's own `x`, and wrong-width rows
+confirmed rejected. On `recruit_copula_global_historic_t9.rcop` (484.5 MiB): **load 6.77 s = 71.6 MiB/s
+measured** — an earlier handoff's "~12 s at 42 MB/s" was never measured; use the real number.
+- **`qrf` is NOT stored in the `.rcop` — only in the sidecar `qrf_weighting` (`[VERIFIED 2026-07-31]`).**
+  Flipping it changes ALL three golden draws on t9, so it is LOAD-BEARING: a runtime that loads the artifact
+  and forgets `qrf=true` samples a different conditional distribution than the gate scored, with every draw
+  still in range. **A pinned `.rcop` path is therefore an INCOMPLETE contract — the sidecar must be pinned
+  with it.** The probe reports this per artifact rather than assuming it.
+- A `.rcop` re-trained from the same `(table, config, seeds)` is byte-identical, so the artifact is
+  reproducible and safe to regenerate for a metadata fix (checked by md5 in the `S-t9-remeta` job pattern).
 
 ## Load-bearing gotchas (this is why the DRF is trusted)
 

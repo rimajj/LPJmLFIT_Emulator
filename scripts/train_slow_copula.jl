@@ -117,16 +117,23 @@ function main()
     rcop_path = get(ENV, "RCOP_OUT_PATH", joinpath(REFDIR, "recruit_copula_hainich.rcop"))
     meta_path = replace(rcop_path, r"\.rcop$" => "_meta.txt")
     mkpath(dirname(rcop_path))
-    DRF.save_copula(rcop_path, cop, axis_forests, axes, cond_cols, x)
+    # `qrf` goes INTO the artifact (format v2, ADR 0038), not just the sidecar meta below: a consumer that
+    # pins the `.rcop` path and misses `qrf_weighting` would otherwise construct `RecruitCopula` with the
+    # `false` default and sample the equal-weight conditional instead of the one that was scored — in range,
+    # and silent.
+    DRF.save_copula(rcop_path, cop, axis_forests, axes, cond_cols, x; qrf = qrf)
     sz = filesize(rcop_path)
     @info "serialized copula" rcop_path bytes = sz
 
     # round-trip self-check (bitwise on this machine)
-    cop2, af2, x2, names2, cols2 = DRF.load_copula(rcop_path)
+    cop2, af2, x2, names2, cols2, qrf2 = DRF.load_copula(rcop_path)
     @assert names2 == axes && cols2 == cond_cols && x2 == x "header round-trip mismatch"
+    @assert qrf2 == qrf "qrf round-trip mismatch: wrote $qrf, read $qrf2"
     for s in 1:10
-        d1 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, axis_forests, x)
-        d2 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop2, af2, x2)
+        # Sample through the RECOVERED qrf, so this checks the flag the artifact now carries rather than
+        # re-asserting the default on both sides (which would pass even if `qrf` were dropped entirely).
+        d1 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, axis_forests, x; qrf = qrf)
+        d2 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop2, af2, x2; qrf = qrf2)
         @assert d1 == d2 "copula draw round-trip changed at seed $s"
     end
 
@@ -136,7 +143,18 @@ function main()
             "GLOBAL ($(get(man, "scenario", "?")), $(get(man, "ncells", "?")) cells)"
         println(io, "# Production Component-S recruit-trait copula ($scope) — metadata for the load test.")
         println(io, "# Built by scripts/train_slow_copula.jl from scripts/build_slow_runtime_table.py MODE=copula.")
-        println(io, "# Conditioning order = src/components/slow.jl::live_flux_cond (4 flux drivers + boundary tail).")
+        # WHICH runtime policy reproduces this artifact's conditioning row. Hard-coding `live_flux_cond`
+        # here was correct only while every artifact was 8-wide; a 14-column .rcop (ADR 0038's production
+        # config) is built by `live_flux_cond_env`, and a meta that names the 8-column policy invites
+        # exactly the silent train/inference shift ADR 0023 warns about. Derive it from `ncond` instead:
+        # `live_flux_cond` emits 4 flux drivers + the 4-column boundary tail, so anything wider carries an
+        # env tail. `cond_cols` below is the authoritative contract either way.
+        nboundary = 4
+        policy = ncond == 4 + nboundary ?
+            "live_flux_cond (4 flux drivers + the $(nboundary)-column boundary tail)" :
+            "live_flux_cond_env(env) with length(env) == $(ncond - 4 - nboundary) " *
+            "(4 flux drivers + the $(nboundary)-column boundary tail + the env tail)"
+        println(io, "# Conditioning order = src/components/slow.jl::", policy, ".")
         println(io, "naxes\t", naxes)
         println(io, "ncond\t", ncond)
         println(io, "axes\t", join(axes, " "))

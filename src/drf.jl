@@ -375,18 +375,32 @@ Two estimators, selected by `qrf`:
 
     and the answer is the `u`-quantile of `F̂(y|x) = Σ_i w_i(x) · 1{Y_i ≤ y}`.
 
-WHY THE DEFAULT IS WRONG, AND WHY IT BIASES ONE WAY (ADR 0037; measured, not argued). The two agree only
-when every leaf `L_t(x)` has the SAME size. In the production global copula they do not: over the Wooddens
-marginal's 70 854 leaves the sizes run min 20 / median 26 / q90 55 / q99 371 / **max 4016** (coefficient of
-variation **2.01**). Per query point the largest of the 60 leaves typically holds ~1400-1750 values against a
-median leaf's ~35, so under the pooled default that ONE leaf takes **17-21 %** of the prediction weight where
-QRF gives it **1.7 % = 1/60** — a 10-12x over-weighting.
+WHY THE DEFAULT IS WRONG, AND WHY IT BIASES ONE WAY (ADR 0037/0038; measured, not argued). The two agree
+only when every leaf `L_t(x)` has the SAME size. In the production global copula they do not: over the
+Wooddens marginal's 70 854 leaves the sizes run min 20 / median 26 / q90 55 / q99 371 / **max 4016**
+(coefficient of variation **2.01**). Routing real `Xc` rows through that 60-tree forest
+(`scripts/rcop_leaf_geometry_probe.jl`), the largest leaf hit takes **median 11.1 % / mean 12.2 % /
+q90 18.9 %** of the prediction weight where QRF gives it **1.7 % = 1/60** — a **6.7x typical over-weight,
+11.3x in the sparse-conditioning decile** (across the four axes: 5.8-6.7x typical, 10.5-12.2x at q90). An
+earlier "17-21 %, 10-12x" figure was that upper decile quoted as the typical case — ADR 0038 corrects it.
 
-The bias has a direction, which is what makes it matter here rather than merely being untidy: a large leaf is
-by construction a leaf that stopped splitting early, so it spans a WIDE region of conditioning space and its
-value distribution is close to the GLOBAL marginal. Over-weighting it drags every cell's conditional toward
-that global marginal — i.e. it is an ATTENUATION mechanism, and it is why adding trees did not help the
-per-cell dispersion (more trees = more chances to land in one dominating big leaf).
+The bias has a direction, which is what makes it matter here rather than merely being untidy: a big leaf
+spans a WIDE region of conditioning space, so its value distribution is closer to the GLOBAL marginal, and
+over-weighting it drags every cell's conditional toward that marginal — an ATTENUATION mechanism.
+
+BUT NOT FOR THE REASON ADR 0037 GAVE, and the difference is load-bearing. A large leaf is **not** one that
+"stopped splitting early" for want of a gain-positive split: measured on the t8 artifact, **9 702 of the
+9 703** Wooddens leaves holding >= 2*min_leaf values sit at exactly `depth == max_depth == 14` (99.9-100 % on
+every axis), and **57-67 % of ALL stored values** live in such a depth-capped leaf. They are large because the
+DEPTH BUDGET ran out while the mass was still splittable. That matters because it made `max_depth` look like
+a free fix — `.rcop` bytes scale as `ntrees*subsample*naxes` and depth is free — but its payoff is CONDITIONAL on the
+subsample: at subsample 50 000 an eight-level increase (d14->d22) cuts the depth-capped share to 6-12 % yet
+moves the per-cell dispersion `sd(pred)/sd(Y1)` only 0.6775 -> 0.6796, while at 500 000 a four-level increase
+(d14->d18) moves it 0.7275 -> 0.7490 — 10x the effect from a smaller change. Depth only converts splittable
+mass the subsample actually provides; the primary lever is rows-per-cell (~0.93 at subsample 50 000 over
+54 020 cells), where cutting finer just makes leaves smaller and noisier (mean size 47 -> 27). So raise depth
+to match the subsample — it is free, and at 500k/d14 fully 90.8 % of stored values are needlessly capped —
+but do not expect depth alone to buy dispersion.
 
 Both paths share the endpoint convention (`u = 0` → the minimum, `u = 1` → the maximum) and both return
 `NaN` when no tree contributed a value. `qrf = true` normalizes by the weight actually accumulated, so a
@@ -736,7 +750,20 @@ load_forest(path::AbstractString) = open(load_forest, path, "r")
 # embedded verbatim via `save_forest`; `load_copula` walks the shared token stream with `_parse_forest`
 # (closure-free, JET-safe like `load_forest`). Round-trips a `sample_copula!` draw BITWISE.
 const _RCOP_MAGIC = "LPJMLFIT_RCOP"
-const _RCOP_VERSION = 1
+# v2 (ADR 0038) appends `qrf` to the `d ncond` line. WHY THE BUMP: the QRF (Meinshausen) leaf weighting
+# selects a DIFFERENT conditional distribution from the same forests, and until v2 it was recorded ONLY in
+# the sidecar `_meta.txt` (`qrf_weighting`) that `scripts/train_slow_copula.jl` writes. So a runtime that
+# pinned the `.rcop` PATH — which is what line M's contract does — and did not also read the sidecar
+# constructed `RecruitCopula` with the `qrf = false` default and silently sampled the equal-weight
+# conditional instead of the one the ADR-0030 gate scored. Every draw stayed in range: the classic ADR-0023
+# train/inference shift, with no error and no diagnostic. Measured on the t9 artifact, flipping `qrf`
+# changes ALL THREE of its golden draws, so the flag is load-bearing, not cosmetic.
+# v1 REMAINS READABLE and means `qrf = false` (its artifacts were all trained equal-weight), so the
+# committed Hainich demo `.rcop` and every t7/t8-era file line M pinned keep loading byte-for-byte
+# unchanged — guardrail 4. `load_copula` appends `qrf` as a SIXTH tuple element; Julia's destructuring
+# stops at the number of targets, so the existing 5-way call sites need no edit.
+const _RCOP_VERSION_MIN = 1
+const _RCOP_VERSION = 2
 
 """
     save_copula(io_or_path, cop::GaussianCopula, axis_forests, axis_names, cond_cols, x) -> io_or_path
@@ -746,11 +773,18 @@ Serialize the numeric parts of a recruit-trait copula bundle: the copula `cop` (
 (the `to_pools` mapping is rebuilt from these on load), and the conditioning-feature column names `cond_cols`
 with a fallback row `x` (`length(cond_cols)==length(x)`). Text format, magic `LPJMLFIT_RCOP`. Pairs with
 [`load_copula`](@ref).
+
+`qrf` records WHICH marginal estimator this bundle was fit and scored under (ADR 0037/0038) — `true` = the
+Meinshausen quantile-forest leaf weighting in [`predict_quantile`](@ref), `false` = the default equal-weight
+concatenation. It is written into the artifact from format v2 onward precisely so a consumer cannot lose it:
+sampling the same forests with the other setting yields a different conditional distribution whose draws are
+still in range, i.e. it fails SILENTLY. The default is `false` so every existing caller keeps writing what
+it wrote before.
 """
 function save_copula(
         io::IO, cop::GaussianCopula, axis_forests::AbstractVector{Forest},
         axis_names::AbstractVector{<:AbstractString}, cond_cols::AbstractVector{<:AbstractString},
-        x::AbstractVector{<:Real},
+        x::AbstractVector{<:Real}; qrf::Bool = false,
     )
     d = cop.d
     length(axis_forests) == d ||
@@ -760,7 +794,7 @@ function save_copula(
     length(cond_cols) == length(x) ||
         throw(DimensionMismatch("save_copula: cond_cols ($(length(cond_cols))) ≠ x ($(length(x)))"))
     println(io, _RCOP_MAGIC, " ", _RCOP_VERSION)
-    println(io, d, " ", length(cond_cols))
+    println(io, d, " ", length(cond_cols), " ", qrf ? 1 : 0)
     println(io, join(axis_names, " "))
     println(io, join(cond_cols, " "))
     println(io, join((string(v) for v in x), " "))
@@ -776,27 +810,39 @@ end
 function save_copula(
         path::AbstractString, cop::GaussianCopula, axis_forests::AbstractVector{Forest},
         axis_names::AbstractVector{<:AbstractString}, cond_cols::AbstractVector{<:AbstractString},
-        x::AbstractVector{<:Real},
+        x::AbstractVector{<:Real}; qrf::Bool = false,
     )
-    open(io -> save_copula(io, cop, axis_forests, axis_names, cond_cols, x), path, "w")
+    open(io -> save_copula(io, cop, axis_forests, axis_names, cond_cols, x; qrf = qrf), path, "w")
     return path
 end
 
 """
-    load_copula(path_or_io) -> (cop::GaussianCopula, axis_forests, x, axis_names, cond_cols)
+    load_copula(path_or_io) -> (cop::GaussianCopula, axis_forests, x, axis_names, cond_cols, qrf)
 
 Deserialize a copula bundle written by [`save_copula`](@ref). Returns the tuple a `RecruitCopula` is
 assembled from: the caller reconstructs the `to_pools` mapping from `axis_names` (e.g. via
 `make_recruit_to_pools`). Closure-free token walk (`_parse_forest`), JET-safe like [`load_forest`](@ref).
+
+Reads format **v1 and v2**. `qrf` is the marginal estimator the bundle was fit and scored under (ADR
+0038); a v1 artifact predates the field and yields `false`, which is what those artifacts were trained
+with. It is the SIXTH element deliberately: Julia destructuring stops at the number of targets, so the
+pre-existing `cop, af, x, names, cols = load_copula(p)` call sites keep working untouched. **Pass it to
+`RecruitCopula` (`qrf = …`) — the struct defaults to `false`, so dropping it silently samples a different
+conditional distribution than the artifact was scored under.**
 """
 function load_copula(io::IO)
     toks = split(read(io, String))
     toks[1] == _RCOP_MAGIC || error("load_copula: bad magic (expected $_RCOP_MAGIC)")
     ver = parse(Int, toks[2])
-    ver == _RCOP_VERSION || error("load_copula: unsupported version $ver (expected $_RCOP_VERSION)")
+    _RCOP_VERSION_MIN <= ver <= _RCOP_VERSION ||
+        error("load_copula: unsupported version $ver (readable: $_RCOP_VERSION_MIN..$_RCOP_VERSION)")
     d = parse(Int, toks[3])
     ncond = parse(Int, toks[4])
-    pos = 5
+    # v1's second line is `d ncond`; v2 appends `qrf`. Branch on the VERSION, never on "does a 5th token
+    # parse as an Int" — the next line is the axis-name list, and a numeric axis name would make that
+    # heuristic silently consume it.
+    qrf = ver >= 2 ? parse(Int, toks[5]) != 0 : false
+    pos = ver >= 2 ? 6 : 5
     axis_names = Vector{String}(undef, d)
     @inbounds for i in 1:d
         axis_names[i] = String(toks[pos]); pos += 1
@@ -835,7 +881,7 @@ function load_copula(io::IO)
     length(x) == ncond || error(
         "load_copula: fallback row x has $(length(x)) entries but ncond=$ncond."
     )
-    return GaussianCopula(L, d), axis_forests, x, axis_names, cond_cols
+    return GaussianCopula(L, d), axis_forests, x, axis_names, cond_cols, qrf
 end
 
 load_copula(path::AbstractString) = open(load_copula, path, "r")

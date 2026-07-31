@@ -23,11 +23,14 @@
   contributed in proportion to how large its leaf happened to be, instead of the `1/T` a quantile-regression
   forest prescribes. The two coincide only for equal leaf sizes, and the production global copula is far from
   that: over the Wooddens marginal's 70 854 leaves, sizes run min 20 / median 26 / q99 371 / max 4016
-  (coefficient of variation 2.01), so per query the largest of 60 leaves took **17-21 %** of the prediction
-  weight against QRF's **1.7 %** — a 10-12x over-weighting. The bias has a direction: a large leaf is one
-  that stopped splitting early, so it spans a wide region of conditioning space and its values approximate
-  the global marginal, meaning the error systematically drags each cell's conditional toward that marginal.
-  That is an attenuation mechanism, and it explains why adding trees did not improve per-cell dispersion.
+  (coefficient of variation 2.01). Routing real conditioning rows through that 60-tree forest, the largest
+  leaf hit takes **median 11.1 % / mean 12.2 % / q90 18.8 %** of the prediction weight against QRF's
+  **1.7 % = 1/60** — a **6.7x typical over-weight, 11.3x in the sparse-conditioning decile**
+  (`scripts/rcop_leaf_geometry_probe.jl`; 5.8-6.7x typical across the four axes). The bias has a
+  direction: a big leaf spans a wide region of conditioning space, so its values approximate the global
+  marginal and over-weighting it drags each cell's conditional toward that marginal — an attenuation
+  mechanism. Those large leaves are **depth-capped, not gain-exhausted**: 99.9-100 % of leaves holding at
+  least `2*min_leaf` values sit at exactly `depth == max_depth`, and 57-67 % of all stored values are in one.
   Verified as a weighting effect and not the accompanying quantile-convention change: measured separately on
   the production artifact, the convention accounts for 0.002-0.014 % and the weighting for 1.67-4.43 %, a
   315-1507x ratio. `DRF.predict` was already correct (it averages leaf means at `1/T`), so the count DRF and

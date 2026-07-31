@@ -651,6 +651,27 @@ function FluxDrivenSlowEmulator(
         all(length(r) == length(bnd) for r in bser) ||
             error("every boundary_series row must have length $(length(bnd)) (== length(boundary))")
     end
+    # CONDITIONING-WIDTH PROBE (ADR 0038). `DRF._check_nfeat` is the real guard, but for the copula it only
+    # fires inside `sample_copula!` — reached only when a patch actually RECRUITS (`ρ > 1 && recruit_idx > 0`
+    # and `dn > 0`). A cell that thins every year, or an all-grass patch, never draws, so a coupled run with
+    # a mis-wired copula can complete "successfully" and conserve carbon with zero diagnostics. That is the
+    # ADR-0023 shift hiding behind a code path a test may never reach.
+    # This is the one place that holds BOTH the boundary and the copula, so it is the only place the identity
+    # `length(cond(s, feats)) == nfeat` can be checked before the run starts. Every shipped policy reads only
+    # `s.boundary` (and `feats[1:4]`), so a NamedTuple stub is a faithful probe. One call, no effect on any
+    # correctly-sized construction ⇒ guardrail 4 holds.
+    rc = recruit_copula
+    if rc !== nothing && !isempty(rc.axis_forests)
+        nfeat = rc.axis_forests[1].nfeat
+        probe = rc.cond((boundary = bnd,), zeros(Float64, 11 + length(bnd)))
+        length(probe) == nfeat || error(
+            "recruit copula conditioning width mismatch: the policy built $(length(probe)) columns but the " *
+                "artifact's marginals were fit on $nfeat. With a $(length(bnd))-column boundary, " *
+                "`live_flux_cond` yields $(4 + length(bnd)); a wider artifact needs " *
+                "`live_flux_cond_env(env)` with length(env) == $(nfeat - 4 - length(bnd)). " *
+                "See the artifact's `cond_cols` — it is the contract (ADR 0023/0038)."
+        )
+    end
     return FluxDrivenSlowEmulator{T}(
         forest, bnd, convert(T, n_init), T(max_mort), T(max_estab),
         sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], Vector{Float64}[], 0,

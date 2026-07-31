@@ -382,3 +382,52 @@ same day had already landed the whole COUNT half and not updated `STATE.md`. Che
 `index.lock` from 21:40** with no git process behind it, which blocks every line from merging; I cleared it
 inside the `flock` after checking size, age, process table and tree cleanliness. If a merge fails that way,
 verify those four things rather than either forcing it blindly or giving up.
+
+## 2026-07-31 — S2's gate is met, and the win is a spatial address
+
+Collected the four in-flight rungs (1646346/47/54/55) plus the self-polling KS sweep (1646487). Both
+env-conditioned rungs clear the ADR-0030 §4 criteria for the first time; `env-qrf-b6x2M` (6x2M, d22, QRF=1,
+ncond 14) is the config, `b6x8M` rejected for 4x the bytes and worse pooled KS on all four axes.
+
+Ran an 11-agent adversarial verification (7 audits + 3 refutations + synthesis, ~1.9 M subagent tokens). It
+changed the conclusion twice, which is the point of running it:
+
+1. **ADR 0037's thesis inverts.** The estimator lever is larger on `emu_r` but SATURATES at 0.867 (asymptote
+   0.870; the gate needs ~1000x the whole table by capacity alone), while conditioning is the larger lever on
+   criterion 2 — the axis that was failing — and carries both criteria across. S2's premise is vindicated,
+   not refuted. I had initially written this up as "capacity saturates at ncond=8"; the audit correctly
+   pointed out that (a) the b12/24/40x500k trio is the tree-count experiment and is NOT evidence of subsample
+   saturation, and (b) the plateau is a property of the subsample lever at BOTH widths, with the conditioning
+   setting the level. Also: ADR 0037's extrapolation was defensible on the QRF=0 ladder it had (dead
+   straight, +0.00903/+0.00900 per doubling) — the 8M rung is new information, not an avoidable error. Said
+   so in the ADR rather than framing it as a mistake.
+2. **The six env columns are a per-cell spatial ADDRESS, not a climate response.** Verified myself: median
+   within-cell sd is EXACTLY 0 for 100 % of cells on all six. 1-NN on them reaches r=0.800 with the nearest
+   neighbour 1.00° away, and by-cell folds cannot separate interpolation from transfer. So the gain is real
+   offline and its generalization is unestablished ⇒ shipped as the historic-static artifact, NOT promoted to
+   M's pinned production copula. Spatially blocked CV is now the named gate on production.
+
+Independently verified the audit's biggest claim before believing it: the **ssp370 `random_seed2` ground
+truth is a bit-identical copy of seed1** (same 193 GB size, equal md5 at three separate 1 MB blocks) because
+its config restarts from the *historic seed1* `restart_2019.lpj`, making `"random_seed": 2` inert under
+`-DFROM_RESTART`. My first control read the empty-string md5 (wrong path) and proved nothing; redid it
+against the real historic pair, which DIFFERS at every block and reads its own relative restart. A floor from
+that duplicate would report `floor_r ≡ 1` and fabricated headroom with no error, and the `seed1-basis ≥ 0.99`
+check is structurally blind to it. Guarded, and self-tested in BOTH directions — the negative control aborts,
+the positive control passes and reproduces the published baseline exactly, which also proves the gate's
+arithmetic is untouched.
+
+Three silent-failure paths closed in code: `.rcop` format v2 carries `qrf` (v1 still loads, so guardrail 4
+holds and nothing M pinned needs regenerating); the emulator rejects a conditioning-width mismatch at
+CONSTRUCTION rather than at a first recruit that may never happen; and the duplicate-seed guard above. Plus
+two new tools — an acceptance probe that loads an artifact in a FRESH process (t9: 6.77 s / 71.6 MiB/s
+measured, replacing an unmeasured "~12 s at 42 MB/s") and a seed1-only dispersion scorer so criterion 2 is
+measurable for pooled, which has no seed2.
+
+Closed a gap the audit named: no 2M/8M rung had ever reported its leaf geometry. The t9 artifact IS a
+6x2M/d22 forest, so probing it measured the missing slack directly — 52.3-67.0 % of stored values are still
+depth-capped, so depth is not exhausted at the production config and is free in bytes. The same probe
+explained why QRF's payoff collapsed with capacity: the max-leaf weight share is 6.7x `1/T` at 60 trees but
+only 2.9x at 6.
+
+Suite green end to end: 107 394 pass / 0 fail / 4 broken (job 1647687), Runic clean 111/111.
