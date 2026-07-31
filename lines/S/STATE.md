@@ -84,6 +84,12 @@ onto it.
    bound; `r_center` headroom 0.011/0.013). "S2 met" must not be read as "biomass and size unchanged".
 7. **The composed coupled path is still unexercised**: emulator + 14-col copula + `qrf=true` + establishment
    + carbon closure over a multi-year run. Construction is now gated; the run is not.
+8. **Cheap and still open (carried, ADR 0036 §6):** emit **`Year`** in the `MODE=copula` table so the
+   stand-biomass composite is computable on matched rows — it blocks figures 12/13 for the POOLED pair. It is
+   a table SCHEMA change, so it costs a rebuild, and ADR 0036 §5b's streaming key-set nondeterminism means a
+   rebuild lands on a different row universe ⇒ do it when a new generation is being built anyway, never as a
+   standalone rebuild of a validated table. (Related gotcha, don't re-derive: `STEM_CAP` is a patch-year
+   **CLUSTER** subsample, not per-stem — ADR 0036 §178, and it is why ssp370's basis spread is ~10x looser.)
 
 ### OPEN INTEGRATION POINT with line M (raise it before any re-pin)
 
