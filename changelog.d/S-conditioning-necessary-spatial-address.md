@@ -90,3 +90,18 @@
   leaf-weight skew the QRF argument rests on (6.7× `1/T` at 60 trees vs 2.9× at 6) — attribute weighting
   figures to the right object. Also resolves the apparent "40 vs 60" contradiction in
   `diagnose_copula_capacity.sh`'s size comment: both are right, about different objects.
+
+### Added (post-merge measurement)
+
+- **The production config TRANSFERS to the `pooled_w20` basis line M actually pins** (job 1647661, 57 719
+  cells, A/B on one basis via `score_slow_copula_dispersion.py`): Wooddens `emu_r` 0.8261 → **0.9095**,
+  `sd_ratio` 0.6119 → **0.8493** (criterion 2 **FAIL → PASS**), slope `Y1~pred` 1.3501 → 1.0708. Criterion 3
+  improves on all four axes against the *pooled* baseline (SLA .0039→.0009, Wooddens .0065→.0007, D95max
+  .0020→.0014, minwscal .0040→.0003), and every axis gains `emu_r` (SLA +0.0510, Wooddens +0.0834, D95max
+  +0.0996, minwscal +0.0131).
+  **Read it correctly:** this is the FULL three-lever delta against a 60-tree/50k/d14/ncond-8/QRF=0 baseline,
+  **not** the isolated conditioning lever — the comparable full-stack figures are historic +0.087 `emu_r` /
+  +0.1766 `sd_ratio` versus pooled +0.0834 / +0.2374, so the config transfers and does *better* on dispersion
+  there. Criteria 1 and 4 remain uncomputable for pooled (no pooled seed2), and this does **not** resolve the
+  spatial-address question — the pooled folds are still `mod(hash(cell), k)` and the env columns are identical
+  for a cell across both scenarios, so spatially blocked CV is still the gate on production.

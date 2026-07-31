@@ -9,7 +9,9 @@
 **S2's gate is MET — and the win is smaller than it looks, for a reason worth reading before you act on it.**
 `env-qrf-b6x2M` (6 trees x 2M subsample, `max_depth` 22, `min_leaf` 20, `QRF=1`, **`ncond` 14**) clears all
 four ADR-0030 §4 criteria for the first time. **ADR 0038** is the record; it SUPERSEDES ADR 0037's central
-thesis. **Merged to `main`? NOT YET — 9 commits sit on `line/S` awaiting the push/CI/merge ritual.**
+thesis. **MERGED to `main` at `8871702a`** — `main`'s OWN CI green on all six real gates (`docs`, `format`,
+`python`, `test (lts)`, `test (1)`, `test (macOS, lts)`); only the allowed-to-fail `test (pre)` is red, for the
+documented ReTestItems/prerelease `ScopedValue` break with no mention of any changed symbol.
 
 ### The result, in one table (all verified against the raw logs, twice)
 
@@ -30,8 +32,9 @@ Threshold is `emu_r` 0.889. Criterion 1 passes under all five defensible %GAP co
 | QRF alone (at 50k / at 2M) | +0.013 / +0.002 | **−0.003 / −0.013** | no |
 | **conditioning, at fixed 6x2M+QRF** | **+0.037** | **+0.0966** | **yes** |
 
-Capacity *provably* cannot reach the gate at ncond 8: fitted asymptote **0.870**; the last marginal rate
-implies ~15 more doublings = ~1000x the whole 197.7M-row table. **Subsample is exhausted past ~2M at BOTH
+Capacity *provably* cannot reach the gate at ncond 8: fitted asymptote **0.8696** (half-life 1.82 doublings,
+0.0194 short of 0.889 at infinite subsample); at the terminal marginal rate 0.889 needs **14.7 more doublings
+= 1052x** the whole 197.7M-row table. Re-derived independently, not taken from a report. **Subsample is exhausted past ~2M at BOTH
 widths** (+0.003 / +0.002); the *level* it plateaus at is set by the conditioning. QRF's payoff shrinks
 with capacity because the max-leaf weight share is 6.7x `1/T` at 60 trees but only **2.9x at 6 trees** —
 what QRF fixes is largely absent there, so `qrf-b6x2M` was chosen for consistency with the scored rung, not
@@ -54,15 +57,30 @@ onto it.
 
 ### DO THIS FIRST
 
-1. **Push + merge the 9 commits.** `git push --force-with-lease origin line/S`, wait for branch CI
-   (`test (lts)`, `test (1)`, `format`, `python`; `test (pre)` is allowed-to-fail), then the `flock` merge of
-   `origin/line/S`, then check **main's own** latest run. Local evidence is already green: full CI-faithful
-   suite **107 394 pass / 0 fail / 4 broken** (job 1647687), Runic 1.7.0 clean 111/111.
-2. **Collect job `1647661` `S-cap-pooled-env`** (started 11:04, 8 h wall) — the SAME config on the
-   **pooled_w20** table M actually pins. It scores criterion 3 (KS, auto-read against the *pooled* baseline)
-   and criterion 2 via `score_slow_copula_dispersion.py`, A/B against pooled t8. **Criteria 1 and 4 are NOT
-   computable for pooled — there is no pooled seed2** (see below). Pooled t8 baseline to compare against:
-   Wooddens `emu_r` **0.8261**, `sd_ratio` **0.6119** (57 719 cells), pooled KS .0039/.0065/.0020/.0040.
+1. ~~Push + merge~~ **DONE.** Merged at `main` `8871702a`; branch CI and `main`'s own CI both green (full
+   CI-faithful suite **107 394 pass / 0 fail / 4 broken**, job 1647687; Runic 1.7.0 clean 111/111; `docs`
+   green on `main`, which is the only place it runs).
+2. ~~Collect job `1647661`~~ **DONE — the config TRANSFERS to the pooled basis M pins.** Same config on
+   `slow_copula_pooled_w20_t8env`, 57 719 cells, A/B against pooled t8 on ONE basis:
+
+   | Wooddens | pooled t8 | pooled `env-qrf-b6x2M` | Δ |
+   |---|---|---|---|
+   | `emu_r` | 0.8261 | **0.9095** | **+0.0834** |
+   | `sd_ratio` | 0.6119 ✗ | **0.8493 ✓** | **+0.2374** |
+   | slope `Y1~pred` | 1.3501 | 1.0708 | −0.2793 |
+
+   **Criterion 2 goes FAIL → PASS on pooled.** Criterion 3 improves on all four axes (SLA .0039→.0009,
+   Wooddens .0065→.0007, D95max .0020→.0014, minwscal .0040→.0003, auto-read against the *pooled* baseline).
+   All four axes gain `emu_r`: SLA +0.0510, Wooddens +0.0834, D95max +0.0996, minwscal +0.0131.
+   **Read the delta correctly:** this is the FULL three-lever delta (capacity + QRF + conditioning) against a
+   60-tree/50k/d14/ncond-8/QRF=0 baseline — it is **not** the isolated conditioning lever, unlike the
+   historic +0.037 which was a matched pair off `qrf-b6x2M`. The comparable figures are the full-stack ones:
+   historic +0.087 `emu_r` / +0.1766 `sd_ratio`, pooled +0.0834 / +0.2374. So the config transfers, and on
+   dispersion it does better on pooled than on historic.
+   **Criteria 1 and 4 remain NOT computable for pooled** (no pooled seed2) — their absence is not a pass.
+   **And this does NOT resolve the spatial-address question**: the pooled folds are still `mod(hash(cell), k)`,
+   so the same interpolation-vs-transfer confound applies, and the env columns are identical for a cell across
+   the two scenarios. Item 3 is still the gate on production.
 3. **THE decisive experiment, and the gate on production: spatially BLOCKED CV.** Re-score
    `env-qrf-b6x2M` with contiguous lat/lon block folds instead of `mod(hash(cell), k)`
    (`eval_slow_copula.jl:143`), plus a lat/lon-only conditioning control. Survives blocking ⇒ a real
@@ -78,7 +96,7 @@ onto it.
 5. **Depth is NOT exhausted at the production config** — measured on t9 (job 1648259): 33 449–46 036
    leaves/tree but **52.3–67.0 % of stored values still depth-capped**, and only 84–86 % of large leaves at
    `max_depth` (vs 99.9–100 % at 50k/d14). Depth is free in bytes. **One `6 x 2M, d32` rung** settles whether
-   the 0.870 asymptote moves.
+   the 0.8696 asymptote moves.
 6. **Re-run the shipped rung with `TRAIT_ONLY=0`** — `agb`/`Height` were trimmed out of 11 of 12 rungs
    including the shipped one, and they carry the tightest baseline margins (agb pooled KS 0.0116 vs the 0.02
    bound; `r_center` headroom 0.011/0.013). "S2 met" must not be read as "biomass and size unchanged".
