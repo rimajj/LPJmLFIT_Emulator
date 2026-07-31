@@ -524,6 +524,54 @@ Then `scripts/noise_floor_vs_emulator.py` (see the **emulator-validation-figures
 semantics). **`sbatch_python.sh` forwards `MODE`/`SCENARIO`/`STEM_CAP`/`BOUNDARY_WINDOW` only since
 2026-07-28** — an older session's copy of this command silently built a *count* table into a copula dir.
 
+### Before crediting a CONDITIONING gain: is it a response, or a spatial ADDRESS? (`[VERIFIED 2026-07-31]`)
+
+ADR 0038's central caveat, and it applies to **any** per-cell conditioning column you are about to add.
+Adding the 6-column env tail lifted Wooddens `emu_r` 0.864 → 0.901 and `sd_ratio` 0.7575 → 0.8541 — real,
+paired, reproducible. It is still **not** evidence of a transferable environmental response. Three checks,
+in this order, before you call such a gain a science result:
+
+1. **Is the column time-varying WITHIN a cell?** `cell_year_feats.parquet` broadcasts a per-cell climatology
+   to every year: median within-cell sd is **exactly 0, for 100 % of cells**, on all six env columns
+   (between-cell sds 731.5 / 0.625 / 62.5 / 0.685 / 0.376 / 0.00517). A column with zero within-cell
+   variance is a **cell-level fixed effect** and cannot encode any temporal or warming response, in training
+   or at inference. Check it in one `group_by("Cell").agg(std)` before assuming otherwise.
+2. **Does a nearest-neighbour LOOKUP on those columns do as well?** 1-NN on the 6 env columns predicts a
+   held-out cell's Wooddens median at r = **0.800**, with median great-circle distance to that neighbour of
+   **1.00°** (q25 = 0.50° = the *adjacent* cell) — vs r = 0.445 / 14.51° for the three existing boundary
+   constants. They resolve to a geographic address.
+3. **`mod(hash(cell), k)` folds CANNOT detect this.** By-cell CV leaves the geographic neighbours in the
+   training fold, so it scores spatial interpolation, not transfer. Re-score under **spatially blocked** CV
+   (contiguous lat/lon blocks) and against a lat/lon-only conditioning control. If the gain survives
+   blocking it is a response; if it decays toward the 1-NN level it is an address.
+
+Corollary for `pooled`/`ssp370`: **no ssp370 source exists for those six variables**, so their env tail is
+the 2000–2019 historic climatology and a cell's historic and ssp370 rows are **bit-identical** on them.
+Combined with `co2` being a hard constant 369.0 (ADR 0004), the only columns separating the two scenarios are
+the 4 live flux drivers. Say that rather than implying the env tail adds scenario information.
+
+### Criterion 3 = pooled KS, the NUMERIC bound — and publish `nqrmse` beside it (ADR 0038)
+
+ADR 0038 pins it: criterion 3 means pooled KS not worse than the **same-scenario** baseline by more than
+0.02, **not** a strict "no increase on any axis". The decisive argument for pinning it in words is that
+`pooled_t8`'s own Wooddens `pooled_nqrmse` is **0.0208 — already above 0.02**, so applying the bound to
+`nqrmse` (as ADR 0037 did) fails the pooled *baseline itself*.
+But KS is not a sufficient description of the marginal: at the shipped config SLA's KS **improves**
+(0.0051→0.0032) while its `nqrmse` gets **1.8× worse** (0.0040→0.0071), because all five pooled SLA
+quantiles are biased low by a coherent −0.4…−0.5 % and a max-CDF-distance statistic barely penalizes a
+uniform shift. **Score KS, report both.**
+
+### `TRAIT_ONLY=1` silently removes agb/Height from a rung's verdict
+
+`diagnose_copula_capacity.sh`'s `TRAIT_ONLY=1` strips `nstruct`/`struct_axes` from the shadow manifest to cut
+the eval ~33 %. It was set for **11 of the 12 S2 rungs, including the shipped one**, so the two ADR-0036
+diagnostic axes — which carry the *tightest* baseline margins (agb pooled KS 0.0116 against the 0.02 bound;
+agb/Height `r_center` headroom only 0.011/0.013) — are UNMEASURED at that config. Legitimate for criterion 4
+("no *other* axis"), but never report "the gate is met" as "biomass and size unchanged". Re-run with
+`TRAIT_ONLY=0` to close it. **And the gate's disagreement message used to misdirect you**: it said "Rebuild
+the seed2 table with the same `STRUCT_AXES`" when the seed2 tables DO carry agb+Height and it is the seed1
+shadow that was trimmed — a multi-hour rebuild that fixes nothing. Fixed to name the narrower side.
+
 ### A seed2 exists for `historic` ONLY — so two of the four criteria are not computable for `pooled`
 
 `slow_copula_historic_seed2{,_t7,_t8}` are the only seed2 tables; there is **no pooled and no ssp370 seed2**.
