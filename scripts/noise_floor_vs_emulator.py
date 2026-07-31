@@ -152,8 +152,17 @@ def resolve_struct_axes(dir1, dir2):
     if not s1 and not s2:
         return []
     if s1 != s2:
+        # Name BOTH sides and point at whichever is the narrower one. The old wording said "Rebuild the
+        # seed2 table with the same STRUCT_AXES" unconditionally, which is misdirected in the common case:
+        # the seed2 tables DO carry agb+Height, and it is the seed1 SHADOW manifest that got trimmed by
+        # `diagnose_copula_capacity.sh` (`TRAIT_ONLY=1`, which strips nstruct/struct_axes to cut the eval
+        # ~33 %). Following that advice costs a pointless multi-hour rebuild and still does not fix it.
+        narrow = "seed1" if len(s1) < len(s2) else "seed2"
         print(f"== STRUCT AXES DISAGREE between the two tables — seed1 {s1} vs seed2 {s2}; struct rows SKIPPED "
-              "(the sets are never silently intersected). Rebuild the seed2 table with the same STRUCT_AXES.")
+              "(the sets are never silently intersected).")
+        print(f"   The NARROWER side is {narrow}. If it is seed1 and this is a capacity shadow, the cause is "
+              "almost certainly TRAIT_ONLY=1 in diagnose_copula_capacity.sh trimming the shadow manifest — "
+              "re-run that rung with TRAIT_ONLY=0, do NOT rebuild the seed2 table.")
         return []
     keep = []
     n1 = (Path(dir1) / "cells.i64").stat().st_size // 8
