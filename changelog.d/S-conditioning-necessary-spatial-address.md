@@ -2,8 +2,9 @@
 
 - **Milestone S2's gate is MET for the first time, and ADR 0037's thesis is superseded (ADR 0038).** The
   12-rung QRF × capacity matrix completed. The ESTIMATOR lever is the larger one on `emu_r` (+0.050 vs
-  +0.037) but **saturates at Wooddens 0.867** — fitted asymptote 0.870, and reaching the 0.889 threshold by
-  capacity alone would need ~1000× the entire 197 721 867-row table — so it cannot close the gap at any
+  +0.037) but **saturates at Wooddens 0.867** — fitted asymptote 0.8696 (half-life 1.82 doublings), 0.0194 short of
+  0.889 at infinite subsample, and reaching the threshold at the terminal marginal rate would need 14.7 more
+  doublings = 1052× the entire 197 721 867-row table — so it cannot close the gap at any
   artifact size. `ncond` 8→14 at **fixed** 6×2M/d22/QRF=1 delivers **+0.037 `emu_r` and +0.0966 `sd_ratio`**,
   the larger lever on criterion 2 (the axis that was actually failing), and carries both criteria across.
   **S2's premise — "expand the conditioning" — is vindicated, not refuted:** the estimator had to be fixed

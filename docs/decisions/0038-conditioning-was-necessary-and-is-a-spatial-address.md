@@ -88,13 +88,16 @@ Matched pairs only (rungs differing in exactly one factor).
 Three things follow, and each is a correction to a published claim:
 
 **(a) The estimator lever saturates BELOW the threshold.** Per-doubling return on the QRF=1 ladder fell from
-+0.010 (50k→2M) to **+0.0015** (2M→8M), a 6.7× collapse. Fitting `r(k) = A − B·e^{−ck}` on the three points
-gives asymptote **A = 0.8696** — 0.019 short of 0.889 at *infinite* subsample. Model-free: at the last
-observed marginal rate, reaching 0.889 needs ≈15 further doublings ⇒ ~2×10¹¹ rows/tree against a
-1.977×10⁸-row table, i.e. ~1000× the entire training set. Exhausting the table (8M→197.7M) buys +0.007 →
-0.874. It would take `r(8M) ≥ 0.872` — four rounding units above what was measured — for the asymptote to
-clear the threshold. So capacity at `ncond` 8 *provably* cannot reach the gate; this is not merely
-unmeasured.
++0.00695 (50k→2M) to **+0.00150** (2M→8M), a **4.6× collapse** in per-doubling return. Fitting
+`r(k) = A − B·e^{−ck}` on the three points (`k` = doublings from 50k) gives **A = 0.8696**, half-life 1.82
+doublings — **0.0194 short of 0.889 at *infinite* subsample**. Model-free cross-check: at the last observed
+marginal rate, reaching 0.889 needs **14.7 further doublings ⇒ 2.08×10¹¹ rows/tree** against a 1.977×10⁸-row
+table, i.e. **1052× the entire training set**. Exhausting the table itself (8M→197.7M, 4.63 doublings) gets
+to **0.8692** on the fitted curve; a straight-line read at the terminal rate would say 0.874, but that
+*exceeds the fitted asymptote* and is therefore an upper bound, not an estimate — either way it is short.
+Sensitivity: the asymptote clears 0.889 only if `r(8M) ≥ 0.872`, five rounding units above the 0.867
+measured. So capacity at `ncond` 8 *provably* cannot reach the gate; this is not merely unmeasured.
+(Arithmetic independently re-derived, not taken from a report.)
 
 **(b) The subsample lever is exhausted past ~2M rows/tree at BOTH widths** — +0.003 at ncond 8, +0.002 at
 ncond 14. The *level* at which it plateaus is set by the conditioning (0.867 vs 0.903), not by capacity.
