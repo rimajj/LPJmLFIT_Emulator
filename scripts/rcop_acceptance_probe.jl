@@ -5,11 +5,13 @@
 # does NOT prove the artifact is usable by a LATER process, which is the thing that actually ships. Three
 # failure modes live in that gap, and all three are silent:
 #
-#   1. The `.rcop` carries `ncond`, but NOT `qrf`. The QRF (Meinshausen) leaf weighting is recorded only in
-#      the sidecar `_meta.txt` (`qrf_weighting`), so a runtime that loads the artifact and forgets to pass
-#      `qrf = true` samples a DIFFERENT conditional distribution than the one the ADR-0030 gate scored, and
-#      every draw still lands in range. This probe reproduces the meta's golden pairs under BOTH settings
-#      and reports whether they differ — i.e. whether `qrf_weighting` is load-bearing for THIS artifact.
+#   1. `qrf`. Until `.rcop` format v2 (ADR 0038) the QRF (Meinshausen) leaf weighting was recorded ONLY in
+#      the sidecar `_meta.txt` (`qrf_weighting`), so a runtime that pinned the artifact PATH and missed the
+#      sidecar sampled a DIFFERENT conditional distribution than the ADR-0030 gate scored, with every draw
+#      still in range. v2 embeds it, and this probe treats the ARTIFACT as authoritative from v2 while
+#      cross-checking the sidecar against it; on a v1 artifact it says so and names the sidecar as the only
+#      record. It also reproduces the golden pairs under BOTH settings, to report whether the flag is
+#      load-bearing for THIS artifact rather than assuming it.
 #   2. The conditioning WIDTH contract. A 14-column artifact must be queried through
 #      `live_flux_cond_env(env)`, an 8-column one through `live_flux_cond`. Passing the wrong-width row was
 #      an out-of-bounds heap read (`_leaf` reads `x[f]` under `@inbounds`) that returned a plausible
@@ -78,7 +80,7 @@ meta, golden = read_meta(META)
 # ---- [1/5] LOAD, timed in a FRESH process (the number a coupled run actually pays) -------------------
 println("\n== [1/5] load =======================================================================")
 t0 = time_ns()
-cop, forests, x, axes, cond_cols = DRF.load_copula(RCOP)
+cop, forests, x, axes, cond_cols, qrf_art = DRF.load_copula(RCOP)
 dt = (time_ns() - t0) / 1.0e9
 mbs = (filesize(RCOP) / 2^20) / dt
 println("   loaded in $(round(dt, digits = 2)) s  =  $(round(mbs, digits = 1)) MiB/s   [MEASURED, not estimated]")
@@ -113,13 +115,32 @@ println(
     "   meta qrf_weighting: ", qrf_meta === nothing ? "ABSENT (pre-ADR-0037 artifact ⇒ treat as 0)" :
         (qrf_meta ? "1 (QRF leaf weighting)" : "0 (equal-weight)")
 )
+# From `.rcop` format v2 the flag is IN the artifact (ADR 0038), so the artifact is authoritative and the
+# sidecar becomes a cross-check rather than the sole source. A v1 artifact reports `false` because that is
+# what v1-era artifacts were trained with — so on v1 the sidecar may legitimately say 1 while the artifact
+# says 0, and THAT is the whole reason for the version bump. Report the pair; only demand agreement on v2.
+rcop_ver = parse(Int, split(readlines(RCOP)[1])[2])
+println("   .rcop format v$rcop_ver, embedded qrf = $qrf_art")
+if rcop_ver >= 2 && qrf_meta !== nothing
+    check(
+        "the artifact's embedded qrf agrees with the sidecar", qrf_art == qrf_meta,
+        "rcop $qrf_art vs meta $qrf_meta"
+    )
+elseif rcop_ver < 2
+    println("   NOTE: v1 does not carry `qrf`, so the SIDECAR is the only record for this artifact — the")
+    println("         exact gap ADR 0038 closed. Retrain it to v2 before pinning it in a coupled run.")
+end
+# The setting every check below samples under: the artifact from v2 (authoritative), else the sidecar.
+# Single-assignment (`const`-like) so the two sections below cannot diverge.
+const QRF_USE = rcop_ver >= 2 ? qrf_art : (qrf_meta === true)
+println("   sampling under qrf = $QRF_USE (source: $(rcop_ver >= 2 ? "the .rcop" : "the sidecar meta"))")
 
 # ---- [3/5] GOLDEN pairs — and whether `qrf` is load-bearing for this artifact -------------------------
 println("\n== [3/5] golden (seed, x) -> draw pairs, under BOTH qrf settings =====================")
 if isempty(golden)
     println("   (no golden rows in the meta — skipped)")
 else
-    qrf_use = qrf_meta === true
+    qrf_use = QRF_USE
     # Single-assignment via a comprehension, NOT a counter mutated inside the loop: at top level a `for`
     # body is SOFT scope, so `ndiff += 1` there binds a NEW local and the outer name is never assigned
     # (`UndefVarError` at the read below — this script hit exactly that on its first run). Same family as
@@ -189,7 +210,7 @@ end
 
 # ---- [5/5] distribution summary at the fallback row --------------------------------------------------
 println("\n== [5/5] draw distribution at the fallback row x ($(NDRAW) draws) ===================")
-qrf_use = qrf_meta === true
+qrf_use = QRF_USE
 draws = [DRF.sample_copula!(DRF.Xoshiro256pp(10_000 + s), cop, forests, x; qrf = qrf_use) for s in 1:NDRAW]
 println("   axis          mean         sd          min          max   nonfinite")
 for (a, ax) in enumerate(axes)

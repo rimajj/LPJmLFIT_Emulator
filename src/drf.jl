@@ -750,7 +750,20 @@ load_forest(path::AbstractString) = open(load_forest, path, "r")
 # embedded verbatim via `save_forest`; `load_copula` walks the shared token stream with `_parse_forest`
 # (closure-free, JET-safe like `load_forest`). Round-trips a `sample_copula!` draw BITWISE.
 const _RCOP_MAGIC = "LPJMLFIT_RCOP"
-const _RCOP_VERSION = 1
+# v2 (ADR 0038) appends `qrf` to the `d ncond` line. WHY THE BUMP: the QRF (Meinshausen) leaf weighting
+# selects a DIFFERENT conditional distribution from the same forests, and until v2 it was recorded ONLY in
+# the sidecar `_meta.txt` (`qrf_weighting`) that `scripts/train_slow_copula.jl` writes. So a runtime that
+# pinned the `.rcop` PATH — which is what line M's contract does — and did not also read the sidecar
+# constructed `RecruitCopula` with the `qrf = false` default and silently sampled the equal-weight
+# conditional instead of the one the ADR-0030 gate scored. Every draw stayed in range: the classic ADR-0023
+# train/inference shift, with no error and no diagnostic. Measured on the t9 artifact, flipping `qrf`
+# changes ALL THREE of its golden draws, so the flag is load-bearing, not cosmetic.
+# v1 REMAINS READABLE and means `qrf = false` (its artifacts were all trained equal-weight), so the
+# committed Hainich demo `.rcop` and every t7/t8-era file line M pinned keep loading byte-for-byte
+# unchanged — guardrail 4. `load_copula` appends `qrf` as a SIXTH tuple element; Julia's destructuring
+# stops at the number of targets, so the existing 5-way call sites need no edit.
+const _RCOP_VERSION_MIN = 1
+const _RCOP_VERSION = 2
 
 """
     save_copula(io_or_path, cop::GaussianCopula, axis_forests, axis_names, cond_cols, x) -> io_or_path
@@ -760,11 +773,18 @@ Serialize the numeric parts of a recruit-trait copula bundle: the copula `cop` (
 (the `to_pools` mapping is rebuilt from these on load), and the conditioning-feature column names `cond_cols`
 with a fallback row `x` (`length(cond_cols)==length(x)`). Text format, magic `LPJMLFIT_RCOP`. Pairs with
 [`load_copula`](@ref).
+
+`qrf` records WHICH marginal estimator this bundle was fit and scored under (ADR 0037/0038) — `true` = the
+Meinshausen quantile-forest leaf weighting in [`predict_quantile`](@ref), `false` = the default equal-weight
+concatenation. It is written into the artifact from format v2 onward precisely so a consumer cannot lose it:
+sampling the same forests with the other setting yields a different conditional distribution whose draws are
+still in range, i.e. it fails SILENTLY. The default is `false` so every existing caller keeps writing what
+it wrote before.
 """
 function save_copula(
         io::IO, cop::GaussianCopula, axis_forests::AbstractVector{Forest},
         axis_names::AbstractVector{<:AbstractString}, cond_cols::AbstractVector{<:AbstractString},
-        x::AbstractVector{<:Real},
+        x::AbstractVector{<:Real}; qrf::Bool = false,
     )
     d = cop.d
     length(axis_forests) == d ||
@@ -774,7 +794,7 @@ function save_copula(
     length(cond_cols) == length(x) ||
         throw(DimensionMismatch("save_copula: cond_cols ($(length(cond_cols))) ≠ x ($(length(x)))"))
     println(io, _RCOP_MAGIC, " ", _RCOP_VERSION)
-    println(io, d, " ", length(cond_cols))
+    println(io, d, " ", length(cond_cols), " ", qrf ? 1 : 0)
     println(io, join(axis_names, " "))
     println(io, join(cond_cols, " "))
     println(io, join((string(v) for v in x), " "))
@@ -790,27 +810,39 @@ end
 function save_copula(
         path::AbstractString, cop::GaussianCopula, axis_forests::AbstractVector{Forest},
         axis_names::AbstractVector{<:AbstractString}, cond_cols::AbstractVector{<:AbstractString},
-        x::AbstractVector{<:Real},
+        x::AbstractVector{<:Real}; qrf::Bool = false,
     )
-    open(io -> save_copula(io, cop, axis_forests, axis_names, cond_cols, x), path, "w")
+    open(io -> save_copula(io, cop, axis_forests, axis_names, cond_cols, x; qrf = qrf), path, "w")
     return path
 end
 
 """
-    load_copula(path_or_io) -> (cop::GaussianCopula, axis_forests, x, axis_names, cond_cols)
+    load_copula(path_or_io) -> (cop::GaussianCopula, axis_forests, x, axis_names, cond_cols, qrf)
 
 Deserialize a copula bundle written by [`save_copula`](@ref). Returns the tuple a `RecruitCopula` is
 assembled from: the caller reconstructs the `to_pools` mapping from `axis_names` (e.g. via
 `make_recruit_to_pools`). Closure-free token walk (`_parse_forest`), JET-safe like [`load_forest`](@ref).
+
+Reads format **v1 and v2**. `qrf` is the marginal estimator the bundle was fit and scored under (ADR
+0038); a v1 artifact predates the field and yields `false`, which is what those artifacts were trained
+with. It is the SIXTH element deliberately: Julia destructuring stops at the number of targets, so the
+pre-existing `cop, af, x, names, cols = load_copula(p)` call sites keep working untouched. **Pass it to
+`RecruitCopula` (`qrf = …`) — the struct defaults to `false`, so dropping it silently samples a different
+conditional distribution than the artifact was scored under.**
 """
 function load_copula(io::IO)
     toks = split(read(io, String))
     toks[1] == _RCOP_MAGIC || error("load_copula: bad magic (expected $_RCOP_MAGIC)")
     ver = parse(Int, toks[2])
-    ver == _RCOP_VERSION || error("load_copula: unsupported version $ver (expected $_RCOP_VERSION)")
+    _RCOP_VERSION_MIN <= ver <= _RCOP_VERSION ||
+        error("load_copula: unsupported version $ver (readable: $_RCOP_VERSION_MIN..$_RCOP_VERSION)")
     d = parse(Int, toks[3])
     ncond = parse(Int, toks[4])
-    pos = 5
+    # v1's second line is `d ncond`; v2 appends `qrf`. Branch on the VERSION, never on "does a 5th token
+    # parse as an Int" — the next line is the axis-name list, and a numeric axis name would make that
+    # heuristic silently consume it.
+    qrf = ver >= 2 ? parse(Int, toks[5]) != 0 : false
+    pos = ver >= 2 ? 6 : 5
     axis_names = Vector{String}(undef, d)
     @inbounds for i in 1:d
         axis_names[i] = String(toks[pos]); pos += 1
@@ -849,7 +881,7 @@ function load_copula(io::IO)
     length(x) == ncond || error(
         "load_copula: fallback row x has $(length(x)) entries but ncond=$ncond."
     )
-    return GaussianCopula(L, d), axis_forests, x, axis_names, cond_cols
+    return GaussianCopula(L, d), axis_forests, x, axis_names, cond_cols, qrf
 end
 
 load_copula(path::AbstractString) = open(load_copula, path, "r")

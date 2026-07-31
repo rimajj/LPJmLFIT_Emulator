@@ -141,3 +141,170 @@ end
     DRF.save_copula(worse, cop, forests, ["a", "b"], ["c1", "c2"], [0.1, 0.2])
     @test_throws ErrorException DRF.load_copula(worse)
 end
+
+@testitem "the .rcop CARRIES its qrf estimator (format v2) and still reads v1 (ADR 0038)" tags = [:scientific] begin
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    # WHY: `qrf` selects a DIFFERENT conditional distribution from the same marginals. Until format v2 it
+    # lived ONLY in the sidecar `_meta.txt`, so a consumer that pinned the `.rcop` PATH (which is what line
+    # M's contract does) and missed the sidecar got `RecruitCopula`'s `qrf = false` default and silently
+    # sampled the equal-weight conditional instead of the one the ADR-0030 gate scored — in range, no error.
+    function tiny(seed)
+        r = DRF.Xoshiro256pp(seed)
+        m = 600
+        X = Matrix{Float64}(undef, m, 3)
+        y = Vector{Float64}(undef, m)
+        for i in 1:m
+            for ff in 1:3
+                X[i, ff] = DRF.rand01!(r)
+            end
+            # A skewed within-leaf target, so equal-weight and QRF leaf weighting actually DISAGREE — a
+            # symmetric target would make this testitem vacuously green.
+            y[i] = X[i, 1]^3 + 0.05 * X[i, 2]
+        end
+        return DRF.fit_forest(X, y; ntrees = 6, subsample = 300, mtry = 3, seed = seed, store_values = true)
+    end
+    cop = DRF.GaussianCopula([1.0 0.3; 0.3 1.0])
+    forests = [tiny(11), tiny(12)]
+    cols = ["c1", "c2", "c3"]
+    x = [0.4, 0.6, 0.5]
+    dir = mktempdir()
+
+    # v2 round-trips BOTH settings, and the flag is on the `d ncond qrf` line.
+    for q in (false, true)
+        p = joinpath(dir, "q_$(q).rcop")
+        DRF.save_copula(p, cop, forests, ["a", "b"], cols, x; qrf = q)
+        @test split(readlines(p)[1]) == ["LPJMLFIT_RCOP", "2"]
+        @test split(readlines(p)[2]) == ["2", "3", q ? "1" : "0"]
+        @test DRF.load_copula(p)[6] == q
+    end
+
+    # The DEFAULT is false, so every pre-ADR-0038 caller keeps writing what it wrote before.
+    pdef = joinpath(dir, "default.rcop")
+    DRF.save_copula(pdef, cop, forests, ["a", "b"], cols, x)
+    @test DRF.load_copula(pdef)[6] == false
+
+    # The 6th element is APPENDED: the pre-existing 5-way destructuring must still work untouched.
+    c5, af5, x5, n5, cc5 = DRF.load_copula(joinpath(dir, "q_true.rcop"))
+    @test n5 == ["a", "b"] && cc5 == cols && x5 == x && length(af5) == 2
+
+    # The flag must be LOAD-BEARING, or the round-trip above proves nothing — a `qrf` that never changed a
+    # draw would make this whole testitem vacuous. But it is NOT expected to differ at every row: QRF
+    # weights each tree's leaf by 1/|leaf|, so wherever the leaves a row lands in happen to be equal-sized
+    # the two estimators coincide exactly. (The t9 acceptance probe reports the same caveat, and on the real
+    # artifact all three golden rows DO differ.) So scan a spread of rows and require that at least one
+    # differs, rather than betting on one lucky row.
+    rows_probe = [[a, b, c] for a in (0.1, 0.4, 0.7, 0.95) for b in (0.15, 0.5, 0.85) for c in (0.2, 0.6, 0.9)]
+    ndiff_probe = count(
+        DRF.sample_copula!(DRF.Xoshiro256pp(7), cop, forests, r; qrf = true) !=
+            DRF.sample_copula!(DRF.Xoshiro256pp(7), cop, forests, r; qrf = false)
+            for r in rows_probe
+    )
+    @test ndiff_probe > 0
+
+    # v1 BACK-COMPAT on the real committed artifact: it predates the field and must read as `qrf = false`,
+    # which is what it was trained with. This is the guardrail-4 check — a version bump must not orphan a
+    # committed baseline or any artifact line M already pinned.
+    v1 = joinpath(@__DIR__, "references", "recruit_copula_hainich.rcop")
+    @test split(readlines(v1)[1]) == ["LPJMLFIT_RCOP", "1"]
+    c1, af1, x1, n1, cc1, q1 = DRF.load_copula(v1)
+    @test q1 == false
+    @test length(cc1) == length(x1) == af1[1].nfeat
+    # A hand-forged future version must be refused, not read as v2 with a shifted token stream.
+    fut = joinpath(dir, "v99.rcop")
+    write(fut, replace(read(joinpath(dir, "q_true.rcop"), String), "LPJMLFIT_RCOP 2" => "LPJMLFIT_RCOP 99"))
+    @test_throws ErrorException DRF.load_copula(fut)
+end
+
+@testitem "FluxDrivenSlowEmulator REJECTS a conditioning-width mismatch at CONSTRUCTION (ADR 0038)" tags = [:scientific] begin
+    using LPJmLFITEmulator
+    using LPJmLFITEmulator.FDiff
+    using LPJmLFITEmulator.FDiff: PhotoParams, TempStressParams
+    using LPJmLFITEmulator.DRF
+    using Test
+
+    # WHY CONSTRUCTION AND NOT SAMPLE TIME: `DRF._check_nfeat` is the real guard, but for the copula it only
+    # runs inside `sample_copula!`, reached only when a patch actually RECRUITS. A cell that thins every
+    # year, or an all-grass patch, never draws — so a coupled run with a mis-wired copula completes
+    # "successfully", conserving carbon, with zero diagnostics. The emulator constructor is the one place
+    # holding BOTH the boundary and the copula, so it is the only place the width identity can be checked
+    # before the run starts.
+    function tinyf(seed, nfeat)
+        r = DRF.Xoshiro256pp(seed)
+        m = 400
+        X = Matrix{Float64}(undef, m, nfeat)
+        y = Vector{Float64}(undef, m)
+        for i in 1:m
+            for ff in 1:nfeat
+                X[i, ff] = DRF.rand01!(r)
+            end
+            y[i] = X[i, 1]
+        end
+        return DRF.fit_forest(X, y; ntrees = 3, subsample = 200, seed = seed, store_values = true)
+    end
+    cop = DRF.GaussianCopula([1.0 0.2; 0.2 1.0])
+    boundary = [1200.0, -3.0, 15.0, 369.0]          # the 4-column production boundary tail
+    to_pools = make_recruit_to_pools(["SLA", "Wooddens"])
+
+    # The count DRF the emulator needs: 11 features + the boundary tail.
+    countf = tinyf(3, 11 + length(boundary))
+
+    # A minimal SYNTHETIC fast core — this testitem only exercises the emulator CONSTRUCTOR, so it needs a
+    # valid `FDiffFastCore` but no forcing, no fixtures and no coupled run (the fixture-reading setup in
+    # `slow_membership_tests.jl` is for the in-loop tests).
+    pool = TreePools{Float64}(15.0, 30.0, 5.0, 15.0, 0.0, 12.0, 0.5, 0.1, 0.02, 2.0e5, false)
+    tmpl = Individual{Float64}(
+        0.6, 0.0, 0.5, 0.15, 5.0, 30.0, 15.0, 0.0, 0.02, 0.04, 0.1, 0.4, 0.1,
+        PhotoParams{Float64}(; path = :c3, issla = true, sla = 0.02),
+        TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false,
+    )
+    soil = hainich_soilcolumn(;
+        whcs = fill(0.15, LPJmLFITEmulator.NSOILLAYER),
+        rootdist = fill(1.0 / LPJmLFITEmulator.NSOILLAYER, LPJmLFITEmulator.NSOILLAYER),
+        soildepth = fill(200.0, LPJmLFITEmulator.NSOILLAYER),
+    )
+    fc = FDiffFastCore([pool], [tmpl], soil, 51.25)
+
+    # (a) MATCHED 8-column artifact with `live_flux_cond` — must construct.
+    f8 = [tinyf(1, 4 + length(boundary)), tinyf(2, 4 + length(boundary))]
+    rc8 = RecruitCopula{Float64}(
+        cop, f8, collect(1.0:(4.0 + length(boundary))), to_pools, live_flux_cond
+    )
+    @test FluxDrivenSlowEmulator(fc, countf; boundary = boundary, recruit_copula = rc8) isa
+        FluxDrivenSlowEmulator
+
+    # (b) MATCHED 14-column artifact with `live_flux_cond_env` — the ADR-0038 production shape.
+    env = [935.4, 0.981, 95.6, 0.581, 0.535, 0.0076]
+    n14 = 4 + length(boundary) + length(env)
+    f14 = [tinyf(4, n14), tinyf(5, n14)]
+    rc14 = RecruitCopula{Float64}(
+        cop, f14, collect(1.0:Float64(n14)), to_pools, live_flux_cond_env(env); qrf = true
+    )
+    e14 = FluxDrivenSlowEmulator(fc, countf; boundary = boundary, recruit_copula = rc14)
+    @test e14 isa FluxDrivenSlowEmulator
+    @test e14.recruit_copula.qrf                      # `qrf` survives into the emulator
+
+    # (c) THE BUG THIS CATCHES: a 14-column artifact wired with the 8-column policy. Before ADR 0038 this
+    # constructed happily and only failed if and when a patch recruited.
+    rc_mixed = RecruitCopula{Float64}(
+        cop, f14, collect(1.0:Float64(n14)), to_pools, live_flux_cond; qrf = true
+    )
+    @test_throws ErrorException FluxDrivenSlowEmulator(
+        fc, countf; boundary = boundary, recruit_copula = rc_mixed
+    )
+
+    # (d) And the reverse: an 8-column artifact wired with the env policy.
+    rc_mixed2 = RecruitCopula{Float64}(
+        cop, f8, collect(1.0:(4.0 + length(boundary))), to_pools, live_flux_cond_env(env)
+    )
+    @test_throws ErrorException FluxDrivenSlowEmulator(
+        fc, countf; boundary = boundary, recruit_copula = rc_mixed2
+    )
+
+    # (e) A width-legal artifact whose boundary is the wrong LENGTH is also caught, because the policy's
+    # output width depends on `boundary`, not on the artifact.
+    @test_throws ErrorException FluxDrivenSlowEmulator(
+        fc, tinyf(6, 11 + 3); boundary = [1200.0, -3.0, 15.0], recruit_copula = rc8
+    )
+end

@@ -117,16 +117,23 @@ function main()
     rcop_path = get(ENV, "RCOP_OUT_PATH", joinpath(REFDIR, "recruit_copula_hainich.rcop"))
     meta_path = replace(rcop_path, r"\.rcop$" => "_meta.txt")
     mkpath(dirname(rcop_path))
-    DRF.save_copula(rcop_path, cop, axis_forests, axes, cond_cols, x)
+    # `qrf` goes INTO the artifact (format v2, ADR 0038), not just the sidecar meta below: a consumer that
+    # pins the `.rcop` path and misses `qrf_weighting` would otherwise construct `RecruitCopula` with the
+    # `false` default and sample the equal-weight conditional instead of the one that was scored — in range,
+    # and silent.
+    DRF.save_copula(rcop_path, cop, axis_forests, axes, cond_cols, x; qrf = qrf)
     sz = filesize(rcop_path)
     @info "serialized copula" rcop_path bytes = sz
 
     # round-trip self-check (bitwise on this machine)
-    cop2, af2, x2, names2, cols2 = DRF.load_copula(rcop_path)
+    cop2, af2, x2, names2, cols2, qrf2 = DRF.load_copula(rcop_path)
     @assert names2 == axes && cols2 == cond_cols && x2 == x "header round-trip mismatch"
+    @assert qrf2 == qrf "qrf round-trip mismatch: wrote $qrf, read $qrf2"
     for s in 1:10
-        d1 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, axis_forests, x)
-        d2 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop2, af2, x2)
+        # Sample through the RECOVERED qrf, so this checks the flag the artifact now carries rather than
+        # re-asserting the default on both sides (which would pass even if `qrf` were dropped entirely).
+        d1 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop, axis_forests, x; qrf = qrf)
+        d2 = DRF.sample_copula!(DRF.Xoshiro256pp(s), cop2, af2, x2; qrf = qrf2)
         @assert d1 == d2 "copula draw round-trip changed at seed $s"
     end
 
