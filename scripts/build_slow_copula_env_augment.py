@@ -50,8 +50,14 @@ Usage (SLURM; reads ~13 GB, writes ~22 GB):
     COPULA_ENV_COLS=prec_mean,eco_diag_p_pet_ratio,eco_diag_pet_mean,eco_diag_vpd_mean,pr_cv_monthly,humid_mean \
       scripts/sbatch_python.sh S-envaug scripts/build_slow_copula_env_augment.py
 
-Env: SRC (required), OUT (required), SCENARIO (historic|ssp370), COPULA_ENV_COLS (required, comma-separated
-     `cell_year_feats` columns), CHUNK (rows per write chunk, default 8_000_000).
+Env: SRC (required), OUT (required), SCENARIO (historic|ssp370|pooled — LABEL ONLY: it is printed and
+     copied into the manifest, and since the year filter was removed it selects nothing, so `pooled` is
+     safe), COPULA_ENV_COLS (required, comma-separated `cell_year_feats` columns), CHUNK (rows per write
+     chunk, default 8_000_000).
+
+Sidecars: every file the source manifest NAMES is symlinked into OUT, not just `Y_*`/`cells.i64` — the
+`pooled` tables carry `scenario_tag  scenario.i64` and an earlier version of this script dropped it,
+leaving the copied manifest pointing at a file that was not there (see the symlink block below).
 """
 
 from __future__ import annotations
@@ -205,13 +211,35 @@ def main():
     del Xsrc, Xnew
 
     # ---- symlink the untouched halves, write the extended manifest -----------------------------------
-    for f in sorted(src.glob("Y_*.f64")) + [src / "cells.i64"]:
+    # EVERY sidecar the manifest NAMES must come along, not just the ones the historic table happens to
+    # have. The `pooled` tables carry `scenario_tag<TAB>scenario.i64` (the per-row scenario label that
+    # eval_slow_copula_scenario_holdout.jl splits on); the first version of this loop symlinked only
+    # `Y_*.f64` + `cells.i64`, so a pooled augment produced a table whose manifest still declared
+    # `scenario.i64` while the file was ABSENT from OUT — a dangling contract that trains fine (the
+    # trainer never reads it) and only fails later, in the scenario-holdout eval, far from the cause.
+    # Resolved by NAME from the manifest so a future sidecar key is carried automatically.
+    sidecars = [src / "cells.i64"]
+    for key in ("scenario_tag",):
+        if key in man:
+            ref = src / man[key]
+            if not ref.is_file() and not ref.is_symlink():
+                raise SystemExit(
+                    f"FATAL: manifest declares {key}={man[key]} but {ref} does not exist — the source "
+                    f"table is inconsistent; refusing to propagate a dangling reference."
+                )
+            sidecars.append(ref)
+    for f in sorted(src.glob("Y_*.f64")) + sidecars:
         link = out / f.name
         if link.exists() or link.is_symlink():
             link.unlink()
         link.symlink_to(f)
     npred = len(list(out.glob("pred_*.f64")))
     assert npred == 0, f"{npred} pred_* already in OUT — remove them so a stale eval is never re-scored"
+    # The manifest is written below by copying every key through; assert here that each sidecar it names
+    # now RESOLVES in OUT, so the augmented table can never ship a reference to a file that is not there.
+    for key in ("scenario_tag",):
+        if key in man:
+            assert (out / man[key]).is_file(), f"manifest {key}={man[key]} does not resolve in {out}"
 
     lines = []
     for k in order:
@@ -229,7 +257,8 @@ def main():
     (out / "manifest_copula.txt").write_text("\n".join(lines) + "\n")
 
     print(f"\n== wrote {dst} ({dst.stat().st_size / 2**30:.1f} GiB, {n:,} x {ncond_new})")
-    print(f"== symlinked {len(list(out.glob('Y_*.f64')))} Y_* + cells.i64 from the source (cannot drift)")
+    print(f"== symlinked {len(list(out.glob('Y_*.f64')))} Y_* + "
+          f"{' + '.join(f.name for f in sidecars)} from the source (cannot drift)")
     print(f"== manifest ncond={ncond_new}  cond_cols={' '.join(cond_cols + ENV_COLS)}")
     print("== fallback row x (row-weighted column means):")
     for c, v in zip(cond_cols + ENV_COLS, xmean, strict=True):
