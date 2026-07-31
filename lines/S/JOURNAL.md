@@ -431,3 +431,21 @@ explained why QRF's payoff collapsed with capacity: the max-leaf weight share is
 only 2.9x at 6.
 
 Suite green end to end: 107 394 pass / 0 fail / 4 broken (job 1647687), Runic clean 111/111.
+
+### Post-merge: the config transfers to the pooled basis
+
+Job 1647661 finished after the merge. The same config on `slow_copula_pooled_w20_t8env` (the transient
+`pooled_w20` basis line M pins) lifts Wooddens `emu_r` 0.8261 → 0.9095 and `sd_ratio` 0.6119 → 0.8493, so
+criterion 2 goes FAIL → PASS there too, with criterion 3 improving on all four axes against the pooled
+baseline. Recorded in STATE.md + a changelog fragment rather than by editing ADR 0038, which is accepted and
+immutable — nothing in it is falsified: it explicitly declined to claim pooled numbers and listed this as
+pending, and its §7 statement that criteria 1 and 4 are uncomputable for pooled still stands.
+
+Care taken with the arithmetic: the pooled A/B is baseline→final, i.e. the FULL three-lever delta against a
+60-tree/50k/d14/ncond-8/QRF=0 baseline, whereas the historic +0.037 I quote for conditioning is a matched
+pair off `qrf-b6x2M`. Comparing those two directly would overstate the conditioning lever by ~2x. The
+like-for-like figures are the full-stack ones: historic +0.087/+0.1766 vs pooled +0.0834/+0.2374.
+
+This removes one of the two objections to promoting the artifact but NOT the important one: the pooled folds
+are still `mod(hash(cell), k)`, and the env columns are bit-identical for a cell across the two scenarios, so
+the interpolation-vs-transfer confound is untouched. Spatially blocked CV remains the gate.
