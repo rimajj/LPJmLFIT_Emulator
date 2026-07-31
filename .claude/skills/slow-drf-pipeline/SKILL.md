@@ -604,6 +604,14 @@ Criteria 2 and 3 need seed1 alone:
   median cannot drift from the gate's own definition. Its `sd_ratio` is on the seed1 `≥MINSTEM` basis, NOT
   the gate's narrower seed1-INNER-seed2 basis, so **absolute values are not interchangeable with the
   published historic figures — only deltas measured on one basis are valid.**
+- **A baseline→final A/B is the FULL-STACK delta, NOT an isolated lever — never compare it to a matched-pair
+  number** (`[VERIFIED 2026-07-31]`). `score_slow_copula_dispersion.py`'s A/B against a scenario's `t8` moves
+  *every* factor at once (capacity + QRF + conditioning), because `t8` is 60-tree/50k/d14/`ncond` 8/QRF=0.
+  The pooled run's `+0.0834 emu_r` is therefore **not** comparable to the historic `+0.037` conditioning
+  figure, which is a matched pair off `qrf-b6x2M` — reading them as the same quantity overstates conditioning
+  by ~2×. Compare like with like: full-stack historic +0.087 `emu_r` / +0.1766 `sd_ratio` vs pooled +0.0834 /
+  +0.2374. This is ADR 0033's "credited one change with another's effect" in a new guise; label every delta
+  with the factors it moved.
 - **`median_percell_r` in `metrics_traits.txt` IS `emu_r`** (`[VERIFIED 2026-07-31]`) — the between-cell
   Pearson r of per-cell medians, despite a name that reads like a within-cell statistic. Reproduced to 4 dp
   on an identical cell count (pooled SLA 0.8994 / Wooddens 0.8261 on 57 719 cells). The basis offset to the
