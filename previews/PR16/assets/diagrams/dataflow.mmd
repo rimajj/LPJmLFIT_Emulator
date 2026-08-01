@@ -1,0 +1,75 @@
+%% CURATED (hand-authored) — the DATA / FLUX flow, the owner's mental model.
+%% NOT auto-generated. Mirror of src/registry.jl FLUXES + DESIGN.md §8; the derived
+%% docs/src/generated/dataflow.mmd is the source of truth + diff alarm. ENG_STANDARDS §5(i).
+%% input drivers → model (S/F/E) → output fluxes, plus the conserved water/carbon budgets.
+flowchart LR
+    subgraph DRIVERS["Atmospheric drivers (ATM →)"]
+        direction TB
+        SW["SWdown"]
+        LW["LWdown"]
+        TA["Tair"]
+        QA["qair"]
+        WND["wind (NEW)"]
+        PS["psurf (NEW)"]
+        PR["precip"]
+        CO2["CO₂"]
+    end
+
+    subgraph MODEL["Land component"]
+        direction TB
+        S["S — slow ML distribution (annual)"]
+        F["F — fast physical core (daily)"]
+        E["E — energy balance + skin-T (sub-daily)"]
+    end
+
+    subgraph OUTPUTS["Surface fluxes / state (→ ATM)"]
+        direction TB
+        LE["LE — latent heat"]
+        H["H — sensible heat (residual)"]
+        G["G — ground heat"]
+        TS["T_skin"]
+        NBP["NBP_atm"]
+        Z0["z0 — roughness"]
+    end
+
+    subgraph BUDGETS["Conserved budgets (closure gates)"]
+        direction TB
+        WB["Water: precip = ET + runoff + ΔS_soil+snow"]
+        CB["Carbon: NBP = NPP − Rh − firec + flux_estabc"]
+    end
+
+    %% drivers into the model (wind + psurf feed E specifically)
+    DRIVERS --> F
+    SW --> E
+    LW --> E
+    WND --> E
+    PS --> E
+
+    %% internal coupling
+    F <--> S
+    F <--> E
+    S --> E
+
+    %% model to outputs (E is the ESM-facing surface)
+    E --> LE
+    E --> H
+    E --> G
+    E --> TS
+    E --> NBP
+    E --> Z0
+
+    %% conservation ties
+    F -.-> WB
+    F -.-> CB
+    E -.-> CB
+
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;
+    classDef budget fill:#f3e8ff,stroke:#6d28d9,stroke-width:2px,color:#111827;
+
+    class S ml;
+    class F physics;
+    class E hybrid;
+    class WB budget;
+    class CB budget;
