@@ -20,7 +20,9 @@ until it lands.
    *transient* benefit was interpolation (`Rr` flips sign under blocking). M still does not re-pin, on new
    grounds. Do not repeat the old reason; it is refuted.
 3. **`cell_env.parquet` ships** — the mechanical half of M's blocker is cleared.
-4. **Track A (ssp370 seed2) has not started yet** and is not blocked on anything you can do.
+4. **Track A (ssp370 seed2) is the only live compute.** Do NOT trust any state written here — SLURM moved its
+   estimated start by 8 h while this handoff was being written. **Run `squeue -u $USER` / `sacct -j
+   1678574,1678595,1678596,1678607` first**, then read §F for how to judge it.
 5. **Nothing is left to collect except Track A.** §A is the completed ledger of this session's jobs, kept
    because it maps each result to where it is recorded — start new work at §E.
 
@@ -144,17 +146,26 @@ At `(p=8, mtry=4)` a split sees ≥1 of the four time-varying flux drivers with 
    the tightest margins, pooled KS 0.0116 vs the 0.02 bound) · the composed coupled path is still unexercised ·
    emit `Year` in the `MODE=copula` table (schema change ⇒ ride a new generation).
 
-### F. TRACK A — the ssp370 second seed. Nothing to do but collect; do NOT "fix" the queue
+### F. TRACK A — the ssp370 second seed. Check its LIVE state first; do NOT "fix" the queue
 
 `random_seed` is **inert under `FROM_RESTART`** — a second seed is a second SPIN-UP. **ADR 0041** is the
 record; read it before touching any seed/restart config.
 
 | job | what | state at handoff |
 |---|---|---|
-| **1678574** | `S-FIT_ssp370_seed2` — the corrected member, 2048 tasks / 16 nodes | PENDING, est. start **2026-08-04 ~05:55** |
+⚠ **The states below are a snapshot from 2026-08-03 ~17:20 and WILL be wrong — query SLURM, don't read them.**
+The estimated start for 1678574 moved from 2026-08-04 05:55 to 2026-08-03 17:17 in the course of one session.
+
+| job | what | snapshot only |
+|---|---|---|
+| **1678574** | `S-FIT_ssp370_seed2` — the corrected member, 2048 tasks / 16 nodes, 3:30 wall | **RUNNING** from 17:17 ⇒ due ~20:47 |
 | **1678595** | independence gate (must NOT be a copy) | `afterok:1678574` |
 | **1678596** | → `ind_ssp370_seed2_all.parquet` (~92 GB) | `afterok:1678595` |
-| **1678607** | `S-crossbuild-gate` — full-grid 2048-task binary-equivalence gate | PENDING, priority *below* 1678574 (correct — the member is the critical path) |
+| **1678607** | `S-crossbuild-gate` — full-grid 2048-task binary-equivalence gate | queued behind the member (correct — the member is the critical path) |
+
+**So the whole Track-A chain may well have LANDED before you read this.** Check the member's log first, then
+1678595's verdict, then whether the parquet exists — and remember `afterok` means a dead parent leaves the
+children cancelled, so a missing parquet can mean the C run died rather than that nothing was scheduled.
 
 - **Do NOT lower `--ntasks`.** 2048 is what seed1 used, and a changed decomposition changes the trajectory
   (ADR 0041): a subset re-run is **not** a per-cell replica. `qos=medium`/`long` have *smaller* group limits.
