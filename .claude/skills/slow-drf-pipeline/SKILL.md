@@ -629,6 +629,15 @@ so it can never support *spatial* interpolation in any fold mode.
   the direction of whichever colouring ran first. Same shape as ADR 0041's `random_seed`, inert under
   `-DFROM_RESTART` and invisible in the C log. **Verify from the log**: the Julia `@info` block prints
   `block_salt = N`; that line, not the submit command, is the evidence.
+- **Build a blocked comparison as a PAIRED DELTA at a shared colouring — never as a level
+  (`[VERIFIED 2026-08-03]`, ADR 0042 §4 addendum).** Measured on the two colourings of the same blocked design:
+  re-colouring moved the **single-arm** blocked `emu_r` by **+0.0136** in Wooddens (0.7340 → 0.7476) but moved
+  the **paired delta** between two arms by only **+0.0024** (+0.0314 → +0.0338). The colouring effect is almost
+  entirely *common to both arms* and cancels in the difference. Consequences: (a) a blocked `emu_r` **level** is
+  colouring-sensitive — never quote one alone, and never compare levels across colourings or against a
+  hash-fold level; (b) a blocked **delta** at a shared colouring is robust, which is why a rule written on
+  deltas survived a replicate that would have broken a rule written on levels; (c) a *level* claim needs
+  replicate colourings, a *delta* claim needs far fewer.
 - **One blocked colouring is one draw — budget the salt replicate into the experiment from the start.** The
   `geo` null's own salt-0-to-salt-1 spread is **0.140 vs 0.210** in Wooddens `emu_r`, comparable to the
   conditioning delta being adjudicated, which is why ADR 0040 pre-registered a NOT-RESOLVABLE branch at all. A

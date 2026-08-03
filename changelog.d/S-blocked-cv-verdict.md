@@ -8,6 +8,12 @@
   `0.5·Δ_hash = +0.0201`, while the pure-position control collapses 0.1868 below the treatment and 0.1553
   below no tail at all. The frozen 1-NN surrogate screen predicted ~86 % retention and the forests delivered
   78/119/137 % on the three axes with a resolvable delta.
+- The salt replicate also validated the experimental design, which is the most transferable result here:
+  re-colouring the spatial blocks moved the **single-arm** blocked `emu_r` by +0.0136 (half the delta under
+  test) but moved the **paired delta** by only +0.0024, because the colouring effect is common to both arms and
+  cancels in the difference. A blocked *level* is therefore colouring-sensitive and must not be quoted alone or
+  across colourings; a blocked *paired delta* at a shared colouring is robust. Build blocked comparisons as
+  paired deltas.
 - **ADR 0040 §4's attribution of the transient damping to the env tail is refuted**, using the matched `p8`
   arm that ADR itself asked for: the ncond-8 baseline damps the Wooddens warming shift 39.9 % on its own. Its
   §5 promotion gate is therefore simultaneously *met* and *mis-specified* — passable by a change that degrades
@@ -33,10 +39,3 @@
   3–5× wider and materially change what may be claimed — the blocked-fold damping is no longer significant,
   and no inter-arm difference is resolvable from marginal CIs (a paired difference bootstrap is the missing
   statistic, noted as a caveat with its fix).
-
-- The salt replicate also validated the experimental design, which is the most transferable result here:
-  re-colouring the spatial blocks moved the **single-arm** blocked `emu_r` by +0.0136 (half the delta under
-  test) but moved the **paired delta** by only +0.0024, because the colouring effect is common to both arms and
-  cancels in the difference. A blocked *level* is therefore colouring-sensitive and must not be quoted alone or
-  across colourings; a blocked *paired delta* at a shared colouring is robust. Build blocked comparisons as
-  paired deltas.
