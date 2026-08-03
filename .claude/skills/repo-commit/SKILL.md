@@ -143,6 +143,13 @@ every one falsified by the run that had just finished. So, before committing the
   to where its result is recorded and that is how a number is traced back to its log, but say in the heading that
   nothing needs collecting, and point the reader at the section where new work actually starts. Same discipline
   as the predictions rule above: a to-do list and its outcomes must never sit side by side undated.
+  **The preventive form, stronger than the fix: never ASSERT transient state in a handoff — carry facts and
+  commands, and let the reader query the state.** Same session, an hour later: SLURM moved a 2048-task job's
+  estimated start **8 hours earlier**, so a freshly-committed "has not started yet" was false within minutes.
+  A queue position, a PENDING/RUNNING, an ETA, "N of M axis-folds done" — every one of these is a lie with a
+  timestamp by the time the hook replays it. Write `run squeue -u $USER / sacct -j <ids> FIRST`, label any
+  table you keep as a snapshot, and say what to conclude in each case (including "this may already have
+  landed"). Keep ETAs as planning aids, never as premises.
 
 **Refreshing is also not REPLACING someone else's handoff — and git will not warn you (`[VERIFIED 2026-08-03]`).**
 ADR 0028 says one session per line, but if a second session *is* running in your worktree, the `## NEXT` block
