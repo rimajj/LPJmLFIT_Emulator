@@ -100,6 +100,12 @@ FOLD_MODE="${FOLD_MODE:-hash}"; BLOCK_DEG="${BLOCK_DEG:-15}"; BUFFER_DEG="${BUFF
 CELL_LATLON="${CELL_LATLON:-${BASE}/tables/cell_latlon.txt}"; MTRY="${MTRY:-0}"
 BLOCK_SALT="${BLOCK_SALT:-0}"
 FORCE="${FORCE:-0}"
+# EXCLUDE: a comma-list of nodes to keep this rung off, emitted as a real `#SBATCH --exclude=`.
+# `SBATCH_EXCLUDE` in the environment does NOT work -- it is not one of sbatch's input env vars on this
+# cluster, and it fails SILENTLY: job 1681087 was submitted with SBATCH_EXCLUDE=cso14c74 and landed on
+# cso14c74, dying 0:53 with no log for the second time. Use this knob for the known flaky-node mode
+# (exit 0:53 / no log / 20x slowdown) instead.
+EXCLUDE="${EXCLUDE:-}"
 ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${QOS:-short}"
 JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"   # DRF is zero-dep pure-Base
 PY="${PY:-/home/jamirp/.conda/envs/py311_new/bin/python}"
@@ -202,6 +208,7 @@ cat > "${jcf}" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NCPUS}
 #SBATCH --time=${TIME}
+${EXCLUDE:+#SBATCH --exclude=${EXCLUDE}}
 #SBATCH --output=${LOGDIR}/${TAG}.%j.out
 #SBATCH --error=${LOGDIR}/${TAG}.%j.out
 set -uo pipefail

@@ -7,3 +7,9 @@
   salt 0. That failure mode fabricates a *perfectly agreeing* blocked-CV replicate, which is exactly what
   ADR 0040 §5's "NOT RESOLVABLE if the two salts disagree" clause exists to detect, so it would have forced
   a false RESOLVED. Same class as ADR 0041's inert `random_seed` under `FROM_RESTART`.
+
+- `scripts/diagnose_copula_capacity.sh` gained an `EXCLUDE=` knob that emits a real
+  `#SBATCH --exclude=`. The `SBATCH_EXCLUDE` environment variable recommended for the known
+  flaky-node mode is **not** a recognised sbatch input on this cluster and is ignored silently:
+  job 1680828 died `0:53`/no-log on `cso14c74`, and the resubmission carrying
+  `SBATCH_EXCLUDE=cso14c74` (job 1681087) landed on `cso14c74` again and died the same way.
