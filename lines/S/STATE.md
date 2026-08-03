@@ -21,6 +21,21 @@ violation — see Track B's note), so both handoffs are preserved here rather th
 a second seed is a second SPIN-UP.** That single fact is why every earlier attempt produced a
 byte-copy of seed1. **ADR 0041** is the record. Read it before touching any seed/restart config.
 
+**State at the end of the 2026-08-03 session — code MERGED, data NOT YET PRODUCED.** Code+docs merged to
+`main` at **`20db6057`**, and `main`'s OWN CI is green on all six real gates (`docs`, `format`, `python`,
+`test (lts)`, `test (1)`, `test (macOS, lts)`); only the allowed-to-fail `test (pre)` is red, for the
+documented Julia-prerelease churn. The CI-faithful suite ran green independently on SLURM —
+**107 394 pass / 0 fail / 4 broken, 98/98 items** (job 1678641) — which is what established the Julia
+verdict, because the two concurrent sessions' pushes kept **cancelling** each other's GitHub Julia runs
+(`cancelled`, not `failure`; don't read those as a break).
+**But `1678574` had NOT started: it sat `QOSGrpCpuLimit` for the whole session.** qos=short's group
+allowance is 18 000 CPUs and the partition was saturated (187 nodes running, six of them this worktree's
+own Track-B rungs), so a 2048-CPU job had nothing to fit into. Nothing is wrong with it — **do not
+"fix" it by lowering `--ntasks`**: 2048 is what the seed1 member used, and a changed decomposition
+changes the trajectory (see the subset-replica finding below), which would destroy the very comparison
+this member exists for. `qos=medium`/`long` have *smaller* group limits (12 000 / 6 000), so `short` is
+already the right queue. Just let it schedule and collect the chain.
+
 #### The bug, in one line
 
 The old `transient_2020_2100_npatch25_random_seed2` set `"random_seed": 2` but restarted from the
