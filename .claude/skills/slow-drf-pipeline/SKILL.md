@@ -592,7 +592,23 @@ lexicographic sort; neighbour correlation collapses 0.96–0.999 → 0.003–0.0
 buy capacity/mtry". A blocked `p14perm` run is pointless — a permuted tuple is still a unique per-cell key,
 so it can never support *spatial* interpolation in any fold mode.
 
-**Two traps.**
+**Three traps.**
+- **A wrapper that hands its inner script an EXPLICIT env prefix makes every unlisted knob silently inert
+  (`[VERIFIED 2026-08-03]`).** `eval_slow_copula.jl` reads `BLOCK_SALT` from `ENV`, but
+  `diagnose_copula_capacity.sh` listed `FOLD_MODE`/`BLOCK_DEG`/`BUFFER_DEG`/`MTRY`/`CELL_LATLON` on the Julia
+  command line and **not** `BLOCK_SALT`, so a salt-1 rung rode on `sbatch --export=ALL` inheritance and the
+  `=== FOLDS:` header did not echo the salt either. Fixed (the driver now passes and echoes it), but the shape
+  recurs: **before trusting any new knob, `SUBMIT=no` and grep the generated jcf for it.** The failure is
+  worse than an ignored flag — a salt that silently stays 0 yields a replicate that agrees with its sibling
+  *exactly*, so ADR 0040 §5's "NOT RESOLVABLE if the two salts disagree" clause returns a false RESOLVED in
+  the direction of whichever colouring ran first. Same shape as ADR 0041's `random_seed`, inert under
+  `-DFROM_RESTART` and invisible in the C log. **Verify from the log**: the Julia `@info` block prints
+  `block_salt = N`; that line, not the submit command, is the evidence.
+- **One blocked colouring is one draw — budget the salt replicate into the experiment from the start.** The
+  `geo` null's own salt-0-to-salt-1 spread is **0.140 vs 0.210** in Wooddens `emu_r`, comparable to the
+  conditioning delta being adjudicated, which is why ADR 0040 pre-registered a NOT-RESOLVABLE branch at all. A
+  blocked delta quoted from a single salt is provisional by construction. `CAPTAG` must encode the salt
+  (`...-blk15-buf5-s1`) or the replicate overwrites the original.
 - **`CAPTAG` is the only thing separating two rungs**, and `diagnose_copula_capacity.sh` wipes
   `capacity/$CAPTAG` **unconditionally**. Two rungs differing only in `FOLD_MODE`/`BUFFER_DEG`/`MTRY` share a
   natural CAPTAG ⇒ the second deletes the first's predictions, and run concurrently it deletes the first's
