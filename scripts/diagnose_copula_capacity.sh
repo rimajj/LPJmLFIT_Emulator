@@ -56,6 +56,12 @@
 #        (${BASE}/tables/cell_latlon.txt, from scripts/build_slow_spatial_controls.py),
 #        MTRY (0 = DRF's own sqrt(p); pass 4 on an ncond-8 table to match an ncond-14 rung,
 #        because sqrt(p) rounds to 3 at p=8 and 4 at p=14 -- a hidden fourth lever),
+#        BLOCK_SALT (0; replicates the tile->fold colouring. ADR 0040's "NOT RESOLVABLE" branch
+#          CANNOT be evaluated without a second salt, so a silently-inert salt would fabricate a
+#          perfectly-agreeing replicate and force a false RESOLVED. It is therefore passed
+#          EXPLICITLY into eval_slow_copula.jl below and echoed in the FOLDS header -- do NOT
+#          rely on sbatch --export=ALL inheritance for it, the way `random_seed` was relied on
+#          under FROM_RESTART (ADR 0041). Verify `block_salt = N` in the job's @info block.),
 #        FORCE (0; 1 = overwrite a CAPTAG whose shadow dir is already populated).
 #      BUFFER_DEG=0 is a SENSITIVITY rung, not the test: the block PERIMETER keeps an adjacent
 #        training cell, measured 24.2% of test cells within 1.0 deg at BLOCK_DEG=15. Put the
@@ -92,6 +98,7 @@ TRAIT_ONLY="${TRAIT_ONLY:-0}"; QRF="${QRF:-0}"
 # ADR 0040 — the spatial-fold knobs. All default to the pre-ADR-0040 behaviour.
 FOLD_MODE="${FOLD_MODE:-hash}"; BLOCK_DEG="${BLOCK_DEG:-15}"; BUFFER_DEG="${BUFFER_DEG:-0}"
 CELL_LATLON="${CELL_LATLON:-${BASE}/tables/cell_latlon.txt}"; MTRY="${MTRY:-0}"
+BLOCK_SALT="${BLOCK_SALT:-0}"
 FORCE="${FORCE:-0}"
 ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${QOS:-short}"
 JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"   # DRF is zero-dep pure-Base
@@ -203,13 +210,14 @@ export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
 echo "=== ${TAG} on \$(hostname) at \$(date) ==="
 echo "=== CAPACITY: NTREES=${EVAL_NTREES} SUBSAMPLE=${EVAL_SUBSAMPLE} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} QRF=${QRF} ==="
-echo "=== FOLDS: FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} MTRY=${MTRY} ==="
+echo "=== FOLDS: FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} BLOCK_SALT=${BLOCK_SALT} MTRY=${MTRY} ==="
 echo "=== shadow=${SHADOW}  src=${SRC} (inputs symlinked; preds land in the shadow) ==="
 
 echo; echo "== [1/3] K-fold-by-cell OOS at this capacity =========================="
 OUT=${SHADOW} KFOLDS=${KFOLDS} NTREES=${EVAL_NTREES} MAX_DEPTH=${MAX_DEPTH} \\
   MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${EVAL_SUBSAMPLE} QRF=${QRF} MTRY=${MTRY} \\
-  FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} CELL_LATLON=${CELL_LATLON} \\
+  FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} BLOCK_SALT=${BLOCK_SALT} \\
+  CELL_LATLON=${CELL_LATLON} \\
   ${JULIA} scripts/eval_slow_copula.jl
 rc=\$?; [ \$rc -ne 0 ] && { echo "eval_slow_copula.jl FAILED rc=\$rc"; echo "=== JOB DONE tag=${TAG} exit=\$rc ==="; exit \$rc; }
 
