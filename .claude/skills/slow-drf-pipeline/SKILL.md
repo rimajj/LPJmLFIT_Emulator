@@ -584,8 +584,11 @@ Four measured facts that change how you design the experiment — each cost a ru
    measured at matched mtry is *net* of a width penalty, and "extra columns bought capacity" is refuted rather
    than assumed. Measured at hash folds only — this matrix proved fold-mode sign flips are real, so do not
    assume it transfers to blocked folds.
-3b. **The measured noise scale of a Δ`emu_r` on this table** (paired 166-tile cluster bootstrap, gated on
-   reproducing every logged `emu_r`/`sd_ratio` from the stored `pred_*.f64`): **0.004–0.006 under hash folds,
+3b. **The measured noise scale of a Δ`emu_r` on this table** — `scripts/diagnose_slow_delta_power.py`, which
+   re-derives `emu_r` from any set of arms' stored `pred_*.f64`, **gates on reproducing each arm's logged
+   value**, then runs a PAIRED 15° tile-cluster bootstrap (one tile resample applied to every arm at once, so
+   it isolates the which-cells component and cancels what is common). Run it before quoting any Δ as
+   resolved. Measured: **0.004–0.006 under hash folds,
    0.012–0.016 under 15°/5° blocking** — a 3× difference, so one scalar cannot serve both. It is a LOWER
    bound: fold colouring adds ~0.014 (measured: re-colouring alone moved the ncond-8 blocked arm +0.0136 in
    Wooddens) and forest seed adds an unmeasured amount (`seed = a` is hard-wired). Budget accordingly: a
