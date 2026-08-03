@@ -52,8 +52,10 @@ Usage (SLURM; reads ~13 GB, writes ~22 GB):
 
 Env: SRC (required), OUT (required), SCENARIO (historic|ssp370|pooled — LABEL ONLY: it is printed and
      copied into the manifest, and since the year filter was removed it selects nothing, so `pooled` is
-     safe), COPULA_ENV_COLS (required, comma-separated `cell_year_feats` columns), CHUNK (rows per write
-     chunk, default 8_000_000).
+     safe), COPULA_ENV_COLS (required, comma-separated columns of the tail source), CHUNK (rows per write
+     chunk, default 8_000_000), ENV_PARQUET (ADR 0039: a per-CELL tail parquet instead of the per-cell-year
+     `cell_year_feats` — used for the `p14geo` / `p14perm` ablation controls; unset ⇒ byte-identical to the
+     pre-ADR-0039 behaviour), TAIL_TAG (a provenance label copied into the manifest as `env_tail_tag`).
 
 Sidecars: every file the source manifest NAMES is symlinked into OUT, not just `Y_*`/`cells.i64` — the
 `pooled` tables carry `scenario_tag  scenario.i64` and an earlier version of this script dropped it,
@@ -77,6 +79,15 @@ OUT = os.environ.get("OUT", "")
 SCENARIO = os.environ.get("SCENARIO", "historic")
 ENV_COLS = [c.strip() for c in os.environ.get("COPULA_ENV_COLS", "").split(",") if c.strip()]
 CHUNK = int(os.environ.get("CHUNK", "8000000"))
+# ADR 0039. The tail source is a knob so the ABLATION CONTROLS ride this same verified transform instead of
+# a forked script: `p14geo` (a pure-position tail) and `p14perm` (the true env tuples permuted across cells)
+# are per-CELL parquets from scripts/build_slow_spatial_controls.py. The `group_by("Cell").mean()` below is
+# the IDENTITY on a table that already has one row per Cell, so no branch is needed in the hot path — but
+# that also means a DUPLICATED Cell in such an input would be silently AVERAGED, manufacturing a tuple that
+# exists in neither marginal and defeating the whole point of the perm control. Hence the explicit
+# one-row-per-Cell gate below. Unset ⇒ `cell_year_feats` ⇒ byte-identical to the pre-ADR-0039 behaviour.
+ENV_PARQUET = os.environ.get("ENV_PARQUET", "").strip() or CELL_YEAR_FEATS
+TAIL_TAG = os.environ.get("TAIL_TAG", "").strip()  # provenance label, copied into the manifest
 
 
 def read_manifest(d):
@@ -123,13 +134,23 @@ def main():
     print(f"   env cols  : {ENV_COLS}")
 
     # ---- the per-cell env means, replicating build_slow_runtime_table.py literally -------------------
-    have = pl.scan_parquet(CELL_YEAR_FEATS).collect_schema().names()
+    have = pl.scan_parquet(ENV_PARQUET).collect_schema().names()
     missing = [c for c in ENV_COLS if c not in have]
     if missing:
-        raise SystemExit(f"FATAL: COPULA_ENV_COLS not in cell_year_feats: {missing}")
+        raise SystemExit(f"FATAL: COPULA_ENV_COLS not in {ENV_PARQUET}: {missing}")
+    if ENV_PARQUET != CELL_YEAR_FEATS:
+        # A pre-materialized per-Cell tail: the aggregation below is the IDENTITY, so the duplicate-Cell
+        # guard AFTER it can no longer catch anything. Gate the INPUT instead (see the ADR-0039 note above).
+        raw = pl.scan_parquet(ENV_PARQUET).select("Cell").collect()
+        if raw.n_unique() != raw.height:
+            raise SystemExit(
+                f"FATAL: {ENV_PARQUET} is not one row per Cell ({raw.height} rows, "
+                f"{raw.n_unique()} unique) — the mean would silently BLEND tuples"
+            )
+        print(f"   tail src  : {ENV_PARQUET}  [one row per Cell verified]  tag={TAIL_TAG or '(none)'}")
     # NO year filter — the static boundary's basis (see the YEAR BASIS note in the module docstring).
     envt = (
-        pl.scan_parquet(CELL_YEAR_FEATS)
+        pl.scan_parquet(ENV_PARQUET)
         .select(["Cell"] + ENV_COLS)
         .group_by("Cell")
         .agg([pl.col(c).cast(pl.Float64).mean().alias(c) for c in ENV_COLS])
@@ -137,17 +158,22 @@ def main():
     )
     if envt.height == 0:
         raise SystemExit(
-            f"FATAL: the env aggregation over {CELL_YEAR_FEATS} produced ZERO cells. That is an EMPTY "
+            f"FATAL: the env aggregation over {ENV_PARQUET} produced ZERO cells. That is an EMPTY "
             f"SOURCE, not a coverage hole — check the table's Year range against this scenario."
         )
     bad = {c: int(envt[c].is_null().sum() + envt[c].is_nan().sum()) for c in ENV_COLS}
     assert not any(bad.values()), f"null/NaN in COPULA_ENV_COLS per-cell means: {bad}"
     assert envt.select("Cell").n_unique() == envt.height, "duplicated Cell in the env aggregate"
-    yr = pl.scan_parquet(CELL_YEAR_FEATS).select(
-        pl.col("Year").min().alias("lo"), pl.col("Year").max().alias("hi")
-    ).collect()
-    print(f"   env means : {envt.height:,} cells from cell_year_feats over Year "
-          f"{yr['lo'][0]}-{yr['hi'][0]} (climatology, no scenario filter — the boundary's basis)")
+    if "Year" in have:
+        yr = pl.scan_parquet(ENV_PARQUET).select(
+            pl.col("Year").min().alias("lo"), pl.col("Year").max().alias("hi")
+        ).collect()
+        print(f"   env means : {envt.height:,} cells from cell_year_feats over Year "
+              f"{yr['lo'][0]}-{yr['hi'][0]} (climatology, no scenario filter — the boundary's basis)")
+    else:
+        # A per-Cell tail has no Year column at all — that is the point (ADR 0039). Report its provenance
+        # instead of a Year span, rather than letting `pl.col("Year")` raise ColumnNotFoundError.
+        print(f"   env means : {envt.height:,} cells from {ENV_PARQUET} (per-Cell tail, no Year axis)")
 
     # Dense cell -> env lookup (cells are small positive ints on the orderA grid).
     cells = np.fromfile(src / "cells.i64", dtype="<i8")
@@ -254,6 +280,12 @@ def main():
     if "x" not in order:
         lines.append("x\t" + " ".join(repr(float(v)) for v in xmean))
     lines.append(f"env_augmented_from\t{src}")
+    # Inert extra keys: every consumer is key-driven (`read_manifest` here, train_slow_copula.jl:75,
+    # eval_slow_copula.jl:93), so an unknown key is ignored. They exist so a shadow dir's provenance is
+    # readable from the table itself rather than reconstructed from an orchestrator default (ADR 0039).
+    lines.append(f"env_tail_source\t{ENV_PARQUET}")
+    if TAIL_TAG:
+        lines.append(f"env_tail_tag\t{TAIL_TAG}")
     (out / "manifest_copula.txt").write_text("\n".join(lines) + "\n")
 
     print(f"\n== wrote {dst} ({dst.stat().st_size / 2**30:.1f} GiB, {n:,} x {ncond_new})")
