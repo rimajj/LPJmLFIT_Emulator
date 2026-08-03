@@ -6,6 +6,244 @@
 
 ## NEXT — start here
 
+**TWO TRACKS are open on line S. Two sessions ran CONCURRENTLY in this worktree on 2026-08-03 (an ADR-0028
+violation — see Track B's note), so both handoffs are preserved here rather than one overwriting the other.**
+
+- **Track A — the ssp370 second seed (ADR 0041).** TIME-CRITICAL: a 2048-task C run and two chained
+  `afterok` jobs are in flight. Collect these first; a dead parent silently cancels its children.
+- **Track B — the address null and blocked CV (ADR 0040).** Six pooled eval rungs in flight, two more to
+  resubmit. The decision rule is PRE-REGISTERED and must not be rewritten after the results are read.
+
+### TRACK A — the ssp370 second seed is finally running for real (ADR 0041)
+
+
+**The ssp370 second seed is finally RUNNING for real. `random_seed` is INERT under `FROM_RESTART` —
+a second seed is a second SPIN-UP.** That single fact is why every earlier attempt produced a
+byte-copy of seed1. **ADR 0041** is the record. Read it before touching any seed/restart config.
+
+#### The bug, in one line
+
+The old `transient_2020_2100_npatch25_random_seed2` set `"random_seed": 2` but restarted from the
+**historic seed1** `restart_2019.lpj`. With `"new_seed": false` the per-cell RAND48 seeds come from
+the restart file (`newgrid.c:507-513` → `freadcell.c:37`) and the `setseed` that would apply
+`seed_start` is gated off (`newgrid.c:520-521`); `seed_start` is applied once at parse time
+(`fscanconfig.c:231`) then overwritten from the restart header (`openrestart.c:139-140`). **And the
+log says `Reading random seeds from restart file.`, never `Random seed: 2`** — so nothing warned.
+Both `ind_2020_2100.csv` are 193 097 583 638 B with md5-identical sampled windows. A floor from it
+gives `floor_r ≡ 1` = fabricated headroom. That directory now carries
+`INVALID_NOT_A_SECOND_SEED.md`; ~326 GB there is reclaimable (nothing derived was built from it).
+
+#### What is in flight — jobs to collect
+
+| job | what | depends on |
+|---|---|---|
+| **1678574** | `S-FIT_ssp370_seed2` — the corrected member, 2048 tasks / 16 nodes, `qos=short`, 3:30 | — (was `QOSGrpCpuLimit`) |
+| **1678595** | `S-ssp2-indep` — independence gate (must NOT be a copy) | `afterok:1678574` |
+| **1678596** | `S-indparq-ssp2` — → `/p/tmp/jamirp/emulator_global/ind_ssp370_seed2_all.parquet` (~92 GB) | `afterok:1678595` |
+| **1678579/1678580/1678592** | `S-bineq-A`/`-B`/`-cmp` — subset gate | **DONE — verdict VOID (exit 3), see below** |
+| **1678607** | `S-crossbuild-gate` — the REPLACEMENT gate: full grid, 2048 tasks, seed1 inputs, Jul-21 binary | — |
+
+Run dir: `.../ssp370/ground_truth/model_output/transient_2020_2100_npatch25_random_seed2_from_hist_seed2/`
+Logs: `logs/S-*.<jobid>.out`; the C run's own log is `<run>/lpjml_2020_2100.1678574.out`.
+
+**`afterok` means a dead parent leaves the children cancelled — a missing parquet may mean the C run
+died, not that nothing was scheduled.** Check `sacct -j 1678574,1678595,1678596 --format=JobID,JobName%20,State,ExitCode,Elapsed`.
+
+**Judge the C run from its LOG, never from SLURM state.** The stock job file ended `rc=0` + bare
+`exit`, so it always exited 0 — a run dying mid-century leaves a plausible truncated 193 GB CSV
+behind a green `sacct` row. I fixed it to `rc=$?` / `exit $rc`, but still require
+`lpjml successfully terminated, 67420 grid cells processed.` Then: `ind_2020_2100.csv` within a few
+percent of 193 097 583 638 B and **NOT exactly equal** to it (exact equality ⇒ the fix failed);
+`restart/restart_2100.lpj` ≈ 1.34e11 B; `python scripts/water_closure_check.py <run_dir>`.
+If it dies 0:53 / no log / 20× slow, that is the known flaky-node mode — resubmit with
+`SBATCH_EXCLUDE=<node>`, do not re-debug the config.
+
+#### The provenance is FOUR edits, not three — say all four when citing it
+
+`restart_filename` → historic **seed2** restart (the fix) · the run directory · `random_seed` 1→2
+(inert, documentary) · **the `co2` input path**. That last one was forced: the seed1 config reads
+`/home/jamirp/scripts/clustering/climclusterpy_package/global_co2_ann_1700_2019_const_2100.txt`,
+which **no longer exists** (that dir was repurposed for an unrelated project on 2026-07-28) —
+`lpjcheck` failed `ERROR100`. Recovered and installed at
+`/p/projects/waldspektrum/priesner/clustering/global/global_co2_ann_1700_2019_const_2100.txt`,
+**md5 `ed5699b9c92d4d25857889f644b153db`**, 5212 B, 401 years. Identity proven four ways: the git
+blob (its only version, spanning the Jul-15 run); a filesystem snapshot with **mtime 2026-07-07**,
+predating the run; byte-exact reconstruction from TRENDY v12 (1700–2019 verbatim, then 2019 flat);
+and agreement with ADR 0004's 409.63 ppm. **So the forcing is identical and the seed is the only
+physical difference.** Per ADR 0004 these are `ssp370 climate, CO2 constant at 409.63 ppm from 2020`.
+Line M / anyone re-running seed1 should know **the seed1 config as committed is unrunnable** until
+its `input_2020_2100.js:23` is repointed at the `/p` copy (documentation-only; do not rerun seed1).
+
+#### ⚠ NEW, AND IT INVALIDATES A CLASS OF VALIDATION: a subset re-run is NOT a per-cell replica
+
+Measured at cell 42490 with the **same binary, same restart, same forcing**, varying only the cell set:
+
+| run | cell set | `ind` rows for 42490 | first year ≠ global truth | years matching truth |
+|---|---|---|---|---|
+| A | 42490 alone | 18 530 | **2021** (first step) | 2 / 81 |
+| B | 42480–42500 (21 cells) | 19 366 | **2035** | 16 / 81 (2020–2034 contiguous) |
+| truth | all 67 420 @ 2048 tasks | 18 790 | — | — |
+
+B is **bit-identical for 15 consecutive years** then diverges; A diverges immediately; at 2020 A and B
+already differ in exactly `fpc_ind` and `isdead`. This is a stochastic gap model amplifying a tiny
+perturbation — one individual dying/establishing differently makes the roster permanently different.
+**The RNG is not the cause** (fully per-cell: `permute` takes `stand->cell->seed`, no `drand48()` anywhere
+in `src/`, `config->seed` read only at `iterate.c:108/148/181`, all unreachable at
+`nspinup:0`/`fix_climate:false`). **Mechanism UNESTABLISHED — do not claim one.**
+
+Consequences: (a) CLAUDE.md §3's "per-cell seek is MPI-decomposition-independent" is true of the *seek*,
+**false of the evolution** — the recorded ~1.6e-4 `whc_nat` discrepancy is this same effect through a
+smoother variable; (b) **a seed pair is valid only at the same binary AND the same `--ntasks`** (seed2
+satisfies the second by construction, `--ntasks=2048` copied from seed1); (c) **any single-cell re-run
+scored against GLOBAL ground truth is comparing two different trajectories** — this bears directly on
+line M's per-cell oracle work and the `fdiff-validate` skill. **Raise it with M** (that skill is M-owned;
+the fact is in CLAUDE.md §3, which is shared).
+
+#### THE ONE OPEN QUESTION — the cross-build gate (now job 1678607)
+
+The seed1 member came from the **`Feb  5 2026`** build; the current `bin/lpjml` is **`Jul 21 2026`**.
+That is **not** just the committed `patches/lpjmlfit_daily_grass_gpp.patch` — it is also a
+**RHEL8→RHEL9 toolchain rebuild** (GCC 8.5.0→11.5.0, GLIBC_2.14→2.33/2.34, `__xstat`→`stat`,
+`DT_NEEDED libjson-c.so.4`→unversioned). Two things are settled by reading, and are solid:
+
+* **the patch is inert here** — for a 5-of-421-output run `initoutput.c:50-67` allocates a leading
+  `maxsize` **trash** region and sets `outputmap[i]=0` for unopened outputs (real outputs at
+  `index>=maxsize`), `outputsize(D_GRASS_*)==1` so `maxsize`/`totalsize` are unchanged ⇒ the
+  unconditional `getoutput(output,D_GRASS_GPP,…)+=` writes only to trash, no RNG draw, no state;
+* **no physics par drifted** — `find -newermt 2026-07-15` over `src/ include/ par/` returns exactly
+  the patch's four files; `param_lpjmlfit.js`, `par/{lpjparam_fit,soil_20m,pft_lpjmlfit,manage_*}.js`
+  and `Makefile.inc` (hence `-DPERMUTE`/`-DSAFE`) all predate the seed1 run. Only
+  `par/outputvars.js` changed, by the same patch's two rows, matched to `NOUT 421`.
+
+Neither is an empirical proof. The **subset** gate (A/B/cmp above) came back **VOID, exit 3** — the
+decomposition confound is larger than the binary signal, so a subset re-run can never settle this.
+It is replaced by **job 1678607**, the only design that can: full grid `"startgrid":"all"`, **2048
+tasks**, the same 5-output set, the same forcing, restarting from the **historic seed1**
+`restart_2019.lpj` with `random_seed 1` — a faithful re-run of the seed1 member itself, differing only
+in `write_restart:false` (written after the last year ⇒ cannot affect the trajectory). Config +
+job file in `/p/tmp/jamirp/S_crossbuild_gate/`.
+
+**To collect it:** compare against the seed1 ground truth
+* `output/globalflux_2020_2100.csv` (10.5 KB, 81-year GLOBAL aggregate — extremely sensitive: a sum
+  over 67 420 cells) — `cmp` / `diff` it directly;
+* `output/vegc_2020_2100.nc` (65 MB, per-cell annual vegetation carbon) — per-cell array equality.
+Bit-identity on both ⇒ the builds are poolable and the seed is the only difference. A mismatch ⇒ the
+RHEL8→RHEL9 rebuild moved the trajectory; fall back to `git checkout -- include/conf.h
+par/outputvars.js src/lpj/daily_natural.c src/lpj/fwriteoutput.c` (restoring the matched 419/419 pair)
+and re-running the member with `bin/lpjml.pre_dgrass.bak`, the actual producing binary.
+The `ind` CSV that gate writes (193 GB in `/p/tmp/jamirp/S_crossbuild_gate/output/`) exists **only** so
+the output set stays byte-identical to the producing run — it is not compared; **delete it** after.
+
+**A mismatch does not invalidate the new seed2 member** — it is still a genuine second realization. It
+invalidates *pooling it with seed1 as a pure seed pair*.
+
+#### Then, in priority order
+
+1. **An ssp370 seed2 parquet is NECESSARY BUT NOT SUFFICIENT for ADR-0030 criteria 1 and 4 on the
+   pooled basis.** The pooled seed1 tables were built with `STEM_CAP=400` while ADR 0030 Decision 1
+   requires the cap OFF for a floor, and the cap's rank key is
+   `pl.struct(['Cell','Patch','Year']).hash(seed=seed)` (`build_slow_runtime_table.py:381`) ⇒ a
+   `SEED=2` build keeps a **different set of whole patch-year clusters**, deflating the floor and
+   flattering the emulator. Either rebuild both sides uncapped or state the deviation next to the
+   criterion. Do not quote a pooled criterion 1/4 number without resolving this.
+2. **The pooled seed2 copula tables**, then the floor: steps 1–3 of `run_pooled_slow_copula.sh`
+   (`SCENARIO=historic SEED=2` and `SCENARIO=ssp370 SEED=2`, `BOUNDARY_WINDOW=20`,
+   `STRUCT_AXES=agb,Height`) → `pool_slow_tables.py` → `noise_floor_vs_emulator.py` with
+   `COPULA_DIR=/p/tmp/jamirp/emulator_global/capacity/pooled-env-qrf-b6x2M`,
+   `COPULA2_DIR=.../slow_copula_pooled_w20_t8_seed2`, `SKIP_PARQUET=1`.
+   These orchestrators DO take `DEPENDENCY=afterok:<jid>` as an env knob (the `sbatch_*.sh` wrappers
+   do not) — chain them on **1678596**.
+3. **STILL THE GATE ON PRODUCTION — and ANOTHER SESSION IS ALREADY RUNNING IT (2026-08-03 ~12:05–12:20).**
+   A concurrent line-S session was active in this worktree while the seed2 work was committed: it holds
+   uncommitted edits to `scripts/{eval_slow_copula,blocked_cv_folds_probe}.jl`,
+   `scripts/{build_slow_copula_env_augment,build_slow_spatial_controls,diagnose_slow_neighbour_skill}.py`,
+   `scripts/diagnose_copula_capacity.sh` and an untracked `scripts/diagnose_slow_address_prereg.py`, and it
+   submitted `S-aug-{geo,perm,geo2}` + `S-cap-p{8,14}-{hash,blk15-buf5}-*` (jobs 1678605–1678616). **Its work
+   is NOT in commit `66fb0149`** — I staged only my own files, so nothing of theirs was buried. Two things to
+   know: (i) it also **bulk-renumbered every `ADR 0039` reference in the working tree to `ADR 0040`**, which is
+   why my ADR took the free number **0041** — commit `01e6e248` reserves 0039 by in-code reference for the
+   blocked-CV work and never wrote the file, so 0039/0040 are theirs to settle; (ii) that sweep rewrote the
+   ADR reference *inside a section I had just written*, so **check the numbers in `slow-drf-pipeline` before
+   trusting them**. This violates ADR 0028's one-session-per-line rule — reconcile before assuming either
+   handoff is complete. Their jobs also share our `qos=short` group limit, which is why 1678574/1678607 sat
+   `QOSGrpCpuLimit`.
+   The remaining substance, unchanged: re-score
+   `env-qrf-b6x2M` with contiguous lat/lon block folds instead of `mod(hash(cell), k)`
+   (`eval_slow_copula.jl:143`), plus a lat/lon-only conditioning control. The six env columns have
+   median within-cell sd **exactly 0 for 100 % of cells**, so they are a per-cell spatial ADDRESS,
+   not a climate response; a 1-NN lookup on them reaches Wooddens r = 0.800 with the nearest
+   training neighbour 1.00° away. By-cell folds leave the neighbours in the training set, so they
+   score interpolation, not transfer. **Do not promote to M before this runs.**
+   `recruit_copula_global_historic_t9.rcop` is the **historic-STATIC** artifact and the S2 evidence;
+   it is NOT line M's production copula (M pins the **transient** `pooled_w20` basis, ADR 0027).
+4. **A per-cell env sidecar** — no runtime plumbing supplies the six env values per cell; a caller
+   hand-builds them from `cell_year_feats.parquet`, unreachable from CI and basis-sensitive. S emits
+   `cell_env.parquet`; M folds it into `M_cells.csv`. Until it exists the 14-column artifact is not
+   coupled-runnable outside a bespoke script.
+5. **Depth is NOT exhausted at the production config** (t9, job 1648259): 33 449–46 036 leaves/tree
+   but 52.3–67.0 % of stored values still depth-capped. One `6 x 2M, d32` rung settles whether the
+   0.8696 asymptote moves. Depth is free in bytes.
+6. **Re-run the shipped rung with `TRAIT_ONLY=0`** — `agb`/`Height` were trimmed out of 11 of 12
+   rungs including the shipped one, and they carry the tightest margins (agb pooled KS 0.0116 vs the
+   0.02 bound). "S2 met" must not be read as "biomass and size unchanged".
+7. **The composed coupled path is still unexercised**: emulator + 14-col copula + `qrf=true` +
+   establishment + carbon closure over a multi-year run. Construction is gated; the run is not.
+8. **Carried (ADR 0036 §6):** emit `Year` in the `MODE=copula` table so the stand-biomass composite
+   is computable on matched rows — blocks figures 12/13 for the POOLED pair. It is a table SCHEMA
+   change ⇒ do it when a new generation is being built anyway, never as a standalone rebuild of a
+   validated table (ADR 0036 §5b streaming key-set nondeterminism lands a rebuild on a different row
+   universe). Related, don't re-derive: `STEM_CAP` is a patch-year **CLUSTER** subsample, not
+   per-stem, which is why ssp370's basis spread is ~10× looser.
+
+#### OPEN INTEGRATION POINT with line M (raise it before any re-pin)
+
+`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`. A 14-column
+artifact fails that **by construction** — its last four are the env tail — so M's re-pin step
+`sys.exit`s. The correct check is **positional**, `cond_cols[4:8]`. **That file is M-owned; S
+requests, M lands.**
+
+#### New reusable scripts (use them; do not re-derive)
+
+- `scripts/build_slow_ind_parquet.py` — `ind_*.csv` → parquet, `SRC`/`OUT` positional. The only
+  previous builder is the FROZEN sibling's `global_extract.py`, whose `--which` is argparse-locked to
+  three hard-coded names, so a new scenario/seed **could not be named at all**. Keeps the load-bearing
+  `schema_overrides` (polars infers `Wooddens` integer from the first rows) and asserts the frozen
+  29-column `IND_COLUMNS`.
+- `scripts/diagnose_ind_seed_independence.py` — run this on EVERY new ground-truth member before
+  deriving anything. Equal file size to the sibling is the copy signature.
+- `scripts/diagnose_ind_binary_equality.py` — per-cell bit-equality vs the global truth **with a
+  decomposition control**. Use it whenever ground truth from two different builds would be pooled.
+
+#### Traps found this session (do not re-derive)
+
+- **`random_seed` is inert under `FROM_RESTART` and INVISIBLE in the log.** The whole of ADR 0041.
+  A future "seed 3" made by bumping `random_seed` alone would fail the same silent way.
+- **A "ground truth" input path can rot underneath a committed config.** The ssp370 co2 file vanished
+  when an unrelated project reused its directory; the seed1 config has been unrunnable since
+  2026-07-28 and nothing noticed. Recovery route worth remembering: `git log --all --diff-filter=D`
+  in the repurposed repo, plus `/home/jamirp/.snapshot/{hourly,daily,weekly}.*` (mtimes are preserved,
+  which is what let me prove the file predated the run).
+- **`git status` in `/home/jamirp/lpjml56fit` holds UNTRACKED `param_lpjmlfit_newseedpool.js` and
+  `par/lpjparam_fit_newseedpool.js` with `k_est_inherit` 0.02 → 2e-13 (11 orders of magnitude).**
+  Nothing references them today, but `#include "param_lpjmlfit.js"` is the cpp QUOTE form, so a stray
+  copy in any `scripts_for_running_the_model/` would silently shadow LPJROOT's and change the physics
+  with no visible config diff.
+- **CLAUDE.md §1's `par/param_lpjmlfit.js` does not exist** — the file is
+  `/home/jamirp/lpjml56fit/param_lpjmlfit.js` (LPJROOT root, found via `-I$LPJROOT`). Fixed in §1.
+- **CLAUDE.md §3's "json-c 0.17 aborts" applies to the Feb-5 build only.** The Jul-21 build imports
+  *versioned* `JSONC_0.14` symbols, which 0.13.1, 0.17 and the system `libjson-c.so.5` all provide;
+  `lpjcheck` exits 0 under both. The real bare-env failure is `libnetcdf.so.19` / `libudunits2.so.0`
+  not found. Pin the documented module set **inside the job file** for that reason — the stock
+  ground-truth jcfs pin nothing and inherit the submitting shell.
+- **`bin/lpjml.pre_dgrass.bak` is not a drop-in** while the working tree is patched: it was built
+  with `NOUT=419` and the live `par/outputvars.js` declares 421 (`ERROR232`/`ERROR201`).
+
+**Not S's to chase:** `water_stress` (6.6× band) is line M's F core, ADR 0029. `fpc`'s residual is
+dynamics (ADR 0035 §3.3).
+
+### TRACK B — the address null was measured on the wrong basis (ADR 0040)
+
+
 **ADR 0038's decision rule for the address question was WRONG, and it is now corrected and PRE-REGISTERED.
 ADR 0040 is the record.** The rule said *"decays toward the 1-NN level (r≈0.80) ⇒ it is an address"*. But
 0.80 is a pure address's skill under **hash** folds; the fold-mode-matched null under `block(15°,5°)` is
@@ -13,7 +251,7 @@ ADR 0040 is the record.** The rule said *"decays toward the 1-NN level (r≈0.80
 declared a strong response an address** — guardrail 7's reference-basis error, which ADR 0033 records this
 line making twice before. Note `0039` was taken by a CONCURRENT line-S session (ssp370 seed2), so this is 0040.
 
-### The pre-registration (zero new compute, frozen BEFORE any forest log is read)
+#### The pre-registration (zero new compute, frozen BEFORE any forest log is read)
 
 1-NN surrogate, per-cell medians, 57 719 pooled cells, fold designs **read from the Julia code the forests
 run** (`mod(hash(tile),k)` is not reproducible in Python). Wooddens:
@@ -31,7 +269,7 @@ and that is the finding. Rule, decided in advance (ADR 0040 §5): RESPONSE if `�
 blocked `p14geo` ≪ blocked `p14env`; ADDRESS if `Δ_blocked → 0` or the two coincide; **NOT RESOLVABLE if the
 two salts disagree by > 0.5·Δ_blocked** (the `geo` null's own salt spread is already 0.07).
 
-### THE BIGGER FINDING — the gate metric is nearly blind to what production needs
+#### THE BIGGER FINDING — the gate metric is nearly blind to what production needs
 
 `emu_r` is a **level** statistic and `sd(Δobs)/sd(level)` is only **0.198–0.306**, so it is 3–5× more
 sensitive to spatial interpolation than to the warming response a coupled run turns on. Measured from
@@ -51,7 +289,7 @@ arm is 4-lever confounded** (`slow_copula_pooled_w20_t8`'s in-place preds are 40
 It reads `Rb` = **+263 [+92,+432]**, i.e. mildly amplified. So *"the env tail causes the damping"* is NOT
 established — that is exactly what `p8-hash-mtry4` settles.
 
-### DO THIS FIRST — collect the in-flight matrix (submitted, pooled, ~1.4 h each)
+#### DO THIS FIRST — collect the in-flight matrix (submitted, pooled, ~1.4 h each)
 
 `squeue -u $USER | grep S-cap-` · logs `logs/S-cap-<tag>.<jobid>.out`, last line `=== JOB DONE ... ===`.
 Each is `6×2M/d22/min_leaf20/QRF=1/KFOLDS=5/TRAIT_ONLY=1`; blocked rungs are `BLOCK_DEG=15 BUFFER_DEG=5`.
@@ -77,7 +315,7 @@ env $COMMON CAPTAG=p14geo-hash       SRC=$B/slow_copula_pooled_w20_t8geo MTRY=0 
 env $COMMON CAPTAG=p14geo-blk15-buf5 SRC=$B/slow_copula_pooled_w20_t8geo MTRY=0 FOLD_MODE=block BLOCK_DEG=15 BUFFER_DEG=5 CELL_LATLON=$B/tables/cell_latlon.txt scripts/diagnose_copula_capacity.sh
 ```
 
-### Then, in priority order
+#### Then, in priority order
 
 1. **The salt replicate pair** — `BLOCK_SALT=1` for `p8` and `p14env` at `block(15,5)`. One colouring is one
    draw and the "NOT RESOLVABLE" branch of the rule cannot be evaluated without it. `CAPTAG` must encode the
@@ -100,7 +338,7 @@ env $COMMON CAPTAG=p14geo-blk15-buf5 SRC=$B/slow_copula_pooled_w20_t8geo MTRY=0 
    `TRAIT_ONLY=0` on the shipped rung (`agb`/`Height` carry the tightest margins) · the composed coupled path
    is still unexercised · emit `Year` in the `MODE=copula` table (schema change ⇒ ride a new generation).
 
-### ⚠ A CONCURRENT LINE-S SESSION IS/WAS RUNNING IN THIS WORKTREE
+#### ⚠ A CONCURRENT LINE-S SESSION IS/WAS RUNNING IN THIS WORKTREE
 
 Jobs `1678574 S-FIT_ssp370_seed2` → `1678595 S-ssp2-indep` → `1678596 S-indparq-ssp2` (chained `afterok`) and
 `1678607 S-crossbuild-gate` were submitted from `/p/projects/open/Jamir/wt-S` at 11:55–12:02 on 2026-08-03,
@@ -110,7 +348,7 @@ by a session other than the one that wrote this block, together with `docs/decis
 rule and is the exact hazard worktrees exist to prevent. **This session committed ONLY its own files, by
 explicit path — never `git add -A`.** Do the same, and check `git status` before any commit.
 
-### Traps found this session (do not re-derive)
+#### Traps found this session (do not re-derive)
 
 - **`mod(hash(cell), kfolds)` folds give the neighbour-distance analysis NO leverage**: 99.5 % of test cells
   have a training cell within **0.75°** (q99 0.61°, median 0.41°). The far bins hold 12–117 cells and their
