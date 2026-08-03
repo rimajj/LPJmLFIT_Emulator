@@ -142,7 +142,21 @@ invalidates *pooling it with seed1 as a pure seed pair*.
    `COPULA2_DIR=.../slow_copula_pooled_w20_t8_seed2`, `SKIP_PARQUET=1`.
    These orchestrators DO take `DEPENDENCY=afterok:<jid>` as an env knob (the `sbatch_*.sh` wrappers
    do not) — chain them on **1678596**.
-3. **STILL THE GATE ON PRODUCTION, carried unchanged: spatially BLOCKED CV.** Re-score
+3. **STILL THE GATE ON PRODUCTION — and ANOTHER SESSION IS ALREADY RUNNING IT (2026-08-03 ~12:05–12:20).**
+   A concurrent line-S session was active in this worktree while the seed2 work was committed: it holds
+   uncommitted edits to `scripts/{eval_slow_copula,blocked_cv_folds_probe}.jl`,
+   `scripts/{build_slow_copula_env_augment,build_slow_spatial_controls,diagnose_slow_neighbour_skill}.py`,
+   `scripts/diagnose_copula_capacity.sh` and an untracked `scripts/diagnose_slow_address_prereg.py`, and it
+   submitted `S-aug-{geo,perm,geo2}` + `S-cap-p{8,14}-{hash,blk15-buf5}-*` (jobs 1678605–1678616). **Its work
+   is NOT in commit `66fb0149`** — I staged only my own files, so nothing of theirs was buried. Two things to
+   know: (i) it also **bulk-renumbered every `ADR 0039` reference in the working tree to `ADR 0040`**, which is
+   why my ADR took the free number **0041** — commit `01e6e248` reserves 0039 by in-code reference for the
+   blocked-CV work and never wrote the file, so 0039/0040 are theirs to settle; (ii) that sweep rewrote the
+   ADR reference *inside a section I had just written*, so **check the numbers in `slow-drf-pipeline` before
+   trusting them**. This violates ADR 0028's one-session-per-line rule — reconcile before assuming either
+   handoff is complete. Their jobs also share our `qos=short` group limit, which is why 1678574/1678607 sat
+   `QOSGrpCpuLimit`.
+   The remaining substance, unchanged: re-score
    `env-qrf-b6x2M` with contiguous lat/lon block folds instead of `mod(hash(cell), k)`
    (`eval_slow_copula.jl:143`), plus a lat/lon-only conditioning control. The six env columns have
    median within-cell sd **exactly 0 for 100 % of cells**, so they are a per-cell spatial ADDRESS,
