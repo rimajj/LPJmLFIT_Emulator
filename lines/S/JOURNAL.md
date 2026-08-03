@@ -537,3 +537,43 @@ Three reusable scripts captured rather than left as one-off commands: `build_slo
 name a new scenario/seed), `diagnose_ind_seed_independence.py` (equal file size to the sibling is the copy
 signature), and `diagnose_ind_binary_equality.py` (carries the decomposition control and exits 3 = VOID
 rather than reporting a false verdict).
+
+## 2026-08-03 — the address null was on the wrong basis, and the gate metric is nearly blind to warming (ADR 0040)
+
+Picked up the handoff's item 3 (*"the decisive experiment and the gate on production: spatially BLOCKED CV"*)
+and found, before spending any compute, that the decision rule it carried was wrong. ADR 0038 said *"decays
+toward the 1-NN level (r≈0.80) ⇒ it is an address"*. That 0.80 is a pure address's skill under **hash** folds;
+the fold-mode-matched null under `block(15°,5°)` is **0.140/0.210**. The rule was off by ~0.63 in r, in the
+direction that would have declared a strong response an address — guardrail 7's reference-basis error, which
+ADR 0033 already records this line making twice. Corrected and pre-registered in ADR 0040 *before* any forest
+log was opened, which is the only thing that stops a decision rule being written after the outcome is known.
+
+Two results came out of the zero-compute pre-registration and both changed the milestone's framing.
+
+**The env tuple is not merely an address.** A 1-NN surrogate under the exact fold designs the forests run
+(read from the Julia code, since `mod(hash(tile),k)` is not reproducible in Python) shows `env6` retaining
+73 % of its hash-fold Wooddens skill under blocking (0.811 → 0.594) where a pure geographic address retains
+21 % (0.837 → 0.140), and the conditioning DELTA staying ~invariant (+0.078 → +0.076/+0.058). So the screen
+predicts, in advance, that the blocked forests will find the gain survives.
+
+**But the gate metric was the wrong instrument all along.** `sd(Δobs)/sd(level)` is only 0.20–0.31, so
+`emu_r` — a level statistic — is 3–5× more sensitive to spatial interpolation than to the warming response a
+coupled run actually turns on. Measured from predictions that already existed: the shipped artifact **damps
+the mean Wooddens warming shift by 37 %** (Rb −892 [−1022,−756] against +2433 observed) and captures only
+24–62 % of the transient pattern against a 0.87–0.96 split-half ceiling. The available comparison arm is
+4-lever confounded, so causation waits on the matched `p8` rung — but the spatial question turns out to have
+been a proxy for a temporal one that is directly measurable and largely unmeasured.
+
+Six adversarial reviewers ran on the design before it was built. Their most useful catches, all acted on:
+`BUFFER_DEG=0` does not remove the mechanism under test (the block perimeter keeps 24.2 % of test cells within
+1° of training data), `mtry` is a hidden fourth lever (`sqrt(p)` is 3 at ncond 8 and 4 at ncond 14, so every
+published ncond-8-vs-14 comparison varied it too), the pooled baseline everyone assumed existed is a 4-lever
+gap from the shipped rung and was mislabelled "60-tree" when the eval ran at 40, and `capacity/*env-qrf-b6x2M`
+— the only prediction sets behind ADR 0038's numbers — were one `CAPTAG` reuse away from deletion. Also caught
+a defect in my own control: the first `p14geo` basis had `geo_abs_lat` and `geo_cos_lat` at Spearman
+−1.000000, so the address control was silently 5-dimensional while declaring `ncond=14`, biasing the
+experiment toward its own hypothesis. Cancelled those two rungs, fixed the basis, and made the builder gate it.
+
+One protocol note worth recording: a **concurrent line-S session** was running in this same worktree (it took
+ADR 0039 for the ssp370 seed2 work and submitted the `S-FIT_ssp370_seed2` chain). Committed only my own files
+by explicit path throughout.

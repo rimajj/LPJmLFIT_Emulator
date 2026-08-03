@@ -28,3 +28,20 @@
 - `lines/S/STATE.md` recorded the pooled `t8` copula baseline as "60-tree/50k/d14"; the evaluation that
   produced those predictions ran at **40** trees (`run_pooled_slow_copula.sh` defaults). The 60 is
   `train_slow_copula.jl`'s artifact setting, printed later in the same log.
+
+### Changed
+
+- **ADR 0040 rejects the decision rule proposed in ADR 0038** for the address-vs-response question. The
+  fold-mode-matched address null under `block(15°,5°)` is Wooddens **0.140/0.210**, not the `r≈0.80` that
+  ADR 0038 named — that figure is a pure address's skill under `mod(hash(cell),k)` folds, so using it as a
+  blocked-fold threshold is a reference-basis error (guardrail 7) that would have declared a strong response
+  an address. The corrected rule is pre-registered before any forest result is read.
+- **A second promotion gate is added: the warming Δ-response.** `emu_r` is a level statistic and
+  `sd(Δobs)/sd(level)` is only 0.198–0.306, so the existing gate is 3–5× more sensitive to spatial
+  interpolation than to the transient response a coupled run depends on. Measured from existing predictions,
+  the shipped env-conditioned artifact damps the mean Wooddens warming shift by **37 %** (tile-cluster
+  bootstrap CI excludes zero) and both arms capture only 24–62 % of the transient pattern against a
+  0.87–0.96 split-half ceiling.
+- ADR 0038's saturation fit and its "0.889 needs ~1052× the table" extrapolation are re-labelled
+  **unresolved**: they rest on +0.002/+0.003 `emu_r` increments against a spatial-sampling sd of order 0.01,
+  with no seed replication anywhere in the ladder.

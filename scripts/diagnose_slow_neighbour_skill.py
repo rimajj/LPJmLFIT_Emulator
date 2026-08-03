@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Is the copula's env-conditioning gain a CLIMATE RESPONSE or a SPATIAL LOOKUP? — answered with ZERO new compute.
 
-WHY THIS EXISTS (milestone S2 / ADR 0039)
+WHY THIS EXISTS (milestone S2 / ADR 0040)
 -----------------------------------------
 ADR 0038 shipped a 14-column recruit-trait copula and recorded the doubt that gates promoting it: the six
 appended env columns have median within-cell sd EXACTLY 0 for 100 % of cells, so they are a per-cell spatial

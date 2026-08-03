@@ -1,7 +1,7 @@
-# blocked_cv_folds_probe.jl — GATE the ADR-0039 spatially-blocked fold machinery before spending compute.
+# blocked_cv_folds_probe.jl — GATE the ADR-0040 spatially-blocked fold machinery before spending compute.
 #
 # WHY. The whole blocked-CV experiment rests on two claims about `eval_slow_copula.jl`'s new fold code, and
-# both fail SILENTLY if wrong: (1) `FOLD_MODE=hash` is byte-identical to the pre-ADR-0039 split, so every
+# both fail SILENTLY if wrong: (1) `FOLD_MODE=hash` is byte-identical to the pre-ADR-0040 split, so every
 # published rung stays comparable; (2) with `FOLD_MODE=block BUFFER_DEG=D`, no training cell is within D of
 # any test cell — which is the entire point of the buffer. Claim 2 in particular cannot be read off the
 # eval's own log: a buffer that silently under-dilates would leave the interpolation confound in place and
@@ -21,12 +21,14 @@
 #
 # Env: CELL_LATLON (required), SRC (a copula table dir — its `cells.i64` supplies the real cell set),
 #      KFOLDS (5), BLOCK_DEGS + BUFFER_DEGS (comma lists), NSAMPLE (cells to
-#      brute-force the distance check on; 4000).
+#      brute-force the distance check on; 4000), FOLDMAP_DIR (if set, also EMIT exact fold maps there),
+#      FOLDMAP_SPECS (mode:B:D:salt entries; default "hash:0:0:0,block:15:5:0,block:15:5:1").
 
 include(joinpath(@__DIR__, "eval_slow_copula.jl"))
 
 const LL = get(ENV, "CELL_LATLON", "/p/tmp/jamirp/emulator_global/tables/cell_latlon.txt")
 const SRCDIR = get(ENV, "SRC", "/p/tmp/jamirp/emulator_global/slow_copula_pooled_w20_t8")
+const FOLDMAP_DIR = get(ENV, "FOLDMAP_DIR", "")
 
 function cell_positions(geo::CellGeo, ucells::Vector{Int64})
     lat = Float64[geo.lat0 + geo.dlat * geo.ilat[c + 1] for c in ucells]
@@ -127,6 +129,51 @@ function main_probe()
                     "$(rpad(round(f05, digits = 4), 7)) $(rpad(round(f10, digits = 4), 7)) $verdict"
             )
             flush(stdout)
+        end
+    end
+    # ---- emit exact FOLD MAPS so a Python analysis scores the SAME splits the forests will --------------
+    #
+    # The pre-registered address NULL has to be measured under the fold design the forest runs actually use.
+    # Python cannot recompute it: `mod(hash(tile), kfolds)` is Julia's `hash(::Int64)`. So write the design
+    # out here, from the verified code, as `cell fold bufmask` where bit k of `bufmask` means "this cell is
+    # BUFFERED OUT of fold k's training set". Reconstructing train/test in Python is then exact, not a
+    # reimplementation that could silently diverge.
+    if !isempty(FOLDMAP_DIR)
+        mkpath(FOLDMAP_DIR)
+        for spec in split(get(ENV, "FOLDMAP_SPECS", "hash:0:0:0,block:15:5:0,block:15:5:1"), ",")
+            p = split(strip(spec), ":")
+            length(p) == 4 || error("FOLDMAP_SPECS entries are mode:B:D:salt, got \"$spec\"")
+            mode = p[1]
+            B = parse(Float64, p[2])
+            D = parse(Float64, p[3])
+            slt = parse(Int, p[4])
+            fv = mode == "block" ? block_folds(ucells, geo, kfolds, B, slt) :
+                Int[mod(hash(c), kfolds) for c in ucells]
+            masks = zeros(Int, length(ucells))
+            if mode == "block" && D > 0
+                for k in 0:(kfolds - 1)
+                    bm = buffer_rows(ucells, geo, BitVector(fv .== k), D)
+                    for j in eachindex(ucells)
+                        bm[j] && (masks[j] |= (1 << k))
+                    end
+                end
+            end
+            tag = mode == "block" ? "block$(B)_buf$(D)_s$(slt)" : "hash"
+            path = joinpath(FOLDMAP_DIR, "foldmap_$(tag).txt")
+            open(path, "w") do io
+                println(io, "# foldmap written by scripts/blocked_cv_folds_probe.jl (ADR 0040)")
+                println(io, "# mode $mode")
+                println(io, "# block_deg $B")
+                println(io, "# buffer_deg $D")
+                println(io, "# salt $slt")
+                println(io, "# kfolds $kfolds")
+                println(io, "# src $SRCDIR")
+                println(io, "# cell fold bufmask   (bit k of bufmask = buffered OUT of fold k's TRAINING set)")
+                for j in eachindex(ucells)
+                    println(io, ucells[j], " ", fv[j], " ", masks[j])
+                end
+            end
+            println("   wrote $path  ($(length(ucells)) cells, $(count(!=(0), masks)) ever-buffered)")
         end
     end
     println("== all fold gates PASSED")

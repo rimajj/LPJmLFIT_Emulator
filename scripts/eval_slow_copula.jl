@@ -20,9 +20,10 @@
 #   OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic KFOLDS=5 julia scripts/eval_slow_copula.jl
 # ENV: OUT, KFOLDS (5), NTREES/MAX_DEPTH/MIN_LEAF/SUBSAMPLE, QRF (0; 1 = Meinshausen QRF leaf weighting,
 #      ADR 0037), MTRY (0 = DRF's own sqrt(p) default), FOLD_MODE (hash|block), BLOCK_DEG (15),
-#      BUFFER_DEG (0), CELL_LATLON (required by FOLD_MODE=block; see the ADR-0039 block below).
+#      BUFFER_DEG (0), BLOCK_SALT (0; replicates the tile->fold colouring, whose spread is the same
+#      order as the effect being measured), CELL_LATLON (required by FOLD_MODE=block; see the block below).
 #      Heavy (K×naxes forest fits, store_values) → SLURM.
-#      EVERY new knob defaults to the pre-ADR-0039 behaviour, so an unchanged invocation writes
+#      EVERY new knob defaults to the pre-ADR-0040 behaviour, so an unchanged invocation writes
 #      byte-identical `pred_<axis>.f64` (guardrail 4).
 
 include(joinpath(@__DIR__, "..", "src", "drf.jl"))
@@ -93,7 +94,7 @@ function leaf_geometry(f::DRF.Forest, max_depth::Int)
     )
 end
 
-# ── ADR 0039: spatially BLOCKED folds and a physical training BUFFER ───────────────────────────────
+# ── ADR 0040: spatially BLOCKED folds and a physical training BUFFER ───────────────────────────────
 #
 # WHY. `mod(hash(cell), kfolds)` scatters test cells uniformly, so a test cell's geographic NEIGHBOURS stay
 # in the training fold — measured on the historic t8 basis, 99.5 % of test cells have a training cell within
@@ -179,7 +180,7 @@ end
 Fold id per ROW, assigned to the cell's `block_deg`×`block_deg` tile. Tile offsets are taken from the whole
 globe (`+90` / `+180`), not from this grid's crop, so the tiling is independent of the grid file's extent.
 """
-function block_folds(cells::Vector{Int64}, geo::CellGeo, kfolds::Int, block_deg::Float64)
+function block_folds(cells::Vector{Int64}, geo::CellGeo, kfolds::Int, block_deg::Float64, salt::Int = 0)
     ucells = unique(cells)
     miss = [c for c in ucells if !(0 <= c <= length(geo.known) - 1) || !geo.known[c + 1]]
     if !isempty(miss)
@@ -199,8 +200,11 @@ function block_folds(cells::Vector{Int64}, geo::CellGeo, kfolds::Int, block_deg:
         tile[j] = tlat * 100_000 + tlon
     end
     ntile = length(unique(tile))
-    println("   FOLD_MODE=block: $ntile tiles of $(block_deg)° over $(length(ucells)) cells")
-    return Int[mod(hash(t), kfolds) for t in tile]
+    println("   FOLD_MODE=block: $ntile tiles of $(block_deg)° over $(length(ucells)) cells, salt=$salt")
+    # ONE tile→fold colouring is ONE draw, and its spread is the same order as the effect being measured, so
+    # the salt exists to replicate it. `salt = 0` adds nothing to the packed tile id, so the default
+    # colouring is bit-identical to the unsalted one.
+    return Int[mod(hash(t + salt * 7_000_003), kfolds) for t in tile]
 end
 
 """
@@ -304,7 +308,7 @@ function main()
     # default equal-weight concatenation of all leaf values, which over-weights whichever tree
     # happened to land x in a LARGE leaf. Default 0 => this script stays byte-identical.
     qrf = get(ENV, "QRF", "0") == "1"
-    # ADR 0039. `MTRY=0` (the default) leaves `DRF.fit_forest`'s own `mtry::Int = 0` sentinel in place, so
+    # ADR 0040. `MTRY=0` (the default) leaves `DRF.fit_forest`'s own `mtry::Int = 0` sentinel in place, so
     # this script stays byte-identical. It is exposed because `mtry_eff = round(Int, sqrt(p))` is 3 at
     # ncond 8 but 4 at ncond 14 — so an ncond-8-vs-14 comparison silently varies mtry too, and forcing
     # MTRY=4 on the narrow table is what makes the conditioning lever a matched pair (ADR 0033's lesson).
@@ -312,15 +316,16 @@ function main()
     fold_mode = get(ENV, "FOLD_MODE", "hash")
     block_deg = parse(Float64, get(ENV, "BLOCK_DEG", "15"))
     buffer_deg = parse(Float64, get(ENV, "BUFFER_DEG", "0"))
+    block_salt = parse(Int, get(ENV, "BLOCK_SALT", "0"))
     cell_latlon = get(ENV, "CELL_LATLON", "")
     fold_mode in ("hash", "block") || error("FOLD_MODE must be `hash` or `block`, got \"$fold_mode\"")
-    @info "loaded copula table" n ncond naxes prod_axes nstruct struct_axes ncells = length(unique(cells)) kfolds fold_mode block_deg buffer_deg mtry
+    @info "loaded copula table" n ncond naxes prod_axes nstruct struct_axes ncells = length(unique(cells)) kfolds fold_mode block_deg buffer_deg block_salt mtry
 
     # `hash` reproduces the historic split EXACTLY (same expression, same order, same element type) so every
-    # published rung stays comparable; `block` is the ADR-0039 spatial split. See the CellGeo block above.
+    # published rung stays comparable; `block` is the ADR-0040 spatial split. See the CellGeo block above.
     fold = if fold_mode == "block"
         isempty(cell_latlon) && error("FOLD_MODE=block requires CELL_LATLON (build_slow_spatial_controls.py)")
-        block_folds(cells, read_cell_latlon(cell_latlon), kfolds, block_deg)
+        block_folds(cells, read_cell_latlon(cell_latlon), kfolds, block_deg, block_salt)
     else
         Int[mod(hash(c), kfolds) for c in cells]        # each cell in exactly ONE test fold
     end

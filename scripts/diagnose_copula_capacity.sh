@@ -51,6 +51,20 @@
 #        only the 4 PRODUCTION trait axes are evaluated -- the ADR-0030 gate axes.
 #        Cuts the eval ~33%. The struct axes are diagnostic (ADR 0036) and cannot
 #        change the gate's verdict, so dropping them costs the experiment nothing.)
+#      --- ADR 0040, the spatial-fold knobs (all default to the previous behaviour) ---
+#      FOLD_MODE (hash|block), BLOCK_DEG (15), BUFFER_DEG (0), CELL_LATLON
+#        (${BASE}/tables/cell_latlon.txt, from scripts/build_slow_spatial_controls.py),
+#        MTRY (0 = DRF's own sqrt(p); pass 4 on an ncond-8 table to match an ncond-14 rung,
+#        because sqrt(p) rounds to 3 at p=8 and 4 at p=14 -- a hidden fourth lever),
+#        FORCE (0; 1 = overwrite a CAPTAG whose shadow dir is already populated).
+#      BUFFER_DEG=0 is a SENSITIVITY rung, not the test: the block PERIMETER keeps an adjacent
+#        training cell, measured 24.2% of test cells within 1.0 deg at BLOCK_DEG=15. Put the
+#        verdict on BUFFER_DEG >= 2. Gate the design first with scripts/blocked_cv_folds_probe.jl.
+#      CAPTAG MUST encode the fold scheme (e.g. p14env-blk15-buf5): the shadow dir is wiped
+#        unconditionally, so a reused CAPTAG destroys the earlier rung's predictions.
+#      On a POOLED SRC, [3/3] switches to score_slow_copula_dispersion.py automatically --
+#        SRC2 defaults to the HISTORIC seed2 and joining it to a pooled seed1 silently
+#        scores the intersection (criteria 1 and 4 are not computable for pooled).
 #
 # COST -- read before choosing a rung. Fit cost per (fold, axis) scales as
 # ntrees*subsample; predict cost over all ~198M rows scales as ntrees. Raising the
@@ -75,6 +89,10 @@ EVAL_NTREES="${EVAL_NTREES:-40}"; EVAL_SUBSAMPLE="${EVAL_SUBSAMPLE:-50000}"
 MAX_DEPTH="${MAX_DEPTH:-14}"; MIN_LEAF="${MIN_LEAF:-20}"; KFOLDS="${KFOLDS:-5}"
 TIME="${TIME:-04:00:00}"; NCPUS="${NCPUS:-64}"; SUBMIT="${SUBMIT:-yes}"
 TRAIT_ONLY="${TRAIT_ONLY:-0}"; QRF="${QRF:-0}"
+# ADR 0040 — the spatial-fold knobs. All default to the pre-ADR-0040 behaviour.
+FOLD_MODE="${FOLD_MODE:-hash}"; BLOCK_DEG="${BLOCK_DEG:-15}"; BUFFER_DEG="${BUFFER_DEG:-0}"
+CELL_LATLON="${CELL_LATLON:-${BASE}/tables/cell_latlon.txt}"; MTRY="${MTRY:-0}"
+FORCE="${FORCE:-0}"
 ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${QOS:-short}"
 JULIA="${JULIA:-/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia}"   # DRF is zero-dep pure-Base
 PY="${PY:-/home/jamirp/.conda/envs/py311_new/bin/python}"
@@ -84,6 +102,44 @@ LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 
 [ -d "${SRC}" ]  || { echo "ERROR: SRC not a dir: ${SRC}" >&2; exit 1; }
 [ -d "${SRC2}" ] || { echo "ERROR: SRC2 not a dir: ${SRC2}" >&2; exit 1; }
+
+# ---- ADR 0040 pre-flight, on the LOGIN node so it fails before queue time ---------
+# The in-job shell is `set -uo pipefail` WITHOUT -e, so a missing input surfaces only as a Julia error
+# after the job has waited in the queue.
+case "${FOLD_MODE}" in
+    hash) ;;
+    block)
+        [ -s "${CELL_LATLON}" ] || { echo "ERROR: FOLD_MODE=block needs CELL_LATLON; not found or empty: ${CELL_LATLON} (run scripts/build_slow_spatial_controls.py)" >&2; exit 1; }
+        awk -v b="${BLOCK_DEG}" 'BEGIN{exit !(b>0 && b<=90)}' </dev/null || { echo "ERROR: BLOCK_DEG must be in (0, 90], got ${BLOCK_DEG}" >&2; exit 1; }
+        awk -v d="${BUFFER_DEG}" 'BEGIN{exit !(d>=0 && d<=60)}' </dev/null || { echo "ERROR: BUFFER_DEG must be in [0, 60], got ${BUFFER_DEG}" >&2; exit 1; }
+        ;;
+    *) echo "ERROR: FOLD_MODE must be hash|block, got ${FOLD_MODE}" >&2; exit 1;;
+esac
+
+# CAPTAG is the ONLY thing separating two rungs, and the shadow dir is wiped unconditionally below. Two
+# rungs differing only in FOLD_MODE/BUFFER_DEG/MTRY share a natural CAPTAG, so the second silently destroys
+# the first's predictions — and run concurrently it deletes the first job's input symlinks mid-flight, which
+# the SRC-only leak guard cannot see. Refuse both cases.
+if [ -d "${SHADOW}" ] && [ -n "$(ls -A "${SHADOW}" 2>/dev/null)" ] && [ "${FORCE}" != "1" ]; then
+    echo "ERROR: ${SHADOW} is not empty — CAPTAG '${CAPTAG}' was already used." >&2
+    echo "       Encode the fold scheme in CAPTAG (e.g. p14env-blk15-buf5), or set FORCE=1 to overwrite." >&2
+    exit 1
+fi
+if squeue -h -u "$USER" -n "S-cap-${CAPTAG}" 2>/dev/null | grep -q .; then
+    echo "ERROR: a job named S-cap-${CAPTAG} is already queued/running — it would share ${SHADOW}." >&2
+    exit 1
+fi
+
+# `noise_floor_vs_emulator.py` needs a seed2 of the SAME scenario. SRC2 defaults to the HISTORIC seed2, and
+# `percell_table` joins on Cell with how="inner", so a POOLED seed1 against it silently shrinks to the
+# intersection and reports a plausible floor / ceiling / %GAP. Branch on the source's own manifest instead.
+SRC_SCENARIO="$(awk -F'\t' '$1=="scenario"{print $2}' "${SRC}/manifest_copula.txt" 2>/dev/null || true)"
+GATE_MODE="noise_floor"
+if [ "${SRC_SCENARIO}" = "pooled" ]; then
+    GATE_MODE="dispersion"
+    echo "NOTE: SRC scenario is 'pooled' — [3/3] will run score_slow_copula_dispersion.py, NOT"
+    echo "      noise_floor_vs_emulator.py (no pooled seed2 exists; criteria 1 and 4 stay uncomputable)."
+fi
 
 # ---- build the shadow dir: inputs symlinked, predictions NOT -----------------
 mkdir -p "${SHADOW}"
@@ -124,6 +180,8 @@ SRC_PRED_SUM="$(cd "${SRC}" && { ls pred_*.f64 2>/dev/null || true; } | LC_ALL=C
 echo "shadow dir : ${SHADOW}"
 echo "  inputs   : symlinked from ${SRC} ($(find "${SHADOW}" -maxdepth 1 -type l | wc -l) links)"
 echo "  capacity : NTREES=${EVAL_NTREES} SUBSAMPLE=${EVAL_SUBSAMPLE} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} KFOLDS=${KFOLDS}"
+echo "  folds    : FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} MTRY=${MTRY} gate=${GATE_MODE}"
+echo "  latlon   : ${CELL_LATLON}"
 
 TAG="S-cap-${CAPTAG}"
 jcf="$(mktemp)"
@@ -145,11 +203,14 @@ export POLARS_MAX_THREADS=${NCPUS} OMP_NUM_THREADS=${NCPUS}
 export JULIA_DEPOT_PATH="\${JULIA_DEPOT_PATH:-\$HOME/.julia}" JULIA_NUM_THREADS=${NCPUS}
 echo "=== ${TAG} on \$(hostname) at \$(date) ==="
 echo "=== CAPACITY: NTREES=${EVAL_NTREES} SUBSAMPLE=${EVAL_SUBSAMPLE} MAX_DEPTH=${MAX_DEPTH} MIN_LEAF=${MIN_LEAF} QRF=${QRF} ==="
+echo "=== FOLDS: FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} MTRY=${MTRY} ==="
 echo "=== shadow=${SHADOW}  src=${SRC} (inputs symlinked; preds land in the shadow) ==="
 
 echo; echo "== [1/3] K-fold-by-cell OOS at this capacity =========================="
 OUT=${SHADOW} KFOLDS=${KFOLDS} NTREES=${EVAL_NTREES} MAX_DEPTH=${MAX_DEPTH} \\
-  MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${EVAL_SUBSAMPLE} QRF=${QRF} ${JULIA} scripts/eval_slow_copula.jl
+  MIN_LEAF=${MIN_LEAF} SUBSAMPLE=${EVAL_SUBSAMPLE} QRF=${QRF} MTRY=${MTRY} \\
+  FOLD_MODE=${FOLD_MODE} BLOCK_DEG=${BLOCK_DEG} BUFFER_DEG=${BUFFER_DEG} CELL_LATLON=${CELL_LATLON} \\
+  ${JULIA} scripts/eval_slow_copula.jl
 rc=\$?; [ \$rc -ne 0 ] && { echo "eval_slow_copula.jl FAILED rc=\$rc"; echo "=== JOB DONE tag=${TAG} exit=\$rc ==="; exit \$rc; }
 
 echo; echo "== [2/3] the source table's own predictions must be UNTOUCHED ========="
@@ -165,9 +226,16 @@ echo "   OK: ${SRC} pred_*.f64 unchanged (md5 of name/size/mtime = \$now)"
 echo "   shadow preds written here:"
 ls -la ${SHADOW}/pred_*.f64 | sed 's/^/     /'
 
-echo; echo "== [3/3] the ADR-0030 per-cell gate, on THIS capacity's predictions ==="
-COPULA_DIR=${SHADOW} COPULA2_DIR=${SRC2} SKIP_PARQUET=1 SKIP_LEGACY=1 \\
-  ${PY} scripts/noise_floor_vs_emulator.py
+echo; echo "== [3/3] the per-cell gate, on THIS capacity's predictions (mode=${GATE_MODE}) ==="
+if [ "${GATE_MODE}" = "dispersion" ]; then
+    # POOLED source: there is no pooled seed2, so the ADR-0030 floor/ceiling/%GAP is not computable and
+    # joining the HISTORIC seed2 would silently score an intersection. emu_r + sd_ratio only.
+    TABLE=${SRC} PRED_A=${SHADOW} LABEL_A=${CAPTAG} \\
+      ${PY} scripts/score_slow_copula_dispersion.py
+else
+    COPULA_DIR=${SHADOW} COPULA2_DIR=${SRC2} SKIP_PARQUET=1 SKIP_LEGACY=1 \\
+      ${PY} scripts/noise_floor_vs_emulator.py
+fi
 rc=\$?
 echo "=== JOB DONE tag=${TAG} exit=\${rc} ==="
 exit \${rc}

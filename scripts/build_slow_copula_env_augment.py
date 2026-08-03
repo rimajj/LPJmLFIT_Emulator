@@ -53,9 +53,9 @@ Usage (SLURM; reads ~13 GB, writes ~22 GB):
 Env: SRC (required), OUT (required), SCENARIO (historic|ssp370|pooled — LABEL ONLY: it is printed and
      copied into the manifest, and since the year filter was removed it selects nothing, so `pooled` is
      safe), COPULA_ENV_COLS (required, comma-separated columns of the tail source), CHUNK (rows per write
-     chunk, default 8_000_000), ENV_PARQUET (ADR 0039: a per-CELL tail parquet instead of the per-cell-year
+     chunk, default 8_000_000), ENV_PARQUET (ADR 0040: a per-CELL tail parquet instead of the per-cell-year
      `cell_year_feats` — used for the `p14geo` / `p14perm` ablation controls; unset ⇒ byte-identical to the
-     pre-ADR-0039 behaviour), TAIL_TAG (a provenance label copied into the manifest as `env_tail_tag`).
+     pre-ADR-0040 behaviour), TAIL_TAG (a provenance label copied into the manifest as `env_tail_tag`).
 
 Sidecars: every file the source manifest NAMES is symlinked into OUT, not just `Y_*`/`cells.i64` — the
 `pooled` tables carry `scenario_tag  scenario.i64` and an earlier version of this script dropped it,
@@ -79,13 +79,13 @@ OUT = os.environ.get("OUT", "")
 SCENARIO = os.environ.get("SCENARIO", "historic")
 ENV_COLS = [c.strip() for c in os.environ.get("COPULA_ENV_COLS", "").split(",") if c.strip()]
 CHUNK = int(os.environ.get("CHUNK", "8000000"))
-# ADR 0039. The tail source is a knob so the ABLATION CONTROLS ride this same verified transform instead of
+# ADR 0040. The tail source is a knob so the ABLATION CONTROLS ride this same verified transform instead of
 # a forked script: `p14geo` (a pure-position tail) and `p14perm` (the true env tuples permuted across cells)
 # are per-CELL parquets from scripts/build_slow_spatial_controls.py. The `group_by("Cell").mean()` below is
 # the IDENTITY on a table that already has one row per Cell, so no branch is needed in the hot path — but
 # that also means a DUPLICATED Cell in such an input would be silently AVERAGED, manufacturing a tuple that
 # exists in neither marginal and defeating the whole point of the perm control. Hence the explicit
-# one-row-per-Cell gate below. Unset ⇒ `cell_year_feats` ⇒ byte-identical to the pre-ADR-0039 behaviour.
+# one-row-per-Cell gate below. Unset ⇒ `cell_year_feats` ⇒ byte-identical to the pre-ADR-0040 behaviour.
 ENV_PARQUET = os.environ.get("ENV_PARQUET", "").strip() or CELL_YEAR_FEATS
 TAIL_TAG = os.environ.get("TAIL_TAG", "").strip()  # provenance label, copied into the manifest
 
@@ -140,7 +140,7 @@ def main():
         raise SystemExit(f"FATAL: COPULA_ENV_COLS not in {ENV_PARQUET}: {missing}")
     if ENV_PARQUET != CELL_YEAR_FEATS:
         # A pre-materialized per-Cell tail: the aggregation below is the IDENTITY, so the duplicate-Cell
-        # guard AFTER it can no longer catch anything. Gate the INPUT instead (see the ADR-0039 note above).
+        # guard AFTER it can no longer catch anything. Gate the INPUT instead (see the ADR-0040 note above).
         raw = pl.scan_parquet(ENV_PARQUET).select("Cell").collect()
         if raw.n_unique() != raw.height:
             raise SystemExit(
@@ -171,7 +171,7 @@ def main():
         print(f"   env means : {envt.height:,} cells from cell_year_feats over Year "
               f"{yr['lo'][0]}-{yr['hi'][0]} (climatology, no scenario filter — the boundary's basis)")
     else:
-        # A per-Cell tail has no Year column at all — that is the point (ADR 0039). Report its provenance
+        # A per-Cell tail has no Year column at all — that is the point (ADR 0040). Report its provenance
         # instead of a Year span, rather than letting `pl.col("Year")` raise ColumnNotFoundError.
         print(f"   env means : {envt.height:,} cells from {ENV_PARQUET} (per-Cell tail, no Year axis)")
 
@@ -282,7 +282,7 @@ def main():
     lines.append(f"env_augmented_from\t{src}")
     # Inert extra keys: every consumer is key-driven (`read_manifest` here, train_slow_copula.jl:75,
     # eval_slow_copula.jl:93), so an unknown key is ignored. They exist so a shadow dir's provenance is
-    # readable from the table itself rather than reconstructed from an orchestrator default (ADR 0039).
+    # readable from the table itself rather than reconstructed from an orchestrator default (ADR 0040).
     lines.append(f"env_tail_source\t{ENV_PARQUET}")
     if TAIL_TAG:
         lines.append(f"env_tail_tag\t{TAIL_TAG}")
