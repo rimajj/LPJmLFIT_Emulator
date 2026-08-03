@@ -211,6 +211,24 @@ curl -s -H "Authorization: token $TOKEN" https://api.github.com/repos/$R/commits
 fail on Julia-prerelease churn); `test (macOS, lts)` is a non-required extra. **Never merge on a red
 required check.**
 
+**`conclusion: cancelled` is NOT a red check — it is NO VERDICT, and two active sessions can starve a
+branch of one indefinitely (`[VERIFIED 2026-08-03]`).** GitHub keeps only one *pending* run per branch, so
+every push to `line/<X>` cancels the in-flight Julia jobs of the previous one. With two sessions pushing to
+the same line branch, `test (lts)`/`test (1)` came back `cancelled` on three successive shas while `format`
+and `python` (much faster) completed `success` each time — the Julia suite never once ran to completion on
+the branch. Do not read that as a break, and do not merge on it either. Two ways out, in order:
+1. **Get the verdict from the CI-faithful SLURM suite instead** — `scripts/run_tests_slurm.sh <X>-<tag>`
+   (CLAUDE.md §2 calls it CI-faithful precisely so it can stand in). It is immune to push races and to
+   session teardown. A green `0 fail` there plus GitHub-green `format`/`python` on the exact sha is a sound
+   basis to merge; `main`'s own post-merge run then supplies the authoritative Julia verdict (trap 5).
+   Caveat when using it this way: it exercises the *package* (`src/` + `test/`), so it does **not** vouch
+   for a sibling's `scripts/**` edits — the repo-wide Runic `format` gate is what covers those.
+2. `POST /actions/runs/<id>/rerun` — but the `gh` oauth token in `~/.config/gh/hosts.yml` returns **403**
+   for it, so this is usually not available.
+**Merge the sha you actually verified**, not whatever the tip has drifted to: `git -C "$INT" merge <sha>` on
+a mid-branch commit is legitimate and leaves the newer commits for their own session to merge. Chasing a
+tip that a concurrent session keeps advancing never converges.
+
 ## End-of-session retrospective (do before wrapping, not just before a commit)
 
 Ask: **"what did this session learn that a future session would otherwise re-derive, and where does it
