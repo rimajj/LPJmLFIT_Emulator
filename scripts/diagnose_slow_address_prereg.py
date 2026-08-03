@@ -119,6 +119,32 @@ def latlon() -> pl.DataFrame:
     return pl.DataFrame({"Cell": [r[0] for r in rows], "lat": [r[1] for r in rows], "lon": [r[2] for r in rows]})
 
 
+def latlon_lut(ll: pl.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Cell-indexed lat/lon arrays, so a tile label can be taken in the CALLER's row order.
+
+    Why this exists rather than a join: the response mode used to build its bootstrap cluster labels as
+    `ll.join(DataFrame(Cell=cells_of_the_statistic), on="Cell", how="inner")`, which returns rows in **`ll`'s**
+    order, while `dp`/`dy` are in the order polars' `group_by` happened to emit. The labels were therefore a
+    PERMUTATION of the rows they were supposed to cluster, and a `tl = tl[:min(len(tl), len(dy))]` truncation
+    silently absorbed any length mismatch on top of that. Scrambled cluster labels make a tile bootstrap
+    degenerate toward an independent-cell bootstrap, i.e. they UNDERSTATE the spatial sampling sd — the exact
+    error the tile clustering was introduced to remove.
+
+    It was invisible because the point estimates never use `tl`, so only the CIs were wrong. The detector was
+    reproducibility: `cluster_boot` has a FIXED `seed=12345`, yet two runs over identical inputs (jobs 1681338
+    and 1681925) printed identical point estimates and DIFFERENT CIs — possible only because
+    `per_cell_scenario`'s `group_by` row order varies run to run while `ll`'s does not.
+    `[VERIFIED 2026-08-03]`
+    """
+    cell = ll["Cell"].to_numpy()
+    n = int(cell.max()) + 1
+    lat = np.full(n, np.nan)
+    lon = np.full(n, np.nan)
+    lat[cell] = ll["lat"].to_numpy()
+    lon[cell] = ll["lon"].to_numpy()
+    return lat, lon
+
+
 def unit_sphere(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     la, lo = np.deg2rad(lat), np.deg2rad(lon)
     return np.column_stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)])
@@ -178,6 +204,7 @@ def mode_response(axes: list[str]) -> None:
     if os.environ.get("PRED2", "").strip():
         preds.append((os.environ["PRED2"], os.environ.get("LABEL2", "B")))
     ll = latlon()
+    LAT_BY_CELL, LON_BY_CELL = latlon_lut(ll)
     print("== R0-A  WARMING RESPONSE from existing predictions (zero new compute)")
     print(f"   table {TABLE}   MINSTEM={MINSTEM} in BOTH scenario blocks   NBOOT={NBOOT} tile-{TILE_DEG}deg clusters")
     for pred_dir, label in preds:
@@ -205,10 +232,13 @@ def mode_response(axes: list[str]) -> None:
             rh = float(np.corrcoef(dh0, dh1)[0, 1])
             rel = 2 * rh / (1 + rh) if rh > -1 else np.nan
             sd_true = float(np.std(dy)) * np.sqrt(max(rel, 0.0))
-            ll_k = ll.join(pl.DataFrame({"Cell": k["Cell"].to_numpy()[ok]}), on="Cell", how="inner")
-            tl = tile_id(ll_k["lat"].to_numpy(), ll_k["lon"].to_numpy(), TILE_DEG)
-            m = min(len(tl), len(dy))
-            tl = tl[:m]
+            # Tile labels in the STATISTIC's row order — never via a join (see latlon_lut's docstring).
+            cells_k = k["Cell"].to_numpy()[ok]
+            if cells_k.max() >= LAT_BY_CELL.size or not np.isfinite(LAT_BY_CELL[cells_k]).all():
+                miss = cells_k[~np.isfinite(LAT_BY_CELL[np.minimum(cells_k, LAT_BY_CELL.size - 1)])]
+                raise SystemExit(f"FATAL: {np.unique(miss).size} cells absent from {CELL_LATLON}")
+            tl = tile_id(LAT_BY_CELL[cells_k], LON_BY_CELL[cells_k], TILE_DEG)
+            assert tl.size == dy.size, f"tile labels {tl.size} != rows {dy.size}"
             Rr = float(np.corrcoef(dp, dy)[0, 1])
             Ra = float(np.std(dp)) / sd_true if sd_true > 0 else np.nan
             Rb = float(np.mean(dp) - np.mean(dy))

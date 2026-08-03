@@ -557,6 +557,7 @@ Step 3 of the previous section is now implemented. **Do not hand-roll it again.*
 ```bash
 # 0. provision the position artifacts (~7 s, login node; writes to $BASE/tables/)
 python scripts/build_slow_spatial_controls.py            # cell_latlon.txt + cell_geo_tail + cell_env_perm_tail
+python scripts/build_slow_cell_env_sidecar.py            # tables/cell_env.parquet — the RUNTIME env tail (below)
 # 1. GATE the fold machinery + pick BLOCK_DEG/BUFFER_DEG from measurement, before spending any compute
 BLOCK_DEGS=10,15,20 BUFFER_DEGS=0,2,5,10 NSAMPLE=500 julia --project=. scripts/blocked_cv_folds_probe.jl
 # 2. run a rung
@@ -578,6 +579,30 @@ Four measured facts that change how you design the experiment — each cost a ru
 3. **`mtry` is a hidden fourth lever.** `DRF.fit_forest` uses `mtry_eff = round(Int, sqrt(p))` ⇒ **3** at
    ncond 8 but **4** at ncond 14, so every published ncond-8-vs-14 comparison varied mtry too. Pass `MTRY=4`
    on the narrow table to make the conditioning lever a matched pair (this is ADR 0033's failure mode again).
+   And once matched, **width COSTS skill**: `p14perm-hash` (14 columns, 6 of them zero-information) scores
+   **below** `p8-hash-mtry4` on every axis — Wooddens **−0.0201 ± 0.0022** (z ≈ 9). So a conditioning gain
+   measured at matched mtry is *net* of a width penalty, and "extra columns bought capacity" is refuted rather
+   than assumed. Measured at hash folds only — this matrix proved fold-mode sign flips are real, so do not
+   assume it transfers to blocked folds.
+3b. **The measured noise scale of a Δ`emu_r` on this table** — `scripts/diagnose_slow_delta_power.py`, which
+   re-derives `emu_r` from any set of arms' stored `pred_*.f64`, **gates on reproducing each arm's logged
+   value**, then runs a PAIRED 15° tile-cluster bootstrap (one tile resample applied to every arm at once, so
+   it isolates the which-cells component and cancels what is common). Run it before quoting any Δ as
+   resolved. Measured: **0.004–0.006 under hash folds,
+   0.012–0.016 under 15°/5° blocking** — a 3× difference, so one scalar cannot serve both. It is a LOWER
+   bound: fold colouring adds ~0.014 (measured: re-colouring alone moved the ncond-8 blocked arm +0.0136 in
+   Wooddens) and forest seed adds an unmeasured amount (`seed = a` is hard-wired). Budget accordingly: a
+   blocked delta of ~0.03 is roughly two sds, so it supports a **sign** claim, not a retention *ratio*.
+3c. **Two `DRF` internals that bias a control if you don't know them.** (i) `src/drf.jl:128` guards the
+   `min_leaf` scan on sorted values but `:137` sets `best_thr = 0.5*(xj + xj1)`, so a feature with
+   **ULP-adjacent distinct values** (trig transforms — `geo_sin_lon`, `geo_x`) collapses the midpoint onto
+   `xj1` and the realized child falls **below `MIN_LEAF`** (observed down to 7 against `MIN_LEAF=20`; the geo
+   arms were the only arms in a 7-arm matrix whose realized minimum was not exactly 20). Finer leaves = more
+   memorisation capacity, which biases a *position* control in favour of the hypothesis it is meant to
+   falsify. Fix by **rank-transforming the basis to consecutive integers** (split-equivalent for an
+   axis-aligned tree; integer midpoints `k+0.5` are exact and strictly interior) — do **not** patch the
+   splitter, which would move fitted forests and committed baselines (guardrail 4). (ii) Check realized leaf
+   sizes in the `geometry:` log lines of every new control basis before trusting the control.
 4. **The baseline you want to compare against probably does not exist.** The in-place
    `slow_copula_pooled_w20_t8/pred_*.f64` were written by `run_pooled_slow_copula.sh` at **40 × 50k / d14 /
    QRF=0 / mtry 3** — a FOUR-lever gap to a `6 × 2M / d22 / QRF=1 / mtry 4 / ncond 14` rung. (`lines/S/STATE.md`
@@ -592,7 +617,32 @@ lexicographic sort; neighbour correlation collapses 0.96–0.999 → 0.003–0.0
 buy capacity/mtry". A blocked `p14perm` run is pointless — a permuted tuple is still a unique per-cell key,
 so it can never support *spatial* interpolation in any fold mode.
 
-**Two traps.**
+**Three traps.**
+- **A wrapper that hands its inner script an EXPLICIT env prefix makes every unlisted knob silently inert
+  (`[VERIFIED 2026-08-03]`).** `eval_slow_copula.jl` reads `BLOCK_SALT` from `ENV`, but
+  `diagnose_copula_capacity.sh` listed `FOLD_MODE`/`BLOCK_DEG`/`BUFFER_DEG`/`MTRY`/`CELL_LATLON` on the Julia
+  command line and **not** `BLOCK_SALT`, so a salt-1 rung rode on `sbatch --export=ALL` inheritance and the
+  `=== FOLDS:` header did not echo the salt either. Fixed (the driver now passes and echoes it), but the shape
+  recurs: **before trusting any new knob, `SUBMIT=no` and grep the generated jcf for it.** The failure is
+  worse than an ignored flag — a salt that silently stays 0 yields a replicate that agrees with its sibling
+  *exactly*, so ADR 0040 §5's "NOT RESOLVABLE if the two salts disagree" clause returns a false RESOLVED in
+  the direction of whichever colouring ran first. Same shape as ADR 0041's `random_seed`, inert under
+  `-DFROM_RESTART` and invisible in the C log. **Verify from the log**: the Julia `@info` block prints
+  `block_salt = N`; that line, not the submit command, is the evidence.
+- **Build a blocked comparison as a PAIRED DELTA at a shared colouring — never as a level
+  (`[VERIFIED 2026-08-03]`, ADR 0042 §4 addendum).** Measured on the two colourings of the same blocked design:
+  re-colouring moved the **single-arm** blocked `emu_r` by **+0.0136** in Wooddens (0.7340 → 0.7476) but moved
+  the **paired delta** between two arms by only **+0.0024** (+0.0314 → +0.0338). The colouring effect is almost
+  entirely *common to both arms* and cancels in the difference. Consequences: (a) a blocked `emu_r` **level** is
+  colouring-sensitive — never quote one alone, and never compare levels across colourings or against a
+  hash-fold level; (b) a blocked **delta** at a shared colouring is robust, which is why a rule written on
+  deltas survived a replicate that would have broken a rule written on levels; (c) a *level* claim needs
+  replicate colourings, a *delta* claim needs far fewer.
+- **One blocked colouring is one draw — budget the salt replicate into the experiment from the start.** The
+  `geo` null's own salt-0-to-salt-1 spread is **0.140 vs 0.210** in Wooddens `emu_r`, comparable to the
+  conditioning delta being adjudicated, which is why ADR 0040 pre-registered a NOT-RESOLVABLE branch at all. A
+  blocked delta quoted from a single salt is provisional by construction. `CAPTAG` must encode the salt
+  (`...-blk15-buf5-s1`) or the replicate overwrites the original.
 - **`CAPTAG` is the only thing separating two rungs**, and `diagnose_copula_capacity.sh` wipes
   `capacity/$CAPTAG` **unconditionally**. Two rungs differing only in `FOLD_MODE`/`BUFFER_DEG`/`MTRY` share a
   natural CAPTAG ⇒ the second deletes the first's predictions, and run concurrently it deletes the first's
@@ -604,6 +654,30 @@ so it can never support *spatial* interpolation in any fold mode.
   historic seed2 silently shrinks to the intersection and reports a plausible floor/ceiling/`%GAP`. Score
   pooled with `score_slow_copula_dispersion.py` instead (criteria 1 and 4 stay uncomputable — §"A seed2
   exists for `historic` ONLY").
+
+### Provisioning the env tail at RUNTIME — `cell_env.parquet`, and the Float32 trap in it
+
+A 14-column artifact is **not coupled-runnable** without a per-cell source for the six env values: the four
+base boundary values reach the sampler via `M_cells.csv`, the env tail had no channel, and every consumer
+hand-built it from `cell_year_feats.parquet` in a bespoke script. `scripts/build_slow_cell_env_sidecar.py`
+emits `tables/cell_env.parquet` (67 420 cells — a superset of the pooled table's 58 766, so any grid cell can
+be provisioned) plus a manifest naming the basis and the column ORDER a positional consumer must respect.
+
+Two rules it encodes, both of which cost a run to learn (`[VERIFIED 2026-08-03]`):
+
+1. **`.cast(pl.Float64)` BEFORE any `mean()` over these columns.** `eco_diag_p_pet_ratio`,
+   `eco_diag_pet_mean`, `eco_diag_vpd_mean` and `pr_cv_monthly` are stored **`Float32`** in
+   `cell_year_feats.parquet` (`prec_mean` and `humid_mean` are `Float64`), and polars' `group_by().mean()`
+   accumulates in `Float32`. The natural aggregation therefore lands **~3.35e-07 relative** off the values
+   the shipped artifact was trained on: **199 093 of 200 000** probed rows differed, max |diff| **7.63e-05**
+   on `eco_diag_pet_mean` = exactly `5·2⁻¹⁶`, while the two `Float64` columns matched bit-exactly (which is
+   what identified the mechanism). Cast first ⇒ **bit-exact**. This is ADR 0023's train/inference shift at
+   its quietest — too small to look wrong, too large to be zero, and invisible to every coverage,
+   finiteness and duplicate-key check in the pipeline.
+2. **Gate a provisioning artifact against the SHIPPED table's `Xc`, never against a re-run of the producing
+   code.** Re-running the producer reproduces its bugs and proves nothing. Reading the real
+   `Xc.f64[:, ncond_base:]` for a random sample of real rows and requiring exact float64 equality is what
+   turned a silent 3e-07 shift into a hard failure. The same argument applies to any future sidecar.
 
 **Zero-compute companion.** `scripts/diagnose_slow_neighbour_skill.py` stratifies an EXISTING matched
 prediction pair by each test cell's distance to its nearest training cell. Run it first, but know its limit:

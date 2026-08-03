@@ -577,3 +577,69 @@ experiment toward its own hypothesis. Cancelled those two rungs, fixed the basis
 One protocol note worth recording: a **concurrent line-S session** was running in this same worktree (it took
 ADR 0039 for the ssp370 seed2 work and submitted the `S-FIT_ssp370_seed2` chain). Committed only my own files
 by explicit path throughout.
+
+## 2026-08-03 — the blocked-CV verdict lands: RESPONSE, and the gate that asked for it was mis-specified  [milestone S2]
+
+- **Goal:** collect the six in-flight ADR-0040 forest rungs and apply the **pre-registered** rule without
+  rewriting it now that results exist — the one thing the pre-registration was built to prevent.
+- **Did:**
+  - Collected all six rungs (all exit 0) plus the pre-existing hash-fold treatment arm
+    (`pooled-env-qrf-b6x2M`, `1647661`), and verified the basis before adjudicating anything: the four tables'
+    `cells.i64`/`scenario.i64`/`Y_*.f64` are **md5-identical**, blocked fold sizes are character-identical
+    across arms C/D/F, hash fold sizes reproduce ADR 0040's published set, and effective `mtry` is 4 in all
+    seven arms (`MTRY=0` at ncond 14 resolves to `round(sqrt(14)) = 4`, which is why the p8 arms pass
+    `MTRY=4` explicitly). Ran the rule through three independent lenses plus three adversarial refutations.
+  - **Fixed an inert `BLOCK_SALT` before spending compute on the replicate.** `eval_slow_copula.jl` reads it
+    from `ENV` but the driver listed every *other* fold knob on the Julia command line and not that one, so a
+    salt-1 rung rode on `sbatch --export=ALL` inheritance with nothing echoed. Had it stayed inert the
+    replicate would have agreed with its sibling *exactly*, which does not weaken ADR 0040 §5's
+    "NOT RESOLVABLE if the two salts disagree" clause — it **inverts** it into a false RESOLVED. Verified via
+    `SUBMIT=no`, then proven at runtime: arm C′'s fold sizes `[14066, 8302, 13575, 11241, 11582]` genuinely
+    differ from salt 0's `[15285, 10995, 11199, 8014, 13273]`.
+  - Ran the §4 warming-response gate on the matched arms — the comparison ADR 0040 explicitly deferred — at
+    **both** fold modes, then found and fixed a bootstrap defect and re-ran it (below).
+  - Shipped `cell_env.parquet`, the per-cell env sidecar both handoffs listed as a standing blocker.
+  - Submitted the salt-1 pair, the `mtry` 7/8 dilution rungs, and a chained `afterok` response gate.
+- **Result / evidence:**
+  - **VERDICT: RESPONSE — the six env columns are not merely a spatial address.** `[PROVISIONAL]` pending arm
+    D′. Wooddens `Δ_blocked = +0.0315` [+0.0011, +0.0633], `P(≤0) = 0.021`, clearing the pre-registered bar
+    `0.5·Δ_hash = +0.0201`; the blocked pure-position control sits **0.1868 below the treatment and 0.1553
+    below no tail at all**, `P(fail) = 0.0000` in all five folds. The frozen 1-NN screen predicted ~86 %
+    retention; the forests delivered 78/119/137 % on the three axes with a resolvable delta. Screen and
+    forests were frozen in that order, which is the strongest evidence in the set.
+  - **`p14geo-hash` 0.9231 > `p14env-hash` 0.9095 on all four axes** — under the *published* hash folds six
+    pure-geometry columns reproduce and exceed the entire ADR-0038 gain. ADR 0038's doubt was well founded;
+    the defensible conditioning figure is the blocked +0.0315, not +0.0402.
+  - **ADR 0040 §4's attribution is refuted.** The matched ncond-8 arm damps the Wooddens warming shift
+    **39.9 % on its own** (`Rb` −971.5 vs the tail's −892.0), so §5's promotion gate is simultaneously *met*
+    and *mis-specified* — passable by a change that degrades the transient. Re-specified on `Rb`+`Rr`+`|Ra−1|`
+    at both fold modes, under which the tail **fails**: `Rr` flips sign, +0.0395 hash → **−0.0305** blocked.
+    **The two gates dissociate** — level delta survives blocking, transient-pattern delta does not.
+  - **A bootstrap defect changed what could be claimed.** `diagnose_slow_address_prereg.py` built tile-cluster
+    labels through a join returning rows in the latlon frame's order while `dp`/`dy` are in `group_by` order,
+    with `tl[:min(len(tl), len(dy))]` hiding the mismatch — permuted labels degenerate a tile bootstrap toward
+    an independent-cell one and **understate** the sd. Point estimates never touch the labels, so only the CIs
+    were wrong; the detector was that a **fixed** seed gave two different intervals (jobs 1681338 vs 1681925 —
+    I initially mis-read that as an RNG draw). Fixed and verified by running each gate twice and diffing
+    (byte-identical, job 1683182). Intervals came back **3–5× wider**, so I weakened the ADR: blocked-fold
+    damping is no longer significant, and **no inter-arm difference is resolvable from marginal CIs**.
+  - **Measured the noise scale the whole rule rests on**, which ADR 0040 §7 asserted but never computed:
+    **0.004–0.006 (hash) / 0.012–0.016 (blocked)** — the single "order 0.01" understates blocking ~1.6×. And
+    `Δ_blocked` is **one-fold-dominated**: fold 0 carries ~84 % of it from 26 % of the cells, and it is the
+    fold with the fewest training cells. Under hash folds the same quantity is stable to 0.0011 across folds.
+  - **Width costs skill at matched `mtry`**: `p14perm-hash` is below `p8-hash-mtry4` on every axis (Wooddens
+    −0.0201, z ≈ 9). Fourteen zero-information columns are worse than eight.
+  - `cell_env.parquet`: 67 420 cells (superset of the pinned 58 766), **gated on exact float64 equality against
+    the shipped `Xc` tail over 200 000 real rows**. The gate fired first time and caught a real train/inference
+    shift — four of the six columns are `Float32` and polars' `group_by().mean()` accumulates in `Float32`,
+    putting the naive aggregation 3.35e-07 relative off the trained values on 199 093/200 000 rows.
+- **Decisions:** **ADR 0042**. Corrects two ADR-0040 statements (`eco_diag_gdd_5`/`tas_cold_month` *are*
+  transient on `pooled_w20`; the noise scale) and forbids quoting the retention ratio (0.783 ± 0.411) or
+  blocked `sd_ratio` against criterion 2. **0039 is permanently vacant.**
+- **Dead ends / mis-steps worth recording:** I attributed the two response-gate runs' differing CIs to an RNG
+  draw before checking that the seed was fixed — the refutation pass caught it. And the handoff's claim that
+  the augment script's `ENV_PARQUET` seam "already accepts" a per-(Cell,Year) join is **wrong**: it is keyed on
+  `Cell` alone (`group_by("Cell").mean()`, broadcast by cell index), and the copula tables carry no per-row
+  `Year` to join on. A *scenario*-resolved tail is the tractable middle path, since `scenario.i64` already
+  exists per row.
+- **Next:** see `lines/S/STATE.md` `## NEXT`.

@@ -37,7 +37,7 @@ SpeedyWeather. Current phase status and the prioritized orders live in `MEMORY.m
 | **C source** (LPJmL-FIT v5.6.004) | `/home/jamirp/lpjml56fit` (LPJROOT; **not** the stale `~/waldspektrum`) |
 | C binary (rebuilt, emits daily grass GPP/NPP) | `/home/jamirp/lpjml56fit/bin/lpjml` (pristine backup: `bin/lpjml.pre_dgrass.bak`) |
 | Active param files | `lpjmlfit.js`, **`param_lpjmlfit.js`** (LPJROOT **root**, not `par/` — found via `-I$LPJROOT`; it includes `par/{lpjparam_fit,soil_20m,pft_lpjmlfit,manage_*,outputvars}.js`), `par/pft_lpjmlfit.js` (**not** `par/pft.js`), `par/outputvars.js`, `include/conf.h`. ⚠ LPJROOT also holds **untracked** `param_lpjmlfit_newseedpool.js` / `par/lpjparam_fit_newseedpool.js` with `k_est_inherit` 0.02 → 2e-13 (11 orders of magnitude). Nothing references them, but `#include "param_lpjmlfit.js"` is the cpp **quote** form, so a stray copy in a run's `scripts_for_running_the_model/` would silently shadow LPJROOT's and change the physics with no visible config diff. |
-| ssp370 CO2 forcing (recovered 2026-08-03) | `/p/projects/waldspektrum/priesner/clustering/global/global_co2_ann_1700_2019_const_2100.txt` (md5 `ed5699b9c92d4d25857889f644b153db`, 5212 B, 1700–2100, 409.63 ppm flat from 2020 per ADR 0004). Its original path under `~/scripts/clustering/climclusterpy_package/` **no longer exists** — that dir was repurposed on 2026-07-28 — so the committed ssp370 **seed1** config is unrunnable until repointed. Recovery route worth remembering for any rotted input: `git log --all --diff-filter=D` in the repo that ate the directory, plus `/home/jamirp/.snapshot/{hourly,daily,weekly}.*` (snapshots **preserve mtimes**, which is what proves a file predates a run). |
+| ssp370 CO2 forcing (recovered 2026-08-03) | `/p/projects/waldspektrum/priesner/clustering/global/global_co2_ann_1700_2019_const_2100.txt` (md5 `ed5699b9c92d4d25857889f644b153db`, 5212 B, 1700–2100, 409.63 ppm flat from 2020 per ADR 0004). The committed ssp370 **seed1** config is unrunnable until repointed, because the loose copy it names under `~/scripts/clustering/climclusterpy_package/` is gone (`[VERIFIED 2026-08-03]`). ⚠ **Correction to an earlier reading of this: that DIRECTORY still exists and is not "repurposed" in the sense of deleted** — on 2026-07-27/28 it was reorganised into a proper packaged repo (its own `CLAUDE.md`, `CITATION.cff`, `docs/`, `dist/`), and the loose data file was cleaned out in the process. **`climclusterpy` still imports** (`/home/jamirp/scripts/clustering/climclusterpy_package/src/climclusterpy`, under conda `py311_new`) and `climclusterpy.features` still exports `compute_all_ecology_diagnostic_features` / `summarize_climate_features` / `ECOLOGY_DIAGNOSTIC_FEATURES` — i.e. **the canonical definition of the `eco_diag_*` and climate-summary features is alive**, so anything derived from them can be recomputed by the original method rather than reimplemented. Only the loose file rotted; do not conclude the feature code is lost. Recovery route worth remembering for any rotted input: `git log --all --diff-filter=D` in the repo that ate the directory, plus `/home/jamirp/.snapshot/{hourly,daily,weekly}.*` (snapshots **preserve mtimes**, which is what proves a file predates a run). |
 | Ground truth (annual; 67,420 cells; seed1+seed2) | `/p/projects/waldspektrum/priesner/clustering/global` |
 | Spin-up-end restart (use for Historical 2000–2019 re-run) | `.../Historical/ground_truth/.../restart/restart_1999.lpj` |
 | Global 186 GB daily F/E dataset | `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output` (DVC, not git) |
@@ -327,7 +327,13 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   (`new_tree.c:195-206` / `getrndinterval`; the par `median` field is unused there), so any per-cell trait
   statistic is a *composition* statistic — mixing two PFT sets makes two such statistics incomparable (id 0's
   minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which
-  is why every single-cell gate stayed green.
+  is why every single-cell gate stayed green. ⚠ **But do NOT read "uniform recruit draw" as "all trait
+  variance is composition variance" (`[VERIFIED 2026-08-03]`, ADR 0042 §9).** The uniform draw constrains the
+  **prior**, not the emitted **survivor** marginal, because FIT selects *within* a PFT on wood density:
+  `src/tree/mortality_tree_ind.c` computes `mort_max = pow(10, treepar->wdmort_1 + treepar->wdmort_2 /
+  ((tree->wooddens*1)/1000000))` feeding `tree->mort_npp`. So both channels — composition **and** within-PFT
+  selection — run through the live flux/stress conditioning, and a per-cell trait statistic is a composition
+  *plus selection* statistic.
 - **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
   writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
   **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age
@@ -375,6 +381,29 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 ---
 
+- **A `cell_year_feats.parquet` property does NOT carry over to the same-named column of a
+  `slow_copula_pooled_w20_*` table (`[VERIFIED 2026-08-03]`, ADR 0042 §8).** In `cell_year_feats`,
+  `eco_diag_gdd_5` and `tas_cold_month` are per-cell CONSTANTS (identical every year). On the
+  `pooled_w20` tables the forests actually read they are **time- AND scenario-varying**: with
+  `BOUNDARY_WINDOW=20` — which `run_pooled_slow_*.sh` require, and which `pooled_w20` is named for — they come
+  from `cell_year_boundary_<scenario>_w20.parquet` joined on `["Cell","Year"]`
+  (`build_slow_runtime_table.py:231-250`, the ADR-0026 treatment). The six **env tail** columns *are* per-cell
+  constants and identical across scenarios (per-`Cell` mean over the historic-only `cell_year_feats`). Getting
+  these two the wrong way round produced the claim that the static tail dilutes "the ONLY channel through
+  which time can enter", which is false — 2 of the 8 base columns are transient too.
+- **`tables/cell_year_feats.parquet` stores 4 of the 6 env conditioning columns as `Float32`, and polars'
+  `group_by().mean()` on a `Float32` column ACCUMULATES IN `Float32` (`[VERIFIED 2026-08-03]`).**
+  `eco_diag_p_pet_ratio` / `eco_diag_pet_mean` / `eco_diag_vpd_mean` / `pr_cv_monthly` are `Float32`;
+  `prec_mean` / `humid_mean` are `Float64`. So a per-cell aggregate of these columns **must
+  `.cast(pl.Float64)` BEFORE the `mean()`** or it lands ~**3.35e-07 relative** away from the value the
+  shipped 14-column artifact was actually conditioned on — measured: aggregating natively missed on
+  **199 093 of 200 000** probed rows (max |diff| **7.63e-05** on `eco_diag_pet_mean`, which is exactly
+  `5·2⁻¹⁶`, the float32 tell), while the two `Float64` columns matched bit-exactly. Cast first and the
+  reproduction is **bit-exact**. This is the ADR-0023 train/inference-shift trap in its quietest form: the
+  error is far too small to look wrong and far too large to be zero, and no coverage or finiteness check
+  sees it. `scripts/build_slow_cell_env_sidecar.py` carries the cast and **gates on exact float64 equality
+  against the shipped `Xc.f64` tail** rather than against a re-run of the producing code (which would be
+  circular). Any new per-cell derivation off this table needs the same treatment.
 - **`polars` `collect(engine="streaming")` is NOT deterministic in the KEY SET it emits at global scale
   (`[VERIFIED 2026-07-29]`, ADR 0036 §5b).** Two runs of the same `group_by` over the same 92 GB `ind` parquet
   produced **99 023 397** vs **99 028 310** rows — 141 of 58 496 cells differed, 4 913 rows missing net, and
