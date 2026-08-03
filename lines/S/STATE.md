@@ -6,162 +6,215 @@
 
 ## NEXT — start here
 
-**S2's gate is MET — and the win is smaller than it looks, for a reason worth reading before you act on it.**
-`env-qrf-b6x2M` (6 trees x 2M subsample, `max_depth` 22, `min_leaf` 20, `QRF=1`, **`ncond` 14**) clears all
-four ADR-0030 §4 criteria for the first time. **ADR 0038** is the record; it SUPERSEDES ADR 0037's central
-thesis. **MERGED to `main` at `8871702a`** — `main`'s OWN CI green on all six real gates (`docs`, `format`,
-`python`, `test (lts)`, `test (1)`, `test (macOS, lts)`); only the allowed-to-fail `test (pre)` is red, for the
-documented ReTestItems/prerelease `ScopedValue` break with no mention of any changed symbol.
+**The ssp370 second seed is finally RUNNING for real. `random_seed` is INERT under `FROM_RESTART` —
+a second seed is a second SPIN-UP.** That single fact is why every earlier attempt produced a
+byte-copy of seed1. **ADR 0041** is the record. Read it before touching any seed/restart config.
 
-### The result, in one table (all verified against the raw logs, twice)
+### The bug, in one line
 
-| | Wooddens `emu_r` | %GAP | `sd_ratio` | pooled KS SLA/W/D95/minw |
+The old `transient_2020_2100_npatch25_random_seed2` set `"random_seed": 2` but restarted from the
+**historic seed1** `restart_2019.lpj`. With `"new_seed": false` the per-cell RAND48 seeds come from
+the restart file (`newgrid.c:507-513` → `freadcell.c:37`) and the `setseed` that would apply
+`seed_start` is gated off (`newgrid.c:520-521`); `seed_start` is applied once at parse time
+(`fscanconfig.c:231`) then overwritten from the restart header (`openrestart.c:139-140`). **And the
+log says `Reading random seeds from restart file.`, never `Random seed: 2`** — so nothing warned.
+Both `ind_2020_2100.csv` are 193 097 583 638 B with md5-identical sampled windows. A floor from it
+gives `floor_r ≡ 1` = fabricated headroom. That directory now carries
+`INVALID_NOT_A_SECOND_SEED.md`; ~326 GB there is reclaimable (nothing derived was built from it).
+
+### What is in flight — jobs to collect
+
+| job | what | depends on |
+|---|---|---|
+| **1678574** | `S-FIT_ssp370_seed2` — the corrected member, 2048 tasks / 16 nodes, `qos=short`, 3:30 | — (was `QOSGrpCpuLimit`) |
+| **1678595** | `S-ssp2-indep` — independence gate (must NOT be a copy) | `afterok:1678574` |
+| **1678596** | `S-indparq-ssp2` — → `/p/tmp/jamirp/emulator_global/ind_ssp370_seed2_all.parquet` (~92 GB) | `afterok:1678595` |
+| **1678579/1678580/1678592** | `S-bineq-A`/`-B`/`-cmp` — subset gate | **DONE — verdict VOID (exit 3), see below** |
+| **1678607** | `S-crossbuild-gate` — the REPLACEMENT gate: full grid, 2048 tasks, seed1 inputs, Jul-21 binary | — |
+
+Run dir: `.../ssp370/ground_truth/model_output/transient_2020_2100_npatch25_random_seed2_from_hist_seed2/`
+Logs: `logs/S-*.<jobid>.out`; the C run's own log is `<run>/lpjml_2020_2100.1678574.out`.
+
+**`afterok` means a dead parent leaves the children cancelled — a missing parquet may mean the C run
+died, not that nothing was scheduled.** Check `sacct -j 1678574,1678595,1678596 --format=JobID,JobName%20,State,ExitCode,Elapsed`.
+
+**Judge the C run from its LOG, never from SLURM state.** The stock job file ended `rc=0` + bare
+`exit`, so it always exited 0 — a run dying mid-century leaves a plausible truncated 193 GB CSV
+behind a green `sacct` row. I fixed it to `rc=$?` / `exit $rc`, but still require
+`lpjml successfully terminated, 67420 grid cells processed.` Then: `ind_2020_2100.csv` within a few
+percent of 193 097 583 638 B and **NOT exactly equal** to it (exact equality ⇒ the fix failed);
+`restart/restart_2100.lpj` ≈ 1.34e11 B; `python scripts/water_closure_check.py <run_dir>`.
+If it dies 0:53 / no log / 20× slow, that is the known flaky-node mode — resubmit with
+`SBATCH_EXCLUDE=<node>`, do not re-debug the config.
+
+### The provenance is FOUR edits, not three — say all four when citing it
+
+`restart_filename` → historic **seed2** restart (the fix) · the run directory · `random_seed` 1→2
+(inert, documentary) · **the `co2` input path**. That last one was forced: the seed1 config reads
+`/home/jamirp/scripts/clustering/climclusterpy_package/global_co2_ann_1700_2019_const_2100.txt`,
+which **no longer exists** (that dir was repurposed for an unrelated project on 2026-07-28) —
+`lpjcheck` failed `ERROR100`. Recovered and installed at
+`/p/projects/waldspektrum/priesner/clustering/global/global_co2_ann_1700_2019_const_2100.txt`,
+**md5 `ed5699b9c92d4d25857889f644b153db`**, 5212 B, 401 years. Identity proven four ways: the git
+blob (its only version, spanning the Jul-15 run); a filesystem snapshot with **mtime 2026-07-07**,
+predating the run; byte-exact reconstruction from TRENDY v12 (1700–2019 verbatim, then 2019 flat);
+and agreement with ADR 0004's 409.63 ppm. **So the forcing is identical and the seed is the only
+physical difference.** Per ADR 0004 these are `ssp370 climate, CO2 constant at 409.63 ppm from 2020`.
+Line M / anyone re-running seed1 should know **the seed1 config as committed is unrunnable** until
+its `input_2020_2100.js:23` is repointed at the `/p` copy (documentation-only; do not rerun seed1).
+
+### ⚠ NEW, AND IT INVALIDATES A CLASS OF VALIDATION: a subset re-run is NOT a per-cell replica
+
+Measured at cell 42490 with the **same binary, same restart, same forcing**, varying only the cell set:
+
+| run | cell set | `ind` rows for 42490 | first year ≠ global truth | years matching truth |
 |---|---|---|---|---|
-| baseline `t8` (40x50k, d14, ncond 8) | 0.814 | — | 0.6775 ✗ | .0051/.0052/.0069/.0115 |
-| best at **ncond 8** (`qrf-b6x8M`) | **0.867** | 35.3 % ✗ | 0.7633 | not KS-scored |
-| **`env-qrf-b6x2M` (ncond 14) — SHIPPED** | **0.901** | **58.0 % ✓** | **0.8541 ✓** | **.0032/.0024/.0019/.0013 ✓** |
+| A | 42490 alone | 18 530 | **2021** (first step) | 2 / 81 |
+| B | 42480–42500 (21 cells) | 19 366 | **2035** | 16 / 81 (2020–2034 contiguous) |
+| truth | all 67 420 @ 2048 tasks | 18 790 | — | — |
 
-Threshold is `emu_r` 0.889. Criterion 1 passes under all five defensible %GAP conventions (min 56.7 %).
-`b6x8M` rejected: +0.002 for 4x the bytes and worse KS on all four axes.
+B is **bit-identical for 15 consecutive years** then diverges; A diverges immediately; at 2020 A and B
+already differ in exactly `fpc_ind` and `isdead`. This is a stochastic gap model amplifying a tiny
+perturbation — one individual dying/establishing differently makes the roster permanently different.
+**The RNG is not the cause** (fully per-cell: `permute` takes `stand->cell->seed`, no `drand48()` anywhere
+in `src/`, `config->seed` read only at `iterate.c:108/148/181`, all unreachable at
+`nspinup:0`/`fix_climate:false`). **Mechanism UNESTABLISHED — do not claim one.**
 
-### The three levers, isolated (matched pairs — do NOT collapse these)
+Consequences: (a) CLAUDE.md §3's "per-cell seek is MPI-decomposition-independent" is true of the *seek*,
+**false of the evolution** — the recorded ~1.6e-4 `whc_nat` discrepancy is this same effect through a
+smoother variable; (b) **a seed pair is valid only at the same binary AND the same `--ntasks`** (seed2
+satisfies the second by construction, `--ntasks=2048` copied from seed1); (c) **any single-cell re-run
+scored against GLOBAL ground truth is comparing two different trajectories** — this bears directly on
+line M's per-cell oracle work and the `fdiff-validate` skill. **Raise it with M** (that skill is M-owned;
+the fact is in CLAUDE.md §3, which is shared).
 
-| lever | Δ `emu_r` | Δ `sd_ratio` | crosses the gate? |
-|---|---|---|---|
-| capacity, ncond 8, QRF=1 (50k→2M→8M) | +0.037 then **+0.003** | +0.0884 | **no — saturates at 0.867** |
-| QRF alone (at 50k / at 2M) | +0.013 / +0.002 | **−0.003 / −0.013** | no |
-| **conditioning, at fixed 6x2M+QRF** | **+0.037** | **+0.0966** | **yes** |
+### THE ONE OPEN QUESTION — the cross-build gate (now job 1678607)
 
-Capacity *provably* cannot reach the gate at ncond 8: fitted asymptote **0.8696** (half-life 1.82 doublings,
-0.0194 short of 0.889 at infinite subsample); at the terminal marginal rate 0.889 needs **14.7 more doublings
-= 1052x** the whole 197.7M-row table. Re-derived independently, not taken from a report. **Subsample is exhausted past ~2M at BOTH
-widths** (+0.003 / +0.002); the *level* it plateaus at is set by the conditioning. QRF's payoff shrinks
-with capacity because the max-leaf weight share is 6.7x `1/T` at 60 trees but only **2.9x at 6 trees** —
-what QRF fixes is largely absent there, so `qrf-b6x2M` was chosen for consistency with the scored rung, not
-for skill.
+The seed1 member came from the **`Feb  5 2026`** build; the current `bin/lpjml` is **`Jul 21 2026`**.
+That is **not** just the committed `patches/lpjmlfit_daily_grass_gpp.patch` — it is also a
+**RHEL8→RHEL9 toolchain rebuild** (GCC 8.5.0→11.5.0, GLIBC_2.14→2.33/2.34, `__xstat`→`stat`,
+`DT_NEEDED libjson-c.so.4`→unversioned). Two things are settled by reading, and are solid:
 
-### ⚠ THE CAVEAT THAT GATES PRODUCTION — read before promoting anything
+* **the patch is inert here** — for a 5-of-421-output run `initoutput.c:50-67` allocates a leading
+  `maxsize` **trash** region and sets `outputmap[i]=0` for unopened outputs (real outputs at
+  `index>=maxsize`), `outputsize(D_GRASS_*)==1` so `maxsize`/`totalsize` are unchanged ⇒ the
+  unconditional `getoutput(output,D_GRASS_GPP,…)+=` writes only to trash, no RNG draw, no state;
+* **no physics par drifted** — `find -newermt 2026-07-15` over `src/ include/ par/` returns exactly
+  the patch's four files; `param_lpjmlfit.js`, `par/{lpjparam_fit,soil_20m,pft_lpjmlfit,manage_*}.js`
+  and `Makefile.inc` (hence `-DPERMUTE`/`-DSAFE`) all predate the seed1 run. Only
+  `par/outputvars.js` changed, by the same patch's two rows, matched to `NOUT 421`.
 
-**The six env columns are a per-cell spatial ADDRESS, not a climate response.** Verified directly:
-median within-cell sd is **EXACTLY 0, for 100 % of cells**, on all six (`prec_mean`,
-`eco_diag_p_pet_ratio`, `eco_diag_pet_mean`, `eco_diag_vpd_mean`, `pr_cv_monthly`, `humid_mean`) —
-`cell_year_feats` broadcasts a per-cell climatology to every year. So they cannot encode a warming
-response; in the pooled table a cell's historic and ssp370 rows are **bit-identical** on them. A 1-NN
-lookup on those columns reaches Wooddens r = **0.800** with the nearest training neighbour **1.00°** away
-(q25 = 0.50° = the adjacent cell). **`mod(hash(cell), k)` folds cannot detect this** — by-cell CV leaves
-the neighbours in the training fold, so it scores spatial interpolation, not transfer.
+Neither is an empirical proof. The **subset** gate (A/B/cmp above) came back **VOID, exit 3** — the
+decomposition confound is larger than the binary signal, so a subset re-run can never settle this.
+It is replaced by **job 1678607**, the only design that can: full grid `"startgrid":"all"`, **2048
+tasks**, the same 5-output set, the same forcing, restarting from the **historic seed1**
+`restart_2019.lpj` with `random_seed 1` — a faithful re-run of the seed1 member itself, differing only
+in `write_restart:false` (written after the last year ⇒ cannot affect the trajectory). Config +
+job file in `/p/tmp/jamirp/S_crossbuild_gate/`.
 
-⇒ `recruit_copula_global_historic_t9.rcop` is the **historic-STATIC** artifact and the S2 evidence. It is
-**NOT** line M's production copula (M pins the **transient** `pooled_w20` basis, ADR 0027). Do not re-pin M
-onto it.
+**To collect it:** compare against the seed1 ground truth
+* `output/globalflux_2020_2100.csv` (10.5 KB, 81-year GLOBAL aggregate — extremely sensitive: a sum
+  over 67 420 cells) — `cmp` / `diff` it directly;
+* `output/vegc_2020_2100.nc` (65 MB, per-cell annual vegetation carbon) — per-cell array equality.
+Bit-identity on both ⇒ the builds are poolable and the seed is the only difference. A mismatch ⇒ the
+RHEL8→RHEL9 rebuild moved the trajectory; fall back to `git checkout -- include/conf.h
+par/outputvars.js src/lpj/daily_natural.c src/lpj/fwriteoutput.c` (restoring the matched 419/419 pair)
+and re-running the member with `bin/lpjml.pre_dgrass.bak`, the actual producing binary.
+The `ind` CSV that gate writes (193 GB in `/p/tmp/jamirp/S_crossbuild_gate/output/`) exists **only** so
+the output set stays byte-identical to the producing run — it is not compared; **delete it** after.
 
-### DO THIS FIRST
-
-1. ~~Push + merge~~ **DONE.** Merged at `main` `8871702a`; branch CI and `main`'s own CI both green (full
-   CI-faithful suite **107 394 pass / 0 fail / 4 broken**, job 1647687; Runic 1.7.0 clean 111/111; `docs`
-   green on `main`, which is the only place it runs).
-2. ~~Collect job `1647661`~~ **DONE — the config TRANSFERS to the pooled basis M pins.** Same config on
-   `slow_copula_pooled_w20_t8env`, 57 719 cells, A/B against pooled t8 on ONE basis:
-
-   | Wooddens | pooled t8 | pooled `env-qrf-b6x2M` | Δ |
-   |---|---|---|---|
-   | `emu_r` | 0.8261 | **0.9095** | **+0.0834** |
-   | `sd_ratio` | 0.6119 ✗ | **0.8493 ✓** | **+0.2374** |
-   | slope `Y1~pred` | 1.3501 | 1.0708 | −0.2793 |
-
-   **Criterion 2 goes FAIL → PASS on pooled.** Criterion 3 improves on all four axes (SLA .0039→.0009,
-   Wooddens .0065→.0007, D95max .0020→.0014, minwscal .0040→.0003, auto-read against the *pooled* baseline).
-   All four axes gain `emu_r`: SLA +0.0510, Wooddens +0.0834, D95max +0.0996, minwscal +0.0131.
-   **Read the delta correctly:** this is the FULL three-lever delta (capacity + QRF + conditioning) against a
-   60-tree/50k/d14/ncond-8/QRF=0 baseline — it is **not** the isolated conditioning lever, unlike the
-   historic +0.037 which was a matched pair off `qrf-b6x2M`. The comparable figures are the full-stack ones:
-   historic +0.087 `emu_r` / +0.1766 `sd_ratio`, pooled +0.0834 / +0.2374. So the config transfers, and on
-   dispersion it does better on pooled than on historic.
-   **Criteria 1 and 4 remain NOT computable for pooled** (no pooled seed2) — their absence is not a pass.
-   **And this does NOT resolve the spatial-address question**: the pooled folds are still `mod(hash(cell), k)`,
-   so the same interpolation-vs-transfer confound applies, and the env columns are identical for a cell across
-   the two scenarios. Item 3 is still the gate on production.
-3. **THE decisive experiment, and the gate on production: spatially BLOCKED CV.** Re-score
-   `env-qrf-b6x2M` with contiguous lat/lon block folds instead of `mod(hash(cell), k)`
-   (`eval_slow_copula.jl:143`), plus a lat/lon-only conditioning control. Survives blocking ⇒ a real
-   environmental response, promote it. Decays toward the 1-NN level (r≈0.80) ⇒ it is an address, and S2's
-   framing changes a third time. **Do not promote to M before this runs.**
+**A mismatch does not invalidate the new seed2 member** — it is still a genuine second realization. It
+invalidates *pooling it with seed1 as a pure seed pair*.
 
 ### Then, in priority order
 
-4. **A per-cell env sidecar** — there is NO runtime plumbing supplying the six values per cell; a caller
-   hand-builds them from `cell_year_feats.parquet`, which is unreachable from CI and basis-sensitive. S emits
-   `cell_env.parquet` (same no-year-filter basis); M folds it into `M_cells.csv`. **Until this exists the
-   14-column artifact is not coupled-runnable outside a bespoke script.**
-5. **Depth is NOT exhausted at the production config** — measured on t9 (job 1648259): 33 449–46 036
-   leaves/tree but **52.3–67.0 % of stored values still depth-capped**, and only 84–86 % of large leaves at
-   `max_depth` (vs 99.9–100 % at 50k/d14). Depth is free in bytes. **One `6 x 2M, d32` rung** settles whether
-   the 0.8696 asymptote moves.
-6. **Re-run the shipped rung with `TRAIT_ONLY=0`** — `agb`/`Height` were trimmed out of 11 of 12 rungs
-   including the shipped one, and they carry the tightest baseline margins (agb pooled KS 0.0116 vs the 0.02
-   bound; `r_center` headroom 0.011/0.013). "S2 met" must not be read as "biomass and size unchanged".
-7. **The composed coupled path is still unexercised**: emulator + 14-col copula + `qrf=true` + establishment
-   + carbon closure over a multi-year run. Construction is now gated; the run is not.
-8. **Cheap and still open (carried, ADR 0036 §6):** emit **`Year`** in the `MODE=copula` table so the
-   stand-biomass composite is computable on matched rows — it blocks figures 12/13 for the POOLED pair. It is
-   a table SCHEMA change, so it costs a rebuild, and ADR 0036 §5b's streaming key-set nondeterminism means a
-   rebuild lands on a different row universe ⇒ do it when a new generation is being built anyway, never as a
-   standalone rebuild of a validated table. (Related gotcha, don't re-derive: `STEM_CAP` is a patch-year
-   **CLUSTER** subsample, not per-stem — ADR 0036 §178, and it is why ssp370's basis spread is ~10x looser.)
+1. **An ssp370 seed2 parquet is NECESSARY BUT NOT SUFFICIENT for ADR-0030 criteria 1 and 4 on the
+   pooled basis.** The pooled seed1 tables were built with `STEM_CAP=400` while ADR 0030 Decision 1
+   requires the cap OFF for a floor, and the cap's rank key is
+   `pl.struct(['Cell','Patch','Year']).hash(seed=seed)` (`build_slow_runtime_table.py:381`) ⇒ a
+   `SEED=2` build keeps a **different set of whole patch-year clusters**, deflating the floor and
+   flattering the emulator. Either rebuild both sides uncapped or state the deviation next to the
+   criterion. Do not quote a pooled criterion 1/4 number without resolving this.
+2. **The pooled seed2 copula tables**, then the floor: steps 1–3 of `run_pooled_slow_copula.sh`
+   (`SCENARIO=historic SEED=2` and `SCENARIO=ssp370 SEED=2`, `BOUNDARY_WINDOW=20`,
+   `STRUCT_AXES=agb,Height`) → `pool_slow_tables.py` → `noise_floor_vs_emulator.py` with
+   `COPULA_DIR=/p/tmp/jamirp/emulator_global/capacity/pooled-env-qrf-b6x2M`,
+   `COPULA2_DIR=.../slow_copula_pooled_w20_t8_seed2`, `SKIP_PARQUET=1`.
+   These orchestrators DO take `DEPENDENCY=afterok:<jid>` as an env knob (the `sbatch_*.sh` wrappers
+   do not) — chain them on **1678596**.
+3. **STILL THE GATE ON PRODUCTION, carried unchanged: spatially BLOCKED CV.** Re-score
+   `env-qrf-b6x2M` with contiguous lat/lon block folds instead of `mod(hash(cell), k)`
+   (`eval_slow_copula.jl:143`), plus a lat/lon-only conditioning control. The six env columns have
+   median within-cell sd **exactly 0 for 100 % of cells**, so they are a per-cell spatial ADDRESS,
+   not a climate response; a 1-NN lookup on them reaches Wooddens r = 0.800 with the nearest
+   training neighbour 1.00° away. By-cell folds leave the neighbours in the training set, so they
+   score interpolation, not transfer. **Do not promote to M before this runs.**
+   `recruit_copula_global_historic_t9.rcop` is the **historic-STATIC** artifact and the S2 evidence;
+   it is NOT line M's production copula (M pins the **transient** `pooled_w20` basis, ADR 0027).
+4. **A per-cell env sidecar** — no runtime plumbing supplies the six env values per cell; a caller
+   hand-builds them from `cell_year_feats.parquet`, unreachable from CI and basis-sensitive. S emits
+   `cell_env.parquet`; M folds it into `M_cells.csv`. Until it exists the 14-column artifact is not
+   coupled-runnable outside a bespoke script.
+5. **Depth is NOT exhausted at the production config** (t9, job 1648259): 33 449–46 036 leaves/tree
+   but 52.3–67.0 % of stored values still depth-capped. One `6 x 2M, d32` rung settles whether the
+   0.8696 asymptote moves. Depth is free in bytes.
+6. **Re-run the shipped rung with `TRAIT_ONLY=0`** — `agb`/`Height` were trimmed out of 11 of 12
+   rungs including the shipped one, and they carry the tightest margins (agb pooled KS 0.0116 vs the
+   0.02 bound). "S2 met" must not be read as "biomass and size unchanged".
+7. **The composed coupled path is still unexercised**: emulator + 14-col copula + `qrf=true` +
+   establishment + carbon closure over a multi-year run. Construction is gated; the run is not.
+8. **Carried (ADR 0036 §6):** emit `Year` in the `MODE=copula` table so the stand-biomass composite
+   is computable on matched rows — blocks figures 12/13 for the POOLED pair. It is a table SCHEMA
+   change ⇒ do it when a new generation is being built anyway, never as a standalone rebuild of a
+   validated table (ADR 0036 §5b streaming key-set nondeterminism lands a rebuild on a different row
+   universe). Related, don't re-derive: `STEM_CAP` is a patch-year **CLUSTER** subsample, not
+   per-stem, which is why ssp370's basis spread is ~10× looser.
 
 ### OPEN INTEGRATION POINT with line M (raise it before any re-pin)
 
-`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`. A 14-column artifact
-fails that **by construction** — its last four are the env tail — so M's re-pin step `sys.exit`s. The correct
-check is **positional**, `cond_cols[4:8]`. **That file is M-owned; S requests, M lands.**
+`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`. A 14-column
+artifact fails that **by construction** — its last four are the env tail — so M's re-pin step
+`sys.exit`s. The correct check is **positional**, `cond_cols[4:8]`. **That file is M-owned; S
+requests, M lands.**
 
-### What shipped in code this session (all opt-in, default byte-identical)
+### New reusable scripts (use them; do not re-derive)
 
-- **`.rcop` format v2 carries `qrf`.** It selects a different conditional from the same forests and used to
-  live ONLY in the sidecar, while M's contract pins a `.rcop` *path* ⇒ a consumer that missed the sidecar
-  silently sampled the estimator that was never scored. Flipping it changes all three of t9's golden draws.
-  v1 still loads and means `qrf=false`; `qrf` is the 6th tuple element so all five 5-way `load_copula` call
-  sites are untouched. **This is a VERSION BUMP of the frozen S→M contract — nothing M pinned needs
-  regenerating.**
-- **`FluxDrivenSlowEmulator` rejects a conditioning-width mismatch at CONSTRUCTION.** `_check_nfeat` fires
-  only inside `sample_copula!`, reached only when a patch recruits — so a thinning cell or all-grass patch
-  never draws and a mis-wired run completes "successfully", conserving carbon, silently.
-- **The ADR-0030 gate refuses a floor from two seeds that are the same seed** — see below.
-- `rcop_acceptance_probe.jl` (accept an artifact in a FRESH process; t9 = load **6.77 s / 71.6 MiB/s
-  measured**, all width guards fire) · `score_slow_copula_dispersion.py` (criterion 2 without a seed2).
+- `scripts/build_slow_ind_parquet.py` — `ind_*.csv` → parquet, `SRC`/`OUT` positional. The only
+  previous builder is the FROZEN sibling's `global_extract.py`, whose `--which` is argparse-locked to
+  three hard-coded names, so a new scenario/seed **could not be named at all**. Keeps the load-bearing
+  `schema_overrides` (polars infers `Wooddens` integer from the first rows) and asserts the frozen
+  29-column `IND_COLUMNS`.
+- `scripts/diagnose_ind_seed_independence.py` — run this on EVERY new ground-truth member before
+  deriving anything. Equal file size to the sibling is the copy signature.
+- `scripts/diagnose_ind_binary_equality.py` — per-cell bit-equality vs the global truth **with a
+  decomposition control**. Use it whenever ground truth from two different builds would be pooled.
 
 ### Traps found this session (do not re-derive)
 
-- **THE ssp370 `random_seed2` GROUND TRUTH IS A BIT-IDENTICAL COPY OF SEED1.** Both `ind_2020_2100.csv` are
-  193 097 583 638 B with equal md5 at MB 0/30000/120000, because the seed2 config sets `"random_seed": 2` but
-  its `restart_filename` points at the **historic seed1** `restart_2019.lpj` — under `-DFROM_RESTART` the
-  RAND48 state is restored, so the seed is inert. (Historic IS independent: each reads its own *relative*
-  `restart/restart_1999.lpj`.) A floor built from it reports `floor_r ≡ 1` ⇒ fabricated headroom, with **no
-  error**; the `seed1-basis ≥ 0.99` check is structurally blind to it. Now guarded + self-tested both ways
-  (job 1648005). **Only `historic` has a usable seed2 ⇒ criteria 1 and 4 are not computable for
-  pooled/ssp370.**
-- **`median_percell_r` in `metrics_traits.txt` IS `emu_r`** (between-cell r of per-cell medians, despite the
-  name) — reproduced to 4 dp. So every scenario's baseline is already published; you do not need a seed2 for
-  it. Basis offset to the gate's own number ~0.002.
-- **Criterion 3 = pooled KS, the NUMERIC ≤0.02 bound** (pinned in ADR 0038). Decisive: `pooled_t8`'s own
-  Wooddens `pooled_nqrmse` is **0.0208**, so applying the bound to `nqrmse` fails the pooled *baseline*.
-  But KS hides a coherent **−0.4 % SLA quantile shift** (SLA KS improves 0.0051→0.0032 while `nqrmse` gets
-  1.8x worse) — score KS, **report both**.
-- **`co2` is a DEAD conditioning column** — a literal constant 369.0 (`CO2_CONST`, ADR 0004) ⇒ effective
-  width is `ncond − 1`, and the pooled table has no static scenario discriminator at all.
-- **The env-augment dropped every manifest-named sidecar but `cells.i64`** — pooled tables declare
-  `scenario_tag scenario.i64`; it trained fine and would have died much later in the scenario-holdout eval.
-  Fixed by resolving sidecars from the manifest.
-- **The `.rcop` is byte-reproducible** from `(table, config, seeds)` — so regenerating it for a metadata fix
-  is safe (md5 verified, job 1647662).
-- **Julia soft scope**: `ndiff += 1` inside a top-level `for` binds a NEW local ⇒ `UndefVarError` at the
-  outer read. Use a single assignment / comprehension.
-- **The `format` CI gate is REPO-WIDE** (the runic-action takes no `paths`), so a new `scripts/*.jl` is
-  checked exactly like `src/`. The per-file loop that NAMES offenders is in the `julia-test` skill.
+- **`random_seed` is inert under `FROM_RESTART` and INVISIBLE in the log.** The whole of ADR 0041.
+  A future "seed 3" made by bumping `random_seed` alone would fail the same silent way.
+- **A "ground truth" input path can rot underneath a committed config.** The ssp370 co2 file vanished
+  when an unrelated project reused its directory; the seed1 config has been unrunnable since
+  2026-07-28 and nothing noticed. Recovery route worth remembering: `git log --all --diff-filter=D`
+  in the repurposed repo, plus `/home/jamirp/.snapshot/{hourly,daily,weekly}.*` (mtimes are preserved,
+  which is what let me prove the file predated the run).
+- **`git status` in `/home/jamirp/lpjml56fit` holds UNTRACKED `param_lpjmlfit_newseedpool.js` and
+  `par/lpjparam_fit_newseedpool.js` with `k_est_inherit` 0.02 → 2e-13 (11 orders of magnitude).**
+  Nothing references them today, but `#include "param_lpjmlfit.js"` is the cpp QUOTE form, so a stray
+  copy in any `scripts_for_running_the_model/` would silently shadow LPJROOT's and change the physics
+  with no visible config diff.
+- **CLAUDE.md §1's `par/param_lpjmlfit.js` does not exist** — the file is
+  `/home/jamirp/lpjml56fit/param_lpjmlfit.js` (LPJROOT root, found via `-I$LPJROOT`). Fixed in §1.
+- **CLAUDE.md §3's "json-c 0.17 aborts" applies to the Feb-5 build only.** The Jul-21 build imports
+  *versioned* `JSONC_0.14` symbols, which 0.13.1, 0.17 and the system `libjson-c.so.5` all provide;
+  `lpjcheck` exits 0 under both. The real bare-env failure is `libnetcdf.so.19` / `libudunits2.so.0`
+  not found. Pin the documented module set **inside the job file** for that reason — the stock
+  ground-truth jcfs pin nothing and inherit the submitting shell.
+- **`bin/lpjml.pre_dgrass.bak` is not a drop-in** while the working tree is patched: it was built
+  with `NOUT=419` and the live `par/outputvars.js` declares 421 (`ERROR232`/`ERROR201`).
 
-**Not S's to chase:** `water_stress` (6.6x band) is line M's F core, ADR 0029. `fpc`'s residual is dynamics
-(ADR 0035 §3.3).
-
+**Not S's to chase:** `water_stress` (6.6× band) is line M's F core, ADR 0029. `fpc`'s residual is
+dynamics (ADR 0035 §3.3).
 ## Scope + ownership (ADR 0029)
 
 **You own (exclusive):**
