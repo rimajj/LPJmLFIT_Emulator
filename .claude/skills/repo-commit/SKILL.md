@@ -135,6 +135,24 @@ every one falsified by the run that had just finished. So, before committing the
   regenerated golden fixtures in the worktree" is actionable; silence reads as an oversight.
 - `grep` the block for your own hedges before committing; that is how the above were caught.
 
+**Refreshing is also not REPLACING someone else's handoff — and git will not warn you (`[VERIFIED 2026-08-03]`).**
+ADR 0028 says one session per line, but if a second session *is* running in your worktree, the `## NEXT` block
+is the single place your edits collide, and a wholesale rewrite of it is a silent data loss:
+- Hit for real: two line-S sessions ran on 2026-08-03. Session 2 rewrote `## NEXT` for the ssp370-second-seed
+  work (ADR 0041); session 1 then replaced the whole block with its own handoff, **deleting 225 lines** that
+  were the only record of how to collect a 2048-task C run and its two chained `afterok` children.
+- **Git cannot catch this.** The other session had already *committed*, so the rewrite was a clean
+  fast-forward with nothing to merge and no conflict to resolve. `git status` was clean afterwards.
+- **Before rewriting `## NEXT`, run `git log --oneline -5 -- lines/<X>/STATE.md`.** If a commit you did not
+  write touched it this session, keep both as labelled `### TRACK A/B` subsections under the one `## NEXT`
+  header (the hook prints the whole block, so it stays coherent), and put the time-critical track FIRST —
+  chained `afterok` children are cancelled silently when their parent dies.
+- Two concurrent sessions also race on **ADR numbers**. Both sessions here drafted `0039`; each detected the
+  other and moved (to `0040` / `0041`), leaving `0039` unused. That is the correct outcome — `ls
+  docs/decisions/` immediately before you name the file, not when you start writing it.
+- Same rule for commits: **stage by explicit path, never `git add -A`**, or you sweep the other session's
+  in-progress files into your commit.
+
 ## SLURM + scratch under parallel lines
 
 - **Tag every job with your line prefix**: `scripts/run_tests_slurm.sh S-suite`,
