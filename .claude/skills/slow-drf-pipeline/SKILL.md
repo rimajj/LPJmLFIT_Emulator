@@ -557,6 +557,7 @@ Step 3 of the previous section is now implemented. **Do not hand-roll it again.*
 ```bash
 # 0. provision the position artifacts (~7 s, login node; writes to $BASE/tables/)
 python scripts/build_slow_spatial_controls.py            # cell_latlon.txt + cell_geo_tail + cell_env_perm_tail
+python scripts/build_slow_cell_env_sidecar.py            # tables/cell_env.parquet — the RUNTIME env tail (below)
 # 1. GATE the fold machinery + pick BLOCK_DEG/BUFFER_DEG from measurement, before spending any compute
 BLOCK_DEGS=10,15,20 BUFFER_DEGS=0,2,5,10 NSAMPLE=500 julia --project=. scripts/blocked_cv_folds_probe.jl
 # 2. run a rung
@@ -620,6 +621,30 @@ so it can never support *spatial* interpolation in any fold mode.
   historic seed2 silently shrinks to the intersection and reports a plausible floor/ceiling/`%GAP`. Score
   pooled with `score_slow_copula_dispersion.py` instead (criteria 1 and 4 stay uncomputable — §"A seed2
   exists for `historic` ONLY").
+
+### Provisioning the env tail at RUNTIME — `cell_env.parquet`, and the Float32 trap in it
+
+A 14-column artifact is **not coupled-runnable** without a per-cell source for the six env values: the four
+base boundary values reach the sampler via `M_cells.csv`, the env tail had no channel, and every consumer
+hand-built it from `cell_year_feats.parquet` in a bespoke script. `scripts/build_slow_cell_env_sidecar.py`
+emits `tables/cell_env.parquet` (67 420 cells — a superset of the pooled table's 58 766, so any grid cell can
+be provisioned) plus a manifest naming the basis and the column ORDER a positional consumer must respect.
+
+Two rules it encodes, both of which cost a run to learn (`[VERIFIED 2026-08-03]`):
+
+1. **`.cast(pl.Float64)` BEFORE any `mean()` over these columns.** `eco_diag_p_pet_ratio`,
+   `eco_diag_pet_mean`, `eco_diag_vpd_mean` and `pr_cv_monthly` are stored **`Float32`** in
+   `cell_year_feats.parquet` (`prec_mean` and `humid_mean` are `Float64`), and polars' `group_by().mean()`
+   accumulates in `Float32`. The natural aggregation therefore lands **~3.35e-07 relative** off the values
+   the shipped artifact was trained on: **199 093 of 200 000** probed rows differed, max |diff| **7.63e-05**
+   on `eco_diag_pet_mean` = exactly `5·2⁻¹⁶`, while the two `Float64` columns matched bit-exactly (which is
+   what identified the mechanism). Cast first ⇒ **bit-exact**. This is ADR 0023's train/inference shift at
+   its quietest — too small to look wrong, too large to be zero, and invisible to every coverage,
+   finiteness and duplicate-key check in the pipeline.
+2. **Gate a provisioning artifact against the SHIPPED table's `Xc`, never against a re-run of the producing
+   code.** Re-running the producer reproduces its bugs and proves nothing. Reading the real
+   `Xc.f64[:, ncond_base:]` for a random sample of real rows and requiring exact float64 equality is what
+   turned a silent 3e-07 shift into a hard failure. The same argument applies to any future sidecar.
 
 **Zero-compute companion.** `scripts/diagnose_slow_neighbour_skill.py` stratifies an EXISTING matched
 prediction pair by each test cell's distance to its nearest training cell. Run it first, but know its limit:
