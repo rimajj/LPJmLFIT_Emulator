@@ -550,6 +550,67 @@ the 2000–2019 historic climatology and a cell's historic and ssp370 rows are *
 Combined with `co2` being a hard constant 369.0 (ADR 0004), the only columns separating the two scenarios are
 the 4 live flux drivers. Say that rather than implying the env tail adds scenario information.
 
+### HOW to run the blocked-CV test above — the four numbers that decide the design (ADR 0040, 2026-08-03)
+
+Step 3 of the previous section is now implemented. **Do not hand-roll it again.**
+
+```bash
+# 0. provision the position artifacts (~7 s, login node; writes to $BASE/tables/)
+python scripts/build_slow_spatial_controls.py            # cell_latlon.txt + cell_geo_tail + cell_env_perm_tail
+# 1. GATE the fold machinery + pick BLOCK_DEG/BUFFER_DEG from measurement, before spending any compute
+BLOCK_DEGS=10,15,20 BUFFER_DEGS=0,2,5,10 NSAMPLE=500 julia --project=. scripts/blocked_cv_folds_probe.jl
+# 2. run a rung
+CAPTAG=blk15-buf5-p14env FOLD_MODE=block BLOCK_DEG=15 BUFFER_DEG=5 \
+  CELL_LATLON=$BASE/tables/cell_latlon.txt EVAL_NTREES=6 EVAL_SUBSAMPLE=2000000 MAX_DEPTH=22 QRF=1 \
+  SRC=$BASE/slow_copula_pooled_w20_t8env scripts/diagnose_copula_capacity.sh
+```
+
+Four measured facts that change how you design the experiment — each cost a run to learn:
+
+1. **`BUFFER_DEG=0` is NOT the test.** A blocked split alone leaves the block PERIMETER adjacent to training
+   data: at `BLOCK_DEG=15`, **10.9 %** of test cells still have a training cell at 0.5° and **24.2 %** within
+   1.0°, and a 1-NN lookup at 1.0° already reaches Wooddens r = 0.800. Treat `D=0` as a sensitivity rung and
+   put the verdict on `D >= 2`. The realized distances are `min 2.23 / 5.27 / 10.16°` at `D = 2 / 5 / 10`.
+2. **The block-size trade is balance vs training retention, and it is held CONSTANT across arms** (every arm
+   uses the same fold+buffer assignment), so it biases no delta — it only moves absolute levels and variance.
+   Measured on the 58 766-cell pooled table: `B=10` cell-balance 1.41 / 35.5 % of training cells retained at
+   `D=5`; **`B=15` 1.91 / 49.0 %** (the chosen middle); `B=20` 2.60 / 58.0 %. Hash folds balance at ~1.02.
+3. **`mtry` is a hidden fourth lever.** `DRF.fit_forest` uses `mtry_eff = round(Int, sqrt(p))` ⇒ **3** at
+   ncond 8 but **4** at ncond 14, so every published ncond-8-vs-14 comparison varied mtry too. Pass `MTRY=4`
+   on the narrow table to make the conditioning lever a matched pair (this is ADR 0033's failure mode again).
+4. **The baseline you want to compare against probably does not exist.** The in-place
+   `slow_copula_pooled_w20_t8/pred_*.f64` were written by `run_pooled_slow_copula.sh` at **40 × 50k / d14 /
+   QRF=0 / mtry 3** — a FOUR-lever gap to a `6 × 2M / d22 / QRF=1 / mtry 4 / ncond 14` rung. (`lines/S/STATE.md`
+   mislabelled it "60-tree": the 60 is `train_slow_copula.jl`'s artifact setting, printed later in the same
+   log.) Re-run the narrow arm at the matched capacity; never reuse those preds as arm A.
+
+**Controls, and what each one rules out.** Build them with the augment script's new `ENV_PARQUET`/`TAIL_TAG`
+knobs (one verified transform, one row universe) — `p14geo` = a pure-position tail
+(lat/lon/sin/cos, six wide so `p` and therefore `mtry` match) rules out "any positional encoding does this";
+`p14perm` = the true env tuples permuted across cells (bijection over the 6-way joint asserted by a
+lexicographic sort; neighbour correlation collapses 0.96–0.999 → 0.003–0.021) rules out "six extra columns
+buy capacity/mtry". A blocked `p14perm` run is pointless — a permuted tuple is still a unique per-cell key,
+so it can never support *spatial* interpolation in any fold mode.
+
+**Two traps.**
+- **`CAPTAG` is the only thing separating two rungs**, and `diagnose_copula_capacity.sh` wipes
+  `capacity/$CAPTAG` **unconditionally**. Two rungs differing only in `FOLD_MODE`/`BUFFER_DEG`/`MTRY` share a
+  natural CAPTAG ⇒ the second deletes the first's predictions, and run concurrently it deletes the first's
+  input symlinks mid-flight (the leak guard fingerprints `SRC` only and is blind to this). Encode the fold
+  scheme in `CAPTAG`, and `cp` any prediction set an accepted ADR rests on to a `frozen-*` read-only copy
+  (done for `capacity/{,pooled-}env-qrf-b6x2M`).
+- **On a `pooled` SRC, do not let the driver's `[3/3]` run `noise_floor_vs_emulator.py`.** Its `SRC2` defaults
+  to the *historic* seed2, and `percell_table` joins on `Cell` with `how="inner"`, so a pooled seed1 vs
+  historic seed2 silently shrinks to the intersection and reports a plausible floor/ceiling/`%GAP`. Score
+  pooled with `score_slow_copula_dispersion.py` instead (criteria 1 and 4 stay uncomputable — §"A seed2
+  exists for `historic` ONLY").
+
+**Zero-compute companion.** `scripts/diagnose_slow_neighbour_skill.py` stratifies an EXISTING matched
+prediction pair by each test cell's distance to its nearest training cell. Run it first, but know its limit:
+under hash folds **99.5 %** of cells have a training neighbour within 0.75° (q99 0.61°), so the far bins hold
+12–117 cells and their deltas flip sign. It cannot substitute for the refit — it is what PROVES the refit is
+necessary. It needs the fold map dumped **from Julia** (`mod(hash(c), kfolds)` is not reproducible in Python).
+
 ### `run_global_slow_copula.sh` SCORES a different estimator than it SHIPS (`[VERIFIED 2026-07-31]`)
 
 It has **two** tree knobs: `NTREES` (default **60**) feeds `train_slow_copula.jl` ⇒ the shipped `.rcop`, and
