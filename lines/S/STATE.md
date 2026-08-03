@@ -301,18 +301,21 @@ Each is `6×2M/d22/min_leaf20/QRF=1/KFOLDS=5/TRAIT_ONLY=1`; blocked rungs are `B
 | 1678610 | `p14perm-hash` | `..._t8perm` | 14 | hash | 4 |
 | 1678611 | `p8-blk15-buf5-mtry4` | `..._t8` | 8 | block s0 | **4** |
 | 1678612 | `p14env-blk15-buf5` | `..._t8env` | 14 | block s0 | 4 |
-| — | `p14geo-hash` | `..._t8geo` | 14 | hash | 4 | **RESUBMIT** |
-| — | `p14geo-blk15-buf5` | `..._t8geo` | 14 | block s0 | 4 | **RESUBMIT** |
+| 1678637 | `p14geo-hash` | `..._t8geo` | 14 | hash | 4 |
+| 1678638 | `p14geo-blk15-buf5` | `..._t8geo` | 14 | block s0 | 4 |
 
-**The two `p14geo` rungs were CANCELLED and need resubmitting** once `S-aug-geo2` (job 1678616) finishes:
-the first geo basis was rank-degenerate (`geo_abs_lat` vs `geo_cos_lat` Spearman **−1.000000** — `cos` is
+All six are submitted; the queue is `QOSGrpCpuLimit`-bound so expect them to start staggered.
+**The two `p14geo` rungs were CANCELLED and RESUBMITTED** after `S-aug-geo2` (job 1678616, exit 0) rebuilt
+`slow_copula_pooled_w20_t8geo` (`env_tail_tag geo_position_v2`, columns 0-7 re-verified bitwise-identical over
+all 42 227 077 rows): the first geo basis was rank-degenerate (`geo_abs_lat` vs `geo_cos_lat` Spearman **−1.000000** — `cos` is
 monotone in `|lat|`, so an axis-aligned tree saw ONE feature and the control was silently 5-D while declaring
 `ncond=14`, biasing the experiment toward its own hypothesis). Sixth column is now `geo_x = cos(lat)cos(lon)`
-and the builder GATES the basis (max |ρ| 0.954). Resubmit with:
+and the builder GATES the basis (max |ρ| 0.954). The template for any further rung (note `CAPTAG` MUST encode the fold scheme, and the new guard REFUSES a
+non-empty shadow dir unless `FORCE=1` — that guard already caught these two resubmissions):
 ```bash
 B=/p/tmp/jamirp/emulator_global; COMMON="EVAL_NTREES=6 EVAL_SUBSAMPLE=2000000 MAX_DEPTH=22 MIN_LEAF=20 KFOLDS=5 QRF=1 TRAIT_ONLY=1 NCPUS=64 TIME=06:00:00"
-env $COMMON CAPTAG=p14geo-hash       SRC=$B/slow_copula_pooled_w20_t8geo MTRY=0 FOLD_MODE=hash  scripts/diagnose_copula_capacity.sh
-env $COMMON CAPTAG=p14geo-blk15-buf5 SRC=$B/slow_copula_pooled_w20_t8geo MTRY=0 FOLD_MODE=block BLOCK_DEG=15 BUFFER_DEG=5 CELL_LATLON=$B/tables/cell_latlon.txt scripts/diagnose_copula_capacity.sh
+env $COMMON CAPTAG=<tbl>-blk15-buf5-s1 SRC=$B/slow_copula_pooled_w20_<tbl> MTRY=<0|4> FOLD_MODE=block \
+  BLOCK_DEG=15 BUFFER_DEG=5 BLOCK_SALT=1 CELL_LATLON=$B/tables/cell_latlon.txt scripts/diagnose_copula_capacity.sh
 ```
 
 #### Then, in priority order
