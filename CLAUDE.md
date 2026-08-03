@@ -375,6 +375,19 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 ---
 
+- **`tables/cell_year_feats.parquet` stores 4 of the 6 env conditioning columns as `Float32`, and polars'
+  `group_by().mean()` on a `Float32` column ACCUMULATES IN `Float32` (`[VERIFIED 2026-08-03]`).**
+  `eco_diag_p_pet_ratio` / `eco_diag_pet_mean` / `eco_diag_vpd_mean` / `pr_cv_monthly` are `Float32`;
+  `prec_mean` / `humid_mean` are `Float64`. So a per-cell aggregate of these columns **must
+  `.cast(pl.Float64)` BEFORE the `mean()`** or it lands ~**3.35e-07 relative** away from the value the
+  shipped 14-column artifact was actually conditioned on — measured: aggregating natively missed on
+  **199 093 of 200 000** probed rows (max |diff| **7.63e-05** on `eco_diag_pet_mean`, which is exactly
+  `5·2⁻¹⁶`, the float32 tell), while the two `Float64` columns matched bit-exactly. Cast first and the
+  reproduction is **bit-exact**. This is the ADR-0023 train/inference-shift trap in its quietest form: the
+  error is far too small to look wrong and far too large to be zero, and no coverage or finiteness check
+  sees it. `scripts/build_slow_cell_env_sidecar.py` carries the cast and **gates on exact float64 equality
+  against the shipped `Xc.f64` tail** rather than against a re-run of the producing code (which would be
+  circular). Any new per-cell derivation off this table needs the same treatment.
 - **`polars` `collect(engine="streaming")` is NOT deterministic in the KEY SET it emits at global scale
   (`[VERIFIED 2026-07-29]`, ADR 0036 §5b).** Two runs of the same `group_by` over the same 92 GB `ind` parquet
   produced **99 023 397** vs **99 028 310** rows — 141 of 58 496 cells differed, 4 913 rows missing net, and
