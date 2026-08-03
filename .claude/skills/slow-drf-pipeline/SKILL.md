@@ -550,6 +550,67 @@ the 2000–2019 historic climatology and a cell's historic and ssp370 rows are *
 Combined with `co2` being a hard constant 369.0 (ADR 0004), the only columns separating the two scenarios are
 the 4 live flux drivers. Say that rather than implying the env tail adds scenario information.
 
+### HOW to run the blocked-CV test above — the four numbers that decide the design (ADR 0040, 2026-08-03)
+
+Step 3 of the previous section is now implemented. **Do not hand-roll it again.**
+
+```bash
+# 0. provision the position artifacts (~7 s, login node; writes to $BASE/tables/)
+python scripts/build_slow_spatial_controls.py            # cell_latlon.txt + cell_geo_tail + cell_env_perm_tail
+# 1. GATE the fold machinery + pick BLOCK_DEG/BUFFER_DEG from measurement, before spending any compute
+BLOCK_DEGS=10,15,20 BUFFER_DEGS=0,2,5,10 NSAMPLE=500 julia --project=. scripts/blocked_cv_folds_probe.jl
+# 2. run a rung
+CAPTAG=blk15-buf5-p14env FOLD_MODE=block BLOCK_DEG=15 BUFFER_DEG=5 \
+  CELL_LATLON=$BASE/tables/cell_latlon.txt EVAL_NTREES=6 EVAL_SUBSAMPLE=2000000 MAX_DEPTH=22 QRF=1 \
+  SRC=$BASE/slow_copula_pooled_w20_t8env scripts/diagnose_copula_capacity.sh
+```
+
+Four measured facts that change how you design the experiment — each cost a run to learn:
+
+1. **`BUFFER_DEG=0` is NOT the test.** A blocked split alone leaves the block PERIMETER adjacent to training
+   data: at `BLOCK_DEG=15`, **10.9 %** of test cells still have a training cell at 0.5° and **24.2 %** within
+   1.0°, and a 1-NN lookup at 1.0° already reaches Wooddens r = 0.800. Treat `D=0` as a sensitivity rung and
+   put the verdict on `D >= 2`. The realized distances are `min 2.23 / 5.27 / 10.16°` at `D = 2 / 5 / 10`.
+2. **The block-size trade is balance vs training retention, and it is held CONSTANT across arms** (every arm
+   uses the same fold+buffer assignment), so it biases no delta — it only moves absolute levels and variance.
+   Measured on the 58 766-cell pooled table: `B=10` cell-balance 1.41 / 35.5 % of training cells retained at
+   `D=5`; **`B=15` 1.91 / 49.0 %** (the chosen middle); `B=20` 2.60 / 58.0 %. Hash folds balance at ~1.02.
+3. **`mtry` is a hidden fourth lever.** `DRF.fit_forest` uses `mtry_eff = round(Int, sqrt(p))` ⇒ **3** at
+   ncond 8 but **4** at ncond 14, so every published ncond-8-vs-14 comparison varied mtry too. Pass `MTRY=4`
+   on the narrow table to make the conditioning lever a matched pair (this is ADR 0033's failure mode again).
+4. **The baseline you want to compare against probably does not exist.** The in-place
+   `slow_copula_pooled_w20_t8/pred_*.f64` were written by `run_pooled_slow_copula.sh` at **40 × 50k / d14 /
+   QRF=0 / mtry 3** — a FOUR-lever gap to a `6 × 2M / d22 / QRF=1 / mtry 4 / ncond 14` rung. (`lines/S/STATE.md`
+   mislabelled it "60-tree": the 60 is `train_slow_copula.jl`'s artifact setting, printed later in the same
+   log.) Re-run the narrow arm at the matched capacity; never reuse those preds as arm A.
+
+**Controls, and what each one rules out.** Build them with the augment script's new `ENV_PARQUET`/`TAIL_TAG`
+knobs (one verified transform, one row universe) — `p14geo` = a pure-position tail
+(lat/lon/sin/cos, six wide so `p` and therefore `mtry` match) rules out "any positional encoding does this";
+`p14perm` = the true env tuples permuted across cells (bijection over the 6-way joint asserted by a
+lexicographic sort; neighbour correlation collapses 0.96–0.999 → 0.003–0.021) rules out "six extra columns
+buy capacity/mtry". A blocked `p14perm` run is pointless — a permuted tuple is still a unique per-cell key,
+so it can never support *spatial* interpolation in any fold mode.
+
+**Two traps.**
+- **`CAPTAG` is the only thing separating two rungs**, and `diagnose_copula_capacity.sh` wipes
+  `capacity/$CAPTAG` **unconditionally**. Two rungs differing only in `FOLD_MODE`/`BUFFER_DEG`/`MTRY` share a
+  natural CAPTAG ⇒ the second deletes the first's predictions, and run concurrently it deletes the first's
+  input symlinks mid-flight (the leak guard fingerprints `SRC` only and is blind to this). Encode the fold
+  scheme in `CAPTAG`, and `cp` any prediction set an accepted ADR rests on to a `frozen-*` read-only copy
+  (done for `capacity/{,pooled-}env-qrf-b6x2M`).
+- **On a `pooled` SRC, do not let the driver's `[3/3]` run `noise_floor_vs_emulator.py`.** Its `SRC2` defaults
+  to the *historic* seed2, and `percell_table` joins on `Cell` with `how="inner"`, so a pooled seed1 vs
+  historic seed2 silently shrinks to the intersection and reports a plausible floor/ceiling/`%GAP`. Score
+  pooled with `score_slow_copula_dispersion.py` instead (criteria 1 and 4 stay uncomputable — §"A seed2
+  exists for `historic` ONLY").
+
+**Zero-compute companion.** `scripts/diagnose_slow_neighbour_skill.py` stratifies an EXISTING matched
+prediction pair by each test cell's distance to its nearest training cell. Run it first, but know its limit:
+under hash folds **99.5 %** of cells have a training neighbour within 0.75° (q99 0.61°), so the far bins hold
+12–117 cells and their deltas flip sign. It cannot substitute for the refit — it is what PROVES the refit is
+necessary. It needs the fold map dumped **from Julia** (`mod(hash(c), kfolds)` is not reproducible in Python).
+
 ### `run_global_slow_copula.sh` SCORES a different estimator than it SHIPS (`[VERIFIED 2026-07-31]`)
 
 It has **two** tree knobs: `NTREES` (default **60**) feeds `train_slow_copula.jl` ⇒ the shipped `.rcop`, and
@@ -589,12 +650,67 @@ agb/Height `r_center` headroom only 0.011/0.013) — are UNMEASURED at that conf
 the seed2 table with the same `STRUCT_AXES`" when the seed2 tables DO carry agb+Height and it is the seed1
 shadow that was trimmed — a multi-hour rebuild that fixes nothing. Fixed to name the narrower side.
 
-### A seed2 exists for `historic` ONLY — so two of the four criteria are not computable for `pooled`
+### PRODUCING A NEW SEED MEMBER of the C ground truth — a second seed is a second SPIN-UP (ADR 0041)
 
-`slow_copula_historic_seed2{,_t7,_t8}` are the only seed2 tables; there is **no pooled and no ssp370 seed2**.
-The floor is what defines the attenuation-corrected ceiling, so **criterion 1's `%GAP` and criterion 4's
-`r_center` cannot be measured for the artifact line M pins.** Do not let their absence read as a pass.
-Criteria 2 and 3 need seed1 alone:
+Until 2026-08-03 there was no ssp370/pooled seed2, and repeated attempts to make one produced a
+**byte-identical clone of seed1**. Do not re-derive this; the whole procedure is here.
+
+**`random_seed` is INERT in any `-DFROM_RESTART` run.** With `"new_seed": false` the per-cell RAND48 seeds
+are restored from the restart file (`newgrid.c:507-513` → `freadcell.c:37` `freadseed`) and the `setseed`
+that would apply `config->seed_start` is gated off (`newgrid.c:520-521`); `seed_start` is applied once at
+parse time (`fscanconfig.c:231`) and then overwritten from the restart header (`openrestart.c:139-140`).
+The historic pair is independent only because its 1000-yr **spin-ups** ran *without* `-DFROM_RESTART`,
+taking `newgrid.c:460` whose `setseed(grid[i].seed, seed_start+(i+startgrid)*36363)` is **ungated** — you
+can read `random_seed` straight out of the restart bytes (cell 156: `(13070,36533,86)` seed1 vs
+`(13070,36534,86)` seed2). **And the log never says `Random seed: N`** — with `new_seed:false`
+`fprintconfig.c:748-751` prints `Reading random seeds from restart file.`, which is why the clone survived
+three weeks.
+
+⇒ **To make the seed-N member of a scenario, copy the seed1 config and repoint `restart_filename` at the
+historic seed-N restart.** Keep `new_seed: false`: flipping it would discard 1020 years of evolved RNG
+state at the scenario boundary, a discontinuity seed1 does not have, and would make the members differ in
+protocol as well as seed. Keep `random_seed: N` as documentation and know it is inert.
+
+Reference member: `.../ssp370/ground_truth/model_output/transient_2020_2100_npatch25_random_seed2_from_hist_seed2/`
+— **four** edits off seed1: restart (the fix) · run dir · `random_seed` · the **co2 path** (the seed1 path
+rotted; see CLAUDE.md §1 for the recovered file + md5). 2048 tasks / 16 nodes, ~1.5 h, 193 GB `ind` CSV.
+
+Three things that must be checked and are each a step people skip:
+
+1. **The stock ground-truth `.jcf` is defective in three ways** — it ends `rc=0` + bare `exit` (so it
+   **always exits 0**: a run dying mid-century leaves a plausible truncated 193 GB CSV behind a green
+   `sacct` row), it pins **no modules** (inherits the submitting shell; a purged env leaves
+   `libnetcdf.so.19`/`libudunits2.so.0` unresolved), and it sets no `-D`. Fix all three before submitting.
+   Judge success only from `lpjml successfully terminated, 67420 grid cells processed.`
+2. **Gate independence before deriving anything:** `scripts/diagnose_ind_seed_independence.py`
+   (`--candidate/--sibling/--log/--expect-cells/--expect-last-year`). **Equal file size to the sibling is
+   the copy signature**; it also samples MB windows at six offsets. A floor built from a clone reports
+   `floor_r ≡ 1` — fabricated headroom, silently.
+3. **Convert with `scripts/build_slow_ind_parquet.py <SRC.csv> <OUT.parquet>`.** The OUT name is
+   load-bearing (`build_slow_runtime_table.py` resolves `SCENARIO`/`SEED` to
+   `ind_{hist,ssp370}_seed{1,2}_all.parquet`), and the explicit `schema_overrides` is load-bearing (polars
+   infers `Wooddens` as integer from the first rows). ~92 GB, ~5–6 min at `POLARS_MAX_THREADS=16`.
+   The only other builder is the FROZEN sibling's `global_extract.py`, whose `--which` is argparse-locked
+   to three hard-coded names — it **cannot** name a new scenario/seed.
+
+**A seed pair is only valid at the same binary AND the same `--ntasks`.** A subset re-run is *not* a
+per-cell replica of the global run: at cell 42490, same binary/restart/forcing, 1 cell alone diverges from
+the 2048-task truth at the first step while a 21-cell block is bit-identical for 15 years then diverges
+(CLAUDE.md §3). So an equivalence gate between two *builds* must be a matched-decomposition full-grid run —
+`scripts/diagnose_ind_binary_equality.py` carries the decomposition control and exits **3 = VOID** when the
+control fires, rather than reporting a false verdict.
+
+### A seed2 existed for `historic` ONLY — two of the four criteria were not computable for `pooled`
+
+`slow_copula_historic_seed2{,_t7,_t8}` were the only seed2 tables (the ssp370 one being a clone). The floor
+is what defines the attenuation-corrected ceiling, so **criterion 1's `%GAP` and criterion 4's `r_center`
+could not be measured for the artifact line M pins.** Do not let their absence read as a pass. With the
+ssp370 seed2 member now produced they become computable — **but an ssp370 seed2 parquet is necessary and
+not sufficient**: the pooled seed1 tables were built with `STEM_CAP=400` while ADR 0030 Decision 1 requires
+the cap OFF for a floor, and the cap's rank key is `pl.struct(['Cell','Patch','Year']).hash(seed=seed)`
+(`build_slow_runtime_table.py:381`), so a `SEED=2` build retains a **different set of whole patch-year
+clusters** ⇒ a deflated floor and a flattered emulator. Rebuild both sides uncapped, or state the deviation
+beside the criterion. Criteria 2 and 3 need seed1 alone:
 - **criterion 3** — `scripts/score_slow_copula_ks.py`, which auto-reads the baseline from
   `figures/emulator_validation/<scenario>_t8/metrics_traits.txt` keyed on the manifest's `scenario`, so it
   compares against the RIGHT scenario row by construction. Never re-hardcode a baseline.

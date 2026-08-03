@@ -449,3 +449,131 @@ like-for-like figures are the full-stack ones: historic +0.087/+0.1766 vs pooled
 This removes one of the two objections to promoting the artifact but NOT the important one: the pooled folds
 are still `mod(hash(cell), k)`, and the env columns are bit-identical for a cell across the two scenarios, so
 the interpolation-vs-transfer confound is untouched. Spatially blocked CV remains the gate.
+
+## 2026-08-03 — the ssp370 second seed, finally: a second seed is a second SPIN-UP  [ADR 0041]
+
+The task was narrow — "finally get the random seed 2 data, with the correct random seed and the correct
+spinup" — and the reason earlier attempts kept failing turned out to be a single fact worth more than the
+data: **`random_seed` is inert in any `-DFROM_RESTART` run.**
+
+Established from primary source, not assumed. With `"new_seed": false` the per-cell RAND48 seeds are
+restored from the restart file (`newgrid.c:507-513` -> `freadcell.c:37` `freadseed`) and the `setseed` that
+would apply `config->seed_start` is gated off (`newgrid.c:520-521`). `seed_start` *is* applied once at parse
+time (`fscanconfig.c:231`) but is then unconditionally overwritten from the restart header
+(`openrestart.c:139-140`) with no consumer in between; its only trajectory-relevant consumers
+(`iterate.c:108/148/181`) are unreachable at `nspinup:0`/`fix_climate:false`. The historic pair is
+independent only because its 1000-yr spin-ups ran WITHOUT `-DFROM_RESTART`, taking `newgrid.c:460` whose
+`setseed(grid[i].seed, seed_start+(i+startgrid)*36363)` is UNGATED — and that is literally readable in the
+restart bytes (cell 156: `(13070,36533,86)` vs `(13070,36534,86)`).
+
+So the broken member, which set `random_seed: 2` while restarting from the historic **seed1**
+`restart_2019.lpj`, inherited seed1's exact state. Both `ind_2020_2100.csv` are 193 097 583 638 B and
+md5-identical over six sampled MB windows; the historic pair, by contrast, differs in size and in all six.
+The trap that let it live three weeks: with `new_seed:false` the log prints `Reading random seeds from
+restart file.`, never `Random seed: 2` (`fprintconfig.c:748-751`). Nothing warned, and a floor built from it
+returns `floor_r == 1` — fabricated headroom.
+
+Fix: repoint `restart_filename` at the historic **seed2** restart. Kept `new_seed:false` deliberately —
+flipping it would discard 1020 years of evolved RNG state at the 2019/2020 boundary, a discontinuity seed1
+does not have, and would make the members differ in protocol as well as seed.
+
+`lpjcheck` then caught something I had not looked for: **`ERROR100` on the co2 input.** The seed1 config
+reads `~/scripts/clustering/climclusterpy_package/global_co2_ann_1700_2019_const_2100.txt`, and that
+directory was repurposed for an unrelated project on 2026-07-28 — so the committed seed1 ssp370 config has
+been unrunnable since, and nobody noticed. Recovered the file and proved its identity four independent ways
+before using it: the git blob (its only version in that repo's history, added 07-13, deleted 07-28, so it
+spans the 07-15 seed1 run unchanged); `/home/jamirp/.snapshot/weekly.2026-07-26_0015/` with **mtime
+2026-07-07**, predating the run; byte-exact reconstruction from TRENDY v12 (1700-2019 verbatim, then 2019's
+409.63 held flat); and agreement with ADR 0004. Installed at
+`.../clustering/global/global_co2_ann_1700_2019_const_2100.txt`, md5 `ed5699b9c92d4d25857889f644b153db`. So
+the provenance is FOUR edits off seed1, not three, and the forcing is content-identical.
+
+An adversarial verification pass over the plan (7 agents) found three defects in the stock ground-truth job
+file that I had copied without reading: `rc=0` + a bare `exit` (it **always** exits 0, so a run dying
+mid-century leaves a plausible truncated 193 GB CSV behind a green `sacct` row), no module pinning (a purged
+env leaves `libnetcdf.so.19`/`libudunits2.so.0` unresolved), and no `-D`. All three fixed. It also corrected
+me on the binary: `bin/lpjml` is not "Feb-5 source + the daily-grass-GPP patch" but additionally a
+**RHEL8->RHEL9 toolchain rebuild** (GCC 8.5.0 -> 11.5.0, GLIBC_2.14 -> 2.33/2.34). Two things I could
+settle by reading — the patch is inert here (unopened outputs map to a dedicated trash slot,
+`initoutput.c:50-67`) and no physics par file drifted (`find -newermt 2026-07-15` returns exactly the
+patch's four files) — but neither proves trajectory equality.
+
+**The gate I built to settle it came back VOID, and that is the most useful result of the session.** I ran
+cell 42490 twice with the same binary, restart and forcing, varying only the cell set, with the 21-cell
+block as a decomposition control:
+
+| run | cell set | `ind` rows @42490 | first year != global truth | years matching |
+|---|---|---|---|---|
+| A | 42490 alone | 18 530 | **2021** (first step) | 2 / 81 |
+| B | 42480-42500 | 19 366 | **2035** | 16 / 81 (contiguous 2020-2034) |
+| truth | 67 420 @ 2048 tasks | 18 790 | - | - |
+
+B is bit-identical for 15 consecutive years then diverges; A diverges immediately; at 2020 A and B already
+differ in exactly `fpc_ind` and `isdead`. So **a subset re-run is not a per-cell replica of the global run**
+— the *seek* is decomposition-independent, the *evolution* is not. Checked and ruled out the obvious
+mechanism: the RNG is fully per-cell (`permute` takes `stand->cell->seed`, there is no `drand48()`/
+`lrand48()` anywhere in `src/`, `config->seed` is read only in the unreachable spinup branches). I am NOT
+claiming a mechanism; the pattern is what a stochastic gap model does to any perturbation once one
+individual dies or establishes differently. This retires CLAUDE.md §3's implied per-cell reproducibility and
+explains the previously recorded ~1.6e-4 `whc_nat` discrepancy as the same effect through a smoother
+variable. It also means the decomposition confound is larger than the binary signal, so the subset gate can
+never answer the cross-build question — replaced by a matched-decomposition full-grid 2048-task re-run of
+the seed1 member (job 1678607), scored on `globalflux` (10 KB, 81-year global aggregate) and `vegc` (65 MB,
+per-cell annual).
+
+Consequence worth carrying: **a seed pair is valid only at the same binary AND the same `--ntasks`.** seed2
+satisfies the second by construction. And this bears on line M, whose per-cell oracle work uses single-cell
+re-runs — raised in STATE.md; the fact went to CLAUDE.md §3 (shared) rather than the M-owned
+`fdiff-validate` skill.
+
+Jobs left running unattended, fully chained so nothing needs a session present: `1678574` the corrected
+member (2048 tasks / 16 nodes) -> `1678595` the independence gate -> `1678596` the parquet, plus `1678607`
+the cross-build gate. `afterok` throughout, so a missing parquet means the parent died rather than that
+nothing was scheduled.
+
+Three reusable scripts captured rather than left as one-off commands: `build_slow_ind_parquet.py` (the
+`ind`->parquet step had NO in-repo builder at all — the only one was the frozen sibling's
+`global_extract.py`, whose `--which` is argparse-locked to three hard-coded names and so literally cannot
+name a new scenario/seed), `diagnose_ind_seed_independence.py` (equal file size to the sibling is the copy
+signature), and `diagnose_ind_binary_equality.py` (carries the decomposition control and exits 3 = VOID
+rather than reporting a false verdict).
+
+## 2026-08-03 — the address null was on the wrong basis, and the gate metric is nearly blind to warming (ADR 0040)
+
+Picked up the handoff's item 3 (*"the decisive experiment and the gate on production: spatially BLOCKED CV"*)
+and found, before spending any compute, that the decision rule it carried was wrong. ADR 0038 said *"decays
+toward the 1-NN level (r≈0.80) ⇒ it is an address"*. That 0.80 is a pure address's skill under **hash** folds;
+the fold-mode-matched null under `block(15°,5°)` is **0.140/0.210**. The rule was off by ~0.63 in r, in the
+direction that would have declared a strong response an address — guardrail 7's reference-basis error, which
+ADR 0033 already records this line making twice. Corrected and pre-registered in ADR 0040 *before* any forest
+log was opened, which is the only thing that stops a decision rule being written after the outcome is known.
+
+Two results came out of the zero-compute pre-registration and both changed the milestone's framing.
+
+**The env tuple is not merely an address.** A 1-NN surrogate under the exact fold designs the forests run
+(read from the Julia code, since `mod(hash(tile),k)` is not reproducible in Python) shows `env6` retaining
+73 % of its hash-fold Wooddens skill under blocking (0.811 → 0.594) where a pure geographic address retains
+21 % (0.837 → 0.140), and the conditioning DELTA staying ~invariant (+0.078 → +0.076/+0.058). So the screen
+predicts, in advance, that the blocked forests will find the gain survives.
+
+**But the gate metric was the wrong instrument all along.** `sd(Δobs)/sd(level)` is only 0.20–0.31, so
+`emu_r` — a level statistic — is 3–5× more sensitive to spatial interpolation than to the warming response a
+coupled run actually turns on. Measured from predictions that already existed: the shipped artifact **damps
+the mean Wooddens warming shift by 37 %** (Rb −892 [−1022,−756] against +2433 observed) and captures only
+24–62 % of the transient pattern against a 0.87–0.96 split-half ceiling. The available comparison arm is
+4-lever confounded, so causation waits on the matched `p8` rung — but the spatial question turns out to have
+been a proxy for a temporal one that is directly measurable and largely unmeasured.
+
+Six adversarial reviewers ran on the design before it was built. Their most useful catches, all acted on:
+`BUFFER_DEG=0` does not remove the mechanism under test (the block perimeter keeps 24.2 % of test cells within
+1° of training data), `mtry` is a hidden fourth lever (`sqrt(p)` is 3 at ncond 8 and 4 at ncond 14, so every
+published ncond-8-vs-14 comparison varied it too), the pooled baseline everyone assumed existed is a 4-lever
+gap from the shipped rung and was mislabelled "60-tree" when the eval ran at 40, and `capacity/*env-qrf-b6x2M`
+— the only prediction sets behind ADR 0038's numbers — were one `CAPTAG` reuse away from deletion. Also caught
+a defect in my own control: the first `p14geo` basis had `geo_abs_lat` and `geo_cos_lat` at Spearman
+−1.000000, so the address control was silently 5-dimensional while declaring `ncond=14`, biasing the
+experiment toward its own hypothesis. Cancelled those two rungs, fixed the basis, and made the builder gate it.
+
+One protocol note worth recording: a **concurrent line-S session** was running in this same worktree (it took
+ADR 0039 for the ssp370 seed2 work and submitted the `S-FIT_ssp370_seed2` chain). Committed only my own files
+by explicit path throughout.

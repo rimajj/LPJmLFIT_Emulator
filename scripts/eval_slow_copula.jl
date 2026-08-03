@@ -19,7 +19,12 @@
 #
 #   OUT=/p/tmp/jamirp/emulator_global/slow_copula_historic KFOLDS=5 julia scripts/eval_slow_copula.jl
 # ENV: OUT, KFOLDS (5), NTREES/MAX_DEPTH/MIN_LEAF/SUBSAMPLE, QRF (0; 1 = Meinshausen QRF leaf weighting,
-#      ADR 0037). Heavy (K×naxes forest fits, store_values) → SLURM.
+#      ADR 0037), MTRY (0 = DRF's own sqrt(p) default), FOLD_MODE (hash|block), BLOCK_DEG (15),
+#      BUFFER_DEG (0), BLOCK_SALT (0; replicates the tile->fold colouring, whose spread is the same
+#      order as the effect being measured), CELL_LATLON (required by FOLD_MODE=block; see the block below).
+#      Heavy (K×naxes forest fits, store_values) → SLURM.
+#      EVERY new knob defaults to the pre-ADR-0040 behaviour, so an unchanged invocation writes
+#      byte-identical `pred_<axis>.f64` (guardrail 4).
 
 include(joinpath(@__DIR__, "..", "src", "drf.jl"))
 using .DRF
@@ -89,6 +94,171 @@ function leaf_geometry(f::DRF.Forest, max_depth::Int)
     )
 end
 
+# ── ADR 0040: spatially BLOCKED folds and a physical training BUFFER ───────────────────────────────
+#
+# WHY. `mod(hash(cell), kfolds)` scatters test cells uniformly, so a test cell's geographic NEIGHBOURS stay
+# in the training fold — measured on the historic t8 basis, 99.5 % of test cells have a training cell within
+# 0.75° and the q99 is 0.61°, i.e. essentially every test cell has an IMMEDIATELY ADJACENT training cell.
+# The six env conditioning columns of ADR 0038 are a per-cell constant whose east-neighbour correlation is
+# 0.96–0.999, so under that split the evaluation cannot separate "learned an environmental response" from
+# "interpolated from the adjacent cell". Blocked folds + a buffer are the only way to tell.
+#
+# WHAT. `FOLD_MODE=block` assigns folds to B°×B° TILES (`mod(hash(tile), kfolds)`, a packed `Int` so it
+# inherits exactly the same `hash` stability caveat as the hash branch), and `BUFFER_DEG=D` then removes
+# from each fold's TRAINING set every cell within D° of ANY of that fold's test cells. The buffer is a
+# separate mask that never touches `te`, so every row remains in exactly one TEST fold and the coverage
+# assert below keeps its meaning; a buffered cell is still trained on in the other K−1 folds.
+#
+# The dilation is done in GRID index space but with the longitude radius scaled by 1/cos(lat), so D is a
+# PHYSICAL width rather than a lat/lon-index width (at 70°N a 5-index longitude step is only ~1.7° of great
+# circle). The two passes are applied in sequence, which makes the result a conservative SUPERSET of the
+# true great-circle ball — it can remove slightly more training cells than a strict ball, never fewer, so
+# it cannot manufacture a false "the gain survives blocking".
+struct CellGeo
+    ilat::Vector{Int32}       # indexed by (cell + 1) over 0:maxcell
+    ilon::Vector{Int32}
+    known::BitVector
+    nlat::Int
+    nlon::Int
+    dlat::Float64
+    lat0::Float64
+    lon0::Float64
+end
+
+"""
+    read_cell_latlon(path) -> CellGeo
+
+Parse the plain-text per-cell position table written by `scripts/build_slow_spatial_controls.py`
+(`# key value` metadata lines, then `cell ilat ilon lat lon`). Plain text because this script loads only
+`src/drf.jl` and has no CSV/Parquet/NetCDF dependency (ADR 0014 keeps the runtime `[deps]` empty).
+"""
+function read_cell_latlon(path::AbstractString)
+    meta = Dict{String, Float64}()
+    cs = Int[]
+    ils = Int[]
+    ios = Int[]
+    for line in eachline(path)
+        s = strip(line)
+        isempty(s) && continue
+        if startswith(s, "#")
+            p = split(s)
+            if length(p) == 3
+                v = tryparse(Float64, p[3])
+                v === nothing || (meta[p[2]] = v)
+            end
+            continue
+        end
+        p = split(s)
+        length(p) >= 3 || error("malformed row in $path: \"$s\"")
+        push!(cs, parse(Int, p[1]))
+        push!(ils, parse(Int, p[2]))
+        push!(ios, parse(Int, p[3]))
+    end
+    for k in ("nlat", "nlon", "dlat", "lat0", "lon0")
+        haskey(meta, k) || error("$path is missing the `# $k <value>` metadata line")
+    end
+    isempty(cs) && error("$path has no data rows")
+    maxcell = maximum(cs)
+    ilat = zeros(Int32, maxcell + 1)
+    ilon = zeros(Int32, maxcell + 1)
+    known = falses(maxcell + 1)
+    for j in eachindex(cs)
+        c = cs[j]
+        ilat[c + 1] = Int32(ils[j])
+        ilon[c + 1] = Int32(ios[j])
+        known[c + 1] = true
+    end
+    return CellGeo(
+        ilat, ilon, known, round(Int, meta["nlat"]), round(Int, meta["nlon"]),
+        meta["dlat"], meta["lat0"], meta["lon0"],
+    )
+end
+
+"""
+    block_folds(cells, geo, kfolds, block_deg) -> Vector{Int}
+
+Fold id per ROW, assigned to the cell's `block_deg`×`block_deg` tile. Tile offsets are taken from the whole
+globe (`+90` / `+180`), not from this grid's crop, so the tiling is independent of the grid file's extent.
+"""
+function block_folds(cells::Vector{Int64}, geo::CellGeo, kfolds::Int, block_deg::Float64, salt::Int = 0)
+    ucells = unique(cells)
+    miss = [c for c in ucells if !(0 <= c <= length(geo.known) - 1) || !geo.known[c + 1]]
+    if !isempty(miss)
+        error(
+            "$(length(miss)) of $(length(ucells)) table cells are absent from CELL_LATLON " *
+                "(e.g. $(first(miss, 5))). Refusing to fall back to hash folds for a subset — that would " *
+                "reintroduce the very interpolation confound being tested, for an unknown set of cells."
+        )
+    end
+    tile = Vector{Int}(undef, length(cells))
+    @inbounds for j in eachindex(cells)
+        c = cells[j]
+        lat = geo.lat0 + geo.dlat * geo.ilat[c + 1]
+        lon = geo.lon0 + geo.dlat * geo.ilon[c + 1]
+        tlat = floor(Int, (lat + 90.0) / block_deg)
+        tlon = floor(Int, (lon + 180.0) / block_deg)
+        tile[j] = tlat * 100_000 + tlon
+    end
+    ntile = length(unique(tile))
+    println("   FOLD_MODE=block: $ntile tiles of $(block_deg)° over $(length(ucells)) cells, salt=$salt")
+    # ONE tile→fold colouring is ONE draw, and its spread is the same order as the effect being measured, so
+    # the salt exists to replicate it. `salt = 0` adds nothing to the packed tile id, so the default
+    # colouring is bit-identical to the unsalted one.
+    return Int[mod(hash(t + salt * 7_000_003), kfolds) for t in tile]
+end
+
+"""
+    buffer_rows(cells, geo, te, buffer_deg) -> BitVector
+
+Rows whose cell lies within `buffer_deg` of ANY test cell but is NOT itself a test cell — the rows to drop
+from THIS fold's training set. Latitude is clipped (the grid's lat edges are real data edges); longitude
+WRAPS modulo `nlon` (the ±180 seam is a periodic boundary, not an edge).
+"""
+function buffer_rows(cells::Vector{Int64}, geo::CellGeo, te::BitVector, buffer_deg::Float64)
+    n = length(cells)
+    rad = round(Int, buffer_deg / geo.dlat)
+    rad <= 0 && return falses(n)
+    nlat, nlon = geo.nlat, geo.nlon
+    g = falses(nlat, nlon)
+    @inbounds for j in 1:n
+        if te[j]
+            c = cells[j]
+            g[geo.ilat[c + 1] + 1, geo.ilon[c + 1] + 1] = true
+        end
+    end
+    # pass 1 — longitude, radius scaled by 1/cos(lat) so `buffer_deg` is a physical width; wraps mod nlon
+    g1 = falses(nlat, nlon)
+    @inbounds for i in 1:nlat
+        latdeg = geo.lat0 + geo.dlat * (i - 1)
+        cl = max(cos(deg2rad(latdeg)), 1.0e-3)
+        ri = min(ceil(Int, rad / cl), nlon ÷ 2)
+        for j in 1:nlon
+            if g[i, j]
+                for dj in (-ri):ri
+                    g1[i, mod(j - 1 + dj, nlon) + 1] = true
+                end
+            end
+        end
+    end
+    # pass 2 — latitude, uniform radius, CLIPPED at the grid's real data edges
+    g2 = falses(nlat, nlon)
+    @inbounds for i in 1:nlat, j in 1:nlon
+        if g1[i, j]
+            for di in max(1, i - rad):min(nlat, i + rad)
+                g2[di, j] = true
+            end
+        end
+    end
+    buf = falses(n)
+    @inbounds for j in 1:n
+        if !te[j]
+            c = cells[j]
+            buf[j] = g2[geo.ilat[c + 1] + 1, geo.ilon[c + 1] + 1]
+        end
+    end
+    return buf
+end
+
 function main()
     man = read_manifest(joinpath(DATA, "manifest_copula.txt"))
     n = parse(Int, man["n"])
@@ -138,21 +308,53 @@ function main()
     # default equal-weight concatenation of all leaf values, which over-weights whichever tree
     # happened to land x in a LARGE leaf. Default 0 => this script stays byte-identical.
     qrf = get(ENV, "QRF", "0") == "1"
-    @info "loaded copula table" n ncond naxes prod_axes nstruct struct_axes ncells = length(unique(cells)) kfolds
+    # ADR 0040. `MTRY=0` (the default) leaves `DRF.fit_forest`'s own `mtry::Int = 0` sentinel in place, so
+    # this script stays byte-identical. It is exposed because `mtry_eff = round(Int, sqrt(p))` is 3 at
+    # ncond 8 but 4 at ncond 14 — so an ncond-8-vs-14 comparison silently varies mtry too, and forcing
+    # MTRY=4 on the narrow table is what makes the conditioning lever a matched pair (ADR 0033's lesson).
+    mtry = parse(Int, get(ENV, "MTRY", "0"))
+    fold_mode = get(ENV, "FOLD_MODE", "hash")
+    block_deg = parse(Float64, get(ENV, "BLOCK_DEG", "15"))
+    buffer_deg = parse(Float64, get(ENV, "BUFFER_DEG", "0"))
+    block_salt = parse(Int, get(ENV, "BLOCK_SALT", "0"))
+    cell_latlon = get(ENV, "CELL_LATLON", "")
+    fold_mode in ("hash", "block") || error("FOLD_MODE must be `hash` or `block`, got \"$fold_mode\"")
+    @info "loaded copula table" n ncond naxes prod_axes nstruct struct_axes ncells = length(unique(cells)) kfolds fold_mode block_deg buffer_deg block_salt mtry
 
-    fold = Int[mod(hash(c), kfolds) for c in cells]        # each cell in exactly ONE test fold
+    # `hash` reproduces the historic split EXACTLY (same expression, same order, same element type) so every
+    # published rung stays comparable; `block` is the ADR-0040 spatial split. See the CellGeo block above.
+    fold = if fold_mode == "block"
+        isempty(cell_latlon) && error("FOLD_MODE=block requires CELL_LATLON (build_slow_spatial_controls.py)")
+        block_folds(cells, read_cell_latlon(cell_latlon), kfolds, block_deg, block_salt)
+    else
+        Int[mod(hash(c), kfolds) for c in cells]        # each cell in exactly ONE test fold
+    end
+    geo = (fold_mode == "block" && buffer_deg > 0) ? read_cell_latlon(cell_latlon) : nothing
+    fmn, fmx = extrema(fold)
+    (0 <= fmn && fmx < kfolds) || error("fold ids out of range: [$fmn, $fmx] for kfolds=$kfolds")
     preds = [fill(NaN, n) for _ in 1:nall]
     for k in 0:(kfolds - 1)
         te = fold .== k
-        tr = .!te
+        # The BUFFER enters ONLY here, as a separate mask: `te` stays a partition of all rows, so every row
+        # is still in exactly one TEST fold and the coverage assert below keeps its meaning. With
+        # buffer_deg == 0 this is `falses(n)` and `tr` is bit-identical to `.!te`.
+        buf = geo === nothing ? falses(n) : buffer_rows(cells, geo, te, buffer_deg)
+        tr = (.!te) .& (.!buf)
         ntr = count(tr)
         nte = count(te)
+        nbuf = count(buf)
+        # Distinct messages: an empty TRAINING fold makes every leaf empty, `predict_quantile` returns NaN,
+        # and the coverage assert below then fires with a message blaming fold coverage instead
+        # (the slow-drf-pipeline FOLD TRAP, reached by a second route).
+        ntr > 0 || error("fold $k has an EMPTY TRAINING set (nbuf=$nbuf) — BUFFER_DEG=$buffer_deg is too wide")
+        nte > 0 || error("fold $k has an EMPTY TEST set — check BLOCK_DEG/KFOLDS")
+        ntr < subsample && @warn "fold $k: train_rows < SUBSAMPLE — this rung's capacity is NOT matched" ntr subsample
         teidx = findall(te)
         Xtr = Xc[tr, :]
         for (a, ax) in enumerate(all_axes)
             f = DRF.fit_forest(
                 Xtr, Ys[a][tr]; ntrees = ntrees, max_depth = max_depth, min_leaf = min_leaf,
-                subsample = min(subsample, ntr), seed = a, store_values = true,
+                mtry = mtry, subsample = min(subsample, ntr), seed = a, store_values = true,
             )
             # The OOS quantile draw per (row, axis) is the eval's dominant cost (~naxes·kfolds·n forest
             # traversals — millions at global scale). PARALLELISE across JULIA_NUM_THREADS: each test row
@@ -171,7 +373,10 @@ function main()
             end
             println("   axis $(rpad(String(ax), 10)) [$(axis_kind(a, naxes))] done (fold $k)"); flush(stdout)
         end
-        println("== fold $k/$(kfolds - 1): test_rows=$nte train_rows=$ntr"); flush(stdout)
+        println(
+            "== fold $k/$(kfolds - 1): test_rows=$nte train_rows=$ntr buffered_rows=$nbuf " *
+                "test_cells=$(length(unique(cells[te]))) train_cells=$(length(unique(cells[tr])))"
+        ); flush(stdout)
     end
     for a in 1:nall
         @assert !any(isnan, preds[a]) "axis $(all_axes[a]): some rows never in a test fold"
@@ -200,4 +405,9 @@ function main()
     return nothing
 end
 
-main()
+# Run only when invoked as a script, so `scripts/blocked_cv_folds_probe.jl` can `include` this file and
+# exercise `block_folds`/`buffer_rows` directly without triggering a 22 GB table read. The driver always
+# invokes it as `julia scripts/eval_slow_copula.jl`, so this is byte-identical in production.
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end

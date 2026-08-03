@@ -36,7 +36,8 @@ SpeedyWeather. Current phase status and the prioritized orders live in `MEMORY.m
 | Git remote (SSH alias) | `git@github-esm:rimajj/LPJmLFIT_Emulator.git` (deploy key `~/.ssh/esm_land_emulator_deploy`) |
 | **C source** (LPJmL-FIT v5.6.004) | `/home/jamirp/lpjml56fit` (LPJROOT; **not** the stale `~/waldspektrum`) |
 | C binary (rebuilt, emits daily grass GPP/NPP) | `/home/jamirp/lpjml56fit/bin/lpjml` (pristine backup: `bin/lpjml.pre_dgrass.bak`) |
-| Active param files | `lpjmlfit.js`, `par/param_lpjmlfit.js`, `par/pft_lpjmlfit.js` (**not** `par/pft.js`), `par/outputvars.js`, `include/conf.h` |
+| Active param files | `lpjmlfit.js`, **`param_lpjmlfit.js`** (LPJROOT **root**, not `par/` — found via `-I$LPJROOT`; it includes `par/{lpjparam_fit,soil_20m,pft_lpjmlfit,manage_*,outputvars}.js`), `par/pft_lpjmlfit.js` (**not** `par/pft.js`), `par/outputvars.js`, `include/conf.h`. ⚠ LPJROOT also holds **untracked** `param_lpjmlfit_newseedpool.js` / `par/lpjparam_fit_newseedpool.js` with `k_est_inherit` 0.02 → 2e-13 (11 orders of magnitude). Nothing references them, but `#include "param_lpjmlfit.js"` is the cpp **quote** form, so a stray copy in a run's `scripts_for_running_the_model/` would silently shadow LPJROOT's and change the physics with no visible config diff. |
+| ssp370 CO2 forcing (recovered 2026-08-03) | `/p/projects/waldspektrum/priesner/clustering/global/global_co2_ann_1700_2019_const_2100.txt` (md5 `ed5699b9c92d4d25857889f644b153db`, 5212 B, 1700–2100, 409.63 ppm flat from 2020 per ADR 0004). Its original path under `~/scripts/clustering/climclusterpy_package/` **no longer exists** — that dir was repurposed on 2026-07-28 — so the committed ssp370 **seed1** config is unrunnable until repointed. Recovery route worth remembering for any rotted input: `git log --all --diff-filter=D` in the repo that ate the directory, plus `/home/jamirp/.snapshot/{hourly,daily,weekly}.*` (snapshots **preserve mtimes**, which is what proves a file predates a run). |
 | Ground truth (annual; 67,420 cells; seed1+seed2) | `/p/projects/waldspektrum/priesner/clustering/global` |
 | Spin-up-end restart (use for Historical 2000–2019 re-run) | `.../Historical/ground_truth/.../restart/restart_1999.lpj` |
 | Global 186 GB daily F/E dataset | `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_global_c0_67419_seed1/output` (DVC, not git) |
@@ -166,9 +167,15 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   module load intel/oneAPI/2024.0.0 udunits/2.2.28 json-c/0.13.1 openssl/3.6.0 netcdf-c curl/8.4.0 expat/2.5.0
   ```
   In a non-interactive shell first: `source /etc/profile.d/00-modulepath.sh; source /etc/profile.d/modules.sh`.
-- **json-c 0.13.1, NOT 0.17:** the login default auto-loads `json-c/0.17` (→ `libjson-c.so.5`) which
-  **aborts** — the binary needs `libjson-c.so.4` from **0.13.1**. (A source rebuild also needs a local
-  `json_object_iterator.h` shim on `CPATH`; this cluster's 0.13.1 headers are truncated.)
+- **json-c 0.13.1, NOT 0.17** — *for the Feb-5-2026 build*, which needs `libjson-c.so.4` from 0.13.1 and
+  **aborts** under the login default `json-c/0.17` (→ `libjson-c.so.5`). **The current Jul-21-2026 build
+  no longer has this constraint** (`[VERIFIED 2026-08-03]`): its json imports are *versioned*
+  (`json_object_put@JSONC_0.14`) and `JSONC_0.14` is provided by 0.13.1, by 0.17, and by the system
+  `/lib64/libjson-c.so.5` — `lpjcheck` exits 0 with byte-identical output under both. Keep loading 0.13.1
+  anyway (it is the tested set, and `bin/lpjml.pre_dgrass.bak` still needs it), but know that the real
+  bare-environment failure mode now is **`libnetcdf.so.19` / `libudunits2.so.0` not found**, not json-c.
+  (A source rebuild also needs a local `json_object_iterator.h` shim on `CPATH`; this cluster's 0.13.1
+  headers are truncated.)
 - **Pre-flight without running:** `bin/lpjcheck -DFROM_RESTART <config.js>` from the run's output dir
   (relative `output/` paths) — validates parse, input/restart headers, disk estimate.
 - **Restart a cell subset from the full-grid restart:** set integer **0-based positional**
@@ -176,6 +183,41 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   is MPI-decomposition-independent; needs byte-identical grid/soil/input + matching physics config.
   `restart_1999.lpj` = spin-up end → use for the Historical 2000–2019 daily re-run; `restart_2019.lpj` =
   historical end → only the SSP370 continuation.
+- **⚠ A SUBSET RE-RUN IS NOT A PER-CELL REPLICA OF THE GLOBAL RUN — the *seek* is
+  decomposition-independent, the *evolution* is NOT (`[VERIFIED 2026-08-03]`, ADR 0041).** Cell 42490,
+  **same binary, same restart, same forcing**, varying only the cell set: **1 cell alone** diverges from
+  the 67 420-cell/2048-task ground truth at the **first step** (2021; 2 of 81 years match, 18 530 vs
+  18 790 `ind` rows); a **21-cell block** is **bit-identical for 15 years** (2020–2034) and then diverges
+  (19 366 rows). At year 2020 the 1-cell and 21-cell runs already differ in exactly `fpc_ind` and
+  `isdead`. This is a stochastic gap model amplifying a tiny perturbation — one individual dying or
+  establishing differently makes the roster permanently different, and the count never re-converges. The
+  RNG is **not** the cause (it is fully per-cell: `permute` takes `stand->cell->seed`, there is no
+  `drand48()`/`lrand48()` in `src/`, and `config->seed` is read only at `iterate.c:108/148/181`, all
+  unreachable at `nspinup:0`/`fix_climate:false`); **the mechanism is unestablished — do not assume
+  per-cell reproducibility.** So: (a) a single-cell re-run scored against *global* ground truth compares
+  two different trajectories — the documented ~1.6e-4 `whc_nat` discrepancy is this same effect through
+  a smoother variable; (b) **two ground-truth members are a valid seed pair only if run with the same
+  binary AND the same `--ntasks`**; (c) any binary/config equivalence gate must use a
+  **matched-decomposition full-grid** run, not a subset. Harness:
+  `scripts/diagnose_ind_binary_equality.py` (it carries the decomposition control and exits **3 = VOID**
+  when the control fires, rather than reporting a false verdict).
+- **`random_seed` is INERT in any `-DFROM_RESTART` run, and invisible in the log (ADR 0041).** With
+  `"new_seed": false` the per-cell RAND48 seeds are restored from the restart file
+  (`newgrid.c:507-513` → `freadcell.c:37`) and the `setseed` that would apply `config->seed_start` is
+  gated off (`newgrid.c:520-521`); `seed_start` is applied once at parse time (`fscanconfig.c:231`) then
+  overwritten from the restart header (`openrestart.c:139-140`). **A second seed is a second SPIN-UP**
+  (the non-restart branch's `newgrid.c:460` `setseed(...seed_start+(i+startgrid)*36363)` is *ungated*),
+  carried forward by restarting from that seed's own restart file. Bumping `random_seed` alone yields a
+  **byte-identical clone** and the log says `Reading random seeds from restart file.`, never
+  `Random seed: N` (`fprintconfig.c:748-751`) — which is exactly how a fake ssp370 "seed2" survived for
+  three weeks. Gate every new member with `scripts/diagnose_ind_seed_independence.py`; **equal file size
+  to the sibling is the copy signature.**
+- **Never judge a C run from SLURM state.** The stock ground-truth job files end `rc=0  # save return
+  code of srun` + a bare `exit`, so they **always exit 0** — a run dying mid-century leaves a plausible
+  truncated 193 GB CSV behind a green `sacct` row. Require
+  `lpjml successfully terminated, <ncell> grid cells processed.` in the log. Those jcfs also pin **no**
+  modules (they inherit the submitting shell, and a purged env leaves `libnetcdf.so.19` /
+  `libudunits2.so.0` unresolved) and set no `-D`/`--chdir`. Fix all three when reusing one.
 - **Daily output is config-only (no recompile):** put `"timestep":"daily"` inside each output entry's
   `"file"` object. Keep the `ind` tree table **annual**.
 - **`.clm` climate forcing — PARSE THE HEADER, don't assume float32/HDR=51 (`[VERIFIED]`).** LPJmL `.clm`
