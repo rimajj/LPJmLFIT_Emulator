@@ -643,3 +643,31 @@ by explicit path throughout.
   `Year` to join on. A *scenario*-resolved tail is the tractable middle path, since `scenario.i64` already
   exists per row.
 - **Next:** see `lines/S/STATE.md` `## NEXT`.
+
+## 2026-08-03 (late) — Track A's member was HUNG, not slow; caught it in a close-out check  [milestone S2 / ADR 0041]
+
+- **Goal:** final state check before ending the session.
+- **Did:** looked at Track A's progress rather than just its SLURM state, and found job `1678574`
+  (`S-FIT_ssp370_seed2`, 2048 tasks) had produced **nothing** in 67 minutes — 0 output files, 0-byte stdout,
+  0-byte stderr, and an output-dir mtime still 6 h older than the run's own start. `sstat` reported no CPU/RSS
+  for its step. The decisive evidence was a **matched control** that happened to be running concurrently: the
+  crossbuild gate `1678607` — same binary, `mpirun`, `--ntasks=2048`, `--exclusive`, same `-DFROM_RESTART` —
+  had written **30 GB in 12 minutes**. And `cso14c74`, the node that killed jobs `1680828`/`1681087` earlier
+  today with the documented `0:53`/no-log signature, was in its allocation. Cancelled it, resubmitted the
+  member with `--exclude=cso14c74` **on the sbatch command line** (leaving the jcf byte-identical, because ADR
+  0041 records this member's provenance as exactly four edits), re-chained both `afterok` children onto the new
+  id, and cancelled the two orphans left `DependencyNeverSatisfied`.
+- **Result / evidence:** the resubmission `1684567` started immediately into the freed allocation and was
+  **verified healthy: 7 output files, 833 MB, within 15 seconds** — including a preallocated 784 MB
+  `mnpp_2020_2100.nc`. Against that 15-second baseline the original's 67 minutes of silence is a **268×**
+  discrepancy, so the hang diagnosis is not a judgement call. New chain: `1684567 → 1684568 → 1684569`.
+- **Decisions:** none new; this is ADR 0041's member being re-run on a different node set.
+- **Why it mattered:** left alone it would have burned ~2 h 20 m × 2048 CPUs and then cancelled both chained
+  children, and the next session would have found a dead chain with no explanation — the jcf itself is correct.
+- **The generalisable lesson, now in CLAUDE.md §3:** "judge a C run from its log, not SLURM state" is
+  insufficient when the log is *empty*, because empty is indistinguishable from starting-up. The **output
+  directory** is the absolute progress signal — a healthy run populates it in ~15 s — and a concurrently
+  running same-config job is the ideal control. Also corrected my own earlier report in this session, which
+  said Track A "needs nothing from this session".
+- **Next:** `lines/S/STATE.md` §F, which now carries the new ids and tells the reader to query SLURM rather
+  than trust any state written down.

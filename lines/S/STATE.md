@@ -151,21 +151,33 @@ At `(p=8, mtry=4)` a split sees ≥1 of the four time-varying flux drivers with 
 `random_seed` is **inert under `FROM_RESTART`** — a second seed is a second SPIN-UP. **ADR 0041** is the
 record; read it before touching any seed/restart config.
 
-| job | what | state at handoff |
-|---|---|---|
-⚠ **The states below are a snapshot from 2026-08-03 ~17:20 and WILL be wrong — query SLURM, don't read them.**
-The estimated start for 1678574 moved from 2026-08-04 05:55 to 2026-08-03 17:17 in the course of one session.
+⚠ **The states below are a snapshot from 2026-08-03 ~18:30 and WILL be wrong — query SLURM, don't read them.**
+
+**THE ORIGINAL CHAIN WAS CANCELLED AND RESUBMITTED — use the NEW job ids.** Job `1678574` was **hung**, not
+slow: 67 minutes in it had written **0 output files, a 0-byte stdout and a 0-byte stderr**, its output-dir
+mtime still predated the run by 6 h, and `sstat` reported no CPU/RSS for its step — while a *matched control*
+(the crossbuild gate `1678607`: same binary, `mpirun`, `--ntasks=2048`, `--exclusive`, same `-DFROM_RESTART`)
+had written **30 GB in 12 minutes**. `cso14c74`, the node that killed two jobs today with the documented
+`0:53`/no-log signature, was in its allocation. Cancelled and resubmitted with `--exclude=cso14c74` passed on
+the **sbatch command line** so the jcf stays byte-identical (ADR 0041 records this member's provenance as
+exactly four edits — a fifth would corrupt it). **The resubmission was verified healthy: 7 output files,
+833 MB, within 15 seconds.** The detection recipe is now in CLAUDE.md §3.
 
 | job | what | snapshot only |
 |---|---|---|
-| **1678574** | `S-FIT_ssp370_seed2` — the corrected member, 2048 tasks / 16 nodes, 3:30 wall | **RUNNING** from 17:17 ⇒ due ~20:47 |
-| **1678595** | independence gate (must NOT be a copy) | `afterok:1678574` |
-| **1678596** | → `ind_ssp370_seed2_all.parquet` (~92 GB) | `afterok:1678595` |
-| **1678607** | `S-crossbuild-gate` — full-grid 2048-task binary-equivalence gate | queued behind the member (correct — the member is the critical path) |
+| **1684567** | `S-FIT_ssp370_seed2` — the member, 2048 tasks, 3:30 wall, `--exclude=cso14c74` | **RUNNING** from 18:26 ⇒ due ~21:56 |
+| **1684568** | independence gate (must NOT be a copy) | `afterok:1684567` |
+| **1684569** | → `ind_ssp370_seed2_all.parquet` (~92 GB) | `afterok:1684568` |
+| **1678607** | `S-crossbuild-gate` — full-grid 2048-task binary-equivalence gate | RUNNING from 18:12, healthy (30 GB by 18:24) ⇒ due ~21:42 |
+| ~~1678574/1678595/1678596~~ | the hung member and its orphaned children | **CANCELLED — do not look for their results** |
 
 **So the whole Track-A chain may well have LANDED before you read this.** Check the member's log first, then
-1678595's verdict, then whether the parquet exists — and remember `afterok` means a dead parent leaves the
+1684568's verdict, then whether the parquet exists — and remember `afterok` means a dead parent leaves the
 children cancelled, so a missing parquet can mean the C run died rather than that nothing was scheduled.
+
+**If a 2048-task run is silent, check `output/` — do not wait out the wall.** A healthy run creates its
+output files in ~15 s (CLAUDE.md §3). Empty after a minute ⇒ resubmit with `--exclude`, re-chain the children
+onto the new id, and cancel the orphans.
 
 - **Do NOT lower `--ntasks`.** 2048 is what seed1 used, and a changed decomposition changes the trajectory
   (ADR 0041): a subset re-run is **not** a per-cell replica. `qos=medium`/`long` have *smaller* group limits.
@@ -204,6 +216,18 @@ children cancelled, so a missing parquet can mean the C run died rather than tha
   cluster label (ADR 0042 §7.3). **Non-reproducibility at a fixed seed is a bug report, not noise.**
 - **CLAUDE.md's "`climclusterpy_package` no longer exists" was wrong** — the directory was reorganised into a
   packaged repo; only the loose `global_co2_*.txt` rotted, and the feature code still imports. Corrected in §1.
+
+### H. OPEN INTEGRATION POINTS WITH LINE M — S requests, M lands (do not edit these yourself)
+
+1. **`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`.** A 14-column
+   artifact fails that **by construction**, because its last four columns are the env tail, so M's re-pin step
+   `sys.exit`s. The correct check is **positional**, `cond_cols[4:8]`. Carried from the previous handoff and
+   still open. It costs M one line and it blocks any future 14-column pin, transient or not — worth raising
+   even though ADR 0042 says do not re-pin *this* artifact.
+2. **`.claude/skills/lpjmlfit-cbinary/SKILL.md` should gain a pointer to CLAUDE.md §3's new zero-byte-log
+   rule** (how to spot a hung 2048-task MPI run in the first minute, from §F above). That skill is **M-primary**
+   per CLAUDE.md §9, so S did not edit it; the knowledge itself is already captured in CLAUDE.md §3 (shared)
+   and in the flaky-node user memory, so this is a discoverability request, not a knowledge gap.
 
 **Not S's to chase:** `water_stress` (6.6× band) is line M's F core, ADR 0029. `fpc`'s residual is dynamics
 (ADR 0035 §3.3).
