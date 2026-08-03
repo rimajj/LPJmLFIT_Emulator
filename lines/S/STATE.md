@@ -12,19 +12,20 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
 
 ### THE STATE IN FIVE LINES
 
-1. **The address-vs-response question is answered: RESPONSE**, `[PROVISIONAL]` on one colouring. ADR 0042.
+1. **The address-vs-response question is CLOSED: RESPONSE, final.** ADR 0042 + its §4 addendum. Both
+   colourings cleared the pre-fixed thresholds (deltas agree to 0.0024 vs a 0.0157 tolerance).
 2. **The remaining blocker on the 14-column artifact is NOT the address question** — it is that the tail's
    *transient* benefit was interpolation (`Rr` flips sign under blocking). M still does not re-pin, on new
    grounds. Do not repeat the old reason; it is refuted.
 3. **`cell_env.parquet` ships** — the mechanical half of M's blocker is cleared.
 4. **Track A (ssp370 seed2) has not started yet** and is not blocked on anything you can do.
-5. Four rungs and a chained gate were in flight at handoff; §A below says exactly how to read each.
+5. Two `mtry` rungs and a chained gate were still in flight at handoff; §A says how to read each.
 
 ### A. COLLECT THESE FIRST — what was in flight, and what each one decides
 
 | job | tag | decides | how to read it |
 |---|---|---|---|
-| **1680713** | `S-cap-p14env-blk15-buf5-s1` | **clause 3 — whether the verdict becomes FINAL** | §B. The thresholds are pre-fixed; do not re-derive them |
+| ~~1680713~~ | `S-cap-p14env-blk15-buf5-s1` | **DONE — clause 3 cleared, verdict FINAL** | §B |
 | **1681717** | `S-response-gate-blk-s1` | the salt-1 transient gate | chained `afterok:1680712:1680713`. **A missing log means a parent died, not that nothing was scheduled** |
 | **1680827** | `S-cap-p14env-hash-mtry7` | dilution vs env information (matched *fraction*, mtry/p = 0.5) | §C |
 | **1681596** | `S-cap-p14env-hash-mtry8` | same, at the matched *driver-touch probability* (0.985 vs the p8 baseline's 0.986) | §C |
@@ -34,26 +35,24 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
 
 Everything above writes `logs/<tag>.<jobid>.out` ending `=== JOB DONE ... exit=<code> ===`.
 
-### B. THE ONE OPEN QUESTION — clause 3. Thresholds are PRE-FIXED; do not move them
+### B. RESOLVED — clause 3 does not fire; the verdict is FINAL
 
-Arm C′ gave `p8-blk-s1` Wooddens `emu_r` = **0.7476**. With `Δ_blocked(s0) = +0.0314` and the clause-3
-tolerance `0.5·Δ = 0.0157`, read arm D′ (`p14env-blk15-buf5-s1`) against this table — **it is copied from
-ADR 0042 §4, which was written before the rung landed. Rewriting it after reading the result is the exact
-failure ADR 0040 exists to prevent.**
+Arm D′ (`1680713`) landed at Wooddens `emu_r` **0.7814**, inside the `[0.7677, 0.7947]` window ADR 0042 §4
+fixed **before** the rung ran. `Δ_blocked` salt 0 = **+0.0314**, salt 1 = **+0.0338**, difference **0.0024**
+against a 0.0157 tolerance — the salts agree 6.5× more closely than required, and clause 1 is met on **both**
+colourings on all four axes. Recorded as a dated addendum in ADR 0042 §4 (the pre-registered table is left
+verbatim). **Nothing here is open; do not re-adjudicate it.**
 
-| D′ `emu_r` | Δ_blocked(s1) | verdict |
-|---|---|---|
-| **≥ 0.7677 and ≤ 0.7947** | [+0.0201, +0.0471] | **RESPONSE, FINAL** — salts agree, both clear clause 1 |
-| [0.7633, 0.7677) | [+0.0157, +0.0201) | **NOT RESOLVABLE** — salts agree but clause 1 holds on one colouring only. Record as a **gap in the pre-registration**; do not settle it by picking a colouring |
-| < 0.7633 or > 0.7947 | outside | **NOT RESOLVABLE** — clause 3 fires |
+**The one transferable lesson from the replicate — apply it to every future blocked comparison.**
+Re-colouring moved the *single-arm* blocked `emu_r` by **+0.0136** but the *paired delta* by only **+0.0024**.
+The colouring effect is common to both arms and cancels in the difference. So: a blocked **level** is
+colouring-sensitive and must never be quoted on its own or compared across colourings; a blocked **paired
+delta** at a shared colouring is robust. Build blocked comparisons as paired deltas.
 
-Then: append the outcome to ADR 0042 §4 as a dated addendum (it is `accepted`, so **supersede, never edit**
-the pre-registered table), refresh `lines/S/STATE.md`, and tell line M.
-
-**Expect clause 3 to be tight.** Re-colouring alone moved the *baseline* arm by **+0.0136** in Wooddens
-(C 0.7340 → C′ 0.7476) — half the delta under test. If it fires, the fix is **more colourings**
-(`BLOCK_SALT=2,3`), not more bootstrap resamples: the sampling sd is already measured (§D) and it is not the
-binding term.
+Still open from the blocked analysis, and NOT retired by the replicate: `Δ_blocked` is **one-fold-dominated**
+(fold 0 = ~84 % of it from 26 % of the cells, and it is the fold with the fewest training cells). Re-colouring
+re-partitions the same cells, so a second colouring cannot address it. Cheapest test: leave-one-tile-group-out
+on the blocked delta (zero new forest compute).
 
 ### C. THE mtry RUNGS — what they can and cannot settle
 

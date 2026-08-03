@@ -1,15 +1,15 @@
 ---
 status: "accepted"
 date: 2026-08-03
-deciders: "engineering agent on line S (full autonomy per STEERING_PROMPT.md). Five decisions: (1) ADR 0040's pre-registered rule is APPLIED AS WRITTEN to the completed salt-0 forest matrix and returns **RESPONSE — the six env columns are not a spatial address** on the criterion-1 axis, `[PROVISIONAL]` because clause 3 needs a second colouring; the salt-1 flip thresholds are fixed in §4 BEFORE the deciding rung landed; (2) ADR 0040 §4's attribution of the 37 % Wooddens transient damping TO THE ENV TAIL is **refuted** by the matched `p8` arm it itself asked for — the matched ncond-8 baseline damps 39.9 % on its own and the tail moves `Rb` *toward* zero — so §5 bullet 4's promotion gate is simultaneously **met and mis-specified**, and is re-specified here on `Rb` AND `Rr` AND `|Ra-1|` at BOTH fold modes; (3) line M's re-pin refusal STANDS but is **re-grounded**: not \"it might be an address\" (settled: it is not) and not \"the tail damps the transient\" (measured: it does not), but that on the honest fold design the tail buys +0.031 of level skill while COSTING 0.031 of transient pattern correlation — the two gates dissociate; (4) three quiet defects found and fixed, each of which silently manufactured a plausible number: an inert `BLOCK_SALT` that would have fabricated a perfectly-agreeing replicate and forced a false RESOLVED, a Float32 accumulation that put a runtime-provisioned env tail 3.35e-07 off the trained values, and a bootstrap whose cluster labels were not row-aligned with the statistic; (5) the per-cell env sidecar `cell_env.parquet` ships, gated bit-exactly against the shipped artifact's own `Xc`, clearing the mechanical half of M's blocker."
+deciders: "engineering agent on line S (full autonomy per STEERING_PROMPT.md). Five decisions: (1) ADR 0040's pre-registered rule is APPLIED AS WRITTEN to the completed salt-0 forest matrix and returns **RESPONSE — the six env columns are not a spatial address** on the criterion-1 axis, and the verdict is **FINAL**: the salt-1 flip thresholds were fixed in §4 BEFORE the deciding rung landed, and the two colourings' blocked deltas then agreed to **0.0024** against a 0.0157 tolerance, so clause 3 does not fire. The replicate also validated the design — re-colouring moved the single-arm blocked `emu_r` by +0.0136 but the PAIRED delta by only +0.0024, so a blocked *level* is colouring-sensitive while a blocked *delta* is not; (2) ADR 0040 §4's attribution of the 37 % Wooddens transient damping TO THE ENV TAIL is **refuted** by the matched `p8` arm it itself asked for — the matched ncond-8 baseline damps 39.9 % on its own and the tail moves `Rb` *toward* zero — so §5 bullet 4's promotion gate is simultaneously **met and mis-specified**, and is re-specified here on `Rb` AND `Rr` AND `|Ra-1|` at BOTH fold modes; (3) line M's re-pin refusal STANDS but is **re-grounded**: not \"it might be an address\" (settled: it is not) and not \"the tail damps the transient\" (measured: it does not), but that on the honest fold design the tail buys +0.031 of level skill while COSTING 0.031 of transient pattern correlation — the two gates dissociate; (4) three quiet defects found and fixed, each of which silently manufactured a plausible number: an inert `BLOCK_SALT` that would have fabricated a perfectly-agreeing replicate and forced a false RESOLVED, a Float32 accumulation that put a runtime-provisioned env tail 3.35e-07 off the trained values, and a bootstrap whose cluster labels were not row-aligned with the statistic; (5) the per-cell env sidecar `cell_env.parquet` ships, gated bit-exactly against the shipped artifact's own `Xc`, clearing the mechanical half of M's blocker."
 consulted: "ADR 0040 (the pre-registration this adjudicates — its rule is applied verbatim, and three of its own statements are corrected here), ADR 0038 (whose +0.037 gain is shown to be reproducible by a PURE ADDRESS under the published fold design), ADR 0030 §4 (criteria 1/2 and why Wooddens is the adjudicating axis), ADR 0033 (this line crediting one change with another's effect — now the third recorded instance), ADR 0023 (train/inference consistency — the Float32 finding is that trap at its quietest), ADR 0041 (the inert `random_seed`, the same failure shape as the inert `BLOCK_SALT`), ADR 0026/0027 (the transient boundary basis), ADR 0004 (constant CO2), CLAUDE.md §6 guardrails 4 and 7"
 informed: "lines/S/STATE.md (NEXT), lines/M/STATE.md (the re-pin refusal stands on new grounds; `cell_env.parquet` now exists; the `cond_cols[-4:]` positional-check request is unchanged), the slow-drf-pipeline skill, CLAUDE.md §1/§4, changelog.d/S-{blocked-cv-verdict,block-salt-passthrough,cell-env-sidecar}.md"
 ---
 
 # The env tail transfers across a severed neighbourhood — but its transient benefit was interpolation
 
-> **Status.** `accepted`. The verdict on the address-vs-response question is **RESPONSE**, `[PROVISIONAL]`
-> pending one outstanding colouring whose flip thresholds are fixed in §4 below. No shipped artifact changes.
+> **Status.** `accepted`. The verdict on the address-vs-response question is **RESPONSE**, and it is **FINAL** —
+> the outstanding colouring landed after §4's thresholds were fixed and cleared them (§4 addendum). No shipped artifact changes.
 > ADR 0040's rule is applied exactly as written; where this ADR disagrees with ADR 0040 it disagrees with its
 > *measurements and attributions*, never with its criterion.
 
@@ -29,6 +29,10 @@ universe `n = 42 227 077`, 58 766 cells, **57 719 scored at ≥20 stems**, seed1
 | **F** `p14geo-blk15-buf5` | 14 geo | blk s0 | `1678638:87-90` | 0.6594 / 0.7986 | **0.5786 / 0.5690** | 0.6825 / 0.7997 | 0.9351 / 0.9406 |
 | **G** `p14perm-hash` | 14 perm | hash | `1678610:86-89` | 0.9177 / 0.9068 | **0.8492 / 0.6658** | 0.8136 / 0.7539 | 0.9740 / 0.9826 |
 | **C′** `p8-blk…-s1-mtry4` | 8 base | blk **s1** | `1680712:87-90` | 0.8033 / 0.8748 | **0.7476 / 0.6377** | 0.7402 / 0.7508 | 0.9570 / 0.9636 |
+| **D′** `p14env-blk…-s1` | 14 env | blk **s1** | `1680713:87-90` | 0.8364 / 0.9403 | **0.7814 / 0.7597** | 0.7802 / 0.8327 | 0.9589 / 0.9656 |
+
+The salt-1 pair C′/D′ share their own fold assignment — `test_cells [14066, 8302, 13575, 11241, 11582]`,
+different from salt 0's, which is the runtime proof that `BLOCK_SALT` reaches Julia after the §7.1 fix.
 
 Three basis facts, each verified rather than assumed:
 
@@ -108,7 +112,7 @@ been frozen in that order, is the strongest single piece of evidence here.
 
 ## 4. VERDICT, and the flip thresholds fixed in advance
 
-> **RESPONSE — the six env columns are not merely a spatial address.** `[PROVISIONAL — pending arm D′]`
+> **RESPONSE — the six env columns are not merely a spatial address.** `[FINAL — arm D′ landed; see the addendum below]`
 >
 > Severing the 15°/5° neighbourhood leaves the conditioning gain positive on the criterion-1 axis —
 > `Δ_blocked = +0.0315`, CI95 `[+0.0011, +0.0633]`, `P(≤0) = 0.021` — clearing the pre-registered bar
@@ -136,7 +140,41 @@ Two ambiguities in §5's wording, flagged rather than resolved in our favour: it
 `0.5 · Δ_blocked`" without saying *which* `Δ_blocked` — the table above uses salt 0's (0.0157); and it gives
 no axis set. Both readings are stated so a future session cannot silently pick the convenient one.
 
-**Clause 3 is at material risk, and arm C′ quantifies why.** Re-colouring alone moved the *baseline* arm by
+### ADDENDUM 2026-08-03, later the same day — arm D′ landed: clause 3 does not fire, the verdict is FINAL
+
+Arm **D′** `p14env-blk15-buf5-s1` (job `1680713`, `block_salt = 1` confirmed in its `@info` block, fold sizes
+`[14066, 8302, 13575, 11241, 11582]` matching arm C′'s and differing from salt 0's) gives
+`emu_r` = **0.7814** on Wooddens — inside the `[0.7677, 0.7947]` window fixed in the table above **before the
+rung landed**. The pre-registered table is left exactly as written; this addendum only records the outcome.
+
+| axis | Δ_blocked salt 0 | Δ_blocked salt 1 | \|difference\| | tolerance `0.5·Δ_s0` | clause 3 | clause 1 on salt 1 |
+|---|---|---|---|---|---|---|
+| SLA | +0.0297 | +0.0331 | 0.0034 | 0.0149 | **agree** | met (≥ +0.0108) |
+| **Wooddens** | **+0.0314** | **+0.0338** | **0.0024** | **0.0157** | **agree** | **met (≥ +0.0201)** |
+| D95max | +0.0506 | +0.0400 | 0.0106 | 0.0253 | **agree** | met (≥ +0.0213) |
+| minwscal | −0.0022 | +0.0019 | 0.0041 | 0.0011 | fires | met (≥ +0.0019) |
+
+> **VERDICT: RESPONSE — FINAL.** On the adjudicating axis the two colourings differ by **0.0024** against a
+> tolerance of 0.0157 — they agree 6.5× more closely than the rule required — and clause 1 is met on **both**
+> colourings. Clause 3 does not fire. The same holds on SLA and D95max. It fires only on minwscal, whose
+> tolerance is 0.0011 because its own delta is at the noise floor (±0.0022 measured, §2) and which sits within
+> 0.04 of its ceiling; it is not an adjudicating axis and ADR 0040 §5 assigns it no vote.
+
+**The design validated itself, and this is the most transferable thing in this ADR.** Re-colouring moved the
+*baseline arm* by **+0.0136** in Wooddens (C 0.7340 → C′ 0.7476) — half the delta under test — yet moved the
+*delta* by only **+0.0024**. The colouring effect is almost entirely **common to both arms** and cancels in the
+paired difference. So the fear recorded below was well founded about the wrong quantity: single-arm blocked
+`emu_r` values are colouring-sensitive and must never be quoted as levels, while the paired Δ is robust. Any
+future blocked comparison on this table should be built as a paired delta at a shared colouring for exactly
+this reason, and a *level* claim needs replicate colourings that a *delta* claim does not.
+
+This also retires §10 caveat 2's first half: clause 1 is now met on two independent colourings on all four
+axes. Its second half — that Δ_blocked is one-fold-dominated (§2) — **still stands** and is untouched by a
+second colouring, since re-colouring re-partitions the same cells.
+
+**The pre-registration text below is retained verbatim as written before the result.**
+
+**Clause 3 was judged at material risk, and arm C′ quantified why.** Re-colouring alone moved the *baseline* arm by
 **+0.0136** in Wooddens (C 0.7340 → C′ 0.7476) and by −0.0026 to +0.0025 on the other axes. A colouring
 effect on one arm of the same order as the delta between arms is precisely the regime clause 3 was written
 for. Independently: the surrogate's own two-salt spread on the blocked Δ is 0.0188 (ADR 0040 §3), already
@@ -312,8 +350,8 @@ Grouped because they share one shape: **a setting or a value that is never echoe
 
 | # | caveat | cheapest decisive test | cost |
 |---|---|---|---|
-| 1 | **Clause 3 unevaluated ⇒ no verdict is final.** | Arm D′ `1680713` (`RUNNING`), thresholds fixed in §4. Response gate chained (`1681717`). | 0 — in flight |
-| 2 | **Clause 1's ratio is unresolved** (`P(fail) = 0.244`) **and Δ_blocked is one-fold-dominated** (fold 0 = 84 % of it, from the fold with the fewest training cells). | More **colourings**, not more bootstrap: blocked pair at `BLOCK_SALT=2,3`. | 4 rungs × 1.4 h |
+| ~~1~~ | ~~Clause 3 unevaluated~~ — **RESOLVED** by arm D′ (§4 addendum): salts agree to 0.0024 vs a 0.0157 tolerance, clause 1 met on both colourings. | — | done |
+| 2 | **Δ_blocked is one-fold-dominated** (fold 0 = 84 % of it, from the fold with the fewest training cells) — untouched by a second colouring, which re-partitions the same cells. The ratio's own instability (`P(fail) = 0.244` at fixed colouring) is now bracketed by two agreeing colourings but not eliminated. | Leave-one-tile-group-out on the blocked delta, or a third/fourth colouring (`BLOCK_SALT=2,3`). | 0 / 4 rungs |
 | 3 | **Δ_blocked has no width control** — the `perm` null exists only at hash folds. | One `p14perm-blk15-buf5` rung; `_t8perm` already exists. | 1 rung |
 | 4 | **Blocking confounds "adjacency removed" with "39 % of training cells removed"** (47 013 → 28 802 mean train cells). Caveat 2's fold-0 correlation points at exactly this. | Two hash-fold rungs subsampled to ~28 800 train cells/fold — needs a ~10-line `TRAIN_CELL_FRAC` knob on `eval_slow_copula.jl` (S-owned). | 2 rungs + patch |
 | 5 | **Forest-seed noise is entirely unmeasured** (`seed = a` hard-wired, `ntrees = 6`); no existing artifact can yield a replicate, and it **adds** to §2's sd. | Blocked pair at a bumped seed; a `SEED_BASE` knob is ~5 lines. | 2 rungs + patch |
@@ -325,7 +363,7 @@ Grouped because they share one shape: **a setting or a value that is never echoe
 
 ## 11. Decision record
 
-1. **The verdict is RESPONSE, `[PROVISIONAL]`**, with §4's thresholds binding. `[DECISION]`
+1. **The verdict is RESPONSE, and it is FINAL** — §4's thresholds were fixed in advance and arm D′ cleared them. `[DECISION]`
 2. **ADR 0040 §4's attribution is refuted; its §5 bullet-4 gate is met and mis-specified, and is
    re-specified** on `Rb` + `Rr` + `|Ra − 1|` at both fold modes, with §7.3's CI fix landed first.
    `[DECISION]`
