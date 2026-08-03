@@ -172,6 +172,32 @@ This also retires §10 caveat 2's first half: clause 1 is now met on two indepen
 axes. Its second half — that Δ_blocked is one-fold-dominated (§2) — **still stands** and is untouched by a
 second colouring, since re-colouring re-partitions the same cells.
 
+**And the chained salt-1 response gate (job `1681717`) settles §5.1 empirically**, in both directions. Wooddens,
+blocked, corrected CIs:
+
+| statistic | salt 0 (C, D) | salt 1 (C′, D′) | env − p8, salt 0 | env − p8, salt 1 |
+|---|---|---|---|---|
+| `Rr` | 0.2953 / 0.2648 | 0.2839 / 0.2534 | **−0.0305** | **−0.0305** |
+| `\|Ra − 1\|` | 0.1189 / 0.1371 | 0.0795 / 0.1722 | +0.0182 | +0.0927 |
+| `Rb` | −896.6 / −733.4 | −860.3 / −1048.4 | **+163.2** | **−188.1** |
+
+- **The `Rr` penalty REPLICATES to four decimal places** — −0.0305 on both colourings, independently. Two
+  independent block colourings returning the identical delta is strong evidence the transient-pattern penalty
+  is real, and it upgrades §5.2's first bullet from a point-estimate ordering to a **replicated** finding
+  without needing the paired bootstrap. The sign of `|Ra − 1|` also replicates (the tail under-disperses the
+  shift on both colourings, more so on salt 1). **This is the central claim of the ADR and it now has two
+  independent draws behind it.**
+- **The `Rb` inter-arm difference FLIPS SIGN between colourings** — the tail damps *less* than the matched
+  baseline on salt 0 (+163.2) and *more* on salt 1 (−188.1). That is direct confirmation of §5.1's caution,
+  arrived at independently of the CIs: **no `Rb` inter-arm claim is admissible**, in either direction. The
+  refutation of ADR 0040 §4's attribution does **not** depend on it — that refutation rests on the matched
+  ncond-8 arm damping 39.9 % *on its own*, which is a single-arm fact with a CI excluding zero at hash folds,
+  and it is unaffected.
+
+So the two response statistics behave oppositely under replication, and the one the ADR's conclusion rests on
+is the one that replicates. §10 caveat 7b (the paired bootstrap) is therefore no longer load-bearing for `Rr`;
+it remains the correct instrument for `Rb`, where it will now be expected to return "not resolvable".
+
 **The pre-registration text below is retained verbatim as written before the result.**
 
 **Clause 3 was judged at material risk, and arm C′ quantified why.** Re-colouring alone moved the *baseline* arm by
@@ -225,8 +251,9 @@ job's reproducibility check (two runs byte-identical at the fixed seed). The pre
      tail's apparent transient-pattern benefit does not survive honest transfer; under blocking it is a
      penalty. This is the central dissociation of this ADR: **the level delta survives blocking, the
      transient-pattern delta does not.** Same caveat as above — the marginal `Rr` CIs overlap at both fold
-     modes, so the *sign reversal of the point estimates* is the claim, and a paired difference bootstrap is
-     needed to call either arm significantly better. What the sign reversal does establish, robustly, is that
+     modes. **The §4 addendum's salt-1 replicate upgrades this**: the −0.0305 penalty reproduces to four
+     decimal places on an independent block colouring, so it is a replicated finding rather than a single
+     point-estimate ordering. What the sign reversal establishes, robustly, is that
      **an `Rr` advantage measured under hash folds cannot be assumed to hold under blocking** — which is
      enough to forbid promoting on the hash-fold number.
    - **Shift amplitude is worse at both fold modes**, and this one needs no CI because `Ra` is a ratio of
@@ -357,7 +384,7 @@ Grouped because they share one shape: **a setting or a value that is never echoe
 | 5 | **Forest-seed noise is entirely unmeasured** (`seed = a` hard-wired, `ntrees = 6`); no existing artifact can yield a replicate, and it **adds** to §2's sd. | Blocked pair at a bumped seed; a `SEED_BASE` knob is ~5 lines. | 2 rungs + patch |
 | 6 | **The geo control is degraded, in the direction of the hypothesis.** The geo arms are the only arms with realized leaves **below `MIN_LEAF=20`** (`19/17/17/20` and `20/17/16/7`; every other arm's minimum is exactly 20 in all 16 fits). Mechanism: `src/drf.jl:128` guards on the sorted scan but `:137` sets `best_thr = 0.5*(xj + xj1)`, so ULP-adjacent distinct values from trig transforms collapse the midpoint onto `xj1`. Finer leaves = more address-memorisation capacity ⇒ inflates E, deflates F. | Rebuild `cell_geo_tail.parquet` **rank-transformed to consecutive integers** (split-equivalent for an axis-aligned tree; integer midpoints `k+0.5` are exact and strictly interior) and re-run the two geo rungs. **Do not patch `src/drf.jl`** — it moves fitted forests and committed baselines (guardrail 4). | rebuild + 2 rungs |
 | 7 | **`mtry` dilution vs env information is still open** as the mechanism behind §5's amplitude cost. | `p14env hash MTRY=7` (matched fraction) and `MTRY=8` (matched driver-touch probability 0.985 vs the baseline's 0.986) — **both in flight**, jobs `1680827` / `1681596`. | 0 — in flight |
-| 7b | **The response gate reports MARGINAL CIs, so no inter-arm difference is resolvable** (§5.1). Every arm-vs-arm claim on `Rb`/`Rr` is currently a point-estimate ordering. | Add a **paired** tile-cluster bootstrap of the difference on common tiles — the two arms share the same 52 450 cells and the same tiles, so the paired statistic is far tighter than the difference of marginals. ~15 lines in `diagnose_slow_address_prereg.py` (S-owned); the §2 `emu_r` bootstrap already does exactly this and can be copied. **Zero new forest compute.** | minutes |
+| 7b | **`Rb` inter-arm differences are NOT admissible** — the §4 addendum shows the `Rb` ordering flips sign between colourings (+163.2 vs −188.1) while `Rr`'s −0.0305 replicates exactly, so this caveat now applies to `Rb` only. | Add a **paired** tile-cluster bootstrap of the difference on common tiles — the two arms share the same 52 450 cells and the same tiles, so the paired statistic is far tighter than the difference of marginals. ~15 lines in `diagnose_slow_address_prereg.py` (S-owned); the §2 `emu_r` bootstrap already does exactly this and can be copied. **Zero new forest compute.** | minutes |
 | 8 | **Criterion 1 %GAP and criterion 4 `r_center` unmeasured** — no pooled seed2. | An ssp370 second spin-up (ADR 0041) — in flight as job `1678574`. | large |
 | 9 | **A transient env tail is the constructive fix and is NOT the small job the handoff described.** It needs per-(Cell,Year) env features for 2020–2100 **and** a join key the tables do not have. `ENV_PARQUET` accepts a per-**Cell** tail only (`group_by("Cell").mean()`, broadcast by cell index), and the copula tables carry `cells.i64` + `scenario.i64` but **no `Year`** — so a fully transient join needs a schema change, which must ride a new generation (ADR 0036 §5b). | **A scenario-resolved tail is the tractable middle path**: key on `(Cell, scenario)`, which `scenario.i64` already supplies per row, so no schema change. All five ssp370 forcings exist (`tas/pr/huss/rsds/lwnet …orderA.clm`) with matching historic ones, and `climclusterpy.features` still imports, so the six columns can be recomputed by the canonical method. That is sufficient for the response gate, which is a two-block difference. | new derivation + 2 rungs |
 

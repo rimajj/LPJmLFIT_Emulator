@@ -26,7 +26,7 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
 | job | tag | decides | how to read it |
 |---|---|---|---|
 | ~~1680713~~ | `S-cap-p14env-blk15-buf5-s1` | **DONE — clause 3 cleared, verdict FINAL** | §B |
-| **1681717** | `S-response-gate-blk-s1` | the salt-1 transient gate | chained `afterok:1680712:1680713`. **A missing log means a parent died, not that nothing was scheduled** |
+| ~~1681717~~ | `S-response-gate-blk-s1` | **DONE — the salt-1 transient gate; it is what settled §D's `Rr`-vs-`Rb` split** | ADR 0042 §4 addendum |
 | **1680827** | `S-cap-p14env-hash-mtry7` | dilution vs env information (matched *fraction*, mtry/p = 0.5) | §C |
 | **1681596** | `S-cap-p14env-hash-mtry8` | same, at the matched *driver-touch probability* (0.985 vs the p8 baseline's 0.986) | §C |
 | 1680712 | `S-cap-p8-blk…-s1-mtry4` | **DONE** — arm C′, Wooddens `emu_r` **0.7476** | already in ADR 0042 §1 |
@@ -82,15 +82,21 @@ version, and say which you used.
   24.4 % of resamples, and it is scale-dependent — 0.534 on `emu_rho`); blocked `sd_ratio` 0.7423 against
   criterion 2's 0.75 (cross-basis, forbidden by the gate log itself, and `P(pass) = 0.416`). Say **"the gain
   does not vanish when adjacency is removed"** and quote the dispersion **delta** (+0.0900 blocked).
-- **No inter-arm `Rb`/`Rr` difference is resolvable** from the marginal CIs in ADR 0042 §5 — the arm ordering
-  is a point-estimate result. The missing statistic is a **paired** difference bootstrap (~15 lines, copy §2's;
-  zero new forest compute). Highest-value cheap fix on the list.
+- **`Rr` and `Rb` behave OPPOSITELY under replication, and only one is quotable** (ADR 0042 §4 addendum, job
+  1681717): the transient-pattern penalty `Rr`(env) − `Rr`(p8) = **−0.0305 on BOTH blocked colourings**, four
+  decimal places, so it is a replicated finding — this is the claim the ADR's conclusion rests on. The `Rb`
+  inter-arm difference **flips sign** between colourings (+163.2 vs −188.1), so **no `Rb` arm-vs-arm claim is
+  admissible in either direction**. The refutation of ADR 0040 §4 does not depend on it (it rests on the
+  matched ncond-8 arm damping 39.9 % on its own). A paired difference bootstrap (~15 lines, copy the one in
+  `diagnose_slow_delta_power.py`) is still the right instrument for `Rb` and is expected to confirm
+  "not resolvable".
 
 ### E. THEN, IN PRIORITY ORDER
 
-1. **The paired difference bootstrap** (above). It is minutes of work and it decides whether ADR 0042 §5's
-   inter-arm claims can be stated at all.
-2. **A SCENARIO-RESOLVED env tail — and note the handoff that preceded this one was WRONG about the cost.**
+1. **A SCENARIO-RESOLVED env tail — now the top item, and note the handoff that preceded this one was WRONG
+   about its cost.** It is first because the salt-1 replicate settled the statistics question that used to be
+   first (§D: `Rr` replicates, `Rb` is inadmissible); the paired `Rb` bootstrap is now only a confirmation,
+   ~15 minutes whenever convenient.
    The claim that the augment script's `ENV_PARQUET` seam "already accepts" a per-(Cell,Year) join is false: it
    is keyed on `Cell` alone (`group_by("Cell").mean()`, broadcast by cell index), and the copula tables carry
    `cells.i64` + `scenario.i64` but **no per-row `Year`** — so a fully transient tail needs a schema change,
@@ -102,18 +108,20 @@ version, and say which you used.
    CLAUDE.md §1 correction), so the six columns can be recomputed by the canonical method rather than
    reimplemented. `scripts/build_transient_boundary.py` is the pattern to copy (it already reads raw `.clm`
    per (cell, year) for both scenarios). **This is the thing that could actually let M pin a 14-column artifact.**
-3. **More colourings** if clause 3 fires (`BLOCK_SALT=2,3`), and a **`SEED_BASE` knob** (~5 lines, S-owned) —
-   forest-seed noise is entirely unmeasured anywhere in this ladder and it adds to §D's sd.
-4. **A blocked `p14perm` rung** — the width null exists only at hash folds, and ADR 0040's argument that a
+2. **A `SEED_BASE` knob** (~5 lines, S-owned). Forest-seed noise is entirely unmeasured anywhere in this
+   ladder (`seed = a` is hard-wired at `ntrees = 6`) and it adds to §D's sd. Clause 3 did **not** fire, so
+   further colourings (`BLOCK_SALT=2,3`) are no longer needed for the verdict — but they are still the right
+   tool if you ever need a blocked **level** rather than a delta (§B).
+3. **A blocked `p14perm` rung** — the width null exists only at hash folds, and ADR 0040's argument that a
    blocked perm run is "pointless" assumes fold-mode invariance that this matrix disproved for `geo` and `Rr`.
-5. **The geo control is degraded in the direction of the hypothesis** (ADR 0042 §10 caveat 6): the geo arms are
+4. **The geo control is degraded in the direction of the hypothesis** (ADR 0042 §10 caveat 6): the geo arms are
    the only arms with realized leaves **below `MIN_LEAF=20`** (down to 7), because `src/drf.jl:137` takes
    `0.5*(xj+xj1)` and ULP-adjacent trig values collapse the midpoint. Rebuild `cell_geo_tail.parquet`
    **rank-transformed to consecutive integers** and re-run the two geo rungs. **Do NOT patch `src/drf.jl`** —
    it moves fitted forests and committed baselines (guardrail 4).
-6. **Blocking confounds "adjacency removed" with "39 % of training cells removed"** (47 013 → 28 802). Two
+5. **Blocking confounds "adjacency removed" with "39 % of training cells removed"** (47 013 → 28 802). Two
    hash rungs subsampled to ~28 800 train cells/fold separate them; needs a ~10-line `TRAIN_CELL_FRAC` knob.
-7. Carried, unchanged: the `6×2M d32` depth rung · `TRAIT_ONLY=0` on the shipped rung (`agb`/`Height` carry
+6. Carried, unchanged: the `6×2M d32` depth rung · `TRAIT_ONLY=0` on the shipped rung (`agb`/`Height` carry
    the tightest margins, pooled KS 0.0116 vs the 0.02 bound) · the composed coupled path is still unexercised ·
    emit `Year` in the `MODE=copula` table (schema change ⇒ ride a new generation).
 
