@@ -7,8 +7,10 @@
 ## NEXT — start here
 
 **One session per line again.** The 2026-08-03 dual-session collision is resolved: both tracks' work is
-committed, and this block is now the single handoff. Read **ADR 0042** first — it is the current verdict, it
-corrects ADR 0040 in three places, and it fixes the thresholds that decide the one outstanding question.
+committed, and this block is now the single handoff. Read **ADR 0042** first — it is the current verdict
+(**RESPONSE, final**), and it corrects ADR 0040 in three places. **Every job this session launched has been
+collected**; the only thing still running anywhere is Track A's ssp370 chain (§F), which needs nothing from you
+until it lands.
 
 ### THE STATE IN FIVE LINES
 
@@ -19,11 +21,14 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
    grounds. Do not repeat the old reason; it is refuted.
 3. **`cell_env.parquet` ships** — the mechanical half of M's blocker is cleared.
 4. **Track A (ssp370 seed2) has not started yet** and is not blocked on anything you can do.
-5. Two `mtry` rungs and a chained gate were still in flight at handoff; §A says how to read each.
+5. **Nothing is left to collect except Track A.** §A is the completed ledger of this session's jobs, kept
+   because it maps each result to where it is recorded — start new work at §E.
 
-### A. COLLECT THESE FIRST — what was in flight, and what each one decides
+### A. LEDGER — every job this session ran, and where its result lives (all DONE)
 
-| job | tag | decides | how to read it |
+Nothing here needs collecting. It is a map from job id to the record, for tracing a number back to its log.
+
+| job | tag | result | recorded in |
 |---|---|---|---|
 | ~~1680713~~ | `S-cap-p14env-blk15-buf5-s1` | **DONE — clause 3 cleared, verdict FINAL** | §B |
 | ~~1681717~~ | `S-response-gate-blk-s1` | **DONE — the salt-1 transient gate; it is what settled §D's `Rr`-vs-`Rb` split** | ADR 0042 §4 addendum |
@@ -34,7 +39,9 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
 | 1683182 | `S-response-fixedci` | **DONE** — the corrected-CI response gate, both fold modes | ADR 0042 §5. **Quote only these CIs**, never jobs 1680715/1681338's |
 | 1682004 | `S-cell-env-sidecar` | **DONE** — `tables/cell_env.parquet`, gate passed | ADR 0042 §6 |
 
-Everything above writes `logs/<tag>.<jobid>.out` ending `=== JOB DONE ... exit=<code> ===`.
+Each writes `logs/<tag>.<jobid>.out` ending `=== JOB DONE ... exit=<code> ===`. Two more jobs from the
+adjudication produced the noise-scale evidence in ADR 0042 §2: `logs/S-power5.1682121.out` and
+`logs/S-tileboot.1682719.out` (script `scripts/diagnose_slow_delta_power.py`).
 
 ### B. RESOLVED — clause 3 does not fire; the verdict is FINAL
 
