@@ -579,6 +579,27 @@ Four measured facts that change how you design the experiment — each cost a ru
 3. **`mtry` is a hidden fourth lever.** `DRF.fit_forest` uses `mtry_eff = round(Int, sqrt(p))` ⇒ **3** at
    ncond 8 but **4** at ncond 14, so every published ncond-8-vs-14 comparison varied mtry too. Pass `MTRY=4`
    on the narrow table to make the conditioning lever a matched pair (this is ADR 0033's failure mode again).
+   And once matched, **width COSTS skill**: `p14perm-hash` (14 columns, 6 of them zero-information) scores
+   **below** `p8-hash-mtry4` on every axis — Wooddens **−0.0201 ± 0.0022** (z ≈ 9). So a conditioning gain
+   measured at matched mtry is *net* of a width penalty, and "extra columns bought capacity" is refuted rather
+   than assumed. Measured at hash folds only — this matrix proved fold-mode sign flips are real, so do not
+   assume it transfers to blocked folds.
+3b. **The measured noise scale of a Δ`emu_r` on this table** (paired 166-tile cluster bootstrap, gated on
+   reproducing every logged `emu_r`/`sd_ratio` from the stored `pred_*.f64`): **0.004–0.006 under hash folds,
+   0.012–0.016 under 15°/5° blocking** — a 3× difference, so one scalar cannot serve both. It is a LOWER
+   bound: fold colouring adds ~0.014 (measured: re-colouring alone moved the ncond-8 blocked arm +0.0136 in
+   Wooddens) and forest seed adds an unmeasured amount (`seed = a` is hard-wired). Budget accordingly: a
+   blocked delta of ~0.03 is roughly two sds, so it supports a **sign** claim, not a retention *ratio*.
+3c. **Two `DRF` internals that bias a control if you don't know them.** (i) `src/drf.jl:128` guards the
+   `min_leaf` scan on sorted values but `:137` sets `best_thr = 0.5*(xj + xj1)`, so a feature with
+   **ULP-adjacent distinct values** (trig transforms — `geo_sin_lon`, `geo_x`) collapses the midpoint onto
+   `xj1` and the realized child falls **below `MIN_LEAF`** (observed down to 7 against `MIN_LEAF=20`; the geo
+   arms were the only arms in a 7-arm matrix whose realized minimum was not exactly 20). Finer leaves = more
+   memorisation capacity, which biases a *position* control in favour of the hypothesis it is meant to
+   falsify. Fix by **rank-transforming the basis to consecutive integers** (split-equivalent for an
+   axis-aligned tree; integer midpoints `k+0.5` are exact and strictly interior) — do **not** patch the
+   splitter, which would move fitted forests and committed baselines (guardrail 4). (ii) Check realized leaf
+   sizes in the `geometry:` log lines of every new control basis before trusting the control.
 4. **The baseline you want to compare against probably does not exist.** The in-place
    `slow_copula_pooled_w20_t8/pred_*.f64` were written by `run_pooled_slow_copula.sh` at **40 × 50k / d14 /
    QRF=0 / mtry 3** — a FOUR-lever gap to a `6 × 2M / d22 / QRF=1 / mtry 4 / ncond 14` rung. (`lines/S/STATE.md`

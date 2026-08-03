@@ -327,7 +327,13 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   (`new_tree.c:195-206` / `getrndinterval`; the par `median` field is unused there), so any per-cell trait
   statistic is a *composition* statistic — mixing two PFT sets makes two such statistics incomparable (id 0's
   minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which
-  is why every single-cell gate stayed green.
+  is why every single-cell gate stayed green. ⚠ **But do NOT read "uniform recruit draw" as "all trait
+  variance is composition variance" (`[VERIFIED 2026-08-03]`, ADR 0042 §9).** The uniform draw constrains the
+  **prior**, not the emitted **survivor** marginal, because FIT selects *within* a PFT on wood density:
+  `src/tree/mortality_tree_ind.c` computes `mort_max = pow(10, treepar->wdmort_1 + treepar->wdmort_2 /
+  ((tree->wooddens*1)/1000000))` feeding `tree->mort_npp`. So both channels — composition **and** within-PFT
+  selection — run through the live flux/stress conditioning, and a per-cell trait statistic is a composition
+  *plus selection* statistic.
 - **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
   writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
   **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age
@@ -375,6 +381,16 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 ---
 
+- **A `cell_year_feats.parquet` property does NOT carry over to the same-named column of a
+  `slow_copula_pooled_w20_*` table (`[VERIFIED 2026-08-03]`, ADR 0042 §8).** In `cell_year_feats`,
+  `eco_diag_gdd_5` and `tas_cold_month` are per-cell CONSTANTS (identical every year). On the
+  `pooled_w20` tables the forests actually read they are **time- AND scenario-varying**: with
+  `BOUNDARY_WINDOW=20` — which `run_pooled_slow_*.sh` require, and which `pooled_w20` is named for — they come
+  from `cell_year_boundary_<scenario>_w20.parquet` joined on `["Cell","Year"]`
+  (`build_slow_runtime_table.py:231-250`, the ADR-0026 treatment). The six **env tail** columns *are* per-cell
+  constants and identical across scenarios (per-`Cell` mean over the historic-only `cell_year_feats`). Getting
+  these two the wrong way round produced the claim that the static tail dilutes "the ONLY channel through
+  which time can enter", which is false — 2 of the 8 base columns are transient too.
 - **`tables/cell_year_feats.parquet` stores 4 of the 6 env conditioning columns as `Float32`, and polars'
   `group_by().mean()` on a `Float32` column ACCUMULATES IN `Float32` (`[VERIFIED 2026-08-03]`).**
   `eco_diag_p_pet_ratio` / `eco_diag_pet_mean` / `eco_diag_vpd_mean` / `pr_cv_monthly` are `Float32`;
