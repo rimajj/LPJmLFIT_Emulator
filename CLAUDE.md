@@ -218,6 +218,19 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `lpjml successfully terminated, <ncell> grid cells processed.` in the log. Those jcfs also pin **no**
   modules (they inherit the submitting shell, and a purged env leaves `libnetcdf.so.19` /
   `libudunits2.so.0` unresolved) and set no `-D`/`--chdir`. Fix all three when reusing one.
+- **A ZERO-BYTE log is not "early days" — a healthy run creates its output files in ~15 SECONDS
+  (`[VERIFIED 2026-08-03]`).** The "judge it from the log" rule above fails when the log is *empty*, because
+  empty looks identical to starting-up. Use the **output directory** as the absolute progress signal instead:
+  a healthy 2048-task `-DFROM_RESTART` run wrote `grid_*.nc` + a preallocated 784 MB `mnpp_*.nc` + 65 MB
+  `vegc_*.nc` (833 MB, 7 files) **15 s** after launch. Measured against that, a member sitting at **0 output
+  files / 0-byte stdout / 0-byte stderr after 67 minutes** was hung, not slow — a 268× discrepancy — and the
+  tell was corroborated by a *matched control* running concurrently (same binary, `mpirun`, `--ntasks=2048`,
+  `--exclusive`, same `-DFROM_RESTART`) that had written **30 GB in 12 minutes**. `sstat` reported no CPU/RSS
+  for the hung step while reporting 24 CPU-h for the healthy one, and its output dir mtime still predated the
+  run by 6 h (⇒ LPJmL never opened its outputs). Cause: the known flaky node in the allocation. **Check the
+  output dir a minute after launch; do not wait out a silent 2048-CPU job.** Resubmit with a real
+  `#SBATCH --exclude=` / `sbatch --exclude=` — and pass it on the COMMAND LINE so a provenance-bearing jcf
+  stays byte-identical (`SBATCH_EXCLUDE` in the environment is a silent no-op here).
 - **Daily output is config-only (no recompile):** put `"timestep":"daily"` inside each output entry's
   `"file"` object. Keep the `ind` tree table **annual**.
 - **`.clm` climate forcing — PARSE THE HEADER, don't assume float32/HDR=51 (`[VERIFIED]`).** LPJmL `.clm`
