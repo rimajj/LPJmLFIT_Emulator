@@ -27,8 +27,9 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
 |---|---|---|---|
 | ~~1680713~~ | `S-cap-p14env-blk15-buf5-s1` | **DONE — clause 3 cleared, verdict FINAL** | §B |
 | ~~1681717~~ | `S-response-gate-blk-s1` | **DONE — the salt-1 transient gate; it is what settled §D's `Rr`-vs-`Rb` split** | ADR 0042 §4 addendum |
-| **1680827** | `S-cap-p14env-hash-mtry7` | dilution vs env information (matched *fraction*, mtry/p = 0.5) | §C |
+| ~~1680827~~ | `S-cap-p14env-hash-mtry7` | **DONE — Wooddens `emu_r` 0.9124** (mtry4 was 0.9095) | §C |
 | **1681596** | `S-cap-p14env-hash-mtry8` | same, at the matched *driver-touch probability* (0.985 vs the p8 baseline's 0.986) | §C |
+| **1683694** | `S-mtry-response` | whether raising `mtry` recovers the TRANSIENT cost | chained `afterok:1681596`; uses the FIXED bootstrap, so comparable to 1683182 and **not** to 1680715/1681338 |
 | 1680712 | `S-cap-p8-blk…-s1-mtry4` | **DONE** — arm C′, Wooddens `emu_r` **0.7476** | already in ADR 0042 §1 |
 | 1683182 | `S-response-fixedci` | **DONE** — the corrected-CI response gate, both fold modes | ADR 0042 §5. **Quote only these CIs**, never jobs 1680715/1681338's |
 | 1682004 | `S-cell-env-sidecar` | **DONE** — `tables/cell_env.parquet`, gate passed | ADR 0042 §6 |
@@ -59,8 +60,11 @@ on the blocked delta (zero new forest compute).
 At `(p=8, mtry=4)` a split sees ≥1 of the four time-varying flux drivers with probability **0.9857**; at
 `(p=14, mtry=4)` only **0.7902**. So the static tail dilutes the channel through which time enters. `MTRY=7`
 matches the *fraction* (0.9650), `MTRY=8` the *probability* (0.9850) — together with the shipped mtry-4 arm
-they are a 3-point curve. If `emu_r` and `|Ra−1|` recover toward the p8 arm as mtry rises, the amplitude cost
-in ADR 0042 §5 is **dilution**, not the env columns' content; if they do not, it is the content.
+they are a 3-point curve. **The LEVEL half is already answered: dilution is not it.** `MTRY=7` gives Wooddens `emu_r` **0.9124** vs
+mtry4's 0.9095 — **+0.0029**, i.e. 7 % of the +0.0402 env gain and 14 % of the −0.0201 width penalty. So
+neither the gain nor the penalty is an `mtry` artifact. The open half is the **transient**: if `|Ra−1|` and
+`Rr` move back toward the p8 arm as mtry rises, §5's amplitude cost is dilution and is knob-fixable; if not,
+it is the columns' content and only a transient tail can help. Job 1683694 decides it.
 ⚠ **The `co2` column is dead (ADR 0004), but `eco_diag_gdd_5`/`tas_cold_month` ARE transient on `pooled_w20`**
 (ADR 0042 §8 — this corrects ADR 0040 §6.4), so the count of time-varying drivers is 6 of 8, not 4 of 8.
 The 0.986/0.790 arithmetic above is for the 4 flux drivers specifically; recompute if you want the 6-column
