@@ -217,6 +217,18 @@ onto the new id, and cancel the orphans.
 - **CLAUDE.md's "`climclusterpy_package` no longer exists" was wrong** — the directory was reorganised into a
   packaged repo; only the loose `global_co2_*.txt` rotted, and the feature code still imports. Corrected in §1.
 
+### H. OPEN INTEGRATION POINTS WITH LINE M — S requests, M lands (do not edit these yourself)
+
+1. **`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`.** A 14-column
+   artifact fails that **by construction**, because its last four columns are the env tail, so M's re-pin step
+   `sys.exit`s. The correct check is **positional**, `cond_cols[4:8]`. Carried from the previous handoff and
+   still open. It costs M one line and it blocks any future 14-column pin, transient or not — worth raising
+   even though ADR 0042 says do not re-pin *this* artifact.
+2. **`.claude/skills/lpjmlfit-cbinary/SKILL.md` should gain a pointer to CLAUDE.md §3's new zero-byte-log
+   rule** (how to spot a hung 2048-task MPI run in the first minute, from §F above). That skill is **M-primary**
+   per CLAUDE.md §9, so S did not edit it; the knowledge itself is already captured in CLAUDE.md §3 (shared)
+   and in the flaky-node user memory, so this is a discoverability request, not a knowledge gap.
+
 **Not S's to chase:** `water_stress` (6.6× band) is line M's F core, ADR 0029. `fpc`'s residual is dynamics
 (ADR 0035 §3.3).
 
