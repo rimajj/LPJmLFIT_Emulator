@@ -7,8 +7,10 @@
 ## NEXT — start here
 
 **One session per line again.** The 2026-08-03 dual-session collision is resolved: both tracks' work is
-committed, and this block is now the single handoff. Read **ADR 0042** first — it is the current verdict, it
-corrects ADR 0040 in three places, and it fixes the thresholds that decide the one outstanding question.
+committed, and this block is now the single handoff. Read **ADR 0042** first — it is the current verdict
+(**RESPONSE, final**), and it corrects ADR 0040 in three places. **Every job this session launched has been
+collected**; the only thing still running anywhere is Track A's ssp370 chain (§F), which needs nothing from you
+until it lands.
 
 ### THE STATE IN FIVE LINES
 
@@ -19,22 +21,27 @@ corrects ADR 0040 in three places, and it fixes the thresholds that decide the o
    grounds. Do not repeat the old reason; it is refuted.
 3. **`cell_env.parquet` ships** — the mechanical half of M's blocker is cleared.
 4. **Track A (ssp370 seed2) has not started yet** and is not blocked on anything you can do.
-5. Two `mtry` rungs and a chained gate were still in flight at handoff; §A says how to read each.
+5. **Nothing is left to collect except Track A.** §A is the completed ledger of this session's jobs, kept
+   because it maps each result to where it is recorded — start new work at §E.
 
-### A. COLLECT THESE FIRST — what was in flight, and what each one decides
+### A. LEDGER — every job this session ran, and where its result lives (all DONE)
 
-| job | tag | decides | how to read it |
+Nothing here needs collecting. It is a map from job id to the record, for tracing a number back to its log.
+
+| job | tag | result | recorded in |
 |---|---|---|---|
 | ~~1680713~~ | `S-cap-p14env-blk15-buf5-s1` | **DONE — clause 3 cleared, verdict FINAL** | §B |
 | ~~1681717~~ | `S-response-gate-blk-s1` | **DONE — the salt-1 transient gate; it is what settled §D's `Rr`-vs-`Rb` split** | ADR 0042 §4 addendum |
 | ~~1680827~~ | `S-cap-p14env-hash-mtry7` | **DONE — Wooddens `emu_r` 0.9124** (mtry4 was 0.9095) | §C |
-| **1681596** | `S-cap-p14env-hash-mtry8` | same, at the matched *driver-touch probability* (0.985 vs the p8 baseline's 0.986) | §C |
-| **1683694** | `S-mtry-response` | whether raising `mtry` recovers the TRANSIENT cost | chained `afterok:1681596`; uses the FIXED bootstrap, so comparable to 1683182 and **not** to 1680715/1681338 |
+| ~~1681596~~ | `S-cap-p14env-hash-mtry8` | **DONE — Wooddens `emu_r` 0.9121**, i.e. the curve SATURATES at m7 | §C |
+| ~~1683694~~ | `S-mtry-response` | **DONE — the transient half is answered: ~46 % dilution, ~54 % content** | §C |
 | 1680712 | `S-cap-p8-blk…-s1-mtry4` | **DONE** — arm C′, Wooddens `emu_r` **0.7476** | already in ADR 0042 §1 |
 | 1683182 | `S-response-fixedci` | **DONE** — the corrected-CI response gate, both fold modes | ADR 0042 §5. **Quote only these CIs**, never jobs 1680715/1681338's |
 | 1682004 | `S-cell-env-sidecar` | **DONE** — `tables/cell_env.parquet`, gate passed | ADR 0042 §6 |
 
-Everything above writes `logs/<tag>.<jobid>.out` ending `=== JOB DONE ... exit=<code> ===`.
+Each writes `logs/<tag>.<jobid>.out` ending `=== JOB DONE ... exit=<code> ===`. Two more jobs from the
+adjudication produced the noise-scale evidence in ADR 0042 §2: `logs/S-power5.1682121.out` and
+`logs/S-tileboot.1682719.out` (script `scripts/diagnose_slow_delta_power.py`).
 
 ### B. RESOLVED — clause 3 does not fire; the verdict is FINAL
 
@@ -55,20 +62,28 @@ Still open from the blocked analysis, and NOT retired by the replicate: `Δ_bloc
 re-partitions the same cells, so a second colouring cannot address it. Cheapest test: leave-one-tile-group-out
 on the blocked delta (zero new forest compute).
 
-### C. THE mtry RUNGS — what they can and cannot settle
+### C. THE mtry QUESTION — ANSWERED, both halves. Nothing left to collect
 
 At `(p=8, mtry=4)` a split sees ≥1 of the four time-varying flux drivers with probability **0.9857**; at
-`(p=14, mtry=4)` only **0.7902**. So the static tail dilutes the channel through which time enters. `MTRY=7`
-matches the *fraction* (0.9650), `MTRY=8` the *probability* (0.9850) — together with the shipped mtry-4 arm
-they are a 3-point curve. **The LEVEL half is already answered: dilution is not it.** `MTRY=7` gives Wooddens `emu_r` **0.9124** vs
-mtry4's 0.9095 — **+0.0029**, i.e. 7 % of the +0.0402 env gain and 14 % of the −0.0201 width penalty. So
-neither the gain nor the penalty is an `mtry` artifact. The open half is the **transient**: if `|Ra−1|` and
-`Rr` move back toward the p8 arm as mtry rises, §5's amplitude cost is dilution and is knob-fixable; if not,
-it is the columns' content and only a transient tail can help. Job 1683694 decides it.
-⚠ **The `co2` column is dead (ADR 0004), but `eco_diag_gdd_5`/`tas_cold_month` ARE transient on `pooled_w20`**
-(ADR 0042 §8 — this corrects ADR 0040 §6.4), so the count of time-varying drivers is 6 of 8, not 4 of 8.
-The 0.986/0.790 arithmetic above is for the 4 flux drivers specifically; recompute if you want the 6-column
-version, and say which you used.
+`(p=14, mtry=4)` only **0.7902**. `MTRY=7` restores the matched *fraction* (0.9650), `MTRY=8` the matched
+*probability* (0.9850). Both ran, plus a response gate on their predictions (`1683694`, fixed bootstrap).
+
+| statistic (Wooddens) | p8 mtry4 | env mtry4 | env mtry7 | env mtry8 |
+|---|---|---|---|---|
+| `emu_r` | 0.8693 | 0.9095 | **0.9124** | **0.9121** |
+| `\|Ra − 1\|` | 0.0728 | 0.1306 | **0.1039** | **0.1052** |
+| `Rr` (hash) | +0.3751 | +0.4146 | +0.4212 | +0.4230 |
+
+**Both halves answered, and the curve SATURATES at m7 (m7 ≈ m8, inside §D's 0.004–0.006 hash sd):**
+
+- **Level:** +0.003 `emu_r`, i.e. **7 %** of the +0.0402 env gain, and nowhere near the p8 arm's 0.8693. The
+  conditioning gain is **not** an `mtry` artifact.
+- **Transient amplitude:** `|Ra−1|` recovers **46 %** of the way toward p8 and then stops. So §5.2's amplitude
+  cost is **~46 % dilution, ~54 % the env columns' content** — **no `mtry` setting recovers p8's amplitude
+  fidelity**, so the cost is substantively the tail's, not a knob's.
+- **`Rr` at hash folds RISES with `mtry`**, so the hash-fold `Rr` advantage is not a dilution artifact either.
+  The honest finding remains its **reversal under blocking**, for which no blocked m7/m8 arm exists — one
+  blocked `p14env MTRY=7` rung is the single remaining `mtry` question, and it is optional.
 
 ### D. WHAT IS SETTLED — do not re-derive, do not re-litigate
 

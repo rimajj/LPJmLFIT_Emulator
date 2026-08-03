@@ -584,6 +584,13 @@ Four measured facts that change how you design the experiment — each cost a ru
    measured at matched mtry is *net* of a width penalty, and "extra columns bought capacity" is refuted rather
    than assumed. Measured at hash folds only — this matrix proved fold-mode sign flips are real, so do not
    assume it transfers to blocked folds.
+   **Do not re-run the mtry ladder — it is measured and it SATURATES (`[VERIFIED 2026-08-03]`).** On the pooled
+   ncond-14 table at hash folds, Wooddens `emu_r` goes **0.9095 (mtry 4) → 0.9124 (7) → 0.9121 (8)**, i.e.
+   +0.003 then flat (m7 ≈ m8, inside the 0.004–0.006 hash sd of §3b), and the shift-amplitude error `|Ra−1|`
+   goes **0.1306 → 0.1039 → 0.1052** against the ncond-8 arm's 0.0728 — recovering 46 % and stopping. Read-out:
+   raising `mtry` to undo the static tail's dilution of the time-varying drivers buys ~7 % of the conditioning
+   gain and ~46 % of the amplitude cost, and **never reaches the narrow arm**. So `mtry` is a real but minority
+   lever, and a deficit that survives it belongs to the conditioning columns' content.
 3b. **The measured noise scale of a Δ`emu_r` on this table** — `scripts/diagnose_slow_delta_power.py`, which
    re-derives `emu_r` from any set of arms' stored `pred_*.f64`, **gates on reproducing each arm's logged
    value**, then runs a PAIRED 15° tile-cluster bootstrap (one tile resample applied to every arm at once, so

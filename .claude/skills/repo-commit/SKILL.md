@@ -134,6 +134,15 @@ every one falsified by the run that had just finished. So, before committing the
 - **Say why the next action was NOT started**, if it wasn't — "not started because a half-executed X leaves
   regenerated golden fixtures in the worktree" is actionable; silence reads as an oversight.
 - `grep` the block for your own hedges before committing; that is how the above were caught.
+- **Re-check the block one LAST time if you wrote it before your jobs landed (`[VERIFIED 2026-08-03]`).** The
+  common shape is a `### COLLECT THESE FIRST` table of in-flight job ids written mid-session — and then the jobs
+  finish before you end. Because the hook replays the block **verbatim**, a stale "collect these first" sends the
+  next session chasing already-finished work and reading closed questions as open. Hit for real on line S: five
+  jobs (a salt replicate, two `mtry` rungs, two chained gates) all landed after the handoff was written. Fix is
+  cheap and mechanical: **reframe the table from a to-do into a LEDGER** — keep it, because it maps each job id
+  to where its result is recorded and that is how a number is traced back to its log, but say in the heading that
+  nothing needs collecting, and point the reader at the section where new work actually starts. Same discipline
+  as the predictions rule above: a to-do list and its outcomes must never sit side by side undated.
 
 **Refreshing is also not REPLACING someone else's handoff — and git will not warn you (`[VERIFIED 2026-08-03]`).**
 ADR 0028 says one session per line, but if a second session *is* running in your worktree, the `## NEXT` block
