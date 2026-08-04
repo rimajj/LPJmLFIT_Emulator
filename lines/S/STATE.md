@@ -25,6 +25,28 @@ EXISTS, is GATED, and is proven POOLABLE — that was the last blocker on the bi
 5. **The first-ever ssp370 noise floor is MEASURED** (job `1689437`, exit 0) — §E0 has the table, the
    comparison against historic, and the one confound that makes its headline result *stronger*.
 
+### A00. CI IS PATH-FILTERED NOW (ADR 0090) — DO NOT WAIT FOR CHECKS THAT CANNOT APPEAR
+
+Owner decision, 2026-08-04. Each gate runs only when a path it watches changed, and every workflow has
+`workflow_dispatch` to force it. **Before polling anything:**
+
+```bash
+git diff --name-only origin/main...HEAD
+```
+
+| gate | fires on |
+|---|---|
+| `CI` (4 Julia jobs) | `src/**` `ext/**` `test/**` `Project.toml` `docs/src/generated/**` + own workflow |
+| `format` | any `**/*.jl` + own workflow |
+| `python` | `python/**` + own workflow |
+| `docs` (`main` only) | `docs/src/**` `docs/make.jl` `docs/Project.toml` `src/**` `Project.toml` + own workflow |
+
+**A gate that does not trigger reports NO check-run — not a "skipped" one.** A loop written as *"wait until
+`test (lts)` is completed"* HANGS FOREVER on a docs-only commit. Most of what this line commits — `lines/S/**`,
+`changelog.d/**`, ADRs, `.claude/skills/**`, `CLAUDE.md`, `docs/component_s_public_report.{tex,pdf}`,
+`docs/figs/**` — fires **nothing** and is mergeable the moment the push lands. Each gate also watches its own
+workflow file, so a commit editing `format.yml` correctly runs `format` even with no `.jl` change.
+
 ### A0. THE PUBLIC REPORT IS CURRENT AS OF 2026-08-04 — do not let it drift again
 
 `docs/component_s_public_report.tex` (+ the **tracked** `.pdf`) was rewritten against ADR 0040/0042/0043 and
