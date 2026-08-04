@@ -250,6 +250,23 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   `cell_meta.parquet` schema. **Pin a specific versioned artifact path** in your driver; if S needs to change
   the feature contract it is an integration point (both sides land together) — never adopt a re-trained
   artifact silently, because train/inference consistency is load-bearing (ADR 0023).
+- **From S — NEW OPEN INTEGRATION POINT raised 2026-08-04 (line S Phase 3A, ADR 0047): your drivers must
+  pass `fc.pft_ids`.** `FDiffFastCore` defaults it to `pft_ids = is_grass ? 8 : 3`, i.e. **every tree in
+  every cell runs as beech (`Type 3`)**. That is already wrong for the coupled biome set — Amazon and Sahel
+  are `Type 0` — and it becomes load-bearing when S wires in the ported per-individual mortality hazard
+  (`src/trait_mortality.jl`, landed offline with no call site), because that operator's parameters are
+  **genuinely per-PFT**: ids 1/2 are XERIC (`mort_water_res` 0.25, not 0.75), id 5's `longevity` is 125
+  (not 400) and its `mort_water_factor` 20 (not 5), and ids 0/1/2/4/5/6 all carry non-temperate `wdmort`
+  pairs. Running the tropics on beech wood-density mortality would reproduce the ADR-0031 defect class
+  inside the fix, so `pft_mort_params(id)` **errors** on an unknown id rather than defaulting — a coupled
+  call site that does not pass real ids will therefore FAIL LOUDLY, not run wrong.
+  **Nothing is asked of you yet:** the operator has no call site, so nothing in `run.jl`/`interface.jl`
+  changes today and no struct changes are needed (`fc.pft_ids` already exists at `fast.jl:94` and
+  `slow.jl` maintains it). What is asked is that when the per-cell drivers are next touched, the real
+  `Type` per cohort is threaded through from `M_individuals_*` instead of taking the default. Until then
+  line S passes ids itself in its own harnesses. No ADR-0023 contract break: the
+  `FluxDrivenSlowEmulator` kwargs, `flux_feature_vector` order, `live_flux_cond` and the `.drf`/`.rcop`
+  format are all unchanged.
 - **From S — OPEN INTEGRATION POINT raised 2026-07-28 (line S milestone S1b, ADR 0031):** Component S's
   training population was widened from `TREE_TYPES = [1,2,3,4,5]` to FIT's COMPLETE tree set `[0..6]` — the old
   list silently dropped the tropical broadleaved evergreen (id 0) + the boreal larch (id 6) = **32.5 % of
