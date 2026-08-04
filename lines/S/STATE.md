@@ -6,289 +6,81 @@
 
 ## NEXT — start here
 
-**Track A is DONE and the cross-build question is CLOSED.** Read **ADR 0043** first (the new one), then
-**ADR 0042** (the still-current address-vs-response verdict: **RESPONSE, final**). The ssp370 seed pair now
-EXISTS, is GATED, and is proven POOLABLE — that was the last blocker on the binary side of an ADR-0030 floor.
+**The wood-density damping investigation has a MECHANISM VERDICT. Read ADR 0046 first, then 0044, then 0045.**
+Phase 0 (instruments) and the Phase-1 kill switch are DONE; the mechanism is identified and the gate is frozen.
 
-### THE STATE IN FIVE LINES
+### THE STATE IN SIX LINES
 
-1. **ADR 0043 — the cross-build gate PASSES.** A matched-decomposition full-grid 2048-task re-run reproduced
-   the ssp370 seed1 truth **bit-for-bit**, including the whole **193 GB `ind` roster** (`cmp`-identical) — so
-   the `Feb  5` and `Jul 21` builds produce *the same individuals*, not merely the same means. Poolable.
-2. **`ind_ssp370_seed2_all.parquet` SHIPS** — 91.88 GB, **1 028 945 462** rows, 63 398 cells, 2020–2100, 29-col
-   frozen schema, 10 distinct `Type` (complete basis). Its seed1 sibling has 1 030 175 289 rows: **−0.1194 %**
-   apart — non-zero (not a clone) and small (a real seed pair).
-3. **The independence gate's earlier FAIL was spurious** — a stale job id, not a data problem. Fixed at the
-   root: `diagnose_ind_seed_independence.py --log-dir` + an empty log is now a distinct FATAL (§G).
-4. **`STEM_CAP` is now the ONLY remaining blocker on ADR-0030 criteria 1 and 4**, and §E1 below has the
-   measured feasibility numbers — the naive "rebuild both sides uncapped" is probably NOT buildable as written.
-5. **The first-ever ssp370 noise floor is MEASURED** (job `1689437`, exit 0) — §E0 has the table, the
-   comparison against historic, and the one confound that makes its headline result *stronger*.
+1. **ADR 0046 — trait-dependent mortality is CONFIRMED as the lever, by three independent measurements.**
+   FIT's per-cell MEAN wood-density shift decomposes **22.2 % composition / 51.3 % within-PFT / 26.6 %
+   interaction** (closure 4.6e-13), and the within-PFT part is **+112 % WITHIN-AGE-CLASS** with the
+   age-structure term at **−11.8 %** (stands get *younger* under warming, opposing the shift). Traits are
+   immutable after `new_tree`, so a trait rise at fixed age can only be differential survival ⇒ **the
+   selection intensity itself responds to warming.** Composition (S3) is capped at 22.2 %; age structure and
+   the entry marginal are excluded.
+2. **ADR 0044 — the gate is frozen and the residual is a PLACEMENT error, not shrinkage.** On the corrected
+   reliability basis the deployed arm's amplitude is `Ra` = **1.034** (`|Ra−1|` = 0.0344) while `Rr` = 0.3751
+   against a **0.9543** ceiling. **So any lever justified by "reducing attenuation" / "raising `sd_ratio`" is
+   aimed at a defect this emulator does not have** — including ADR 0030's criterion 2.
+3. **`Rb` is DEMOTED to veto-only.** `sd_paired(ΔRb)` blocked = **533** (above the 450 demotion trigger), and
+   the **permutation null buys `Rb` resolvably: +291.3 ± 88.1, 3.30σ, P(Δ≤0)=0.000.** The sentence form
+   *"X reduced the damping from A % to B %"* is now forbidden in every variant (ADR 0044 §5).
+   **P1 threshold = `ΔRr` ≥ +0.036** (measured 2σ; `sd_paired(ΔRr)` = 0.0178 hash / 0.0162 blocked).
+4. **ADR 0045 — recruit traits are INHERITED, not uniform.** `w_inherit = 4/(4+n_elig)` ⇒ ≈44 % at Hainich,
+   ≈80 % in low-diversity cells. **But the entry marginal is near-STATIC under warming** (5 of 7 PFTs move
+   <+1000; the largest moves *down* 9227) ⇒ **the inheritance operator (old "Rung B") is DEPRIORITISED as a
+   response fix.** It is still the correct establishment model and still corrects `CLAUDE.md` §3.
+5. **Two numbers in the public report are wrong.** "37 % damping / `Rb` = −892" is arm **B `p14env-hash`, the
+   REFUSED env arm**; the deployed ncond-8 arm is **−971.5 = 39.9 %**. And the `Rr` ceiling 0.9201 (and every
+   `Ra` against it) is superseded by the patch-year basis (Wooddens **0.9543**). Not yet fixed in the .tex.
+6. **New instruments, both gated and reusable.** `scripts/diagnose_slow_response_power.py` (paired
+   `Rr`/`Ra`/`Rb` bootstrap; reproduces all 7 ADR-0042 arms to ≤5e-5) and
+   `scripts/diagnose_wooddens_shift_decomposition.py` (the decomposition; per-cell terms at
+   `/p/tmp/jamirp/emulator_global/tables/wd_shift_d2/`). Jobs `1693482`, `1693988`, `1694062`, all exit 0.
 
-### A00. CI IS PATH-FILTERED NOW (ADR 0090) — DO NOT WAIT FOR CHECKS THAT CANNOT APPEAR
+### DO THIS NEXT, IN THIS ORDER
 
-Owner decision, 2026-08-04. Each gate runs only when a path it watches changed, and every workflow has
-`workflow_dispatch` to force it. **Before polling anything:**
+**A. Port the hazard offline and gate it (Phase 3A Stage 1) — no call site, nothing in CI moves.**
+The exact expression, `[VERIFIED]` against `/home/jamirp/lpjml56fit/src/tree/mortality_tree_ind.c`:
+`mort_npp = min(1, mort_max/(1 + 0.2·exp(0.01·greff))·(1 + bm_inc_counter))` with
+`mort_max = 10^(wdmort_1 + wdmort_2/(wooddens/1e6))` (`:92`; the `pft->par->mort_max` read at `:87` is DEAD
+code, overwritten), `greff = bm_delta/leafarea`, then
+`mort = min(1, mort_npp + mort_age + mort_water + mort_temp)` (**additive**, `:120-146`), hard kills at
+`bm_inc_counter ≥ 5` and `leaf_c < leaf_carbon_sapl(sla)`, then a per-individual `erand48` Bernoulli draw.
+⚠ **Do NOT port `mort_max` alone as "denser wood survives better"** — net selection is **not sign-definite**
+(the one-year differential is *negative* for ids 0 and 3), because denser wood also lowers `greff` and so
+*raises* `mort_npp`. Generate the per-PFT parameter table into ONE committed CSV
+(`scripts/build_mort_params_reference.py` → `test/testitems/references/S_pft_mortality_params.csv`) and have
+`slow.jl` **and** `build_slow_flux_table.py::PFT_PARAMS` both gate against it — never a third copy (ADR 0031).
+`longevity` is the JSON key `"age"` (id 5 = 125, not 400); `temp_low/high` is `"temp_stressed"`.
 
-```bash
-git diff --name-only origin/main...HEAD
-```
+**B. The validation target is the AGE–WOODDENS GRADIENT (ADR 0046 §3), not the damping.** Per PFT, including
+the **non-monotone** shape for ids 0 and 3. A ported operator that produces a monotone gradient everywhere is
+wrong even if `Rb` improves.
 
-| gate | fires on |
-|---|---|
-| `CI` (4 Julia jobs) | `src/**` `ext/**` `test/**` `Project.toml` `docs/src/generated/**` + own workflow |
-| `format` | any `**/*.jl` + own workflow |
-| `python` | `python/**` + own workflow |
-| `docs` (`main` only) | `docs/src/**` `docs/make.jl` `docs/Project.toml` `src/**` `Project.toml` + own workflow |
+**C. `fc.pft_ids` already exists — no M struct change needed** (`fast.jl:94`, maintained by `slow.jl` at
+`:445,453,457,513,793`). But **M's drivers never pass it**, so `FDiffFastCore`'s default
+`pft_ids = is_grass ? 8 : 3` makes Amazon/Sahel (`Type 0`) run **beech `wdmort`**. M integration point #1;
+until it lands the S-side harness passes `pft_ids` itself and the operator must **error**, not default, on an
+id with no parameter row.
 
-**A gate that does not trigger reports NO check-run — not a "skipped" one.** A loop written as *"wait until
-`test (lts)` is completed"* HANGS FOREVER on a docs-only commit. Most of what this line commits — `lines/S/**`,
-`changelog.d/**`, ADRs, `.claude/skills/**`, `CLAUDE.md`, `docs/component_s_public_report.{tex,pdf}`,
-`docs/figs/**` — fires **nothing** and is mergeable the moment the push lands. Each gate also watches its own
-workflow file, so a commit editing `format.yml` correctly runs `format` even with no `.jl` change.
+**D. Before touching the runtime, measure the k-cap merge confound (D4, zero compute).** `_merge_pair!`
+(`slow.jl:441-445`) inherits the **dominant** parent's `wooddens` while conserving carbon by `nind` weight —
+a trait-non-conservative operator sitting directly in the path of the fix. Run `k_cap = typemax(Int)` vs
+default on the existing Hainich harness and diff the community wood-density trajectory. **If it moves, fix it
+FIRST, separately, with its own ADR.** Same pass: read `s.target_history`/`s.total_n_history` (already
+recorded at `slow.jl:810,812`) for the establishment fraction `e` ⇒ `τ = −1/ln(1−e)`, the analytic bound on
+the rollout's second (relaxation) damping.
 
-### A0. THE PUBLIC REPORT IS CURRENT AS OF 2026-08-04 — do not let it drift again
+**E. Still open from Phase 0/1:** `CAP_HASH_SEED` (~10 lines at `build_slow_runtime_table.py:378-384`, default
+`= seed` so every artifact stays byte-identical) — now has a SECOND justification beyond the floor: ADR 0045 §4
+shows `:370-371`'s "patch-years are exchangeable" premise is false, since patch-years differ in age structure.
+D1 (space-for-time surrogate) and D3 (calibration curve) are unrun but are **no longer on the critical path** —
+ADR 0046 identified the mechanism without them; run them only to characterise the residual.
 
-`docs/component_s_public_report.tex` (+ the **tracked** `.pdf`) was rewritten against ADR 0040/0042/0043 and
-**now compiles** (41 pp, 0 undefined refs). It had never been compiled before: a blank line inside
-`\caption{}` aborts `pdflatex` via hyperref's nameref, fixed by giving every figure a **short optional
-caption**. Build recipe + the two traps are in the `emulator-validation-figures` skill.
-
-It now states three things the older version got wrong, and any future claim must stay consistent with them:
-
-1. **Random-fold hold-out is NOT "tested the hard way"** — §4.2 carries the blocked-CV correction (a
-   position-only model scores 0.837 scattered → 0.14–0.21 blocked; the env inputs retain ~73 % vs ~21 %).
-   Every headline number in the report is on the **scattered** basis and is labelled as such.
-2. **The ~37 % warming-response damping is the headline open item** (§6.5), above the per-trait gaps. `Rb` is
-   a **bias** (`mean Δpred − mean Δobs` = −892 against an observed `+2433`) — it is NOT the predicted shift, so
-   the direction is right and only the magnitude is damped. Do not restate it as a sign error.
-3. **A count noise floor DOES exist (~0.99) but is not like-for-like** (pooled over patches/years vs a
-   per-patch-year target), so it is reported as an order-of-magnitude reference only.
-
-Also added: §6.6 the first ssp370 floor, §7.4 the cloned-seed2 episode, §7.5 the cross-build verification.
-⚠ `docs/figs/` holds **plain renamed copies** of `figures/emulator_validation/historic_t8/` — regenerate a
-generation and you MUST re-copy, or the report silently keeps showing t8. ⚠ Never quote
-`basis_ratio`/`basis_frac_over_10pct` from `metrics_biomass.txt` as accuracy; they are the row-universe
-consistency check (this rewrite fixed exactly that conflation in the biomass caption).
-
-### A. LEDGER — this session's jobs (all resolved)
-
-| job | tag | result | recorded in |
-|---|---|---|---|
-| 1684567 | `S-FIT_ssp370_seed2` | **COMPLETED** 01:22:25, log says `…67420 grid cells processed.`, `restart_2100.lpj` 1.336e11 B | ADR 0041/0043 |
-| 1684568 | independence gate | FAILED **spuriously** (stale log path) → **re-run by hand: PASSES all 4 checks** | ADR 0043 §trap |
-| 1684569 | parquet child | stranded `DependencyNeverSatisfied`; cancelled | superseded by 1689305 |
-| **1689305** | `S-indparq-ssp2` | **COMPLETED** — the 91.88 GB seed2 parquet | §THE STATE line 2 |
-| 1678607 | `S-crossbuild-gate` | **COMPLETED** → **PASS**, bit-identical | **ADR 0043** |
-| **1689437** | `S-floor-ssp370` | **CHECK IT** — first ssp370 noise floor (tree7 basis) | §E0 |
-
-### E. THEN, IN PRIORITY ORDER
-
-0. **DONE — the first ssp370 noise floor (job `1689437`, exit 0).** `tree7` parquet basis, **57 295 cells**
-   with ≥20 survivor stems in BOTH seeds (seed1 58 683 / seed2 58 663). Both guards stayed silent, so the
-   pair is genuinely independent and no `Cell` key was duplicated:
-
-   | axis | ssp370 `floor_r` | ssp370 `floor_ρ` | historic `floor_r` (ADR 0030 §79) | Δ |
-   |---|---|---|---|---|
-   | SLA | **0.975** | 0.966 | 0.965 | +0.010 |
-   | Wooddens | **0.944** | 0.896 | 0.923 | +0.021 |
-   | D95max | **0.837** | 0.873 | 0.895 | **−0.058** |
-   | minwscal | **0.978** | 0.960 | 0.973 | +0.005 |
-   | `agb` [diag] | 0.951 | 0.989 | — | — |
-   | `Height` [diag] | 0.982 | 0.986 | — | — |
-   | COUNT (per-cell total stems) | 0.9895 (r²=0.9791) | 0.9878 | — | — |
-
-   **The confound, and why it strengthens the result:** ssp370 pools **81** years per cell against historic's
-   **20**, so per-cell medians average over ~4× more data and `floor_r` should rise *mechanically* on every
-   axis. Three axes do. **`D95max` falls 0.058 despite that tailwind**, so rooting-depth trait medians are
-   genuinely LESS reproducible between realizations under warming — the true effect is larger than −0.058.
-   `D95max` was already the weakest axis historically; it is now the clear RNG-limited one. **Do not quote
-   these against an emulator `emu_r`**: this is the `tree7` parquet basis (`SKIP_COPULA=1`), a real floor for
-   the emulator's population but **not** byte-identically stem-matched to the emulator's `Y`, and there is no
-   ssp370 emulator arm in that run. Basis 1 is §E1. Reproduce with:
-   ```bash
-   export IND_SEED1=/p/tmp/jamirp/emulator_global/ind_ssp370_seed1_all.parquet \
-          IND_SEED2=/p/tmp/jamirp/emulator_global/ind_ssp370_seed2_all.parquet \
-          SKIP_COPULA=1 SKIP_LEGACY=1
-   TIME=03:00:00 NCPUS=32 scripts/sbatch_python.sh S-floor-ssp370 scripts/noise_floor_vs_emulator.py
-   ```
-   ⚠ Those three knobs are **not** in `sbatch_python.sh`'s forward list and `scripts/sbatch_*.sh` is
-   **integrator-owned** (§9 Gap 3) — so they MUST be `export`ed, or they silently take their defaults and you
-   get the *historic* floor again under an ssp370 tag. The log's first two lines echo the resolved parquet
-   paths: **check them before believing the numbers.**
-
-1. **The definitive (basis-1) ssp370 floor needs a decision, not just compute — do the arithmetic before
-   submitting anything.** Basis 1 requires a seed2 copula table built with settings IDENTICAL to a seed1 one
-   ("static boundary, **no STEM_CAP**, same coverage gate", only `SEED` differing). Measured state:
-   - There is **no** `slow_copula_ssp370*_seed2` table at all, and the existing seed1 `slow_copula_ssp370_t8`
-     is **CAPPED** (n = 22 283 459 ≈ 400 × 58 683) while `slow_copula_historic_t8` is uncapped (197 721 867).
-     So **both** ssp370 sides would need rebuilding, not just seed2.
-   - **Why the cap cannot simply be left on:** `build_slow_runtime_table.py:380` ranks by
-     `pl.struct(["Cell","Patch","Year"]).hash(seed=seed)` where `seed` is the **data** SEED, and it is a
-     **cluster** subsample (whole patch-years). So capped seed1 and capped seed2 retain *different*
-     patch-years; the extra subsampling noise **lowers `floor_r`**, which **flatters the emulator**.
-   - **Why uncapped may be infeasible as written:** ssp370 uncapped ≈ **870 M stems** (4.4× historic, from
-     81 yr / 58 683 cells) ⇒ `Xc` 52 GiB + `Y` 39 GiB = **91 GiB in numpy alone**, before the polars frame it
-     is built from — realistically several hundred GB peak, **twice** (both seeds). Do not just submit it and
-     hope; either stream the write, or take the option below.
-   - **The cheap alternative worth an ADR:** decouple the cap's hash seed from the data SEED (e.g.
-     `CAP_HASH_SEED`, default = `seed` so every existing artifact stays byte-identical). Then both seeds keep
-     the **same** patch-year clusters, which is what a *paired* per-cell comparison actually wants, at
-     1/40th the size. This is a deliberate basis change ⇒ ADR + a new `VERSION`, never an in-place rebuild.
-
-2. **A SCENARIO-RESOLVED env tail** — unchanged from the previous handoff, and still the thing that could
-   actually let M pin a 14-column artifact. The augment script's `ENV_PARQUET` seam is keyed on `Cell` alone
-   (`group_by("Cell").mean()`), and the copula tables carry `cells.i64` + `scenario.i64` but **no per-row
-   `Year`**, so a fully transient tail needs a schema change and must ride a new generation (ADR 0036 §5b).
-   **A scenario-resolved tail needs no schema change** (`scenario.i64` is already per-row) and is sufficient
-   for the response gate. All five ssp370 forcings exist and **`climclusterpy` still imports**
-   (`climclusterpy.features.compute_all_ecology_diagnostic_features` — CLAUDE.md §1), so recompute the six
-   columns by the canonical method. `scripts/build_transient_boundary.py` is the pattern to copy.
-3. **A `SEED_BASE` knob** (~5 lines, S-owned). Forest-seed noise is unmeasured (`seed = a` hard-wired at
-   `ntrees = 6`) and adds to §D's sd. Clause 3 did not fire, so further colourings are not needed for the
-   verdict — but they remain the tool for a blocked **level** rather than a delta (§B).
-4. **A blocked `p14perm` rung** — the width null exists only at hash folds, and ADR 0040's "pointless"
-   argument assumes a fold-mode invariance this matrix disproved for `geo` and `Rr`.
-5. **The geo control is degraded in the direction of the hypothesis** (ADR 0042 §10 caveat 6): geo arms are
-   the only ones with realized leaves **below `MIN_LEAF=20`** (down to 7), because `src/drf.jl:137` takes
-   `0.5*(xj+xj1)` and ULP-adjacent trig values collapse the midpoint. Rebuild `cell_geo_tail.parquet`
-   **rank-transformed to consecutive integers** and re-run the two geo rungs. **Do NOT patch `src/drf.jl`** —
-   it moves fitted forests and committed baselines (guardrail 4).
-6. **Blocking confounds "adjacency removed" with "39 % of training cells removed"** (47 013 → 28 802). Two
-   hash rungs subsampled to ~28 800 train cells/fold separate them; needs a ~10-line `TRAIN_CELL_FRAC` knob.
-7. Carried, unchanged: the `6×2M d32` depth rung · `TRAIT_ONLY=0` on the shipped rung (`agb`/`Height` carry the
-   tightest margins, pooled KS 0.0116 vs the 0.02 bound) · the composed coupled path is still unexercised ·
-   emit `Year` in the `MODE=copula` table (schema change ⇒ ride a new generation).
-
-### G. TRAPS FOUND 2026-08-04 — do not re-derive
-
-1. **A jcf that hardcodes a parent's job id in a path is not resubmit-safe.** When the hung ssp370 member was
-   resubmitted, the chained gate kept reading the **cancelled** attempt's **0-byte** log and reported
-   `no completion line at all` for a run that had finished cleanly — with its three *data* checks passing.
-   Recognise it by: a chained gate that **fails in ~1 second** with most checks green, plus grandchildren left
-   `DependencyNeverSatisfied`. Fixed at the root: `--log-dir <run_dir>` resolves the newest **non-empty**
-   `lpjml_*.out`, and a 0-byte log is a provenance **FATAL (exit 2)**, never a gate failure.
-2. **A file-level `cmp` on a NetCDF output is the WRONG equality test.** LPJmL writes a `history` attribute
-   holding a wall-clock timestamp + config path, so identical physics differs in the header — the gate's `vegc`
-   differed by 124 B at byte 172 while **all seven** variables hashed identically. Compare decoded variables
-   (`netCDF4` + SHA-256) or the timestamp-free text outputs.
-3. **`noise_floor_vs_emulator.py` had an unguarded streamed `group_by`** (ADR 0036 §5b): key-set
-   nondeterminism can DUPLICATE a `Cell`, and every join in that script is on `Cell`, so it fans out and
-   silently re-weights the floor — invisible to a `dropped = before − after` check, which duplication drives
-   negative. Now asserts `n_unique(Cell) == height`. This became load-bearing at ssp370 scale (1.03e9 rows
-   vs historic ~2.3e8).
-4. **`SKIP_COPULA` must not be able to route around the fabricated-floor guard.** The bit-identical-seeds
-   FATAL lived only in the copula path; it is now a shared `_assert_two_seeds` called from the parquet bases
-   too. A floor built from a cloned "second seed" reports `floor_r ≡ 1` with no error anywhere (ADR 0038).
-
-### B. RESOLVED — clause 3 does not fire; the verdict is FINAL
-
-Arm D′ (`1680713`) landed at Wooddens `emu_r` **0.7814**, inside the `[0.7677, 0.7947]` window ADR 0042 §4
-fixed **before** the rung ran. `Δ_blocked` salt 0 = **+0.0314**, salt 1 = **+0.0338**, difference **0.0024**
-against a 0.0157 tolerance — the salts agree 6.5× more closely than required, and clause 1 is met on **both**
-colourings on all four axes. Recorded as a dated addendum in ADR 0042 §4 (the pre-registered table is left
-verbatim). **Nothing here is open; do not re-adjudicate it.**
-
-**The one transferable lesson from the replicate — apply it to every future blocked comparison.**
-Re-colouring moved the *single-arm* blocked `emu_r` by **+0.0136** but the *paired delta* by only **+0.0024**.
-The colouring effect is common to both arms and cancels in the difference. So: a blocked **level** is
-colouring-sensitive and must never be quoted on its own or compared across colourings; a blocked **paired
-delta** at a shared colouring is robust. Build blocked comparisons as paired deltas.
-
-Still open from the blocked analysis, and NOT retired by the replicate: `Δ_blocked` is **one-fold-dominated**
-(fold 0 = ~84 % of it from 26 % of the cells, and it is the fold with the fewest training cells). Re-colouring
-re-partitions the same cells, so a second colouring cannot address it. Cheapest test: leave-one-tile-group-out
-on the blocked delta (zero new forest compute).
-
-### C. THE mtry QUESTION — ANSWERED, both halves. Nothing left to collect
-
-At `(p=8, mtry=4)` a split sees ≥1 of the four time-varying flux drivers with probability **0.9857**; at
-`(p=14, mtry=4)` only **0.7902**. `MTRY=7` restores the matched *fraction* (0.9650), `MTRY=8` the matched
-*probability* (0.9850). Both ran, plus a response gate on their predictions (`1683694`, fixed bootstrap).
-
-| statistic (Wooddens) | p8 mtry4 | env mtry4 | env mtry7 | env mtry8 |
-|---|---|---|---|---|
-| `emu_r` | 0.8693 | 0.9095 | **0.9124** | **0.9121** |
-| `\|Ra − 1\|` | 0.0728 | 0.1306 | **0.1039** | **0.1052** |
-| `Rr` (hash) | +0.3751 | +0.4146 | +0.4212 | +0.4230 |
-
-**Both halves answered, and the curve SATURATES at m7 (m7 ≈ m8, inside §D's 0.004–0.006 hash sd):**
-
-- **Level:** +0.003 `emu_r`, i.e. **7 %** of the +0.0402 env gain, and nowhere near the p8 arm's 0.8693. The
-  conditioning gain is **not** an `mtry` artifact.
-- **Transient amplitude:** `|Ra−1|` recovers **46 %** of the way toward p8 and then stops. So §5.2's amplitude
-  cost is **~46 % dilution, ~54 % the env columns' content** — **no `mtry` setting recovers p8's amplitude
-  fidelity**, so the cost is substantively the tail's, not a knob's.
-- **`Rr` at hash folds RISES with `mtry`**, so the hash-fold `Rr` advantage is not a dilution artifact either.
-  The honest finding remains its **reversal under blocking**, for which no blocked m7/m8 arm exists — one
-  blocked `p14env MTRY=7` rung is the single remaining `mtry` question, and it is optional.
-
-### D. WHAT IS SETTLED — do not re-derive, do not re-litigate
-
-- **Noise scale of a Δ`emu_r`** on this table: **0.004–0.006 (hash) / 0.012–0.016 (blocked)**, paired 15°
-  tile-cluster bootstrap, gated on reproducing every logged `emu_r`. Run
-  `scripts/diagnose_slow_delta_power.py` before calling any Δ resolved. **Supersedes ADR 0040 §7's single
-  "order 0.01."** It is a LOWER bound — colouring (~0.014) and forest seed (unmeasured) add to it.
-- **`Δ_blocked` is one-fold-dominated** — fold 0 = ~84 % of it from 26 % of cells, and it is the fold with the
-  fewest training cells. Hash folds are stable to 0.0011 across folds. Any blocked claim inherits this.
-- **The published hash-fold gain is reproducible by a pure address** (`p14geo-hash` 0.9231 > `p14env-hash`
-  0.9095, all four axes). Quote the **blocked +0.0315**, never +0.0402, never ADR 0038's +0.0834.
-- **Width costs skill at matched mtry** — `p14perm-hash` is below `p8-hash-mtry4` on every axis (Wooddens
-  −0.0201, z ≈ 9). Measured at hash folds only; this matrix proved fold-mode sign flips are real.
-- **Forbidden statements** (ADR 0042 §8): the retention ratio "78 %" (it is 0.783 ± 0.411, clause 1 fails in
-  24.4 % of resamples, and it is scale-dependent — 0.534 on `emu_rho`); blocked `sd_ratio` 0.7423 against
-  criterion 2's 0.75 (cross-basis, forbidden by the gate log itself, and `P(pass) = 0.416`). Say **"the gain
-  does not vanish when adjacency is removed"** and quote the dispersion **delta** (+0.0900 blocked).
-- **`Rr` and `Rb` behave OPPOSITELY under replication, and only one is quotable** (ADR 0042 §4 addendum, job
-  1681717): the transient-pattern penalty `Rr`(env) − `Rr`(p8) = **−0.0305 on BOTH blocked colourings**, four
-  decimal places, so it is a replicated finding — this is the claim the ADR's conclusion rests on. The `Rb`
-  inter-arm difference **flips sign** between colourings (+163.2 vs −188.1), so **no `Rb` arm-vs-arm claim is
-  admissible in either direction**. The refutation of ADR 0040 §4 does not depend on it (it rests on the
-  matched ncond-8 arm damping 39.9 % on its own). A paired difference bootstrap (~15 lines, copy the one in
-  `diagnose_slow_delta_power.py`) is still the right instrument for `Rb` and is expected to confirm
-  "not resolvable".
-
-### F. TRACK A — COMPLETE (2026-08-04). Kept only as a pointer
-
-The ssp370 second seed is **done**: member produced (`1684567`), independence-gated (PASSES all 4 checks),
-converted to `ind_ssp370_seed2_all.parquet`, and proven poolable with seed1 (**ADR 0043**). The mechanism —
-`random_seed` is inert under `-DFROM_RESTART`, so a second seed is a second SPIN-UP — is **ADR 0041**; read it
-before touching any seed/restart config. The judging rules it produced (never judge a C run from SLURM state;
-a healthy 2048-task run writes output in ~15 s; the resubmit/stale-log trap; NetCDF `history`) are now in
-**CLAUDE.md §3** and the `lpjmlfit-cbinary` skill — not here.
-
-### G2. TRAPS FOUND 2026-08-03 (previous session) — still current, do not re-derive
-
-- **A wrapper that hands its inner script an EXPLICIT env prefix makes every unlisted knob silently inert.**
-  Bit `BLOCK_SALT` (fixed; would have fabricated a perfectly-agreeing replicate and forced a false RESOLVED).
-  Before trusting a new knob: `SUBMIT=no` and grep the generated jcf. Verify from the log, not the submit line.
-- **`SBATCH_EXCLUDE` is NOT a recognised sbatch input here and fails silently** — job 1680828 died `0:53` on
-  `cso14c74`, and the resubmission carrying `SBATCH_EXCLUDE=cso14c74` landed on `cso14c74` again. Use a real
-  `#SBATCH --exclude=`; `diagnose_copula_capacity.sh` now has an `EXCLUDE=` knob. `cso14c74` was bad today.
-- **Gate a provisioning artifact against the SHIPPED table, never against a re-run of the producing code** —
-  the latter reproduces its own bugs. That is what caught the `Float32` accumulation (four of the six env
-  columns are `Float32`; polars' `group_by().mean()` accumulates in `Float32`, landing 3.35e-07 relative off
-  the trained values on 199 093/200 000 rows). `.cast(pl.Float64)` first ⇒ bit-exact. CLAUDE.md §4.
-- **A fixed-seed statistic that is not reproducible is telling you something.** Two identical response-gate
-  runs printed different CIs; I first mis-read that as an RNG draw. It was a row-order-dependent bootstrap
-  cluster label (ADR 0042 §7.3). **Non-reproducibility at a fixed seed is a bug report, not noise.**
-- **CLAUDE.md's "`climclusterpy_package` no longer exists" was wrong** — the directory was reorganised into a
-  packaged repo; only the loose `global_co2_*.txt` rotted, and the feature code still imports. Corrected in §1.
-
-### H. OPEN INTEGRATION POINTS WITH LINE M — S requests, M lands (do not edit these yourself)
-
-1. **`scripts/extract_cell_slow_init.py:142-146` checks `cond_cols[-4:] == BOUNDARY_COLS`.** A 14-column
-   artifact fails that **by construction**, because its last four columns are the env tail, so M's re-pin step
-   `sys.exit`s. The correct check is **positional**, `cond_cols[4:8]`. Carried from the previous handoff and
-   still open. It costs M one line and it blocks any future 14-column pin, transient or not — worth raising
-   even though ADR 0042 says do not re-pin *this* artifact.
-2. **`.claude/skills/lpjmlfit-cbinary/SKILL.md` should gain a pointer to CLAUDE.md §3's new zero-byte-log
-   rule** (how to spot a hung 2048-task MPI run in the first minute, from §F above). That skill is **M-primary**
-   per CLAUDE.md §9, so S did not edit it; the knowledge itself is already captured in CLAUDE.md §3 (shared)
-   and in the flaky-node user memory, so this is a discoverability request, not a knowledge gap.
-
-**Not S's to chase:** `water_stress` (6.6× band) is line M's F core, ADR 0029. `fpc`'s residual is dynamics
-(ADR 0035 §3.3).
+**F. Do not bundle.** Every arm/change lands separately with its own matched baseline **re-run in the same
+generation, never inherited from a log** — that is the one move that caught all five prior wrong turns on this
+line.
 
 ## Scope + ownership (ADR 0029)
 
