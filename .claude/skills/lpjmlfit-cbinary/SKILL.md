@@ -61,6 +61,31 @@ Put `"timestep":"daily"` inside each output entry's `"file"` object; keep the `i
 - `scripts/water_closure_check.py <run_dir>` — dask-lazy water closure verify.
 - Keep the `.jl`/`.sh` and `--output` on shared `/p` (never `/tmp/claude-*`).
 
+## Judging a finished run — and the two traps that make a GOOD run look bad
+
+Never judge a C run from SLURM state (the stock jcf always exits 0). Require
+`lpjml successfully terminated, <ncell> grid cells processed.` in the log. Two follow-on traps
+(ADR 0043, both cost real time):
+
+- **After resubmitting a run, re-point every chained child's log path.** A resubmitted run writes a
+  **new** `lpjml_<newjobid>.out`, so a child jcf pinning the old id reads the cancelled attempt's
+  **0-byte corpse** — and since an empty log cannot be distinguished from an unfinished one, the child
+  reports `no completion line at all` for a run that finished cleanly. Symptom to recognise: a chained
+  gate that **fails in ~1 second with most of its data checks passing**, and grandchildren left
+  `DependencyNeverSatisfied`. Prefer
+  `scripts/diagnose_ind_seed_independence.py --log-dir <run_dir>` (resolves the newest **non-empty**
+  `lpjml_*.out`) over naming a job id; an empty log is a provenance FATAL, not a physics verdict.
+- **A file-level `cmp` on a NetCDF output is the WRONG equality test.** LPJmL writes a `history`
+  attribute holding a wall-clock timestamp + the config path, so runs with identical physics differ in
+  the header (the cross-build gate's `vegc` differed by 124 B at byte 172 while **all seven** variables
+  hashed identically). Compare **decoded variables** (`netCDF4` + SHA-256 per variable), or the
+  timestamp-free text outputs (`globalflux`, `ind`).
+
+**Binary/config equivalence must be a matched-decomposition full-grid run** — a subset re-run cannot
+answer it (ADR 0041: the decomposition confound exceeds the signal). The positive control is recorded in
+ADR 0043: a faithful full-grid 2048-task re-run reproduced the ssp370 seed1 truth bit-for-bit, including
+the 193 GB `ind` roster.
+
 ## Closure = the run itself
 
 `-DSAFE` `check_fluxes.c` aborts a cell if `|balanceW| > 1.5 mm/yr` — **a clean run IS water closure.**

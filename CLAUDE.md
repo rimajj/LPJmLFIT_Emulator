@@ -231,6 +231,23 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   output dir a minute after launch; do not wait out a silent 2048-CPU job.** Resubmit with a real
   `#SBATCH --exclude=` / `sbatch --exclude=` — and pass it on the COMMAND LINE so a provenance-bearing jcf
   stays byte-identical (`SBATCH_EXCLUDE` in the environment is a silent no-op here).
+- **After resubmitting a run, RE-POINT every chained child's log path — a jcf that hardcodes a parent's
+  job id is not resubmit-safe (`[VERIFIED 2026-08-04]`, ADR 0043).** The resubmitted run writes to a
+  **new** `lpjml_<newjobid>.out`, so a child pinned to `…<oldjobid>.out` reads the cancelled attempt's
+  **0-byte corpse** — and because the "require `lpjml successfully terminated, <ncell> grid cells
+  processed.`" rule above cannot distinguish *empty* from *unfinished*, the child reports
+  `no completion line at all` for a run that finished cleanly. That is exactly what happened to the
+  ssp370 seed2 member: its independence gate **failed in 1 second** with 3 of 4 checks passing, the
+  93 GB parquet child was left `DependencyNeverSatisfied`, and nothing anywhere was actually wrong.
+  Prefer resolving the newest **non-empty** `lpjml_*.out` in the run dir over naming a job id
+  (`scripts/diagnose_ind_seed_independence.py --log-dir <run_dir>`); treat a 0-byte log as a
+  provenance FATAL, never as a physics verdict.
+- **A file-level `cmp` on a NetCDF output is the WRONG equality test (`[VERIFIED 2026-08-04]`, ADR 0043).**
+  LPJmL writes a `history` attribute holding a **wall-clock timestamp and the config path**, so two runs
+  with identical physics differ in the header — the cross-build gate's `vegc_2020_2100.nc` differed by
+  124 B at byte 172 for exactly that reason while **all seven** variables (incl. the full 81×280×720
+  `VegC` field) hashed identically. Compare **decoded variables** (`netCDF4` + SHA-256 per variable), or
+  compare the text/CSV outputs (`globalflux`, `ind`), which carry no timestamp.
 - **Daily output is config-only (no recompile):** put `"timestep":"daily"` inside each output entry's
   `"file"` object. Keep the `ind` tree table **annual**.
 - **`.clm` climate forcing — PARSE THE HEADER, don't assume float32/HDR=51 (`[VERIFIED]`).** LPJmL `.clm`
