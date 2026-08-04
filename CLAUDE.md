@@ -461,6 +461,23 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `TagBot`. The Julia matrix shows jobs `test (lts)` **(required)**, `test (1)` **(required)**,
   `test (pre)` (`continue-on-error`, allowed to fail on Julia-prerelease API churn), plus non-required
   `test (macOS, lts)`. **Never merge on a red required check.**
+- **⚠ EACH GATE IS PATH-FILTERED AND MOST COMMITS TRIGGER NONE OF THEM (ADR 0090).** A gate runs only when a
+  path it watches changed, so **a prose/docs/skill/ADR/STATE-only commit legitimately produces NO check-runs
+  at all** and is mergeable as soon as it is pushed. Do not wait for a verdict that cannot arrive.
+
+  | gate | runs when these change |
+  |---|---|
+  | `CI` (4 Julia jobs, the expensive one) | `src/**` · `ext/**` · `test/**` · `Project.toml` · `docs/src/generated/**` · own workflow |
+  | `format` (Runic) | any `**/*.jl` · own workflow |
+  | `python` (ruff+pytest) | `python/**` · own workflow (**`scripts/*.py` is NOT linted by CI**) |
+  | `docs` (Documenter) | `docs/src/**` · `docs/make.jl` · `docs/Project.toml` · `src/**` · `Project.toml` · own workflow |
+
+  **`docs/component_s_public_report.{tex,pdf}`, `docs/figs/**` and `docs/decisions/**` trigger NOTHING** —
+  they live under `docs/` but are not in the Documenter page tree. Every workflow also has
+  `workflow_dispatch`, so any gate can be forced from the Actions tab / `gh workflow run` when you want it
+  anyway. **A skipped workflow reports no status — not a "skipped" one** — so a poll loop written as *"wait
+  until `test (lts)` is completed"* HANGS FOREVER on a docs-only commit. Decide which gates to expect from
+  `git diff --name-only origin/main...HEAD` against the table above, then require exactly those.
 - **Check CI status — `gh` is NOT reliably on PATH.** Use the GitHub REST API with the user's token:
   ```bash
   TOKEN=$(python3 -c "import yaml;print(yaml.safe_load(open('/home/jamirp/.config/gh/hosts.yml'))['github.com']['oauth_token'])")
@@ -612,7 +629,7 @@ rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (i
 | Narrative / what happened | `lines/<X>/JOURNAL.md` (append) |
 | Durable line state + the **NEXT handoff** | `lines/<X>/STATE.md` |
 | Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line** |
-| A decision | an ADR from **your block**: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089; add the row to your line's subsection of `docs/decisions/README.md` |
+| A decision | an ADR from **your block**: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · **integrator/cross-cutting 0090–0099** (0001–0029 is exhausted; ADR 0090 opened the new block); add the row to your line's subsection of `docs/decisions/README.md` |
 | Cross-cutting `[VERIFIED]` fact | `MEMORY.md` (shared, additive) |
 | A procedure / gotcha | a skill / this file (§8 routing unchanged) |
 
@@ -660,10 +677,13 @@ INT=/p/projects/open/Jamir/esm_land_emulator   # the integration worktree; `main
 git pull --rebase origin main        # at session START, and again before merging
 # ... work, commit (Conventional Commits, one logical change) ...
 git push --force-with-lease origin line/<X>    # NOT a plain push — see (2) below
-#   branch CI: test (lts), test (1), format, python.
-#   `docs` deliberately does NOT run on branches (gh-pages deploy race) — build locally:
-#   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
-# green on THAT sha? integrate — never switch branches in your worktree:
+#   branch CI: test (lts), test (1), format, python — BUT ONLY THE ONES YOUR DIFF TRIGGERS (ADR 0090).
+#   Decide which to expect BEFORE polling, or you will wait for a check that never appears:
+#     git diff --name-only origin/main...HEAD     # → look up §5's path table
+#   Touched no .jl / no python/ / no docs/src/ ⇒ NO gate runs ⇒ nothing to wait for, merge now.
+#   `docs` deliberately does NOT run on branches (gh-pages deploy race) — build locally when you
+#   changed docs/src/**: DOCS_LINKCHECK=false julia --project=docs docs/make.jl
+# every EXPECTED gate green on THAT sha? integrate — never switch branches in your worktree:
 flock "$INT/.git/esm-integrate.lock" bash -eu -c '
   git -C "$0" pull --ff-only origin main
   git -C "$0" merge --no-ff --no-edit "origin/line/$1"
@@ -688,10 +708,13 @@ an adversarial review on 2026-07-28 before any line ran them:
 4. **`flock` the integration worktree.** It is the one shared checkout left; without the lock four lines can
    interleave `pull`/`merge`/`push` in it and reintroduce exactly the contention worktrees were adopted to
    remove.
-5. **Then verify `main`'s own latest CI.** Green branches do **not** guarantee a green `main`: `format`, `docs`,
-   `python`, Aqua and JET are **whole-package** gates, and `docs` never ran on your branch at all. Also GitHub
-   keeps only one *pending* run per branch, so a rapid follow-up push can cancel an intermediate `main` run
-   (observed twice) — the **newest** `main` sha is the one that carries a verdict.
+5. **Then verify `main`'s own latest CI — when your diff triggered anything (ADR 0090).** Green branches do
+   **not** guarantee a green `main`: `format`, `docs`, `python`, Aqua and JET are **whole-package** gates, and
+   `docs` never runs on your branch at all. Also GitHub keeps only one *pending* run per branch, so a rapid
+   follow-up push can cancel an intermediate `main` run (observed twice) — the **newest** `main` sha is the one
+   that carries a verdict. **If the merge changed no gate-watched path, `main` runs nothing either** and there
+   is nothing to verify; the one case that still deserves a look is a merge that touched `src/**` or
+   `docs/src/**`, because that is when `docs` runs on `main` having never run on your branch.
 
 6. **A script with a hard-coded absolute repo path writes into the INTEGRATOR worktree.** Several older
    scripts opened with `REPO = "/p/projects/open/Jamir/esm_land_emulator"`, so running one from a line

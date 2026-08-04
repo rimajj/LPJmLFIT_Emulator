@@ -13,14 +13,35 @@ name: docs
 #   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
 # (already the documented local check — CLAUDE.md §2). Do not add `line/**` here.
 
+# WHEN THIS RUNS (ADR 0090): only when the Documenter page tree or the package
+# source (docstrings are pulled from it) changed. Note what is deliberately NOT here:
+# `docs/component_s_public_report.{tex,pdf}`, `docs/figs/**` and `docs/decisions/**`
+# are all under `docs/` but are NOT part of the Documenter build — no `docs/src` page
+# includes them, and make.jl's linkcheck ignores the GitHub self-links that reference
+# the ADRs — so changing them cannot affect this gate.
 on:
   push:
     branches:
       - main
     tags: ['*']
+    paths:
+      - 'docs/src/**'
+      - 'docs/make.jl'
+      - 'docs/Project.toml'
+      - 'src/**'
+      - 'Project.toml'
+      - '.github/workflows/docs.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - 'docs/src/**'
+      - 'docs/make.jl'
+      - 'docs/Project.toml'
+      - 'src/**'
+      - 'Project.toml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
 
 # Deploy needs write access to push the built site to the gh-pages branch;
 # statuses/pull-requests let Documenter post preview links on PRs.
