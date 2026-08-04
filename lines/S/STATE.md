@@ -25,6 +25,30 @@ EXISTS, is GATED, and is proven POOLABLE — that was the last blocker on the bi
 5. **The first-ever ssp370 noise floor is MEASURED** (job `1689437`, exit 0) — §E0 has the table, the
    comparison against historic, and the one confound that makes its headline result *stronger*.
 
+### A0. THE PUBLIC REPORT IS CURRENT AS OF 2026-08-04 — do not let it drift again
+
+`docs/component_s_public_report.tex` (+ the **tracked** `.pdf`) was rewritten against ADR 0040/0042/0043 and
+**now compiles** (41 pp, 0 undefined refs). It had never been compiled before: a blank line inside
+`\caption{}` aborts `pdflatex` via hyperref's nameref, fixed by giving every figure a **short optional
+caption**. Build recipe + the two traps are in the `emulator-validation-figures` skill.
+
+It now states three things the older version got wrong, and any future claim must stay consistent with them:
+
+1. **Random-fold hold-out is NOT "tested the hard way"** — §4.2 carries the blocked-CV correction (a
+   position-only model scores 0.837 scattered → 0.14–0.21 blocked; the env inputs retain ~73 % vs ~21 %).
+   Every headline number in the report is on the **scattered** basis and is labelled as such.
+2. **The ~37 % warming-response damping is the headline open item** (§6.5), above the per-trait gaps. `Rb` is
+   a **bias** (`mean Δpred − mean Δobs` = −892 against an observed `+2433`) — it is NOT the predicted shift, so
+   the direction is right and only the magnitude is damped. Do not restate it as a sign error.
+3. **A count noise floor DOES exist (~0.99) but is not like-for-like** (pooled over patches/years vs a
+   per-patch-year target), so it is reported as an order-of-magnitude reference only.
+
+Also added: §6.6 the first ssp370 floor, §7.4 the cloned-seed2 episode, §7.5 the cross-build verification.
+⚠ `docs/figs/` holds **plain renamed copies** of `figures/emulator_validation/historic_t8/` — regenerate a
+generation and you MUST re-copy, or the report silently keeps showing t8. ⚠ Never quote
+`basis_ratio`/`basis_frac_over_10pct` from `metrics_biomass.txt` as accuracy; they are the row-universe
+consistency check (this rewrite fixed exactly that conflation in the biomass caption).
+
 ### A. LEDGER — this session's jobs (all resolved)
 
 | job | tag | result | recorded in |
