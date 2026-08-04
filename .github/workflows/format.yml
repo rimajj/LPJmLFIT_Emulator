@@ -3,14 +3,23 @@
 # Fails CI if any tracked Julia source is not Runic-formatted.
 name: format
 
+# WHEN THIS RUNS (ADR 0090): only when a Julia source file changed. Runic formats
+# `.jl` and nothing else, so a commit touching no `.jl` file cannot change its verdict.
 on:
   push:
     branches:
       - main
       - 'line/**'   # parallel work lines (ADR 0028) — CI on every line branch
+    paths:
+      - '**/*.jl'
+      - '.github/workflows/format.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - '**/*.jl'
+      - '.github/workflows/format.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

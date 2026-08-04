@@ -75,7 +75,7 @@ ballooning docs (~570 KB of overlapping MEMORY/JOURNAL/HANDOFF/CHANGELOG; ~60k t
      daily output is config-only; `scripts/run_daily_subset.sh`.
    - **Python:** `uv sync --frozen`; `pip install --break-system-packages`; ruff-format gate; the
      "eval"-filename classifier gotcha (rename to avoid the auto-mode block).
-   - **Git/CI:** main-only workflow; the 5 CI gates (CI, format, docs, python, TagBot); pre-push
+   - **Git/CI:** branch-per-line workflow (ADR 0028, superseded main-only); the 5 CI gates (CI, format, docs, python, TagBot), each **path-filtered** so it runs only when a path it watches changes — a docs/prose-only commit triggers none and needs no wait (ADR 0090); pre-push
      checklist; commits are "Unverified" by design.
    - **Paths:** repo, C source (`/home/jamirp/lpjml56fit`), data on `/p/tmp`, ground truth on
      `/p/projects/waldspektrum/...`, sibling frozen S emulator.

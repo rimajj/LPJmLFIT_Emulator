@@ -3,15 +3,36 @@
 # The `test (pre)` job is allowed to fail; the macOS job is an extra platform gate.
 name: CI
 
+# WHEN THIS RUNS (ADR 0090). This workflow is the expensive gate — four Julia jobs
+# (lts, 1, pre, macOS) at ~10 min each. It runs ONLY when something it can actually
+# test has changed. A docs-, prose-, skill-, ADR- or handoff-only commit does not
+# affect any Julia code path, so running it there is pure cost and delay.
+# `workflow_dispatch` is the escape hatch: any gate can be forced from the Actions
+# tab (or `gh workflow run`) when you want it regardless of the paths touched.
 on:
   push:
     branches:
       - main
       - 'line/**'   # parallel work lines (ADR 0028) — CI on every line branch
     tags: ['*']
+    paths:
+      - 'src/**'
+      - 'ext/**'
+      - 'test/**'
+      - 'Project.toml'
+      - 'docs/src/generated/**'   # diagram fixtures the suite compares against registry.jl
+      - '.github/workflows/CI.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - 'src/**'
+      - 'ext/**'
+      - 'test/**'
+      - 'Project.toml'
+      - 'docs/src/generated/**'
+      - '.github/workflows/CI.yml'
+  workflow_dispatch:
 
 # Cancel superseded runs on a branch/PR, but never cancel a run on main.
 concurrency:

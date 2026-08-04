@@ -1,6 +1,6 @@
 ---
 name: repo-commit
-description: Commit/push/merge discipline for the LPJmL-FIT emulator under PARALLEL WORK LINES (ADR 0028/0029) — the branch-per-line + git-worktree model, the rebase→push→green-branch-CI→merge-to-main ritual, the mandatory STATE.md NEXT handoff before a session ends, where each artifact is written (per-line JOURNAL/STATE + changelog.d fragments, never CHANGELOG.md from a line), per-line SLURM tags and ADR number blocks, the pre-push checklist against the 5 CI gates, the commit trailer, and how to check CI via the GitHub REST API (gh not on PATH). Use whenever committing, pushing, merging a line, or checking CI for this repo.
+description: Commit/push/merge discipline for the LPJmL-FIT emulator under PARALLEL WORK LINES (ADR 0028/0029) — the branch-per-line + git-worktree model, the rebase→push→green-branch-CI→merge-to-main ritual, the mandatory STATE.md NEXT handoff before a session ends, where each artifact is written (per-line JOURNAL/STATE + changelog.d fragments, never CHANGELOG.md from a line), per-line SLURM tags and ADR number blocks, the pre-push checklist against the 5 CI gates, the commit trailer, and how to check CI via the GitHub REST API (gh not on PATH). ALSO that CI is PATH-FILTERED (ADR 0090): most commits (docs, prose, skills, ADRs, STATE/JOURNAL, the LaTeX report) trigger NO gate at all and are mergeable immediately, and a gate that does not trigger reports no check-run — so a poll that waits for `test (lts)` to complete HANGS FOREVER; work out the expected gate set from `git diff --name-only origin/main...HEAD` first. Use whenever committing, pushing, merging a line, or checking CI for this repo.
 ---
 
 # repo-commit — commit, push & merge under parallel work lines
@@ -22,9 +22,9 @@ INT=/p/projects/open/Jamir/esm_land_emulator   # integration worktree; `main` is
 git pull --rebase origin main          # at session START, and again before merging
 # ... work; commit (Conventional Commits, one logical change per commit) ...
 git push --force-with-lease origin line/<X>    # NOT a plain push (the rebase rewrote pushed commits)
-# branch CI on that sha: test (lts), test (1), format, python.
+# branch CI on that sha: ONLY the gates your diff triggers (see above). Docs/prose-only ⇒ none.
 # `docs` does NOT run on branches by design (gh-pages deploy race) → build it locally instead.
-# green? integrate — WITHOUT switching branches in your worktree:
+# every EXPECTED gate green (absent == fine if unfiltered)? integrate — WITHOUT switching branches:
 flock "$INT/.git/esm-integrate.lock" bash -eu -c '
   git -C "$0" pull --ff-only origin main
   git -C "$0" merge --no-ff --no-edit "origin/line/$1"
@@ -44,7 +44,8 @@ flock "$INT/.git/esm-integrate.lock" bash -eu -c '
    not transfer, and branch CI takes ~10 min, plenty of time for a sibling `main` push to force another rebase.
 4. **`flock`** the integration worktree: it is the last shared checkout, and unserialised
    `pull`/`merge`/`push` from four lines reintroduces the contention worktrees exist to prevent.
-5. **Green branch ≠ green main.** `format`, `docs`, `python`, Aqua and JET are whole-package gates and `docs`
+5. **Green branch ≠ green main** — when anything ran at all; a path-filtered merge produces no `main` run
+   either (ADR 0090). `format`, `docs`, `python`, Aqua and JET are whole-package gates and `docs`
    never ran on your branch. Check **main's newest** run after merging — GitHub keeps only one *pending* run per
    branch, so a quick follow-up push can cancel an intermediate `main` verdict (observed twice on 2026-07-27/28).
 
@@ -177,14 +178,41 @@ is the single place your edits collide, and a wholesale rewrite of it is a silen
 - Write only to `/p/tmp` paths your line created; other lines' artifacts are **read-only**. Version artifacts
   instead of overwriting them in place (the S→M contract depends on this).
 
-## Pre-push checklist (mirror the 5 CI gates locally)
+## FIRST: work out which gates your diff even triggers (ADR 0090)
 
-1. **Julia tests** — `julia-test` skill: `rm -f test/Manifest.toml`, then the CI-faithful suite **on SLURM**
+CI is **path-filtered**. A gate that does not trigger reports **no check-run at all** — not a "skipped" one —
+so waiting for it hangs forever, and the pre-push checks below are only worth running for gates that can
+actually fire. Start every push with:
+
+```bash
+git diff --name-only origin/main...HEAD
+```
+
+| Gate | Triggered by | Local pre-check needed? |
+|---|---|---|
+| `CI` (4 Julia jobs, ~10 min each) | `src/**` · `ext/**` · `test/**` · `Project.toml` · `docs/src/generated/**` | yes → item 1 |
+| `format` (Runic) | any `**/*.jl` | yes → item 2 |
+| `docs` (Documenter, `main` only) | `docs/src/**` · `docs/make.jl` · `docs/Project.toml` · `src/**` · `Project.toml` | yes → item 3 |
+| `python` (ruff+pytest) | `python/**` | yes → item 4 |
+
+**Touched none of those?** No gate runs, there is nothing to wait for, and you may merge as soon as the push
+lands. This is the common case for a `lines/<X>/{STATE,JOURNAL}.md` refresh, a `changelog.d/` fragment, an
+ADR, a `.claude/skills/**` capture, `CLAUDE.md`, or `docs/component_s_public_report.{tex,pdf}` /
+`docs/figs/**` (these are under `docs/` but are **not** in the Documenter page tree, so `docs` does not fire).
+
+Force a gate anyway — any workflow has `workflow_dispatch`:
+```bash
+gh workflow run CI.yml --ref line/<X>        # or the Actions tab; gh may not be on PATH (see below)
+```
+
+## Pre-push checklist (for the gates your diff actually triggers)
+
+1. **Julia tests** (only if `src/**`, `ext/**`, `test/**`, `Project.toml` or `docs/src/generated/**` changed) — `julia-test` skill: `rm -f test/Manifest.toml`, then the CI-faithful suite **on SLURM**
    (`scripts/run_tests_slurm.sh <X>-suite`) — never a login-node `Pkg.test()` (hook-blocked; it also dies with
    the session). Green = 0 fail (broken are OK). Separate worktrees mean lines can run this concurrently.
-2. **format** — Runic 1.7 `--check` clean over `src test ext scripts` (see `julia-test`; never pipe the check
+2. **format** (only if any `**/*.jl` changed) — Runic 1.7 `--check` clean over `src test ext scripts` (see `julia-test`; never pipe the check
    to `tail`/`grep` — that masks the exit code).
-3. **docs** — build it **locally**, since `docs` CI does not run on line branches:
+3. **docs** (only if `docs/src/**`, `docs/make.jl`, `docs/Project.toml`, `src/**` or `Project.toml` changed — NOT for the LaTeX report or `docs/figs/**`) — build it **locally**, since `docs` CI does not run on line branches:
    `DOCS_LINKCHECK=false julia --project=docs docs/make.jl`; `gen_diagrams.jl --check` clean. New exports need
    docstrings (`checkdocs=:exports`).
 4. **python** (only if `python/` changed) — inside `python/`: `uv run ruff check .` + `uv run ruff format

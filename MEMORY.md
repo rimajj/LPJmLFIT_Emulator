@@ -278,6 +278,7 @@ The subset that constrains *any* line's work — violating one of these silently
 | 0023 | **Train/inference consistency is load-bearing** — the runtime feature vector and the training table must match exactly (a silent mismatch is the worst failure mode here) |
 | 0028 | **Branch + worktree per line**, self-merge on green branch CI (supersedes 0013's main-only) |
 | 0029 | **Per-path line ownership + frozen cross-line contracts** — don't edit another line's exclusive paths |
+| 0090 | **CI is PATH-FILTERED — most commits trigger NO gate** (owner decision): a gate that does not trigger reports **no check-run**, so polling for `test (lts)` hangs forever; derive the expected set from `git diff --name-only origin/main...HEAD`. Opens the 0090–0099 integrator block (0001–0029 exhausted) |
 | guardrail 4 | **Opt-in, default byte-identical** — new physics leaves every committed baseline and the AD trainer unchanged until deliberately enabled |
 
 

@@ -2,14 +2,25 @@
 # The prototype is uv-managed and lives under python/.
 name: python
 
+# WHEN THIS RUNS (ADR 0090): only when `python/**` changed. Every step of this job
+# executes with `working-directory: python`, and `ruff check .` / `pytest` therefore
+# only ever see that subtree — `scripts/*.py` is NOT linted or tested here, so a
+# change outside `python/` cannot alter this gate's result.
 on:
   push:
     branches:
       - main
       - 'line/**'   # parallel work lines (ADR 0028) — CI on every line branch
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
