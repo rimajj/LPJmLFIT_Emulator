@@ -306,3 +306,42 @@ of ssp370 rows exceed the *global* historic `gdd5` band, and 0.000 % exceed it o
 grid-wide band test reports "in domain". For a spatially-conditioned emulator the support that matters is the
 **neighbourhood's**, not the grid's — measure the fraction of a cell's rows outside *that cell's own* (or its
 k nearest training neighbours') historic range.
+
+## Two more traps, from measuring an operator instead of a residual (added 2026-08-04, ADR 0048)
+
+**3. BEFORE BELIEVING A NULL, PROVE THE THING YOU WERE TESTING ACTUALLY RAN.** A no-difference result and a
+never-executed operator produce the *same* output — a column of zeros — and the first reads as "harmless".
+Line S was told to check whether the k-cap cohort merge distorts community wood density by comparing
+`k_cap = default` against `k_cap = typemax(Int)`. Δ was **exactly 0.0 in every year of a 150-yr rollout, in
+both arms**, because the default `k_cap = max(2·K_initial, 40)` needs the roster to double and establishment
+fired in only 12 of 149 years — **0 merges, ever**. Forced to fire at `k_cap = 20`, the same operator moved
+the community mean by **3.1–5.1× the signal it was being cleared against**. Publishing the first number would
+have retired a live defect on a vacuous measurement.
+
+So: instrument the ACTIVATION COUNT, not just the effect, and make a zero count print as a warning next to
+the Δ (`"⚠ NO MERGE EVER FIRED — this Δ bounds nothing"`). Then add an arm that forces activation, and report
+*that* as the bound. This is the same family as §3e ("ask whether that assertion CAN fail") — a null from an
+inactive code path is an un-failable test wearing a number.
+
+**4. A ROLLOUT DRIFTS UNDER CONSTANT FORCING — measure that BEFORE attributing any drift to the signal.**
+Run the rollout with the forcing year repeated, no signal of any kind, and see how far the quantity of
+interest moves. Component S's community wood density drifts **1.34× the FIT warming shift, in the OPPOSITE
+direction, settling at year 52** — a relaxation from the C-derived initial state to the emulator's own fixed
+point, larger than the signal and on the same timescale as the 80-yr scenario window. Consequences that
+generalize to any recursive emulator arm:
+
+- **Difference every arm against a matched constant-forcing control, re-run in the SAME generation** (never
+  inherited from a log — the standing no-bundling rule, now with a magnitude attached to why). An
+  uncontrolled arm can show the right sign for entirely the wrong reason, or hide a real improvement.
+- **Score past the transient.** Find the settling year (first year within a tolerance of the final value) and
+  measure beyond it, or difference at matched year indices.
+- **Get the replacement timescale for free** while you are there: from the per-year recruit fraction `e`,
+  `τ = −1/ln(1−e)`. Component S: `e` = 0.0106 in firing years / 0.0010 run-mean ⇒ **τ = 94 / 1 003 yr**, only
+  ~14 % of the population replaced in 150 yr. That is a hard upper bound on how fast any fix acting only
+  through NEW members can move the answer — worth computing before choosing between an entry-side and a
+  standing-population-side mechanism.
+
+Harness: `scripts/kcap_merge_confound_probe.jl` (Hainich, one year per `run_coupled_cell` call so the
+community state is readable at every year boundary; carries the activation counter, the forced arm, the
+constant-forcing control and the settling year). Reuse its `rollout(...)` shape rather than writing a third
+harness.

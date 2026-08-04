@@ -397,6 +397,23 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   emitted `npp` (`= pft->anpp`, runtime-consistent with `FToS.bm_inc`), NOT `pft->bm_inc.carbon` (the
   post-allocation residual, 0 for grass at output time). The flux-conditioning table builder is
   `scripts/build_slow_flux_table.py` (tier-1, parameterized by `CELLS`; §7-validated).
+- **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
+  (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
+  preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative
+  macro expansion is reproducible in three lines: `cpp -P <file>` → strip the trailing commas LPJmL's lenient
+  parser tolerates (`re.sub(r',(\s*[}\]])', r'\1', s)`) → wrap the `"key": value,` fragment in braces →
+  `json.loads`. Working implementation: **`scripts/build_mort_params_reference.py::cpp_json`** (it also emits
+  the per-PFT table as a committed CSV every consumer gates against — reuse it for any other parameter block).
+  ⚠ **LPJmL reads each key through json-c's hash lookup (`json_object_object_get_ex`), and json-c's tokener
+  inserts pairs with `json_object_object_add`, which REPLACES — so on a duplicated key the LAST occurrence
+  wins.** `json.loads` agrees, which is the only reason the parse is faithful; **there IS a duplicate in the
+  live file** — PFT id 6 (larch) declares `aphen_min`/`aphen_max` twice in `par/pft_lpjmlfit.js`
+  (`:1001-1002` the macro defaults 60/245, then `:1003-1004` an override pair **10/200**), so larch's
+  effective `aphen_min` is **10** and it starts accumulating water stress six times earlier in the season
+  than every other tree PFT. Enumerate duplicates with a `json.loads(..., object_pairs_hook=...)` and assert
+  the set is unchanged — a new one silently overrides a parameter and is invisible in the file. Also: the
+  `"median"` of an interval is a **global default** (`sla` = 0.01986 for all seven trees) and lies OUTSIDE
+  `[low, high]` for ids 1/2/3/5, so it is not a central value of the interval recruits are drawn on.
 - **Mortality params are PER-PFT — do not reuse beech's for another id (`[VERIFIED 2026-07-28]`).** `k_mort`=0.01
   is global (`par/lpjparam_fit.js`); everything else is per-PFT in `par/pft_lpjmlfit.js`, where `longevity` is
   the **JSON key `"age"`** (NOT the leaf `"longevity"`=2.0) and `temp_low/high` is `"temp_stressed"` (NOT the
