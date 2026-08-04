@@ -728,3 +728,77 @@ axes rise and **D95max falls 0.058**. That matters because ssp370 pools 81 years
 20, so ~4× more averaging should raise `floor_r` mechanically on every axis — D95max falls *despite* the
 tailwind, so rooting-depth trait medians are genuinely less reproducible between realizations under warming
 and the true effect exceeds −0.058. It was already the weakest axis; it is now the clearly RNG-limited one.
+
+## 2026-08-04 (late) — Phase 3A Stage 1: the hazard is ported offline, and the confound pre-flight found a different confound  [ADR 0047 / 0048]
+- **Goal:** handoff items A (port the hazard offline and gate it) and D (measure the k-cap merge trait
+  confound before touching the runtime).
+- **Did:** `src/trait_mortality.jl` (`module TraitMortality`, no call site) ·
+  `scripts/build_mort_params_reference.py` → `test/testitems/references/S_pft_mortality_params.csv` ·
+  `test/testitems/slow_trait_mortality_tests.jl` · `python/tests/test_mort_params_reference.py` ·
+  a `gate_pft_params_against_reference()` called at import in `build_slow_flux_table.py` ·
+  `scripts/kcap_merge_confound_probe.jl`.
+
+**The parameter table is generated, not transcribed, and that is what paid off.** LPJmL parses its own
+`.js` parameter files by piping them through `cpp` (`openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at
+`:467`), so `cpp -P` + a trailing-comma strip + `json.loads` reproduces the authoritative macro expansion
+exactly. The self-check against CLAUDE.md §3's hand-read table passed on all seven rows — and then the
+parse turned up **two facts nobody had recorded**. Larch (id 6) declares `aphen_min`/`aphen_max` **twice**:
+the macro defaults at `:1001-1002` (60/245) and an override pair at `:1003-1004` (10/200). LPJmL reads
+parameters through json-c's `json_object_object_get_ex`, and json-c's tokener inserts each pair with
+`json_object_object_add`, which *replaces* — so the last occurrence wins and larch's effective `aphen_min`
+is **10**, six times earlier water-stress accumulation than every other tree PFT. `json.loads` agrees,
+which is the only reason the parse is faithful, so the builder now **enumerates** duplicate keys and
+asserts the set is unchanged: a future silent override has to be read deliberately. Second: `sla_median`
+(0.01986) is a single global default and lies **outside** `[low, high]` for ids 1/2/3/5 — so it is not a
+central value of the interval recruits are drawn on (ADR 0045).
+
+The Julia and Python tables both gate against the one CSV. The pytest exists because `scripts/*.py` is
+watched by **no** CI gate (ADR 0090), so the builder's import-time assert would only fire when somebody ran
+the builder; and it carries a **mutation test** (perturb one `wdmort_1`, require the assert to fire),
+because ADR 0032 is the record of a check that could never fail hiding a two-order-of-magnitude basis shift
+for five days.
+
+**One test I had to throw away and rewrite, which is the more useful note.** My first version of the
+non-sign-definiteness test invented a `greff ∝ 1/wooddens` relation and asserted the total hazard rises
+with density. It fails: `0.01·greff` is tiny at greff ≈ 20, so `mort_max` dominates and the dense tree is
+strictly safer. I was asserting my own toy growth model, not the C. The honest form is that the logistic
+**factorizes** (`mort_npp = mort_max(wd)·f(greff)`), so the density advantage is exactly the `mort_max`
+ratio 1.765 and the crossover is the greff where `f(g_light)/f(g_dense) = 1.765` — solved by bisection in
+the test at **≈172**, which sits inside FIT's measured `growth_eff` distribution (global mean 146.7, max
+31 183, CLAUDE.md §3). So the flip is reachable in the real model, and the test now fails if anyone
+"simplifies" the logistic away — without asserting anything I made up.
+
+**Then item D, which returned a null and then a different answer (`1694397`, exit 0).** The literal
+instruction — default `k_cap` vs `typemax(Int)`, diff the community wood-density trajectory — gives
+Δ = **exactly 0.0 in every year of a 150-yr rollout, in both copula arms**. Not because the merge is
+harmless: because **it never fires**. `k_cap = max(2·K_initial, 40)` needs the roster to double, the roster
+grows by ≤1 cohort per establishment year, and establishment fires in only 12–14 of 149 years (roster
+17 → 29/31, then frozen). Publishing that null would have retired a live defect on a vacuous measurement.
+Adding a TIGHT arm (`k_cap = 20`, just above the initial roster) forces it: the merge then moves the
+community mean by up to **12 375 = 5.09×** the FIT warming shift (copula off) / **7 627 = 3.13×**
+(production copula on). So `_merge_pair!`'s dominant-parent trait inheritance is **dormant, not harmless** —
+Stage 2 is unblocked without fixing it, with an explicit re-check trigger. (The +6.0 % Σnind gap between
+arms is *not* non-conservation: the merge conserves Σnind within the call, but the merged roster changes the
+`lai`/`fpc`/`age_mean`/`n_living` the DRF is conditioned on, so the count target diverges. Carbon closes at
+~1.3e-11 in every arm.)
+
+**And the measurement I did not go looking for is the one that matters most.** The merge-disabled reference
+arm is a rollout under **constant forcing** — the same year repeated, no climate signal of any kind. Its
+community wood density still moves **−3 267 = 1.34× the FIT warming shift, in the OPPOSITE direction,
+settling at year 52** (production config; +9 273 = 3.81× with the copula off). That is a relaxation from
+the C-derived initial state to the emulator's own fixed point, and it is larger than the signal and on the
+same timescale as the 80-yr historic→ssp370 window. ⇒ **every Stage-2 response arm must be differenced
+against a matched constant-forcing control re-run in the same generation, and measured past the
+transient** — handoff item F's discipline, now with a number attached to why. Recruitment dilution gives
+`e` = 0.0106 (firing years) / 0.0010 (run mean) ⇒ **τ = 94 / 1 003 yr**, only ~14 % of the population
+replaced in 150 years: an upper bound on how fast any recruit-mediated fix can act, and a second,
+independent reason to prefer the mortality lever over the entry marginal.
+- **Result / evidence:** probe jobs `1694111` (script error, soft-scope `worst_share`), `1694359` /
+  `1694373` (same numbers, pre-reporting-fix), **`1694397` exit 0** (the reported run). Suite
+  `1694467`. `python`: ruff + ruff-format clean, 56 pass / 6 skip locally. Runic clean over all tracked
+  `.jl`. The reference CSV round-trips (`CHECK=1` is byte-identical).
+- **Decisions:** ADR 0047 (the offline port + the ONE generated parameter table), ADR 0048 (the merge is
+  dormant not harmless; the constant-forcing drift is the real confound).
+- **Next:** Stage 2 — wire the hazard in behind an opt-in flag, with the ADR-0046 §3 per-PFT age–wooddens
+  gradient as the acceptance target and an ADR-0048 constant-forcing control as the baseline. Mirrored into
+  STATE.md's NEXT block.

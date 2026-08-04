@@ -49,6 +49,15 @@ makedocs(;
     checkdocs_ignored_modules = [
         LPJmLFITEmulator.SmoothOps, LPJmLFITEmulator.Allometry, LPJmLFITEmulator.FDiff,
         LPJmLFITEmulator.DRF,   # the zero-dep DRF (ADR 0022): its exported helpers are documented in source
+        # The ported FIT mortality hazard (ADR 0047). Same situation as DRF: a self-contained submodule
+        # whose docstrings cross-reference each other with `@ref`, so rendering them needs a
+        # per-submodule `CurrentModule` page. Documented in source + REPL `?` meanwhile. NOTE this list
+        # is NOT optional bookkeeping — `checkdocs = :exports` discovers every module nested in
+        # LPJmLFITEmulator, so a NEW submodule with docstrings fails the strict `docs` build until it is
+        # either given a page or listed here. And `docs` never runs on a branch (the gh-pages deploy
+        # race), so the failure only appears on `main` unless you build locally first:
+        #   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
+        LPJmLFITEmulator.TraitMortality,
     ],
     doctest = true,         # execute all jldoctest blocks; fail on output mismatch
     # every external link must resolve (ENGINEERING_STANDARDS §4/§9). Guarded so a local build on the

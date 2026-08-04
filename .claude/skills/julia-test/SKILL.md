@@ -249,7 +249,20 @@ all tests stay green.** Two ways it bites:
    so `` [`DRF.foo`](@ref) `` from a top-module docstring breaks it — use a plain `` `DRF.foo` `` code span.
    (`@ref`s BETWEEN `DRF` docstrings are harmless: DRF docstrings aren't rendered, so Documenter never
    processes them — that's why the pre-existing `save_forest`↔`load_forest` @refs are fine.)
+3. **A NEW SUBMODULE with docstrings fails the build even though it is not in `@autodocs`** (bit line S
+   2026-08-04 adding `module TraitMortality`, ADR 0047). `checkdocs` walks every module NESTED in
+   `LPJmLFITEmulator`, so all of a submodule's docstrings count as "not included in the manual" →
+   `ERROR: makedocs encountered an error [:missing_docs]`. Fix: add it to **`checkdocs_ignored_modules`** in
+   `docs/make.jl` (where `SmoothOps`/`Allometry`/`FDiff`/`DRF` already are) — or give it its own
+   `CurrentModule` page. That list is not bookkeeping; it is the thing that lets a submodule exist at all.
+   **⚠ `docs` does NOT run on branches** (the gh-pages deploy race, CLAUDE.md §9), so this failure appears
+   only after you merge to `main` unless you build locally first. It is one of the few real reasons to run
+   the docs build before merging a `src/**` change.
 Reproduce with the local docs build above; CI surfaces it only as a red `docs` check (not in the test log).
+On SLURM: `DOCS_LINKCHECK=false PARTITION=priority QOS=priority WARMUP=0 scripts/sbatch_julia.sh <tag>
+--project=docs docs/make.jl` after the `--project=docs` warm above. A green run ends with
+`Documenter could not auto-detect the building environment. Skipping deployment.` + `exit=0` — that
+warning is expected off CI, not a failure.
 
 ## Regenerating ReferenceTests baselines
 
