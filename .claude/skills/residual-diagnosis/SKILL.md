@@ -280,3 +280,29 @@ Diagnostic scripts must be `*_probe.jl` / `*_diagnosis.jl` / `*_decomp.jl` — *
 A diagnosis is done when you can state: the reference basis, the hypothesis, the check that confirmed or
 killed it, and whether the residual is (a) a real physics gap to fix opt-in, (b) a reference-basis
 artifact (no code change), or (c) an accepted limitation to document. State which — don't leave it open.
+
+## Two traps that make a residual look explained when it isn't (added 2026-08-04, ADR 0044/0046)
+
+**1. GATE A NEW STATISTICAL INSTRUMENT ON THE PUBLISHED NUMBERS BEFORE INTERPRETING IT.** If you build or
+extend a metric harness, make it re-derive every already-logged value it is meant to explain, from the stored
+artifacts, and **hard-exit on a mismatch** — otherwise the noise scale you measure attaches to a different
+statistic than the verdict quotes. This caught nothing the first time only because it passed: the paired
+response bootstrap reproduced all seven ADR-0042 arms to <=5e-5 on 52 450 cells, which is what licenses every
+threshold derived from it. A harness that cannot reproduce the number it is auditing is the bug; fix it first.
+
+**2. A "PLACEMENT" RESIDUAL LOOKS EXACTLY LIKE A "SHRINKAGE" RESIDUAL IN THE MEAN — separate them before
+choosing a lever.** If a model damps the MEAN of a signed quantity, the reflex is attenuation/shrinkage, and
+the reflex fix is more conditioning capacity or more covariates. But shrinkage damps mean **and** dispersion
+together. Check the dispersion ratio: Component S damps the mean wood-density warming shift by 39.9 % while
+its dispersion ratio is **1.034** — right-sized shifts in the wrong cells, which cancel in the mean. Every
+lever aimed at attenuation (including a formal acceptance criterion, ADR 0030 C2) was therefore aimed at a
+defect the emulator does not have. Cheap discriminators, all tables rather than jobs: the dispersion ratio,
+a binned calibration curve of predicted-vs-observed change (shrinkage = straight line slope<1 through the
+origin; offset = slope~1 intercept<0; placement = near-flat with correct spread), and decomposing the TRUTH's
+own signal into the channels the model can and cannot represent.
+
+**Corollary — a global support check can say "in domain" while the model extrapolates locally.** Only 1.02 %
+of ssp370 rows exceed the *global* historic `gdd5` band, and 0.000 % exceed it on the flux drivers, so a
+grid-wide band test reports "in domain". For a spatially-conditioned emulator the support that matters is the
+**neighbourhood's**, not the grid's — measure the fraction of a cell's rows outside *that cell's own* (or its
+k nearest training neighbours') historic range.

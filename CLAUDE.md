@@ -353,17 +353,41 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   what caused the defect: a stale `[1,2,3,4,5]` dropped 32.5 % of survivor tree stems and made 16.7 % of
   tree-bearing cells (the tropical belt + Siberian larch) invisible to Component S for months. **Every global
   Component-S number published before 2026-07-28 is on that truncated population (ids 1–5, 45 009 of 54 020
-  cells)** — the `t7` artifact generation supersedes them. Traits are drawn **uniformly from per-PFT `[low,high]` intervals**
-  (`new_tree.c:195-206` / `getrndinterval`; the par `median` field is unused there), so any per-cell trait
-  statistic is a *composition* statistic — mixing two PFT sets makes two such statistics incomparable (id 0's
-  minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which
-  is why every single-cell gate stayed green. ⚠ **But do NOT read "uniform recruit draw" as "all trait
-  variance is composition variance" (`[VERIFIED 2026-08-03]`, ADR 0042 §9).** The uniform draw constrains the
-  **prior**, not the emitted **survivor** marginal, because FIT selects *within* a PFT on wood density:
-  `src/tree/mortality_tree_ind.c` computes `mort_max = pow(10, treepar->wdmort_1 + treepar->wdmort_2 /
-  ((tree->wooddens*1)/1000000))` feeding `tree->mort_npp`. So both channels — composition **and** within-PFT
-  selection — run through the live flux/stress conditioning, and a per-cell trait statistic is a composition
-  *plus selection* statistic.
+  cells)** — the `t7` artifact generation supersedes them. Mixing two PFT sets makes two per-cell trait
+  statistics incomparable (id 0's minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated
+  tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which is why every single-cell
+  gate stayed green.
+- ⚠ **RECRUIT TRAITS ARE *INHERITED*, NOT UNIFORM DRAWS — and a per-cell trait statistic is NOT a
+  composition statistic (`[VERIFIED 2026-08-04]`, ADR 0045/0046; this REPLACES the earlier "traits are drawn
+  uniformly from per-PFT `[low,high]` intervals ⇒ composition statistic" claim, and ADR 0042 §9's narrower
+  correction to it).** `lpjmlfit.js:35` sets `"inheritance": true`, and the uniform branch's guard
+  `year < firstyear − nspinup + inherit_startyear` (`establishmentpft_ind.c:99`) is **false in every transient
+  year under BOTH config branches** (spinup: 1901−1000+200 = 1101; from-restart: 1901−0+0 = 1901). Establishment
+  is a **two-channel mixture**: inheritance at `k_est_inherit`=0.02 (`:124`) picks a random member of a 50-yr
+  rolling top-AGB **seedbank** (`param.max_age`, refreshed *yearly* — `getsapling.c`'s "every five years"
+  comment is stale) and diffuses each trait by `new_tree.c:38-61` `new = old·(1 + 0.1·gasdev)` (`s` clamped
+  ±5, reflected at the interval edges, **PFT id inherited from the parent**); background at
+  `k_est_inherit_bg`=0.005 **per eligible PFT** (`:102`) is the uniform `getrndinterval` channel. `f_sap` and
+  `patcharea` **cancel exactly** (both branches use α=2.0: `param.alpha_r` and `ALPHA_R`), so the weight is
+  closed-form **`w_inherit = 4/(4 + n_elig)`** ⇒ **≈44 % inherited at Hainich (~5 eligible PFTs), ≈80 % in
+  low-diversity cells (Amazon/Sahel, 1 eligible)**. So the establishment marginal is a **functional of the live
+  community** — FIT's establishment *is* the feedback loop ADR 0025 §4 excluded on principle.
+- **The measured warming shift is WITHIN-PFT, WITHIN-AGE-CLASS selection (ADR 0046).** FIT's per-cell mean
+  wood-density shift historic→ssp370 decomposes **22.2 % composition / 51.3 % within-PFT / 26.6 % interaction**
+  (closure 4.6e-13), and the within-PFT part is **+112 % within-age-class** with the age-structure term at
+  **−11.8 %** (stands get *younger* under warming, which *opposes* the shift). Traits are immutable after
+  `new_tree`, so a trait-mean rise at fixed age can only be differential survival. The fingerprint is a steep
+  **age–wooddens gradient** in every PFT (id 1: 184 869 → 331 234 from `Age<10` to `Age≥320`; id 4 +141 227;
+  id 6 +130 558) — and that gradient is the ID-free validation target for any ported mortality operator.
+  ⚠ **Do NOT port `mort_max` alone as "denser wood survives better".** Denser wood halves `mort_max`
+  (`mortality_tree_ind.c:92`, ratio 1.765 over `wooddens` 2e5→3e5) but grows slower, lowering `greff` and
+  *raising* `mort_npp` through the logistic `mort_max/(1+KMORT_2·exp(k_mort·greff))·(1+bm_inc_counter)`
+  (`:95-101`, `KMORT_2`=0.2). **Net selection is not sign-definite** — the one-year differential
+  `mean(Wooddens|live) − mean(Wooddens|all)` is **negative** for ids 0 and 3 and positive for 1/2/4/6, and its
+  sign predicts each PFT's gradient shape. The four hazards combine **additively** then cap:
+  `mort = min(1, mort_npp + mort_age + mort_water + mort_temp)`, then a per-individual `erand48` Bernoulli
+  draw, with hard kills at `bm_inc_counter ≥ 5` and `leaf_c < leaf_carbon_sapl(sla)` (`:120-146`). The
+  `pft->par->mort_max` read at `:87` is **dead** — overwritten at `:92`.
 - **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
   writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
   **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age
@@ -732,6 +756,17 @@ next session. A session that ends without refreshing it has silently broken the 
 
 ### SLURM + scratch under parallel lines
 
+- **The `priority` partition is usually EMPTY and starts instantly — but it caps at `cpu=64` PER JOB
+  (`[VERIFIED 2026-08-04]`).** `PARTITION=priority QOS=priority` (both — the partition alone is rejected)
+  routinely has ~45 idle nodes while `standard` has 126 alloc + queueing, so a job that would sit in
+  `Reason=Priority` starts at once. The QOS's `MaxTRES cpu=64` is the catch, and **memory is strictly
+  proportional and NOT raisable**: `DefMemPerCPU = MaxMemPerCPU = 5468 MB` cluster-wide with
+  `SelectTypeParameters=CR_CPU_MEMORY`, so 64 cpus = **350 GB** is the hard ceiling on `priority` (vs
+  `short`'s `cpu=2048` on `standard`). Both partitions' nodes are 128 cpu / 700 GB, so `priority` is a
+  half-node cap, not weaker hardware. ⇒ send anything needing >350 GB to `standard`; send everything else
+  to `priority`. A pending job can be moved in place with
+  `scontrol update job <id> Partition=priority QOS=priority` (keeps the job id and log path) — it fails with
+  `Job violates accounting/QOS policy` if it asks for >64 cpus, which is the tell, not a permissions problem.
 - **Tag every job with your line prefix** (`S-`/`M-`/`E-`/`O-`), e.g.
   `scripts/run_tests_slurm.sh S-suite`, `scripts/sbatch_python.sh M-soil scripts/....py` — so `squeue` and
   `logs/<tag>.<jobid>.out` stay attributable. Each worktree has its own (gitignored) `logs/`.

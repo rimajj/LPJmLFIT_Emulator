@@ -247,6 +247,75 @@ finite-stem noise. COUNTS: floor r²=0.962 vs emu 0.9994, but that comparison is
 Re-run whenever the emulator is retrained, and **re-measure everything after the ADR 0031 re-derivation**
 (the floor moves to the `tree7` numbers).
 
+## RESPONSE gate — `Rr`/`Ra`/`Rb` (ADR 0044). Use this, not `emu_r`, to judge a WARMING response
+
+`emu_r` and the ADR-0030 criteria are **level** statistics. `sd(Dobs)/sd(level)` is 0.20-0.31, so a level
+statistic is ~3-5x more sensitive to spatial interpolation than to the transient — **`emu_r` passing says
+little about a coupled warming run.** The response statistics, per cell, `D` = (ssp370 block median) -
+(historic block median), cells with >= `MINSTEM` in BOTH blocks:
+
+* `Rr` = `r(Dpred, Dobs)` — the PATTERN. The criterion that matters; it is 0.22-0.44 against its ceiling in
+  every arm ever run, including a pure address and a zero-information permutation.
+* `Ra` = `sd(Dpred)/sd_true(Dobs)` — the AMPLITUDE, `sd_true` from a split-half Spearman-Brown lift.
+* `Rb` = `mean(Dpred) - mean(Dobs)` — the DAMPING. **Veto only. Never a headline.**
+
+```bash
+export NBOOT=2000 TILE_DEG=15.0 BOOT_SEED=12345 MINSTEM=20 AXES="SLA,Wooddens,D95max,minwscal"
+export NCPUS=64 TIME=02:00:00 PARTITION=priority QOS=priority     # <=64 cpu / 350 GB on priority
+scripts/sbatch_python.sh S-resppower scripts/diagnose_slow_response_power.py
+```
+
+**Gate it on the published numbers FIRST.** The script reproduces all seven ADR-0042 §5 arms' logged
+`Rr`/`Ra`/`Rb` from their stored `pred_*.f64` and hard-exits on a mismatch, so the noise scale attaches to
+the same numbers the ADRs quote. Achieved <=5e-5 (`Rr`/`Ra`) and <=0.05 (`Rb`), 52 450 cells. If you add an
+arm, add its logged triple to `ARMS` — never bypass the gate.
+
+**Pre-registered thresholds (ADR 0044 §4), and the measured noise they come from:**
+
+| statistic | rule | `sd_paired` (hash / blocked) |
+|---|---|---|
+| **P1 `DRr`** | `>= max(+0.030, 2*sd_paired)` = **+0.036**, same sign at BOTH `BLOCK_SALT`s and hash | 0.0178 / 0.0162 |
+| **P2 `D\|Ra-1\|`** | `<= -0.03`, both colourings, CI excluding 0 | 0.084-0.095 |
+| **P3 `Rb`** | `\|Rb\|` must not increase. An improvement is claimable ONLY if P1 passed first | 322-533 |
+
+**Why `Rb` can never be the headline (the anti-Goodhart device).** `sd_paired(DRb)` blocked is **533**, and
+the permutation null buys `Rb` **resolvably**: +291.3 +- 88.1, 3.30 sigma, `P(<=0)=0.000`. Less damping is
+purchasable with pure noise. **The sentence "X reduced the damping from A % to B %" is forbidden in every
+variant unless P1 passed** (ADR 0044 §5).
+
+**Two basis traps that were live for months — check both before quoting anything:**
+
+1. **The reliability ceiling.** `diagnose_slow_address_prereg.py:191` builds the split-half by *stem* parity
+   on a table sorted `(Cell, Patch, Year)`, so both halves interleave **within** every patch-year and see the
+   identical year set. The corrected patch-year-parity ceilings are **SLA 0.9687 · Wooddens 0.9543 ·
+   D95max 0.9408 · minwscal 0.9737** — all HIGHER than the stem-parity values, so `Ra` was OVERstated. Never
+   quote **0.9201** as the Wooddens ceiling, and state which basis any `Ra` is on.
+2. **Which arm a damping figure belongs to.** ADR 0040's "`Rb` = -892 / 37 %" is arm **B `p14env-hash`, the
+   REFUSED env arm**. The DEPLOYED ncond-8 arm damps **-971.5 = 39.9 %**.
+
+**Reconstructing the patch-year grouping without a `Year` column (reusable, exact).** The copula table
+broadcasts the per-`(Cell,Patch,Year)` conditioning aggregates onto every stem row of that patch-year, so
+rows of one patch-year carry **bit-identical `Xc[:, :4]`** and **runs of identical head values ARE the
+patch-year groups** — 8 292 458 groups over 42 227 077 rows, 5.1 stems each. This retires the "emit `Year`,
+ride a new generation" schema change for any purpose that needs only the grouping. Sanity check printed by
+the script: mean stems/patch-year near 1 would mean the fingerprint is collapsing distinct patch-years.
+
+**Admissibility, non-negotiable.** Paired deltas only, never a blocked LEVEL alone (re-colouring moves a
+single-arm blocked level ~10x more than a paired delta: +0.0136 vs +0.0024). Hold `sd_true` FIXED at its
+full-sample value inside the bootstrap — re-estimating it per draw injects the split-half's noise into every
+arm's `Ra` identically and destroys the pairing. Run leave-one-tile-group-out on every accepted blocked delta
+(`D_blocked` is one-fold-dominated: fold 0 is ~84 % of it from 26 % of cells). `Rr` **flips sign** with fold
+design (env-p8: +0.0395 hash, -0.0304 blocked), so never generalise a hash-fold response result.
+
+**Deciding WHAT to fix — decompose the truth first** (`scripts/diagnose_wooddens_shift_decomposition.py`,
+`NCPUS=64`). It splits FIT's own shift into composition / within-PFT / interaction, then the within-PFT part
+over age classes, and emits the selection differential and the age-trait gradient. Measured for wood density:
+22.2 / 51.3 / 26.6 %, and the within-PFT part is +112 % **within-age-class** (age structure -11.8 %, wrong
+sign) ⇒ within-age selection, i.e. trait-dependent mortality (ADR 0046). Read the **shares**: the age
+decomposition is stem-weighted/global and the first is per-cell, so their absolutes are not commensurable.
+The decomposition is exact for MEANS only (closure must be ~0; measured -4.55e-13) while the published
++2432.9 is on per-cell MEDIANS — report both, quote shares on the mean basis.
+
 ## Interpreting / what "works well" looks like
 
 - `metrics.txt` OOS per-row R² should be ≈ the `HOLDOUT_FRAC` train/test R² from the DRF train (historic:
