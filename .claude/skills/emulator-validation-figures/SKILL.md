@@ -299,3 +299,28 @@ Two traps, both of which cost a build:
   `obs_mean_stand_agb`/`pred_mean_stand_agb`. Note `median_ratio` > 1 while the mean ratio < 1 is the normal
   heavy-tailed signature (typical cell slightly over-predicted, the few huge-biomass cells under-predicted) —
   report both rather than picking whichever looks better.
+
+### Quoting model specs and data volumes in a write-up
+
+The deployed dimensions are recorded in the artifacts themselves — read them, do not transcribe from a
+script's defaults (the orchestrator default and what was actually trained can differ):
+
+```bash
+cat /p/tmp/jamirp/emulator_global/drf_forest_global_<scen>_t8_meta.txt        # nfeat/nhead/ntrees/colnames
+cat /p/tmp/jamirp/emulator_global/recruit_copula_global_<scen>_t8_meta.txt    # naxes/ncond/cond_cols/qrf
+```
+
+Three traps when tabulating specs:
+
+- **`mtry` is `round(sqrt(p))`, not `floor`** (`src/drf.jl:257`, `mtry_eff = max(1, round(Int, sqrt(p)))`) ⇒
+  **4** at nfeat 15 (counts) and **3** at ncond 8 (traits). Flooring gives 3/2 and is wrong.
+- **Do not quote a copula-table stem count as "tree-year records".** The `ind` parquets hold ALL rows
+  (historic seed1 **246,049,830**; ssp370 seed1 **1,030,175,289**), while the `MODE=copula` table is
+  survivors-only *after* the conditioning-coverage gate (historic **197,721,867**). They differ by ~20 % and
+  are different bases; state which one a number is.
+- **Check whether the scenario's copula table was STEM_CAPped before quoting its size.** `slow_copula_ssp370_t8`
+  is capped (n = 22,283,459 ≈ 400 × 58,683) where `slow_copula_historic_t8` is uncapped — a per-cell statistic
+  from a capped table has patch-years, not stems, as its effective sample size.
+
+LaTeX: a `booktabs` table that overruns the text block by >10 pt needs
+`\resizebox{\textwidth}{!}{% ... \end{tabular}%\n}`; under ~3 pt is invisible, leave it.
