@@ -202,6 +202,38 @@ reports three BASES and two ceilings:
 - **`tree7`** (`Type ≤ 6`) — FIT's COMPLETE tree set. **`Type ≤ 6` is CORRECT (ids 0-6 are all seven tree
   PFTs; 7/8/9 are grass, written with tree fields ZEROED); it is `TREE_TYPES=[1,2,3,4,5]` that is truncated
   (ADR 0031).** So this basis' floor is the real forest's, but its GAP is cross-population until 0031 lands.
+### Running it on a scenario OTHER than historic (ADR 0043, 2026-08-04)
+
+The two `ind` parquets are **env-overridable** — defaults are the historic pair, so an un-parameterized run
+stays byte-identical to every published number:
+
+```bash
+export IND_SEED1=/p/tmp/jamirp/emulator_global/ind_ssp370_seed1_all.parquet \
+       IND_SEED2=/p/tmp/jamirp/emulator_global/ind_ssp370_seed2_all.parquet \
+       SKIP_COPULA=1 SKIP_LEGACY=1
+TIME=03:00:00 NCPUS=32 scripts/sbatch_python.sh S-floor-ssp370 scripts/noise_floor_vs_emulator.py
+```
+
+Four things will bite:
+
+- **`export` is mandatory.** These knobs are **not** in `sbatch_python.sh`'s explicit forward list, and
+  `scripts/sbatch_*.sh` is **integrator-owned** (CLAUDE.md §9 Gap 3) so a line cannot add them. A bare
+  `VAR=v scripts/sbatch_python.sh …` command-prefix reaches the *wrapper* but **not the job**, which then
+  silently takes the defaults — i.e. you get the **historic** floor under an ssp370 tag. The log's first two
+  lines echo the resolved parquet paths: **check them before believing any number.**
+- **`SKIP_COPULA=1` gives a FLOOR-ONLY run** (no `emu_r`, no GAP, no verdict) because basis 1 needs a seed2
+  *copula table* for that scenario. Legitimate and useful — but always say which basis a quoted floor is on.
+- **Basis 1 for ssp370 is NOT just "build the seed2 table".** The existing seed1 `slow_copula_ssp370_t8` is
+  **capped** (22.3M ≈ 400×58 683) where `slow_copula_historic_t8` is uncapped (197.7M), so both sides need
+  rebuilding. The cap cannot simply be left on: `build_slow_runtime_table.py:380` hashes with the **data**
+  `SEED` and subsamples whole **patch-years**, so two capped tables keep *different* clusters and the extra
+  noise **lowers `floor_r`**, flattering the emulator. And uncapped ssp370 is ~870 M stems ⇒ 91 GiB in numpy
+  alone before the polars frame (several hundred GB peak, twice). Decide deliberately; don't just submit.
+- **More years ⇒ a mechanically HIGHER floor.** ssp370 pools 81 years/cell to historic's 20, so ~4× more
+  averaging lifts `floor_r` on every axis. Read any cross-scenario Δ against that tailwind: measured ssp370
+  `tree7` floor SLA 0.975 / Wooddens 0.944 / **D95max 0.837** / minwscal 0.978 vs historic 0.965 / 0.923 /
+  0.895 / 0.973 — three axes rise, and D95max falling 0.058 *despite* the tailwind is the real finding.
+
 - **Attenuation** — `floor_r` is a realization-vs-realization r, so it is NOT a predictor ceiling. `pred` is
   one RNG draw per row, so use its own split-half reliability `rel_P`: ceiling `= √(rel_P·rel_Y)`,
   `r_center = emu_r/ceiling`. Report `(GAP, r_center)` **plus `sd(pred)/sd(Y1)`** — correlation is

@@ -22,8 +22,15 @@ Usage::
     scripts/sbatch_python.sh S-indep scripts/diagnose_ind_seed_independence.py \
         --candidate <new>/output/ind_2020_2100.csv \
         --sibling   <seed1>/output/ind_2020_2100.csv \
-        --log       <new>/lpjml_2020_2100.<jobid>.out \
+        --log-dir   <new> \
         --expect-cells 67420 --expect-last-year 2100
+
+Use ``--log-dir <run_dir>``, not ``--log <...>.<jobid>.out``: a jcf that pins a parent's job id
+into the log path is **not resubmit-safe**, and the failure is silent-looking. When the hung ssp370
+seed2 member was resubmitted, its chained gate kept reading the *cancelled* attempt's 0-byte log and
+reported ``no completion line at all`` for a run that had in fact finished cleanly (ADR 0043).
+``--log-dir`` resolves the newest NON-EMPTY ``lpjml_*.out`` instead, and an empty log is now a
+distinct FATAL (exit 2) rather than a gate failure.
 """
 
 from __future__ import annotations
@@ -65,6 +72,16 @@ def main() -> int:
     ap.add_argument("--candidate", type=Path, required=True)
     ap.add_argument("--sibling", type=Path, required=True)
     ap.add_argument("--log", type=Path, default=None, help="the C run's stdout log")
+    ap.add_argument(
+        "--log-dir",
+        type=Path,
+        default=None,
+        help=(
+            "the run directory; resolve the newest NON-EMPTY lpjml_*.out inside it. "
+            "PREFER THIS over --log: a jcf that hardcodes a parent's job id in the log path is "
+            "not resubmit-safe (see ADR 0043)."
+        ),
+    )
     ap.add_argument("--expect-cells", type=int, default=67420)
     ap.add_argument("--expect-last-year", type=int, default=None)
     args = ap.parse_args()
@@ -76,12 +93,47 @@ def main() -> int:
             print(f"FATAL: missing {p}")
             return 2
 
+    # Resolve the log. --log-dir is the resubmit-safe form: it picks the newest log that has
+    # actual content, so a cancelled attempt's 0-byte corpse can never be judged in place of the
+    # run that succeeded (ADR 0043 — this exact stale-job-id path made a passing member FAIL).
+    log = args.log
+    if args.log_dir is not None:
+        if args.log is not None:
+            print("FATAL: pass --log OR --log-dir, not both")
+            return 2
+        if not args.log_dir.is_dir():
+            print(f"FATAL: --log-dir is not a directory: {args.log_dir}")
+            return 2
+        cands = [p for p in sorted(args.log_dir.glob("lpjml_*.out")) if p.stat().st_size > 0]
+        if not cands:
+            empties = sorted(args.log_dir.glob("lpjml_*.out"))
+            print(
+                f"FATAL: no non-empty lpjml_*.out in {args.log_dir} "
+                f"({len(empties)} empty candidate(s): {[p.name for p in empties]})"
+            )
+            return 2
+        log = max(cands, key=lambda p: p.stat().st_mtime)
+        print(f"INFO  resolved log -> {log.name} ({log.stat().st_size:,} B, newest non-empty)")
+        if len(cands) > 1:
+            print(f"      ({len(cands)} non-empty candidates; ignored {len(cands) - 1} older)")
+
     # 1) completion, from the log rather than from SLURM state
-    if args.log is not None:
-        if not args.log.is_file():
-            fails.append(f"log not found: {args.log}")
+    if log is not None:
+        if not log.is_file():
+            fails.append(f"log not found: {log}")
+        elif log.stat().st_size == 0:
+            # A 0-byte log is a PROVENANCE error, not a physics verdict: it is what a cancelled or
+            # hung attempt leaves behind, and it is indistinguishable from "the run never finished"
+            # unless it is called out separately. Do not let it read as a failed gate.
+            print(f"FATAL: log is EMPTY (0 B): {log}")
+            print(
+                "       This is the stale-job-id trap (ADR 0043): a resubmitted run writes to a\n"
+                "       NEW lpjml_<jobid>.out, so a jcf pinning the old id reads the cancelled\n"
+                "       attempt's corpse. Re-run with --log-dir <run_dir> to resolve it safely."
+            )
+            return 2
         else:
-            txt = args.log.read_text(errors="replace")
+            txt = log.read_text(errors="replace")
             want = f"lpjml successfully terminated, {args.expect_cells} grid cells processed."
             if want in txt:
                 print(f"PASS  completion: '{want}'")

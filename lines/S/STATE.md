@@ -6,44 +6,134 @@
 
 ## NEXT — start here
 
-**One session per line again.** The 2026-08-03 dual-session collision is resolved: both tracks' work is
-committed, and this block is now the single handoff. Read **ADR 0042** first — it is the current verdict
-(**RESPONSE, final**), and it corrects ADR 0040 in three places. **Every job this session launched has been
-collected**; the only thing still running anywhere is Track A's ssp370 chain (§F), which needs nothing from you
-until it lands.
+**Track A is DONE and the cross-build question is CLOSED.** Read **ADR 0043** first (the new one), then
+**ADR 0042** (the still-current address-vs-response verdict: **RESPONSE, final**). The ssp370 seed pair now
+EXISTS, is GATED, and is proven POOLABLE — that was the last blocker on the binary side of an ADR-0030 floor.
 
 ### THE STATE IN FIVE LINES
 
-1. **The address-vs-response question is CLOSED: RESPONSE, final.** ADR 0042 + its §4 addendum. Both
-   colourings cleared the pre-fixed thresholds (deltas agree to 0.0024 vs a 0.0157 tolerance).
-2. **The remaining blocker on the 14-column artifact is NOT the address question** — it is that the tail's
-   *transient* benefit was interpolation (`Rr` flips sign under blocking). M still does not re-pin, on new
-   grounds. Do not repeat the old reason; it is refuted.
-3. **`cell_env.parquet` ships** — the mechanical half of M's blocker is cleared.
-4. **Track A (ssp370 seed2) is the only live compute.** Do NOT trust any state written here — SLURM moved its
-   estimated start by 8 h while this handoff was being written. **Run `squeue -u $USER` / `sacct -j
-   1678574,1678595,1678596,1678607` first**, then read §F for how to judge it.
-5. **Nothing is left to collect except Track A.** §A is the completed ledger of this session's jobs, kept
-   because it maps each result to where it is recorded — start new work at §E.
+1. **ADR 0043 — the cross-build gate PASSES.** A matched-decomposition full-grid 2048-task re-run reproduced
+   the ssp370 seed1 truth **bit-for-bit**, including the whole **193 GB `ind` roster** (`cmp`-identical) — so
+   the `Feb  5` and `Jul 21` builds produce *the same individuals*, not merely the same means. Poolable.
+2. **`ind_ssp370_seed2_all.parquet` SHIPS** — 91.88 GB, **1 028 945 462** rows, 63 398 cells, 2020–2100, 29-col
+   frozen schema, 10 distinct `Type` (complete basis). Its seed1 sibling has 1 030 175 289 rows: **−0.1194 %**
+   apart — non-zero (not a clone) and small (a real seed pair).
+3. **The independence gate's earlier FAIL was spurious** — a stale job id, not a data problem. Fixed at the
+   root: `diagnose_ind_seed_independence.py --log-dir` + an empty log is now a distinct FATAL (§G).
+4. **`STEM_CAP` is now the ONLY remaining blocker on ADR-0030 criteria 1 and 4**, and §E1 below has the
+   measured feasibility numbers — the naive "rebuild both sides uncapped" is probably NOT buildable as written.
+5. **The first-ever ssp370 noise floor is MEASURED** (job `1689437`, exit 0) — §E0 has the table, the
+   comparison against historic, and the one confound that makes its headline result *stronger*.
 
-### A. LEDGER — every job this session ran, and where its result lives (all DONE)
-
-Nothing here needs collecting. It is a map from job id to the record, for tracing a number back to its log.
+### A. LEDGER — this session's jobs (all resolved)
 
 | job | tag | result | recorded in |
 |---|---|---|---|
-| ~~1680713~~ | `S-cap-p14env-blk15-buf5-s1` | **DONE — clause 3 cleared, verdict FINAL** | §B |
-| ~~1681717~~ | `S-response-gate-blk-s1` | **DONE — the salt-1 transient gate; it is what settled §D's `Rr`-vs-`Rb` split** | ADR 0042 §4 addendum |
-| ~~1680827~~ | `S-cap-p14env-hash-mtry7` | **DONE — Wooddens `emu_r` 0.9124** (mtry4 was 0.9095) | §C |
-| ~~1681596~~ | `S-cap-p14env-hash-mtry8` | **DONE — Wooddens `emu_r` 0.9121**, i.e. the curve SATURATES at m7 | §C |
-| ~~1683694~~ | `S-mtry-response` | **DONE — the transient half is answered: ~46 % dilution, ~54 % content** | §C |
-| 1680712 | `S-cap-p8-blk…-s1-mtry4` | **DONE** — arm C′, Wooddens `emu_r` **0.7476** | already in ADR 0042 §1 |
-| 1683182 | `S-response-fixedci` | **DONE** — the corrected-CI response gate, both fold modes | ADR 0042 §5. **Quote only these CIs**, never jobs 1680715/1681338's |
-| 1682004 | `S-cell-env-sidecar` | **DONE** — `tables/cell_env.parquet`, gate passed | ADR 0042 §6 |
+| 1684567 | `S-FIT_ssp370_seed2` | **COMPLETED** 01:22:25, log says `…67420 grid cells processed.`, `restart_2100.lpj` 1.336e11 B | ADR 0041/0043 |
+| 1684568 | independence gate | FAILED **spuriously** (stale log path) → **re-run by hand: PASSES all 4 checks** | ADR 0043 §trap |
+| 1684569 | parquet child | stranded `DependencyNeverSatisfied`; cancelled | superseded by 1689305 |
+| **1689305** | `S-indparq-ssp2` | **COMPLETED** — the 91.88 GB seed2 parquet | §THE STATE line 2 |
+| 1678607 | `S-crossbuild-gate` | **COMPLETED** → **PASS**, bit-identical | **ADR 0043** |
+| **1689437** | `S-floor-ssp370` | **CHECK IT** — first ssp370 noise floor (tree7 basis) | §E0 |
 
-Each writes `logs/<tag>.<jobid>.out` ending `=== JOB DONE ... exit=<code> ===`. Two more jobs from the
-adjudication produced the noise-scale evidence in ADR 0042 §2: `logs/S-power5.1682121.out` and
-`logs/S-tileboot.1682719.out` (script `scripts/diagnose_slow_delta_power.py`).
+### E. THEN, IN PRIORITY ORDER
+
+0. **DONE — the first ssp370 noise floor (job `1689437`, exit 0).** `tree7` parquet basis, **57 295 cells**
+   with ≥20 survivor stems in BOTH seeds (seed1 58 683 / seed2 58 663). Both guards stayed silent, so the
+   pair is genuinely independent and no `Cell` key was duplicated:
+
+   | axis | ssp370 `floor_r` | ssp370 `floor_ρ` | historic `floor_r` (ADR 0030 §79) | Δ |
+   |---|---|---|---|---|
+   | SLA | **0.975** | 0.966 | 0.965 | +0.010 |
+   | Wooddens | **0.944** | 0.896 | 0.923 | +0.021 |
+   | D95max | **0.837** | 0.873 | 0.895 | **−0.058** |
+   | minwscal | **0.978** | 0.960 | 0.973 | +0.005 |
+   | `agb` [diag] | 0.951 | 0.989 | — | — |
+   | `Height` [diag] | 0.982 | 0.986 | — | — |
+   | COUNT (per-cell total stems) | 0.9895 (r²=0.9791) | 0.9878 | — | — |
+
+   **The confound, and why it strengthens the result:** ssp370 pools **81** years per cell against historic's
+   **20**, so per-cell medians average over ~4× more data and `floor_r` should rise *mechanically* on every
+   axis. Three axes do. **`D95max` falls 0.058 despite that tailwind**, so rooting-depth trait medians are
+   genuinely LESS reproducible between realizations under warming — the true effect is larger than −0.058.
+   `D95max` was already the weakest axis historically; it is now the clear RNG-limited one. **Do not quote
+   these against an emulator `emu_r`**: this is the `tree7` parquet basis (`SKIP_COPULA=1`), a real floor for
+   the emulator's population but **not** byte-identically stem-matched to the emulator's `Y`, and there is no
+   ssp370 emulator arm in that run. Basis 1 is §E1. Reproduce with:
+   ```bash
+   export IND_SEED1=/p/tmp/jamirp/emulator_global/ind_ssp370_seed1_all.parquet \
+          IND_SEED2=/p/tmp/jamirp/emulator_global/ind_ssp370_seed2_all.parquet \
+          SKIP_COPULA=1 SKIP_LEGACY=1
+   TIME=03:00:00 NCPUS=32 scripts/sbatch_python.sh S-floor-ssp370 scripts/noise_floor_vs_emulator.py
+   ```
+   ⚠ Those three knobs are **not** in `sbatch_python.sh`'s forward list and `scripts/sbatch_*.sh` is
+   **integrator-owned** (§9 Gap 3) — so they MUST be `export`ed, or they silently take their defaults and you
+   get the *historic* floor again under an ssp370 tag. The log's first two lines echo the resolved parquet
+   paths: **check them before believing the numbers.**
+
+1. **The definitive (basis-1) ssp370 floor needs a decision, not just compute — do the arithmetic before
+   submitting anything.** Basis 1 requires a seed2 copula table built with settings IDENTICAL to a seed1 one
+   ("static boundary, **no STEM_CAP**, same coverage gate", only `SEED` differing). Measured state:
+   - There is **no** `slow_copula_ssp370*_seed2` table at all, and the existing seed1 `slow_copula_ssp370_t8`
+     is **CAPPED** (n = 22 283 459 ≈ 400 × 58 683) while `slow_copula_historic_t8` is uncapped (197 721 867).
+     So **both** ssp370 sides would need rebuilding, not just seed2.
+   - **Why the cap cannot simply be left on:** `build_slow_runtime_table.py:380` ranks by
+     `pl.struct(["Cell","Patch","Year"]).hash(seed=seed)` where `seed` is the **data** SEED, and it is a
+     **cluster** subsample (whole patch-years). So capped seed1 and capped seed2 retain *different*
+     patch-years; the extra subsampling noise **lowers `floor_r`**, which **flatters the emulator**.
+   - **Why uncapped may be infeasible as written:** ssp370 uncapped ≈ **870 M stems** (4.4× historic, from
+     81 yr / 58 683 cells) ⇒ `Xc` 52 GiB + `Y` 39 GiB = **91 GiB in numpy alone**, before the polars frame it
+     is built from — realistically several hundred GB peak, **twice** (both seeds). Do not just submit it and
+     hope; either stream the write, or take the option below.
+   - **The cheap alternative worth an ADR:** decouple the cap's hash seed from the data SEED (e.g.
+     `CAP_HASH_SEED`, default = `seed` so every existing artifact stays byte-identical). Then both seeds keep
+     the **same** patch-year clusters, which is what a *paired* per-cell comparison actually wants, at
+     1/40th the size. This is a deliberate basis change ⇒ ADR + a new `VERSION`, never an in-place rebuild.
+
+2. **A SCENARIO-RESOLVED env tail** — unchanged from the previous handoff, and still the thing that could
+   actually let M pin a 14-column artifact. The augment script's `ENV_PARQUET` seam is keyed on `Cell` alone
+   (`group_by("Cell").mean()`), and the copula tables carry `cells.i64` + `scenario.i64` but **no per-row
+   `Year`**, so a fully transient tail needs a schema change and must ride a new generation (ADR 0036 §5b).
+   **A scenario-resolved tail needs no schema change** (`scenario.i64` is already per-row) and is sufficient
+   for the response gate. All five ssp370 forcings exist and **`climclusterpy` still imports**
+   (`climclusterpy.features.compute_all_ecology_diagnostic_features` — CLAUDE.md §1), so recompute the six
+   columns by the canonical method. `scripts/build_transient_boundary.py` is the pattern to copy.
+3. **A `SEED_BASE` knob** (~5 lines, S-owned). Forest-seed noise is unmeasured (`seed = a` hard-wired at
+   `ntrees = 6`) and adds to §D's sd. Clause 3 did not fire, so further colourings are not needed for the
+   verdict — but they remain the tool for a blocked **level** rather than a delta (§B).
+4. **A blocked `p14perm` rung** — the width null exists only at hash folds, and ADR 0040's "pointless"
+   argument assumes a fold-mode invariance this matrix disproved for `geo` and `Rr`.
+5. **The geo control is degraded in the direction of the hypothesis** (ADR 0042 §10 caveat 6): geo arms are
+   the only ones with realized leaves **below `MIN_LEAF=20`** (down to 7), because `src/drf.jl:137` takes
+   `0.5*(xj+xj1)` and ULP-adjacent trig values collapse the midpoint. Rebuild `cell_geo_tail.parquet`
+   **rank-transformed to consecutive integers** and re-run the two geo rungs. **Do NOT patch `src/drf.jl`** —
+   it moves fitted forests and committed baselines (guardrail 4).
+6. **Blocking confounds "adjacency removed" with "39 % of training cells removed"** (47 013 → 28 802). Two
+   hash rungs subsampled to ~28 800 train cells/fold separate them; needs a ~10-line `TRAIN_CELL_FRAC` knob.
+7. Carried, unchanged: the `6×2M d32` depth rung · `TRAIT_ONLY=0` on the shipped rung (`agb`/`Height` carry the
+   tightest margins, pooled KS 0.0116 vs the 0.02 bound) · the composed coupled path is still unexercised ·
+   emit `Year` in the `MODE=copula` table (schema change ⇒ ride a new generation).
+
+### G. TRAPS FOUND 2026-08-04 — do not re-derive
+
+1. **A jcf that hardcodes a parent's job id in a path is not resubmit-safe.** When the hung ssp370 member was
+   resubmitted, the chained gate kept reading the **cancelled** attempt's **0-byte** log and reported
+   `no completion line at all` for a run that had finished cleanly — with its three *data* checks passing.
+   Recognise it by: a chained gate that **fails in ~1 second** with most checks green, plus grandchildren left
+   `DependencyNeverSatisfied`. Fixed at the root: `--log-dir <run_dir>` resolves the newest **non-empty**
+   `lpjml_*.out`, and a 0-byte log is a provenance **FATAL (exit 2)**, never a gate failure.
+2. **A file-level `cmp` on a NetCDF output is the WRONG equality test.** LPJmL writes a `history` attribute
+   holding a wall-clock timestamp + config path, so identical physics differs in the header — the gate's `vegc`
+   differed by 124 B at byte 172 while **all seven** variables hashed identically. Compare decoded variables
+   (`netCDF4` + SHA-256) or the timestamp-free text outputs.
+3. **`noise_floor_vs_emulator.py` had an unguarded streamed `group_by`** (ADR 0036 §5b): key-set
+   nondeterminism can DUPLICATE a `Cell`, and every join in that script is on `Cell`, so it fans out and
+   silently re-weights the floor — invisible to a `dropped = before − after` check, which duplication drives
+   negative. Now asserts `n_unique(Cell) == height`. This became load-bearing at ssp370 scale (1.03e9 rows
+   vs historic ~2.3e8).
+4. **`SKIP_COPULA` must not be able to route around the fabricated-floor guard.** The bit-identical-seeds
+   FATAL lived only in the copula path; it is now a shared `_assert_two_seeds` called from the parquet bases
+   too. A floor built from a cloned "second seed" reports `floor_r ≡ 1` with no error anywhere (ADR 0038).
 
 ### B. RESOLVED — clause 3 does not fire; the verdict is FINAL
 
@@ -112,94 +202,16 @@ At `(p=8, mtry=4)` a split sees ≥1 of the four time-varying flux drivers with 
   `diagnose_slow_delta_power.py`) is still the right instrument for `Rb` and is expected to confirm
   "not resolvable".
 
-### E. THEN, IN PRIORITY ORDER
+### F. TRACK A — COMPLETE (2026-08-04). Kept only as a pointer
 
-1. **A SCENARIO-RESOLVED env tail — now the top item, and note the handoff that preceded this one was WRONG
-   about its cost.** It is first because the salt-1 replicate settled the statistics question that used to be
-   first (§D: `Rr` replicates, `Rb` is inadmissible); the paired `Rb` bootstrap is now only a confirmation,
-   ~15 minutes whenever convenient.
-   The claim that the augment script's `ENV_PARQUET` seam "already accepts" a per-(Cell,Year) join is false: it
-   is keyed on `Cell` alone (`group_by("Cell").mean()`, broadcast by cell index), and the copula tables carry
-   `cells.i64` + `scenario.i64` but **no per-row `Year`** — so a fully transient tail needs a schema change,
-   which must ride a new generation (ADR 0036 §5b), never a standalone rebuild. **But a scenario-resolved tail
-   needs no schema change**, because `scenario.i64` is already per-row, and it is sufficient for the response
-   gate (a two-block difference). Feasibility confirmed: all five ssp370 forcings exist
-   (`tas/pr/huss/rsds/lwnet_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm`) with matching historic ones, and
-   **`climclusterpy` still imports** (`climclusterpy.features.compute_all_ecology_diagnostic_features` — see the
-   CLAUDE.md §1 correction), so the six columns can be recomputed by the canonical method rather than
-   reimplemented. `scripts/build_transient_boundary.py` is the pattern to copy (it already reads raw `.clm`
-   per (cell, year) for both scenarios). **This is the thing that could actually let M pin a 14-column artifact.**
-2. **A `SEED_BASE` knob** (~5 lines, S-owned). Forest-seed noise is entirely unmeasured anywhere in this
-   ladder (`seed = a` is hard-wired at `ntrees = 6`) and it adds to §D's sd. Clause 3 did **not** fire, so
-   further colourings (`BLOCK_SALT=2,3`) are no longer needed for the verdict — but they are still the right
-   tool if you ever need a blocked **level** rather than a delta (§B).
-3. **A blocked `p14perm` rung** — the width null exists only at hash folds, and ADR 0040's argument that a
-   blocked perm run is "pointless" assumes fold-mode invariance that this matrix disproved for `geo` and `Rr`.
-4. **The geo control is degraded in the direction of the hypothesis** (ADR 0042 §10 caveat 6): the geo arms are
-   the only arms with realized leaves **below `MIN_LEAF=20`** (down to 7), because `src/drf.jl:137` takes
-   `0.5*(xj+xj1)` and ULP-adjacent trig values collapse the midpoint. Rebuild `cell_geo_tail.parquet`
-   **rank-transformed to consecutive integers** and re-run the two geo rungs. **Do NOT patch `src/drf.jl`** —
-   it moves fitted forests and committed baselines (guardrail 4).
-5. **Blocking confounds "adjacency removed" with "39 % of training cells removed"** (47 013 → 28 802). Two
-   hash rungs subsampled to ~28 800 train cells/fold separate them; needs a ~10-line `TRAIN_CELL_FRAC` knob.
-6. Carried, unchanged: the `6×2M d32` depth rung · `TRAIT_ONLY=0` on the shipped rung (`agb`/`Height` carry
-   the tightest margins, pooled KS 0.0116 vs the 0.02 bound) · the composed coupled path is still unexercised ·
-   emit `Year` in the `MODE=copula` table (schema change ⇒ ride a new generation).
+The ssp370 second seed is **done**: member produced (`1684567`), independence-gated (PASSES all 4 checks),
+converted to `ind_ssp370_seed2_all.parquet`, and proven poolable with seed1 (**ADR 0043**). The mechanism —
+`random_seed` is inert under `-DFROM_RESTART`, so a second seed is a second SPIN-UP — is **ADR 0041**; read it
+before touching any seed/restart config. The judging rules it produced (never judge a C run from SLURM state;
+a healthy 2048-task run writes output in ~15 s; the resubmit/stale-log trap; NetCDF `history`) are now in
+**CLAUDE.md §3** and the `lpjmlfit-cbinary` skill — not here.
 
-### F. TRACK A — the ssp370 second seed. Check its LIVE state first; do NOT "fix" the queue
-
-`random_seed` is **inert under `FROM_RESTART`** — a second seed is a second SPIN-UP. **ADR 0041** is the
-record; read it before touching any seed/restart config.
-
-⚠ **The states below are a snapshot from 2026-08-03 ~18:30 and WILL be wrong — query SLURM, don't read them.**
-
-**THE ORIGINAL CHAIN WAS CANCELLED AND RESUBMITTED — use the NEW job ids.** Job `1678574` was **hung**, not
-slow: 67 minutes in it had written **0 output files, a 0-byte stdout and a 0-byte stderr**, its output-dir
-mtime still predated the run by 6 h, and `sstat` reported no CPU/RSS for its step — while a *matched control*
-(the crossbuild gate `1678607`: same binary, `mpirun`, `--ntasks=2048`, `--exclusive`, same `-DFROM_RESTART`)
-had written **30 GB in 12 minutes**. `cso14c74`, the node that killed two jobs today with the documented
-`0:53`/no-log signature, was in its allocation. Cancelled and resubmitted with `--exclude=cso14c74` passed on
-the **sbatch command line** so the jcf stays byte-identical (ADR 0041 records this member's provenance as
-exactly four edits — a fifth would corrupt it). **The resubmission was verified healthy: 7 output files,
-833 MB, within 15 seconds.** The detection recipe is now in CLAUDE.md §3.
-
-| job | what | snapshot only |
-|---|---|---|
-| **1684567** | `S-FIT_ssp370_seed2` — the member, 2048 tasks, 3:30 wall, `--exclude=cso14c74` | **RUNNING** from 18:26 ⇒ due ~21:56 |
-| **1684568** | independence gate (must NOT be a copy) | `afterok:1684567` |
-| **1684569** | → `ind_ssp370_seed2_all.parquet` (~92 GB) | `afterok:1684568` |
-| **1678607** | `S-crossbuild-gate` — full-grid 2048-task binary-equivalence gate | RUNNING from 18:12, healthy (30 GB by 18:24) ⇒ due ~21:42 |
-| ~~1678574/1678595/1678596~~ | the hung member and its orphaned children | **CANCELLED — do not look for their results** |
-
-**So the whole Track-A chain may well have LANDED before you read this.** Check the member's log first, then
-1684568's verdict, then whether the parquet exists — and remember `afterok` means a dead parent leaves the
-children cancelled, so a missing parquet can mean the C run died rather than that nothing was scheduled.
-
-**If a 2048-task run is silent, check `output/` — do not wait out the wall.** A healthy run creates its
-output files in ~15 s (CLAUDE.md §3). Empty after a minute ⇒ resubmit with `--exclude`, re-chain the children
-onto the new id, and cancel the orphans.
-
-- **Do NOT lower `--ntasks`.** 2048 is what seed1 used, and a changed decomposition changes the trajectory
-  (ADR 0041): a subset re-run is **not** a per-cell replica. `qos=medium`/`long` have *smaller* group limits.
-  They were `QOSGrpCpuLimit`-blocked, are now merely waiting on nodes, and 1678574 correctly outranks the gate.
-- **Judge the C run from its LOG, never from SLURM state** — require
-  `lpjml successfully terminated, 67420 grid cells processed.` Then `ind_2020_2100.csv` within a few percent of
-  193 097 583 638 B and **NOT exactly equal** (exact equality ⇒ the fix failed); `restart_2100.lpj` ≈ 1.34e11 B;
-  `python scripts/water_closure_check.py <run_dir>`. Gate every new member with
-  `scripts/diagnose_ind_seed_independence.py` — **equal file size to the sibling is the copy signature**.
-- **Collecting the gate (1678607):** `cmp` `output/globalflux_2020_2100.csv` (81-year global aggregate, very
-  sensitive) and per-cell `output/vegc_2020_2100.nc` against the seed1 truth. Bit-identity ⇒ the Feb-5 and
-  Jul-21 builds are poolable. A mismatch does **not** invalidate the seed2 member — it invalidates *pooling it
-  with seed1 as a pure seed pair*. Its 193 GB `ind` CSV exists only to keep the output set byte-identical;
-  **delete it** after.
-- Then the pooled seed2 copula tables + floor: steps 1–3 of `run_pooled_slow_copula.sh`
-  (`SEED=2`, `BOUNDARY_WINDOW=20`, `STRUCT_AXES=agb,Height`) → `pool_slow_tables.py` →
-  `noise_floor_vs_emulator.py`. These orchestrators DO take `DEPENDENCY=afterok:<jid>`; the `sbatch_*.sh`
-  wrappers do not. ⚠ ADR 0030 Decision 1 needs `STEM_CAP` **OFF** for a floor, and the cap's rank key is
-  seed-dependent, so a `SEED=2` build keeps a *different* set of patch-year clusters. Rebuild both sides
-  uncapped or state the deviation next to the criterion.
-
-### G. TRAPS FOUND THIS SESSION — do not re-derive
+### G2. TRAPS FOUND 2026-08-03 (previous session) — still current, do not re-derive
 
 - **A wrapper that hands its inner script an EXPLICIT env prefix makes every unlisted knob silently inert.**
   Bit `BLOCK_SALT` (fixed; would have fabricated a perfectly-agreeing replicate and forced a false RESOLVED).
