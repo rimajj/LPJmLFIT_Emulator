@@ -125,6 +125,67 @@ assert set(PFT_PARAMS) == set(ind_data.TREE_TYPES), (
     f"— a widened tree set needs each new PFT's OWN params from par/pft_lpjmlfit.js (ADR 0031)."
 )
 
+#: The generated source of record these values must agree with (ADR 0047).
+MORT_PARAMS_REFERENCE = _REPO / "test" / "testitems" / "references" / "S_pft_mortality_params.csv"
+
+
+def gate_pft_params_against_reference(path: Path = MORT_PARAMS_REFERENCE) -> int:
+    """Assert every :data:`PFT_PARAMS` value equals the committed generated reference (ADR 0047).
+
+    The reference CSV is produced by ``scripts/build_mort_params_reference.py``, which reads
+    ``$LPJROOT/par/pft_lpjmlfit.js`` through the same ``cpp -P`` LPJmL itself uses — so it, not this
+    dict, is the source of record. ``src/trait_mortality.jl``'s ``PFT_MORT_PARAMS`` gates against the
+    same file (``test/testitems/slow_trait_mortality_tests.jl``), which is what keeps the Python
+    training side and the Julia runtime side from drifting apart. ADR 0031 is the record of the cost of
+    two independent copies of a physical constant.
+
+    Called at import time, so any run of this builder checks it. Returns the number of rows compared.
+    A missing reference file is tolerated ONLY when the repo tree is incomplete (the file is committed);
+    a value mismatch always raises.
+    """
+    if not path.exists():                                     # pragma: no cover - committed fixture
+        raise AssertionError(
+            f"{path} is missing — regenerate it with "
+            f"`python3 scripts/build_mort_params_reference.py` (ADR 0047)."
+        )
+    rows: dict[int, dict[str, str]] = {}
+    with open(path) as fh:
+        lines = [ln for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
+    hdr = [c.strip() for c in lines[0].split(",")]
+    for ln in lines[1:]:
+        vals = [c.strip() for c in ln.split(",")]
+        assert len(vals) == len(hdr), f"malformed reference row: {ln!r}"
+        rec = dict(zip(hdr, vals))
+        rows[int(rec["pft_id"])] = rec
+    assert set(rows) == set(PFT_PARAMS), (
+        f"reference covers PFT ids {sorted(rows)} but PFT_PARAMS has {sorted(PFT_PARAMS)} — "
+        f"regenerate the reference or fix the dict; do not let them diverge (ADR 0047)."
+    )
+    # `verified` is this module's own provenance flag, not a C parameter, so it is not in the reference.
+    checked = ("wdmort_1", "wdmort_2", "mort_water_factor", "mort_water_res", "mort_temp_factor",
+               "longevity", "temp_low", "temp_high")
+    for i, p in PFT_PARAMS.items():
+        for key in checked:
+            want = float(rows[i][key])
+            got = float(p[key])
+            assert got == want, (
+                f"PFT_PARAMS[{i}][{key!r}] = {got} but the generated C reference says {want}. "
+                f"Read par/pft_lpjmlfit.js — do NOT edit the reference to match the dict (ADR 0047)."
+            )
+        assert p["verified"] is True, f"PFT_PARAMS[{i}] is not marked verified"
+    for i in PFT_PARAMS:
+        assert float(rows[i]["k_mort"]) == K_MORT, (
+            f"k_mort = {K_MORT} here but {rows[i]['k_mort']} in the reference (par/lpjparam_fit.js)"
+        )
+        assert float(rows[i]["kmort_2"]) == KMORT_2
+        assert float(rows[i]["kmortbg_q"]) == KMORTBG_Q
+        assert abs(float(rows[i]["kmortbg_lnf"]) - KMORTBG_LNF) < 1e-15
+        assert float(rows[i]["ndayyear"]) == NDAYYEAR
+    return len(rows)
+
+
+gate_pft_params_against_reference()
+
 
 def mort_max_of(wooddens: np.ndarray, p: dict) -> np.ndarray:
     """mort_max = 10^(wdmort_1 + wdmort_2 / (wooddens/1e6))  (mortality_tree_ind.c:92)."""

@@ -1,0 +1,27 @@
+# S_pft_mortality_params.csv — THE ONE per-PFT mortality-parameter table for the ported
+# LPJmL-FIT tree mortality hazard (ADR 0047). GENERATED — do not hand-edit.
+#   regenerate: python3 scripts/build_mort_params_reference.py
+#   verify:     CHECK=1 python3 scripts/build_mort_params_reference.py
+# Source of record: $LPJROOT/par/pft_lpjmlfit.js + par/lpjparam_fit.js, expanded with the same
+# `cpp -P` LPJmL itself pipes them through (src/lpj/openconfig.c:28,467). `pft_id` IS the `ind`
+# output's `Type` column (0-based pftpar index; ids 0-6 are the complete tree set, ADR 0031).
+# `longevity` is the JSON key "age" (NOT the leaf "longevity"); `temp_low`/`temp_high` are
+# "temp_stressed" (NOT the establishment gate "temp"). `mort_max_dead` is the parameter-file
+# `mort_max`, read at mortality_tree_ind.c:87 and OVERWRITTEN at :92 — recorded, never consumed.
+# The trailing six columns are per-run GLOBALS, repeated on every row so neither consumer can
+# drift on them silently: k_mort from par/lpjparam_fit.js, the rest #defines in the C source.
+# Two quirks of the C file, both faithful and both surprising:
+#   * id 6 (larch) declares `aphen_min`/`aphen_max` TWICE — the macro defaults (60/245) then a
+#     deliberate override pair (10/200). json-c's last-wins lookup makes 10/200 EFFECTIVE, so
+#     larch accumulates water stress six times earlier in the season than the other six PFTs.
+#   * `sla_median` is a single global default (0.01986) and lies OUTSIDE [low, high] for ids
+#     1, 2, 3 and 5. Recruit traits are drawn on [low, high] (ADR 0045), so do not treat
+#     `sla_median` as a central value of the interval.
+pft_id,name,wdmort_1,wdmort_2,mort_water_factor,mort_water_res,mort_temp_factor,longevity,temp_low,temp_high,aphen_min,lai_sapl,allom1,allom2,allom3,kpr,k_latosa,wood_sapl,wooddens_low,wooddens_median,wooddens_high,sla_low,sla_median,sla_high,mort_max_dead,k_mort,kmort_2,kmortbg_lnf,kmortbg_q,bm_inc_counter_max,ndayyear
+0,tropical broadleaved evergreen tree,-2.458,0.129,10.0,0.75,5.0,400.0,12.5,54.0,60.0,1.5,117.44,28.749,0.5633,1.2922,4000.0,1.2,70000.0,200000.0,650000.0,0.005,0.01986,0.07,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0
+1,temperate needleleaved evergreen tree,-2.625,0.236,5.0,0.25,5.0,400.0,-15.0,54.0,60.0,1.5,101.34,31.4093,0.665,1.4163,4000.0,1.2,117000.0,200000.0,418500.0,0.005,0.01986,0.0187,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0
+2,temperate broadleaved evergreen tree,-2.625,0.236,10.0,0.25,5.0,400.0,-10.0,54.0,60.0,1.5,117.44,28.749,0.5633,1.2922,4000.0,1.2,145600.0,200000.0,637000.0,0.005,0.01986,0.0242,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0
+3,temperate broadleaved summergreen tree,-2.465,0.148,5.0,0.75,5.0,400.0,-20.0,54.0,60.0,1.5,117.44,28.749,0.5633,1.2922,4000.0,1.2,147870.0,200000.0,637000.0,0.0242,0.01986,0.0547,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0
+4,boreal needleleaved evergreen tree,-2.43,0.143,7.5,0.65,5.0,400.0,-45.0,54.0,60.0,1.5,101.34,31.4093,0.665,1.4163,4000.0,1.2,117000.0,200000.0,418500.0,0.005,0.01986,0.0187,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0
+5,boreal broadleaved summergreen tree,-2.43,0.143,20.0,0.75,5.0,125.0,-45.0,54.0,60.0,1.5,117.44,28.749,0.5633,1.2922,4000.0,1.2,147870.0,200000.0,418500.0,0.0242,0.01986,0.0547,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0
+6,boreal needleleaved summergreen tree,-2.43,0.143,5.0,0.65,5.0,400.0,-70.0,54.0,10.0,1.5,101.34,31.4093,0.665,1.4163,4000.0,1.2,117000.0,200000.0,418500.0,0.005,0.01986,0.07,0.025,0.01,0.2,6.907755278982137,2.0,5.0,365.0

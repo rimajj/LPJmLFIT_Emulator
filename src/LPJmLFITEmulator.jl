@@ -68,6 +68,11 @@ include("run.jl")
 # Ordering note: everything above is already loaded, so a region may depend on it; regions must NOT depend
 # on each other (that would be a cross-line contract — raise it as an integration point instead).
 # ── line S ── (Component-S science: slow.jl/drf.jl/climbuf.jl are ABOVE; add new S-only files here)
+# The ported LPJmL-FIT per-individual mortality hazard (ADR 0047) — the trait-dependent selection
+# operator ADR 0046 identified as the lever for FIT's within-PFT wood-density warming shift. Offline: it
+# has NO call site, so every committed baseline stays byte-identical (guardrail 4). Self-contained
+# (pure Base, no dependence on any other src file), hence safe at the end of the include order.
+include("trait_mortality.jl")
 # ── line M ── (multi-cell coupled: run.jl/interface.jl are ABOVE; add new M-only files here)
 # ── line E ── (Component E: components/energy.jl is ABOVE; add new E-only files here)
 # ── line O ── (online coupling: prefer `ext/` — a weakdep extension, ADR 0014 keeps runtime [deps] empty)
