@@ -424,6 +424,19 @@ the fair comparison and `emu_r` 0.864 sits just under it.
 - **S5** Whole-cohort **DROP** + the Gate-3 recursive drift (nqrmse 0.39 vs the documented 0.45 alarm).
 - **S6** The **in-loop** OOD win — the offline 2.35× is `[VERIFIED]` (`flux_ood_experiment.jl`); the in-loop
   (recursive, coupled) OOD advantage is not yet demonstrated. Coordinate with M for the coupled harness.
+- **S7 / Phase 3A** **Trait-dependent mortality** — the mechanism ADR 0046 confirmed as the lever for FIT's
+  within-PFT wood-density warming shift.
+  - **Stage 1 DONE 2026-08-04 (ADR 0047).** The hazard is ported in full (`src/trait_mortality.jl`), with
+    its per-PFT parameters GENERATED from the C into one committed CSV that all three consumers gate
+    against, and **no call site** — so nothing in CI moved. Suite **107 682 pass / 0 fail / 4 broken**
+    (job 1694467, up from 107 076: the four new testitems). Docs verified locally (1694728 red → 1694742
+    green after adding `TraitMortality` to `checkdocs_ignored_modules`; `docs` never runs on a branch).
+  - **Stage 1b DONE (ADR 0048)** — the pre-flight. The k-cap merge is dormant at the default `k_cap`
+    (0 merges / 150 yr) so it need not be fixed first, but it is trait-destructive at 3.1–5.1× the signal
+    when forced; and the rollout's constant-forcing relaxation is 1.34× the signal, opposite in sign,
+    settling at yr 52 ⇒ every response arm needs a matched constant-forcing control. Job 1694397.
+  - **Stage 2 OPEN** — the call site, opt-in, with its own ADR. Design constraints and the acceptance
+    target (the ADR-0046 §3 per-PFT age–wooddens gradient, non-monotone for ids 0 and 3) are in §NEXT.
 
 ## Line-local gotchas
 
