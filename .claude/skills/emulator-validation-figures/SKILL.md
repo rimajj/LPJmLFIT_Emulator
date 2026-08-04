@@ -264,3 +264,38 @@ Re-run whenever the emulator is retrained, and **re-measure everything after the
   additions — wire them into `plot_slow_emulator_validation.py` as figures 09+.
 - For `SCENARIO=ssp370`: derive `cell_year_{soilmoist,lai}_ssp.parquet` + train the ssp370 DRF first
   (`slow-drf-pipeline`), then run this with `SCENARIO=ssp370`.
+
+## Rebuilding the public LaTeX report (`docs/component_s_public_report.tex`)
+
+The general-audience report consumes these figures as renamed copies in `docs/figs/`
+(`01_map_observed.png` → `count_map_observed.png`, `09_trait_marginals.png` → `trait_marginals.png`, etc. —
+`\graphicspath{{figs/}}`). When you regenerate a generation's figures, re-copy them there or the report
+silently keeps showing the OLD generation's plots. Confirm which generation `docs/figs/` currently holds by
+comparing byte sizes against `figures/emulator_validation/<gen>/` — they are plain copies, so sizes match
+exactly.
+
+Build it (`pdflatex` is NOT on PATH):
+
+```bash
+source /etc/profile.d/00-modulepath.sh; source /etc/profile.d/modules.sh
+module load texlive/2026
+cd docs && pdflatex -interaction=nonstopmode component_s_public_report.tex   # twice, for refs/TOC
+rm -f component_s_public_report.{aux,log,out,toc}     # build litter; .gitignore is INTEGRATOR-owned (§9 Gap 3)
+```
+
+The `.pdf` **is tracked** — commit it alongside the `.tex`, or the repo ships a PDF that disagrees with its
+source.
+
+Two traps, both of which cost a build:
+
+- **A blank line inside `\caption{}` aborts the build**: `! Paragraph ended before \NR@gettitle was complete`
+  (hyperref's nameref) or `\caption@prepareanchor` (the `caption` package). The report's captions are
+  deliberately long and multi-paragraph — the fix that works is giving every figure a **short optional
+  caption**, `\caption[one-line summary]{...long...}`, so the long text is never used as the PDF anchor.
+  Loading `\usepackage{caption}` alone does **not** fix it.
+- **Do not quote `basis_ratio`/`basis_frac_over_10pct` from `metrics_biomass.txt` as predictive accuracy.**
+  They are the count-vs-trait *row-universe consistency* check (ADR 0033's algebraic identity), not a skill
+  score. The accuracy fields are `percell_r2`, `percell_r2_log10`, `median_ratio`, and
+  `obs_mean_stand_agb`/`pred_mean_stand_agb`. Note `median_ratio` > 1 while the mean ratio < 1 is the normal
+  heavy-tailed signature (typical cell slightly over-predicted, the few huge-biomass cells under-predicted) —
+  report both rather than picking whichever looks better.
