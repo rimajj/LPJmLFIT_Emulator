@@ -79,7 +79,11 @@ The reference data is LPJmL-FIT output, not field observation: the objective is 
 
 \begin{table}[h]
 \centering
-\caption{Reference data coverage and scale. ``Stems'' are individual tree-year records; ``patch-years'' are the rows the count model is trained on. Each grid cell contains 25 independently simulated patches, representing the natural spread of forest states within a cell.}
+\caption[Reference data: coverage, period and scale]{\textbf{What is shown.} The size and coverage of the LPJmL-FIT reference data Component S is trained and tested on, for each of the three data sets used throughout this report.
+
+\textbf{The columns.} \emph{Historical} = the observed-climate period. \emph{Future climate} = the SSP3-7.0 scenario period. \emph{Pooled} = both periods combined into a single training set, which is the configuration actually deployed, since a model that has seen both regimes is the one wanted for a transient simulation. Where a pooled entry reads ``---'' the quantity is not meaningfully defined for the combination.
+
+\textbf{The rows.} \emph{Grid} -- the model operates on a regular 0.5$^\circ$ longitude/latitude grid with 67{,}420 land cells. \emph{Patches per cell} -- each cell contains 25 independently simulated forest plots, which is how the model represents the natural spread of stand ages and states inside one cell; a cell-level number is an average over these. \emph{Cells with usable tree data} -- fewer than 67{,}420 because deserts and ice sheets carry no trees. \emph{Individual tree-year records (all)} -- one row per living tree per year, the raw record described in Table \ref{tab:recorded}. \emph{Of which surviving stems} -- the subset that survived the year and passed the input-coverage check; this smaller number, not the total, is what the trait model trains on, and the two must not be interchanged. \emph{Patch-year rows} -- one row per patch per year, which is the unit the count model predicts. \emph{Independent seeds} -- two full realisations of each scenario exist, differing only in the random-number seed, which is what makes the reference model's own irreducible randomness measurable (Section \ref{sec:floor}). \emph{CO$_2$ treatment} -- the future period holds CO$_2$ fixed at its 2019 value, so its forest response reflects climate change alone and not CO$_2$ fertilisation.}
 \label{tab:scale}
 \small
 \begin{tabular}{lccc}
@@ -109,7 +113,11 @@ LPJmL-FIT emits one row per living tree per year with the 29 fields below. This 
 
 \begin{table}[h]
 \centering
-\caption{The 29 recorded fields per tree per year (LPJmL-FIT \texttt{ind} output). ``Role'' indicates how Component S uses the field: \emph{index} = identifies the record; \emph{driver} = aggregated into a model input; \emph{target} = predicted; \emph{diagnostic} = validated but not predicted in production; \emph{unused} = available but not currently consumed.}
+\caption[The 29 recorded fields per tree per year]{\textbf{What is shown.} Every quantity LPJmL-FIT records for each individual tree in each simulated year -- the complete raw data universe. Everything else in this report is derived from these 29 fields, so this table defines what is and is not available to the emulator in principle.
+
+\textbf{The columns.} \emph{Field} is the name as written by the reference model. \emph{Meaning} and \emph{Unit} give the physical interpretation. \emph{Role} states how Component S uses it: \emph{index} = identifies which tree, patch, cell and year the row belongs to; \emph{driver} = aggregated to patch level and used as a model input (Table \ref{tab:count_inputs}); \emph{target} = a quantity the emulator predicts; \emph{diagnostic} = predicted and validated, but deliberately excluded from the production artifact so an error in it cannot enter a coupled run; \emph{filter} = used to select which rows enter training; \emph{unused} = recorded and available, but not currently consumed -- listed so the reader can see the headroom that exists without new reference runs.
+
+\textbf{What it tells us.} The four \emph{target} fields are the traits LPJmL-FIT itself samples when a tree establishes, which is why they are the natural prediction targets rather than an arbitrary choice. The block of five \emph{mortality} fields is currently unused: the emulator's mortality is trait-blind, so it does not reproduce cause-specific death, and these fields represent an identified, not-yet-exploited avenue. Two derivation caveats that matter for anyone recomputing from this table: \texttt{agb} already includes the individual-density factor, so a per-patch row sum is directly the stand total per unit area; and \texttt{Age} is incremented at year end, so the start-of-year age is $\texttt{Age}-1$, which is also the age at which that row's mortality fields were evaluated.}
 \label{tab:recorded}
 \small
 \begin{tabular}{llll}
@@ -161,7 +169,11 @@ The two sub-models take different input sets. The count model sees the full patc
 
 \begin{table}[h]
 \centering
-\caption{Inputs to the \textbf{count} model (15 predictors), in the exact order the running model supplies them. ``Flux drivers'' come from component F for the year just simulated; ``patch state'' describes the stand at the start of the step; ``boundary'' is the slowly varying bioclimatic and soil context.}
+\caption[The 15 predictors of the count model]{\textbf{What is shown.} Every predictor the tree-count model receives, listed in the exact order the running model supplies them. This ordering is part of the interface contract: the artifact records it and rejects a caller that presents the columns differently, so a silent mismatch cannot produce quietly wrong predictions.
+
+\textbf{The groups.} \emph{Flux drivers} (1--4) come from component F and summarise how the patch fared physically in the year just simulated -- how much carbon it gained, how efficiently, and how water-limited it was. \emph{Patch state} (5--11) describes the stand as it was at the start of the step: its height structure, biomass, leaf area, cover, mean cohort age and current tree count. \emph{Boundary} (12--15) is the slowly varying bioclimatic and soil context of the cell -- thermal growing season, winter cold, soil depth and atmospheric CO$_2$.
+
+\textbf{What it tells us.} The information available is deliberately of two kinds: what just happened physically, and what the stand already looks like. That combination is what lets a single annual step predict establishment and mortality together -- a crowded, tall, old stand responds differently to the same carbon gain than a sparse young one. Note that \texttt{n\_prev}, the count at the start of the year, is among the inputs: the model predicts the new count given the old one, which is a considerably better-posed problem than predicting it from environment alone.}
 \label{tab:count_inputs}
 \small
 \begin{tabular}{cllll}
@@ -191,7 +203,11 @@ The two sub-models take different input sets. The count model sees the full patc
 
 \begin{table}[h]
 \centering
-\caption{Inputs to the \textbf{trait} model (8 predictors in the deployed configuration). These are predictors 1--4 and 12--15 of Table \ref{tab:count_inputs}: the environmental drivers and the bioclimatic boundary, with the six patch-state descriptors and \texttt{n\_prev} deliberately excluded. An evaluated 14-predictor variant adds the six moisture descriptors listed beneath; its status is discussed in Section \ref{sec:roadmap}.}
+\caption[The 8 predictors of the trait model]{\textbf{What is shown.} The predictors the trait model receives -- a deliberate subset of Table \ref{tab:count_inputs}, namely its flux drivers (1--4) and its bioclimatic boundary (12--15), renumbered 1--8 here.
+
+\textbf{Why it is a subset.} The six patch-state descriptors and the previous tree count are \emph{excluded} on purpose. Traits are assigned to newly established recruits, and in the reference model a recruit's traits are drawn according to the establishment environment rather than according to the structure of the stand it germinates into. Giving the trait model the stand's own height, biomass or density would let it learn a correlation that does not reflect the underlying process, and would make the emulator's traits depend on its own previous predictions inside a coupled run.
+
+\textbf{The variant block.} The lower rows list six additional moisture descriptors that were evaluated as an extension. The deployed configuration does \emph{not} include them. They are shown because they are the subject of the principal piece of remaining work: they measurably improve location-level trait skill, but as present-day climatological means they are constant within each cell and therefore cannot by construction carry a warming signal. Section \ref{sec:roadmap} explains what would have to change for them to be adopted.}
 \label{tab:trait_inputs}
 \small
 \resizebox{\textwidth}{!}{%
@@ -245,7 +261,11 @@ The result is a recruit whose four traits are individually correctly distributed
 
 \begin{table}[h]
 \centering
-\caption{Deployed model dimensions. \texttt{mtry} is the number of predictors considered at each split, set automatically to $\mathrm{round}(\sqrt{p})$. Minimum leaf size and maximum depth together limit how finely the forest may partition the input space, which is the main guard against memorising individual training rows. Artifacts are plain-text, dependency-free, and load without any external library.}
+\caption[Deployed model dimensions and artifact sizes]{\textbf{What is shown.} The complete specification of the two trained models as deployed, so that a reader can judge their capacity or reproduce them.
+
+\textbf{The rows, and what each controls.} \emph{Predictors ($p$)} is the input width from Tables \ref{tab:count_inputs} and \ref{tab:trait_inputs}. \emph{Targets} -- the count model predicts one quantity; the trait model has four production axes plus two diagnostic ones, each with its own forest supplying that trait's conditional distribution. \emph{Trees per forest} is the size of the ensemble; more trees reduce prediction variance with diminishing returns. \emph{Maximum depth} and \emph{minimum leaf size} together cap how finely the input space may be partitioned -- a leaf must retain at least 20 training rows, which is the main safeguard against memorising individual rows rather than learning a relationship, and is also what guarantees each leaf holds enough values to represent a distribution rather than a single outcome. \emph{Rows subsampled per tree} is how many training rows each individual tree sees; combined with \texttt{mtry}, the number of predictors offered at each split, this is the randomisation that makes the ensemble members differ from one another and is what makes a forest more than a single tree. \emph{Copula dependence} is the $4\times4$ correlation matrix among the four traits, factored once into its Cholesky form $L$ so that correlated draws can be generated cheaply at runtime (Section \ref{sec:method}). \emph{Serialised size} and \emph{training rows} give the practical cost.
+
+\textbf{What it tells us.} These are modest, deliberately unexotic models: a few hundred shallow trees and one small correlation matrix. The accuracy in Section \ref{sec:results} is therefore not bought with a large opaque model, and the artifacts are small enough and simple enough to load in seconds inside a climate model without any external machine-learning dependency.}
 \label{tab:dims}
 \small
 \resizebox{\textwidth}{!}{%
@@ -308,7 +328,13 @@ All numbers below are held out by location (design 1), on the complete seven-PFT
 
 \begin{table}[h]
 \centering
-\caption{Tree-count accuracy. ``Per patch-year'' pools every patch and year into one calculation -- the hardest framing. ``Per grid cell'' scores each cell's own year-to-year trajectory separately and then averages, which rewards tracking local dynamics.}
+\caption[Tree-count accuracy across scenarios and hold-out designs]{\textbf{What is shown.} How accurately the count model predicts the number of living trees, evaluated on three data sets and under two different definitions of ``unseen''.
+
+\textbf{The columns.} \emph{Historical} and \emph{Future climate} are the two scenario periods scored separately; \emph{Pooled} is the deployed model trained on both together. Because it combines two periods of unequal length, a pooled figure is dominated by the longer future period and should be read as an overall summary rather than as a property of either period.
+
+\textbf{The rows.} \emph{Patch-year rows / cells} gives the sample size. \emph{$R^2$ held out by location, per patch-year} is the headline number: every cell was predicted by a model trained without it, and every patch and year enters one pooled calculation -- the strictest framing, since each individual patch-year must land near its own true value. \emph{RMSE} expresses that same error in trees, and being below one tree is the practically meaningful statement. \emph{$R^2$ held out by climate period} trains on one period and tests on the other, so it measures transfer to an unseen \emph{climate} rather than to an unseen \emph{place}. \emph{$R^2$ per grid cell} instead scores each cell's own year-to-year trajectory separately and averages those scores; it is higher than the pooled figure because it rewards tracking local dynamics rather than requiring every row to match its absolute value, and the two should be read as answering different questions. \emph{Mean bias} is the average signed error, so a value near zero means over- and under-predictions balance rather than the model being systematically high or low.
+
+\textbf{What it tells us.} Held-out accuracy matches in-sample accuracy to four decimals, so the model generalises to unseen locations rather than memorising them. Held-out-by-period accuracy is indistinguishable from held-out-by-location accuracy, so it has learned a climate-to-demography relationship that survives a change of climate regime.}
 \label{tab:counts}
 \small
 \begin{tabular}{lccc}
@@ -377,7 +403,11 @@ Held-out accuracy equals in-sample accuracy to four decimal places, so the count
 
 \begin{table}[h]
 \centering
-\caption{Per-trait accuracy against the attainable ceiling, historical period, 52{,}165 cells. ``Noise floor'' is seed-to-seed reliability alone; ``Ceiling'' additionally accounts for the emulator's own self-consistency and is therefore slightly higher; ``Gap'' is Ceiling minus Raw.}
+\caption[Per-trait accuracy against the attainable ceiling]{\textbf{What is shown.} Trait accuracy expressed relative to the best score any predictor could achieve, rather than relative to a hypothetical perfect prediction. This framing is necessary because the reference model is stochastic: two of its own runs disagree with each other, so no emulator that sees climate rather than the random-number stream can score 1.0.
+
+\textbf{The columns, in order of how they build on one another.} \emph{Raw $r$} is the plain correlation between predicted and true per-cell trait medians -- what the emulator achieves. \emph{Noise floor} is how well one full reference run predicts an independent rerun of itself that differs only in random seed; it involves Component S not at all and is a property of the reference model. \emph{Ceiling} is the attainable limit, which additionally accounts for the emulator's own internal consistency; it is the geometric mean $\sqrt{\rho_P\rho_Y}$ of the two reliabilities and is therefore always slightly above the noise floor (Section \ref{sec:floor}). \emph{Gap} is Ceiling minus Raw -- the accuracy genuinely still available. \emph{$r_\mathrm{center}$} is Raw divided by Ceiling: skill as a fraction of what is attainable, so a value near 1.0 means the remaining error is irreducible randomness rather than a modelling deficiency. \emph{Spread ratio} is the standard deviation of the predictions over that of the truth, across cells: 1.0 means the model reproduces the real geographic variability of the trait, while a value below 1.0 means it hedges toward the middle and under-represents genuine extremes.
+
+\textbf{What it tells us.} Drought tolerance is essentially finished ($r_\mathrm{center}=0.958$, spread ratio 0.970) and specific leaf area is close behind. Wood density is the weakest axis on both counts -- the largest gap (0.150) and by far the lowest spread ratio (0.678) -- which identifies it, not the traits with the lowest raw correlation, as the priority. Rooting depth is intermediate, and note that its low raw correlation (0.791) is largely a \emph{low ceiling} (0.909) rather than poor modelling: the reference model is itself least repeatable on that trait.}
 \label{tab:traits}
 \small
 \begin{tabular}{lcccccc}
@@ -394,7 +424,13 @@ Drought tolerance (\texttt{minwscal}) & 0.945 & 0.973 & 0.986 & 0.041 & \textbf{
 
 \begin{table}[h]
 \centering
-\caption{Whole-distribution trait fidelity across scenarios: pooled Kolmogorov--Smirnov distance (global shape), median per-cell KS (local shape), and per-cell correlation. Diagnostic axes are marked.}
+\caption[Whole-distribution trait fidelity, historical versus future]{\textbf{What is shown.} Whether the emulator reproduces each trait's full \emph{distribution} rather than only its average, checked at two spatial scales and in both climate periods.
+
+\textbf{The columns.} \emph{Pooled KS} is the Kolmogorov--Smirnov distance -- the largest gap between the predicted and true cumulative distributions -- computed over all trees worldwide at once. It tests the global shape of the trait. \emph{Median per-cell KS} computes that same statistic separately at every grid cell and reports the middle value, testing whether the \emph{local} distribution is right at a typical location. \emph{Per-cell $r$} is the correlation of predicted against true per-cell median values, testing whether the trait is placed in the right regions. \emph{Hist.} and \emph{Future} are the two scenario periods.
+
+\textbf{Two things to keep straight.} First, per-cell KS values ($\approx 0.13$--$0.17$) are necessarily much larger than pooled values ($\approx 0.005$) and the two columns must not be compared with each other: one cell contains far fewer trees than the whole world, so its distribution is estimated far more noisily, and much of the per-cell value is that sampling noise rather than model error. Second, rows marked \emph{[diag]} are diagnostic axes -- biomass and height -- validated identically but never written into the production artifact, so they cannot affect a coupled run.
+
+\textbf{What it tells us.} Every axis matches in global shape (pooled KS $\le 0.012$, i.e.\ distributions that are hard to tell apart), and does so about equally well or better under future climate than historically -- so the trait model does not degrade when moved to the warmer regime. Read alongside Table \ref{tab:traits}: wood density's weakness is in \emph{where} it places values (per-cell $r$ 0.812 and a low spread ratio), not in the overall distribution it produces.}
 \label{tab:traits2}
 \small
 \begin{tabular}{lcccccc}
@@ -455,7 +491,13 @@ Stand biomass depends jointly on \emph{both} sub-models -- how many trees, and h
 
 \begin{table}[h]
 \centering
-\caption{Stand above-ground biomass, historical period, 53{,}699 cells.}
+\caption[Stand above-ground biomass: end-to-end consistency]{\textbf{What is shown.} How well total stand above-ground biomass is reproduced. This quantity is diagnostic -- it is not consumed by the coupled model -- but it is the single most informative check available, because biomass depends on \emph{both} sub-models at once: how many trees the count model predicts and how large the trait model makes them. It therefore tests their mutual consistency, which neither sub-model's own metrics can.
+
+\textbf{The rows.} \emph{Per-cell $R^2$} is the fraction of between-cell variation in biomass captured. \emph{Per-cell $R^2$ (log$_{10}$)} recomputes it after taking logarithms, which reduces the leverage of a few extremely high-biomass tropical cells and so describes accuracy across the ordinary range rather than being dominated by the extremes. \emph{Median ratio} is the middle value of predicted over true biomass across cells, so it describes the \emph{typical} cell -- 1.020 means a 2\,\% over-prediction there. \emph{Global mean} compares the two totals and shows a 6\,\% \emph{under}-prediction.
+
+\textbf{Why those last two rows disagree, and what it means.} They are not in conflict: the typical cell is slightly over-predicted while the global mean is under-predicted, which is the signature of a heavy-tailed quantity. Most cells hold modest biomass and are nudged slightly high, while the small number of very-high-biomass cells are under-predicted, and those few dominate the global mean. This is the same mild hedging-toward-the-middle visible for wood density in Figure \ref{fig:trait_percell}. Reporting only one of the two rows would misrepresent the model in either direction.
+
+\textbf{What it tells us.} The two sub-models are mutually consistent rather than compensating for each other's errors -- a real risk in any two-part model, and the reason this check exists.}
 \label{tab:biomass}
 \small
 \begin{tabular}{lc}
@@ -536,7 +578,13 @@ The noise floor is itself scenario-dependent, which bounds what any emulator can
 
 \begin{table}[h]
 \centering
-\caption{Seed-to-seed reliability of LPJmL-FIT itself (how well one run predicts an independent rerun differing only in random seed), on a common basis of 57{,}295 cells. This is a property of the reference model, not of Component S.}
+\caption[Reference-model repeatability, historical versus future]{\textbf{What is shown.} How repeatable LPJmL-FIT is with \emph{itself}. Each entry is the correlation between two complete runs of the reference model that differ only in their random-number seed. This is a property of the reference model, not of Component S, and it sets the ceiling any emulator could reach: what two equally valid runs disagree about cannot be predicted from climate.
+
+\textbf{The columns.} \emph{Historical} and \emph{Future climate} are the two periods, computed on a common basis of 57{,}295 cells so the two are directly comparable. \emph{$\Delta$} is future minus historical: positive means the reference model is \emph{more} self-consistent under warming, negative means less.
+
+\textbf{The one confound, which strengthens rather than weakens the result.} The future period averages each cell over 81 years against 20 historically. More averaging smooths out randomness, so every entry in the future column should be pulled \emph{upward} for purely arithmetic reasons having nothing to do with climate. Three of the four traits duly increase. Rooting depth instead \emph{falls} by 0.058 against that tailwind, which means its true decline is larger than the tabulated value.
+
+\textbf{What it tells us.} Under a warming climate the reference model becomes markedly less certain about how deeply trees root, while becoming slightly more consistent about the other three traits. Rooting depth already had the lowest ceiling of the four (Table \ref{tab:traits}); it is now clearly the most randomness-limited axis, and rooting-depth projections under warming warrant correspondingly more caution -- a limit imposed by the reference model that no improvement to Component S can remove.}
 \label{tab:floor}
 \small
 \begin{tabular}{lccc}
@@ -557,7 +605,11 @@ The future period averages each cell over 81 years against 20 historically, so m
 
 \begin{table}[h]
 \centering
-\caption{What is and is not established.}
+\caption[Summary: what is and is not established]{\textbf{What is shown.} A four-way summary of the evidence in this report, separating claims by how well supported they are. It is laid out this way because the single most common way to misread an emulator's validation is to take a high accuracy score as covering more than it does.
+
+\textbf{The rows.} \emph{Established} -- demonstrated by the results of Section \ref{sec:results}, within the stated scope of one annual step at a grid location whose neighbours are known. \emph{Established with a stated correction} -- true, but with a quantified caveat that reduces the apparent margin: part of a scattered-hold-out score is spatial interpolation, and the blocked test gives the size of that effect. \emph{Not established} -- measured and currently unsatisfactory, namely the magnitude of the warming response. \emph{Not yet tested} -- no evidence either way, namely behaviour when the emulator is called recursively year after year inside a live coupled run, with its own output feeding the next year's input.
+
+\textbf{What it tells us.} The dividing line runs between \emph{structure} and \emph{response}. Component S reproduces what a forest looks like; it currently understates how much that appearance changes under warming. Applications that need present-day or endpoint forest structure are supported by this evidence; applications whose conclusion rests on the magnitude of change are not yet.}
 \label{tab:status}
 \small
 \begin{tabular}{p{5.6cm}p{9.4cm}}
