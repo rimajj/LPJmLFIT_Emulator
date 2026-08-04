@@ -108,8 +108,11 @@ sys.path.insert(0, str(_REPO / "python" / "src"))
 from lpjmlfit_emulator import data as ind_data  # noqa: E402
 
 BASE = "/p/tmp/jamirp/emulator_global"
-SEED1 = f"{BASE}/ind_hist_seed1_all.parquet"
-SEED2 = f"{BASE}/ind_hist_seed2_all.parquet"
+# The annual `ind` parquets behind bases 2/3. Overridable so the floor can be run on a scenario OTHER than
+# historic (ADR 0043: the ssp370 seed2 member + its parquet exist as of 2026-08-04). Defaults are the historic
+# pair, so an un-parameterized run stays byte-identical to every previously published number.
+SEED1 = os.environ.get("IND_SEED1", f"{BASE}/ind_hist_seed1_all.parquet")
+SEED2 = os.environ.get("IND_SEED2", f"{BASE}/ind_hist_seed2_all.parquet")
 # seed1 copula table: Y_<axis>.f64 (observed) + pred_<axis>.f64 (K-fold-by-cell OOS) + cells.i64
 COPULA = os.environ.get("COPULA_DIR", f"{BASE}/slow_copula_historic")
 # seed2 copula table: Y_<axis>.f64 + cells.i64 (same builder, SEED=2 — the definitive floor's other half)
@@ -211,7 +214,25 @@ def percell_parquet(parquet, types, axes=None):
         .group_by("Cell")
         .agg([pl.col(a).median().alias(f"med_{a}") for a in axes] + [pl.len().alias("nstem")])
     )
-    return q.collect(engine="streaming")
+    out = q.collect(engine="streaming")
+    # ADR 0036 §5b / CLAUDE.md: `collect(engine="streaming")` over a global-scale `group_by` is NOT
+    # deterministic in the KEY SET it emits — whole groups can vanish AND keys can be DUPLICATED (measured:
+    # 12 duplicated cells over a 92 GB `ind` parquet). A duplicated `Cell` here is silently corrupting: every
+    # downstream join in this script is on `Cell`, so it FANS OUT (present twice on both sides ⇒ four rows)
+    # and re-weights the floor correlation with no error and no coverage warning — the usual
+    # `dropped = before - after` check cannot see it, because duplication makes that statistic go negative.
+    # The scenario parameterization made this load-bearing: ssp370 is 1.03e9 rows to historic's ~2.3e8.
+    if out.select("Cell").n_unique() != out.height:
+        dups = (out.group_by("Cell").len().filter(pl.col("len") > 1).sort("len", descending=True))
+        raise SystemExit(
+            f"FATAL: streamed group_by emitted {out.height - out.select('Cell').n_unique()} DUPLICATE "
+            f"Cell key(s) from {parquet} (ADR 0036 §5b).\n"
+            f"   Worst offenders: {dups.head(5).to_dicts()}\n"
+            f"   Every join below is on `Cell`, so this would fan out and silently re-weight the floor.\n"
+            f"   Re-run (the nondeterminism is per-collect); if it persists, aggregate without the "
+            f"streaming engine."
+        )
+    return out
 
 
 def percell_table(table_dir, with_pred, with_halves=False, axes=None):
@@ -271,14 +292,23 @@ def report(name, note, floor1, floor2, emu, show_basis=False, same_population=Tr
     ≥MINSTEM-filtered). `show_basis=True` adds the cross-check r(this basis's seed1 median, copula-table Y
     median) — it must be ≈1 for the basis to be comparable with the emulator at all.
     """
+    # `emu is None` (SKIP_COPULA) = FLOOR-ONLY: no emulator table exists for this scenario yet, so there is
+    # no `y_`/`p_` column, no GAP and no verdict. The floor arithmetic is untouched.
+    floor_only = emu is None
     j = (floor1.filter(pl.col("nstem") >= MINSTEM)
-         .join(floor2.filter(pl.col("nstem") >= MINSTEM), on="Cell", suffix="_s2")
-         .join(emu, on="Cell", how="inner"))
+         .join(floor2.filter(pl.col("nstem") >= MINSTEM), on="Cell", suffix="_s2"))
+    if not floor_only:
+        j = j.join(emu, on="Cell", how="inner")
     print(f"\n== BASIS `{name}` — {note}")
-    print(f"   {j.height} cells (≥{MINSTEM} survivor stems in BOTH seeds, present in the emulator OOS set)")
-    hdr = f"   {'axis':10s} {'emu_r':>7s} {'emu_ρ':>7s} | {'floor_r':>8s} {'floor_ρ':>8s} | {'GAP':>7s} | verdict"
-    if show_basis:
-        hdr += "   [seed1-basis]"
+    print(f"   {j.height} cells (≥{MINSTEM} survivor stems in BOTH seeds"
+          f"{'' if floor_only else ', present in the emulator OOS set'})")
+    if floor_only:
+        hdr = f"   {'axis':10s} {'floor_r':>8s} {'floor_ρ':>8s}   (FLOOR ONLY — no emulator on this scenario)"
+    else:
+        hdr = (f"   {'axis':10s} {'emu_r':>7s} {'emu_ρ':>7s} | {'floor_r':>8s} {'floor_ρ':>8s} | "
+               f"{'GAP':>7s} | verdict")
+        if show_basis:
+            hdr += "   [seed1-basis]"
     print(hdr)
     rows = {}
     # The PRODUCTION trait axes decide this gate. The struct axes are printed after them, tagged `[diag]`,
@@ -288,15 +318,21 @@ def report(name, note, floor1, floor2, emu, show_basis=False, same_population=Tr
     # pass/fail. Do not add a gate here that loops the dict's keys without filtering on AXES.
     for a in list(AXES) + [s for s in struct_axes]:
         is_struct = a not in AXES
-        if f"med_{a}" not in j.columns or f"p_{a}" not in j.columns:
+        need = [f"med_{a}"] if floor_only else [f"med_{a}", f"p_{a}"]
+        if any(c not in j.columns for c in need):
             if is_struct:
                 print(f"   {a:10s} [diag] — column absent on this basis, SKIPPED")
                 continue
             raise SystemExit(f"FATAL: production axis {a} missing from the joined frame")
         m1 = j[f"med_{a}"].to_numpy()
         m2 = j[f"med_{a}_s2"].to_numpy()
-        yv, pv = j[f"y_{a}"].to_numpy(), j[f"p_{a}"].to_numpy()
         floor_r, floor_rho = pearson(m1, m2), spearman(m1, m2)
+        if floor_only:
+            tag = "" if not is_struct else "[diag] "
+            print(f"   {a:10s} {floor_r:8.3f} {floor_rho:8.3f}   {tag}")
+            rows[a] = (float("nan"), floor_r, float("nan"))
+            continue
+        yv, pv = j[f"y_{a}"].to_numpy(), j[f"p_{a}"].to_numpy()
         emu_r, emu_rho = pearson(yv, pv), spearman(yv, pv)
         gap = floor_r - emu_r
         if is_struct:
@@ -315,15 +351,87 @@ def report(name, note, floor1, floor2, emu, show_basis=False, same_population=Tr
     return rows
 
 
+def _assert_two_seeds(label, v1, v2, axis, src1, src2):
+    """The anti-fabricated-floor guard, callable from EITHER basis (see the block in main()).
+
+    A floor is defined as the correlation between two INDEPENDENT realizations. If the "second" one is a
+    copy, floor_r == 1 by construction and every headroom number is invented, with no error raised
+    anywhere. This must fire on the parquet bases too, or `SKIP_COPULA=1` would route around it.
+    """
+    if v1.size and np.array_equal(v1, v2):
+        raise SystemExit(
+            f"FATAL [{label}]: seed1 and seed2 per-cell medians are BIT-IDENTICAL on `{axis}` — these are\n"
+            f"   not two independent realizations, so no floor/ceiling/GAP may be quoted from them.\n"
+            f"   seed1: {src1}\n   seed2: {src2}\n"
+            f"   Most likely cause: the seed2 run restarted from the SEED1 restart file, which restores the\n"
+            f"   per-cell RAND48 state and makes `\"random_seed\"` inert under -DFROM_RESTART (ADR 0041).\n"
+            f"   Gate a new member with scripts/diagnose_ind_seed_independence.py --log-dir <run_dir>."
+        )
+
+
+def run_parquet_bases(allax, struct, emu):
+    """BASIS 2/3 — the parquet re-derivations (independent code path; the real cross-check).
+
+    `emu` may be None (SKIP_COPULA), in which case `report` gets no emulator side and only the floor
+    columns are produced.
+    """
+    if os.environ.get("SKIP_PARQUET", "") not in ("", "0", "no"):
+        print("\n== SKIP_PARQUET set — copula basis only.")
+        return
+    # Which parquet basis is SAME-population is decided by the IMPORTED constant, never hard-coded: the
+    # emulator's population is whatever `TREE_TYPES` says, so post-ADR-0031 `tree7` carries the quotable GAP
+    # and `tree5` is the cross-population before/after row (pre-0031 it was the other way round).
+    _emu_types = sorted(TREE_TYPES)
+    bases = [(_emu_types, True, "the emulator's population, re-derived independently (its `seed1-basis` must "
+                                "read ≈1.000 for the GAP below to be quotable)")]
+    if sorted(LEGACY_TREE_TYPES) != _emu_types:
+        bases.append((sorted(LEGACY_TREE_TYPES), False,
+                      "the pre-ADR-0031 TRUNCATED population (dropped id 0 tropical evergreen + id 6 larch = "
+                      "32.5% of survivor stems), kept for the before/after — its GAP is CROSS-population"))
+    for types, same_population, note in bases:
+        name = f"tree{len(types)}"
+        if not same_population and os.environ.get("SKIP_LEGACY", "") not in ("", "0", "no"):
+            continue
+        note = f"parquet, Type in {types} — {note}"
+        print(f"\n== scanning parquets for basis `{name}` "
+              f"({'SAME' if same_population else 'CROSS'}-population)...", flush=True)
+        p1 = percell_parquet(SEED1, types, axes=allax)
+        p2 = percell_parquet(SEED2, types, axes=allax)
+        print(f"   seed1: {p1.height} cells · seed2: {p2.height} cells", flush=True)
+        # The fabricated-floor guard must fire HERE too — otherwise SKIP_COPULA routes around it entirely.
+        j = p1.select(["Cell"] + [f"med_{a}" for a in allax]).join(
+            p2.select(["Cell"] + [f"med_{a}" for a in allax]), on="Cell", how="inner", suffix="_s2")
+        for a in allax:
+            _assert_two_seeds(name, j[f"med_{a}"].to_numpy(), j[f"med_{a}_s2"].to_numpy(), a, SEED1, SEED2)
+        report(name, note, p1, p2, emu, show_basis=True, same_population=same_population, struct_axes=struct)
+
+
 def main():
-    print(f"== copula table (seed1, observed+OOS pred): {COPULA}")
-    print(f"== copula table (seed2, the floor's other half): {COPULA2}")
-    struct = resolve_struct_axes(COPULA, COPULA2)
-    allax = list(AXES) + struct           # production FIRST, diagnostic appended — never interleaved
-    e1 = percell_table(COPULA, with_pred=True, with_halves=True, axes=allax)
-    print(f"   seed1 copula basis: {e1.height} cells", flush=True)
-    e2 = percell_table(COPULA2, with_pred=False, axes=allax)
-    print(f"   seed2 copula basis: {e2.height} cells", flush=True)
+    print(f"== ind parquet (seed1): {SEED1}")
+    print(f"== ind parquet (seed2): {SEED2}")
+    # SKIP_COPULA — run the parquet bases ALONE. Needed for a scenario whose copula seed-pair tables do not
+    # exist: basis 1 requires a seed2 copula table built with IDENTICAL settings (static boundary, no
+    # STEM_CAP), and for ssp370 the uncapped table is ~870 M stems / >250 GB peak (ADR 0043 handoff), so the
+    # `tree7` parquet basis is the reachable one. It is a REAL floor for the emulator's own population — it is
+    # basis 1's independent cross-check — but it is not byte-identically stem-matched to the emulator's Y, so
+    # say which basis any quoted floor is on.
+    skip_copula = os.environ.get("SKIP_COPULA", "") not in ("", "0", "no")
+    if skip_copula:
+        print("== SKIP_COPULA set — parquet bases only; no emulator GAP will be reported.")
+        struct = [] if os.environ.get("SKIP_STRUCT", "") not in ("", "0", "no") else ["agb", "Height"]
+        allax = list(AXES) + struct
+        run_parquet_bases(allax, struct, None)
+        print("\n== DONE noise_floor_vs_emulator (floor only) ==", flush=True)
+        return 0
+    else:
+        print(f"== copula table (seed1, observed+OOS pred): {COPULA}")
+        print(f"== copula table (seed2, the floor's other half): {COPULA2}")
+        struct = resolve_struct_axes(COPULA, COPULA2)
+        allax = list(AXES) + struct       # production FIRST, diagnostic appended — never interleaved
+        e1 = percell_table(COPULA, with_pred=True, with_halves=True, axes=allax)
+        print(f"   seed1 copula basis: {e1.height} cells", flush=True)
+        e2 = percell_table(COPULA2, with_pred=False, axes=allax)
+        print(f"   seed2 copula basis: {e2.height} cells", flush=True)
 
     # ---- THE TWO SEEDS MUST ACTUALLY BE TWO SEEDS -------------------------------------------------------
     # This whole gate defines the ceiling as `sqrt(rel_P * rel_Y)` with `rel_Y = floor_r`, the correlation
@@ -473,31 +581,7 @@ def main():
         print(f"   {a:10s} {len(np.unique(v)):9d} {v.std():12.5g} {q3 - q1:12.5g} {v.min():12.5g} "
               f"{v.max():12.5g}{'' if a in AXES else '   [diag]'}")
 
-    # ---- BASIS 2/3: the parquet re-derivations (independent code path; the real cross-check) ------------
-    if os.environ.get("SKIP_PARQUET", "") not in ("", "0", "no"):
-        print("\n== SKIP_PARQUET set — copula basis only.")
-        return 0
-    # Which parquet basis is SAME-population is decided by the IMPORTED constant, never hard-coded: the
-    # emulator's population is whatever `TREE_TYPES` says, so post-ADR-0031 `tree7` carries the quotable GAP
-    # and `tree5` is the cross-population before/after row (pre-0031 it was the other way round).
-    _emu_types = sorted(TREE_TYPES)
-    bases = [(_emu_types, True, "the emulator's population, re-derived independently (its `seed1-basis` must "
-                                "read ≈1.000 for the GAP below to be quotable)")]
-    if sorted(LEGACY_TREE_TYPES) != _emu_types:
-        bases.append((sorted(LEGACY_TREE_TYPES), False,
-                      "the pre-ADR-0031 TRUNCATED population (dropped id 0 tropical evergreen + id 6 larch = "
-                      "32.5% of survivor stems), kept for the before/after — its GAP is CROSS-population"))
-    for types, same_population, note in bases:
-        name = f"tree{len(types)}"
-        if not same_population and os.environ.get("SKIP_LEGACY", "") not in ("", "0", "no"):
-            continue
-        note = f"parquet, Type in {types} — {note}"
-        print(f"\n== scanning parquets for basis `{name}` "
-              f"({'SAME' if same_population else 'CROSS'}-population)...", flush=True)
-        p1 = percell_parquet(SEED1, types, axes=allax)
-        p2 = percell_parquet(SEED2, types, axes=allax)
-        print(f"   seed1: {p1.height} cells · seed2: {p2.height} cells", flush=True)
-        report(name, note, p1, p2, emu, show_basis=True, same_population=same_population, struct_axes=struct)
+    run_parquet_bases(allax, struct, emu)
 
     print("\n== DONE noise_floor_vs_emulator ==", flush=True)
     return 0

@@ -671,3 +671,60 @@ by explicit path throughout.
   said Track A "needs nothing from this session".
 - **Next:** `lines/S/STATE.md` §F, which now carries the new ids and tells the reader to query SLURM rather
   than trust any state written down.
+
+## 2026-08-04 — Track A closed, the cross-build question answered, and the first ssp370 noise floor
+
+Picked up a handoff that said "check SLURM first, don't trust the state here" — correctly, because the
+state had moved. The C member (`1684567`) had finished cleanly, but its chained independence gate
+(`1684568`) had **failed in 1 second** and left the 92 GB parquet child stranded on
+`DependencyNeverSatisfied`.
+
+**The gate failure was spurious.** Three of its four checks passed (sizes differ 0.1255 %, all 6 sampled
+windows differ, final year 2100); only the completion check failed, with `no completion line at all`. The
+run's actual log says `lpjml successfully terminated, 67420 grid cells processed.` The cause: when the
+previous session resubmitted the hung member with `--exclude=cso14c74`, it re-chained the children onto the
+new job id but left `--log …lpjml_2020_2100.1678574.out` — the **cancelled** attempt's 0-byte log — pinned in
+the child jcf. The gate was reading the corpse of the run it was meant to judge. Re-run against the real
+log: **PASSES all four checks.** Fixed at the root rather than by hand: `--log-dir <run_dir>` resolves the
+newest non-empty `lpjml_*.out`, and a 0-byte log is now a distinct FATAL (exit 2) instead of a gate failure —
+because "empty" and "unfinished" were indistinguishable, which is what made a passing member look failed.
+
+**`ind_ssp370_seed2_all.parquet` ships**: 91.88 GB, 1 028 945 462 rows, 63 398 cells, 10 distinct `Type`
+(the complete ADR-0031 basis). Against its seed1 sibling's 1 030 175 289 rows that is −0.1194 % — non-zero,
+so not a clone, and small, so a real seed pair. Track A is complete.
+
+**The cross-build gate (`1678607`) PASSES, and by more than it was asked to.** ADR 0041 specified comparing
+`globalflux` + `vegc` against the seed1 truth. `globalflux` is `cmp`-identical. `vegc` differs by 124 B at
+byte 172 — which turned out to be **only the `history` attribute** (a wall-clock timestamp and the config
+path); all seven variables including the full 81×280×720 `VegC` field hash identically. So a file-level `cmp`
+on a NetCDF output is the wrong test, and that is now in CLAUDE.md. The decisive one was unplanned: the
+**193 GB per-individual `ind` roster is `cmp`-identical over all 81 years.** That is the finest grain the
+model emits and precisely the quantity ADR 0041 showed amplifies any perturbation into a permanently
+different row count — so the two builds don't merely agree in the mean, they produce the same individuals.
+**ADR 0043.** Deleted the gate's redundant 193 GB CSV afterwards (−181 GB), but only after proving its
+bit-identity to the retained original.
+
+**Then the first ssp370 noise floor.** The obvious next step per the handoff was the pooled seed2 copula
+tables, but the floor script's *definitive* basis 1 needs "static boundary, **no STEM_CAP**", and the
+arithmetic says that path is not simply submittable: there is no ssp370 seed2 copula table at all, the
+existing seed1 `slow_copula_ssp370_t8` is **capped** (22.3M ≈ 400×58 683) where historic is not, and an
+uncapped ssp370 build is ~870 M stems ⇒ 91 GiB in numpy alone before the polars frame — several hundred GB
+peak, twice. The cap can't just be left on either: `build_slow_runtime_table.py:380` hashes with the **data**
+SEED and subsamples whole patch-years, so two capped tables keep *different* clusters and the extra noise
+lowers `floor_r`, flattering the emulator. So I did not launch a six-hour job on hope; §E1 records the
+option space (including a `CAP_HASH_SEED` decoupling that would cost 1/40th the size) for a deliberate ADR.
+
+What *was* reachable: the `tree7` parquet basis, which needs only the two `ind` parquets. Parameterizing it
+took three careful changes — `IND_SEED1`/`IND_SEED2` overrides (defaults unchanged so every published number
+stays byte-identical), a `SKIP_COPULA` floor-only path, and two guards that the parameterization made
+load-bearing: the streamed `group_by` had **no key-set assertion** (ADR 0036 §5b — a duplicated `Cell` fans
+out every join in the script and silently re-weights the floor, invisible to a `before − after` check), and
+the bit-identical-seeds FATAL lived only in the copula path, so `SKIP_COPULA` would have routed straight
+around the fabricated-floor guard.
+
+Result (57 295 cells, both guards silent): SLA **0.975** · Wooddens **0.944** · D95max **0.837** ·
+minwscal **0.978**; COUNT 0.9895. Against the historic `tree7` floor (0.965 / 0.923 / 0.895 / 0.973) three
+axes rise and **D95max falls 0.058**. That matters because ssp370 pools 81 years per cell against historic's
+20, so ~4× more averaging should raise `floor_r` mechanically on every axis — D95max falls *despite* the
+tailwind, so rooting-depth trait medians are genuinely less reproducible between realizations under warming
+and the true effect exceeds −0.058. It was already the weakest axis; it is now the clearly RNG-limited one.
