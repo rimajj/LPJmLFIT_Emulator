@@ -331,6 +331,24 @@ the branch. Do not read that as a break, and do not merge on it either. Two ways
 a mid-branch commit is legitimate and leaves the newer commits for their own session to merge. Chasing a
 tip that a concurrent session keeps advancing never converges.
 
+**The converse, which unblocks a common stall (`[VERIFIED 2026-08-05]`, ADR 0102's merge).** The
+one-pending-run rule only bites when your push *starts* a run. **A push that triggers NO workflow cannot
+cancel the pending one — it creates no run to displace it.** So a docs/ADR/STATE/skill-only follow-up
+commit pushed *while branch CI is in flight* is safe: measured, `f56dffce` (one file under
+`docs/decisions/**`) landed mid-run and `0a230ece`'s four Julia jobs continued to completion, with the
+follow-up sha reporting `total_count: 0`. Verify both shas rather than assuming either way — one `curl` per
+sha — because the cost of being wrong is a silently cancelled 10-minute run.
+
+The same fact resolves the "which sha do I merge?" question when a no-gate commit sits on top of the
+verified one. `origin/line/<X>` ≠ the CI-verified sha is only a problem if the delta touches a
+**gate-watched path**. Check it explicitly and say so in the commit message:
+```bash
+git diff --name-only <ci-verified-sha> origin/line/<X>   # ⇒ look each path up in CLAUDE.md §5's table
+```
+All-non-gate-watched ⇒ merging the tip is sound and you keep the ADR-0028 "merge the exact origin ref"
+discipline. Anything under `src/**` · `test/**` · `**/*.jl` · `python/**` · `docs/src/**` · `Project.toml`
+⇒ it is a different tree; re-run CI or merge the verified sha by hash.
+
 ## End-of-session retrospective (do before wrapping, not just before a commit)
 
 Ask: **"what did this session learn that a future session would otherwise re-derive, and where does it
