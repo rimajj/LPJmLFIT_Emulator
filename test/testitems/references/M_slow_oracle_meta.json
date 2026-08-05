@@ -1,0 +1,260 @@
+{
+  "count_basis": "n_living per (Cell,Patch,Year); the cell-year reference is the mean over patches",
+  "coupled_consumable_axes": [
+    "SLA",
+    "Wooddens"
+  ],
+  "diagnostic_axes": [
+    "Height",
+    "agb"
+  ],
+  "filters": "Type in TREE_TYPES (ADR 0031) AND isdead==0; the ind writer adds height>5 m",
+  "held_out": "these 5 cells ARE in the pinned _t8 training population \u2014 in-sample; no scenario split",
+  "noise_floor": {
+    "boreal_siberia": {
+      "count_abs": 0.43999999999999934,
+      "count_pct": 3.979739507959473,
+      "ens_sd": 2.9490732374564113,
+      "traits": {
+        "D95max": {
+          "iqr": 108.54159999999999,
+          "median_abs": 27.3782,
+          "median_in_iqr": 0.2522369303566559
+        },
+        "Height": {
+          "iqr": 2.018605,
+          "median_abs": 0.14064499999999985,
+          "median_in_iqr": 0.06967435431894792
+        },
+        "SLA": {
+          "iqr": 0.004396550000000001,
+          "median_abs": 0.00042632000000000016,
+          "median_in_iqr": 0.0969669399870353
+        },
+        "Wooddens": {
+          "iqr": 72668.3,
+          "median_abs": 10773.2,
+          "median_in_iqr": 0.1482517136082721
+        },
+        "agb": {
+          "iqr": 63.805910000000004,
+          "median_abs": 3.3072600000000008,
+          "median_in_iqr": 0.05183312956433033
+        },
+        "minwscal": {
+          "iqr": 0.029284599999999994,
+          "median_abs": 0.003329099999999996,
+          "median_in_iqr": 0.11368091078587368
+        }
+      }
+    },
+    "mediterranean_iberia": {
+      "count_abs": 0.20400000000000001,
+      "count_pct": 2.5628140703517586,
+      "ens_sd": 2.5676384703988457,
+      "traits": {
+        "D95max": {
+          "iqr": 404.46020000000004,
+          "median_abs": 80.70120000000001,
+          "median_in_iqr": 0.19952816123811443
+        },
+        "Height": {
+          "iqr": 3.8594169999999997,
+          "median_abs": 0.10697900000000012,
+          "median_in_iqr": 0.027718953406693322
+        },
+        "SLA": {
+          "iqr": 0.006513809999999999,
+          "median_abs": 0.0003951299999999998,
+          "median_in_iqr": 0.06066035085456896
+        },
+        "Wooddens": {
+          "iqr": 77003.7,
+          "median_abs": 10305.4,
+          "median_in_iqr": 0.13382993284738265
+        },
+        "agb": {
+          "iqr": 237.33586,
+          "median_abs": 22.813799999999997,
+          "median_in_iqr": 0.09612453844943616
+        },
+        "minwscal": {
+          "iqr": 0.0730233,
+          "median_abs": 0.005023899999999998,
+          "median_in_iqr": 0.06879858894352896
+        }
+      }
+    },
+    "semiarid_sahel": {
+      "count_abs": 1.22,
+      "count_pct": 9.716470213443772,
+      "ens_sd": 5.930669423275665,
+      "traits": {
+        "D95max": {
+          "iqr": 11.6482,
+          "median_abs": 0.22078999999999951,
+          "median_in_iqr": 0.018954859978365716
+        },
+        "Height": {
+          "iqr": 1.9004020000000004,
+          "median_abs": 0.1281579999999999,
+          "median_in_iqr": 0.06743731063217145
+        },
+        "SLA": {
+          "iqr": 0.01095534,
+          "median_abs": 0.0002051299999999999,
+          "median_in_iqr": 0.01872420207862101
+        },
+        "Wooddens": {
+          "iqr": 169227.2,
+          "median_abs": 36391.8,
+          "median_in_iqr": 0.21504699008197264
+        },
+        "agb": {
+          "iqr": 56.06413,
+          "median_abs": 1.7085400000000015,
+          "median_in_iqr": 0.030474743833534945
+        },
+        "minwscal": {
+          "iqr": 0.11943750000000002,
+          "median_abs": 0.021775600000000016,
+          "median_in_iqr": 0.18231794871794882
+        }
+      }
+    },
+    "temperate_hainich": {
+      "count_abs": 0.5200000000000001,
+      "count_pct": 5.508474576271187,
+      "ens_sd": 3.9215152087834233,
+      "traits": {
+        "D95max": {
+          "iqr": 168.03985999999998,
+          "median_abs": 6.8836999999999975,
+          "median_in_iqr": 0.040964685402618155
+        },
+        "Height": {
+          "iqr": 5.703567,
+          "median_abs": 0.19506999999999994,
+          "median_in_iqr": 0.03420140413884854
+        },
+        "SLA": {
+          "iqr": 0.00510357,
+          "median_abs": 0.0010692,
+          "median_in_iqr": 0.2095004085375531
+        },
+        "Wooddens": {
+          "iqr": 59133.3,
+          "median_abs": 13684.1,
+          "median_in_iqr": 0.2314110661843665
+        },
+        "agb": {
+          "iqr": 405.8375,
+          "median_abs": 12.210349999999998,
+          "median_in_iqr": 0.0300867958234515
+        },
+        "minwscal": {
+          "iqr": 0.033816399999999996,
+          "median_abs": 0.0012045999999999988,
+          "median_in_iqr": 0.03562176931902861
+        }
+      }
+    },
+    "tropical_amazon": {
+      "count_abs": 1.364,
+      "count_pct": 29.021276595744688,
+      "ens_sd": 1.7059585552628913,
+      "traits": {
+        "D95max": {
+          "iqr": 647.34779,
+          "median_abs": 32.69049999999999,
+          "median_in_iqr": 0.05049912968730455
+        },
+        "Height": {
+          "iqr": 13.633199,
+          "median_abs": 4.565177,
+          "median_in_iqr": 0.3348573581299591
+        },
+        "SLA": {
+          "iqr": 0.004858670000000001,
+          "median_abs": 0.00110628,
+          "median_in_iqr": 0.22769194038697832
+        },
+        "Wooddens": {
+          "iqr": 67549.1,
+          "median_abs": 12818.5,
+          "median_in_iqr": 0.18976566675203665
+        },
+        "agb": {
+          "iqr": 4121.543070000001,
+          "median_abs": 680.7169999999999,
+          "median_in_iqr": 0.16516071491641596
+        },
+        "minwscal": {
+          "iqr": 0.3221286,
+          "median_abs": 0.15109159999999994,
+          "median_in_iqr": 0.46904124626003385
+        }
+      }
+    }
+  },
+  "production_axes": [
+    "SLA",
+    "Wooddens",
+    "D95max",
+    "minwscal"
+  ],
+  "purpose": "M3 S-side \u2014 the C's per-cell demography + trait-distribution reference (line M)",
+  "scenario": "historic",
+  "seeds": [
+    1,
+    2
+  ],
+  "sources": {
+    "1": {
+      "bytes": 21743172667,
+      "cells": [
+        12045,
+        18371,
+        33335,
+        42490,
+        52059
+      ],
+      "path": "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet",
+      "stems_selected": 11428,
+      "years": [
+        2010,
+        2019
+      ]
+    },
+    "2": {
+      "bytes": 21751460929,
+      "cells": [
+        12045,
+        18371,
+        33335,
+        42490,
+        52059
+      ],
+      "path": "/p/tmp/jamirp/emulator_global/ind_hist_seed2_all.parquet",
+      "stems_selected": 11287,
+      "years": [
+        2010,
+        2019
+      ]
+    }
+  },
+  "trait_basis": "per-stem marginals pooled over the cell's patches, per year",
+  "tree_types": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "window": [
+    2010,
+    2019
+  ]
+}

@@ -142,6 +142,23 @@ is the offline S.
   **establishment**; these are the coupled-rollout **default** now (tree-only paths byte-identical). One
   residual remains — see §5 water-supply.
 
+### Scoring a RECURSIVE emulator (cross-cutting method; ADR 0054, line M)
+- [VERIFIED 2026-08-05] **Never score a free-running rollout without also running the TEACHER-FORCED arm.**
+  Component S's count DRF takes `n_prev` as a feature, and in the **training table** `n_prev` is the C's OWN
+  previous `n_living` (`build_slow_runtime_table.py:572`) — never a prediction. A free rollout feeds its own
+  output back, so it is off that basis by construction and **integrates** any one-step bias. Measured across
+  the five coupled biome cells: overwriting `s.n_prev` with the C truth each year (a driver-level write to a
+  public mutable field — no library change) removes **59–72 %** of the total coupled count error in *every*
+  cell and flattens a monotone drift (boreal 1.12→1.74 becomes a flat 1.12–1.17); the per-year model then sits
+  at **0.2–3.9 seed1-vs-seed2 noise floors**. Free-running error alone would have indicted the count model
+  for what is a ~5 %/yr one-step bias compounded by an unanchored recursion — a completely different fix.
+  The arm generalizes to any AR-conditioned emulator here (S's rollouts, O's online runs), and it also
+  confounds resilience metrics: an unanchored recursion manufactures autocorrelation and slow recovery, so
+  run both arms in the M4 shuffle test. Ready-made: `scripts/biome_slow_oracle_probe.jl::run_cell(k; teacher=true)`.
+- [VERIFIED 2026-08-05] **The noise floor is the only honest scale, and watch its denominator.** Report the
+  absolute error next to the ratio: Sahel SLA reads **7.9 floors** but is a 4.6 % error (floor 0.0002), while
+  the Amazon count floor is **29 % of the mean** because the cell carries only 4.7 trees per patch.
+
 ### E (energy) — Hainich + 5-biome + the P2 tower validation (ADR 0072)
 - [VERIFIED] Closure to machine precision (13,824 cases; ForwardDiff-vs-FD; Float32); demo daily 1.4e-14,
   biome ≤3e-14 W/m²; Monin–Obukhov aerodynamic identity ~3e-11. Emergent climate-correct Bowen ordering

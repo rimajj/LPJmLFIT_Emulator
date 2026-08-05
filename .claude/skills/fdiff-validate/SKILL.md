@@ -1,6 +1,6 @@
 ---
 name: fdiff-validate
-description: The recurring extract -> validate -> baseline loop for checking the differentiable fast core F_diff against the LPJmL-FIT C oracle (kernel-isolation drive, Hainich cell 42490 harness, the extract_fdiff_* / validate_fdiff_* scripts, ReferenceTests baselines). Use whenever validating or refining F_diff fidelity vs the C binary, or wiring a new physics term into the daily/canopy rollout. ALSO the four MANDATORY basis checks before comparing ANY C output to F_diff (ADR 0053): the C's daily fluxes are ALL-PFT so grass must be removed via d_grass_gpp (up to 42 % of GPP); the driver's modal patch is 1.12-1.72x denser than the C's 25-patch ensemble mean; a 10-yr-mean ratio hides canopy drift so score year-matched and read the ratio SHAPE; and the daily NetCDF `units` attribute lies (says /month, values are per-day). Names scripts/extract_biome_fdiff_oracle.py, scripts/biome_fdiff_oracle_probe.jl, M_fdiff_oracle_biomes.csv, the rootmoist soil-water check.
+description: The recurring extract -> validate -> baseline loop for checking the differentiable fast core F_diff against the LPJmL-FIT C oracle (kernel-isolation drive, Hainich cell 42490 harness, the extract_fdiff_* / validate_fdiff_* scripts, ReferenceTests baselines). Use whenever validating or refining F_diff fidelity vs the C binary, or wiring a new physics term into the daily/canopy rollout. ALSO the four MANDATORY basis checks before comparing ANY C output to F_diff (ADR 0053): the C's daily fluxes are ALL-PFT so grass must be removed via d_grass_gpp (up to 42 % of GPP); the driver's modal patch is 1.12-1.72x denser than the C's 25-patch ensemble mean; a 10-yr-mean ratio hides canopy drift so score year-matched and read the ratio SHAPE; and the daily NetCDF `units` attribute lies (says /month, values are per-day). Names scripts/extract_biome_fdiff_oracle.py, scripts/biome_fdiff_oracle_probe.jl, M_fdiff_oracle_biomes.csv, the rootmoist soil-water check. ALSO the S-SIDE twin (ADR 0054) — validating COUPLED demography + trait distributions against the annual `ind` parquet in seed1-vs-seed2 noise floors (scripts/extract_biome_slow_oracle.py, scripts/biome_slow_oracle_probe.jl, M_slow_oracle_counts.csv) — and the trap that dominates it: NEVER score a recursive emulator's free-running rollout without also running the TEACHER-FORCED arm (overwrite `s.n_prev` with the C truth each year), because the training table's `n_prev` is the C's own previous count and a free rollout integrates a ~5 %/yr one-step bias into +36-81 % over a decade; measured at 59-72 % of the total coupled count error.
 ---
 
 # fdiff-validate — cross-check F_diff against the C oracle
@@ -99,6 +99,52 @@ Also: `d_nv_lai` is NOT a per-PFT stand LAI. `daily_natural.c:340` accumulates `
 `actual_lai_tree` (`lai_tree.c:29`) is `leaf_c*sla/crownarea*phen` — the **within-crown** LAI, no `nind`, no
 crown-area weighting. Summing its bands gives a sum of within-crown LAIs. The stand basis needs the
 `1/(1−exp(−k·LAI))` factor (which F already forms as `plai_i`, `fast.jl:219`).
+
+## The S-SIDE twin — validating the COUPLED demography/traits (ADR 0054)
+
+Same loop, different oracle: the annual `ind` parquet instead of the daily NetCDF.
+`scripts/extract_biome_slow_oracle.py` (C truth, both seeds → `M_slow_oracle_{counts,traits}.csv` +
+`_meta.json`) → `scripts/biome_slow_oracle_probe.jl` (the coupled run, scored in noise floors). Both are
+parameterized by the `CELLS` / `M_cells.csv` registry — add a cell there, don't fork the script.
+
+The four basis checks above **all apply**, with these S-side readings:
+
+- **Tree-only:** grass rows are emitted with every tree field **zeroed**, so a `Type` regression is a spike
+  at 0 in a trait marginal, not just noise. A strictly positive q05 on `Wooddens` is the cheap tell.
+- **Per-patch, not per-cell:** Component S's count target is `n_living` per **(Cell, Patch, Year)** and the
+  coupled driver runs ONE patch, while the C emits **25**. Score against the per-patch ensemble MEAN. The
+  per-cell total is ~25× larger; the driver's own modal patch is 1.6–2.0× the ensemble mean stem count.
+- **Year-matched:** three of five cells drift monotonely; their 10-yr means read 1.2–1.4 and hide it.
+- **The >5 m population:** `fwriteoutput_ind.c:84` emits only `height > height_min = 5 m`. Self-consistent
+  with the count target, but it is not the stand's total stem number.
+
+**Cross-check the population against a second extractor.** The 2010 per-cell totals must equal
+`M_cells.csv`'s `n_trees` (122 / 282 / 214 / 272 / 276), which `extract_cell_individuals.py` derived through
+a different code path. Two extractors agreeing on one population is the evidence the filter is right; it is
+a CI assertion in `biome_coupled_tests.jl`.
+
+### ⚠ NEVER score a recursive emulator free-running without the TEACHER-FORCED arm
+
+A coupled rollout is a recursion: the count DRF's prediction becomes next year's `n_prev` feature. In the
+**training table** `n_prev` is the C's OWN previous `n_living` (`build_slow_runtime_table.py:572`), never a
+prediction — so a free rollout is off that basis by construction and integrates any one-step bias without
+bound. Arm B overwrites `s.n_prev` with the C truth after each year (a driver-level write to a public mutable
+field; nothing in S's `slow.jl` is touched) and splits the error:
+
+    free − forced = the AR-recursion amplification      forced − 1 = the per-year model on F's own features
+
+Measured at ADR 0054: the recursion is **59–72 %** of the total coupled count error in all five cells, and
+forcing it flattens boreal 1.12→1.74 into a flat 1.12–1.17. Skipping this arm would have indicted a count
+model that is actually within 0.2–3.9 noise floors. The same arm is the ready-made before/after test for any
+fix to the recursion.
+
+### The noise floor is the only honest scale
+
+LPJmL-FIT is stochastic (RAND48 + `-DPERMUTE`), so seed1 vs seed2 is the irreducible error. Emit **both**
+seeds for every statistic and report error in floors. Watch the denominator: a tight floor makes a tiny
+absolute error look enormous (Sahel SLA reads 7.9 floors = a 4.6 % error on a 0.0002 floor), and a loose one
+does the reverse (Amazon's count floor is 29 % of the mean, because the cell has 4.7 trees per patch). Quote
+the absolute number next to the ratio, always.
 
 ## Rules
 

@@ -405,3 +405,51 @@ ensemble, which makes that deficit the most robust structural finding in the set
 **Not done deliberately:** moving the production driver to the patch ensemble. It is the right fix, but
 `biome_coupled_tests.jl` item 2 pins per-cell LE and GPP at ±2 %/±3 % on the modal basis, so it is a
 deliberate baseline regeneration (guardrail 4) and belongs in its own change, not smuggled into a measurement.
+
+---
+
+## 2026-08-05 — M3's S side: the count error is the recursion, not the count model (ADR 0054)
+
+M3's F side closed on 2026-07-30. The remaining half was the S side: with Component S back in the loop, does
+the coupled emulator reproduce the C's per-cell tree numbers and its standing trait distribution? Line S's
+offline evaluation cannot answer that — it scores table against table, and a coupled rollout is a recursion.
+
+Built the reference first (`extract_biome_slow_oracle.py`), running ADR 0053's four basis checks on the S
+side as the handoff demanded. Two of them mattered exactly as predicted. **Per-patch**: Component S's count
+target is `n_living` per (Cell, Patch, Year) and the driver runs one patch, while the C emits 25 — a per-cell
+total would have been ~25× off, and it is the single easiest number to reach for. **Tree-only**: grass rows
+carry every tree field zeroed, so a `Type` regression is a spike at 0 in a trait marginal, not noise. The
+population then cross-checked exactly against a second extractor — the 2010 per-cell totals equal
+`M_cells.csv`'s `n_trees` for all five cells (122/282/214/272/276), from `extract_cell_individuals.py`,
+a different code path written months earlier. That equality is now a CI assertion.
+
+The free-running result looked bad and was **not** what it looked like. Three cells drift monotonely —
+boreal 1.12→1.74, mediterranean 0.98→1.81, Hainich 1.05→1.36 — at 4.5–13.9 noise floors, while Amazon (0.5×)
+and Sahel (1.4×) sit at the floor. The window mean of those series reads 1.2–1.4 and hides the mechanism
+completely, which is basis check 3 earning its place a second time.
+
+The attribution arm is what made this worth writing down. In the **training table** `n_prev` is the C's own
+previous `n_living`, never a prediction (`build_slow_runtime_table.py:572`), so a free rollout is off that
+basis by construction and integrates any one-step bias without bound. Overwriting `s.n_prev` with the C truth
+after each year — a driver-level write to a public mutable field, nothing in S's `slow.jl` touched —
+**removes 59–72 % of the error in all five cells and flattens the drift** (boreal 1.12→1.74 becomes a flat
+1.12–1.17). So the per-year count model, fed F's own drifting canopy features, is within 0.2–3.9 floors, and
+what the deployed system suffers from is a ~5 %/yr one-step bias compounded by an unanchored recursion.
+Without that arm I would have written up a broken count DRF. It is now a rule in `fdiff-validate`.
+
+I also checked whether the drift is simply inherited from ADR 0053's F-side canopy drift. The sign matches in
+4 of 5 cells and at boreal/Hainich the count drift equals F's FPC drift almost exactly (1.56 vs 1.56;
+1.30 vs 1.27) — but mediterranean and Amazon do not follow quantitatively, and the teacher-forced arm shows
+the recursion accounts for ~70 % regardless. Recorded as a contributing cause, not promoted to a mechanism.
+
+Traits came out well and are reported honestly rather than averaged: 9 of 10 cell-axis medians within 2.0
+floors, with two named exceptions — Sahel SLA at 7.9 floors, which is a 4.6 % error on a floor of 0.0002
+(a denominator artefact, so the absolute number goes next to it), and boreal SLA with a correct median but a
+wrong distribution *width* (nqrmse 1.31, the only value above 0.43). Centre and shape are separate claims.
+
+Checked for a `t9` re-pin as the handoff required: a `recruit_copula_global_historic_t9.rcop` exists on
+`/p/tmp` but there is no `_t9` `.drf`. Half a pair, so `_t8` stands (ADR 0023).
+
+Carbon closed at 4.3e-13 – 3.4e-12 throughout, and the `water_stress` series reproduced ADR 0051/0052's
+picture exactly (boreal 0.0000 = the missing soil ice, Sahel 0.4392 = the too-dry root zone), which is a
+useful sign the coupled configuration was the one I thought it was.

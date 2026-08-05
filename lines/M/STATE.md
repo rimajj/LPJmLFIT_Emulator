@@ -158,35 +158,49 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
-**M1, M2 DONE. M3's F-SIDE IS DONE (2026-07-30, ADR 0053). The remaining M3 work is the S-SIDE
-(per-cell demography vs the `ind` parquet + noise floor) — item 1 below.**
+**M1, M2, M3 ALL DONE. M3's F side closed 2026-07-30 (ADR 0053); its S SIDE CLOSED 2026-08-05 (ADR 0054).
+The P3 gate has a number and a mechanism on both sides. The next milestone is M4 (item 0 below) — but read
+item 1 first, because M3 produced one finding that outranks it.**
 
-**The `wscal_leafon` question is SETTLED as option (b), and stays settled until line S moves.** S did not
-answer: `lines/S/STATE.md` still reads "Not S's to chase: `water_stress` is line M's F core, leave it
-pinned", and S is mid-flight on S2 (copula estimator capacity, four rungs queued, a `t9` `.rcop` likely).
-So: **default stays `false`; pass `wscal_leafon = true` EXPLICITLY in every M3 run and label every number
-with it.** Do not flip the default unilaterally — it makes S's `slow_production_drf_tests.jl:168` assertion
-(`Set(["water_stress"])`) fail and moves every coupled baseline. M's recommendation to flip still stands;
-it is S's to schedule.
+**The `wscal_leafon` question is SETTLED as option (b), and stays settled until line S moves.**
+`lines/S/STATE.md` still reads "Not S's to chase: `water_stress` is line M's F core, leave it pinned", and S
+is mid-flight on Phase 3A/S2. So: **default stays `false`; pass `wscal_leafon = true` EXPLICITLY in every
+coupled run and label every number with it.** Flipping the default makes S's
+`slow_production_drf_tests.jl:168` assertion (`Set(["water_stress"])`) fail and moves every coupled
+baseline. M's recommendation to flip still stands; it is S's to schedule.
 
-### 1. M3 S-SIDE — per-cell demography + trait distributions (THE REMAINING P3 GATE)
+**Artifact pin: still `_t8`.** Re-checked 2026-08-05 — a `recruit_copula_global_historic_t9.rcop` (508 MB,
+2026-07-31) exists on `/p/tmp` but there is **no `_t9` `.drf`**, so it is a half-published pair and adopting
+it is exactly ADR 0023's trap. Line S's own `lines/S/STATE.md` also says t9's env-conditioned copula is
+**deliberately NOT promoted to production** (its six env columns have within-cell sd exactly 0, so they
+cannot encode a warming response). Do not re-pin without both halves AND S saying it is production.
 
-Score against the annual `ind` parquet and the **seed1-vs-seed2 noise floor** — reuse
-`scripts/noise_floor_vs_emulator.py` (line S's, read-only); `scripts/wscal_c_truth_diagnosis.py` is this
-line's worked example of the pattern (derive the C column exactly as the training table forms it, report
-error in units of the floor). Report held-out **cells and scenarios** separately. Use the PINNED `_t8` pair
-(`drf_forest_global_pooled_w20_t8.drf` + `recruit_copula_global_pooled_w20_t8.rcop`); wire the copula with
-`RecruitCopula{Float64}(cop, af, x, make_recruit_to_pools(axes), live_flux_cond)` — pattern in
-`test/testitems/slow_oracle_traits_tests.jl:89`. SLURM only (~180 MB, ~4.5 s just to deserialize);
-`scripts/wscal_leafon_probe.jl` is a ready 5-cell coupled driver to copy.
-**Two caveats to carry:** the CI gate deliberately uses the committed Hainich demo forest (CI has no
-cluster), so it proves conservation/determinism, NOT per-cell count skill. And **check whether S has
-published a `t9` `.rcop`** before you start — if so, re-pin deliberately (never silently; ADR 0023).
+### 1. THE FINDING TO ACT ON — the count recursion is unanchored (integration point → line S)
 
-**⚠️ APPLY ADR 0053's FOUR BASIS CHECKS to the S side too** — they are now a pre-flight checklist in the
-`fdiff-validate` skill. Two of the four (all-PFT vs tree-only; modal patch vs the C's 25-patch ensemble
-mean) bit the F side hard enough to *flip a verdict*, and both apply verbatim to any per-cell count or
-trait comparison against the `ind` tables.
+ADR 0054's attribution arm: in the **training table** `n_prev` is the C's OWN previous `n_living`
+(`build_slow_runtime_table.py:572`), never a prediction, so a free-running coupled rollout is off that basis
+by construction and **integrates a ~5 %/yr one-step count bias into +36–81 % over ten years**. Teacher-forcing
+`s.n_prev` back onto the C truth each year removes **59–72 % of the total coupled count error in all five
+cells** and flattens the drift (boreal 1.12→1.74 becomes a flat 1.12–1.17); the per-year model on F's own
+canopy features is then within **0.2–3.9 noise floors**.
+
+Any fix touches `src/components/slow.jl` = **line S's exclusive path** (ADR 0029), so raise it with S rather
+than editing. `scripts/biome_slow_oracle_probe.jl`'s `run_cell(k; teacher = true)` arm is the ready-made
+before/after test — it is a driver-level write to a public mutable field, so it needs nothing from S to run.
+This compounds without bound, so it matters **more than any remaining F-side item** for a multi-decadal or
+online run. Say so when you raise it.
+
+### 0. M4 — the resilience battery (the next milestone proper)
+
+4 stubs still `@test_skip`: (a) lag-1 autocorrelation vs climate (the documented ~0.2-wet → ~0.75-dry
+gradient), (b) recovery/restoring rate from a pool perturbation, (c) the **shuffle test** (S0 vs S1 — proves
+the memory is internal, not inherited from autocorrelated climate; an AR emulator can cheat this, so it is
+mandatory), (d) the long-horizon AC-gap / oscillation check in `rollout_stability_tests.jl`.
+**Reimplement from Bathiany et al. 2024 (doi:10.1111/gcb.17613) — LPJ_resilience has NO licence, so its code
+must not be copied.** Also resolve the live inconsistency: MEMORY/STEERING place this in P3, the test
+comments say "Phase 6". ⚠ Item 1 above is directly relevant: an unanchored AR recursion will *itself* produce
+autocorrelation and slow recovery, so measure the resilience battery with the teacher-forced arm alongside
+the free arm or (c) will not be able to tell internal memory from recursion memory.
 
 ### 2. F-side follow-ons, in value order (all reference bases now established)
 
@@ -408,8 +422,15 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   (monthly climatology) + `M_fdiff_oracle_biomes_annual.csv` (per-year, for year-matched scoring) +
   `M_fdiff_oracle_meta.json`. Built by `scripts/extract_biome_fdiff_oracle.py`; the F side is
   `scripts/biome_fdiff_oracle_probe.jl` (25-patch ensemble, `wscal_leafon=true`).
-- So: **F+E generalize across biomes with per-cell vegetation; the coupled S does not run multi-cell yet.** The
-  global evidence for S is offline (line S), not coupled.
+- **Committed S-vs-C oracle tables (ADR 0054, 2026-08-05):** `M_slow_oracle_counts.csv` (per-patch living-tree
+  ensemble per cell-year, both seeds) + `M_slow_oracle_traits.csv` (6 axes × per-year community marginals,
+  both seeds) + `M_slow_oracle_meta.json` (incl. the precomputed noise floors). Built by
+  `scripts/extract_biome_slow_oracle.py` from the `ind_hist_seed{1,2}_all.parquet` tables; the coupled side is
+  `scripts/biome_slow_oracle_probe.jl` (pinned `_t8` `.drf`+`.rcop`, `wscal_leafon=true`, a free arm and an
+  `n_prev`-teacher-forced arm). A CI `@testitem` in `biome_coupled_tests.jl` guards the fixture's BASIS only —
+  the skill measurement needs the 180 MB `/p/tmp` pin, which CI has no cluster for.
+- So: **F+E generalize across biomes with per-cell vegetation, and since M2/M3 the coupled S runs all five
+  cells and is scored against the C truth.** The global (all-cell) evidence for S is still offline (line S).
 - Resilience battery is scaffold only: 3 `@test_skip false` in `resilience_battery_tests.jl` + 1 in
   `rollout_stability_tests.jl` (the `lag1_autocorr` estimator itself is real and tested).
 
@@ -429,9 +450,25 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
     output; the C's own 25-patch ensemble; year-matched levels). Verdict: seasonal phase excellent everywhere
     (monthly r 0.870–0.999), level decomposes per cell into one genuine flux bias (Hainich +12 %), two pure
     drifts (boreal, Sahel), one volatility case (mediterranean) and one clean pass (Amazon 0.97).
-  - **S-side: REMAINING.** Per-cell demography + trait distributions against the annual `ind` parquet, scored
-    against the seed1-vs-seed2 noise floor (reuse `scripts/noise_floor_vs_emulator.py`, line S's script —
-    read-only). Report per-cell error vs floor, and held-out **cells and scenarios**.
+  - **S-side: DONE 2026-08-05 (ADR 0054). M3 is CLOSED.** Per-cell demography + trait distributions against
+    the annual `ind` parquet (both seeds, historic 2010–2019), on the same four bases: tree-only via the
+    imported `TREE_TYPES`; the C's **25-patch ensemble mean** (S's count target is per-(Cell,Patch,Year) and
+    the driver runs ONE patch — a per-cell total is ~25× off); year-matched; the writer's >5 m population.
+    Population cross-checked EXACTLY against a second extractor (2010 per-cell totals == `M_cells.csv`'s
+    `n_trees`, 122/282/214/272/276) and that equality is now a CI assertion.
+    *Counts (mean |E−C| in seed1-vs-seed2 floors, free-running):* Amazon **0.5**, Sahel **1.4** — at the
+    floor; Hainich **4.5**, boreal **11.1**, mediterranean **13.9** — and those three drift MONOTONELY
+    (1.05→1.36, 1.12→1.74, 0.98→1.81), so their 10-yr means (1.2–1.4) hide the mechanism.
+    *Attribution:* teacher-forcing `n_prev` onto its trained basis removes **59–72 %** of the error in every
+    cell and flattens the drift ⇒ **0.2–3.9 floors**. The deployed error is an unanchored AR recursion
+    compounding a ~5 %/yr one-step bias, NOT the count model's conditional skill (NEXT item 1).
+    *Traits:* 9 of 10 cell-axis medians within **2.0 floors** (only SLA/Wooddens reach `TreePools`); two
+    named exceptions — Sahel SLA 7.9 floors = a 4.6 % error on a 0.0002 floor (denominator artefact), and
+    boreal SLA a correct median with a wrong distribution WIDTH (nqrmse 1.31 vs ≤0.43 elsewhere).
+    *Carbon* closes 4.3e-13 – 3.4e-12 throughout. Cells are **IN-SAMPLE** for `_t8` (S's held-out-cell OOS
+    R² 0.9824 is the out-of-sample statement) — which makes a miss here a real miss, not extrapolation.
+    Artifacts: `scripts/extract_biome_slow_oracle.py` → `references/M_slow_oracle_{counts,traits}.csv` +
+    `M_slow_oracle_meta.json` (committed); `scripts/biome_slow_oracle_probe.jl` (cluster-only, ~180 MB pin).
 - **M4** **Resilience battery** — fill the 4 stubs: (a) lag-1 autocorrelation vs climate (the documented
   ~0.2-wet → ~0.75-dry gradient), (b) recovery/restoring rate from a pool-perturbation experiment,
   (c) the **shuffle test** (S0 vs S1 — proves the memory is genuinely internal, not inherited from
