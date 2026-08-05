@@ -349,6 +349,32 @@ for a in parse.(Float64, split(get(ENV, "ANCHOR_SWEEP", "0.0,0.1,0.25,0.5,1.0"),
         "  anchor = %4.2f : retention %7.4f   terminal spread %6.3fx   D_end %.6f  vs target/area %.6f  (ratio %.3f)\n",
         a, ret, maximum(dfin_a) / minimum(dfin_a), b.dens[end], want, b.dens[end] / want
     )
+    # Retention vs HORIZON for the anchored arm. Added because the testitem asserted the anchored run
+    # forgets its initialisation within 25 yr and FAILED at 0.425 (job 1707739). The hypothesis then was
+    # that each perturbed run carries different `fpc`/`lai`/`agb` ⇒ a different DRF target ⇒ a slow,
+    # SMOOTH decay over decades. **The measurement refuted the shape and confirmed only the floor**
+    # (job 1707785): a = 0.5 collapses to 0.154 by yr 5 (its 1/a time constant, as designed), then
+    # RE-DIVERGES to a transient peak ~0.486 near yr 25, then settles to 0.051 by yr 100. a = 0.1 decays
+    # monotonically to the same place. The ~0.05 FLOOR is the state-dependent target — the per-arm terminal
+    # targets differ by 7.3 %, printed below — so retention cannot reach 0, and should not. The mid-run
+    # re-divergence is REPRODUCIBLE and UNATTRIBUTED (ADR 0103 §3b): recruitment pulses, height-threshold
+    # crossings and asymmetric k-cap merges are all unseparated. Read the whole curve, never one horizon —
+    # yr 25 is the worst point and yr 10 is where line M's coupled runs are scored.
+    if a > 0
+        for h in (5, 10, 25, 50, 100, YEARS)
+            h > YEARS && continue
+            dh = [dsw_a[ds].dens[h + 1] for ds in DENS_SWEEP]
+            @printf(
+                "      yr %3d : retention %7.4f   spread %6.3fx\n",
+                h, log(maximum(dh) / minimum(dh)) / log(ratio_in), maximum(dh) / minimum(dh)
+            )
+        end
+        tg = [dsw_a[ds].target[end] for ds in DENS_SWEEP]
+        @printf(
+            "      per-arm terminal TARGET spread: %.4f … %.4f  (%.1f %% of mean) <- if >0, the target is state-dependent\n",
+            minimum(tg), maximum(tg), 100 * (maximum(tg) - minimum(tg)) / _mean(tg)
+        )
+    end
 end
 println("\n  retention -> 0 and ratio -> 1.00 ⇒ the anchor works: the stand forgets its initialisation AND")
 println("  settles on the count model's own absolute prediction. anchor = 0 must reproduce section (c).")
