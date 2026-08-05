@@ -24,6 +24,15 @@ because every existing gate reads ratios, distributions or correlations, never t
 `test/testitems/slow_level_anchor_tests.jl`). **Recommendation: `anchor = 0.1`** — the gentlest setting that
 fully works; `a = 1` is measurably *worse* (retention 0.076), so relax, don't force.
 
+**⚠ THE ANCHOR IS OFF BY DEFAULT, AND THAT IS TEMPORARY — do not let it become permanent (ADR 0103 §6).**
+`anchor = 0` is a KNOWN-WRONG default (41 % level error, invisible to every gate). It is off for exactly one
+measurement cycle, because the evidence is one cell and flipping a global default on single-cell evidence is
+the ADR-0031 defect class. **The flip criterion is pre-registered** in ADR 0103 §6 and the decisive arm is
+line M's 5-cell oracle at `anchor = 0.5` (their 10-yr horizon needs the stronger setting — §3b). Raised as an
+ACTION in `lines/M/STATE.md`. **If that arm has not been run when the next S session opens, running it is
+that session's FIRST action, ahead of the retrains** — `wscal_leafon` sat correct-but-off for weeks on
+exactly this failure mode, with each line recording it as the other's to schedule.
+
 **What is left is genuinely two things, and both are now unblocked** (the owner has confirmed HPC compute is
 not a reason to defer): the **exposure bias** (retrain the count DRF without feeding its own prediction back
 — the anchor makes the stand follow a biased prediction *faithfully* rather than compounding it, which is

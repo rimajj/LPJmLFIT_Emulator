@@ -163,6 +163,43 @@ very tree still does. An artifact trained on a run with a different `patcharea` 
 the anchor pulls the stand to a level that is wrong by the ratio of the two areas. It is a kwarg with a
 documented default for that reason, and it is inert when `anchor == 0`.
 
+### 6. WHY IT IS OFF BY DEFAULT — and the explicit criterion for flipping it
+
+**`anchor = 0` is a known-wrong default.** It produces the 41 % level error of §2, permanently, and no gate
+in this project can see it. Shipping it as the default is therefore a *temporary* decision that has to be
+justified and time-bounded, not a neutral one — and this repo has a live example of what happens otherwise:
+`wscal_leafon` is the C-faithful behaviour, was measured correct in ADR 0051, and sat off for **weeks**
+because each line recorded the flip as the other's to schedule. **This ADR will not repeat that.**
+
+The reasons to hold the default at 0 for one cycle are specific and expire:
+
+1. **One cell.** Hainich, constant forcing, one artifact pair. Flipping a global default on single-cell
+   evidence is the **ADR-0031 defect class** — a choice validated at one place that was wrong for the
+   tropical and boreal PFTs. The count model's absolute calibration elsewhere is simply unmeasured.
+2. **`patch_area` must match the artifact's training run** (§4). Stock LPJmL-FIT uses **100.0**; a
+   default-on anchor would silently pull a stand loaded from such an artifact to a level wrong by **2.25×**.
+   Off-by-default makes that an explicit act rather than a silent one.
+3. **The right `a` is horizon-dependent** (§3b), so a default bakes in an assumption about run length.
+
+**THE FLIP CRITERION — pre-registered here so it is a measurement, not a judgement call.** The decisive
+arm already exists and is line M's: `scripts/biome_slow_oracle_probe.jl`, five biome cells, historic
+2010–2019, scored against the C's `ind` truth in seed1-vs-seed2 noise floors — the harness that found
+ADR 0054's drift. Run it with `anchor = 0.5` (§3b: the 10-year horizon needs the stronger setting) beside
+the existing free and teacher-forced arms. **Flip the default to `anchor = 0.1` when, on that arm:**
+
+* the free-running count ratio's **monotone drift is removed in the three drifting cells**
+  (boreal 1.12→1.74, mediterranean 0.98→1.81, Hainich 1.05→1.36 — each should flatten), **and**
+* the two cells already **at the noise floor stay there** (Amazon 0.5×, Sahel 1.4× — the anchor must not
+  break what already works), **and**
+* **carbon still closes** at ≤1e-6·C_scale in all five.
+
+If it holds, the flip is a one-line default change plus a deliberate baseline regeneration — which the
+**owner pre-authorised on 2026-08-05** (`MEMORY.md` §4), so it needs no further decision. If it fails in any
+cell, that failure is the finding and this ADR gets a successor.
+
+**Do not leave this opt-in indefinitely.** If the M arm has not been run by the time the next S session
+opens, running it is that session's first action, ahead of the retrains.
+
 ## Consequences
 
 * **The level anchor is no longer blocked, and never was.** ADR 0102's integration point is withdrawn as an
