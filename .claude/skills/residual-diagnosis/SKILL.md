@@ -393,3 +393,37 @@ trained on one scenario ⇒ retrain on both."* Measured, retraining across scena
 Harness: `scripts/run_response_seed_ensemble.sh` + `scripts/summarize_response_seed_ensemble.py` (the
 summarizer derives its statistics from the raw corners, self-checks them against the log's own printed
 ratios, and *excludes* rather than averages any replicate that violated a precondition).
+
+## Two more, from diagnosing a RECURSION rather than a residual (added 2026-08-05, ADR 0102)
+
+Both cost or saved a wrong turn on line S while answering line M's "the count recursion is unanchored".
+
+- **A code-level inconsistency is a HYPOTHESIS about the trajectory, not a defect, until you show the
+  branch executes.** `slow.jl:1026` clamps a ratio and `:1110` stores the *unclamped* value — a real
+  inconsistency, S-owned, cheap to fix, and byte-identical exactly where the current code is already
+  correct. The ideal shape for a fix, and **completely empty**: the clamp binds **0 of 150 years**. One
+  4-minute job before writing the patch is what stopped it shipping. This is CLAUDE.md §3's
+  `individual=true` dead-path rule (*confirm the C path actually runs before porting it*) turned on **our
+  own** code — the reflex is weaker there precisely because we can read the source and feel certain.
+  Corollary: an empty result here is a *reportable finding*, not a failed probe. Write the "this is empty"
+  verdict into the probe's output so the next session does not re-derive it.
+- **Separate the STATE VARIABLE from its DIAGNOSTIC — they can disagree, and the diagnostic is the one you
+  will instrument by reflex.** The emulator's AR state (`n_prev`) and the physical roster it is supposed to
+  describe converge *differently*: an `n_init` sweep retains **0.092** of its spread in the AR state and
+  **60.2 %** in the stand. A probe that measured only `n_prev` would have confirmed the docstring
+  (`slow.jl:844-846`, "self-corrected by the `max_*` clamp thereafter") and closed the investigation with a
+  clean, wrong answer. Ask which variable the *consumer* actually sees — here line F sees the stand, not
+  the AR state — and measure that one.
+- **Perturb the state, not only the seed, and read RETENTION vs HORIZON.** "Does this recursion have an
+  attractor?" is answered by scaling the initial condition and watching whether the spread decays. Report
+  retention at several horizons: this one *rose* to 1.40 at yr 25 before settling, so a single late read
+  would have understated it and a single early read would have overstated it. A retention converging to a
+  **non-zero asymptote** (1.04 here, flat yr 150→300) is the signature of no restoring force at all, and is
+  a much stronger statement than any one-step bias estimate.
+
+**Cross-line corollary (this one is about process, not measurement).** Read the sibling line's **latest
+commits**, not only the ADR you were handed: line M refined ADR 0054 four hours before this probe landed,
+independently reaching the same decomposition, and the handoff text still said otherwise. Diff
+`origin/main` *before* writing your attribution, not after. And read the part of their result that does
+**not** fit — M's teacher forcing recovering 59–72 % rather than ~100 % was the entire clue, sitting in
+print, unremarked.
