@@ -33,6 +33,13 @@ pending one** — `docs/decisions/**` is in no gate's path filter, so `f56dffce`
 `origin/line/S` (= `f56dffce`) rather than the CI-verified `0a230ece` sound: `git diff --name-only` between
 them is exactly one `.md` under `docs/decisions/`, i.e. no gate-watched path.
 
+🔓 **OWNER PRE-AUTHORISATION, 2026-08-05 — M's coupled BASELINE REGENERATION is pre-authorised**, for the
+two enablements that need it: `wscal_leafon = true` (ADR 0051) and the Component-S level anchor (ADR 0103,
+once S publishes a measured `anchor`). Recorded verbatim in `lines/M/STATE.md` (where M reads it) and in
+`MEMORY.md` (so it survives a STATE consolidation). **Do not re-raise it as an open question** — it existed
+only because §9 makes a baseline regeneration a two-line integration point, so each line waited for the
+other. The record-the-before/after-numbers discipline is unchanged; only the waiting is removed.
+
 ### THE STATE IN SEVEN LINES
 
 1. **THE DOMINANT DEFECT IS A MISSING LEVEL ANCHOR IN THE COUPLED RECURSION, newly measured (ADR 0102).**
