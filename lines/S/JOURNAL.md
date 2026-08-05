@@ -1010,3 +1010,70 @@ edit (the `DRF_ART`/`RCOP_ART` knob) and left job **1701183** in the queue; its 
 - **Next:** S2 (the conditioning set) is now the only lever Phase 3A's finding points at, and the ADR-0044
   global gate is the only instrument that can carry a response claim — with the replication cost now measured
   (~115 seeds for the effect size seen at one cell).
+
+## 2026-08-05 (later still) — line M's "unanchored" is three defects, my hypothesis was the empty one, and the real one is that the stand has no LEVEL  [ADR 0102 / milestone S8]
+
+- **Started by reading the handoff against the repo rather than trusting it, and the handoff was stale in one
+  important way.** `lines/S/STATE.md` listed `fc.pft_ids` as "still unraised with M" — it was raised on
+  2026-08-04 and is sitting in `lines/M/STATE.md`. More importantly, **line M had raised an INBOUND
+  integration point at S that S's own NEXT block never recorded**: ADR 0054's *"the count recursion is
+  unanchored … raise it with S rather than editing"*, with M's note that it "matters more than any remaining
+  F-side item". S's queue said the next lever was S2. M's said the next lever was S's file. M was right.
+- **My leading hypothesis was wrong, and measuring it first is the only reason it did not ship.** Reading
+  `slow.jl` I found what looked like the defect: `:1026` clamps `ρ = clamp(target/n_prev, …)` and applies the
+  CLAMPED ρ to the roster, while `:1110` assigns the **unclamped** `target` to `n_prev`. A clamp-binding year
+  desynchronises the AR state from the stand permanently, nothing re-syncs them, and the fix would have been
+  byte-identical exactly where the current behaviour is already coherent — the ideal guardrail-4 shape. It is
+  also **empty**: the clamp binds **0 of 150 years** and the roster tracks ρ to **1.5e-13**. One 4-minute job.
+  Generalised into ADR 0102 §2 and into the method rules: **a code-level inconsistency is a hypothesis about
+  the trajectory, not a defect, until the branch is shown to execute** — CLAUDE.md §3's `individual=true`
+  dead-path discipline, turned on our own code instead of the C's.
+- **The clue was in M's own number.** Teacher forcing recovers **59–72 %**, not ~100 %. If the whole defect
+  were the AR state compounding its own error, putting the truth back into the AR state every year would
+  remove essentially all of it. Something teacher forcing does not touch carries the rest. **M got there
+  independently the same afternoon** — `9ad8721b` (13:07, while my probe was queued) splits the +36–81 % into
+  a recursion factor ×1.26–1.53 and a **year-1 level offset ×1.05–1.12**. I nearly published "M did not
+  attribute the residual", which would have been false by four hours; caught it by diffing `origin/main`
+  before rebasing rather than after. **Read a sibling line's latest commits, not only the ADR you were
+  handed.** What S actually adds is the level term's *fate*, which M had no reason to test: it never decays.
+  And it is sitting in M's own published numbers — the forced boreal arm flattens to **1.12–1.17**, flat but
+  still displaced by the 1.12 it started with. That flat-but-offset trace *is* the missing anchor.
+- **It does: the stand has no level anchor.** ρ is unit-free and the roster is advanced multiplicatively,
+  `D_T = D_0·Πρ_t` — which `slow.jl:779` documents as a *feature*, since it is what lets a per-patch count
+  target drive a cohort-density roster without knowing the patch area. The cost had never been measured. It
+  is: scale the initial density by **4×**, hold forcing/seed/artifact/`n_init` fixed, and the terminal
+  densities still differ by **4.21×** after **300** years. Retention **1.036**, and the horizon sweep is what
+  makes it conclusive — it *rises* to **1.40 at year 25** (transient amplification), relaxes to 1.036 by
+  year 150, and then **stops**, flat to year 300. It converges to a non-zero asymptote, not to zero.
+- **The dissociation is the actual finding, and a probe that measured one variable would have missed it.**
+  The `n_init` sweep converges the **AR state** almost completely (retention **0.092**, four of five seeds
+  landing on an identical 6.7529) while the **physical stand** those same runs carry retains **60.2 %** of its
+  spread. So the constructor docstring's "`n_init` … is self-corrected by the `max_*` clamp thereafter" is
+  **true of the AR state and false of the stand** — and had I only instrumented `target`, I would have
+  confirmed the docstring and closed the investigation. Method rule (3).
+- **What this re-orders.** S2 has been "the only lever the finding points at" since ADR 0101. That was true of
+  the *response* defect and is false of the coupled configuration: an unanchored level compounds without bound
+  and no conditioning skill corrects it, because the channel that would carry the correction is discarded
+  upstream. ADR 0102 demotes S2 to second. It also re-reads ADR 0101 §5's 4.5×-FIT `n_init` swing as this
+  recursion property rather than an artifact quirk, which promotes integration point #2 to a correctness issue.
+- **Deliberately NOT fixed, and that is the decision.** Anchoring needs the count↔density conversion at the
+  S↔F seam — the very quantity the ratio formulation exists to avoid needing — so it is an `interface.jl`
+  addition (M's) plus a `slow.jl` change (S's), and it moves every coupled baseline. The tempting one-liner
+  (anchor `D` using `n_prev` as the scale) is recorded as rejected: their ratio *is* the unknown patch area,
+  so it silently sets that constant to 1 and converts a drift into a bias that looks anchored.
+- **Cleared two cross-line blockers instead of adding a third.** M's `wscal_leafon` flip had sat as "S's to
+  schedule" purely because S asserted the out-of-band set is *exactly* `{water_stress}`; that assertion now
+  admits exactly the two admissible states and still fails on any third, so M lands it alone — and on M's own
+  ADR-0051 measurement (0.3050 → **0.0034** against a band of [0, 0.04315]) the flip **closes S's last
+  out-of-band column**. Integration point #2 is now written into `lines/M/STATE.md`, where it had only ever
+  existed on S's side.
+- **Corrected the public report, which had drifted on more than the two known numbers.** The damping is
+  39.9 % / −971.5 / +1461 (the 37 % / −892 pair was arm B, the *refused* env arm); the ceiling is patch-year
+  (Wooddens 0.9543), not the superseded stem-parity 0.9201; **placement-not-shrinkage** (dispersion 1.034 at
+  39 % of ceiling) is stated for the first time; "recursive stability — not yet tested, no evidence either
+  way" is now "not established (measured, negative)"; the roadmap is re-ordered with the level anchor as
+  item 1; and a new `sec:traitmort` reports Phase 3A as it came out — level robust, response null.
+- **Captured** (§8 gate): `scripts/diagnose_count_recursion_anchor.jl`, three sections (coherence / anchoring
+  / level anchor) with an explicit printed verdict for the "(B) is empty" outcome, because a null there is a
+  reportable result and not a failed probe.
+- **Next:** the level anchor, and it cannot start from this line alone — agree the seam with M first.

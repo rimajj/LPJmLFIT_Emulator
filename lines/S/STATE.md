@@ -7,6 +7,109 @@
 
 ## NEXT — start here
 
+**LINE S'S SCIENCE PROGRAM IS COMPLETE THROUGH PHASE 3A, AND THE BINDING CONSTRAINT IS NO LONGER S'S TO
+LIFT ALONE.** Read **ADR 0102** first — it answers line M's inbound ADR-0054, re-orders the queue, and
+retires S2 from the top of it — then ADR 0101, then ADR 0049. Every item S could close by itself is closed.
+The three levers that remain each need either **line M** or a **global retrain**, and all three are
+specified rather than open questions.
+
+### THE STATE IN SEVEN LINES
+
+1. **THE DOMINANT DEFECT IS A MISSING LEVEL ANCHOR IN THE COUPLED RECURSION, newly measured (ADR 0102).**
+   ρ is a unit-free ratio and the roster is advanced multiplicatively, `D_T = D_0·Πρ_t`, so the count DRF's
+   **absolute** skill (OOS R² 0.982) never reaches the stand — only its year-on-year ratios do. A **4.00×**
+   perturbation of initial stand density is still **4.21×** after **300** identical-forcing years:
+   retention **1.036**, converging to a NON-ZERO asymptote (peak **1.40** at yr 25, then flat yr 150→300).
+   There is no restoring force — not a weak one, none.
+2. **Line M's ADR-0054 is ANSWERED and decomposed into three defects with three owners.** (A) **exposure
+   bias** — training `n_prev` is the C's own previous `n_living`, runtime feeds the DRF its own output;
+   real, **training-side**, needs a global retrain. (B) **state incoherence** (the clamp/`n_prev`
+   mismatch) — S's leading hypothesis, **MEASURED EMPTY**: the clamp binds **0 of 150 years**, roster
+   tracks ρ to 1.5e-13. **Closed — do not spend time here.** (C) the level anchor, item 1.
+   **(C) is why M's teacher forcing recovers 59–72 % and not 100 %:** it repairs the RATIO each year and
+   nothing repairs the LEVEL. This **completes M's same-day refinement `9ad8721b`** rather than correcting
+   it — M had already split the total into a recursion factor ×1.26–1.53 and a **year-1 level offset
+   ×1.05–1.12**; what S adds is that the level term never decays. Visible in M's own numbers: their forced
+   boreal arm flattens to **1.12–1.17** — flat, but still displaced by the 1.12 it started with.
+3. **The dissociation is the finding, and it falsifies a docstring.** The `n_init` sweep converges the **AR
+   state** (terminal spread 6.7 %, retention **0.092**, 4 of 5 seeds identical at 6.7529) while the
+   **physical stand** those same runs carry retains **60.2 %** of its spread. So `slow.jl:844-846`'s
+   "`n_init` … is self-corrected by the `max_*` clamp thereafter" is **true of the AR state and false of
+   the stand**. It also re-reads ADR 0101 §5's 4.5×-FIT `n_init` swing as a *recursion property*, not an
+   artifact quirk — which promotes S→M integration point #2 from provenance to correctness.
+4. **S2 (recruit conditioning) IS DEMOTED FROM TOP PRIORITY** — the first time this line has re-ordered its
+   own queue on a measurement rather than a plan. An unanchored level compounds without bound and no
+   conditioning skill corrects it, because the channel that would carry the correction is discarded
+   upstream of the conditioning. S2 remains real and remains specified (ADR 0038/0040/0042: the env tail
+   is a genuine RESPONSE, not a spatial address, but it buys +0.031 of level skill while COSTING 0.031 of
+   transient pattern correlation — the two gates dissociate, which is why it was never promoted).
+5. **Two cross-line blockers are cleared from S's side, both landed here.** (i) M's **`wscal_leafon`
+   default flip** is **pre-authorised and unblocked in code** — `slow_production_drf_tests.jl` now admits
+   exactly the two admissible out-of-band states (`{water_stress}` off / EMPTY on) and still fails on any
+   third, so M lands it alone; on M's own ADR-0051 measurement (0.3050 → **0.0034** vs a trained band of
+   [0, 0.04315]) it **closes S's last out-of-band conditioning column**. (ii) **S→M integration point #2**
+   (the pooled artifact's missing `cell_meta.parquet`, the undocumented `n_init`/`age0` substitution, the
+   boundary-basis mismatch) is now **raised in `lines/M/STATE.md`**, where it had only ever been recorded
+   on S's side.
+6. **The public report is corrected and re-ordered** (`docs/component_s_public_report.tex`). The damping is
+   **39.9 % / −971.5 / +1461**, not 37 % / −892 / +1541 (that pair was arm B, the *refused* env arm); the
+   ceiling is on the **patch-year** basis (Wooddens **0.9543**, axes 0.94–0.97), not the superseded
+   stem-parity 0.9201/0.87–0.96; **the defect is placement, not shrinkage** (dispersion **1.034** while the
+   pattern captures 39 % of ceiling) is stated for the first time; recursive stability moves from *"not yet
+   tested — no evidence either way"* to **"not established (measured, negative)"**; the roadmap is
+   **re-ordered** with the level anchor as item 1; and a new `sec:traitmort` reports Phase 3A honestly
+   (level `+7 041 ± 334`, t = 21, response `+0.26 [−0.38, +0.90]` ×FIT = not distinguishable from zero).
+7. **Nothing in the shipped emulator moved.** No committed baseline, artifact, fixture or default changed;
+   the only code change is the widened assertion in item 5(i), which passes identically under today's
+   default. Runtime `[deps]` still empty. Suite green (job 1705738); Runic clean.
+
+### DO THIS NEXT, IN THIS ORDER
+
+**A. THE LEVEL ANCHOR — the highest-value remaining item, and it is a TWO-SIDED change (ADR 0102 §4).**
+It is not startable from this line alone. It needs the count↔density conversion (per-cell patch area) at
+the S↔F seam: an addition to `src/interface.jl` (**line M's exclusive path**) or a new column in
+`cell_meta.parquet`, plus a `reconcile_demography!` change (**S's**) that blends the multiplicative update
+toward the absolute target with a **stated relaxation time** — a *hard* anchor is wrong, it would discard
+F's own stand dynamics and convert a level drift into a level bias. **It moves every committed coupled
+baseline** ⇒ deliberate regeneration under guardrail 4, its own commit, its own matched control. Score it
+on the **teacher-forced arm as well as the free arm** or the ratio and level effects re-confound. Raised in
+`lines/M/STATE.md`; agree the seam with M before writing code.
+
+**B. Do NOT re-open (B), and do not "just anchor to `n_prev`".** Both are recorded as rejected in ADR 0102
+with the measurement behind them. `n_prev` is per-patch COUNT space and `D` is DENSITY space; their ratio
+is exactly the unknown patch area, so using one as the other silently sets that constant to 1 and turns a
+drift into a bias that *looks* anchored. That is the trap this ADR exists to prevent.
+
+**C. S2 is now the SECOND lever, and its honest remaining target is small.** Do not restate ADR 0033's
+warning by crediting a basis or population fix to conditioning. Read ADR 0030 §4's criteria, then ADR 0042
+§4 (the `Rr`/`Ra` dissociation) — the specified resolution is a **scenario- and time-resolved** version of
+the six moisture descriptors, recomputed per cell-year rather than frozen at present-day means, which is
+the only form that can carry a warming signal. Unbuilt.
+
+**D. Exposure bias (A) needs a global retrain** — scheduled sampling, or dropping `n_prev` from the count
+feature set. Both are an ADR-0023 both-sides change with M. Worth measuring the one-step bias offline from
+the existing `t8` tables *before* buying any retrain.
+
+**E. Still open, unchanged, off the critical path:** `CAP_HASH_SEED` (~10 lines at
+`build_slow_runtime_table.py:378-384`, default `= seed` so every artifact stays byte-identical); D1
+(space-for-time surrogate); D3 (calibration curve — note it is the natural instrument for D above).
+S3 stays de-prioritized (ADR 0033), S4 (grass) is unstaffed and needs F, S6 (in-loop OOD) needs M's harness.
+
+**F. METHOD RULES EARNED HERE — they each cost or saved a wrong turn.** (1) **A code-level inconsistency is
+a HYPOTHESIS about the trajectory, not a defect, until the branch is shown to execute.** Defect (B) was
+real in the source, attractive, S-owned and cheap — and fires 0 times in 150 years. One 4-minute job before
+implementing saved shipping a fix for something that does not happen. This is CLAUDE.md §3's
+`individual=true` dead-path rule turned on our own code. (2) **Read the part of another line's result that
+does NOT fit.** M's teacher forcing recovering 59–72 % rather than ~100 % was in ADR 0054 all along and
+was the whole clue; the level component is exactly the residual — and M reached the same split
+independently the same afternoon (`9ad8721b`), so read a sibling line's LATEST commits, not only the ADR
+you were handed. (3) **Separate the state variable from
+its diagnostic.** Sections (b) and (c) disagree — the AR state converges, the stand does not — and a probe
+that had measured only the AR state would have confirmed the docstring and closed the investigation.
+(4) Before believing a null, check the operator FIRED (`TraitMortDiag` prints first) — unchanged.
+
+## Superseded NEXT — ADR 0101 as it left the line (ADR 0102 re-ordered the queue); audit trail
+
 **ADR 0101 is written and Phase 3A Stage 3's response claim is WITHDRAWN. Read ADR 0101 first — it corrects
 ADR 0100 §1/§2/§5 — then ADR 0049 (whose LEVEL claim it CONFIRMS), then ADR 0046 §3.** ADR 0100's protocol
 (the 2×2 on real forcing, window mean, raised `k_cap`, byte-identical `MODE=stage2`) is intact and reused.
@@ -704,8 +807,26 @@ the fair comparison and `emu_r` 0.864 sits just under it.
     cell's demo artifacts. `MODE=stage2` regression (job 1700483) reproduces every ADR-0049 headline number.
     New fixture `S_hainich_response_boundary.csv` + its testitem. **⇒ the next lever is the RECRUIT channel:
     re-run the 2×2 on the global `pooled_w20` artifacts (no new training) — §NEXT item A.**
-  - **Stage 4 OPEN** — §NEXT item A (the pooled-artifact re-run, pre-registered prediction) then item B
-    (co-occurring gross turnover, now DEMOTED).
+  - **Stage 4 DONE 2026-08-05 (ADR 0101) — and it WITHDREW Stage 3's response claim.** Ran ADR 0100's own
+    pre-registered prediction on the global artifacts, then asked the two questions it could not answer
+    alone. `SEED` was hard-coded to 1; replicated, the double difference has a **seed sd of 0.67–1.74× FIT
+    — the size of the effect**, and the operator's contribution to the warming response is
+    **indistinguishable from zero on both global artifacts** (+0.048 [−0.380, +0.476] and
+    +0.263 [−0.377, +0.903], n = 12 each; both CIs exclude ADR 0100's +1.40×). ADR 0049's **LEVEL** claim is
+    confirmed and strengthened (+6 718 ± 286 / +7 041 ± 334 / +8 959 ± 862, t = 10.4–23.5) and is the
+    quotable Phase-3A result. ADR 0100's headline finding was a single-cell **fixture** artefact whose sign
+    reverses on a global artifact, and its attribution was wrong: **cell scope, not scenario coverage**.
+    **⇒ Phase 3A is CLOSED.** The mechanism is right and its response contribution is unmeasurable at one
+    cell; any response claim belongs to the ADR-0044 global gate (~115 seeds would be needed here).
+- **S8 — THE COUPLED COUNT RECURSION. NEW, and the top of the queue (ADR 0102, 2026-08-05).** Answers line
+  M's inbound ADR-0054. Decomposed into (A) exposure bias [training-side], (B) state incoherence
+  [**measured EMPTY** — the clamp binds 0 of 150 yr], (C) **no level anchor** [the dominant one: retention
+  **1.036** on a 4× initial-density perturbation after **300** yr, converging to a non-zero asymptote].
+  (C) explains M's 59–72 % and completes M's own `9ad8721b` split (recursion ×1.26–1.53 vs a year-1 level
+  offset ×1.05–1.12) by showing the level term never decays. **Specified, deliberately NOT landed** — it needs the count↔density conversion
+  at the S↔F seam, so it is a two-sided change with M that moves every coupled baseline. **This DEMOTES S2
+  from top priority.** Side outcomes landed here: M's `wscal_leafon` flip is unblocked from S's side, S→M
+  integration point #2 is raised in M's STATE, and the public report is corrected + re-ordered.
 
 ## Line-local gotchas
 
