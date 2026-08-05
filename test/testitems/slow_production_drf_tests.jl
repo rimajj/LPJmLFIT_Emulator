@@ -165,7 +165,20 @@
     @info "runtime-vs-trained feature band (excursion in band widths; 0 = inside)" pairs = [
         colnames[j] => round(exc[j], digits = 3) for j in eachindex(colnames) if exc[j] > 0
     ]
-    @test Set(colnames[j] for j in eachindex(colnames) if exc[j] > 0.5) == Set(["water_stress"])
+    # ── S PRE-AUTHORISES line M's `wscal_leafon` default flip (ADR 0051; S→M integration point). ──
+    # `water_stress` is the ONE out-of-band conditioning column left, and it is line M's F core, not S's:
+    # the runtime computes a REALIZED supply/demand ratio while the training column is FIT's POTENTIAL
+    # leaf-on index (`wscal_mean`). ADR 0051 ported the faithful index behind `WaterParams.wscal_leafon`
+    # and MEASURED the fix at this cell: Hainich's annual `water_stress` goes 0.3050 → **0.0034** against a
+    # C truth of 0.0014 and a trained band of [0, 0.04315] — i.e. flipping the default CLOSES this column.
+    # M's blocker was that an exact-equality assertion here would go red the moment they flip it, so the
+    # flip needed a two-sided landing and has sat unscheduled. Asserting the set is one of exactly the two
+    # ADMISSIBLE states removes that coupling without weakening the test: `wscal_leafon = false` (today's
+    # default) must still give exactly `{water_stress}`, and `true` must give the EMPTY set. Any third
+    # outcome — a new out-of-band column, or `water_stress` going in band for some other reason — still
+    # fails. M can now flip the default in `src/fdiff.jl` in a single-line change of their own.
+    oob = Set(colnames[j] for j in eachindex(colnames) if exc[j] > 0.5)
+    @test oob == Set(["water_stress"]) || oob == Set{String}()
     @test maximum(exc) ≤ 10.0                                              # measured worst 6.60
     @test exc[findfirst(==("bm_inc_cell"), colnames)] == 0.0                # ADR 0032's fix, held
     @test exc[findfirst(==("growth_eff"), colnames)] == 0.0                 # (was ~8× on the proxy basis)
