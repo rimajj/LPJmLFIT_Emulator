@@ -159,8 +159,9 @@ handoff note are both one level removed from the thing you actually need.
 ## NEXT — start here
 
 **M1–M4 ALL DONE. M4 closed 2026-08-05 (ADR 0055): `ENGINEERING_STANDARDS` §2 has no stubbed gates left on
-this line.** The next milestone is **M5** (item 3). Read items 1 and 2 first — item 1 is an outstanding
-integration point that M4 just added a caveat to, and item 2 is a prerequisite for any global coupled run.
+this line.** The next milestone is **M5** (item 4). Read items 1–3 first: item 1 is an outstanding integration point
+that M4 just added a caveat to, item 2 is a prerequisite for any global coupled run, and item 3 is a NEW
+inbound request from line E that arrived while M4 was being written.
 
 **ADR 0055's CI verdict: PENDING-AT-WRITE — if this still says PENDING, check it before building on M4.**
 `curl`-check the merge sha's check-runs (CLAUDE.md §5). The diff touches `src/`? no — but it touches
@@ -201,7 +202,24 @@ lift across — **M4's whole ensemble is built that way**, so the pattern is pro
 members × 100 years. **This will move `biome_coupled_tests.jl` item 2's pinned per-cell LE and GPP
 (±2 %/±3 %)** ⇒ a deliberate baseline regeneration under guardrail 4, in its own change with its own commit.
 
-### 3. M5 — biome-calibrated PFT params + spin-up (the next MILESTONE proper)
+### 3. NEW INBOUND from line E, arrived in this session's rebase — `SEBParams.enable_two_layer` (ADR 0074)
+
+**E's fourth integration point, and it REPLACES E's earlier `lambda_g = 1.0` request** (which in turn had
+replaced ADR 0072's refuted `stab_amp` one — do not act on either). Full text in the contracts list below.
+Short version: a prognostic two-layer soil column instead of the single conductance against a 30-day EWMA of
+air temperature; `lambda_g` goes inert when it is on. Default is `false`, so nothing has moved. Measured on
+the same 497 k tower steps: daily H R² **0.645** vs 0.637 (DE-Hai) and **0.775** vs 0.745 (AU-ASM), and on
+`G` itself **0.717** vs 0.657 / **0.614** vs 0.477 — it wins on H, wins clearly on G, and carries a real
+diurnal soil wave, which is what line O needs. **It is yours to land** because it moves every coupled and
+5-biome baseline, so it goes in one change with the regenerated baselines, and ADR 0072's night-cold sign
+assertion in `energy_closure_tests.jl` is re-pinned at that moment. It works today for measuring:
+`SEBEnergyClosure(params = SEBParams(enable_two_layer = true))`.
+
+⚠ **This and item 2 both regenerate `biome_coupled_tests.jl` item 2's pinned per-cell LE/GPP.** They are
+still two separate changes with two separate commits (guardrail 4 — a bundled regeneration cannot be
+attributed), but do them back to back so the pins move twice, not four times, and re-measure between.
+
+### 4. M5 — biome-calibrated PFT params + spin-up (the next MILESTONE proper)
 
 Today every biome runs **beech ANGIO params** from `par/pft_lpjmlfit.js`. Two things now make this both
 more urgent and better-specified:
@@ -214,7 +232,7 @@ more urgent and better-specified:
   (`longevity` is the JSON key `"age"`; `temp_stressed`, not the establishment `"temp"`; a DUPLICATE
   `aphen_min/max` for id 6 where the LAST occurrence wins).
 
-### 4. F-side follow-ons, in value order (unchanged from M3; all reference bases established)
+### 5. F-side follow-ons, in value order (unchanged from M3; all reference bases established)
 
 ADR 0053's verdict, so you do not re-measure it: **seasonal phase is excellent in all 5 biomes** (monthly
 r 0.870–0.999 GPP, 0.858–0.999 ET). Three of five 10-yr level means are actively misleading — read the
@@ -233,12 +251,12 @@ c. **The Sahel decline IS ADR 0052's dry-cell bias end-to-end.** ⚠ M4 sharpens
 d. **F under-predicts tree FPC in all 5 cells (0.31–0.72×)** *despite* starting from a patch 1.12–1.72×
    denser than the ensemble — the most robust structural finding in the set, and still unattributed.
 
-### 5. M4's own open findings (line-M work, not blockers)
+### 6. M4's own open findings (line-M work, not blockers)
 
 - **No steady state under CYCLIC forcing:** coupled AGB drifts **1.39–5.15×** over 100 years with the
   forcing exactly periodic (max/init up to 12.45 at boreal). A model at equilibrium would sit at ≈1. The
-  gate bounds it; it does not bless it. Likely the same free-running canopy growth as (d) above, seen over
-  a century instead of a decade — check that hypothesis before treating it as separate.
+  gate bounds it; it does not bless it. Likely the same free-running canopy growth as item 5(d) above,
+  seen over a century instead of a decade — check that hypothesis before treating it as separate.
 - **A 20-year window cannot resolve decadal memory even in the C.** If the AC-vs-climate question is ever
   reopened, it needs a longer transient than the historic `ind` table has (2000–2019 is its full extent).
 
