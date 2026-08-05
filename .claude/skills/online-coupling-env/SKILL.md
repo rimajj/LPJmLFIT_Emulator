@@ -1,6 +1,6 @@
 ---
 name: online-coupling-env
-description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the six traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, and its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere). Use whenever running, debugging or extending the online coupled model, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
+description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the eight traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
 ---
 
 # online-coupling-env — SpeedyWeather + Terrarium on this cluster
@@ -14,7 +14,7 @@ cd /p/tmp/jamirp/esm_online_coupling
 ./sbatch_coupling.sh <O-tag> <script.jl>      # -> logs/<tag>.<jobid>.out on shared /p
 ```
 
-## The six traps (each one cost a failed job)
+## The eight traps (each one cost a failed job)
 
 1. **Julia 1.10.0 CANNOT build this stack — use `/p/system/packages_rhel9/tools/julia/1.10.10/bin/julia`.**
    On 1.10.0, Pkg's extension resolution dies with `KeyError: key "KernelAbstractions" not found`
@@ -55,6 +55,36 @@ cd /p/tmp/jamirp/esm_online_coupling
    **Fix: prescribe a real clay fraction + porosity** via `PrescribedSoilHorizon` (`TerrariumRastersExt` reads
    raster maps), and **add a guard rejecting any soil config with `field_capacity <= wilting_point`** so this
    class of degeneracy fails loudly. **No online run with default soil may be used to judge vegetation.**
+   Done: `scripts/online_coupling/build_soil_texture_field.py` (LPJmL soilcode × `par/soil_20m.js` texture,
+   orderA) → `soil_texture.jl::prescribed_texture_soil` (+ `assert_nondegenerate_soil`), ADR 0083.
+
+7. **A prescribed input `Field` must be passed as `fields`, NOT `inputs`, under SpeedyWeather.**
+   `SpeedyWeatherTerrariumExt.timestep!`/`initialize!` construct their `ModelIntegrator` with an
+   **empty `InputSources(NF)`** — deliberately, so the adapter's own `set!` of the atmospheric forcings
+   is not overwritten. Consequence: the `InputSource`-based prescription used by Terrarium's own
+   `examples/simulations/soil_heat_global_soilgrids.jl` is **silently dropped** in a coupled run, and the
+   input falls back to its declared `default` (for `PrescribedSoilHorizon`, `sand_fraction = 1` — i.e.
+   straight back into trap 6). Only `TerrariumLand.fields` is forwarded, via
+   `Terrarium.initialize(...; fields)` → `StateVariables`, which resolves `ns_fields = get(fields,
+   varname(ns), (;))` per namespace. So for a horizon named `:soil`:
+   ```julia
+   Speedy.LandModel(spectral_grid, tmodel; timestepper, Δt,
+       fields = (soil = (sand_fraction = fs, silt_fraction = fi, clay_fraction = fc),))
+   ```
+   and then **assert it arrived** — read `state.soil.clay_fraction` back and check it is non-zero *and*
+   spatially varying. A silently-dropped prescription looks exactly like a working one.
+
+8. **Terrarium's DEFAULT hydrology is `NoFlow` — the soil water NEVER MOVES.**
+   `SoilHydrology(NF)` defaults to `vertical_flow = NoFlow()`, so `saturation_water_ice` stays at whatever
+   `SoilInitializer`'s `SaturationWaterTable` wrote (vadose zone 0.75, saturated below 5 m) forever — and
+   *identically in every column* — even though the adapter faithfully pushes `rainfall`/`snowfall` into the
+   Terrarium inputs each step. `[VERIFIED 2026-08-05, job 1706262: layer-mean saturation min == max ==
+   0.8917 over all 4608 columns after 2 coupled days.]` Any soil-moisture distribution measured this way is
+   the **initializer**, not a model result — and PAW then varies only through texture. Use
+   `SoilHydrology(NF; vertical_flow = RichardsEq())` for anything hydrological, and spin up: the default
+   `ExponentialSpacing(N=30, Δz_min=0.05)` column is **433 m deep**, so an unweighted 30-layer mean is
+   dominated by deep, permanently saturated layers. Compare on a root-zone (e.g. top 2 m,
+   thickness-weighted) basis instead.
 
 ## The coupling architecture (verified from source, not docs)
 
