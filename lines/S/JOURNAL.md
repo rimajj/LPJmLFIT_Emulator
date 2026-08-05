@@ -870,3 +870,79 @@ response (FIT's +2432.9 is between-scenario), and none of it may be quoted again
 - **Next:** the response arm (does Δ differ between historic and warmed forcing? needs the ADR-0026/0027
   transient boundary on both arms), and then co-occurring gross turnover as its own arm. Both need a new ADR
   range — raise it as an integration point before writing. Mirrored into STATE.md's NEXT block.
+
+## 2026-08-05 — the RESPONSE arm: the operator is right, the recruit channel is not  [milestone S7 / Phase 3A Stage 3]
+
+- **Goal:** the measurement ADR 0049 declined to make — does the trait-mortality operator change the emulator's
+  wood-density response to *warming*, not just its level under constant forcing? (Handoff item B.) Plus item A:
+  the S ADR block was exhausted at 0049.
+- **Did:**
+  - **Item A first, as the handoff demanded.** Allocated a **tier-2 ADR block per line** in
+    `docs/decisions/README.md` + `CLAUDE.md` §9 (S 0100–0119 · M 0120–0139 · E 0140–0149 · O 0150–0159 ·
+    integrator 0160–0169), rather than only claiming S's. A pre-allocated tier means no line has to negotiate a
+    range mid-milestone again, and two lines exhausting in the same week cannot collide. Flagged to the
+    integrator in this entry + STATE.md rather than blocking on it.
+  - **New extractor `scripts/build_hainich_response_forcing.py`** (7 s): real daily forcing for BOTH scenarios
+    at one cell from the same orderA `.clm` files the two ground-truth runs read — historic 1939–2019 and
+    ssp370 2020–2100, 81 yr each so the arms difference at matched year indices. It **imports**
+    `build_transient_boundary.py`'s `open_clm`/`gdd5_tcm` rather than re-deriving them. Three gates, all green:
+    it reproduces `climbuf_hainich_boundary_w20.csv` (4.9e-06 on a gdd5 of 1800 = a float32 print artefact) and
+    **`hainich_forcing_2010.csv` — the fixture Stage 2 itself was measured on** (≤1.8e-05 on all five
+    variables, which is what proves the cell index, the YEARCELL decode, the v2-int16-×0.1 vs v3-float32 branch
+    and the units), and it asserts ADR 0004's flat 409.63 ssp370 CO2. Contrast at Hainich: **+2.45 K,
+    +709 gdd5, +2.53 K coldest month**. Daily forcing → `/p/tmp` (1.7 MB/scenario); only the 16 kB per-year
+    summary + boundary is committed (`S_hainich_response_boundary.csv`), with a new testitem guarding it.
+  - **`MODE=response` on the existing probe** (the handoff said add a knob, not a fourth harness): the 2×2, all
+    four rollouts in one process, double difference. `rollout(...)` gained `forcing`/`boundary_series`/
+    `t_soil0`/`k_cap`, all defaulted to the Stage-2 construction.
+- **Result — the operator's response contribution is +3 400.6 gC/m³ = +1.40× the FIT shift, right sign**
+  (job 1700471/1700508/1700629, merge dormant, carbon 0.8–1.6e-11). Phase 3A's mechanism claim is complete.
+- **THE FINDING, and it reframes the line: the emulator's BASELINE warming response has the WRONG SIGN.**
+  `R_ctl` = −5 945.8 = **−2.44× FIT** where FIT *rises* +2432.9. The hazard shrinks that wrong-signed response 57.2 % in
+  magnitude — 40.6 % of the gap to FIT — and cannot flip the sign. Attribution is near-forced — ρ-thinning is composition-preserving and the merge is dormant, so
+  `R_ctl` IS the recruit channel — and the band diagnostic localises it: **`soilmoist` runs 0.658 band widths
+  below anything the historic-only copula saw, a 16× larger excursion than the historic arm**, and an
+  out-of-band forest **saturates** rather than extrapolating. It also **excludes** `water_stress` (worse under
+  historic, ratio 0.49×), so line M's known defect is not the driver.
+- **Two protocol decisions each moved the answer by more than a FIT shift, and both are the interesting part:**
+  1. **The k-cap merge, dormant for 150 constant-forcing years, WAKES under real forcing** — 8–9 merges/arm at
+     the default cap, and it **destroys 54 % of the response contribution** (+0.638× vs +1.398×). ADR 0048's
+     "the merge is dormant" is a property of a *forcing configuration*, never of the cap. Raised `K_CAP` to 400
+     for the primary and demoted the default-cap run to a sensitivity check.
+  2. **A terminal-year read would have reported +2.21× instead of +1.40×.** With real interannual forcing the
+     year-to-year interaction swings −1 070 → +5 388; FIT's +2432.9 is a run mean. Headline is now a 20-yr
+     window mean with the terminal read printed beside it.
+- **Two more measured facts worth carrying:** ADR 0049 §5's **13.6 % duty cycle is a constant-forcing
+  artefact** — real forcing gives 54.2 % (historic) / **62.5 %** (ssp370), i.e. **warming loosens** the
+  count-channel throttle (|ρ−1| 1.87 → 2.18 %/yr), so the gross-vs-net mechanism stands but its cost was ~4×
+  overstated; and the transient boundary is **exactly inert** (max |Δwd| = 0.0) for this cell's demo artifacts
+  because both boundary axes are constant in training — the same fact the band table reports as `Inf`, which is
+  why an excursion ranking must special-case a zero-width band or it ranks the one harmless channel top.
+- **Dead end avoided:** a synthetic ΔT ramp. The real files cost 7 s and remove every "that isn't ssp370"
+  objection. Also resisted fixing `R_ctl` in this arm (handoff item F) — it is a recruit-channel defect with its
+  own ADR and its own control.
+- **Verification:** `MODE=stage2` regression job **1700483** reproduces **every** ADR-0049 headline number
+  (132/150 thinning yr, θ median 8.453e-12, 0 merges, worst 11 256.4 at yr 46, +7 899.35 = 3.2469×) — guardrail
+  4 by measurement, not intention. Suite 1700639 with the new testitem; Runic clean; ADR 0100 written.
+- **Next:** re-run this 2×2 against the existing global `pooled_w20` `.rcop`/`.drf` (no new training) — the
+  falsifiable prediction is that `|R_ctl|` shrinks or flips, which would also lift the boundary-inertness null.
+  Mirrored into STATE.md's NEXT block.
+- **One red test, and it was the ASSERTION that was wrong (the ADR-0049 §G reflex, applied):** the new
+  fixture testitem asserted `s.boundary == series[1]` while also passing an explicit `boundary = bnd`. ADR 0026's
+  documented rule is that an **explicit** `boundary` is kept as given and only an **omitted** one is seeded from
+  the series' first row — so the code was right. Fixed by pinning **both** directions (explicit ⇒ kept; omitted
+  ⇒ seeded), which is a better test than the one I meant to write: a silent year-0 offset here would put the
+  first simulated year on the wrong bioclimate, and nothing else in the suite would notice.
+- **Second self-caught defect, in the FIXTURE this time — the trailing window had no lead-in.** The committed
+  boundary's first 19 historic years were computed on a **truncated** window (1939 got a 1-year "climatology",
+  reading `tas_cold_month` = −3.11 °C instead of **−0.54**), because the monthly means were built from the same
+  1939–2019 slice as the daily output. The historic `.clm` starts **1901**, so a full W=20 window is available
+  for every target year ≥ 1920 and there was no reason to accept the truncation. Fixed with a W−1 year lead-in
+  read (19 rows moved; gates 1–3 still green; the last-20-yr contrast unchanged at +709.3 gdd5 / +2.526 K).
+  ⚠ The ssp370 side **deliberately keeps** the short window for 2020–2034 — that is `build_transient_boundary.py`'s
+  documented edge and therefore the basis the artifacts were TRAINED against (ADR 0023), so "fixing" it there
+  would break train/inference consistency. *Gate 1 did not catch this*: it checks 2000–2019, where the window is
+  already full. A gate that only samples the easy end of a range does not cover the range.
+- **The fixture fix became a free second test of the inertness claim:** re-running the primary on the corrected
+  boundary (job 1700644) returned **every headline number identical to the digit** (`R_ctl` −5 945.79, `R_arm`
+  −2 545.21, interaction +3 400.58) — 19 changed boundary rows moved nothing, exactly as ADR 0100 §4 predicts.

@@ -1,10 +1,111 @@
 # LINE S — Component-S science (branch `line/S`, worktree `wt-S`)
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
-> the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: ADR block **0030–0049**.
+> the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
+> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100).
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## NEXT — start here
+
+### ⚠ ACTION 0, BEFORE ANY SCIENCE: MERGE THE PUSHED WORK. IT IS NOT ON `main` YET.
+
+ADR 0100 is committed and pushed but **not merged** — the previous session ran out of wall-clock while branch
+CI was still running. Do this first:
+
+1. The verdict to check is on **`1b44cebb`** (`feat(S): the response arm …`) — that is the commit carrying the
+   `test/**` change, so its expected gate set is **`test (lts)`, `test (1)`, `format`** (`format` was already
+   **green**; `python` and `docs` correctly never run — ADR 0090's path filter). `test (pre)` /
+   `test (macOS, lts)` are not required.
+2. ⚠ **Every commit stacked on top of it — this handoff note and a `chore(skill:)` capture — triggers NO gate
+   at all** (ADR 0090: `lines/**`, `.claude/skills/**` are watched by nothing), so the branch **tip** reports
+   no check-runs. That is correct and expected, **not** a missing verdict: read the verdict off `1b44cebb`
+   and merge the tip. The trap and its resolutions are now in the `repo-commit` skill.
+3. Then the normal ritual (`repo-commit` skill): `flock` the integration worktree, merge **`origin/line/S`**,
+   push `main`, and check `main`'s own latest run (the merge touches `src/**`? **no** — so `main` runs
+   `CI`/`format` only from the `test/**`+`.jl` paths, and `docs` still does not run).
+4. If a required gate is **red**, do not merge: the suite was green on SLURM (job 1700642, **107 821 pass /
+   0 fail / 4 broken**) and Runic was clean locally, so a red gate means a CI-only difference — a dep bump
+   (diff the `Enzyme vX.Y.Z` line against a last-green log, CLAUDE.md §2) or a JET-0.11.6-only finding on
+   `test (1)`, which reproduces only on Julia 1.12.
+
+**Then: Phase 3A is COMPLETE as a mechanism (Stages 1/1b/2/3 all landed). Read ADR 0100 first, then 0049 §5,
+then 0046 §3.** Stage 3 made the response measurement and it **reframed the line**: the operator is right, and the
+binding constraint has moved to the **recruit channel**. The ADR-range blocker is gone.
+
+### THE STATE IN SIX LINES
+
+1. **ADR 0100 — the operator's contribution TO THE WARMING RESPONSE is +3 400.6 gC/m³ = +1.40× the FIT
+   shift, right sign.** Measured as a 2×2 double difference, {`trait_mortality` on/off} × {historic, ssp370},
+   all four rollouts in one process at matched year indices, on **real** forcing from the same orderA `.clm`
+   files the two ground-truth runs read (+2.45 K / +709 gdd5 at Hainich). Phase 3A's mechanism claim is now
+   complete: right level (ADR 0049, 3.25×), right age structure (ADR 0049 §4), right response sign (this).
+2. **THE FINDING — the emulator's BASELINE warming response has the WRONG SIGN and is LARGER.** `R_ctl` =
+   −5 945.8 = **−2.44× FIT** where FIT *rises* +2432.9. The hazard shrinks that wrong-signed response by **57.2 % in
+   magnitude** and closes **40.6 % of the gap to FIT** — but cannot flip the sign. Attribution is near-forced: ρ-thinning is composition-preserving and the merge is dormant, so `R_ctl`
+   **is** the recruit channel's warming response.
+3. **It is localised, and the fix is testable without new training.** The trained-band diagnostic (probe
+   section (e)) shows **`soilmoist` running 0.658 band widths BELOW anything the historic-only copula saw — a
+   16× larger excursion than the historic arm** — and an out-of-band forest **saturates** rather than
+   extrapolating, so the recruit conditional is clamped to the driest historic leaf. It **excludes**
+   `water_stress` (excursion worse under *historic*, ratio 0.49×), so line M's known defect is not the driver.
+4. **`k_cap` IS A CONFOUND ON ANY TRANSIENT RUN — this is the trap to remember.** The k-cap merge, which
+   ADR 0048 measured as dormant over 150 constant-forcing years, **wakes under real forcing** (8–9 merges/arm
+   at the default `max(2K,40)`) and **destroys 54 % of the response contribution** (+0.638× vs +1.398×).
+   "The merge is dormant" is a property of a forcing configuration, never of the cap. Always report the merge
+   count per corner and raise `K_CAP` until it is 0.
+5. **ADR 0049 §5's 13.6 % duty cycle is a CONSTANT-FORCING ARTEFACT — quote it with its basis.** Under real
+   forcing the operator selects in **54.2 %** of thinning years (historic) and **62.5 %** (ssp370), and
+   warming *loosens* the throttle (|ρ−1| 1.868 → 2.176 %/yr). The gross-vs-net mechanism still stands; its
+   measured cost was ~4× overstated.
+6. **The transient boundary is EXACTLY inert for this cell's committed artifacts** (max |Δwd| = 0.0), because
+   both boundary axes are constant in training — the same fact the band table shows as `Inf`. Good for
+   ADR 0100 (nothing in it is a boundary extrapolation) but it means the demo artifact **cannot** express a
+   boundary-mediated response; the global `pooled_w20` artifacts can.
+
+### DO THIS NEXT, IN THIS ORDER
+
+**A. THE CHEAPEST DECISIVE ARM — re-run the ADR-0100 2×2 against the global `pooled_w20` `.rcop` + `.drf`.**
+No new training: those artifacts already exist on `/p/tmp` (`slow_copula_pooled_w20_*`, `*_pooled_w20.drf`),
+are fit on historic **and** ssp370 so `soilmoist` down to 0.65 is in band, and train on a **live** transient
+boundary so §6's null lifts too. **The pre-registered prediction is that `|R_ctl|` shrinks substantially or
+flips sign.** If it does, the cause was the training scenario and the fix is an artifact version bump (S→M
+integration point, ADR 0023 lockstep). If it does not, the cause is the **conditioning set** and it is
+milestone S2, which Phase 3A cannot deliver. Either outcome is a publishable answer; write it as ADR 0101.
+⚠ The pooled artifacts have a wider boundary/feature width than the demo — check `nfeat`/`colnames`/`cond_cols`
+against `flux_feature_vector`/`live_flux_cond` before wiring, and pass `K_CAP` (item 4) and real `pft_ids`.
+
+**B. Co-occurring gross turnover is DEMOTED, not cancelled.** ADR 0049 named it as the next lever; ADR 0100
+demotes it because it would enlarge a mechanism that already has the right sign while a larger opposite-signed
+error sits upstream, and because item 5 shows the duty cycle it targets is already 54–62 % under real forcing,
+not 13.6 %. Revisit after A.
+
+**C. Still open, unchanged:** `CAP_HASH_SEED` (~10 lines at `build_slow_runtime_table.py:378-384`, default
+`= seed` so every artifact stays byte-identical). D1 (space-for-time surrogate) and D3 (calibration curve)
+remain unrun and off the critical path. Two report numbers are still wrong in the `.tex`: "37 % damping /
+`Rb` = −892" is arm **B `p14env-hash`, the REFUSED env arm** (the deployed ncond-8 arm is **−971.5 = 39.9 %**),
+and the `Rr` ceiling 0.9201 is superseded by the patch-year basis (**0.9543**).
+
+**D. `fc.pft_ids` is a CORRECTNESS requirement — M integration point #1, unchanged and still unraised with M.**
+The operator errors on a non-tree id but a wrong-but-*valid* id passes silently, and `FDiffFastCore` defaults
+every tree to beech (`fast.jl:147`), which would run the tropical and boreal PFTs on temperate wood-density
+mortality (the ADR-0031 defect class). **Any M driver that enables `trait_mortality` must pass `pft_ids`.**
+
+**E. Integrator notification (do not re-do):** the ADR tier-2 blocks are allocated for ALL FOUR lines in
+`docs/decisions/README.md` + `CLAUDE.md` §9 (S 0100–0119 · M 0120–0139 · E 0140–0149 · O 0150–0159 ·
+integrator 0160–0169). S's is opened; the other three are unopened and theirs to use.
+
+**F. Do not bundle, and re-run the control in the same generation.** Every arm lands separately with its own
+matched baseline re-run in the same process — the move that has now caught seven wrong turns on this line.
+Corollary from ADR 0100: also **re-verify the confounds per configuration**, not per protocol — the merge was
+"proven dormant" and was not.
+
+**G. Method notes worth keeping.** (1) Before believing a null, check the operator FIRED (`TraitMortDiag`
+prints first). (2) An excursion ranking **must special-case a zero-width trained band**, or it ranks the one
+channel that provably cannot act (a constant training column) above the one that does. (3) Score a transient
+arm on a **window mean**; a terminal-year read of ADR 0100 would have said 2.21× where the honest number is
+1.40×.
+
+## Superseded NEXT — Phase 3A Stage 2 (ADR 0049), kept for the audit trail
 
 **Phase 3A Stage 2 is DONE and MERGED. Read ADR 0049 first, then 0048 (the measurement protocol), then
 0046 §3 (the target).** The hazard is wired in, opt-in, and it selects correctly — and the measurement found
@@ -460,8 +561,25 @@ the fair comparison and `emu_r` 0.864 sits just under it.
     branches make gross turnover equal net change. **Co-occurring gross turnover is the named next lever.**
     ⚠ The arm is a constant-forcing **LEVEL** change on one cell — **not a response**, and not the ADR-0044
     gate. **This ADR exhausted the S block 0030–0049** (see §NEXT).
-  - **Stage 3 OPEN** — either the RESPONSE arm (transient vs constant forcing on both arms) or the
-    co-occurring-gross-turnover arm, one at a time. §NEXT items A–C.
+  - **Stage 3 DONE 2026-08-05 (ADR 0100) — Phase 3A is COMPLETE as a mechanism.** The RESPONSE arm: a 2×2
+    of {`trait_mortality` on/off} × {historic, ssp370}, all four rollouts in one process at matched year
+    indices, on REAL forcing from the same orderA `.clm` files the two ground-truth runs read (new extractor
+    `scripts/build_hainich_response_forcing.py`, 3 gates green, Hainich contrast +2.45 K / +709 gdd5 /
+    +2.53 K coldest month; 81 yr per corner; merge held dormant at `K_CAP=400`; carbon 0.8–1.6e-11).
+    **The operator's contribution to the warming response = +3 400.6 gC/m³ = +1.40× the FIT shift, right
+    sign.** ⚠ **THE FINDING: the emulator's BASELINE warming response has the WRONG SIGN and is larger** —
+    `R_ctl` = −5 945.8 = **−2.44× FIT** where FIT rises +2432.9; the hazard shrinks it 57.2 % in magnitude
+    (40.6 % of the gap to FIT) and cannot flip the sign. `R_ctl` **is** the recruit channel (ρ-thinning is composition-preserving, merge dormant),
+    and the band diagnostic localises it to **`soilmoist` 0.658 band widths below a historic-only copula's
+    training range (16× the historic arm)** while *excluding* `water_stress` (ratio 0.49×). Also measured:
+    ADR 0049 §5's 13.6 % duty cycle is a **constant-forcing artefact** (real forcing: 54.2 % historic /
+    **62.5 %** ssp370 — warming *loosens* the throttle), the k-cap merge **wakes under real forcing** and
+    costs 54 % of the response contribution, and the transient boundary is **exactly inert** (0.0) for this
+    cell's demo artifacts. `MODE=stage2` regression (job 1700483) reproduces every ADR-0049 headline number.
+    New fixture `S_hainich_response_boundary.csv` + its testitem. **⇒ the next lever is the RECRUIT channel:
+    re-run the 2×2 on the global `pooled_w20` artifacts (no new training) — §NEXT item A.**
+  - **Stage 4 OPEN** — §NEXT item A (the pooled-artifact re-run, pre-registered prediction) then item B
+    (co-occurring gross turnover, now DEMOTED).
 
 ## Line-local gotchas
 

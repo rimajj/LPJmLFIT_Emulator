@@ -256,6 +256,11 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   field = **HDR 43**, stored **int16**, e.g. ssp370 `tas_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm` with
   **scalar 0.1 ⇒ °C×10** — that's why it's half the byte size of the v3 files). Read `version` at byte-offset
   7, branch HDR/dtype, and APPLY `scalar` (`raw·scalar` = the physical value). Header-driven reader:
+  **The ssp370 orderA forcing set is COMPLETE** (`.../clustering/global/ssp370/`): `tas` · `pr` · `rsds` ·
+  `lwnet` · `huss`, so a two-scenario per-cell forcing pair is extractable (`[VERIFIED 2026-08-05]`, ADR 0100,
+  `scripts/build_hainich_response_forcing.py`). ⚠ **That set is MIXED-VERSION:** `tas`/`pr`/`rsds`/`lwnet` are
+  **v2 int16 scalar 0.1**, `huss` is **v3 float32 scalar 1.0** — one hardcoded dtype reads four of the five
+  wrong. Header-driven reader:
   `scripts/build_transient_boundary.py::open_clm`; per-cell-year reader `read_clm_year`
   (`scripts/extract_fdiff_validation_inputs.py`). orderA `.clm` cell index == the parquet `Cell` (Hainich
   42490) — no grid.nc map needed. The orderA grid is 67420 cells, YEARCELL order, 365 noleap bands.
@@ -679,7 +684,7 @@ rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (i
 | Narrative / what happened | `lines/<X>/JOURNAL.md` (append) |
 | Durable line state + the **NEXT handoff** | `lines/<X>/STATE.md` |
 | Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line** |
-| A decision | an ADR from **your block**: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · **integrator/cross-cutting 0090–0099** (0001–0029 is exhausted; ADR 0090 opened the new block); add the row to your line's subsection of `docs/decisions/README.md` |
+| A decision | an ADR from **your block** — TIER 1: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · integrator/cross-cutting 0090–0099 · **TIER 2** (use when your tier-1 block is exhausted): **S 0100–0119** · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0160–0169. `0001–0029` and **S's `0030–0049`** are EXHAUSTED (ADR 0049 was the last; ADR 0100 opened S's tier 2). Add the row to your line's subsection of `docs/decisions/README.md` |
 | Cross-cutting `[VERIFIED]` fact | `MEMORY.md` (shared, additive) |
 | A procedure / gotcha | a skill / this file (§8 routing unchanged) |
 

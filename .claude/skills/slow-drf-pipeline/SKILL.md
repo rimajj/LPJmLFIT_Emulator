@@ -1020,3 +1020,65 @@ reproduce a gradient FIT accumulated over a full spin-up on 25 patches. And the 
 **ids 0, 2 and 3 are NON-monotone** (id 2 despite a positive one-year selection differential — the "sign of
 `S` predicts the shape" rule has a measured exception), **id 5 has no stems above 160 yr at all** (longevity
 125) and id 2 none above 320. Never assume seven age bins per PFT.
+
+## MEASURING A WARMING **RESPONSE** (not a level) — the ADR-0100 response arm
+
+A constant-forcing arm measures a **LEVEL** change. FIT's published shifts (e.g. the +2432.9 gC/m³ per-cell
+wood-density shift, ADR 0046 §1) are **BETWEEN-SCENARIO** differences, so a response claim needs the emulator
+run under both climates and the two differences differenced:
+
+```
+R_ctl = wd(ctl, ssp370) − wd(ctl, historic)        the emulator's own warming response
+R_arm = wd(arm, ssp370) − wd(arm, historic)        with the treatment on
+interaction = R_arm − R_ctl = Δ_ssp − Δ_hist       <- the treatment's contribution TO THE RESPONSE
+```
+
+**Run it, don't rebuild it:** `MODE=response scripts/sbatch_julia.sh S-<tag> --project=. scripts/trait_mortality_arm_probe.jl`
+(ENV `MODE`, `K_CAP`, `SCORE_WINDOW`, `YEARS`, `REPORT_AT`, `COPULA`, `FORCING_DIR`). All four corners advance
+in ONE process at matched year indices. `MODE=stage2` is the ADR-0049 constant-forcing measurement, unchanged.
+
+**The forcing:** `python3 scripts/build_hainich_response_forcing.py` (~7 s) extracts REAL daily forcing for
+both scenarios at one cell from the same orderA `.clm` files the two ground-truth runs read — the observational
+`*_test.clm` and the MPI-ESM1-2-HR `ssp370/*_orderA.clm` set (**tas · pr · rsds · lwnet · huss** all present;
+4 of 5 are **v2 int16 ×0.1**, `huss` is v3 float32 — parse the header, CLAUDE.md §3). Env `CELL`, `HIST_Y0/Y1`,
+`SSP_Y0/Y1`, `W`, `OUT_DIR`. It **imports** `build_transient_boundary.py`'s `open_clm`/`gdd5_tcm` rather than
+re-deriving them, and it has three hard gates — reproduce `climbuf_hainich_boundary_w20.csv`, reproduce
+**`hainich_forcing_2010.csv`** (the fixture the arm's own harness is built on, which is what validates the cell
+index / YEARCELL decode / scalar branch / units), and assert ADR 0004's flat 409.63 ssp370 CO2. Daily output →
+`/p/tmp` (1.7 MB/scenario, deliberately uncommitted); the committed part is the 16 kB
+`test/testitems/references/S_hainich_response_boundary.csv` (per-scenario-year boundary + forcing means),
+guarded by `test/testitems/slow_response_boundary_tests.jl`.
+
+**Six traps, each of which changed an answer by more than the signal:**
+
+1. **`k_cap` is a CONFOUND on any transient run.** The k-cap merge is dormant over 150 *constant-forcing*
+   years (ADR 0048) and **WAKES under real forcing** — 8-9 merges/arm in 81 yr at the default `max(2K, 40)` —
+   and it **destroys 54 % of the response contribution** (+0.638× vs **+1.398×** FIT). *"The merge is dormant"
+   is a property of a forcing configuration, never of the cap.* Raise `K_CAP` until the printed per-corner
+   count is 0 and treat the default-cap run as a sensitivity check. **Generalize this: re-verify every confound
+   per CONFIGURATION, not per protocol.**
+2. **Score a WINDOW MEAN, not the terminal year.** With real interannual forcing the year-to-year interaction
+   swings by more than the signal (measured −1 070 → +5 388), and FIT's own number is a run mean. A
+   terminal-year read of ADR 0100 would have reported 2.21× where the honest number is **1.40×**.
+3. **Check the trained-band excursion PER SCENARIO** (probe section (e), from `s.feature_history` against the
+   `.drf` meta's `feat_min`/`feat_max`). "Is the runtime out of band" is the wrong question — `water_stress`
+   has been out of band since S1d and it is line M's. The discriminating question is whether the **warmed** arm
+   goes *further* out, because only that makes the response an extrapolation. It is how ADR 0100 localised its
+   finding to **`soilmoist` (0.658 band widths below a historic-only copula's range, 16× the historic arm)**
+   and *excluded* `water_stress` (ratio 0.49×).
+4. **An out-of-band forest SATURATES, it does not extrapolate.** A prediction is a convex combination of
+   training leaf means, so an out-of-band input clamps to the boundary leaf — which is a sufficient mechanism
+   for a *wrong-signed* response, not merely a damped one.
+5. **A ZERO-WIDTH trained band must be special-cased in any excursion ranking.** The committed Hainich demo
+   artifacts have `feat_min == feat_max` on `eco_diag_gdd_5`/`tas_cold_month`, so those columns report an
+   infinite excursion *and* are provably inert (a constant column carries no split — measured: transient vs
+   static `boundary_series` gives `max |Δwd| = 0.0` **exactly**). Rank naively and the one channel that cannot
+   act tops the table. It also means **a per-cell demo artifact cannot express a boundary-mediated response**;
+   the global `pooled_w20` artifacts train on a live boundary and can.
+6. **Quote the forcing pair's confounds with every number.** Using FIT's own two forcings is what makes the
+   result comparable to FIT's — and it inherits FIT's confounds: the scenarios are **different data sources**
+   (reanalysis vs one GCM) and their **mean CO2 differs by ~66 ppm**. The builder prints both every run.
+
+**And the regression that makes such a change safe:** after adding knobs to a shared arm harness, re-run the
+previous ADR's measurement through it and check it reproduces *every* headline number (job 1700483 reproduced
+ADR 0049's 132/150 thinning yr, θ median 8.453e-12, 0 merges, +7 899.35 = 3.2469×). Guardrail 4 by measurement.
