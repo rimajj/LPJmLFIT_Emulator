@@ -492,3 +492,80 @@ end
     @test results["semiarid_sahel"].gdd5 > results["boreal_siberia"].gdd5
     @test results["tropical_amazon"].tcm > results["boreal_siberia"].tcm
 end
+
+# ── M3 S-SIDE (ADR 0054) — the committed C-truth demography/trait oracle for the same five cells. ─────
+# The per-cell SKILL measurement itself cannot run here: it needs the pinned `_t8` `.drf`/`.rcop` pair
+# (~180 MB on /p/tmp, DVC not git) and CI has no cluster. `scripts/biome_slow_oracle_probe.jl` is that
+# measurement. What CI CAN and must guard is the REFERENCE the probe scores against — the fixture's basis,
+# which is where the F side's two verdict-flipping errors lived (all-PFT vs tree-only; modal patch vs the
+# 25-patch ensemble). Every assertion below is a basis check, not a science threshold.
+@testitem "M3 S-side oracle reference — the C-truth demography/trait fixture is on the stated basis" tags = [:validation, :multicell, :scientific] begin
+    using Test
+
+    refdir = joinpath(@__DIR__, "references")
+    function readcsv(path)
+        lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
+        hdr = split(strip(lines[1]), ',')
+        rows = [split(strip(l), ',') for l in lines[2:end]]
+        return Dict(String(hdr[j]) => [r[j] for r in rows] for j in eachindex(hdr))
+    end
+    cnt = readcsv(joinpath(refdir, "M_slow_oracle_counts.csv"))
+    trt = readcsv(joinpath(refdir, "M_slow_oracle_traits.csv"))
+    cells = readcsv(joinpath(refdir, "M_cells.csv"))
+
+    # ── COVERAGE: 5 cells x 10 years x 2 seeds, no gaps. A silently short fixture would make every
+    #    per-year score a mean over whatever years happened to survive. ──
+    @test length(cnt["name"]) == 5 * 10 * 2
+    @test Set(cnt["name"]) == Set(cells["name"])
+    for nm in cells["name"], sd in ("1", "2")
+        yrs = [
+            parse(Int, cnt["year"][i]) for i in eachindex(cnt["name"])
+                if cnt["name"][i] == nm && cnt["seed"][i] == sd
+        ]
+        @test sort(yrs) == collect(2010:2019)
+    end
+
+    # ── BASIS CHECK 2 (the one that flipped an F-side verdict): the reference is PER-PATCH. Assert the
+    #    identity that makes it so — a per-cell TOTAL is `npatch` times the per-patch mean, and `npatch`
+    #    is the C's 25. If a future regeneration silently emitted per-cell numbers under the per-patch
+    #    column names, `n_mean` would jump ~25x and this equality is what catches it. ──
+    for i in eachindex(cnt["name"])
+        np = parse(Int, cnt["npatch"][i])
+        @test np == 25
+        @test parse(Float64, cnt["n_mean"][i]) * np ≈ parse(Float64, cnt["n_cell_total"][i]) rtol = 1.0e-9
+        @test parse(Int, cnt["n_min"][i]) ≤ parse(Float64, cnt["n_mean"][i]) ≤ parse(Int, cnt["n_max"][i])
+    end
+
+    # ── BASIS CHECK 1 (tree-only): cross-validate the population against an INDEPENDENT extractor. The
+    #    2010 per-cell total here must equal `M_cells.csv`'s `n_trees`, which `extract_cell_individuals.py`
+    #    derived from the same `ind` table through a different code path. Two extractors, one population —
+    #    this is the evidence that `Type <= 6` + `isdead == 0` + the writer's >5 m filter agree end to end.
+    #    A regression to the pre-ADR-0031 `[1,2,3,4,5]` list would drop ~32 % of stems and break it. ──
+    for k in eachindex(cells["name"])
+        nm = cells["name"][k]
+        i = findfirst(
+            j -> cnt["name"][j] == nm && cnt["year"][j] == "2010" && cnt["seed"][j] == "1",
+            eachindex(cnt["name"])
+        )
+        @test i !== nothing
+        @test parse(Int, cnt["n_cell_total"][i]) == parse(Int, cells["n_trees"][k])
+    end
+
+    # ── TRAITS: 6 axes (4 production copula axes + 2 diagnostic), quantiles monotone, and the grass-row
+    #    tell. Grass is emitted with every tree field ZEROED, so a `Type` filter regression shows up as a
+    #    zero spike: a strictly positive q05 on Wooddens is the cheap, decisive guard. ──
+    @test Set(trt["axis"]) == Set(["SLA", "Wooddens", "D95max", "minwscal", "Height", "agb"])
+    @test length(trt["axis"]) == 5 * 10 * 2 * 6
+    for i in eachindex(trt["axis"])
+        q = [parse(Float64, trt[c][i]) for c in ("q05", "q25", "q50", "q75", "q95")]
+        @test issorted(q)
+        @test q[1] > 0.0                      # no zeroed grass row leaked into any axis
+        @test parse(Int, trt["n_stems"][i]) > 0
+    end
+    # Height: the `ind` writer emits ONLY stems > height_min = 5 m (fwriteoutput_ind.c:84). That filter is
+    # the count target's population, so its violation would silently redefine every number scored here.
+    for i in eachindex(trt["axis"])
+        trt["axis"][i] == "Height" || continue
+        @test parse(Float64, trt["q05"][i]) ≥ 5.0
+    end
+end
