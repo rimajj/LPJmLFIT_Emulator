@@ -14,6 +14,14 @@ dies at LOAD time with `MethodError: no method matching setindex!(::Base.ScopedV
 ::Bool)` — a Julia-prerelease API removal breaking a dependency, before any testitem runs — which is the
 documented allowed-to-fail churn (CLAUDE.md §5), and `test (1)` passing on 1.12 is the evidence it is not ours.
 
+⚠ **One loose end (30 seconds to close):** `main`'s OWN post-merge run on `d4b849b6` had `format` ✅ but its
+Julia gates were **still in flight** when the session ended. The risk is low and bounded — `main` was still at
+`a18d1599` when the merge landed and the branch was rebased onto it, so **`main`'s tree is byte-identical to
+the branch tree CI had just passed** (verified: `git diff d4b849b6 origin/line/S` is empty outside this file).
+The only way it can differ is a dep bump resolving between the two runs (CI resolves fresh — CLAUDE.md §5), so
+if `test (lts)`/`test (1)` came back red on `main`, diff the `Enzyme vX.Y.Z` line against the branch job log
+rather than looking for a code cause. Check it and move on.
+
 **Phase 3A is COMPLETE as a mechanism (Stages 1/1b/2/3 all landed). Read ADR 0100 first, then 0049 §5,
 then 0046 §3.** Stage 3 made the response measurement and it **reframed the line**: the operator is right, and the
 binding constraint has moved to the **recruit channel**. The ADR-range blocker is gone.
