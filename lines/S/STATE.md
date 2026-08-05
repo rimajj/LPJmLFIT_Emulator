@@ -16,9 +16,10 @@ CI was still running. Do this first:
    `test/**` change, so its expected gate set is **`test (lts)`, `test (1)`, `format`** (`format` was already
    **green**; `python` and `docs` correctly never run — ADR 0090's path filter). `test (pre)` /
    `test (macOS, lts)` are not required.
-2. ⚠ **This STATE.md-only commit on top of it triggers NO gates at all** (ADR 0090), so the branch **tip**
-   will report no check-runs. That is correct and expected, not a missing verdict — read the verdict off
-   `1b44cebb` and merge the tip.
+2. ⚠ **Every commit stacked on top of it — this handoff note and a `chore(skill:)` capture — triggers NO gate
+   at all** (ADR 0090: `lines/**`, `.claude/skills/**` are watched by nothing), so the branch **tip** reports
+   no check-runs. That is correct and expected, **not** a missing verdict: read the verdict off `1b44cebb`
+   and merge the tip. The trap and its resolutions are now in the `repo-commit` skill.
 3. Then the normal ritual (`repo-commit` skill): `flock` the integration worktree, merge **`origin/line/S`**,
    push `main`, and check `main`'s own latest run (the merge touches `src/**`? **no** — so `main` runs
    `CI`/`format` only from the `test/**`+`.jl` paths, and `docs` still does not run).
