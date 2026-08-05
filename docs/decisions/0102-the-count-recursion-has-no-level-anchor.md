@@ -44,9 +44,17 @@ the drift. M correctly refused to fix it inside `slow.jl` and raised it.
 
 Two things about that result are worth stating before the measurement, because they are what this ADR turns
 on. First, "unanchored" is a name for a symptom, and at least three distinct mechanisms produce it. Second,
-**teacher forcing removing only 59–72 % is itself a clue that was not read**: if the whole defect were the
-compounding of the AR state's own error, putting the truth back into the AR state every year would remove
-substantially all of it. Something the teacher-forced arm does not touch is carrying the remainder.
+**teacher forcing removing only 59–72 % is itself the clue**: if the whole defect were the compounding of
+the AR state's own error, putting the truth back into the AR state every year would remove substantially
+all of it. Something the teacher-forced arm does not touch is carrying the remainder.
+
+That second point was unread in the ADR-0054 text this line was handed, and it is the reason this probe was
+written. It did not stay unread for long: M reached the same split independently the same afternoon
+(`9ad8721b`, four hours before this measurement landed), which is why §1 below credits the decomposition to
+them and confines this ADR's contribution to what happens to the level term afterwards. **Process note
+worth keeping: diff the sibling line's `origin/main` before writing an attribution, not after** — the
+version of this ADR that existed an hour earlier claimed M had not attributed the residual, and would have
+been wrong by four hours.
 
 ## Decision
 
