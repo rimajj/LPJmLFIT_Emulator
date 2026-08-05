@@ -116,6 +116,28 @@ is `continue-on-error` and currently red for unrelated Julia-prerelease churn; d
 cross-cutting ADRs are **integrator-owned** (the `main` worktree). Never edit another line's exclusive path —
 raise an **integration point** instead (note it in both lines' STATE.md and land both sides together).
 
+### How to RAISE one so it is actually read (the mechanic, not just the rule)
+
+Writing into the other line's `STATE.md` is the sanctioned exception to file ownership, but *where* decides
+whether it lands. The `SessionStart` hook replays only the **`## NEXT — start here`** block verbatim, so a
+note parked anywhere else may go unread for sessions.
+
+1. **Put it inside the other line's `NEXT` block**, appended to its own action list (S/M use lettered items
+   — continue the letters) as a clearly attributed quote block:
+   `> **📥 INTEGRATION POINT RAISED BY LINE <X>, <date> (ADR NNNN) — <one-line claim>.**`
+   Attribute it, date it, and cite the ADR: the receiving session must be able to tell your text from its own
+   past self's without `git blame`.
+2. **Carry the evidence, not the request.** Numbers, the file:line basis, and a **ready-made test** they can
+   run without touching their own code. An integration point with a reproducible arm attached gets acted on;
+   one that says "please look into X" does not.
+3. **Say what is NOT being claimed.** If your measurement adds a *candidate* term to their open question,
+   say so explicitly — otherwise it reads as a competing conclusion and gets litigated instead of tested.
+4. **Mirror an acknowledgment into YOUR OWN contract list** (`lines/<you>/STATE.md`), both for what you
+   raised and for anything inbound you have accepted. Their file records the ask; yours records the standing
+   obligation, and yours is the one your successor reads.
+5. **A `lines/**`-only commit triggers NO gate** (ADR 0090), so it is mergeable immediately — but see the
+   path-filter warning below: do not poll for `test (lts)` on that sha, it will never report.
+
 ## ⚠️ The handoff — do this BEFORE the session ends or context runs low
 
 **Refresh the `## NEXT — start here` block in `lines/<X>/STATE.md` and commit it.** The `SessionStart` hook
