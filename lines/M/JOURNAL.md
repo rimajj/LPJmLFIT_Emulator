@@ -434,7 +434,9 @@ basis by construction and integrates any one-step bias without bound. Overwritin
 after each year — a driver-level write to a public mutable field, nothing in S's `slow.jl` touched —
 **removes 59–72 % of the error in all five cells and flattens the drift** (boreal 1.12→1.74 becomes a flat
 1.12–1.17). So the per-year count model, fed F's own drifting canopy features, is within 0.2–3.9 floors, and
-what the deployed system suffers from is a ~5 %/yr one-step bias compounded by an unanchored recursion.
+what the deployed system suffers from is a one-step bias compounded by an unanchored recursion — worth
+×1.26–1.53 over the nine steps (2.6–4.9 %/yr) in the three drifting cells, with the rest of the +36–81 %
+total excess being the year-1 level offset. Both are real; only the recursion grows without bound.
 Without that arm I would have written up a broken count DRF. It is now a rule in `fdiff-validate`.
 
 I also checked whether the drift is simply inherited from ADR 0053's F-side canopy drift. The sign matches in

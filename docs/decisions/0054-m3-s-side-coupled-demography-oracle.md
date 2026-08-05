@@ -96,9 +96,15 @@ features exactly as they are.
 And the drift **flattens**: boreal 1.12–1.17 across the decade instead of 1.12→1.74, mediterranean 0.98–1.18
 instead of 0.98→1.81, Hainich 1.05–1.08 instead of 1.05→1.36.
 
-**So 59–72 % of the free-running error is the recursion compounding a small persistent one-step bias.** A
-+5 %/yr one-step excess integrates to +74 % over nine years; that is the whole of the boreal number. The
+**So 59–72 % of the free-running error is the recursion compounding a small persistent one-step bias.** The
 per-year count model, given F's own (drifting) canopy features, sits at **0.2–3.9 floors**.
+
+Decomposing the 2019 level, so the two effects are not conflated: in the three drifting cells the recursion's
+own multiplicative contribution over the nine steps is `free₂₀₁₉ / forced₂₀₁₉` = **×1.49 boreal, ×1.26
+Hainich, ×1.53 mediterranean** — i.e. a compounding **2.6–4.9 %/yr** — while the remainder of the +36–81 %
+total excess is the **year-1 level offset** the run starts with (×1.05–1.12, itself partly the modal-patch
+initialization below). The recursion is the larger of the two in boreal and mediterranean and roughly equal
+in Hainich; neither is the whole number, and quoting the total as "the recursion" would overstate it.
 
 This does not exonerate the count channel — a persistent one-step bias is a real bias, and the recursion is
 part of the deployed system, not an artifact of the measurement. What it does is **relocate** the defect: the
@@ -173,7 +179,9 @@ picture, with the boreal 0.0000 being the missing soil ice and the Sahel 0.4392 
 
 - The P3 gate has a number and a mechanism, on a stated basis, for both components.
 - **New integration point → line S:** the count recursion is unanchored, and a free rollout integrates a
-  ~5 %/yr one-step bias into +36–81 % over a decade. Measured here at 59–72 % of the total coupled error.
+  compounding 2.6–4.9 %/yr one-step bias into a ×1.26–1.53 recursion contribution over nine steps (the
+  rest of the +36–81 % total 2019 excess is the year-1 level offset). Measured at 59–72 % of the total
+  coupled count error.
   Any fix is S's file; M supplies `scripts/biome_slow_oracle_probe.jl`'s teacher-forced arm as the
   ready-made before/after test. This is the S-side counterpart of the F-side drifts in ADR 0053 and it
   matters more than either for a multi-decadal or online run, because it compounds without bound.
@@ -185,6 +193,6 @@ picture, with the boreal 0.0000 being the missing soil ice and the Sahel 0.4392 
   conditional accuracy, and the two call for completely different fixes. Here it would have indicted a count
   DRF that is actually within 0.2–3.9 floors.
 - Deliberately still open, unchanged by this ADR: moving the production driver from the modal patch to the
-  25-patch ensemble (STATE.md item 3 — the modal patch is 1.6–2.0× the ensemble mean stem count here:
+  25-patch ensemble (`lines/M/STATE.md` NEXT item 4 — the modal patch is 1.6–2.0× the ensemble mean stem count here:
   18 vs 11.04 boreal, 17 vs 10.88 Hainich, 22 vs 11.28 Sahel), which will move `biome_coupled_tests.jl`'s
   pinned per-cell LE and GPP and is its own deliberate baseline regeneration under guardrail 4.

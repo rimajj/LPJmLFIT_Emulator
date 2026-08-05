@@ -179,8 +179,10 @@ cannot encode a warming response). Do not re-pin without both halves AND S sayin
 
 ADR 0054's attribution arm: in the **training table** `n_prev` is the C's OWN previous `n_living`
 (`build_slow_runtime_table.py:572`), never a prediction, so a free-running coupled rollout is off that basis
-by construction and **integrates a ~5 %/yr one-step count bias into +36–81 % over ten years**. Teacher-forcing
-`s.n_prev` back onto the C truth each year removes **59–72 % of the total coupled count error in all five
+by construction and **compounds a one-step count bias at 2.6–4.9 %/yr into a ×1.26–1.53 recursion
+contribution over nine steps** (the rest of the +36–81 % total 2019 excess is the year-1 level offset —
+do not quote the total as "the recursion").
+Teacher-forcing `s.n_prev` back onto the C truth each year removes **59–72 % of the total coupled count error in all five
 cells** and flattens the drift (boreal 1.12→1.74 becomes a flat 1.12–1.17); the per-year model on F's own
 canopy features is then within **0.2–3.9 noise floors**.
 
@@ -188,9 +190,17 @@ Any fix touches `src/components/slow.jl` = **line S's exclusive path** (ADR 0029
 than editing. `scripts/biome_slow_oracle_probe.jl`'s `run_cell(k; teacher = true)` arm is the ready-made
 before/after test — it is a driver-level write to a public mutable field, so it needs nothing from S to run.
 This compounds without bound, so it matters **more than any remaining F-side item** for a multi-decadal or
-online run. Say so when you raise it.
+online run.
 
-### 0. M4 — the resilience battery (the next milestone proper)
+**✅ RAISED with line S on 2026-08-05** — as item **H** in `lines/S/STATE.md`'s `DO THIS NEXT` list, with the
+numbers, the ready-made arm, and one concrete hook: ADR 0100's wrong-signed warming response was measured on
+**free-running** 81-year rollouts, so re-running that 2×2 with the teacher-forced arm separates recursion
+from the recruit channel at zero training cost. Nothing further is owed from this line until S replies —
+**do not implement it here.** If S declines or defers, the honest framing for any coupled multi-decadal
+result M publishes is that the count level carries an unbounded recursion term; quote the teacher-forced
+number alongside the free one.
+
+### 2. M4 — the resilience battery (the next MILESTONE proper)
 
 4 stubs still `@test_skip`: (a) lag-1 autocorrelation vs climate (the documented ~0.2-wet → ~0.75-dry
 gradient), (b) recovery/restoring rate from a pool perturbation, (c) the **shuffle test** (S0 vs S1 — proves
@@ -202,7 +212,7 @@ comments say "Phase 6". ⚠ Item 1 above is directly relevant: an unanchored AR 
 autocorrelation and slow recovery, so measure the resilience battery with the teacher-forced arm alongside
 the free arm or (c) will not be able to tell internal memory from recursion memory.
 
-### 2. F-side follow-ons, in value order (all reference bases now established)
+### 3. F-side follow-ons, in value order (all reference bases now established)
 
 ADR 0053's verdict, so you do not re-measure it: **seasonal phase is excellent in all 5 biomes** (monthly
 r 0.870–0.999 GPP, 0.858–0.999 ET). The level verdict DECOMPOSES per cell, and three of the five 10-yr
@@ -227,16 +237,13 @@ c. **The Sahel decline IS ADR 0052's dry-cell bias seen end-to-end** (canopy sta
 d. **F under-predicts tree FPC in all 5 cells (0.31–0.72×)** *despite* starting from a patch 1.12–1.72×
    denser than the ensemble — the most robust structural finding in the set, and unattributed.
 
-### 3. Deliberately NOT done — move the production driver to the patch ensemble
+### 4. Deliberately NOT done — move the production driver to the patch ensemble
 
 `readcanopy` in `run_coupled_biomes.jl` / `wscal_leafon_probe.jl` picks the **modal** patch, which is
 1.12–1.72× denser in FPC than the 25-patch ensemble mean the C's outputs report. `biome_fdiff_oracle_probe.jl`
 already has the correct `readcanopy_patches` + `run_cell` ensemble driver to lift across. **This will move
 `biome_coupled_tests.jl` item 2's pinned per-cell LE and GPP (±2 %/±3 %)** ⇒ a deliberate baseline
 regeneration under guardrail 4, in its own change with its own commit. Do it before any global coupled run.
-
-**Then M4 (resilience battery)** — 4 stubs still `@test_skip`; reimplement from Bathiany et al. 2024
-(doi:10.1111/gcb.17613), never from LPJ_resilience (no licence).
 
 **Small, still open:** `GATE=no` in `extract_cell_soilcolumn.py` leaves no trace in the emitted artifacts;
 consider stamping the gate verdict into the header + meta. Also: `daily_step`/`daily_step_ml`
@@ -359,6 +366,16 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   by you before M3 — `_t7` is never mutated in place. The published `_t7` OOS numbers stay valid as
   *offline* measurements (table vs table). SSP370 additionally needs its own
   `cell_year_soilmoist_ye_ssp.parquet` first (the historic one exists).
+- **From S — ✅ ACKNOWLEDGED 2026-08-05, a STANDING REQUIREMENT on any future M driver (S's item D,
+  ADR 0049).** `fc.pft_ids` is a **correctness** requirement for `trait_mortality = true`: the ported hazard
+  errors on a non-tree id, but a *wrong-but-valid* id passes **silently**, and `FDiffFastCore` defaults every
+  tree to **beech** (`fast.jl:147`) — so a driver that leaves the default would run the tropical and boreal
+  PFTs on temperate wood-density mortality, which is the ADR-0031 defect class exactly. **No M driver enables
+  `trait_mortality` today** (it is opt-in, default `false`, and neither `run_coupled_biomes.jl` nor
+  `biome_slow_oracle_probe.jl` sets it), so nothing is currently wrong — but the first M driver that turns it
+  on **must pass real per-cohort `pft_ids`**. The per-cell PFT ids are already in
+  `references/M_individuals_<name>_2010.csv` (the `type` column, 0-based `pftpar` index, `Type <= 6`), so
+  there is no new extraction to do. Recorded here rather than only in S's file so it cannot be missed.
 - **From E:** the `SEBEnergyClosure(...)` constructor + `solve!` signature.
 - **From E — OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E5, ADR 0071):** real daily
   **wind + surface pressure** now exist for the 5 orderA biome cells —

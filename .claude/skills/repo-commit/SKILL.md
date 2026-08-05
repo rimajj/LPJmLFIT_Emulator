@@ -48,6 +48,10 @@ flock "$INT/.git/esm-integrate.lock" bash -eu -c '
    either (ADR 0090). `format`, `docs`, `python`, Aqua and JET are whole-package gates and `docs`
    never ran on your branch. Check **main's newest** run after merging — GitHub keeps only one *pending* run per
    branch, so a quick follow-up push can cancel an intermediate `main` verdict (observed twice on 2026-07-27/28).
+   ⚠ **"`docs` never ran on your branch" does NOT mean it runs on main** — it is path-filtered there too, and
+   `docs/decisions/**` (ADRs) is **not** in its trigger set (§FIRST's table). Build the expected `main` gate
+   set from the merged diff exactly as you did for the branch; polling main for a `docs` run an ADR-only or
+   ADR+tests merge never triggers is the same infinite wait, one step later (line M walked into it 2026-08-05).
 
 **A STALE `index.lock` in the integration worktree blocks EVERY line — clear it, but prove it is stale first
 (line S, 2026-07-30).** The merge died with `Unable to create '<INT>/.git/index.lock': File exists`, and git's
@@ -115,6 +119,28 @@ is `continue-on-error` and currently red for unrelated Julia-prerelease churn; d
 `CHANGELOG.md`, the shared `MEMORY.md`, `Project.toml`, the root `JOURNAL.md` (= the integration journal) and
 cross-cutting ADRs are **integrator-owned** (the `main` worktree). Never edit another line's exclusive path —
 raise an **integration point** instead (note it in both lines' STATE.md and land both sides together).
+
+### How to RAISE one so it is actually read (the mechanic, not just the rule)
+
+Writing into the other line's `STATE.md` is the sanctioned exception to file ownership, but *where* decides
+whether it lands. The `SessionStart` hook replays only the **`## NEXT — start here`** block verbatim, so a
+note parked anywhere else may go unread for sessions.
+
+1. **Put it inside the other line's `NEXT` block**, appended to its own action list (S/M use lettered items
+   — continue the letters) as a clearly attributed quote block:
+   `> **📥 INTEGRATION POINT RAISED BY LINE <X>, <date> (ADR NNNN) — <one-line claim>.**`
+   Attribute it, date it, and cite the ADR: the receiving session must be able to tell your text from its own
+   past self's without `git blame`.
+2. **Carry the evidence, not the request.** Numbers, the file:line basis, and a **ready-made test** they can
+   run without touching their own code. An integration point with a reproducible arm attached gets acted on;
+   one that says "please look into X" does not.
+3. **Say what is NOT being claimed.** If your measurement adds a *candidate* term to their open question,
+   say so explicitly — otherwise it reads as a competing conclusion and gets litigated instead of tested.
+4. **Mirror an acknowledgment into YOUR OWN contract list** (`lines/<you>/STATE.md`), both for what you
+   raised and for anything inbound you have accepted. Their file records the ask; yours records the standing
+   obligation, and yours is the one your successor reads.
+5. **A `lines/**`-only commit triggers NO gate** (ADR 0090), so it is mergeable immediately — but see the
+   path-filter warning below: do not poll for `test (lts)` on that sha, it will never report.
 
 ## ⚠️ The handoff — do this BEFORE the session ends or context runs low
 
