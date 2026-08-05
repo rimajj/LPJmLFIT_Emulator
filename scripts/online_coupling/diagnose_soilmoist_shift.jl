@@ -45,18 +45,24 @@ const NF = Float32
 const OUTDIR = "/p/tmp/jamirp/esm_online_coupling"
 
 # Knobs (env, so one script serves the O3a gate and the O3b spin-up):
-#   FLOW = "noflow" (Terrarium's default immobile water) | "rre" (Richardson-Richards)
-#   DAYS = simulated days
-#   TAG  = suffix for the output CSV
+#   FLOW   = "noflow" (Terrarium's default immobile water) | "rre" (Richardson-Richards)
+#   DAYS   = simulated days
+#   DZMAX  = bottom layer thickness (m), which sets the COLUMN DEPTH. Terrarium's default
+#            `Δz_max = 100` gives a **433 m** column for N = 30 — 20× LPJmL's 20 m, so an
+#            unweighted layer mean is dominated by deep, permanently saturated layers and is NOT
+#            the same operator as `slow.jl`'s `sum(state.w)/length(state.w)` over 23 layers.
+#            `DZMAX=2.5` gives ≈19.5 m, matching LPJmL's geometry (and equilibrating ~20× faster).
+#   TAG    = suffix for the output CSV
 const FLOW = get(ENV, "FLOW", "rre")
 const DAYS = parse(Int, get(ENV, "DAYS", "10"))
+const DZMAX = parse(Float64, get(ENV, "DZMAX", "100.0"))
 const TAG = get(ENV, "TAG", FLOW)
 
 println("Terrarium ", pkgversion(Terrarium), " | SpeedyWeather ", pkgversion(Speedy), " | ", VERSION)
 
 ring_grid = RingGrids.FullGaussianGrid(24)
 spectral_grid = Speedy.SpectralGrid(ring_grid)
-vert = ExponentialSpacing(; N = 30, Δz_min = 0.05)
+vert = ExponentialSpacing(; N = 30, Δz_min = 0.05, Δz_max = DZMAX)
 grid = ColumnRingGrid(CPU(), NF, vert, ring_grid)
 
 # ── O3a: the real soil ────────────────────────────────────────────────────────────────────────

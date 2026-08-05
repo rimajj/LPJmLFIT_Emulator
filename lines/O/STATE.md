@@ -9,7 +9,12 @@
 **Licensing is CLOSED (ADR 0081) — reuse Terrarium / SpeedyWeather / LPJmL-FIT / NeuralCrop.jl freely (yes,
 NeuralCrop too: CC-BY-NC permits our research use), just cite them (`reuse-citation`).**
 
-**Read `online-coupling-env` (5 traps) + `docs/p4_online_coupling_design.md` + ADR 0082 before touching code.**
+**Read `online-coupling-env` (8 traps) + `docs/p4_online_coupling_design.md` + ADR 0082/0083 before touching code.**
+Two of those traps are new and both are SILENT: **(7)** SpeedyWeather's Terrarium adapter builds its
+integrator with an empty `InputSources`, so a prescribed input `Field` must be passed as
+`TerrariumLand.fields` — the documented `InputSource` path is dropped and the variable falls back to its
+default; **(8)** `SoilHydrology(NF)` defaults to `NoFlow`, so the soil water never moves and any
+soil-moisture distribution you measure is the initializer, not a model result.
 Project `/p/tmp/jamirp/esm_online_coupling` · scripts `scripts/online_coupling/`.
 
 **State of play.** `[VERIFIED 2026-07-28]` The coupled harness RUNS (Terrarium 0.1.3 + SpeedyWeather 0.21.1,
@@ -18,30 +23,43 @@ CONTROL run. **ADR 0082** set the direction: the ONLINE config is **ESM-first, v
 not LPJmL-FIT**; Terrarium owns skin temperature + SEB + soil; we own **vegetation** (S, FIT photosynthesis,
 FIT water-limited ET). No LPJmL-FIT physics is online yet.
 
-### O3a (DO THIS FIRST) — prescribe a real soil texture. It is a PREREQUISITE, not a refinement.
+### O3a — ✅ DONE (2026-08-05, ADR 0083). Do not redo it.
 
-`[VERIFIED, job 1622830]` **Terrarium's default stratigraphy is pure sand (`clay = 0`), which collapses the
-SURFEX retention formulas to `field_capacity = wilting_point = 0`**, so
-`plant_available_water = min(1, θw/0) ≡ 1.0` wherever there is water. It does **not** error — it silently
-reports **fully unstressed everywhere**, deleting the drought response while looking plausible. It would also
-silently feed Terrarium's own `soil_moisture_limiting_factor` → photosynthesis chain.
+The online soil is a single `PrescribedSoilHorizon(:soil)` carrying the ground-truth run's own soilcode map
+× `par/soil_20m.js` texture, SURFEX porosity, behind `assert_nondegenerate_soil`.
+Pipeline: `scripts/online_coupling/build_soil_texture_field.py` → `soil_texture.jl::prescribed_texture_soil`.
+`[VERIFIED job 1706262]` clay 0.01–0.58 in the model state, `fc − wp` ∈ [0.0519, 0.0893], PAW no longer ≡ 1.
 
-1. Use `PrescribedSoilHorizon` (+ `TerrariumRastersExt`) to supply a real **clay fraction + porosity** field.
-   A global soil-texture map is needed; check what is already on disk from the LPJmL-FIT inputs first.
-2. **Add a guard that rejects any soil config with `field_capacity <= wilting_point`.** This class of silent
-   degeneracy must fail loudly.
-3. *Gate:* PAW is non-degenerate (a real spread, not ≡1) across cells.
+### O3b (DO THIS FIRST) — read job **1706462**, then finish the `soilmoist` comparison
 
-**Until O3a is done, no online run may be used to judge vegetation** — there is no water stress in it.
+**Nothing measured so far is quotable — both runs are initial-condition artifacts, and they BRACKET the
+reference.** LPJmL training reference (historic, 1 348 400 cell-years): min 0.0167, q10 0.220, q25 0.3186,
+**q50 0.4635**, q75 0.6644, q90 0.808, max 0.9886, **mean 0.5075**.
 
-### O3b — finish the `soilmoist` comparison (ADR 0082 §4 step 1)
+| run | flow | days | column | mean PAW (unweighted / top 2 m) |
+|---|---|---|---|---|
+| 1706262 | `NoFlow` (default) | 2 | 433 m | 0.949 / 0.925 — **the initializer, frozen** (trap 8) |
+| 1706324 | `RichardsEq` | 10 | 433 m | 0.104 / 0.225 — **mid-drainage transient**, not spun up |
+| **1706462** | `RichardsEq` | 30 | **≈19.5 m** (`DZMAX=2.5`) | ← **read this first** |
 
-`scripts/online_coupling/diagnose_soilmoist_shift.jl` already runs the coupled model and extracts the soil
-state cleanly; it only needs the non-degenerate soil from O3a. Then compare layer-mean `plant_available_water`
-against the LPJmL training reference **already measured**: historic, 1 348 400 cell-years —
-min 0.0167, q10 0.220, q25 0.3186, **q50 0.4635**, q75 0.6644, q90 0.808, max 0.9886, **mean 0.5075**.
+Why 1706462 is on the right basis: `ExponentialSpacing(N=30, Δz_min=0.05)` defaults to `Δz_max = 100` =
+a **433 m** column, 20× LPJmL's 20 m, so an unweighted 30-layer mean is dominated by deep permanently
+saturated layers and is **not the same operator** as `slow.jl`'s unweighted mean over 23 layers / 20 m.
+`DZMAX=2.5` ⇒ ≈19.5 m, matching LPJmL, and equilibrating ~20× faster.
+
+```bash
+cd /p/tmp/jamirp/esm_online_coupling
+tail -40 logs/O-soiltex-rre20m.1706462.out          # `afterok`-free, so a missing result = the job died
+TIME=03:00:00 PASS="FLOW=rre DAYS=<n> DZMAX=2.5 TAG=<tag>" ./sbatch_coupling.sh O-<tag> diagnose_soilmoist_shift.jl
+```
+
+If 30 days is still draining, **size the spin-up before spending more**: RRE costs ~110 s per simulated day
+on the 433 m column (8.3 TiB alloc, 47 % GC over 10 days); the 20 m column should be far cheaper, but a
+multi-year spin-up is a real budget item and is now on O3b's critical path.
+
 Map `soilmoist` ← layer-mean **`plant_available_water`**, NOT `saturation_water_ice` (porosity- vs
-WHC-normalized = a definitional mismatch, ADR 0082 §4).
+WHC-normalized = a definitional mismatch, ADR 0082 §4). PAW is computed by calling Terrarium's own
+`compute_plant_available_water` on the coupled state — do not re-derive it (guardrail 5).
 **Then raise the INTEGRATION POINT with line S**: if the distributions differ materially, S's DRF + copula
 must be retrained on Terrarium-derived `soilmoist` as a **version-bumped ONLINE artifact** (never an in-place
 mutation — ADR 0029's S→M contract). `slow.jl`/`drf.jl`/`scripts/*slow*` are line S's exclusive paths.
