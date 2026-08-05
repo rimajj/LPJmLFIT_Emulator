@@ -159,8 +159,20 @@ handoff note are both one level removed from the thing you actually need.
 ## NEXT — start here
 
 **M1, M2, M3 ALL DONE. M3's F side closed 2026-07-30 (ADR 0053); its S SIDE CLOSED 2026-08-05 (ADR 0054).
-The P3 gate has a number and a mechanism on both sides. The next milestone is M4 (item 0 below) — but read
+The P3 gate has a number and a mechanism on both sides. The next milestone is M4 (item 2 below) — but read
 item 1 first, because M3 produced one finding that outranks it.**
+
+✅ **ADR 0054 IS MERGED AND VERIFIED ON BOTH SIDES — nothing about it is outstanding.** Branch CI on the work
+sha `12bf126b` was green on every required gate (`format`, `test (1)`, `test (lts)`, + non-required
+`test (macOS, lts)`; `python` also ran green), and **`main`'s OWN post-merge run on `2755d091` is green on
+all of them too**. The follow-up docs/skill commits merged as `3be1db87` (only `format` triggers on that
+diff — one `.jl` file, nothing under `src/`/`test/` — and it is green). Local suite before pushing:
+**110,045 pass / 0 fail / 4 broken**, 106 items (job 1701261).
+**`test (pre)` is red and was diagnosed, not waved away:** it dies at LOAD time with
+`MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` — a
+Julia-prerelease API removal breaking a dependency before any testitem runs. Byte-identical to the failure
+line S diagnosed on `1b44cebb`, it is the documented allowed-to-fail churn (CLAUDE.md §5), and `test (1)`
+passing on 1.12 is the evidence it is not ours.
 
 **The `wscal_leafon` question is SETTLED as option (b), and stays settled until line S moves.**
 `lines/S/STATE.md` still reads "Not S's to chase: `water_stress` is line M's F core, leave it pinned", and S
