@@ -72,6 +72,14 @@
         @test all(≥(0.0), rd)
         @test isapprox(sum(rd), 1.0; atol = 2.0e-6)
         @test rd[end] == 0.0        # layer 22 (20-23 m) never holds roots (getrootdist.c)
+        # ── the extractor's correctness GATE must have PASSED for this file (M1 review debt #2,
+        # closed 2026-08-05 / ADR 0055). `GATE=no` used to warn on stderr and then emit a column
+        # STRUCTURALLY INDISTINGUISHABLE from gated output, so an ungated fixture could be committed
+        # later by someone who never saw the warning. The verdict now travels in the header, and this
+        # asserts it — which is what makes the debt closed rather than merely mitigated.
+        hdr = [l for l in readlines(joinpath(refdir, "M_soilcolumn_$(name).txt")) if startswith(l, "# GATE:")]
+        @test length(hdr) == 1
+        @test occursin("PASS", hdr[1])
         push!(whcs_all, whcs); push!(rd_all, rd)
     end
 
