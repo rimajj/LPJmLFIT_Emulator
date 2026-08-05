@@ -467,3 +467,13 @@ per-cell trait gate, the count R² (0.982), the pooled-KS checks and the trained
 green — because not one of them reads a level. If every metric in a panel is scale-invariant, the panel
 cannot see a scale error. **Add at least one absolute check** (predicted level vs the model's own target, in
 the consumer's units) whenever a component's output is consumed as a level rather than as a shape.
+
+**Corollary (added 2026-08-05, same ADR): a test that fails on a threshold YOU chose is data about the
+system, not just a bad threshold.** A new testitem asserted an anchored rollout forgets its initial
+condition within 25 years and failed at 0.425 against a demanded 0.3. Relaxing the number would have taken
+one minute and hidden the finding. Measuring the curve instead showed convergence is **non-monotone** — a
+fast collapse by yr 5, a transient re-divergence peaking near yr 25, settling by yr 50–100 — which is a
+caveat that changes how a downstream line must score its 10-year runs. **Before adjusting a threshold you
+wrote, plot the quantity against the axis you assumed it was monotone in.** The threshold is a hypothesis
+too.
+
