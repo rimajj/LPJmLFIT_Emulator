@@ -1082,3 +1082,64 @@ guarded by `test/testitems/slow_response_boundary_tests.jl`.
 **And the regression that makes such a change safe:** after adding knobs to a shared arm harness, re-run the
 previous ADR's measurement through it and check it reproduces *every* headline number (job 1700483 reproduced
 ADR 0049's 132/150 thinning yr, θ median 8.453e-12, 0 merges, +7 899.35 = 3.2469×). Guardrail 4 by measurement.
+
+### ⚠ ONE RUN OF THE ABOVE IS NOT A MEASUREMENT — the arm is a SEED ENSEMBLE (ADR 0101, 2026-08-05)
+
+Everything in the section above is still how you run a response arm. What changed is what you may *conclude*
+from one of them. `SEED` was hard-coded to `1` through ADR 0100; replicated, the double difference has a
+**seed sd of 0.67–1.74× the FIT shift — the same size as the effect.** ADR 0100's `+1.40×` was one draw (a
+*fair* one: 0.03 from its artifact's 8-seed mean) whose precision was ~6× overstated, and **on both global
+artifacts the operator's contribution is indistinguishable from zero** (+0.048 [−0.380, +0.476] and
++0.263 [−0.377, +0.903], both CIs excluding +1.40×). Trap 2 above (window mean) is necessary and not
+sufficient — it removes *within-run* year noise, not *between-run* seed noise.
+
+```bash
+DRF_ART=… RCOP_ART=… N_INIT=… AGE0=… BOUNDARY="gdd5 tcm soil_depth co2" K_CAP=400 SCORE_WINDOW=20 \
+  scripts/run_response_seed_ensemble.sh S-<tag> 12          # ~1 min/seed, all concurrent
+scripts/summarize_response_seed_ensemble.py 'logs/S-<tag>*.out'   # mean ± SEM, t, 95 % CI, with n
+```
+
+* **A common seed across the four corners does NOT pair them.** The rosters diverge after year 1 (ADR 0048
+  §2's feedback), so the seed streams are consumed differently and no variance cancels — measured,
+  `sd(Δ_ssp)` 2 419 ≡ `sd(interaction)` 2 452 gC/m³. **Replication is the only lever.** ~8 seeds resolve a
+  1×-FIT effect at 80 % power; the +0.26× measured needs **~115** ⇒ for a real response claim use the
+  ADR-0044 global gate, not this harness.
+* **Precondition, on top of ADR 0048's merge dormancy: hard kills = 0 AND count-override (shortfall)
+  years = 0.** When the hazard overrides the DRF's count target it stops being a redistribution of a fixed
+  count and the double difference measures a different object. The summarizer EXCLUDES such runs rather than
+  averaging them, and refuses to mix artifacts or initial conditions in one ensemble.
+* **What replication CONFIRMS:** the **LEVEL** effect — `+6 718 ± 286` / `+7 041 ± 334` / `+8 959 ± 862`
+  gC/m³, `t` = 10.4–23.5 on the three artifacts. Replication makes the older claim (ADR 0049) *stronger* and
+  the newer one vanish; that asymmetry is the useful signal about which is real.
+
+### WHICH ARTIFACT PAIR — it is part of the measurement, and the demo pair is a FIXTURE (ADR 0101)
+
+Pass `DRF_ART`/`RCOP_ART` and **name the pair with every number.** At Hainich the committed single-cell demo
+pair and the global production pairs give **opposite-signed** baseline warming responses:
+
+| pair | `R_ctl` ×FIT (ensemble) | `soilmoist` trained band | boundary channel |
+|---|---|---|---|
+| `references/drf_forest_hainich` (**DEMO fixture**) | **−1.234** [−2.058, −0.411] | [0.791, 1.000] **w 0.209** | **0.0, exactly, all seeds** |
+| `drf_forest_global_historic_t8` | **+0.417** [+0.050, +0.784] — FIT's sign | [0.000, 1.002] w 1.002 | 1 105 gC/m³ mean |
+| `drf_forest_global_pooled_w20_t8` (**M's pin**) | −0.000 ± 0.367 | [0.001, 1.002] w 1.001 | **3 165 = 1.30× FIT** |
+
+* **CELL SCOPE is the lever, not scenario coverage.** demo → global-historic with the *scenario held fixed*
+  moves `R_ctl` by **+1.651 ± 0.386 (t = +4.28)**; global-historic → pooled with the *scope held fixed* by
+  −0.417 ± 0.403 (t = −1.03). Cross-**cell** pooling widens the `soilmoist` band **4.79×**; adding the whole
+  ssp370 scenario widens it **−0.04 %**. ⇒ **Do not "retrain on the pooled table" to fix an excursion** —
+  ADR 0101 measured that as inert. And the general form: **an excursion diagnostic (trap 3) localises a
+  CHANNEL; it does not tell you which axis of the training design to change.** Test levers separately.
+* **The demo pair is a test fixture, not a science basis.** Narrow band + provably dead boundary channel.
+  Any claim about the emulator's behaviour must be made on a global artifact.
+* **A GLOBAL artifact's meta has no per-cell `boundary`/`n_init`/`age0`** — they live in its
+  `cell_meta.parquet`, so pass `N_INIT`/`AGE0`/`BOUNDARY` or the run starts on another cell's forest.
+* ⚠ **The `pooled_w20` artifact ships NO `cell_meta.parquet`** (its meta names one that does not exist), and
+  its two training sub-tables **disagree** at Hainich — `slow_count_historic_w20_t8` says 11.0/43.556,
+  `slow_count_ssp370_w20_t8` says **7.0/46.0** — a **4.5× FIT** swing in the answer. `n_init` is the fragile
+  one (7.0 fires 6–7 hard kills + a count-override year ⇒ −3.71×); `age0` 43.556 → 46.0 fires **nothing** and
+  still moves the contribution +0.756× → +0.017×, *a 2.4-year seed change with every diagnostic clean*. Hold
+  the initial condition COMMON across an ensemble and say which branch you used.
+* ⚠ **`slow_runtime_*` and `slow_count_*_w20` carry DIFFERENT boundary rows for the same cell** (Hainich gdd5
+  **1 863.7** climatological vs **1 698.0** w20-transient). `M_slow_init_meta.json` pins the pooled `.drf` but
+  reads its boundary from `slow_runtime_historic_t8` — a table that artifact was never trained on, into a
+  channel worth 1.30× FIT. Match the boundary basis to the artifact's own training tables.
