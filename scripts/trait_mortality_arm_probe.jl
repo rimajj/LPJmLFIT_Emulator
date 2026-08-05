@@ -51,6 +51,16 @@
 # the scenarios are different data sources (reanalysis vs MPI-ESM1-2-HR) and their mean CO2 differs by
 # ~66 ppm. Both are printed here and must be quoted with any response number.
 #
+# ⚠⚠ ONE RUN OF MODE=response IS NOT A MEASUREMENT (ADR 0101). The 2x2 differences four SMALL-SAMPLE
+# stochastic rollouts, and the seed spread of the double difference is 0.67-1.74x the FIT shift — THE SAME
+# SIZE AS THE EFFECT. ADR 0100's `+1.40x` was one draw (a fair one: 0.03 from its artifact's 8-seed mean) whose
+# precision was ~6x overstated, and on both GLOBAL artifacts the operator's contribution turns out to be
+# indistinguishable from zero. So: run an ENSEMBLE and quote mean +/- SEM with n —
+#     scripts/run_response_seed_ensemble.sh <TAGPREFIX> [NSEEDS]
+#     scripts/summarize_response_seed_ensemble.py 'logs/<TAGPREFIX>*.out'
+# Holding SEED common across the four corners does NOT pair them (the rosters diverge after yr 1), so
+# replication is the only variance lever. ~8 seeds resolve a 1x-FIT effect; ~115 the 0.26x measured.
+#
 # Usage (SLURM — the guard blocks login-node probes, CLAUDE.md §2):
 #   scripts/sbatch_julia.sh S-tmort --project=. scripts/trait_mortality_arm_probe.jl
 #   MODE=response scripts/sbatch_julia.sh S-tmresp --project=. scripts/trait_mortality_arm_probe.jl
@@ -58,7 +68,12 @@
 #      YEARS (default 150 in stage2; in response mode it is CLAMPED to the fixture's year count),
 #      REPORT_AT (default "1,5,10,20,50,100,150"), COPULA (default 1 — the production configuration; set 0
 #      for the fixed-sapling arm), FORCING_DIR (response mode; default
-#      /p/tmp/jamirp/emulator_global/S_response_forcing — build it with build_hainich_response_forcing.py).
+#      /p/tmp/jamirp/emulator_global/S_response_forcing — build it with build_hainich_response_forcing.py),
+#      SEED (1 = ADR 0100's value, reproduces its primary to the digit), K_CAP, SCORE_WINDOW,
+#      DRF_ART/RCOP_ART + N_INIT/AGE0/BOUNDARY (swap in another artifact pair — see the block below).
+# THE ARTIFACT PAIR IS PART OF THE MEASUREMENT (ADR 0101 §3): the committed single-cell DEMO pair and the
+# global production pairs give OPPOSITE-SIGNED baseline warming responses at this cell (-1.23x vs +0.42x),
+# because cross-CELL pooling widens the `soilmoist` trained band 4.79x. Always name the pair with a number.
 # stage2 reads only committed fixtures and writes nothing; response mode additionally reads the (uncommitted,
 # 1.7 MB/scenario) daily forcing from FORCING_DIR — its per-year means are committed in
 # `S_hainich_response_boundary.csv` so a later session can verify a rebuild without shipping the daily file.
@@ -88,6 +103,13 @@ const K_CAP = haskey(ENV, "K_CAP") ? parse(Int, ENV["K_CAP"]) : nothing
 # interannual forcing a single-year read swings by more than the signal (measured: the interaction moves
 # -1070 -> +3132 -> +239 -> +2492 across report years), and FIT's own +2432.9 is a run MEAN, not a snapshot.
 const SCORE_WINDOW = parse(Int, get(ENV, "SCORE_WINDOW", "20"))
+# `SEED` — the emulator's recruit-draw seed, HELD COMMON across all four corners of the 2×2 so it can never
+# be part of the arm↔control or historic↔ssp370 contrast. It was hard-coded to 1 through ADR 0100. It is an
+# ENV knob because the 2×2 is a difference of small-sample stochastic rollouts (≈17 initial cohorts, a few
+# tens of recruits over 81 yr), so the SAMPLING SPREAD of the double difference over seeds is the only thing
+# that says whether a single-seed number is a measurement of the operator or one draw from a wide
+# distribution. Run an ensemble before quoting any response number (ADR 0101).
+const SEED = parse(Int, get(ENV, "SEED", "1"))
 MODE in ("stage2", "response") || error("MODE must be stage2 or response (got $MODE)")
 _mean(x) = sum(x) / length(x)
 
@@ -202,12 +224,33 @@ function read_meta(path)
 end
 nums(s) = parse.(Float64, split(strip(s)))
 
-drf_meta = read_meta(joinpath(REFDIR, "drf_forest_hainich_meta.txt"))
-forest = DRF.load_forest(joinpath(REFDIR, "drf_forest_hainich.drf"))
-cop, af, xcop, ax_names, _cond_cols = DRF.load_copula(joinpath(REFDIR, "recruit_copula_hainich.rcop"))
-const BOUNDARY = nums(drf_meta["boundary"])
-const N_INIT = parse(Float64, drf_meta["n_init"])
-const AGE0 = parse(Float64, drf_meta["age0"])
+# ── the artifact pair, overridable (ADR 0101) ────────────────────────────────────────────────────────────
+# Default = the committed Hainich DEMO pair. `DRF_ART`/`RCOP_ART` swap in another pair — e.g. the GLOBAL
+# `*_pooled_w20_t8` artifacts, which are trained on historic AND ssp370 and so have `soilmoist` in band where
+# the demo's historic-only copula does not (ADR 0100 §5). A global meta has no per-cell `boundary`/`n_init`/
+# `age0` (they live in its `cell_meta.parquet` sidecar), so those come from `BOUNDARY`/`N_INIT`/`AGE0` when the
+# meta lacks them — pass the values for THIS cell or the run is initialised on someone else's forest.
+const DRF_ART = get(ENV, "DRF_ART", joinpath(REFDIR, "drf_forest_hainich.drf"))
+const RCOP_ART = get(ENV, "RCOP_ART", joinpath(REFDIR, "recruit_copula_hainich.rcop"))
+drf_meta = read_meta(replace(DRF_ART, r"\.drf$" => "_meta.txt"))
+forest = DRF.load_forest(DRF_ART)
+cop, af, xcop, ax_names, cond_cols_art = DRF.load_copula(RCOP_ART)
+"Per-cell scalar from ENV if given, else from the artifact meta (which only a per-cell artifact carries)."
+function cellinit(key, envkey)
+    haskey(ENV, envkey) && return parse(Float64, ENV[envkey])
+    haskey(drf_meta, key) || error(
+        "$(basename(DRF_ART))'s meta has no `$key` (a GLOBAL artifact keeps it in cell_meta.parquet) — " *
+            "pass $envkey for THIS cell, or the run starts on the wrong forest"
+    )
+    return parse(Float64, drf_meta[key])
+end
+const BOUNDARY = haskey(ENV, "BOUNDARY") ? nums(ENV["BOUNDARY"]) :
+    (
+        haskey(drf_meta, "boundary") ? nums(drf_meta["boundary"]) :
+        error("$(basename(DRF_ART)) has no `boundary` in its meta — pass BOUNDARY=\"gdd5 tcm soil_depth co2\"")
+    )
+const N_INIT = cellinit("n_init", "N_INIT")
+const AGE0 = cellinit("age0", "AGE0")
 
 # ── the response arm's per-scenario TRANSIENT boundary (ADR 0026) ────────────────────────────────────────
 # Only the two TIME-VARYING axes move (`gdd5`, `tas_cold_month`); `soil_depth` and the boundary tail's `co2`
@@ -293,7 +336,7 @@ function rollout(;
     rc = COPULA ?
         RecruitCopula{Float64}(cop, af, xcop, make_recruit_to_pools(ax_names), live_flux_cond) : nothing
     s = FluxDrivenSlowEmulator(
-        core, forest; boundary = BOUNDARY, n_init = N_INIT, age0 = AGE0, seed = 1,
+        core, forest; boundary = BOUNDARY, n_init = N_INIT, age0 = AGE0, seed = SEED,
         recruit_copula = rc, trait_mortality = trait_mortality, boundary_series = boundary_series,
         k_cap = K_CAP
     )
@@ -336,6 +379,13 @@ println(
 )
 println("="^108)
 println("copula: ", COPULA ? "ON (production)" : "OFF (fixed sapling)")
+println(
+    "artifacts: drf=", basename(DRF_ART), " (scenario ", get(drf_meta, "scenario", "?"), ", ",
+    get(drf_meta, "ntrees", "?"), " trees)  rcop=", basename(RCOP_ART),
+    "\n           n_init=", N_INIT, "  age0=", round(AGE0, digits = 4), "  seed=", SEED,
+    "  boundary=", BOUNDARY,
+    "\n           copula cond_cols=", join(cond_cols_art, " ")
+)
 println("initial roster K = ", length(ROWS), "  pft ids = ", sort(unique(PFT_IDS)))
 println("initial community wooddens = ", round(community_mean([mkp(r) for r in ROWS], p -> p.wooddens), digits = 2))
 println("reference scale (ADR 0046 §1): FIT per-cell wooddens shift = +2432.9 (median) / +3808.0 (mean)")
@@ -555,6 +605,12 @@ if RESPONSE
         boundary_series = nothing, t_soil0 = T_SOIL0
     )
     bnd_live = maximum(abs, ctl_s.wd .- ctl_s_static.wd)
+    # ⚠ "not inert" is NOT the same as "extrapolating", and conflating them mis-reports a GOOD artifact as a
+    #   broken one (it did, for the pooled artifact, before this branch existed). A live boundary channel is
+    #   only a problem if the runtime boundary is also OUT of the trained band — so classify on both facts.
+    fmin_b = nums(drf_meta["feat_min"]); fmax_b = nums(drf_meta["feat_max"])
+    bnd_cols = (length(fmin_b) - length(BOUNDARY) + 1):length(fmin_b)
+    bnd_zero_width = all(j -> fmax_b[j] == fmin_b[j], bnd_cols)
     println(
         "  (a) BOUNDARY-CHANNEL LIVENESS: max |Δwd| between transient and static boundary, same forcing = ",
         bnd_live,
@@ -565,8 +621,15 @@ if RESPONSE
             "      good, because it means nothing here is a boundary extrapolation. It also means this cell's\n" *
             "      demo artifact cannot express a boundary-mediated response AT ALL (a per-cell-artifact\n" *
             "      limitation, not a mechanism limitation: the global pooled_w20 DRFs train on a live boundary)." :
-            "\n      ⚠ NOT inert — the transient boundary moves the prediction, so part of the response below is\n" *
-            "      an out-of-band extrapolation on a column that was constant in training (ADR 0034). Report it."
+            bnd_zero_width ?
+            "\n      ⚠ NOT inert, AND the boundary columns have ZERO-WIDTH trained bands — so the transient\n" *
+            "      boundary is moving the prediction on a column the artifact never saw vary. That IS the\n" *
+            "      ADR-0034 extrapolation, and the response below is partly an artefact of it. Report it." :
+            "\n      ⇒ LIVE and IN BAND — the artifact was trained on a VARYING boundary (see (e): the two\n" *
+            "      boundary rows have a real trained range and 0.0 excursion), so the transient boundary is\n" *
+            "      doing the job ADR 0026 built it for rather than extrapolating. This is the desirable state,\n" *
+            "      not a warning: this artifact CAN express a boundary-mediated response where the per-cell\n" *
+            "      demo artifact (which reads exactly 0.0 here) structurally cannot."
     )
 
     # (b) the four corners and the double difference. THE HEADLINE IS A WINDOW MEAN, NOT THE TERMINAL YEAR:
@@ -640,12 +703,13 @@ if RESPONSE
     for (lbl, a) in (("historic", arm), ("ssp370", arm_s))
         dd = trait_mortality_diag(a.s)
         θ = [d.theta for d in dd if d.thinned && isfinite(d.theta)]
-        th = a.s.target_history
-        rel = [abs(th[t] / th[t - 1] - 1) for t in 2:length(th)]
+        # distinct names from section 0's globals: `th = ...` in this soft scope would otherwise warn
+        th_a = a.s.target_history
+        rel_a = [abs(th_a[t] / th_a[t - 1] - 1) for t in 2:length(th_a)]
         println(
             "      ", rpad(lbl, 12), rpad(count(d -> d.thinned, dd), 10),
             rpad(round(100 * _mean([d.hazard_mean for d in dd]), digits = 3), 14),
-            rpad(round(100 * _mean(rel), digits = 4), 14),
+            rpad(round(100 * _mean(rel_a), digits = 4), 14),
             rpad(round(q(θ, 0.5), sigdigits = 4), 12), rpad(round(_mean(θ), sigdigits = 4), 12),
             string(count(>(0.5), θ), " / ", length(θ), " = ", round(100 * count(>(0.5), θ) / max(length(θ), 1), digits = 1), " %")
         )
@@ -666,7 +730,7 @@ if RESPONSE
     #     the trained band or outside it. The band is the DRF meta's `feat_min`/`feat_max` — the same training
     #     generation and, per the S1c basis-agreement gate, the same basis on all shared columns.
     println("\n  (e) TRAINED-BAND EXCURSION of the runtime features (ADR 0034's diagnostic, per scenario)")
-    fmin = nums(drf_meta["feat_min"]); fmax = nums(drf_meta["feat_max"])
+    fmin = fmin_b; fmax = fmax_b        # already read in (a), which classifies the boundary rows on them
     cn = split(strip(drf_meta["colnames"]))
     ncond = 4        # the copula's live conditioning subset = feats[1:4] (`live_flux_cond`, ADR 0025)
     # The excursion is reported PER SCENARIO, because the discriminating question is not "is the runtime out of
@@ -702,9 +766,17 @@ if RESPONSE
             "      EXTRAPOLATION on a copula fit on the historic scenario alone (fix = retrain on the pooled\n" *
             "      historic+ssp370 table, an artifact version bump); a ratio near 1 with both in band means\n" *
             "      R_ctl is the artifact's genuine conditional response and its sign is a CONDITIONING-SET\n" *
-            "      problem (milestone S2). NOTE the two boundary rows report `Inf` because their trained band\n" *
-            "      has ZERO width — which is the same fact as (a)'s measured inertness, from the other side: a\n" *
-            "      constant training column is infinitely out of band AND carries no split, so it cannot act."
+            "      problem (milestone S2)." *
+            (
+            bnd_zero_width ?
+                "\n      NOTE the two boundary rows report `Inf` because their trained band has ZERO\n" *
+                "      width — the same fact as (a)'s measured inertness seen from the other side: a constant\n" *
+                "      training column is infinitely out of band AND carries no split, so it cannot act. An\n" *
+                "      excursion ranking MUST special-case this or it ranks the one harmless channel top." :
+                "\n      The boundary rows carry a REAL trained range here (this artifact saw the boundary vary),\n" *
+                "      so their excursion is a genuine number and (a) reports the channel live — contrast the\n" *
+                "      per-cell demo pair, whose zero-width boundary reads `Inf` and 0.0 respectively."
+        )
     )
 
     nm = [a.nmerge[end] for a in (ctl, arm, ctl_s, arm_s)]

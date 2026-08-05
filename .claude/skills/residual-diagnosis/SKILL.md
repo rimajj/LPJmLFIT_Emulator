@@ -345,3 +345,51 @@ Harness: `scripts/kcap_merge_confound_probe.jl` (Hainich, one year per `run_coup
 community state is readable at every year boundary; carries the activation counter, the forced arm, the
 constant-forcing control and the settling year). Reuse its `rollout(...)` shape rather than writing a third
 harness.
+
+## Two more, from a number that did not survive replication (added 2026-08-05, ADR 0101)
+
+**5. IF THE QUANTITY IS A DIFFERENCE OF STOCHASTIC ROLLOUTS, REPLICATE IT BEFORE YOU WRITE IT DOWN.** §4
+above says difference every arm against a matched control. That is necessary and **not sufficient**: a
+controlled difference of *small-sample stochastic* rollouts can have a sampling spread the size of the effect,
+and every within-run precaution (window means, matched year indices, matched forcing) is blind to it. Line S
+measured a 2×2 double difference at one cell as `+1.40× FIT`, published it, and on replication over the
+emulator's own recruit seed found **sd = 0.67–1.74× FIT** — so the number was one draw, its 95 % CI straddled
+zero, and on two other artifacts the effect was **indistinguishable from zero**. The original was not a *bug*
+(it sat 0.03 from its configuration's ensemble mean) and reproduced to the digit; it was a *fair draw reported
+as a measurement*.
+
+- **Find the nuisance parameters and count them.** Anything the science claim does not depend on but the
+  number does: an RNG seed, a per-cell initial condition, which trained artifact carries a learned channel, a
+  scoring window. Vary each *separately*, holding the rest fixed. Here the seed gave ±1.0× FIT, the initial
+  condition 4.5× FIT, the artifact 3.1× FIT — all larger than the ~1× being claimed.
+- **A shared seed across arms does NOT pair them** if the arms' internal state diverges (rosters, cohort
+  lists, anything appended). Measured: `sd(Δ_treatment)` ≡ `sd(interaction)`, i.e. zero cancellation. Do not
+  assume a common-seed design buys variance reduction — check it.
+- **Report mean ± SEM with `n` and a CI, and state what the CI EXCLUDES** — that is usually the informative
+  half ("both CIs exclude the previously published +1.40×").
+- **Compute the replication cost and let it choose the instrument.** `n ≈ 7.84·(σ/δ)²` at 80 % power: ~8
+  replicates for a 1σ effect, **~115** for the 0.26σ actually seen ⇒ the single-cell harness is a *mechanism*
+  check and the global gate is the only thing that can carry the claim.
+- **Watch which claim replication strengthens.** Here the *level* effect went to `t` = 10–24 while the
+  *response* effect vanished. That asymmetry is evidence about which one was real, and it is free.
+
+**6. A CORRECT MEASUREMENT CAN CARRY A WRONG CAUSAL READING — test the candidate levers separately.** The
+same work had a clean diagnostic (a trained-band excursion: the driver ran 0.658 band widths out of band,
+16× worse in the warmed arm than the control arm) and drew the wrong conclusion from it: *"the artifact was
+trained on one scenario ⇒ retrain on both."* Measured, retraining across scenarios moved the answer by
+`t = −1.03` (nothing), while widening the band the *other* way — pooling across **cells** — moved it by
+`t = +4.28`. The band widened 4.79× from cell pooling and **−0.04 %** from scenario pooling.
+
+- **A localisation is not an attribution.** "Channel X is out of band" identifies *where*; it says nothing
+  about *which axis of the training design* put it there. An asymmetry along one axis (worse under warming)
+  does not make that axis the fix — anything that widens the band fixes it.
+- **Build the ladder that holds one factor fixed at a time** before acting on the plausible story. Two extra
+  ensembles cost ~30 min here and inverted the conclusion.
+- **Corollary for diagnostics you write:** a message that hard-codes one configuration's answer will
+  confidently *mislabel* the configuration you introduce to test it. Two such messages in this harness called
+  the correctly-trained artifact "an out-of-band extrapolation". Classify on the measured facts, not on the
+  configuration you had when you wrote the message.
+
+Harness: `scripts/run_response_seed_ensemble.sh` + `scripts/summarize_response_seed_ensemble.py` (the
+summarizer derives its statistics from the raw corners, self-checks them against the log's own printed
+ratios, and *excludes* rather than averages any replicate that violated a precondition).

@@ -7,6 +7,102 @@
 
 ## NEXT — start here
 
+**ADR 0101 is written and Phase 3A Stage 3's response claim is WITHDRAWN. Read ADR 0101 first — it corrects
+ADR 0100 §1/§2/§5 — then ADR 0049 (whose LEVEL claim it CONFIRMS), then ADR 0046 §3.** ADR 0100's protocol
+(the 2×2 on real forcing, window mean, raised `k_cap`, byte-identical `MODE=stage2`) is intact and reused.
+
+### THE STATE IN SEVEN LINES
+
+1. **ADR 0100's `+1.40× FIT` MUST NOT BE QUOTED.** `SEED` was hard-coded to 1; exposed and replicated, the
+   2×2 double difference has a **seed sd of 0.67–1.74× FIT — the size of the effect.** On both GLOBAL
+   artifacts the operator's contribution to the warming response is **indistinguishable from zero**:
+   `+0.048 [−0.380, +0.476]` (global historic-only, n=12) and `+0.263 [−0.377, +0.903]`
+   (`pooled_w20_t8` = **the pair line M pins**, n=12). Both CIs **exclude +1.40×**.
+2. **ADR 0049's LEVEL claim is CONFIRMED and STRENGTHENED** — `+6 718 ± 286` / `+7 041 ± 334` /
+   `+8 959 ± 862` gC/m³, `t` = 10.4–23.5. Replication made exactly one of the two claims stronger, and it is
+   the older one. **This is the quotable Phase-3A result**, with ADR 0049 §4's age structure.
+3. **ADR 0100's headline FINDING was a single-cell FIXTURE artefact, and the sign REVERSES on a global
+   artifact.** `R_ctl` = `−1.234 [−2.058, −0.411]` on the committed demo pair (significant — so ADR 0100 §2
+   was real *for its artifact*) but **`+0.417 [+0.050, +0.784]`, FIT's own sign, on the global historic-only
+   pair**, and `−0.000 ± 0.367` on the pooled one. The deployment defect is milder and different: **no**
+   warming response where FIT has +1×.
+4. **The attribution was wrong — CELL SCOPE, not scenario coverage.** demo → global-historic (scenario fixed)
+   `ΔR_ctl = +1.651 ± 0.386`, `t = +4.28`; global-historic → pooled (scope fixed) `−0.417 ± 0.403`, `t = −1.03`.
+   Cross-**cell** pooling widens the `soilmoist` trained band **4.79×**; adding the whole ssp370 scenario
+   widens it **−0.04 %**. **An excursion diagnostic localises a channel; it does NOT identify which axis of
+   the training design to change** — test candidate levers separately, holding the others fixed.
+5. **NEW PRECONDITION, alongside ADR 0048's merge dormancy: hard kills = 0 AND count-override (shortfall)
+   years = 0.** `n_init` 11.0 → 7.0 fires 6 hard kills + one override year and swings the contribution to
+   **−3.71×**. And `age0` 43.556 → 46.0 fires **nothing** yet still moves it +0.756× → +0.017× — a 2.4-year
+   seed change, all diagnostics clean, 44× answer change. `summarize_response_seed_ensemble.py` EXCLUDES
+   violating runs rather than averaging them.
+6. **S→M INTEGRATION POINT #2 (raised here, NOT landed, not yet raised WITH M):** the `pooled_w20` artifact
+   **ships no `cell_meta.parquet`** (its meta names one that does not exist), and its two training sub-tables
+   disagree on Hainich's seed (`n_init`/`age0` 11.0/43.556 vs 7.0/46.0) — a **4.5× FIT** swing.
+   `M_slow_init_meta.json` silently reads the well-behaved branch (**nothing is broken in M's pin today**) and
+   takes its **boundary row** from `slow_runtime_historic_t8`, a table the pinned artifact was never trained
+   on (gdd5 1 863.7 vs the training basis's 1 698.0 = 23 % of the warming signal) — while that artifact's
+   boundary channel is worth **3 165 gC/m³ = 1.30× FIT** on ensemble average.
+7. **ADR 0100 §4's boundary inertness is EXACT and is a fixture property** — 0.0 in all 8 demo seeds; the
+   globals run 1 105 / 3 165 gC/m³ mean.
+
+### DO THIS NEXT, IN THIS ORDER
+
+**A. FINISH THE MERGE OF ADR 0101 IF IT IS NOT ON `main`.** Check first: `git log --oneline origin/main -3`
+and `git status`. Expected gates for this work: **`format`** (a `.jl` changed) **and `CI`** (`test/**` changed
+— the new fixture + testitem). `python` and `docs` correctly do NOT run (`scripts/*.py` is unlinted;
+`docs/decisions/**` is outside the Documenter tree — ADR 0090). The pre-push CI-faithful run is job
+**1701341** (`S-suite-adr0101b`); job 1701334 was its predecessor and is SUPERSEDED — it failed on exactly
+one thing, `using Statistics` in the new testitem, which is **not** a test dep (runtime `[deps]` is empty by
+ADR 0014 and `test/Project.toml` is integrator-owned by §9 Gap 3), now replaced by three lines of inline
+`_mean`/`_std`. If 1701341's log is missing or red, re-run `scripts/run_tests_slurm.sh S-suite-adr0101c`
+before pushing. Runic clean on all 118 tracked `.jl` + the new testitem.
+
+**B. MILESTONE S2 — THE CONDITIONING SET — is now the only lever the finding points at.** Every trained-band
+excursion is **0.0** on both global artifacts and the training scenario is excluded, so the deployment
+artifact's recruit channel producing *no* warming response is a conditioning-set question, not a coverage or
+extrapolation one. Read ADR 0030's S2 targets. ⚠ Do **not** re-open "retrain on the pooled table" — ADR 0101
+§4 measured that as inert (`t = −1.03`).
+
+**C. ANY response claim goes to the ADR-0044 GLOBAL GATE, not this harness — and the cost is now known.**
+~8 seeds resolve a 1×-FIT effect at one cell; **~115** resolve the +0.26× actually measured. FIT's own
++2432.9 is a 25-patch ensemble mean over 67 420 cells. The single-cell 81-yr harness is a **mechanism** check
+and nothing more. Entry points if you do run one: `scripts/run_response_seed_ensemble.sh <TAGPREFIX> [N]`
+then `scripts/summarize_response_seed_ensemble.py 'logs/<TAGPREFIX>*.out'`. Always name the artifact pair,
+the `n_init`/`age0` and the boundary row with the number (ADR 0101 §3).
+
+**D. Report numbers to fix in `docs/component_s_public_report.tex`** — now three items, one new:
+(i) "37 % damping / `Rb` = −892" is arm **B `p14env-hash`, the REFUSED env arm** (the deployed ncond-8 arm is
+**−971.5 = 39.9 %**); (ii) the `Rr` ceiling 0.9201 is superseded by the patch-year basis (**0.9543**);
+(iii) **anything inherited from ADR 0100's response headline** must be replaced by ADR 0101's ensemble
+statement (level effect quotable, response withdrawn).
+
+**E. `fc.pft_ids` is STILL M integration point #1, still unraised with M.** The operator errors on a non-tree
+id but a wrong-but-*valid* id passes silently, and `FDiffFastCore` defaults every tree to beech
+(`fast.jl:147`), which would run the tropical and boreal PFTs on temperate wood-density mortality (the
+ADR-0031 defect class). **Any M driver that enables `trait_mortality` must pass `pft_ids`.**
+
+**F. Still open, unchanged, off the critical path:** `CAP_HASH_SEED` (~10 lines at
+`build_slow_runtime_table.py:378-384`, default `= seed` so every artifact stays byte-identical); D1
+(space-for-time surrogate — note ADR 0101 §4 makes this sharper: the global artifacts learn the boundary
+response *cross-sectionally*); D3 (calibration curve). ADR 0049's "co-occurring gross turnover" stays
+DEMOTED — ADR 0100 demoted it and ADR 0101 removes the reason to promote it, since the mechanism it would
+enlarge has no measurable response contribution to enlarge.
+
+**G. METHOD RULES EARNED HERE — apply them, they each cost a wrong turn.** (1) **One run is not a
+measurement** when the estimator is a difference of small-sample stochastic rollouts; replicate before
+writing a number down, and note that a common seed across corners does **not** pair them (the rosters diverge
+after yr 1, so `sd(Δ_ssp)` ≡ `sd(interaction)`). (2) **A diagnostic message that hard-codes one
+configuration's answer will confidently mislabel the configuration you introduce to test it** — two such
+messages in the probe called the correctly-trained global artifact "an out-of-band extrapolation". (3) **A
+correct measurement can carry a wrong causal reading**: ADR 0100 §5's excursion numbers were right and its
+attribution was not. (4) **Re-verify confounds per CONFIGURATION, not per protocol** (ADR 0100's own lesson,
+which is how the hard-kill precondition was found). (5) Before believing a null, check the operator FIRED
+(`TraitMortDiag` prints first).
+
+## Superseded NEXT — Stage 3 as ADR 0100 left it (ADR 0101 withdrew its response claim); audit trail
+
+
 **ADR 0100 IS MERGED to `main` (`d4b849b6`).** Branch CI on the work sha `1b44cebb` was green on every
 required gate — `format` ✅, `test (1)` ✅, `test (lts)` ✅ (+ `test (macOS, lts)` ✅). `python` and `docs`
 correctly never ran (ADR 0090's path filter). **`test (pre)` failed and was diagnosed, not waved away:** it

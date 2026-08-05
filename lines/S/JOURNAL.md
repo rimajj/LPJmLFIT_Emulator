@@ -946,3 +946,67 @@ response (FIT's +2432.9 is between-scenario), and none of it may be quoted again
 - **The fixture fix became a free second test of the inertness claim:** re-running the primary on the corrected
   boundary (job 1700644) returned **every headline number identical to the digit** (`R_ctl` −5 945.79, `R_arm`
   −2 545.21, interaction +3 400.58) — 19 changed boundary rows moved nothing, exactly as ADR 0100 §4 predicts.
+
+## 2026-08-05 (later) — the response arm was one draw: replication withdraws Stage 3, and the baseline defect was CELL SCOPE  [ADR 0101 / Phase 3A Stage 3, corrected]
+
+Picked up ADR 0100's handoff ACTION A — re-run its 2×2 against the global `pooled_w20` artifacts, with the
+pre-registered prediction that `|R_ctl|` shrinks or flips. The previous session had already made the enabling
+edit (the `DRF_ART`/`RCOP_ART` knob) and left job **1701183** in the queue; its result was sitting unread.
+
+- **The prediction confirmed, and then dissolved.** Pooled seed 1: `R_ctl` −1.94 (−0.0008× FIT, from the
+  demo's −2.44×), `R_arm` +1 836 (+0.755×), interaction +1 838 (+0.756×), every runtime feature **0.0
+  excursion** including `soilmoist` down to 0.587. That looked like a clean win for "the training scenario was
+  the defect" — so I built the ladder that tests it instead of assuming it.
+- **The ladder falsified the attribution.** A **global HISTORIC-ONLY** artifact — same scenario as the demo,
+  different cell scope — already gives a *correctly signed* `R_ctl` (+0.619× at seed 1). Ensembled, the two
+  contrasts separate cleanly: cell scope **ΔR_ctl = +1.651 ± 0.386, t = +4.28**; scenario coverage
+  **−0.417 ± 0.403, t = −1.03**. The mechanism is in the metadata — cross-**cell** pooling widens the
+  `soilmoist` trained band **4.79×**, adding the whole ssp370 scenario widens it **−0.04 %**. ADR 0100 §5's
+  *measurement* was right and its *causal reading* was wrong; the fix it predicted does nothing, and the fix
+  that works (use a global artifact) was already in the production pipeline.
+- **Then the control that changed the whole conclusion.** Re-running the pooled arm on the *other* legitimate
+  per-cell seed (`n_init` 7.0 / `age0` 46.0 — the ssp370 sub-table's own values for this cell) returned
+  **−4.08× FIT**. Decomposing it: `n_init` is the fragile one (6–7 hard kills + a count-override year), but
+  `age0` 43.556 → 46.0 fires **nothing** and *still* moves the contribution from +0.756× to +0.017×. A 2.4-year
+  change in a stand-age seed, every diagnostic clean, 44× change in the answer. At that point the honest
+  reading is that the estimator, not the operator, was under measurement.
+- **So I exposed `SEED` (hard-coded to 1 through ADR 0100) and replicated.** 32 jobs, three artifacts. The
+  double difference has a **seed sd of 0.67–1.74× FIT — the size of the effect**. Consequences:
+  - **the operator's contribution to the warming response is indistinguishable from zero on BOTH global
+    artifacts** (+0.048 [−0.380, +0.476] and +0.263 [−0.377, +0.903]), and **both CIs exclude ADR 0100's
+    +1.40×**. Even on ADR 0100's own artifact the 8-seed CI [−0.100, +2.812] straddles zero. **Stage 3's
+    response claim is withdrawn.**
+  - **ADR 0049's LEVEL claim is confirmed and strengthened** (+6 718 ± 286 / +7 041 ± 334 / +8 959 ± 862
+    gC/m³, t = 10.4–23.5). Replication makes exactly one of the two claims stronger, and it is not the new one.
+  - **ADR 0100's headline finding is a single-cell FIXTURE artefact and the sign REVERSES on a global
+    artifact**: `R_ctl` −1.234 [−2.058, −0.411] (demo, significant) vs **+0.417 [+0.050, +0.784]** (global
+    historic, FIT's own sign) vs −0.000 ± 0.367 (pooled). The deployment defect is milder and different — *no*
+    warming response where FIT has +1× — and it is a conditioning-set question, i.e. S2.
+- **Fair to ADR 0100:** its +1.398 is 0.03 from its artifact's 8-seed mean, so it was a *fair draw*, not an
+  outlier or a bug — and `SEED=1` reproduces it to the digit (−5 945.79 / −2 545.21 / +3 400.58), which is how
+  I know the ensemble is a superset of that measurement rather than a different harness. The error was
+  treating one draw as a measurement, and reading an excursion diagnostic as a causal attribution.
+- **A provisioning defect fell out of the seed control.** The `pooled_w20` artifact **ships no
+  `cell_meta.parquet`** — its meta names one that does not exist — and its two training sub-tables disagree on
+  this cell's seed, a **4.5× FIT** swing. `M_slow_init_meta.json` silently resolves it to the well-behaved
+  branch (nothing is broken in M's pin today) and takes its **boundary row** from `slow_runtime_historic_t8`,
+  a table the pinned artifact was never trained on (gdd5 1 863.7 vs the training basis's 1 698.0) — while that
+  artifact's boundary channel is worth **3 165 gC/m³ = 1.30× FIT** on ensemble average. **S→M integration
+  point #2**, raised, not landed.
+- **Two hard-coded messages in the probe asserted the DEMO artifact's properties as if they were the
+  harness's** and had to go: "not inert ⇒ out-of-band extrapolation" *mis-reported the correctly-trained
+  global artifact as the broken one*, and "the boundary rows read `Inf`" is true only of a zero-width band.
+  Worth remembering as a class: a diagnostic message that hard-codes one configuration's answer will
+  confidently mislabel the configuration you introduce to test it.
+- **Also measured, so it cannot be re-litigated:** ADR 0100 §4's boundary inertness is **exact** — 0.0 in all
+  8 demo seeds — and a *fixture* property; the globals run 1 105 / 3 165 gC/m³.
+- **Captured** (§8 gate): `scripts/run_response_seed_ensemble.sh` + `scripts/summarize_response_seed_ensemble.py`
+  (the summarizer derives the three response numbers from the four 2×2 corners and **self-checks** them
+  against the log's printed ×FIT values — it caught my own unit bug of re-scaling an already-scaled ratio —
+  enforces both preconditions by *exclusion*, and refuses to mix artifacts or initial conditions in one
+  ensemble); committed fixture `S_response_seed_ensemble.csv` (32 rows) gated by
+  `test/testitems/slow_response_ensemble_tests.jl`, which asserts the 2×2 identity per row, both
+  preconditions, and the withdrawn claim itself (both global CIs straddle 0 *and* exclude 1.40×).
+- **Next:** S2 (the conditioning set) is now the only lever Phase 3A's finding points at, and the ADR-0044
+  global gate is the only instrument that can carry a response claim — with the replication cost now measured
+  (~115 seeds for the effect size seen at one cell).
