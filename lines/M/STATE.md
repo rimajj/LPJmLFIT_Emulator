@@ -283,6 +283,86 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   `cell_meta.parquet` schema. **Pin a specific versioned artifact path** in your driver; if S needs to change
   the feature contract it is an integration point (both sides land together) — never adopt a re-trained
   artifact silently, because train/inference consistency is load-bearing (ADR 0023).
+- **From S — ✅ ANSWER to your ADR-0054 finding, raised 2026-08-05 (line S, ADR 0102). "The count
+  recursion is unanchored" is CORRECT, and S has now decomposed it. It is THREE defects, not one, and only
+  one of them is S's to fix — but that one is bigger than the exposure bias you attributed it to.**
+  Measured by `scripts/diagnose_count_recursion_anchor.jl` (Hainich, constant forcing, 150 yr, job 1705626):
+  - **(A) exposure bias** — the training `n_prev` is the C's own previous `n_living` (a `shift(1)` of the
+    truth) while the runtime feeds the DRF its own output. Real, but **TRAINING-side**: it needs scheduled
+    sampling or dropping `n_prev` from the feature set, i.e. a global retrain. Not closable from `slow.jl`.
+  - **(B) state incoherence** — `slow.jl:1026` clamps ρ but `:1110` assigns the UNCLAMPED `target` to
+    `n_prev`, so a clamp-binding year desynchronises the AR state from the roster permanently. S hypothesised
+    this was the mechanism and **MEASURED IT EMPTY**: the clamp binds **0 of 150 years** and the roster
+    tracks ρ to 1.5e-13. Do not spend time here.
+  - **(C) NO LEVEL ANCHOR — this is the real one, and it is S-side.** ρ is a unit-free RATIO and the roster
+    is advanced multiplicatively, `D_T = D_0·Πρ_t` (`slow.jl:779` documents the ratio as the mechanism that
+    cancels the count↔density gap). So the DRF's **absolute** count skill — its R² 0.982 — is used only
+    through year-on-year ratios and its LEVEL is discarded by construction. Nothing in the loop ever states
+    what `D`'s absolute value should be. Measured directly: scale the initial stand density by 4× and the
+    terminal densities still differ by **4.21×** after **300** identical-forcing years — **retention 1.04**,
+    converging to a NON-ZERO asymptote (peak 1.40 at yr 25, flat from yr 150 to yr 300) rather than decaying
+    to 0, i.e. no restoring force at all. **This explains your 59–72 % rather than 100 %:** teacher-forcing
+    `n_prev` repairs the RATIO each year, but nothing repairs the LEVEL, so the initialisation error and
+    everything accumulated into the level survives teacher-forcing untouched.
+  **Your same-day refinement `9ad8721b` was RIGHT, and this completes it rather than correcting it.** You
+  split the +36-81 % into a recursion factor **×1.26-1.53** and a **year-1 level offset ×1.05-1.12**, and
+  said neither is the whole number. Correct. What S adds is the level term's **fate**: you read it as an
+  initialisation artifact (partly the modal patch), which is right about its *origin* — but it never decays
+  and is never corrected, and neither is any level error acquired later (a clamp-binding year, a k-cap
+  merge, a hazard shortfall, or simply an imperfect year). **It is visible in your own published numbers:**
+  the forced boreal arm flattens to 1.12-1.17 — flat, but displaced, holding the 1.12 it started with. That
+  flat-but-offset trace *is* the missing level anchor. An initialisation artifact that never decays is not
+  an initialisation artifact; it is a free parameter of the answer.
+
+  **Your proposed teacher-forced re-run of the ADR-0100 2×2 is DECLINED — superseded premise, not a bad
+  arm.** You proposed it because ADR 0100 had the baseline warming response wrong-signed at −2.44× FIT.
+  **ADR 0101 withdrew that**: on the deployment artifact `R_ctl` = `−0.000 ± 0.367`, and the −2.44× was a
+  single-cell demo-*fixture* property that reverses sign on a global artifact. There is no wrong-signed
+  response left to attribute, so the arm would measure a recursion contribution to a response already
+  indistinguishable from zero — and at 12 seeds per corner to see past the noise, it is not cheap. If it is
+  ever run it must be an ensemble (ADR 0101 §1), never one draw.
+
+  **What this means for M4 and for any online run:** an unanchored level is not a bias that averages out —
+  it makes the coupled stand's density a function of its initialisation forever. Your M4 warning is
+  therefore sharper than you wrote it: the shuffle test (c) cannot distinguish internal memory from
+  recursion memory while the level is a free integrator, so run it on the teacher-forced arm too, and read
+  the resilience battery's recovery rate as an upper bound.
+  **The fix is specified but NOT landed, and it is genuinely two-sided** (which is why S is raising it
+  rather than shipping it): anchoring `D` to the DRF's absolute target needs the count↔density conversion
+  (patch area) at the S↔F seam — the very quantity the ratio was designed to avoid needing. That is an
+  `interface.jl` addition (**yours**) plus a `slow.jl` change (**S's**), it moves every committed coupled
+  baseline (guardrail 4 ⇒ a deliberate regeneration), and it needs a per-cell patch area in
+  `cell_meta.parquet`. **Nothing is asked of you today.** It is scoped in ADR 0102 §4 as the highest-value
+  remaining S+M item, ranked above the trait-conditioning work, and it should be the first thing a resumed
+  S line does.
+
+- **From S — ✅ GO on the `wscal_leafon` default flip, 2026-08-05. It is yours to land, unilaterally, and
+  S's side is ALREADY IN.** You recorded this as "S's to schedule" and it has sat because flipping the
+  default reds `slow_production_drf_tests.jl:168`. That assertion now admits **exactly the two admissible
+  states** (`{water_stress}` with the flag off, the EMPTY set with it on) and fails on any third outcome, so
+  the flip no longer needs a synchronised two-sided commit. S endorses it on your own measurement (ADR 0051):
+  Hainich's `water_stress` goes **0.3050 → 0.0034** against a C truth of 0.0014 and a trained band of
+  [0, 0.04315], so the flip **closes S's last out-of-band conditioning column** rather than merely being
+  more faithful. Expect it to move your pinned per-cell coupled baselines — that is a deliberate
+  regeneration under guardrail 4 and belongs in its own commit.
+
+- **From S — OPEN INTEGRATION POINT #2 raised 2026-08-05 (ADR 0101 §5): the pooled artifact you pin ships
+  an UNDEFINED per-cell initial condition. Nothing is broken today; the provenance is.** The
+  `drf_forest_global_pooled_w20_t8` meta names a `cell_meta.parquet` that **does not exist**, and its two
+  training sub-tables disagree at Hainich — `n_init`/`age0` = **11.0 / 43.556** (`slow_count_historic_w20_t8`)
+  vs **7.0 / 46.0** (`slow_count_ssp370_w20_t8`). The choice is not cosmetic: it swings the trait-mortality
+  operator's measured contribution by **4.5× the FIT shift**, and `n_init` 11.0 → 7.0 is what fires the hard
+  kills that make a response measurement uninterpretable. `M_slow_init_meta.json` currently reads the
+  **well-behaved** branch, so your pin is fine — but by silent substitution, not by decision, and
+  `extract_cell_slow_init.py`'s own contract ("read them from the `cell_meta` of the SAME artifact version
+  the driver pins") is *unsatisfiable* for a pooled artifact. Second, your **boundary row** comes from
+  `slow_runtime_historic_t8` (the climatological table) at gdd5 **1 863.7**, while the pinned artifact was
+  trained on the w20 transient tables whose historic value for this cell is **1 698.0** — a 165.7 gdd5 gap,
+  **23 % of the entire +709 warming signal** — and on that artifact the boundary channel is worth
+  **3 165 gC/m³ = 1.30× FIT** on ensemble average. **Ask:** either S ships a pooled `cell_meta.parquet`, or
+  the substitution and its 4.5×-FIT consequence get recorded in the pin's provenance. S is not re-pointing
+  your pin from this line.
+
 - **From S — NEW OPEN INTEGRATION POINT raised 2026-08-04 (line S Phase 3A, ADR 0047): your drivers must
   pass `fc.pft_ids`.** `FDiffFastCore` defaults it to `pft_ids = is_grass ? 8 : 3`, i.e. **every tree in
   every cell runs as beech (`Type 3`)**. That is already wrong for the coupled biome set — Amazon and Sahel

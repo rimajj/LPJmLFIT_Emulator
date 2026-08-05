@@ -41,7 +41,7 @@ Component S is the slow, annual component of a hybrid land model for use inside 
 
 \textbf{Current status.} Component S reproduces LPJmL-FIT's forest \emph{structure} globally at close to the achievable accuracy limit: tree density at $R^2 = 0.982$ per patch-year and $0.999$ per grid cell, and all four functional-trait distributions with pooled Kolmogorov--Smirnov distances below $0.012$. It runs on the complete seven tree plant-functional-type set, over both a historical and an SSP3-7.0 future-climate period, on 58{,}588 grid cells. Serialised artifacts are dependency-free and load in seconds.
 
-\textbf{Principal open item.} Reproducing the \emph{level} of a quantity is not the same as reproducing its \emph{change} under warming, and Component S currently understates the warming-driven shift in wood density by about 37 percent. It is therefore a validated structural emulator and a not-yet-validated response emulator. Sections \ref{sec:standing} and \ref{sec:roadmap} state precisely what this permits today and what closing it requires.
+\textbf{Principal open item.} Reproducing the \emph{level} of a quantity is not the same as reproducing its \emph{change} under warming, and Component S currently understates the warming-driven shift in wood density by about 40 percent. A second limitation has since been measured and is the more serious of the two: inside a live coupled run the emulated stand's density has no level anchor, so an error in how many trees there are is never corrected. Component S is therefore a validated structural emulator, a not-yet-validated response emulator, and not yet stable under multi-decadal recursive use. Sections \ref{sec:standing} and \ref{sec:roadmap} state precisely what this permits today and what closing it requires.
 
 This report is written for ecologists, geoscientists and vegetation modellers. Plain-language explanations of each statistical measure are given in Section \ref{sec:measures}; complete specifications of inputs, targets and model dimensions are tabulated in Sections \ref{sec:data} and \ref{sec:method} for readers who need to reproduce or couple to the component.
 \end{abstract}
@@ -68,7 +68,7 @@ Component S is called once per simulated year. It receives that year's physical 
 \item \textbf{What traits do the new trees have?} A jointly consistent bundle of four functional traits per recruit, drawn from a conditional Gaussian copula.
 \end{enumerate}
 
-\textbf{Scope.} Component S covers \emph{trees}. Grasses in the same patch are handled by component F and are not discussed further. Traits are assigned to \emph{recruits}; mortality in the emulator is trait-blind, which is why the target for the trait model is LPJmL-FIT's \emph{survivor} trait distribution rather than its establishment distribution.
+\textbf{Scope.} Component S covers \emph{trees}. Grasses in the same patch are handled by component F and are not discussed further. Traits are assigned to \emph{recruits}; mortality in the deployed configuration is trait-blind, which is why the target for the trait model is LPJmL-FIT's \emph{survivor} trait distribution rather than its establishment distribution. A trait-dependent mortality operator has since been built and measured (Section \ref{sec:traitmort}); it is off by default and is not part of the deployed artifact, so every result in this report is on the trait-blind configuration.
 
 \section{Training data}
 \label{sec:data}
@@ -117,7 +117,7 @@ LPJmL-FIT emits one row per living tree per year with the 29 fields below. This 
 
 \textbf{The columns.} \emph{Field} is the name as written by the reference model. \emph{Meaning} and \emph{Unit} give the physical interpretation. \emph{Role} states how Component S uses it: \emph{index} = identifies which tree, patch, cell and year the row belongs to; \emph{driver} = aggregated to patch level and used as a model input (Table \ref{tab:count_inputs}); \emph{target} = a quantity the emulator predicts; \emph{diagnostic} = predicted and validated, but deliberately excluded from the production artifact so an error in it cannot enter a coupled run; \emph{filter} = used to select which rows enter training; \emph{unused} = recorded and available, but not currently consumed -- listed so the reader can see the headroom that exists without new reference runs.
 
-\textbf{What it tells us.} The four \emph{target} fields are the traits LPJmL-FIT itself samples when a tree establishes, which is why they are the natural prediction targets rather than an arbitrary choice. The block of five \emph{mortality} fields is currently unused: the emulator's mortality is trait-blind, so it does not reproduce cause-specific death, and these fields represent an identified, not-yet-exploited avenue. Two derivation caveats that matter for anyone recomputing from this table: \texttt{agb} already includes the individual-density factor, so a per-patch row sum is directly the stand total per unit area; and \texttt{Age} is incremented at year end, so the start-of-year age is $\texttt{Age}-1$, which is also the age at which that row's mortality fields were evaluated.}
+\textbf{What it tells us.} The four \emph{target} fields are the traits LPJmL-FIT itself samples when a tree establishes, which is why they are the natural prediction targets rather than an arbitrary choice. The block of five \emph{mortality} fields is unused by the deployed configuration, whose mortality is trait-blind and so does not reproduce cause-specific death. They are no longer merely an identified avenue: they are the basis of the optional operator of Section \ref{sec:traitmort}. Two derivation caveats that matter for anyone recomputing from this table: \texttt{agb} already includes the individual-density factor, so a per-patch row sum is directly the stand total per unit area; and \texttt{Age} is incremented at year end, so the start-of-year age is $\texttt{Age}-1$, which is also the age at which that row's mortality fields were evaluated.}
 \label{tab:recorded}
 \small
 \begin{tabular}{llll}
@@ -565,12 +565,32 @@ The reason they differ is one of magnitude. The spatial contrast between a cold 
 Isolating the response gives:
 
 \begin{itemize}[leftmargin=1.4em]
-\item \textbf{The warming-driven shift in wood density is understated by $\approx 37$\,\%.} LPJmL-FIT shows a mean shift of $+2433$ (internal units); Component S predicts the same direction but about 892 units less, i.e.\ $\approx +1541$. The direction is right; the magnitude is not.
-\item \textbf{The spatial pattern of the change is 24--62\,\% captured}, against a self-consistency ceiling of 0.87--0.96 -- so the pattern is genuinely present in the data and learnable, not noise.
+\item \textbf{The warming-driven shift in wood density is understated by $39.9$\,\%.} LPJmL-FIT shows a mean shift of $+2433$ (internal units); Component S predicts the same direction but $971.5$ units less, i.e.\ $+1461$. The direction is right; the magnitude is not.
+\item \textbf{The spatial pattern of the change is only partly captured.} For wood density -- the adjudicating axis -- the pattern correlation is $0.375$ against a self-consistency ceiling of $0.954$, i.e.\ $39$\,\% of what is attainable. Ceilings for the four axes lie between $0.94$ and $0.97$. The pattern is therefore genuinely present in the data and learnable, not noise. \emph{Basis note:} these ceilings are computed on the patch-year reliability split; an earlier stem-parity split gave systematically lower ceilings ($0.87$--$0.96$) and correspondingly flattering percentages, and is superseded.
+\item \textbf{The defect is placement, not shrinkage}, and this narrows the search for a fix. The amplitude of the predicted shift is nearly perfect -- a dispersion ratio of $1.034$ against a target of $1$ -- while its pattern captures only $39$\,\% of ceiling. Component S produces right-sized shifts in the wrong cells, which then cancel in the global mean. Pure shrinkage would damp the mean and the dispersion together, and does not. Any lever justified by ``fixing attenuation'' is therefore aimed at a defect that is not present.
 \item The damping is a property of the current approach rather than of any optional extra input: the deployed 8-predictor configuration damps by 39.9\,\% on its own.
 \end{itemize}
 
 One methodological consequence is worth stating for anyone proposing a fix: reducing the damping is \emph{not} by itself evidence of improvement. A zero-information control model exhibits the least damping of any variant tested while having the worst response pattern. Any candidate must therefore be demonstrated on the response \emph{pattern} as well as its magnitude, under both hold-out designs.
+
+\subsection{An optional trait-dependent mortality operator: the right level change, no measurable response change}
+\label{sec:traitmort}
+
+The damping of Section \ref{sec:damping} has an identified mechanistic cause, and the natural fix for it has now been built, wired in and measured. This subsection reports that work because its outcome is instructive and partly negative.
+
+In LPJmL-FIT, the warming-driven wood-density shift is not mainly a change in which species are present. Decomposed, it is $22$\,\% species composition, $51$\,\% a shift \emph{within} each functional type, and the remainder interaction; and the within-type part is a within-age-class effect, i.e.\ differential \emph{survival} of individuals that already differ in wood density. The deployed emulator has no channel for this at all: it thins every cohort by one common factor, which preserves the trait composition exactly. Whatever else it does, it cannot produce a within-type selection signal.
+
+LPJmL-FIT's per-individual mortality hazard was therefore ported directly from the reference model's source -- with its genuinely per-functional-type parameters generated from that source into a checked table, since they differ substantially between types -- and wired in as an \emph{optional} replacement for uniform thinning. The count model still sets how many trees die; the hazard sets \emph{which} ones, through a proportional-hazards tilt that reproduces the reference model's own hazard exactly in the limit where the two agree. The operator is off by default, and with it off every path, baseline and gradient check in this report is unchanged.
+
+Measured at a single location (Hainich) over $81$ years, against a matched control re-run in the same process, and replicated over $12$ random seeds:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{It changes the \emph{level} of community wood density substantially, robustly, and in the right direction}: $+7041 \pm 334$ internal units on the deployed artifact, a $t$-statistic of $21$. That is roughly three times the size of the reference model's warming shift, so the mechanism is not weak.
+\item \textbf{It reproduces the reference model's structural signature}: mean wood density rising with cohort age, which is the age-resolved fingerprint of differential survival and is the acceptance target this operator was built against.
+\item \textbf{Its contribution to the warming \emph{response} is not distinguishable from zero}: $+0.26$ times the reference shift, with a $95$\,\% interval of $[-0.38, +0.90]$. The operator fixes a level, not a response.
+\end{itemize}
+
+Two cautions govern how far this can be read. It is one location, and the report's other results are global. And a single-location $81$-year experiment of this kind is intrinsically noisy: the seed-to-seed spread of the response statistic is about the same size as the effect being measured, so roughly $115$ seeds would be needed to resolve an effect of the size actually observed. An earlier single-seed run of exactly this experiment reported a large positive response contribution; replication withdrew it. The level result survives replication and is the quotable one.
 
 \subsection{Reference-model repeatability declines for rooting depth under warming}
 
@@ -607,7 +627,7 @@ The future period averages each cell over 81 years against 20 historically, so m
 \centering
 \caption[Summary: what is and is not established]{\textbf{What is shown.} A four-way summary of the evidence in this report, separating claims by how well supported they are. It is laid out this way because the single most common way to misread an emulator's validation is to take a high accuracy score as covering more than it does.
 
-\textbf{The rows.} \emph{Established} -- demonstrated by the results of Section \ref{sec:results}, within the stated scope of one annual step at a grid location whose neighbours are known. \emph{Established with a stated correction} -- true, but with a quantified caveat that reduces the apparent margin: part of a scattered-hold-out score is spatial interpolation, and the blocked test gives the size of that effect. \emph{Not established} -- measured and currently unsatisfactory, namely the magnitude of the warming response. \emph{Not yet tested} -- no evidence either way, namely behaviour when the emulator is called recursively year after year inside a live coupled run, with its own output feeding the next year's input.
+\textbf{The rows.} \emph{Established} -- demonstrated by the results of Section \ref{sec:results}, within the stated scope of one annual step at a grid location whose neighbours are known. \emph{Established with a stated correction} -- true, but with a quantified caveat that reduces the apparent margin: part of a scattered-hold-out score is spatial interpolation, and the blocked test gives the size of that effect. \emph{Not established} -- measured and currently unsatisfactory: the magnitude of the warming response, and the stability of the emulator when called recursively year after year inside a live coupled run with its own output feeding the next year's input. Both rows were once ``not yet tested''; both have since been measured, and the recursive one is the more serious.
 
 \textbf{What it tells us.} The dividing line runs between \emph{structure} and \emph{response}. Component S reproduces what a forest looks like; it currently understates how much that appearance changes under warming. Applications that need present-day or endpoint forest structure are supported by this evidence; applications whose conclusion rests on the magnitude of change are not yet.}
 \label{tab:status}
@@ -618,9 +638,9 @@ The future period averages each cell over 81 years against 20 historically, so m
 \addlinespace
 \textbf{Established with a stated correction} & The skill is transferable environmental response, not spatial lookup: $\approx 73$\,\% retained under blocked hold-out versus $21$\,\% for a position-only control. The margin is smaller than raw scores imply. \\
 \addlinespace
-\textbf{Not established} & Fidelity of the \emph{response to warming}: currently damped by $\approx 37$\,\%. \\
+\textbf{Not established} & Fidelity of the \emph{response to warming}: currently damped by $39.9$\,\%, and damped by misplacement rather than by shrinkage. \\
 \addlinespace
-\textbf{Not yet tested} & Recursive stability -- behaviour when called every year inside a live coupled simulation, with each year's output feeding the next. No result here addresses it. \\
+\textbf{Not established (measured, negative)} & Recursive stability inside a live coupled run. The stand's tree density has no level anchor: it is advanced by predicted year-on-year \emph{ratios}, so the count model's absolute skill never reaches it. A fourfold difference in starting density is still a fourfold difference after 300 years of identical climate -- the discrepancy converges to a constant rather than decaying. Errors in the level therefore accumulate without a restoring force. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -630,22 +650,27 @@ Component S is a validated \emph{structural} emulator and a not-yet-validated \e
 \section{Remaining work, and how the objective is reached}
 \label{sec:roadmap}
 
-The objective is a land component that runs online inside an Earth System Model, reproducing LPJmL-FIT's forest dynamics faithfully at a small fraction of its cost. Four steps remain, in priority order.
+The objective is a land component that runs online inside an Earth System Model, reproducing LPJmL-FIT's forest dynamics faithfully at a small fraction of its cost. Five steps remain, in priority order.
 
-\paragraph{1. Close the warming-response gap (Section \ref{sec:damping}).}
-This is the scientific priority. A candidate exists and has been measured. Widening the trait model's predictors from 8 to 14 by adding the six moisture descriptors of Table \ref{tab:trait_inputs}, together with quantile-weighted forests and greater capacity, meets the project's formal trait criteria for the first time -- wood-density skill 0.901 and 58\,\% of the gap to the ceiling closed, with spread ratio rising to 0.854 and distributional fidelity improving on all four axes.
+\paragraph{1. Give the recursive stand a level anchor.}
+This is now the first priority, ahead of the warming-response gap, because it compounds without bound and because no amount of predictive skill fixes it. The count model predicts an \emph{absolute} number of trees, and predicts it well. The coupled loop uses only the year-on-year \emph{ratio} of that prediction and advances the stand multiplicatively, which is what allows a per-patch count to drive a cohort-density stand without knowing the patch area. The cost of that convenience is that the stand's absolute level is never stated: it is the initial value multiplied by a product of ratios, with no restoring force. Measured directly, a fourfold difference in initial density is still a fourfold difference after 300 years of identical forcing; the discrepancy is transiently \emph{amplified} to sevenfold around year 25 and then settles back to a constant fourfold rather than decaying away. Separately, the diagnostic shows the internal predicted count converging to a common attractor while the physical stand those same runs carry does not. This also explains a previously unattributed result from the coupled line: feeding the reference model's true count back in each year removes only about two-thirds of the coupled count error, because doing so repairs the ratio and leaves the level untouched.
+
+The fix is specified: carry the count-to-density conversion across the component interface and blend the multiplicative update toward the absolute target with a stated relaxation time, rather than replacing it outright. It is not a local change -- it modifies an interface contract between two components and moves every coupled baseline -- which is why it is scoped rather than done.
+
+\paragraph{2. Close the warming-response gap (Section \ref{sec:damping}).}
+A candidate exists and has been measured. Widening the trait model's predictors from 8 to 14 by adding the six moisture descriptors of Table \ref{tab:trait_inputs}, together with quantile-weighted forests and greater capacity, meets the project's formal trait criteria for the first time -- wood-density skill 0.901 and 58\,\% of the gap to the ceiling closed, with spread ratio rising to 0.854 and distributional fidelity improving on all four axes.
 
 It has nevertheless \emph{not} been promoted to production, for a specific and instructive reason: those six descriptors are present-day climatological means, constant within each cell, so they cannot by construction encode a warming response -- a cell's historical and future rows are identical on them. Under blocked hold-out the wider set buys $+0.032$ of location-level skill while its apparent benefit for the response \emph{reverses sign}. It improves the quantity already near ceiling and does not improve the quantity that is not.
 
-The intended resolution is therefore a \emph{scenario- and time-resolved} version of those moisture descriptors, recomputed per cell and per year from the underlying climate forcing rather than frozen at present-day means, so that the added information can carry a warming signal. This is specified but not yet built, and it is the single highest-value piece of remaining work.
+The intended resolution is therefore a \emph{scenario- and time-resolved} version of those moisture descriptors, recomputed per cell and per year from the underlying climate forcing rather than frozen at present-day means, so that the added information can carry a warming signal. This is specified but not yet built.
 
-\paragraph{2. Complete the ceiling measurement.}
+\paragraph{3. Complete the ceiling measurement.}
 A per-patch-year count noise floor, matched to what the count model actually predicts, is needed so that count accuracy can be stated relative to the attainable ceiling as trait accuracy already is. The trait ceiling under future climate additionally requires a seed-pair trait table built without the subsampling currently used for tractability, since the subsample is seed-dependent and would otherwise depress the floor and flatter the emulator.
 
-\paragraph{3. Demonstrate recursive stability in the coupled model.}
-Every number in this report is a single annual step evaluated against recorded outcomes, using the reference model's own drivers. The operational configuration instead feeds each year's emulated forest into the next year's physics. Establishing that errors do not accumulate across decades of such steps is a property of the coupled system and is the next milestone for the multi-cell coupled configuration, which consumes the artifacts described in Table \ref{tab:dims}.
+\paragraph{4. Complete the recursive-stability battery.}
+Every number in this report is a single annual step evaluated against recorded outcomes, using the reference model's own drivers. Item 1 above identifies and quantifies one specific recursive defect, but a level anchor is a necessary rather than a sufficient condition: the remaining checks -- how strongly one year's stand predicts the next, how fast the stand recovers from a perturbation, and whether the memory observed is internal to the emulator rather than inherited from autocorrelated climate -- are properties of the coupled system and belong to the multi-cell coupled configuration, which consumes the artifacts of Table \ref{tab:dims}. They must be measured both freely running and with the reference count fed back, since an unanchored level itself manufactures autocorrelation and slow recovery and would otherwise be mistaken for genuine internal memory.
 
-\paragraph{4. Extend scope.}
+\paragraph{5. Extend scope.}
 Grass demography is currently handled by component F and could be brought under the same emulation approach. Per-PFT rather than pooled trait structure, and joint trait-correlation validation beyond the marginal and per-cell distributional checks reported here, are natural refinements once items 1--3 are settled.
 
 \section{Conclusion}
@@ -654,7 +679,7 @@ Component S replaces an explicit individual-tree demography calculation with two
 
 It reproduces global forest structure at or close to the limit set by the reference model's own stochasticity, across all seven tree functional types, under both historical and SSP3-7.0 climate, and it does so through genuine environmental response rather than spatial lookup. Its deployable artifacts are compact and dependency-free.
 
-Its warming response is damped by about 37 percent, its recursive behaviour inside a live coupled run is untested, and it covers trees only. The route to closing the first of these is identified and specified; the second is the next coupled-model milestone. On present evidence Component S is ready to supply forest structure to a coupled land model, and not yet ready to be the basis of a quantitative claim about the magnitude of forest change under warming.
+Its warming response is damped by about 40 percent, its recursive behaviour inside a live coupled run is now measured and is the larger of the two problems, and it covers trees only. Neither route is yet a solved one: the response gap has had its most promising candidate measured and refused, and the recursive defect has been localised to a missing level anchor. On present evidence Component S is ready to supply forest structure to a coupled land model, and not yet ready to be the basis of a quantitative claim about the magnitude of forest change under warming.
 
 \newpage
 \section*{Glossary}
