@@ -7,28 +7,21 @@
 
 ## NEXT — start here
 
-### ⚠ ACTION 0, BEFORE ANY SCIENCE: MERGE THE PUSHED WORK. IT IS NOT ON `main` YET.
+**ADR 0100 IS MERGED to `main` (`d4b849b6`).** Branch CI on the work sha `1b44cebb` was green on every
+required gate — `format` ✅, `test (1)` ✅, `test (lts)` ✅ (+ `test (macOS, lts)` ✅). `python` and `docs`
+correctly never ran (ADR 0090's path filter). **`test (pre)` failed and was diagnosed, not waved away:** it
+dies at LOAD time with `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool},
+::Bool)` — a Julia-prerelease API removal breaking a dependency, before any testitem runs — which is the
+documented allowed-to-fail churn (CLAUDE.md §5), and `test (1)` passing on 1.12 is the evidence it is not ours.
 
-ADR 0100 is committed and pushed but **not merged** — the previous session ran out of wall-clock while branch
-CI was still running. Do this first:
+✅ **`main`'s OWN post-merge run on `d4b849b6` is GREEN on every required gate** — `format`, `test (1)`,
+`test (lts)` (+ non-required `test (macOS, lts)`); `test (pre)` red with the same unrelated prerelease load
+error. So the merge is fully verified on both sides and **nothing about ADR 0100 is outstanding**. (`main`
+was still at `a18d1599` when the merge landed and the branch was rebased onto it, so `main`'s tree was
+byte-identical to the branch tree — `git diff d4b849b6 origin/line/S` empty outside this file — which is why
+the whole-package gates could not have diverged short of a dep bump between the two runs.)
 
-1. The verdict to check is on **`1b44cebb`** (`feat(S): the response arm …`) — that is the commit carrying the
-   `test/**` change, so its expected gate set is **`test (lts)`, `test (1)`, `format`** (`format` was already
-   **green**; `python` and `docs` correctly never run — ADR 0090's path filter). `test (pre)` /
-   `test (macOS, lts)` are not required.
-2. ⚠ **Every commit stacked on top of it — this handoff note and a `chore(skill:)` capture — triggers NO gate
-   at all** (ADR 0090: `lines/**`, `.claude/skills/**` are watched by nothing), so the branch **tip** reports
-   no check-runs. That is correct and expected, **not** a missing verdict: read the verdict off `1b44cebb`
-   and merge the tip. The trap and its resolutions are now in the `repo-commit` skill.
-3. Then the normal ritual (`repo-commit` skill): `flock` the integration worktree, merge **`origin/line/S`**,
-   push `main`, and check `main`'s own latest run (the merge touches `src/**`? **no** — so `main` runs
-   `CI`/`format` only from the `test/**`+`.jl` paths, and `docs` still does not run).
-4. If a required gate is **red**, do not merge: the suite was green on SLURM (job 1700642, **107 821 pass /
-   0 fail / 4 broken**) and Runic was clean locally, so a red gate means a CI-only difference — a dep bump
-   (diff the `Enzyme vX.Y.Z` line against a last-green log, CLAUDE.md §2) or a JET-0.11.6-only finding on
-   `test (1)`, which reproduces only on Julia 1.12.
-
-**Then: Phase 3A is COMPLETE as a mechanism (Stages 1/1b/2/3 all landed). Read ADR 0100 first, then 0049 §5,
+**Phase 3A is COMPLETE as a mechanism (Stages 1/1b/2/3 all landed). Read ADR 0100 first, then 0049 §5,
 then 0046 §3.** Stage 3 made the response measurement and it **reframed the line**: the operator is right, and the
 binding constraint has moved to the **recruit channel**. The ADR-range blocker is gone.
 
