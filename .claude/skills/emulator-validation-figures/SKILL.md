@@ -355,7 +355,31 @@ rm -f component_s_public_report.{aux,log,out,toc}     # build litter; .gitignore
 The `.pdf` **is tracked** — commit it alongside the `.tex`, or the repo ships a PDF that disagrees with its
 source.
 
-Two traps, both of which cost a build:
+**Three mechanical traps in that block itself (`[VERIFIED 2026-08-05]`, each cost a build):**
+
+- **Never PIPE the `module load`.** `module` is a shell function, so `module load texlive/2026 2>&1 | tail -2`
+  runs it in a subshell and the parent shell never gets the PATH — the next line dies with
+  `bash: pdflatex: command not found` while `module load; which pdflatex` works fine a moment later. Don't
+  pipe it, don't `$(...)` it.
+- **Run the passes BACK-TO-BACK, and `rm` the litter only after the LAST one.** Deleting the `.aux` between
+  passes throws away exactly the cross-reference data the next pass needs: the run then ends with
+  `LaTeX Warning: There were undefined references` and every `\ref` prints as `??`. The tell that you did it
+  is a **page count that drops** (33 vs 34) plus a screenful of `Reference 'sec:x' undefined`. Three passes
+  in a row is the safe recipe when you added a `\label` (pass 3 settles `Label(s) may have changed`).
+- **Build the COMMITTED version in a temp dir as a control before "fixing" any warning.**
+  `git show HEAD:docs/component_s_public_report.tex > /tmp/c/r.tex; ln -s $PWD/docs/figs /tmp/c/figs` then
+  build there. The report ships with a **pre-existing** 10.6 pt overfull `\hbox` in `tab:scale` and a 0.97 pt
+  one in `tab:recorded`; without the control you cannot tell which warnings your edit introduced, and you will
+  either chase someone else's or ship your own.
+
+**Growing a caption has two structural failure modes, and both are warnings rather than errors — grep for
+them:** `LaTeX Warning: Float too large for page by N pt` means the table **plus its caption** no longer fits
+a page (the fix is to move a paragraph out of the caption into the body text after the table, not to shrink the
+table), and an `Overfull \hbox` above ~10 pt on a `booktabs` table needs the `\resizebox{\textwidth}{!}{% … %}`
+wrapper (below ~3 pt, leave it). A long row LABEL is the usual cause, so prefer shortening the label and
+explaining it in the caption.
+
+Two content traps, both of which cost a build:
 
 - **A blank line inside `\caption{}` aborts the build**: `! Paragraph ended before \NR@gettitle was complete`
   (hyperref's nameref) or `\caption@prepareanchor` (the `caption` package). The report's captions are
