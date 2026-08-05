@@ -6,26 +6,35 @@
 
 ## NEXT — start here
 
-**E6 is DONE (ADR 0073). The next action is an INTEGRATION POINT, not more diagnosis: hand line M
-`lambda_g = 1.0`.**
+**E7 is DONE (ADR 0074): the two-layer prognostic ground-heat column is implemented, opt-in, and MEASURED —
+it beats the fitted `λ_g = 1.0` without fitting. Both E→M integration points are already raised in
+`lines/M/STATE.md`. The next action is E4-Experiment B.**
 
-E1, E2, E4-Experiment-A and E6 are done (ADR 0070 / 0071 / 0072 / 0073). **Do not re-open the nocturnal-H
-question by sweeping `stab_amp` — that hypothesis is measured and refuted** (ADR 0073; the closure's nocturnal
-`g_a` is within **0.7 %** of DE-Hai's measured-`u*` value, substituting the measurement makes night H worse at
-all 4 sites, and a 100× `g_a` bracket never reaches positive nocturnal R²). The mechanism is the ground-heat
-term's **timescale**: `λ_g = 7.0` is a diurnal-amplitude conductance applied to the **daily-mean** gradient the
-coupled model actually runs at (`run.jl:93` calls `solve!` once per day).
+E1, E2, E4-A, E6 and E7 are done (ADR 0070 / 0071 / 0072 / 0073 / 0074).
 
-**1. Raise the `lambda_g` integration point with M (the one open action).** E's recommendation is
-**`lambda_g = 1.0`**, backed by three independent lines (ADR 0073 §3–4): implied `λ_g` 0.83–1.10 at all four
-sites at the daily step · it reproduces the observed daily sd(`G_o`) 4.3–6.3 W/m² (the 7.0 default gives
-14–31) · daily H R² 0.03 → **0.64** (DE-Hai) and 0.33 → **0.74** (AU-ASM), a broad optimum (0.5 ≈ 1.0),
-degrading only the already-suspect AU-Rob. **E must not flip it** — it moves every coupled/biome baseline, so
-M lands it with the baselines in one change, and the ADR 0072 night-cold **sign** assertion in
-`energy_closure_tests.jl` is re-pinned at that moment (it correctly still passes today, since no default
-moved). Note in `lines/M/STATE.md` and **withdraw the `stab_amp` integration point** already recorded there.
+**Do not redo any of these three — all measured and closed:**
+- **`stab_amp` / `g_a`** — refuted (ADR 0073): modelled nocturnal `g_a` within **0.7 %** of DE-Hai's
+  measured-`u*` value, substituting the measurement makes night H worse at all 4 sites, a 100× bracket never
+  reaches positive nocturnal R².
+- **`λ_g = 1.0`** — superseded (ADR 0074). It works, but `enable_two_layer = true` beats it on daily H
+  (0.645 vs 0.637 DE-Hai; 0.775 vs 0.745 AU-ASM) *and* on `G` (0.717 vs 0.657; 0.614 vs 0.477), and only the
+  two-layer form has a diurnal soil wave. Both are recorded in `lines/M/STATE.md`; the fourth integration
+  point is the live one, the third is the fallback. **E must not flip either default** — it moves every
+  coupled/biome baseline, so M lands it with the baselines together and re-pins ADR 0072's night-cold sign
+  assertion at that moment. Nothing is pending from E.
+- **Nocturnal H R² > 0** — still not reachable, now confirmed *with* the better scheme (DE-Hai night H R²
+  −1.019 → **−0.324**; RMSE 37.0 → 29.96, bias 14.04 → 3.74). `ε_obs` scatter alone (sd 36 W/m² at DE-Hai)
+  is the size of the night H RMSE. The remaining physical term is **canopy heat storage**, not a tune.
 
-**2. Then, in order:**
+**New open items E7 created (all optional, none blocking):**
+- **`z_soil1` is surface-dependent.** 0.75 m suits closed canopies; AU-ASM (sparse mulga, observed all-hours
+  sd(`G_o`) = **64 W/m²**) wants far thinner. Making `z1`/`C` a function of vegetation would be an **S→E**
+  question — `SToE` already carries `lai`/`height`.
+- **`theta_soil` is a constant 0.5** because the frozen `FToE` carries no soil moisture ⇒ E→M ask, recorded.
+- **Sub-daily `T_skin` degrades at AU-Tum/AU-Rob** with the scheme on (R² 0.773 → 0.667, 0.385 → 0.166).
+  Interpretable (T_skin does not need the tower to close), so re-measure it when canopy heat storage lands.
+
+**Then, in order:**
 - **E4-Experiment B** (F's LE → E, the coupled number; the A−B difference *is* F's ET error). Score H at
   **DE-Hai and AU-ASM only** — ADR 0073 showed AU-Tum/AU-Rob cannot score a closing model's nocturnal H
   (`ε_obs` −62.3 / −47.5 W/m²); they stay valid for `T_skin`.
@@ -41,10 +50,11 @@ hoc ("every 12th day of year × every 3rd hour", recorded only in a test comment
 so the ADR 0073 decomposition can be gated on the fixture too (today only the synthetic lever-ranking testitem
 guards it).
 
-**Do NOT chase:** nocturnal R² > 0 is not reachable by any parameter value in the present form — `ε_obs`
-scatter alone (sd 36 W/m² at DE-Hai) is the size of the night H RMSE. That needs a force-restore / two-layer
-soil scheme with a real diurnal wave plus canopy heat storage: a **design change**, and the blocker for line
-O's sub-daily online coupling, not a tune.
+**Status of the old "do NOT chase" note:** the two-layer half of it is now **built and measured** (ADR 0074) —
+the diurnal `G` wave exists and is correctly scaled at closed canopies (DE-Hai all-hours sd(G) 5.75 vs
+observed 5.66, against the default's 34.7) and night `G` R² is **positive (+0.394)**. What remains unreachable
+is nocturnal **H** R² > 0, bounded by `ε_obs`; the outstanding physical term is **canopy heat storage**. Line
+O's blocker is therefore reduced, not removed.
 
 ## The E4 Experiment-A pipeline (rerun in two commands)
 
@@ -134,8 +144,25 @@ Rules the first-look report already established — follow them instead of re-de
 mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical_amazon 1.490 / 100 638.
 **Open:** SSP370 `ps` does not exist in the raw GCM set ⇒ the future branch of E stays on a fixed pressure.
 
-## Status (2026-07-28)
+## Status (2026-08-05)
 
+- **E7 DONE — the design change ADR 0073 deferred is BUILT, opt-in, and measured** (ADR 0074).
+  `SEBParams.enable_two_layer` (default **false** ⇒ every baseline byte-identical) replaces
+  `G = λ_g(T_skin − t_soil)` with `G = κ_g(T_skin − T1)`, `κ_g = 2λ_soil/z1`, over a prognostic two-layer soil
+  column — an **independent implementation** of the MITgcm land-package formulation, cross-read against
+  SpeedyWeather's `LandBucketTemperature` and Terrarium's half-cell skin temperature (no code copied, no
+  dependency; ADR 0017 intact). It **beats the fitted `λ_g = 1.0`** at the two sites whose towers can score H:
+  daily H R² 0.645 / 0.775 (vs 0.637 / 0.745) and daily G R² 0.717 / 0.614 (vs 0.657 / 0.477) at
+  DE-Hai / AU-ASM. Sub-daily night `G` R² **+0.394** at DE-Hai. `Rn` preserved within ±0.005. No secular drift
+  (16-yr trend −0.059 K/yr; ⟨G⟩ → 0 self-equilibrates, so no deep-restore term is needed).
+  **Key gotcha found:** MITgcm's `z1 = 0.2 m` is for a minute-scale model and is **under-resolved at a daily
+  step** (`dt·rate` = 1.125 ⇒ `G` degenerates into a day-to-day difference of `T_skin`, daily G R² −2.8);
+  default is `z1 = 0.75 m` (`dt·rate` 0.093), chosen on that resolution criterion inside a broad optimum.
+  Probe `scripts/e_two_layer_probe.jl`; report `<energy_reference>/derived/seb_validation/e7_two_layer_probe_v5.txt`;
+  jobs `E-e7probe` 1705681 … `E-e7final` 1705886.
+- **Doc fix:** `docs/src/explanation/architecture.md` had claimed since Phase 4 that E *reuses* Terrarium.jl's
+  `SurfaceEnergyBalance`. ADR 0017 superseded that on 2026-07-22 — corrected, and the four citation surfaces
+  (register / `CITATION.cff` / `refs.bib` / source header) now agree and name MITgcm as the implemented method.
 - **E6 DONE — the nocturnal-H failure is DIAGNOSED** (ADR 0073, supersedes ADR 0072 items 4 + 6). It is a
   ground-heat **timescale** error, not an aerodynamic one. Because `H` is the exact residual `Rn_m − LE − G_m`,
   `ΔH = ΔRn − ΔG + ε_obs` *identically* and `g_a` is in none of those terms. Measured: modelled nocturnal `g_a`
@@ -193,6 +220,17 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
   ground-heat term's **timescale** as the mechanism, recommends **`λ_g = 1.0`** (an E→M integration point;
   `stab_amp` withdrawn as one), and bounds what is achievable: nocturnal R² > 0 needs a force-restore soil
   scheme, not a tune. Probe `scripts/e_nocturnal_h_decomp.jl`; jobs `E-e6decomp` 1622483 … 1622494.
+- **E7** ✅ **DONE 2026-08-05** (ADR 0074) — the opt-in two-layer prognostic ground-heat column. Built as the
+  design change ADR 0073 deferred, and it **beats the fitted `λ_g`** without fitting: daily H R² 0.645/0.775
+  and daily G R² 0.717/0.614 at DE-Hai/AU-ASM, correct sub-daily diurnal `G` amplitude at closed canopies,
+  positive night `G` R² (+0.394, DE-Hai). Energy-exact and daily-step-stable by holding `G` fixed over the
+  step (the MITgcm form); self-equilibrating, so no deep-restore knob. **Nocturnal H R² stays negative**
+  (−0.324) — `ε_obs`-bounded, canopy heat storage is the remaining term. `enable_two_layer = true` is now the
+  live E→M integration point, superseding `λ_g = 1.0`.
+- **E8** *(new, optional — the remaining physical term)* **canopy heat storage.** With E7 landed, this is the
+  only unexplored term left in the nocturnal-H budget. Would need a canopy heat-capacity state in E and,
+  for a real value, biomass/LAI from S — likely an S→E boundary question. Bounded by `ε_obs` regardless, so
+  do not expect nocturnal H R² > 0 from it either; the honest target is sub-daily `T_skin` at AU-Tum/AU-Rob.
 - **E4b** *(new, optional)* close the **T_skin-at-Hainich** gap from a second source — ICOS `LW_OUT` for DE-Hai
   (`data.icos-cp.eu` is reachable from the login node) or satellite LST — since PLUMBER2 cannot supply it.
 - **E5** Feed the real wind/psurf back to line M as an **integration point** — the coupled driver builds
@@ -228,6 +266,18 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
   it is a broken reader. `scripts/remap_wind_psurf_cells.py::read_test_clm_year` is the correct minimal reader.
 - **The LPJmL-prepared obsclim wind is quantized to 0.01 m/s** (`int16·0.01` in the `.clm`), so a raw
   `max|Δ| ≈ 5e-3 m/s` against a full-precision source is ½ a quantization step, not a bug.
+- **A published reservoir parameter is tuned for the PUBLISHER's timestep.** Before adopting one, compute the
+  relaxation number `dt·(Σ conductances)/(thickness · heat capacity)` at *our* step. MITgcm/SpeedyWeather's
+  soil `z1 = 0.2 m` is for a minute-scale model; at `dt = 1 d` it is **1.125**, so the top layer equilibrates
+  inside one step and `G` degenerates into a day-to-day *difference* of `T_skin` (daily G R² −2.8). E7 looked
+  mediocre for this reason alone until the thickness was swept (ADR 0074 §2). Default is now `z_soil1 = 0.75`.
+- **A diagnosed flux belongs to the START of the step.** `G` is computed from the pre-step `t_soil1` and
+  `solve!` *then* advances the column, so asserting `G == κ_g(T_skin − clo.t_soil1)` after the call is off by
+  exactly `κ_g·ΔT1`. Capture the pre-step state first — this produced 54 identical CI failures.
+- **Reuse `scripts/e_seb_drive_common.jl`** for any new PLUMBER2 probe (readers, `skill`/`fmt`, `nanstd`,
+  `loglaw`, `run_site`, `aggregate_daily`). Those helpers were copied three times before being extracted;
+  `validate_e_seb_vs_plumber2.jl` and `e_nocturnal_h_decomp.jl` keep their inline copies on purpose (frozen
+  ADR 0072/0073 artifacts) — do not make a fourth.
 - **Never `git stash -u` while a SLURM job is writing fixtures into this worktree** — the stash pulls the
   files out from under the running job.
 - Any long job → SLURM (`scripts/sbatch_python.sh` / `sbatch_julia.sh`); the login node is hook-blocked.

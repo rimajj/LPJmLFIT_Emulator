@@ -64,6 +64,49 @@ Base.@kwdef struct SEBParams{T <: AbstractFloat}
     # 1–2 orders past the critical Richardson number). This keeps the night surface coupled and is what
     # bounds the coupled skin–air ΔT (the `|T_skin − T_air| < 25/30 K` gates in coupled/biome tests depend
     # on it). Validate/tune `stab_amp`,`stab_k` against FLUXNET/PLUMBER2 (P2) before trusting nocturnal H.
+    # ── E7 / ADR 0074 — OPT-IN two-layer PROGNOSTIC ground heat (default OFF ⇒ byte-identical) ─────────
+    # ADR 0073 measured the default single-conductance term `G = λ_g(T_skin − t_soil)` as the DOMINANT
+    # nocturnal-H error: `λ_g = 7.0` is a *diurnal-amplitude* conductance applied to a τ=30 d EWMA of AIR
+    # temperature, so `G_m` swings 5–7× harder than the towers show, and it carries no soil thermal
+    # inertia at all. Fitting `λ_g ≈ 1.0` repairs the daily variance but is a coefficient, not a
+    # mechanism, and can never produce a diurnal soil wave — the blocker ADR 0073 named for line O's
+    # sub-daily online coupling. This scheme replaces the EWMA reference with a prognostic two-layer soil
+    # column and makes the surface→soil coupling an explicit half-cell conduction:
+    #
+    #   G   = κ_s1 (T_skin − T1),   κ_s1 = 2 λ_soil / z1          [surface → layer-1 midpoint]
+    #   D   = Δ (T1 − T2),          Δ    = 2 λ_soil / (z1 + z2)    [inter-layer diffusion]
+    #   T1 += dt/(z1 C1) (G − D);   T2 += dt/(z2 C2) D             [closed bottom]
+    #
+    # `T1` then equilibrates to the SURFACE's own energy balance instead of being pinned to air
+    # temperature. The negative feedback does that on its own — T1 cold ⇒ (T_skin − T1) up ⇒ G up ⇒ T1
+    # warms — so ⟨G⟩ → 0 with no restoring term, which is why there is deliberately no deep-restore knob.
+    # Layer-1 responds on z1·C1/κ_s1 ≈ 1 d and layer 2 on z2·C2/Δ ≈ 100 d (a seasonal reservoir), so the
+    # column must be SPUN UP: seed both layers from the site's mean annual temperature (`t_soil0`).
+    #
+    # PROVENANCE: an INDEPENDENT implementation of the MITgcm land-package two-layer soil formulation
+    # (MITgcm users guide §8.5.2.2), cross-read against SpeedyWeather.jl's `LandBucketTemperature` and
+    # Terrarium.jl's half-cell `ImplicitSkinTemperature` + conduction column. The constants below are
+    # those references' published values, NOT fitted here. No code is copied and neither package is a
+    # dependency — ADR 0017 keeps E self-contained (see `docs/third_party_licensing.md`).
+    enable_two_layer::Bool = false
+    lambda_soil::T = 0.42           # dry-soil heat conductivity, W/m/K
+    # `z_soil1` is the one structural value NOT taken from the reference: MITgcm/SpeedyWeather use 0.2 m,
+    # chosen for a model that steps in MINUTES. At our daily step 0.2 m is UNDER-RESOLVED IN TIME — the
+    # layer-1 relaxation number `dt·(κ_g+Δ)/(z1·C)` is 1.125, so the top layer equilibrates with `T_skin`
+    # inside one step and `G` degenerates into a day-to-day difference of `T_skin` (measured: daily G R²
+    # −2.8 at DE-Hai, sd(G) 2.2× observed). 0.75 m gives `dt·rate = 0.093` and is selected on that
+    # RESOLUTION criterion inside a broad optimum — daily H R² varies only 0.634→0.647 across
+    # z1 = 0.3…1.5 m, so this is not a fitted conductance (ADR 0074 §3 carries the sweep).
+    z_soil1::T = 0.75               # top soil layer thickness, m
+    z_soil2::T = 2.0                # deep soil layer thickness, m
+    c_dry_soil::T = 1.13e6          # dry-soil volumetric heat capacity, J/m³/K
+    c_water::T = 4.2e6              # water volumetric heat capacity, J/m³/K
+    field_capacity::T = 0.3         # soil field capacity, –
+    theta_soil::T = 0.5             # soil wetness as a fraction of field capacity, –
+    dt_seconds::T = 86400.0         # length of ONE `solve!` step, s (86400 = the daily coupled step:
+    # `run.jl` calls `solve!` once per day). Set it to the true sub-daily step for line O's online run.
+    # NB `theta_soil` is a CONSTANT because the frozen, M-owned `FToE` carries no soil moisture. Wiring
+    # F's real root-zone wetness into C1/C2 is an E→M integration point, not something E may invent.
     # Demand cap (DEVELOPMENT_PLAN §2.4): cap LE ≤ Rn − G in demand-limited cases. OFF by default: F
     # already water-limits ET, so `le` is the REAL water-limited flux, and when Rn − G < 0 (e.g. a
     # radiatively cooling night with nonzero ET) the energy for LE is supplied by sensible-heat
@@ -100,7 +143,8 @@ function aerodynamic_conductance(p::SEBParams{T}, wind, z0m, height) where {T <:
 end
 
 """
-    solve_seb(p::SEBParams, swdown, lwdown, tair, psurf, wind, albedo, z0m, height, le, t_soil)
+    solve_seb(p::SEBParams, swdown, lwdown, tair, psurf, wind, albedo, z0m, height, le, t_soil;
+              lambda_g = p.lambda_g)
         -> (t_skin, Rn, H, G, le_out, g_a, capped)
 
 Pure, AD-friendly core of the closure. Solves one skin temperature `t_skin` (K) from the closed
@@ -116,9 +160,14 @@ Air density `ρ = psurf/(R_d·Tair)`. `t_soil` is the deep-soil reference for th
 **Demand cap:** if `LE > Rn − G` (rare, demand-limited), `LE` is capped to the available energy and
 `capped=true` is returned so the caller can return the unused evaporative demand to F's water balance
 (water and energy stay consistent — §2.4); `H` then closes with the capped `LE`.
+
+`lambda_g` defaults to `p.lambda_g` (⇒ byte-identical to the pre-E7 kernel). The opt-in two-layer
+ground-heat scheme (ADR 0074) overrides it with the half-cell conductance `2λ_soil/z1` and passes its
+prognostic top-layer temperature as `t_soil`; the kernel itself is unchanged and stays AD-safe.
 """
 function solve_seb(
-        p::SEBParams{T}, swdown, lwdown, tair, psurf, wind, albedo, z0m, height, le, t_soil
+        p::SEBParams{T}, swdown, lwdown, tair, psurf, wind, albedo, z0m, height, le, t_soil;
+        lambda_g = p.lambda_g
     ) where {T <: AbstractFloat}
     ρ = psurf / (p.R_d * tair)
     ga_n = aerodynamic_conductance(p, wind, z0m, height)   # neutral conductance
@@ -136,7 +185,7 @@ function solve_seb(
     # full energy-balance residual as a function of Tskin (g_a re-evaluated under the current Tskin, so the
     # stability–conductance coupling is INSIDE the residual): f(Ts) = Rn − LE − H − G.
     resid(Ts) = swnet + lwin - p.emissivity * p.sigma * Ts^4 - le -
-        ρ * p.c_p * stab_ga(Ts) * (Ts - tair) - p.lambda_g * (Ts - t_soil)
+        ρ * p.c_p * stab_ga(Ts) * (Ts - tair) - lambda_g * (Ts - t_soil)
     Ts = tair                                     # physical initial guess (skin near air temperature)
     hderiv = T(1.0e-4)                            # K, for the numerical derivative of the full residual
     for _ in 1:p.n_newton
@@ -154,7 +203,7 @@ function solve_seb(
     # is never a denominator here (H is the residual) and `EToF.g_a` is not consumed downstream.
     ga = stab_ga(Ts)                              # final conductance consistent with the converged Tskin
     Rn = swnet + lwin - p.emissivity * p.sigma * Ts^4
-    G = p.lambda_g * (Ts - t_soil)
+    G = lambda_g * (Ts - t_soil)
     avail = Rn - G                                # energy available for turbulent fluxes
     # Demand cap OFF by default (see `SEBParams.enable_cap`): trust F's water-limited LE, let H be the
     # pure residual (can be negative when Rn − G < 0). When enabled, cap LE to the (non-negative)
@@ -177,6 +226,8 @@ step alongside the fast core. `t_soil` is lazily initialised to the first day's 
 mutable struct SEBEnergyClosure{T <: AbstractFloat} <: AbstractEnergyClosure
     params::SEBParams{T}
     t_soil::T
+    t_soil1::T          # top-layer soil temperature, K   — used only when `enable_two_layer` (ADR 0074)
+    t_soil2::T          # deep-layer soil temperature, K  — used only when `enable_two_layer` (ADR 0074)
     initialized::Bool
 end
 
@@ -186,13 +237,51 @@ end
 
 Construct the closure. Pass `t_soil0` (K) to seed the deep-soil reference temperature (e.g. the site's
 20-yr mean annual temperature from `SharedState.climbuf_atemp_mean20`); otherwise it initialises to the
-first day's air temperature on the first [`solve!`](@ref).
+first day's air temperature on the first [`solve!`](@ref). `t_soil0` seeds **both** two-layer soil
+temperatures as well — with `enable_two_layer` the deep layer relaxes on a ~100 d timescale, so a mean
+annual temperature is the right seed and a cold start costs a season of spin-up (ADR 0074).
 """
 function SEBEnergyClosure{T}(; params::SEBParams{T} = SEBParams{T}(), t_soil0 = nothing) where {T <: AbstractFloat}
     seeded = t_soil0 !== nothing
-    return SEBEnergyClosure{T}(params, seeded ? T(t_soil0) : zero(T), seeded)
+    t0 = seeded ? T(t_soil0) : zero(T)
+    return SEBEnergyClosure{T}(params, t0, t0, t0, seeded)
 end
 SEBEnergyClosure(; kwargs...) = SEBEnergyClosure{Float64}(; kwargs...)
+
+"""
+    step_soil_column!(E::SEBEnergyClosure, g_flux) -> nothing
+
+Advance the opt-in two-layer prognostic soil column one `dt_seconds` step under the ground-heat flux
+`g_flux` (W/m², positive **into** the soil) that [`solve_seb`](@ref) just diagnosed — the MITgcm
+land-package update (§8.5.2.2), as also implemented by SpeedyWeather.jl's `LandBucketTemperature`:
+
+    D   = Δ (T1 − T2),   Δ = 2 λ_soil / (z1 + z2)
+    T1 += dt/(z1 C) (G − D)
+    T2 += dt/(z2 C) D                       (closed bottom — no deep restore, see `SEBParams`)
+
+with the wet-soil volumetric heat capacity `C = C_water·θ·γ + C_dry`.
+
+Two properties this form has and a within-step recomputation of `G` would not:
+
+  * **Energy-exact.** The column gains exactly `G·dt`, so the `G` reported to the atmosphere in
+    [`EToATM`](@ref) *is* the column's heat uptake — no split between the closed flux and the reservoir.
+  * **Well-resolved at the daily step across the whole useful `z1` range.** Holding `G` fixed leaves only
+    the inter-layer term stiff, so explicit Euler is bounded by `dt < 2 z1 C/Δ` — **100 d** at the default
+    `z1 = 0.75 m`, and still 21 d at `z1 = 0.2 m`. Recomputing `G = κ_g(T_skin − T1)` inside the step would
+    instead impose `dt < 2 z1 C/(κ_g+Δ)` = 21 d at `z1 = 0.75 m` but only **1.8 d at `z1 = 0.2 m`**, i.e.
+    `dt·rate = 1.125` at a daily step — damped but *overshooting* equilibrium every step. The flux-forced
+    form avoids that everywhere and is what the references do. The surface feedback still acts, one step
+    lagged and near-critically damped: a warmer `T1` lowers the next step's `G`.
+"""
+function step_soil_column!(E::SEBEnergyClosure{T}, g_flux) where {T <: AbstractFloat}
+    p = E.params
+    c_vol = p.c_water * p.theta_soil * p.field_capacity + p.c_dry_soil   # J/m³/K
+    delta = T(2) * p.lambda_soil / (p.z_soil1 + p.z_soil2)              # inter-layer conductance, W/m²/K
+    d_flux = delta * (E.t_soil1 - E.t_soil2)
+    E.t_soil1 += p.dt_seconds / (p.z_soil1 * c_vol) * (g_flux - d_flux)
+    E.t_soil2 += p.dt_seconds / (p.z_soil2 * c_vol) * d_flux
+    return nothing
+end
 
 """
     solve!(E::SEBEnergyClosure, state::SharedState, from_f::FToE, bc::SToE, forcing::AtmForcing)
@@ -208,18 +297,30 @@ boundary. Pure physics in [`solve_seb`](@ref).
 function solve!(
         E::SEBEnergyClosure{T}, state::SharedState, from_f::FToE, bc::SToE, forcing::AtmForcing
     ) where {T <: AbstractFloat}
+    p = E.params
     tair = T(forcing.tair)
     if !E.initialized
         E.t_soil = tair
+        E.t_soil1 = tair
+        E.t_soil2 = tair
         E.initialized = true
     else
-        a = one(T) / E.params.tau_soil
+        a = one(T) / p.tau_soil
         E.t_soil = (one(T) - a) * E.t_soil + a * tair
     end
+    # Ground-heat reference + conductance. Default (`enable_two_layer = false`): the τ-day EWMA of AIR
+    # temperature with the single conductance `lambda_g` — byte-identical to the pre-E7 closure. Opt-in
+    # (ADR 0074): the PROGNOSTIC top-layer temperature with the half-cell conductance `2λ_soil/z1`, so
+    # the ground reference is the surface's own thermal state rather than the air's.
+    two_layer = p.enable_two_layer
+    kappa_g = two_layer ? T(2) * p.lambda_soil / p.z_soil1 : p.lambda_g
+    t_ground = two_layer ? E.t_soil1 : E.t_soil
     (Ts, Rn, H, G, le_out, ga, capped) = solve_seb(
-        E.params, T(forcing.swdown), T(forcing.lwdown), tair, T(forcing.psurf), T(forcing.wind),
-        T(bc.albedo), T(bc.z0), T(bc.height), T(from_f.le), E.t_soil,
+        p, T(forcing.swdown), T(forcing.lwdown), tair, T(forcing.psurf), T(forcing.wind),
+        T(bc.albedo), T(bc.z0), T(bc.height), T(from_f.le), t_ground; lambda_g = kappa_g,
     )
+    # Advance the soil column with the G this step just diagnosed (explicit forward Euler, as MITgcm).
+    two_layer && step_soil_column!(E, G)
     nbp = nbp_atm(rh = from_f.rh, firec = from_f.firec, npp = from_f.npp, flux_estabc = from_f.flux_estabc)
     atm = EToATM{T}(le = le_out, h = H, g = G, t_skin = Ts, nbp_atm = nbp, z0 = T(bc.z0))
     tof = EToF{T}(t_skin = Ts, ground_heat = G, g_a = ga)

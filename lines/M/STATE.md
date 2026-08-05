@@ -486,6 +486,10 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   to the partition (`conservation.jl::latent_heat(et; sublimation)` already exists for it). Opt-in,
   default byte-identical (guardrail 4). E will not attempt it alone — guessing a snow fraction inside E
   would be invented physics.
+- **From E — SUPERSEDED 2026-08-05 by the FOURTH integration point below (ADR 0074).** E7 measured a
+  two-layer prognostic ground-heat column that **beats** `lambda_g = 1.0` on every scoreable metric, so
+  `enable_two_layer = true` is now E's recommendation and `lambda_g = 1.0` is only the smaller fallback. The
+  original text is kept because the fallback is still valid and its evidence still stands:
 - **From E — THIRD OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E6, ADR 0073):** E recommends
   **`SEBParams.lambda_g = 1.0` (currently 7.0)**. This is E's own file, but flipping a *default* moves every
   coupled and 5-biome baseline (it is the ground-heat term), so it must land with the baselines in one change
@@ -502,6 +506,26 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   `SEBEnergyClosure(params = SEBParams(lambda_g = 1.0))` already works today if you want to measure first.
   **Also: do NOT act on ADR 0072's `stab_amp` suggestion — ADR 0073 refutes it** (the closure's nocturnal
   `g_a` is within 0.7 % of DE-Hai's measured-`u*` value; that sweep was bias cancellation).
+- **From E — FOURTH OPEN INTEGRATION POINT raised 2026-08-05 (line E milestone E7, ADR 0074). This is the
+  one to act on; it REPLACES the `lambda_g = 1.0` request above.** E now recommends
+  **`SEBParams.enable_two_layer = true`** (default `false`, so nothing has moved and every baseline is
+  byte-identical today). It swaps the single conductance against a 30-day EWMA of *air* temperature for a
+  prognostic two-layer soil column (`G = κ_g(T_skin − T1)`, `κ_g = 2λ_soil/z1`, MITgcm land-package update);
+  `lambda_g` becomes inert when it is on. **Why this instead of `λ_g = 1.0`:** measured on the same 497k
+  tower steps (harness reproduces ADR 0073 digit for digit), at the two sites whose towers can score H —
+  daily H R² **0.645** vs 0.637 (DE-Hai) and **0.775** vs 0.745 (AU-ASM), and on `G` itself **0.717** vs
+  0.657 and **0.614** vs 0.477. So it wins on H, wins clearly on G, and unlike a fitted coefficient it
+  carries a real diurnal soil wave (sub-daily DE-Hai sd(G) 5.75 vs observed 5.66, night G R² **+0.394**),
+  which is what line O needs. `Rn` is preserved within ±0.005. No secular drift over a 16-year record
+  (−0.059 K/yr), so it is safe for your decadal coupled runs.
+  **What lands on your side:** it moves every coupled and 5-biome baseline (it is the ground-heat term), so
+  it is your call and must land with the baselines in one change, and ADR 0072's night-cold **sign**
+  assertion in `energy_closure_tests.jl` is re-pinned at that moment. Measure first with
+  `SEBEnergyClosure(params = SEBParams(enable_two_layer = true))` — it works today.
+  **Costs to quote when you land it:** sub-daily `T_skin` degrades at AU-Tum/AU-Rob; one global
+  `z_soil1` (default 0.75 m) suits closed canopies but under-resolves sparse/desert surfaces. **A related
+  request:** `theta_soil` is a constant 0.5 because `FToE` (yours) carries no soil moisture — wiring F's
+  root-zone wetness into the soil heat capacity is the natural follow-up, same shape as the E3 ask.
 - `src/climbuf.jl` (`ClimBuf`, line S) is consumed via the `climbuf=` kwarg you already own in `run.jl`.
 
 ## Status (2026-07-28)
