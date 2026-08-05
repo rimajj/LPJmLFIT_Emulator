@@ -455,3 +455,94 @@ Checked for a `t9` re-pin as the handoff required: a `recruit_copula_global_hist
 Carbon closed at 4.3e-13 – 3.4e-12 throughout, and the `water_stress` series reproduced ADR 0051/0052's
 picture exactly (boreal 0.0000 = the missing soil ice, Sahel 0.4392 = the too-dry root zone), which is a
 useful sign the coupled configuration was the one I thought it was.
+
+## 2026-08-05 — M4: the resilience battery — measure the reference before gating on it  [milestone M4]
+- **Goal:** fill `ENGINEERING_STANDARDS` §2's last four stubbed gates — three `@test_skip false` in
+  `resilience_battery_tests.jl` (item 11: AC-vs-climate, recovery rate, shuffle test) and one in
+  `rollout_stability_tests.jl` (item 4: the AC-gap / oscillation check) — and settle the live
+  P3-vs-Phase-6 inconsistency for this gate.
+- **The thing that shaped the whole milestone:** the acceptance criterion `DEVELOPMENT_PLAN` §5 gives is a
+  **quotation** (`~0.2-in-wet → ~0.75-in-dry` lag-1 autocorrelation), not a measurement of this run. Gating
+  on a borrowed number is how a gate ends up testing something that is not true of the system it guards, so
+  I measured the reference first and let the result set the criterion. It did not survive.
+  Second shaping constraint: ADR 0054 established the coupled count is an **unanchored AR recursion**, and
+  an unanchored AR recursion manufactures autocorrelation and slow recovery by itself — so a shuffle test
+  with no memory-removal control would have passed loudly and meant nothing.
+- **Did (reference side):** `scripts/extract_resilience_reference.py`. Scans `ind_hist_seed{1,2}_all.parquet`
+  **year by year** (the Year predicate prunes row groups, so 40 scans of a 21.7 GB file cost ~40 s total)
+  and non-streaming on purpose — `collect(engine="streaming")` is not deterministic in the key set at this
+  scale (CLAUDE.md §4), and whole groups appearing or vanishing would be indistinguishable from the genuine
+  empty-patch zeros this script has to reconstruct. Window **2000–2019 = the full extent of the historic
+  table** (checked with `pq.ParquetFile` row-group statistics, not assumed), 52 544 cells, ~1.35 M
+  per-patch series, both seeds. Emits `references/M_resilience_reference_{cells,gradient,series}.csv`.
+- **Did (emulator side):** `scripts/biome_resilience_probe.jl` — a **3×2 shuffle design** (forcing
+  ordered / year-shuffled × demography free / `n_prev`-pinned / absent) plus ADR 0054's teacher-forced
+  anchor arm, run over a **one-member-per-patch ensemble** of the year-2000 canopy so the emulator ensemble
+  matches the C's 25 patches one-to-one, then a 100-year cycled rollout carrying a pool-perturbation
+  recovery experiment. Probe inputs (20-year forcing + year-2000 canopies) went to `/p/tmp`; the widened
+  `FIRSTYEAR`/`LASTYEAR` window reproduces the committed 2010–2019 fixture **byte-identically** on all five
+  cells, which is the provenance proof that the new knob changed nothing.
+- **Result / evidence (reference):** the documented gradient is **not there**. Detrended per-patch lag-1 AC
+  is flat at **0.452–0.541** across all ten P/PET deciles and the **driest decile is the lowest**; `agb`
+  identically (0.448–0.544); seed1-vs-seed2 floor 0.042–0.062. Raw (undetrended) it is 0.586–0.713 and runs
+  the *other* way, so there is no gradient in either version. What *is* strongly graded is the **variance:
+  CV 1.149 dry → 0.143 wet, 8×, monotone over the dry half.**
+- **A correction I wrote, measured and threw away.** The obvious objection is shot noise: a patch holds
+  ~4–11 stems and dry cells are 8× noisier, so a real gradient could be flattened by unequal attenuation. I
+  implemented the standard variance-based correction using the between-patch sampling variance — and it
+  came out with `noise_frac` **> 1 in every bin (1.18–12.6)**, i.e. a negative denominator, which meant the
+  reported values were a silently self-selected subsample of the cells where it happened to stay positive.
+  That is not a weak result, it is the *evidence*: the between-patch spread is one to two orders larger
+  than what the patch mean varies by year to year, so it is a **persistent patch-level offset** (patch *i*
+  is denser than patch *j* decade after decade) that cancels in the mean, not sampling noise. Replaced with
+  two honest diagnostics: `r₂/r₁` (noise-immune, since white noise scales every ACF lag equally) sits at
+  0.31–0.41, **below** `r₁` rather than above it, so there is no large white-noise component to correct
+  for; and the `cellmean` basis (25× less shot noise if it were shot noise) is equally flat, 0.470–0.534.
+- **Carried caveat, stated everywhere the finding is:** 20 years is all the historic table has, and linear
+  detrending is a high-pass filter — memory with τ ≳ n/2 ≈ 10 yr is removed *with* the trend. The implied
+  τ here is ~1.5–2.5 yr. So the defensible claim is "not resolvable on this window and basis", not "the
+  literature is wrong".
+- **Free independent-extractor check:** the per-year patch-ensemble means agree with ADR 0054's
+  `M_slow_oracle_counts.csv` on **all 100 overlapping cell-years to 1e-6** — a different script, a
+  different scan, the same population. Asserted in the extractor, not just noted.
+- **Two SLURM/tooling gotchas worth the next session's time:** (1) `scripts/sbatch_python.sh` forwards only
+  a **fixed list** of env knobs, so a new one (`SMOKE`) must be `export`ed or it silently takes its default
+  — a bare `SMOKE=1 scripts/sbatch_python.sh ...` reached the wrapper but not the job, and a "smoke" run
+  quietly became a full one. (2) Julia **block-buffers stdout to a file**, so a 25-minute probe's log stays
+  at 0 lines until it exits; `flush(stdout)` after each phase is what makes progress visible.
+- **Also closed:** M1 review debt #2 — `GATE=no` in `extract_cell_soilcolumn.py` used to emit columns
+  structurally indistinguishable from gated ones. The verdict is now stamped into the artifact header and
+  `M_soilcolumn_meta.json`, the fixtures were regenerated (job 1706443, `GATE PASS`, **all five files'
+  data rows byte-identical** — only the header line is new), and `biome_coupled_tests.jl` asserts the stamp.
+- **Result / evidence (emulator, job 1706343, ~22 min):** the coupled side comes out **well**, and in a way
+  that is genuinely new information next to M3.
+  - **(a) There is no AC gap.** The deployed arm sits **0.1–0.6 C-between-patch-SDs** away on every cell
+    and both variables (mean 0.32, max 0.6). That is the first coupled result on this line inside the noise
+    floor *everywhere* — M3's counts were 4.5–13.9 floors out on three cells. Both are true of the same
+    runs: ADR 0054's error is in the count **level**, and a detrended lag-1 AC is blind to a level and to a
+    monotone drift.
+  - **(c) The shuffle test passes wide, and the memory is F's carbon pools, not S's recursion.** Shuffled
+    forcing leaves AC at 0.460–0.653 and `inherited` ≤ 0.146 either way, so almost nothing came from the
+    climate's sequencing. Pinning the count-space AR feature leaves 0.391–0.704, and `slow = nothing`
+    already carries 0.454–0.691 — `|free1 − pin1| ≤ 0.135`. **The unanchored recursion ADR 0054 found
+    drives the count LEVEL and adds essentially nothing to the memory timescale.** I did not expect that;
+    it is exactly why the control was worth building.
+  - **A caveat for the open line-S integration point:** ADR 0054's teacher-forced `anchor` arm makes the AC
+    *worse* in two cells (Amazon `n` **0.066** vs a C of 0.501 = 2.3 SDs; mediterranean 1.2 SDs). Anchoring
+    removes the emulator's own memory without replacing it. So the anchor is a diagnostic; whatever S lands
+    must be scored on the AC as well as the level.
+  - **(b)+(d)** 100 cycled years, pools halved at year 21: no limit cycle anywhere (osc 0.06–0.50, at or
+    below white noise), nothing non-finite, carbon closing at ≤2.1e-11. Three findings recorded rather than
+    smoothed: `semiarid_sahel` **does not recover** (τ 602 yr, r² 0.38, vs 47–54 yr / 0.60–0.73 elsewhere);
+    there is **no steady state under cyclic forcing** (AGB drifts 1.39–5.15× per century); and the
+    AC-implied τ (1.2–2.9 yr) is **~20× shorter** than the measured recovery (~50 yr), so an AC must never
+    be read as a restoring rate.
+- **CI thresholds were MEASURED, not guessed.** A throwaway probe (`M-ciarm`, job 1706376) ran exactly the
+  three CI-computed arms across all five cells first, so every bound in the new testitems is set from data
+  with margin — and it caught two I would have got wrong: strict monotone recovery is false at
+  `mediterranean_iberia`, and the shuffled annual temperature control is strongly *negatively*
+  autocorrelated (−0.49 at Hainich), so that assertion had to be one-sided, not on `abs`.
+- **Suite:** **110,258 pass / 0 fail / 4 broken** (job 1706571). The first run (1706530) failed 8 — all one
+  bug of mine, not the science: I asserted the shuffle decomposition's identity at `atol = 1e-9` while the
+  fixture prints `%.6f`, so the check was testing the print format. 3e-6 is the right tolerance.
+- **Decisions:** ADR 0055.

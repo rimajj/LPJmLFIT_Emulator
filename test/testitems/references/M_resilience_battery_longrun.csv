@@ -1,0 +1,13 @@
+# The COUPLED emulator's 100-year CYCLED-forcing rollout: pool-perturbation recovery
+# (halve every tree carbon pool at year 21, frac=0.5) and long-horizon
+# stability. tau_rec = e-folding years of the perturbed run's departure from its own control
+# in agb; r2 = the log-linear fit quality. drift = mean(last 20)/mean(first 20) — the forcing
+# is cyclic, so 1.00 is the no-drift answer. osc = fraction of years whose first difference
+# flips sign (0.5 = white noise, ->1 = the two-year flip-flop LPJ_resilience flags).
+# Emitted by scripts/biome_resilience_probe.jl.
+name,nmember,tau_rec,r2,drift,min_over_init,max_over_init,ac1_last50,osc,finite,resid,n_init,n_end
+boreal_siberia,5,54.134695,0.727287,5.153525,1.000000,12.451346,0.867266,0.061224,true,1.080e-11,0.026667,0.016365
+temperate_hainich,5,52.294207,0.649314,3.135652,0.826213,3.802401,0.772983,0.091837,true,2.126e-11,0.017778,0.008394
+mediterranean_iberia,5,47.019522,0.687053,2.872573,1.000000,7.766370,0.302440,0.500000,true,1.239e-11,0.040000,0.028101
+semiarid_sahel,5,601.736160,0.377466,4.646584,0.296113,2.300667,0.632435,0.295918,true,7.390e-13,0.017778,0.004924
+tropical_amazon,5,50.399654,0.601308,1.385972,1.000000,1.906092,0.846815,0.142857,true,1.781e-11,0.031111,0.028147

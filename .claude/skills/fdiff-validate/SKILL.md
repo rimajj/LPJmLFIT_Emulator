@@ -1,6 +1,6 @@
 ---
 name: fdiff-validate
-description: The recurring extract -> validate -> baseline loop for checking the differentiable fast core F_diff against the LPJmL-FIT C oracle (kernel-isolation drive, Hainich cell 42490 harness, the extract_fdiff_* / validate_fdiff_* scripts, ReferenceTests baselines). Use whenever validating or refining F_diff fidelity vs the C binary, or wiring a new physics term into the daily/canopy rollout. ALSO the four MANDATORY basis checks before comparing ANY C output to F_diff (ADR 0053): the C's daily fluxes are ALL-PFT so grass must be removed via d_grass_gpp (up to 42 % of GPP); the driver's modal patch is 1.12-1.72x denser than the C's 25-patch ensemble mean; a 10-yr-mean ratio hides canopy drift so score year-matched and read the ratio SHAPE; and the daily NetCDF `units` attribute lies (says /month, values are per-day). Names scripts/extract_biome_fdiff_oracle.py, scripts/biome_fdiff_oracle_probe.jl, M_fdiff_oracle_biomes.csv, the rootmoist soil-water check. ALSO the S-SIDE twin (ADR 0054) — validating COUPLED demography + trait distributions against the annual `ind` parquet in seed1-vs-seed2 noise floors (scripts/extract_biome_slow_oracle.py, scripts/biome_slow_oracle_probe.jl, M_slow_oracle_counts.csv) — and the trap that dominates it: NEVER score a recursive emulator's free-running rollout without also running the TEACHER-FORCED arm (overwrite `s.n_prev` with the C truth each year), because the training table's `n_prev` is the C's own previous count and a free rollout integrates a ~5 %/yr one-step bias into +36-81 % over a decade; measured at 59-72 % of the total coupled count error.
+description: The recurring extract -> validate -> baseline loop for checking the differentiable fast core F_diff against the LPJmL-FIT C oracle (kernel-isolation drive, Hainich cell 42490 harness, the extract_fdiff_* / validate_fdiff_* scripts, ReferenceTests baselines). Use whenever validating or refining F_diff fidelity vs the C binary, or wiring a new physics term into the daily/canopy rollout. ALSO the four MANDATORY basis checks before comparing ANY C output to F_diff (ADR 0053): the C's daily fluxes are ALL-PFT so grass must be removed via d_grass_gpp (up to 42 % of GPP); the driver's modal patch is 1.12-1.72x denser than the C's 25-patch ensemble mean; a 10-yr-mean ratio hides canopy drift so score year-matched and read the ratio SHAPE; and the daily NetCDF `units` attribute lies (says /month, values are per-day). Names scripts/extract_biome_fdiff_oracle.py, scripts/biome_fdiff_oracle_probe.jl, M_fdiff_oracle_biomes.csv, the rootmoist soil-water check. ALSO the S-SIDE twin (ADR 0054) — validating COUPLED demography + trait distributions against the annual `ind` parquet in seed1-vs-seed2 noise floors (scripts/extract_biome_slow_oracle.py, scripts/biome_slow_oracle_probe.jl, M_slow_oracle_counts.csv) — and the trap that dominates it: NEVER score a recursive emulator's free-running rollout without also running the TEACHER-FORCED arm (overwrite `s.n_prev` with the C truth each year), because the training table's `n_prev` is the C's own previous count and a free rollout integrates a ~5 %/yr one-step bias into +36-81 % over a decade; measured at 59-72 % of the total coupled count error. ALSO the RESILIENCE BATTERY (ADR 0055) — scoring DYNAMICS rather than levels: lag-1 autocorrelation vs climate, the recovery rate from a pool perturbation, the SHUFFLE TEST, and the long-horizon AC-gap / oscillation check (scripts/extract_resilience_reference.py, scripts/biome_resilience_probe.jl, M_resilience_reference_*.csv, M_resilience_battery*.csv). Use whenever measuring memory, autocorrelation, variance-vs-climate, recovery/restoring rate, multi-decadal stability or a limit cycle. Its traps: MEASURE the acceptance criterion instead of quoting it (DEVELOPMENT_PLAN's ~0.2-wet -> ~0.75-dry AC gradient is NOT in this run — the VARIANCE is what is climate-graded); detrend before every AC and share the estimator across both sides; an empty patch-year is a 0, not a gap; the emulator ensemble is one member per PATCH so the C's between-patch SD is the yardstick; the shuffle test is vacuous without a memory-REMOVAL control because an unanchored AR recursion manufactures autocorrelation; and an autocorrelation is NOT a recovery rate (~20x apart here).
 ---
 
 # fdiff-validate — cross-check F_diff against the C oracle
@@ -145,6 +145,38 @@ seeds for every statistic and report error in floors. Watch the denominator: a t
 absolute error look enormous (Sahel SLA reads 7.9 floors = a 4.6 % error on a 0.0002 floor), and a loose one
 does the reverse (Amazon's count floor is 29 % of the mean, because the cell has 4.7 trees per patch). Quote
 the absolute number next to the ratio, always.
+
+## The THIRD twin — the RESILIENCE battery (dynamics, not levels; ADR 0055)
+
+`scripts/extract_resilience_reference.py` (C side, 52 224 cells × 2000–2019) +
+`scripts/biome_resilience_probe.jl` (coupled side) → `references/M_resilience_{reference,battery}*.csv`.
+Same cluster-measures / CI-gates split as the two oracles above. What is NOT obvious and cost real time:
+
+- **MEASURE the acceptance criterion before gating on it.** `DEVELOPMENT_PLAN` §5's `~0.2-wet → ~0.75-dry`
+  autocorrelation gradient is a **quotation**, and it is **not present in this run** (flat 0.452–0.541 over
+  all ten P/PET deciles, driest LOWEST). The climate-graded quantity is the **VARIANCE** (CV 8×). Never
+  gate on a borrowed number.
+- **Three estimator choices decide the answer and BOTH SIDES must use the same ones:** detrend first (raw
+  0.59–0.71 vs detrended 0.45–0.54 — the difference is pure trend, and a linear ramp has AC 1 with no
+  memory); at n = 20 the estimator is biased low by ≈(1+3φ)/n ≈ 0.16, so gate the UNCORRECTED value where
+  the bias cancels; and **an empty patch-year is a 0, not a gap** — a patch with no living >5 m tree emits
+  no rows, so a naive `group_by` drops it, preferentially in the dry cells the gradient is about.
+- **The emulator ensemble is ONE MEMBER PER PATCH** of the cell's `ind` canopy, so it matches the C's 25
+  patches one-to-one; the C's **between-patch SD of AC** (0.118–0.242) is the yardstick, because a coupled
+  run produces one 20-year trajectory and that is the spread it samples from. Not the modal patch.
+- **The shuffle test needs a memory-REMOVAL control or it is vacuous.** ADR 0054's unanchored count
+  recursion manufactures autocorrelation by itself, so run `pin` (`s.n_prev` reset to a constant each year)
+  and `fonly` (`slow = nothing`) next to `free`. Measured here: the memory is **F's carbon pools**, and the
+  recursion adds ≤ 0.135 — it is a LEVEL failure, not a memory one. Say `pin` removes the DRF's explicit AR
+  *feature*, not every feedback (the density update stays recursive).
+- **An autocorrelation is NOT a recovery rate — ~20× apart here** (AC-implied τ 1.2–2.9 yr vs a measured
+  pool-perturbation e-folding of ~50 yr). Measure and gate them separately.
+- **Set every CI threshold from a throwaway measurement run first.** A probe of the exact CI-computed arms
+  across all five cells caught two assertions that would have been wrong: strict monotone recovery is false
+  at `mediterranean_iberia`, and the shuffled annual-temperature control is strongly *negatively*
+  autocorrelated (−0.49), so that check has to be one-sided rather than on `abs`.
+- A `run_coupled_cell` control with `slow = nothing` must pass **`climbuf = nothing`** — the ClimBuf writes
+  `s.boundary` and the guard errors without a `FluxDrivenSlowEmulator`.
 
 ## Rules
 

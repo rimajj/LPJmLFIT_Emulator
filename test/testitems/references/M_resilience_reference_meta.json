@@ -1,0 +1,57 @@
+{
+  "biome_cells": {
+    "boreal_siberia": 52059,
+    "mediterranean_iberia": 33335,
+    "semiarid_sahel": 18371,
+    "temperate_hainich": 42490,
+    "tropical_amazon": 12045
+  },
+  "debias": "phi = (r1 + 1/n)/(1 - 3/n), the Marriott-Pope/Kendall n=20 correction",
+  "detrend": "least-squares linear, before every AC; ac1_raw is the undetrended counterpart",
+  "empty_patch_year": "filled with 0 (an empty patch emits no rows) \u2014 method choice (c)",
+  "min_varying_patches": 5,
+  "ncells_scored": {
+    "1": 52544,
+    "2": 52551
+  },
+  "purpose": "M4 \u2014 the C's resilience reference (AC-vs-climate + variance) for the coupled battery",
+  "reference": "Bathiany et al. 2024 doi:10.1111/gcb.17613 (method reimplemented, no code copied)",
+  "reimplemented_in": "scripts/biome_resilience_probe.jl (same estimator, applied to the emulator)",
+  "scenario": "historic",
+  "seeds": [
+    1,
+    2
+  ],
+  "series_bases": {
+    "cellmean": "the AC of the 25-patch AVERAGE series \u2014 ~1/25 the stochastic variance, higher AC",
+    "patch": "one series per (Cell,Patch); cell value = mean over patch-series, psd = their SD"
+  },
+  "sources": {
+    "1": {
+      "bytes": 21743172667,
+      "path": "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet"
+    },
+    "2": {
+      "bytes": 21751460929,
+      "path": "/p/tmp/jamirp/emulator_global/ind_hist_seed2_all.parquet"
+    }
+  },
+  "tree_types": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "variables": {
+    "agb": "patch aboveground tree C, gC/m2",
+    "n": "living >5 m tree stems per patch"
+  },
+  "window": [
+    2000,
+    2019
+  ],
+  "window_is_full_table_extent": true
+}
