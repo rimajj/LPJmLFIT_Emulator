@@ -7,8 +7,28 @@
 
 ## NEXT — start here
 
-**Phase 3A is COMPLETE as a mechanism (Stages 1/1b/2/3 all landed). Read ADR 0100 first, then 0049 §5, then
-0046 §3.** Stage 3 made the response measurement and it **reframed the line**: the operator is right, and the
+### ⚠ ACTION 0, BEFORE ANY SCIENCE: MERGE THE PUSHED WORK. IT IS NOT ON `main` YET.
+
+ADR 0100 is committed and pushed but **not merged** — the previous session ran out of wall-clock while branch
+CI was still running. Do this first:
+
+1. The verdict to check is on **`1b44cebb`** (`feat(S): the response arm …`) — that is the commit carrying the
+   `test/**` change, so its expected gate set is **`test (lts)`, `test (1)`, `format`** (`format` was already
+   **green**; `python` and `docs` correctly never run — ADR 0090's path filter). `test (pre)` /
+   `test (macOS, lts)` are not required.
+2. ⚠ **This STATE.md-only commit on top of it triggers NO gates at all** (ADR 0090), so the branch **tip**
+   will report no check-runs. That is correct and expected, not a missing verdict — read the verdict off
+   `1b44cebb` and merge the tip.
+3. Then the normal ritual (`repo-commit` skill): `flock` the integration worktree, merge **`origin/line/S`**,
+   push `main`, and check `main`'s own latest run (the merge touches `src/**`? **no** — so `main` runs
+   `CI`/`format` only from the `test/**`+`.jl` paths, and `docs` still does not run).
+4. If a required gate is **red**, do not merge: the suite was green on SLURM (job 1700642, **107 821 pass /
+   0 fail / 4 broken**) and Runic was clean locally, so a red gate means a CI-only difference — a dep bump
+   (diff the `Enzyme vX.Y.Z` line against a last-green log, CLAUDE.md §2) or a JET-0.11.6-only finding on
+   `test (1)`, which reproduces only on Julia 1.12.
+
+**Then: Phase 3A is COMPLETE as a mechanism (Stages 1/1b/2/3 all landed). Read ADR 0100 first, then 0049 §5,
+then 0046 §3.** Stage 3 made the response measurement and it **reframed the line**: the operator is right, and the
 binding constraint has moved to the **recruit channel**. The ADR-range blocker is gone.
 
 ### THE STATE IN SIX LINES
