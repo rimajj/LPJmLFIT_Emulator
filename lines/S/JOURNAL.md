@@ -802,3 +802,71 @@ independent reason to prefer the mortality lever over the entry marginal.
 - **Next:** Stage 2 — wire the hazard in behind an opt-in flag, with the ADR-0046 §3 per-PFT age–wooddens
   gradient as the acceptance target and an ADR-0048 constant-forcing control as the baseline. Mirrored into
   STATE.md's NEXT block.
+
+## 2026-08-05 — Phase 3A Stage 2: the hazard is wired in and it selects; the COUNT CHANNEL is what bounds it  [ADR 0049 / milestone S7]
+
+- **Goal:** the handoff's items A–C in order — build the ADR-0046 §3 acceptance target as a fixture, wire
+  ADR 0047's ported hazard into `reconcile_demography!` behind an opt-in flag, and measure it the ADR-0048
+  way (matched constant-forcing control, same generation, scored past yr 52).
+
+**B first, and building the fixture refined the ADR it came from.**
+`scripts/build_age_wooddens_gradient_reference.py` → `test/testitems/references/S_age_wooddens_gradient.csv`
+(93 rows: scenario × PFT × age bin, mean/median `Wooddens` and `SLA`, on byte-for-byte the basis that
+produced ADR 0046 §3 — survivors only, no stem filter, fixed edges 10/20/40/80/160/320). It **asserts** the
+five rows ADR 0046 published reproduce to 1 gC/m³ and they do exactly (id 1: 184 869.3 → 331 234.4 vs the
+ADR's 184 869 → 331 234), so the fixture is provably the ADR's target rather than a second measurement of
+it. Two facts fell out that ADR 0046 did not state and that change how an operator must be scored: **id 2
+is non-monotone too** (rises to 273 634 at bin 2, dips to 264 692 at bin 3, recovers to 287 639) *despite*
+a positive one-year selection differential — so "the sign of `S` predicts the gradient's shape" has a
+measured exception; and **the age axis is PFT-dependent** — id 5 has **no stems above 160 yr at all**
+(longevity 125, the row a beech default used to get wrong) and id 2 none above 320. A gradient test that
+assumes seven bins per PFT is testing the wrong thing for two of the seven. Job `1698771`.
+
+**A — the call site, and the one design question that actually mattered.** The constraint pair was fixed in
+advance (the hazard picks *which* cohorts die; the DRF keeps *how many*), and the obvious implementation is
+a linear rescale `f_i = λ·(1 − mort_i)`. I rejected it: it needs a clamp against `f_i > 1` (mortality that
+*creates* individuals) and it distorts the ratio between two cohorts' survival by a different amount for
+every pair, so it is not a hazard at all. What went in is FIT's own object scaled — a **proportional-hazards
+tilt** `f_i = (1 − mort_i)^θ = exp(−θ·H_i)`, θ bisected so `Σ nind·f_i = ρ·Σ nind`. Bounded in [0,1] by
+construction, order-preserving, deterministic and order-independent, and it **recovers FIT exactly at
+θ = 1** — which is a test, not an intention. A hard kill is never resurrected to reach the count target; the
+miss is reported as a `shortfall`, and the test suite's first run caught that the *mirror* unreachable case
+(a hazard that is zero everywhere, so there is nothing to tilt) was returning shortfall `0` — i.e. reading
+as "the count target was honoured" in the one year it could not be. Fixed in the operator, not in the test.
+
+`mort_water`/`mort_temp` are **zero by decision**: the emulator has neither stress integral on FIT's basis,
+and `grow.water_stress` = `1 − wscal_mean` is a different quantity on a different scale (ADR 0051 is the
+precedent for what mapping those two costs). The cost is bounded and stated — `mort_temp` is not
+trait-dependent at all and `mort_water`'s only per-cohort variation is a per-PFT factor, i.e. composition
+rather than the within-PFT channel ADR 0046 named as the lever, and both hazards' level is absorbed by θ.
+
+**C — the measurement, and the finding I did not expect.** 150 yr, production copula, default `k_cap`, arm
+and control differing in *exactly* the flag and both re-run in the same process: controlled Δ community
+`wooddens` = **+7 899 = 3.25× the FIT shift, same sign**, carbon at 3.0e-11 (control 1.9e-11), count target
+honoured every year (Σnind matches the control to 1.4e-13), 0 hard kills, 0 k-cap merges in either arm, and
+the age–wooddens gradient rises with age as required — **+6 565** in the 80–160 yr bin, **+9 642** in
+160–320. That is the ADR-0046 §3 signature: selection accumulating over a lifetime, not a level offset.
+
+**But the tilt distribution is the real result.** θ is bimodal at ~0 — median **8.5e-12**, θ > 0.5 in only
+**18 of 132** thinning years (13.6 %). A forest prediction is piecewise constant, so the DRF's demanded
+`|ρ−1|` has **median 0.0 %/yr** against the ported hazard's own 1.688 %/yr (mean ratio 2.8×). FIT's deaths
+and recruits **CO-OCCUR** every year — a near-stationary count with large gross turnover — while the
+emulator's `ρ<1` XOR `ρ>1` branches make gross turnover *equal* net change, so a zero-net year is a
+zero-selection year. Selection scales with GROSS deaths, so a faithful hazard in a net-only demography is
+throttled by its duty cycle. That is a structural limit of ADR 0024's roster, not a fidelity gap in ADR
+0047's port, and it re-derives ADR 0048 §4's τ = 94/1 003 yr from the other end. **Co-occurring gross
+turnover is the named next lever** — and it is exactly what item E forbids bundling into this arm.
+
+I also wrote down what this is NOT: a constant-forcing **LEVEL** change on ONE cell is not a warming
+response (FIT's +2432.9 is between-scenario), and none of it may be quoted against the ADR-0044 gate.
+
+- **Result / evidence:** gradient fixture `1698771`; arm probe `1698789` (5 yr validation) / `1698791` /
+  `1698795` (150 yr, with the duty-cycle diagnostic). Suite `1698797` **red — 2 fails + 1 error, all in the
+  new testitem** (a `NaN != NaN` θ comparison, three wrong `Individual` field names in a Float32 block, and
+  the real shortfall gap above), then `1698873` **green: 107 749 pass / 0 fail / 4 broken**. Runic clean over
+  `src test ext scripts`. Docs built locally (`1698958`) because `docs` never runs on a branch.
+- **Decisions:** ADR 0049 — trait-dependent mortality is wired in and selects; the DRF count channel, not
+  the hazard, bounds what it can express. **This exhausts the S ADR block 0030–0049.**
+- **Next:** the response arm (does Δ differ between historic and warmed forcing? needs the ADR-0026/0027
+  transient boundary on both arms), and then co-occurring gross turnover as its own arm. Both need a new ADR
+  range — raise it as an integration point before writing. Mirrored into STATE.md's NEXT block.

@@ -414,7 +414,7 @@ function _shortest_tree_idx(pools::AbstractVector{FDiff.TreePools{T}}) where {T}
 end
 
 """
-    _merge_pair!(pools, ages, tmpls, pft_ids, i, j, allom)
+    _merge_pair!(pools, ages, tmpls, pft_ids, i, j, allom; counters=nothing)
 
 Fold tree cohort `j` into `i` (`i<j`): `nind_m = n_i+n_j`; each of the FIVE carbon pools nind-weighted
 (so `vegc_full_ind(m)·nind_m == Σ vegc_full_ind(parent)·nind_parent` to floating-point rounding —
@@ -422,9 +422,16 @@ carbon-neutral, NO ledger entry); age nind-weighted; the dominant (higher-nind) 
 `tmpl`/`pft_id` inherited (keeps `tmpl.photo.sla` consistent with `pools.sla`); height re-derived from the
 pipe model (guarded `leaf>0`) and crownarea from the Jucker allometry (both carbon-free). Deletes slot `j`
 from all four roster vectors.
+`counters` (ADR 0049, default `nothing` ⇒ every pre-0049 call is byte-identical) is the optional
+per-cohort `bm_inc_counter` roster vector, kept in lockstep: the merged cohort inherits the DOMINANT
+parent's counter — the same rule the traits already follow, because the counter is a property of the same
+individual whose `sla`/`wooddens` are inherited. The merge is trait-DESTRUCTIVE at 3.1–5.1× the Phase-3A
+signal when it fires and never fires at the default `k_cap` (ADR 0048); carrying one more field through it
+does not change that verdict.
 """
 function _merge_pair!(
-        pools::Vector{FDiff.TreePools{T}}, ages::Vector{T}, tmpls, pft_ids, i::Int, j::Int, allom
+        pools::Vector{FDiff.TreePools{T}}, ages::Vector{T}, tmpls, pft_ids, i::Int, j::Int, allom;
+        counters::Union{Nothing, Vector{Int}} = nothing,
     ) where {T}
     a = pools[i]
     b = pools[j]
@@ -451,23 +458,28 @@ function _merge_pair!(
     ages[i] = age_m
     tmpls[i] = tmpl_m
     pft_ids[i] = pft_m
+    if counters !== nothing
+        counters[i] = counters[dom]
+    end
     deleteat!(pools, j)
     deleteat!(ages, j)
     deleteat!(tmpls, j)
     deleteat!(pft_ids, j)
+    counters === nothing || deleteat!(counters, j)
     return nothing
 end
 
 """
-    _apply_kcap_merge!(pools, ages, tmpls, pft_ids, k_cap, allom)
+    _apply_kcap_merge!(pools, ages, tmpls, pft_ids, k_cap, allom; counters=nothing)
 
 While the roster exceeds `k_cap`, merge the tree-cohort pair with the smallest `|Δheight|` (deterministic
 single-pass index-order scan; strict `<` keeps the first argmin ⇒ reproducible on ties). Bounds K (the
 structural speed-up invariant) with minimal size-distribution distortion. Stops if fewer than two live
-tree cohorts remain.
+tree cohorts remain. `counters` is forwarded to [`_merge_pair!`](@ref) (ADR 0049; default `nothing`).
 """
 function _apply_kcap_merge!(
-        pools::Vector{FDiff.TreePools{T}}, ages, tmpls, pft_ids, k_cap::Int, allom
+        pools::Vector{FDiff.TreePools{T}}, ages, tmpls, pft_ids, k_cap::Int, allom;
+        counters::Union{Nothing, Vector{Int}} = nothing,
     ) where {T}
     while length(pools) > k_cap
         bi = 0
@@ -486,9 +498,236 @@ function _apply_kcap_merge!(
             end
         end
         bi == 0 && break
-        _merge_pair!(pools, ages, tmpls, pft_ids, bi, bj, allom)
+        _merge_pair!(pools, ages, tmpls, pft_ids, bi, bj, allom; counters = counters)
     end
     return nothing
+end
+
+# ── TRAIT-DEPENDENT MORTALITY (Phase 3A Stage 2, ADR 0049) ───────────────────────────────────────────
+# The opt-in operator that gives Component S a within-PFT selection channel. Everything below is reached
+# ONLY from `reconcile_demography!` when `s.trait_mortality === true`; the default construction never
+# touches it, so every committed baseline stays byte-identical (guardrail 4).
+
+"""
+    TraitMortDiag
+
+One year of the trait-mortality operator's own diagnostics (ADR 0049). Recorded in
+`FluxDrivenSlowEmulator.mort_diag`; never feeds the dynamics.
+
+It exists because of a measured failure mode, not for tidiness: ADR 0048's first attempt reported a clean
+null that meant nothing, because the operator under test had never actually fired. `hazard_mean`,
+`theta` and `thinned` make "did it run, and how hard" an OBSERVABLE rather than an inference from a
+trajectory. Read them before believing any before/after Δ.
+
+  - `hazard_mean` — `nind`-weighted mean of FIT's own one-year hazard `mort` over the live tree cohorts,
+    BEFORE the count constraint is imposed. This is the ported physics; `theta` is the reconciliation.
+  - `theta` — the proportional-hazards tilt applied to hit the DRF's count target (`NaN` in a year with no
+    thinning). `θ ≈ 1` means FIT's hazard and the DRF's count target agree; `θ > 1` that the DRF wants MORE
+    death than the hazard produces, `θ < 1` less. It is the single most informative number the operator
+    emits — it says how far the ported physics is from the trained count skill, on this cell, this year.
+  - `hard_kills` — tree cohorts whose hazard was exactly 1 (a 5-year negative-increment run, or leaf carbon
+    below a sapling's). These die in full at any `θ > 0`, which is faithful but is also the one way the
+    operator can refuse the DRF's count target — see `shortfall`.
+  - `shortfall` — relative count MISS `|achieved − target| / n_tree` in a year where NO tilt could reach the
+    DRF's target (`0` in a normal year): either the hard kills alone remove more density than `ρ` allows, or
+    the hazard is zero on every cohort so there is nothing to tilt. Non-zero means the hazard overrode the
+    count target for that year; if it is ever routinely non-zero the arm is no longer "the DRF sets the
+    count", and the ADR's central claim fails. It is reported, never silently absorbed.
+"""
+struct TraitMortDiag
+    year::Int
+    hazard_mean::Float64
+    theta::Float64
+    hard_kills::Int
+    thinned::Bool
+    shortfall::Float64
+end
+
+"""
+    _cohort_bm_delta(fc, grow, i, reprod) -> Real
+
+FIT's per-individual `bm_delta` (`mortality_tree_ind.c:66`, `= bm_inc.carbon/nind − turnover_ind`) for
+cohort `i`, reconstructed from what the fast core actually accounted. It is the numerator of `greff`, so
+it carries the SECOND half of the trait channel (denser wood grows more slowly ⇒ lower `greff` ⇒ HIGHER
+`mort_npp`, opposing the `mort_max` advantage — ADR 0046 §3).
+
+Derivation, from `grow_annual_accounted!`'s own identity rather than a re-implementation of it: the
+delivered per-individual increment is `bm_ind = fc.bm_inc_acc[i]/nind` (still live and index-aligned with
+`fc.pools` at the `reconcile_demography!` call site — `_commit_membership!` is what reallocates it), and
+for a GROWING cohort the F core routes `bm_ind·(1−reprod) − Δvegc_ind` to litter, which is exactly
+`turnover_ind`. Hence
+
+```
+bm_delta = bm_ind − turnover_ind = Δvegc_ind + reprod·bm_ind          (growing)
+bm_delta = bm_ind                                                     (STAGNATED)
+```
+
+The stagnation branch is not a special case bolted on: `grow_individual` FREEZES a tree with
+`bm_net ≤ 0` or `height ≤ 0`, so it applies no turnover and `Δvegc_ind` is 0 — the individual's whole
+deficit IS `bm_ind`, and reporting `Δvegc_ind + reprod·bm_ind` there would understate it by 10×, turning a
+dying tree's escalating hazard into a mild one. The predicate mirrors `grow_annual_accounted!`'s
+`stagnated` exactly (`fast.jl:360-362`); if that test ever changes, this must change with it.
+
+⚠ Residual known inexactness, stated rather than hidden: for the abnormal-allocation branch the F core's
+litter also carries extra shed leaf (`FDiff._turnover_litter`), which this attributes to `turnover_ind`.
+That is turnover-LIKE but is not FIT's `turnover_tree` product, so `bm_delta` is slightly low (hazard
+slightly high) for a cohort in that branch. It is a per-cohort effect of the same sign in every arm, so
+it does not confound a controlled before/after difference (ADR 0048), and it is bounded by the litter the
+branch reports.
+"""
+function _cohort_bm_delta(fc::FDiffFastCore{T}, grow, i::Int, reprod::T) where {T}
+    old = fc.pools[i]
+    new = grow.newpools[i]
+    nind = convert(T, old.nind)
+    bm_ind = convert(T, fc.bm_inc_acc[i]) / (nind + T(1.0e-12))
+    bm_net = bm_ind >= zero(T) ? bm_ind * (one(T) - reprod) : bm_ind
+    stagnated = convert(T, old.height) <= zero(T) || bm_net <= zero(T)
+    stagnated && return bm_ind
+    dveg_ind = FDiff.vegc_full_ind(new) - FDiff.vegc_full_ind(old)
+    return dveg_ind + reprod * bm_ind
+end
+
+"""
+    _trait_hazards!(haz, counters, s, fc, grow, pools, pft_ids) -> (hazard_mean, hard_kills)
+
+Evaluate FIT's ported per-individual hazard (`TraitMortality.mortality_hazard`) for every live TREE cohort
+and advance each cohort's `bm_inc_counter`. Fills `haz[i]` with the one-year death probability (`0` for
+grass and dead slots) and returns the `nind`-weighted mean over trees plus the number of hard kills.
+
+This runs EVERY year the operator is enabled, thinning or not, because `bm_inc_counter` is genuine
+per-individual state whose recursion (`mortality_tree_ind.c:71-81`) has no gap in it — a counter advanced
+only in thinning years would drift out of step with FIT's and would reset the escalation the hard kill at
+5 depends on. It is **not recoverable** from the annual `ind` output (a commented-out RAW-only column), so
+the rollout evolves it itself from 0; a fresh emulator therefore under-hazards its declining cohorts for
+the first few years, which is a spin-up property of the arm, not of the hazard.
+
+WHAT THIS FEEDS THE PORTED HAZARD, AND WHAT IT DELIBERATELY DOES NOT (ADR 0049 §3 — read before scoring):
+
+  - `wooddens`/`sla` per cohort, `age = s.age[i]` (the START-of-year age, which IS the C's pre-increment
+    `tree->age`: `s.age` is incremented after the commit, `annual_tree.c:46` after the mortality call),
+    `leafarea = leaf_c·sla` and `leaf_c` from the GROWN pools (the C evaluates them post-allocation), and
+    `bm_delta` from [`_cohort_bm_delta`](@ref).
+  - `water_stress = 0` and `temp_stress = 0`, so `mort_water` and `mort_temp` are IDENTICALLY ZERO. This is
+    a stated limitation, not an oversight. FIT's `tree->water_stress` is a gated daily integral of
+    `phen·(vpd/1000)·((mort_water_res − minwscal) − wscal)` (`waterstress_tree.c:31-42`) and its
+    `temp_stress` an integer count of days outside `temp_stressed` (`tempstress_tree.c:29`); the emulator
+    has NEITHER on that basis — `grow.water_stress` is `1 − wscal_mean`, a bounded [0,1] annual mean of a
+    different quantity on a different scale (ADR 0051 is the record of how expensive confusing those two
+    already was). Feeding it into a ported equation as though it were FIT's integral is the ADR-0023
+    train/inference shift with extra steps. The cost is bounded and known: `mort_temp` is not
+    trait-dependent at all, and `mort_water`'s only per-cohort variation is the per-PFT
+    `mort_water_factor` — i.e. a BETWEEN-PFT composition effect, not the within-PFT channel ADR 0046
+    measured as the lever. Both hazards' contribution to the LEVEL is absorbed by the tilt `θ` below.
+
+`pft_mort_params` errors on a non-tree id rather than defaulting to beech, so a caller that has not wired
+`fc.pft_ids` fails loudly here (ADR 0031's defect class, M integration point #1) instead of silently
+running the Amazon on temperate wood-density mortality.
+"""
+function _trait_hazards!(
+        haz::Vector{T}, counters::Vector{Int}, s, fc::FDiffFastCore{T}, grow,
+        pools::Vector{FDiff.TreePools{T}}, pft_ids,
+    ) where {T}
+    reprod = convert(T, fc.alloc.reprod_cost)
+    num = zero(T)
+    den = zero(T)
+    hard = 0
+    @inbounds for i in eachindex(pools)
+        haz[i] = zero(T)
+        p = pools[i]
+        # only the ORIGINAL roster has a bm_inc_acc slot / an old cohort: an appended recruit is age 0 and
+        # is not subject to this year's mortality in either branch (it did not exist during the year).
+        (p.is_grass || p.nind <= 0 || i > length(fc.pools)) && continue
+        prm = TraitMortality.pft_mort_params(pft_ids[i])
+        bm_delta = _cohort_bm_delta(fc, grow, i, reprod)
+        age = convert(T, s.age[i])
+        counters[i] = TraitMortality.update_bm_inc_counter(counters[i], age, bm_delta)
+        h = TraitMortality.mortality_hazard(
+            prm; wooddens = convert(T, p.wooddens), sla = convert(T, p.sla), age = age,
+            bm_delta = bm_delta, leafarea = convert(T, p.leaf_c) * convert(T, p.sla),
+            leaf_c = convert(T, p.leaf_c), water_stress = zero(T), temp_stress = zero(T),
+            bm_inc_counter = counters[i],
+        )
+        haz[i] = convert(T, h.total)
+        h.hard_kill === :none || (hard += 1)
+        n = convert(T, p.nind)
+        num += n * haz[i]
+        den += n
+    end
+    return (den > zero(T) ? num / den : zero(T)), hard
+end
+
+"""
+    _hazard_tilt(haz, pools, n_target, n_now) -> (theta, shortfall)
+
+Solve for the PROPORTIONAL-HAZARDS TILT `θ ≥ 0` such that applying survival `f_i = (1 − mort_i)^θ` to
+every live tree cohort reproduces the DRF's count target exactly:
+
+```
+Σ_i nind_i · (1 − mort_i)^θ  =  n_target                (n_target = ρ · n_now)
+```
+
+WHY A TILT AND NOT A RENORMALIZATION — this is the load-bearing modelling choice of ADR 0049.
+
+The count target must stay the DRF's: it carries 0.9824 OOS R² and the hazard's job is to redistribute
+*which* cohorts die, not to override how many. The naive way to impose that is a linear rescale
+`f_i = λ·(1 − mort_i)`, which needs a clamp (it can hand a cohort `f_i > 1`, i.e. mortality that
+*creates* individuals) and, worse, is not a hazard at all — it distorts the ratio between two cohorts'
+survival by a different amount for every pair. The tilt is the textbook alternative and is exactly
+FIT's own object scaled: `f_i = exp(−θ·H_i)` where `H_i = −ln(1 − mort_i)` is the cumulative hazard, so
+`θ` multiplies the HAZARD RATE. It is bounded in `[0,1]` by construction, monotone in `mort_i`,
+order-preserving, and it recovers FIT exactly at `θ = 1` — which is a testable statement, not a hope: a
+year in which the DRF's `ρ` happens to equal the hazard's own survival returns `θ = 1` to solver
+precision.
+
+`Σ(θ)` is continuous and strictly decreasing wherever any `0 < mort_i < 1`, so a plain bisection on
+`[0, θ_hi]` is exact and deterministic (no dependence on cohort ORDER — a real trap in this file, where
+`-DPERMUTE`-style order sensitivity is the C's known non-determinism). Hard-killed cohorts
+(`mort_i = 1`) have `f_i = 0` for every `θ > 0`, faithfully — which is the one way the operator can fail
+to reach the target: if the hard kills alone remove more than `1 − ρ` of the density, no `θ` suffices.
+That case returns `θ = 0` (spare everything the hazard has not condemned) and reports the residual as
+`shortfall`, the relative count MISS `|achieved − n_target| / n_now`. It is a reported override of the DRF,
+never a silent one — and it is reported at BOTH ends: the mirror case is a hazard that is identically zero
+on every cohort (nothing to tilt), where no `θ` can remove anything at all. Both are "the count target was
+unreachable given the hazard", which is exactly the situation a Stage-2 arm must not absorb quietly.
+"""
+function _hazard_tilt(
+        haz::Vector{T}, pools::Vector{FDiff.TreePools{T}}, n_target::T, n_now::T
+    ) where {T}
+    # Σ nind·(1−mort)^θ over live tree cohorts
+    function total(θ::T)
+        acc = zero(T)
+        @inbounds for i in eachindex(pools)
+            p = pools[i]
+            (p.is_grass || p.nind <= 0) && continue
+            w = one(T) - haz[i]
+            acc += convert(T, p.nind) * (w <= zero(T) ? zero(T) : w^θ)
+        end
+        return acc
+    end
+    # θ = 0 spares every cohort the hazard has not CONDEMNED (mort == 1 ⇒ 0^0 is excluded above)
+    hi_total = total(zero(T))
+    if hi_total <= n_target
+        # the hard kills alone already overshoot the target — report, do not resurrect
+        return zero(T), abs(n_target - hi_total) / (n_now + T(1.0e-12))
+    end
+    lo = zero(T)                      # total(lo) ≥ n_target
+    hi = one(T)
+    for _ in 1:200                    # grow the bracket until total(hi) ≤ n_target (finite: Σ → hard-kill floor)
+        total(hi) <= n_target && break
+        hi *= T(2)
+    end
+    if total(hi) > n_target
+        # No θ removes enough — the hazard is (near) zero on every cohort, so there is nothing to tilt.
+        # Bounded, so this never loops; and it REPORTS, because a silent 0 here would read as "the count
+        # target was honoured" in exactly the year the operator could not honour it.
+        return hi, abs(total(hi) - n_target) / (n_now + T(1.0e-12))
+    end
+    for _ in 1:200                    # bisection to machine precision in θ
+        mid = (lo + hi) / T(2)
+        (mid == lo || mid == hi) && break
+        total(mid) > n_target ? (lo = mid) : (hi = mid)
+    end
+    return (lo + hi) / T(2), zero(T)
 end
 
 """
@@ -502,9 +741,14 @@ the within-year accumulators + per-PFT phenology cold-start (mirrors `annual_ste
 roster state (`s.age = ages` start-of-year; `s.recruit_idx` recomputed). Every appended/merged cohort
 reuses an existing PFT id, so `pft_slot`/`pft_params`/`pft_states`/`pft_isg` (keyed by distinct PFT, not K)
 need no change; a genuinely new id errors here rather than `KeyError`-ing later inside `step!`.
+
+`counters` (ADR 0049; default `nothing` ⇒ every pre-0049 call is byte-identical) commits the per-cohort
+`bm_inc_counter` roster in the same shot, so it cannot fall out of step with `s.age` and `fc.pools` — the
+whole reason this function exists as one atomic operation (design risk #5).
 """
 function _commit_membership!(
-        s, fc::FDiffFastCore{T}, pools::Vector{FDiff.TreePools{T}}, tmpls, pft_ids, ages::Vector{T},
+        s, fc::FDiffFastCore{T}, pools::Vector{FDiff.TreePools{T}}, tmpls, pft_ids, ages::Vector{T};
+        counters::Union{Nothing, Vector{Int}} = nothing,
     ) where {T}
     all(id -> haskey(fc.pft_slot, id), pft_ids) ||
         error("_commit_membership!: an appended/merged cohort introduced a PFT id absent from fc.pft_slot")
@@ -521,6 +765,7 @@ function _commit_membership!(
     fc.pft_states = FDiff.PhenState{T}[FDiff.PhenState{T}() for _ in eachindex(fc.pft_states)]
     fc.grass_lf = one(T)
     s.age = ages
+    counters === nothing || (s.bm_inc_counter = counters)
     s.recruit_idx = _shortest_tree_idx(pools)
     return nothing
 end
@@ -582,12 +827,16 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     k_cap::Int
     recruit_copula::Union{Nothing, RecruitCopula{T}}
     boundary_series::Union{Nothing, Vector{Vector{Float64}}}
+    # ── trait-dependent mortality (ADR 0049); `false`/empty ⇒ pre-0049 behaviour byte-for-byte ──
+    trait_mortality::Bool
+    bm_inc_counter::Vector{Int}
+    mort_diag::Vector{TraitMortDiag}
 end
 
 """
     FluxDrivenSlowEmulator(fc::FDiffFastCore{T}, forest::DRF.Forest; boundary=Float64[],
                            max_mort=0.3, max_estab=0.3, n_init=1.0, sapl=nothing, seed=1,
-                           age0=0, k_cap=nothing, recruit_copula=nothing)
+                           age0=0, k_cap=nothing, recruit_copula=nothing, trait_mortality=false)
 
 Construct the Tier-1 flux-driven slow emulator for a fast core: the K cohorts are `fc.pools`;
 `recruit_idx` is the shortest living TREE cohort; `sapl` defaults to a small beech sapling (as Tier-0);
@@ -608,6 +857,14 @@ conditioning track the year's bioclimate (a warming cell's establishment gate sh
 the climatological mean; refines ADR 0020's time-constant boundary). Default `nothing` leaves `s.boundary`
 constant every year ⇒ byte-identical to the pre-0026 static boundary. If `boundary` is empty and a
 `boundary_series` is given, `boundary` is seeded from its first row. Deterministic given `seed`.
+
+`trait_mortality` (default `false`; ADR 0049) opts the **ρ-thinning** into the ported FIT per-individual
+hazard: instead of scaling every tree cohort's `nind` by one composition-preserving factor, each cohort's
+share of the year's deaths is set by its OWN `TraitMortality.mortality_hazard` (wood density, growth
+efficiency, age), tilted to land exactly on the DRF's count target. `false` leaves every code path,
+committed baseline and AD gate byte-identical — the hazard is not even evaluated. Requires real
+`fc.pft_ids` (`TraitMortality.pft_mort_params` errors rather than defaulting to beech). Read
+[`_trait_hazards!`](@ref) for what is and is NOT fed to the hazard before scoring an arm with it.
 """
 function FluxDrivenSlowEmulator(
         fc::FDiffFastCore{T}, forest::DRF.Forest; boundary::AbstractVector{<:Real} = Float64[],
@@ -616,6 +873,7 @@ function FluxDrivenSlowEmulator(
         age0::Union{Real, AbstractVector} = 0, k_cap::Union{Nothing, Integer} = nothing,
         recruit_copula::Union{Nothing, RecruitCopula{T}} = nothing,
         boundary_series::Union{Nothing, AbstractVector} = nothing,
+        trait_mortality::Bool = false,
     ) where {T <: AbstractFloat}
     ridx = 0
     hmin = typemax(T)
@@ -676,6 +934,7 @@ function FluxDrivenSlowEmulator(
         forest, bnd, convert(T, n_init), T(max_mort), T(max_estab),
         sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], Vector{Float64}[], 0,
         DRF.Xoshiro256pp(seed), kcap, recruit_copula, bser,
+        trait_mortality, zeros(Int, length(fc.pools)), TraitMortDiag[],
     )
 end
 
@@ -737,6 +996,15 @@ function reconcile_demography!(
     tmpls = copy(fc.tmpls)                          # length-K working roster (rebuilt atomically on commit)
     pft_ids = copy(fc.pft_ids)
     ages = copy(s.age)                              # start-of-year per-cohort ages (incremented after commit)
+    # ADR 0049 — the per-cohort `bm_inc_counter` roster, resized if a previous year's construction predates
+    # it (a `nothing`-counter Tier-0/pre-0049 emulator keeps an empty vector and never reaches the operator).
+    counters = if s.trait_mortality
+        c = copy(s.bm_inc_counter)
+        length(c) == length(fc.pools) || (c = zeros(Int, length(fc.pools)))
+        c
+    else
+        Int[]
+    end
 
     # ── TRANSIENT boundary (ADR 0026): if a per-year series is set, advance `s.boundary` to THIS year's row
     #    (1-based index `s.year+1`, clamped so post-series years reuse the last row) BEFORE building `feats`,
@@ -760,16 +1028,48 @@ function reconcile_demography!(
 
     dtree = sum(convert(T, pools[i].nind) for i in eachindex(pools) if !pools[i].is_grass; init = zero(T))
 
+    # ── TRAIT-DEPENDENT MORTALITY (ADR 0049), opt-in. The hazard is evaluated EVERY year the operator is
+    #    on — not only in thinning years — because `bm_inc_counter` is a per-individual recursion with no
+    #    gaps (`_trait_hazards!`). `haz` is empty and nothing below runs when the flag is off. ──
+    haz = s.trait_mortality ? zeros(T, length(pools)) : T[]
+    hazard_mean = zero(T)
+    hard_kills = 0
+    if s.trait_mortality
+        hazard_mean, hard_kills = _trait_hazards!(haz, counters, s, fc, grow, pools, pft_ids)
+    end
+    θ = T(NaN)
+    shortfall = zero(T)
+
     if ρ < one(T)
-        # ── MORTALITY: uniform proportional thinning of tree cohorts; carbon vegc_full·Δnind → litter ──
-        mfrac = one(T) - ρ
-        for i in eachindex(pools)
-            p = pools[i]
-            (p.is_grass || p.nind <= 0) && continue
-            dn = convert(T, p.nind) * mfrac
-            dn <= 0 && continue
-            record_litter!(s.ledger, FDiff.vegc_full_ind(p) * dn)
-            pools[i] = _with_nind(p, convert(T, p.nind) - dn)
+        if s.trait_mortality
+            # ── TRAIT-DEPENDENT MORTALITY: the same total death, redistributed by each cohort's OWN
+            #    hazard. `f_i = (1 − mort_i)^θ` with θ from `_hazard_tilt`, so Σ nind lands on the DRF's
+            #    target (its 0.9824 OOS count skill is NOT overridden) while WHICH cohorts die is FIT's
+            #    physics. Carbon routing is byte-for-byte the uniform branch's — the only difference is
+            #    the per-cohort fraction — so the ~1e-12 handoff closure is structurally unchanged. ──
+            n_target = ρ * dtree
+            θ, shortfall = _hazard_tilt(haz, pools, n_target, dtree)
+            for i in eachindex(pools)
+                p = pools[i]
+                (p.is_grass || p.nind <= 0) && continue
+                w = one(T) - haz[i]
+                f = w <= zero(T) ? zero(T) : w^θ
+                dn = convert(T, p.nind) * (one(T) - f)
+                dn <= 0 && continue
+                record_litter!(s.ledger, FDiff.vegc_full_ind(p) * dn)
+                pools[i] = _with_nind(p, convert(T, p.nind) - dn)
+            end
+        else
+            # ── MORTALITY: uniform proportional thinning of tree cohorts; carbon vegc_full·Δnind → litter ──
+            mfrac = one(T) - ρ
+            for i in eachindex(pools)
+                p = pools[i]
+                (p.is_grass || p.nind <= 0) && continue
+                dn = convert(T, p.nind) * mfrac
+                dn <= 0 && continue
+                record_litter!(s.ledger, FDiff.vegc_full_ind(p) * dn)
+                pools[i] = _with_nind(p, convert(T, p.nind) - dn)
+            end
         end
     elseif ρ > one(T) && s.recruit_idx > 0
         # ── ESTABLISHMENT: APPEND a real age-0 recruit cohort of (ρ−1)·D density (ADR 0024). The recruit's
@@ -792,15 +1092,18 @@ function reconcile_demography!(
             push!(tmpls, fc.tmpls[s.recruit_idx])
             push!(pft_ids, fc.pft_ids[s.recruit_idx])
             push!(ages, zero(T))
+            # a recruit starts with a clean counter (`mortality_tree_ind.c:72` resets it at age 1 anyway)
+            s.trait_mortality && push!(counters, 0)
             record_estab!(s.ledger, FDiff.vegc_full_ind(recruit) * dn)
         end
     end
 
     # ── K-cap MERGE: bound the roster (carbon-neutral; no ledger entry) ──
-    _apply_kcap_merge!(pools, ages, tmpls, pft_ids, s.k_cap, fc.allom)
+    kc = s.trait_mortality ? counters : nothing
+    _apply_kcap_merge!(pools, ages, tmpls, pft_ids, s.k_cap, fc.allom; counters = kc)
 
     # ── ATOMIC roster rebuild: replaces every length-K fc field + s.age in lockstep (design risk #5) ──
-    _commit_membership!(s, fc, pools, tmpls, pft_ids, ages)
+    _commit_membership!(s, fc, pools, tmpls, pft_ids, ages; counters = kc)
 
     cveg_end = sum(FDiff.vegc_full_ind(pools[i]) * convert(T, pools[i].nind) for i in eachindex(pools))
     s.last_resid = handoff_carbon_residual(s.ledger; c_veg_delta = cveg_end - cveg_start)
@@ -810,6 +1113,14 @@ function reconcile_demography!(
     push!(s.total_n_history, sum(convert(T, p.nind) for p in pools))
     push!(s.resid_history, s.last_resid)
     push!(s.target_history, convert(T, target))
+    # ADR 0049 — record BEFORE believing any before/after Δ: a null from an operator that never fired is
+    # the exact error ADR 0048 had to correct once already (handoff item F).
+    s.trait_mortality && push!(
+        s.mort_diag,
+        TraitMortDiag(
+            s.year, Float64(hazard_mean), Float64(θ), hard_kills, ρ < one(T), Float64(shortfall)
+        )
+    )
 
     # ADR 0035 — root-zone, whcs-weighted (NOT the pre-0035 unweighted 23-layer mean)
     soilmoist = root_zone_soilmoist(state, fc.soil)
@@ -821,3 +1132,12 @@ end
 
 "The DRF demographic targets predicted per year (count-space) — the recursive AR trajectory."
 target_history(s::FluxDrivenSlowEmulator) = s.target_history
+
+"""
+    trait_mortality_diag(s::FluxDrivenSlowEmulator) -> Vector{TraitMortDiag}
+
+The per-year trait-mortality diagnostics (ADR 0049) — EMPTY when the operator is off, which is how a probe
+proves the operator fired before interpreting a trajectory. See [`TraitMortDiag`](@ref) for the fields and
+why `theta` is the number to read first.
+"""
+trait_mortality_diag(s::FluxDrivenSlowEmulator) = s.mort_diag
