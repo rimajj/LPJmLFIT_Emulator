@@ -245,3 +245,42 @@ weights explicitly.
 This is the `residual-diagnosis` rule paying off in the direction it usually doesn't: the comparison basis
 was wrong *before* any residual was chased, and the cost of noticing late was one cancelled job rather
 than a session spent explaining a fake shift.
+
+### The first O3b measurement on the CORRECT basis — job 1706597 (2026-08-05)
+
+`FLOW=rre DAYS=30 DZMAX=2.5`, exit 0, 2973 s. Column **19.46 m** (LPJmL's is 20 m); root zone = **10 of
+30 layers = 0.988 m** (LPJmL's top 3 = 1.00 m). Saturation spread over land 0.903 ⇒ the water state is a
+model result, not the initializer. O3a gate passes (PAW spread 0.667, nothing pinned at 1.0).
+
+| quantile | LPJmL live `soilmoist_ye` | Terrarium root-zone PAW (30 d) |
+|---|---|---|
+| min | 0.0 | 0.0 |
+| q10 | 0.0 | 0.0 |
+| q25 | 0.0 | 0.0 |
+| **q50** | **0.498** | **0.109** |
+| q75 | 0.877 | 0.338 |
+| q90 | 0.9999 | 0.681 |
+| max | 1.008 | 1.0 |
+| **mean** | **0.478** | **0.199** |
+
+**Read it honestly, in two halves.** The **dry tail agrees exactly** — min/q10/q25 all 0.0 in both. That is
+the distinctive feature of the live reference (a quarter of cell-years at a fully dry root zone, the thing
+that the retired `swc` table hid), and the online soil reproduces it without tuning. The **upper half is
+systematically too dry**: q50 off by 4.6×, mean by 2.4×.
+
+**This is NOT yet a train/inference shift, and must not be reported to line S as one.** Two confounds are
+un-excluded, and both push the same way:
+1. **Soil spin-up.** 30 days from a near-saturated column is still draining — mean saturation fell 0.89 → 0.24.
+   A monotone drying trend cannot be distinguished from an equilibrium that is genuinely drier.
+2. **Atmosphere spin-up.** SpeedyWeather's own precipitation climatology has had 30 days to establish from
+   its default initial state, so the soil is being driven by a spinning-up rainfall field.
+Only after the distribution stops moving is the residual attributable to Terrarium's hydrology.
+**Job 1706979** (`DAYS=90`, same config) is the convergence check: if its distribution matches 1706597's,
+the run has converged and the gap is real; if it is drier again, it is still draining.
+
+Cost measured: 30 d = 2973 s (35 G allocations, 25 TiB, 47 % GC) ⇒ ~99 s per simulated day even on the
+19.5 m column — the RRE path's allocation behaviour, not the depth, dominates. A multi-year spin-up at this
+rate is ~10 h per simulated year and needs either a coarser Δt for the soil sub-step or an upstream fix.
+
+**Next:** read 1706979 → converged: raise the line-S integration point with the numbers; not converged:
+extend, and size the spin-up honestly before spending more. Then O3c.

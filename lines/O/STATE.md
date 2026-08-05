@@ -45,7 +45,30 @@ reference.** Score against the **LIVE** table only (ADR 0035): `tables/cell_year
 | 1706262 | `NoFlow` (default) | 2 | 433 m | 0.949 / 0.925 — **the initializer, frozen** (trap 8) |
 | 1706324 | `RichardsEq` | 10 | 433 m | 0.104 / 0.225 — **mid-drainage transient**, not spun up |
 | ~~1706462~~ | — | — | — | **cancelled** mid-flight: it was on the retired 2 m / `swc` basis |
-| **1706597** | `RichardsEq` | 30 | **≈19.5 m** (`DZMAX=2.5`) | ← **read this first**, on the ADR 0035 basis |
+| 1706597 | `RichardsEq` | 30 | 19.46 m, root zone 0.988 m | **first correct-basis result** — see table below |
+| **1706979** | `RichardsEq` | **90** | 19.46 m | ← **READ THIS FIRST**: the convergence check |
+
+**Where O3b actually stands** (job 1706597, exit 0, 2973 s; water state IS a model result — saturation
+spread over land 0.903, nothing pinned):
+
+| quantile | LPJmL live `soilmoist_ye` | Terrarium root-zone PAW (30 d) |
+|---|---|---|
+| min / q10 / q25 | 0.0 / 0.0 / 0.0 | **0.0 / 0.0 / 0.0** ← exact agreement on the dry tail |
+| q50 | 0.498 | 0.109 |
+| q75 | 0.877 | 0.338 |
+| q90 | 0.9999 | 0.681 |
+| mean | 0.478 | 0.199 |
+
+The **dry tail matches exactly** — the quarter of cell-years at a fully dry root zone, which is the
+distinctive feature of the live reference, is reproduced untuned. The **upper half is 2.4–4.6× too dry**.
+
+**DO NOT report this to line S as a train/inference shift yet.** Two confounds are un-excluded and both
+push the same way: (1) 30 days from a near-saturated column is still draining (mean saturation 0.89 → 0.24);
+(2) SpeedyWeather's own precipitation climatology has only had 30 days to establish. Compare 1706979's
+distribution against the table above — **if they agree, the run has converged and the gap is real; if
+1706979 is drier again, it is still draining** and the spin-up must be sized before anything is claimed.
+Cost measured: **~99 s per simulated day** even on the 19.5 m column (25 TiB alloc, 47 % GC — the RRE
+path's allocation behaviour dominates, not the depth), i.e. ~10 h per simulated year.
 
 Why 1706462 is on the right basis: `ExponentialSpacing(N=30, Δz_min=0.05)` defaults to `Δz_max = 100` =
 a **433 m** column, 20× LPJmL's 20 m, so an unweighted 30-layer mean is dominated by deep permanently

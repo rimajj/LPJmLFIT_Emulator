@@ -89,8 +89,14 @@ cd /p/tmp/jamirp/esm_online_coupling
    `Δz_max = 100`, giving a **433 m** column — 20× LPJmL's 20 m — so an unweighted layer mean is dominated
    by deep, permanently saturated layers and is *not* the same operator as `slow.jl`'s unweighted mean over
    23 layers. Pass `Δz_max = 2.5` for ≈19.5 m (matches LPJmL, equilibrates ~20× faster), or compare on a
-   thickness-weighted root-zone (top 2 m) basis. **A run started near saturation is still draining after
-   10 days** — a transient is not a spin-up; check that the distribution has stopped moving before quoting it.
+   thickness-weighted root-zone basis. **A run started near saturation is still draining after 10 days** —
+   a transient is not a spin-up. Two independent spin-ups are in play and **both dry the soil**, so they
+   cannot be told apart from a genuinely drier equilibrium by inspection: the soil column draining, *and*
+   **SpeedyWeather's own precipitation climatology establishing from its default initial state**. The only
+   honest test is to run two lengths (e.g. 30 d and 90 d) and check the distribution has **stopped moving**
+   before quoting it. Shrinking the column does *not* buy speed: `[VERIFIED 2026-08-05, job 1706597]` the
+   19.5 m column still costs **~99 s per simulated day** (25 TiB allocated, 47 % GC over 30 days) — the RRE
+   path is allocation-bound, not depth-bound, so budget ~10 h per simulated year regardless of `Δz_max`.
 
 ## The coupling architecture (verified from source, not docs)
 
