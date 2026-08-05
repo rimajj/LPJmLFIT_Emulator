@@ -48,6 +48,10 @@ flock "$INT/.git/esm-integrate.lock" bash -eu -c '
    either (ADR 0090). `format`, `docs`, `python`, Aqua and JET are whole-package gates and `docs`
    never ran on your branch. Check **main's newest** run after merging — GitHub keeps only one *pending* run per
    branch, so a quick follow-up push can cancel an intermediate `main` verdict (observed twice on 2026-07-27/28).
+   ⚠ **"`docs` never ran on your branch" does NOT mean it runs on main** — it is path-filtered there too, and
+   `docs/decisions/**` (ADRs) is **not** in its trigger set (§FIRST's table). Build the expected `main` gate
+   set from the merged diff exactly as you did for the branch; polling main for a `docs` run an ADR-only or
+   ADR+tests merge never triggers is the same infinite wait, one step later (line M walked into it 2026-08-05).
 
 **A STALE `index.lock` in the integration worktree blocks EVERY line — clear it, but prove it is stale first
 (line S, 2026-07-30).** The merge died with `Unable to create '<INT>/.git/index.lock': File exists`, and git's
