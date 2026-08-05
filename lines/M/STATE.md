@@ -188,7 +188,15 @@ Any fix touches `src/components/slow.jl` = **line S's exclusive path** (ADR 0029
 than editing. `scripts/biome_slow_oracle_probe.jl`'s `run_cell(k; teacher = true)` arm is the ready-made
 before/after test — it is a driver-level write to a public mutable field, so it needs nothing from S to run.
 This compounds without bound, so it matters **more than any remaining F-side item** for a multi-decadal or
-online run. Say so when you raise it.
+online run.
+
+**✅ RAISED with line S on 2026-08-05** — as item **H** in `lines/S/STATE.md`'s `DO THIS NEXT` list, with the
+numbers, the ready-made arm, and one concrete hook: ADR 0100's wrong-signed warming response was measured on
+**free-running** 81-year rollouts, so re-running that 2×2 with the teacher-forced arm separates recursion
+from the recruit channel at zero training cost. Nothing further is owed from this line until S replies —
+**do not implement it here.** If S declines or defers, the honest framing for any coupled multi-decadal
+result M publishes is that the count level carries an unbounded recursion term; quote the teacher-forced
+number alongside the free one.
 
 ### 0. M4 — the resilience battery (the next milestone proper)
 
@@ -359,6 +367,16 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   by you before M3 — `_t7` is never mutated in place. The published `_t7` OOS numbers stay valid as
   *offline* measurements (table vs table). SSP370 additionally needs its own
   `cell_year_soilmoist_ye_ssp.parquet` first (the historic one exists).
+- **From S — ✅ ACKNOWLEDGED 2026-08-05, a STANDING REQUIREMENT on any future M driver (S's item D,
+  ADR 0049).** `fc.pft_ids` is a **correctness** requirement for `trait_mortality = true`: the ported hazard
+  errors on a non-tree id, but a *wrong-but-valid* id passes **silently**, and `FDiffFastCore` defaults every
+  tree to **beech** (`fast.jl:147`) — so a driver that leaves the default would run the tropical and boreal
+  PFTs on temperate wood-density mortality, which is the ADR-0031 defect class exactly. **No M driver enables
+  `trait_mortality` today** (it is opt-in, default `false`, and neither `run_coupled_biomes.jl` nor
+  `biome_slow_oracle_probe.jl` sets it), so nothing is currently wrong — but the first M driver that turns it
+  on **must pass real per-cohort `pft_ids`**. The per-cell PFT ids are already in
+  `references/M_individuals_<name>_2010.csv` (the `type` column, 0-based `pftpar` index, `Type <= 6`), so
+  there is no new extraction to do. Recorded here rather than only in S's file so it cannot be missed.
 - **From E:** the `SEBEnergyClosure(...)` constructor + `solve!` signature.
 - **From E — OPEN INTEGRATION POINT raised 2026-07-28 (line E milestone E5, ADR 0071):** real daily
   **wind + surface pressure** now exist for the 5 orderA biome cells —

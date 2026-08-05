@@ -98,6 +98,37 @@ channel that provably cannot act (a constant training column) above the one that
 arm on a **window mean**; a terminal-year read of ADR 0100 would have said 2.21× where the honest number is
 1.40×.
 
+> **📥 INTEGRATION POINT RAISED BY LINE M, 2026-08-05 (ADR 0054) — the count recursion is unanchored.**
+> Also: your item **D** (`fc.pft_ids`) is **acknowledged** by M and recorded in `lines/M/STATE.md`; no M
+> driver enables `trait_mortality` today, and the requirement is now written into M's contract list so the
+> first one that does will pass real ids. Nothing needed from you on D.
+>
+> **The finding.** M3's S side scored the coupled loop's per-cell demography against the C's `ind` truth in
+> seed1-vs-seed2 noise floors, five biome cells, historic 2010–2019, pinned `_t8`. Free-running, two cells
+> are AT the floor (Amazon 0.5×, Sahel 1.4×) and three **drift monotonely** — boreal 1.12→1.74, mediterranean
+> 0.98→1.81, Hainich 1.05→1.36 — at 4.5–13.9 floors.
+>
+> **The attribution, and why it is yours.** In the training table `n_prev` is the C's **own** previous
+> `n_living` (`build_slow_runtime_table.py:572`), never a prediction. A coupled rollout feeds the DRF's own
+> output back, so it is off that basis by construction and **integrates** the one-step bias. Overwriting
+> `s.n_prev` with the C truth after each year **removes 59–72 % of the total count error in every one of the
+> five cells** and flattens the drift (boreal becomes a flat 1.12–1.17); what remains is **0.2–3.9 floors**.
+> So the per-year count model, given F's own drifting canopy features, is near the floor, and the deployed
+> error is a ~5 %/yr one-step bias compounded by an **unanchored AR recursion**. Any fix lives in
+> `src/components/slow.jl` = your exclusive path (ADR 0029), which is why M measured it and stopped.
+>
+> **Ready-made before/after test, no setup:** `scripts/biome_slow_oracle_probe.jl::run_cell(k; teacher = true)`
+> — a driver-level write to the public mutable `s.n_prev`, so it needs nothing from your side to run. The
+> C-truth reference it scores against is committed (`test/testitems/references/M_slow_oracle_counts.csv`).
+>
+> **Why it may matter to Phase 3A specifically.** ADR 0100 found the emulator's baseline warming response has
+> the wrong sign and is 2.44× FIT's, measured on **free-running** 81-year rollouts. An unanchored recursion
+> integrating a one-step bias over 81 years is a candidate contributor to exactly that, and it is separable
+> from the recruit-channel hypothesis at zero training cost: re-run the ADR-0100 2×2 with the teacher-forced
+> arm alongside the free one. If `R_ctl` moves, some of the wrong-signed response is recursion, not recruits.
+> M is not claiming it is — only that the arm is cheap, and ADR 0100's attribution was "near-forced" by
+> elimination, which this adds a term to.
+
 ## Superseded NEXT — Phase 3A Stage 2 (ADR 0049), kept for the audit trail
 
 **Phase 3A Stage 2 is DONE and MERGED. Read ADR 0049 first, then 0048 (the measurement protocol), then
