@@ -7,11 +7,37 @@
 
 ## NEXT — start here
 
-**LINE S'S SCIENCE PROGRAM IS COMPLETE THROUGH PHASE 3A, AND THE BINDING CONSTRAINT IS NO LONGER S'S TO
-LIFT ALONE.** Read **ADR 0102** first — it answers line M's inbound ADR-0054, re-orders the queue, and
-retires S2 from the top of it — then ADR 0101, then ADR 0049. Every item S could close by itself is closed.
-The three levers that remain each need either **line M** or a **global retrain**, and all three are
-specified rather than open questions.
+**THE LEVEL ANCHOR IS BUILT, MEASURED AND SHIPPED (ADR 0103). Read ADR 0103 first, then 0102, then 0101.**
+⚠ **ADR 0102 §4 was WRONG and 0103 supersedes it.** 0102 said the fix needed the count↔density conversion at
+the S↔F seam and deferred it to line M as an integration point. **The conversion is a documented CONSTANT** —
+`param.patcharea = 225.0` m² (15×15) in `par/lpjparam_fit.js`, with `new_tree.c:209` giving every individual
+`nind = 1/patcharea`; verified by `cpp -P` on the live config (single occurrence, no duplicate override) and
+end-to-end against the fixture (`sum(nind)×225 = 17.000` exactly). **The owner caught the error.** Nothing was
+missing, no interface change was needed, and the fix is one file: `src/components/slow.jl`.
+
+**It works.** `anchor` blends the AR ratio with the ratio that lands the stand on the DRF's absolute target,
+`ρ_eff = (target/n_prev)^(1−a)·(D_want/D)^a`. Measured (job 1707102, Hainich, 150 yr, the ADR-0102 sweep):
+retention **1.036 → 0.051**, terminal spread **4.21× → 1.07×**, and the stand goes from **1.409×** its own
+count model's absolute prediction to **1.000×** — a 41 % over-density nothing in this project could see,
+because every existing gate reads ratios, distributions or correlations, never the absolute level.
+`anchor = 0` reproduces the unanchored trajectory to the last bit (pinned in
+`test/testitems/slow_level_anchor_tests.jl`). **Recommendation: `anchor = 0.1`** — the gentlest setting that
+fully works; `a = 1` is measurably *worse* (retention 0.076), so relax, don't force.
+
+**⚠ THE ANCHOR IS OFF BY DEFAULT, AND THAT IS TEMPORARY — do not let it become permanent (ADR 0103 §6).**
+`anchor = 0` is a KNOWN-WRONG default (41 % level error, invisible to every gate). It is off for exactly one
+measurement cycle, because the evidence is one cell and flipping a global default on single-cell evidence is
+the ADR-0031 defect class. **The flip criterion is pre-registered** in ADR 0103 §6 and the decisive arm is
+line M's 5-cell oracle at `anchor = 0.5` (their 10-yr horizon needs the stronger setting — §3b). Raised as an
+ACTION in `lines/M/STATE.md`. **If that arm has not been run when the next S session opens, running it is
+that session's FIRST action, ahead of the retrains** — `wscal_leafon` sat correct-but-off for weeks on
+exactly this failure mode, with each line recording it as the other's to schedule.
+
+**What is left is genuinely two things, and both are now unblocked** (the owner has confirmed HPC compute is
+not a reason to defer): the **exposure bias** (retrain the count DRF without feeding its own prediction back
+— the anchor makes the stand follow a biased prediction *faithfully* rather than compounding it, which is
+better and still not right), and **S2's conditioning** in the only form that can carry a warming signal
+(per-cell-per-year moisture descriptors, not present-day means).
 
 ✅ **MERGED AND VERIFIED ON BOTH SIDES — nothing about ADR 0102 is outstanding.** Work sha `0a230ece`
 merged to `main` as **`07c0029f`**. Branch CI green on every required gate (`format`, `test (1)`,
@@ -32,6 +58,38 @@ pending one** — `docs/decisions/**` is in no gate's path filter, so `f56dffce`
 `0a230ece`'s run continued untouched. Both shas were checked rather than assumed. That also made merging
 `origin/line/S` (= `f56dffce`) rather than the CI-verified `0a230ece` sound: `git diff --name-only` between
 them is exactly one `.md` under `docs/decisions/`, i.e. no gate-watched path.
+
+🔓 **OWNER PRE-AUTHORISATION, 2026-08-05 — M's coupled BASELINE REGENERATION is pre-authorised**, for the
+two enablements that need it: `wscal_leafon = true` (ADR 0051) and the Component-S level anchor (ADR 0103,
+once S publishes a measured `anchor`). Recorded verbatim in `lines/M/STATE.md` (where M reads it) and in
+`MEMORY.md` (so it survives a STATE consolidation). **Do not re-raise it as an open question** — it existed
+only because §9 makes a baseline regeneration a two-line integration point, so each line waited for the
+other. The record-the-before/after-numbers discipline is unchanged; only the waiting is removed.
+
+📄 **THE PUBLIC REPORT IS CURRENT — a CONCURRENT SESSION audited and rewrote it (commits `f34c5f91` +
+`2c3e4c1e`), and it did NOT refresh this block, deliberately, because this line owned the handoff.**
+Recording it here at that session's request. It is a per-dimension audit of every table, caption and claim
+against the ADRs: **7 corrections + 5 additions**, PDF rebuilt (34 pp, was 28). The corrections worth
+knowing because they are traps this line can repeat:
+- **`co2` is `CO2_CONST = 369.0` in every training row of every deployed artifact** ⇒ the emulator has **no
+  CO2 response at all**, and ADR 0004 obliges every write-up to say so. It was being presented as live
+  boundary context.
+- The "29 recorded fields are the complete input universe" claim was false — only 10 of the count model's 15
+  predictors are aggregates of them.
+- `soil_depth` is **static spatial context, not a rooting-volume limit** (the C discards its soil-depth
+  input; `newgrid.c:282` sets 20 m unconditionally).
+- The blocked-hold-out "73 % retained" was the env6 1-NN surrogate over the **REFUSED** moisture tail, and
+  ADR 0042 §8(3) forbids quoting that retention percentage as a finding at all.
+- ⚠ **It also corrected an error THIS session introduced into the report earlier the same day:** I wrote that
+  the `ind` table's `mort_*` fields "are the basis of the optional operator". They are not — the operator
+  **re-derives** the hazard from the C source and its parameter files and sets `mort_water`/`mort_temp` to
+  zero (ADR 0047/0049), so those columns remain **unconsumed**. Ported-from-the-source ≠ built-from-the-table.
+- New `§sec:coupled` and `§sec:anchor` carry ADR 0054's coupled measurement and this line's retention table.
+
+⚠ **Two sessions were live on `line/S` in ONE worktree** (CLAUDE.md §9 forbids this). No damage: that session
+staged by explicit path, touched neither of the level-anchor files, and left the push to avoid a branch race.
+But we shared one git index, one `test/Manifest.toml` and one `logs/`. If it happens again, the second
+session belongs in its own worktree.
 
 ### THE STATE IN SEVEN LINES
 

@@ -297,6 +297,51 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
   `cell_meta.parquet` schema. **Pin a specific versioned artifact path** in your driver; if S needs to change
   the feature contract it is an integration point (both sides land together) — never adopt a re-trained
   artifact silently, because train/inference consistency is load-bearing (ADR 0023).
+> ## ▶ ACTION FOR M — run the level anchor on your 5-cell oracle; it decides a DEFAULT (ADR 0103 §6)
+>
+> **This is the one thing S needs from M, it is small, and it uses a harness you already have.** S shipped
+> the level anchor (`FluxDrivenSlowEmulator(...; anchor = a)`, ADR 0103) opt-in and default-off. Off is a
+> **known-wrong default** — it leaves the stand 41 % denser than its own count model says, permanently — so
+> it is temporary, and the criterion for flipping it is pre-registered rather than left to judgement.
+>
+> **Run:** `scripts/biome_slow_oracle_probe.jl`, 5 biome cells, historic 2010–2019, against the C `ind`
+> truth in seed1-vs-seed2 floors — the harness that found ADR 0054's drift — with **`anchor = 0.5`**
+> alongside your existing free and teacher-forced arms. ⚠ Use **0.5, not 0.1**, at a 10-year horizon:
+> ADR 0103 §3b measured the anchor's convergence as NON-MONOTONE, and at yr 10 the retention is 0.24 at
+> `a = 0.5` vs 0.62 at `a = 0.1` (against 1.07 unanchored). `a = 0.1` is the right *steady-state* value and
+> the wrong one for a decade-long run. **Quote the horizon with any anchored number.**
+>
+> **Flip the default to `anchor = 0.1` iff** (i) the monotone drift is removed in the three drifting cells
+> (boreal 1.12→1.74, mediterranean 0.98→1.81, Hainich 1.05→1.36 each flatten), (ii) the two cells at the
+> noise floor STAY there (Amazon 0.5×, Sahel 1.4× — it must not break what works), and (iii) carbon still
+> closes ≤1e-6·C_scale in all five. Then it is a one-line default change plus a baseline regeneration,
+> which the owner has **pre-authorised** (below) — no further decision needed. **If it fails in any cell,
+> that failure is the finding**; tell S rather than tuning `a` to make it pass.
+>
+> `patch_area` defaults to 225.0 m² (`par/lpjparam_fit.js`, 15×15) and is correct for the `_t8` artifacts
+> you pin. It is a property of the ARTIFACT's training run, not the cell — stock LPJmL-FIT uses 100.0.
+
+> ## 🔓 OWNER PRE-AUTHORISATION, 2026-08-05 — **M's coupled BASELINE REGENERATION is pre-authorised.**
+>
+> Recorded by line S at the owner's explicit instruction ("I hereby pre-authorise that… write it down
+> wherever it is needed"). **You do not need to ask, and you do not need S's sign-off, to regenerate your
+> committed coupled baselines when deliberately enabling either of the two changes below.** This existed as
+> a blocker only because §9 classes "regenerating an existing baseline" as an integration point needing both
+> lines to agree, so each line waited for the other. That wait is now resolved in advance.
+>
+> **Scope — the two enablements this covers:**
+> 1. **`WaterParams.wscal_leafon = true`** (ADR 0051) — the C-faithful leaf-on water scalar. S's side is
+>    already landed; see the block below.
+> 2. **The Component-S LEVEL ANCHOR, `FluxDrivenSlowEmulator(...; anchor = a)`** (ADR 0103) — once S has
+>    published a measured recommendation for `a`. Default is `anchor = 0` = today's behaviour exactly.
+>
+> **What is NOT waived** (this is discipline, not gatekeeping, and none of it needs anyone's approval):
+> the regeneration lands in **its own commit**, the **before/after numbers are recorded** in that commit and
+> in `lines/M/STATE.md`, and CI is green. Guardrail 4 still means "no baseline moves *by accident*" — this
+> authorisation is about the *deliberate* case, which is precisely the case guardrail 4 was written to allow.
+>
+> Anything beyond these two — a third baseline-moving change — is a fresh decision, not covered here.
+
 - **From S — ✅ ANSWER to your ADR-0054 finding, raised 2026-08-05 (line S, ADR 0102). "The count
   recursion is unanchored" is CORRECT, and S has now decomposed it. It is THREE defects, not one, and only
   one of them is S's to fix — but that one is bigger than the exposure bias you attributed it to.**

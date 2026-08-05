@@ -308,6 +308,27 @@ is the offline S.
 
 ## 4. Frozen decisions — pointer + the load-bearing constraints
 
+### 🔓 OWNER DECISIONS — standing, do not re-litigate
+
+- **Reuse + licensing is CLOSED (ADR 0080/0081, 2026-07-28).** The owner is a member of both the LPJmL-FIT
+  group and TUM-PIK-ESM, so reuse SpeedyWeather / Terrarium / LPJmL-hybrid-photosynthesis / NeuralCrop
+  freely. Do **not** raise licensing or re-audit an upstream licence. The one obligation is transparent
+  citation across the four surfaces (skill `reuse-citation`).
+- **M's coupled BASELINE REGENERATION is PRE-AUTHORISED (owner, 2026-08-05).** Line M does not need to ask,
+  and does not need line S's sign-off, to regenerate its committed coupled baselines when deliberately
+  enabling either **(1)** `WaterParams.wscal_leafon = true` (ADR 0051 — S's side is landed) or **(2)** the
+  Component-S level anchor `FluxDrivenSlowEmulator(...; anchor = a)` (ADR 0103, once S publishes a measured
+  `a`). This was never a technical blocker — §9 classes a baseline regeneration as a two-line integration
+  point, so each line waited for the other. **The wait is resolved in advance; the discipline is not
+  waived:** own commit, before/after numbers recorded, CI green. Guardrail 4 still forbids a baseline moving
+  *by accident*; this covers only the *deliberate* case it was written to permit. A third baseline-moving
+  change is a fresh decision. Recorded in full in `lines/M/STATE.md`, mirrored in `lines/S/STATE.md`.
+- **HPC compute is not a reason to defer (owner, 2026-08-05).** "When retraining is needed we do it — we
+  have the whole HPC at our service, so there is no need to procrastinate." Do not park a measurement or a
+  global re-fit *solely* because it costs cluster time; scope it and submit it. (Still SLURM-only and still
+  tagged per line — the standing rule about long jobs is unchanged.)
+
+
 **Single source of truth: [`docs/decisions/README.md`](docs/decisions/README.md)** (29 ADRs, with per-line
 number blocks). This file no longer duplicates the index — that duplication was a merge-conflict source and
 drifted out of order (ADR 0029). ADRs are **immutable once accepted**; supersede, don't edit.

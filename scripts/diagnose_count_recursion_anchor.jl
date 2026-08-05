@@ -148,6 +148,9 @@ const SWEEP = parse.(Float64, split(get(ENV, "N_INIT_SWEEP", "7,9,11,13,15"), ',
 
 treedens(core) = sum(p.nind for p in core.pools if !p.is_grass; init = 0.0)
 const DENS_SWEEP = parse.(Float64, split(get(ENV, "DENS_SWEEP", "0.5,0.75,1.0,1.5,2.0"), ','))
+# ADR 0103 — the LEVEL ANCHOR under test. 0 = today's pure-ratio update (byte-identical).
+const ANCHOR = parse(Float64, get(ENV, "ANCHOR", "0.0"))
+const PATCH_AREA = parse(Float64, get(ENV, "PATCH_AREA", "225.0"))   # par/lpjparam_fit.js, 15x15 m
 
 """
     rollout(; n_init, years) -> NamedTuple
@@ -157,13 +160,13 @@ realized tree DENSITY after the year, so the AR state's trajectory and the roste
 construction is `trait_mortality_arm_probe.jl`'s, minus the operator (this defect is upstream of it and
 present with the flag off — the default production configuration).
 """
-function rollout(; n_init::Float64, years::Int = YEARS, dscale::Float64 = 1.0)
+function rollout(; n_init::Float64, years::Int = YEARS, dscale::Float64 = 1.0, anchor::Float64 = ANCHOR)
     core = mkcore(dscale)
     rc = COPULA ?
         RecruitCopula{Float64}(cop, af, xcop, make_recruit_to_pools(ax_names), live_flux_cond) : nothing
     s = FluxDrivenSlowEmulator(
         core, forest; boundary = BOUNDARY, n_init = n_init, age0 = AGE0, seed = SEED,
-        recruit_copula = rc, k_cap = K_CAP
+        recruit_copula = rc, k_cap = K_CAP, anchor = anchor, patch_area = PATCH_AREA
     )
     clo = mkclo(); state = mkstate()
     dens = Float64[treedens(core)]                       # D[0] = the initial roster
@@ -324,6 +327,57 @@ println("  force, so the error a coupled run starts with (or accumulates) is nev
 println("  precise content of line M's \"the count recursion is unanchored\" (ADR 0054), and it explains why")
 println("  teacher-forcing `n_prev` onto the C truth recovers only 59-72 % of the coupled count error rather")
 println("  than all of it: teacher-forcing repairs the RATIO each year, but nothing repairs the LEVEL.")
+
+# ── (d) DOES THE ANCHOR FIX IT? (ADR 0103) ───────────────────────────────────────────────────────────────
+# Section (c) shows the stand has no level anchor. This measures the opt-in fix over the SAME perturbation
+# sweep, so the two are directly comparable. The count DRF is trained on stems PER PATCH and the roster
+# carries stems per m2; `par/lpjparam_fit.js` sets `patcharea = 225.0` m2 (15x15) and `new_tree.c:209` gives
+# every individual `nind = 1/patcharea`, so the conversion is an exact division by `PATCH_AREA` — a
+# documented CONSTANT, not missing data.
+@printf("\n=== (d) THE LEVEL ANCHOR (ADR 0103) — retention with `anchor` ON, same sweep ===\n")
+@printf("    patch_area = %.1f m2  (stems/patch -> stems/m2)\n", PATCH_AREA)
+for a in parse.(Float64, split(get(ENV, "ANCHOR_SWEEP", "0.0,0.1,0.25,0.5,1.0"), ','))
+    dsw_a = Dict{Float64, Any}()
+    for ds in DENS_SWEEP
+        dsw_a[ds] = rollout(; n_init = N_INIT, dscale = ds, anchor = a)
+    end
+    dfin_a = [dsw_a[ds].dens[end] for ds in DENS_SWEEP]
+    ret = log(maximum(dfin_a) / minimum(dfin_a)) / log(ratio_in)
+    b = dsw_a[1.0]
+    want = b.target[end] / PATCH_AREA
+    @printf(
+        "  anchor = %4.2f : retention %7.4f   terminal spread %6.3fx   D_end %.6f  vs target/area %.6f  (ratio %.3f)\n",
+        a, ret, maximum(dfin_a) / minimum(dfin_a), b.dens[end], want, b.dens[end] / want
+    )
+    # Retention vs HORIZON for the anchored arm. Added because the testitem asserted the anchored run
+    # forgets its initialisation within 25 yr and FAILED at 0.425 (job 1707739). The hypothesis then was
+    # that each perturbed run carries different `fpc`/`lai`/`agb` ⇒ a different DRF target ⇒ a slow,
+    # SMOOTH decay over decades. **The measurement refuted the shape and confirmed only the floor**
+    # (job 1707785): a = 0.5 collapses to 0.154 by yr 5 (its 1/a time constant, as designed), then
+    # RE-DIVERGES to a transient peak ~0.486 near yr 25, then settles to 0.051 by yr 100. a = 0.1 decays
+    # monotonically to the same place. The ~0.05 FLOOR is the state-dependent target — the per-arm terminal
+    # targets differ by 7.3 %, printed below — so retention cannot reach 0, and should not. The mid-run
+    # re-divergence is REPRODUCIBLE and UNATTRIBUTED (ADR 0103 §3b): recruitment pulses, height-threshold
+    # crossings and asymmetric k-cap merges are all unseparated. Read the whole curve, never one horizon —
+    # yr 25 is the worst point and yr 10 is where line M's coupled runs are scored.
+    if a > 0
+        for h in (5, 10, 25, 50, 100, YEARS)
+            h > YEARS && continue
+            dh = [dsw_a[ds].dens[h + 1] for ds in DENS_SWEEP]
+            @printf(
+                "      yr %3d : retention %7.4f   spread %6.3fx\n",
+                h, log(maximum(dh) / minimum(dh)) / log(ratio_in), maximum(dh) / minimum(dh)
+            )
+        end
+        tg = [dsw_a[ds].target[end] for ds in DENS_SWEEP]
+        @printf(
+            "      per-arm terminal TARGET spread: %.4f … %.4f  (%.1f %% of mean) <- if >0, the target is state-dependent\n",
+            minimum(tg), maximum(tg), 100 * (maximum(tg) - minimum(tg)) / _mean(tg)
+        )
+    end
+end
+println("\n  retention -> 0 and ratio -> 1.00 ⇒ the anchor works: the stand forgets its initialisation AND")
+println("  settles on the count model's own absolute prediction. anchor = 0 must reproduce section (c).")
 
 println("\n", "="^108)
 println("Hainich only (guardrail 6). Constant forcing. Artifact pair named above — it is part of the number.")

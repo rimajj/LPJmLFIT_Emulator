@@ -831,6 +831,9 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     trait_mortality::Bool
     bm_inc_counter::Vector{Int}
     mort_diag::Vector{TraitMortDiag}
+    # ── LEVEL ANCHOR (ADR 0103); `anchor = 0` ⇒ pre-0103 behaviour byte-for-byte ──
+    anchor::T
+    patch_area::T
 end
 
 """
@@ -865,6 +868,23 @@ efficiency, age), tilted to land exactly on the DRF's count target. `false` leav
 committed baseline and AD gate byte-identical — the hazard is not even evaluated. Requires real
 `fc.pft_ids` (`TraitMortality.pft_mort_params` errors rather than defaulting to beech). Read
 [`_trait_hazards!`](@ref) for what is and is NOT fed to the hazard before scoring an arm with it.
+
+`anchor` (default `0`; ADR 0103) opts the demographic update into a **LEVEL ANCHOR**. With `anchor = 0` the
+stand is advanced by the pure AR ratio `target/n_prev`, so it evolves as `D_T = D_0·Πρ_t` and the DRF's
+*absolute* count skill never reaches it: measured at Hainich, a 4× perturbation of the initial density is
+still **4.21× after 300 identical-forcing years** (retention 1.036, a non-zero asymptote — no restoring
+force), and the stand settles **1.41× denser** than its own count model's target. `anchor > 0` geometrically
+blends in the ratio that would place the stand on the DRF's absolute target,
+`ρ_eff = (target/n_prev)^(1−a)·(D_want/D)^a` with `D_want = target/patch_area`, giving exponential relaxation
+toward the target with a time constant of roughly `1/anchor` years (`anchor = 1` places it outright). `0`
+leaves every code path, committed baseline and AD gate byte-identical — the branch is not evaluated.
+
+`patch_area` (default `225.0` m²) is the count↔density conversion: the count DRF is trained on stems **per
+patch** while the roster carries stems **per m²**. 225 m² (15×15) is `param.patcharea` in
+`par/lpjparam_fit.js`, the value the training runs used, and `new_tree.c:209` gives every individual
+`nind = 1/patcharea`. **It is a property of the artifact's training run** — if a future artifact is built
+from a run with a different `patcharea`, pass it here, or the anchor will pull the stand to the wrong level.
+It is unused when `anchor == 0`.
 """
 function FluxDrivenSlowEmulator(
         fc::FDiffFastCore{T}, forest::DRF.Forest; boundary::AbstractVector{<:Real} = Float64[],
@@ -873,8 +893,9 @@ function FluxDrivenSlowEmulator(
         age0::Union{Real, AbstractVector} = 0, k_cap::Union{Nothing, Integer} = nothing,
         recruit_copula::Union{Nothing, RecruitCopula{T}} = nothing,
         boundary_series::Union{Nothing, AbstractVector} = nothing,
-        trait_mortality::Bool = false,
+        trait_mortality::Bool = false, anchor = zero(T), patch_area = T(225.0),
     ) where {T <: AbstractFloat}
+    zero(T) <= anchor <= one(T) || error("anchor must be in [0, 1] (got $anchor)")
     ridx = 0
     hmin = typemax(T)
     for (i, p) in enumerate(fc.pools)
@@ -935,6 +956,7 @@ function FluxDrivenSlowEmulator(
         sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], Vector{Float64}[], 0,
         DRF.Xoshiro256pp(seed), kcap, recruit_copula, bser,
         trait_mortality, zeros(Int, length(fc.pools)), TraitMortDiag[],
+        T(anchor), T(patch_area),
     )
 end
 
@@ -1020,13 +1042,34 @@ function reconcile_demography!(
     feats = flux_feature_vector(s, grow, pools, state, fc.allom, fc.soil)
     push!(s.feature_history, feats)                # diagnostic-only record of the row the forest was fed
     target = DRF.predict(s.forest, feats)
+
+    dtree = sum(convert(T, pools[i].nind) for i in eachindex(pools) if !pools[i].is_grass; init = zero(T))
+
     ρ = if s.year == 0
         one(T)                                     # year 0: no change (seed the recursive AR state)
     else
-        clamp(convert(T, target) / (s.n_prev + T(1.0e-12)), one(T) - s.max_mort, one(T) + s.max_estab)
+        r = convert(T, target) / (s.n_prev + T(1.0e-12))
+        # ── LEVEL ANCHOR (ADR 0103), opt-in. `anchor == 0` skips this branch entirely ⇒ every committed
+        #    baseline byte-identical. WHY IT EXISTS: `r` is a pure RATIO, so the roster evolves as
+        #    `D_T = D_0·Πρ_t` and the DRF's ABSOLUTE count skill never reaches the stand — measured, a 4×
+        #    perturbation of the initial density is still 4.21× after 300 identical-forcing years
+        #    (retention 1.036, converging to a NON-ZERO asymptote). There is no restoring force.
+        #    The conversion the ratio formulation was thought to avoid needing is a documented CONSTANT,
+        #    not missing data: `par/lpjparam_fit.js` sets `patcharea = 225.0` m² (15×15 m) and
+        #    `new_tree.c:209` gives every individual `nind = 1/patcharea`, so the training target (stems
+        #    PER PATCH) maps to the roster's density (stems per m²) by an exact ÷`patch_area`.
+        #    HOW: a GEOMETRIC blend of the AR ratio and the ratio that would land the stand on the DRF's
+        #    absolute target, `ρ_eff = r^(1−a)·(D_want/D)^a`. `a = 0` ⇒ `r` (today); `a = 1` ⇒ the stand is
+        #    placed on `D_want` outright; `0 < a < 1` ⇒ exponential relaxation with time constant ≈ 1/a yr.
+        #    A geometric (not arithmetic) blend keeps the update multiplicative and strictly positive, so
+        #    the carbon routing below is untouched and the clamp still bounds the year's demographic change.
+        a = s.anchor
+        if a > zero(T) && dtree > zero(T) && s.patch_area > zero(T)
+            d_want = convert(T, target) / s.patch_area
+            d_want > zero(T) && (r = r^(one(T) - a) * (d_want / dtree)^a)
+        end
+        clamp(r, one(T) - s.max_mort, one(T) + s.max_estab)
     end
-
-    dtree = sum(convert(T, pools[i].nind) for i in eachindex(pools) if !pools[i].is_grass; init = zero(T))
 
     # ── TRAIT-DEPENDENT MORTALITY (ADR 0049), opt-in. The hazard is evaluated EVERY year the operator is
     #    on — not only in thinning years — because `bm_inc_counter` is a per-individual recursion with no
