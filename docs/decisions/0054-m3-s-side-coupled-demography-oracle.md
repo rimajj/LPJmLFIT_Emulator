@@ -193,6 +193,6 @@ picture, with the boreal 0.0000 being the missing soil ice and the Sahel 0.4392 
   conditional accuracy, and the two call for completely different fixes. Here it would have indicted a count
   DRF that is actually within 0.2–3.9 floors.
 - Deliberately still open, unchanged by this ADR: moving the production driver from the modal patch to the
-  25-patch ensemble (STATE.md item 3 — the modal patch is 1.6–2.0× the ensemble mean stem count here:
+  25-patch ensemble (`lines/M/STATE.md` NEXT item 4 — the modal patch is 1.6–2.0× the ensemble mean stem count here:
   18 vs 11.04 boreal, 17 vs 10.88 Hainich, 22 vs 11.28 Sahel), which will move `biome_coupled_tests.jl`'s
   pinned per-cell LE and GPP and is its own deliberate baseline regeneration under guardrail 4.

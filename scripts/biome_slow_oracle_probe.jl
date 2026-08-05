@@ -15,7 +15,7 @@
 #     ensemble MEAN (`n_mean` in M_slow_oracle_counts.csv), never to the per-cell total (~25x larger) and
 #     never to the driver's own modal patch (which the F side measured at 1.12-1.72x the ensemble).
 #   * The INITIAL CANOPY is that modal patch (`readcanopy`, unchanged from the production driver on purpose
-#     — STATE.md item 3 keeps the ensemble lift as its own deliberate change). So year 0 already starts
+#     — STATE.md NEXT item 4 keeps the ensemble lift as its own deliberate change). So year 0 already starts
 #     ABOVE the ensemble mean and that offset is reported, not hidden: `n0_modal` vs `n_mean(2010)`.
 #   * TRAITS: only SLA and Wooddens reach `TreePools` (`make_recruit_to_pools` — D95max/minwscal are drawn
 #     and validated but have no per-tree consumer), so only those two can be scored on a coupled community.
