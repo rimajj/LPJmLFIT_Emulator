@@ -268,6 +268,15 @@ It is not a problem — it is bookkeeping — but say which sha carries the verd
    --check .` + `uv run pytest`.
 5. **Baselines/opt-in** — no committed ReferenceTests baseline moved unless the change is a deliberate
    physics change (and you noted which baseline moved and why). New physics defaults byte-identical.
+6. **⚠ A REBASE THAT PULLS IN ANOTHER LINE'S `src/**` INVALIDATES YOUR PRE-PUSH SUITE (added 2026-08-05).**
+   The mandated `git pull --rebase origin main` at merge time can bring in a sibling line's `src/` changes
+   *after* you ran step 1 — so the tree you push is not the tree you tested, and nothing warns you. Measured:
+   line S ran its suite, rebased onto a `main` that had just gained line/M's `src/components/slow.jl`, and the
+   green result no longer covered the pushed tree (pass count 107 878 → 110 102 on the re-run). So: after the
+   rebase, check `git diff --name-only <pre-rebase-HEAD> origin/main -- src ext test Project.toml`; if it is
+   non-empty, **re-run the suite on the rebased tree** and let branch CI on the pushed sha be the authority.
+   This is the same family as trap (3) in §9 (a pre-rebase green verdict does not carry over) — that one is
+   about the *remote* verdict, this one about your *local* one.
 
 ## Commit
 
