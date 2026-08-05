@@ -275,6 +275,16 @@ is the offline S.
   copula reproduces only 0.55 of the true between-cell Wooddens spread), and gate the comparison with a
   same-population cross-check (`seed1-basis ≥ 0.99`). Split-half (Spearman-Brown) separates finite-sample
   noise from trajectory divergence: here 0.978–0.999 vs a floor of 0.694–0.964 ⇒ **trajectory divergence**.
+- **[VERIFIED 2026-08-05] A parameter adopted from an upstream model is tuned for THAT model's timestep —
+  check the relaxation number before trusting it (ADR 0074, line E).** For any prognostic reservoir, compute
+  `dt·(Σ conductances)/(thickness · heat capacity)` at *our* step. MITgcm/SpeedyWeather's soil top-layer
+  `z1 = 0.2 m` is for a minute-scale model; at the daily step `run.jl:93` actually runs it is **1.125**, so the
+  layer equilibrates within one step and the flux it drives degenerates into a day-to-day *difference* of the
+  driving temperature (measured: daily G R² −2.8, sd 2.2× observed). The scheme looked mediocre for that reason
+  alone until the thickness was swept. Applies to any reservoir F/E/O adopt from an upstream LSM or GCM, and it
+  is separate from numerical *stability*: this scheme is stable at all these values, just unresolved.
+  Corollary, same ADR: **a flux diagnosed at the start of a step must be compared against the pre-step state** —
+  reading the reservoir after the update is off by exactly `conductance × Δstate`.
 
 ---
 

@@ -49,7 +49,11 @@ references:
   - type: software
     title: "Terrarium.jl — differentiable land surface (SEB + skin temperature)"
     repository-code: "https://github.com/NumericalEarth/Terrarium.jl"
-    notes: "EUPL-1.2. Reuse target for component E (ADR 0006); not in the F_diff spike."
+    notes: "EUPL-1.2. Original reuse target for component E (ADR 0006, superseded by ADR 0017 — E is self-contained). Cross-read only (no code, no dependency) for the half-cell skin temperature + conduction column behind ADR 0074."
+  - type: software
+    title: "MITgcm land package — two-layer prognostic soil temperature"
+    url: "https://mitgcm.readthedocs.io/en/latest/phys_pkgs/land.html"
+    notes: "Method from the documentation (users guide 8.5.2.2), INDEPENDENTLY implemented in src/components/energy.jl as component E's opt-in two-layer ground-heat column (ADR 0074); no code copied. Published soil thermal constants adopted unfitted. Cross-read against SpeedyWeather.jl's LandBucketTemperature, which implements the same equations."
   - type: article
     title: "Global allometric models of tree height, crown radius and stem diameter (Tallo)"
     authors:

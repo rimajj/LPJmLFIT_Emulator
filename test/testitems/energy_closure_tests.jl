@@ -372,3 +372,132 @@ end
         @test isapprox(Rn, le + H + G; atol = 1.0e-9)
     end
 end
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+# E7 / ADR 0074 — the OPT-IN two-layer PROGNOSTIC ground-heat column.
+#
+# ADR 0073 attributed the nocturnal-H failure to the ground-heat term's TIMESCALE and named the fix a
+# "force-restore / two-layer soil scheme" — a design change, not a tune. `enable_two_layer` is that
+# scheme: `G = κ_g(T_skin − T1)` with `κ_g = 2λ_soil/z1`, and the two soil temperatures integrated
+# forward under the MITgcm land-package update. These gates pin the four properties that must hold no
+# matter what the observational scoring says, the first of which is guardrail 4:
+#
+#   1  DEFAULT BYTE-IDENTICAL — disabled (the default), nothing about the old path moves.
+#   2  CLOSURE STILL EXACT (guardrail 2) with the scheme enabled, over a broad state grid.
+#   3  ENERGY-EXACT COLUMN — the column's heat uptake equals the REPORTED `G`·dt exactly. This is the
+#      property that made the flux-forced form the right one; a within-step recomputation of `G` would
+#      break it (and would also be unstable at the daily step).
+#   4  STABLE + SELF-EQUILIBRATING — with a closed bottom and no restoring term, the only thing stopping
+#      a runaway is the surface feedback (T1 cold ⇒ G up ⇒ T1 warms). Assert it actually holds.
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════
+@testitem "Component E — two-layer ground heat is OFF by default and changes nothing (ADR 0074)" tags = [:energy, :unit] begin
+    using LPJmLFITEmulator
+    using Test
+
+    p = SEBParams{Float64}()
+    @test !p.enable_two_layer                       # guardrail 4: opt-in
+
+    # The `lambda_g` kwarg on the kernel defaults to `p.lambda_g`, so the pre-E7 call is bit-for-bit the
+    # same computation — this is the mechanical statement of "default byte-identical".
+    args = (700.0, 350.0, 298.15, 1.0e5, 3.0, 0.15, 2.5, 25.0, 250.0, 295.15)
+    @test solve_seb(p, args...) === solve_seb(p, args...; lambda_g = p.lambda_g)
+
+    # With the scheme disabled, `solve!` must not touch the two soil-layer temperatures beyond seeding
+    # them, and the deep-soil EWMA must still be the thing driving G.
+    clo = SEBEnergyClosure(; t_soil0 = 283.15)
+    st = SharedState()
+    ff = FToE(le = 250.0, gpp = 0.0, npp = 0.0, rh = 0.0, firec = 0.0, flux_estabc = 0.0, ground_heat = 0.0)
+    bc = SToE(albedo = 0.15, z0 = 2.5, lai = 4.0, height = 25.0)
+    forc = AtmForcing(
+        swdown = 700.0, lwdown = 350.0, tair = 298.15, qair = 0.008,
+        wind = 3.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0
+    )
+    for _ in 1:10
+        solve!(clo, st, ff, bc, forc)
+    end
+    @test clo.t_soil1 == 283.15 && clo.t_soil2 == 283.15    # seeded, never integrated
+    @test clo.t_soil > 283.15                                # the EWMA is what moved
+    # and G is the EWMA term, not a half-cell conductance
+    (atm, _tof) = solve!(clo, st, ff, bc, forc)
+    @test isapprox(atm.g, p.lambda_g * (atm.t_skin - clo.t_soil); atol = 1.0e-9)
+end
+
+@testitem "Component E — two-layer column: closure exact, energy-exact, stable (ADR 0074)" tags = [:energy, :scientific] begin
+    using LPJmLFITEmulator
+    using Test
+
+    p2 = SEBParams{Float64}(enable_two_layer = true)
+    c_vol = p2.c_water * p2.theta_soil * p2.field_capacity + p2.c_dry_soil
+    kappa_g = 2 * p2.lambda_soil / p2.z_soil1
+    h1 = p2.z_soil1 * c_vol
+    h2 = p2.z_soil2 * c_vol
+
+    # --- 2. closure stays EXACT with the scheme on, over a broad state grid --------------------------
+    for sw in (0.0, 300.0, 900.0), ta in (263.15, 288.15, 308.15), u in (0.2, 3.0, 8.0), le in (0.0, 250.0)
+        clo = SEBEnergyClosure{Float64}(; params = p2, t_soil0 = ta)
+        st = SharedState()
+        ff = FToE(le = le, gpp = 0.0, npp = 0.0, rh = 0.0, firec = 0.0, flux_estabc = 0.0, ground_heat = 0.0)
+        bc = SToE(albedo = 0.15, z0 = 1.0, lai = 4.0, height = 15.0)
+        forc = AtmForcing(
+            swdown = sw, lwdown = 330.0, tair = ta, qair = 0.008,
+            wind = u, psurf = 1.0e5, precip = 0.0, co2 = 400.0
+        )
+        # `G` is diagnosed from the START-of-step `T1`; `solve!` then advances the column, so the
+        # comparison must use the PRE-step value. (Reading `clo.t_soil1` afterwards is off by exactly
+        # `κ_g·ΔT1` — the mistake this line originally made.)
+        t1_pre = clo.t_soil1
+        (atm, tof) = solve!(clo, st, ff, bc, forc)
+        # Rn recomputed INDEPENDENTLY from the radiation law at the solved skin temperature, so this is a
+        # real closure test rather than a restatement of `H := Rn − LE − G`.
+        Rn = (1 - bc.albedo) * sw + p2.emissivity * 330.0 - p2.emissivity * p2.sigma * atm.t_skin^4
+        @test isapprox(Rn, atm.le + atm.h + atm.g; atol = 1.0e-6)
+        @test all(isfinite, (atm.t_skin, atm.h, atm.g, atm.le, tof.g_a, clo.t_soil1, clo.t_soil2))
+        # G is now the HALF-CELL conductance against the PROGNOSTIC top layer, not the EWMA
+        @test isapprox(atm.g, kappa_g * (atm.t_skin - t1_pre); atol = 1.0e-6)
+        @test clo.t_soil1 != t1_pre                       # ...and the column actually integrated
+    end
+
+    # --- 3. energy-exact: the column gains exactly the REPORTED G·dt ---------------------------------
+    clo = SEBEnergyClosure{Float64}(; params = p2, t_soil0 = 288.15)
+    st = SharedState()
+    ff = FToE(le = 120.0, gpp = 0.0, npp = 0.0, rh = 0.0, firec = 0.0, flux_estabc = 0.0, ground_heat = 0.0)
+    bc = SToE(albedo = 0.15, z0 = 1.0, lai = 4.0, height = 15.0)
+    forc = AtmForcing(
+        swdown = 400.0, lwdown = 340.0, tair = 290.15, qair = 0.008,
+        wind = 2.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0
+    )
+    solve!(clo, st, ff, bc, forc)                   # warm-up: the first call also seeds the layers
+    (t1_0, t2_0) = (clo.t_soil1, clo.t_soil2)
+    (atm, _) = solve!(clo, st, ff, bc, forc)
+    uptake = h1 * (clo.t_soil1 - t1_0) + h2 * (clo.t_soil2 - t2_0)
+    @test isapprox(uptake, atm.g * p2.dt_seconds; rtol = 1.0e-12)
+
+    # --- 4. stable + self-equilibrating under constant forcing --------------------------------------
+    # A closed bottom has no restoring term. Run 4000 daily steps: the column must converge (not
+    # oscillate, not run away), and at equilibrium the ground-heat flux must vanish — ⟨G⟩ → 0 is the
+    # condition that makes the scheme usable without a deep-restore knob.
+    g_hist = Float64[]
+    for k in 1:4000
+        (a, _) = solve!(clo, st, ff, bc, forc)
+        k > 3990 && push!(g_hist, a.g)
+    end
+    @test all(isfinite, (clo.t_soil1, clo.t_soil2))
+    @test abs(sum(g_hist) / length(g_hist)) < 0.5              # W/m² — equilibrated
+    @test abs(clo.t_soil1 - clo.t_soil2) < 1.0                 # the two layers have joined up
+    @test 200.0 < clo.t_soil1 < 400.0                          # no runaway
+
+    # --- dt_seconds is really the step length: 24 hourly steps ≈ 1 daily step -----------------------
+    # This is what line O's sub-daily coupling depends on, so it gets its own assertion.
+    mk(dt) = SEBEnergyClosure{Float64}(;
+        params = SEBParams{Float64}(enable_two_layer = true, dt_seconds = dt), t_soil0 = 288.15,
+    )
+    c_day = mk(86400.0)
+    c_hr = mk(3600.0)
+    solve!(c_day, st, ff, bc, forc)
+    for _ in 1:24
+        solve!(c_hr, st, ff, bc, forc)
+    end
+    # same elapsed time ⇒ same column state to within the operator-splitting difference
+    @test isapprox(c_day.t_soil1, c_hr.t_soil1; atol = 0.05)
+    @test isapprox(c_day.t_soil2, c_hr.t_soil2; atol = 0.05)
+end

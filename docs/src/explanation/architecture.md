@@ -47,10 +47,19 @@ single conserved quantity [`FToS`](@ref)`.bm_inc`.
 LPJmL-FIT has **no surface energy balance**: no sensible heat `H`, no net-radiation closure, no skin
 temperature (`DESIGN.md` §1.2 verifies this against the source). An ESM atmosphere needs all of them.
 E adds them: it solves for one skin temperature `T_skin` from
-`Rn(T_skin) = SWdown(1−α) + LWdown − εσT_skin⁴` and closes `Rn = LE + H + G`. Rather than build this
-from scratch, the plan **reuses Terrarium.jl's** `SurfaceEnergyBalance` + `ImplicitSkinTemperature`
-(see `ECOSYSTEM_AND_COUPLING.md` §2 and [ADR 0006](https://github.com/rimajj/LPJmLFIT_Emulator/blob/main/docs/decisions/0006-reuse-terrarium-seb.md)).
-The abstract interface is [`AbstractEnergyClosure`](@ref).
+`Rn(T_skin) = SWdown(1−α) + LWdown − εσT_skin⁴` and closes `Rn = LE + H + G`. The abstract interface is
+[`AbstractEnergyClosure`](@ref); the concrete closure is [`SEBEnergyClosure`](@ref).
+
+[ADR 0006](https://github.com/rimajj/LPJmLFIT_Emulator/blob/main/docs/decisions/0006-reuse-terrarium-seb.md)
+originally planned to **reuse Terrarium.jl's** `SurfaceEnergyBalance` + `ImplicitSkinTemperature`, but
+[ADR 0017](https://github.com/rimajj/LPJmLFIT_Emulator/blob/main/docs/decisions/0017-self-contained-energy-closure.md)
+**superseded that implementation choice**: E is **self-contained** — no Terrarium dependency and no copied
+code — so the runtime `[deps]` can stay empty (ADR 0014) and the package deploys on compute nodes with no
+network. ADR 0006's *physics* decisions were kept unchanged. Terrarium.jl and SpeedyWeather.jl
+[Klower2024](@cite) remain the **coupling** substrate for the online run (P4), and both were cross-read —
+code-free — when E's opt-in two-layer ground-heat column was added; that column is an independent
+implementation of the MITgcm land-package two-layer soil formulation [MITgcmLand](@cite)
+([ADR 0074](https://github.com/rimajj/LPJmLFIT_Emulator/blob/main/docs/decisions/0074-two-layer-prognostic-ground-heat.md)).
 
 Because LPJmL's ET is water-limited (not energy-balance-derived), `LE = λ·ET` is *given* and **H is
 the residual** — a deliberate, documented exception to the "no privileged residual" rule, validated

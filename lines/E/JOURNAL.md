@@ -296,3 +296,62 @@ decomposition, the exact-`g_a`-injection-via-wind trick, the `ε_obs` trap, the 
 a synthetic CI testitem pinning the lever ranking · `build_e_seb_validation_table.py` now emits `ustar`.
 
 - **Next:** hand `λ_g = 1.0` to line M as the integration point, then E4 Experiment B. See STATE `## NEXT`.
+
+---
+
+## Session 3 (2026-08-05) — E7: build the design change ADR 0073 deferred, and measure it
+
+**Why now, not E4-B.** The session opened with a question about provenance: is the surface-energy problem
+already solved in Terrarium/SpeedyWeather, and did E take code from them? Answering it properly (ADR 0006 →
+0017, plus reading both upstreams' actual source) surfaced two things worth more than the queued E4-B:
+
+1. **A stale doc.** `docs/src/explanation/architecture.md` still told readers E *reuses* Terrarium.jl's
+   `SurfaceEnergyBalance`. ADR 0017 superseded that on 2026-07-22. Fixed, with the real relationship stated
+   (coupling substrate for P4; cross-read only, no code) — the four citation surfaces now agree.
+2. **The "design change" ADR 0073 deferred is already written down twice, upstream.** SpeedyWeather's
+   `LandBucketTemperature` *is* the MITgcm two-layer soil model (~15 lines of published equations) and
+   Terrarium has a full conduction column with a half-cell skin temperature. So "force-restore / two-layer
+   soil scheme" was never a research project — it was an afternoon of independent implementation against two
+   working references, with reuse already authorized (ADR 0081). Meanwhile the thing E does *better* than
+   Terrarium is the aerodynamic side: Terrarium's atmosphere→surface drag is `ConstantAerodynamics`, Cₕ =
+   1.2e-3, its own docstring calling it a "Dummy implementation".
+
+**Verified first that the λ_g handoff was already done.** The previous session's `## NEXT` listed it as the
+one open action; it was in fact already fully recorded in `lines/M/STATE.md` (third integration point, with
+the `stab_amp` withdrawal). `lambda_g` is still 7.0 on `main`, so M has not landed it — nothing to re-raise.
+
+**The result, which exceeded the hypothesis.** H1 said the unfitted scheme should *match* the fitted
+`λ_g = 1.0`. It beats it, at both sites whose towers can score H: daily H R² 0.645 vs 0.637 (DE-Hai) and
+0.775 vs 0.745 (AU-ASM), and on `G` itself 0.717 vs 0.657 and 0.614 vs 0.477. Sub-daily, the diurnal `G`
+amplitude becomes correct at closed canopies (DE-Hai all-hours sd 5.75 vs observed 5.66, against the
+default's 34.7) and **night `G` R² goes positive (+0.394)** — the first arm ever to have skill in `G`.
+Nocturnal **H** R² stays negative (−0.324), which is what ADR 0073's `ε_obs` bound requires, so H2 is
+partially supported and honestly so.
+
+**The finding I did not expect.** MITgcm's `z1 = 0.2 m` is tuned for a model that steps in *minutes*. At our
+daily step the layer-1 relaxation number is **1.125**, so the top layer equilibrates with `T_skin` inside
+one step and `G` collapses into a day-to-day *difference* of `T_skin` — measured as daily G R² −2.8 and
+sd(G) 2.2× observed. The first probe run looked mediocre for exactly this reason. A thickness sweep fixed it
+(`z1 = 0.75 m`, `dt·rate` 0.093) inside a broad optimum where H R² moves only 0.634→0.647, so the default is
+set on a **resolution** criterion rather than a fit.
+
+**Two things I checked because they could have made the scheme unusable.** (a) Explicit Euler: holding `G`
+constant over the step — the MITgcm form — is both energy-exact (the column gains exactly the reported
+`G·dt`) and stable at a daily step (only the inter-layer term is stiff, limit ≈ 21 d). Recomputing `G`
+mid-step would have imposed a 1.8 d limit and overshot every day. (b) Drift: the bottom is closed and there
+is no restoring term, and line M runs decadal. Annual means show no runaway — the 16-year AU-Tum record
+trends −0.059 K/yr — because the surface feedback self-equilibrates ⟨G⟩ → 0. Short records look like drift
+and are interannual variability; measuring annual means instead of (last − first) is what separated them.
+
+**Honest costs, recorded not buried:** one global `z1` cannot serve a closed canopy *and* a sparse desert
+(AU-ASM's observed all-hours sd(G) is 64 W/m², and it wants a much thinner layer), sub-daily `T_skin`
+degrades at AU-Tum/AU-Rob, and `theta_soil` is a constant because the frozen `FToE` carries no soil
+moisture. `Rn` is preserved within ±0.005, not improved.
+
+**Captured:** ADR 0074 · `scripts/e_two_layer_probe.jl` + `scripts/e_seb_drive_common.jl` (the drive-table
+readers/metrics extracted so the next probe stops copying them) · 2 new testitems (default-off byte
+identity, closure exactness, the energy-exact column invariant, 4000-step stability, `dt_seconds`
+correctness) · the MITgcm register/CITATION.cff/refs.bib/header citation set · the architecture-doc fix.
+
+- **Next:** the E→M integration point is now **`enable_two_layer = true`**, superseding `λ_g = 1.0`. Then
+  E4-B. See STATE `## NEXT`.

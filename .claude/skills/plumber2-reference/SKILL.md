@@ -1,6 +1,6 @@
 ---
 name: plumber2-reference
-description: Stage and load the PLUMBER2 / FLUXNET observational reference that Component E (the surface-energy-balance + skin-temperature closure) is validated against — anonymous NCI THREDDS download, the 9-site biome-matched set, the model-facing half-hourly/daily/diurnal tables, and the unit/coverage/closure sanity report. Use whenever working with observed LE / H / Rn / T_skin / Ustar or tower forcing (wind, psurf, SWdown, LWdown, Tair, Qair, precip), adding a site, validating Component E against observations (line E, milestones E1/E4), or hitting the PLUMBER2 `_FillValue = -9999` masked-array trap. ALSO the P2 validation itself — scoring the SEB closure against the towers (Experiment A: tower forcing + the tower's own LE ⇒ H / T_skin / Rn skill, the |h_cor_uc| acceptance band, the diurnal cycle, the stability sweep). ALSO diagnosing a MISS in H / T_skin / G against the towers — the exact decomposition `ΔH = ΔRn − ΔG + ε_obs` (H is the residual, so `g_a` is in NONE of those terms), injecting an arbitrary or measured-`u*` `g_a` through the real solver, the tower-non-closure `ε_obs` trap that makes AU-Tum/AU-Rob unable to score nocturnal H, fitting `lambda_g`, and the check-the-native-DAILY-step rule. Use before ANY `stab_amp`/`lambda_g` sweep or retune. Names scripts/fetch_plumber2_sites.py, scripts/validate_e_plumber2_load.py, scripts/build_e_seb_validation_table.py, scripts/validate_e_seb_vs_plumber2.jl, scripts/e_nocturnal_h_decomp.jl, data.energy_reference, ADR 0070/0072/0073.
+description: Stage and load the PLUMBER2 / FLUXNET observational reference that Component E (the surface-energy-balance + skin-temperature closure) is validated against — anonymous NCI THREDDS download, the 9-site biome-matched set, the model-facing half-hourly/daily/diurnal tables, and the unit/coverage/closure sanity report. Use whenever working with observed LE / H / Rn / T_skin / Ustar or tower forcing (wind, psurf, SWdown, LWdown, Tair, Qair, precip), adding a site, validating Component E against observations (line E, milestones E1/E4), or hitting the PLUMBER2 `_FillValue = -9999` masked-array trap. ALSO the P2 validation itself — scoring the SEB closure against the towers (Experiment A: tower forcing + the tower's own LE ⇒ H / T_skin / Rn skill, the |h_cor_uc| acceptance band, the diurnal cycle, the stability sweep). ALSO diagnosing a MISS in H / T_skin / G against the towers — the exact decomposition `ΔH = ΔRn − ΔG + ε_obs` (H is the residual, so `g_a` is in NONE of those terms), injecting an arbitrary or measured-`u*` `g_a` through the real solver, the tower-non-closure `ε_obs` trap that makes AU-Tum/AU-Rob unable to score nocturnal H, fitting `lambda_g`, and the check-the-native-DAILY-step rule. Use before ANY `stab_amp`/`lambda_g` sweep or retune. ALSO scoring a NEW E scheme against the towers (ADR 0074, the opt-in two-layer prognostic ground-heat column): the three-arm probe (default / previously-fitted / new) driven through the real `solve!`, the mandatory harness check that arms A+B reproduce ADR 0073's published R² digit for digit, drift measured as annual means with a second-half trend, and the two traps — a published layer thickness is tuned for the PUBLISHER's timestep (check `dt·rate` before adopting it; MITgcm's z1=0.2 m gives 1.125 at a daily step and makes G a day-to-day difference of T_skin), and a diagnosed flux belongs to the START of the step (asserting G against the post-step T1 is off by κ_g·ΔT1). Names scripts/fetch_plumber2_sites.py, scripts/validate_e_plumber2_load.py, scripts/build_e_seb_validation_table.py, scripts/validate_e_seb_vs_plumber2.jl, scripts/e_nocturnal_h_decomp.jl, scripts/e_two_layer_probe.jl, scripts/e_seb_drive_common.jl (the shared drive-table readers/metrics — reuse, do not copy a fourth time), data.energy_reference, ADR 0070/0072/0073/0074.
 ---
 
 # plumber2-reference — the observational reference for Component E
@@ -182,3 +182,49 @@ parameter sweep on `H` cannot tell you which term it is moving. The drive tables
 - **Nocturnal R² > 0 is NOT reachable by any `λ_g`** in the present form (`ε_obs` scatter alone is the size of
   the night H RMSE). That needs a force-restore / two-layer soil scheme + canopy heat storage — a design
   change, and the blocker for line O's sub-daily online coupling.
+
+## Scoring a NEW ground-heat scheme (E7 / ADR 0074) — and the two traps that cost a run each
+
+```bash
+scripts/sbatch_julia.sh E-e7probe --project=. scripts/e_two_layer_probe.jl
+# OUT=<path> to keep several runs side by side; SITES= to subset
+# -> <energy_reference>/derived/seb_validation/e7_two_layer_probe.txt
+```
+
+`scripts/e_two_layer_probe.jl` is the template for comparing ANY new E scheme against the towers. Reuse it
+rather than writing a fresh driver, and reuse **`scripts/e_seb_drive_common.jl`** for the readers/metrics/daily
+aggregation (`read_drive_csv`, `read_meta`, `skill`/`fmt`, `nanmean`/`nanstd`, `loglaw`, `run_site`,
+`aggregate_daily`) — those were copied three times before being extracted; do not make a fourth copy.
+
+What that probe gets right and a hand-rolled one usually does not:
+
+- **Three arms on the same rows** — default, the previously-fitted parameter, and the new scheme — so the new
+  scheme is judged against the *best existing option*, not against the untuned default (which flatters it).
+- **A harness check before any verdict** (`residual-diagnosis` §3): arms A/B must reproduce ADR 0073's
+  published per-site daily H R² **digit for digit** (DE-Hai 0.03/0.64 · AU-ASM 0.33/0.74 · AU-Tum −0.48/−0.35 ·
+  AU-Rob 0.07/−0.17) and the observed daily sd(`G_o`) 4.3/6.3/4.3/6.0. If those drift, the harness is wrong,
+  not the physics.
+- **A stateful arm driven through the real `solve!`**, not a re-implementation, so what is scored is what
+  `run.jl` runs. Guard non-finite forcing rows by **skipping without advancing** any prognostic state — one
+  NaN poisons a reservoir for the rest of the record.
+- **Both steps.** Daily = the operational number (`run.jl:93`); sub-daily = where a diurnal wave shows up.
+- **Drift as ANNUAL MEANS with a second-half trend**, never `(last − first)/years`: the seed is an annual mean,
+  so the first step jumps several K and a raw endpoint difference reports spin-up as drift. Short records look
+  like drift and are interannual variability — the 16-year AU-Tum record is the one that settles it.
+
+**TRAP 1 — a published layer thickness is tuned for the publisher's TIMESTEP.** Before adopting any
+reservoir/relaxation parameter from an upstream model, compute the relaxation number
+`dt·(sum of conductances)/(thickness · heat capacity)` at **our** step. MITgcm/SpeedyWeather's `z1 = 0.2 m` is
+for a minute-scale model; at `dt = 1 d` it gives **1.125**, so the top layer equilibrates within one step and
+`G` degenerates into a day-to-day *difference* of `T_skin` (daily G R² −2.8, sd(G) 2.2× observed). The scheme
+looked mediocre for this reason alone. `z1 = 0.75 m` gives 0.093. Sweep the thickness and report the number.
+
+**TRAP 2 — a diagnosed flux belongs to the START of the step.** `G` is computed from the pre-step `T1`, and
+`solve!` then advances the column, so asserting `G == κ_g(T_skin − clo.t_soil1)` *after* the call is off by
+exactly `κ_g·ΔT1`. Capture the pre-step state first. (This produced 54 identical CI failures.)
+
+**The standing E7 finding:** `enable_two_layer = true` beats the fitted `λ_g = 1.0` at both sites whose towers
+can score H — daily H R² 0.645 vs 0.637 (DE-Hai), 0.775 vs 0.745 (AU-ASM); daily G R² 0.717 vs 0.657 and
+0.614 vs 0.477 — and unlike a coefficient it carries a diurnal soil wave (sub-daily DE-Hai sd(G) 5.75 vs
+observed 5.66; night G R² **+0.394**). **Nocturnal H R² is still negative** (−0.324) and always will be while
+`ε_obs` scatter is the size of the night H RMSE — canopy heat storage is the remaining term, not a tune.
