@@ -179,7 +179,9 @@ cannot encode a warming response). Do not re-pin without both halves AND S sayin
 
 ADR 0054's attribution arm: in the **training table** `n_prev` is the C's OWN previous `n_living`
 (`build_slow_runtime_table.py:572`), never a prediction, so a free-running coupled rollout is off that basis
-by construction and **integrates a ~5 %/yr one-step count bias into +36–81 % over ten years**. Teacher-forcing
+by construction and **compounds a one-step count bias at 2.6–4.9 %/yr into a ×1.26–1.53 recursion
+contribution over nine steps** (the rest of the +36–81 % total 2019 excess is the year-1 level offset —
+do not quote the total as "the recursion"). Teacher-forcing
 `s.n_prev` back onto the C truth each year removes **59–72 % of the total coupled count error in all five
 cells** and flattens the drift (boreal 1.12→1.74 becomes a flat 1.12–1.17); the per-year model on F's own
 canopy features is then within **0.2–3.9 noise floors**.

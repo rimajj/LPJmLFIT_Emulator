@@ -114,7 +114,9 @@ arm on a **window mean**; a terminal-year read of ADR 0100 would have said 2.21�
 > `s.n_prev` with the C truth after each year **removes 59–72 % of the total count error in every one of the
 > five cells** and flattens the drift (boreal becomes a flat 1.12–1.17); what remains is **0.2–3.9 floors**.
 > So the per-year count model, given F's own drifting canopy features, is near the floor, and the deployed
-> error is a ~5 %/yr one-step bias compounded by an **unanchored AR recursion**. Any fix lives in
+> error is a one-step bias compounded by an **unanchored AR recursion** — worth ×1.26–1.53 over the nine
+> steps (2.6–4.9 %/yr) in the three drifting cells; the rest of the +36–81 % total excess is the year-1
+> level offset, so the total is not all recursion. Only the recursion term grows without bound. Any fix lives in
 > `src/components/slow.jl` = your exclusive path (ADR 0029), which is why M measured it and stopped.
 >
 > **Ready-made before/after test, no setup:** `scripts/biome_slow_oracle_probe.jl::run_cell(k; teacher = true)`

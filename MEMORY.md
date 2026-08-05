@@ -151,7 +151,8 @@ is the offline S.
   public mutable field — no library change) removes **59–72 %** of the total coupled count error in *every*
   cell and flattens a monotone drift (boreal 1.12→1.74 becomes a flat 1.12–1.17); the per-year model then sits
   at **0.2–3.9 seed1-vs-seed2 noise floors**. Free-running error alone would have indicted the count model
-  for what is a ~5 %/yr one-step bias compounded by an unanchored recursion — a completely different fix.
+  for what is a one-step bias compounded by an unanchored recursion (worth ×1.26–1.53 over nine steps =
+  2.6–4.9 %/yr; the rest of the total excess is the year-1 level offset) — a completely different fix.
   The arm generalizes to any AR-conditioned emulator here (S's rollouts, O's online runs), and it also
   confounds resilience metrics: an unanchored recursion manufactures autocorrelation and slow recovery, so
   run both arms in the M4 shuffle test. Ready-made: `scripts/biome_slow_oracle_probe.jl::run_cell(k; teacher=true)`.
