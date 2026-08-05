@@ -564,7 +564,15 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
    `NEE = Rh − NPP` will NOT close).
 3. **C binary is the oracle.** Validate F_diff against it, not against itself.
 4. **Opt-in, default byte-identical.** New physics must leave every committed baseline and the AD trainer
-   unchanged until deliberately enabled.
+   unchanged until deliberately enabled. **⚠ COROLLARY, and it has bitten three times: guardrail 4 protects
+   you from enabling too early, NOT from never enabling.** An opt-in flag whose default is *known wrong* is
+   a defect on a timer — `wscal_leafon` is the C-faithful behaviour, was measured correct in ADR 0051, and
+   sat off for **weeks** with each line recording the flip as the other's to schedule; `trait_mortality`
+   (ADR 0049) and `anchor` (ADR 0103) are the same shape. So whenever you ship an opt-in whose default you
+   believe is worse than the alternative: **pre-register the flip criterion in the same ADR** — the exact
+   arm, on whose line, with the pass condition and the value to flip to — and name it in the *consuming*
+   line's STATE as an ACTION, not in your own as a note. "It is opt-in" is a reason to ship, never a reason
+   to stop measuring.
 5. **Adversarially re-derive ported physics** against the C source before trusting it — and confirm the C
    path is actually executed in the `individual=true` config first (§3).
 6. **Single-cell ≠ general.** Say "Hainich only" wherever a result is single-cell.
