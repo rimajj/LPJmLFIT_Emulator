@@ -160,6 +160,24 @@ is the offline S.
   absolute error next to the ratio: Sahel SLA reads **7.9 floors** but is a 4.6 % error (floor 0.0002), while
   the Amazon count floor is **29 % of the mean** because the cell carries only 4.7 trees per patch.
 
+### Resilience / dynamics (cross-cutting; ADR 0055, line M — full numbers + method there)
+- [VERIFIED 2026-08-05] **The `~0.2-wet → ~0.75-dry` lag-1 AC gradient `DEVELOPMENT_PLAN` §5 quotes is NOT
+  in this run.** 52 224 cells × 2000–2019, per-patch detrended: **flat at 0.452–0.541 over all ten P/PET
+  deciles, driest LOWEST**; not shot-noise attenuation (the noise-immune `r₂/r₁` sits *below* `r₁`). **The
+  VARIANCE is the climate-graded quantity — CV 1.149 dry → 0.143 wet, 8× — use that as the criterion.**
+  ⚠ 20 yr is all the historic table has and detrending is a high-pass filter, so τ ≳ 10 yr is unresolvable
+  here. Both sides must share the estimator (detrend first; gate the UNCORRECTED n=20 value so its bias
+  cancels; an empty patch-year is a 0, not a gap).
+- [VERIFIED 2026-08-05] **The coupled emulator's memory is right (0.1–0.6 C-between-patch-SDs, 5 cells ×
+  {n, agb}) and INTERNAL — and it lives in F's carbon pools, not S's recursion.** Year-shuffled forcing
+  leaves AC at 0.460–0.653 (inherited ≤ 0.146); `slow = nothing` alone carries 0.454–0.691. **ADR 0054's
+  unanchored recursion drives the count LEVEL drift and adds ~nothing to the memory timescale**
+  (|free−pin| ≤ 0.135) — a detrended AC is blind to that failure. ⚠ Teacher-forcing `n_prev` makes the AC
+  WORSE in 2 cells (Amazon `n` 0.066 vs C 0.501): a diagnostic, not a fix to deploy.
+- [VERIFIED 2026-08-05] **An AC is NOT a recovery rate — ~20× apart:** AC-implied τ 1.2–2.9 yr vs a
+  measured pool-perturbation e-folding of ~50 yr (`semiarid_sahel` does not recover: τ 602 yr, r² 0.38).
+  Under CYCLIC forcing the coupled AGB has **no steady state** (drift 1.39–5.15× / 100 yr); no limit cycle.
+
 ### E (energy) — Hainich + 5-biome + the P2 tower validation (ADR 0072)
 - [VERIFIED] Closure to machine precision (13,824 cases; ForwardDiff-vs-FD; Float32); demo daily 1.4e-14,
   biome ≤3e-14 W/m²; Monin–Obukhov aerodynamic identity ~3e-11. Emergent climate-correct Bowen ordering

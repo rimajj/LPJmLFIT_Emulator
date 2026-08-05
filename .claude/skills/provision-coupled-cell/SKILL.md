@@ -189,3 +189,11 @@ cell coverage out of `cell_meta.parquet` rather than trusting a stated cell coun
 - **A script writing to a hard-coded `/p/projects/open/Jamir/esm_land_emulator` path writes into the
   INTEGRATOR worktree** when run from a per-line `git worktree`. Derive the repo root from `__file__`
   (fixed in `extract_biome_forcing.py`; check any script you reuse).
+- **A gate whose verdict does not travel with the artifact is not a gate** (M1 review debt #2, closed
+  2026-08-05 / ADR 0055). `GATE=no` warned on stderr and then emitted a soil column **structurally
+  indistinguishable** from gated output — so an ungated file could be committed weeks later by someone who
+  never saw the warning. `extract_cell_soilcolumn.py` now stamps `# GATE: PASS …` / `# GATE: NOT RUN …`
+  into every column header **and** a `gate` key into `M_soilcolumn_meta.json`, and
+  `biome_coupled_tests.jl` asserts each committed column carries a PASS. Apply the same pattern to any new
+  extractor here: emit the verdict INTO the artifact, then assert it in a test. Regenerating for the stamp
+  is safe — the data rows came out byte-identical, only the header line is new.

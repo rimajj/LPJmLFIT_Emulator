@@ -3,6 +3,7 @@
   "rootdist_mode": "beta_mean",
   "whc_src": "percell",
   "ind_parquet": "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet",
+  "gate": "PASS \u2014 byte-identity vs the committed hainich_soilcolumn.txt AND the getrootdist.c port unit-gate",
   "cells": [
     {
       "name": "boreal_siberia",

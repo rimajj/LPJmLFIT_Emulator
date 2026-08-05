@@ -1,4 +1,5 @@
 # semiarid_sahel (global orderA cell 18371) soil column for the multi-cell coupled S+F+E driver.
+# GATE: PASS — byte-identity vs the committed hainich_soilcolumn.txt AND the getrootdist.c port unit-gate
 # 23 layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).
 # whcs_mm = whc_nat (patch-mean fraction, mean of 240 monthly steps) x soildepth, from
 #   /p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_biome_val_c18371_seed1/output

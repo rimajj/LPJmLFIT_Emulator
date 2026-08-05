@@ -823,6 +823,19 @@ next session. A session that ends without refreshing it has silently broken the 
   *orchestrators* (`run_global_slow_*.sh`, `run_pooled_slow_*.sh`) DO take `DEPENDENCY=afterok:<jid>` as an env
   knob, because they inject it as a `#SBATCH` directive — the `SBATCH_DEPENDENCY` env var does **not** propagate
   through a wrapper's own `sbatch` call and silently comes up `Dependency=(null)`.
+- **A NEW env knob you add to your own script is NOT forwarded by the wrappers — `export` it
+  (`[VERIFIED 2026-08-05]`).** `scripts/sbatch_python.sh` builds a command prefix from a **fixed list** of
+  variable names (`NCELLS SEED NO_DAILY OUT CELLS MODE SCENARIO …`), so a bare
+  `MYKNOB=1 scripts/sbatch_python.sh …` reaches the *wrapper* but never the job, and the script silently
+  runs with the knob's DEFAULT. It bit a `SMOKE=1` five-cell run that quietly became a full-grid one. The
+  wrappers are **integrator-owned** (§9 Gap 3) so a line cannot extend the list — `export MYKNOB=1` first
+  (SLURM's `--export=ALL` carries it), and `unset` it before the next submission or it leaks. The
+  `env:` line the wrapper echoes shows only the FWD list, so an empty `env:` is not evidence of anything.
+- **Julia BLOCK-BUFFERS stdout to a file, so a long probe's log stays at 0 lines until it exits
+  (`[VERIFIED 2026-08-05]`).** A 22-minute probe looked indistinguishable from a hung job for its whole
+  run. This is *not* the §3 "zero-byte log = hung" case (that is about the C binary, whose output dir is the
+  progress signal) — for Julia, add `flush(stdout)` after each phase so progress is visible, and judge a
+  silent Julia job by `sacct`/`squeue` CPU time, not by its log.
 - Stagger heavy submissions as a courtesy, not a requirement: four lines share one account, the queue, and the
   `~/.julia` depot. `[VERIFIED 2026-07-28]` two full CI-faithful suites from different worktrees ran
   **simultaneously on the SAME node** sharing one depot and both came out clean (106918 pass / 0 fail, zero

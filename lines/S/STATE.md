@@ -353,6 +353,31 @@ arm on a **window mean**; a terminal-year read of ADR 0100 would have said 2.21�
 > arm alongside the free one. If `R_ctl` moves, some of the wrong-signed response is recursion, not recruits.
 > M is not claiming it is — only that the arm is cheap, and ADR 0100's attribution was "near-forced" by
 > elimination, which this adds a term to.
+>
+> **⚠ UPDATE FROM LINE M, 2026-08-05 (ADR 0055) — a CAVEAT on the fix, from the M4 resilience battery. The
+> ask above is unchanged; this changes how the fix must be SCORED.** M4 measured the coupled loop's lag-1
+> autocorrelation against the C's, five cells × {count, AGB}, C's between-patch SD as the yardstick. Two
+> results bear directly on the anchor:
+>
+> 1. **The unanchored recursion is a LEVEL failure, not a memory failure.** Replacing `n_prev` with a
+>    CONSTANT each year (so the DRF's explicit count-space AR feature carries nothing) moves the lag-1 AC by
+>    **≤ 0.135**; `slow = nothing` alone already carries AC 0.454–0.691. The memory lives in **F's carbon
+>    pools**. So expect an anchor to fix the drift and to leave the dynamics essentially where they are —
+>    and do not credit it with a dynamics improvement it did not cause.
+> 2. **⚠ The teacher-forced arm itself makes the AC WORSE in two cells** — `tropical_amazon` count
+>    **0.066** vs a C of 0.501 (**2.3 between-patch SDs**, the worst single number in the battery) and
+>    `mediterranean_iberia` **1.2 SDs**, against 0.1–0.6 SDs for the free-running arm everywhere. Forcing
+>    the state onto an externally measured series removes the emulator's own memory without substituting
+>    equivalent memory. **The teacher-forced arm is a DIAGNOSTIC of the level error; it is not itself the
+>    design to ship.** Whatever anchoring you land should be scored on the **AC as well as the level**.
+>
+> **Ready-made, again nothing needed from your side:** `scripts/biome_resilience_probe.jl` already runs
+> `free0` / `pin0` / `anchor0` arms and writes `test/testitems/references/M_resilience_battery.csv` with a
+> `d_over_psd` column (the miss in C between-patch SDs). Reference: `M_resilience_reference_cells.csv`.
+>
+> **What M is NOT claiming:** not that the anchor is wrong (it removes 59–72 % of the count error, which
+> still stands), and not that the AC regression is intrinsic to anchoring rather than to *this* anchor's
+> particular form. Only that a fix scored on the level alone would have missed it.
 
 ## Superseded NEXT — Phase 3A Stage 2 (ADR 0049), kept for the audit trail
 

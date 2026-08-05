@@ -31,7 +31,11 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REF_OUT = os.environ.get("OUT", os.path.join(REPO, "test/testitems/references"))
 
 HDR, CLM_FIRSTYEAR, NBANDS, NCELL, NDAYYEAR = 51, 1901, 365, 67420, 365
-YEARS = list(range(2010, 2020))          # committed decade (small)
+# Default = the COMMITTED decade (small, and what every existing fixture was built from — do not change
+# it). `FIRSTYEAR`/`LASTYEAR` widen the window for a /p/tmp probe input: the M4 resilience battery replays
+# 2000-2019, the full extent of the historic `ind` table, because a lag-1 autocorrelation off 10 annual
+# points has a sampling SE of ~0.32 — larger than the whole wet-to-dry gradient it is meant to resolve.
+YEARS = list(range(int(os.environ.get("FIRSTYEAR", 2010)), int(os.environ.get("LASTYEAR", 2019)) + 1))
 
 CLM = {
     "temp": "temperature_test.clm", "swdown": "short_wave_radiation_test.clm",

@@ -1,0 +1,19 @@
+# The SHUFFLE TEST (DEVELOPMENT_PLAN §5) decomposed. free0/free1 = the deployed coupled loop
+# on ordered / year-shuffled forcing; pin1 = the same with `s.n_prev` reset to n_init every
+# year, so the DRF's explicit count-space AR FEATURE carries nothing (not a total memory
+# removal — the density update stays recursive); fonly1 = slow=nothing (F's carbon pools are
+# the only memory left at all). inherited = free0-free1 is memory taken from the climate's own
+# sequencing; recursion = free1-pin1 is what the unanchored count AR (ADR 0054) adds alone.
+# A frozen roster has no count series, so fonly1 is NaN for var=n — a property of the
+# control, not a result. Emitted by scripts/biome_resilience_probe.jl.
+name,var,free0,free1,pin1,fonly1,inherited,recursion,c_ac1
+boreal_siberia,n,0.672401,0.636725,0.634930,NaN,0.035677,0.001794,0.568328
+boreal_siberia,agb,0.511139,0.599915,0.704026,0.598926,-0.088776,-0.104110,0.569417
+temperate_hainich,n,0.537419,0.464072,0.445827,NaN,0.073348,0.018245,0.514205
+temperate_hainich,agb,0.656615,0.579934,0.714535,0.691456,0.076682,-0.134602,0.550545
+mediterranean_iberia,n,0.476374,0.459628,0.391419,NaN,0.016746,0.068209,0.455608
+mediterranean_iberia,agb,0.347139,0.493058,0.497708,0.453937,-0.145918,-0.004650,0.441514
+semiarid_sahel,n,0.627685,0.633498,0.695123,NaN,-0.005813,-0.061626,0.568340
+semiarid_sahel,agb,0.638244,0.653204,0.697594,0.488336,-0.014960,-0.044390,0.556985
+tropical_amazon,n,0.481096,0.514170,0.517576,NaN,-0.033074,-0.003406,0.501427
+tropical_amazon,agb,0.553621,0.552434,0.656372,0.610936,0.001187,-0.103938,0.521146

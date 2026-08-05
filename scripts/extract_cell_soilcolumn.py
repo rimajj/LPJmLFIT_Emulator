@@ -353,10 +353,15 @@ def build(name, cell, year, mode, roots, d95_override, whc_src):
     )
 
 
-def write_column(col, out_dir):
+def write_column(col, out_dir, gate_verdict):
     path = os.path.join(out_dir, f"M_soilcolumn_{col['name']}.txt")
     with open(path, "w") as f:
         f.write(f"# {col['name']} (global orderA cell {col['cell']}) soil column for the multi-cell coupled S+F+E driver.\n")
+        # M1 review debt #2 (ADR 0055): GATE=no used to warn on stderr and then emit a file
+        # STRUCTURALLY INDISTINGUISHABLE from gated output — so an ungated column could be committed
+        # months later by someone who never saw the warning. The verdict now travels WITH the artifact,
+        # in both the header and M_soilcolumn_meta.json.
+        f.write(f"# GATE: {gate_verdict}\n")
         f.write(f"# {NLAYER} layers. soildepth_mm = per-layer thickness (LPJmL-FIT par/soil_20m.js; cell-invariant in the C).\n")
         f.write(f"# whcs_mm = whc_nat (patch-mean fraction, mean of {col['nstep']} monthly steps) x soildepth, from\n")
         f.write(f"#   {col['run']}\n")
@@ -443,8 +448,11 @@ def main():
         if not gate():
             print("FATAL: gate failed — do not trust any other cell's column", file=sys.stderr)
             return 2
+        gate_verdict = ("PASS — byte-identity vs the committed hainich_soilcolumn.txt AND the "
+                        "getrootdist.c port unit-gate")
     else:
         print("WARNING: GATE=no — the emitted columns are UNGATED. Do not commit them.", file=sys.stderr)
+        gate_verdict = "NOT RUN (GATE=no) — THESE COLUMNS ARE UNGATED, DO NOT COMMIT THEM"
     # The gate certifies the SINGLE-CELL whc provenance (the committed fixture's own
     # source); `global` whc differs by up to 1.6e-4 relative in layer 0 under -DPERMUTE,
     # so it cannot inherit the gate's verdict.
@@ -468,7 +476,7 @@ def main():
             print(f"{name:24s} {cell:6d}  SKIPPED — no living trees in {year}")
             continue
         col = build(name, cell, year, mode, roots[cell], d95_override, whc_src)
-        path = write_column(col, out_dir)
+        path = write_column(col, out_dir, gate_verdict)
         print(
             f"{name:24s} {cell:6d} {roots[cell]['n_trees']:6d} {col['d95_eff_cm']:7.1f} "
             f"{col['rootdist'][:3].sum() * 100:7.1f} {col['whcs'][:3].sum():9.4f} "
@@ -482,7 +490,11 @@ def main():
             whc_run=col["run"], file=os.path.basename(path), **col["diag"],
         ))
     meta = os.path.join(out_dir, "M_soilcolumn_meta.json")
-    merge_meta(meta, dict(year=year, rootdist_mode=mode, whc_src=whc_src, ind_parquet=IND_PARQUET), rows)
+    merge_meta(
+        meta,
+        dict(year=year, rootdist_mode=mode, whc_src=whc_src, ind_parquet=IND_PARQUET, gate=gate_verdict),
+        rows,
+    )
     print(f"wrote {meta}")
     return 0
 
