@@ -22,9 +22,11 @@
   `patch_area` is a training-run property for exactly that reason), ADR 0029 (the ownership map, which this
   ADR shows was invoked unnecessarily), CLAUDE.md §3 (the `cpp -P` rule used to verify the constant) and §6
   guardrails 4 and 6
-* **Evidence:** `scripts/diagnose_count_recursion_anchor.jl` section (d), job **1707102**. Hainich cell
-  42490 only, constant repeated-2010 forcing, committed demo artifact pair, `n_init` 11.0 / `age0` 43.5556,
-  seed 1, 150 yr, `DENS_SWEEP = 0.5,0.75,1.0,1.5,2.0`.
+* **Evidence:** `scripts/diagnose_count_recursion_anchor.jl` section (d). Jobs **1707102** (the anchor
+  sweep) and **1707785** (the retention-vs-horizon curve of §3b). Suite **1707739** (which FAILED on the
+  first version of the testitem and is what produced §3b) then **1707832**. Hainich cell 42490 only,
+  constant repeated-2010 forcing, committed demo artifact pair, `n_init` 11.0 / `age0` 43.5556, seed 1,
+  150 yr, `DENS_SWEEP = 0.5,0.75,1.0,1.5,2.0`. Testitem `test/testitems/slow_level_anchor_tests.jl`.
 
 ## Context — the error, and how it was caught
 
@@ -110,6 +112,47 @@ Everything in 0.1–0.5 is equivalent within noise, and **`a = 1` is slightly *w
 own dynamics every year, so a perturbation is re-imposed through the clamp and the recruit branch rather
 than relaxed away. **Take the gentlest setting that works** — it retains the most of what F computes, which
 is the whole reason for not simply assigning `D = D_want`.
+
+⚠ **Caveat from §3b: at short horizons the ordering reverses.** `a = 0.5` is far ahead of `a = 0.1` at 5–25
+years (0.154 vs 0.720 at yr 5) and they are identical from yr 50 on. So `0.1` is the right *steady-state*
+choice, and a run that will be scored inside ~25 years should either use a stronger anchor or spin up first.
+State the horizon with the setting.
+
+### 3b. Convergence is NOT monotone, and it matters directly for line M's 10-year runs
+
+The first version of the accompanying testitem asserted the anchored run forgets its initialisation within
+25 years and **failed** (demanded < 0.3, measured 0.425). That was a defect in the test, not the anchor —
+but chasing it produced the caveat this ADR would otherwise have shipped without. Retention against horizon
+(job 1707785, same sweep):
+
+| horizon (yr) | 5 | 10 | 25 | 50 | 100 | 150 |
+|---|---|---|---|---|---|---|
+| `a = 0.5` | **0.154** | 0.243 | **0.486** | 0.103 | 0.051 | 0.051 |
+| `a = 0.1` | 0.720 | 0.622 | 0.603 | 0.103 | 0.049 | 0.051 |
+| `a = 0` | — | 1.072 | 1.401 | 1.188 | 1.112 | 1.036 |
+
+`a = 0.5` collapses within ~5 years — the `1/a` time constant, as designed — then **re-diverges to a
+transient peak near year 25** before settling by year 50–100. `a = 0.1` decays more slowly and monotonically
+to the same place. **Both land at ~0.05, and neither reaches 0.**
+
+Two consequences, and the first is operational:
+
+* ⚠ **At a 10-year horizon the anchor delivers only part of its benefit** (retention 0.24 at `a = 0.5`, 0.62
+  at `a = 0.1`, against 1.07 unanchored). **Line M's coupled biome runs are exactly 10 years** (ADR 0054),
+  so an M arm scored at 2019 will see a partial correction and must not be read as the anchor's steady-state
+  effect. Either run longer, or spin up before scoring, or report the horizon with the number.
+* **The ~0.05 floor is explained: the DRF's target is itself state-dependent.** The per-arm terminal targets
+  span **6.2891 … 6.7529 stems/patch — 7.3 % of the mean** — because the perturbed stands carry different
+  `fpc`/`lai`/`agb` and the forest predicts from those. Each arm is therefore anchored to a slightly
+  different level, and retention cannot reach 0 by construction. This is a property of anchoring to a
+  *learned* target rather than a fixed one, and it is the right behaviour: the target should depend on the
+  stand.
+
+**The mid-run re-divergence at `a = 0.5` is NOT attributed.** It is reproducible and it resolves, but this
+ADR does not claim a mechanism for it. Candidates not yet separated: recruitment pulses differing by arm,
+cohorts crossing the height threshold at different times, or the k-cap merge firing asymmetrically. It is
+recorded as an open observation rather than explained away, and it is a reason to prefer reporting the
+horizon with any anchored number.
 
 ### 4. `patch_area` belongs to the ARTIFACT, not the cell
 

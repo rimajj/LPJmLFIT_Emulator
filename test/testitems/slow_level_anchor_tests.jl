@@ -160,15 +160,29 @@
     @test abs(anc.dens[end] / want - 1) < abs(unanc_ratio - 1)   # and the anchor strictly improves it
 
     # ── 3. the anchor FORGETS the initial condition; the unanchored run does not ────────────────────────
-    lo_a = rollout(; anchor = 0.5, dscale = 0.5).dens[end]
-    hi_a = rollout(; anchor = 0.5, dscale = 2.0).dens[end]
-    lo_0 = rollout(; anchor = 0.0, dscale = 0.5).dens[end]
-    hi_0 = rollout(; anchor = 0.0, dscale = 2.0).dens[end]
-    ret_a = log(hi_a / lo_a) / log(4.0)
-    ret_0 = log(hi_0 / lo_0) / log(4.0)
-    @test ret_0 > 0.7                     # unanchored: the 4× initial spread is essentially all retained
-    @test ret_a < 0.3                     # anchored: mostly forgotten
-    @test ret_a < ret_0
+    # ⚠ CONVERGENCE IS NOT MONOTONE, and this test was written wrong the first time by assuming it was.
+    # Measured over 150 yr (job 1707785), retention against horizon:
+    #     a = 0.5 :  yr 5 0.154 | yr 10 0.243 | yr 25 0.486 | yr 50 0.103 | yr 100 0.051 | yr 150 0.051
+    #     a = 0.1 :  yr 5 0.720 | yr 10 0.622 | yr 25 0.603 | yr 50 0.103 | yr 100 0.049 | yr 150 0.051
+    #     a = 0.0 :                                                                        yr 150 1.036
+    # `a = 0.5` collapses within ~5 yr (the 1/a time constant), then RE-DIVERGES to a transient peak near
+    # yr 25 before settling by yr 50-100. An assertion at yr 25 alone lands on the worst point of that
+    # transient — which is exactly what the first version of this test did (it demanded < 0.3 and measured
+    # 0.425). So BOTH horizons are asserted here: the early collapse and the (looser) transient bound.
+    # The floor is ~0.05, not 0, because the per-arm terminal TARGETS differ by 7.3 % — the DRF's target is
+    # state-dependent, so each arm is anchored to a slightly different level. See ADR 0103 §5.
+    function retention(anchor, idx)
+        lo = rollout(; anchor = anchor, dscale = 0.5).dens[idx]
+        hi = rollout(; anchor = anchor, dscale = 2.0).dens[idx]
+        return log(hi / lo) / log(4.0)
+    end
+    ret_a5, ret_05 = retention(0.5, 6), retention(0.0, 6)         # dens[1] is yr 0 ⇒ dens[6] is yr 5
+    ret_a25, ret_025 = retention(0.5, 26), retention(0.0, 26)
+    @test ret_025 > 0.7                   # unanchored: the 4× initial spread is essentially all retained
+    @test ret_a5 < 0.35                   # anchored, yr 5: the fast collapse (measured 0.154)
+    @test ret_a25 < 0.7                   # anchored, yr 25: the transient peak (measured 0.486)
+    @test ret_a5 < ret_05                 # strictly better than unanchored at BOTH horizons
+    @test ret_a25 < ret_025
 
     # ── 4. `patch_area` is load-bearing when the anchor is on, inert when it is off ─────────────────────
     # Guards ADR 0103 §4: the constant travels with the ARTIFACT (stock LPJmL-FIT uses 100.0, not 225.0).
