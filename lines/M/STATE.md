@@ -163,10 +163,20 @@ this line.** The next milestone is **M5** (item 4). Read items 1–3 first: item
 that M4 just added a caveat to, item 2 is a prerequisite for any global coupled run, and item 3 is a NEW
 inbound request from line E that arrived while M4 was being written.
 
-**ADR 0055's CI verdict: PENDING-AT-WRITE — if this still says PENDING, check it before building on M4.**
-`curl`-check the merge sha's check-runs (CLAUDE.md §5). The diff touches `src/`? no — but it touches
-`test/**` and `**/*.jl`, so `CI` (4 Julia jobs) + `format` DO run; `python` and `docs` do not (ADR 0090).
-Local CI-faithful suite before pushing: job **1706530**. Measurement jobs, if you need to re-run anything:
+✅ **ADR 0055's BRANCH CI IS GREEN on every required gate** — work sha `b9eee1fd`: `format`, `test (1)`,
+`test (lts)` all success, plus the non-required `test (macOS, lts)`. `python` and `docs` correctly did NOT
+run (no `python/**`, no `docs/src/**`, no `src/**` — ADR 0090). **`test (pre)` is red and was diagnosed,
+not waved away:** it dies at LOAD time with `MethodError: no method matching
+setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` — a Julia-prerelease API removal breaking a
+dependency before any testitem runs, byte-identical to the failure diagnosed on `12bf126b` and line S's
+`1b44cebb`, and `test (1)` passing on 1.12 is the evidence it is not ours. Merged to `main` as
+**`fe3cfe54`**, and **main's OWN post-merge run is green on all of them too** (`format`, `test (1)`,
+`test (lts)`, `test (macOS, lts)`; `test (pre)` red for the same prerelease reason). **Nothing about ADR
+0055 is outstanding.**
+Local CI-faithful suite before pushing: **110,258 pass / 0 fail / 4 broken**, job **1706571** (the first
+attempt, 1706530, failed 8 — all one bug of mine: the shuffle-decomposition identity was asserted at
+`atol = 1e-9` while the fixture prints `%.6f`, so it was testing the print format).
+Measurement jobs, if you need to re-run anything:
 `M-resref` 1706374 (C reference, ~40 s), `M-resil` 1706343 (coupled battery, ~22 min),
 `M-ciarm` 1706376 (the CI-threshold probe), `M-soilstamp` 1706443 (gate-stamp regen).
 
