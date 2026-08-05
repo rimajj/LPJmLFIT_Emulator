@@ -48,15 +48,19 @@ ADR 0100 §1/§2/§5 — then ADR 0049 (whose LEVEL claim it CONFIRMS), then ADR
 
 ### DO THIS NEXT, IN THIS ORDER
 
-**A. FINISH THE MERGE OF ADR 0101 IF IT IS NOT ON `main`.** Check first: `git log --oneline origin/main -3`
-and `git status`. Expected gates for this work: **`format`** (a `.jl` changed) **and `CI`** (`test/**` changed
-— the new fixture + testitem). `python` and `docs` correctly do NOT run (`scripts/*.py` is unlinted;
-`docs/decisions/**` is outside the Documenter tree — ADR 0090). The pre-push CI-faithful run is job
-**1701341** (`S-suite-adr0101b`); job 1701334 was its predecessor and is SUPERSEDED — it failed on exactly
-one thing, `using Statistics` in the new testitem, which is **not** a test dep (runtime `[deps]` is empty by
-ADR 0014 and `test/Project.toml` is integrator-owned by §9 Gap 3), now replaced by three lines of inline
-`_mean`/`_std`. If 1701341's log is missing or red, re-run `scripts/run_tests_slurm.sh S-suite-adr0101c`
-before pushing. Runic clean on all 118 tracked `.jl` + the new testitem.
+**A. ✅ NOTHING IS OUTSTANDING ON ADR 0101 — it is MERGED and verified on both sides. Start at B.**
+Work sha `09ae6156`, merged to `main` as **`3e11284d`**. Branch CI green on every required gate (`format`,
+`test (lts)`, `test (1)`, + non-required `test (macOS, lts)`), and **`main`'s OWN post-merge run on
+`3e11284d` is green on the same set**. `python` and `docs` correctly never ran (`scripts/*.py` is unlinted;
+`docs/decisions/**` is outside the Documenter tree; the merge added no `src/**` — ADR 0090). `test (pre)` is
+red and was **diagnosed, not waved away**: it dies at LOAD time with `MethodError: no method matching
+setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` — a Julia-prerelease API removal breaking the
+`ScopedValues` dep, before any testitem runs — the documented allowed-to-fail churn (CLAUDE.md §5), with
+`test (1)` passing on 1.12 as the evidence it is not ours. Local CI-faithful suite on the **rebased** tree:
+job **1701366**, `110 102 pass / 0 fail / 4 broken`. Runic clean on all tracked `.jl`.
+⚠ Worth repeating because it nearly cost a verdict: `main` moved (line/M merged `src/components/slow.jl`)
+*between* the pre-push suite and the push, so the pre-rebase suite no longer covered the tree — re-run it
+after a rebase that pulls in another line's `src/**`, and let branch CI on the pushed sha be the authority.
 
 **B. MILESTONE S2 — THE CONDITIONING SET — is now the only lever the finding points at.** Every trained-band
 excursion is **0.0** on both global artifacts and the training scenario is excluded, so the deployment
