@@ -6,87 +6,95 @@
 
 ## NEXT — start here
 
-**Phase 3A Stage 1 is DONE and INERT. Read ADR 0048 first (it changes how you must MEASURE), then 0047,
-then 0046 for the target.** The ported hazard exists with no call site; the pre-flight is finished and it
-moved the goalposts on the measurement protocol, not on the mechanism.
+**Phase 3A Stage 2 is DONE and MERGED. Read ADR 0049 first, then 0048 (the measurement protocol), then
+0046 §3 (the target).** The hazard is wired in, opt-in, and it selects correctly — and the measurement found
+that the bottleneck is no longer the hazard but the DRF's **count channel**. That reframes what comes next.
 
-### THE STATE IN SIX LINES
+### ⚠ FIRST, A BLOCKER THAT IS NOT SCIENTIFIC: THE S ADR BLOCK IS EXHAUSTED
 
-1. **ADR 0047 — the FIT mortality hazard is ported IN FULL and gated, with no call site.**
-   `src/trait_mortality.jl` (`module TraitMortality`) implements `mortality_tree_ind.c:89-133`: the
-   wood-density `mort_max`, the growth-efficiency logistic, age/water/temp stress, their **ADDITIVE**
-   combination with per-component **and** total caps, and the two hard kills. Nothing calls it ⇒ every
-   committed baseline, ReferenceTest and AD path is byte-identical (guardrail 4); runtime `[deps]` still
-   empty. `pft_mort_params(id)` **ERRORS** on an unknown id — never defaults to beech.
-2. **The parameters are GENERATED, not transcribed, and live in ONE file.**
-   `scripts/build_mort_params_reference.py` expands `par/pft_lpjmlfit.js` with the same `cpp -P` LPJmL
-   pipes it through → `test/testitems/references/S_pft_mortality_params.csv`. Three consumers gate on it:
-   the Julia table (bitwise, under `CI`), `build_slow_flux_table.py::PFT_PARAMS` (at import), and the same
-   under the `python` gate via `python/tests/test_mort_params_reference.py` — which carries a **mutation
-   test**, because `scripts/*.py` is watched by no gate (ADR 0090). Regenerate with
-   `CHECK=1 python3 scripts/build_mort_params_reference.py` (exits 1 on drift, with a diff).
-3. **⚠ ADR 0048 — THE BIG ONE FOR STAGE 2. The rollout's CONSTANT-FORCING community wood density drifts
-   −3 267 = 1.34× the FIT warming shift, in the OPPOSITE direction, settling at year 52** (production
-   copula-on config; +9 273 = 3.81× copula-off). No climate signal is present. ⇒ **every response arm must
-   be differenced against a matched constant-forcing control RE-RUN IN THE SAME GENERATION, and scored past
-   ~52 rollout years.** An uncontrolled arm can show the right sign for entirely the wrong reason.
-4. **The k-cap merge is DORMANT, not harmless (ADR 0048).** At the default `k_cap = max(2K, 40)` it fires
-   **0 times in 150 yr** (establishment fires in only 12–14 of 149 yr, so the roster 17 → 29/31 never
-   doubles) — so the literal default-vs-`typemax(Int)` diff is **exactly 0.0 and is a NON-MEASUREMENT**.
-   Forced at `k_cap = 20` it moves the community mean by **3.1–5.1× the FIT shift**. Stage 2 is unblocked
-   without fixing `_merge_pair!`; re-run `scripts/kcap_merge_confound_probe.jl` before trusting ANY trait
-   trajectory in a config that tightens the cap, raises establishment, or scales the roster.
-5. **Recruitment is a SLOW channel: `τ` = 94 yr (firing-year `e` = 0.0106) / 1 003 yr (run-mean 0.0010)**,
-   only ~14 % of the population replaced in 150 yr. Upper bound on how fast any recruit-mediated fix can
-   act — a second, independent reason to prefer the mortality lever over the entry marginal (ADR 0045).
-6. **The frozen gate is unchanged (ADR 0044).** `Rr` = 0.3751 against a 0.9543 ceiling, `Ra` = 1.034
-   (`|Ra−1|` = 0.0344) ⇒ the residual is a **PLACEMENT** error, not shrinkage, so no lever may be justified
-   by "reducing attenuation" / "raising `sd_ratio`" (incl. ADR 0030 criterion 2). **P1 threshold =
-   `ΔRr` ≥ +0.036.** `Rb` is veto-only; *"X reduced the damping from A % to B %"* stays forbidden.
+ADR 0049 was the **last number in the S block 0030–0049**. Do not borrow 0090–0099 (integrator/cross-cutting)
+and do not reuse a number. **Raise a new range as an integration point** (note it in `lines/S/STATE.md` +
+ask the integrator to record it in CLAUDE.md §9's table) *before* writing the next S decision. Everything
+below needs an ADR, so this is the first action of the next session.
+
+### THE STATE IN SEVEN LINES
+
+1. **ADR 0049 — the ported hazard is WIRED IN, opt-in, and it works.**
+   `FluxDrivenSlowEmulator(fc, forest; …, trait_mortality = true)` replaces the uniform ρ-thinning with
+   ADR 0047's per-individual hazard. `trait_mortality = false` (the default) does not evaluate the hazard at
+   all ⇒ every committed baseline, ReferenceTest and AD path byte-identical; runtime `[deps]` still empty.
+   Suite **107 749 pass / 0 fail / 4 broken** (job 1698873); docs green (1698958); Runic clean.
+2. **The count target is imposed as a PROPORTIONAL-HAZARDS TILT, and this is the design decision to know.**
+   `f_i = (1 − mort_i)^θ = exp(−θ·H_i)`, θ bisected so `Σ nind·f_i = ρ·Σ nind` exactly. Bounded in [0,1],
+   order-preserving, deterministic, and **it recovers FIT exactly at θ = 1** (asserted in the testitem).
+   A linear `λ·(1 − mort_i)` renormalization was REJECTED — it needs a clamp against mortality that
+   *creates* individuals, and it distorts pairwise survival ratios, so it is not a hazard. Don't reopen it.
+3. **`mort_water` and `mort_temp` are ZERO by decision, not by omission.** The emulator has neither stress
+   integral on FIT's basis; `grow.water_stress` = `1 − wscal_mean` is a different quantity on a different
+   scale (ADR 0051's precedent). Cost is bounded: `mort_temp` is not trait-dependent, `mort_water`'s only
+   per-cohort variation is a per-PFT factor (composition, not the within-PFT channel), and both levels are
+   absorbed by θ. Recovering them needs a per-PFT daily accumulator in F — **line M's file**.
+4. **THE FINDING: the DRF's count channel, not the hazard, bounds the selection.** θ is bimodal at ~0 —
+   median **8.5e-12**, θ > 0.5 in only **18 of 132** thinning years (13.6 %) — because a forest prediction
+   is piecewise constant, so the demanded `|ρ−1|` has **median 0.0 %/yr** against the hazard's own
+   1.688 %/yr. FIT's deaths and recruits **CO-OCCUR** (near-stationary count, large gross turnover); the
+   emulator's `ρ<1` XOR `ρ>1` branches make gross turnover *equal* net change, so a zero-net year is a
+   zero-selection year. Selection scales with GROSS deaths. This also re-derives ADR 0048 §4's τ = 94/1003 yr.
+5. **What the arm measured, and what it is NOT.** Hainich only, 150 yr, matched constant-forcing control
+   re-run in-process, 0 k-cap merges: controlled Δ community `wooddens` **+7 899 = 3.25× the FIT shift, same
+   sign**; carbon 3.0e-11; count honoured every year (Σnind matches the control to 1.4e-13); 0 hard kills;
+   **age–wooddens gradient rises with age** (+6 565 in the 80–160 yr bin, **+9 642** in 160–320). ⚠ This is
+   a constant-forcing **LEVEL** change on ONE cell. FIT's +2432.9 is a **between-scenario** difference, so
+   this is NOT a response, and none of it may be quoted against the ADR-0044 gate.
+6. **The acceptance target is now an ARTIFACT, and it refined the ADR twice.**
+   `test/testitems/references/S_age_wooddens_gradient.csv` (+ its builder, which **asserts** ADR 0046 §3's
+   five published rows reproduce to 1 gC/m³). New: **id 2 is non-monotone too** (dips at bin 3 despite a
+   positive `S`, so "the sign of `S` predicts the shape" has a measured exception), and **id 5 has no stems
+   above 160 yr at all** (longevity 125) while id 2 has none above 320 — never assume 7 bins per PFT.
+7. **The frozen gate is unchanged (ADR 0044).** `Rr` = 0.3751 against a 0.9543 ceiling, `Ra` = 1.034 ⇒ the
+   residual is a **PLACEMENT** error, not shrinkage. **P1 threshold = `ΔRr` ≥ +0.036.** `Rb` is veto-only;
+   *"X reduced the damping from A % to B %"* stays forbidden, and ADR 0030 criterion 2 stays off the table.
 
 ### DO THIS NEXT, IN THIS ORDER
 
-**A. Stage 2 — wire the hazard in behind an OPT-IN flag, one arm, with its own ADR.** The operator is ready
-and tested; what is missing is the call site in `reconcile_demography!`. Design constraints already
-established, do not re-derive them:
-- **The hazard replaces the uniform ρ-thinning for TREE cohorts only**, per cohort, and the carbon of the
-  removed `nind` must still route through `record_litter!` (`slow.jl:763-773` is the current path and it
-  closes at ~1e-12; do not break that).
-- **The count target must stay the DRF's.** The hazard redistributes *which* cohorts die; if it also
-  changes the total, the DRF's count skill (0.9824 OOS R²) is silently overridden. Simplest faithful
-  option: use the hazard to set relative weights and renormalize to the DRF's ρ. State the choice in the ADR.
-- **`bm_inc_counter` is NOT recoverable from the annual `ind` output** (a commented-out RAW-only column), so
-  the rollout must evolve it itself from 0 — `update_bm_inc_counter` is the recursion.
-- **FIT's hazard is a per-individual `erand48` Bernoulli draw**, so `1 − total` is an EXPECTED survival.
-  Applying the expectation deterministically is a modelling choice needing its own justification, not a free
-  simplification. `s.rng` already exists if you want the stochastic form.
-- **`fc.pft_ids` must be passed.** It exists (`fast.jl:94`) and `slow.jl` maintains it, but M's drivers never
-  pass it, so `FDiffFastCore` defaults every tree to beech — M integration point #1. Until it lands the
-  S-side harness passes ids itself, and the operator errors rather than defaulting.
+**A. Allocate the new ADR range (above). Then pick ONE of B or C — not both (item F).**
 
-**B. The acceptance target is the ADR-0046 §3 per-PFT AGE–WOODDENS GRADIENT, not the damping.** Including
-the **non-monotone** shape for ids 0 and 3 (their one-year selection differential is *negative*). A ported
-operator that produces a monotone gradient everywhere is wrong even if `Rb` improves. Worth building the
-committed gradient reference (per PFT × age bin, from the seed1 `ind` parquet) as a fixture first — ADR 0046
-§3 has the numbers but no artifact.
+**B. The RESPONSE arm — the measurement Stage 2 deliberately did not make.** Everything in §5 is a level
+change under constant forcing. The question Phase 3A exists to answer is whether Δ *differs* between
+historic and warmed forcing. Needs the ADR-0026/0027 transient boundary (`boundary_series`) on **both** arms
+and a 2×2: {`trait_mortality` on/off} × {constant, transient forcing}, all four re-run in one process at
+matched year indices. `scripts/trait_mortality_arm_probe.jl`'s `rollout(...)` already takes the flag — add a
+`boundary_series` knob rather than writing a fourth harness. Expect the answer to be *small*, because §4
+says the operator only selects in 13.6 % of years.
 
-**C. Measure it the ADR-0048 way or not at all.** Matched constant-forcing control, same generation, scored
-past year ~52, differenced. `scripts/kcap_merge_confound_probe.jl` already builds the control arm — reuse
-its `rollout(...)` shape rather than writing a third harness.
+**C. CO-OCCURRING GROSS TURNOVER — the lever §4 names.** Let a year apply the hazard's *gross* deaths AND an
+establishment influx that restores the DRF's *net* target, instead of the current mutually-exclusive
+branches. That would take the operator's duty cycle from 13.6 % of thinning years to every year. ⚠ It
+changes the count identity's meaning AND the recruit channel at once, so it needs its own ADR, its own
+matched control, and a carbon-closure re-check — and it must NOT be bundled with B.
 
 **D. Still open, unchanged:** `CAP_HASH_SEED` (~10 lines at `build_slow_runtime_table.py:378-384`, default
-`= seed` so every artifact stays byte-identical) — two justifications now: the ssp370 noise-floor basis, and
+`= seed` so every artifact stays byte-identical) — two justifications: the ssp370 noise-floor basis, and
 ADR 0045 §4 falsifying `:370-371`'s "patch-years are exchangeable" premise. D1 (space-for-time surrogate)
 and D3 (calibration curve) remain unrun and off the critical path. Two report numbers are still wrong in the
 `.tex`: "37 % damping / `Rb` = −892" is arm **B `p14env-hash`, the REFUSED env arm** (the deployed ncond-8
 arm is **−971.5 = 39.9 %**), and the `Rr` ceiling 0.9201 is superseded by the patch-year basis (**0.9543**).
 
-**E. Do not bundle.** Every arm/change lands separately with its own matched baseline **re-run in the same
-generation, never inherited from a log** — the one move that caught all five prior wrong turns on this line.
+**E. `fc.pft_ids` is now a CORRECTNESS requirement, not a nicety — M integration point #1.** The operator
+errors on a non-tree id but a wrong-but-*valid* id passes silently, and `FDiffFastCore` defaults every tree
+to beech (`fast.jl:147`), which would run the tropical and boreal PFTs on temperate wood-density mortality
+(the ADR-0031 defect class). The S-side probes and testitems pass real ids from the fixture's `type` column;
+**any M driver that enables `trait_mortality` must pass `pft_ids` first.** Raise it before M adopts the flag.
 
-**F. A method note worth keeping.** Item D's literal instruction returned a clean null that meant nothing —
-the operator never ran. Before believing a null, check the operator FIRED (the probe now prints a merge
-count and flags a zero as "this Δ bounds nothing"). Same class of error as ADR 0032's un-failable gate.
+**F. Do not bundle.** Every arm lands separately with its own matched baseline **re-run in the same
+generation, never inherited from a log** — the move that has now caught six wrong turns on this line.
+
+**G. Two method notes worth keeping.** (1) Before believing a null, check the operator FIRED — the probe
+prints `TraitMortDiag` (mean hazard, θ, hard kills, thinning years) first, for exactly this reason. (2) The
+first suite run went red in the new testitem and one of the three failures was a **real gap in the
+operator**: the mirror unreachable case (a hazard that is zero everywhere, so there is nothing to tilt) was
+returning `shortfall = 0`, i.e. reading as "the count target was honoured" in the one year it could not be.
+Fixed in the operator, not in the test — the reflex to check when a new assertion fails.
 
 ## Scope + ownership (ADR 0029)
 
@@ -435,8 +443,25 @@ the fair comparison and `emu_r` 0.864 sits just under it.
     (0 merges / 150 yr) so it need not be fixed first, but it is trait-destructive at 3.1–5.1× the signal
     when forced; and the rollout's constant-forcing relaxation is 1.34× the signal, opposite in sign,
     settling at yr 52 ⇒ every response arm needs a matched constant-forcing control. Job 1694397.
-  - **Stage 2 OPEN** — the call site, opt-in, with its own ADR. Design constraints and the acceptance
-    target (the ADR-0046 §3 per-PFT age–wooddens gradient, non-monotone for ids 0 and 3) are in §NEXT.
+  - **Stage 2 DONE 2026-08-05 (ADR 0049).** The hazard is wired into `reconcile_demography!` behind
+    `trait_mortality = false` (default ⇒ inert), reconciled with the DRF's count target by a
+    **proportional-hazards tilt** `f_i = (1 − mort_i)^θ` that recovers FIT exactly at θ = 1.
+    `mort_water`/`mort_temp` are zero by decision (the emulator has neither integral on FIT's basis).
+    Measured on the ADR-0048 protocol (Hainich only, matched constant-forcing control re-run in-process,
+    0 k-cap merges): controlled Δ community `wooddens` **+7 899 = 3.25× the FIT shift, same sign**, carbon
+    3.0e-11, count honoured every year, and the **age–wooddens gradient rises with age** (+6 565 in the
+    80–160 yr bin, +9 642 in 160–320) — the ADR-0046 §3 signature. Suite **107 749 pass / 0 fail /
+    4 broken** (job 1698873), docs green (1698958). The acceptance target is now the committed fixture
+    `S_age_wooddens_gradient.csv` (job 1698771), which refined ADR 0046 twice (id 2 non-monotone too; id 5
+    has no stems > 160 yr).
+    **⚠ THE FINDING: the DRF's count channel, not the hazard, bounds the selection** — θ median 8.5e-12,
+    θ > 0.5 in only 18 of 132 thinning years, because the demanded `|ρ−1|` has median 0.0 %/yr against the
+    hazard's 1.688 %/yr. FIT's deaths and recruits CO-OCCUR; the emulator's mutually-exclusive `ρ<1`/`ρ>1`
+    branches make gross turnover equal net change. **Co-occurring gross turnover is the named next lever.**
+    ⚠ The arm is a constant-forcing **LEVEL** change on one cell — **not a response**, and not the ADR-0044
+    gate. **This ADR exhausted the S block 0030–0049** (see §NEXT).
+  - **Stage 3 OPEN** — either the RESPONSE arm (transient vs constant forcing on both arms) or the
+    co-occurring-gross-turnover arm, one at a time. §NEXT items A–C.
 
 ## Line-local gotchas
 

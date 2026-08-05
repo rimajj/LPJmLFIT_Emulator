@@ -276,6 +276,10 @@ export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train
 # here. Every exported symbol needs a docstring — `docs/make.jl` runs `checkdocs=:exports` and CI fails
 # otherwise (the API page is `@autodocs`, so a documented export needs no manual docs edit). Keep the markers.
 # ── line S ──
+# Trait-dependent mortality — the opt-in ported-hazard thinning operator + its per-year diagnostics
+# (Phase 3A Stage 2, ADR 0049). The operator itself has no exported entry point: it is reached by
+# constructing a `FluxDrivenSlowEmulator` with `trait_mortality = true`, so the default stays inert.
+export TraitMortDiag, trait_mortality_diag
 # ── line M ──
 # ── line E ──
 # ── line O ──

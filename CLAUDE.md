@@ -414,6 +414,15 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   the set is unchanged — a new one silently overrides a parameter and is invisible in the file. Also: the
   `"median"` of an interval is a **global default** (`sla` = 0.01986 for all seven trees) and lies OUTSIDE
   `[low, high]` for ids 1/2/3/5, so it is not a central value of the interval recruits are drawn on.
+- **FIT's age–trait gradient is PFT-SHAPED — never assume every PFT spans every age bin, and never assume it
+  rises (`[VERIFIED 2026-08-05]`, ADR 0049).** Mean survivor `Wooddens` by `Age` bin (edges 10/20/40/80/160/320
+  yr, survivors `isdead==0`) is the committed fixture `test/testitems/references/S_age_wooddens_gradient.csv`
+  (builder `scripts/build_age_wooddens_gradient_reference.py`, `CHECK=1` to verify). Two structural facts a
+  seven-bins-per-PFT assumption gets wrong: **id 5 has NO stems above 160 yr at all** (its `longevity` is 125,
+  see the table below) and **id 2 none above 320**. And **ids 0, 2 AND 3 are non-monotone** (rise then dip) —
+  id 2 despite a *positive* one-year selection differential, so ADR 0046 §3's "the sign of `S` predicts the
+  gradient's shape" holds for 6 of 7 PFTs, not all. Reading `wooddens_mean` as monotone in age, or grouping
+  by a fixed bin count, silently mis-scores any mortality/selection operator.
 - **Mortality params are PER-PFT — do not reuse beech's for another id (`[VERIFIED 2026-07-28]`).** `k_mort`=0.01
   is global (`par/lpjparam_fit.js`); everything else is per-PFT in `par/pft_lpjmlfit.js`, where `longevity` is
   the **JSON key `"age"`** (NOT the leaf `"longevity"`=2.0) and `temp_low/high` is `"temp_stressed"` (NOT the
