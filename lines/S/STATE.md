@@ -13,6 +13,26 @@ retires S2 from the top of it — then ADR 0101, then ADR 0049. Every item S cou
 The three levers that remain each need either **line M** or a **global retrain**, and all three are
 specified rather than open questions.
 
+✅ **MERGED AND VERIFIED ON BOTH SIDES — nothing about ADR 0102 is outstanding.** Work sha `0a230ece`
+merged to `main` as **`07c0029f`**. Branch CI green on every required gate (`format`, `test (1)`,
+`test (lts)`, + non-required `test (macOS, lts)`), and **`main`'s OWN post-merge run on `07c0029f` is green
+on the same set**. `python` and `docs` correctly never ran (ADR 0090: no `python/**`, and
+`docs/component_s_public_report.*` + `docs/decisions/**` are outside the Documenter page tree; the merge
+added no `src/**`). Local CI-faithful suite job **1705738**: **110 102 pass / 0 fail / 4 broken**. Runic
+1.7.0 clean on all 121 tracked `.jl`. `test (pre)` is red and was **diagnosed, not waved away**: it dies at
+`ReTestItems.jl:510` in `_runtests_in_current_env`, immediately after `Scheduling 107 tests` and **before
+any testitem body runs**, with `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool},
+::Bool)` — a Julia-prerelease API removal inside ReTestItems itself, the documented allowed-to-fail churn
+(CLAUDE.md §5), with `test (1)` passing on 1.12 as the evidence it is not ours.
+
+⚠ **One protocol refinement worth carrying (it nearly cost the verdict).** A docs-only follow-up commit
+(`f56dffce`) was pushed *while branch CI was in flight*, which CLAUDE.md §9(5) warns can cancel the pending
+run. It did **not**, and the reason generalises: **a push that triggers NO workflow cannot displace the
+pending one** — `docs/decisions/**` is in no gate's path filter, so `f56dffce` has 0 check-runs and
+`0a230ece`'s run continued untouched. Both shas were checked rather than assumed. That also made merging
+`origin/line/S` (= `f56dffce`) rather than the CI-verified `0a230ece` sound: `git diff --name-only` between
+them is exactly one `.md` under `docs/decisions/`, i.e. no gate-watched path.
+
 ### THE STATE IN SEVEN LINES
 
 1. **THE DOMINANT DEFECT IS A MISSING LEVEL ANCHOR IN THE COUPLED RECURSION, newly measured (ADR 0102).**
