@@ -205,6 +205,29 @@ Force a gate anyway — any workflow has `workflow_dispatch`:
 gh workflow run CI.yml --ref line/<X>        # or the Actions tab; gh may not be on PATH (see below)
 ```
 
+### ⚠ The corollary that bites at SESSION END: your STATE.md refresh can ORPHAN the verdict
+
+The protocol **mandates** refreshing `lines/<X>/STATE.md` before the session ends (§handoff), and by the table
+above that refresh triggers **no gate**. So the ordinary end-of-session sequence
+
+```
+push work commit  →  CI starts on it  →  refresh STATE.md  →  commit + push
+```
+
+leaves the branch **TIP** with **zero check-runs**, while the verdict you need sits on its **parent**. Both
+halves of the ritual then read wrong: *"green on THAT sha"* looks unsatisfiable, and a poll written as
+*"wait for `test (lts)` on the tip"* **hangs forever**.
+
+It is not a problem — it is bookkeeping — but say which sha carries the verdict, in the handoff:
+
+* **read the verdict off the commit that changed a gate-watched path**, then merge the tip (the merge takes
+  the whole branch, and the tip's own diff provably cannot break a gate it does not trigger);
+* if you would rather keep one sha per verdict, either **`--amend`** the STATE.md change into the work commit
+  before the first push, or push STATE.md **first** and the work commit last;
+* and when handing off an unmerged branch, name the sha and its **expected gate set** explicitly — otherwise
+  the next session cannot tell "no gate was triggered" from "the verdict has not arrived yet", which are the
+  two states ADR 0090 makes indistinguishable from the API alone.
+
 ## Pre-push checklist (for the gates your diff actually triggers)
 
 1. **Julia tests** (only if `src/**`, `ext/**`, `test/**`, `Project.toml` or `docs/src/generated/**` changed) — `julia-test` skill: `rm -f test/Manifest.toml`, then the CI-faithful suite **on SLURM**
