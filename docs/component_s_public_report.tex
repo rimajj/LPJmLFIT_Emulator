@@ -41,7 +41,7 @@ Component S is the slow, annual component of a hybrid land model for use inside 
 
 \textbf{Current status.} Component S reproduces LPJmL-FIT's forest \emph{structure} globally at close to the achievable accuracy limit: tree density at $R^2 = 0.982$ per patch-year and $0.999$ per grid cell, and all four functional-trait distributions with pooled Kolmogorov--Smirnov distances below $0.012$. It runs on the complete seven tree plant-functional-type set, over both a historical and an SSP3-7.0 future-climate period, on 58{,}588 grid cells. Serialised artifacts are dependency-free and load in seconds.
 
-\textbf{Principal open item.} Reproducing the \emph{level} of a quantity is not the same as reproducing its \emph{change} under warming, and Component S currently understates the warming-driven shift in wood density by about 40 percent. A second limitation has since been measured and is the more serious of the two: inside a live coupled run the emulated stand's density has no level anchor, so an error in how many trees there are is never corrected. Component S is therefore a validated structural emulator, a not-yet-validated response emulator, and not yet stable under multi-decadal recursive use. Sections \ref{sec:standing} and \ref{sec:roadmap} state precisely what this permits today and what closing it requires.
+\textbf{Principal open items, in order of seriousness.} The first is structural rather than statistical. Inside a live coupled run -- where the component is called each year on its own previous output -- the emulated stand's tree density is advanced by predicted year-on-year \emph{ratios} and is never anchored to an absolute level, so an error in how many trees there are is never corrected. Measured over ten coupled years in five contrasting locations, three of the five end 36--81\,\% above the reference model; measured over 300 years of identical climate, a fourfold error in initial density is still fourfold at the end. The second is that reproducing the \emph{level} of a quantity is not the same as reproducing its \emph{change} under warming, and Component S understates the warming-driven shift in wood density by about 40 percent. Component S is therefore a validated structural emulator, a not-yet-validated response emulator, and not yet stable under multi-decadal recursive use. Sections \ref{sec:standing} and \ref{sec:roadmap} state precisely what this permits today and what closing it requires.
 
 This report is written for ecologists, geoscientists and vegetation modellers. Plain-language explanations of each statistical measure are given in Section \ref{sec:measures}; complete specifications of inputs, targets and model dimensions are tabulated in Sections \ref{sec:data} and \ref{sec:method} for readers who need to reproduce or couple to the component.
 \end{abstract}
@@ -83,9 +83,10 @@ The reference data is LPJmL-FIT output, not field observation: the objective is 
 
 \textbf{The columns.} \emph{Historical} = the observed-climate period. \emph{Future climate} = the SSP3-7.0 scenario period. \emph{Pooled} = both periods combined into a single training set, which is the configuration actually deployed, since a model that has seen both regimes is the one wanted for a transient simulation. Where a pooled entry reads ``---'' the quantity is not meaningfully defined for the combination.
 
-\textbf{The rows.} \emph{Grid} -- the model operates on a regular 0.5$^\circ$ longitude/latitude grid with 67{,}420 land cells. \emph{Patches per cell} -- each cell contains 25 independently simulated forest plots, which is how the model represents the natural spread of stand ages and states inside one cell; a cell-level number is an average over these. \emph{Cells with usable tree data} -- fewer than 67{,}420 because deserts and ice sheets carry no trees. \emph{Individual tree-year records (all)} -- one row per living tree per year, the raw record described in Table \ref{tab:recorded}. \emph{Of which surviving stems} -- the subset that survived the year and passed the input-coverage check; this smaller number, not the total, is what the trait model trains on, and the two must not be interchanged. \emph{Patch-year rows} -- one row per patch per year, which is the unit the count model predicts. \emph{Independent seeds} -- two full realisations of each scenario exist, differing only in the random-number seed, which is what makes the reference model's own irreducible randomness measurable (Section \ref{sec:floor}). \emph{CO$_2$ treatment} -- the future period holds CO$_2$ fixed at its 2019 value, so its forest response reflects climate change alone and not CO$_2$ fertilisation.}
+\textbf{The rows.} \emph{Grid} -- the model operates on a regular 0.5$^\circ$ longitude/latitude grid with 67{,}420 land cells. \emph{Patches per cell} -- each cell contains 25 independently simulated forest plots, which is how the model represents the natural spread of stand ages and states inside one cell; a cell-level number is an average over these. \emph{Cells with usable tree data} -- fewer than 67{,}420 because deserts and ice sheets carry no trees; this is the count of cells with usable \emph{trait} data, while \emph{cells entering the count model} is the slightly narrower subset for which a complete patch-level predictor row exists, and it is the coverage figure quoted elsewhere in this report. \emph{Individual tree-year records (all)} -- one row per living tree per year, the raw record described in Table \ref{tab:recorded}. \emph{Of which surviving stems} -- the subset that survived the year and passed the input-coverage check. These totals are \emph{not} what the deployed trait model trains on: for tractability its pooled training table retains at most 400 stems per grid cell, and the subsample keeps \emph{whole} patch-years rather than individual stems, leaving $4.22 \times 10^{7}$ stems -- an effective sample of $8.3 \times 10^{6}$ patch-years (Table \ref{tab:dims}). The historical-only trait model whose figures appear in Section \ref{sec:results} is trained on the full historical population instead. The two must never be interchanged. \emph{Patch-year rows} -- one row per patch per year, which is the unit the count model predicts. \emph{Independent seeds} -- two full realisations of each scenario exist, differing only in the random-number seed, which is what makes the reference model's own irreducible randomness measurable (Section \ref{sec:floor}). \emph{CO$_2$ treatment} -- the future period holds CO$_2$ fixed at its 2019 value, so its forest response reflects climate change alone and not CO$_2$ fertilisation.}
 \label{tab:scale}
 \small
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lccc}
 \toprule
 & Historical & Future climate & Pooled \\
@@ -94,14 +95,16 @@ Scenario & observed climate & SSP3-7.0 & both \\
 Period & 2000--2019 (20 yr) & 2020--2100 (81 yr) & --- \\
 Grid & 0.5$^\circ$, 67{,}420 land cells & same & same \\
 Patches per cell & 25 & 25 & 25 \\
-Cells with usable tree data & 54{,}020 & 58{,}683 & 58{,}588 \\
+Cells with usable tree data & 54{,}020 & 58{,}683 & 58{,}766 \\
+Cells entering the count model & 53{,}699 & 58{,}496 & 58{,}588 \\
 Individual tree-year records (all) & 246{,}049{,}830 & 1{,}030{,}175{,}289 & $1.28 \times 10^{9}$ \\
-\quad of which surviving stems & $1.98 \times 10^{8}$ & --- & --- \\
+\quad of which surviving stems & $1.98 \times 10^{8}$ & $8.29 \times 10^{8}$ & $1.03 \times 10^{9}$ \\
 Patch-year rows (count target) & 22{,}467{,}348 & 99{,}028{,}310 & 121{,}495{,}658 \\
 Independent seeds available & 2 & 2 & 2 \\
 CO$_2$ treatment & transient & held at 409.63\,ppm from 2020 & --- \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 The seven tree plant-functional types (PFTs) represented, all of which are included: tropical broadleaved evergreen; temperate needleleaved evergreen; temperate broadleaved evergreen; temperate broadleaved summergreen; boreal needleleaved evergreen; boreal broadleaved summergreen; boreal needleleaved summergreen (larch). Three grass types are present in the reference output but belong to component F.
@@ -109,15 +112,15 @@ The seven tree plant-functional types (PFTs) represented, all of which are inclu
 \subsection{Recorded quantities: the per-tree, per-year record}
 \label{sec:recorded}
 
-LPJmL-FIT emits one row per living tree per year with the 29 fields below. This is the complete input universe from which everything else in this report is derived.
+LPJmL-FIT emits one row per living tree per year with the 29 fields below. This is the per-tree half of the emulator's input universe, and the half that defines what can be known about the \emph{stand}; the remaining inputs come from two gridded outputs of the same reference run and are named where they are used.
 
 \begin{table}[h]
 \centering
-\caption[The 29 recorded fields per tree per year]{\textbf{What is shown.} Every quantity LPJmL-FIT records for each individual tree in each simulated year -- the complete raw data universe. Everything else in this report is derived from these 29 fields, so this table defines what is and is not available to the emulator in principle.
+\caption[The 29 recorded fields per tree per year]{\textbf{What is shown.} Every quantity LPJmL-FIT records for each individual tree in each simulated year. This is the per-tree half of the emulator's input universe, and it is the half that defines what can be known about the \emph{stand}: 10 of the count model's 15 predictors (Table \ref{tab:count_inputs}, numbers 1--3 and 5--11) are aggregates of these fields. The other five are not, and their provenance is given immediately below the table so that it cannot be misread.
 
 \textbf{The columns.} \emph{Field} is the name as written by the reference model. \emph{Meaning} and \emph{Unit} give the physical interpretation. \emph{Role} states how Component S uses it: \emph{index} = identifies which tree, patch, cell and year the row belongs to; \emph{driver} = aggregated to patch level and used as a model input (Table \ref{tab:count_inputs}); \emph{target} = a quantity the emulator predicts; \emph{diagnostic} = predicted and validated, but deliberately excluded from the production artifact so an error in it cannot enter a coupled run; \emph{filter} = used to select which rows enter training; \emph{unused} = recorded and available, but not currently consumed -- listed so the reader can see the headroom that exists without new reference runs.
 
-\textbf{What it tells us.} The four \emph{target} fields are the traits LPJmL-FIT itself samples when a tree establishes, which is why they are the natural prediction targets rather than an arbitrary choice. The block of five \emph{mortality} fields is unused by the deployed configuration, whose mortality is trait-blind and so does not reproduce cause-specific death. They are no longer merely an identified avenue: they are the basis of the optional operator of Section \ref{sec:traitmort}. Two derivation caveats that matter for anyone recomputing from this table: \texttt{agb} already includes the individual-density factor, so a per-patch row sum is directly the stand total per unit area; and \texttt{Age} is incremented at year end, so the start-of-year age is $\texttt{Age}-1$, which is also the age at which that row's mortality fields were evaluated.}
+\textbf{What it tells us.} The four \emph{target} fields are the traits LPJmL-FIT itself samples when a tree establishes, which is why they are the natural prediction targets rather than an arbitrary choice. The block of five \emph{mortality} fields is unused by the deployed configuration, whose mortality is trait-blind and so does not reproduce cause-specific death. They remain unconsumed: the optional operator of Section \ref{sec:traitmort} re-derives the hazard from the reference model's own source code and parameter files rather than reading these recorded values, and it reproduces only the carbon-starvation and age hazards -- the water and temperature hazards are set to zero, deliberately, because the emulator carries neither of the daily integrals they are computed from. The recorded columns' value is as an independent check on such a port, and that headroom still exists. Two derivation caveats that matter for anyone recomputing from this table: \texttt{agb} already includes the individual-density factor, so a per-patch row sum is directly the stand total per unit area; and \texttt{Age} is incremented at year end, so the start-of-year age is $\texttt{Age}-1$, which is also the age at which that row's mortality fields were evaluated.}
 \label{tab:recorded}
 \small
 \begin{tabular}{llll}
@@ -131,7 +134,7 @@ Field & Meaning & Unit & Role \\
 \texttt{Type} & plant functional type (0--6 = trees) & --- & index / filter \\
 \midrule
 \texttt{npp} & net primary production & gC\,m$^{-2}$\,yr$^{-1}$ & driver \\
-\texttt{gpp} & gross primary production & gC\,m$^{-2}$\,yr$^{-1}$ & driver \\
+\texttt{gpp} & gross primary production & gC\,m$^{-2}$\,yr$^{-1}$ & unused \\
 \texttt{transp} & transpiration & mm\,yr$^{-1}$ & unused \\
 \texttt{wscal\_mean} & annual mean leaf-on water scalar (1 = unstressed) & --- & driver \\
 \texttt{vegc} & total vegetation carbon & gC\,m$^{-2}$ & unused \\
@@ -160,6 +163,8 @@ Field & Meaning & Unit & Role \\
 \end{tabular}
 \end{table}
 
+The five predictors of Table \ref{tab:count_inputs} that do \emph{not} come from this table are: \texttt{soilmoist} (predictor 4), which is a separate gridded output of the reference model -- its daily root-zone soil water divided by that cell's root-zone water-holding capacity; the three bioclimatic and soil boundary predictors (12--14), which come from a per-cell climate and soil table derived from the same forcing the reference run read; and predictor 15, which is a constant.
+
 Two practical notes for anyone re-deriving from this table. \texttt{agb} carries the individual density factor already applied, so a per-patch row sum is the stand total per unit area. The emitted \texttt{Age} is incremented at year end, so start-of-year age is $\texttt{Age}-1$; the mortality fields on the same row were evaluated at that earlier age.
 
 \subsection{Model inputs: exactly what Component S is trained on}
@@ -173,7 +178,9 @@ The two sub-models take different input sets. The count model sees the full patc
 
 \textbf{The groups.} \emph{Flux drivers} (1--4) come from component F and summarise how the patch fared physically in the year just simulated -- how much carbon it gained, how efficiently, and how water-limited it was. \emph{Patch state} (5--11) describes the stand as it was at the start of the step: its height structure, biomass, leaf area, cover, mean cohort age and current tree count. \emph{Boundary} (12--15) is the slowly varying bioclimatic and soil context of the cell -- thermal growing season, winter cold, soil depth and atmospheric CO$_2$.
 
-\textbf{What it tells us.} The information available is deliberately of two kinds: what just happened physically, and what the stand already looks like. That combination is what lets a single annual step predict establishment and mortality together -- a crowded, tall, old stand responds differently to the same carbon gain than a sparse young one. Note that \texttt{n\_prev}, the count at the start of the year, is among the inputs: the model predicts the new count given the old one, which is a considerably better-posed problem than predicting it from environment alone.}
+\textbf{Two of the boundary predictors need a caveat rather than a description.} Predictor 14 is the static soil-depth data field of the cell, not a physical constraint the reference model obeys: that model reads its soil-depth input and then runs every cell on the same 20\,m, 22-layer profile, taking plant-available water from that profile's own water-holding capacity. The predictor is therefore useful to the emulator only as slowly varying spatial context. Predictor 15 carries no information at all. Because the reference model runs without nitrogen limitation, its future runs deliberately hold CO$_2$ fixed (Table \ref{tab:scale}), and the emulator's own CO$_2$ column was built as a single fixed value -- 369\,ppm in every training row of every deployed artifact. Component S consequently has \emph{no} CO$_2$ response of any kind: it is valid at constant or near-historical CO$_2$ only, and must not be used to project a CO$_2$-fertilisation effect.
+
+\textbf{What it tells us.} The information available is deliberately of two kinds: what just happened physically, and what the stand already looks like. That combination is what lets a single annual step predict establishment and mortality together -- a crowded, tall, old stand responds differently to the same carbon gain than a sparse young one. Note that \texttt{n\_prev}, the count at the start of the year, is among the inputs: the model predicts the new count given the old one, which is a considerably better-posed problem than predicting it from environment alone. That advantage, however, is only fully available at training time, where the previous count is always the reference model's own true value; inside a coupled run it is the emulator's own previous output, errors included, and Section \ref{sec:anchor} reports what that costs.}
 \label{tab:count_inputs}
 \small
 \begin{tabular}{cllll}
@@ -195,8 +202,8 @@ The two sub-models take different input sets. The count model sees the full patc
 \midrule
 12 & \texttt{eco\_diag\_gdd\_5} & growing-degree days above 5\,$^\circ$C & $^\circ$C\,d & boundary \\
 13 & \texttt{tas\_cold\_month} & mean temperature of the coldest month & $^\circ$C & boundary \\
-14 & \texttt{soil\_depth} & plant-available soil depth & m & boundary \\
-15 & \texttt{co2} & atmospheric CO$_2$ & ppm & boundary \\
+14 & \texttt{soil\_depth} & static soil-depth field, 0--50 (see caption) & m & boundary \\
+15 & \texttt{co2} & atmospheric CO$_2$ -- \emph{constant, 369\,ppm} & ppm & boundary \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -263,7 +270,7 @@ The result is a recruit whose four traits are individually correctly distributed
 \centering
 \caption[Deployed model dimensions and artifact sizes]{\textbf{What is shown.} The complete specification of the two trained models as deployed, so that a reader can judge their capacity or reproduce them.
 
-\textbf{The rows, and what each controls.} \emph{Predictors ($p$)} is the input width from Tables \ref{tab:count_inputs} and \ref{tab:trait_inputs}. \emph{Targets} -- the count model predicts one quantity; the trait model has four production axes plus two diagnostic ones, each with its own forest supplying that trait's conditional distribution. \emph{Trees per forest} is the size of the ensemble; more trees reduce prediction variance with diminishing returns. \emph{Maximum depth} and \emph{minimum leaf size} together cap how finely the input space may be partitioned -- a leaf must retain at least 20 training rows, which is the main safeguard against memorising individual rows rather than learning a relationship, and is also what guarantees each leaf holds enough values to represent a distribution rather than a single outcome. \emph{Rows subsampled per tree} is how many training rows each individual tree sees; combined with \texttt{mtry}, the number of predictors offered at each split, this is the randomisation that makes the ensemble members differ from one another and is what makes a forest more than a single tree. \emph{Copula dependence} is the $4\times4$ correlation matrix among the four traits, factored once into its Cholesky form $L$ so that correlated draws can be generated cheaply at runtime (Section \ref{sec:method}). \emph{Serialised size} and \emph{training rows} give the practical cost.
+\textbf{The rows, and what each controls.} \emph{Predictors ($p$)} is the input width from Tables \ref{tab:count_inputs} and \ref{tab:trait_inputs}. \emph{Targets} -- the count model predicts one quantity; the trait model has four production axes plus two diagnostic ones, each with its own forest supplying that trait's conditional distribution. \emph{Trees per forest} is the size of the ensemble; more trees reduce prediction variance with diminishing returns. \emph{Maximum depth} and \emph{minimum leaf size} together cap how finely the input space may be partitioned -- a leaf must retain at least 20 training rows, which is the main safeguard against memorising individual rows rather than learning a relationship, and is also what guarantees each leaf holds enough values to represent a distribution rather than a single outcome. \emph{Rows subsampled per tree} is how many training rows each individual tree sees; combined with \texttt{mtry}, the number of predictors offered at each split, this is the randomisation that makes the ensemble members differ from one another and is what makes a forest more than a single tree. \emph{Copula dependence} is the $4\times4$ correlation matrix among the four traits, factored once into its Cholesky form $L$ so that correlated draws can be generated cheaply at runtime (Section \ref{sec:method}). \emph{Serialised size} and \emph{training rows} give the practical cost, both for the artifacts actually deployed, which are the pooled ones. On the trait side that training set is subsampled for tractability to at most 400 surviving stems per cell and period ($4.22 \times 10^{7}$ rows over 58{,}766 cells), and because the subsample keeps \emph{whole} patch-years its effective sample size is $8.3 \times 10^{6}$ patch-years rather than $4.22 \times 10^{7}$ stems. The uncapped historical table, on which the trait results of Section \ref{sec:results} are measured, holds the $1.98 \times 10^{8}$ stems of Table \ref{tab:scale}.
 
 \textbf{What it tells us.} These are modest, deliberately unexotic models: a few hundred shallow trees and one small correlation matrix. The accuracy in Section \ref{sec:results} is therefore not bought with a large opaque model, and the artifacts are small enough and simple enough to load in seconds inside a climate model without any external machine-learning dependency.}
 \label{tab:dims}
@@ -283,7 +290,7 @@ Rows subsampled per tree & 200{,}000 & 50{,}000 \\
 \texttt{mtry} (predictors tried per split) & 4 & 3 \\
 Copula dependence & --- & $4 \times 4$ correlation matrix, Cholesky factored \\
 Serialised size & 51.6\,MB & 129\,MB \\
-Training rows & $1.21 \times 10^{8}$ patch-years (pooled) & $1.98 \times 10^{8}$ surviving stems (hist.) \\
+Training rows & $1.21 \times 10^{8}$ patch-years (pooled) & $4.22 \times 10^{7}$ surviving stems (pooled) \\
 \bottomrule
 \end{tabular}%
 }
@@ -322,7 +329,7 @@ The comparison is made attenuation-aware. Two reliabilities are estimated: the e
 \section{Results}
 \label{sec:results}
 
-All numbers below are held out by location (design 1), on the complete seven-PFT tree set. Cell counts differ slightly between tables because each reports the subset with sufficient data for that particular computation.
+All numbers below are held out by location (design 1), on the complete seven-PFT tree set. Cell counts differ slightly between tables because each reports the subset with sufficient data for that particular computation. \emph{All figures in this section show the historical-period evaluation}, which is the one whose trait side uses every surviving stem rather than a subsample; the future-climate and pooled evaluations are reported numerically in the tables rather than plotted.
 
 \subsection{Tree density}
 
@@ -332,9 +339,9 @@ All numbers below are held out by location (design 1), on the complete seven-PFT
 
 \textbf{The columns.} \emph{Historical} and \emph{Future climate} are the two scenario periods scored separately; \emph{Pooled} is the deployed model trained on both together. Because it combines two periods of unequal length, a pooled figure is dominated by the longer future period and should be read as an overall summary rather than as a property of either period.
 
-\textbf{The rows.} \emph{Patch-year rows / cells} gives the sample size. \emph{$R^2$ held out by location, per patch-year} is the headline number: every cell was predicted by a model trained without it, and every patch and year enters one pooled calculation -- the strictest framing, since each individual patch-year must land near its own true value. \emph{RMSE} expresses that same error in trees, and being below one tree is the practically meaningful statement. \emph{$R^2$ held out by climate period} trains on one period and tests on the other, so it measures transfer to an unseen \emph{climate} rather than to an unseen \emph{place}. \emph{$R^2$ per grid cell} instead scores each cell's own year-to-year trajectory separately and averages those scores; it is higher than the pooled figure because it rewards tracking local dynamics rather than requiring every row to match its absolute value, and the two should be read as answering different questions. \emph{Mean bias} is the average signed error, so a value near zero means over- and under-predictions balance rather than the model being systematically high or low.
+\textbf{The rows.} \emph{Patch-year rows / cells} gives the sample size. \emph{$R^2$ in-sample} scores the model on the very rows it was fitted on, and is shown only so that the held-out figure below it can be compared against it. \emph{$R^2$ held out by location, per patch-year} is the headline number: every cell was predicted by a model trained without it, and every patch and year enters one pooled calculation -- the strictest framing, since each individual patch-year must land near its own true value. \emph{RMSE} expresses that same error in trees, and being below one tree is the practically meaningful statement. \emph{$R^2$ held out by climate period} trains on one period and tests on the other, so it measures transfer to an unseen \emph{climate} rather than to an unseen \emph{place}. \emph{$R^2$ per grid cell} instead scores each cell's own year-to-year trajectory separately and averages those scores; it is higher than the pooled figure because it rewards tracking local dynamics rather than requiring every row to match its absolute value, and the two should be read as answering different questions. \emph{Mean bias} is the average signed error, so a value near zero means over- and under-predictions balance rather than the model being systematically high or low.
 
-\textbf{What it tells us.} Held-out accuracy matches in-sample accuracy to four decimals, so the model generalises to unseen locations rather than memorising them. Held-out-by-period accuracy is indistinguishable from held-out-by-location accuracy, so it has learned a climate-to-demography relationship that survives a change of climate regime.}
+\textbf{What it tells us.} Held-out accuracy matches in-sample accuracy to within $0.0001$, so the model generalises to unseen locations rather than memorising them. Held-out-by-period accuracy is indistinguishable from held-out-by-location accuracy, so it has learned a climate-to-demography relationship that survives a change of climate regime.}
 \label{tab:counts}
 \small
 \begin{tabular}{lccc}
@@ -342,6 +349,7 @@ All numbers below are held out by location (design 1), on the complete seven-PFT
 & Historical & Future climate & Pooled \\
 \midrule
 Patch-year rows / cells & 22.5\,M / 53{,}699 & 99.0\,M / 58{,}496 & 121.5\,M / 58{,}588 \\
+$R^2$, in-sample (no hold-out) & 0.9827 & 0.9823 & 0.9824 \\
 $R^2$, held out by location, per patch-year & \textbf{0.9826} & \textbf{0.9823} & \textbf{0.9824} \\
 RMSE (trees) & 0.689 & 0.698 & 0.697 \\
 $R^2$, held out by climate period & 0.982 & 0.9818 & --- \\
@@ -351,7 +359,7 @@ Mean bias (trees) & $+0.003$ & $+0.001$ & $+0.000$ \\
 \end{tabular}
 \end{table}
 
-Held-out accuracy equals in-sample accuracy to four decimal places, so the count model is not memorising locations. Held-out-by-period accuracy is indistinguishable from held-out-by-location accuracy, so it transfers to a climate regime it was not trained on. A seed-to-seed noise floor for counts is available ($\approx 0.99$) but is computed on cell totals pooled over patches and years, whereas the model is scored per patch-year; it is too generous a comparison to quote as this model's ceiling, and a matched per-patch-year floor is outstanding.
+Held-out accuracy equals in-sample accuracy to within $0.0001$, so the count model is not memorising locations. Held-out-by-period accuracy is indistinguishable from held-out-by-location accuracy, so it transfers to a climate regime it was not trained on. A seed-to-seed noise floor for counts is available ($\approx 0.99$) but is computed on cell totals pooled over patches and years, whereas the model is scored per patch-year; it is too generous a comparison to quote as this model's ceiling, and a matched per-patch-year floor is outstanding.
 
 \begin{figure}[ht]
 \centering
@@ -407,7 +415,11 @@ Held-out accuracy equals in-sample accuracy to four decimal places, so the count
 
 \textbf{The columns, in order of how they build on one another.} \emph{Raw $r$} is the plain correlation between predicted and true per-cell trait medians -- what the emulator achieves. \emph{Noise floor} is how well one full reference run predicts an independent rerun of itself that differs only in random seed; it involves Component S not at all and is a property of the reference model. \emph{Ceiling} is the attainable limit, which additionally accounts for the emulator's own internal consistency; it is the geometric mean $\sqrt{\rho_P\rho_Y}$ of the two reliabilities and is therefore always slightly above the noise floor (Section \ref{sec:floor}). \emph{Gap} is Ceiling minus Raw -- the accuracy genuinely still available. \emph{$r_\mathrm{center}$} is Raw divided by Ceiling: skill as a fraction of what is attainable, so a value near 1.0 means the remaining error is irreducible randomness rather than a modelling deficiency. \emph{Spread ratio} is the standard deviation of the predictions over that of the truth, across cells: 1.0 means the model reproduces the real geographic variability of the trait, while a value below 1.0 means it hedges toward the middle and under-represents genuine extremes.
 
-\textbf{What it tells us.} Drought tolerance is essentially finished ($r_\mathrm{center}=0.958$, spread ratio 0.970) and specific leaf area is close behind. Wood density is the weakest axis on both counts -- the largest gap (0.150) and by far the lowest spread ratio (0.678) -- which identifies it, not the traits with the lowest raw correlation, as the priority. Rooting depth is intermediate, and note that its low raw correlation (0.791) is largely a \emph{low ceiling} (0.909) rather than poor modelling: the reference model is itself least repeatable on that trait.}
+\textbf{What it tells us.} Drought tolerance is essentially finished ($r_\mathrm{center}=0.958$, spread ratio 0.970) and specific leaf area is close behind. Wood density is the weakest axis on both counts -- the largest gap (0.150) and by far the lowest spread ratio (0.678) -- which identifies it, not the traits with the lowest raw correlation, as the priority. Rooting depth is intermediate, and note that its low raw correlation (0.791) is largely a \emph{low ceiling} (0.909) rather than poor modelling: the reference model is itself least repeatable on that trait.
+
+The last two rows are the diagnostic axes, scored on the identical instrument, and both sit \emph{at} the attainable ceiling ($r_\mathrm{center}$ 0.987 and 0.986). The emulator therefore reproduces a cell's biomass and size distribution better than its trait distributions -- which is what one should expect, since biomass and height are dynamical outcomes the physical drivers speak to directly, whereas a trait median is a statement about which types are present. \texttt{agb} is the one axis whose raw correlation (0.864) \emph{exceeds} its seed-to-seed floor (0.776). That is not a paradox but a property of the comparison: the emulator carries none of the reference model's trajectory divergence and so is more repeatable than a single run of it, which is exactly why the attenuation-corrected ceiling (0.875), and not the floor, is the fair standard.
+
+\textbf{Basis.} Historical period, 52{,}165 cells -- those with at least 20 surviving trees in \emph{both} reference seeds, which is what makes the noise-floor and ceiling columns computable at all. Table \ref{tab:traits2} scores the same correlation on the slightly wider set that needs only one seed (52{,}516 cells), which is why its \emph{Per-cell $r$} column sits about a thousandth below the \emph{Raw $r$} column here rather than matching it exactly.}
 \label{tab:traits}
 \small
 \begin{tabular}{lcccccc}
@@ -418,6 +430,9 @@ Specific leaf area (\texttt{SLA}) & 0.881 & 0.973 & 0.986 & 0.104 & \textbf{0.89
 Wood density (\texttt{Wooddens}) & 0.814 & 0.937 & 0.964 & 0.150 & \textbf{0.844} & 0.678 \\
 Rooting depth (\texttt{D95max}) & 0.791 & 0.833 & 0.909 & 0.118 & \textbf{0.870} & 0.714 \\
 Drought tolerance (\texttt{minwscal}) & 0.945 & 0.973 & 0.986 & 0.041 & \textbf{0.958} & 0.970 \\
+\addlinespace
+Stand biomass (\texttt{agb}) [diag] & 0.864 & 0.776 & 0.875 & 0.011 & \textbf{0.987} & 0.822 \\
+Tree height (\texttt{Height}) [diag] & 0.954 & 0.939 & 0.967 & 0.013 & \textbf{0.986} & 0.967 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -428,9 +443,9 @@ Drought tolerance (\texttt{minwscal}) & 0.945 & 0.973 & 0.986 & 0.041 & \textbf{
 
 \textbf{The columns.} \emph{Pooled KS} is the Kolmogorov--Smirnov distance -- the largest gap between the predicted and true cumulative distributions -- computed over all trees worldwide at once. It tests the global shape of the trait. \emph{Median per-cell KS} computes that same statistic separately at every grid cell and reports the middle value, testing whether the \emph{local} distribution is right at a typical location. \emph{Per-cell $r$} is the correlation of predicted against true per-cell median values, testing whether the trait is placed in the right regions. \emph{Hist.} and \emph{Future} are the two scenario periods.
 
-\textbf{Two things to keep straight.} First, per-cell KS values ($\approx 0.13$--$0.17$) are necessarily much larger than pooled values ($\approx 0.005$) and the two columns must not be compared with each other: one cell contains far fewer trees than the whole world, so its distribution is estimated far more noisily, and much of the per-cell value is that sampling noise rather than model error. Second, rows marked \emph{[diag]} are diagnostic axes -- biomass and height -- validated identically but never written into the production artifact, so they cannot affect a coupled run.
+\textbf{Two things to keep straight.} First, per-cell KS values ($\approx 0.13$--$0.17$ on the four trait axes, and a markedly better $\approx 0.06$--$0.09$ on the two diagnostic ones) are necessarily much larger than pooled values ($\approx 0.005$) and the two columns must not be compared with each other: one cell contains far fewer trees than the whole world, so its distribution is estimated far more noisily, and much of the per-cell value is that sampling noise rather than model error. Second, rows marked \emph{[diag]} are diagnostic axes -- biomass and height -- validated identically but never written into the production artifact, so they cannot affect a coupled run.
 
-\textbf{What it tells us.} Every axis matches in global shape (pooled KS $\le 0.012$, i.e.\ distributions that are hard to tell apart), and does so about equally well or better under future climate than historically -- so the trait model does not degrade when moved to the warmer regime. Read alongside Table \ref{tab:traits}: wood density's weakness is in \emph{where} it places values (per-cell $r$ 0.812 and a low spread ratio), not in the overall distribution it produces.}
+\textbf{What it tells us.} Every axis matches in global shape (pooled KS $\le 0.012$, i.e.\ distributions that are hard to tell apart), and does so about equally well or better under future climate than historically -- so on this evidence the trait model does not degrade when moved to the warmer regime. \emph{One basis caveat on that comparison:} the historical evaluation uses every surviving stem (about 3{,}660 per cell), while the future one is subsampled for tractability to at most 400 stems per cell (about 380 per cell), so the two \emph{per-cell} columns are not on a matched sample. The effect works against the conclusion rather than for it -- ten times fewer trees per cell makes that cell's own distribution and median noisier, which inflates the future per-cell KS and attenuates the future per-cell correlation -- so the right reading is ``no detectable degradation'' rather than a demonstrated improvement. The two pooled columns are unaffected, both being computed over tens of millions of stems. Read alongside Table \ref{tab:traits}: wood density's weakness is in \emph{where} it places values (per-cell $r$ 0.812 and a low spread ratio), not in the overall distribution it produces.}
 \label{tab:traits2}
 \small
 \begin{tabular}{lcccccc}
@@ -450,6 +465,8 @@ Axis & Hist. & Future & Hist. & Future & Hist. & Future \\
 \end{table}
 
 Drought tolerance and specific leaf area are close to their ceilings. Wood density has the largest gap and the lowest spread ratio, meaning it under-represents genuine geographic variation; rooting depth is similar but milder. Every axis matches in global distributional shape (pooled KS $\le 0.012$).
+
+The configuration actually deployed is the pooled one, and it is scored separately: over 57{,}719 cells its per-cell trait correlations are 0.899 (\texttt{SLA}), 0.826 (\texttt{Wooddens}), 0.776 (\texttt{D95max}) and 0.967 (\texttt{minwscal}), with pooled Kolmogorov--Smirnov distances of 0.0039, 0.0065, 0.0020 and 0.0040 and median per-cell values of 0.173, 0.129, 0.158 and 0.149 -- within a few thousandths of the single-period numbers above on every axis, wood density slightly better and rooting depth slightly worse. That evaluation is on the same subsampled basis as the future column, so it is quoted for completeness rather than as an independent confirmation.
 
 \begin{figure}[ht]
 \centering
@@ -480,7 +497,7 @@ Drought tolerance and specific leaf area are close to their ceilings. Wood densi
 
 \textbf{Why this in addition to Figure \ref{fig:trait_percell}.} That figure compares only each cell's single middle value. This compares the \emph{entire local distribution}, so it detects cells where the median is right but the mix of trees around it is wrong -- and shows where on Earth that happens.
 
-\textbf{What it tells us.} Most land is pale on all six axes: local trait distributions are reproduced well nearly everywhere. The informative feature is that poorer regions \emph{recur in the same places across several axes at once} rather than appearing independently -- evidence of a common cause, most plausibly that the current environmental predictors do not fully capture what sets local forest composition there, rather than unrelated noise. This identifies where additional predictors would most plausibly help. Per-cell KS values ($\approx 0.13$--$0.17$) are necessarily larger than the pooled values of Figure \ref{fig:trait_marginals} ($\approx 0.005$) because one cell holds far fewer trees; the two scales are not comparable.}
+\textbf{What it tells us.} Most land is pale on all six axes: local trait distributions are reproduced well nearly everywhere. The informative feature is that poorer regions \emph{recur in the same places across several axes at once} rather than appearing independently -- evidence of a common cause, most plausibly that the current environmental predictors do not fully capture what sets local forest composition there, rather than unrelated noise. This identifies where additional predictors would most plausibly help. Per-cell KS values ($\approx 0.13$--$0.17$ on the four trait axes, and a markedly better $\approx 0.06$--$0.09$ on the two diagnostic ones) are necessarily larger than the pooled values of Figure \ref{fig:trait_marginals} ($\approx 0.005$) because one cell holds far fewer trees; the two scales are not comparable.}
 \label{fig:trait_ks_map}
 \end{figure}
 
@@ -497,17 +514,20 @@ Stand biomass depends jointly on \emph{both} sub-models -- how many trees, and h
 
 \textbf{Why those last two rows disagree, and what it means.} They are not in conflict: the typical cell is slightly over-predicted while the global mean is under-predicted, which is the signature of a heavy-tailed quantity. Most cells hold modest biomass and are nudged slightly high, while the small number of very-high-biomass cells are under-predicted, and those few dominate the global mean. This is the same mild hedging-toward-the-middle visible for wood density in Figure \ref{fig:trait_percell}. Reporting only one of the two rows would misrepresent the model in either direction.
 
+\textbf{Two limits on this check.} It is reported per period and \emph{never} pooled: the pooled count table is about 81\,\% future rows while the pooled trait table is about 53\,\% future stems, so multiplying the two pooled factors would describe no cell's biomass in either period, and that combination is deliberately refused rather than reported with a caveat. And the future column is the looser of the two, because its trait half retains only 400 stems per cell: the two halves cover the same patch-years to within 10\,\% in 97.0\,\% of cells historically but in only 69.3\,\% under future climate. Their medians still agree to 2\,\%, which is why the future figures are quotable at all -- but they should be quoted with that spread attached. The figures below are the historical arm.
+
 \textbf{What it tells us.} The two sub-models are mutually consistent rather than compensating for each other's errors -- a real risk in any two-part model, and the reason this check exists.}
 \label{tab:biomass}
 \small
-\begin{tabular}{lc}
+\begin{tabular}{lcc}
 \toprule
-Metric & Value \\
+Metric & Historical & Future climate \\
 \midrule
-Per-cell $R^2$ & 0.931 \\
-Per-cell $R^2$ (log$_{10}$ scale) & 0.945 \\
-Median ratio, predicted / true & 1.020 \\
-Global mean, observed vs predicted (gC\,m$^{-2}$) & 4452 vs 4178 \\
+Cells & 53{,}699 & 58{,}496 \\
+Per-cell $R^2$ & 0.931 & 0.920 \\
+Per-cell $R^2$ (log$_{10}$ scale) & 0.945 & 0.963 \\
+Median ratio, predicted / true & 1.020 & 1.013 \\
+Global mean, observed vs predicted (gC\,m$^{-2}$) & 4452 vs 4178 & 4123 vs 3916 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -549,13 +569,90 @@ Global mean, observed vs predicted (gC\,m$^{-2}$) & 4452 vs 4178 \\
 Because the standard hold-out scatters withheld cells among trained neighbours, part of the apparent skill could in principle be spatial interpolation. Testing this directly with contiguous blocked hold-out (design 2 of Section \ref{sec:validation}):
 
 \begin{itemize}[leftmargin=1.4em]
-\item A deliberately constructed \emph{position-only} model -- given latitude and longitude and nothing else -- scores $r = 0.837$ for wood density under scattered hold-out but collapses to $0.14$--$0.21$ under blocked hold-out. A model that knows only ``where am I'' cannot understand forests, yet under the scattered design it appeared competitive. This calibrates how much of a scattered-fold score can be interpolation.
-\item The real environmental predictors retain about \textbf{73\,\%} of their scattered-fold skill under blocking ($0.811 \rightarrow 0.594$), against \textbf{21\,\%} for the position-only control. Most of what Component S knows is therefore transferable environmental response.
+\item A deliberately constructed \emph{position-only} predictor -- given latitude and longitude and nothing else -- reproduces $r = 0.837$ for wood density under scattered hold-out but collapses to $0.14$--$0.21$ when whole contiguous regions are withheld. A predictor that knows only ``where am I'' cannot understand forests, yet under the scattered design it appeared competitive. This calibrates how much of a scattered-fold score can be interpolation. Both figures come from a deliberately weak nearest-neighbour screen, run in advance of the forests as a conservative measure of how much information a predictor set \emph{contains} rather than as a forecast of what a forest will score with it; on that same screen the emulator's own predictors give $0.799$ scattered against $0.607$ and $0.628$ under two independent block layouts.
+\item Tested as full forests, the \emph{deployed} predictors keep most of their skill when adjacency is severed: per-cell wood-density $r = 0.869$ under scattered hold-out becomes $0.734$ and $0.748$ under two independent $15^\circ \times 5^\circ$ block layouts. Most of what Component S knows is therefore transferable environmental response. A retained \emph{percentage} is deliberately not quoted: measured on the six-descriptor moisture variant that ratio is $0.78 \pm 0.41$, and it reads $0.53$ or $0.37$ depending on whether ranks or transformed correlations are used, so it is not a stable quantity. The direction is the reportable result.
 \end{itemize}
 
 Consequently the headline numbers of Section \ref{sec:results} should be read as accuracy at a location whose neighbours are known -- which is the operationally relevant quantity, since the component runs on a fixed global grid where neighbours always exist -- and not as extrapolation into an unsurveyed region.
 
-\subsection{The principal limitation: warming response is damped}
+\subsection{What a live coupled run does, measured in five contrasting cells}
+\label{sec:coupled}
+
+Every number in Section \ref{sec:results} is a \emph{single} annual step: the emulator is handed the reference model's own recorded drivers -- including the reference model's own true tree count for the previous year -- and its answer is compared with what the reference model did next. That is not how the component is used. Inside a coupled run it is called year after year on \emph{its own} previous output, and only a closed-loop run can show what that does.
+
+That measurement now exists, in the multi-cell coupled configuration that consumes the artifacts of Table \ref{tab:dims}: ten coupled years of historical climate (2010--2019) in five contrasting cells -- boreal Siberia, temperate Germany, Mediterranean Iberia, the semi-arid Sahel and Amazonian rain forest.
+
+\begin{table}[h]
+\centering
+\caption[Coupled tree counts, free-running versus anchored, in five cells]{\textbf{What is shown.} How the emulated tree count behaves when the component is run in a closed loop for ten years in five contrasting cells, and how much of the resulting error is caused by the loop itself rather than by the annual prediction.
+
+\textbf{The columns.} \emph{Noise floor} is the disagreement between the reference model's own two random seeds at that cell, in trees per patch; it is the irreducible error, and the last two columns are multiples of it. \emph{Reference} and \emph{Emulator} give trees per patch in the first and last year of the decade; the reference value is the mean over that cell's 25 independent patches, because the coupled driver carries one patch, so the two sides are on the same per-patch basis. \emph{Free-running} is the mean absolute count error over the decade, in noise floors. \emph{Count fed back} is the same statistic when the reference model's own count is written into the emulator's memory each year, which removes the loop while leaving everything else -- including the physical drivers the emulator itself generated -- untouched; the percentage in parentheses is the share of the free-running error that this eliminates.
+
+\textbf{A basis note.} These five cells are inside the count model's training set, so this is an in-sample test of the annual prediction; the out-of-sample statements are those of Section \ref{sec:results}. What it isolates is the effect of closing the loop, which no table-against-table comparison can see.
+
+\textbf{What it tells us.} Two cells (Amazon, Sahel) sit at or close to the reference model's own noise floor while running freely, so closed-loop use is not indiscriminately broken. In the other three the count drifts upward \emph{monotonically} rather than noisily, ending 36--81\,\% above the reference after ten years -- and a decade mean would have read 1.2--1.4 and hidden the drift completely. Feeding the true count back each year removes 59--72\,\% of the error and flattens the drift, which places most of it in the recursion rather than in the annual prediction: given the drivers it was handed, the count model sits within 0.2--3.9 noise floors in all five cells. Decomposed in the three drifting cells, the loop contributes a compounding 2.6--4.9\,\% per year and the run additionally starts 5--12\,\% high. The third of the error that feeding the count back does \emph{not} remove is the subject of Section \ref{sec:anchor}.}
+\label{tab:coupled}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+& Noise floor & Reference & Emulator & \multicolumn{2}{c}{Count error, in noise floors} \\
+\cmidrule(lr){5-6}
+Cell & (trees) & 2010 $\to$ 2019 & 2010 $\to$ 2019 & free-running & count fed back (removed) \\
+\midrule
+Boreal Siberia & 0.44 & 11.04 $\to$ 9.76 & 12.33 $\to$ 17.02 & 11.1 & 3.2 (72\,\%) \\
+Temperate Germany & 0.52 & 10.88 $\to$ 8.68 & 11.44 $\to$ 11.85 & 4.5 & 1.6 (65\,\%) \\
+Mediterranean Iberia & 0.20 & 8.56 $\to$ 7.40 & 8.41 $\to$ 13.39 & 13.9 & 3.9 (72\,\%) \\
+Semi-arid Sahel & 1.22 & 11.28 $\to$ 13.48 & 13.46 $\to$ 12.79 & 1.4 & 0.6 (59\,\%) \\
+Tropical Amazon & 1.36 & 4.88 $\to$ 4.56 & 4.06 $\to$ 3.91 & 0.5 & 0.2 (67\,\%) \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+The trait side of the same runs comes out well. Only two of the four traits have a per-tree consumer in the coupled model as it stands -- specific leaf area and wood density, which enter the carbon pools -- so those are the two a standing coupled community can be scored on; rooting depth and drought tolerance are drawn and validated but not yet consumed. Nine of the ten cell--axis pairs have a community median within 2.0 noise floors of the reference model's. The two exceptions are worth naming rather than averaging away: Sahel specific leaf area is 7.9 floors out, but on an extraordinarily tight floor, so in absolute terms it is 0.0374 against 0.0392 -- a 4.6\,\% error; and boreal specific leaf area has the right median (0.9 floors) with a distribution that is too \emph{wide} (normalised RMSE 1.31, against 0.14--0.43 in every other cell--axis pair). Carbon closes across the component interface to between $4 \times 10^{-13}$ and $3.4 \times 10^{-12}$ in every cell, so none of this is a conservation failure.
+
+\subsection{The dominant limitation: the coupled stand's density has no level anchor}
+\label{sec:anchor}
+
+Section \ref{sec:coupled} left roughly a third of the coupled count error unaccounted for by the loop's compounding. That remainder has been traced, and its cause is structural rather than statistical.
+
+The count model predicts an \emph{absolute} number of trees, and predicts it well. The coupled loop, however, consumes only the year-on-year \emph{ratio} of successive predictions, and advances the stand multiplicatively: this year's tree density is last year's density times that ratio. The convenience is real -- a ratio is unit-free, so a per-patch tree count can drive a stand carried as a density without either side needing to know the area of a patch -- but the price is that the absolute level is never stated anywhere in the loop. The stand's density is its initial value multiplied by a product of ratios, and nothing in the system says what that density ought to be.
+
+That has a directly testable consequence: a level error, once made, should never be corrected. It was tested by perturbing \emph{only} the initial stand density -- same climate, same random seed, same artifacts, everything else identical -- and running for 300 years.
+
+\begin{table}[h]
+\centering
+\caption[Retention of an initial density difference over 300 years]{\textbf{What is shown.} Whether a coupled stand forgets its initial density. Five runs were started at 0.50, 0.75, 1.00, 1.50 and 2.00 times the standard initial stand density -- a fourfold spread between the sparsest and the densest -- and run for 300 years under identical, repeated climate with everything else held fixed.
+
+\textbf{The rows.} \emph{Spread} is the ratio between the densest and the sparsest of the five runs at that year. \emph{Retention} is that spread divided by the 4.00-fold spread they began with: 1 means the initial difference is retained in full, 0 means it has been entirely forgotten.
+
+\textbf{What it tells us.} A stand with a level anchor forgets its initial condition, and retention decays toward 0 with some time constant. This one does not. Retention first \emph{rises} to 1.40 at year 25 -- the difference is transiently amplified -- then settles at about 1.04 by year 150 and holds flat for a further 150 years. The asymptote is non-zero, so there is no restoring force at all: not a weak one with a long time constant, none.
+
+\textbf{Basis.} One location, one random seed, constant repeated single-year climate, and the single-cell demonstration artifacts rather than the global ones. The mechanism is structural -- a product of ratios has no fixed point -- so it is not expected to be peculiar to that location, but the numbers are from it.}
+\label{tab:retention}
+\small
+\begin{tabular}{lcccccccc}
+\toprule
+Simulated year & 10 & 25 & 50 & 100 & 150 & 200 & 250 & 300 \\
+\midrule
+Spread, densest / sparsest ($\times$) & 4.42 & 6.97 & 5.19 & 4.67 & 4.21 & 4.21 & 4.26 & 4.21 \\
+Retention (spread / initial 4.00) & 1.072 & \textbf{1.401} & 1.188 & 1.112 & 1.036 & 1.037 & 1.046 & \textbf{1.037} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three consequences follow, and the first is what makes this a finding rather than a restatement.
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{The internal prediction converges to a common attractor; the stand it carries does not.} Varying the initial tree count the emulator is seeded with from 7 to 15 -- a 73\,\% spread -- leaves its own internal predicted count almost fully converged after 150 years, with a terminal spread of 6.7\,\% and four of the five runs landing on the same value, while the physical stand those same runs carry still retains 60.2\,\% of its spread. The prediction has a restoring force; the stand does not, because the prediction's \emph{level} never reaches it. This dissociation is also why the defect went unnoticed for so long: a diagnostic watching only the predicted count reports a self-correcting system, and did.
+\item \textbf{A training-side mismatch compounds on top of this (``exposure bias'').} At training time the previous tree count -- predictor 11 of Table \ref{tab:count_inputs} -- is always the reference model's own true count for the year before. In a coupled run it is the emulator's own previous output, errors included. The model is therefore asked to predict from inputs of a kind it never saw while training, and that is the mechanism behind the compounding 2.6--4.9\,\% per year of Section \ref{sec:coupled}. It is a \emph{separate} defect from the missing anchor, with a separate fix -- either training the model on its own predictions or dropping the previous count from the predictor set -- and either one requires retraining the global model. Neither fix substitutes for the other: an anchor stops a level error persisting, retraining stops the year-on-year bias that generates one, and the level would remain unanchored however accurate the single-step prediction became.
+\item \textbf{The initial tree density is therefore a free parameter of every coupled answer, not an initialisation detail.} Because a level difference is retained indefinitely, whatever density a cell is started at is carried for the length of the run. The deployed pooled artifact does not itself supply a per-cell initial count, and the two legitimate values available for the test location -- 11.0 and 7.0 trees per patch, inherited from the two periods the pooled model was trained on -- are far enough apart to change a measured outcome there by several times the whole size of the reference model's warming shift in wood density (Section \ref{sec:traitmort}). Any coupled result should therefore state the initial density it was started from, and that choice deserves the scrutiny given to a parameter, because in the absence of a restoring force it is one.
+\end{itemize}
+
+The absolute density of a coupled stand is thus set by its initialisation and by the accumulated history of every imperfect year, and by nothing else. That is entirely compatible with the single-step accuracy of Section \ref{sec:results} -- the count model's absolute skill is real, it is simply discarded at the interface -- and it is why multi-decadal or online use needs the interface change of Section \ref{sec:roadmap}, item 1, rather than more predictive skill.
+
+\subsection{The second limitation: warming response is damped}
 \label{sec:damping}
 
 Reproducing a quantity's \emph{level} and reproducing its \emph{change} are different problems, and Component S is presently much better at the first.
@@ -590,7 +687,11 @@ Measured at a single location (Hainich) over $81$ years, against a matched contr
 \item \textbf{Its contribution to the warming \emph{response} is not distinguishable from zero}: $+0.26$ times the reference shift, with a $95$\,\% interval of $[-0.38, +0.90]$. The operator fixes a level, not a response.
 \end{itemize}
 
+\textbf{What bounds the operator is the count channel, not the hazard.} The operator does not decide how many trees die -- the count model does -- it only chooses \emph{which} of them die, out of the number the count model demands. In the reference model deaths and establishment happen together every year, so a stand whose tree number barely changes is nonetheless replacing a few per cent of its stems annually, and it is that gross turnover that selection acts on. The emulator's annual step is net-only: within one year it either thins or establishes, never both, so its gross turnover \emph{is} its net change, and a year in which the predicted count does not move is a year without selection. Measured at the same single location under real year-to-year climate, the ported hazard would remove about $1.4$\,\% of stems per year while the count model's demanded net change is $1.9$\,\% historically and $2.2$\,\% under SSP3-7.0, so the operator gets to act at at least half the reference model's own hazard strength in $54$\,\% of thinning years historically and $62$\,\% under warming -- warming loosens the constraint rather than tightening it. Under an artificially \emph{constant} climate the same statistic is only $14$\,\%, because a forest's prediction is piecewise constant and a repeated year barely moves it; that figure is a property of the test forcing rather than of the emulator, and the two above supersede it. Allowing a single year to apply the hazard's gross deaths \emph{and} a compensating influx of recruits is the identified next step for this operator; it changes the count identity and the recruit channel at the same time, so it is its own experiment with its own control.
+
 Two cautions govern how far this can be read. It is one location, and the report's other results are global. And a single-location $81$-year experiment of this kind is intrinsically noisy: the seed-to-seed spread of the response statistic is about the same size as the effect being measured, so roughly $115$ seeds would be needed to resolve an effect of the size actually observed. An earlier single-seed run of exactly this experiment reported a large positive response contribution; replication withdrew it. The level result survives replication and is the quotable one.
+
+A third caution is procedural, and it is the reason the numbers above are quotable at all. A measurement with this operator is interpretable only if two preconditions hold in every year of the run: the hazard killed no tree outright, and it never overrode the count model's own target. Changing only the initial tree count at the test location from 11.0 to 7.0 trees per patch violates both, and the measured contribution to the warming response then swings from $+0.76$ to $-3.71$ times the reference shift -- so a run that violates them is discarded rather than averaged in. The quoted figures also required raising the cap on how many distinct tree cohorts the emulator carries: at the shipped default the merging of similar cohorts never fires under constant climate but wakes eight or nine times per 81-year run under realistic interannual climate, and when it is forced to fire it distorts the community trait mean by three to five times the size of the signal being measured. The shipped cohort cap is therefore unsuitable for a transient run, and ``the merge is dormant'' is a property of a forcing configuration rather than of the cap.
 
 \subsection{Reference-model repeatability declines for rooting depth under warming}
 
@@ -600,7 +701,9 @@ The noise floor is itself scenario-dependent, which bounds what any emulator can
 \centering
 \caption[Reference-model repeatability, historical versus future]{\textbf{What is shown.} How repeatable LPJmL-FIT is with \emph{itself}. Each entry is the correlation between two complete runs of the reference model that differ only in their random-number seed. This is a property of the reference model, not of Component S, and it sets the ceiling any emulator could reach: what two equally valid runs disagree about cannot be predicted from climate.
 
-\textbf{The columns.} \emph{Historical} and \emph{Future climate} are the two periods, computed on a common basis of 57{,}295 cells so the two are directly comparable. \emph{$\Delta$} is future minus historical: positive means the reference model is \emph{more} self-consistent under warming, negative means less.
+\textbf{The columns.} \emph{Historical} and \emph{Future climate} are the two periods, computed on a common basis of 57{,}295 cells -- every cell with at least 20 surviving trees in \emph{both} seed realisations -- so that the two columns, and hence $\Delta$, are directly comparable. \emph{$\Delta$} is future minus historical: positive means the reference model is \emph{more} self-consistent under warming, negative means less.
+
+\textbf{Why these numbers differ from the \emph{Noise floor} column of Table \ref{tab:traits}, and what may be done with them.} They are the same idea measured on two different populations, and neither supersedes the other. This table is built from the two seed realisations' per-tree records over the complete tree population, which is the right basis for asking how repeatable the \emph{reference model} is. Table \ref{tab:traits} instead uses the narrower basis on which the emulator's own predictions are scored tree for tree (52{,}165 cells), which is the only basis on which a floor may legitimately be subtracted from an emulator score to give a gap. Rooting depth shows the difference most clearly: 0.895 here against 0.833 there, a disagreement in the opposite direction to the other three traits. The entries of this table should therefore be read for their $\Delta$ column and not differenced against the emulator scores of Table \ref{tab:traits}: they bound the reference model, not Component S.
 
 \textbf{The one confound, which strengthens rather than weakens the result.} The future period averages each cell over 81 years against 20 historically. More averaging smooths out randomness, so every entry in the future column should be pulled \emph{upward} for purely arithmetic reasons having nothing to do with climate. Three of the four traits duly increase. Rooting depth instead \emph{falls} by 0.058 against that tailwind, which means its true decline is larger than the tabulated value.
 
@@ -636,42 +739,45 @@ The future period averages each cell over 81 years against 20 historically, so m
 \toprule
 \textbf{Established} & Global forest structure -- density, trait distributions, stand biomass -- at or near the attainable ceiling, one year at a time, at grid locations with known neighbours, on the complete tree PFT set and both scenarios. \\
 \addlinespace
-\textbf{Established with a stated correction} & The skill is transferable environmental response, not spatial lookup: $\approx 73$\,\% retained under blocked hold-out versus $21$\,\% for a position-only control. The margin is smaller than raw scores imply. \\
+\textbf{Established with a stated correction} & The skill is transferable environmental response, not spatial lookup: under contiguous blocked hold-out the deployed predictors keep most of their wood-density skill ($0.869 \rightarrow 0.734$ and $0.748$ at two independent block layouts) while a position-only control collapses ($0.837 \rightarrow 0.140$ and $0.210$). The direction is robust; the retained \emph{fraction} is not a reportable number. The margin is smaller than raw scores imply. \\
 \addlinespace
 \textbf{Not established} & Fidelity of the \emph{response to warming}: currently damped by $39.9$\,\%, and damped by misplacement rather than by shrinkage. \\
 \addlinespace
-\textbf{Not established (measured, negative)} & Recursive stability inside a live coupled run. The stand's tree density has no level anchor: it is advanced by predicted year-on-year \emph{ratios}, so the count model's absolute skill never reaches it. A fourfold difference in starting density is still a fourfold difference after 300 years of identical climate -- the discrepancy converges to a constant rather than decaying. Errors in the level therefore accumulate without a restoring force. \\
+\textbf{Not established (measured, negative)} & Recursive stability inside a live coupled run (Sections \ref{sec:coupled} and \ref{sec:anchor}). The stand's tree density has no level anchor: it is advanced by predicted year-on-year \emph{ratios}, so the count model's absolute skill never reaches it. A fourfold difference in starting density is still a fourfold difference after 300 years of identical climate -- the discrepancy converges to a constant rather than decaying. Over ten coupled years in five cells, three drift 36--81\,\% above the reference; feeding the true count back removes 59--72\,\% of that error and leaves the level untouched. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Component S is a validated \emph{structural} emulator and a not-yet-validated \emph{response} emulator. For applications requiring present-day or scenario-endpoint forest structure, the evidence supports use now. For applications whose conclusion depends on the magnitude of forest change under warming, Section \ref{sec:damping} is a live limitation that should govern interpretation.
+Component S is a validated \emph{structural} emulator and a not-yet-validated \emph{response} emulator. For applications requiring present-day or scenario-endpoint forest structure, the evidence supports use now. For applications whose conclusion depends on the magnitude of forest change under warming, Section \ref{sec:damping} is a live limitation that should govern interpretation; for a long free-running coupled simulation, Section \ref{sec:anchor} is a stronger one, and any such run should state the initial stand density it was started from.
 
 \section{Remaining work, and how the objective is reached}
 \label{sec:roadmap}
 
-The objective is a land component that runs online inside an Earth System Model, reproducing LPJmL-FIT's forest dynamics faithfully at a small fraction of its cost. Five steps remain, in priority order.
+The objective is a land component that runs online inside an Earth System Model, reproducing LPJmL-FIT's forest dynamics faithfully at a small fraction of its cost. Six steps remain, in priority order.
 
 \paragraph{1. Give the recursive stand a level anchor.}
-This is now the first priority, ahead of the warming-response gap, because it compounds without bound and because no amount of predictive skill fixes it. The count model predicts an \emph{absolute} number of trees, and predicts it well. The coupled loop uses only the year-on-year \emph{ratio} of that prediction and advances the stand multiplicatively, which is what allows a per-patch count to drive a cohort-density stand without knowing the patch area. The cost of that convenience is that the stand's absolute level is never stated: it is the initial value multiplied by a product of ratios, with no restoring force. Measured directly, a fourfold difference in initial density is still a fourfold difference after 300 years of identical forcing; the discrepancy is transiently \emph{amplified} to sevenfold around year 25 and then settles back to a constant fourfold rather than decaying away. Separately, the diagnostic shows the internal predicted count converging to a common attractor while the physical stand those same runs carry does not. This also explains a previously unattributed result from the coupled line: feeding the reference model's true count back in each year removes only about two-thirds of the coupled count error, because doing so repairs the ratio and leaves the level untouched.
+This is now the first priority, ahead of the warming-response gap, because it compounds without bound and because no amount of predictive skill fixes it. Section \ref{sec:anchor} measures the defect; Section \ref{sec:coupled} shows what it costs over ten coupled years.
 
-The fix is specified: carry the count-to-density conversion across the component interface and blend the multiplicative update toward the absolute target with a stated relaxation time, rather than replacing it outright. It is not a local change -- it modifies an interface contract between two components and moves every coupled baseline -- which is why it is scoped rather than done.
+The fix is specified: carry the count-to-density conversion across the component interface and blend the multiplicative update toward the absolute target with a stated relaxation time, rather than replacing it outright. A hard anchor would be the wrong shape, since it would discard the physical core's own stand dynamics and convert a level drift into a level bias. The tempting local shortcut -- anchoring to the previous predicted \emph{count} instead, without touching the interface -- is not available either: a per-patch count and a stand density differ by exactly the unknown patch area, so using one as the other silently sets that constant to 1 and would look anchored while being biased. It is therefore not a local change -- it modifies an interface contract between two components and moves every coupled baseline -- which is why it is scoped rather than done, and when it is done it must be scored with the reference count fed back as well as freely running, or the ratio and level effects are confounded again.
 
 \paragraph{2. Close the warming-response gap (Section \ref{sec:damping}).}
 A candidate exists and has been measured. Widening the trait model's predictors from 8 to 14 by adding the six moisture descriptors of Table \ref{tab:trait_inputs}, together with quantile-weighted forests and greater capacity, meets the project's formal trait criteria for the first time -- wood-density skill 0.901 and 58\,\% of the gap to the ceiling closed, with spread ratio rising to 0.854 and distributional fidelity improving on all four axes.
 
-It has nevertheless \emph{not} been promoted to production, for a specific and instructive reason: those six descriptors are present-day climatological means, constant within each cell, so they cannot by construction encode a warming response -- a cell's historical and future rows are identical on them. Under blocked hold-out the wider set buys $+0.032$ of location-level skill while its apparent benefit for the response \emph{reverses sign}. It improves the quantity already near ceiling and does not improve the quantity that is not.
+It has nevertheless \emph{not} been promoted to production, for a specific and instructive reason: those six descriptors are present-day climatological means, constant within each cell, so they cannot by construction encode a warming response -- a cell's historical and future rows are identical on them. Under blocked hold-out the wider set buys $+0.031$ of location-level skill while its apparent benefit for the response \emph{reverses sign}. It improves the quantity already near ceiling and does not improve the quantity that is not.
 
 The intended resolution is therefore a \emph{scenario- and time-resolved} version of those moisture descriptors, recomputed per cell and per year from the underlying climate forcing rather than frozen at present-day means, so that the added information can carry a warming signal. This is specified but not yet built.
 
-\paragraph{3. Complete the ceiling measurement.}
+\paragraph{3. Retrain the count model on the inputs it will actually see.}
+At training time the count model is given the reference model's true previous tree count; in a coupled run it is given its own previous output instead (Section \ref{sec:anchor}). Two fixes exist: train the model on its own predictions, feeding predicted counts back during training in increasing proportion, or drop the previous count from the predictor set altogether and accept a harder single-step problem. Both require retraining the global count model, so the size of the one-step bias is worth measuring from the existing training tables before that cost is committed. This is deliberately kept separate from item 1, because neither item substitutes for the other.
+
+\paragraph{4. Complete the ceiling measurement.}
 A per-patch-year count noise floor, matched to what the count model actually predicts, is needed so that count accuracy can be stated relative to the attainable ceiling as trait accuracy already is. The trait ceiling under future climate additionally requires a seed-pair trait table built without the subsampling currently used for tractability, since the subsample is seed-dependent and would otherwise depress the floor and flatter the emulator.
 
-\paragraph{4. Complete the recursive-stability battery.}
-Every number in this report is a single annual step evaluated against recorded outcomes, using the reference model's own drivers. Item 1 above identifies and quantifies one specific recursive defect, but a level anchor is a necessary rather than a sufficient condition: the remaining checks -- how strongly one year's stand predicts the next, how fast the stand recovers from a perturbation, and whether the memory observed is internal to the emulator rather than inherited from autocorrelated climate -- are properties of the coupled system and belong to the multi-cell coupled configuration, which consumes the artifacts of Table \ref{tab:dims}. They must be measured both freely running and with the reference count fed back, since an unanchored level itself manufactures autocorrelation and slow recovery and would otherwise be mistaken for genuine internal memory.
+\paragraph{5. Complete the recursive-stability battery.}
+Every number in Sections \ref{sec:results} and \ref{sec:damping} is a single annual step evaluated against recorded outcomes, using the reference model's own drivers; Sections \ref{sec:coupled} and \ref{sec:anchor} are the only closed-loop measurements that exist, and they are five cells over ten years plus one cell over three centuries. Item 1 above identifies and quantifies one specific recursive defect, but a level anchor is a necessary rather than a sufficient condition: the remaining checks -- how strongly one year's stand predicts the next, how fast the stand recovers from a perturbation, and whether the memory observed is internal to the emulator rather than inherited from autocorrelated climate -- are properties of the coupled system and belong to the multi-cell coupled configuration, which consumes the artifacts of Table \ref{tab:dims}. They must be measured both freely running and with the reference count fed back, since an unanchored level itself manufactures autocorrelation and slow recovery and would otherwise be mistaken for genuine internal memory.
 
-\paragraph{5. Extend scope.}
-Grass demography is currently handled by component F and could be brought under the same emulation approach. Per-PFT rather than pooled trait structure, and joint trait-correlation validation beyond the marginal and per-cell distributional checks reported here, are natural refinements once items 1--3 are settled.
+\paragraph{6. Extend scope.}
+Grass demography is currently handled by component F and could be brought under the same emulation approach. Per-PFT rather than pooled trait structure, and joint trait-correlation validation beyond the marginal and per-cell distributional checks reported here, are natural refinements once the higher-priority items above are settled.
 
 \section{Conclusion}
 
@@ -679,7 +785,7 @@ Component S replaces an explicit individual-tree demography calculation with two
 
 It reproduces global forest structure at or close to the limit set by the reference model's own stochasticity, across all seven tree functional types, under both historical and SSP3-7.0 climate, and it does so through genuine environmental response rather than spatial lookup. Its deployable artifacts are compact and dependency-free.
 
-Its warming response is damped by about 40 percent, its recursive behaviour inside a live coupled run is now measured and is the larger of the two problems, and it covers trees only. Neither route is yet a solved one: the response gap has had its most promising candidate measured and refused, and the recursive defect has been localised to a missing level anchor. On present evidence Component S is ready to supply forest structure to a coupled land model, and not yet ready to be the basis of a quantitative claim about the magnitude of forest change under warming.
+Its recursive behaviour inside a live coupled run is now measured, and it is the larger of its two problems: the stand's density is advanced by predicted ratios and never anchored to a level, so an error in it is permanent. Its warming response is damped by about 40 percent. It covers trees only, and it has no CO$_2$ response of any kind, so it is valid at constant or near-historical CO$_2$. Neither of the two problems is a solved one: the response gap has had its most promising candidate measured and refused, and the recursive defect has been localised to a missing level anchor whose fix is specified but crosses a component interface. On present evidence Component S is ready to supply forest structure to a coupled land model, and not yet ready to be the basis of a quantitative claim about the magnitude of forest change under warming.
 
 \newpage
 \section*{Glossary}
