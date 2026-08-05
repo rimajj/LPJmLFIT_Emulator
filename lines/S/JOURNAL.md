@@ -1077,3 +1077,51 @@ edit (the `DRF_ART`/`RCOP_ART` knob) and left job **1701183** in the queue; its 
   / level anchor) with an explicit printed verdict for the "(B) is empty" outcome, because a null there is a
   reportable result and not a failed probe.
 - **Next:** the level anchor, and it cannot start from this line alone — agree the seam with M first.
+
+## 2026-08-05 (later still) — the owner caught the error that had just blocked a one-file fix  [ADR 0103 / milestone S8]
+
+- **ADR 0102, merged an hour earlier, said the level anchor was blocked on line M. The owner read it and
+  said: the patch is 15×15 m, you should be able to see that in the LPJmL-FIT source.** They were right.
+  `par/lpjparam_fit.js:17` `"patcharea" : 225.0`, and `new_tree.c:209` `pft->nind = 1/param.patcharea`.
+  Verified rather than conceded — `cpp -P` on the live config gives exactly one occurrence at 225.0 with no
+  duplicate-key override, and the committed fixture agrees end-to-end (`sum(nind)×225 = 17.000`, every
+  individual at `1/225`). The conversion I had called "the very quantity the ratio formulation exists to
+  avoid needing" was a constant sitting three files away.
+- **How I got there is worth more than the fix.** CLAUDE.md contains the sentence *"with `nind = 1/patcharea`
+  (`new_tree.c:209`) the patcharea cancels"* — written about the ADR-0035 per-patch LAI reconstruction, where
+  it genuinely does. I read it as a property of the *quantity*. The question I never asked was **cancels
+  against what**. Generalised into `residual-diagnosis`: *"X cancels" is a statement about an expression, not
+  about X* — and, before concluding a quantity is unavailable, grep the upstream source, which is right here.
+- **The second-order error was procedural and it is the one to watch.** I invoked ADR 0029 (the ownership
+  map) to route the fix through line M's `interface.jl`. ADR 0029 stops lines editing each other's *files*;
+  it does not make a constant from a third repository into another line's property. A wrongly-raised
+  integration point is not harmless caution — it parks finished work behind someone else's schedule, which
+  is precisely how the `wscal_leafon` flip sat unscheduled for weeks with each line recording it as the
+  other's to move. Rule added to `repo-commit`: ask whether you need a FILE EDIT or a VALUE.
+- **Built it, and it works.** Geometric blend `ρ_eff = (target/n_prev)^(1−a)·(D_want/D)^a`, opt-in, the
+  branch not evaluated at `a = 0`. Measured on the ADR-0102 sweep (job 1707102): retention **1.036 → 0.051**,
+  terminal spread **4.207× → 1.074×**, and the stand's ratio to its own count-model target **1.409 → 1.000**.
+  `a = 1` is *worse* than `a = 0.1` (retention 0.076 vs 0.051), which is the shape the design predicted — a
+  hard anchor overwrites the stand's dynamics so the perturbation is re-imposed through the clamp and the
+  recruit branch rather than relaxed away. **Recommend `a = 0.1`: the gentlest setting that fully works.**
+- **THE FINDING BEHIND THE FINDING, and it indicts the whole validation panel.** Unanchored, the stand sits
+  **1.41× denser than its own count model's absolute prediction** — a 41 % over-density, permanent, and
+  **invisible to every gate this project has**: the ADR-0030 per-cell trait gate, the count R² of 0.982, the
+  pooled KS checks, the trained-band diagnostic. All of them read ratios, distributions or correlations.
+  **A panel of scale-invariant metrics cannot see a scale error.** That is now a rule in
+  `residual-diagnosis`, and it is the most transferable thing this line has produced in weeks.
+- **Owner decisions recorded, standing:** M's coupled baseline regeneration is **pre-authorised** (written to
+  `lines/M/STATE.md`, mirrored here, and into `MEMORY.md` §4 beside the ADR-0081 licensing closure so it
+  survives a STATE consolidation), and **HPC compute is not a reason to defer** — do not park a measurement
+  or a global re-fit solely because it costs cluster time.
+- **A concurrent session was live on `line/S` in this same worktree** (CLAUDE.md §9 forbids it), auditing the
+  public report. No damage: it staged by explicit path, touched neither level-anchor file, and left the push
+  to avoid a branch race. It found 7 report errors, **one of them mine from earlier today** — I had written
+  that the `ind` table's `mort_*` fields "are the basis of the optional operator"; the operator re-derives
+  the hazard from the C source and zeroes `mort_water`/`mort_temp`, so those columns are unconsumed.
+  Ported-from-the-source ≠ built-from-the-table.
+- **Next:** the two remaining levers are now both retrains, and both are unblocked — kill the exposure bias
+  at the root (retrain the count DRF without feeding its own prediction back; the anchor currently makes the
+  stand follow a biased prediction *faithfully*), and S2's conditioning in the only form that can carry a
+  warming signal. Then line M's five coupled cells with `anchor = 0.1`, which is where ADR 0054's 59–72 %
+  residual either goes away or does not.
