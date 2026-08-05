@@ -33,19 +33,29 @@ Pipeline: `scripts/online_coupling/build_soil_texture_field.py` → `soil_textur
 ### O3b (DO THIS FIRST) — read job **1706462**, then finish the `soilmoist` comparison
 
 **Nothing measured so far is quotable — both runs are initial-condition artifacts, and they BRACKET the
-reference.** LPJmL training reference (historic, 1 348 400 cell-years): min 0.0167, q10 0.220, q25 0.3186,
-**q50 0.4635**, q75 0.6644, q90 0.808, max 0.9886, **mean 0.5075**.
+reference.** Score against the **LIVE** table only (ADR 0035): `tables/cell_year_soilmoist_ye_hist.parquet`,
+1 348 400 cell-years — min 0.0 · q10 0.0 · q25 0.0 · **q50 0.498** · q75 0.877 · q90 0.9999 · max 1.0078 ·
+**mean 0.478**. The `swc`-derived numbers (q50 0.4635 / mean 0.5075) are **RETIRED** and porosity-normalized
+— scoring against them reintroduces the exact mismatch ADR 0082 §4 rejects. The runtime target is
+`root_zone_soilmoist` = the `whcs`-weighted mean over the top **3 layers = 1.0 m**, at **year end**
+(`slow.jl:227`, re-verified 2026-08-05) — NOT a whole-column mean.
 
 | run | flow | days | column | mean PAW (unweighted / top 2 m) |
 |---|---|---|---|---|
 | 1706262 | `NoFlow` (default) | 2 | 433 m | 0.949 / 0.925 — **the initializer, frozen** (trap 8) |
 | 1706324 | `RichardsEq` | 10 | 433 m | 0.104 / 0.225 — **mid-drainage transient**, not spun up |
-| **1706462** | `RichardsEq` | 30 | **≈19.5 m** (`DZMAX=2.5`) | ← **read this first** |
+| ~~1706462~~ | — | — | — | **cancelled** mid-flight: it was on the retired 2 m / `swc` basis |
+| **1706597** | `RichardsEq` | 30 | **≈19.5 m** (`DZMAX=2.5`) | ← **read this first**, on the ADR 0035 basis |
 
 Why 1706462 is on the right basis: `ExponentialSpacing(N=30, Δz_min=0.05)` defaults to `Δz_max = 100` =
 a **433 m** column, 20× LPJmL's 20 m, so an unweighted 30-layer mean is dominated by deep permanently
 saturated layers and is **not the same operator** as `slow.jl`'s unweighted mean over 23 layers / 20 m.
-`DZMAX=2.5` ⇒ ≈19.5 m, matching LPJmL, and equilibrating ~20× faster.
+`DZMAX=2.5` ⇒ ≈19.5 m, matching LPJmL, equilibrating ~20× faster, and putting more layers inside the top 1 m.
+(The root-zone measure itself is depth-restricted, so it is insensitive to column depth; the drainage
+timescale and the whole-column contrast are not.)
+**One-horizon simplification:** the texture is depth-constant within a column, so `θfc − θwp` cancels and the
+`whcs` weighting reduces *exactly* to thickness weighting. Do not carry that assumption into a multi-horizon
+stratigraphy.
 
 ```bash
 cd /p/tmp/jamirp/esm_online_coupling

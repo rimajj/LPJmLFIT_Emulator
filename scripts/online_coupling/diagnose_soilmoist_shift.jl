@@ -12,10 +12,18 @@
 #
 # WHY THE `soilmoist` COMPARISON MATTERS
 # `soilmoist` is a LOAD-BEARING trained feature of Component S (ADR 0023 — train/inference
-# consistency is the worst silent failure mode here).  At runtime S is fed
-# `soilmoist = sum(state.w)/length(state.w)` (`slow.jl:191`) — the UNWEIGHTED mean over LPJmL's 23
-# layers of `w`, the FRACTION OF WATER-HOLDING CAPACITY (plant-available basis).  Online the soil
-# is Terrarium's, so we must supply the same QUANTITY, not merely a wetness index.
+# consistency is the worst silent failure mode here).  Online the soil is Terrarium's, so we must
+# supply the same QUANTITY, not merely a wetness index.
+#
+# ⚠️ BOTH SIDES OF THIS COMPARISON MOVED IN ADR 0035 (line S, 2026-07-28). Verified here against
+# `src/components/slow.jl:227` before retargeting — do not revert to the older basis:
+#   * The RUNTIME target is no longer `sum(state.w)/length(state.w)` (an unweighted mean over all
+#     23 LPJmL layers). It is `root_zone_soilmoist(state, soil)` = the **`whcs`-weighted mean of
+#     `state.w` over the top `ROOT_ZONE_LAYERS = 3` layers** — LPJmL's 200 + 300 + 500 mm, i.e.
+#     exactly **1.0 m** — read at YEAR END.
+#   * The REFERENCE distribution is no longer the `swc`-derived table (mean 0.5075): that was total
+#     water over SATURATION capacity, i.e. the porosity-normalized quantity we are deliberately
+#     avoiding. The live table is `tables/cell_year_soilmoist_ye_hist.parquet`.
 #
 # THE MAPPING (ADR 0082 §4): Terrarium's `saturation_water_ice` is a fraction of POROSITY
 # (θ/θ_sat) — a DIFFERENT normalization, so using it would be a definitional mismatch.
@@ -48,10 +56,11 @@ const OUTDIR = "/p/tmp/jamirp/esm_online_coupling"
 #   FLOW   = "noflow" (Terrarium's default immobile water) | "rre" (Richardson-Richards)
 #   DAYS   = simulated days
 #   DZMAX  = bottom layer thickness (m), which sets the COLUMN DEPTH. Terrarium's default
-#            `Δz_max = 100` gives a **433 m** column for N = 30 — 20× LPJmL's 20 m, so an
-#            unweighted layer mean is dominated by deep, permanently saturated layers and is NOT
-#            the same operator as `slow.jl`'s `sum(state.w)/length(state.w)` over 23 layers.
-#            `DZMAX=2.5` gives ≈19.5 m, matching LPJmL's geometry (and equilibrating ~20× faster).
+#            `Δz_max = 100` gives a **433 m** column for N = 30 — 20× LPJmL's 20 m. The root-zone
+#            measure below is depth-restricted so it is insensitive to this, but the whole-column
+#            contrast and the DRAINAGE TIMESCALE are not: a 433 m column started near saturation is
+#            still draining after 10 days. `DZMAX=2.5` gives ≈19.5 m, matching LPJmL's geometry and
+#            equilibrating ~20× faster. It also puts more layers inside the top 1 m.
 #   TAG    = suffix for the output CSV
 const FLOW = get(ENV, "FLOW", "rre")
 const DAYS = parse(Int, get(ENV, "DAYS", "10"))
@@ -138,18 +147,30 @@ println(
 )
 
 # ── the candidate mappings ─────────────────────────────────────────────────────────────────────
-# (a) THE CLAIMED-CORRECT ONE: plant-available fraction = LPJmL `w` semantics
-#     (a1) unweighted layer mean = the literal analogue of slow.jl's `sum(state.w)/length(state.w)`
-#     (a2) thickness-weighted mean over the top 2 m = the physically comparable root-zone measure.
-#          LPJmL's 23 layers span 20 m with a 3 m bottom layer, Terrarium's 30 exponential layers
-#          span a different depth, so an unweighted mean is NOT the same operator across the two
-#          discretizations; (a2) removes that confound.
-# (b) THE NAIVE ONE: fraction of porosity — reported only to show it is the wrong quantity.
-rootzone = depth_bottom .<= 2.0
+# (a2) THE TARGET (ADR 0035): `root_zone_soilmoist` = the `whcs`-weighted mean of the
+#      plant-available fraction over the top **1.0 m** (LPJmL's ROOT_ZONE_LAYERS = 3 layers of
+#      200 + 300 + 500 mm). Terrarium's per-layer analogue of `whcs[l]` is the plant-available
+#      capacity `(θfc − θwp)·Δz`. With a SINGLE `PrescribedSoilHorizon` the texture — and hence
+#      `θfc − θwp` — is depth-constant within a column, so that factor cancels in the normalized
+#      weighted mean and the capacity weighting reduces EXACTLY to thickness weighting. That
+#      equivalence is a property of this one-horizon configuration; it would NOT hold under a
+#      multi-horizon stratigraphy, where the capacity weights must be carried explicitly.
+# (a1) whole-column unweighted mean — the PRE-ADR-0035 basis, kept only as a labelled contrast to
+#      show how far off it is. It is NOT the target: the column is 433 m deep by default, so it is
+#      dominated by deep permanently saturated layers.
+# (b)  fraction of porosity — reported only to show it is the wrong QUANTITY (porosity- vs
+#      WHC-normalized, ADR 0082 §4), which is also what the retired `swc`-derived reference was.
+const ROOT_ZONE_DEPTH_M = 1.0
+rootzone = depth_bottom .<= ROOT_ZONE_DEPTH_M
 w_rz = Δz .* rootzone
+@assert sum(w_rz) > 0 "no layer bottom lies within $(ROOT_ZONE_DEPTH_M) m — check Δz_min/DZMAX"
 m_paw_unw = vec(sum(paw, dims = 2)) ./ nz
 m_paw_rz = vec(paw * w_rz) ./ sum(w_rz)
 m_sat = vec(sum(sat, dims = 3)) ./ nz
+println(
+    "root zone: ", count(rootzone), " of ", nz, " layers within ", ROOT_ZONE_DEPTH_M, " m ",
+    "(", round(sum(w_rz); digits = 3), " m of soil)"
+)
 
 function report(nm, m, sel)
     fin = filter(isfinite, m[sel])
@@ -176,10 +197,11 @@ end
 
 println("\n=== TERRARIUM soil-moisture candidates, LAND columns only (n=", count(is_land), " of ", ncol, ") ===")
 println("LPJmL TRAINING REFERENCE (historic, 1348400 cell-years):")
-println("  soilmoist                             min=0.0167 q10=0.22 q25=0.3186 q50=0.4635 q75=0.6644 q90=0.808 max=0.9886 mean=0.5075")
+println("  LIVE  soilmoist_ye (ADR 0035)          min=0.0    q10=0.0  q25=0.0    q50=0.498  q75=0.877  q90=0.9999 max=1.0078 mean=0.478")
+println("  (RETIRED swc-derived, do NOT score against it: q50=0.4635 mean=0.5075 — porosity-normalized)")
 println()
 report("plant_available_water (a1 unweighted)", m_paw_unw, is_land)
-report("plant_available_water (a2 top 2 m)", m_paw_rz, is_land)
+report("plant_available_water (a2 ROOT ZONE 1 m)", m_paw_rz, is_land)
 report("saturation_water_ice  (b naive)", m_sat, is_land)
 
 # ── THE O3a GATE: the SOIL CONFIGURATION must not be degenerate ───────────────────────────────
@@ -226,7 +248,7 @@ end
 
 out = joinpath(OUTDIR, "terrarium_soilmoist_candidates_$(TAG).csv")
 open(out, "w") do io
-    writedlm(io, [["paw_unweighted" "paw_top2m" "sat_layermean" "clay" "is_land"]], ',')
+    writedlm(io, [["paw_unweighted" "paw_rootzone_1m" "sat_layermean" "clay" "is_land"]], ',')
     writedlm(io, hcat(m_paw_unw, m_paw_rz, m_sat, texture.clay, Int.(is_land)), ',')
 end
 println("\nwrote $out")

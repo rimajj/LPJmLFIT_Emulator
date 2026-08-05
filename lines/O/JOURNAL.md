@@ -217,3 +217,31 @@
   paired soil-code files. Bit me on the first run of `build_soil_texture_field.py`, caught by its Hainich gate.
 - **Next:** read job 1706462 → if the 20 m column gives a plausible spun-up distribution, finish O3b and
   raise the line-S integration point; then O3c (the `FDiffPhotosynthesis` spike).
+
+### Late correction — line S's ADR 0035 moved BOTH sides of the O3b target (2026-08-05)
+
+Found on the pre-merge rebase: S had written a warning block into `lines/O/STATE.md`. **Verified it
+against `src/components/slow.jl:227` before acting on it** — it is right, and my script was aimed at a
+retired basis on both sides:
+
+- **Runtime target.** No longer `sum(state.w)/length(state.w)`. It is `root_zone_soilmoist(state, soil)`
+  = the **`whcs`-weighted mean over `ROOT_ZONE_LAYERS = 3` layers** = LPJmL's 200+300+500 mm = exactly
+  **1.0 m**, read at year end. My "top 2 m, thickness-weighted" was the right *shape* but the wrong depth.
+- **Reference distribution.** The numbers I had been printing (q50 0.4635, mean 0.5075) are the **retired**
+  `swc`-derived table = total water over SATURATION capacity — i.e. the porosity-normalized quantity ADR
+  0082 §4 deliberately rejects. Scoring against it would have reintroduced the mismatch from the offline
+  side. Live: `cell_year_soilmoist_ye_hist.parquet` — min 0.0 · q25 0.0 · **q50 0.498** · q75 0.877 ·
+  q90 0.9999 · **mean 0.478**. Means are close (0.478 vs 0.5075), the SHAPE is not — a quarter of
+  cell-years sit at a fully dry root zone. Matching on the mean alone would have hidden that.
+
+Retargeted the script to the 1 m root zone and the live reference, and **cancelled job 1706462**
+mid-flight rather than let it produce a number on the retired basis; resubmitted as **1706597**
+(`FLOW=rre DAYS=30 DZMAX=2.5`). One simplification worth recording: with a **single**
+`PrescribedSoilHorizon` the texture is depth-constant within a column, so `θfc − θwp` cancels in the
+normalized weighted mean and the `whcs` weighting reduces **exactly** to thickness weighting. That is a
+property of the one-horizon configuration only — a multi-horizon stratigraphy must carry the capacity
+weights explicitly.
+
+This is the `residual-diagnosis` rule paying off in the direction it usually doesn't: the comparison basis
+was wrong *before* any residual was chased, and the cost of noticing late was one cancelled job rather
+than a session spent explaining a fake shift.

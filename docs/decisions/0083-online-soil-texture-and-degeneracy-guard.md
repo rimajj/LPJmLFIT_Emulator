@@ -96,10 +96,28 @@ guardrail 5 warns against.
 
 ## Consequences
 
-- ADR 0082 §4's `soilmoist` comparison is unblocked; it is reported for both an unweighted layer
-  mean (the literal analogue of `slow.jl`'s `sum(state.w)/length(state.w)`) and a thickness-weighted
-  top-2 m mean, because LPJmL's 23 layers over 20 m and Terrarium's 30 exponential layers are not
-  the same discretization and an unweighted mean is therefore not the same operator.
+- ADR 0082 §4's `soilmoist` comparison is unblocked *as far as the soil configuration goes*, but is
+  **not yet answerable** — see the two blockers below. Its target is **ADR 0035's**, not ADR 0082's
+  original wording (verified here against `src/components/slow.jl:227` rather than taken on trust):
+  `root_zone_soilmoist` is the `whcs`-weighted mean of the plant-available fraction over the top
+  **3 LPJmL layers = 1.0 m**, read at year end, and the live reference table is
+  `cell_year_soilmoist_ye_hist.parquet` (q50 0.498, mean 0.478) — **not** the retired `swc`-derived
+  one (mean 0.5075), which is porosity-normalized and is exactly the basis this ADR's mapping
+  avoids. Because this configuration has a single horizon, `θfc − θwp` is depth-constant within a
+  column and the `whcs` weighting reduces exactly to thickness weighting over the root zone; that
+  equivalence is a property of the one-horizon setup and would not survive a multi-horizon
+  stratigraphy.
+- **Blocker 1 — the default hydrology is `NoFlow`.** `[VERIFIED job 1706262]` layer-mean saturation
+  was `min == max == 0.8917` over all 4608 columns after two coupled days: the `SaturationWaterTable`
+  initializer, unchanged, despite the adapter pushing `rainfall`/`snowfall` in every step. Any
+  distribution measured under the default hydrology is the initializer, not a model result.
+  `RichardsEq` is verified to work coupled (`[VERIFIED job 1706324, exit 0]`).
+- **Blocker 2 — spin-up.** `[VERIFIED job 1706324]` 10 days of `RichardsEq` from a near-saturated
+  433 m column is still mid-drainage (mean PAW 0.104 unweighted / 0.225 over 2 m). Together with the
+  `NoFlow` run (0.949) the two *bracket* the reference; neither is a spin-up, and neither may be
+  quoted. RRE costs ~110 s per simulated day on that column, so the spin-up is a real budget item.
+  Mitigation: `ExponentialSpacing`'s `Δz_max = 2.5` gives a ≈19.5 m column matching LPJmL's geometry,
+  which both fixes the whole-column contrast and equilibrates ~20× faster.
 - Ocean columns under `RockyPlanetMask` have no LPJmL counterpart; they receive the global-median
   LPJmL type (loam, clay 0.18) and are excluded from the comparison via the returned `is_land`
   mask. The fallback is reported, never silently assumed to be data.
