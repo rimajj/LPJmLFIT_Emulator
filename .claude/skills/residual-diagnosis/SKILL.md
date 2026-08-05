@@ -427,3 +427,17 @@ independently reaching the same decomposition, and the handoff text still said o
 `origin/main` *before* writing your attribution, not after. And read the part of their result that does
 **not** fit — M's teacher forcing recovering 59–72 % rather than ~100 % was the entire clue, sitting in
 print, unremarked.
+
+**Corollary — a cross-line contract QUANTITY can move under you, so re-derive the basis from the source
+before you score anything.** Line O's O3b was aimed at a retired basis on *both* sides at once: the runtime
+target (`slow.jl`'s `soilmoist`) had been redefined by ADR 0035 from an unweighted whole-column mean to a
+`whcs`-weighted mean over the top 3 layers (1.0 m) read at year end, *and* the reference distribution had
+been replaced because the old one was `swc` = water over **saturation** capacity, i.e. exactly the
+porosity-normalized quantity the mapping was designed to avoid. Two tells worth memorising: (1) the retired
+and live references had nearly the same **mean** (0.5075 vs 0.478) and completely different **shape** (q25
+0.319 vs 0.0) — *matching on the mean alone would have certified the wrong basis*; (2) the warning was
+sitting in the line's own `STATE.md`, written by the sibling line, and was found only on the pre-merge
+rebase. **Before scoring a cross-line quantity: open the function that computes it and read it, and
+re-check which artifact the reference numbers came from.** Verify the sibling's claim against the source
+rather than adopting it — here it checked out, but the check is what makes it usable. If a job is already
+running on the old basis, **cancel it**; a number on the wrong basis costs more than the compute.

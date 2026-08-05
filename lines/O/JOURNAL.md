@@ -169,3 +169,79 @@
   failures were in Terrarium's vegetation/soil defaults, not the coupling.
 - **Next:** O3a (real soil texture + the degeneracy guard) → O3b (finish the soilmoist comparison, raise the
   line-S integration point) → O3c (the photosynthesis spike).
+
+## 2026-08-05 — O3a done: a real soil texture, the degeneracy guard, and TWO more silent defaults  [O3a/O3b]
+
+- **O3a SHIPPED (ADR 0083).** The online soil is now a single `PrescribedSoilHorizon` carrying the
+  **ground-truth run's own** soilcode map × `par/soil_20m.js` sand/silt/clay, with SURFEX porosity.
+  `[VERIFIED job 1706262]` the prescription reaches the model state (clay 0.01–0.58, mean 0.182), the
+  guard passes (`fc − wp` ∈ [0.0519, 0.0893]), PAW is no longer identically 1. Chosen over SoilGrids 2.0
+  deliberately: using the C oracle's own texture keeps the online soil consistent with BOTH the offline
+  oracle and the `soilmoist` training reference O3b scores against — SoilGrids would confound exactly
+  that comparison, and needs egress the compute nodes don't have.
+- **Trap 7 — the documented Terrarium input path DOESN'T WORK under SpeedyWeather.**
+  `SpeedyWeatherTerrariumExt` builds its `ModelIntegrator` with an **empty `InputSources(NF)`** (on
+  purpose — so its own `set!` of the atmospheric forcings isn't overwritten). So an `InputSource`-based
+  prescription, which is what Terrarium's own `soil_heat_global_soilgrids.jl` example uses, is **silently
+  dropped**, and `sand_fraction` falls back to its declared default of 1.0 — straight back into trap 6.
+  Only `TerrariumLand.fields` is forwarded. There is now a gate that reads `state.soil.clay_fraction`
+  back and asserts it is non-zero *and* spatially varying: a dropped prescription looks exactly like a
+  working one.
+- **Trap 8 — `SoilHydrology(NF)` defaults to `NoFlow`: the soil water NEVER MOVES.** `[VERIFIED job
+  1706262]` layer-mean saturation was `min == max == 0.8917` over all 4608 columns after 2 coupled days —
+  i.e. exactly the `SoilInitializer`'s `SaturationWaterTable` (vadose 0.75 / saturated below 5 m) —
+  *despite* the adapter faithfully pushing `rainfall`/`snowfall` into the Terrarium inputs every step.
+  **Any soil-moisture distribution measured under the default hydrology is the initializer, not a model
+  result.** This is why my first gate mis-fired: I had gated on "fraction of columns pinned at PAW = 1",
+  which is a property of the WATER state, not of the soil configuration. Split it: the O3a gate now
+  tests that PAW is a genuine spatially varying function of the state (passes), and the water state is
+  reported separately with an explicit "O3b NOT MEANINGFUL" verdict when saturation is uniform.
+- **`RichardsEq` works in the coupled loop** `[VERIFIED job 1706324, exit 0]` — 10 simulated days, 1094 s,
+  4608×30 columns, saturation spread 0.565, no non-finite. But the answer is **not yet quotable**: from a
+  near-saturated initial column the profile is still mid-drainage, mean PAW 0.104 (unweighted) / 0.225
+  (top 2 m) against LPJmL's 0.5075. So the two runs BRACKET the reference (NoFlow 0.95 ← 0.5075 → RRE-10d
+  0.10) and neither is a spin-up. **Do not report a `soilmoist` shift from either.**
+- **The likely root cause of the mismatch is geometry, and it is fixable.** `ExponentialSpacing(N=30,
+  Δz_min=0.05)` defaults to `Δz_max = 100`, giving a **433 m** column — 20× LPJmL's 20 m. An unweighted
+  30-layer mean over that is dominated by deep permanently-saturated layers and is simply **not the same
+  operator** as `slow.jl`'s unweighted mean over 23 layers spanning 20 m. `Δz_max = 2.5` gives ≈19.5 m,
+  matching LPJmL's geometry and equilibrating ~20× faster. Added as the `DZMAX` knob; **job 1706462**
+  (`FLOW=rre DAYS=30 DZMAX=2.5`) is the first run on the right basis.
+- **Cost note for the plan:** RRE at Δt = 300 s over 4608×30 columns runs ~110 s per simulated day and
+  allocates 8.3 TiB with 47 % GC time over 10 days. A multi-year spin-up on the 433 m column is days of
+  compute; on a 20 m column it should be far cheaper, but the spin-up requirement is now on the critical
+  path for O3b and should be sized before O3c is started.
+- **Also corrected CLAUDE.md §1:** `28008` is Hainich's index in `input_VERSION2/grid.bin` — a
+  longitude-major **global** grid, not a `-DSINGLESITE` grid (orderA[28008] is Sonoran desert). That coord
+  file and the ground-truth `soil_code_test.grid.clm` are not interchangeable row-for-row, nor are their
+  paired soil-code files. Bit me on the first run of `build_soil_texture_field.py`, caught by its Hainich gate.
+- **Next:** read job 1706462 → if the 20 m column gives a plausible spun-up distribution, finish O3b and
+  raise the line-S integration point; then O3c (the `FDiffPhotosynthesis` spike).
+
+### Late correction — line S's ADR 0035 moved BOTH sides of the O3b target (2026-08-05)
+
+Found on the pre-merge rebase: S had written a warning block into `lines/O/STATE.md`. **Verified it
+against `src/components/slow.jl:227` before acting on it** — it is right, and my script was aimed at a
+retired basis on both sides:
+
+- **Runtime target.** No longer `sum(state.w)/length(state.w)`. It is `root_zone_soilmoist(state, soil)`
+  = the **`whcs`-weighted mean over `ROOT_ZONE_LAYERS = 3` layers** = LPJmL's 200+300+500 mm = exactly
+  **1.0 m**, read at year end. My "top 2 m, thickness-weighted" was the right *shape* but the wrong depth.
+- **Reference distribution.** The numbers I had been printing (q50 0.4635, mean 0.5075) are the **retired**
+  `swc`-derived table = total water over SATURATION capacity — i.e. the porosity-normalized quantity ADR
+  0082 §4 deliberately rejects. Scoring against it would have reintroduced the mismatch from the offline
+  side. Live: `cell_year_soilmoist_ye_hist.parquet` — min 0.0 · q25 0.0 · **q50 0.498** · q75 0.877 ·
+  q90 0.9999 · **mean 0.478**. Means are close (0.478 vs 0.5075), the SHAPE is not — a quarter of
+  cell-years sit at a fully dry root zone. Matching on the mean alone would have hidden that.
+
+Retargeted the script to the 1 m root zone and the live reference, and **cancelled job 1706462**
+mid-flight rather than let it produce a number on the retired basis; resubmitted as **1706597**
+(`FLOW=rre DAYS=30 DZMAX=2.5`). One simplification worth recording: with a **single**
+`PrescribedSoilHorizon` the texture is depth-constant within a column, so `θfc − θwp` cancels in the
+normalized weighted mean and the `whcs` weighting reduces **exactly** to thickness weighting. That is a
+property of the one-horizon configuration only — a multi-horizon stratigraphy must carry the capacity
+weights explicitly.
+
+This is the `residual-diagnosis` rule paying off in the direction it usually doesn't: the comparison basis
+was wrong *before* any residual was chased, and the cost of noticing late was one cancelled job rather
+than a session spent explaining a fake shift.

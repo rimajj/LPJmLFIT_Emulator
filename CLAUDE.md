@@ -49,9 +49,17 @@ SpeedyWeather. Current phase status and the prioritized orders live in `MEMORY.m
 | Scratch (writable) | `/p/tmp/jamirp/...` |
 
 **Prototype cell = Hainich (DE-Hai).** In the **global orderA grid** (used by all ground-truth + daily
-data) Hainich is **0-based positional index `42490`** (lat 51.25, lon 10.25). It is **`28008` ONLY** in
-the repo-default `-DSINGLESITE` grid; `28008` in the global grid is Sonoran desert. Single-cell daily
-re-run: `STARTGRID=ENDGRID=42490`.
+data) Hainich is **0-based positional index `42490`** (lat 51.25, lon 10.25); orderA `[28008]` is
+(−114.75, 31.75), Sonoran desert. Single-cell daily re-run: `STARTGRID=ENDGRID=42490`.
+**`28008` is Hainich in a DIFFERENT global grid, not a single-site one (`[VERIFIED 2026-08-05]`,
+corrects the earlier "`-DSINGLESITE` grid" wording).** There are two 67 420-cell coordinate files and
+they disagree on ordering: `/p/projects/biodiversity/input_VERSION2/grid.bin` (the `coord` named in the
+repo checkout's `input_GSWP3-W5E5.js`; v2 .clm, HDR 43, int16, scalar 0.01) is **longitude-major** and
+puts Hainich at **28008**, while the ground-truth run's `…/clustering/global/soil_code_test.grid.clm`
+(v3 .clm, HDR 51, float32, scalar 1.0) is **orderA** and puts it at 42490. Their paired soil-code files
+(`soil_new_67420.bin` vs `soil_code_test.soil.bin`) are therefore **not interchangeable row-for-row** —
+pairing orderA indices with `grid.bin` shifts every cell silently. Use the ground-truth pair for
+anything orderA-indexed (ADR 0083).
 
 **HPC networking:** the **login node** has GitHub-SSH + Julia-pkg-server access; **compute nodes have
 NO GitHub egress** (pkg-server tarballs only). GitHub HTTPS is blocked everywhere; SSH works. Any file a
