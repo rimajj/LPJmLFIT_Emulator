@@ -395,3 +395,27 @@ duplicate-key TOML error that reds every job — a worse break than the one bein
 touched `Project.toml`/`test/Project.toml`, run `grep -n '^<Pkg> = ' test/Project.toml` and confirm exactly one
 entry. The narrative conflict shows up in `MEMORY.md` instead (both sides append a TODO in the same list) —
 resolve by keeping ONE entry and the newer sibling bullets, not by taking a whole side.
+
+## Before you raise an integration point, check the thing is actually theirs (added 2026-08-05, ADR 0103)
+
+ADR 0029's ownership map exists to stop lines editing each other's files. It does **not** make every input
+you need into someone else's property, and treating it that way has a measured cost: ADR 0102 deferred a
+**one-file, S-owned** change into a cross-line negotiation because it believed the constant it needed had to
+arrive through `src/interface.jl` (line M's). The constant was a documented value in the LPJmL-FIT parameter
+files — nobody's to grant, and already readable.
+
+Before writing "this is an integration point", answer three questions:
+
+1. **What exactly do I need from them — a FILE EDIT, or a VALUE?** A value that already exists somewhere
+   readable (the C source, a parameter file, a committed fixture, an artifact meta) is not an integration
+   point. Only a change to a file they own is.
+2. **If it is a value, where does it live and can I verify it myself?** Grep the upstream source; verify with
+   `cpp -P` for a `.js` parameter (CLAUDE.md §3, and check duplicate keys); confirm against a committed
+   fixture. Minutes, not a handoff cycle.
+3. **Can the change ship OPT-IN and default byte-identical instead?** If yes, it is an ordinary feature on
+   your own line and the other line's involvement shrinks to *enabling* it later — which is a much smaller
+   ask, and one an owner can pre-authorise in advance (see the standing authorisation in `MEMORY.md` §4).
+
+A wrongly-raised integration point is not a harmless excess of caution. It parks finished work behind
+another session's schedule, and both lines then record it as the other's to move — which is exactly how the
+`wscal_leafon` flip sat unscheduled for weeks with each side waiting.

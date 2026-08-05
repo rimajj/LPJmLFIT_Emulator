@@ -441,3 +441,29 @@ rebase. **Before scoring a cross-line quantity: open the function that computes 
 re-check which artifact the reference numbers came from.** Verify the sibling's claim against the source
 rather than adopting it — here it checked out, but the check is what makes it usable. If a job is already
 running on the old basis, **cancel it**; a number on the wrong basis costs more than the compute.
+
+## When the constant you "don't have" is three files away (added 2026-08-05, ADR 0103)
+
+ADR 0102 concluded a fix was blocked because the coupled loop lacked the count↔density conversion, and
+deferred it to another line as an interface change. The conversion is `param.patcharea = 225.0` m² (15×15),
+sitting in `par/lpjparam_fit.js`, with `new_tree.c:209` giving every individual `nind = 1/patcharea`. The
+owner spotted it in one line. Two rules came out of that, and both generalise well beyond this repo:
+
+- **"X cancels" is a statement about an EXPRESSION, not about X.** CLAUDE.md carries *"with
+  `nind = 1/patcharea` … the patcharea cancels"* — true, and true only of the ADR-0035 per-patch LAI
+  derivation it was written about. Read as a property of the *quantity*, it becomes "we never need
+  patcharea", which is false in every other expression. When you meet a "cancels"/"drops out"/"is
+  arbitrary" note, ask **cancels against what, in which expression** before inheriting it as a constraint.
+- **Before concluding a quantity is unavailable, grep the upstream source for it.** The C source, its
+  parameter files and the committed fixtures are all readable from here. Verify with `cpp -P` (CLAUDE.md §3
+  — and check for duplicate keys), then confirm end-to-end against a fixture: `sum(nind) × 225 = 17.000`
+  exactly, on the committed Hainich patch, settled it in one command. A two-minute check stood between a
+  shipped fix and a deferred cross-line negotiation.
+
+**And the finding that check exposed, which is the more important one: a validation suite built entirely on
+ratios, distributions and correlations is BLIND TO AN ABSOLUTE-LEVEL ERROR by construction.** The coupled
+stand sat **1.41× denser** than its own count model's absolute prediction, indefinitely, while the ADR-0030
+per-cell trait gate, the count R² (0.982), the pooled-KS checks and the trained-band diagnostic were all
+green — because not one of them reads a level. If every metric in a panel is scale-invariant, the panel
+cannot see a scale error. **Add at least one absolute check** (predicted level vs the model's own target, in
+the consumer's units) whenever a component's output is consumed as a level rather than as a shape.
