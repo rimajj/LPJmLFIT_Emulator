@@ -81,10 +81,16 @@ cd /p/tmp/jamirp/esm_online_coupling
    Terrarium inputs each step. `[VERIFIED 2026-08-05, job 1706262: layer-mean saturation min == max ==
    0.8917 over all 4608 columns after 2 coupled days.]` Any soil-moisture distribution measured this way is
    the **initializer**, not a model result — and PAW then varies only through texture. Use
-   `SoilHydrology(NF; vertical_flow = RichardsEq())` for anything hydrological, and spin up: the default
-   `ExponentialSpacing(N=30, Δz_min=0.05)` column is **433 m deep**, so an unweighted 30-layer mean is
-   dominated by deep, permanently saturated layers. Compare on a root-zone (e.g. top 2 m,
-   thickness-weighted) basis instead.
+   `SoilHydrology(NF; vertical_flow = RichardsEq())` for anything hydrological.
+   `RichardsEq` is verified to work coupled (`[VERIFIED 2026-08-05, job 1706324, exit 0]`, 10 days,
+   4608×30) but costs **~110 s per simulated day** and allocated 8.3 TiB with 47 % GC time — budget the
+   spin-up before promising a distribution.
+   **And fix the column depth while you are there:** `ExponentialSpacing(N=30, Δz_min=0.05)` defaults to
+   `Δz_max = 100`, giving a **433 m** column — 20× LPJmL's 20 m — so an unweighted layer mean is dominated
+   by deep, permanently saturated layers and is *not* the same operator as `slow.jl`'s unweighted mean over
+   23 layers. Pass `Δz_max = 2.5` for ≈19.5 m (matches LPJmL, equilibrates ~20× faster), or compare on a
+   thickness-weighted root-zone (top 2 m) basis. **A run started near saturation is still draining after
+   10 days** — a transient is not a spin-up; check that the distribution has stopped moving before quoting it.
 
 ## The coupling architecture (verified from source, not docs)
 
