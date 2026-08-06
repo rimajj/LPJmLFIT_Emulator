@@ -536,3 +536,50 @@ caught the 75 % error but introduced a second, smaller one: recomputing from the
 0.0975 where the script's full-precision answer is **0.0973**. Rounded inputs propagate. The hand
 recomputation is worth doing immediately — it is what caught the real error, in seconds — but it is a
 *triage* step, not the number you publish.
+
+## A reference basis has more than ONE AXIS — naming a confound is not closing it (added 2026-08-06, ADR 0105)
+
+The section above fixed the *metric* axis of a basis (score the quantity the change writes). It is not the
+only axis, and getting one right feels like getting the basis right. **List the axes explicitly before you
+publish a number.** For a coupled-emulator-vs-C comparison here there are at least three:
+
+| axis | the question | how it went wrong |
+|---|---|---|
+| **metric** | is the scored quantity a function of what the change writes? | ADR 0103 §6 scored the count model's *prediction* for a change that writes the *roster* |
+| **population / canopy** | did you run the same members the reference ran? | ADR 0104 ran the single **modal** (densest) patch against a C that reports a **25-patch mean** |
+| **aggregation** | mean-of-ratios or ratio-of-means; year-matched or window-mean? | a drifting 0.8→1.7 ratio has a 10-yr mean of 1.00 |
+
+**The rule this cost a published recommendation:**
+
+> When you write "⚠ this confound means the measured effect is an UPPER BOUND", you have not measured the
+> effect. **Do not publish a recommended value, a default, or a tuned parameter from that arm.** Either
+> close the confound first, or publish the finding *without* the recommendation and say what would close it.
+
+ADR 0104 named the modal-patch confound in its own §5, called its benefit an upper bound, and recommended
+`anchor = 0.25` anyway. Re-run on the ensemble (ADR 0105), the free-running error was **4× smaller**
+(mean score 0.679 → 0.159), the sign of one cell's error **reversed** (Sahel 1.55× over-dense → 0.52×
+*under*), and the intervention went from "improves all five cells" to **worsening the mean at every
+setting**. Nothing was wrong with the arithmetic; the arm was never a measurement of the thing it decided.
+
+**Corollary — an ATTRIBUTION arm inherits every basis error of its harness.** A diagnostic arm feels more
+robust than a skill measurement because it is "just isolating a term". It is not. ADR 0054's teacher-forced
+arm was measured on the modal patch AND scored on the prediction, published as removing 59–72 % of the
+coupled count error, and **inverted under either correction** — on the ensemble, scored against the C, it is
+worse in all five cells. Apply the metric check and the population check to your controls too.
+
+**And the cheap one: PRICE a retrain (or any expensive fix) OFFLINE before buying it.** Before committing to
+retraining a model to remove a feedback bias, reduce the loop to its scalar form and measure the terms from
+the tables you already have: the one-step bias `b` (model fed the TRUE previous value) and the loop gain
+`g = ∂pred/∂feedback_feature`, giving `e_k = b(1−g^k)/(1−g)`. Two hundred lines and one 4-minute job stood
+in for a global two-artifact retrain here — and the answer was **empty** (`b` = −0.0014 on counts of ~10,
+`g` = 0.56 ⇒ bounded 2.28× amplification). ⚠ Measure `g` with a **secant, not a derivative**: a tree
+ensemble is piecewise constant, so an infinitesimal step returns 0 for almost every row and reports "no
+feedback" from a model that has plenty. Report several step sizes so the step is not a hidden knob.
+Entry point: `scripts/exposure_bias_probe.jl`.
+
+**When the offline prediction and the coupled measurement disagree, that gap is itself the measurement.**
+Here the offline AR(1) predicted +4.2 / −5.9 / +10.5 / −0.0 / +0.2 % per cell against a coupled
++35 / +15 / +38 / −48 / +4 % — wrong size everywhere, wrong sign twice. Since the offline number is computed
+with the model fed the *reference's own* features, the residual is by construction everything the coupled
+loop adds. That located the defect in a different component (and a different line's paths) without a single
+further probe.

@@ -1143,3 +1143,41 @@ pair and the global production pairs give **opposite-signed** baseline warming r
   **1 863.7** climatological vs **1 698.0** w20-transient). `M_slow_init_meta.json` pins the pooled `.drf` but
   reads its boundary from `slow_runtime_historic_t8` — a table that artifact was never trained on, into a
   channel worth 1.30× FIT. Match the boundary basis to the artifact's own training tables.
+
+## PRICE a retrain OFFLINE before buying it — the exposure-bias probe (ADR 0105, 2026-08-06)
+
+Any proposal to retrain the count DRF because a **coupled** rollout drifts is a claim about a *feedback*,
+and a feedback reduces to two numbers you can measure from the tables that already exist. Do that before
+committing to a global retrain (which here is an ADR-0023 both-sides change: new `.drf` **and** `.rcop`,
+plus a re-pin with line M).
+
+**Run:** `scripts/exposure_bias_probe.jl` — reads a `slow_runtime_*` table dir (`X.f64` / `y.f64` /
+`cells.i64` / `preds_oos.f64` / `manifest.txt`) and the deployed `.drf`. `TABLE=` and `DRF_PATH=` override
+the defaults (`slow_runtime_historic_t8`, `drf_forest_global_pooled_w20_t8.drf`). ~4 min on 16 cpus.
+
+**The model.** `n_prev` in the training table is the C's own previous `n_living`; a coupled rollout feeds
+the DRF its own output. Linearise the loop as `e_t = b + g·e_{t-1}` ⇒ `e_k = b(1−g^k)/(1−g)`:
+
+* `b` — the **one-step bias**, the model fed the TRUE `n_prev`. Report the **held-out-CELL OOS** value
+  (`preds_oos.f64`) beside the in-sample one; the deployed pooled forest saw these cells.
+* `g` — the **loop gain** `∂pred/∂n_prev`. ⚠ **Measure it with a two-sided SECANT, not a derivative.** A
+  forest is piecewise constant, so an infinitesimal step returns 0 for almost every row and reports "no
+  feedback" from a model that has plenty. Report several relative step sizes (0.05 / 0.10 / 0.25) so the
+  step is not a hidden knob — at 0.05 only 36 % of rows even move.
+
+**What it found, and why the retrain was cancelled rather than deferred:** `b` = **−0.0014** stems/patch/yr
+held-out-cell OOS on counts of **~10**, `g` = **0.562** ⇒ a **bounded** 2.28× amplification converging by
+year 5 to −0.038 stems. There is no exposure bias worth a retrain. `g < 1` also settles, directly, the
+"does it diverge" question the coupled probes could only bound.
+
+**The per-cell table is the payoff — compare it against the coupled measurement.** Because the offline
+number is computed with the model fed the **C's own** features and the C's own previous count, the gap
+between it and the coupled error is *by construction* everything the loop adds. Here it predicted
++4.2 / −5.9 / +10.5 / −0.0 / +0.2 % against a coupled +35 / +15 / +38 / **−48** / +4 % — wrong size in every
+cell, wrong sign in two — which located the residual in the fast core's canopy (line M's paths) rather than
+in anything Component S trains, without a further probe. **Always run the per-cell arm, not just the
+pooled one:** the pooled `b` is near zero because per-cell biases of both signs cancel.
+
+⚠ **Do not read a large `mean rel` as a bias.** The probe prints `mean((pred−y)/max(y,1))` = +1.6 % beside
+an absolute `b` of −0.0014. Counts are small and right-skewed, so the ratio is dominated by rows with
+`y` ≈ 1. **The absolute bias is what compounds** — the recursion adds stems, not fractions.
