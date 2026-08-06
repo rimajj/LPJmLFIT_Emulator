@@ -24,9 +24,16 @@ without saying it is 5 of 54 020.
 
 ⚠ **The binding constraint is the climate-change clause, not the fidelity numbers.** Trait medians are
 already 9 of 10 within 10 % at the test cells, but the emulator's warming response is indistinguishable from
-zero where the original rises, and **CO2 is a constant in every training row of every deployed artifact, so
-there is NO CO2 response at all** (ADR 0004). **Work that improves present-day agreement is not progress
+zero where the original rises, and — separately — the source model itself is deliberately run at
+**constant CO2** (ADR 0004/0107), which the emulator correctly inherits. **Work that improves present-day agreement is not progress
 toward this criterion unless it also opens a response channel.** Plan accordingly.
+
+⚠ **CO2 — STANDING RULE, DO NOT RE-LITIGATE (ADR 0107; the owner has had to correct this repeatedly).** The
+emulator **does not see CO2 and must not respond to it**. It responds to **climate**, and the SSP scenarios
+already carry the CO2-driven climate signal. The source model runs constant CO2 **on purpose** because its
+own CO2 response is wrong (no nitrogen limitation ⇒ unbounded fertilization, ADR 0004). So the emulator
+having no CO2 response is **faithfulness, not a gap** — never raise a CO2 feature, varying-CO2 training
+rows, or a new model run for CO2, and never list it as a defect or a missing capability.
 
 ⚠ One clause needed a decision and carries a stated default, not the owner's words: the original model is
 stochastic and its own two runs differ by **29 % of the mean** for the per-patch count in a low-density cell,
@@ -131,11 +138,10 @@ monthly means); full write-up in the `slow-drf-pipeline` skill.
    response between them, 10 % on medians and on each reported quantile. The offline machinery for this
    exists (`emulator-validation-figures`, K-fold by cell, per-cell maps); a 5-cell result is now only a screen.
 
-**B2. CO2 HAS NO OWNER AND NO PLAN, and it is the largest single gap (ADR 0106 §5 item 2).** CO2 is the
-constant 369 ppm in **every training row of every deployed artifact** (ADR 0004) ⇒ the emulator has **no CO2
-response at all**, and the criterion demands one. A CO2 response needs training rows in which CO2 varies,
-which the current ground-truth pair does not provide (409.63 ppm flat from 2020). **This may require a new
-run of the original model — an owner-level cost decision. Raise it explicitly; do not let it sit.**
+**B2. ~~CO2~~ — WITHDRAWN (ADR 0107). There is no CO2 item, there never was one, and nothing is owed by
+the owner. The previous text here called the absence of a CO2 response "the largest single gap" and asked
+for a new run of the original model; both were wrong and directly contradicted ADR 0004. See the
+standing rule in the banner at the top of this file.**
 
 **B3. (superseded framing, kept for the audit trail) S2 was "the top S-owned item by ELIMINATION".** ADR 0102
 demoted it because an unanchored level "compounds without bound"; item 6 measures the compounding as
