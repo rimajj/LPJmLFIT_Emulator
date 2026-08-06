@@ -99,6 +99,23 @@ detached worktree is *wrong* rather than clever are now in the **`repo-commit`**
    binding. Not edited (that would be ADR 0104's error again); a correct three-clause replacement is registered
    in **ADR 0109 §5** for a NEW arm, and its clause 3 (the coupled ensemble screen vs a matched
    constant-forcing control) is the whole remaining blocker.
+4b. ⚠ **TWO CAVEATS ON THE ARM, FOUND AFTER ADR 0109 WAS ACCEPTED (so they live here, not in that
+   immutable ADR — neither changes a conclusion, and both must be quoted alongside its numbers).**
+   * **The scored estimator is NOT the shipped one, and that is the pre-existing documented split.**
+     `run_moisture_conditioning_arm.sh` inherited `NTREES=60` (train) / `EVAL_NTREES=40` (eval) from
+     `run_pooled_slow_copula.sh`, so **every number in ADR 0109 describes a 40-tree estimator while
+     `_t9envT.rcop` is 60-tree** (verified from the artifact: `ntrees=60`, 3 000 000 stored leaf values on
+     axis 1, `ncond=14`, `qrf=false`). **No conclusion moves:** all three arms were scored at 40 trees so the
+     comparison is paired and like-for-like, `_t8`'s published numbers are 40-tree too, and `_t8.rcop` is
+     *also* 60-tree — so artifact-vs-artifact is like-for-like as well. But never write "the artifact achieves
+     slope 0.752" without this sentence. The skill's standing instruction is **set `NTREES == EVAL_NTREES`
+     when shipping a generation**; this arm did not, and a future arm should.
+   * **The label `t9` is OVERLOADED in this line's vocabulary.** It already named a 2026-07-31 artifact
+     (`recruit_copula_global_historic_t9.rcop`, untouched, and the capacity rungs live under
+     `capacity/b6x2M` etc.), and it now also names this generation's `slow_copula_*_w20_t9*` tables +
+     `recruit_copula_global_pooled_w20_t9envT.rcop`. **Nothing was overwritten** (verified by mtime), but pick
+     a fresh, unused tag for the next generation and say which namespace you mean.
+
 5. **Item A of the previous handoff was ALREADY DONE — do not redo it.** The F-canopy attribution is in
    `lines/M/STATE.md` (the `▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06` block) with the
    offline-vs-coupled table and the `fpc` drift ratios. Nothing is owed by S there.
