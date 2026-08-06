@@ -549,3 +549,34 @@ Seconds-to-minutes old ⇒ **ACTIVE**. Then:
 The recurring pair is `MEMORY.md` and `docs/decisions/README.md`: both are append-style shared files that
 *every* line adds to, so the overlap is routine and the resolution is "keep both sides" — say so in the
 handoff so the next session does not treat it as a real divergence.
+
+---
+
+## TWO SESSIONS CAN END UP IN ONE WORKTREE ANYWAY — stage explicitly and audit (`[VERIFIED 2026-08-06]`, line S)
+
+ADR 0028 says one session per line at a time. **It is not enforced by anything**, and on 2026-08-06 two
+sessions ran on `line/S` in `wt-S` simultaneously: a commit neither session made by the other's reckoning
+(`f75b5907`, ADR 0110) landed *between* two of the first session's commits on the branch, and files in the
+worktree (`MEMORY.md`, `src/LPJmLFITEmulator.jl`) changed underfoot mid-session.
+
+**Why the usual signals do not warn you.** `--force-with-lease` protects the *remote ref*, not your working
+tree, and it succeeds whenever your local branch already contains the other session's commit (which it will,
+since you share `.git`). `git status` looks normal — the other session's edits are indistinguishable from a
+linter's. The tell is an unexplained "file was modified externally" notice, or a `git log --graph` with a
+commit you do not recognise interleaved with yours.
+
+**The concrete hazard is `git add -A`.** It stages the other session's in-progress work and commits it under
+your message — mixing two lines of reasoning into one commit, and possibly committing something half-written.
+
+**What to do:**
+1. **Stage explicitly** — `git add <the paths you touched>`, not `-A`, whenever anything suggests you are not
+   alone in the worktree.
+2. **Audit before pushing** — `git show --stat --format='' HEAD` and confirm the file list is exactly what you
+   intended. Do this per commit; it is two seconds and it is the only check that actually catches this.
+3. **Re-check the ADR number block before writing an ADR.** A concurrent session on your own line will take
+   the next number without either of you noticing. `ls docs/decisions/` immediately before you name the file,
+   and again before you commit it — line S published 0109 and 0110 the same day from two sessions, and the
+   first session's handoff had already told the next one that 0109 was free.
+4. **Read what the other session wrote before reconciling.** Here the two converged (ADR 0110 built correctly
+   on ADR 0109's numbers and answered an open item in it) — so the right action was to point the handoff at
+   their result and withdraw the superseded speculation, not to treat it as a conflict.
