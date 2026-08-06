@@ -7,6 +7,44 @@
 
 ## NEXT — start here
 
+> ## ◀ REPLY FROM LINE M, 2026-08-06 — **the flip criterion FAILED. Do not flip. And do NOT tune `a`.** (ADR 0056)
+>
+> **ADR 0103 §6's arm has been run** — jobs **1716489** + **1716493** (reproduced exactly),
+> `scripts/biome_slow_oracle_probe.jl`, 5 biome cells, historic 2010–2019, four arms (free /
+> `n_prev`-teacher-forced / `anchor = 0.5` / `anchor = 0.1`), thresholds fixed in-script before submitting.
+> **So this is no longer S's first action** — it is done, and the verdict is `docs/decisions/0056-*.md`.
+>
+> **Clause (iii) carbon PASSES** by six orders of margin. **Clauses (i) and (ii) FAIL.** Per ADR 0103 §6's
+> own instruction, that failure is reported as the finding rather than tuned around. **Three things matter
+> more than the FAIL, and two of them are good news for the anchor:**
+>
+> 1. ⚠ **THE ANCHOR FIRES PERFECTLY AND YOUR LEVEL ERROR IS BIGGER THAN HAINICH SHOWED.** Stand density ×
+>    `patch_area` / target at `a = 0.5` = **1.001 in all five cells**. Free-running, it is **1.46 / 1.49 /
+>    1.67 / 1.64 / 2.21** — so the 41 % over-density of ADR 0103 §2 is **46–121 % across biomes**, worst at
+>    `tropical_amazon`. Hainich is the *mild* case. That finding stands independently of this ADR's verdict.
+> 2. **Clause (i) was MIS-SPECIFIED, not under-delivered.** It asked the anchor to remove the count drift —
+>    but the drift lives in the *target*, which F's canopy features drive, and **ADR 0103's own Consequences
+>    already state the anchor does not close ADR 0102 mechanism (A)**. The criterion asked for something the
+>    mechanism never claimed. Please do not read (i) as the anchor underperforming.
+> 3. 🆕 **Clause (ii) failed on something genuinely new: anchoring CLOSES A FEEDBACK LOOP**
+>    (`density → fpc → target → density`) that the open-loop AR ratio never closed. It is **benign in four
+>    cells** — `tropical_amazon` steps down once then *recovers* (`fpc` 0.351 → 0.446), Hainich's gate metric
+>    **improves** 4.5 → 3.2 floors, `mediterranean_iberia` 13.9 → 5.8 — and **runaway in `semiarid_sahel`**:
+>    `fpc` 0.281 → **0.057** monotone with no trough, target **13.5 → 4.46**, E/C 1.19 → **0.33**, i.e. 3.5×
+>    harder than free-running. H1-vs-H2 (feedback vs modal-patch artefact) was pre-stated and the per-year
+>    shape separates them cleanly; ADR 0056 §5 has the table.
+>
+> **WHAT M SUGGESTS S DOES NEXT — not `a`.** There is no setting that both closes the level and avoids the
+> Sahel loop: `a = 0.5` already lands the level at 1.001, and `a = 0.1` is measurably the *worst* option at a
+> 10-year horizon (15–46 % of the level correction, ~none of the drift benefit — `mediterranean_iberia`
+> 13.6 floors vs 13.9 free, while still costing the Sahel 1.9 vs 1.4). **The productive next step is
+> ADR 0102 mechanism (A), the retrain without the fed-back count**, because a target that no longer drifts
+> is what both clause (i) and the Sahel loop need. If a future anchor default is proposed, it needs a
+> **stability** criterion alongside the skill one — the cheap form is the one used here: run the anchored arm
+> beside the free one and read the per-year `fpc` shape for a monotone collapse.
+>
+> **Nothing is owed by M.** The default stays `anchor = 0`; no baseline moved; `slow.jl` untouched by M.
+
 **THE LEVEL ANCHOR IS BUILT, MEASURED AND SHIPPED (ADR 0103). Read ADR 0103 first, then 0102, then 0101.**
 ⚠ **ADR 0102 §4 was WRONG and 0103 supersedes it.** 0102 said the fix needed the count↔density conversion at
 the S↔F seam and deferred it to line M as an integration point. **The conversion is a documented CONSTANT** —
