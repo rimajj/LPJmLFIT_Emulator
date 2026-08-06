@@ -356,9 +356,17 @@ is the offline S.
   use: tolerance = **max(10 %, the original's own two-run spread for that quantity in that cell)**.
   ⚠ **The binding constraint is the climate-change clause, not the fidelity numbers.** Trait medians are
   already 9 of 10 within 10 % at the test cells; but the warming response is indistinguishable from zero
-  where the original rises, and **CO2 is the constant 369 ppm in every training row of every deployed
-  artifact (ADR 0004) ⇒ there is NO CO2 response at all.** Work that improves present-day agreement is not
+  where the original rises. Work that improves present-day agreement is not
   progress toward this criterion unless it also opens a response channel.
+- 🚫 **CO2 — STANDING, DO NOT RE-LITIGATE (owner, repeatedly; ADR 0004 + ADR 0107).** The emulator **does
+  not see CO2 and must not respond to it.** It responds to **climate**, and the SSP scenarios already carry
+  the CO2-driven climate signal. LPJmL-FIT is run at **constant CO2** for future runs **on purpose**, because
+  with `with_nitrogen="no"` its CO2 fertilization is unbounded and a rising-CO2 run blows vegetation carbon
+  up — i.e. its own CO2 response is wrong. ⇒ `CO2_CONST = 369.0` in every training row is the design
+  working as intended, and the emulator having **no CO2 response is FAITHFULNESS, not a gap**. **Never**
+  propose a CO2 feature, varying-CO2 training rows, or a new model run for CO2; **never** list the absence
+  of a CO2 response as a defect or gap of the EMULATOR. The correct statement is a validity-envelope
+  disclosure: "must not be used to project CO2-fertilization responses" (ADR 0004's own wording).
 - **HPC compute is not a reason to defer (owner, 2026-08-05).** "When retraining is needed we do it — we
   have the whole HPC at our service, so there is no need to procrastinate." Do not park a measurement or a
   global re-fit *solely* because it costs cluster time; scope it and submit it. (Still SLURM-only and still

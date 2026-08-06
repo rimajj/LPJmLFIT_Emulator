@@ -1258,3 +1258,31 @@ and delivered to all four lines' start-here blocks, to `MEMORY.md`, and to `~/.c
   closed" got reported as near-finished.
 - **Next:** wire the transient tail into the training-table builder, retrain both artifacts, re-pin with M,
   then score globally against the 10 % criterion.
+
+## 2026-08-06 (correction) — the CO2 "gap" was not a gap, and I had cited the decision that says so
+
+The owner corrected this sharply and was right. **The emulator must not see CO2 and must not respond to it.**
+It responds to **climate**, and the SSP scenarios already carry the CO2-driven climate signal. LPJmL-FIT runs
+**constant CO2** for future runs **on purpose**: with nitrogen limitation off, its CO2 fertilization is
+unbounded and a rising-CO2 run blows vegetation carbon up — its own CO2 response is wrong. So an emulator with
+no CO2 response **matches the reference**, which is the entire criterion. Written up as ADR 0107.
+
+- **What I published that was wrong:** ADR 0106 §4 listed CO2 as "FAILS COMPLETELY … the largest single gap
+  and it is structural", and §5 item 2 escalated it to an unowned item that "may require a new run of the
+  original model, which is an owner-level cost decision". Both withdrawn. Adding a CO2 response would be a
+  fidelity *regression* and would reintroduce the exact carbon runaway ADR 0004 exists to prevent.
+- **This was not a knowledge gap — ADR 0004 is in ADR 0106's own `Related` line.** I retrieved the decision
+  and then contradicted it in the same document. Citing a decision is not reading it.
+- **And I broadcast it** into `MEMORY.md`, all four lines' `## NEXT` banners and `~/.claude/CLAUDE.md` — so
+  four lines' next sessions were pointed at a non-existent defect. All corrected in the same commit, and the
+  rule is now recorded as **standing, do-not-re-litigate** beside the reuse/licensing entry, because the owner
+  reports having had to correct it repeatedly.
+- **Method rule:** **an absent behaviour is not automatically a missing one — check whether it was designed
+  out before calling it a gap.** A gap list built by asking "what does the emulator not do?" will promote
+  every deliberate simplification to a defect. One question per row: *is there an accepted decision that this
+  should not be there?* Corollary: under a match-the-reference criterion, every candidate gap must be phrased
+  as a comparison against the reference, never as an absolute capability. "The emulator has no CO2 response"
+  is not a finding; "its CO2 response differs from the source model's" would be, and is false.
+- **What this does NOT change:** the acceptance criterion itself (ADR 0106 §1–§3), the other five gap rows,
+  and the moisture work — which remains the critical path, and is now the *only* climate-response channel
+  rather than one of two.
