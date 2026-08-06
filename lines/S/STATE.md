@@ -33,7 +33,7 @@ a 67 % **under**-density.
 gains opt-in `lvl0`/`lvl1`. M's `anchor0` is **TEACHER FORCING**, which injects an external series' memory —
 that is why M4 measured it destroying Amazon `n` (0.066 vs a C of 0.501). The level anchor writes no feature:
 Amazon `n` stays at **0.549**. Mean |AC − C's AC| over 10 cell-variable pairs **0.0439 free → 0.0405
-anchored** (`pin1` 0.0556), closer to the oracle in 6 of 10. Job 1716491; re-run with the summary computed
+anchored** (`pin1` 0.0975), closer to the oracle in 6 of 10. Job 1716491; re-run with the summary computed
 in-script as **1716584**.
 
 **⚠ THE DEFAULT IS STILL OFF, AND THERE IS NOW EXACTLY ONE THING BLOCKING IT — say so plainly and do not let

@@ -1163,7 +1163,7 @@ edit (the `DRF_ART`/`RCOP_ART` knob) and left job **1701183** in the queue; its 
   AR feature with an externally measured series and therefore *injects* that series' memory. That is exactly
   why M measured it destroying Amazon `n` (0.066 against a C of 0.501). Running it would have answered a
   question about a different intervention. New `lvl0`/`lvl1` arms instead: Amazon `n` stays at **0.549**,
-  and mean |AC − C's AC| over 10 cell-variable pairs goes **0.0439 free → 0.0405 anchored** (`pin1` 0.0556).
+  and mean |AC − C's AC| over 10 cell-variable pairs goes **0.0439 free → 0.0405 anchored** (`pin1` 0.0975).
   The anchor does not buy its level fix with dead dynamics.
 - **And the memory arm nearly repeated the same error an hour later.** The obvious read is `lvl − free`,
   which shows a degradation in 8 of 10 pairs. But the free arm sits ABOVE the C's autocorrelation in 9 of 10
