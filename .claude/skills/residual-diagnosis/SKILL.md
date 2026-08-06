@@ -477,3 +477,50 @@ caveat that changes how a downstream line must score its 10-year runs. **Before 
 wrote, plot the quantity against the axis you assumed it was monotone in.** The threshold is a hypothesis
 too.
 
+
+---
+
+## A pre-registered criterion needs the SAME basis check as a residual (added 2026-08-06, ADR 0104)
+
+Pre-registering a pass/fail criterion before a run is good practice and it works — it stops you tuning a
+knob until it passes. **It does not stop you measuring the wrong quantity**, and it is *more* exposed to
+that than an ordinary residual is, because the commitment is made at the moment of least information about
+the intervention. §1's rule ("state the reference basis") applies to a criterion, not just to a gap.
+
+**The check, and it is two minutes:**
+
+> **Read the diff. Name the variable the change writes to. Confirm the criterion's metric is a function of
+> that variable.**
+
+ADR 0103 §6 pre-registered a flip criterion for the Component-S level anchor and scored it on
+`s.target_history`. The change is seven lines (`slow.jl:1066-1070`): it multiplies the **roster** (`dtree`);
+`target` appears only on the right-hand side, as the thing being aimed at. **The anchor never writes
+`target_history`.** So the criterion measured a second-order feedback (moved stand → moved canopy features →
+different DRF row next year) with its own per-cell sign, and it scored FAIL in 4 of 5 cells on a change
+that, measured on the stand, improved **all five cells at all three settings**.
+
+**The tell was already printed and nobody read it that way.** The same run reported the stand landing on its
+own count model's target at **1.001 in all five cells**, two tables below a criterion scoring FAIL in four.
+**Two tables that disagree that completely are not measuring one thing** — treat that as a basis alarm, the
+same as §3b's <0.99 cross-check.
+
+**Corollary — when a control arm and a truth disagree, score against the TRUTH.** The same session nearly
+repeated the error an hour later on the memory arm: the obvious read is `anchored − free`, which showed a
+degradation in 8 of 10 pairs. But the free arm sat *above* the C's autocorrelation in 9 of 10, so lowering
+the AC moved **toward** the oracle. Mean |AC − oracle| went 0.0439 → 0.0405, i.e. an improvement. **A control
+arm is a reference, not a target.**
+
+**And check that the arm you were pointed at is the arm you need.** Line M's caveat named an existing
+`anchor0` arm — which is **teacher forcing**, a different intervention that *injects* an external series'
+memory. Running it would have answered a question about something else. Read what the arm DOES, not what it
+is called.
+
+**When you do change the yardstick after seeing results — and sometimes you must — the new one is only
+legitimate if its justification does not depend on the results.** State that explicitly. Here the argument
+is readable off the seven-line diff and would have held identically if every cell had passed. If you cannot
+make that argument, you are rationalising, not correcting.
+
+**Deleting a clause after measuring it is allowed on the same terms.** A 100-year biomass-drift clause was
+dropped from the re-registered criterion because the mechanism says the anchor cannot affect it (that drift
+lives in the fast core's carbon pools). Recorded in the ADR with its measured numbers, and still reported in
+every run — dropped as a *gate*, not hidden as a *fact*.
