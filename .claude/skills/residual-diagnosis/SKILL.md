@@ -524,3 +524,9 @@ make that argument, you are rationalising, not correcting.
 dropped from the re-registered criterion because the mechanism says the anchor cannot affect it (that drift
 lives in the fast core's carbon pools). Recorded in the ADR with its measured numbers, and still reported in
 every run — dropped as a *gate*, not hidden as a *fact*.
+
+**Have the SCRIPT compute the headline statistic, not you.** The `pin1` control figure in ADR 0104 §6 was
+mental arithmetic over a printed 10-row table and it was wrong by 75 % (0.0556 for a true 0.0975). It was
+caught only because the summary was later added to the probe and the number re-derived. A per-row table
+printed by a job is machine truth; **any aggregate you form by reading it is not**, and it will be quoted
+onward as if it were. Add the aggregate to the script and re-run — these probes cost seconds to minutes.
