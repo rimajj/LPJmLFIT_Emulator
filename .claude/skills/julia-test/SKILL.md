@@ -1,6 +1,6 @@
 ---
 name: julia-test
-description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path).
+description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path). ALSO the procedure for LANDING A DEFAULT FLIP (an opt-in flag whose default is known wrong): flip only the default, run the full suite, and let the FAILURE LIST be the measured blast radius -- all three flips so far moved 3 assertions, not the whole tree -- then re-serve guardrail 4 through the opt-out, assert the new default, and audit every control arm that hardcoded the old one.
 ---
 
 # julia-test — run the suite the way CI does
@@ -271,3 +271,31 @@ physics change, and note *which* baseline moved (the "no committed baseline move
 discipline). `scripts/regen_fdiff_baselines.jl` regenerates the F_diff annual-totals set. A `sapwood_bg`
 default-flip additionally moves the `multi_individual` CUE gate (~0.497) and the coupled/decadal
 NPP-derived baselines.
+
+## Landing a DEFAULT FLIP (an opt-in flag whose default is known wrong)
+
+CLAUDE.md §6 guardrail 4's corollary: shipping opt-in protects the baselines during the measurement, and
+then the flag rots. Three have landed this way (`wscal_leafon` ADR 0059, `enable_two_layer` ADR 0075,
+`sapwood_bg`), and the same procedure worked each time.
+
+1. **Flip ONLY the default and run the full CI-faithful suite.** Do not touch a single baseline first. The
+   failure list *is* the blast radius, measured — and all three times it was far smaller than anyone
+   assumed. `wscal_leafon`: **3 failures out of 111 237**, one of them the "default is off" assertion
+   itself and the other two a single cell's pins. `enable_two_layer`: 3, all in E's own gate file.
+2. **Read WHICH cells/gates moved before planning the regeneration.** A flag can be physics-wide in the
+   source and one-cell in effect: `wscal_leafon` changed `semiarid_sahel`'s GPP by **+254 %** and four
+   other biome cells by ≤ 1.2 %, because the two expressions only disagree on leaf-off days.
+3. **Regenerate with the probe that measures BOTH arms**, so the run producing the new numbers also
+   reproduces the old ones (`scripts/biome_ensemble_pin_probe.jl` for the coupled pins). A re-record of
+   "whatever the new code prints" cannot prove the harness ran the gate's own configuration.
+4. **Re-serve guardrail 4 through the OPT-OUT and assert it.** Pin the new default explicitly
+   (`@test WaterParams{Float64}().wscal_leafon === true`) *and* keep a test that runs the old expression —
+   otherwise the next flip is silent.
+5. **⚠ Audit every "control" arm that hardcoded the old default.** A probe arm written as
+   `SEBParams(enable_two_layer = false)` to mean "the default" stops being a control the moment the default
+   moves, and prints numbers under a label that is now false (line E lost a sub-daily `T_skin` verdict to
+   exactly this, ADR 0075 §4). Take the package default by *omission*; pass a flag only when the arm means
+   that specific value.
+6. **Quote the cost in the same sentence as the gain.** The `wscal_leafon` flip moved the Sahel's GPP from
+   0.26× to 0.90× of the C's *and* its ET from 1.19× to 1.26×. Reporting only the first half is the
+   failure mode this repo's guardrails exist to prevent.
