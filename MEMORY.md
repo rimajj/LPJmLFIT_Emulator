@@ -342,6 +342,23 @@ is the offline S.
   ⚠ **Half of it is now moot (ADR 0105, 2026-08-06): clause (2), the level anchor, will not be enabled** —
   its flip criterion failed on the patch ensemble and the default stays `anchor = 0`. The
   authorisation is unchanged for clause (1); do not read the anchor half as an outstanding action.
+- 🎯 **THE ACCEPTANCE CRITERION — what "finished" MEANS (owner, 2026-08-06; ADR 0106). This SUPERSEDES
+  every per-milestone stopping condition, including "at the seed1-vs-seed2 noise floor".** Verbatim: the
+  emulator must **fully emulate the original model**, "of course also and **especially under climate
+  change**"; done = **everything, including trait distributions AND medians, within 10 % error**; and
+  "**only finished when it's proven to be correct on ALL cells, not only a handful of test sites**"
+  (= the 54 020 tree-bearing cells, not the 5 biome cells). Both scenarios AND the response between them.
+  A noise-floor statement is still the right DIAGNOSTIC; it is no longer the ACCEPTANCE TEST, and **no line
+  may call a milestone done on a five-cell result again**.
+  ⚠ **One clause needed a decision and has a stated default, not the owner's words:** the original model is
+  stochastic and its own two runs differ by **29 % of the mean** for the per-patch count at
+  `tropical_amazon` (≈4.7 trees/patch), so a literal 10 % is unmeetable there by ANY emulator. Default in
+  use: tolerance = **max(10 %, the original's own two-run spread for that quantity in that cell)**.
+  ⚠ **The binding constraint is the climate-change clause, not the fidelity numbers.** Trait medians are
+  already 9 of 10 within 10 % at the test cells; but the warming response is indistinguishable from zero
+  where the original rises, and **CO2 is the constant 369 ppm in every training row of every deployed
+  artifact (ADR 0004) ⇒ there is NO CO2 response at all.** Work that improves present-day agreement is not
+  progress toward this criterion unless it also opens a response channel.
 - **HPC compute is not a reason to defer (owner, 2026-08-05).** "When retraining is needed we do it — we
   have the whole HPC at our service, so there is no need to procrastinate." Do not park a measurement or a
   global re-fit *solely* because it costs cluster time; scope it and submit it. (Still SLURM-only and still

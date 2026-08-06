@@ -6,6 +6,32 @@
 
 ## NEXT — start here
 
+
+### 0★ 🎯 THE ACCEPTANCE CRITERION CHANGED — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
+
+The owner has stated what **finished** means, and it **supersedes every per-milestone stopping condition on
+every line**, including "at the seed1-vs-seed2 noise floor" and any five-cell verdict read as sufficient:
+
+> the emulator must **fully emulate the original model**, "of course also and **especially under climate
+> change**"; done = **everything, including trait distributions AND medians, within 10 % error**; and it is
+> "**only finished when it's proven to be correct on ALL cells, not only a handful of test sites**".
+
+**All cells = the 54 020 tree-bearing cells**, not 5 biome cells. **Both scenarios AND the response between
+them.** A noise-floor statement is still the right *diagnostic*; it is no longer the *acceptance test*, and
+**no line may call a milestone done on a five-cell result again** — nor present one as fidelity evidence
+without saying it is 5 of 54 020.
+
+⚠ **The binding constraint is the climate-change clause, not the fidelity numbers.** Trait medians are
+already 9 of 10 within 10 % at the test cells, but the emulator's warming response is indistinguishable from
+zero where the original rises, and **CO2 is a constant in every training row of every deployed artifact, so
+there is NO CO2 response at all** (ADR 0004). **Work that improves present-day agreement is not progress
+toward this criterion unless it also opens a response channel.** Plan accordingly.
+
+⚠ One clause needed a decision and carries a stated default, not the owner's words: the original model is
+stochastic and its own two runs differ by **29 % of the mean** for the per-patch count in a low-density cell,
+so a literal 10 % is unmeetable there by ANY emulator. Default in use: tolerance =
+**max(10 %, the original's own two-run spread for that quantity in that cell)**. Full record: ADR 0106.
+
 **E7b is DONE (ADR 0075): the two-layer prognostic ground-heat column is now the PACKAGE DEFAULT.** Line M's
 pre-registered ask (ADR 0058 §5) is ANSWERED and the repo no longer runs two ground-heat schemes in different
 gates. **Nothing is owed to M any more; the reply is recorded in `lines/M/STATE.md`.** The next action is
