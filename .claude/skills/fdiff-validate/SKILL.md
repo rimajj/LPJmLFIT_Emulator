@@ -267,4 +267,4 @@ Same cluster-measures / CI-gates split as the two oracles above. What is NOT obv
   `whc_nat`, per-cell canopy, the `M_*` fixtures, the per-cell `d_fapar` oracle re-run, ADR 0050). This skill
   covers *validating* F_diff on a cell whose inputs already exist.
 
-Full history of the C-validation work: `docs/phase3_fdiff_cbinary_validation.md`.
+Full history of the C-validation work: `docs/notes/phase3_fdiff_cbinary_validation.md`.

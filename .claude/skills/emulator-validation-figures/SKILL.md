@@ -334,12 +334,12 @@ The decomposition is exact for MEANS only (closure must be ~0; measured -4.55e-1
 - For `SCENARIO=ssp370`: derive `cell_year_{soilmoist,lai}_ssp.parquet` + train the ssp370 DRF first
   (`slow-drf-pipeline`), then run this with `SCENARIO=ssp370`.
 
-## Rebuilding the public LaTeX report (`docs/component_s_public_report.tex`)
+## Rebuilding the public LaTeX report (`docs/report/component_s_public_report.tex`)
 
-The general-audience report consumes these figures as renamed copies in `docs/figs/`
+The general-audience report consumes these figures as renamed copies in `docs/report/figs/`
 (`01_map_observed.png` → `count_map_observed.png`, `09_trait_marginals.png` → `trait_marginals.png`, etc. —
 `\graphicspath{{figs/}}`). When you regenerate a generation's figures, re-copy them there or the report
-silently keeps showing the OLD generation's plots. Confirm which generation `docs/figs/` currently holds by
+silently keeps showing the OLD generation's plots. Confirm which generation `docs/report/figs/` currently holds by
 comparing byte sizes against `figures/emulator_validation/<gen>/` — they are plain copies, so sizes match
 exactly.
 
@@ -367,7 +367,7 @@ source.
   is a **page count that drops** (33 vs 34) plus a screenful of `Reference 'sec:x' undefined`. Three passes
   in a row is the safe recipe when you added a `\label` (pass 3 settles `Label(s) may have changed`).
 - **Build the COMMITTED version in a temp dir as a control before "fixing" any warning.**
-  `git show HEAD:docs/component_s_public_report.tex > /tmp/c/r.tex; ln -s $PWD/docs/figs /tmp/c/figs` then
+  `git show HEAD:docs/report/component_s_public_report.tex > /tmp/c/r.tex; ln -s $PWD/docs/report/figs /tmp/c/figs` then
   build there. The report ships with a **pre-existing** 10.6 pt overfull `\hbox` in `tab:scale` and a 0.97 pt
   one in `tab:recorded`; without the control you cannot tell which warnings your edit introduced, and you will
   either chase someone else's or ship your own.

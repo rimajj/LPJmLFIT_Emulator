@@ -1,4 +1,4 @@
-# P1 Steps 6+7 (docs/p1_s_in_loop_design.md §7) — Component S IN the coupled loop. The Tier-0
+# P1 Steps 6+7 (docs/notes/p1_s_in_loop_design.md §7) — Component S IN the coupled loop. The Tier-0
 # `DemographicSlowEmulator` owns the per-cell population (count N, establishment, mortality; ADR 0018)
 # while F_diff owns the representative individuals' CARBON growth; carbon is conserved at the S↔F handoff
 # by routing every movement through a `CarbonLedger` (flux-then-integrate, ADR 0003). These testitems are

@@ -1,5 +1,5 @@
 # Gate — dynamic (prognostic within-year) canopy structure (ADR 0014 scale-up step 6;
-# docs/phase3_fdiff_cbinary_validation.md §12). The multi-individual canopy (step 3) fixed each
+# docs/notes/phase3_fdiff_cbinary_validation.md §12). The multi-individual canopy (step 3) fixed each
 # individual's structure at its year-END value; here the per-individual carbon pools become PROGNOSTIC:
 # they accumulate the daily bm_inc (= Σ daily NPP) and, at the annual boundary, GROW via a faithful
 # DIFFERENTIABLE port of the LPJmL-FIT year-end sequence turnover_tree.c → allocation_tree.c →

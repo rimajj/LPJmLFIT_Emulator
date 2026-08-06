@@ -1,5 +1,5 @@
 # P1 Step 9 / Gate-4 — measure the coupled-emulator cost of putting Component S in the loop, the honest
-# way (docs/p1_s_in_loop_design.md §5). Run on a compute node (NOT the login node) for stable timings:
+# way (docs/notes/p1_s_in_loop_design.md §5). Run on a compute node (NOT the login node) for stable timings:
 #   scripts/sbatch_train.sh scripts/bench_slow_speedup.jl      # or plain: julia --project=. scripts/bench_slow_speedup.jl
 #
 # TWO baselines, both named so the metric cannot move silently:

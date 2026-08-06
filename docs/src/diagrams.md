@@ -7,6 +7,13 @@ CurrentModule = LPJmLFITEmulator
 A picture of where every piece sits. There are **two sets** of diagrams, and the governance rule that
 resolves the tension between them is the important part (ENGINEERING_STANDARDS §5).
 
+!!! tip "Looking for the complete data flow?"
+    The diagrams on this page are **subsystem-level** — the four boxes S / F / E / atmosphere and the
+    handoffs between them. For the *full* inventory — every input dataset LPJmL-FIT is driven by, its
+    outputs, the derived training tables, the learned artifacts, and what each component reads — see
+    [The full data flow](explanation/dataflow.md). That diagram is generated from the same registry and is
+    covered by the staleness, reflection, provenance and structure gates described there.
+
 ## Governance: curated vs derived
 
 | | **Curated** | **Derived** |

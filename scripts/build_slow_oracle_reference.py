@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract the Hainich (global-grid cell 42490) ground-truth S-owned marginal distribution.
 
-This is the Gate-3 ORACLE reference (docs/p1_s_in_loop_design.md §6, risk #3): the LPJmL-FIT C
+This is the Gate-3 ORACLE reference (docs/notes/p1_s_in_loop_design.md §6, risk #3): the LPJmL-FIT C
 ground-truth trait/size DISTRIBUTION + living count the coupled flux-driven Component S is compared
 against at Hainich. The axes S owns are the count N (living tree stems / patch), the size axes
 {Height, Age}, and the trait axes {SLA, Wooddens, beta_root}. In individual=true each ``ind`` row is
@@ -75,7 +75,7 @@ def main() -> int:
     with open(counts_path, "w") as f:
         f.write("# Hainich (global-grid cell 42490) LPJmL-FIT ground-truth living-tree COUNT trajectory,\n")
         f.write(f"# seed{seed}, historical 2000-2019. N = living ind rows (individual=true; each row = 1 stem).\n")
-        f.write("# Gate-3 oracle reference for the coupled flux-driven Component S (docs/p1_s_in_loop_design.md 6).\n")
+        f.write("# Gate-3 oracle reference for the coupled flux-driven Component S (docs/notes/p1_s_in_loop_design.md 6).\n")
         f.write(counts.write_csv())
     print(f"== wrote {counts_path} ({counts.height} years)")
 

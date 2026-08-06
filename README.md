@@ -34,7 +34,8 @@ Everything is designed so you can understand and control the project from docume
 esm_land_emulator/
 ├── src/                 Julia package (S/F/E, shared state, interface contract, conservation helpers)
 ├── test/                @testitem scientific gates (conservation, gradients, rollout stability, resilience …)
-├── docs/                Documenter.jl site (Diátaxis) + decisions/ (ADRs) + GMD model description
+├── docs/                src/ = Documenter.jl site (Diátaxis) · decisions/ (ADRs) · notes/ (engineering
+│                        write-ups, not published) · report/ (LaTeX + figs) — see docs/README.md
 ├── scripts/             gen_diagrams.jl (code/config-derived diagrams), run helpers
 ├── python/              slow-emulator (S) prototype (LightGBM/copula; uv + pytest + Hypothesis)
 ├── config/              paths.yaml, hpc_slurm.yaml, environment.yml  (config-driven; no magic numbers)

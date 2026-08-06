@@ -1,5 +1,5 @@
 # Online transient bioclimatic boundary — the coupled-run "Climbuf" (ADR 0026/0027; src/climbuf.jl,
-# docs/online_transient_boundary_climbuf.md). Two gates:
+# docs/notes/online_transient_boundary_climbuf.md). Two gates:
 #   • OFFLINE PARITY (the load-bearing train/inference contract, ADR 0023): the Julia `ClimBuf` must
 #     reproduce `scripts/build_transient_boundary.py` — the daily→monthly reduction, the trailing-W-yr
 #     window climatology, and the Thom-1966 monthly gdd5 + coldest-month boundary — from a committed Hainich

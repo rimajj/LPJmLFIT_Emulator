@@ -2,7 +2,7 @@
 # isolates the ALLOCATION/structure growth from the un-calibrated self-NPP). Start from 2009 structure,
 # apply 2010 forcing + the C's 2010 per-individual bm_inc, verify the grown structure reproduces the C's
 # 2009→2010 growth, and that a multi-year self-loop stays physical. Trees only (grass held out, v1).
-# See docs/phase3_fdiff_cbinary_validation.md §12. The committed CI gate is
+# See docs/notes/phase3_fdiff_cbinary_validation.md §12. The committed CI gate is
 # test/testitems/dynamic_structure_tests.jl (self-contained on the 2010 reference). This driver needs the
 # multi-year /p/tmp reconstruction first:
 #   /home/jamirp/.conda/envs/py311_new/bin/python scripts/extract_fdiff_individuals_multiyear.py

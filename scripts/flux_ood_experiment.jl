@@ -2,7 +2,7 @@
 #
 # ADR 0020 governs that S conditions on F's DELIVERED FLUXES + AR state + the slow bioclimatic
 # boundary (dropping this-year raw climate), and the climate-only DirectEmulator is the OOD benchmark.
-# The falsifiable success test (docs/p1_s_in_loop_design.md risk #2): the flux-driven channel must
+# The falsifiable success test (docs/notes/p1_s_in_loop_design.md risk #2): the flux-driven channel must
 # GENERALISE to the warm+dry OOD holdout BETTER than the climate channel. If it does not, ADR 0020 is
 # falsified for the count target.
 #

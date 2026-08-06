@@ -1,6 +1,6 @@
 # Hainich (global-grid cell 42490) LPJmL-FIT ground-truth living-tree COUNT trajectory,
 # seed1, historical 2000-2019. N = living ind rows (individual=true; each row = 1 stem).
-# Gate-3 oracle reference for the coupled flux-driven Component S (docs/p1_s_in_loop_design.md 6).
+# Gate-3 oracle reference for the coupled flux-driven Component S (docs/notes/p1_s_in_loop_design.md 6).
 Year,n_living_alltree,n_living_beech,npatch,N_beech_per_patch_mean,N_beech_per_patch_p50,N_beech_per_patch_max
 2000,306,288,25,11.52,12.0,19.0
 2001,302,285,25,11.4,12.0,19.0

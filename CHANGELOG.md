@@ -7,6 +7,55 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **A FULL data-flow diagram, generated from the code, plus the staleness gate that was missing
+  ([ADR 0091](docs/decisions/0091-the-full-dataflow-diagram-is-code-derived-and-the-staleness-gate-becomes-real.md);
+  owner request 2026-08-06).** New page `docs/src/explanation/dataflow.md` embedding a new generated
+  `docs/src/generated/dataflow_full.mmd`: every input dataset LPJmL-FIT is driven by, the C model, its
+  outputs, the derived training tables, the two learned artifacts, and the runtime S/F/E seam — with
+  offline training/validation paths **dashed** so a coupled run is visually distinct from the pipeline
+  that built it. `src/registry.jl` gains `DataNode`/`DataEdge`/`STAGES`/`DATA_NODES`/`DATA_EDGES`, purely
+  additive: `COMPONENTS`/`FLUXES` and both pre-existing generated diagrams are **byte-identical**
+  (guardrail 4). **Runtime edge labels are REFLECTED from `fieldnames` of the `src/interface.jl` structs**
+  (new `payload_type` field), so the diagram tracks the interface contract mechanically — adding a field
+  to `SToF` changes the diagram.
+  **The gate:** `.github/workflows/CI.yml` had watched `docs/src/generated/**` since the beginning,
+  annotated *"diagram fixtures the suite compares against registry.jl"*, and
+  [ADR 0090](docs/decisions/0090-ci-runs-only-when-it-can-change-the-verdict.md) repeated it — but **no
+  test compared them**, and `docs/src/generated/components.mmd` was consequently stale from the Phase-4
+  commit `773945fb` for weeks, contradicting `src/registry.jl` with nothing failing. New
+  `test/testitems/diagram_registry_tests.jl` closes it with four gates: staleness (byte-compare against a
+  regeneration), reflection (every typed edge's label == its struct's `fieldnames`, field **count**
+  included, so a hand-edited label cannot pass), provenance (every `DataNode.path_key` resolves in
+  `config/paths.yaml`, via a ~20-line Base indentation reader so runtime `[deps]` stays empty, ADR 0014),
+  and structure (no dangling endpoint, orphan node, unrendered stage, empty stage or duplicate id).
+  `gen_diagrams.jl`'s `main(ARGS)` is now guarded by `abspath(PROGRAM_FILE) == @__FILE__` — the test
+  *includes* the script, and an unguarded run would regenerate the fixtures mid-test and destroy the
+  signal. Alarm verified to fire both ways (perturbed ⇒ exit 1, restored ⇒ exit 0). Documents, for the
+  first time, that F computes light competition, photosynthesis and respiration **per individual tree**
+  while water demand is stand-level *as in the original*, and that the earlier single-representative-tree
+  core was −42 % GPP / +45 % transpiration.
+- **`docs/README.md` + `docs/notes/README.md`** — a layout index for `docs/`: what each subdirectory is,
+  which CI gate it triggers (most of `docs/` triggers **none**), and where a new document belongs.
+
+### Changed
+- **`docs/` reorganised (ADR 0091).** The ten loose engineering notes moved from the top level of `docs/`
+  into `docs/notes/`; the general-audience LaTeX report moved to `docs/report/` and `docs/figs/` with it
+  to `docs/report/figs/` (which keeps `\graphicspath{{figs/}}` valid — **the `.tex` is unchanged**). The
+  notes were **misfiled, not obsolete**: every one is cited by name from live source and tests, and
+  `phase3_fdiff_cbinary_validation.md` alone has 31 inbound references including `src/fdiff.jl` and about
+  ten test files. References were rewritten in live files only; **append-only history**
+  (`CHANGELOG.md`, `JOURNAL.md`, `docs/archive/**`, `changelog.d/*`) and the **immutable numbered decision
+  records** keep the old paths, which correctly describe where the files were when written — both new
+  READMEs record the move and date. Comment-only pointer fixes landed in three committed reference
+  fixtures; **no baseline moved** (their readers skip `#` lines, so no compared value changed).
+- **Corrected three places that documented the diagram gate as non-existent or local-only** —
+  `CI.yml`'s path comment, `CLAUDE.md` §2/§9, and the `julia-test` skill (which explicitly said *"NO CI
+  job runs this check … don't assume CI will catch it"*). The skill now also records the surprising
+  trigger: an `src/interface.jl` field change reds the suite with no registry edit at all.
+- **`docs/src/howto/build_docs.md`** absorbed the one unique tip from an untracked, mostly duplicate
+  `docs/viewing_built_docs.md` (serving the built site over HTTP), which was then deleted; the page also
+  gained the `DOCS_LINKCHECK=false` HPC note and a correction — the diagram alarm is enforced by the test
+  suite, not by the `docs` job.
 - **Component S — ONLINE transient boundary "Climbuf" BUILT ([ADR 0027](docs/decisions/0027-adopt-transient-boundary-production.md)'s "to build").**
   The coupled-run counterpart of S's offline pre-baked `boundary_series`: `ClimBuf` (`src/climbuf.jl`) is a
   per-cell trailing-W-yr climate ring (default `W=CLIMBUFSIZE=20`, mirroring FIT's Climbuf) the coupled driver

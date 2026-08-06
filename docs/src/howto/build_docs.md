@@ -15,7 +15,22 @@ julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
-The rendered site is written to `docs/build/`; open `docs/build/index.html` in a browser.
+The rendered site is written to `docs/build/` (git-ignored); open `docs/build/index.html` in a browser.
+
+!!! tip "Browsing over HTTP instead of `file://`"
+    A few things (search, some relative links) behave better when served. From the repo root:
+
+    ```bash
+    python3 -m http.server --directory docs/build 8000
+    ```
+
+    then open `http://localhost:8000/`.
+
+!!! warning "On the HPC, turn the link check off"
+    The cluster has restricted outbound network access, so the external-link check cannot pass
+    locally. Build with `DOCS_LINKCHECK=false julia --project=docs docs/make.jl`; CI leaves the check
+    on. Note also that the `docs` gate deliberately does **not** run on branches (it would race the
+    GitHub Pages deploy), so a docs break only surfaces on `main` unless you build locally first.
 
 !!! tip "Pretty URLs"
     `docs/make.jl` sets `prettyurls = get(ENV, "CI", "false") == "true"`. Locally (CI unset) pages are
@@ -46,9 +61,20 @@ citing its key.
 
 Curated Mermaid diagrams live under `docs/src/assets/diagrams/*.mmd`; the **code-derived** diagrams
 are emitted by `scripts/gen_diagrams.jl` from the package's own [`COMPONENTS`](@ref) / [`FLUXES`](@ref)
-registry to `docs/src/generated/*.mmd`. Both are embedded here and render via DocumenterMermaid.jl. CI
-re-runs `gen_diagrams.jl` and fails on `git diff --exit-code` if a committed derived diagram is stale —
-the diff alarm. See [Diagrams](../diagrams.md) for the governance rule.
+and [`DATA_NODES`](@ref) / [`DATA_EDGES`](@ref) registries to `docs/src/generated/*.mmd`. Both are
+embedded in the docs and render via DocumenterMermaid.jl.
+
+Regenerate after any registry or interface change:
+
+```bash
+julia --project=. scripts/gen_diagrams.jl            # rewrite    (needs --project=.)
+julia --project=. scripts/gen_diagrams.jl --check    # report staleness only
+```
+
+The staleness alarm is enforced by the **test suite**, not by the `docs` job:
+`test/testitems/diagram_registry_tests.jl` regenerates the diagrams and fails on any difference, so it
+runs under the `CI` gate. See [Diagrams](../diagrams.md) for the curated-vs-derived governance rule and
+[The full data flow](../explanation/dataflow.md) for the four gates on the full graph.
 
 ## Deploy
 

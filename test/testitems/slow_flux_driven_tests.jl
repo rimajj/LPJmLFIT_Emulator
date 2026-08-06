@@ -1,4 +1,4 @@
-# P1 Tier-1 (docs/p1_s_in_loop_design.md §7 step 8; ADR 0020/0021/0022) — the FLUX-DRIVEN Component S in
+# P1 Tier-1 (docs/notes/p1_s_in_loop_design.md §7 step 8; ADR 0020/0021/0022) — the FLUX-DRIVEN Component S in
 # the coupled loop. `FluxDrivenSlowEmulator` sets the demography TARGET from a trained flux-conditioned DRF
 # (`src/drf.jl`, the zero-dep native-Julia forest) instead of Tier-0's constant rate, and moves the coupled
 # tree density toward `target/n_prev` through the SAME carbon-conserving machinery Tier-0 uses. These

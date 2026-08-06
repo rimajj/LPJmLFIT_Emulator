@@ -1,4 +1,4 @@
-# Gate — quantitative C-binary validation (ADR 0014 scale-up step 1; docs/phase3_fdiff_cbinary_validation.md).
+# Gate — quantitative C-binary validation (ADR 0014 scale-up step 1; docs/notes/phase3_fdiff_cbinary_validation.md).
 # Replaces the "F_diff pinned against ITSELF" note in numerical_regression_tests.jl with a real
 # "same physics" cross-check: F_diff, driven by the Hainich prototype cell's REAL daily .clm forcing
 # and the LPJmL-FIT C binary's ACTUAL daily FAPAR (kernel-isolation drive), is compared to the C

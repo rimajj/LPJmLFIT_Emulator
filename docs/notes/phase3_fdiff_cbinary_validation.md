@@ -4,7 +4,7 @@
 was driven by the Hainich prototype cell's **real daily forcing** and the LPJmL-FIT **C binary's own
 daily FAPAR**, and its daily GPP / transpiration / PET compared against the C binary's daily outputs
 for the same cell. This replaces the previous regression gate (which pinned `F_diff` against *itself*
-on a synthetic scenario — `docs/phase3_fdiff_spike.md` §5) with a real cross-check against the C oracle.
+on a synthetic scenario — `docs/notes/phase3_fdiff_spike.md` §5) with a real cross-check against the C oracle.
 
 **Headline:**
 - **The radiation / Priestley–Taylor PET path is quantitatively validated:** daily PET ratio **1.05**,
@@ -158,7 +158,7 @@ JULIA_DEPOT_PATH=$HOME/.julia julia --project=. -e 'import Pkg; Pkg.test()'   # 
 
 ---
 
-## 7. What this changes for the scale-up plan (`docs/phase3_fdiff_spike.md` §7)
+## 7. What this changes for the scale-up plan (`docs/notes/phase3_fdiff_spike.md` §7)
 
 The PET/radiation path is now quantitatively confirmed against the C oracle, so it drops off the risk
 list. The measured GPP/transpiration **level** gaps now have concrete targets and expected signs,
@@ -1853,7 +1853,7 @@ lever that demonstrates the channel, not the fix.
 change**; the runtime `[deps]` stays EMPTY. SLURM outputs are ephemeral (`logs/` is git-ignored); the numbers
 above are the committed record.
 
-**★ CORRECTION #2 + SCOPING (session 27; full design in `docs/water_supply_perpft_design.md`).** Turning the
+**★ CORRECTION #2 + SCOPING (session 27; full design in `docs/notes/water_supply_perpft_design.md`).** Turning the
 above "FIX DIRECTION" into an implementable design (a code-verified deep-read of `water_stressed.c` +
 `daily_natural.c` vs `daily_step_canopy`) surfaced two load-bearing refinements to this §26.4 framing:
 - **The mechanism SHARPENS to the `aet_cor` competitive cap ALONE — the per-PFT `wscal` half is degenerate
@@ -1878,7 +1878,7 @@ above "FIX DIRECTION" into an implementable design (a code-verified deep-read of
   recommendation is to close the 2018 grass amplitude residual with the `FluxHooks` learned per-individual
   correction (its feature vector already sees the shared `wr` + per-individual `apar`, `fdiff.jl:56,68`) —
   exactly as the §26/§26.1 grass LEVEL gap was deferred — and pursue the structural cap only if the learned
-  lever proves insufficient. `docs/water_supply_perpft_design.md` §7 specifies the two scripts-only
+  lever proves insufficient. `docs/notes/water_supply_perpft_design.md` §7 specifies the two scripts-only
   de-risking probes (a deterministic-vs-Monte-Carlo-PERMUTE `aet_cor` magnitude probe + an Enzyme-feasibility
   spike) to run before any `src/` edit.
 

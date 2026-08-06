@@ -20,7 +20,11 @@ on:
       - 'ext/**'
       - 'test/**'
       - 'Project.toml'
-      - 'docs/src/generated/**'   # diagram fixtures the suite compares against registry.jl
+      # Diagram fixtures. `test/testitems/diagram_registry_tests.jl` regenerates these from
+      # src/registry.jl and fails on any difference (ADR 0091). NB this comment described an
+      # INTENDED gate for months while no test actually compared them — which is how
+      # docs/src/generated/components.mmd stayed stale for weeks. It is now true.
+      - 'docs/src/generated/**'
       - '.github/workflows/CI.yml'
   pull_request:
     branches:

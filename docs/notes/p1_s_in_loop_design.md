@@ -48,7 +48,7 @@ greff mortality rate `mort = mort_max/(1+k_mort·growth_eff)`; `FToS.water_stres
 climate-equilibrium**: the Tier-1 ML weights must be **retrained flux-conditioned** (on F's delivered fluxes
 + AR state + slow bioclimatic boundary; this-year raw climate dropped), and the climate-only `DirectEmulator`
 is demoted to the **OOD benchmark**. The FToS-conditioned retrain that this design doc had deferred as
-"post-P1" is **in scope** — its data task is `docs/slow_flux_conditioning_data_spec.md`, and the flux-driven
+"post-P1" is **in scope** — its data task is `docs/notes/slow_flux_conditioning_data_spec.md`, and the flux-driven
 S beating the climate-only baseline on the warm+dry OOD holdout is the falsifiable P1/P2 success test.
 (Tier-0's physical-rate channel — `FToS.growth_eff`/`water_stress`/`soilmoist` — is already flux-driven; the
 change is that the ML channel is retrained on fluxes rather than climate.)
@@ -190,7 +190,7 @@ BEFORE chasing any miss.
    `norminv`/`normcdf`/`GaussianCopula`/`sample_copula!` in `src/drf.jl`; recovers a target correlation, deterministic).
    **Still open (v3):** the GLOBAL runtime-consistent DRF (C-`LAI_STAND` + daily `swc`, many cells, C-truth demography
    target — a Phase-2 SLURM data pipeline); WIRING the copula into establishment (needs recruit-cohort APPEND, risk #5);
-   the annual-statistics `FToS` extension (`docs/slow_flux_conditioning_data_spec.md` §5); the in-loop OOD win; promoting
+   the annual-statistics `FToS` extension (`docs/notes/slow_flux_conditioning_data_spec.md` §5); the in-loop OOD win; promoting
    the runtime `age_mean` to a true per-cohort mean age + retrain (ADR 0023 §3).
 9. **`scripts/bench_slow_speedup.jl` + Gate-4 testitem**: overhead + K≪N structural invariant; the script
    records the wall-time ratios off the login node. **[DONE — structural invariant (fixed K-cohort roster) is
@@ -207,7 +207,7 @@ BEFORE chasing any miss.
    climate/state until an FToS-conditioned retrain.~~ **CLOSED by [ADR 0020](decisions/0020-component-s-flux-driven.md):**
    the flux-conditioned retrain is now the governing spec, not a deferred gap. The residual risk is that the
    flux-driven S must actually *close* the warm+dry OOD gap (else ADR 0020 is falsified) — and that the
-   extended Phase-1 data (`docs/slow_flux_conditioning_data_spec.md`) must be materialised first.
+   extended Phase-1 data (`docs/notes/slow_flux_conditioning_data_spec.md`) must be materialised first.
 3. Gate-3 recursive-vs-non-recursive basis mismatch: the coupled Height marginal may miss the offline
    panel's 0.020 floor with no bug — the oracle testitem (vs LPJmL truth) is the real test; re-derive its
    yardstick; use residual-diagnosis + honest tolerance framing.

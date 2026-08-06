@@ -9,7 +9,7 @@
 # agreement for PET (eeq*1.32), growing-season GPP, and transpiration. Writes a
 # metrics JSON to artifacts/metrics/. The committed CI gate is the year-2010
 # subset (test/testitems/cbinary_validation_tests.jl); this driver is the broader
-# multi-year analysis behind docs/phase3_fdiff_cbinary_validation.md.
+# multi-year analysis behind docs/notes/phase3_fdiff_cbinary_validation.md.
 #
 # Run (login node OK — pure Julia, no HPC):
 #   JULIA_DEPOT_PATH=$HOME/.julia julia --project=. scripts/validate_fdiff_vs_cbinary.jl

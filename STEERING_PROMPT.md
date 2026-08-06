@@ -149,7 +149,7 @@ LightGBM+copula to Julia — ADR 0019); wire it into `run_coupled_cell`; impleme
 stress-day counts) + AR state + the slow bioclimatic boundary (Climbuf, coldest-month T, gdd5, CO₂, soil,
 stand age); **drop this-year raw climate** (F already turned it into fluxes → re-feeding double-counts and
 re-opens the OOD failure). Retrain S flux-conditioned (teacher-forced on LPJmL's true fluxes; the extended
-Phase-1 data is `docs/slow_flux_conditioning_data_spec.md`), keeping the climate-only `DirectEmulator` only
+Phase-1 data is `docs/notes/slow_flux_conditioning_data_spec.md`), keeping the climate-only `DirectEmulator` only
 as the OOD benchmark; fine-tune online vs F_diff's delivered fluxes at P4.
 *Gate:* S+F+E runs on Hainich; carbon conserved ~1e-6; coupled trait/size distribution matches the
 offline-S panel; **the flux-driven S beats the climate-only `DirectEmulator` on the warm+dry OOD holdout**

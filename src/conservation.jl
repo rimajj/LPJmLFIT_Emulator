@@ -91,7 +91,7 @@ latent_heat(et::Real; sublimation::Bool = false) =
 # scalar litter/veg fields are immutable in v1, so the handoff carries its OWN mutable carbon sink.
 # Type-agnostic (scalars only — this file is included BEFORE `fdiff.jl`): the caller computes per-cohort
 # vegetation carbon via `FDiff.vegc_full_ind` (which INCLUDES `sapwood_bg_c`; routing mortality on
-# `vegc_ind` would silently leak a seeded below-ground pool). See `docs/p1_s_in_loop_design.md` §4.
+# `vegc_ind` would silently leak a seeded below-ground pool). See `docs/notes/p1_s_in_loop_design.md` §4.
 
 """
     CarbonLedger{T}

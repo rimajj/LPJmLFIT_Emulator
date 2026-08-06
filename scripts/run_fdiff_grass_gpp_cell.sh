@@ -15,7 +15,7 @@
 #    the C run's ACTUAL daily light absorption a GPP comparison confounds
 #    "different physics" with "different canopy" (phenology is the dominant
 #    confound — RANK 1). This run adds daily FAPAR + NV_LAI so the comparison is
-#    apples-to-apples (see docs/phase3_fdiff_cbinary_validation.md).
+#    apples-to-apples (see docs/notes/phase3_fdiff_cbinary_validation.md).
 #  - daily FAPAR IS filled for NATURAL vegetation (src/lpj/daily_natural.c:219,
 #    pft->fapar from src/tree/albedo_tree.c:75) and FAPAR is NOT annual-capped
 #    (src/lpj/getmintimestep.c) -> requesting "daily" is accepted.

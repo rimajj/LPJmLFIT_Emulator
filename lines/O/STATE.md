@@ -42,7 +42,7 @@ so a literal 10 % is unmeetable there by ANY emulator. Default in use: tolerance
 **Licensing is CLOSED (ADR 0081) — reuse Terrarium / SpeedyWeather / LPJmL-FIT / NeuralCrop.jl freely (yes,
 NeuralCrop too: CC-BY-NC permits our research use), just cite them (`reuse-citation`).**
 
-**Read `online-coupling-env` (8 traps) + `docs/p4_online_coupling_design.md` + ADR 0082/0083 before touching code.**
+**Read `online-coupling-env` (8 traps) + `docs/notes/p4_online_coupling_design.md` + ADR 0082/0083 before touching code.**
 Two of those traps are new and both are SILENT: **(7)** SpeedyWeather's Terrarium adapter builds its
 integrator with an empty `InputSources`, so a prescribed input `Field` must be passed as
 `TerrariumLand.fields` — the documented `InputSource` path is dropped and the variable falls back to its
@@ -180,7 +180,7 @@ both make Terrarium's vegetation path unusable out of the box.
 **You own (exclusive):**
 - `ext/SpeedyWeatherTerrariumExt.jl` (or whatever the extension is named) + any new `ext/` file — and `ext/`
   generally (`CLAUDE.md` §9: "`ext/` to O"), which includes the existing `ext/FDiffTrainingExt.jl`
-- `docs/p4_online_coupling_design.md` (**written 2026-07-28** — the design of record; keep it current)
+- `docs/notes/p4_online_coupling_design.md` (**written 2026-07-28** — the design of record; keep it current)
 - `scripts/online_coupling/*` (the verified SpeedyWeather+Terrarium harness)
 - `docs/third_party_licensing.md` (the reuse + **citation** register; keep it current — ADR 0081)
 - `lines/O/*`, `changelog.d/O-*.md`, ADRs 0080–0089
@@ -243,7 +243,7 @@ the LPJmL-FIT and TUM-PIK-ESM groups) ⇒ reuse is authorized outright and nothi
   Register + gate: `docs/third_party_licensing.md` + the `dependency-license-gate` skill. ADR 0017 annotated,
   not superseded. Then **ADR 0081 — the owner CLOSED the topic**: he is in both the LPJmL-FIT and TUM-PIK-ESM groups ⇒
   reuse authorized, no residual, obligation = transparent citation only. **Do not reopen.**
-- **O2** **Write `docs/p4_online_coupling_design.md`** — the missing design of record: which Terrarium
+- **O2** **Write `docs/notes/p4_online_coupling_design.md`** — the missing design of record: which Terrarium
   `Abstract*` interfaces S/F/E sit behind, the indirect-coupling variable list, the sub-cycling/timestep story
   (F is daily; SpeedyWeather steps ~300 s), Float32 throughout, how `ClimBuf` gets its spin-up climatology on a
   cold start, and the conservation story across the interface. Validate the design **against the real API** in

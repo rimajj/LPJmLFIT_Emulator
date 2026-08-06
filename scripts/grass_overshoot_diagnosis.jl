@@ -1,6 +1,6 @@
 # =============================================================================
 # grass_overshoot_diagnosis.jl — reproduce the SESSION-17 grass-overshoot re-diagnosis
-# (docs/phase3_fdiff_cbinary_validation.md §22). Session 16 (§21) attributed the §20
+# (docs/notes/phase3_fdiff_cbinary_validation.md §22). Session 16 (§21) attributed the §20
 # self-driven grass-NPP overshoot (~3x) to the shared stand-mean conductance `gp_stand`
 # "over-supplying the understory grass" and set PER-PFT conductance as the next step.
 # This script REFUTES that attribution three ways, on the committed Hainich 2010/2008

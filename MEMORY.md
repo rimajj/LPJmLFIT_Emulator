@@ -390,6 +390,7 @@ The subset that constrains *any* line's work — violating one of these silently
 | 0028 | **Branch + worktree per line**, self-merge on green branch CI (supersedes 0013's main-only) |
 | 0029 | **Per-path line ownership + frozen cross-line contracts** — don't edit another line's exclusive paths |
 | 0090 | **CI is PATH-FILTERED — most commits trigger NO gate** (owner decision): a gate that does not trigger reports **no check-run**, so polling for `test (lts)` hangs forever; derive the expected set from `git diff --name-only origin/main...HEAD`. Opens the 0090–0099 integrator block (0001–0029 exhausted) |
+| 0091 | **The full data-flow diagram is code-derived, and the staleness gate is REAL now** — `docs/src/generated/dataflow_full.mmd` is generated from `registry.jl`'s new `DATA_NODES`/`DATA_EDGES`, and component-to-component edge labels are `fieldnames()` of the `src/interface.jl` structs. ⚠ **Changing ONE field of `SToF`/`FToS`/`FToE`/`EToF`/`EToATM`/`SToE`/`AtmForcing` makes the committed diagram stale and reds `CI`, with no registry edit at all** — rerun `julia --project=. scripts/gen_diagrams.jl` in the same commit. Before this, `CI.yml` and ADR 0090 both CLAIMED the suite compared these fixtures and no test did, so `components.mmd` contradicted `registry.jl` for weeks |
 | guardrail 4 | **Opt-in, default byte-identical** — new physics leaves every committed baseline and the AD trainer unchanged until deliberately enabled |
 
 
@@ -447,11 +448,11 @@ copula conditions on flux+boundary and deliberately excludes stand-state (ADR 00
   (tree-dominated, saturates near 1) with no competitive per-layer depletion, vs C's per-PFT `wscal` +
   sequential `aet_cor` cap. **Deferred behind the `FluxHooks` learned lever** because `-DPERMUTE` makes a
   faithful port non-differentiable/non-deterministic and per-PFT `wscal` is half-degenerate
-  (`EMAX_ANGIO=EMAX_GRASS=10`, shared `beta_root=0.8`). Design: `docs/water_supply_perpft_design.md`.
+  (`EMAX_ANGIO=EMAX_GRASS=10`, shared `beta_root=0.8`). Design: `docs/notes/water_supply_perpft_design.md`.
 - **[TODO] `sapwood_bg` prognostic growth**: the below-ground root-sapwood pool is added but **static-seeded**
   (opt-in, default byte-identical; in-model CUE 0.512→0.497). Finishing it (C_LATERAL pool growth +
   carbon-debt loan in `grow_individual`, the Enzyme SoA thread, flip the seed on + regenerate the CUE ~0.497
-  and coupled/decadal baselines) closes only ~40–50% of the 0.51→0.46 CUE gap. Design: `docs/sapwood_bg_design.md`.
+  and coupled/decadal baselines) closes only ~40–50% of the 0.51→0.46 CUE gap. Design: `docs/notes/sapwood_bg_design.md`.
 - **[TODO] Lift the Enzyme pin / 1.11 canopy guard** when a fixed Enzyme ships (still blocked upstream on
   0.13.187 / Julia 1.11.7; a 0.14 migration is higher-risk).
 - **[TODO] Lift the `JET` pin** (`JET = "0.9, 0.11"`, `test/Project.toml`) by migrating `test/jet_tests.jl` to
@@ -479,8 +480,8 @@ copula conditions on flux+boundary and deliberately excludes stand-state (ADR 00
   the S↔F↔E I/O contract; `run.jl` = the coupled loop (+ opt-in `climbuf=`); `components/slow.jl` = S
   (`DemographicSlowEmulator` Tier-0 + `FluxDrivenSlowEmulator` Tier-1 + `RecruitCopula`); `climbuf.jl` = the
   online transient boundary; `components/energy.jl` = `SEBEnergyClosure`; `ext/FDiffTrainingExt.jl` = the NN-hook trainers.
-- **Deep dives**: `docs/phase1_p3b_water_closure.md`, `docs/phase2_slow_emulator.md`,
-  `docs/phase3_fdiff_cbinary_validation.md`, `docs/sapwood_bg_design.md`, `docs/water_supply_perpft_design.md`.
+- **Deep dives**: `docs/notes/phase1_p3b_water_closure.md`, `docs/notes/phase2_slow_emulator.md`,
+  `docs/notes/phase3_fdiff_cbinary_validation.md`, `docs/notes/sapwood_bg_design.md`, `docs/notes/water_supply_perpft_design.md`.
 - **Session narrative** → **`lines/<X>/JOURNAL.md`** (per line, append-only). The root `JOURNAL.md` holds the
   **pre-2026-07-28 history** and is now the **INTEGRATION journal** — appended only from the `main` worktree
   (single-writer ⇒ conflict-free). Never append line narrative there.

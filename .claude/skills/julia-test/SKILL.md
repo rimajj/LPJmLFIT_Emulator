@@ -232,13 +232,32 @@ first fails earlier still, with `expected package LPJmLFITEmulator [e4cfba23] to
 local path dep, exactly as `.github/workflows/docs.yml` does it).
 (`docs/Manifest.toml` is gitignored, so that `Pkg.develop` is safe to run in any worktree.)
 
-**Two traps in the diagram alarm, both hit on 2026-07-28:** (1) `gen_diagrams.jl` does `using
-LPJmLFITEmulator`, so without **`--project=.`** it dies with `ArgumentError: Package LPJmLFITEmulator not found
-in current path` — which reads like a broken checkout, not a missing flag. (2) **NO CI job runs this check**
-(grep `.github/workflows` for `gen_diagrams` — nothing), so CLAUDE.md §9's "the diagram-staleness gate reds
-`main`" means the LOCAL alarm only. `docs/src/generated/components.mmd` had consequently been stale since the
-Phase-4 commit `773945fb` — the rendered diagram contradicted `src/registry.jl` for weeks. **Run it whenever you
-touch `src/registry.jl`, and don't assume CI will catch it.**
+**Trap in the diagram alarm (hit 2026-07-28):** `gen_diagrams.jl` does `using LPJmLFITEmulator`, so without
+**`--project=.`** it dies with `ArgumentError: Package LPJmLFITEmulator not found in current path` — which
+reads like a broken checkout, not a missing flag.
+
+**The gate IS enforced now (changed 2026-08-06, ADR 0091) — this section previously said the opposite.**
+`test/testitems/diagram_registry_tests.jl` regenerates all three `.mmd` and byte-compares them, so a stale
+diagram reds the **`CI`** gate (which watches `docs/src/generated/**`). Until then no CI job ran the check,
+and `docs/src/generated/components.mmd` sat stale from the Phase-4 commit `773945fb` for weeks with nothing
+failing. Still run `--check` locally when you touch `src/registry.jl` — it is far faster than a suite round
+trip — but the safety net is real now.
+
+**What you must regenerate, and when.** Three `.mmd` are generated: `dataflow.mmd` + `components.mmd` (from
+`COMPONENTS`/`FLUXES`) and `dataflow_full.mmd` (from `DATA_NODES`/`DATA_EDGES`/`STAGES` — the full data-flow
+graph). Rerun `gen_diagrams.jl` in the SAME commit whenever you change:
+- `src/registry.jl` — any node, edge, stage or description; **or**
+- **a field of any `src/interface.jl` struct** (`SToF`, `SToE`, `FToS`, `FToE`, `EToF`, `EToATM`,
+  `AtmForcing`). The full diagram's edge labels are `fieldnames(T)`, so adding/renaming/removing ONE field
+  changes the committed diagram. This surprises people: an interface change with no registry edit still
+  reds the suite. That is deliberate (ADR 0091) — the diagram tracks the contract.
+
+Three sibling gates in the same file fail for reasons that are not staleness, so read the message:
+`payload_type :X is not defined in LPJmLFITEmulator` (a typo'd interface struct name), a `path_key` not
+found (a `DataNode` names a `config/paths.yaml` key that no longer exists — fix the registry or the YAML),
+or a dangling/orphan node. And **never remove the `abspath(PROGRAM_FILE) == @__FILE__` guard** at the bottom
+of `gen_diagrams.jl`: the test *includes* that script, and an unguarded `main(ARGS)` would regenerate the
+fixtures mid-test, so the staleness gate could never fail.
 
 **Strict-docs gotcha (`warnonly=false`, `checkdocs=:exports`) — a docstring change can turn `docs` RED while
 all tests stay green.** Two ways it bites:

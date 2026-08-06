@@ -1,7 +1,7 @@
 # Component F — fast physical biophysical core (daily). DEVELOPMENT_PLAN §2.3.
 # DIFFERENTIABLE-FIRST (ADR 0014): the concrete daily biophysics lives in the `FDiff` submodule
 # (`src/fdiff.jl`) — a from-scratch AD-friendly reimplementation with the SAME equations, verified
-# end-to-end differentiable (Enzyme/ForwardDiff vs finite differences; `docs/phase3_fdiff_spike.md`).
+# end-to-end differentiable (Enzyme/ForwardDiff vs finite differences; `docs/notes/phase3_fdiff_spike.md`).
 # The compiled LPJmL-FIT C binary is retained ONLY as the numerical-regression oracle + data
 # generator, NOT the coupling path. This `AbstractFastCore` interface (which mutates the shared
 # `SharedState`) is the eventual coupling surface; wiring `FDiff` behind it — mapping `FDiff`'s

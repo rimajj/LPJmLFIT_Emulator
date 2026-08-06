@@ -15,7 +15,7 @@ name: docs
 
 # WHEN THIS RUNS (ADR 0090): only when the Documenter page tree or the package
 # source (docstrings are pulled from it) changed. Note what is deliberately NOT here:
-# `docs/component_s_public_report.{tex,pdf}`, `docs/figs/**` and `docs/decisions/**`
+# `docs/report/component_s_public_report.{tex,pdf}`, `docs/report/figs/**` and `docs/decisions/**`
 # are all under `docs/` but are NOT part of the Documenter build — no `docs/src` page
 # includes them, and make.jl's linkcheck ignores the GitHub self-links that reference
 # the ADRs — so changing them cannot affect this gate.

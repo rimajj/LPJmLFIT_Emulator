@@ -1,4 +1,4 @@
-# P1 Step 3 (docs/p1_s_in_loop_design.md §7) — the accounted year-end growth `grow_annual_accounted!`,
+# P1 Step 3 (docs/notes/p1_s_in_loop_design.md §7) — the accounted year-end growth `grow_annual_accounted!`,
 # the S-in-the-loop counterpart of `annual_step!`. It grows F's representative individuals at FIXED nind
 # exactly as `annual_step!` does, but returns the grown pools + the EXACT per-cell carbon fluxes (applied
 # NPP, unapplied NPP from stagnating cohorts, and litter as the branch-agnostic growth residual) so the

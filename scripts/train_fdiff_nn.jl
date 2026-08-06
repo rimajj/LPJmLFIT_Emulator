@@ -1,6 +1,6 @@
 # =============================================================================
 # train_fdiff_nn.jl — gradient-based ONLINE ROLLOUT TRAINING of an F_diff NN hook
-# (Phase-3 scale-up step 7b; ADR 0016; docs/phase3_fdiff_cbinary_validation.md §14).
+# (Phase-3 scale-up step 7b; ADR 0016; docs/notes/phase3_fdiff_cbinary_validation.md §14).
 #
 # End-to-end demonstration of the hybrid-training machinery: a small Lux MLP predicts a
 # learned multiplicative Vcmax correction (FDiff.FluxHooks), plugged into the

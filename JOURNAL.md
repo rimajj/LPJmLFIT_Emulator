@@ -980,3 +980,53 @@ Entry template:
   reviewers attacked the *documented procedure* rather than the *observed behaviour*.
 - **Next (owner):** the protocol is now correct and every worktree carries it. `cd /p/projects/open/Jamir/wt-<X>
   && claude` starts a line; the hook names it and hands over its NEXT action.
+
+## 2026-08-06 — integrator: the full data-flow diagram, and the staleness gate that never existed
+
+- **Owner asked for two things:** a full data-flow diagram *"as part of the documentation and that gets updated
+  when the code changes"*, showing what goes into LPJmL-FIT, into each component, and between components; plus a
+  cleanup of `docs/` ("a lot of .md files there .. are they all there on purpose or leftovers?").
+- **Did (diagram):** extended `src/registry.jl` with `DataNode`/`DataEdge`/`STAGES`/`DATA_NODES`/`DATA_EDGES`
+  (purely additive — `COMPONENTS`/`FLUXES` untouched, so both pre-existing generated diagrams are
+  **byte-identical**, guardrail 4 verified by `git diff --stat`), a third `gen_diagrams.jl` target
+  `docs/src/generated/dataflow_full.mmd` with offline training/validation paths **dashed**, and a new page
+  `docs/src/explanation/dataflow.md`. Runtime edge labels are **reflected from `fieldnames`** of the
+  `src/interface.jl` structs via a new `payload_type` field — that is what makes "updates when the code
+  changes" mechanical rather than a promise.
+- **Found while doing it — the gate was fictional.** `.github/workflows/CI.yml` has watched
+  `docs/src/generated/**` since the beginning, annotated *"diagram fixtures the suite compares against
+  registry.jl"*, and ADR 0090's path table repeated the claim. **No test compared them.** The `julia-test`
+  skill had even recorded the gap (*"NO CI job runs this check … don't assume CI will catch it"*) and it had
+  been carried rather than closed, which is why `components.mmd` sat stale from `773945fb` for weeks
+  contradicting `registry.jl` with nothing failing. Closed it: `test/testitems/diagram_registry_tests.jl`,
+  four gates (staleness byte-compare · reflection incl. field COUNT · provenance = every `path_key` resolves in
+  `config/paths.yaml` via a ~20-line Base reader so runtime `[deps]` stays empty · structure). Corrected the
+  three places that documented the gate wrongly (`CI.yml`, `CLAUDE.md` §2/§9, the skill).
+- **Two traps hit and fixed:** (1) `gen_diagrams.jl`'s bare `main(ARGS)` had to be guarded by
+  `abspath(PROGRAM_FILE) == @__FILE__` — the test *includes* the script, and an unguarded run regenerates the
+  fixtures mid-test so the staleness gate could never fail. (2) A subgraph id `artifact` collided with a
+  `classDef` name of the same word; namespaced the subgraph ids to `sg_<stage>` rather than find out how
+  Mermaid resolves that.
+- **Did (cleanup) — and the owner's guess was half right.** The loose `docs/*.md` are **misfiled, not
+  leftovers**: every one is cited by name from live source and tests, `phase3_fdiff_cbinary_validation.md`
+  alone from `src/fdiff.jl` and ~10 test files (31 inbound refs). Moved the 10 notes → `docs/notes/`, the
+  report → `docs/report/`, `docs/figs` → `docs/report/figs` (keeps `\graphicspath{{figs/}}` valid, **no `.tex`
+  edit**), added `docs/README.md` + `docs/notes/README.md`. Deleted the untracked `docs/viewing_built_docs.md`
+  after folding its one unique tip into the published `howto/build_docs.md`.
+- **Deliberately did NOT rewrite** the append-only history (`CHANGELOG.md`, `JOURNAL.md`, `docs/archive/**`,
+  `changelog.d/*`) or the **immutable numbered ADRs** — they correctly describe where files were when written;
+  both new READMEs record the move + date so an old path stays resolvable. Comment-only pointer fixes did land
+  in three committed reference fixtures; **no baseline moved** (their readers skip `#` lines).
+- **Cross-line note:** the rename touched comment lines in S/M/E-owned files (`slow.jl`, `drf.jl`, `climbuf.jl`,
+  `fdiff.jl`, `fast.jl`, `energy.jl`) and three skills. A directory rename is integrator work by construction —
+  no single line can do it — and it is comment-only.
+- **Evidence:** Runic clean on all 129 tracked `.jl`; `gen_diagrams.jl --check` exit 0; staleness alarm proven
+  to fire BOTH ways (perturbed ⇒ 1, restored ⇒ 0); strict docs build green on a compute node
+  (`logs/INT-docsbuild2.1718983.out`, exit 0, after fixing three `@ref`s that needed relative file links);
+  full CI-faithful suite `logs/INT-dataflow-suite.1718980.out`.
+- **Also documented, because the owner asked:** how F handles individuals. Light competition, photosynthesis
+  and respiration ARE per individual; water demand is stand-level **as in the original**; the earlier
+  single-representative-tree core was −42 % GPP / +45 % transpiration. Written up on the new page with its
+  honest simplifications (year-end structure + daily leaf-out, no stems under 5 m, shared root profile, no
+  interception) and the patch-ensemble-vs-modal-patch caveat.
+- **Next (owner):** nothing required. ADR 0091 has the full record.

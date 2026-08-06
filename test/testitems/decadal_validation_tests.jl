@@ -1,5 +1,5 @@
 # Gate — DECADAL (11-year) fidelity of the coupled multi-year canopy rollout (scale-up step 10;
-# docs/phase3_fdiff_cbinary_validation.md §21). §18 validated the cell × multi-year objective over a
+# docs/notes/phase3_fdiff_cbinary_validation.md §21). §18 validated the cell × multi-year objective over a
 # 3-year span (2009–2011); this extends the committed real reference to a full DECADE (2009–2019) and
 # asks the fidelity-horizon question: starting from the 2008 reconstructed 25-patch structure and
 # self-driving for 11 years (each patch grown across years by the pipe-model allocation, kernel-isolation

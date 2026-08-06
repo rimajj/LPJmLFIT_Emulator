@@ -473,7 +473,7 @@ end
 # `direct_features.py`): {logHeight, Age, SLA, Wooddens, beta_root}. Hand-rolled Cholesky + normal
 # CDF/inverse-CDF keep the runtime `[deps]` empty (ADR 0014). Deterministic under `Xoshiro256pp`.
 # NOTE: the sampler is complete + tested here; its consumer — assigning drawn traits to APPENDED recruit
-# cohorts — lands with the membership append/merge path (design risk #5, docs/p1_s_in_loop_design.md §3).
+# cohorts — lands with the membership append/merge path (design risk #5, docs/notes/p1_s_in_loop_design.md §3).
 # Until then the fixed-roster establishment blends recruits into an existing cohort that keeps its frozen
 # traits, so the sampler is not yet wired into `reconcile_demography!`.
 

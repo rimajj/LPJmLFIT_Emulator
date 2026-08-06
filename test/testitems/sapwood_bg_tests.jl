@@ -1,4 +1,4 @@
-# Gate — below-ground root-sapwood pool `sapwood_bg` (docs/sapwood_bg_design.md §8; scale-up step 11 follow-up #11).
+# Gate — below-ground root-sapwood pool `sapwood_bg` (docs/notes/sapwood_bg_design.md §8; scale-up step 11 follow-up #11).
 # Wires the §8 quantification-probe result into the model. F_diff omitted the C's below-ground root-sapwood
 # pool `sapwood_bg`, so it never paid that pool's phen-gated maintenance respiration (`npp_tree.c:51`) and its
 # tree CUE (NPP/GPP) sat ~0.51 vs the C's ~0.46. This step adds the pool (opt-in, default `sapwood_bg_c=0` ⇒

@@ -618,7 +618,7 @@ Water closure holds by construction: `precip = transp + evap + runoff + Δ(soil 
 # canopy (`phen≈1`, no snow), `FAPAR_out = fpc·(1-albedo_leaf)` while `fpar = fpc`, the C
 # `apar = par·(1-albedo)·alphaa·fpar` collapses to `par·alphaa·FAPAR_out` — so the external path is
 # `par·alphaa·fapar` (no second `(1-albedo)`). This is the "same physics" kernel-isolation drive used by
-# the C-binary validation (docs/phase3_fdiff_cbinary_validation.md).
+# the C-binary validation (docs/notes/phase3_fdiff_cbinary_validation.md).
 _apar(par, str::Structure, ::Nothing, fpar_internal) = par * (one(par) - str.albedo) * str.alphaa * fpar_internal
 _apar(par, str::Structure, fapar::Real, fpar_internal) = par * str.alphaa * fapar
 
@@ -692,7 +692,7 @@ function daily_step(
     # --- soil-water bucket: ET is supply-capped, runoff is the non-negative overflow drainage ---
     # Closure is EXACT by construction: precip = ET + runoff + Δ(soil water + snowpack). Derivation:
     # available = w₀+infil; ET=min(demand,available); w′=available−ET−over; runoff=over ⇒ the
-    # identity collapses to infil+snowfall−melt = rain+snowfall = precip (see docs/phase3_fdiff_spike).
+    # identity collapses to infil+snowfall−melt = rain+snowfall = precip (see docs/notes/phase3_fdiff_spike).
     whc = str.whc
     w0_mm = st.w * whc
     available = w0_mm + infil
@@ -790,7 +790,7 @@ output whose gradient w.r.t. an input/parameter the spike verifies against finit
 annual_npp(p, st0, str, forcings; kwargs...) = rollout(p, st0, str, forcings; kwargs...)[2].npp
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════
-# MULTI-LAYER SOIL WATER (scale-up step 2 — docs/phase3_fdiff_cbinary_validation.md §7)
+# MULTI-LAYER SOIL WATER (scale-up step 2 — docs/notes/phase3_fdiff_cbinary_validation.md §7)
 # ═════════════════════════════════════════════════════════════════════════════════════════════
 # Replaces the single bucket with LPJmL-FIT's N-layer soil column so that (a) the shallow layers dry
 # preferentially under concentrated root uptake + top-30 cm soil evaporation, collapsing the
@@ -1099,7 +1099,7 @@ function tebs_structure(
 end
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════
-# SELF-COMPUTED RADIATION + PHENOLOGY (scale-up step 5 — docs/phase3_fdiff_cbinary_validation.md §11)
+# SELF-COMPUTED RADIATION + PHENOLOGY (scale-up step 5 — docs/notes/phase3_fdiff_cbinary_validation.md §11)
 # Removes the two C-output "crutches" the canopy validation had leaned on:
 #   • `phen` was driven by the C binary's daily FAPAR (`phens = fapar_C/peak`);
 #   • `eeq` was driven by the C binary's daily PET (`eeqs = pet_C/1.32`, which embeds `albedo_patch`).
@@ -1359,7 +1359,7 @@ function patch_albedo(inds, phen, snowpack)     # `inds`::AbstractVector{<:Indiv
 end
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════
-# MULTI-INDIVIDUAL / MULTI-PFT CANOPY (scale-up step 3 — docs/phase3_fdiff_cbinary_validation.md §7)
+# MULTI-INDIVIDUAL / MULTI-PFT CANOPY (scale-up step 3 — docs/notes/phase3_fdiff_cbinary_validation.md §7)
 # ═════════════════════════════════════════════════════════════════════════════════════════════
 # Replaces the single representative tree with the cell's REAL set of individuals (per patch: a
 # size/PFT distribution of trees + grass, reconstructed from the `ind` output — see
@@ -1419,7 +1419,7 @@ struct Individual{T <: Real}
     c_sapwood_bg::T               # below-ground root-sapwood maintenance pool (gC/individual; formed per-m²
     # via nind at the call site, `npp_tree.c:51`). 0 by default (the pre-
     # sapwood_bg 16-arg constructor ⇒ byte-identical); seeded from the C_LATERAL
-    # demand — see [`TreePools`](@ref) / docs/sapwood_bg_design.md.
+    # demand — see [`TreePools`](@ref) / docs/notes/sapwood_bg_design.md.
     lai::T                        # leaf-on crown LAI (leaf_c·sla/crownarea) → actual_lai = lai·phen
     intc::T                       # PFT interception coefficient (par->intc)
     albedo_stem::T                # PFT stem/branch albedo (leaf-off; par->albedo_stem)
@@ -1927,7 +1927,7 @@ struct TreePools{T <: Real}
     # Pays phen-gated maintenance (`npp_tree.c:51`) + grows from the C_LATERAL
     # demand (`allocation_tree.c:163-209`). 0 by default (the pre-sapwood_bg
     # 10-arg constructor ⇒ byte-identical); seed at init via
-    # [`reconstruct_sapwood_bg`](@ref) — see docs/sapwood_bg_design.md §4.1/§8.
+    # [`reconstruct_sapwood_bg`](@ref) — see docs/notes/sapwood_bg_design.md §4.1/§8.
     height::T
     crownarea::T
     nind::T
@@ -1973,7 +1973,7 @@ sap_xs_area·root_sum·wooddens` plus a lateral requirement scaled by `2π/C_LAT
 where `sap_xs_area = sapwood_c/wooddens/height` and `root_sum` is the cumulative root fraction at-and-below
 layer `l`. The C only grows/seeds the pool once it is already `> 0` (`allocation_tree.c:206`); the
 emulator's demography is FIXED, so the pool must be seeded here at init to this equilibrium demand — see
-docs/sapwood_bg_design.md §4.1/§8. `rootdist` is the per-layer root fraction, `soildepth` the per-layer
+docs/notes/sapwood_bg_design.md §4.1/§8. `rootdist` is the per-layer root fraction, `soildepth` the per-layer
 thickness (mm). Grass (no woody sapwood) seeds 0. Verified by `scripts/sapwood_bg_quantification_probe.jl`.
 """
 function reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist::AbstractVector, soildepth::AbstractVector)

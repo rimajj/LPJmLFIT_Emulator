@@ -2,7 +2,7 @@
 """
 Phase-1 (P3b) WATER-CLOSURE check on a daily-output re-run (subset OR full global).
 
-Evidence tiers (see JOURNAL / docs/phase1_p3b_water_closure.md):
+Evidence tiers (see JOURNAL / docs/notes/phase1_p3b_water_closure.md):
   (1) DEFINITIVE — LPJmL's own per-cell/year water balance (check_fluxes.c, active
       under -DSAFE) enforces |balanceW| <= 1.5 mm/yr and ABORTS otherwise. A clean
       run over all cells x years IS the closure proof (confirm via the .out/.err logs).

@@ -3,7 +3,7 @@
 # each patch a canopy of trees+grass sharing one 23-layer soil column, averaged over patches.
 # ReferenceTests drift alarm for the canopy path; regenerate ONLY on an intended physics change
 # (record why in JOURNAL). See test/testitems/multi_individual_tests.jl +
-# docs/phase3_fdiff_cbinary_validation.md §9/§10/§11.
+# docs/notes/phase3_fdiff_cbinary_validation.md §9/§10/§11.
 # Regenerated (docs §11) for the STANDALONE (crutch-free) config: F_diff now computes BOTH its own
 # leaf phenology (GSI, phenology_gsi.c) and its own eeq (dynamic patch albedo, albedo_stand.c) — no
 # C-binary FAPAR/PET drives.

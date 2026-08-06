@@ -1,5 +1,5 @@
 # Online transient bioclimatic boundary — the coupled-run "Climbuf" (ADR 0026/0027; the online counterpart
-# of the offline `boundary_series`). docs/online_transient_boundary_climbuf.md is the design of record.
+# of the offline `boundary_series`). docs/notes/online_transient_boundary_climbuf.md is the design of record.
 #
 # Offline (ADR 0026), Component S reads a pre-baked per-(cell,year) boundary vector; online, climate evolves
 # as the coupled run proceeds, so the two TIME-VARYING boundary axes (`gdd5`, `tas_cold_month`) must be

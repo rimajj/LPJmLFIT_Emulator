@@ -227,7 +227,7 @@ better and still not right), and **S2's conditioning** in the only form that can
 merged to `main` as **`07c0029f`**. Branch CI green on every required gate (`format`, `test (1)`,
 `test (lts)`, + non-required `test (macOS, lts)`), and **`main`'s OWN post-merge run on `07c0029f` is green
 on the same set**. `python` and `docs` correctly never ran (ADR 0090: no `python/**`, and
-`docs/component_s_public_report.*` + `docs/decisions/**` are outside the Documenter page tree; the merge
+`docs/report/component_s_public_report.*` + `docs/decisions/**` are outside the Documenter page tree; the merge
 added no `src/**`). Local CI-faithful suite job **1705738**: **110 102 pass / 0 fail / 4 broken**. Runic
 1.7.0 clean on all 121 tracked `.jl`. `test (pre)` is red and was **diagnosed, not waved away**: it dies at
 `ReTestItems.jl:510` in `_runtests_in_current_env`, immediately after `Scheduling 107 tests` and **before
@@ -313,7 +313,7 @@ session belongs in its own worktree.
    (the pooled artifact's missing `cell_meta.parquet`, the undocumented `n_init`/`age0` substitution, the
    boundary-basis mismatch) is now **raised in `lines/M/STATE.md`**, where it had only ever been recorded
    on S's side.
-6. **The public report is corrected and re-ordered** (`docs/component_s_public_report.tex`). The damping is
+6. **The public report is corrected and re-ordered** (`docs/report/component_s_public_report.tex`). The damping is
    **39.9 % / −971.5 / +1461**, not 37 % / −892 / +1541 (that pair was arm B, the *refused* env arm); the
    ceiling is on the **patch-year** basis (Wooddens **0.9543**, axes 0.94–0.97), not the superseded
    stem-parity 0.9201/0.87–0.96; **the defect is placement, not shrinkage** (dispersion **1.034** while the
@@ -440,7 +440,7 @@ and nothing more. Entry points if you do run one: `scripts/run_response_seed_ens
 then `scripts/summarize_response_seed_ensemble.py 'logs/<TAGPREFIX>*.out'`. Always name the artifact pair,
 the `n_init`/`age0` and the boundary row with the number (ADR 0101 §3).
 
-**D. Report numbers to fix in `docs/component_s_public_report.tex`** — now three items, one new:
+**D. Report numbers to fix in `docs/report/component_s_public_report.tex`** — now three items, one new:
 (i) "37 % damping / `Rb` = −892" is arm **B `p14env-hash`, the REFUSED env arm** (the deployed ncond-8 arm is
 **−971.5 = 39.9 %**); (ii) the `Rr` ceiling 0.9201 is superseded by the patch-year basis (**0.9543**);
 (iii) **anything inherited from ADR 0100's response headline** must be replaced by ADR 0101's ensemble

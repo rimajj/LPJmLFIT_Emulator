@@ -1,4 +1,4 @@
-# P1 Tier-1 Step 4b — the Gate-3 ORACLE test (docs/p1_s_in_loop_design.md §6, risk #3). The coupled
+# P1 Tier-1 Step 4b — the Gate-3 ORACLE test (docs/notes/p1_s_in_loop_design.md §6, risk #3). The coupled
 # flux-driven Component S (production DRF loaded from disk) is compared to the LPJmL-FIT C GROUND TRUTH
 # trait/size distribution at Hainich (cell 42490), extracted by scripts/build_slow_oracle_reference.py to
 # the committed references/hainich_slow_oracle_{traits,counts}.csv.

@@ -35,7 +35,7 @@ makedocs(;
     # Their docstrings use rich cross-module `@ref` links that need per-module doc pages
     # (`CurrentModule` per submodule) to resolve under the strict build; that is a small docs-infra
     # follow-up. Their API is fully documented in the source (REPL `?` works) and summarized in
-    # `docs/phase3_fdiff_spike.md`. The top-module exports are unchanged, so `checkdocs=:exports`
+    # `docs/notes/phase3_fdiff_spike.md`. The top-module exports are unchanged, so `checkdocs=:exports`
     # stays green.
     modules = [LPJmLFITEmulator],
     # Explicit GitHub remote so source links resolve to the exact lines even though the HPC git
@@ -45,7 +45,7 @@ makedocs(;
     # The F_diff submodules are discovered by checkdocs (they are nested in LPJmLFITEmulator) but
     # their rich cross-module `@ref` docstrings need per-submodule doc pages to render under the
     # strict build — a small docs-infra follow-up. Exclude them from the check meanwhile; they are
-    # documented in source (REPL `?`) and summarized in docs/phase3_fdiff_spike.md.
+    # documented in source (REPL `?`) and summarized in docs/notes/phase3_fdiff_spike.md.
     checkdocs_ignored_modules = [
         LPJmLFITEmulator.SmoothOps, LPJmLFITEmulator.Allometry, LPJmLFITEmulator.FDiff,
         LPJmLFITEmulator.DRF,   # the zero-dep DRF (ADR 0022): its exported helpers are documented in source
@@ -85,6 +85,7 @@ makedocs(;
         "Home" => "index.md",
         "Explanation" => [
             "The three-component architecture" => "explanation/architecture.md",
+            "The full data flow" => "explanation/dataflow.md",
             "Conservation by construction" => "explanation/conservation.md",
             "Why a hybrid?" => "explanation/hybrid_rationale.md",
             "Limitations & honest scope" => "explanation/limitations.md",

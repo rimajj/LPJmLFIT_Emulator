@@ -223,8 +223,8 @@ git diff --name-only origin/main...HEAD
 
 **Touched none of those?** No gate runs, there is nothing to wait for, and you may merge as soon as the push
 lands. This is the common case for a `lines/<X>/{STATE,JOURNAL}.md` refresh, a `changelog.d/` fragment, an
-ADR, a `.claude/skills/**` capture, `CLAUDE.md`, or `docs/component_s_public_report.{tex,pdf}` /
-`docs/figs/**` (these are under `docs/` but are **not** in the Documenter page tree, so `docs` does not fire).
+ADR, a `.claude/skills/**` capture, `CLAUDE.md`, or `docs/report/component_s_public_report.{tex,pdf}` /
+`docs/report/figs/**` (these are under `docs/` but are **not** in the Documenter page tree, so `docs` does not fire).
 
 Force a gate anyway — any workflow has `workflow_dispatch`:
 ```bash
@@ -287,7 +287,7 @@ It is not a problem — it is bookkeeping — but say which sha carries the verd
    the session). Green = 0 fail (broken are OK). Separate worktrees mean lines can run this concurrently.
 2. **format** (only if any `**/*.jl` changed) — Runic 1.7 `--check` clean over `src test ext scripts` (see `julia-test`; never pipe the check
    to `tail`/`grep` — that masks the exit code).
-3. **docs** (only if `docs/src/**`, `docs/make.jl`, `docs/Project.toml`, `src/**` or `Project.toml` changed — NOT for the LaTeX report or `docs/figs/**`) — build it **locally**, since `docs` CI does not run on line branches:
+3. **docs** (only if `docs/src/**`, `docs/make.jl`, `docs/Project.toml`, `src/**` or `Project.toml` changed — NOT for the LaTeX report or `docs/report/figs/**`) — build it **locally**, since `docs` CI does not run on line branches:
    `DOCS_LINKCHECK=false julia --project=docs docs/make.jl`; `gen_diagrams.jl --check` clean. New exports need
    docstrings (`checkdocs=:exports`).
 4. **python** (only if `python/` changed) — inside `python/`: `uv run ruff check .` + `uv run ruff format

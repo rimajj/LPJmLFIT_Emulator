@@ -1,4 +1,4 @@
-# Gate — S↔F coupling adapter (ADR 0014 scale-up step 6b; docs/phase3_fdiff_cbinary_validation.md §12).
+# Gate — S↔F coupling adapter (ADR 0014 scale-up step 6b; docs/notes/phase3_fdiff_cbinary_validation.md §12).
 # `FDiffFastCore` wires the differentiable multi-individual canopy (FDiff.daily_step_canopy) behind the
 # `AbstractFastCore.step!` interface (which previously threw): daily `step!` reads/writes the authoritative
 # per-layer soil water in `SharedState`, self-computes phenology/eeq/daylength, and returns the daily

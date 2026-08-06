@@ -1,5 +1,5 @@
 # Regenerate the committed F_diff drift baselines + the multi-individual canopy baseline after the
-# βvm Vcmax-cap-smoothing fix (see docs/phase3_fdiff_cbinary_validation.md §9). Prints full-precision
+# βvm Vcmax-cap-smoothing fix (see docs/notes/phase3_fdiff_cbinary_validation.md §9). Prints full-precision
 # annual totals for test/testitems/references/{hainich_fdiff_baseline_2010, hainich_ml_baseline_2010,
 # hainich_canopy_baseline_2010}.txt and the canopy validation metrics used in the gate assertions.
 #   JULIA_DEPOT_PATH=$HOME/.julia julia --project=. scripts/regen_fdiff_baselines.jl

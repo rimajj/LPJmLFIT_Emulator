@@ -3,7 +3,7 @@
 
 ADR 0020 (S is flux-driven, not climate-equilibrium) + ADR 0021 (Python is confined to
 building this table + running the DirectEmulator OOD benchmark; S is trained + run in
-native Julia). Design of record: ``docs/slow_flux_conditioning_data_spec.md``.
+native Julia). Design of record: ``docs/notes/slow_flux_conditioning_data_spec.md``.
 
 This is TIER 1 (no recompile): the annual ``ind`` output already carries the four
 mortality drivers + npp/gpp/transp/wscal_mean + the distribution axes, and it is already

@@ -5,23 +5,32 @@
 # Reads the model's OWN component/flux registry (`src/registry.jl`: `COMPONENTS`,
 # `FLUXES` — the SOURCE OF TRUTH) and emits Mermaid text to `docs/src/generated/`:
 #
-#   • dataflow.mmd    `flowchart LR` — ATM/S/F/E nodes, edges labelled by
-#                     payload + timescale (thick `==>` = conserved handoff),
-#                     ML/physics/hybrid/external nodes styled distinctly.
-#   • components.mmd  component overview — one node per component with kind + timescale.
+#   • dataflow.mmd      `flowchart LR` — ATM/S/F/E nodes, edges labelled by
+#                       payload + timescale (thick `==>` = conserved handoff),
+#                       ML/physics/hybrid/external nodes styled distinctly.
+#   • components.mmd    component overview — one node per component with kind + timescale.
+#   • dataflow_full.mmd THE FULL PICTURE (`DATA_NODES`/`DATA_EDGES`/`STAGES`): the input
+#                       datasets LPJmL-FIT is driven by, the C model, its outputs, the derived
+#                       training tables, the learned artifacts, and the runtime S/F/E seam —
+#                       with the offline training/validation paths drawn as dashed edges so a
+#                       coupled run is visually distinguishable from the pipeline that built it.
+#                       Runtime edge labels are REFLECTED from `src/interface.jl` fieldnames.
 #
 # These are ALWAYS TRUE (regenerated from the registry) and act as a DIFF ALARM:
-# if the registry changes, these files change, and CI (`--check`) fails until the
-# committed diagrams — and the hand-authored curated ones in
-# `docs/src/assets/diagrams/` — are brought back in sync.
+# if the registry changes, these files change, and CI fails until the committed
+# diagrams — and the hand-authored curated ones in `docs/src/assets/diagrams/` —
+# are brought back in sync.
 #
 # Base-only (no external packages): runnable in the Phase-0 dependency-free package.
 #
 # Usage:
 #   julia --project=. scripts/gen_diagrams.jl            # (re)write the .mmd files
-#   julia --project=. scripts/gen_diagrams.jl --check    # CI: exit 1 if stale
+#   julia --project=. scripts/gen_diagrams.jl --check    # exit 1 if stale
 #
-# `--check` is the `git diff --exit-code -- docs/src/generated` equivalent.
+# `--check` is the `git diff --exit-code -- docs/src/generated` equivalent. It is ALSO run as a
+# real CI gate: `test/testitems/diagram_registry_tests.jl` includes this file and calls `check()`,
+# which is why the `main(ARGS)` call at the bottom is guarded by a `PROGRAM_FILE` check — being
+# included must never write files.
 # ─────────────────────────────────────────────────────────────────────────────
 
 using LPJmLFITEmulator   # brings COMPONENTS, FLUXES, Component, Flux into scope
@@ -31,6 +40,7 @@ const REPO_ROOT = dirname(@__DIR__)
 const OUT_DIR = joinpath(REPO_ROOT, "docs", "src", "generated")
 const DATAFLOW_PATH = joinpath(OUT_DIR, "dataflow.mmd")
 const COMPONENTS_PATH = joinpath(OUT_DIR, "components.mmd")
+const DATAFLOW_FULL_PATH = joinpath(OUT_DIR, "dataflow_full.mmd")
 
 # ── Header stamped into every generated file ─────────────────────────────────
 const HEADER = join(
@@ -101,10 +111,99 @@ function render_components(components)
     return String(take!(io))
 end
 
+# ═════════════════════════════════════════════════════════════════════════════
+# THE FULL DATA-FLOW GRAPH (DATA_NODES / DATA_EDGES / STAGES)
+# ═════════════════════════════════════════════════════════════════════════════
+
+# One style per node `kind`. Datasets/tables/artifacts are deliberately quieter than the
+# three components, so the eye lands on S / F / E first.
+const NODE_CLASSDEF = Dict(
+    :dataset => "classDef dataset fill:#e0f2fe,stroke:#0369a1,stroke-width:1px,color:#0c4a6e;",
+    :model => "classDef model fill:#dbeafe,stroke:#1e3a8a,stroke-width:3px,color:#111827;",
+    :table => "classDef table fill:#f5f3ff,stroke:#6d28d9,stroke-width:1px,color:#2e1065;",
+    :artifact => "classDef artifact fill:#fef3c7,stroke:#a16207,stroke-width:2px,color:#111827;",
+    :ml => "classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;",
+    :physics => "classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;",
+    :hybrid => "classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;",
+    :external => "classDef external fill:#e5e7eb,stroke:#374151,stroke-width:1px,color:#111827,stroke-dasharray:5 4;",
+)
+
+"""
+The field list drawn on a runtime edge, taken from the interface struct itself.
+
+This is what makes the full diagram code-derived rather than hand-maintained: the label is
+`fieldnames(getproperty(LPJmLFITEmulator, sym))`, so adding, removing or renaming a field in
+`src/interface.jl` changes the rendered diagram and the staleness gate fails until it is regenerated.
+Throws if `sym` does not name a struct type in the package — a typo cannot silently render blank.
+"""
+function payload_fields(sym::Symbol)
+    isdefined(LPJmLFITEmulator, sym) ||
+        error("DataEdge payload_type :$(sym) is not defined in LPJmLFITEmulator (src/interface.jl)")
+    T = getproperty(LPJmLFITEmulator, sym)
+    T isa Type || error("DataEdge payload_type :$(sym) is not a type")
+    fields = fieldnames(T)
+    isempty(fields) && error("DataEdge payload_type :$(sym) has no fields")
+    return String(sym) * ": " * join(String.(fields), ", ")
+end
+
+"The label an edge renders with: reflected from the interface struct when it names one."
+edge_label(e) = e.payload_type === nothing ? e.label : payload_fields(e.payload_type)
+
+"Arrow text per `style`: `:thick` marks a conserved handoff, `:dashed` an OFFLINE (non-run) path."
+function edge_arrow(style::Symbol)
+    return if style === :thick
+        "==>"
+    elseif style === :dashed
+        "-.->"
+    else
+        "-->"
+    end
+end
+
+"`flowchart LR` of the WHOLE pipeline, grouped into `STAGES` subgraphs."
+function render_dataflow_full(nodes, edges, stages)
+    io = IOBuffer()
+    println(io, HEADER)
+    println(io, "%% FULL data-flow graph, from src/registry.jl (DATA_NODES, DATA_EDGES, STAGES):")
+    println(io, "%% input data -> LPJmL-FIT -> derived tables -> learned artifacts -> the coupled")
+    println(io, "%% S/F/E emulator. Runtime edge labels are REFLECTED from the src/interface.jl")
+    println(io, "%% structs. Dashed edges are OFFLINE paths (training + validation); they do not")
+    println(io, "%% run during a coupled simulation.")
+    println(io, "flowchart LR")
+    for (stage, title) in stages
+        members = filter(n -> n.stage === stage, nodes)
+        isempty(members) && continue
+        # `sg_` prefix on purpose: a bare stage id would collide with a `classDef` name of the same
+        # word (`artifact` is both a stage and a node kind), and Mermaid resolves that unpredictably.
+        println(io, "    subgraph sg_$(stage)[\"$(sanitize(title))\"]")
+        println(io, "        direction TB")
+        for n in members
+            label = "<b>$(sanitize(n.label))</b><br/>$(sanitize(n.detail))"
+            println(io, "        $(n.id)[\"$(label)\"]")
+        end
+        println(io, "    end")
+    end
+    println(io, "    %% Edges. ==> conserved handoff · -.-> offline (training/validation) path.")
+    for e in edges
+        label = sanitize(edge_label(e))
+        tag = e.timescale === :none ? "" : "<br/>[$(e.timescale)]"
+        println(io, "    $(e.from) $(edge_arrow(e.style))|\"$(label)$(tag)\"| $(e.to)")
+    end
+    kinds = unique(n.kind for n in nodes)
+    for k in kinds
+        haskey(NODE_CLASSDEF, k) && println(io, "    ", NODE_CLASSDEF[k])
+    end
+    for n in nodes
+        haskey(NODE_CLASSDEF, n.kind) && println(io, "    class $(n.id) $(n.kind);")
+    end
+    return String(take!(io))
+end
+
 # ── Targets: (path, generated-content) pairs ─────────────────────────────────
 targets() = (
     (DATAFLOW_PATH, render_dataflow(COMPONENTS, FLUXES)),
     (COMPONENTS_PATH, render_components(COMPONENTS)),
+    (DATAFLOW_FULL_PATH, render_dataflow_full(DATA_NODES, DATA_EDGES, STAGES)),
 )
 
 "Write the generated diagrams to `docs/src/generated/`."
@@ -152,4 +251,10 @@ function main(args)
     end
 end
 
-main(ARGS)
+# Run ONLY when executed as a script. `test/testitems/diagram_registry_tests.jl` includes this file
+# to call `check()` as a CI gate, and an unguarded `main(ARGS)` would (a) regenerate the committed
+# fixtures during a test run — destroying the very staleness signal the gate exists to detect — and
+# (b) see the TEST runner's ARGS, not ours.
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(ARGS)
+end

@@ -1,7 +1,7 @@
 # =============================================================================
 # sapwood_bg_quantification_probe.jl — QUANTIFY the tree-CUE decrement of adding the C's below-ground
 # root-sapwood pool `sapwood_bg` + its phen-gated maintenance, and give a GO / NO-GO on the invasive
-# `TreePools`/`Individual` struct change (the sapwood_bg frontier, docs/sapwood_bg_design.md §7).
+# `TreePools`/`Individual` struct change (the sapwood_bg frontier, docs/notes/sapwood_bg_design.md §7).
 #
 # QUESTION. F_diff's tree CUE (NPP/GPP) sits ~0.51 vs the C's ~0.46 (docs §13). The design hypothesis:
 # F_diff omits the C's below-ground root-sapwood pool `sapwood_bg`, so it never pays that pool's

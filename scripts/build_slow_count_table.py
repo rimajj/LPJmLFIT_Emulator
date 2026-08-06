@@ -4,7 +4,7 @@
 ADR 0020 governs that Component S is **flux-driven, not climate-equilibrium**: it must
 condition on F's delivered fluxes + AR state + the slow bioclimatic boundary, and the
 climate-only ``DirectEmulator`` is demoted to the OOD benchmark. The falsifiable success
-test (ADR 0020 §, ``docs/p1_s_in_loop_design.md`` risk #2): the flux-driven S must BEAT
+test (ADR 0020 §, ``docs/notes/p1_s_in_loop_design.md`` risk #2): the flux-driven S must BEAT
 the climate-only baseline on the **warm+dry OOD holdout** (a space-for-time SSP370 proxy),
 at matched in-distribution accuracy.
 

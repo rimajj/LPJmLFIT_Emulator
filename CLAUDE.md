@@ -186,7 +186,11 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
 - **Format gate (Runic):** CI installs **Runic 1.7.0**. Check locally by adding Runic v1 to a temp env
   and `Runic.main(["--check", <files>])`. Reformat all tracked `.jl` with that version.
 - **Docs build locally:** `DOCS_LINKCHECK=false julia --project=docs docs/make.jl` (CI keeps linkcheck
-  ON; the HPC's restricted egress needs it OFF). Diagram alarm: `julia scripts/gen_diagrams.jl --check`.
+  ON; the HPC's restricted egress needs it OFF). Diagram alarm: `julia --project=. scripts/gen_diagrams.jl
+  --check` (**needs `--project=.`**). Since ADR 0091 this is a REAL gate, not just a local command:
+  `test/testitems/diagram_registry_tests.jl` regenerates all three `.mmd` and byte-compares, so a stale
+  diagram reds `CI`. It also fires on an `src/interface.jl` **field** change with no registry edit at all —
+  the full diagram's edge labels are `fieldnames(T)`.
 - **ReferenceTests baselines** are committed text/CSV under `test/testitems/references/`. Regenerate
   **only** on an intentional physics change, and track *which* baseline moved (the "no committed baseline
   moves unless deliberate" discipline). `scripts/regen_fdiff_baselines.jl` regenerates the F_diff set.
@@ -566,7 +570,7 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   | `python` (ruff+pytest) | `python/**` · own workflow (**`scripts/*.py` is NOT linted by CI**) |
   | `docs` (Documenter) | `docs/src/**` · `docs/make.jl` · `docs/Project.toml` · `src/**` · `Project.toml` · own workflow |
 
-  **`docs/component_s_public_report.{tex,pdf}`, `docs/figs/**` and `docs/decisions/**` trigger NOTHING** —
+  **`docs/report/component_s_public_report.{tex,pdf}`, `docs/report/figs/**` and `docs/decisions/**` trigger NOTHING** —
   they live under `docs/` but are not in the Documenter page tree. Every workflow also has
   `workflow_dispatch`, so any gate can be forced from the Actions tab / `gh workflow run` when you want it
   anyway. **A skipped workflow reports no status — not a "skipped" one** — so a poll loop written as *"wait
@@ -750,7 +754,7 @@ The per-path ownership map is **ADR 0029**, **extended here** for three gaps the
 | `src/components/energy.jl` | **E** | exclusive |
 | `ext/**` | **O** | exclusive (new extension files) |
 | **`src/fdiff.jl`, `src/fdiff_smoothops.jl`, `src/components/fast.jl` — the F core** | **M**, by default | *Gap 1: 60% of `src/` was unowned.* M is the physics/coupling line, so it holds F. **S may not edit F directly** even though S4 (grass ownership) and S6 need it — that is an **integration point**: S specifies the change, M lands it (or M explicitly hands the file over for one milestone, recorded in both STATE.md files). The parked F-fidelity work (`sapwood_bg` growth, per-PFT water supply) is unstaffed — don't start it inside another milestone. |
-| **`src/state.jl`, `src/conservation.jl`, `src/allometry.jl`, `src/registry.jl`** | **shared, additive-only** | Cross-component libraries used across the interface. Add; never restructure. `registry.jl` additionally drives `docs/src/generated/*.mmd` — regenerate with `scripts/gen_diagrams.jl` in the SAME commit or the diagram-staleness gate reds `main`. |
+| **`src/state.jl`, `src/conservation.jl`, `src/allometry.jl`, `src/registry.jl`** | **shared, additive-only** | Cross-component libraries used across the interface. Add; never restructure. `registry.jl` additionally drives `docs/src/generated/*.mmd` — regenerate with `scripts/gen_diagrams.jl` in the SAME commit or the diagram-staleness gate reds **`CI` on your branch** (ADR 0091 made it real; it had been local-only). ⚠ **This also binds `src/interface.jl` (M-owned):** the full diagram labels edges with `fieldnames(T)`, so changing ONE field of `SToF`/`FToS`/`FToE`/`EToF`/`EToATM`/`SToE`/`AtmForcing` makes the committed diagram stale even with no registry edit. |
 | **`.claude/skills/<name>/SKILL.md`** | **primary owner by domain** | *Gap 2: 40 commits touch skills, and the §8 capture gate pushes EVERY session to edit one.* Primary: `slow-drf-pipeline` + `emulator-validation-figures` → **S**; `fdiff-validate` + `lpjmlfit-cbinary` → **M**; `python-env` → **E**. `julia-test`, `repo-commit`, `residual-diagnosis`, `skill-creator`, `consolidate-memory` are **shared, append-only** (add a bullet/gotcha at the end of the relevant section; do not reorganise, and do not rewrite another line's section). |
 | `test/testitems/**` | by subsystem (see ADR 0029) | `references/**` shared; regenerating an existing baseline is an integration point |
 | `Project.toml`, `test/Project.toml`, `CHANGELOG.md`, shared `MEMORY.md`, root `JOURNAL.md`, `.claude/settings.json`, `.github/workflows/**`, `.gitignore`, `config/**` (except E's energy keys), `scripts/sbatch_*.sh` + `run_tests_slurm.sh` | **integrator only** | *Gap 3: these were unassigned.* Request the change; the integrator lands it on `main`. |

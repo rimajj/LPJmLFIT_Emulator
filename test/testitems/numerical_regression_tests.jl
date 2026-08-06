@@ -5,7 +5,7 @@
 # NB: this gate pins F_diff against ITSELF on a SYNTHETIC scenario (drift alarm + closure/plausibility).
 # The quantitative C-binary "same physics" cross-check — F_diff driven by the Hainich prototype cell's
 # REAL .clm forcing + the C binary's actual daily FAPAR, compared to LPJmL-FIT's own daily GPP/transp/PET
-# — now lives in cbinary_validation_tests.jl (docs/phase3_fdiff_cbinary_validation.md). Headline: the
+# — now lives in cbinary_validation_tests.jl (docs/notes/phase3_fdiff_cbinary_validation.md). Headline: the
 # PET/radiation path matches to ~5% (r≈0.9999); GPP/transp seasonal dynamics are captured with the level
 # offsets attributed to the documented multi-PFT/individual + 23-layer-soil scale-up items.
 @testitem "Numerical regression — softmax closed form" tags = [:regression] begin

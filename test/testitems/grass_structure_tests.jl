@@ -1,4 +1,4 @@
-# Gate — prognostic GRASS structure (scale-up step 9; docs/phase3_fdiff_cbinary_validation.md §20).
+# Gate — prognostic GRASS structure (scale-up step 9; docs/notes/phase3_fdiff_cbinary_validation.md §20).
 # The multi-year rollout previously grew only TREES (grow_individual); grasses were held FIXED (the
 # CSV grass rows have leaf_c=0/root_c=0/crownarea=0/nind=0, so a round-trip through
 # individual_from_pools zeroed them → grass was structurally dropped). Here grass leaf/root carbon

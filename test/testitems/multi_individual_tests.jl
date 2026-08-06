@@ -1,4 +1,4 @@
-# Gate — multi-individual / multi-PFT canopy (ADR 0014 scale-up step 3; docs/phase3_fdiff_cbinary_validation.md §9).
+# Gate — multi-individual / multi-PFT canopy (ADR 0014 scale-up step 3; docs/notes/phase3_fdiff_cbinary_validation.md §9).
 # The differentiable multi-individual canopy (Individual + daily_step_canopy) replaces the single
 # representative tree with the Hainich cell's real per-patch set of individuals (25 patches × 297
 # reconstructed trees+grass, hainich_individuals_2010.csv), sharing one 23-layer soil column and

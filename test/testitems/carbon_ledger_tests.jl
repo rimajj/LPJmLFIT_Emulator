@@ -1,4 +1,4 @@
-# P1 Step 2 (docs/p1_s_in_loop_design.md §4) — the flux-then-integrate carbon LEDGER that makes the S↔F
+# P1 Step 2 (docs/notes/p1_s_in_loop_design.md §4) — the flux-then-integrate carbon LEDGER that makes the S↔F
 # demographic handoff conserve. When S changes the population (establishment / mortality / K-cap merge),
 # every carbon movement is routed as an accounted flux through a `CarbonLedger`, so total carbon
 # (vegetation + litter) is created/destroyed ONLY by the external influxes (applied NPP + establishment).

@@ -1,4 +1,4 @@
-# PER-PFT GSI LEAF PHENOLOGY (scale-up step 8 — docs/phase3_fdiff_cbinary_validation.md §19).
+# PER-PFT GSI LEAF PHENOLOGY (scale-up step 8 — docs/notes/phase3_fdiff_cbinary_validation.md §19).
 # Generalizes the self-computed leaf phenology (§11) from ONE patch-wide beech GSI to PER-PFT: each
 # individual advances its own PFT's four-limiter GSI (`pft_phenparams`, verbatim from the ACTIVE
 # par/pft_lpjmlfit.js), and `daily_step_canopy`/`patch_albedo`/`rollout_daily_canopy` accept a

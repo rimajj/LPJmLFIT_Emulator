@@ -12,7 +12,7 @@
 # carbon closes by construction. TIER 1 (later, ADR 0019, `src/slow_infer.jl`) replaces the constant
 # mortality/establishment rates + fixed sapling with the ported ResidualRegressor + Gaussian copula +
 # Poisson/NB count models, conditioned on climate + `FToS`, and adds true membership change (append/merge)
-# + copula-sampled recruit traits. See `docs/p1_s_in_loop_design.md`.
+# + copula-sampled recruit traits. See `docs/notes/p1_s_in_loop_design.md`.
 
 """
     AbstractSlowEmulator

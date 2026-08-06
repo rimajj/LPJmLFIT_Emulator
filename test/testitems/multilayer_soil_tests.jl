@@ -1,4 +1,4 @@
-# Gate — multi-layer soil water (ADR 0014 scale-up step 2; docs/phase3_fdiff_cbinary_validation.md §7).
+# Gate — multi-layer soil water (ADR 0014 scale-up step 2; docs/notes/phase3_fdiff_cbinary_validation.md §7).
 # The differentiable 23-layer soil column (SoilColumn + FDiffStateML + daily_step_ml) validated on the
 # Hainich prototype cell against the LPJmL-FIT C binary's daily soil water (d_rootmoist) + transpiration.
 # It (a) makes soil water physically representable per layer, (b) SUBSTANTIALLY improves the daily

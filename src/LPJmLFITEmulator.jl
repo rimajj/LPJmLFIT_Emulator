@@ -88,7 +88,7 @@ include("trait_mortality.jl")
 # free daily_step); the multi-individual CANOPY loss/trainer ([`fdiff_canopy_gpp_loss`](@ref)/
 # [`train_fdiff_canopy_rollout!`](@ref)) differentiates with **Enzyme reverse** because `daily_step_canopy`
 # mutates the per-layer soil arrays (the AD-through-mutation path — item 7b-canopy). See
-# `ext/FDiffTrainingExt.jl` and `docs/phase3_fdiff_cbinary_validation.md` §14–§15.
+# `ext/FDiffTrainingExt.jl` and `docs/notes/phase3_fdiff_cbinary_validation.md` §14–§15.
 """
     build_fdiff_nn(; targets=(:vm,), n_in=6, width=12, depth=2, corr_max=1.0, rng) -> nn
 
@@ -262,8 +262,9 @@ export ClimBuf, climbuf_accumulate!, climbuf_finalize_year!, climbuf_boundary,
 export SEBEnergyClosure, SEBParams, solve!, solve_seb, aerodynamic_conductance, energy_residual
 # Coupled S+F+E run loop — the end-to-end emulator driver (Phase 4)
 export run_coupled_cell, couple_day!, stand_structure_toe, stand_structure_tof
-# Registry
+# Registry — the runtime seam (COMPONENTS/FLUXES) plus the FULL data-flow graph (DATA_NODES/DATA_EDGES)
 export COMPONENTS, FLUXES, Component, Flux
+export DataNode, DataEdge, DATA_NODES, DATA_EDGES, STAGES
 # Hybrid NN-hook training API (methods added by ext/FDiffTrainingExt.jl). `FDiff.FluxHooks` (the hook
 # container) is reached via `using LPJmLFITEmulator.FDiff`, matching the other F_diff types.
 export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train_fdiff_rollout!,

@@ -1,4 +1,4 @@
-# P1 Step 1 (ADR 0019 / docs/p1_s_in_loop_design.md) — the carbon-accounting FOUNDATION for wiring the
+# P1 Step 1 (ADR 0019 / docs/notes/p1_s_in_loop_design.md) — the carbon-accounting FOUNDATION for wiring the
 # slow demography emulator S into the coupled loop under the ADR-0018 growth-ownership split. F_diff owns
 # the conserving CARBON growth of representative individuals; S owns the demography. For the S↔F handoff to
 # conserve carbon to ~1e-6, every carbon movement must be an accounted flux. This gate verifies the two
