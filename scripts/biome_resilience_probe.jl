@@ -544,6 +544,23 @@ if ANCHOR > 0
         "anchored CLOSER to the oracle in %d of %d pairs; mean error %s\n",
         count(elvl .< efree), length(efree), mean(elvl) < mean(efree) ? "IMPROVED" : "WORSENED"
     )
+    # ADR 0104 §7 CLAUSE 2, evaluated in-script so the verdict is the machine's and not the reader's
+    # (the `residual-diagnosis` rule this line earned on 2026-08-06). Two parts, both stated against the
+    # ORACLE and not against the free arm: the mean must not get worse, and no SINGLE pair may move away
+    # from the C by more than 0.05. The per-pair part is the new one — §6's run only checked the mean.
+    c2_pair_tol = 0.05
+    c2_mean = mean(elvl) <= mean(efree)
+    c2_worst, c2_which = findmax(elvl .- efree)
+    c2_pair = c2_worst <= c2_pair_tol
+    @printf(
+        "\n--- ADR 0104 §7 CLAUSE 2 (memory) ---\n  mean |AC-C| no worse than free : %s (%.4f vs %.4f)\n",
+        c2_mean ? "PASS" : "FAIL", mean(elvl), mean(efree)
+    )
+    @printf(
+        "  no pair moves away from C by >%.2f : %s (worst +%.4f, pair %d of %d)\n  CLAUSE 2: %s\n",
+        c2_pair_tol, c2_pair ? "PASS" : "FAIL", c2_worst, c2_which, length(elvl),
+        (c2_mean && c2_pair) ? "PASS" : "FAIL"
+    )
     @printf("\nlvl-free ~ 0 => the anchor left the internal memory alone. lvl-pin >> 0 => it did NOT collapse\n")
     @printf("to the no-recursion control. A LARGE NEGATIVE lvl-free is the failure mode to look for: it would\n")
     @printf("mean the anchor bought its level fix by flattening the emulator's own year-to-year dynamics.\n")

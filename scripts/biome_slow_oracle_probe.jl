@@ -104,6 +104,43 @@ function readcanopy(path)
     return pools, tmpls, length(rows), nmean
 end
 
+"Build one patch's (pools, templates) from already-parsed `ind` rows — the body `readcanopy` uses, factored
+ out so the ensemble reader below shares it exactly (ADR 0105)."
+function build_patch(ind, rows)
+    v(k, r) = parse(Float64, ind[k][r])
+    pools = [
+        TreePools{Float64}(
+                v("leaf_c", r), v("sapwood_c", r),
+                max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0), v("root_c", r),
+                v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false
+            ) for r in rows
+    ]
+    tmpls = [
+        Individual{Float64}(
+                v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
+                v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
+                PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
+                TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
+            ) for r in rows
+    ]
+    return pools, tmpls
+end
+
+"ALL patches of the cell's `ind` canopy, sorted by patch id — ONE ENSEMBLE MEMBER PER PATCH. This is the
+ basis the C itself reports (ADR 0053/0057) and the basis the count DRF was trained on; the modal reader
+ above is kept beside it so ADR 0104's published modal numbers stay reproducible in the same run."
+function readcanopy_patches(path)
+    ind = readcsv(path)
+    v(k, r) = parse(Float64, ind[k][r])
+    nt(r) = parse(Int, ind["type"][r])
+    prows = Dict{Int, Vector{Int}}()
+    for r in eachindex(ind["type"])
+        (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
+    end
+    pk = sort(collect(keys(prows)))
+    return [build_patch(ind, prows[p]) for p in pk], pk
+end
+
 function forcings_of(name)
     f = readcsv(joinpath(REFDIR, "biome_forcing_$(name).csv"))
     tairK = fcol(f, "temp") .+ 273.15
@@ -281,6 +318,95 @@ anch5 = [run_cell(k; anchor = 0.5) for k in eachindex(names)]
 anch25 = [run_cell(k; anchor = 0.25) for k in eachindex(names)]
 anch1 = [run_cell(k; anchor = 0.1) for k in eachindex(names)]
 flush(stdout)
+
+# ── THE PATCH ENSEMBLE (ADR 0105) — the basis every arm above is MISSING. ─────────────────────────────
+# Everything from here down re-runs the same arms with ONE MEMBER PER PATCH of the 2010 `ind` canopy and
+# averages the members, which is:
+#   (a) the basis the C reports (it simulates 25 replicate patches and writes their mean — ADR 0053), and
+#   (b) the basis the count DRF was TRAINED on (one row per Cell×Patch×Year).
+# The modal arms above start on the DENSEST of the 25 patches, 1.12-1.72x the ensemble mean, so every free
+# arm begins ~1.6-1.9x above its own truth and part of what the anchor "fixes" there is that initialisation
+# offset rather than recursion drift. ADR 0104 §5 named this the one remaining blocker on the flip and §7
+# re-registered the criterion to be decided HERE. Both bases run in one process so the artifact is visible
+# rather than argued about.
+#
+# `seed = member` (not the modal arms' fixed 1) so the members are independent realizations of the same
+# cell, matching `biome_resilience_probe.jl`'s ensemble. The C's 25 patches differ by stochastic history,
+# not by climate.
+struct EnsRun
+    name::String
+    target::Vector{Float64}          # ensemble MEAN of s.target_history, per year
+    dens::Vector{Float64}            # ensemble MEAN of Σ nind over tree cohorts, per year
+    fpc::Vector{Float64}             # ensemble MEAN of the fpc feature the DRF was fed, per year
+    dens_sd::Vector{Float64}         # between-member SD of the density — the ensemble's own spread
+    n0::Float64                      # mean stems per member at t0 = the C's own per-patch mean, by identity
+    resid::Float64                   # max |carbon handoff residual| over ALL members
+    cscale::Float64                  # min member C_scale (the tightest 1e-6·C_scale gate in the ensemble)
+    anchor::Float64
+    nmemb::Int
+end
+
+function run_member(k, patches, member; anchor::Float64 = 0.0, teacher::Bool = false)
+    name = names[k]
+    forc, _tairK = forcings_of(name)
+    soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
+    pools, tmpls = patches[member]
+    core = FDiffFastCore(deepcopy(pools), deepcopy(tmpls), soil, lats[k]; params = leafon_params())
+    clo = SEBEnergyClosure(; t_soil0 = mean(_tairK))
+    state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
+    rc = RecruitCopula{Float64}(cop, af, xcop, make_recruit_to_pools(axnames), live_flux_cond)
+    s = FluxDrivenSlowEmulator(
+        core, forest; boundary = copy(bnds[k]), n_init = n_inits[k], age0 = age0s[k],
+        seed = member, recruit_copula = rc, anchor = anchor
+    )
+    cscale0 = sum(FDiff.vegc_full_ind(p) * Float64(p.nind) for p in core.pools)
+    cb = ClimBuf()
+    ctruth = cnt_series(name, 1, "n_mean")
+    dens = Float64[]
+    for y in 1:NYEAR
+        rng = ((y - 1) * 365 + 1):(y * 365)
+        last(rng) <= length(forc) || break
+        run_coupled_cell(
+            core, clo, state, view(forc, rng); slow = s, climbuf = cb, days_per_year = 365
+        )
+        teacher && !isnan(ctruth[y]) && (s.n_prev = ctruth[y])
+        push!(dens, sum(Float64(p.nind) for p in core.pools if !p.is_grass; init = 0.0))
+    end
+    return (;
+        target = copy(s.target_history), dens,
+        fpc = [row[I_FPC] for row in s.feature_history],
+        resid = maximum(abs, s.resid_history), cscale = cscale0,
+        n0 = sum(Float64(p.nind) for p in pools) * PATCH_AREA,
+    )
+end
+
+"Run every patch as its own member and average. `mean_at(y)` skips members that ended early (none do at a
+ 10-year horizon, but a truncated member must never be silently counted as a zero)."
+function run_ens(k; anchor::Float64 = 0.0, teacher::Bool = false)
+    patches, _pk = readcanopy_patches(joinpath(REFDIR, "M_individuals_$(names[k])_2010.csv"))
+    ms = [run_member(k, patches, m; anchor = anchor, teacher = teacher) for m in eachindex(patches)]
+    take(f, y) = [f(m)[y] for m in ms if length(f(m)) >= y]
+    ny = minimum(length(m.dens) for m in ms)
+    return EnsRun(
+        names[k],
+        [mean(take(m -> m.target, y)) for y in 1:ny],
+        [mean(take(m -> m.dens, y)) for y in 1:ny],
+        [mean(take(m -> m.fpc, y)) for y in 1:ny],
+        [std(take(m -> m.dens, y)) for y in 1:ny],
+        mean(m.n0 for m in ms),
+        maximum(m.resid for m in ms),
+        minimum(m.cscale for m in ms),
+        anchor, length(ms)
+    )
+end
+
+@printf("\n--- running the PATCH ENSEMBLE arms (ADR 0105) ---\n"); flush(stdout)
+ens_free = [run_ens(k) for k in eachindex(names)]
+ens_a1 = [run_ens(k; anchor = 0.1) for k in eachindex(names)]
+ens_a25 = [run_ens(k; anchor = 0.25) for k in eachindex(names)]
+ens_a5 = [run_ens(k; anchor = 0.5) for k in eachindex(names)]
+ens_forced = [run_ens(k; teacher = true) for k in eachindex(names)]
+@printf("ensemble arms done (%d members/cell)\n", ens_free[1].nmemb); flush(stdout)
 
 # ── REPORT 1 — counts, year-matched, in units of the seed1-vs-seed2 noise floor ──────────────────────
 @printf("\n=== M3 S-SIDE / COUNTS — coupled per-patch tree N vs the C's per-patch ensemble ===\n")
@@ -607,4 +733,164 @@ end
 @printf("second-order feedback. ADR 0104 §3: all five improve at all three settings, and `a = 0.25` is the\n")
 @printf("best mean whose worst cell is still an improvement (0.5 overshoots semiarid_sahel).\n")
 @printf("\nDONE — the verdict is REPORT 1's |d|/fl and REPORT 2's shape, read with REPORTS 4-5's attribution.\n")
+flush(stdout)
+
+# ── REPORT 8 (line S, ADR 0105) — ADR 0104 §7's RE-REGISTERED CRITERION, ON THE PATCH ENSEMBLE. ──────
+# This is the measurement ADR 0104 §5 deferred and named as the ONE remaining blocker on the flip. Every
+# number above is on the modal patch; every number below is on the 25-patch ensemble, which removes the
+# initialisation confound by construction — the ensemble's own t0 stem count IS the C's per-patch mean.
+#
+# The thresholds are ADR 0104 §7's, written there BEFORE this run, and — the rule this line earned on
+# 2026-08-06 — each has been checked against the update equation first: the anchor writes `r`, which
+# multiplies the roster `dtree`, so every clause below is a function of the ROSTER DENSITY (clause 1),
+# of the carbon handoff the roster change must not break (clause 3a), or of the canopy feature the moved
+# roster produces (clause 3b). None of them scores `target_history`, which the anchor never writes.
+#
+#   CLAUSE 1  the stand score `mean_y |ln(density/truth)|` improves in ALL FIVE cells, AND the Sahel guard:
+#             for any cell whose TERMINAL ratio crosses from over- (free > 1) to under-shoot (anch < 1),
+#             the undershoot it creates must be no larger than the log improvement it delivers,
+#             |ln r_anch| <= |ln r_free| - |ln r_anch|. At `a = 0.5` on the modal basis Sahel went 1.55 ->
+#             0.33, which this guard is written to catch.
+#   CLAUSE 2  the memory clause — NOT scored here. It lives in `biome_resilience_probe.jl` (e), which is
+#             already ensemble-driven; run it with ANCHOR=0.25.
+#   CLAUSE 3a carbon closes at <= 1e-6 * C_scale in every member of every cell.
+#   CLAUSE 3b STABILITY (adopted from ADR 0056): no cell's anchored per-year `fpc` shows a monotone
+#             collapse — read as monotone non-increasing across the whole window AND ending below half
+#             its first year. Sahel's anchored `fpc` 0.281 -> 0.057 on the modal basis is the shape this
+#             clause exists to reject.
+#   CLAUSE 4  deliberately absent: the 100-year biomass drift is REPORTED (probe (f)) and not gated, because
+#             that drift is in F's carbon pools, which the anchor does not touch (ADR 0104 §7(4)).
+const ENS_ARMS = (("a=0.1", ens_a1), ("a=0.25", ens_a25), ("a=0.5", ens_a5))
+@printf("\n\n=== REPORT 8 (ADR 0105) — THE CRITERION ON THE PATCH ENSEMBLE (%d members/cell) ===\n", ens_free[1].nmemb)
+@printf("(the modal-patch confound of ADR 0104 §5 is removed by construction: the ensemble's t0 stem count\n")
+@printf(" IS the C's per-patch mean — the `n0_ens` vs `C_2010` column below is that identity as a check)\n\n")
+@printf("%-22s %8s %8s %8s %8s %9s %9s %9s\n", "cell", "n0_ens", "C_2010", "free_19", "a0.1_19", "a0.25_19", "a0.5_19", "sd/mean")
+ens_scores = Dict{String, Vector{Float64}}("free" => Float64[])
+ens_term = Dict{String, Vector{Float64}}("free" => Float64[])
+for (lab, _) in ENS_ARMS
+    ens_scores[lab] = Float64[]; ens_term[lab] = Float64[]
+end
+for k in eachindex(ens_free)
+    c1 = cnt_series(names[k], 1, "n_mean")
+    ny = min(length(ens_free[k].dens), NYEAR)
+    dtruth = [c1[y] / PATCH_AREA for y in 1:ny]
+    rf = [ens_free[k].dens[y] / dtruth[y] for y in 1:ny]
+    push!(ens_scores["free"], mean(abs.(log.(rf)))); push!(ens_term["free"], rf[ny])
+    terms = Float64[]
+    for (lab, arm) in ENS_ARMS
+        ra = [arm[k].dens[y] / dtruth[y] for y in 1:ny]
+        push!(ens_scores[lab], mean(abs.(log.(ra)))); push!(ens_term[lab], ra[ny])
+        push!(terms, ra[ny])
+    end
+    @printf(
+        "%-22s %8.2f %8.2f %8.2f %8.2f %9.2f %9.2f %9.2f\n",
+        names[k], ens_free[k].n0, c1[1], rf[ny], terms[1], terms[2], terms[3],
+        ens_free[k].dens_sd[ny] / ens_free[k].dens[ny]
+    )
+end
+@printf("\n--- CLAUSE 1: score = year-mean |ln(density/truth)|, ensemble mean density; lower is better ---\n")
+@printf("%-22s %9s %9s %9s %9s %11s\n", "cell", "free", "a=0.1", "a=0.25", "a=0.5", "all better?")
+for k in eachindex(ens_free)
+    f = ens_scores["free"][k]
+    @printf(
+        "%-22s %9.3f %9.3f %9.3f %9.3f %11s\n", names[k], f,
+        ens_scores["a=0.1"][k], ens_scores["a=0.25"][k], ens_scores["a=0.5"][k],
+        all(ens_scores[l][k] < f for (l, _) in ENS_ARMS) ? "yes" : "NO"
+    )
+end
+@printf(
+    "%-22s %9.3f %9.3f %9.3f %9.3f\n", "MEAN", mean(ens_scores["free"]),
+    mean(ens_scores["a=0.1"]), mean(ens_scores["a=0.25"]), mean(ens_scores["a=0.5"])
+)
+
+# ── the clause-by-clause verdict, computed in-script (the method rule: the script prints the headline) ──
+"CLAUSE 1 for one arm: every cell's score improves, and the over->under crossing guard holds everywhere."
+function clause1(lab)
+    impr = all(ens_scores[lab][k] < ens_scores["free"][k] for k in eachindex(ens_free))
+    guard = true; worst = ""
+    for k in eachindex(ens_free)
+        rfree = ens_term["free"][k]; ranch = ens_term[lab][k]
+        (rfree > 1 && ranch < 1) || continue
+        la = abs(log(ranch)); lf = abs(log(rfree))
+        (la <= lf - la) || (guard = false; worst = names[k])
+    end
+    return impr, guard, worst
+end
+cq(r) = r.resid / (1.0e-6 * r.cscale)
+const C3A = all(
+    cq(a[k]) <= 1.0 for a in (ens_free, ens_a1, ens_a25, ens_a5) for k in eachindex(ens_free)
+)
+@printf("\n--- CLAUSE 3a: carbon handoff, WORST member of the ensemble (resid / 1e-6*C_scale) ---\n")
+@printf("%-22s %10s %10s %10s %10s\n", "cell", "free", "a=0.1", "a=0.25", "a=0.5")
+for k in eachindex(ens_free)
+    @printf(
+        "%-22s %10.2e %10.2e %10.2e %10.2e\n", names[k],
+        cq(ens_free[k]), cq(ens_a1[k]), cq(ens_a25[k]), cq(ens_a5[k])
+    )
+end
+@printf("< 1.0 everywhere = clause 3a holds (Gate-2 tolerance, ADR 0018), scored on the WORST member: %s\n", C3A ? "PASS" : "FAIL")
+
+"CLAUSE 3b: a monotone non-increasing `fpc` that ends below half its first year is the runaway shape."
+function collapsed(arm)
+    f = arm.fpc
+    length(f) >= 3 || return false
+    return all(f[y + 1] <= f[y] for y in 1:(length(f) - 1)) && f[end] < 0.5 * f[1]
+end
+@printf("\n--- CLAUSE 3b: per-year `fpc` of the ANCHORED arms — monotone collapse? ---\n")
+@printf("%-22s %-8s%s\n", "cell", "arm", join((@sprintf("%7d", y) for y in Y0:Y1)))
+for k in eachindex(ens_free)
+    for (lab, arm) in (("free", ens_free), ENS_ARMS...)
+        @printf(
+            "%-22s %-8s%s  %s\n", lab == "free" ? names[k] : "", lab,
+            join((@sprintf("%7.3f", v) for v in arm[k].fpc)),
+            collapsed(arm[k]) ? "COLLAPSE" : ""
+        )
+    end
+end
+
+@printf("\n=== ADR 0104 §7 VERDICT ON THE ENSEMBLE, per candidate `a` ===\n")
+@printf("%-8s %-14s %-16s %-12s %-12s %s\n", "a", "clause1 score", "clause1 guard", "clause3a", "clause3b", "OVERALL (1+3)")
+for (lab, arm) in ENS_ARMS
+    impr, guard, worst = clause1(lab)
+    c3b = !any(collapsed(arm[k]) for k in eachindex(arm))
+    @printf(
+        "%-8s %-14s %-16s %-12s %-12s %s\n", lab,
+        impr ? "PASS" : "FAIL", guard ? "PASS" : "FAIL ($worst)",
+        C3A ? "PASS" : "FAIL", c3b ? "PASS" : "FAIL",
+        (impr && guard && C3A && c3b) ? "PASS" : "FAIL"
+    )
+end
+# ── REPORT 9 (ADR 0105) — WHERE THE REMAINING ERROR LIVES, on the ensemble basis. ────────────────────
+# With the initialisation confound gone, the free-running level error is small enough that the question
+# changes from "how do we anchor it" to "what is left, and whose is it". Three arms answer it:
+#   FREE     — the deployed loop.
+#   FORCED   — `s.n_prev` overwritten each year with the C's own per-patch mean. It puts the ONE count-space
+#              AR feature back on its trained basis and leaves F's canopy features exactly as they are, so
+#              free − forced is the count RECURSION's contribution and forced − 1 is what the count model
+#              does when fed F's own (drifting) canopy. It needs the answer to work ⇒ a bound, not a model.
+#   OFFLINE  — the AR(1) prediction from the training table alone (`scripts/exposure_bias_probe.jl`):
+#              e_10 = b(1-g^10)/(1-g) with b the one-step bias on the trained basis and g = ∂pred/∂n_prev.
+# If FREE ≈ OFFLINE the coupled error IS the exposure bias and a retrain is the fix. If FORCED ≈ FREE the
+# recursion contributes nothing and the error is in the FEATURES F hands the count model — a coupling
+# question, not a training one. The three are printed together because only the comparison decides it.
+@printf("\n\n=== REPORT 9 (ADR 0105) — free vs `n_prev`-FORCED, ensemble basis, terminal density/truth ===\n\n")
+@printf("%-22s %10s %10s %12s %12s\n", "cell", "free_19", "forced_19", "free-forced", "score_forced")
+for k in eachindex(ens_free)
+    c1 = cnt_series(names[k], 1, "n_mean")
+    ny = min(length(ens_free[k].dens), length(ens_forced[k].dens), NYEAR)
+    dtruth = [c1[y] / PATCH_AREA for y in 1:ny]
+    rf = [ens_free[k].dens[y] / dtruth[y] for y in 1:ny]
+    rt = [ens_forced[k].dens[y] / dtruth[y] for y in 1:ny]
+    @printf(
+        "%-22s %10.3f %10.3f %12.3f %12.3f\n",
+        names[k], rf[ny], rt[ny], rf[ny] - rt[ny], mean(abs.(log.(rt)))
+    )
+end
+@printf("\nfree-forced ~ 0 => the count-space AR recursion contributes ~nothing to the level error on this\n")
+@printf("basis, and what remains is what the count model does on F's own canopy features. Compare\n")
+@printf("`score_forced` with CLAUSE 1's `free` column: a forced arm that is no better is the same statement.\n")
+
+@printf("\nCLAUSE 2 (memory) is NOT in this table — it is scored by scripts/biome_resilience_probe.jl (e),\n")
+@printf("which is already ensemble-driven. Run it with ANCHOR=0.25 and read its own PASS/FAIL line.\n")
+@printf("The flip needs clauses 1, 2 AND 3 to pass at the SAME `a`.\n")
 flush(stdout)
