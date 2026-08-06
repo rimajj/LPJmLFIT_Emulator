@@ -138,6 +138,33 @@ forcing it flattens boreal 1.12→1.74 into a flat 1.12–1.17. Skipping this ar
 model that is actually within 0.2–3.9 noise floors. The same arm is the ready-made before/after test for any
 fix to the recursion.
 
+### ⚠ Scoring an operator that CLOSES A LOOP — fire-check it, then read the per-year SHAPE (ADR 0056)
+
+The same harness is the standing arm for deciding whether a new S-side operator should become a default
+(ADR 0103 §6 pre-registered exactly that for the level anchor). Three things it taught, all reusable:
+
+1. **Check the operator actually FIRED before scoring its skill** — ADR 0048's failure mode is an operator
+   that never ran returning a clean null that reads as a pass. For the level anchor the fire-check is
+   `density × patch_area / target → 1`; measured **1.001 in all five cells** at `a = 0.5` versus **1.46–2.21**
+   free-running. That check is what turned a FAILING criterion into a *useful* result: the anchor works, and
+   the level error it closes is far bigger than the single-cell evidence had shown.
+2. **A criterion must be checked against what the mechanism CLAIMS**, not only against what you want. Clause
+   (i) asked the anchor to remove the count drift, but the drift is in the DRF's *target* and ADR 0103's own
+   Consequences already stated the anchor does not fix that. A pre-registered criterion can be wrong; say so
+   rather than reading the mechanism as under-delivering.
+3. **When an operator closes a feedback loop, a collapsing cell has TWO explanations with opposite SHAPES —
+   print the per-year series, not the start/end ratio.** Anchoring closes `density → fpc → target → density`.
+   H1 runaway feedback ⇒ the operator's own `fpc` falls faster than free and *keeps* falling. H2 an artefact
+   of the **modal-patch** initial canopy (1.12–1.95× the ensemble, so the first act is a one-time thinning)
+   ⇒ an early step down that then **flattens or recovers**. Measured: four cells are H2 and benign
+   (`tropical_amazon` 0.760 → 0.351 → *recovers* to 0.446; Hainich's gate metric **improves** 4.5 → 3.2
+   floors) and `semiarid_sahel` is H1 (`fpc` 0.281 → 0.057 monotone, target 13.5 → 4.46). A start/end ratio
+   cannot tell these apart, and asserting the mechanism without this costs the finding.
+
+**Any future default-on proposal for a loop-closing operator needs a STABILITY criterion, not just a skill
+one** — and the cheap form is the above: run the operator's arm beside the free one and look for a monotone
+collapse with no trough.
+
 ### The noise floor is the only honest scale
 
 LPJmL-FIT is stochastic (RAND48 + `-DPERMUTE`), so seed1 vs seed2 is the irreducible error. Emit **both**
