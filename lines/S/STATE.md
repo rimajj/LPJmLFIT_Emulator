@@ -34,7 +34,22 @@ or a new model run for CO2, and never list it as a defect.
 
 ### ✅ MERGED AND GREEN — nothing about this line's work is outstanding
 
-Work merged to `main` as **`362d115d`**, and **`main`'s OWN post-merge run is green**: `test (lts)` ✅
+**LATEST (ADR 0110, the per-tree rooting + drought work):** merged to `main` as **`f5c614db`**, and
+**`main`'s OWN post-merge run is green** — `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ **`docs` ✅**
+(the whole-package gate that never runs on a branch) `format` ✅.
+⚠ **It came back RED first, on `test (lts)` AND `docs`, and it was a GITHUB OUTAGE, not the merge:** both jobs
+died at `Failed to resolve action download info. Error: Service Unavailable` — before any Julia ran — while
+`test (1)`, `test (macOS, lts)` and `format` passed on the same sha and `test (lts)` had passed on the branch
+sha minutes earlier. `rerun-failed-jobs` on both runs went green with **zero code changes**. The 30-second
+triage (read the failure STEP, check the siblings, check the branch) is now in the **`repo-commit`** skill. Branch CI on
+the code-bearing sha `b739cb14`: `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅; `test (pre)`
+❌ = the same documented `ScopedValues` prerelease `MethodError` on Julia 1.13.0-rc1, confirmed from the job
+log, `continue-on-error`, not ours. Local CI-faithful suite (job **1719485**): **111 775 pass / 0 fail /
+0 error**, and **no pre-existing assertion moved** — that is the guardrail-4 byte-identity evidence, since all
+three flags default off. ⚠ The FIRST suite attempt (job 1719462) died with **SIGABRT** — see the
+`julia-test` skill and CLAUDE.md §2; it was a `Vector` field on `FDiff.Individual`, not the physics.
+
+**Earlier (ADR 0109, the moisture arm):** work merged to `main` as **`362d115d`**, and **`main`'s OWN post-merge run is green**: `test (lts)` ✅
 `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅ **`docs` ✅** (the whole-package gate that never runs on a
 branch — §9 note 5's one case that always deserves the look, and it passed). Branch CI on the code-bearing sha
 **`c68ee134`**: `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅. `test (pre)` ❌ = the documented
