@@ -197,7 +197,9 @@ ADR 0058 shipped as `671099e9` + the skill follow-up `f802a420`, whose branch CI
 required gate** (`format`, `test (lts)`, `test (1)`, plus non-required `test (macOS, lts)`; `test (pre)`
 red for the same diagnosed prerelease reason). Local CI-faithful suites before each push were **111,230
 pass / 0 fail** (jobs 1716594 and 1716629). `main`'s own post-merge run on `e8443256` is green on all four
-too. Merge sha for ADR 0058 + the E inbound: see `git log origin/main` — pushed the same session.
+too. ADR 0058 + the skill capture + the E inbound merged to `main` as **`52411138`**, whose own post-merge
+run is green on `format`, `test (lts)`, `test (1)` and `test (macOS, lts)`. **Nothing from this session is
+outstanding on either side.**
 
 ### 1. The `n_prev` integration point with line S — unchanged, still S's to land
 
