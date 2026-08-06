@@ -445,3 +445,33 @@ Before writing "this is an integration point", answer three questions:
 A wrongly-raised integration point is not a harmless excess of caution. It parks finished work behind
 another session's schedule, and both lines then record it as the other's to move — which is exactly how the
 `wscal_leafon` flip sat unscheduled for weeks with each side waiting.
+
+---
+
+## When two lines land on the SAME file (added 2026-08-06, ADR 0104/0056)
+
+With four lines running, two sessions can measure the same thing on the same harness at the same time. It
+happened: S and M submitted the same probe within two minutes of each other without coordinating, M merged
+first, and S's merge conflicted on the shared script and on `lines/S/STATE.md`.
+
+**The resolution rule: take the OTHER line's structure and add only what is missing.** Whatever is on `main`
+has already passed its gates, has already been reasoned about in an ADR, and is what every other line will
+read next. Your version is the one that has to justify itself. Concretely, in that collision M's arms ran
+unconditionally with a per-arm carbon table while S's were gated behind an `ANCHOR=<a>` environment variable
+— S dropped its own machinery rather than defending it, kept M's, and added on top only the one table M did
+not have. The result is one harness rather than two dialects of one.
+
+**Then RE-RUN the merged file before pushing.** A resolved conflict in a *measurement* script is not verified
+by `format`, by `CI` (which does not even watch `scripts/**`), or by the fact that both sides worked
+separately — you have created a third version nobody has executed. Re-running cost 25 seconds and confirmed
+the merged harness reproduced every number already written into the ADR.
+
+**Do not silently drop the other line's prose.** A `> ## ◀ REPLY FROM LINE X` block in *your* STATE file is
+theirs, not conflict noise: keep it verbatim and add your reconciliation beside it. If you disagree on a
+number, say which yardstick each of you used rather than overwriting theirs — in this case both were right
+and were answering different questions (stand ÷ its own model's target = self-consistency; stand ÷ the C's
+truth = accuracy), and flattening one would have destroyed the actual finding.
+
+**Prevention, cheap:** before submitting a long measurement on a *shared* harness, `squeue -u $USER` and look
+for another line's tag on the same script. A duplicate run is not pure waste — two independent runs agreeing
+to the digit is what made this verdict unarguable — but knowing it is happening lets you split the work.
