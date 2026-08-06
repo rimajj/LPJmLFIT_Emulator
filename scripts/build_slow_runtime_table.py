@@ -128,6 +128,9 @@ SOIL_TBL = {"historic": f"{BASE}/tables/cell_year_soilmoist_ye_hist.parquet",
 CELL_YEAR_FEATS = f"{BASE}/tables/cell_year_feats.parquet"
 # TRANSIENT boundary (ADR 0026): per-(Cell,Year) trailing-window gdd5/tas_cold_month (scripts/build_transient_boundary.py)
 TRANSIENT_BOUNDARY = f"{BASE}/tables/cell_year_boundary_{{scenario}}_w{{w}}.parquet"
+# TRANSIENT env tail (ADR 0108): per-(Cell,Year) trailing-window MOISTURE descriptors, same builder
+# (`MOISTURE=1 scripts/build_transient_boundary.py`), same trailing-W-year basis as the boundary.
+TRANSIENT_ENV = f"{BASE}/tables/cell_year_env_{{scenario}}_w{{w}}.parquet"
 FIRSTYEAR = {"historic": 2000, "ssp370": 2020}
 
 # runtime head order — MUST equal src/components/slow.jl::flux_feature_vector
@@ -160,8 +163,13 @@ MIN_YEARS = 3            # per-cell rows floor for a trustworthy n_init/age0 med
 #
 # LOAD-BEARING (ADR 0023, and it fails SILENTLY): the runtime must build the SAME tail in the SAME order via
 # `src/components/slow.jl::live_flux_cond_env`. The `.rcop`'s `cond_cols` line is the contract between them.
-# These are per-CELL time means, matching the DEFAULT static boundary basis; a transient (per Cell,Year)
-# variant would have to mirror `BOUNDARY_WINDOW` the way `_boundary_source` does.
+#
+# THE TAIL'S TIME BASIS IS A SECOND, INDEPENDENT KNOB — `ENV_WINDOW` (ADR 0108, see `_env_source`). Unset ⇒
+# per-CELL time means (the pre-0108 behaviour, matching the DEFAULT static boundary). `ENV_WINDOW=W` ⇒ the
+# per-(Cell,Year) trailing-W-year tables, i.e. the ADR-0026 treatment the boundary pair already gets. The two
+# bases produce tables with IDENTICAL `ncond` and IDENTICAL `cond_cols` and require DIFFERENT runtime
+# policies (`live_flux_cond_env` vs `live_flux_cond_env_series`), so the manifest's `env_basis` line — not the
+# width, which matches either way — is what tells a consumer which one it is holding.
 COPULA_ENV_COLS = [c.strip() for c in os.environ.get("COPULA_ENV_COLS", "").split(",") if c.strip()]
 COPULA_COND_COLS = HEAD_COLS[:4] + BOUNDARY_COLS + COPULA_ENV_COLS
 COPULA_AXES = ["SLA", "Wooddens", "D95max", "minwscal"]
@@ -251,6 +259,83 @@ def _boundary_source(scenario):
     return tb, ["Cell", "Year"]
 
 
+def _env_source(scenario):
+    """The COPULA_ENV_COLS tail source + its join keys, honoring the opt-in TRANSIENT env (ADR 0108).
+
+    Default (env `ENV_WINDOW` unset): the per-CELL time MEAN over `cell_year_feats.parquet` — time-constant
+    and scenario-blind, joined on ["Cell"], i.e. byte-identical to the pre-0108 ADR-0037 tail. The mean is
+    taken AFTER an explicit `cast(Float64)` because 4 of the 6 columns are stored `Float32` and polars
+    accumulates a `Float32` mean in `Float32` (CLAUDE.md §4) — dropping the cast lands ~3.4e-7 relative away
+    from the value the shipped artifacts were conditioned on.
+
+    `ENV_WINDOW=W`: the TRANSIENT tail — per-(Cell,Year) trailing-W-year moisture descriptors from
+    `cell_year_env_<scenario>_wW.parquet`, joined on ["Cell","Year"], exactly the ADR-0026 treatment the
+    boundary pair already gets via `_boundary_source`. Column names and ORDER are unchanged; only the values
+    become year- and scenario-specific.
+
+    WHY IT EXISTS. Under the default tail every one of the six moisture columns is a frozen present-day
+    constant, so a 2100 ssp370 stem is conditioned on the 2000-2019 climatology of its own cell, and the SLOW
+    moisture climate FIT's establishment gates key on cannot reach the sampled marginal at all.
+    ⚠ That does NOT mean the emulator has no trait response — the frozen tail is 6 of 14 columns, and
+    `water_stress`/`soilmoist` (per-cell-year) plus the transient boundary pair are the other channel.
+    Measured on the shipped `_t8` generation (scripts/diagnose_moisture_arm_response.py, 52 020 cells, OOS),
+    the per-cell scenario response already tracks the C truth's with slope +0.85 (SLA) / +0.35 (Wooddens) /
+    +0.16 (D95max) / +0.69 (minwscal). So this knob opens the frozen channel and is MEASURED against those
+    slopes; it does not move a response off zero. The transient tables carry a real signal: global mean
+    VPD +20.4 %, PET +4.9 %, humidity +19.9 % from 2019 to 2100.
+
+    LOAD-BEARING, and it fails SILENTLY (ADR 0023): a table built with `ENV_WINDOW` must be consumed by a
+    runtime that advances the env tail per YEAR — `src/components/slow.jl::live_flux_cond_env_series` — not
+    by `live_flux_cond_env(env)`, which closes over one constant vector. The widths are IDENTICAL, so the
+    construction-time width probe cannot catch the mismatch; only the manifest's `env_basis` line can.
+    Returns (frame, join_keys)."""
+    w = os.environ.get("ENV_WINDOW", "").strip()
+    if not w:
+        # NO year filter — the SAME basis as the static boundary this tail is appended to.
+        # `cell_year_feats` is a HISTORIC climatology table (Year 2000-2019 only) and `_boundary_source`
+        # reads it whole for every scenario. A `Year >= FIRSTYEAR[scenario]` filter here was a no-op for
+        # `historic` but selected ZERO rows for `ssp370`, whose FIRSTYEAR is 2020 — making an ssp370
+        # env-conditioned build die downstream with a message that blamed a coverage hole.
+        have = pl.scan_parquet(CELL_YEAR_FEATS).collect_schema().names()
+        missing = [c for c in COPULA_ENV_COLS if c not in have]
+        if missing:
+            raise SystemExit(f"FATAL: COPULA_ENV_COLS not in cell_year_feats: {missing}")
+        envt = (pl.scan_parquet(CELL_YEAR_FEATS)
+                .select(["Cell"] + COPULA_ENV_COLS)
+                .group_by("Cell")
+                .agg([pl.col(c).cast(pl.Float64).mean().alias(c) for c in COPULA_ENV_COLS])
+                .collect())
+        if envt.height == 0:
+            raise SystemExit(
+                f"FATAL: env aggregation over {CELL_YEAR_FEATS} produced ZERO cells — an EMPTY SOURCE, "
+                f"not a coverage hole."
+            )
+        print(f"== STATIC env tail (ADR 0037): per-cell means over {CELL_YEAR_FEATS} ({envt.height} cells)")
+        return envt, ["Cell"], "static_cell_mean"
+    path = TRANSIENT_ENV.format(scenario=scenario, w=int(w))
+    if not os.path.exists(path):
+        raise SystemExit(f"FATAL: ENV_WINDOW={w} but transient env table missing: {path} (run: "
+                         f"export MOISTURE=1; SCENARIO={scenario} WINDOW={w} "
+                         f"python3 scripts/build_transient_boundary.py)")
+    have = pl.scan_parquet(path).collect_schema().names()
+    missing = [c for c in COPULA_ENV_COLS if c not in have]
+    if missing:
+        raise SystemExit(f"FATAL: COPULA_ENV_COLS not in {path}: {missing}")
+    envt = (pl.read_parquet(path)
+            .select(["Cell", "Year"] + COPULA_ENV_COLS)
+            .with_columns([pl.col(c).cast(pl.Float64) for c in COPULA_ENV_COLS]))
+    # A duplicated (Cell,Year) here would MULTIPLY conditioning rows in the join below and be invisible to a
+    # `dropped = h_pre - h_post` guard (it goes negative). The builder already learned this on the streamed
+    # aggregate (ADR 0036 §5b); assert it on every joined table, not only the one that produced it.
+    if envt.select(["Cell", "Year"]).n_unique() != envt.height:
+        raise SystemExit(f"FATAL: {path} has duplicate (Cell,Year) keys ({envt.height} rows, "
+                         f"{envt.select(['Cell', 'Year']).n_unique()} distinct) — the join would duplicate rows.")
+    yr = (int(envt['Year'].min()), int(envt['Year'].max()))
+    print(f"== TRANSIENT env tail (ADR 0108) W={w}: {path} ({envt.height} cell-years, "
+          f"{envt['Cell'].n_unique()} cells, Year {yr[0]}-{yr[1]})")
+    return envt, ["Cell", "Year"], f"transient_w{int(w)}"
+
+
 def _struct_axes_from_env() -> list[str]:
     """The requested DIAGNOSTIC struct axes, from env `STRUCT_AXES` (default OFF ⇒ byte-identical output).
 
@@ -306,42 +391,26 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
     cyf, bkeys = _boundary_source(scenario)
     cond = (agg.select(["Cell", "Patch", "Year"] + HEAD_COLS[:4])
             .join(cyf, on=bkeys, how="left").with_columns(pl.lit(CO2_CONST).alias("co2")))
+    env_basis = "none"
     if COPULA_ENV_COLS:
-        # Per-CELL time means over the scenario's years (the static-boundary basis). LEFT-joined like the
-        # boundary, then asserted non-null: a silent null here would become a NaN in Xc, and `is_not_null`
-        # does NOT catch NaN in polars (CLAUDE.md §4), so check both.
-        have = pl.scan_parquet(CELL_YEAR_FEATS).collect_schema().names()
-        missing = [c for c in COPULA_ENV_COLS if c not in have]
-        if missing:
-            raise SystemExit(f"FATAL: COPULA_ENV_COLS not in cell_year_feats: {missing}")
-        # NO year filter — the SAME basis as the static boundary this tail is appended to.
-        # `cell_year_feats` is a HISTORIC climatology table (Year 2000-2019 only) and `_boundary_source`
-        # reads it whole for every scenario. The original `Year >= FIRSTYEAR[scenario]` here was a no-op for
-        # `historic` (so every historic table is byte-identical under this change) but selected ZERO rows for
-        # `ssp370`, whose FIRSTYEAR is 2020 — making an ssp370 env-conditioned build die downstream with a
-        # message that blamed a coverage hole. An ssp370 env tail is therefore the historic climatology, just
-        # like its boundary; a scenario-varying tail would need the ADR-0026 BOUNDARY_WINDOW treatment.
-        envt = (pl.scan_parquet(CELL_YEAR_FEATS)
-                .select(["Cell"] + COPULA_ENV_COLS)
-                .group_by("Cell")
-                .agg([pl.col(c).cast(pl.Float64).mean().alias(c) for c in COPULA_ENV_COLS])
-                .collect())
-        if envt.height == 0:
-            raise SystemExit(
-                f"FATAL: env aggregation over {CELL_YEAR_FEATS} produced ZERO cells — an EMPTY SOURCE, "
-                f"not a coverage hole."
-            )
+        # The tail source: per-CELL time means (default) or per-(Cell,Year) TRANSIENT under ENV_WINDOW
+        # (ADR 0108). INNER-joined and then asserted non-null: a silent null here would become a NaN in Xc,
+        # and `is_not_null` does NOT catch NaN in polars (CLAUDE.md §4), so check both.
+        envt, ekeys, env_basis = _env_source(scenario)
         bad = {c: int(envt[c].is_null().sum() + envt[c].is_nan().sum()) for c in COPULA_ENV_COLS}
-        assert not any(bad.values()), f"null/NaN in COPULA_ENV_COLS per-cell means: {bad}"
-        h_pre = cond.select(pl.len()).collect().item() if hasattr(cond, "collect") else cond.height
-        cond = cond.join(envt.lazy() if hasattr(cond, "collect") else envt, on="Cell", how="inner")
-        h_post = cond.select(pl.len()).collect().item() if hasattr(cond, "collect") else cond.height
-        assert h_post >= 0.98 * h_pre, (
-            f"COPULA_ENV_COLS join dropped {h_pre - h_post} of {h_pre} conditioning rows "
-            f"({100 * (1 - h_post / max(h_pre, 1)):.2f}%) — a coverage hole, not a rounding loss"
+        assert not any(bad.values()), f"null/NaN in the COPULA_ENV_COLS tail source: {bad}"
+        h_pre = cond.height
+        cells_pre = set(cond["Cell"].unique().to_list())
+        cond = cond.join(envt, on=ekeys, how="inner")
+        h_post = cond.height
+        cells_lost = cells_pre - set(cond["Cell"].unique().to_list())
+        assert h_post >= 0.98 * h_pre and not cells_lost, (
+            f"COPULA_ENV_COLS join (on {ekeys}) dropped {h_pre - h_post} of {h_pre} conditioning rows "
+            f"({100 * (1 - h_post / max(h_pre, 1)):.2f}%) and lost {len(cells_lost)} cells entirely "
+            f"(e.g. {sorted(cells_lost)[:10]}) — a coverage hole, not a rounding loss"
         )
-        print(f"== COPULA_ENV_COLS: appended {len(COPULA_ENV_COLS)} per-cell env column(s) "
-              f"{COPULA_ENV_COLS} -> ncond={len(COPULA_COND_COLS)}")
+        print(f"== COPULA_ENV_COLS: appended {len(COPULA_ENV_COLS)} env column(s) {COPULA_ENV_COLS} "
+              f"on basis '{env_basis}' (join keys {ekeys}) -> ncond={len(COPULA_COND_COLS)}")
 
     stem_filt = pl.col("Type").is_in(TREE_TYPES) & (pl.col("isdead") == 0)
     if cells:
@@ -400,6 +469,12 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
         assert np.isfinite(col).all(), f"non-finite in struct axis {ax}"
         col.tofile(os.path.join(out_dir, f"Y_{ax}.f64"))
     tbl["Cell"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "cells.i64"))
+    # PER-ROW Year, aligned to Xc's rows exactly like cells.i64 (ADR 0108). Emitted UNCONDITIONALLY: without
+    # it a per-(Cell,Year) quantity cannot be attached to an already-built table at all, and the Year is NOT
+    # recoverable from Xc — a per-cell-year feature triple collides across two years in ~140 of 1.35M
+    # historic cell-years (measured), so an inversion is ambiguous where it matters least visibly. Every
+    # downstream consumer is key-driven, so the extra file + manifest line are inert to them.
+    tbl["Year"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "years.i64"))
 
     with open(os.path.join(out_dir, "manifest_copula.txt"), "w") as f:
         f.write(f"n\t{n}\n")
@@ -414,6 +489,12 @@ def _write_copula_table(agg, scenario, seed, cells, out_dir, firstyear) -> int:
             f.write(f"nstruct\t{len(struct_axes)}\n")
             f.write("struct_axes\t" + " ".join(struct_axes) + "\n")
         f.write(f"scenario\t{scenario}\n")
+        f.write("years_tag\tyears.i64\n")
+        # THE ENV-TAIL BASIS, in the artifact (ADR 0108). A static-tail and a transient-tail table have the
+        # SAME ncond and the SAME cond_cols, so nothing else distinguishes them — and the runtime policies
+        # they require (`live_flux_cond_env` vs `live_flux_cond_env_series`) are NOT interchangeable while
+        # the construction-time width probe passes for both. This line is the only contract that can say so.
+        f.write(f"env_basis\t{env_basis}\n")
         # Record the cap IN the artifact: a capped and an uncapped table are NOT interchangeable (the cap is a
         # patch-year cluster subsample), and a consumer previously could not tell them apart at all.
         f.write(f"stem_cap\t{cap}\n")
@@ -613,6 +694,9 @@ def main() -> int:
     # per-row Cell id (aligned to X rows, same Cell,Patch,Year sort) → enables a rigorous held-out-BY-CELL
     # generalization eval in train_slow_drf.jl (DEVELOPMENT_PLAN §5: hold out CELLS, not rows).
     tbl["Cell"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "cells.i64"))
+    # PER-ROW Year, aligned to X's rows (ADR 0108) — same rationale as the copula path: it makes any
+    # per-(Cell,Year) quantity attachable to a frozen table, and the Year is not recoverable from X.
+    tbl["Year"].to_numpy().astype("<i8", copy=False).tofile(os.path.join(out_dir, "years.i64"))
     p = len(colnames)
     with open(os.path.join(out_dir, "manifest.txt"), "w") as f:
         f.write(f"n\t{n}\n")
@@ -624,6 +708,7 @@ def main() -> int:
         f.write(f"scenario\t{scenario}\n")
         f.write(f"ncells\t{tbl['Cell'].n_unique()}\n")
         f.write(f"firstyear\t{firstyear}\n")
+        f.write("years_tag\tyears.i64\n")
         f.write("cell_meta\tcell_meta.parquet\n")
         # single-cell demo: ALSO emit the scalar boundary/n_init/age0 so train_slow_drf.jl (unchanged)
         # still produces the committed Hainich demo meta (slow-drf-pipeline step 2).

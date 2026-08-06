@@ -1286,3 +1286,88 @@ no CO2 response **matches the reference**, which is the entire criterion. Writte
 - **What this does NOT change:** the acceptance criterion itself (ADR 0106 §1–§3), the other five gap rows,
   and the moisture work — which remains the critical path, and is now the *only* climate-response channel
   rather than one of two.
+
+---
+
+## Session 2026-08-06 (line S) — the moisture conditioning is WIRED: transient tail, per-row Year, and the isolated arm (ADR 0108)
+
+**Item A from the previous handoff was already done** — the F-canopy attribution is in `lines/M/STATE.md`
+(the `▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06` block, with the offline-vs-coupled table and the
+`fpc` drift ratios). Nothing was owed. Do not re-raise it.
+
+**Item B (S2) is what this session did.** The data layer existed; the wiring, the runtime policy, the gate and
+the arm did not.
+
+### What was built
+
+1. **`ENV_WINDOW` in `build_slow_runtime_table.py::_env_source`** — the env tail becomes a per-`(Cell,Year)`
+   join against `cell_year_env_<scenario>_w20.parquet` instead of a per-`Cell` mean. Default unset ⇒
+   byte-identical.
+2. **`live_flux_cond_env_series` in `src/components/slow.jl`** — the runtime half, indexing `s.year + 1`
+   clamped, i.e. the *same* index `boundary_series` uses, evaluated in the *same* year (`reconcile_demography!`
+   advances the boundary and calls `rc.cond` before `s.year += 1`). A constant series reproduces
+   `live_flux_cond_env` exactly. Exported; the ADR-0038 construction probe stub gained `year = 0`.
+3. **`years.i64` on every table** (count + copula) + manifest `years_tag`, pooled all-or-nothing.
+4. **`env_basis` in every copula manifest** — the ONLY thing distinguishing a static-tail from a
+   transient-tail artifact, since the two have identical `ncond` AND identical `cond_cols`. `pool_slow_tables.py`
+   now refuses to pool two scenarios whose bases differ.
+5. **`scripts/diagnose_env_window_gate.py`** (job **1718598**, 5 biome cells) and
+   **`scripts/run_moisture_conditioning_arm.sh`** (job **1718904**).
+
+### Why `years.i64` rather than inverting the year from `Xc`
+
+Measured, because it decided the design: `(Cell, gdd5, tas_cold_month)` is ambiguous for **174 of 1 348 400**
+historic and **202 of 5 461 020** ssp370 cell-years; adding `soilmoist` to the key only cuts it to
+**134 / 141**. ~1e-4 of the rows — invisible in every aggregate, wrong exactly where the climate is flattest.
+So the Year is stored, not inferred, and a pre-0108 table cannot be augmented transiently at all.
+
+### The gate result (job 1718598)
+
+`ENV_WINDOW` unset reproduces the pre-change builder's `Xc.f64` **byte-for-byte** (diffed against
+`git show <parent>:`, not a re-run of the new code, so the check is not circular), with
+`n`/`ncond`/`cond_cols`/`axes`/`x` unchanged. Under `ENV_WINDOW=20`: columns 0-7 **identical**, only the six
+tail columns move, same row universe; 20 000/20 000 probed rows carry their own `(Cell,Year)` values
+re-derived from the parquet; **20 distinct tail values per cell where the static tail has 1**.
+
+### Why the arm is one base table plus two appended tails
+
+Two independent 14-column builds would land on two row universes (ADR 0036 §5b: streaming `group_by` is
+non-deterministic in its **key set**), so the comparison would not isolate the tail — the ADR-0033 attribution
+error this line has made twice. Instead: build the 8-column base once, append each tail to that frozen base
+(`build_slow_copula_env_augment.py`, which verifies the base columns survive **bitwise** and symlinks
+`Y_*`/`cells.i64`/`years.i64`), and score both on identical `Cell`-hash folds ⇒ **paired per cell**. The
+pooled base came out at **42 227 077** rows, the same as `_t8`'s, and the transient augment resolved **all**
+42 227 077 rows to their own `(scenario, Cell, Year)` moisture values.
+
+### ⚠ THE CORRECTION THIS SESSION MADE TO ITSELF — measure the baseline before arguing from structure
+
+The first draft of ADR 0108 said the frozen tail meant the trait response to climate was "structurally zero,
+by construction". **That is false, and it was caught by measuring rather than by review.** The frozen tail is
+**6 of 14** conditioning columns; `water_stress` and `soilmoist` are per-`(Cell,Year)` flux drivers and the
+boundary pair is transient under `BOUNDARY_WINDOW`. So a new diagnostic
+(`scripts/diagnose_moisture_arm_response.py`, job **1718922**) was run on the **shipped `_t8` generation**
+first — 52 074 cells with >=30 stems in both scenarios, K-fold-by-cell OOS, per-cell response
+`D = median(ssp370) - median(historic)`, `D_pred` regressed on `D_truth` through the origin:
+
+| axis | response slope | corr | sign agreement | per-cell median within 10 % (hist / ssp) |
+|---|---|---|---|---|
+| SLA | **+0.85** | +0.45 | 71.9 % | 70.7 % / 67.5 % |
+| Wooddens | **+0.35** | +0.38 | 61.5 % | 71.4 % / 72.2 % |
+| D95max | **+0.16** | +0.20 | 57.5 % | **28.0 % / 30.0 %** |
+| minwscal | **+0.69** | +0.58 | 62.7 % | 62.1 % / 63.8 % |
+
+⇒ **the offline recruit-trait response channel is PARTIALLY OPEN, not closed.** The arm's job is to *beat*
+these slopes, not to move a response off zero, and every doc/comment claiming otherwise was corrected in the
+same commit. It also gives this line its first **global** (52 074-cell, both-scenario) level-and-response
+score, replacing five-cell statements: `D95max` is the outlier at 28 % of cells within 10 %.
+
+**METHOD RULE (this is the third time this line has paid for a version of it):** *measure the baseline before
+arguing from code structure that a channel is closed.* "Column X is frozen" bounds what X can carry; it says
+nothing about what the model can do, and the difference cost one 3-minute job. Same shape as ADR 0107's rule
+(an absent behaviour is not automatically a missing one) — applied this time to our own reasoning.
+
+### What is NOT claimed
+
+Whether the transient tail improves trait skill or the response is what the arm measures. A null is a
+legitimate outcome. Nothing here is a *coupled* claim: it is all offline with the conditioning fed the C's own
+features, and ADR 0105 §5 shows the coupled residual is dominated by F's canopy.

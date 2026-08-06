@@ -351,6 +351,51 @@ function live_flux_cond_env(env::AbstractVector{<:Real})
 end
 
 """
+    live_flux_cond_env_series(env_series) -> (s, feats) -> Vector{Float64}
+
+ADR 0108 — the **TRANSIENT** extended recruit-copula conditioning policy: exactly
+[`live_flux_cond_env`](@ref)'s row, but the environmental tail advances **per simulation year** instead of
+being one frozen vector. `env_series` is a per-year `Vector` of tails (each the same length), indexed
+`s.year + 1` and clamped so post-series years reuse the last row — the SAME indexing
+[`FluxDrivenSlowEmulator`](@ref)'s `boundary_series` uses, and evaluated in the same year: the boundary
+advance and `rc.cond(s, feats)` both run before `s.year += 1`, so the two tails are always read at the same
+year.
+
+Why it exists. `live_flux_cond_env(env)` closes over a constant, so with the ADR-0037 tail the six moisture
+descriptors — the SLOW, 20-year-window moisture climate FIT's establishment gates key on — are frozen at a
+cell's present-day values, and that channel carries nothing under a changing climate. ⚠ It does NOT follow
+that the emulator has no trait response: the frozen tail is 6 of 14 columns, and `water_stress`/`soilmoist`
+(per-cell-year flux drivers) plus the transient boundary pair are the other channel. Measured on the shipped
+`_t8` generation (52 074 cells, K-fold-by-cell OOS), the per-cell response `median(ssp370) − median(historic)`
+already regresses on the C truth's own response with slope **+0.85** (SLA) / **+0.35** (Wooddens) / **+0.16**
+(D95max) / **+0.69** (minwscal) — partial, axis-dependent, and worst on the rooting-depth trait. So this
+policy is there to open the frozen channel and be MEASURED against those slopes, not to move a response off
+zero. The tables it consumes carry a real signal (global mean VPD +20.4 %, PET +4.9 %, humidity +19.9 %,
+2019→2100), and the acceptance criterion is a climate-change criterion (ADR 0106).
+
+LOAD-BEARING, and it fails SILENTLY in a way the width probe CANNOT catch (ADR 0023). A static-tail and a
+transient-tail artifact have the **same `ncond`** and the **same `cond_cols`**, so
+`FluxDrivenSlowEmulator`'s conditioning-width check passes for either policy paired with either artifact.
+Pairing them wrong reads the marginal forests at systematically wrong coordinates while still returning
+in-range traits. The artifact's manifest `env_basis` line is the only discriminator: `transient_w<W>` needs
+THIS policy, `static_cell_mean` needs [`live_flux_cond_env`](@ref).
+
+Each row must be the same columns in the same order as the tail of the artifact's `cond_cols`
+(`scripts/build_slow_runtime_table.py`, knobs `COPULA_ENV_COLS` + `ENV_WINDOW`), and row `k` must be that
+cell's tail for the artifact's `firstyear + k - 1`.
+"""
+function live_flux_cond_env_series(env_series::AbstractVector)
+    ser = [collect(Float64, row) for row in env_series]
+    isempty(ser) && error("live_flux_cond_env_series: env_series must be non-empty")
+    w = length(ser[1])
+    all(length(r) == w for r in ser) ||
+        error("live_flux_cond_env_series: every env_series row must have the same length (first is $w)")
+    return (s, feats) -> vcat(
+        Vector{Float64}(feats[1:4]), s.boundary, ser[clamp(s.year + 1, 1, length(ser))]
+    )
+end
+
+"""
     make_recruit_to_pools(axis_names) -> to_pools
 
 Build the canonical `RecruitCopula.to_pools` mapping for a production copula bundle (the function is NOT
@@ -937,12 +982,14 @@ function FluxDrivenSlowEmulator(
     # ADR-0023 shift hiding behind a code path a test may never reach.
     # This is the one place that holds BOTH the boundary and the copula, so it is the only place the identity
     # `length(cond(s, feats)) == nfeat` can be checked before the run starts. Every shipped policy reads only
-    # `s.boundary` (and `feats[1:4]`), so a NamedTuple stub is a faithful probe. One call, no effect on any
-    # correctly-sized construction ⇒ guardrail 4 holds.
+    # `s.boundary`, `s.year` (the ADR-0108 transient tail) and `feats[1:4]`, so a NamedTuple stub carrying
+    # those two fields is a faithful probe — `year = 0` is the state a freshly constructed emulator is in, so
+    # a series policy is probed at exactly its first row. One call, no effect on any correctly-sized
+    # construction ⇒ guardrail 4 holds.
     rc = recruit_copula
     if rc !== nothing && !isempty(rc.axis_forests)
         nfeat = rc.axis_forests[1].nfeat
-        probe = rc.cond((boundary = bnd,), zeros(Float64, 11 + length(bnd)))
+        probe = rc.cond((boundary = bnd, year = 0), zeros(Float64, 11 + length(bnd)))
         length(probe) == nfeat || error(
             "recruit copula conditioning width mismatch: the policy built $(length(probe)) columns but the " *
                 "artifact's marginals were fit on $nfeat. With a $(length(bnd))-column boundary, " *
