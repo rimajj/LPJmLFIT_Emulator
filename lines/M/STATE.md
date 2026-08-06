@@ -286,6 +286,9 @@ so a literal 10 % is unmeetable there by ANY emulator. Default in use: tolerance
    your paths, with the measurements attached. Both blocks are further down under "▶ NEW INTEGRATION
    POINT RAISED BY LINE S". ⚠ Two of your published numbers invert there (ADR 0054's teacher-forcing
    59–72 %, and `semiarid_sahel` being too dense) — worth reading before you quote either.
+   **↳ ✅ THE CANOPY HALF OF THIS IS WORKED — see item 0-NEW immediately below (ADR 0060).** S's attribution
+   survives, but the FPC numbers on both sides came from the wrong one of the C's two FPC outputs, and a
+   third published claim (ADR 0053 finding 4) is withdrawn as a result. Read 0-NEW before quoting any FPC.
 
 ### 0-NEW. ✅ DONE 2026-08-06 (session 4) — the canopy attribution S handed over is ANSWERED, and it was a
 ### reference-basis error: the oracle scored the wrong one of the C's TWO FPC outputs (ADR 0060)
@@ -316,7 +319,23 @@ Item 2b below is **worked, not open**. Nothing in `src/` changed; no baseline mo
   not. Both bases now print side by side in `biome_slow_oracle_probe.jl` REPORT 5.
 - Committed tables gain `fpc_tree_crown` (+ `fpc_grass_crown` monthly), **appended last, every pre-existing
   value byte-identical, verified row-by-row** ⇒ guardrail 4 untouched. Jobs 1718928 / 1718932 / **1718979**.
-- **CI: this diff touches no `src/`, no `python/`, no `docs/src/` ⇒ `format` only** (two `.jl` scripts).
+- **CI:** the diff touches `test/testitems/references/**` (which is under `test/**`) and two `.jl` scripts,
+  so it triggers **`format` + all four Julia jobs** — not `format` alone. `docs` and `python` do not run
+  (`docs/decisions/**` and `scripts/*.py` are outside their path filters).
+
+▶ **WHAT TO DO NEXT ON THIS ITEM (the narrowed F-side item, and it is the highest-value one left).** The
+remaining defect is F's **growth**, not its canopy reconstruction and not a uniform sparseness. Two steps,
+in order, and neither needs anything from another line:
+
+1. **Score the growth divergence on the COUPLED arm, not the kernel-isolation arm.** `slow = nothing` has no
+   mortality, so it cannot separate "F grows too fast" from "nothing is killing trees". The coupled arm
+   already exists (`biome_slow_oracle_probe.jl`, now printing both FPC bases) — read F's `fpc` trajectory
+   against `fpc_tree_crown` there and quote *that*.
+2. **Then take `semiarid_sahel` first.** It is the only cell the kernel arm convicts on its own (crown cover
+   falls 0.71 → 0.47 with nothing able to remove cover but F's own allocation) and it is now the **fourth**
+   independent symptom of the same dry-cell root-zone bias in the same cell — with items 4(a) (ET 11–35 %
+   high while F carries no grass transpiration) and 4(c) already pointing at the demand side. Fixing the
+   demand side may close all four; measure before assuming. Run `residual-diagnosis` first.
 
 ### 0. ✅ DONE 2026-08-06 (session 3) — the water-stress DEFAULT is flipped (ADR 0059)
 
