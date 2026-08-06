@@ -36,6 +36,16 @@ Amazon `n` stays at **0.549**. Mean |AC − C's AC| over 10 cell-variable pairs 
 anchored** (`pin1` 0.0975), closer to the oracle in 6 of 10. Job 1716491; re-run with the summary computed
 in-script as **1716584**.
 
+✅ **MERGED AND GREEN — nothing about ADR 0104 is outstanding.** Work sha `676e3979` merged to `main` as
+**`7c24a624`**; `format` green on the branch sha AND on main's own post-merge run. It is the only gate the
+diff triggers (no `src/**`, no `test/**`, no `python/**`, no `docs/src/**`), so there is no other verdict to
+wait for. ⚠ **The first merge attempt CONFLICTED** — line M landed ADR 0056 on the same files
+(`biome_slow_oracle_probe.jl`, `lines/S/STATE.md`) minutes earlier. Resolved by **taking M's structure and
+adding only what was missing**: M's version runs `anch5`/`anch1` unconditionally with a per-arm carbon table,
+which is better than the `ANCHOR=<a>` env gate this line wrote, so that machinery was dropped; a third arm
+`anch25 = 0.25` and the ADR-0104 stand-vs-truth table were added on top. The merged harness was **re-run
+before pushing** (job **1716627**) and reproduces every number in ADR 0104 exactly.
+
 **⚠ THE DEFAULT IS STILL OFF, AND THERE IS NOW EXACTLY ONE THING BLOCKING IT — say so plainly and do not let
 it drift (guardrail 4's corollary; `wscal_leafon` sat correct-but-off for weeks on this exact failure mode).**
 The blocker is the **modal-patch confound**, and it is measurable, not a judgement: the driver initialises
