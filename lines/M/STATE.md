@@ -158,81 +158,52 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
-### 0. ✅ DONE 2026-08-06 — line S's flip criterion is ANSWERED (ADR 0056). Nothing is owed on it.
+### 0. ✅ DONE 2026-08-06 (session 2) — BOTH queued baseline-moving changes shipped (ADR 0057 + ADR 0058)
 
-The ▶ ACTION block S wrote below (still present, now historical) asked M to run the anchored arm on the
-5-cell oracle and decide a DEFAULT. **Done — jobs 1716489 + 1716493 (reproduced exactly), verdict in
-`docs/decisions/0056-*.md`, reply written into `lines/S/STATE.md` where S will read it.**
+Items 2 and 3 of the previous handoff are **closed**, in two separate commits as guardrail 4 requires, and
+each one's premise turned out to be wrong in a way worth carrying:
 
-✅ **SHIPPED AND GREEN.** Work sha `85db232d`: `format`, `test (lts)`, `test (1)`, `test (macOS, lts)` all
-success. (The full Julia matrix ran even though the commit touches no `src/`/`test/` — the push diff spans
-the rebase, which carried S's `slow.jl` + anchor testitem in. `test (pre)` red for the **diagnosed**
-prerelease reason: `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool},
-::Bool)` at LOAD time, confirmed from the job log, byte-identical to `b9eee1fd`/`12bf126b`.) Skill follow-up
-`d266fb86` correctly ran nothing (no `.jl`, ADR 0090). Merged to `main` as **`9835fd9b`**; main's own
-`format` is **success** and no other gate triggered there. **Nothing about ADR 0056 is outstanding.**
+- **ADR 0057 — the production driver + `biome_coupled_tests.jl` item 2 now run the 25-patch ENSEMBLE**
+  (the C's own output basis), not the modal patch. `mod/ens` is **1.009–1.057 on LE but up to 1.331 on
+  GPP** — LE is water-/energy-limited in every one of these climates and buffered against canopy density,
+  GPP is not. The FPC artifact does **not** predict the flux artifact (`semiarid_sahel`: largest density
+  artifact 1.588×, smallest flux one, GPP **0.990**), and the ratio flips sign by horizon ⇒ **never rescale
+  a modal-patch number, re-run it.** I expected the ensemble to be too expensive for CI; it is **10.6 s**
+  for all five cells, and the gate now asserts the Phase-4 energy closure **per patch**. Five gates/probes
+  stay single-member on purpose (§4 of the ADR), each saying so at its reader.
+- **ADR 0058 — M adopted E's two-layer prognostic ground-heat column** (ADR 0074), passed **explicitly**;
+  the package default stays `false` because `energy.jl` is E's file. The handoff said it "moves every
+  coupled and 5-biome baseline": measured, LE moves ≤ **2.2e−5** and GPP ≤ **1.3e−4** relative — it is an
+  **H/G repartition**, and H/G is the one thing M's gate set does not pin. The real finding is that the
+  DEFAULT scheme was leaking energy into the ground: a **persistent +6.4 W/m² sink at `semiarid_sahel`**
+  for ten straight years (~7 % of its Rn) with no reservoir behind it, plus a 6–7× `sd(G)` inflation in
+  every cell — ADR 0073's tower defect, confirmed inside the coupled model and closed. And the closed
+  column does **not** drift: phase-matched **−2e−4 K/yr** over a 60-yr cyclic rollout, 250× inside the
+  stated bound.
 
-**The criterion FAILED: do not flip, and do NOT tune `a`** — but read *why*, because the lazy reading is
-wrong in a way that matters if S comes back on it:
-- **The anchor fires perfectly.** Density × `patch_area` / target = **1.001 in all 5 cells** at `a = 0.5`,
-  and the level error it closes is **bigger than S's single-cell number**: **1.46–2.21×** free-running
-  (worst `tropical_amazon`), not Hainich's 1.41. ADR 0103 §2's 41 % is the mild case.
-- **Clause (i) was mis-specified, not under-delivered** — it asked the anchor to remove the count drift, but
-  the drift is in the *target* (F's canopy drives it) and ADR 0103's own Consequences already say the anchor
-  does not close ADR 0102 mechanism (A).
-- **Clause (ii) failed on a genuinely new finding:** anchoring closes a `density → fpc → target → density`
-  loop. Benign in 4 cells (Amazon steps down then RECOVERS; Hainich's gate metric **improves** 4.5 → 3.2
-  floors; mediterranean 13.9 → 5.8) and **runaway in `semiarid_sahel`** (`fpc` 0.281 → 0.057 monotone,
-  target 13.5 → 4.46). H1-vs-H2 was pre-stated and the per-year shape separated them — that took a second
-  job and it is what turned an assertion into a measurement.
-- **`semiarid_sahel` is now at FOUR independent symptoms** (ADR 0052 dry-cell bias · ADR 0053 `fpc` moving
-  opposite the C · M4's τ = 602 yr non-recovery · this loop). Item 5(c) below already flagged three. **This
-  is the strongest signal in the line's whole open queue for where to aim the next F-side diagnosis.**
-- If the anchor is ever enabled here, **`a = 0.5`, not 0.1** — at a 10-yr horizon 0.1 delivers 15–46 % of
-  the level correction and none of the drift benefit while still costing the Sahel.
+**Two method traps this session paid for, both worth more than the results:**
+1. **Under a cyclic forcing, compare only years an integer number of cycles apart.** My first drift metric
+   (`(T2[end] − T2[end−9])/9`) reported **0.222 K/yr** for a column flat to 1e−4, because the committed
+   forcing is a 10-year cycle and those two years sit at different phases. Printing the per-cycle series
+   *beside* the summary is what caught it.
+2. **Measure the cost of a change before designing around it.** Both items were scoped on an assumed cost
+   (CI runtime; "it moves every baseline") and both assumptions were wrong by orders of magnitude.
 
-**Coordination note for the next session:** line S was running concurrently (`S-anchorAC`) the whole time.
-That was fine — ADR 0103 §6 named M's harness, so ownership was unambiguous — but the ADR *had* written in a
-race ("if M hasn't run it, S runs it first"), which is why this went out as its own immediate commit instead
-of being batched with the queued baseline work. **When a cross-line ADR assigns you a measurement, publish
-the verdict before starting anything else.**
+**CI/merge status.** ADR 0057 shipped as `9ddcbb1f` — `format`, `test (lts)`, `test (1)`,
+`test (macOS, lts)` all **success**; `test (pre)` red for the **diagnosed** prerelease reason
+(`MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` at LOAD time,
+pulled from the job log and byte-identical to `85db232d` / `b9eee1fd`). Merged to `main` as **`e8443256`**.
+ADR 0058's own sha and merge are recorded in `lines/M/JOURNAL.md`; local CI-faithful suites before each
+push were **111,230 pass / 0 fail** (jobs 1716594 and 1716629).
 
----
-
-**M1–M4 ALL DONE. M4 closed 2026-08-05 (ADR 0055): `ENGINEERING_STANDARDS` §2 has no stubbed gates left on
-this line.** The next milestone is **M5** (item 4). Items 2 and 3 are the queued baseline-moving pair and
-are **untouched by item 0** — start there. Item 1's `n_prev` integration point is now partly answered by
-ADR 0056 (the anchor is S's alternative to teacher-forcing, and it is not ready).
-
-✅ **ADR 0055's BRANCH CI IS GREEN on every required gate** — work sha `b9eee1fd`: `format`, `test (1)`,
-`test (lts)` all success, plus the non-required `test (macOS, lts)`. `python` and `docs` correctly did NOT
-run (no `python/**`, no `docs/src/**`, no `src/**` — ADR 0090). **`test (pre)` is red and was diagnosed,
-not waved away:** it dies at LOAD time with `MethodError: no method matching
-setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` — a Julia-prerelease API removal breaking a
-dependency before any testitem runs, byte-identical to the failure diagnosed on `12bf126b` and line S's
-`1b44cebb`, and `test (1)` passing on 1.12 is the evidence it is not ours. Merged to `main` as
-**`fe3cfe54`**, and **main's OWN post-merge run is green on all of them too** (`format`, `test (1)`,
-`test (lts)`, `test (macOS, lts)`; `test (pre)` red for the same prerelease reason). **Nothing about ADR
-0055 is outstanding.**
-Local CI-faithful suite before pushing: **110,258 pass / 0 fail / 4 broken**, job **1706571** (the first
-attempt, 1706530, failed 8 — all one bug of mine: the shuffle-decomposition identity was asserted at
-`atol = 1e-9` while the fixture prints `%.6f`, so it was testing the print format).
-Measurement jobs, if you need to re-run anything:
-`M-resref` 1706374 (C reference, ~40 s), `M-resil` 1706343 (coupled battery, ~22 min),
-`M-ciarm` 1706376 (the CI-threshold probe), `M-soilstamp` 1706443 (gate-stamp regen).
-
-**Unchanged standing config:** artifact pin **`_t8`** (re-checked 2026-08-05 — the `t9` `.rcop` still has no
-matching `.drf`, and line S still says t9 is not production); `wscal_leafon` default stays **`false`** and
-must be passed **explicitly `true`** in every coupled run, with every number labelled as such (flipping the
-default is line S's to schedule — ADR 0051).
-
-### 1. The `n_prev` integration point with line S — now with a CAVEAT M4 added
+### 1. The `n_prev` integration point with line S — unchanged, still S's to land
 
 ADR 0054 raised it (item **H** in `lines/S/STATE.md`): the coupled count is an unanchored AR recursion, and
 teacher-forcing `s.n_prev` onto the C truth removes **59–72 %** of the count error in all five cells.
-**Still true, still S's to land** (`src/components/slow.jl` is S's exclusive path — do not edit it here).
+**Still true, still S's** (`src/components/slow.jl` is S's exclusive path — do not edit it here). ADR 0056
+answered S's anchor criterion: the anchor fires perfectly but does not get the default, and `a` must not be
+tuned. What M4 adds, and what must be said when S replies:
 
-**What M4 adds, and what must be said when S replies:**
 - **The recursion is a LEVEL failure, not a memory failure.** Pinning the count-space AR feature changes the
   lag-1 autocorrelation by ≤ **0.135**; the memory lives in F's carbon pools (`slow=nothing` alone carries
   AC 0.454–0.691). So an anchor fixes the drift and should not be expected to change the dynamics.
@@ -244,33 +215,24 @@ teacher-forcing `s.n_prev` onto the C truth removes **59–72 %** of the count e
 - Nothing is owed from this line until S replies. If S declines, the honest framing for any coupled
   multi-decadal result is unchanged: quote the teacher-forced number alongside the free one.
 
-### 2. Move the production driver to the PATCH ENSEMBLE (still not done — do it before any global run)
+### 2. ▶ THE ONE THING THIS SESSION LEFT OPEN — the repo now runs TWO ground-heat schemes
 
-`readcanopy` in `run_coupled_biomes.jl` / `wscal_leafon_probe.jl` picks the **modal** patch, 1.12–1.72×
-denser in FPC than the 25-patch ensemble mean the C's outputs report. Both `biome_fdiff_oracle_probe.jl`
-and now `biome_resilience_probe.jl` carry the correct `readcanopy_patches` + per-member ensemble driver to
-lift across — **M4's whole ensemble is built that way**, so the pattern is proven at five cells × 25
-members × 100 years. **This will move `biome_coupled_tests.jl` item 2's pinned per-cell LE and GPP
-(±2 %/±3 %)** ⇒ a deliberate baseline regeneration under guardrail 4, in its own change with its own commit.
+Declared, not hidden: ADR 0058 §4 lists every site and why. M's driver + `biome_coupled_tests.jl` items 2/3
+are on the **two-layer** column; `resilience_battery_tests.jl`, `rollout_stability_tests.jl`'s AC-gap check
+and every E-owned gate are on the **default**, because they score against fixtures measured under it
+(ADR 0055). Two follow-ups, in order:
 
-### 3. NEW INBOUND from line E, arrived in this session's rebase — `SEBParams.enable_two_layer` (ADR 0074)
+a. **E owes a decision on the package default** (ADR 0058 §5, pre-registered pass condition, with M's
+   evidence attached: the scheme is free in the coupled loop, removes the 6.4 W/m² sink, does not drift,
+   and its measured cost is *sub-daily* `T_skin` while M's step is daily). It is written where E reads it
+   only if someone puts it in `lines/E/STATE.md` — **that has NOT been done; do it early next session**
+   (ADR 0056's lesson: an ADR alone is not a channel).
+b. **When (and only when) the default flips, regenerate ADR 0055's resilience/rollout fixtures on the new
+   scheme** — `scripts/biome_resilience_probe.jl`, ~22 min. That re-pins ADR 0055's *published* AC gaps, so
+   it is its own measurement with its own verdict, never a side effect. Q1 says the level effect will be
+   ~zero and the effect on H/G real; measure, do not assume.
 
-**E's fourth integration point, and it REPLACES E's earlier `lambda_g = 1.0` request** (which in turn had
-replaced ADR 0072's refuted `stab_amp` one — do not act on either). Full text in the contracts list below.
-Short version: a prognostic two-layer soil column instead of the single conductance against a 30-day EWMA of
-air temperature; `lambda_g` goes inert when it is on. Default is `false`, so nothing has moved. Measured on
-the same 497 k tower steps: daily H R² **0.645** vs 0.637 (DE-Hai) and **0.775** vs 0.745 (AU-ASM), and on
-`G` itself **0.717** vs 0.657 / **0.614** vs 0.477 — it wins on H, wins clearly on G, and carries a real
-diurnal soil wave, which is what line O needs. **It is yours to land** because it moves every coupled and
-5-biome baseline, so it goes in one change with the regenerated baselines, and ADR 0072's night-cold sign
-assertion in `energy_closure_tests.jl` is re-pinned at that moment. It works today for measuring:
-`SEBEnergyClosure(params = SEBParams(enable_two_layer = true))`.
-
-⚠ **This and item 2 both regenerate `biome_coupled_tests.jl` item 2's pinned per-cell LE/GPP.** They are
-still two separate changes with two separate commits (guardrail 4 — a bundled regeneration cannot be
-attributed), but do them back to back so the pins move twice, not four times, and re-measure between.
-
-### 4. M5 — biome-calibrated PFT params + spin-up (the next MILESTONE proper)
+### 3. M5 — biome-calibrated PFT params + spin-up (the next MILESTONE proper)
 
 Today every biome runs **beech ANGIO params** from `par/pft_lpjmlfit.js`. Two things now make this both
 more urgent and better-specified:
@@ -283,7 +245,7 @@ more urgent and better-specified:
   (`longevity` is the JSON key `"age"`; `temp_stressed`, not the establishment `"temp"`; a DUPLICATE
   `aphen_min/max` for id 6 where the LAST occurrence wins).
 
-### 5. F-side follow-ons, in value order (unchanged from M3; all reference bases established)
+### 4. F-side follow-ons, in value order (unchanged from M3; all reference bases established)
 
 ADR 0053's verdict, so you do not re-measure it: **seasonal phase is excellent in all 5 biomes** (monthly
 r 0.870–0.999 GPP, 0.858–0.999 ET). Three of five 10-yr level means are actively misleading — read the
@@ -302,11 +264,11 @@ c. **The Sahel decline IS ADR 0052's dry-cell bias end-to-end.** ⚠ M4 sharpens
 d. **F under-predicts tree FPC in all 5 cells (0.31–0.72×)** *despite* starting from a patch 1.12–1.72×
    denser than the ensemble — the most robust structural finding in the set, and still unattributed.
 
-### 6. M4's own open findings (line-M work, not blockers)
+### 5. M4's own open findings (line-M work, not blockers)
 
 - **No steady state under CYCLIC forcing:** coupled AGB drifts **1.39–5.15×** over 100 years with the
   forcing exactly periodic (max/init up to 12.45 at boreal). A model at equilibrium would sit at ≈1. The
-  gate bounds it; it does not bless it. Likely the same free-running canopy growth as item 5(d) above,
+  gate bounds it; it does not bless it. Likely the same free-running canopy growth as item 4(d) above,
   seen over a century instead of a decade — check that hypothesis before treating it as separate.
 - **A 20-year window cannot resolve decadal memory even in the C.** If the AC-vs-climate question is ever
   reopened, it needs a longer transient than the historic `ind` table has (2000–2019 is its full extent).

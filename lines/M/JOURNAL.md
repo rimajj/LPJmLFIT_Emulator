@@ -623,3 +623,39 @@ useful sign the coupled configuration was the one I thought it was.
   in the code makes the difference visible.
 - **Decisions:** ADR 0057. Jobs 1716587 (both bases, the pins), 1716592 (the driver on the new basis),
   1716594 (CI-faithful suite).
+
+## 2026-08-06 (session 2, cont.) — E's two-layer ground-heat column, adopted (ADR 0058)
+
+- **The second half of the queued pair, and the handoff's premise for it was wrong.** It said the scheme
+  "moves every coupled and 5-biome baseline". Measured: LE moves ≤ **2.2e−5** and GPP ≤ **1.3e−4**
+  relative — the ADR-0057 pins I had just regenerated move by ≤ 4e−5. It is an **H/G repartition**, and
+  H/G is the one thing M's gate set does not pin. Good news for the work, but the lesson is that the cost
+  of a cross-line change was assumed rather than measured, twice in one day (the CI cost of the patch
+  ensemble was the same shape).
+- **What I did not expect to find: the DEFAULT scheme was leaking energy into the ground.** Under a
+  repeating forcing a soil column must take up zero net heat per year. The default's reference is a 30-day
+  EWMA of *air* temperature, which has no memory of what the ground already absorbed, and it ran a
+  **persistent +6.4 W/m² sink at `semiarid_sahel`** for ten straight years — ~7 % of that cell's Rn — with
+  no reservoir behind it. The two-layer column drives ⟨G⟩ → 0 by construction and hands the energy back to
+  H (58.2 → 64.1 W/m²). `sd(G)` falls 6–7× in every cell: ADR 0073's tower defect, confirmed inside the
+  coupled model at five biomes and closed. That is a better argument for the scheme than the R² deltas
+  E had, and E could not have made it.
+- **Q2 is M's genuine contribution.** ADR 0074 §5 bounded the closed column's drift on 4–16 yr tower
+  records where climate variability and drift are entangled; a **strictly cyclic** 60-yr rollout separates
+  them by construction. Phase-matched drift is **−2e−4 K/yr** at both temperature extremes, decaying,
+  equilibrated within a decade, AGB ratio unchanged between arms, energy closing at 2.8e−14.
+- **I wrote the drift metric wrong first, and it lied by ~1000×.** `(T2[end] − T2[end−9])/9` reported
+  0.222 K/yr for a column that is flat to 1e−4 — because the committed forcing is a **10-year cycle** and
+  those two years sit at different phases of it. The same trap makes a raw `T1(y1)` vs `T1(y60)` look like
+  a 5.8 K drift. **Under a cyclic forcing, compare only years an integer number of cycles apart.** What
+  caught it was printing the per-cycle series *beside* the summary number; the summary alone would have
+  been believed, and I would have reported a drift that does not exist. Fixed and re-run (1716628) rather
+  than explained away in prose.
+- **The uncomfortable part, declared rather than hidden:** the repo now runs two ground-heat schemes in
+  different gates, because the resilience/rollout fixtures were measured under the default (ADR 0055) and
+  re-running that arm changes ADR 0055's *published* numbers — a separate measurement with its own verdict.
+  ADR 0058 §4 lists every such site exhaustively and each says which scheme it is on at the point the
+  number is produced. §5 hands the default flip back to E with a **pre-registered** pass condition, because
+  an opt-in whose default is now known to be worse is a defect on a timer (guardrail 4's corollary).
+- **Decisions:** ADR 0058. Jobs 1716621 (pins on the new arm), 1716625 + 1716628 (the two questions),
+  1716629 (suite), 1716630 (driver on the final configuration).

@@ -148,6 +148,9 @@ end
 # CANOPY BASIS (ADR 0057, 2026-08-06): each cell is the PATCH-ENSEMBLE MEAN — all 25 patches of its `ind`
 # canopy run independently, outputs averaged — which is the basis the C reports and the basis
 # `scripts/run_coupled_biomes.jl` now drives. The pinned LE/GPP signatures below were regenerated for it.
+# GROUND HEAT (ADR 0058): and this gate drives E's opt-in two-layer prognostic column, explicitly, because
+# the driver does. The package default is unchanged (`false`) — see ADR 0058 §4 for the gates that stay on
+# it and why.
 @testitem "Coupled emulator generalizes across biomes with PER-CELL inputs — energy closes + climate-driven partitioning" tags = [:validation, :energy, :coupling, :scientific, :multicell] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -237,7 +240,12 @@ end
         mem = NamedTuple[]
         for (pools, tmpls) in patches
             core = FDiffFastCore(pools, tmpls, soil, lats[k])
-            clo = SEBEnergyClosure(; t_soil0 = _mean(tairK))
+            # GROUND-HEAT SCHEME (ADR 0058): E's opt-in two-layer prognostic column, passed EXPLICITLY —
+            # the package default stays `false` and `energy.jl` is line E's file. This is the scheme
+            # `scripts/run_coupled_biomes.jl` drives, and this gate exists to pin THAT configuration.
+            clo = SEBEnergyClosure(;
+                t_soil0 = _mean(tairK), params = SEBParams{Float64}(; enable_two_layer = true)
+            )
             state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
             out = run_coupled_cell(core, clo, state, forcings; days_per_year = 365)
 
@@ -294,9 +302,13 @@ end
     # `scripts/biome_ensemble_pin_probe.jl` (job 1716587), which reproduced the previous modal-patch
     # pins to every printed digit in the same run — that is what makes this a measured basis change
     # and not a re-record. Deltas modal→ensemble: LE −0.9…−5.4 %, GPP +1.0…−24.8 % (boreal worst).
-    sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble mean
-        "boreal_siberia" => (23.9435, 1.00708),
-        "temperate_hainich" => (40.4525, 3.44479),
+    # RE-MEASURED on the two-layer ground-heat arm (ADR 0058, job 1716621, same probe with TWO_LAYER=1):
+    # the values below ARE that arm's. It moved them by ≤ 4e-5 relative — the scheme repartitions H and G
+    # and leaves LE/GPP alone — so these pins do NOT discriminate the two schemes; the H/G evidence is in
+    # ADR 0058 §2, and this Dict's job remains detecting a per-cell INPUT fallback.
+    sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble, two-layer ground heat
+        "boreal_siberia" => (23.9434, 1.00704),
+        "temperate_hainich" => (40.4525, 3.44475),
         "mediterranean_iberia" => (46.623, 5.05635),
         "semiarid_sahel" => (33.1794, 0.385916),
         "tropical_amazon" => (116.105, 6.92492),
@@ -466,7 +478,12 @@ end
         soil = readsoil(joinpath(refdir, "M_soilcolumn_$(name).txt"))
         pools, tmpls = readcanopy(joinpath(refdir, "M_individuals_$(name)_2010.csv"))
         mkcore() = FDiffFastCore(deepcopy(pools), deepcopy(tmpls), soil, lats[k])
-        mkclo() = SEBEnergyClosure(; t_soil0 = _mean(tairK))
+        # two-layer ground heat (ADR 0058), matching the driver — so the S↔F carbon closure, the
+        # determinism-under-seed check and the ClimBuf path are all exercised on the scheme M actually
+        # runs. None of this item's assertions is scheme-dependent; this is coverage, not a basis move.
+        mkclo() = SEBEnergyClosure(;
+            t_soil0 = _mean(tairK), params = SEBParams{Float64}(; enable_two_layer = true)
+        )
         mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
         bnd0 = bnd_of(k)
 
