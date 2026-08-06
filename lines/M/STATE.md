@@ -193,8 +193,11 @@ each one's premise turned out to be wrong in a way worth carrying:
 `test (macOS, lts)` all **success**; `test (pre)` red for the **diagnosed** prerelease reason
 (`MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` at LOAD time,
 pulled from the job log and byte-identical to `85db232d` / `b9eee1fd`). Merged to `main` as **`e8443256`**.
-ADR 0058's own sha and merge are recorded in `lines/M/JOURNAL.md`; local CI-faithful suites before each
-push were **111,230 pass / 0 fail** (jobs 1716594 and 1716629).
+ADR 0058 shipped as `671099e9` + the skill follow-up `f802a420`, whose branch CI is **green on every
+required gate** (`format`, `test (lts)`, `test (1)`, plus non-required `test (macOS, lts)`; `test (pre)`
+red for the same diagnosed prerelease reason). Local CI-faithful suites before each push were **111,230
+pass / 0 fail** (jobs 1716594 and 1716629). `main`'s own post-merge run on `e8443256` is green on all four
+too. Merge sha for ADR 0058 + the E inbound: see `git log origin/main` — pushed the same session.
 
 ### 1. The `n_prev` integration point with line S — unchanged, still S's to land
 
@@ -224,9 +227,12 @@ and every E-owned gate are on the **default**, because they score against fixtur
 
 a. **E owes a decision on the package default** (ADR 0058 §5, pre-registered pass condition, with M's
    evidence attached: the scheme is free in the coupled loop, removes the 6.4 W/m² sink, does not drift,
-   and its measured cost is *sub-daily* `T_skin` while M's step is daily). It is written where E reads it
-   only if someone puts it in `lines/E/STATE.md` — **that has NOT been done; do it early next session**
-   (ADR 0056's lesson: an ADR alone is not a channel).
+   and its measured cost is *sub-daily* `T_skin` while M's step is daily). ✅ **Written into
+   `lines/E/STATE.md` as an ▶ INBOUND block** (ADR 0056's lesson applied: an ADR alone is not a channel),
+   with three explicit options — E flips it, E hands `energy.jl` + `energy_closure_tests.jl` over for one
+   commit, or E declines in an E-block ADR. ⚠ Note E's own STATE said "M lands it" while ADR 0029 makes
+   that file E's; the inbound names that conflict rather than assuming either reading. **Nothing further is
+   owed from M until E replies** — check `lines/E/STATE.md` and `lines/M/STATE.md` for the answer.
 b. **When (and only when) the default flips, regenerate ADR 0055's resilience/rollout fixtures on the new
    scheme** — `scripts/biome_resilience_probe.jl`, ~22 min. That re-pins ADR 0055's *published* AC gaps, so
    it is its own measurement with its own verdict, never a side effect. Q1 says the level effect will be
