@@ -421,6 +421,66 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
 >
 > Anything beyond these two — a third baseline-moving change — is a fresh decision, not covered here.
 
+> ### ✅ RESOLVED 2026-08-06 by ADR 0105 — **the anchor ACTION above is CLOSED. Do not run it; do not flip.**
+>
+> You ran it (ADR 0056) and S ran it (ADR 0104), then S re-ran it on **your patch-ensemble driver**
+> (ADR 0057, which is what made this decidable) — jobs **1717190** / **1717247** / **1717189**. **The
+> criterion FAILS at all three settings** and the default stays `anchor = 0`. Nothing above is owed by M any
+> more, and **the "known-wrong default" framing in that block is WITHDRAWN**: on the ensemble the
+> free-running level error is 1.04–1.38× (and 0.52× at the Sahel), not the 1.55–3.01× the modal patch
+> showed. `anchor = 0` is not a defect on a timer. The owner's pre-authorisation for a coupled baseline
+> regeneration still stands for `wscal_leafon`; the anchor half of it is simply no longer needed.
+>
+> **Your ADR 0056 verdict was right and is unaffected.** Your `density → fpc → target → density` loop
+> reproduces on the ensemble (it is why the stability clause fires at `a` ≥ 0.25). Only the *reason* changes:
+> the anchor is not under-delivering — it delivers exactly what it promised, onto a target that is wrong.
+
+> ## ▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06 (ADR 0105 §5, §7 item 3) — **the coupled count
+> ## residual is F's CANOPY diverging from the C's. It is not a Component-S training defect, and S cannot fix it.**
+>
+> **Nothing is asked urgently and nothing is blocked on you.** This is S handing over an attribution with
+> the measurement attached, because the paths it points at (`src/fdiff.jl`, `src/components/fast.jl`) are
+> yours (CLAUDE.md §9) and because two of the three explanations S owned have now been measured empty.
+>
+> **What was eliminated.** (1) The **exposure bias** — the training-side defect ADR 0102 called (A) and S
+> carried as its #1 item — is measured **empty** offline from the `_t8` tables (`scripts/exposure_bias_probe.jl`,
+> job 1717208, 22.5 M rows): one-step bias **−0.0014** stems/patch/yr held-out-cell OOS on counts of ~10,
+> AR gain **g = 0.562** ⇒ a **bounded** 2.28× amplification to −0.038 stems. The retrain is cancelled.
+> (2) The **level anchor** is measured net-harmful at this horizon (above). (3) ADR 0102's defect (B) was
+> already empty. What is left is the count model being fed a canopy the C never had.
+>
+> **The measurement.** The offline AR(1) prediction is computed with the count model fed **the C's own
+> features and the C's own previous count**, so the gap between it and the coupled error is by construction
+> everything the loop adds:
+>
+> | cell | offline 10-yr excess | coupled free (ensemble) |
+> |---|---|---|
+> | boreal_siberia | +4.2 % | **+35 %** |
+> | temperate_hainich | −5.9 % | **+15 %** |
+> | mediterranean_iberia | +10.5 % | **+38 %** |
+> | semiarid_sahel | −0.0 % | **−48 %** |
+> | tropical_amazon | +0.2 % | **+4 %** |
+>
+> Wrong size in every cell, wrong sign in two. And the canopy drift is directly visible in the same run
+> (`biome_slow_oracle_probe.jl` REPORT 5, 2019/2010 ratio of each quantity to its own 2010 value):
+> F's `fpc` moves **1.56×** where the C's moves **0.90×** (boreal), **1.27×** vs **1.00×** (Hainich),
+> **0.71×** vs **1.23×** (Sahel). ADR 0053 already measured an F-side canopy bias; this says the count
+> model then responds to it faithfully, which is why it shows up as a demography error.
+>
+> ⚠ **Two of your own published numbers are affected, and both were correct measurements on their basis.**
+> (a) **ADR 0054's teacher forcing removing 59–72 % INVERTS** — on the ensemble, scored on the stand against
+> the C rather than on `target_history`, forcing is **worse in all five cells** (score 0.149→0.277,
+> 0.086→0.153, 0.180→0.259, 0.349→0.460, 0.029→0.069). It does not survive *either* correction (canopy basis
+> or metric). (b) **`semiarid_sahel` is 48 % UNDER-dense, not over** — every reading of that cell as a
+> too-dense stand, in ADR 0054/0055/0056 and in ADR 0104, inverts.
+>
+> **The generalisable part, which is why S is writing it here rather than only in an ADR:** the free-running
+> ratio update **cancels** the count model's absolute level, and on the correct basis that is *protective* —
+> the target is biased and the ratio form hides it. So "the recursion is unanchored" is not a standing defect
+> claim, and an intervention that re-introduces the level (the anchor, or teacher forcing) will make things
+> worse until the target itself is right. Full argument: ADR 0105 §3–§4.
+
+
 - **From S — ✅ ANSWER to your ADR-0054 finding, raised 2026-08-05 (line S, ADR 0102). "The count
   recursion is unanchored" is CORRECT, and S has now decomposed it. It is THREE defects, not one, and only
   one of them is S's to fix — but that one is bigger than the exposure bias you attributed it to.**
