@@ -48,6 +48,10 @@ const ART = "/p/tmp/jamirp/emulator_global"
 const T8_DRF = joinpath(ART, "drf_forest_global_pooled_w20_t8.drf")
 const T8_RCOP = joinpath(ART, "recruit_copula_global_pooled_w20_t8.rcop")
 const QS = (0.05, 0.25, 0.5, 0.75, 0.95)
+# The `FluxDrivenSlowEmulator` default, and correct for the pinned `_t8` artifacts: it is a
+# property of the ARTIFACT's training run (ADR 0103 §4), and these tables come from a
+# `par/lpjparam_fit.js` with `patcharea = 225.0`. Stock LPJmL-FIT uses 100.0.
+const PATCH_AREA = 225.0
 
 # ── readers (same layout as scripts/run_coupled_biomes.jl / wscal_leafon_probe.jl) ────────────────────
 function readcsv(path)
@@ -274,7 +278,9 @@ end
 runs = [run_cell(k) for k in eachindex(names)]
 forced = [run_cell(k; teacher = true) for k in eachindex(names)]
 anch5 = [run_cell(k; anchor = 0.5) for k in eachindex(names)]
+anch25 = [run_cell(k; anchor = 0.25) for k in eachindex(names)]
 anch1 = [run_cell(k; anchor = 0.1) for k in eachindex(names)]
+flush(stdout)
 
 # ── REPORT 1 — counts, year-matched, in units of the seed1-vs-seed2 noise floor ──────────────────────
 @printf("\n=== M3 S-SIDE / COUNTS — coupled per-patch tree N vs the C's per-patch ensemble ===\n")
@@ -546,4 +552,59 @@ for k in eachindex(runs)
     )
 end
 @printf("< 1.0 everywhere = criterion (iii) holds (the standing Gate-2 tolerance, ADR 0018).\n")
+
+# ── THE STAND ITSELF (line S, ADR 0104) — the criterion above is scored on the WRONG QUANTITY. ───────
+# `target_history` is the count model's PREDICTION. The anchor does not act on it: `slow.jl:1066-1070`
+# multiplies the ROSTER (`dtree`), and `target` appears only as the thing aimed at. So the criterion moves
+# only through a second-order feedback (a moved stand moves the canopy features the model is fed next year)
+# which has its own sign per cell — while the first-order question the anchor was built to answer is "is the
+# stand at the right DENSITY?". That is this table.
+# Basis: the C's per-patch ensemble mean `n_mean` ÷ `patch_area` = the same stems/m² the roster carries.
+# Score: `mean_y |ln(density/truth)|` — symmetric, so an overshoot is penalised exactly as hard as the
+# over-density it replaced, which is what makes "did it help?" answerable rather than arguable.
+# ⚠ CONFOUND, stated because it inflates every free-running ratio here: the driver starts from the MODAL
+# patch, 1.12-1.72x denser than the ensemble mean the DRF was trained on (M's STATE item 2), so part of what
+# the anchor "fixes" is that initialisation offset, not drift, and the measured benefit is an UPPER bound.
+# Separating them needs the ensemble driver — M's pending change, and the one remaining blocker on the flip.
+@printf("\n=== THE STAND ITSELF (ADR 0104): density / (C per-patch mean / patch_area) ===\n")
+@printf("(1.00 = the stand is at the right absolute level; this is the quantity the anchor acts on)\n\n")
+@printf("%-22s %9s %9s %9s %9s\n", "cell", "free_19", "a0.1_19", "a0.25_19", "a0.5_19")
+const ARMS_A = (("a=0.1", anch1), ("a=0.25", anch25), ("a=0.5", anch5))
+scores = Dict{String, Vector{Float64}}("free" => Float64[])
+for (lab, _) in ARMS_A
+    scores[lab] = Float64[]
+end
+for k in eachindex(runs)
+    c1 = cnt_series(runs[k].name, 1, "n_mean")
+    ny = min(length(runs[k].dens), NYEAR)
+    dtruth = [c1[y] / PATCH_AREA for y in 1:ny]
+    rf = [runs[k].dens[y] / dtruth[y] for y in 1:ny]
+    push!(scores["free"], mean(abs.(log.(rf))))
+    terms = Float64[]
+    for (lab, arm) in ARMS_A
+        ra = [arm[k].dens[y] / dtruth[y] for y in 1:ny]
+        push!(scores[lab], mean(abs.(log.(ra))))
+        push!(terms, ra[ny])
+    end
+    @printf("%-22s %9.2f %9.2f %9.2f %9.2f\n", runs[k].name, rf[ny], terms[1], terms[2], terms[3])
+end
+@printf("\n--- score = year-mean |ln(density/truth)|; lower is better, 0 is perfect ---\n")
+@printf("%-22s %9s %9s %9s %9s %9s\n", "cell", "free", "a=0.1", "a=0.25", "a=0.5", "all better?")
+for k in eachindex(runs)
+    f = scores["free"][k]
+    @printf(
+        "%-22s %9.3f %9.3f %9.3f %9.3f %9s\n", runs[k].name, f,
+        scores["a=0.1"][k], scores["a=0.25"][k], scores["a=0.5"][k],
+        all(scores[l][k] < f for (l, _) in ARMS_A) ? "yes" : "NO"
+    )
+end
+@printf(
+    "%-22s %9.3f %9.3f %9.3f %9.3f\n", "MEAN", mean(scores["free"]),
+    mean(scores["a=0.1"]), mean(scores["a=0.25"]), mean(scores["a=0.5"])
+)
+@printf("\nA cell marked NO is one the anchor made WORSE on the quantity it acts on — the failure this table\n")
+@printf("exists to expose, and the one the prediction-based criterion above cannot distinguish from a\n")
+@printf("second-order feedback. ADR 0104 §3: all five improve at all three settings, and `a = 0.25` is the\n")
+@printf("best mean whose worst cell is still an improvement (0.5 overshoots semiarid_sahel).\n")
 @printf("\nDONE — the verdict is REPORT 1's |d|/fl and REPORT 2's shape, read with REPORTS 4-5's attribution.\n")
+flush(stdout)

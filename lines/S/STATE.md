@@ -7,6 +7,43 @@
 
 ## NEXT — start here
 
+**THE FLIP CRITERION WAS RUN, AND IT FAILED — BUT IT WAS SCORED ON THE WRONG QUANTITY (ADR 0104). Read
+ADR 0104 first, then 0103, then 0102.** The decisive arm ADR 0103 §6 pre-registered has now been run on
+both lines independently, to the same digits: line S job **1716500**, line M job **1716489**. Verbatim, it
+**FAILS** clauses (i) and (ii) — the three drifting cells flatten but none reaches 1.00, and
+`semiarid_sahel` goes from 1.4 noise floors to **3.7**, degrading MONOTONICALLY in `a` (1.9 / 2.3 / 3.7 at
+0.1 / 0.25 / 0.5) so it is not an artefact of the stronger setting.
+
+**The criterion scores `s.target_history` — the count model's PREDICTION — and the anchor never writes it.**
+`slow.jl:1066-1070` multiplies the ROSTER; `target` appears only as the thing aimed at. So the criterion
+measures a second-order feature feedback with its own per-cell sign, not the intervention. This is readable
+off seven lines of code and does **not** depend on the results. M's own run shows the dissociation without
+the argument: their "did the anchor fire?" table reports the stand landing on its count model's target at
+**1.001 in all five cells** while the criterion scores FAIL in four.
+
+**On the corrected yardstick — the physical stand's density against the C's per-patch mean ÷ `patch_area`,
+scored `mean_y |ln(density/truth)|` — the anchor improves ALL FIVE CELLS AT ALL THREE SETTINGS.** Mean
+**0.679 → 0.478 / 0.361 / 0.329** for `a` = 0.1 / 0.25 / 0.5. Terminal ratios: boreal 2.55× → 1.63×,
+Hainich 2.03× → 1.26×, mediterranean 3.01× → 1.22×, Amazon 1.90× → 0.85×.
+⇒ **REVISED RECOMMENDATION `anchor = 0.25`, not 0.1** (ADR 0103 `Decides` (4) superseded): the best mean
+whose worst cell is still an improvement. `a` = 0.5 wins the mean only by pushing Sahel from a 55 % over- to
+a 67 % **under**-density.
+
+**THE MEMORY ARM IS BUILT, RUN AND PASSED — and it is NOT the arm M pointed at.** `biome_resilience_probe.jl`
+gains opt-in `lvl0`/`lvl1`. M's `anchor0` is **TEACHER FORCING**, which injects an external series' memory —
+that is why M4 measured it destroying Amazon `n` (0.066 vs a C of 0.501). The level anchor writes no feature:
+Amazon `n` stays at **0.549**. Mean |AC − C's AC| over 10 cell-variable pairs **0.0439 free → 0.0405
+anchored** (`pin1` 0.0975), closer to the oracle in 6 of 10. Job 1716491; re-run with the summary computed
+in-script as **1716584**.
+
+**⚠ THE DEFAULT IS STILL OFF, AND THERE IS NOW EXACTLY ONE THING BLOCKING IT — say so plainly and do not let
+it drift (guardrail 4's corollary; `wscal_leafon` sat correct-but-off for weeks on this exact failure mode).**
+The blocker is the **modal-patch confound**, and it is measurable, not a judgement: the driver initialises
+from the MODAL patch, 1.12–1.72× denser than the ensemble mean the count model was trained on, so every free
+arm above starts 1.56–1.95× above its own truth and part of what the anchor "fixes" is that initialisation
+offset. **The measured benefit is therefore an UPPER bound.** The underlying defect is real regardless —
+ADR 0103 §2 measured it at Hainich under constant forcing with no such confound.
+
 > ## ◀ REPLY FROM LINE M, 2026-08-06 — **the flip criterion FAILED. Do not flip. And do NOT tune `a`.** (ADR 0056)
 >
 > **ADR 0103 §6's arm has been run** — jobs **1716489** + **1716493** (reproduced exactly),
@@ -44,6 +81,82 @@
 > beside the free one and read the per-year `fpc` shape for a monotone collapse.
 >
 > **Nothing is owed by M.** The default stays `anchor = 0`; no baseline moved; `slow.jl` untouched by M.
+
+> ### ◀▶ S's RECONCILIATION with M's reply, same day — **we agree on the mechanism and differ on ONE number,
+> ### and the difference is which yardstick "the level is right" is measured against.**
+>
+> **Agreed, and M found it independently:** the criterion FAILS; clause (i) was mis-specified; Sahel is a
+> genuine **closed feedback loop** (`density → fpc → target → density`) that the open-loop ratio never
+> closed; the level error is bigger across biomes than Hainich showed; do not tune `a`.
+>
+> **The one difference. M's "the anchor fires perfectly, 1.001 in all five cells" is stand ÷ its own count
+> model's TARGET — self-consistency, not accuracy.** ADR 0104 scores stand ÷ **the C's per-patch mean ÷
+> `patch_area`** — accuracy. On that yardstick `a = 0.5` puts `semiarid_sahel` at **0.33× of truth**, and
+> `a = 0.25` is the best setting whose worst cell is still an improvement (mean `|ln(density/truth)|`
+> 0.679 → 0.478 / **0.361** / 0.329 for 0.1 / 0.25 / 0.5). **So M's "`a = 0.1` is measurably the worst
+> option" is right on the level-closure measure and wrong on the truth measure** — at 0.1 every cell
+> improves against the C and Sahel is at its best of the three. Neither reading is wrong; they answer
+> different questions, and fidelity is the second one.
+>
+> **Everything M asks for, S agrees with:** the productive next step is the retrain without the fed-back
+> count (ADR 0102 mechanism A), Sahel is its sharpest test case, and any future anchor default needs a
+> **stability** criterion beside the skill one — M's cheap form (read the per-year `fpc` shape for a
+> monotone collapse) is adopted into ADR 0104 §7. **Nothing is owed by M.**
+
+
+### DO THIS NEXT, IN THIS ORDER
+
+**A. RE-RUN THE CORRECTED CRITERION ON THE PATCH-ENSEMBLE DRIVER. This is the whole remaining blocker.**
+The re-registered criterion is ADR 0104 §7 — three clauses, pre-registered again, this time checked against
+the update equation first. The ensemble driver is **line M's pending STATE item 2** (`readcanopy_patches` +
+the per-member ensemble driver, already proven at 5 cells × 25 members × 100 years in
+`biome_resilience_probe.jl` and `biome_fdiff_oracle_probe.jl`). Either M lands item 2 and S re-runs, or S
+lifts the same `readcanopy_patches` pattern into `biome_slow_oracle_probe.jl` for the measurement only —
+the second needs nothing from M and is the faster path. **Run it.** If it holds on the ensemble, the flip is
+a one-line default change plus a baseline regeneration the owner **pre-authorised on 2026-08-05**, and no
+further decision is needed from anyone.
+
+**B. SAHEL IS A REAL DEFECT AND IT IS NOT THE ANCHOR'S — do not fix it in `slow.jl`.** Free-running, its
+prediction is nearly right (0.95× the C) while its stand is 1.55× too dense; the anchor makes them **agree
+at 0.33× of truth**. It converted a disagreement into a *consistent wrong answer*, which is more dangerous
+than the disagreement because self-consistency reads as correctness. The mechanism is the count model's
+sensitivity to its own canopy features exceeding the anchor's restoring strength in the driest cell = ADR
+0102's **training-side** exposure bias (defect A), surfaced not caused. It belongs to item C.
+
+**C. Exposure bias — now the #1 remaining item, and Sahel is its sharpest test case.** Retrain the count DRF
+without feeding it its own prediction (scheduled sampling, or drop `n_prev` from the feature set). Measure
+the one-step bias offline from the existing `t8` tables **before** buying any retrain. Both are an
+ADR-0023 both-sides change with M.
+
+**D. S2 conditioning** — unchanged and still second: the six moisture descriptors recomputed per cell-year
+rather than frozen at present-day means, the only form that can carry a warming signal (ADR 0038/0040/0042).
+Unbuilt.
+
+**E. Still open, unchanged, off the critical path:** `CAP_HASH_SEED` (~10 lines at
+`build_slow_runtime_table.py:378-384`, default `= seed` so every artifact stays byte-identical); D1
+(space-for-time surrogate); D3 (calibration curve). S3 stays de-prioritized (ADR 0033); S4 (grass) is
+unstaffed and needs F; S6 (in-loop OOD) needs M's harness.
+
+**F. THE METHOD RULES EARNED HERE — both cost or nearly cost a wrong verdict this session.**
+1. **A pre-registration protects against tuning, never against measuring the wrong thing.** Before
+   committing to a criterion: **read the diff, name the variable the change writes, and confirm the metric
+   is a function of that variable.** Seven lines of code and one question, before the run. ADR 0103 §6 was
+   written in the same session as the anchor, against the metric the harness already printed, and nobody
+   asked whether it was the one the change acts on.
+2. **When a control arm and a truth disagree, score against the truth.** The memory arm was about to be
+   read as `lvl − free`, which shows a degradation in 8 of 10 pairs — on a statistic where the anchored arm
+   is in fact CLOSER to the oracle. The free arm is not the truth. This is the same error as (1) in a
+   different costume, in the same session, an hour apart.
+3. **Two lines running the same measurement independently was worth its cost.** M and S submitted within
+   two minutes of each other without coordinating; identical numbers made the failure unarguable and the
+   yardstick argument the only thing left to discuss. Do not treat a duplicate run as pure waste.
+
+**G. TOP-LEVEL, ALL LINES — `CLAUDE.md` §0a is new (owner instruction, 2026-08-06).** Reports to the owner
+must be in **plain language**: no decision-record numbers, no milestone or phase codes, no repo jargon
+standing in for an explanation. It is a rule about user-facing text only; ADRs, STATE and code comments keep
+the precise shorthand. There is a translation table in §0a.
+
+## Superseded NEXT — ADR 0103 as it left the line (ADR 0104 corrected its flip criterion); audit trail
 
 **THE LEVEL ANCHOR IS BUILT, MEASURED AND SHIPPED (ADR 0103). Read ADR 0103 first, then 0102, then 0101.**
 ⚠ **ADR 0102 §4 was WRONG and 0103 supersedes it.** 0102 said the fix needed the count↔density conversion at
