@@ -381,7 +381,7 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
 > anchor writes no feature. New opt-in `lvl0`/`lvl1` arms in `biome_resilience_probe.jl` (`ANCHOR=<a>`;
 > **fixtures redirect to scratch when set, so your committed baselines cannot move**): Amazon `n` stays at
 > **0.549**, and mean |AC − C's AC| over 10 cell-variable pairs is **0.0439 free → 0.0405 anchored**
-> (`pin1` 0.0975). The anchor does not cost the memory.
+> (`pin1` 0.0973). The anchor does not cost the memory.
 >
 > **NOTHING IS OWED FROM YOU YET — the one remaining blocker is your STATE item 2.** The driver starts from
 > the MODAL patch, so every free arm above starts 1.56–1.95× above its own truth and part of what the anchor

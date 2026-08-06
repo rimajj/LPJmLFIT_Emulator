@@ -185,7 +185,7 @@ the truth while showing as a negative `lvl − free`.
 
 | statistic over the 10 cell-variable pairs | `free1` | `pin1` (no count AR) | `lvl1` (anchored) |
 |---|---|---|---|
-| mean \|AC − C's AC\| | 0.0439 | 0.0975 | **0.0405** |
+| mean \|AC − C's AC\| | 0.0439 | 0.0973 | **0.0405** |
 
 The anchored arm is **closer to the oracle than the free arm in 6 of 10 pairs and better on the mean**. The
 largest individual moves are toward the C, not away: boreal `n` 0.637 → 0.548 against a C of 0.568, boreal
