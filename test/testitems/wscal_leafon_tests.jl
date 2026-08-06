@@ -22,8 +22,13 @@
     using LPJmLFITEmulator.FDiff: WaterParams, PhotoParams, TempStressParams
     using Test
 
-    # ── (0) the OPT-IN guarantee (guardrail 4): default off, so every committed baseline is untouched ──
-    @test WaterParams{Float64}().wscal_leafon === false
+    # ── (0) the DEFAULT, flipped to the C-faithful expression 2026-08-06 (ADR 0059) ──────────────────
+    # It shipped opt-in (default `false`) while ADR 0051 measured it, and guardrail 4 is now served by the
+    # OPT-OUT instead: `wscal_leafon = false` still reproduces the pre-ADR-0051 expression exactly, which
+    # the two-arm assertions below exercise on every run. Pin the default explicitly — a silent default
+    # move is what makes a "control" arm stop controlling anything (line E paid for that in ADR 0075 §4).
+    @test WaterParams{Float64}().wscal_leafon === true
+    @test WaterParams{Float64}(; wscal_leafon = false).wscal_leafon === false
 
     w_lo = WaterParams{Float64}(; wscal_leafon = true)
 

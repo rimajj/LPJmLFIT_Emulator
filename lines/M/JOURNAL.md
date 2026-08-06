@@ -659,3 +659,34 @@ useful sign the coupled configuration was the one I thought it was.
   an opt-in whose default is now known to be worse is a defect on a timer (guardrail 4's corollary).
 - **Decisions:** ADR 0058. Jobs 1716621 (pins on the new arm), 1716625 + 1716628 (the two questions),
   1716629 (suite), 1716630 (driver on the final configuration).
+
+## 2026-08-06 (session 3) — the water-stress default, flipped at last (ADR 0059)
+
+- **The flag CLAUDE.md names in its own guardrail as "a defect on a timer" is now off the timer.** It
+  shipped opt-in in ADR 0051 so the measurement could not move a baseline, and then sat off for a week
+  because each line recorded the flip as the other's to schedule. Line S GO'd it explicitly ("yours to
+  land, unilaterally, S's side is already in") and this session landed it.
+- **The result is a one-cell change, and I would not have predicted its size.** A full suite with *only*
+  the default flipped failed **3 assertions out of 111,237**: the opt-in guarantee itself and
+  `semiarid_sahel`'s two pinned signatures. Four of five cells move ≤ 1.2 %. The Sahel's GPP goes
+  **0.386 → 1.367 gC/m²/day (+254 %)**, i.e. **0.26× → 0.90×** the C's own tree GPP. Mechanism: the
+  pre-flip expression scored every leaf-off day as fully water-stressed, that number drives the leaf:root
+  allocation, and the cell with the most leaf-off days therefore starved its own leaf pool.
+- **The cost is in the same cell and belongs in the same sentence:** its ET goes from 1.19× to **1.26×**
+  the C's. The flip buys a large carbon gain and pays ~6 % more of ADR 0053's ET overshoot. Saying only
+  the first half would be a fair-sounding lie.
+- **The thing worth carrying is not the fix, it is what the fix exposed.** Until today the CI gate pinned a
+  configuration *no published F-vs-C comparison ever ran* — every oracle probe on this line passes
+  `wscal_leafon = true` explicitly and says so in its header, so the default arm was the arm nobody scored.
+  A default that disagrees with the measurement basis is the train/inference-shift hazard in its cheapest
+  form, and it survived for weeks precisely because **both halves were individually documented**.
+- **Third time in three items that the assumed blast radius exceeded the measured one** (ADR 0057's CI
+  cost, ADR 0058's "moves every baseline", now this). The pattern is specific enough to act on: a flag can
+  be physics-wide in the source and one-cell in effect — run the suite with only the flag flipped and read
+  the failure list *before* planning the regeneration.
+- **Also swept up line E's default flip (ADR 0075).** The pin probe hardcoded `enable_two_layer = false`
+  as its "default" arm, which stopped being the default the moment E flipped it — exactly the control-arm
+  trap E paid for in ADR 0075 §4. It now takes the package default unless explicitly overridden, and the
+  stale "the default is off" comments in the driver and gate are corrected.
+- **Decisions:** ADR 0059. Jobs 1718279 (flip-only suite: the 3 expected failures), 1718307 (pins),
+  1718316 (suite with the regenerated pins), 1718317 (driver).
