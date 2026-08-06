@@ -580,3 +580,43 @@ your message — mixing two lines of reasoning into one commit, and possibly com
 4. **Read what the other session wrote before reconciling.** Here the two converged (ADR 0110 built correctly
    on ADR 0109's numbers and answered an open item in it) — so the right action was to point the handoff at
    their result and withdraw the superseded speculation, not to treat it as a conflict.
+
+## A RED REQUIRED GATE IS SOMETIMES A GITHUB OUTAGE — check the failure STEP before you touch the code (`[VERIFIED 2026-08-06]`, line S, ADR 0110 merge)
+
+`main` came back **red on `test (lts)` AND `docs`** immediately after a merge — the two scariest gates, one of
+them the whole-package gate that never runs on a branch, so it looked exactly like "the merge broke `main` in
+the one place branch CI could not see." It was **GitHub infrastructure**. Both jobs died at the *action
+download* step, before a single line of Julia ran:
+
+```
+Failed to resolve action download info. Error: Service Unavailable
+##[error]Failed to resolve action download info.
+```
+
+**How to tell in 30 seconds, before debugging anything:**
+
+1. **Read the failing job's log for the failure STEP, not just "failure".** `grep -iE "error|fail"` on the job
+   log via the API. `Failed to resolve action download info`, `Service Unavailable`, `Internal Server Error`,
+   `An error occurred while sending the request` = GitHub, not you. A real failure shows a `Test Summary`
+   line, a Julia stacktrace, or a Documenter/Runic diff.
+2. **Check the SIBLINGS on the same sha.** Here `test (1)`, `test (macOS, lts)` and `format` all passed on the
+   identical commit. Your code cannot be green on 1.12 + macOS and broken on lts at the *download* step.
+3. **Check the same code on the branch.** `test (lts)` had passed on the branch sha minutes earlier.
+
+**The fix is a rerun, not a commit.** Do NOT push an empty commit or "fix" anything:
+
+```bash
+# find the run ids — NOTE: ?head_sha=<sha> returned 0 results here; list by branch instead
+curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/rimajj/LPJmLFIT_Emulator/actions/runs?branch=main&per_page=12" \
+  | python3 -c "import json,sys;[print(r['id'],r['name'],r['head_sha'][:8],r['conclusion']) for r in json.load(sys.stdin)['workflow_runs']]"
+
+curl -X POST -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/rimajj/LPJmLFIT_Emulator/actions/runs/<RUN_ID>/rerun-failed-jobs"   # → 201
+```
+
+Both reruns passed with **zero code changes**, which is also the proof it was transient — record that
+sentence, because "I reran it and it went green" is otherwise indistinguishable from flakiness you hid.
+
+⚠ **Do not report a merge as green before `main`'s own run has reported** (§9 note 5). Branch-green + a green
+local suite is not the same statement, and quoting the outcome early means retracting it in the next message.
