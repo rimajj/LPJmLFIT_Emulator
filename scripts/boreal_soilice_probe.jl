@@ -38,6 +38,9 @@ function readsoil(path)
     return hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
 end
 
+# CANOPY BASIS (ADR 0057 §4): the MODAL patch. This probe compares a SEASONAL SHAPE (the monthly `w` and
+# `wscal` climatologies) against the C's, not an absolute level, and the shape is member-invariant here —
+# the prediction is "high all year vs a winter collapse". Use the ensemble basis for any level claim.
 function readcanopy(path)
     ind = readcsv(path)
     v(k, r) = parse(Float64, ind[k][r])

@@ -193,6 +193,9 @@ end
         end
         return hainich_soilcolumn(; whcs = whcs, rootdist = rd, soildepth = sd)
     end
+    # CANOPY BASIS (ADR 0057 §4): the MODAL patch, deliberately — this gate's claims (recovery is
+    # monotone/bounded, the perturbation decays) are member-invariant. The cluster probe this fixture
+    # comes from (`scripts/biome_resilience_probe.jl`) runs the full 25-patch ensemble.
     function readcanopy(path)
         ind = readcsv(path)
         v(k, r) = parse(Float64, ind[k][r]); nt(r) = parse(Int, ind["type"][r])
@@ -361,6 +364,9 @@ end
         end
         return hainich_soilcolumn(; whcs = whcs, rootdist = rd, soildepth = sd)
     end
+    # CANOPY BASIS (ADR 0057 §4): the MODAL patch, deliberately — this gate's claims (recovery is
+    # monotone/bounded, the perturbation decays) are member-invariant. The cluster probe this fixture
+    # comes from (`scripts/biome_resilience_probe.jl`) runs the full 25-patch ensemble.
     function readcanopy(path)
         ind = readcsv(path)
         v(k, r) = parse(Float64, ind[k][r]); nt(r) = parse(Int, ind["type"][r])

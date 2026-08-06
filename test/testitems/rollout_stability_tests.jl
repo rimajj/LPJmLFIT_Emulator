@@ -64,6 +64,9 @@ end
         end
         return hainich_soilcolumn(; whcs = whcs, rootdist = rd, soildepth = sd)
     end
+    # CANOPY BASIS (ADR 0057 §4): the MODAL patch, deliberately — boundedness, "no limit cycle" and
+    # "the oscillation does not grow" are member-invariant structural claims, not levels compared
+    # against the C. The ensemble basis is `scripts/run_coupled_biomes.jl` / the biome oracle probes.
     function readcanopy(path)
         ind = readcsv(path)
         v(k, r) = parse(Float64, ind[k][r]); nt(r) = parse(Int, ind["type"][r])

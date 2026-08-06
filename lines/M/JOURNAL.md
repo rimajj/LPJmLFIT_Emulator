@@ -589,3 +589,37 @@ useful sign the coupled configuration was the one I thought it was.
   straight through rather than batched with the queued baseline work, and the reply went into
   `lines/S/STATE.md` — the same channel S used to reach M.
 - **Decisions:** ADR 0056. Jobs 1716489 (criterion) and 1716493 (criterion reproduced + the mechanism report).
+
+## 2026-08-06 (session 2) — the production driver moves to the patch ensemble (ADR 0057)
+
+- **The queued baseline-moving pair, first half.** `scripts/run_coupled_biomes.jl` and the CI gate pinning
+  its per-cell signatures were still driving the **modal** (= densest) patch, three ADRs after ADR 0053
+  made the 25-patch ensemble mean — the C's own output basis — this line's comparison basis and moved the
+  oracle *probes* to it. Both now run every patch independently and average.
+- **The measurement came first, and it measured BOTH bases in one job** (`biome_ensemble_pin_probe.jl`,
+  1716587). That design is what made the regeneration honest: the same run reproduced the **currently
+  committed** modal pins to every printed digit in all five cells, so the probe provably drives the gate's
+  own configuration and the new numbers differ only in the basis. Regenerating a baseline from "whatever
+  the new code prints" cannot make that claim.
+- **The artifact is small in energy and large in carbon** — `mod/ens` 1.009–1.057 on LE, up to **1.331** on
+  GPP. LE is water- or energy-limited in all five climates and buffered against canopy density; GPP is not.
+  A driver checked only on the energy partitioning would have concluded the basis barely matters.
+- **Two things I expected to hold and that do not.** (a) The FPC artifact does not predict the flux
+  artifact: `semiarid_sahel` has the largest density artifact (1.588×) and the *smallest* flux one
+  (GPP 0.990 — the denser patch makes slightly LESS carbon, because water and not light is the constraint).
+  (b) The ratio is horizon-dependent and even changes sign — at the driver's 10-yr horizon the Sahel is
+  0.821 and the mediterranean 0.961, as the denser patch's own drift (ADR 0053) accumulates. ⇒ it can never
+  be carried as a per-cell correction factor; re-run, never rescale.
+- **Cost was the thing I was wrong about in advance.** I expected the ensemble to be too expensive for CI
+  and to need a reduced-horizon compromise; it is **10.6 s** for the whole five-cell set, and the gate now
+  asserts the Phase-4 energy closure **per patch** — 25× more closure evidence for a rounding error's worth
+  of runtime. Measure the cost before designing around it.
+- **What deliberately did NOT move, and why that is a decision:** five gates/probes stay single-member
+  (ADR 0057 §4) because their claims are member-INVARIANT — closure, determinism, boundedness, a seasonal
+  shape — plus `wscal_leafon_probe.jl`, kept modal on purpose so it still reproduces ADR 0051's published
+  numbers. Each file now carries the reason at the reader rather than in the ADR alone.
+- **Rule worth keeping:** a canopy basis is part of a result's reference basis (guardrail 7) — state it
+  where the number is produced. A modal-patch number and an ensemble number are not comparable, and nothing
+  in the code makes the difference visible.
+- **Decisions:** ADR 0057. Jobs 1716587 (both bases, the pins), 1716592 (the driver on the new basis),
+  1716594 (CI-faithful suite).

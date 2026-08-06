@@ -79,13 +79,24 @@ them as a checklist; three are one-liners. The reusable pair is `scripts/extract
    canopy is light-limited, so the FPC share over-states the flux share in every cell: 1.31× boreal, 1.86×
    mediterranean, 2.08× Sahel, 2.98× Hainich (5.6× Amazon, where both numbers are ~0 and the ratio is noise).
    `transp` and `a_lai_stand` have NO per-PFT daily equivalent and are simply not splittable; say so.
-2. **The driver runs ONE patch; the C reports the 25-patch ENSEMBLE MEAN.** The modal patch (most stems)
-   that `run_coupled_biomes.jl` picks is denser than the ensemble by FPC **1.72×** (Sahel), 1.48× (boreal),
-   1.19×, 1.14×, 1.12× — the same magnitude as the biases being measured. Run each patch independently and
-   average the OUTPUTS (`readcanopy_patches` in the probe); never put 25 patches' stems in one core, which
-   would make them compete for light inside a single canopy (the C's `getfpar.c` is per-patch too).
-   This is load-bearing: it flips Sahel's GPP verdict from **1.03 ("exact") to 0.75 (−25 %)**, and flips its
-   sign relative to ADR 0052.
+2. **A single patch is not the cell; the C reports the 25-patch ENSEMBLE MEAN.** The modal patch (most
+   stems) is denser than the ensemble by FPC **1.72×** (Sahel), 1.48× (boreal), 1.19×, 1.14×, 1.12× — the
+   same magnitude as the biases being measured. Run each patch independently and average the OUTPUTS
+   (`readcanopy_patches`); never put 25 patches' stems in one core, which would make them compete for light
+   inside a single canopy (the C's `getfpar.c` is per-patch too). This is load-bearing: it flips Sahel's GPP
+   verdict from **1.03 ("exact") to 0.75 (−25 %)**, and flips its sign relative to ADR 0052.
+   **Since ADR 0057 `run_coupled_biomes.jl` and `biome_coupled_tests.jl` item 2 are on the ensemble too**,
+   so a fresh driver number needs no correction — but check, because five gates/probes stay single-member
+   on purpose (ADR 0057 §4) and each says so at the top of its `readcanopy`. Two more things measured there,
+   both counter-intuitive: the artifact is **≤ 5.7 % on LE but up to 33 % on GPP** (LE is water-/energy-
+   limited and buffered against canopy density, GPP is not), and the **FPC artifact does not predict the
+   flux artifact** — the Sahel has the largest density artifact and the smallest flux one (GPP 0.990:
+   extra leaf area buys nothing when water is the constraint), and the ratio flips sign by horizon.
+   ⇒ **never rescale a modal-patch number; re-run it.** To move the committed pins deliberately:
+   `scripts/sbatch_julia.sh M-enspin --project=. scripts/biome_ensemble_pin_probe.jl` — it measures BOTH
+   bases in one 10.6 s run, so the run that produces the new pins also reproduces the OLD ones and proves
+   the harness drives the gate's own configuration (`TWO_LAYER=1`, exported, swaps in ADR 0074's ground-heat
+   column). **Regenerating a baseline from "whatever the new code prints" cannot make that claim.**
 3. **A 10-yr-mean ratio hides canopy drift.** Under `slow = nothing` F's canopy is free-running and drifts
    −13.5 % to +64.5 % in FPC. Score **F year k against C year k** and read the ratio series' SHAPE:
    monotone = structural drift, flat-but-offset = a genuine flux-level bias. They need different fixes, and
