@@ -48,6 +48,21 @@ fail outright. It was left alone, the branch was left pushed and green, and the 
 worktree came back clean — no conflicts. The detection procedure (mtime check) and why routing around it via a
 detached worktree is *wrong* rather than clever are now in the **`repo-commit`** skill.
 
+### ⚠ A CONCURRENT SESSION RAN ON LINE S IN THIS SAME WORKTREE — the history is interleaved, and `git add -A` is a hazard here
+
+ADR 0110 (`f75b5907`) is a **line-S commit this session did not make**, and it sits *between* two of this
+session's commits on the branch. Files in `wt-S` (`MEMORY.md`, `src/LPJmLFITEmulator.jl`) were also modified
+externally mid-session. ADR 0028's "one session per line at a time" was therefore **not** holding today.
+
+**Nothing was corrupted** — every commit of this session was audited with `git show --stat` afterwards and each
+contains exactly its intended files, and ADR 0110's own files came in cleanly via the rebase. But that was
+luck, not care: **`git add -A` in a shared worktree can commit another session's in-progress work under your
+message.** If you find yourself sharing a worktree, stage explicitly (`git add <paths>`) and audit with
+`git show --stat` before pushing.
+
+**The two lines of work CONVERGED rather than collided** (see item D): ADR 0110 read ADR 0109's numbers
+correctly and drew the next conclusion from them. No reconciliation is needed.
+
 ### THE STATE IN SEVEN LINES
 
 1. **S2 (the moisture conditioning) is WIRED, GATED, TESTED and PUSHED GREEN — ADR 0108, commit `c68ee134`**
@@ -167,11 +182,17 @@ absent), the two **struct** axes (`agb`/`Height`, already in the tables), and th
 tolerance, which needs the seed2 companion per cell (ADR 0030) — the script currently reports the literal 10 %
 and says so.
 
-**D. `D95max` IS THE LARGEST MEASURED TRAIT-SIDE GAP (28 % of cells within 10 %, response slope +0.16).** It is
-the rooting-depth trait, so a moisture climatology is the physically-motivated lever — which is exactly what the
-arm tests. If the arm does not move it, that is a real, quantified, global finding and the next question is
-whether `D95max`'s conditioning is missing a **soil** axis (the tail has one static `soil_depth` and
-`beta_root`/`D95` are rooting-profile quantities, ADR 0083's soil-pairing trap is adjacent).
+**D. ~~`D95max` needs a soil axis~~ — ANSWERED, and better, by ADR 0110 (a CONCURRENT line-S session, same
+day). Do not re-open it as a conditioning question.** ADR 0109 established that `D95max` is the worst axis on
+BOTH level (28–33 % of cells within 10 %) and response (best arm +0.172) on **all three** arms; ADR 0110 reads
+that as the completion of a search on the *statistical* side and identifies the cause as **the trait having no
+physical consumer** — Component S samples `D95max` and `minwscal`, but nothing in F reads them (ADR 0025 shipped
+them "sampled + validated only, until F_diff gains per-tree consumers"), so no conditioning change can make a
+predicted quantity matter when nothing downstream uses it. ADR 0110 also narrows the standing "per-individual
+water supply is structurally impossible" DEFER to the *order-dependent residue cap alone*, having found that
+verdict was reached on GRASS. **That is the live thread for this trait, and it needs F — an integration point
+with line M, not S-only work.** My earlier guess here (a missing soil axis in the tail) is withdrawn as
+speculation that the measurement did not support.
 
 **E. Still open, unchanged, off the critical path:** `CAP_HASH_SEED` (~10 lines at
 `build_slow_runtime_table.py`, default `= seed` so every artifact stays byte-identical); D1 (space-for-time
