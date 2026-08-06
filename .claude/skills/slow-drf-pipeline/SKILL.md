@@ -1219,7 +1219,124 @@ Three traps it caught or would catch:
 - ⚠ **Cast to Float64 before any per-cell aggregation** of the reference: 4 of the 6 are Float32 in
   `cell_year_feats` and polars accumulates a Float32 mean in Float32 (CLAUDE.md §4).
 
-**Still to do after the tables exist** (none of it is done): join the six on `["Cell","Year"]` in
-`build_slow_runtime_table.py::_write_copula_table` instead of the per-`Cell` mean (the ADR-0026 treatment
-the boundary pair already gets), retrain the count DRF **and** the copula, and re-pin with line M — an
-ADR-0023 **both-sides** change. Then score against ADR 0106's criterion globally, not on 5 cells.
+### WIRING the transient tail — the knobs, and the two things that make it safe (ADR 0108, 2026-08-06)
+
+**Done and shipped opt-in.** Three knobs, all default-preserving:
+
+| what | knob | default |
+|---|---|---|
+| training tail per `(Cell,Year)` | `ENV_WINDOW=20` (`build_slow_runtime_table.py::_env_source`) | unset ⇒ per-`Cell` mean, byte-identical |
+| runtime tail per year | `live_flux_cond_env_series(series)` (`slow.jl`) | `live_flux_cond_env(env)` unchanged |
+| per-row Year on every table | `years.i64` + manifest `years_tag` | **always emitted** |
+
+**Run the arm:** `scripts/run_moisture_conditioning_arm.sh` (`VERSION=t9`, W=20, 96 cpus, ~30 min for the
+t8-equivalent work). It builds the 8-column base ONCE, appends the static tail and the transient tail to that
+same frozen base, evaluates both K-fold-by-cell, and trains the transient `.rcop`.
+
+⚠ **BUILD THE ARM AS ONE BASE + TWO APPENDED TAILS, NEVER AS TWO BUILDS.** Two independent 14-column builds
+land on two row universes (ADR 0036 §5b: streaming `group_by` is non-deterministic in its **key set** — 4 913
+rows and 12 duplicated cells between two ssp370 builds), so any measured difference is confounded with that.
+`build_slow_copula_env_augment.py` appends to a frozen base, verifies the base columns survive **bitwise**,
+and symlinks `Y_*`/`cells.i64`/`years.i64` so they cannot drift; the fold map is a hash of `Cell` over
+identical `cells.i64` bytes, so the two arms are **paired per cell**.
+
+⚠ **THE YEAR IS NOT RECOVERABLE FROM A FINISHED TABLE — that is why `years.i64` exists.** Inverting it from
+`Xc`'s own per-cell-year columns is ambiguous: `(Cell, gdd5, tas_cold_month)` collides for **174 of 1 348 400**
+historic and **202 of 5 461 020** ssp370 cell-years, and adding `soilmoist` to the key only cuts it to
+**134/141**. That residue is ~1e-4 of the rows — invisible in every aggregate, wrong exactly where the climate
+is flattest. Any table built before this sidecar existed **cannot** be augmented transiently; rebuild it.
+
+⚠ **A STATIC-TAIL AND A TRANSIENT-TAIL ARTIFACT ARE INDISTINGUISHABLE BY WIDTH.** Same `ncond`, same
+`cond_cols` ⇒ ADR 0038's construction-time width probe and `load_copula`'s `ncond`/`nfeat` check **pass for
+either policy paired with either artifact**, and a mis-paired coupled run completes, conserves carbon and
+returns in-range traits. **The manifest's `env_basis` line is the only discriminator** (`static_cell_mean` ⇒
+`live_flux_cond_env`; `transient_w<W>` ⇒ `live_flux_cond_env_series`). `pool_slow_tables.py` refuses to pool
+two scenarios whose `env_basis` differs — a static half plus a year-varying half would fabricate part of the
+scenario contrast being measured. **Read `env_basis` before wiring any 14-column artifact.**
+
+**The gate:** `scripts/diagnose_env_window_gate.py` (5 biome cells, ~4 min; job 1718598 was the first pass).
+It checks the three things that each silently invalidate the change, and check A is deliberately **not**
+circular — it diffs against `git show <parent>:scripts/build_slow_runtime_table.py`, not a re-run of the new
+code, so set `BASE_REF` to the pre-change commit while the change is uncommitted. Pass ⇒ default
+byte-identical, columns 0-7 unmoved under `ENV_WINDOW`, every probed row carrying its own `(Cell,Year)` values
+re-derived from the parquet, and 20 distinct tail values per cell where the static tail has 1.
+(Its one setup trap: the builder resolves `lpjmlfit_emulator` from `Path(__file__).parents[1]/python/src`, so a
+reference COPY living outside `scripts/` needs that path on `PYTHONPATH` — do not edit the copy.)
+
+### SCORING a conditioning change against ADR 0106 — the RESPONSE slope, and measure the baseline FIRST
+
+**`scripts/diagnose_moisture_arm_response.py`** (`ARMS=<dir>,<dir> LABELS=a,b`; ⚠ `ARMS`/`LABELS` are not in
+`sbatch_python.sh`'s forward list — **`export` them**). For each production axis and each pooled table it
+computes, per cell, the OOS predicted and observed (C-truth) trait **median** in each scenario, then the
+**response** `D = median(ssp370) − median(historic)` and regresses `D_pred` on `D_truth` **through the origin**.
+
+**That slope is the ADR-0106 climate-change statistic, and no per-scenario level score can substitute for it.**
+An emulator can be within 10 % of the median in *both* scenarios and still have `D_pred == 0` in every cell,
+because the two scenarios' cells are scored independently. slope ~0 ⇒ no response where the original has one;
+~1 ⇒ right amount; <0 ⇒ wrong way. It also prints sign agreement, the per-cell 10 % bands (over cells whose
+`|D_truth|` clears a stated floor, **with** the excluded count, because a relative error is undefined at
+`D_truth ≈ 0`), and it **checks the pairing** (identical `cells.i64` / `scenario.i64` / `Y_*` bytes) rather than
+assuming it.
+
+⚠ **MEASURE THE BASELINE BEFORE ARGUING FROM CODE STRUCTURE THAT A CHANNEL IS CLOSED (`[VERIFIED 2026-08-06]`,
+ADR 0108 §1 — this line got it wrong first and caught it by measuring).** "Conditioning column X is a frozen
+per-cell constant" is a true statement that bounds what **X** can carry. It says **nothing** about what the
+model can do, because the other columns are not frozen: of the 14, `water_stress`/`soilmoist`/`bm_inc_cell`/
+`growth_eff` are per-`(Cell,Year)` and under `BOUNDARY_WINDOW` so are `eco_diag_gdd_5`/`tas_cold_month`.
+Measured on the **shipped `_t8`** generation (job 1718922, 52 074 cells with ≥30 stems in both scenarios):
+
+| axis | response slope | corr | sign agreement | per-cell median within 10 % (hist / ssp) |
+|---|---|---|---|---|
+| SLA | +0.85 | +0.45 | 71.9 % | 70.7 % / 67.5 % |
+| Wooddens | +0.35 | +0.38 | 61.5 % | 71.4 % / 72.2 % |
+| D95max | **+0.16** | +0.20 | 57.5 % | **28.0 % / 30.0 %** |
+| minwscal | +0.69 | +0.58 | 62.7 % | 62.1 % / 63.8 % |
+
+So the offline recruit-trait response is **partially open, not closed**, and worst on the rooting-depth trait.
+Any arm must be scored **against this table**, not against an assumed zero — and this is also the line's first
+global, both-scenario level score, so stop quoting five-cell trait numbers as fidelity evidence. (These are
+**offline**, conditioning fed the C's own features; ADR 0105 §5 shows the coupled residual is dominated by F's
+canopy, so an offline slope is an upper bound on what the coupled model will show.)
+
+### THE ARM'S ANSWER, AND THE TRAP IT EXPOSES: a metric panel missing the binding quantity RECOMMENDS AGAINST IT (`[VERIFIED 2026-08-06]`, ADR 0109)
+
+**The result** (jobs 1718904 / 1719206; all three arms on the SAME 42 227 077 rows — the `_t9` 8-col base is
+SHA-256 bit-identical to the shipped `_t8` base, so this is a fully paired three-way):
+
+| axis | 8-col `_t8` (M's pin) | 14-col FROZEN tail | 14-col TRANSIENT tail |
+|---|---|---|---|
+| SLA — response slope / cells within 10 % | +0.851 / 70.7 % | +0.396 / **74.2 %** | **+0.752** / 73.6 % |
+| Wooddens | +0.346 / 71.4 % | +0.254 / **74.0 %** | **+0.332** / 73.8 % |
+| D95max | +0.163 / 28.0 % | +0.145 / **33.1 %** | **+0.172** / 32.4 % |
+| minwscal | +0.689 / 62.1 % | +0.609 / **66.1 %** | **+0.706** / 65.3 % |
+
+⚠ **THE ENV TAIL IS A LEVEL-vs-RESPONSE TRADE, AND THE SIX COLUMNS ACT AS A SPATIAL ADDRESS.** Adding them
+FROZEN buys **+2.6…+5.1 pp** of cells within 10 % and costs response slope on **all four** axes. Per-cell
+constants let the marginal forests locate a cell and reproduce its present-day distribution, which makes the
+fit *less* dependent on the columns that actually move with time. Making them TRANSIENT recovers most of the
+lost response (+0.356/+0.079/+0.028/+0.097) for 0.2–0.8 pp of level — but **not all** of it (0.752 vs the
+8-column 0.851), so the address effect is reduced, not removed. Sharpest single number: the truth's mean
+`Wooddens` response is **+2406**, frozen predicts **+1529**, transient **+2402**.
+
+⚠⚠ **THE GENERALIZABLE TRAP — and it caught this repo's own published recommendation. ADR 0037/0038 measured
+that tail's LEVEL gain, recommended it, and every number in it is still correct. No RESPONSE statistic existed
+at the time.** So a change that improved the published metric while degrading the metric the acceptance
+criterion actually binds on was not just missed — it was *recommended*. **A metric panel that omits the binding
+quantity does not stay silent about it; it argues against it.** Before adopting any conditioning lever here,
+check that the panel contains a statistic for **each clause of the acceptance criterion** (ADR 0106: level in
+both scenarios AND the response between them), and if one is missing, build it *before* scoring the lever —
+`diagnose_moisture_arm_response.py` is that statistic for the response and took an afternoon.
+
+**Corollary for pre-registration:** state the criterion in terms of the BINDING quantity, with the others as
+guardrails carrying explicit bands, and name any axis you intend not to gate on (here `agb`, a diagnostic
+struct axis) **out loud in the criterion** rather than excluding it later. ADR 0108 §8 gated on trait *level*
+only, so it rejected a change that improved the response to protect 0.4 pp of level — a mis-specification. It
+was **not** re-read after the numbers arrived (that is ADR 0104's error in a new costume); the corrected
+criterion is registered in ADR 0109 §5 for a NEW arm.
+
+**Still open after the arm reports:** re-pin with line M (an ADR-0023 **both-sides** change — M passes a
+per-cell `env_series` where it now passes a constant `env`; the series is a `cell_year_env_*_w20.parquet`
+slice, so it is a read, not a new derivation), and score against ADR 0106's criterion **globally** — all
+54 020 tree-bearing cells, both scenarios AND the response between them — not on 5 cells. The **count DRF is
+untouched** by this (its features are the 11 head columns + the 4-column boundary tail): whether it should
+also see moisture is a separate question and must be **priced offline** first (see the exposure-bias section).

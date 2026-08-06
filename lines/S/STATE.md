@@ -8,7 +8,7 @@
 ## NEXT — start here
 
 
-### 0★ 🎯 THE ACCEPTANCE CRITERION CHANGED — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
+### 0★ 🎯 THE ACCEPTANCE CRITERION — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
 
 The owner has stated what **finished** means, and it **supersedes every per-milestone stopping condition on
 every line**, including "at the seed1-vs-seed2 noise floor" and any five-cell verdict read as sufficient:
@@ -17,165 +17,201 @@ every line**, including "at the seed1-vs-seed2 noise floor" and any five-cell ve
 > change**"; done = **everything, including trait distributions AND medians, within 10 % error**; and it is
 > "**only finished when it's proven to be correct on ALL cells, not only a handful of test sites**".
 
-**All cells = the 54 020 tree-bearing cells**, not 5 biome cells. **Both scenarios AND the response between
-them.** A noise-floor statement is still the right *diagnostic*; it is no longer the *acceptance test*, and
-**no line may call a milestone done on a five-cell result again** — nor present one as fidelity evidence
-without saying it is 5 of 54 020.
+**All cells = the 54 020 tree-bearing cells.** **Both scenarios AND the response between them.** A noise-floor
+statement is a *diagnostic*, not the acceptance test, and **no line may call a milestone done on a five-cell
+result** — nor present one as fidelity evidence without saying it is 5 of 54 020.
 
-⚠ **The binding constraint is the climate-change clause, not the fidelity numbers.** Trait medians are
-already 9 of 10 within 10 % at the test cells, but the emulator's warming response is indistinguishable from
-zero where the original rises, and — separately — the source model itself is deliberately run at
-**constant CO2** (ADR 0004/0107), which the emulator correctly inherits. **Work that improves present-day agreement is not progress
-toward this criterion unless it also opens a response channel.** Plan accordingly.
+⚠ One clause carries a stated default, not the owner's words: the original model is stochastic and its own two
+runs differ by **29 % of the mean** for the per-patch count in a low-density cell, so a literal 10 % is
+unmeetable there by ANY emulator. Default in use: tolerance = **max(10 %, the original's own two-run spread
+for that quantity in that cell)**. Full record: ADR 0106.
 
-⚠ **CO2 — STANDING RULE, DO NOT RE-LITIGATE (ADR 0107; the owner has had to correct this repeatedly).** The
-emulator **does not see CO2 and must not respond to it**. It responds to **climate**, and the SSP scenarios
-already carry the CO2-driven climate signal. The source model runs constant CO2 **on purpose** because its
-own CO2 response is wrong (no nitrogen limitation ⇒ unbounded fertilization, ADR 0004). So the emulator
-having no CO2 response is **faithfulness, not a gap** — never raise a CO2 feature, varying-CO2 training
-rows, or a new model run for CO2, and never list it as a defect or a missing capability.
+⚠ **CO2 — STANDING RULE, DO NOT RE-LITIGATE (ADR 0107).** The emulator **does not see CO2 and must not respond
+to it**. It responds to **climate**; the SSP scenarios already carry the CO2-driven climate signal, and the
+source model runs constant CO2 **on purpose** (no nitrogen limitation ⇒ unbounded fertilization, ADR 0004). An
+emulator with no CO2 response **matches the reference**. Never raise a CO2 feature, varying-CO2 training rows,
+or a new model run for CO2, and never list it as a defect.
 
-⚠ One clause needed a decision and carries a stated default, not the owner's words: the original model is
-stochastic and its own two runs differ by **29 % of the mean** for the per-patch count in a low-density cell,
-so a literal 10 % is unmeetable there by ANY emulator. Default in use: tolerance =
-**max(10 %, the original's own two-run spread for that quantity in that cell)**. Full record: ADR 0106.
+### ⏸ FIRST: THIS LINE'S WORK IS PUSHED AND GREEN BUT **NOT MERGED** — one command, blocked on a shared worktree
 
-**BOTH OF THIS LINE'S OPEN QUESTIONS ARE CLOSED, AND BOTH ANSWERS WERE "NO" (ADR 0105). Read ADR 0105
-first, then 0104, then 0103.** Nothing is outstanding on the level anchor and nothing is owed by any line.
-The next session should start at **item A** below, which is a genuinely new item, not a continuation.
+Branch tip: the newest `line/S` commit (was `04e9d0b0`; several docs/ADR commits landed after it — check `git log --oneline -1`). CI on the code-bearing sha **`c68ee134`**: `test (lts)` ✅ `test (1)` ✅
+`test (macOS, lts)` ✅ `format` ✅ (`test (pre)` ❌ = the documented `ScopedValues` prerelease `MethodError` at
+LOAD time, confirmed from the job log, `continue-on-error`). `git diff c68ee134 04e9d0b0` = `MEMORY.md` +
+`lines/S/STATE.md` only, i.e. **no gate-watched path**, so the verified tree is the one that would land.
 
-**1. THE ANCHOR DOES NOT GET THE DEFAULT. The question is CLOSED, not deferred.** ADR 0104 §7's
-re-registered criterion was run on the **25-patch ensemble** (line M's ADR 0057 made the basis available)
-and **FAILS at all three settings** — clause 1 everywhere, clause 3b (stability) at `a` ≥ 0.25, clause 2
-(memory) at the recommended 0.25. Jobs **1717190** / **1717247** (criterion + forced arm) and **1717189**
-(memory). `anchor` stays shipped, opt-in, default `0`, unchanged in code.
+**Why it did not merge:** the integration worktree `/p/projects/open/Jamir/esm_land_emulator` had **91
+uncommitted changes** at 2026-08-06 15:14 — an **ACTIVE** integrator session (files written 50 s before the
+attempt, `.git/index` 32 s before) doing a large docs reorganization (`docs/*.md` → `docs/notes/`,
+`docs/component_s_public_report.*` → `docs/report/`) plus `CHANGELOG.md` / `CLAUDE.md` / `Project.toml` /
+`.github/workflows/**` / `MEMORY.md` / `docs/decisions/README.md` / four skills. `git merge` there fails with
+*"Your local changes … would be overwritten by merge"*, and pushing `main` forward from a temporary worktree
+would drop conflicts into the middle of that reorganization. **Left alone deliberately — do not `stash`,
+`checkout` or `reset` in that worktree.**
 
-**2. ADR 0104 §3 WAS A MODAL-PATCH ARTIFACT, and ADR 0104 §5 named the confound and published a
-recommendation from it anyway.** Free-running terminal density/truth: **2.55 / 2.03 / 3.01 / 1.55 / 1.90×**
-on the modal patch → **1.35 / 1.15 / 1.38 / 0.52 / 1.04×** on the ensemble; mean score **0.679 → 0.159**.
-The anchor improves 3 of 5 and **worsens the mean** (0.159 → 0.166 / 0.181 / 0.194). Harness check: the
-ensemble's own 2010 stem count reproduces the C's per-patch mean exactly in all five cells.
+**To land it (verify the worktree is clean first):**
+```bash
+INT=/p/projects/open/Jamir/esm_land_emulator
+git -C $INT status --short | head          # MUST be empty; if not, the integrator session is still working
+flock "$INT/.git/esm-integrate.lock" bash -eu -c '
+  git -C "$0" pull --ff-only origin main
+  git -C "$0" merge --no-ff --no-edit origin/line/S
+  git -C "$0" push origin main' "$INT"
+```
+Then check **main's own newest** CI run (the merge touches `src/**`, so `docs` runs on main having never run on
+the branch). **Expect a conflict in `MEMORY.md` and `docs/decisions/README.md`** — the integrator's WIP edits
+both and so does `c68ee134`; both are append-style, so keep both sides. No `src/`, `test/` or `scripts/`
+overlap.
 
-**3. `semiarid_sahel` IS 48 % UNDER-DENSE, NOT 55 % OVER.** Its whole ADR-0104 §4 reading inverts. It is
-still the largest single error in the set (0.52× of the C) and still a real defect — just the other way up,
-and not the anchor's.
+### THE STATE IN SEVEN LINES
 
-**4. THE MECHANISM IS UNIFIED AND THE ANCHOR IS NOT AT FAULT.** It lands the stand on the count model's
-absolute target exactly as ADR 0103 built it to. Given **F's own** canopy features that target is BELOW the
-C's truth ⇒ it helps where the free stand is above truth, hurts where the stand was already right.
+1. **S2 (the moisture conditioning) is WIRED, GATED, TESTED and PUSHED GREEN — ADR 0108, commit `c68ee134`**
+   (merge pending, see the block above).
+   `ENV_WINDOW=W` (builder) + `live_flux_cond_env_series` (runtime) + `years.i64` on every table +
+   `env_basis` in every copula manifest. All opt-in; default byte-identical, verified against
+   `git show <parent>:` rather than a re-run of the new code (job **1718598**). Julia suite **111 289 pass /
+   0 fail** (job 1718905).
+2. ⚠ **THE FRAMING S2 STARTED FROM WAS FALSE, AND THIS LINE CORRECTED IT ITSELF.** "A frozen moisture tail
+   ⇒ the trait response is structurally zero by construction" is **wrong**: that tail is **6 of 14** columns,
+   and `water_stress`/`soilmoist` are per-(Cell,Year) while the boundary pair is transient under
+   `BOUNDARY_WINDOW`. **Do not repeat the old claim** — every copy of it was corrected in `c68ee134`.
+3. **THE BASELINE, MEASURED, GLOBAL, BOTH SCENARIOS** (`scripts/diagnose_moisture_arm_response.py`, job
+   **1718922**, shipped `_t8`, 52 074 cells with ≥30 stems in both scenarios, K-fold-by-cell OOS). Per-cell
+   response `D = median(ssp370) − median(historic)`, `D_pred` regressed on `D_truth` through the origin:
 
-**5. TEACHER FORCING IS WORSE IN ALL FIVE CELLS** (score 0.149→0.277, 0.086→0.153, 0.180→0.259,
-0.349→0.460, 0.029→0.069), **inverting ADR 0054's 59–72 %** — which was modal-patch AND scored on the
-prediction, and survives neither fix. ⇒ **the multiplicative ratio update is NOT simply a defect that
-discards the level (ADR 0102 §1): free-running it CANCELS a biased target.** Re-introducing that level is
-exactly why both interventions hurt. Do not treat "the recursion is unanchored" as a standing defect claim.
+   | axis | response slope | corr | sign agreement | per-cell median within 10 % (hist / ssp) |
+   |---|---|---|---|---|
+   | SLA | **+0.85** | +0.45 | 71.9 % | 70.7 % / 67.5 % |
+   | Wooddens | **+0.35** | +0.38 | 61.5 % | 71.4 % / 72.2 % |
+   | D95max | **+0.16** | +0.20 | 57.5 % | **28.0 % / 30.0 %** |
+   | minwscal | **+0.69** | +0.58 | 62.7 % | 62.1 % / 63.8 % |
 
-**6. THE EXPOSURE BIAS IS EMPTY AND THE RETRAIN IS CANCELLED, NOT DEFERRED.** Priced offline from the
-existing `_t8` tables before buying anything (`scripts/exposure_bias_probe.jl`, job **1717208**, 22.5 M
-rows, 4 minutes): one-step bias **−0.0014** stems/patch/yr held-out-cell OOS on counts of ~10, AR gain
-**g = 0.562** ⇒ a **bounded** 2.28× amplification to −0.038 stems (−0.4 %). Per-cell it predicts
-+4.2 / −5.9 / +10.5 / −0.0 / +0.2 % against a coupled +35 / +15 / +38 / −48 / +4 % — wrong size in every
-cell, wrong sign in two. This was the #1 remaining item; it is measured empty on its own terms.
+   ⇒ the **offline** recruit-trait response channel is **partially open, not closed**, and worst on the
+   rooting-depth trait. **This is the arm's reference basis: success is BEATING these slopes.** It is also this
+   line's first global both-scenario level score — `D95max` at 28 % of cells within 10 % is the largest
+   trait-side gap against ADR 0106, and it is now a measured global number, not a five-cell one.
+4. **THE ARM REPORTED — the answer is a TRADE, and there is NO FLIP (ADR 0109; jobs 1718904, 1719206).**
+   The pairing is **total**: the `_t9` 8-col base `Xc.f64` is **SHA-256 bit-identical** to the shipped `_t8`
+   base, and cells/scenario/every `Y_*` match, so all three arms are on the SAME 42 227 077 rows.
 
-**6b. THE VERDICT SURVIVES LINE E's ENERGY DEFAULT FLIP (ADR 0075), which landed on `main` between the
-runs.** Re-run on the rebased tree (job **1717307**): REPORTS 8/9 identical **to every printed digit**,
-`mean water_stress` to 4 dp. The null is meaningful because the new path demonstrably fired — the carbon
-handoff residuals DO move at the 1e-12 level (boreal 1.080e-12 → 5.684e-13). Per-CONFIGURATION
-re-verification, not per-protocol (ADR 0100's lesson).
+   | axis | 8-col `_t8` (M's pin) | 14-col FROZEN | 14-col TRANSIENT |
+   |---|---|---|---|
+   | SLA — slope / within 10 % | +0.851 / 70.7 % | +0.396 / **74.2 %** | **+0.752** / 73.6 % |
+   | Wooddens | +0.346 / 71.4 % | +0.254 / **74.0 %** | **+0.332** / 73.8 % |
+   | D95max | +0.163 / 28.0 % | +0.145 / **33.1 %** | **+0.172** / 32.4 % |
+   | minwscal | +0.689 / 62.1 % | +0.609 / **66.1 %** | **+0.706** / 65.3 % |
 
-**7. WHAT IS NOT WITHDRAWN** (ADR 0105 §6 — read it before throwing out the family): ADR 0103 §2's 300-year
-retention measurement (a perturbation *ratio*, so the canopy basis cancels out of it — there IS no
-restoring force, and `anchor` still removes it); the shipped opt-in anchor and its testitem; Sahel as a real
-defect; ADR 0056's verdict (M said do not flip, and this says do not flip).
-
-✅ **MERGED AND GREEN — nothing about ADR 0105 is outstanding.** Work sha `1a2ec7e2` merged to `main` as
-**`803c62e2`**; `format` green on the branch sha AND on main's own post-merge run. The full Julia matrix
-(`test (lts)` ✅, `test (1)` ✅, `test (macOS, lts)` ✅) ran and passed on the earlier branch sha `2a3b6fe2`,
-and `git diff 2a3b6fe2 HEAD -- src/ test/ ext/ Project.toml` is **empty**, so the Julia tree that went green
-is the one that landed. `test (pre)` is red with the documented `ScopedValues` prerelease `MethodError` at
-LOAD time — confirmed from the job log, not waved away.
-⚠ **CI fired the whole Julia matrix on a diff of `scripts/*.jl` + Markdown.** Not a surprise and not a bug:
-GitHub filters on the **push span**, which after the mandated rebase contained line E's `src/components/energy.jl`
-default flip. The `repo-commit` skill already documents this (line M hit it the same day) — predict the gate
-set from `git diff --name-only <old-remote-tip>..HEAD`, not from `origin/main...HEAD`.
+   **The env tail buys LEVEL (+2.6…+5.1 pp of cells) and costs RESPONSE (all four axes)** — six per-cell
+   constants are a near-unique spatial ADDRESS. **Transient buys the response back** on all four
+   (+0.356/+0.079/+0.028/+0.097) for 0.2–0.8 pp of level; the truth's mean `Wooddens` response is +2406, frozen
+   predicts +1529, transient **+2402**. ⚠ **ADR 0037/0038 recommended the tail on level evidence and every
+   number in it stands — no response statistic existed then.** The tail was not wrong; the metric panel was
+   incomplete.
+   **NO FLIP:** ADR 0108 §8 clause (a) fails as written (`D95max` pooled `nqrmse` 0.0120 vs 0.0090; level worse
+   by 0.2–0.8 pp on all four) and clause (b) — the coupled screen — was never run. The criterion was **not
+   re-read after seeing the numbers**, even though the response gain arguably outweighs the level cost; that is
+   what a pre-registered criterion is for. `recruit_copula_global_pooled_w20_t9envT.rcop` exists and is **NOT
+   pinned**; M's `_t8` pin is untouched.
+   **The criterion was ALSO mis-specified** — it gated on trait *level* while ADR 0106 makes the *response*
+   binding. Not edited (that would be ADR 0104's error again); a correct three-clause replacement is registered
+   in **ADR 0109 §5** for a NEW arm, and its clause 3 (the coupled ensemble screen vs a matched
+   constant-forcing control) is the whole remaining blocker.
+5. **Item A of the previous handoff was ALREADY DONE — do not redo it.** The F-canopy attribution is in
+   `lines/M/STATE.md` (the `▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06` block) with the
+   offline-vs-coupled table and the `fpc` drift ratios. Nothing is owed by S there.
+6. **Nothing about ADR 0105 is outstanding.** The anchor does not get the default (criterion FAILS at all three
+   settings on the 25-patch ensemble); teacher forcing is WORSE in all five cells; the exposure-bias retrain is
+   **cancelled, measured empty** (−0.0014 stems/patch/yr, AR gain 0.562 ⇒ bounded 2.28× ⇒ −0.4 %). Read ADR
+   0105 §6 before throwing out any of that family.
+7. **The count DRF is untouched by ADR 0108** — its features are the 11 head columns + the 4-column boundary
+   tail. Whether it should also see moisture is a separate question and must be **priced offline first**.
 
 ### DO THIS NEXT, IN THIS ORDER
 
-**A. THE RESIDUAL IS A COUPLING / F-FIDELITY ITEM AND IT BELONGS TO LINE M — raise it with the measurement
-attached, do not chase it from here.** ADR 0105 §5's last paragraph is the argument: the offline number is
-computed with the count model fed the C's OWN features and the C's OWN previous count, so the gap between
-it and the coupled error is, by construction, everything the loop adds — and that is F's canopy diverging
-from the C's. The same run measures it directly (REPORT 5): over 2010–2019 F's `fpc` moves **1.56×** where
-the C's moves **0.90×** (boreal), 1.27× vs 1.00× (Hainich), 0.71× vs 1.23× (Sahel). `src/fdiff.jl` /
-`components/fast.jl` are **M's** paths (CLAUDE.md §9) and ADR 0053 already measured an F-side canopy bias.
-**S cannot and should not fix this.** Write it into `lines/M/STATE.md` as an integration point with the
-numbers, then stop.
+**A★ RUN THE COUPLED SCREEN — it is clause 3 of ADR 0109 §5 and the ONLY remaining blocker on the moisture
+tail, and it is the same blocker every response claim on this line has had.** The offline work is DONE
+(ADR 0109); do not re-run the arm. What is needed: a coupled run with `_t9envT` wired via
+`live_flux_cond_env_series`, on the patch **ENSEMBLE** (not the modal patch — ADR 0105 §2 showed the modal
+patch inverted three published conclusions), differenced against a **matched constant-forcing control re-run in
+the same generation** and measured **past the transient** (ADR 0048: constant-forcing drift alone moves
+community wood density by 1.34× the real shift and settles only at year ~52, inside the 80-yr window). That
+harness is line **M**'s (`biome_slow_oracle_probe.jl`), so this is an **integration point**, not S-only work —
+and it needs the `env_series` provisioning of item B anyway. ⚠ An offline slope is an **UPPER BOUND** on the
+coupled one (ADR 0105 §5: the coupled residual is dominated by F's canopy), so a coupled null does not
+contradict ADR 0109.
 
-**B★ S2 — THE MOISTURE CONDITIONING. THE DATA LAYER IS BUILT, VALIDATED AND GLOBAL. WIRE IT, RETRAIN,
-RE-PIN. This is now THE critical path (ADR 0106 §5): it is the only channel through which a warming signal
-can reach the recruit model, and the acceptance criterion is a climate-change criterion.**
+**A2. The cheaper, S-only follow-up if the coupled screen cannot be scheduled: kill the ADDRESS effect
+directly.** ADR 0109 §2's mechanism says per-cell constants act as a spatial address. ADR 0040 already built
+the controls for exactly this question (`p14geo` = a pure-position tail, `p14perm` = the true env tuples
+permuted across cells, both via `ENV_PARQUET=` on `build_slow_copula_env_augment.py`). Score those two with
+`diagnose_moisture_arm_response.py` on the `_t9` base: if the **geo** tail reproduces the frozen tail's
+level gain AND its response loss, the address reading is confirmed and the design question becomes whether to
+carry the tail at all rather than how to time-base it. Cheap (two augments + two evals, ~1 h each) and it is a
+falsifiable test of §2 rather than another lever.
 
-**DONE (2026-08-06):** the six moisture descriptors are built **per (Cell, Year)** on a trailing 20-year
-window for **both** scenarios, **all 67 420 cells** — `MOISTURE=1 SCENARIO=… scripts/build_transient_boundary.py`
-(⚠ `export` MOISTURE, it is not in the wrapper's forward list). Tables:
-`/p/tmp/jamirp/emulator_global/tables/cell_year_env_{historic_w20,ssp370_w20}.parquet`.
-Jobs 1718339 / 1718347. **The signal is real:** global mean VPD **+20.4 %**, PET +4.9 %, humidity +19.9 %
-from 2019 to 2100; per cell the values take 20 / 81 distinct values where they took **1**.
-**Formulas ported verbatim from `climclusterpy/features/diagnostics.py` and GATED** on reproducing the frozen
-per-cell basis (a W=20 window ending 2019 IS the static 2000-2019 climatology) — **all six pass at 1e-7**.
-The gate caught a real ~0.3 % bug in 4 of 6 columns (an "annual mean" must be DAY-weighted, not a mean of 12
-monthly means); full write-up in the `slow-drf-pipeline` skill.
+**B. RE-PIN WITH LINE M — needed to run A at all, and it is an ADR-0023 BOTH-SIDES change.** M currently passes a
+constant `env`; it must pass a per-cell `env_series`, which is a `cell_year_env_<scenario>_w20.parquet` slice
+(a read, not a new derivation). Version the artifact, never mutate in place. Note in BOTH lines' STATE.md and
+land both sides together. Until M re-pins, nothing M runs changes.
+⚠ **Read `env_basis` before wiring ANY 14-column artifact.** A static-tail and a transient-tail `.rcop` have
+identical `ncond` and identical `cond_cols`, so the ADR-0038 width probe and `load_copula` pass for **either**
+pairing and a mis-paired coupled run completes, conserves carbon and returns in-range traits.
 
-**NOT DONE, in order — none of it is started:**
-1. **Wire it.** `build_slow_runtime_table.py::_write_copula_table` still takes a per-`Cell` MEAN of the six
-   (`envt = … .group_by("Cell").agg(mean)`, ~line 325). Replace with a join on `["Cell","Year"]` against the
-   new tables — the ADR-0026 treatment the boundary pair already gets via `_boundary_source`. Keep it behind
-   the existing opt-in so the default output stays byte-identical.
-2. **Retrain BOTH artifacts** (count DRF + recruit copula), historic + ssp370 + pooled. Owner has
-   pre-authorised the cluster cost and said not to procrastinate on it.
-3. **Re-pin with line M** — an ADR-0023 **both-sides** change; version the artifact, never mutate in place.
-4. **Score against ADR 0106's criterion GLOBALLY** — all 54 020 tree-bearing cells, both scenarios AND the
-   response between them, 10 % on medians and on each reported quantile. The offline machinery for this
-   exists (`emulator-validation-figures`, K-fold by cell, per-cell maps); a 5-cell result is now only a screen.
+**C. SCORE GLOBALLY AGAINST ADR 0106 — the machinery now exists and item 3 above is the first instalment.**
+`diagnose_moisture_arm_response.py` gives per-cell medians + the response for the four trait axes over 52 074
+cells. Still missing for a full verdict: the **count** side at global scale (needs `eval_slow_drf.jl` preds for
+this generation — note `run_slow_validation_figures.sh` SKIPS a scenario entirely when `preds_oos.f64` is
+absent), the two **struct** axes (`agb`/`Height`, already in the tables), and the **max(10 %, two-run spread)**
+tolerance, which needs the seed2 companion per cell (ADR 0030) — the script currently reports the literal 10 %
+and says so.
 
-**B2. ~~CO2~~ — WITHDRAWN (ADR 0107). There is no CO2 item, there never was one, and nothing is owed by
-the owner. The previous text here called the absence of a CO2 response "the largest single gap" and asked
-for a new run of the original model; both were wrong and directly contradicted ADR 0004. See the
-standing rule in the banner at the top of this file.**
+**D. `D95max` IS THE LARGEST MEASURED TRAIT-SIDE GAP (28 % of cells within 10 %, response slope +0.16).** It is
+the rooting-depth trait, so a moisture climatology is the physically-motivated lever — which is exactly what the
+arm tests. If the arm does not move it, that is a real, quantified, global finding and the next question is
+whether `D95max`'s conditioning is missing a **soil** axis (the tail has one static `soil_depth` and
+`beta_root`/`D95` are rooting-profile quantities, ADR 0083's soil-pairing trap is adjacent).
 
-**B3. (superseded framing, kept for the audit trail) S2 was "the top S-owned item by ELIMINATION".** ADR 0102
-demoted it because an unanchored level "compounds without bound"; item 6 measures the compounding as
-bounded and small, so that reason is withdrawn. The specified form is unchanged and its honest target is
-still modest: the six moisture descriptors recomputed **per cell-year** rather than frozen at present-day
-means — the only form that can carry a warming signal (ADR 0038/0040/0042; ADR 0042 §4's `Rr`/`Ra`
-dissociation is the thing to read first). Unbuilt. Do NOT credit a basis or population fix to conditioning
-(ADR 0033's warning).
+**E. Still open, unchanged, off the critical path:** `CAP_HASH_SEED` (~10 lines at
+`build_slow_runtime_table.py`, default `= seed` so every artifact stays byte-identical); D1 (space-for-time
+surrogate); D3 (calibration curve). S3 stays de-prioritized (ADR 0033); S4 (grass) is unstaffed and needs F;
+S6 (in-loop OOD) needs M's harness.
 
-**C. Still open, unchanged, off the critical path:** `CAP_HASH_SEED` (~10 lines at
-`build_slow_runtime_table.py:378-384`, default `= seed` so every artifact stays byte-identical); D1
-(space-for-time surrogate); D3 (calibration curve). S3 stays de-prioritized (ADR 0033); S4 (grass) is
-unstaffed and needs F; S6 (in-loop OOD) needs M's harness.
-
-**D. THE METHOD RULES EARNED HERE — the first one cost a published recommendation.**
-1. **A reference basis has more than one axis, and NAMING a confound is not CLOSING it.** ADR 0104 applied
-   the rule it had just earned to the *metric* axis and got it right, then named the *canopy* axis as an
-   open confound, called its own measured benefit an upper bound — and published a recommended `a` from
-   that arm anyway. **Never publish a default, a recommendation or a tuned value from an arm you have
-   labelled an upper bound.** Either close the confound first, or publish the finding without the
+**F. THE METHOD RULES — the newest one cost an ADR draft, a changelog entry, three comment blocks and a test
+header before one 3-minute job killed it.**
+1. **MEASURE THE BASELINE BEFORE ARGUING FROM CODE STRUCTURE THAT A CHANNEL IS CLOSED.** "Conditioning column
+   X is a frozen constant" bounds what **X** can carry and says **nothing** about what the model does, because
+   the other columns are not frozen. A structural argument reads as *stronger* than a measurement ("by
+   construction" sounds like proof), every sentence in it is true, and a reviewer re-reading the same code
+   agrees — so it survives review and dies to one measurement. Name a **response** statistic (not a level one:
+   a model can match in two regimes separately and still have zero response between them), measure it on the
+   **shipped** artifact first, and treat that as the reference basis. Written up in the `residual-diagnosis`
+   skill. Same shape as ADR 0107's rule, turned on our own reasoning.
+2. **Never publish a default, a recommendation or a tuned value from an arm you have labelled an upper bound**
+   (ADR 0104 did, and ADR 0105 had to withdraw it). Close the confound, or publish the finding without the
    recommendation and say what would close it.
-2. **An attribution arm inherits every basis error of the harness it runs in.** ADR 0054's teacher forcing
-   was measured on the modal patch and scored on the prediction, and it reversed under *either* correction.
-   A diagnostic arm is not more robust than a skill measurement just because it is diagnostic.
-3. **Price a retrain offline before buying it.** Item 6 is 200 lines of Julia and one 4-minute job against
-   a global two-artifact retrain and an ADR-0023 both-sides re-pin with line M. The tables already existed.
-4. Both surviving rules from the previous cycle still hold: **read the diff, name the variable the change
-   writes, confirm the metric is a function of it**; and **when a control arm and a truth disagree, score
-   against the truth.**
+3. **An attribution arm inherits every basis error of the harness it runs in.** ADR 0054's teacher forcing was
+   modal-patch AND scored on the prediction, and reversed under *either* correction. A diagnostic arm is not
+   more robust than a skill measurement just because it is diagnostic.
+4. **Price a retrain offline before buying it** (ADR 0105 item 6: 200 lines of Julia and one 4-minute job
+   against a global two-artifact retrain).
+5. **Isolate what you attribute.** Two independent builds of these tables land on two row universes (ADR 0036
+   §5b: streaming `group_by` is non-deterministic in its KEY SET), so an arm and its control must be appended
+   to ONE frozen base — that is why ADR 0108's arm is built the way it is.
+6. **Read the diff, name the variable the change writes, confirm the metric is a function of it**; and **when a
+   control arm and a truth disagree, score against the truth.**
 
-**E. TOP-LEVEL, ALL LINES — `CLAUDE.md` §0a (owner instruction, 2026-08-06).** Reports to the owner go in
-**plain language**: no decision-record numbers, no milestone or phase codes, no repo jargon standing in for
-an explanation. User-facing text only; ADRs, STATE and code comments keep the precise shorthand. Translation
-table in §0a.
+**G. TOP-LEVEL, ALL LINES — `CLAUDE.md` §0a (owner instruction, 2026-08-06).** Reports to the owner go in
+**plain language**: no decision-record numbers, no milestone or phase codes, no repo jargon standing in for an
+explanation. User-facing text only; ADRs, STATE and code comments keep the precise shorthand. Translation table
+in §0a.
+
+## Superseded NEXT — ADR 0105 as it left the line (S2 was then unbuilt); audit trail
+
+That block's item A (raise the F-canopy attribution with line M) was **done** — it is in `lines/M/STATE.md`
+— and its item B (wire the moisture conditioning, retrain, re-pin, score) is what ADR 0108 built. Its framing
+of B, "the only channel through which a warming signal can reach the recruit model", was **measured false**
+in the same session that acted on it (the channel was already partially open: slopes +0.85/+0.35/+0.16/+0.69,
+job 1718922) — see the method rule in **F1** above. Every number in the old block is preserved immutably in
+**ADR 0105**, which is where to read it. The full text is in git at `c68ee134~1:lines/S/STATE.md`.
 
 ## Superseded NEXT — ADR 0104 as it left the line (ADR 0105 reversed its recommendation); audit trail
 

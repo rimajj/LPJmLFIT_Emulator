@@ -617,3 +617,41 @@ before anyone has to argue about it. Apply this to every row of a gap table, wit
 one reached `MEMORY.md`, all four lines' `## NEXT` blocks and `~/.claude/CLAUDE.md` before it was caught. When
 a correction lands, **fix every place the claim was broadcast in the same commit**, and if the owner reports
 having corrected it before, record it as *standing, do-not-re-litigate* rather than as a fact.
+
+---
+
+## MEASURE THE BASELINE BEFORE ARGUING FROM CODE STRUCTURE THAT A CHANNEL IS CLOSED (`[VERIFIED 2026-08-06]`, ADR 0108 §1)
+
+The sibling of the rule above, applied to **our own reasoning** rather than to a gap list — and it caught a
+false claim that had already reached an ADR draft, a changelog entry, three source-comment blocks and a
+testitem header before one 3-minute job killed it.
+
+**The shape of the error.** You read the code, find that a conditioning input is a frozen per-cell constant,
+and conclude the model "therefore cannot respond to that driver *by construction*" and its response is
+"structurally zero". The first half is true and checkable. **The second half is a non-sequitur**, because the
+frozen input is one of several: in the case that produced this rule, the frozen tail was **6 of 14** columns
+and four of the remaining eight varied per cell-year, carrying much of the same physical signal. Measured, the
+response was **not zero** — slopes 0.16-0.85 across four axes, partial and axis-dependent.
+
+**Why it is seductive, and why review does not catch it.** A structural argument reads as *stronger* than a
+measurement ("by construction" sounds like proof), it is cheap, and every individual sentence in it is true.
+It also predicts a dramatic finding, which is exactly when scrutiny should go up. A reviewer checking the
+claim re-reads the same code and agrees.
+
+**The rule.** *"Input X is constant" bounds what X can carry. It says nothing about what the model does.*
+Before writing that a response is absent, zero, structurally impossible, or closed:
+
+1. **Name the statistic** that would show the response, and make it a *response* statistic, not a level one —
+   a model can match the reference in two regimes separately and still have zero response between them, so
+   score the DIFFERENCE (e.g. regress the emulator's per-cell change on the reference's per-cell change
+   through the origin; the slope is the answer, 0 = closed, 1 = right).
+2. **Measure it on the SHIPPED artifact first.** That number is the reference basis for whatever you are about
+   to build, and "success" means beating it — not moving off an assumed zero.
+3. **Enumerate the other inputs** and ask which of them already carry the driver you think is missing.
+
+The payoff is not only avoiding the wrong claim: the baseline measurement is usually the most valuable thing
+produced, because it is a real global number where the line had been quoting five-cell ones.
+
+**And when the claim has already been written down, correct every copy in the same commit** — ADR, ADR index,
+changelog, source comments, test headers, journal, STATE. A corrected ADR with an uncorrected code comment is
+how the wrong version survives.

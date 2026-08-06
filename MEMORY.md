@@ -358,6 +358,30 @@ is the offline S.
   already 9 of 10 within 10 % at the test cells; but the warming response is indistinguishable from zero
   where the original rises. Work that improves present-day agreement is not
   progress toward this criterion unless it also opens a response channel.
+- ⚠ **QUALIFIER on the line above — "the warming response is indistinguishable from zero" is a COUPLED,
+  five-cell statement, NOT a global or an offline one (`[VERIFIED 2026-08-06]`, ADR 0108 §1, line S, job
+  1718922).** Measured **offline** — the recruit-trait conditioning fed the C's own features, 52 074 cells
+  with ≥30 stems in **both** scenarios, K-fold-by-cell out-of-sample — the emulator's per-cell trait shift
+  between scenarios regressed on the original's own per-cell shift (through the origin) has slope **+0.85**
+  (SLA) / **+0.35** (wood density) / **+0.16** (rooting depth `D95max`) / **+0.69** (`minwscal`), sign
+  agreement 57–72 %. So the **offline** trait-response channel is **partially open, and axis-dependent**; it
+  is the **coupled** response that collapses, consistent with ADR 0105 §5 attributing the coupled residual to
+  F's canopy diverging from the C's. **Do not quote the unqualified sentence as if the emulator had no
+  response anywhere.** Same run gives the first GLOBAL both-scenario level score: per-cell trait medians
+  within 10 % for **70.7 / 71.4 / 28.0 / 62.1 %** of cells (historic) — `D95max` is the largest trait-side
+  gap and it is a 52 074-cell number, not a five-cell one. Harness:
+  `scripts/diagnose_moisture_arm_response.py`.
+- ⚠ **METHOD RULE, ALL LINES (`[VERIFIED 2026-08-06]`, ADR 0108; written up in the `residual-diagnosis`
+  skill): MEASURE THE BASELINE BEFORE ARGUING FROM CODE STRUCTURE THAT A CHANNEL IS CLOSED.** "Input X is a
+  frozen constant" bounds what **X** can carry and says **nothing** about what the model does, because the
+  other inputs are not frozen. Line S concluded from a frozen 6-column moisture tail that the trait response
+  was "structurally zero by construction"; the tail was 6 of **14** columns and four of the rest vary per
+  cell-year, and one 3-minute job measured the response as clearly non-zero — after the false claim had
+  already reached an ADR draft, a changelog entry, three source-comment blocks and a test header. The
+  argument survives review (every sentence in it is true, and a reviewer re-reads the same code) and dies to
+  one measurement. Name a **response** statistic, not a level one — a model can match the reference in two
+  regimes separately and still have zero response between them — and measure it on the **shipped** artifact
+  first, because that number is the reference basis and "success" means beating it.
 - 🚫 **CO2 — STANDING, DO NOT RE-LITIGATE (owner, repeatedly; ADR 0004 + ADR 0107).** The emulator **does
   not see CO2 and must not respond to it.** It responds to **climate**, and the SSP scenarios already carry
   the CO2-driven climate signal. LPJmL-FIT is run at **constant CO2** for future runs **on purpose**, because

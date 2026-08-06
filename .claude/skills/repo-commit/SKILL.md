@@ -500,3 +500,52 @@ per line, or `grep` the marker in each worktree's own `CLAUDE.md`.
 **And the related trap: another line's `STATE.md` NEXT block is the ONLY part their banner prints.** An
 inbound integration point written into the lower "contracts / inbound" section of their STATE is easy to
 miss — put a short pointer in their `## NEXT` block too, and leave the full block below.
+
+---
+
+## THE MERGE STEP ASSUMES A CLEAN `$INT` WORKTREE — CHECK IT, AND DO NOT FORCE PAST A DIRTY ONE (`[VERIFIED 2026-08-06]`, line S)
+
+The ritual's `git -C "$INT" merge --no-ff origin/line/<X>` fails outright when the integration worktree has
+uncommitted changes to any file the merge would touch:
+
+```
+error: Your local changes to the following files would be overwritten by merge: … 
+Merge with strategy ort failed.
+```
+
+Line S hit this with **91** uncommitted changes in `$INT` — an integrator session mid-restructure (a
+`docs/*.md` → `docs/notes/` rename set, plus `CHANGELOG.md`, `CLAUDE.md`, `Project.toml`,
+`.github/workflows/**`, `MEMORY.md`, `docs/decisions/README.md` and four skills). Note the earlier `line/M`
+merge had succeeded minutes before, so **a clean worktree at session start proves nothing about it now.**
+
+**Decide with mtimes, not with a guess.** Active vs abandoned is the whole question, and it is one command:
+
+```bash
+INT=/p/projects/open/Jamir/esm_land_emulator
+git -C $INT status --short | wc -l                      # 0 ⇒ proceed with the normal ritual
+git -C $INT status --porcelain | awk '{print $NF}' | while read f; do
+  [ -f "$INT/$f" ] && stat -c '%Y %y %n' "$INT/$f"; done | sort -rn | head -3
+stat -c '%y' $INT/.git/index                            # staged renames are recorded here, not in the files
+date '+%s %F %T'
+```
+
+Seconds-to-minutes old ⇒ **ACTIVE**. Then:
+
+- ⛔ **Never `git stash` / `checkout` / `reset` / `clean` in `$INT`.** That is another session's uncommitted
+  work in the one shared checkout, and a staged rename set is not recoverable from the working tree alone.
+- ⛔ **Do not route around it** by merging from a `git worktree add --detach origin/main` and pushing
+  `HEAD:main`. It works mechanically and `main` is not checked out there, so git does not object — but it
+  pushes `main` forward *under* an active restructure and hands that session conflicts mid-flight. The
+  `flock` exists to serialise `main` pushes; bypassing the worktree bypasses the point of the lock.
+- ✅ **Leave the branch pushed and green, and record the merge as PENDING in your `## NEXT` block** with (a)
+  the branch tip and the code-bearing sha CI actually verified, (b) proof the tip changes no gate-watched path
+  (`git diff <ci-sha> <tip> -- src/ test/ ext/ Project.toml docs/src/ python/` is empty), (c) the exact
+  `flock` command, (d) `git -C $INT status --short | head` as the precondition to check first, and (e) which
+  files will conflict. A pushed green branch one command from landing is **not** hoarding; forcing past
+  someone's live work is not integrating.
+
+**Predict the conflict rather than discovering it.** Intersect your diff with theirs —
+`comm -12 <(git diff --name-only <base>..HEAD | sort) <(git -C $INT status --porcelain | awk '{print $NF}' | sort)`.
+The recurring pair is `MEMORY.md` and `docs/decisions/README.md`: both are append-style shared files that
+*every* line adds to, so the overlap is routine and the resolution is "keep both sides" — say so in the
+handoff so the next session does not treat it as a real divergence.

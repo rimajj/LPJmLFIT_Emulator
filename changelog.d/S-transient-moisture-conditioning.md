@@ -1,13 +1,43 @@
 ### Added
 
-- Component S — the six moisture descriptors can now be built **per cell and per year** for both scenarios
-  (`scripts/build_transient_boundary.py`, opt-in `MOISTURE=1`), which is the data layer the emulator needs
-  before it can respond to a changing climate at all. Previously they were frozen at a single present-day
-  value per cell, identical in every year and in both scenarios, so no warming signal could reach the
-  recruit model through them (ADR 0106 §5, milestone S2).
-  Built and validated for all **67 420** cells: `cell_year_env_historic_w20.parquet` (2000–2019) and
-  `cell_year_env_ssp370_w20.parquet` (2020–2100). The signal is real — global mean humidity deficit
-  **+20.4 %** and evaporative demand **+4.9 %** from 2019 to 2100.
-  The formulas are **ported verbatim** from the original feature package and **gated** on reproducing the
-  frozen per-cell values a 20-year window ending 2019 must reproduce; all six pass at 1e-7. The default
-  output is unchanged, so the existing two-column boundary tables stay byte-identical.
+- **Component S — the recruit-trait moisture conditioning can now vary with the climate (ADR 0108).** Six of
+  the fourteen numbers the recruit-trait sampler is conditioned on describe a cell's moisture *climate*, and
+  they were a per-cell average of 2000-2019 weather reused unchanged for every year of every scenario — so a
+  tree establishing in 2100 was conditioned on its cell's present-day moisture climate. (The sampler is not
+  otherwise blind to moisture: four of the remaining eight numbers do change year by year, and measured
+  against the original model the emulator's per-cell trait shift between scenarios already tracks the real one
+  with a slope of 0.85 for leaf area per unit mass but only 0.16 for rooting depth — partial, and worst
+  exactly where a moisture climate should matter most.) Three additions open the frozen channel, all switched
+  off by default:
+  - `ENV_WINDOW=W` in `scripts/build_slow_runtime_table.py` builds the tail per cell **and year** from the
+    trailing-W-year tables instead of averaging it away.
+  - `live_flux_cond_env_series` in `src/components/slow.jl` is the matching runtime policy, advancing the tail
+    one row per simulated year in step with the existing time-varying temperature tail.
+  - every training table now writes a per-row `years.i64` alongside `cells.i64`, because the year cannot be
+    recovered from a finished table after the fact (measured: the per-cell-year columns are ambiguous between
+    two years for ~140 of 1.35 M historic cell-years).
+- `scripts/run_moisture_conditioning_arm.sh` runs the comparison as one job: one base table, the old and the
+  new tail appended to it, so the two differ in those six columns and nothing else and are scored on identical
+  cell folds.
+- `scripts/diagnose_env_window_gate.py` is the gate: with the switch off the builder reproduces the previous
+  version's output byte-for-byte, with it on only the six columns move, and every probed row carries its own
+  cell-and-year values re-derived independently from the source data.
+
+### Changed
+
+- `scripts/pool_slow_tables.py` now refuses to pool two scenarios whose conditioning tails were built on
+  different time bases — a static half and a time-varying half would fabricate part of the scenario contrast —
+  and carries the per-row year through to the pooled table.
+
+### Measured (no default changed)
+
+- **The extra conditioning describing each cell's moisture climate turns out to trade present-day accuracy
+  against climate response, and the time-varying version buys the response back (ADR 0109).** Scored on
+  identical rows across 52,074 cells in both scenarios: adding those six numbers as fixed per-cell values
+  improves how many cells land within 10 % of the original model (by 3–5 percentage points) and *degrades* how
+  well the emulator reproduces the original's shift between present-day and the warm future — on all four
+  traits. Making them time-varying recovers most of that shift (for wood density the original's mean shift is
+  +2406, the frozen version predicts +1529, the time-varying one +2402) at a cost of under one percentage
+  point of present-day accuracy. The time-varying version is **not** switched on: the go/no-go test written
+  down beforehand was not met, and the coupled check it also requires has not been run. Nothing that was
+  running changes.

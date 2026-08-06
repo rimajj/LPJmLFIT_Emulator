@@ -48,6 +48,35 @@ def _read_manifest(d):
     raise SystemExit(f"FATAL: no manifest(.txt|_copula.txt) in {d}")
 
 
+def _pool_years(in_dirs, mans, out):
+    """Concatenate the per-row `years.i64` sidecars (ADR 0108) in the SAME order as the X rows.
+
+    Returns the manifest line to emit, or "" when the inputs predate the sidecar. ALL-OR-NOTHING on purpose:
+    a pooled `years.i64` that covered only one scenario would be silently misaligned for every row of the
+    other, which is worse than not having one — so a partial set is fatal rather than skipped.
+    """
+    present = [os.path.exists(os.path.join(d, "years.i64")) for d in in_dirs]
+    if not any(present):
+        print("   note: no years.i64 in any input (a pre-ADR-0108 table set) — pooled table gets none")
+        return ""
+    if not all(present):
+        raise SystemExit(
+            "FATAL: years.i64 present in only " + str(sum(present)) + f" of {len(in_dirs)} input dirs "
+            f"({[d for d, p in zip(in_dirs, present) if not p]} lack it). A partially-pooled per-row Year "
+            f"would be misaligned for every row of the missing scenario. Rebuild that table."
+        )
+    parts = []
+    for i, d in enumerate(in_dirs):
+        n = int(mans[i]["n"])
+        yr = np.fromfile(os.path.join(d, "years.i64"), dtype="<i8")
+        assert yr.shape[0] == n, f"{d}: years.i64 has {yr.shape[0]} rows, manifest says n={n}"
+        parts.append(yr)
+    y = np.concatenate(parts)
+    y.astype("<i8", copy=False).tofile(os.path.join(out, "years.i64"))
+    print(f"   years.i64: {y.shape[0]} rows, Year {int(y.min())}-{int(y.max())}")
+    return "years_tag\tyears.i64\n"
+
+
 def main():
     in_dirs = [d for d in os.environ.get("IN_DIRS", "").split(",") if d.strip()]
     if len(in_dirs) < 2:
@@ -85,6 +114,7 @@ def main():
         y.astype("<f8", copy=False).tofile(os.path.join(out, "y.f64"))
         c.astype("<i8", copy=False).tofile(os.path.join(out, "cells.i64"))
         s.astype("<i8", copy=False).tofile(os.path.join(out, "scenario.i64"))
+        years_line = _pool_years(in_dirs, mans, out)
         ntot = X.shape[0]
         with open(os.path.join(out, "manifest.txt"), "w") as f:
             f.write(f"n\t{ntot}\n"); f.write(f"p\t{p}\n")
@@ -93,6 +123,7 @@ def main():
             f.write("scenario\tpooled\n")
             f.write("pooled_scenarios\t" + " ".join(tags) + "\n")
             f.write("scenario_tag\tscenario.i64\n")
+            f.write(years_line)
             f.write(f"ncells\t{len(np.unique(c))}\n")
         print(f"== POOLED count table: {ntot} rows (p={p}) from {len(in_dirs)} scenarios -> {out}")
     else:  # copula
@@ -109,6 +140,17 @@ def main():
                 raise SystemExit(
                     "FATAL: copula tables have mismatched ncond/axes/cond_cols/struct_axes — cannot pool"
                 )
+        # THE ENV-TAIL BASIS MUST MATCH (ADR 0108). A static-tail table and a transient-tail table have
+        # identical ncond AND identical cond_cols, so every check above passes while the two halves of the
+        # pooled table would carry the same six columns on DIFFERENT time bases — the historic half frozen at
+        # its own climatology, the ssp370 half year-varying. The fit would then read a scenario contrast that
+        # is partly an artifact of how each half was built. Absent on both sides == a pre-0108 pair, fine.
+        env_basis = {m.get("env_basis", "unset") for m in mans}
+        if len(env_basis) != 1:
+            raise SystemExit(
+                f"FATAL: copula tables have MISMATCHED env_basis {sorted(env_basis)} — the same six env "
+                f"columns on two different time bases. Rebuild both scenarios with the same ENV_WINDOW."
+            )
         all_axes = axes + struct  # production first, struct APPENDED — order is load-bearing (eval seeds by index)
         Xcs, cs, ss = [], [], []
         Ys = {ax: [] for ax in all_axes}
@@ -128,6 +170,7 @@ def main():
         s.astype("<i8", copy=False).tofile(os.path.join(out, "scenario.i64"))
         for ax in all_axes:
             np.concatenate(Ys[ax]).astype("<f8", copy=False).tofile(os.path.join(out, f"Y_{ax}.f64"))
+        years_line = _pool_years(in_dirs, mans, out)
         ntot = Xc.shape[0]
         xmean = [float(Xc[:, j].mean()) for j in range(ncond)]
         with open(os.path.join(out, "manifest_copula.txt"), "w") as f:
@@ -138,6 +181,9 @@ def main():
                 f.write("struct_axes\t" + " ".join(struct) + "\n")
             f.write("scenario\tpooled\n"); f.write("pooled_scenarios\t" + " ".join(tags) + "\n")
             f.write("scenario_tag\tscenario.i64\n")
+            f.write(years_line)
+            if "env_basis" in mans[0]:  # propagate the (now verified-identical) basis to the pooled artifact
+                f.write(f"env_basis\t{mans[0]['env_basis']}\n")
             f.write(f"ncells\t{len(np.unique(c))}\n")
             f.write("x\t" + " ".join(repr(v) for v in xmean) + "\n")
         print(f"== POOLED copula table: {ntot} stems (ncond={ncond}, axes={axes}"
