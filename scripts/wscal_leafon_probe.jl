@@ -53,6 +53,9 @@ function readsoil(path)
     return hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
 end
 
+# CANOPY BASIS (ADR 0057 §4): the MODAL patch. Kept ON PURPOSE so this probe still REPRODUCES the numbers
+# ADR 0051 published. Both arms run the same patch and differ only in `wscal_leafon`, so the comparison is
+# member-invariant; only an absolute level would need the 25-patch ensemble mean.
 function readcanopy(path)
     ind = readcsv(path)
     v(k, r) = parse(Float64, ind[k][r])

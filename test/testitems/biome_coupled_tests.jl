@@ -145,6 +145,9 @@
     @test length(unique(ninds)) > 1                             # not one canopy copied five times
 end
 
+# CANOPY BASIS (ADR 0057, 2026-08-06): each cell is the PATCH-ENSEMBLE MEAN — all 25 patches of its `ind`
+# canopy run independently, outputs averaged — which is the basis the C reports and the basis
+# `scripts/run_coupled_biomes.jl` now drives. The pinned LE/GPP signatures below were regenerated for it.
 @testitem "Coupled emulator generalizes across biomes with PER-CELL inputs — energy closes + climate-driven partitioning" tags = [:validation, :energy, :coupling, :scientific, :multicell] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -173,16 +176,9 @@ end
         return hainich_soilcolumn(; whcs = whcs, rootdist = rd, soildepth = sd)
     end
 
-    "Dominant patch (most living trees) of a reconstructed individual set → (pools, templates)."
-    function readcanopy(path)
-        ind = readcsv(path)
+    "One patch of a reconstructed individual set → (pools, templates)."
+    function build_patch(ind, rows)
         v(k, r) = parse(Float64, ind[k][r])
-        nt(r) = parse(Int, ind["type"][r])
-        prows = Dict{Int, Vector{Int}}()
-        for r in eachindex(ind["type"])
-            (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
-        end
-        rows = prows[argmax(Dict(k => length(vv) for (k, vv) in prows))]
         pools = [
             TreePools{Float64}(
                     v("leaf_c", r), v("sapwood_c", r),
@@ -199,6 +195,22 @@ end
                 ) for r in rows
         ]
         return pools, tmpls
+    end
+
+    # ── CANOPY BASIS (ADR 0057): ALL patches, run INDEPENDENTLY, outputs averaged — the basis the C
+    #    itself reports. This gate used to drive the single MODAL patch, which ADR 0053 measured at
+    #    1.12–1.72× the ensemble FPC (and, at boreal, 1.33× its GPP), so its pinned levels were
+    #    systematically denser-than-the-cell. `run_coupled_biomes.jl` moved with it. ──
+    "ALL patches of the cell's canopy, sorted by patch id."
+    function readcanopy_patches(path)
+        ind = readcsv(path)
+        v(k, r) = parse(Float64, ind[k][r])
+        nt(r) = parse(Int, ind["type"][r])
+        prows = Dict{Int, Vector{Int}}()
+        for r in eachindex(ind["type"])
+            (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
+        end
+        return [build_patch(ind, prows[p]) for p in sort(collect(keys(prows)))]
     end
 
     σ = 5.670374419e-8
@@ -219,31 +231,45 @@ end
                 ) for i in 1:n
         ]
         soil = readsoil(joinpath(refdir, "M_soilcolumn_$(name).txt"))
-        pools, tmpls = readcanopy(joinpath(refdir, "M_individuals_$(name)_2010.csv"))
-        core = FDiffFastCore(pools, tmpls, soil, lats[k])
-        clo = SEBEnergyClosure(; t_soil0 = _mean(tairK))
-        state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
-        out = run_coupled_cell(core, clo, state, forcings; days_per_year = 365)
+        patches = readcanopy_patches(joinpath(refdir, "M_individuals_$(name)_2010.csv"))
+        @test length(patches) == 25                           # the C's patch count (par/lpjparam_fit.js)
 
-        # ── the Phase-4 hard gate holds in EVERY climate regime, now with per-cell vegetation ──
-        @test maximum(abs, out.resid) < 1.0e-6
-        @test all(isfinite, out.t_skin) && all(isfinite, out.le) && all(isfinite, out.h) && all(isfinite, out.g)
-        # Latent heat is non-negative up to a small, BOUNDED smooth-surrogate undershoot. F's ET is built
-        # from `smoothmin` (fdiff_smoothops.jl), and `smoothmin(a, b, β) ≤ min(a, b)` dips below the true
-        # minimum by ≤ log(2)/β EVEN for a, b ≥ 0. In a fully water-depleted dry-season corner
-        # (`available → 0`, `demand → 0`) `et = smoothmin(et_demand, available, βw)` bottoms out a few
-        # hundredths of a mm/day below zero ⇒ `le ≈ −0.6 W/m²` where the physical ET is 0 (this model has
-        # no dew/condensation term). It is bounded and harmless to E's closure (H := Rn − LE − G absorbs
-        # it). Assert the BOUND, not exact non-negativity — a genuine sign bug would be orders larger.
-        @test all(≥(-2.0), out.le)
-        @test all(0.0 .≤ out.albedo .≤ 1.0)
-        @test all(>(0.0), out.z0)
-        @test maximum(abs, out.t_skin .- tairK[1:n]) < 30.0   # skin bounded near air across all climates
+        mem = NamedTuple[]
+        for (pools, tmpls) in patches
+            core = FDiffFastCore(pools, tmpls, soil, lats[k])
+            clo = SEBEnergyClosure(; t_soil0 = _mean(tairK))
+            state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
+            out = run_coupled_cell(core, clo, state, forcings; days_per_year = 365)
 
+            # ── the Phase-4 hard gate holds in EVERY climate regime AND EVERY patch of it ──
+            @test maximum(abs, out.resid) < 1.0e-6
+            @test all(isfinite, out.t_skin) && all(isfinite, out.le) && all(isfinite, out.h) && all(isfinite, out.g)
+            # Latent heat is non-negative up to a small, BOUNDED smooth-surrogate undershoot. F's ET is built
+            # from `smoothmin` (fdiff_smoothops.jl), and `smoothmin(a, b, β) ≤ min(a, b)` dips below the true
+            # minimum by ≤ log(2)/β EVEN for a, b ≥ 0. In a fully water-depleted dry-season corner
+            # (`available → 0`, `demand → 0`) `et = smoothmin(et_demand, available, βw)` bottoms out a few
+            # hundredths of a mm/day below zero ⇒ `le ≈ −0.6 W/m²` where the physical ET is 0 (this model has
+            # no dew/condensation term). It is bounded and harmless to E's closure (H := Rn − LE − G absorbs
+            # it). Assert the BOUND, not exact non-negativity — a genuine sign bug would be orders larger.
+            @test all(≥(-2.0), out.le)
+            @test all(0.0 .≤ out.albedo .≤ 1.0)
+            @test all(>(0.0), out.z0)
+            @test maximum(abs, out.t_skin .- tairK[1:n]) < 30.0   # skin bounded near air across all climates
+
+            push!(
+                mem, (
+                    le = _mean(out.le), h = _mean(out.h), rn = _mean(out.rn), gpp = _mean(out.gpp),
+                )
+            )
+        end
+
+        # the cell = the patch-ensemble mean; Bowen from the ensemble-mean H and LE (a ratio of means,
+        # which is what a gridded H/LE comparison is — a mean of per-patch ratios diverges on a patch
+        # whose LE approaches zero)
+        ens(f) = _mean([f(m) for m in mem])
         ann[name] = (
-            le = _mean(out.le), h = _mean(out.h), rn = _mean(out.rn),
-            gpp = _mean(out.gpp),
-            bowen = _mean(out.h) / max(_mean(out.le), 1.0e-6),
+            le = ens(m -> m.le), h = ens(m -> m.h), rn = ens(m -> m.rn), gpp = ens(m -> m.gpp),
+            bowen = ens(m -> m.h) / max(ens(m -> m.le), 1.0e-6),
         )
     end
 
@@ -262,14 +288,18 @@ end
     # of the per-cell loop, or a per-cell artifact silently resolving to Hainich's. These pin each
     # cell's OWN mean LE and GPP, so the model must actually have consumed that cell's inputs.
     # Bands are ±2 % (LE) / ±3 % (GPP) around the measured 2-year values — far tighter than the
-    # spread BETWEEN cells (LE 24.9…119.3), so a fallback to any other cell's inputs fails, while
+    # spread BETWEEN cells (LE 23.9…116.1), so a fallback to any other cell's inputs fails, while
     # staying loose enough not to fire on a benign last-digit change.
-    sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day)
-        "boreal_siberia" => (24.9117, 1.34002),
-        "temperate_hainich" => (41.3672, 3.66247),
-        "mediterranean_iberia" => (49.2742, 5.38191),
-        "semiarid_sahel" => (33.4942, 0.381906),
-        "tropical_amazon" => (119.264, 7.56402),
+    # REGENERATED 2026-08-06 for the patch-ensemble basis (ADR 0057), by
+    # `scripts/biome_ensemble_pin_probe.jl` (job 1716587), which reproduced the previous modal-patch
+    # pins to every printed digit in the same run — that is what makes this a measured basis change
+    # and not a re-record. Deltas modal→ensemble: LE −0.9…−5.4 %, GPP +1.0…−24.8 % (boreal worst).
+    sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble mean
+        "boreal_siberia" => (23.9435, 1.00708),
+        "temperate_hainich" => (40.4525, 3.44479),
+        "mediterranean_iberia" => (46.623, 5.05635),
+        "semiarid_sahel" => (33.1794, 0.385916),
+        "tropical_amazon" => (116.105, 6.92492),
     )
     for (nm, (le_x, gpp_x)) in sig
         @test isapprox(ann[nm].le, le_x; rtol = 0.02)
@@ -335,6 +365,12 @@ end
         end
         return hainich_soilcolumn(; whcs = whcs, rootdist = rd, soildepth = sd)
     end
+    # CANOPY BASIS (ADR 0057 §4): the single MODAL patch, DELIBERATELY. Every assertion in this item is
+    # member-INVARIANT — carbon closure at the S↔F handoff, energy closure, determinism under seed, the
+    # DRF's structural output range, and that the ClimBuf is fed this cell's own forcing. None of them is
+    # a LEVEL compared against the C, which is the only thing the ensemble basis buys, and a 25× cost on
+    # a 4-year × 5-cell × 3-run gate would be paid for nothing. Item 2 above (the per-cell LE/GPP
+    # signatures) is the one that had to move.
     function readcanopy(path)
         ind = readcsv(path)
         v(k, r) = parse(Float64, ind[k][r])

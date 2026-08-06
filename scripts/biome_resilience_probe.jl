@@ -14,11 +14,11 @@
 #     the SAME estimator on the SAME window, so the bias cancels in the comparison; `debias` inverts it
 #     for reading against the literature.
 #   * The `patch` basis. Each of the C's ~25 patches is an independent realization of the same cell and
-#     climate, and the coupled driver runs ONE patch — so the emulator ensemble is ONE MEMBER PER PATCH of
-#     the year-2000 `ind` canopy, and the C's between-patch SD of AC is the yardstick a single-trajectory
-#     estimate must be scored against. This is not the `readcanopy` MODAL patch the production driver
-#     picks (STATE.md NEXT item 4): a resilience statistic measured on the densest patch of 25 is not the
-#     ensemble's statistic, and here the whole point is the ensemble.
+#     climate — so the emulator ensemble is ONE MEMBER PER PATCH of the year-2000 `ind` canopy, and the
+#     C's between-patch SD of AC is the yardstick a single-trajectory estimate must be scored against.
+#     This is not the `readcanopy` MODAL patch: a resilience statistic measured on the densest patch of 25
+#     is not the ensemble's statistic, and here the whole point is the ensemble. (The production driver
+#     `run_coupled_biomes.jl` ran that modal patch until ADR 0057 moved it onto this same basis.)
 #
 # WINDOW 2000-2019 — the FULL extent of the historic `ind` table, not the committed 2010-2019 decade. A
 # lag-1 AC off 10 annual points has a sampling SE of ~0.32, larger than the entire wet-to-dry gradient it
