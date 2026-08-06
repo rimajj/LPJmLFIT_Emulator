@@ -223,8 +223,26 @@ looked mediocre for this reason alone. `z1 = 0.75 m` gives 0.093. Sweep the thic
 `solve!` then advances the column, so asserting `G == κ_g(T_skin − clo.t_soil1)` *after* the call is off by
 exactly `κ_g·ΔT1`. Capture the pre-step state first. (This produced 54 identical CI failures.)
 
+**TRAP 3 — a CONTROL ARM MUST PIN EVERY VALUE IT CONTROLS FOR; an omitted kwarg tracks the package default,
+so the control silently starts tracking the thing it is controlling (ADR 0075 §4).** The probe's sub-daily
+`z1 = 0.2 m` arm called `run_site_stateful(...; enable_two_layer = true)` and omitted `z_soil1`. That was
+honest while the package default *was* 0.2 m — and became a lie the moment ADR 0074 set the default to 0.75 m:
+the arm printed under the label `z1=0.2` was then a duplicate of the 0.75 m arm. It cost a wrong published
+number (ADR 0074 §6's sub-daily `T_skin` cost is at 0.2 m, not at the shipped default; at 0.75 m AU-Rob is
+**−0.116**, not 0.166) that then propagated into `lines/E/STATE.md` with the thickness qualifier dropped. The
+tell is cheap and worth checking every time: **two arms that differ by a parameter must not print identical
+numbers** — if they do, one of them is not running what its label says. Always pass the controlled parameter
+explicitly, and always label an arm with the value it was *given*, never with the value you expect.
+
 **The standing E7 finding:** `enable_two_layer = true` beats the fitted `λ_g = 1.0` at both sites whose towers
 can score H — daily H R² 0.645 vs 0.637 (DE-Hai), 0.775 vs 0.745 (AU-ASM); daily G R² 0.717 vs 0.657 and
 0.614 vs 0.477 — and unlike a coefficient it carries a diurnal soil wave (sub-daily DE-Hai sd(G) 5.75 vs
 observed 5.66; night G R² **+0.394**). **Nocturnal H R² is still negative** (−0.324) and always will be while
 `ε_obs` scatter is the size of the night H RMSE — canopy heat storage is the remaining term, not a tune.
+
+**`enable_two_layer` is the DEFAULT since ADR 0075** — so a probe arm that wants the pre-E7 closure must now
+pass `enable_two_layer = false` **explicitly** (this is TRAP 3 again, in the direction that bites next). The
+stateless `run_site` / `solve_seb` path never reads the flag and is unaffected either way. The flip's
+pre-registered criterion failed at **AU-Rob only** — the site ADR 0073 had already excluded from scoring H —
+and the full suite moved **nothing outside E's own gate file** (111 227 pass / 3 fail, all three the E
+assertions ADR 0075 re-pins). Current per-site tables: ADR 0075 §1/§4, report `e7_two_layer_probe_v6.txt`.

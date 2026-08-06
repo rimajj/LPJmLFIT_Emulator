@@ -6,60 +6,34 @@
 
 ## NEXT — start here
 
-**E7 is DONE (ADR 0074): the two-layer prognostic ground-heat column is implemented, opt-in, and MEASURED —
-it beats the fitted `λ_g = 1.0` without fitting. Both E→M integration points are already raised in
-`lines/M/STATE.md`. The next action is E4-Experiment B.**
+**E7b is DONE (ADR 0075): the two-layer prognostic ground-heat column is now the PACKAGE DEFAULT.** Line M's
+pre-registered ask (ADR 0058 §5) is ANSWERED and the repo no longer runs two ground-heat schemes in different
+gates. **Nothing is owed to M any more; the reply is recorded in `lines/M/STATE.md`.** The next action is
+E4-Experiment B.
 
-E1, E2, E4-A, E6 and E7 are done (ADR 0070 / 0071 / 0072 / 0073 / 0074).
+E1, E2, E4-A, E6, E7 and E7b are done (ADR 0070 / 0071 / 0072 / 0073 / 0074 / 0075). **E8 (canopy heat
+storage) is still open** — it is the remaining physical term, not this flip.
 
-> **📥 INTEGRATION POINT RAISED BY LINE M, 2026-08-06 (ADR 0058) — E7 is LANDED in M's coupled world; the
-> one thing left is the PACKAGE DEFAULT, which lives in E's exclusive files.**
-
-**Done, nothing owed back on the landing itself.** `scripts/run_coupled_biomes.jl` and
-`biome_coupled_tests.jl` items 2/3 now pass `SEBParams(enable_two_layer = true)` **explicitly**. M measured
-it in the coupled loop first (`scripts/two_layer_coupled_probe.jl`, jobs 1716625/1716628, two arms differing
-only in the flag), and **two results are new evidence for E's scheme that the tower harness could not
-produce** — use them:
-
-- **The DEFAULT scheme leaks energy into the ground.** Under a repeating forcing an annual-mean `G` must be
-  0; the 30-day-air-EWMA reference cannot honour that and runs a **persistent +6.4 W/m² sink at
-  `semiarid_sahel`** for ten straight years (~7 % of that cell's Rn), with no reservoir behind it. The
-  two-layer column drives ⟨G⟩ → 0 by construction and hands the energy back to **H** (58.2 → 64.1 W/m²).
-  `sd(G)` falls **6–7× in every one of five biomes** — ADR 0073's tower defect, confirmed inside the
-  coupled model and closed.
-- **No drift under a STRICTLY CYCLIC 60-yr rollout**, which separates drift from climate variability in a
-  way a 4–16 yr tower record cannot: phase-matched **−2e−4 K/yr** at the coldest and hottest column, 250×
-  inside the pre-registered bound, decaying, equilibrated within a decade. This strengthens ADR 0074 §5.
-- **Cost in the coupled loop: none.** LE moves ≤ 2.2e−5 and GPP ≤ 1.3e−4 relative — it is an **H/G
-  repartition**, so it moved *no* pinned M baseline. ⚠ The expectation recorded in E's note below and in
-  M's own handoff — "it moves every coupled/biome baseline" — is **measurably false**; that assumption is
-  why the landing was scheduled as a baseline-regeneration exercise it did not need.
-
-**▶ THE ONE ASK: the PACKAGE DEFAULT.** E's note below says "E must not flip either default … M lands it".
-M has landed everything it owns, but `src/components/energy.jl` and `energy_closure_tests.jl` are **E's
-exclusive paths** (ADR 0029), and the default flip moves E's own tower gate and ADR 0072's night-cold sign
-assertion — so M cannot flip it without a recorded hand-over. Pick one and record it in both STATE files:
-
-1. **E flips it** (M's preference). Pre-registered pass condition, ADR 0058 §5: the two-layer arm's **daily**
-   H R² is ≥ the default's at every site (already measured: 0.645 vs 0.637 DE-Hai, 0.775 vs 0.745 AU-ASM)
-   **and** ADR 0072's night-cold assertion is restated as a measured sign, not deleted. Note ADR 0074 §6's
-   cost is **sub-daily** `T_skin`, while M's operational step is **daily**, where E measured it as nearly
-   flat (AU-Tum 0.864 → 0.851, AU-Rob 0.81 → 0.79).
-2. **E hands `energy.jl` + `energy_closure_tests.jl` to M for one commit** (the §9 hand-over mechanism), and
-   M flips and re-pins.
-3. **E declines** — then say so in an E-block ADR, because M's coupled world runs the scheme either way and
-   a permanent default-vs-driver mismatch is a documented hazard (it is the guardrail-4 corollary case).
-
-**What M is NOT claiming.** Nothing here bears on nocturnal **H** R² (M has no tower rows and did not score
-it), on `z_soil1`'s surface dependence, or on the sub-daily `T_skin` cost of ADR 0074 §6 — all three of E's
-open items stand exactly as E left them. M's evidence is daily-step, coupled, five biome cells, and it adds
-a *conservation* argument (⟨G⟩ must be 0) beside E's skill scores; it does not replace them.
-
-**Reproduce M's arm in one command** (no M code needed, both arms printed with the control):
-`scripts/sbatch_julia.sh E-2layer --project=. scripts/two_layer_coupled_probe.jl`
-
-Until this is settled the repo deliberately runs **two ground-heat schemes in different gates**; ADR 0058 §4
-lists every site exhaustively, and each says at the point of use which scheme it is on.
+**What ADR 0075 settled, so you do not reopen it:**
+- `SEBParams.enable_two_layer` defaults to **`true`**. Guardrail 4 is served by the **OPT-OUT** —
+  `enable_two_layer = false` reproduces the pre-E7 closure exactly — and `lambda_g` / `tau_soil` are now
+  **inert under the default**. Any probe arm that wants the pre-E7 closure must pass `false` EXPLICITLY.
+- **The pre-registered criterion FAILED at AU-Rob** (daily H R² 0.069 → −0.176) and the flip proceeded on
+  grounds published *before* the measurement: ADR 0073 already excluded that tower from scoring H
+  (`ε_obs` −47.5 W/m²), the fitted `λ_g = 1.0` arm fails there too (−0.172 ⇒ the site does not discriminate),
+  and its pre-E7 "skill" coexists with G R² −4.02 at 2.4× the observed sd(G). Do not re-litigate; if you ever
+  need to, ADR 0075 §1 carries all four grounds.
+- **The flip moved NOTHING outside `energy_closure_tests.jl`** — full suite 111 227 pass / 3 fail with only
+  the default flipped, all three the assertions ADR 0075 re-pins. `solve_seb` never reads the flag, so every
+  STATELESS caller (E's committed P2 tower gate included) is scheme-independent **by construction**.
+- **ADR 0074 §6's sub-daily `T_skin` cost is at `z1 = 0.2 m`, NOT at the shipped 0.75 m default.** Corrected
+  numbers are ADR 0075 §4: at 0.75 m the sub-daily R² is AU-ASM 0.908, AU-Tum 0.547, AU-Rob **−0.116** (the
+  earlier 0.945 / 0.667 / 0.166 are the 0.2 m arm). **Daily** `T_skin` — the operational step — is where the
+  decision lived and the cost is small: 0.981 → 0.979, 0.900 → 0.851, 0.858 → 0.793.
+- **Cause of that mis-attribution, now a skill trap** (`plumber2-reference` TRAP 3): the probe's `z1 = 0.2 m`
+  control arm omitted `z_soil1` and silently tracked the package default, so it stopped being a control the
+  moment the default moved. **Two arms differing by a parameter must never print identical numbers** — if they
+  do, one is not running what its label says. Report `_v6` is the corrected one; `_v5` is wrong sub-daily.
 
 **Do not redo any of these three — all measured and closed:**
 - **`stab_amp` / `g_a`** — refuted (ADR 0073): modelled nocturnal `g_a` within **0.7 %** of DE-Hai's
@@ -67,10 +41,10 @@ lists every site exhaustively, and each says at the point of use which scheme it
   reaches positive nocturnal R².
 - **`λ_g = 1.0`** — superseded (ADR 0074). It works, but `enable_two_layer = true` beats it on daily H
   (0.645 vs 0.637 DE-Hai; 0.775 vs 0.745 AU-ASM) *and* on `G` (0.717 vs 0.657; 0.614 vs 0.477), and only the
-  two-layer form has a diurnal soil wave. Both are recorded in `lines/M/STATE.md`; the fourth integration
-  point is the live one, the third is the fallback. **E must not flip either default** — it moves every
-  coupled/biome baseline, so M lands it with the baselines together and re-pins ADR 0072's night-cold sign
-  assertion at that moment. Nothing is pending from E.
+  two-layer form has a diurnal soil wave. ⚠ **This bullet's old warning — "E must not flip either default, it
+  moves every coupled/biome baseline, M lands it" — was measurably WRONG on both halves and is retired
+  (ADR 0075).** It moves nothing outside E's own gate file, and E flipped it. `λ_g = 1.0` is now reachable only
+  through the `enable_two_layer = false` opt-out, i.e. purely historical.
 - **Nocturnal H R² > 0** — still not reachable, now confirmed *with* the better scheme (DE-Hai night H R²
   −1.019 → **−0.324**; RMSE 37.0 → 29.96, bias 14.04 → 3.74). `ε_obs` scatter alone (sd 36 W/m² at DE-Hai)
   is the size of the night H RMSE. The remaining physical term is **canopy heat storage**, not a tune.
@@ -80,8 +54,11 @@ lists every site exhaustively, and each says at the point of use which scheme it
   sd(`G_o`) = **64 W/m²**) wants far thinner. Making `z1`/`C` a function of vegetation would be an **S→E**
   question — `SToE` already carries `lai`/`height`.
 - **`theta_soil` is a constant 0.5** because the frozen `FToE` carries no soil moisture ⇒ E→M ask, recorded.
-- **Sub-daily `T_skin` degrades at AU-Tum/AU-Rob** with the scheme on (R² 0.773 → 0.667, 0.385 → 0.166).
-  Interpretable (T_skin does not need the tower to close), so re-measure it when canopy heat storage lands.
+- **Sub-daily `T_skin` degrades at AU-Tum/AU-Rob** with the scheme on — at the SHIPPED `z1 = 0.75 m`,
+  R² **0.773 → 0.547** and **0.385 → −0.116** (ADR 0075 §4; the 0.667 / 0.166 this bullet used to quote are
+  the `z1 = 0.2 m` arm, which is not the default). Interpretable (`T_skin` does not need the tower to close),
+  and the **daily** step is far flatter (0.900 → 0.851, 0.858 → 0.793), so re-measure when canopy heat storage
+  lands. This is the one metric the default flip demonstrably costs.
 
 **Then, in order:**
 - **E4-Experiment B** (F's LE → E, the coupled number; the A−B difference *is* F's ET error). Score H at
@@ -196,7 +173,7 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
 ## Status (2026-08-05)
 
 - **E7 DONE — the design change ADR 0073 deferred is BUILT, opt-in, and measured** (ADR 0074).
-  `SEBParams.enable_two_layer` (default **false** ⇒ every baseline byte-identical) replaces
+  `SEBParams.enable_two_layer` (**default `true` since ADR 0075**; it shipped `false` here) replaces
   `G = λ_g(T_skin − t_soil)` with `G = κ_g(T_skin − T1)`, `κ_g = 2λ_soil/z1`, over a prognostic two-layer soil
   column — an **independent implementation** of the MITgcm land-package formulation, cross-read against
   SpeedyWeather's `LandBucketTemperature` and Terrarium's half-cell skin temperature (no code copied, no
@@ -276,6 +253,13 @@ mediterranean_iberia 2.590 / 93 868 · semiarid_sahel 3.246 / 97 135 · tropical
   step (the MITgcm form); self-equilibrating, so no deep-restore knob. **Nocturnal H R² stays negative**
   (−0.324) — `ε_obs`-bounded, canopy heat storage is the remaining term. `enable_two_layer = true` is now the
   live E→M integration point, superseding `λ_g = 1.0`.
+- **E7b** ✅ **DONE 2026-08-06** (ADR 0075) — the column becomes the **package default**, answering line M's
+  pre-registered ask (ADR 0058 §5) and ending the two-scheme split. Guardrail 4 re-served by the opt-out.
+  The criterion **failed at AU-Rob only** (the tower ADR 0073 had already excluded from scoring H) and the
+  flip proceeded on four pre-published grounds. Blast radius **measured**: 111 227 pass / 3 fail with only the
+  default flipped, all three E's own re-pinned assertions ⇒ nothing outside `energy_closure_tests.jl` moves.
+  Also corrected ADR 0074 §6 (its sub-daily `T_skin` cost is at `z1 = 0.2 m`, not the shipped 0.75 m) and
+  captured the cause as `plumber2-reference` TRAP 3. Report `_v6`, job `E-e7v6` 1717191; suites 1717194/1717229.
 - **E8** *(new, optional — the remaining physical term)* **canopy heat storage.** With E7 landed, this is the
   only unexplored term left in the nocturnal-H budget. Would need a canopy heat-capacity state in E and,
   for a real value, biomass/LAI from S — likely an S→E boundary question. Bounded by `ε_obs` regardless, so

@@ -129,6 +129,14 @@ function report_site(site, tbl, meta, out::Vector{String})
             "C $(round(skill(dC.rn, dtbl["rn_obs"]).r2, digits = 3))   " *
             "(Rn must NOT regress — it is the strongest existing result)"
     )
+    # DAILY T_skin, arm A vs arm C. ADR 0074 §6 published T_skin only SUB-DAILY (and only at z1 = 0.2 m),
+    # while `run.jl::couple_day!` solves once per DAY — so the operational T_skin cost of the scheme was
+    # never pinned per site. It is the one metric that does not need the tower to close, so it counts at
+    # all four sites.
+    if haskey(dtbl, "t_skin_obs") && any(isfinite, dtbl["t_skin_obs"])
+        add("      T_skin daily  A default   $(fmt(skill(dA.t_skin, dtbl["t_skin_obs"])))")
+        add("      T_skin daily  C E7        $(fmt(skill(dC.t_skin, dtbl["t_skin_obs"])))")
+    end
 
     # ---- 2. H1 verdict ------------------------------------------------------------------------------
     sdC = nanstd(dC.g)
@@ -181,7 +189,11 @@ function report_site(site, tbl, meta, out::Vector{String})
     day = tbl["swdown"] .> 50.0
     night = .!day
     sA = run_site(tbl, meta)
-    sC = run_site_stateful(tbl, meta; dt_seconds = dt_sub, t_soil0 = t0, enable_two_layer = true)
+    # `z_soil1 = 0.2` is passed EXPLICITLY. Omitting it silently tracked the PACKAGE DEFAULT, so once E7
+    # set that default to 0.75 m this arm stopped being the 0.2 m arm its own label claimed (v1-v4 of the
+    # report are genuine 0.2 m; v5's two thickness arms came out byte-identical for exactly this reason).
+    # A control arm must PIN every value it is controlling for — never inherit one from a default.
+    sC = run_site_stateful(tbl, meta; dt_seconds = dt_sub, t_soil0 = t0, enable_two_layer = true, z_soil1 = 0.2)
     add("")
     add("  [4] SUB-DAILY ($(meta["timestep_min"]) min) — NOCTURNAL H (SWdown ≤ 50 W/m², n=$(count(night)))")
     add("      night H  A default     $(fmt(skill(subset(sA.h, night), subset(tbl["h_obs"], night))))")
