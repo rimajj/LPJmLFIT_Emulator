@@ -10,18 +10,19 @@
 #   mod  = the single MODAL patch (most living trees) the production driver used until now, which
 #          ADR 0053 measured at 1.12-1.72x the ensemble's FPC.
 #
-# Everything else is byte-identical to the CI gate it feeds: 2 years, DEFAULT params (so
-# `wscal_leafon = false` — these are fingerprint pins, not science numbers), `slow = nothing`,
+# Everything else is byte-identical to the CI gate it feeds: 2 years, PACKAGE-DEFAULT params (never a
+# hardcoded flag — the defaults are what the gate runs, and two of them moved under this probe's feet:
+# `enable_two_layer` in ADR 0075 and `wscal_leafon` in ADR 0059), `slow = nothing`,
 # `SEBEnergyClosure(t_soil0 = mean(tair))`, `w = 0.7`.
 #
 # Also reports the wall-clock cost per basis, which is what decides whether the CI gate can afford the
 # ensemble at all, and the minimum pairwise LE separation, which is the property that makes the pins a
 # driver-level fallback detector rather than five independent smoke checks.
 #
-# `TWO_LAYER=1` swaps E's ground-heat scheme to the opt-in two-layer prognostic soil column (ADR 0074).
-# That is the OTHER change scheduled to move these same pins, so it re-measures them through this same
-# harness instead of a second script (`export` it — SLURM's --export=ALL carries it, a bare prefix on the
-# wrapper does not reach the job).
+# `TWO_LAYER=0|1` forces E's ground-heat scheme instead of taking the package default, so one harness can
+# re-measure these pins across a scheme change (`export` it — SLURM's --export=ALL carries it, a bare
+# prefix on the wrapper does not reach the job). Since ADR 0075 the default IS the two-layer column, so
+# the useful arm is now `TWO_LAYER=0` (the pre-E7 opt-out).
 #
 # Run (SLURM, per CLAUDE.md §2):
 #   scripts/sbatch_julia.sh M-enspin --project=. scripts/biome_ensemble_pin_probe.jl
@@ -34,10 +35,14 @@ using Statistics, Printf
 const REFDIR = joinpath(@__DIR__, "..", "test", "testitems", "references")
 const σ = 5.670374419e-8
 const YEARS = 2            # == the CI gate's horizon
-const TWO_LAYER = get(ENV, "TWO_LAYER", "0") == "1"    # ADR 0074's opt-in ground-heat column
-mkclo(t0) = SEBEnergyClosure(;
-    t_soil0 = t0, params = SEBParams{Float64}(; enable_two_layer = TWO_LAYER)
-)
+# Ground-heat scheme. UNSET = the PACKAGE DEFAULT, which is what the CI gate this feeds runs — since
+# ADR 0075 that default is the two-layer prognostic column, so this knob is now an OPT-OUT probe
+# (`TWO_LAYER=0` forces the pre-E7 single conductance). Reading it as "0 means the old scheme" was true
+# only while the default was `false`; a control arm that hardcodes a flag stops being a control the moment
+# the default moves (line E paid for exactly this in ADR 0075 §4).
+const TWO_LAYER = haskey(ENV, "TWO_LAYER") ? ENV["TWO_LAYER"] == "1" : nothing
+mkclo(t0) = TWO_LAYER === nothing ? SEBEnergyClosure(; t_soil0 = t0) :
+    SEBEnergyClosure(; t_soil0 = t0, params = SEBParams{Float64}(; enable_two_layer = TWO_LAYER))
 
 function readcsv(path)
     lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
@@ -124,8 +129,11 @@ cells = readcsv(joinpath(REFDIR, "M_cells.csv"))
 names = String.(cells["name"]); lats = fcol(cells, "lat")
 
 @printf("=== PATCH-ENSEMBLE vs MODAL-PATCH coupled signatures — 5 biome cells, %d yr, DEFAULT params ===\n", YEARS)
-@printf("(slow=nothing; wscal_leafon=false = the package default, because these feed a CI FINGERPRINT)\n")
-@printf("ground heat: %s\n\n", TWO_LAYER ? "TWO-LAYER prognostic column (ADR 0074, enable_two_layer=true)" : "default single conductance vs the 30-day air EWMA")
+@printf("(slow=nothing; every physics flag at its PACKAGE DEFAULT, which is what the CI gate runs)\n")
+@printf(
+    "ground heat: %s\n\n", TWO_LAYER === nothing ? "PACKAGE DEFAULT (two-layer prognostic column since ADR 0075)" :
+        TWO_LAYER ? "two-layer prognostic column, forced ON" : "pre-E7 single conductance, forced ON (opt-out arm)"
+)
 @printf(
     "%-22s %6s %10s %10s %7s %10s %10s %7s %9s %8s %8s\n",
     "cell", "npatch", "LE_ens", "LE_mod", "mod/ens", "GPP_ens", "GPP_mod", "mod/ens", "maxRes", "minLE", "t_ens[s]"

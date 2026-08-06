@@ -233,7 +233,15 @@ Base.@kwdef struct WaterParams{T <: Real}
     # annual `1−wscal_mean` of 0.323–0.331 against a C truth of [0, 0.0432] (ADR 0034 §1 / ADR 0051).
     # This matters TWICE: `wscal_mean` is both Component S's `water_stress` conditioning feature AND the
     # F-core's leaf:root allocation driver `lmtorm` (`allocation_tree.c:233` uses the same accumulator).
-    wscal_leafon::Bool = false
+    # DEFAULT FLIPPED TO `true` 2026-08-06 (ADR 0059). It shipped opt-in under guardrail 4 while ADR 0051
+    # measured it, and then sat off for a week with each line recording the flip as the other's to
+    # schedule — the "opt-in whose default is known wrong" case CLAUDE.md §6 guardrail 4's corollary names.
+    # Line S gave an explicit GO (its own gate now admits both states, so no synchronised two-sided commit
+    # is needed) and endorsed it on M's measurement: Hainich's annual `water_stress` goes 0.3050 → 0.0034
+    # against a C truth of 0.0014 and a trained band of [0, 0.04315], i.e. the flip closes S's last
+    # out-of-band conditioning column rather than merely being more faithful. Guardrail 4 is now served by
+    # the OPT-OUT — `wscal_leafon = false` reproduces the pre-ADR-0051 expression exactly.
+    wscal_leafon::Bool = true
 end
 
 """

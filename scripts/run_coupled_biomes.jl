@@ -28,8 +28,8 @@
 #
 # ── GROUND-HEAT SCHEME (ADR 0058, 2026-08-06): E's opt-in TWO-LAYER prognostic soil column ───────────
 # `SEBParams(enable_two_layer = true)` (ADR 0074) replaces the single conductance against a 30-day EWMA of
-# AIR temperature. The package default is still `false` (guardrail 4 — E owns `energy.jl`); this driver
-# passes it EXPLICITLY, so every number below must be labelled as the two-layer arm. Measured in the
+# AIR temperature. Since ADR 0075 it is also the PACKAGE DEFAULT; this driver keeps passing it explicitly
+# so its output stays labelled with the scheme it actually ran. Measured in the
 # coupled loop (`scripts/two_layer_coupled_probe.jl`): LE and GPP move by ≤ 1.3e-4 relative — it is an H/G
 # repartition, not a coupled-physics change — while the default's annual-mean G runs up to **+6.4 W/m²**
 # (an energy sink with no reservoir behind it; the two-layer column drives ⟨G⟩ → 0 by construction) and
@@ -158,7 +158,7 @@ common_patches, common_modal = readcanopy_patches(joinpath(REFDIR, "hainich_indi
 
 @printf("\n=== COUPLED S+F+E EMULATOR ACROSS BIOMES — PER-CELL soil + canopy (real GSWP3-W5E5, %d yr) ===\n", YEARS)
 @printf("Canopy basis: the %d-patch ENSEMBLE MEAN (the C's own output basis, ADR 0057).\n", 25)
-@printf("Ground heat:  E's TWO-LAYER prognostic column, passed explicitly (ADR 0074/0058; default is off).\n")
+@printf("Ground heat:  E's TWO-LAYER prognostic column, passed explicitly (ADR 0074/0058; default since ADR 0075).\n")
 @printf(
     "%-22s %5s %6s %6s %7s %7s %7s %7s %8s %6s %6s %8s\n",
     "biome", "lat", "Tair", "Tskin", "LE", "H", "Rn", "Bowen", "maxRes", "npat", "ntree", "GPP"

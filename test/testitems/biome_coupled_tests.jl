@@ -148,9 +148,10 @@ end
 # CANOPY BASIS (ADR 0057, 2026-08-06): each cell is the PATCH-ENSEMBLE MEAN — all 25 patches of its `ind`
 # canopy run independently, outputs averaged — which is the basis the C reports and the basis
 # `scripts/run_coupled_biomes.jl` now drives. The pinned LE/GPP signatures below were regenerated for it.
-# GROUND HEAT (ADR 0058): and this gate drives E's opt-in two-layer prognostic column, explicitly, because
-# the driver does. The package default is unchanged (`false`) — see ADR 0058 §4 for the gates that stay on
-# it and why.
+# GROUND HEAT (ADR 0058): this gate drives E's two-layer prognostic column, and passes it EXPLICITLY
+# because the driver does. Since ADR 0075 that is also the package default, so the explicit pass is now
+# redundant — kept deliberately, so this gate keeps measuring the scheme it names even if a default moves
+# again (a control that silently tracks a default stops being a control: ADR 0075 §4).
 @testitem "Coupled emulator generalizes across biomes with PER-CELL inputs — energy closes + climate-driven partitioning" tags = [:validation, :energy, :coupling, :scientific, :multicell] begin
     using LPJmLFITEmulator
     using LPJmLFITEmulator.FDiff
@@ -240,9 +241,9 @@ end
         mem = NamedTuple[]
         for (pools, tmpls) in patches
             core = FDiffFastCore(pools, tmpls, soil, lats[k])
-            # GROUND-HEAT SCHEME (ADR 0058): E's opt-in two-layer prognostic column, passed EXPLICITLY —
-            # the package default stays `false` and `energy.jl` is line E's file. This is the scheme
-            # `scripts/run_coupled_biomes.jl` drives, and this gate exists to pin THAT configuration.
+            # GROUND-HEAT SCHEME (ADR 0058/0075): E's two-layer prognostic column, passed EXPLICITLY —
+            # it is the package default since ADR 0075, and stating it here keeps this gate pinned to the
+            # scheme it names rather than to whatever the default happens to be.
             clo = SEBEnergyClosure(;
                 t_soil0 = _mean(tairK), params = SEBParams{Float64}(; enable_two_layer = true)
             )
@@ -296,22 +297,29 @@ end
     # of the per-cell loop, or a per-cell artifact silently resolving to Hainich's. These pin each
     # cell's OWN mean LE and GPP, so the model must actually have consumed that cell's inputs.
     # Bands are ±2 % (LE) / ±3 % (GPP) around the measured 2-year values — far tighter than the
-    # spread BETWEEN cells (LE 23.9…116.1), so a fallback to any other cell's inputs fails, while
+    # spread BETWEEN cells (LE 24.0…116.1), so a fallback to any other cell's inputs fails, while
     # staying loose enough not to fire on a benign last-digit change.
     # REGENERATED 2026-08-06 for the patch-ensemble basis (ADR 0057), by
     # `scripts/biome_ensemble_pin_probe.jl` (job 1716587), which reproduced the previous modal-patch
     # pins to every printed digit in the same run — that is what makes this a measured basis change
     # and not a re-record. Deltas modal→ensemble: LE −0.9…−5.4 %, GPP +1.0…−24.8 % (boreal worst).
     # RE-MEASURED on the two-layer ground-heat arm (ADR 0058, job 1716621, same probe with TWO_LAYER=1):
-    # the values below ARE that arm's. It moved them by ≤ 4e-5 relative — the scheme repartitions H and G
-    # and leaves LE/GPP alone — so these pins do NOT discriminate the two schemes; the H/G evidence is in
-    # ADR 0058 §2, and this Dict's job remains detecting a per-cell INPUT fallback.
-    sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble, two-layer ground heat
-        "boreal_siberia" => (23.9434, 1.00704),
-        "temperate_hainich" => (40.4525, 3.44475),
-        "mediterranean_iberia" => (46.623, 5.05635),
-        "semiarid_sahel" => (33.1794, 0.385916),
-        "tropical_amazon" => (116.105, 6.92492),
+    # it moved them by ≤ 4e-5 relative — that scheme repartitions H and G and leaves LE/GPP alone — so
+    # these pins do NOT discriminate the two ground-heat schemes; that evidence is in ADR 0058 §2.
+    # RE-MEASURED AGAIN 2026-08-06 (ADR 0059, job 1718307) for the `wscal_leafon` DEFAULT FLIP, and that
+    # one is not cosmetic — but it is confined to ONE cell. Four cells move by ≤ 1.2 %, inside the bands;
+    # `semiarid_sahel` moves LE +6.1 % and GPP **+254 %** (0.386 → 1.367), because the pre-flip expression
+    # scored every leaf-off day as fully water-stressed, which crushed the water-stress-modulated leaf:root
+    # allocation `lmtorm` in the cell that has the most leaf-off days. Against the C's own tree GPP (1.513
+    # gC/m²/day, `M_fdiff_oracle_biomes.csv`) that cell goes from **0.26× to 0.90×**. The pins below are
+    # the package DEFAULTS' values — which is the point of the flip: until now this gate pinned a
+    # configuration no published F-vs-C comparison ever ran (they all passed `wscal_leafon = true`).
+    sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble, package defaults
+        "boreal_siberia" => (23.9726, 1.01916),
+        "temperate_hainich" => (40.4677, 3.44906),
+        "mediterranean_iberia" => (46.6253, 5.05669),
+        "semiarid_sahel" => (35.2051, 1.36655),
+        "tropical_amazon" => (116.062, 6.94035),
     )
     for (nm, (le_x, gpp_x)) in sig
         @test isapprox(ann[nm].le, le_x; rtol = 0.02)
