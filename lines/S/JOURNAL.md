@@ -1371,3 +1371,43 @@ nothing about what the model can do, and the difference cost one 3-minute job. S
 Whether the transient tail improves trait skill or the response is what the arm measures. A null is a
 legitimate outcome. Nothing here is a *coupled* claim: it is all offline with the conditioning fed the C's own
 features, and ADR 0105 §5 shows the coupled residual is dominated by F's canopy.
+
+### THE ARM REPORTED — and the answer is a trade, not a win (ADR 0109; jobs 1718904 build+eval, 1719206 score)
+
+**The pairing is total**, which makes the three-way comparison unusually strong: the `_t9` 8-column base
+`Xc.f64` is **SHA-256 bit-identical** to the shipped `_t8` base (`fc8d619edd6cd06e…`), and
+`cells.i64`/`scenario.i64`/every `Y_*` match. So `_t8` (8 columns, **what line M pins**), `_t9env` (14 columns,
+frozen tail) and `_t9envT` (14 columns, transient tail) are all on the **same 42 227 077 rows**. ADR 0036 §5b's
+streaming key-set nondeterminism did not fire this time — which is luck, not a property; keep building arms as
+one base plus appended tails.
+
+| axis | | 8-col `_t8` | 14-col FROZEN | 14-col TRANSIENT |
+|---|---|---|---|---|
+| SLA | slope / within 10 % | +0.851 / 70.7 % | +0.396 / **74.2 %** | **+0.752** / 73.6 % |
+| Wooddens | | +0.346 / 71.4 % | +0.254 / **74.0 %** | **+0.332** / 73.8 % |
+| D95max | | +0.163 / 28.0 % | +0.145 / **33.1 %** | **+0.172** / 32.4 % |
+| minwscal | | +0.689 / 62.1 % | +0.609 / **66.1 %** | **+0.706** / 65.3 % |
+
+**1. The env tail is a LEVEL-vs-RESPONSE TRADE.** Adding it frozen buys **+2.6…+5.1 pp** of cells within 10 %
+and costs response slope on **all four** axes. Six per-cell constants are a near-unique **spatial address**:
+they help locate a cell and thereby make the fit *less* dependent on the columns that move with time.
+⚠ **ADR 0037/0038 recommended that tail on level evidence and every number in it stands — there was no
+response statistic then.** The tail was not wrong; the metric panel was incomplete. That is the generalizable
+part: *a metric panel missing the binding quantity will confidently recommend a change that degrades it.*
+
+**2. Transient buys the response back** on all four axes (+0.356/+0.079/+0.028/+0.097) and sign agreement on
+all four, for **0.2–0.8 pp** of level. Sharpest number: the truth's mean `Wooddens` response is **+2406**;
+frozen predicts **+1529**, transient **+2402**. On `D95max` the transient tail is the **best of all three**.
+Recovery is not complete (0.752 vs 0.851 on SLA) ⇒ the address effect is reduced, not removed.
+
+**3. NO FLIP, and the criterion was NOT re-read.** ADR 0108 §8 clause (a) fails as written (`D95max` pooled
+`nqrmse` 0.0120 vs 0.0090; level worse by 0.2–0.8 pp on all four). The margins are small and I think the
+response gain outweighs them — **which is precisely what a pre-registered criterion exists to overrule.**
+Clause (b), the coupled screen, was never run, so the flip is blocked regardless and nothing needed
+adjudicating. `_t9envT.rcop` exists, is **not pinned**, and M's `_t8` pin is untouched.
+
+**4. The criterion itself was mis-specified — recorded, not retro-fixed.** It gated on trait *level* while
+ADR 0106 makes the *response* binding, so it can reject a change that improves the binding quantity to protect
+0.4 pp of the non-binding one. Editing it now would be the ADR-0104 error in a new costume; instead ADR 0109 §5
+registers a correct three-clause criterion (response-primary, level as a stated-band guardrail, `agb` named as
+reported-not-gating out loud) for a **new** arm.

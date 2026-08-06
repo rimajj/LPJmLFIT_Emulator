@@ -34,7 +34,7 @@ or a new model run for CO2, and never list it as a defect.
 
 ### ⏸ FIRST: THIS LINE'S WORK IS PUSHED AND GREEN BUT **NOT MERGED** — one command, blocked on a shared worktree
 
-Branch tip **`04e9d0b0`**. CI on the code-bearing sha **`c68ee134`**: `test (lts)` ✅ `test (1)` ✅
+Branch tip: the newest `line/S` commit (was `04e9d0b0`; several docs/ADR commits landed after it — check `git log --oneline -1`). CI on the code-bearing sha **`c68ee134`**: `test (lts)` ✅ `test (1)` ✅
 `test (macOS, lts)` ✅ `format` ✅ (`test (pre)` ❌ = the documented `ScopedValues` prerelease `MethodError` at
 LOAD time, confirmed from the job log, `continue-on-error`). `git diff c68ee134 04e9d0b0` = `MEMORY.md` +
 `lines/S/STATE.md` only, i.e. **no gate-watched path**, so the verified tree is the one that would land.
@@ -89,13 +89,32 @@ overlap.
    rooting-depth trait. **This is the arm's reference basis: success is BEATING these slopes.** It is also this
    line's first global both-scenario level score — `D95max` at 28 % of cells within 10 % is the largest
    trait-side gap against ADR 0106, and it is now a measured global number, not a five-cell one.
-4. **THE ARM IS RUNNING: job `1718904`, `logs/S-moisture_t9.1718904.out`.** One 8-column base built once
-   (`slow_copula_pooled_w20_t9`, 42 227 077 rows, same as `_t8`), then BOTH tails appended to that frozen base
-   → `_t9env` (static control) and `_t9envT` (transient arm), so they differ in six columns and NOTHING else
-   and are scored on identical `Cell`-hash folds ⇒ **paired per cell**. All 42 227 077 rows resolved to their
-   own `(scenario, Cell, Year)` moisture values. Then eval both, then train
-   `recruit_copula_global_pooled_w20_t9envT.rcop`. **The evals are slow (~40 min/fold at ncond=14); it may
-   still be running.** ~5 folds × 2 arms.
+4. **THE ARM REPORTED — the answer is a TRADE, and there is NO FLIP (ADR 0109; jobs 1718904, 1719206).**
+   The pairing is **total**: the `_t9` 8-col base `Xc.f64` is **SHA-256 bit-identical** to the shipped `_t8`
+   base, and cells/scenario/every `Y_*` match, so all three arms are on the SAME 42 227 077 rows.
+
+   | axis | 8-col `_t8` (M's pin) | 14-col FROZEN | 14-col TRANSIENT |
+   |---|---|---|---|
+   | SLA — slope / within 10 % | +0.851 / 70.7 % | +0.396 / **74.2 %** | **+0.752** / 73.6 % |
+   | Wooddens | +0.346 / 71.4 % | +0.254 / **74.0 %** | **+0.332** / 73.8 % |
+   | D95max | +0.163 / 28.0 % | +0.145 / **33.1 %** | **+0.172** / 32.4 % |
+   | minwscal | +0.689 / 62.1 % | +0.609 / **66.1 %** | **+0.706** / 65.3 % |
+
+   **The env tail buys LEVEL (+2.6…+5.1 pp of cells) and costs RESPONSE (all four axes)** — six per-cell
+   constants are a near-unique spatial ADDRESS. **Transient buys the response back** on all four
+   (+0.356/+0.079/+0.028/+0.097) for 0.2–0.8 pp of level; the truth's mean `Wooddens` response is +2406, frozen
+   predicts +1529, transient **+2402**. ⚠ **ADR 0037/0038 recommended the tail on level evidence and every
+   number in it stands — no response statistic existed then.** The tail was not wrong; the metric panel was
+   incomplete.
+   **NO FLIP:** ADR 0108 §8 clause (a) fails as written (`D95max` pooled `nqrmse` 0.0120 vs 0.0090; level worse
+   by 0.2–0.8 pp on all four) and clause (b) — the coupled screen — was never run. The criterion was **not
+   re-read after seeing the numbers**, even though the response gain arguably outweighs the level cost; that is
+   what a pre-registered criterion is for. `recruit_copula_global_pooled_w20_t9envT.rcop` exists and is **NOT
+   pinned**; M's `_t8` pin is untouched.
+   **The criterion was ALSO mis-specified** — it gated on trait *level* while ADR 0106 makes the *response*
+   binding. Not edited (that would be ADR 0104's error again); a correct three-clause replacement is registered
+   in **ADR 0109 §5** for a NEW arm, and its clause 3 (the coupled ensemble screen vs a matched
+   constant-forcing control) is the whole remaining blocker.
 5. **Item A of the previous handoff was ALREADY DONE — do not redo it.** The F-canopy attribution is in
    `lines/M/STATE.md` (the `▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06` block) with the
    offline-vs-coupled table and the `fpc` drift ratios. Nothing is owed by S there.
@@ -108,24 +127,28 @@ overlap.
 
 ### DO THIS NEXT, IN THIS ORDER
 
-**A★ READ THE ARM AND DECIDE THE FLIP. This is the one live item.**
-```bash
-grep -E "JOB DONE|pooled OOS" logs/S-moisture_t9.1718904.out          # per-axis nqrmse, both arms
-export ARMS=/p/tmp/jamirp/emulator_global/slow_copula_pooled_w20_t9env,/p/tmp/jamirp/emulator_global/slow_copula_pooled_w20_t9envT
-export LABELS=static,transient
-scripts/sbatch_python.sh S-armresp scripts/diagnose_moisture_arm_response.py   # the PAIRED comparison
-```
-The decision rule is **pre-registered in ADR 0108 §8** — do not invent a new one after seeing the numbers:
-flip `ENV_WINDOW=20` to the production default (and `live_flux_cond_env_series` to the coupled driver's policy)
-once (a) the paired OOS trait scores of `_t9envT` are **not worse** than `_t9env` on any of the four production
-axes, and (b) a coupled five-cell screen shows a non-zero historic→ssp370 trait-median response where the C has
-one. **If (a) holds and (b) does not, say so and keep it opt-in** — the structural closure still stands and the
-remaining gap is elsewhere (ADR 0105 §5 points at F's canopy). Write the verdict as an ADR from
-**S's tier-2 block: 0109 is the next free number** (0100–0108 used).
-⚠ If the job died mid-eval: `pred_<axis>.f64` is written **only after the last fold**, so a killed eval leaves a
-complete-looking table dir with **no predictions at all**. Re-run just steps 6-8 with `SKIP_BASE=yes`.
+**A★ RUN THE COUPLED SCREEN — it is clause 3 of ADR 0109 §5 and the ONLY remaining blocker on the moisture
+tail, and it is the same blocker every response claim on this line has had.** The offline work is DONE
+(ADR 0109); do not re-run the arm. What is needed: a coupled run with `_t9envT` wired via
+`live_flux_cond_env_series`, on the patch **ENSEMBLE** (not the modal patch — ADR 0105 §2 showed the modal
+patch inverted three published conclusions), differenced against a **matched constant-forcing control re-run in
+the same generation** and measured **past the transient** (ADR 0048: constant-forcing drift alone moves
+community wood density by 1.34× the real shift and settles only at year ~52, inside the 80-yr window). That
+harness is line **M**'s (`biome_slow_oracle_probe.jl`), so this is an **integration point**, not S-only work —
+and it needs the `env_series` provisioning of item B anyway. ⚠ An offline slope is an **UPPER BOUND** on the
+coupled one (ADR 0105 §5: the coupled residual is dominated by F's canopy), so a coupled null does not
+contradict ADR 0109.
 
-**B. RE-PIN WITH LINE M — only if A flips, and it is an ADR-0023 BOTH-SIDES change.** M currently passes a
+**A2. The cheaper, S-only follow-up if the coupled screen cannot be scheduled: kill the ADDRESS effect
+directly.** ADR 0109 §2's mechanism says per-cell constants act as a spatial address. ADR 0040 already built
+the controls for exactly this question (`p14geo` = a pure-position tail, `p14perm` = the true env tuples
+permuted across cells, both via `ENV_PARQUET=` on `build_slow_copula_env_augment.py`). Score those two with
+`diagnose_moisture_arm_response.py` on the `_t9` base: if the **geo** tail reproduces the frozen tail's
+level gain AND its response loss, the address reading is confirmed and the design question becomes whether to
+carry the tail at all rather than how to time-base it. Cheap (two augments + two evals, ~1 h each) and it is a
+falsifiable test of §2 rather than another lever.
+
+**B. RE-PIN WITH LINE M — needed to run A at all, and it is an ADR-0023 BOTH-SIDES change.** M currently passes a
 constant `env`; it must pass a per-cell `env_series`, which is a `cell_year_env_<scenario>_w20.parquet` slice
 (a read, not a new derivation). Version the artifact, never mutate in place. Note in BOTH lines' STATE.md and
 land both sides together. Until M re-pins, nothing M runs changes.

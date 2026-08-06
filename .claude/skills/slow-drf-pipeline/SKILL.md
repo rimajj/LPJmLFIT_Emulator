@@ -1298,6 +1298,42 @@ global, both-scenario level score, so stop quoting five-cell trait numbers as fi
 **offline**, conditioning fed the C's own features; ADR 0105 §5 shows the coupled residual is dominated by F's
 canopy, so an offline slope is an upper bound on what the coupled model will show.)
 
+### THE ARM'S ANSWER, AND THE TRAP IT EXPOSES: a metric panel missing the binding quantity RECOMMENDS AGAINST IT (`[VERIFIED 2026-08-06]`, ADR 0109)
+
+**The result** (jobs 1718904 / 1719206; all three arms on the SAME 42 227 077 rows — the `_t9` 8-col base is
+SHA-256 bit-identical to the shipped `_t8` base, so this is a fully paired three-way):
+
+| axis | 8-col `_t8` (M's pin) | 14-col FROZEN tail | 14-col TRANSIENT tail |
+|---|---|---|---|
+| SLA — response slope / cells within 10 % | +0.851 / 70.7 % | +0.396 / **74.2 %** | **+0.752** / 73.6 % |
+| Wooddens | +0.346 / 71.4 % | +0.254 / **74.0 %** | **+0.332** / 73.8 % |
+| D95max | +0.163 / 28.0 % | +0.145 / **33.1 %** | **+0.172** / 32.4 % |
+| minwscal | +0.689 / 62.1 % | +0.609 / **66.1 %** | **+0.706** / 65.3 % |
+
+⚠ **THE ENV TAIL IS A LEVEL-vs-RESPONSE TRADE, AND THE SIX COLUMNS ACT AS A SPATIAL ADDRESS.** Adding them
+FROZEN buys **+2.6…+5.1 pp** of cells within 10 % and costs response slope on **all four** axes. Per-cell
+constants let the marginal forests locate a cell and reproduce its present-day distribution, which makes the
+fit *less* dependent on the columns that actually move with time. Making them TRANSIENT recovers most of the
+lost response (+0.356/+0.079/+0.028/+0.097) for 0.2–0.8 pp of level — but **not all** of it (0.752 vs the
+8-column 0.851), so the address effect is reduced, not removed. Sharpest single number: the truth's mean
+`Wooddens` response is **+2406**, frozen predicts **+1529**, transient **+2402**.
+
+⚠⚠ **THE GENERALIZABLE TRAP — and it caught this repo's own published recommendation. ADR 0037/0038 measured
+that tail's LEVEL gain, recommended it, and every number in it is still correct. No RESPONSE statistic existed
+at the time.** So a change that improved the published metric while degrading the metric the acceptance
+criterion actually binds on was not just missed — it was *recommended*. **A metric panel that omits the binding
+quantity does not stay silent about it; it argues against it.** Before adopting any conditioning lever here,
+check that the panel contains a statistic for **each clause of the acceptance criterion** (ADR 0106: level in
+both scenarios AND the response between them), and if one is missing, build it *before* scoring the lever —
+`diagnose_moisture_arm_response.py` is that statistic for the response and took an afternoon.
+
+**Corollary for pre-registration:** state the criterion in terms of the BINDING quantity, with the others as
+guardrails carrying explicit bands, and name any axis you intend not to gate on (here `agb`, a diagnostic
+struct axis) **out loud in the criterion** rather than excluding it later. ADR 0108 §8 gated on trait *level*
+only, so it rejected a change that improved the response to protect 0.4 pp of level — a mis-specification. It
+was **not** re-read after the numbers arrived (that is ADR 0104's error in a new costume); the corrected
+criterion is registered in ADR 0109 §5 for a NEW arm.
+
 **Still open after the arm reports:** re-pin with line M (an ADR-0023 **both-sides** change — M passes a
 per-cell `env_series` where it now passes a constant `env`; the series is a `cell_year_env_*_w20.parquet`
 slice, so it is a read, not a new derivation), and score against ADR 0106's criterion **globally** — all

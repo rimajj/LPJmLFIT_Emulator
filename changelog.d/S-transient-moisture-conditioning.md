@@ -28,3 +28,16 @@
 - `scripts/pool_slow_tables.py` now refuses to pool two scenarios whose conditioning tails were built on
   different time bases — a static half and a time-varying half would fabricate part of the scenario contrast —
   and carries the per-row year through to the pooled table.
+
+### Measured (no default changed)
+
+- **The extra conditioning describing each cell's moisture climate turns out to trade present-day accuracy
+  against climate response, and the time-varying version buys the response back (ADR 0109).** Scored on
+  identical rows across 52,074 cells in both scenarios: adding those six numbers as fixed per-cell values
+  improves how many cells land within 10 % of the original model (by 3–5 percentage points) and *degrades* how
+  well the emulator reproduces the original's shift between present-day and the warm future — on all four
+  traits. Making them time-varying recovers most of that shift (for wood density the original's mean shift is
+  +2406, the frozen version predicts +1529, the time-varying one +2402) at a cost of under one percentage
+  point of present-day accuracy. The time-varying version is **not** switched on: the go/no-go test written
+  down beforehand was not met, and the coupled check it also requires has not been run. Nothing that was
+  running changes.
