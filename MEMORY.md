@@ -143,7 +143,23 @@ is the offline S.
   residual remains — see §5 water-supply.
 
 ### Scoring a RECURSIVE emulator (cross-cutting method; ADR 0054, line M)
-- [VERIFIED 2026-08-05] **Never score a free-running rollout without also running the TEACHER-FORCED arm.**
+- ⚠ [VERIFIED 2026-08-06, ADR 0105] **THE NEXT BULLET'S 59–72 % IS SUPERSEDED AND ITS SIGN INVERTS — read
+  this first.** That number was measured on the driver's **modal** patch and scored on `target_history`
+  (the count model's *prediction*). Re-measured on the **25-patch ensemble** — the basis the C reports and
+  the count model was trained on — and scored on the **stand's density against the C's truth**, teacher
+  forcing is **WORSE in all five cells** (score `mean_y |ln(density/truth)|` 0.149→0.277, 0.086→0.153,
+  0.180→0.259, 0.349→0.460, 0.029→0.069). It survives **neither** correction. The METHOD rule in the bullet
+  below still stands and is the durable part — *run the arm* — but its published verdict does not, and the
+  reason generalises: **an attribution arm inherits every basis error of the harness it runs in.**
+  **What replaces the mechanism:** free-running, `n_prev` is the model's own previous target, so the
+  model's absolute level **cancels** and only its year-on-year change reaches the stand. On the correct
+  basis that cancellation is **protective**, because the target given F's own canopy features is biased —
+  so re-introducing the level (teacher forcing, or the ADR-0103 level anchor) makes the stand worse.
+  Also: the coupled **exposure bias is measured EMPTY** offline from the `_t8` tables
+  (`scripts/exposure_bias_probe.jl`): one-step bias **−0.0014** stems/patch/yr held-out-cell OOS on counts
+  of ~10, AR gain `g = ∂pred/∂n_prev` = **0.562** ⇒ a **bounded** 2.28× amplification. The residual is F's
+  canopy diverging from the C's, not the count model's training.
+- [VERIFIED 2026-08-05, **verdict superseded — see the bullet above**] **Never score a free-running rollout without also running the TEACHER-FORCED arm.**
   Component S's count DRF takes `n_prev` as a feature, and in the **training table** `n_prev` is the C's OWN
   previous `n_living` (`build_slow_runtime_table.py:572`) — never a prediction. A free rollout feeds its own
   output back, so it is off that basis by construction and **integrates** any one-step bias. Measured across
@@ -323,6 +339,9 @@ is the offline S.
   waived:** own commit, before/after numbers recorded, CI green. Guardrail 4 still forbids a baseline moving
   *by accident*; this covers only the *deliberate* case it was written to permit. A third baseline-moving
   change is a fresh decision. Recorded in full in `lines/M/STATE.md`, mirrored in `lines/S/STATE.md`.
+  ⚠ **Half of it is now moot (ADR 0105, 2026-08-06): clause (2), the level anchor, will not be enabled** —
+  its flip criterion failed on the patch ensemble and the default stays `anchor = 0`. The
+  authorisation is unchanged for clause (1); do not read the anchor half as an outstanding action.
 - **HPC compute is not a reason to defer (owner, 2026-08-05).** "When retraining is needed we do it — we
   have the whole HPC at our service, so there is no need to procrastinate." Do not park a measurement or a
   global re-fit *solely* because it costs cluster time; scope it and submit it. (Still SLURM-only and still

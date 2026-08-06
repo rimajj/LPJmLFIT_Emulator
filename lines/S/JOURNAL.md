@@ -1184,3 +1184,45 @@ edit (the `DRF_ART`/`RCOP_ART` knob) and left job **1701183** in the queue; its 
   translation table is in the section; it binds user-facing text only, not ADRs, STATE or code comments.
 - **Next:** re-run the corrected criterion on the patch-ensemble driver (the one blocker), then the exposure
   bias — for which Sahel is now the sharpest test case this line has.
+
+## 2026-08-06 (later) — the ensemble closed both open questions, and both answers were "no"
+
+The one blocker named at the end of the previous entry got run, and it reversed the conclusion it was
+supposed to confirm. Line M had landed the patch-ensemble driver (ADR 0057) on `main` that morning, so the
+basis was available without waiting on anything.
+
+- **The criterion FAILS on the ensemble at all three settings, and the effect it was measuring was mostly
+  the confound.** Free-running terminal density/truth goes from 2.55 / 2.03 / 3.01 / 1.55 / 1.90× on the
+  modal patch to **1.35 / 1.15 / 1.38 / 0.52 / 1.04×** on the 25-patch ensemble — mean score 0.679 →
+  **0.159**. The anchor now improves 3 of 5 cells and **worsens the mean** (0.159 → 0.166 / 0.181 / 0.194).
+  Jobs 1717190 / 1717247. The harness check that makes it a measurement: the ensemble's own year-2010 stem
+  count reproduces the C's per-patch mean exactly in all five cells.
+- **`semiarid_sahel` was never over-dense.** On the modal patch it read 1.55× too dense; on the ensemble it
+  is **0.52× — 48 % UNDER-dense**, the largest error in the set, and the anchor drives it to 0.33×. ADR 0104
+  §4's whole reading of that cell inverts.
+- **The mechanism is now unified and it is not a defect in the anchor.** The anchor lands the stand on the
+  count model's absolute target exactly as ADR 0103 built it to. Given **F's own** canopy features that
+  target sits below the C's truth — so it helps where the free stand is above truth and hurts where it is
+  already right.
+- **Teacher forcing is WORSE in all five cells** (score 0.149 → 0.277, 0.086 → 0.153, 0.180 → 0.259,
+  0.349 → 0.460, 0.029 → 0.069), inverting ADR 0054's 59–72 %. That number was modal-patch AND scored on the
+  prediction; it does not survive either correction. Which yields the thing worth keeping: **the
+  multiplicative ratio update is not simply a defect that discards the level** — free-running, it cancels a
+  biased target, and both interventions built to re-introduce that level therefore hurt.
+- **The exposure bias — the #1 remaining item, and the retrain that was queued behind it — is EMPTY.**
+  Measured offline from the tables that already existed (`scripts/exposure_bias_probe.jl`, job 1717208,
+  22.5 M rows, four minutes): one-step bias **−0.0014** stems/patch/yr held-out-cell OOS on counts of ~10,
+  AR gain **g = 0.562** ⇒ a **bounded** 2.28× amplification to −0.038 stems. Per-cell it predicts
+  +4.2 / −5.9 / +10.5 / −0.0 / +0.2 % against a coupled +35 / +15 / +38 / −48 / +4 % — wrong size in every
+  cell, wrong sign in two. The gap is F's canopy diverging from the C's (F's `fpc` moves 1.56× where the
+  C's moves 0.90× at boreal). **Cancelled, not deferred.**
+- **The method rule this cost.** ADR 0104 applied the rule it had just earned to the *metric* axis and got
+  it right, then named the *canopy* axis as an open confound, called its own benefit an upper bound — and
+  published a recommended `a` from that arm anyway. **Naming a confound is not closing it.** Never publish a
+  default or a tuned value from an arm you have labelled an upper bound. Corollary, of which the teacher
+  forcing above is the instance: an attribution arm inherits every basis error of its harness.
+- **And the cheap one that paid for itself twice over:** price a retrain offline before buying it. Two
+  hundred lines of Julia and one four-minute job stood in for a global two-artifact retrain and a
+  cross-line re-pin.
+- **Next:** the residual is a coupling / F-fidelity item and belongs to line M — raised with the
+  measurement attached. S2 (the conditioning set) returns to the top of S's own queue by elimination.
