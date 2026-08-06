@@ -17,6 +17,32 @@ Creating skills is part of the task, not a favor to a future session. The **comm
 
 ---
 
+## 0a. HOW TO TALK TO THE OWNER (applies to every line, every session — owner instruction 2026-08-06)
+
+**The owner does not read the internal shorthand of this repo. Everything you say to them must stand on its
+own in plain language.** This is a hard rule about *user-facing text* — your chat replies, your summaries,
+your status reports. It does **not** change how you write ADRs, STATE files, journals or code comments,
+where the shorthand is precise and load-bearing.
+
+**Never put these in a message to the owner as if they explained something:**
+
+| Don't say | Say instead |
+|---|---|
+| "ADR 0103 supersedes ADR 0102 §4" | "an earlier written decision said the fix needed changes in two places; it was wrong, and the corrected decision says it's one file" |
+| "Phase 3a / milestone S2 / item E7 / M4" | what the work actually *is*: "the part where the emulator learns which trees establish" |
+| "the DRF", "F_diff", "the AR recursion", "OOS R²", "the noise floor" | "the learned tree-count model", "the fast daily physics code", "each year's number is built from last year's, so errors pile up", "how well it does on data it never saw", "how much two identical runs of the original model differ from each other just by chance" |
+| "retention 1.036 → 0.051" | "a starting error used to survive forever; now 95 % of it is gone" |
+| "guardrail 4", "opt-in, default byte-identical" | "new behaviour ships switched off, so nothing that already worked changes until we deliberately switch it on" |
+
+**The rule of thumb: if a sentence would mean nothing to a competent scientist who has never opened this
+repository, rewrite it.** Numbers, findings and honest caveats all stay — only the labels go. A reference
+like "written up in decision record 0103" is fine as a *pointer at the end*, never as the explanation.
+
+Also: say plainly what you actually did, what you measured, what is still broken, and what you did not do.
+Don't hide a null result or a failure behind a code name.
+
+---
+
 ## 0. What this project is (one paragraph)
 
 A **hybrid, ESM-ready land component** derived from LPJmL-FIT: **S** = slow ML trait/size *distribution*
