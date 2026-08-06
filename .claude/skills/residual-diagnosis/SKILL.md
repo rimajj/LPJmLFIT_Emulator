@@ -526,7 +526,13 @@ lives in the fast core's carbon pools). Recorded in the ADR with its measured nu
 every run — dropped as a *gate*, not hidden as a *fact*.
 
 **Have the SCRIPT compute the headline statistic, not you.** The `pin1` control figure in ADR 0104 §6 was
-mental arithmetic over a printed 10-row table and it was wrong by 75 % (0.0556 for a true 0.0975). It was
+mental arithmetic over a printed 10-row table and it was wrong by 75 % (0.0556 for a true 0.0973). It was
 caught only because the summary was later added to the probe and the number re-derived. A per-row table
 printed by a job is machine truth; **any aggregate you form by reading it is not**, and it will be quoted
 onward as if it were. Add the aggregate to the script and re-run — these probes cost seconds to minutes.
+
+**Re-deriving it by hand from the printed table is not the same as re-running.** That intermediate step
+caught the 75 % error but introduced a second, smaller one: recomputing from the table's `%.3f` values gave
+0.0975 where the script's full-precision answer is **0.0973**. Rounded inputs propagate. The hand
+recomputation is worth doing immediately — it is what caught the real error, in seconds — but it is a
+*triage* step, not the number you publish.
