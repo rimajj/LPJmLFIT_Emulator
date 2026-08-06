@@ -161,6 +161,13 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   `LLVM error: Canonicalization failed` (`nn_canopy_training_tests.jl:22/:145`). Lift only when a fixed
   Enzyme ships. A red `test (lts)` with the test tree unchanged ⇒ suspect a dep bump; diff the
   `Enzyme vX.Y.Z` line in last-green vs first-red job logs.
+- **⚠ A heap-allocated field on a struct the Enzyme path differentiates through ABORTS the suite with
+  SIGABRT (`[VERIFIED 2026-08-06]`, ADR 0110).** Adding a `Vector{T}` field to `FDiff.Individual` killed the
+  test process with `received signal: 6` — **no Julia error, no stacktrace, no Enzyme message in the log** —
+  surfacing right after a *completed* Enzyme test item, so the log points at the wrong place. Pass such data
+  as a separate argument instead (Enzyme then sees it as constant). Tell: an exit-1 suite with **no**
+  `Test Summary` line and `signal: 6/11` is an AD/LLVM crash, not a numerical failure — look at what changed
+  in a struct definition, not at the physics. Details + the diagnostic shortcut: the `julia-test` skill.
 - **Julia 1.10-lts vs 1.11 guard:** the Enzyme-reverse **canopy** path is verified only on Julia 1.10;
   Enzyme 0.13 raises an internal LLVM/`EnzymeInternalError` on ≥1.11 for the mutating multi-individual
   path. Those gate parts are guarded `VERSION < v"1.11"` (identity/forward runs everywhere). Guard-lift

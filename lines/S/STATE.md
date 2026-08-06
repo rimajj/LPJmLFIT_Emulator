@@ -145,6 +145,60 @@ correctly and drew the next conclusion from them. No reconciliation is needed.
 
 ### DO THIS NEXT, IN THIS ORDER
 
+**0★★ THE ROOTING-DEPTH TRAIT NOW HAS A PHYSICAL CONSUMER — finish landing it (ADR 0110). THIS IS THE
+DROUGHT-RESPONSE WORK AND IT SUPERSEDES A★/A2 IN PRIORITY.**
+
+The owner's instruction that opened it: *"drought response is one of the most important features our
+emulator has to capture."* ADR 0109 finished the *statistical* search on `D95max` — worst of four axes on
+all three arms, no flip. What was left is that **the trait had no consumer**: `make_recruit_to_pools` wrote
+only SLA + Wooddens, and `daily_step_canopy` collapsed the 23-layer profile to ONE scalar `wr` before the
+individual loop opened. Two trees differing only in rooting depth were identical in the water balance.
+
+**The standing DEFER (`docs/water_supply_perpft_design.md`) does NOT cover trees.** Its "rooting depth is
+not the mechanism" rests on grass sharing beech's `beta_root=0.8` — grass vs the AVERAGE tree. Tree-vs-tree:
+`beta_root` is per individual from that individual's own `D95max` (`new_tree.c:229-230`), the trait spans
+**51-1800 cm within one PFT**, top-20 cm root share **69 % vs 4 %**. And the `-DPERMUTE` randomness that
+blocks a faithful `aet_cor` port **does not touch** per-individual `wr`, `supply`, `pft->wscal` or the
+routinely-firing "own FPC share" cap — all four are order-INDEPENDENT (`soil.w[]` is frozen for the whole
+loop, written once per patch-day afterwards). ADR 0110 §3 has the table. **Cap (ii) is out of scope,
+deliberately, and is NOT "impossible" — it is "reproduce the average over orders", over only 6-12 individuals.**
+
+**Measured first, on the C's own per-stem output** (`scripts/diagnose_per_tree_water_access.py`,
+pre-registered criterion, 5 biome cells, both scenarios): across-tree p5-p95 water-scalar span **0.19**
+Iberia / **0.16** Sahel where F carries one number; within-(PFT x age) corr(`beta_root`,`wscal`) **0.83**
+Sahel; dry/wet spread amplification **112x** Hainich; drought share of hazard **0.147** boreal / 0.069
+Iberia / 0.039 Hainich; drought-killed stems root **57 % shallower** than the mean at Hainich. Warming:
+drought share **x3.95** Amazon / x1.47 Iberia / x1.32 Hainich. Verdict PASS — honestly, the spread-RATIO
+sub-test is marginal (median 1.11) and fails at Hainich and boreal; the other two carry it.
+
+**WHAT IS BUILT** (all opt-in, default byte-identical; F-side files are M's — integration point recorded in
+`lines/M/STATE.md`, the ADR-0029 "hand over for one milestone" route):
+- ports of `getbetaroot.c` + `getrootdist.c`, validated to **5e-7** against the C's OWN emitted `beta_root`;
+  `getvpd` (`spitfire/getvpd.c`); `TreePools` gains `d95max`/`minwscal`; `DailyForcing` gains `humid`
+- `daily_step_canopy` takes `rootdists=`, computes per-tree `wr_i`, withdraws down each tree's own profile
+  with the order-free cap (i), and returns `wscal_ind`/`wr_ind`
+- `_accumulate_stress!` builds the two per-individual annual integrals ADR 0049 §3 could not supply, and
+  `_trait_hazards!` feeds them to `mort_water`/`mort_temp` instead of zeros
+- flags `per_tree_roots`, `per_tree_fpc_cap`, `trait_drought_mortality` (all default off);
+  `test/testitems/per_tree_roots_tests.jl`
+
+**WHAT IS LEFT — in order:**
+1. **Confirm the suite is green** (`logs/S-pertree-roots2.1719476.out`). ⚠ The FIRST attempt (job 1719462)
+   died with **SIGABRT** — a bare LLVM abort, no Julia error — right after the grass Enzyme reverse item,
+   because the per-tree profile was a `Vector{T}` field on `Individual`, a struct Enzyme differentiates
+   through. It now travels as a separate `rootdists` argument. **Never put a heap-allocated field on
+   `Individual`.** If the suite is red again, suspect the AD path first, not the physics.
+2. **Score the per-tree `wscal` against the C's own per-stem `wscal_mean`** — the truth table emits it, so
+   this is a direct oracle test, not self-consistency. That is ADR 0110 §6's flip criterion (a).
+3. **Then the flip criteria in ADR 0110 §6** — (a)-(c) for `per_tree_roots`, (d)+(e) for
+   `trait_drought_mortality`. Criterion (e) is the historic->ssp370 response and needs the coupled screen,
+   i.e. the SAME blocker as A below. Do not flip on the level result alone (ADR 0104's error).
+4. **`k_root` is not per-individual in the port** (the C draws it per tree; `per_tree_rootdists` uses one
+   default), so the size-driven half of the rooting channel is coarser than the C's. Stated, not hidden.
+5. **`trait_drought_mortality` needs a REAL humidity in the forcing.** `AtmForcing.qair` carries it on the
+   coupled path and `huss` is already column 7 of every committed forcing fixture, but `DailyForcing.humid`
+   defaults to 0, which `getvpd` reads as bone-dry air => maximal VPD. Never enable it on unset humidity.
+
 **A★ RUN THE COUPLED SCREEN — it is clause 3 of ADR 0109 §5 and the ONLY remaining blocker on the moisture
 tail, and it is the same blocker every response claim on this line has had.** The offline work is DONE
 (ADR 0109); do not re-run the arm. What is needed: a coupled run with `_t9envT` wired via

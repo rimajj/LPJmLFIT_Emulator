@@ -340,3 +340,30 @@ then the flag rots. Three have landed this way (`wscal_leafon` ADR 0059, `enable
 6. **Quote the cost in the same sentence as the gain.** The `wscal_leafon` flip moved the Sahel's GPP from
    0.26× to 0.90× of the C's *and* its ET from 1.19× to 1.26×. Reporting only the first half is the
    failure mode this repo's guardrails exist to prevent.
+
+## A `Vector` (or any heap-allocated) field on a struct the Enzyme path differentiates through ABORTS the whole suite (ADR 0110, line S, 2026-08-06)
+
+**Symptom, and why it is hard to read:** the suite dies with
+
+```
+ERROR: Package LPJmLFITEmulator errored during testing (received signal: 6)
+```
+
+— **SIGABRT, with no Julia error, no stacktrace into your code, and no Enzyme message anywhere in the log.**
+`grep -iE "Enzyme|LLVM|Assertion"` finds only the version banner. The abort surfaces *after* a completed
+Enzyme test item reports `DONE` (here: "Prognostic grass — Enzyme reverse through the grass-inclusive
+multi-year training path"), so the item that appears to have passed is not the culprit and the log points
+nowhere useful. Test items before it all pass, so it reads like a random crash.
+
+**Cause:** `FDiff.Individual` gained a `rootdist::Vector{T}` field. `Individual` is constructed inside the
+differentiated region and Enzyme's reverse pass hit it at the LLVM level. Nothing about the *physics* was
+wrong — the same code ran fine in every non-AD test and in a standalone rollout.
+
+**Fix / rule:** keep structs on the AD path free of heap-allocated fields. Pass the extra data as a
+**separate argument** (`daily_step_canopy(...; rootdists = ...)`), where Enzyme treats it as constant. Build
+it once a year outside the daily loop. `Individual` now carries a comment saying so; do not reintroduce it.
+
+**Diagnostic shortcut:** an exit-1 suite whose log has a `Test Summary` line is a normal failure — read it.
+An exit-1 suite with **no** `Test Summary` and `received signal: 6/11` is an AD/LLVM crash: look at what you
+changed about a *struct definition* or a *type* on the gradient path, not at the numerics. Compare
+`grep -c "DONE  ("` between the last-green and first-red logs to find where it stopped.

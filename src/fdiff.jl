@@ -37,6 +37,7 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     petpar_daylength, patch_albedo,
     AllocParams, TreePools, tebs_allocparams, grow_individual, individual_from_pools, rollout_canopy_years,
     rollout_canopy_years_gpp,
+    betaroot_from_d95max, jackson_rootdist, per_tree_rootdists, individuals_from_pools, # ADR 0110
     grass_allocparams, grass_treepools, grow_grass_individual,
     GrassEstabParams, grass_estabparams,
     agb_ind, vegc_ind,
@@ -242,6 +243,38 @@ Base.@kwdef struct WaterParams{T <: Real}
     # out-of-band conditioning column rather than merely being more faithful. Guardrail 4 is now served by
     # the OPT-OUT — `wscal_leafon = false` reproduces the pre-ADR-0051 expression exactly.
     wscal_leafon::Bool = true
+    # ── ADR 0110: PER-TREE ROOT PROFILES AND PER-TREE WATER STATUS ──────────────────────────────────
+    # Off ⇒ every individual shares one cell-average root profile collapsed to one scalar `wr`, so two
+    # trees differing only in rooting depth are identical in the water balance and drought response
+    # cannot exist. On ⇒ each individual with a rooting trait (`TreePools.d95max > 0`, carried into
+    # the `rootdists` argument built by `per_tree_rootdists`) gets its own root-weighted moisture, its own
+    # supply, its own water scalar, and withdraws down its own profile.
+    #
+    # This is a FAITHFUL port, not an approximation: the C's per-individual `wr`, `supply` and
+    # `pft->wscal` are all **order-INDEPENDENT** (`soil.w[]` is frozen for the whole permuted loop and
+    # written once per patch-day afterwards in `soil/waterbalance.c:117-138`), so the `-DPERMUTE` daily
+    # depletion-order randomness that blocks a faithful `aet_cor` port does NOT touch any of them.
+    # See ADR 0110 §3 for the full order-dependence table.
+    per_tree_roots::Bool = false
+    # The C's ORDER-FREE first cap (`lpj/water_stressed.c:159-161`): no individual may draw more from a
+    # layer than its own FPC share of that layer's available water. Depends only on the individual and
+    # the frozen `soil.w[]`, and fires routinely in summer once the top layer drops below ~0.4 — it is
+    # NOT the order-dependent residue cap (`:162-166`), which stays out of scope (ADR 0110 §5).
+    # Only active together with `per_tree_roots`.
+    #
+    # ⚠ SCOPED LIMITATION: the C also feeds the capped supply BACK into the GPP solve (it overwrites
+    # `supply` at `:177` and re-solves `gc`), which would need a second pass over the individuals. That
+    # feedback is order-free and portable, but is NOT implemented here — Phase 1 applies cap (i) to the
+    # WITHDRAWAL (mass balance) only. This is deliberate and costs nothing for the drought-mortality
+    # channel, because the C's own `pft->wscal` is built from the UNCORRECTED supply (`:130-140`).
+    per_tree_fpc_cap::Bool = true
+    # ADR 0110 Phase 2: switch on the two climate-driven death risks ADR 0049 §3 set to ZERO for want of a
+    # per-tree water status. Requires `per_tree_roots` (it consumes the per-individual daily `wscal`); with
+    # it off there is no per-tree `wscal` and the accumulators stay identically 0. Off ⇒ byte-identical.
+    #
+    # ⚠ Needs a REAL specific humidity in the forcing (`DailyForcing.humid` / `AtmForcing.qair`): the
+    # default 0 reads as bone-dry air and inflates VPD. See `getvpd`.
+    trait_drought_mortality::Bool = false
 end
 
 """
@@ -350,6 +383,45 @@ Base.@kwdef struct DailyForcing{T <: Real}
     precip::T = 3.0
     daylength::T = 12.0
     co2::T = 380.0
+    humid::T = 0.0                # SPECIFIC humidity, kg/kg (the C's `climate->humid` under
+    # `"relative_humidity": false`). Already the 7th column (`huss`) of every
+    # committed forcing fixture — it simply never reached this struct. Consumed
+    # ONLY by [`getvpd`](@ref) for the ADR-0110 drought-stress accumulator, which
+    # is opt-in, so the default 0 changes nothing (every existing kwarg call site
+    # is byte-identical). ⚠ 0 means "unknown", and `getvpd` reads it as bone-dry
+    # air ⇒ maximal VPD — never enable the drought hazard on unset humidity.
+end
+
+"""
+    getvpd(temp, humid) -> vpd (Pa)
+
+Port of the C's `spitfire/getvpd.c` on the `relative_humidity = false` branch — which is the one this
+configuration takes (`lpjmlfit.js:51`). Saturation vapour pressure by **Goff–Gratch**, then
+
+```
+rh  = 0.263 · 1013.25 · humid / exp(17.67·T_C / (T_K − 29.65))      (capped at 1)
+vpd = 10^Z · (1 − rh) · 101324.6
+```
+
+with `T_K = T_C + 273.16` (the C's own constant — note it is 273.16, not 273.15) and `humid` the
+**specific** humidity in kg/kg. Used by the ADR-0110 drought-stress accumulator, which divides it by
+1000 (`tree/waterstress_tree.c:34`).
+
+⚠ `humid = 0` (the [`DailyForcing`](@ref) default, meaning "not supplied") yields `rh = 0` ⇒ the largest
+possible VPD. That is deliberately loud rather than silently mild: never run the drought hazard on a
+forcing whose humidity was never plumbed through.
+"""
+function getvpd(temp::Real, humid::Real)
+    T = float(promote_type(typeof(temp), typeof(humid)))
+    Ts = T(373.16)
+    tk = T(temp) + T(273.16)
+    Z = T(-7.90298) * (Ts / tk - one(T)) +
+        T(5.02808) * log(Ts / tk) / log(T(10)) +
+        T(-1.3816e-7) * (T(10)^(T(11.344)^(one(T) - tk / Ts)) - one(T)) +
+        T(8.1328e-3) * (T(10)^(-(T(3.49149)^(Ts / tk - one(T)))) - one(T))
+    rh = T(0.263) * T(1013.25) * T(humid) / exp(T(17.67) * T(temp) / (tk - T(29.65)))
+    rh > one(T) && (rh = one(T))
+    return T(10)^Z * (one(T) - rh) * T(101324.6)
 end
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -826,6 +898,121 @@ struct SoilColumn{T <: Real}
     soildepth::Vector{T}    # per-layer thickness, mm (retained for D95 rooting-depth diagnostics; see `stand_structure_tof`)
 end
 
+# ── PER-TREE ROOT PROFILES (ADR 0110) ────────────────────────────────────────────────────────────────
+# The C gives every individual its OWN root profile — `pft->beta_root` is set per individual from that
+# individual's own sampled `D95max` (`tree/new_tree.c:229-230`, always taken since `"isD95max": true`),
+# and `getrootdist` is called per individual, every day. Component S already predicts and validates
+# `D95max`; until ADR 0110 nothing consumed it and every individual shared one cell-average profile.
+#
+# ⚠ Both functions run ONCE PER YEAR (traits are immutable after establishment and size advances
+# annually), so the daily loop — and the Enzyme reverse path through it — sees the resulting profile as a
+# CONSTANT. Nothing here is on the differentiated path.
+
+"""
+    betaroot_from_d95max(d95max_cm, bottom_cm; xtol=1e-4, maxiter=60) -> β
+
+Port of the C's `soil/getbetaroot.c`: solve `(1 − β^D95) / (1 − β^bottom) = 0.95` for the Jackson
+profile parameter β by bisection on `[0, 0.9999]`. `d95max_cm` is the individual's sampled rooting-depth
+trait and `bottom_cm` the soil column's full depth, both in **cm** (the C converts its mm `layerbound`
+with `*0.1`). The C uses `xtol = 1e-4` and 20 iterations (`getbetaroot.c:19,38`); the default 60 here
+converges to machine tolerance and is a strict refinement — β is only ever used to build a profile that
+is then renormalized, so a tighter root is never less faithful.
+"""
+function betaroot_from_d95max(d95max::Real, bottom::Real; xtol = 1.0e-4, maxiter::Int = 60)
+    T = float(promote_type(typeof(d95max), typeof(bottom)))
+    d95 = T(d95max)
+    bot = T(bottom)
+    (d95 <= 0 || bot <= 0 || d95 >= bot) && return T(0.9999)   # degenerate ⇒ effectively uniform-to-bottom
+    f(β) = (one(T) - β^d95) / (one(T) - β^bot) - T(0.95)
+    lo, hi = T(1.0e-6), T(0.9999)
+    flo = f(lo)
+    for _ in 1:maxiter
+        mid = (lo + hi) / 2
+        fm = f(mid)
+        if (fm < 0) == (flo < 0)
+            lo, flo = mid, fm
+        else
+            hi = mid
+        end
+        (hi - lo) < xtol && break
+    end
+    return (lo + hi) / 2
+end
+
+"""
+    jackson_rootdist(β, soildepth, rootdepth_mm) -> Vector
+
+Port of the C's `lpj/getrootdist.c:27-47`: the Jackson et al. (1996) asymptotic root profile
+`rootdist[l] ∝ β^(z_{l-1}/10) − β^(z_l/10)` (mm→cm via `/10`), **renormalized to the deepest layer this
+individual actually reaches**. `rootdepth_mm` is the individual's realized rooting depth
+(`tree/allocation_tree.c:152` `getrootdepth(height, k_root, logistic)`), which grows with the tree — so
+small trees genuinely root shallower than large ones even at equal `D95max`.
+
+Layers below `rootdepth` get exactly zero, and the profile sums to 1 over the reached layers. The C's
+count `num_layer_new` is capped at `BOTTOMLAYER-1`, reproduced here as `length(soildepth)-1`, so the
+deepest layer is never the normalization bottom.
+
+⚠ A profile that does not sum to 1 is silently physical in F_diff — the water supply scales linearly
+with `sum(rootdist)` (`_transpire_total`, and ADR 0050's gotcha). This function always returns a
+normalized profile; the caller must not rescale it.
+"""
+function jackson_rootdist(β::Real, soildepth::AbstractVector, rootdepth::Real)
+    T = float(promote_type(typeof(β), eltype(soildepth), typeof(rootdepth)))
+    N = length(soildepth)
+    rd = zeros(T, N)
+    b = min(T(β), T(0.9999))                       # the C's `if (beta==1.000) beta = 0.9999`
+    lb = cumsum(convert.(T, soildepth))            # layer LOWER boundaries, mm
+    nmax = N - 1                                   # the C's BOTTOMLAYER-1 cap
+    last = 0
+    for l in 1:nmax
+        convert(T, rootdepth) > lb[l] && (last = l)
+    end
+    last = max(last, 1)                            # a sapling still roots in layer 1
+    total = one(T) - b^(lb[last] / 10)
+    total <= zero(T) && (rd[1] = one(T); return rd)
+    rd[1] = (one(T) - b^(lb[1] / 10)) / total
+    for l in 2:last
+        rd[l] = (b^(lb[l - 1] / 10) - b^(lb[l] / 10)) / total
+    end
+    return rd
+end
+
+"""
+    per_tree_rootdists(pools, soil) -> Vector{Vector} | nothing
+
+Build one root profile per individual from its own `TreePools.d95max` and its own current `height`, for
+[`individual_from_pools`](@ref). Returns `nothing` when **no** individual carries a rooting trait
+(`d95max <= 0`), which is the pre-ADR-0110 state and keeps the shared-profile path byte-identical.
+
+Individuals without a trait (`d95max <= 0`, e.g. grass — the C's `grass/new_grass.c:40,42` gives grass a
+fixed full-depth profile, and the C's `ind` writer zeroes tree fields on grass rows) get an empty profile
+and fall back to the shared `soil.rootdist` in [`daily_step_canopy`](@ref).
+
+Realized rooting depth follows the C's logistic root model (`tree/getrootdepth.c:34-35`,
+`"root_model": "logistic"`): `S/(1 + exp(−k_root·S·h)·(S/h₀ − 1))·1000` mm with `S = 20`, `h₀ = 0.1`.
+`k_root` is drawn per individual in the C; F_diff has no per-tree `k_root`, so `k_root_default` is used
+for every tree — a documented simplification, NOT a faithful port of that second per-tree channel.
+"""
+function per_tree_rootdists(pools::AbstractVector, soil::SoilColumn{T}; k_root = 0.15) where {T}
+    any(p -> getfield(p, :d95max) > 0, pools) || return nothing
+    bottom_cm = sum(convert.(T, soil.soildepth)) / 10
+    S = T(20)
+    h0 = T(0.1)
+    out = Vector{Vector{T}}(undef, length(pools))
+    for (i, p) in enumerate(pools)
+        d95 = convert(T, p.d95max)
+        if d95 <= 0
+            out[i] = T[]                                    # no trait ⇒ shared profile
+            continue
+        end
+        h = max(convert(T, p.height), T(1.0e-6))
+        rdepth = S / (one(T) + exp(-T(k_root) * S * h) * (S / h0 - one(T))) * 1000   # mm
+        β = betaroot_from_d95max(d95, bottom_cm)
+        out[i] = jackson_rootdist(β, soil.soildepth, rdepth)
+    end
+    return out
+end
+
 """
     FDiffStateML{T}
 
@@ -895,17 +1082,37 @@ end
 # aggregates the C's per-individual `wscal_mean` UNWEIGHTED over living tree stems
 # (`build_slow_runtime_table.py:424`), and the two coincide wherever the `min(...,1)` cap binds — which at
 # Hainich is almost every day. `smoothmin` (not `min`) keeps the path AD-safe.
-function _wscal_leafon(w::WaterParams{TW}, inds, eeq::TE, wr::TR, gp_leafon, fpc_plain) where {TW, TE, TR}
+#
+# ⚠ ADR 0110 UPDATES THE PARENTHETICAL ABOVE. "`wr` … stand-level once F_diff's shared community root
+# profile is used (ADR 0050)" was true only while every individual shared one profile. With
+# `per_tree_roots` on, `wr_ind[ii]` is THIS individual's own root-weighted moisture, so `wscal` becomes
+# genuinely per-tree — which is the whole point: the C's `pft->wscal` is per-individual, it is
+# ORDER-INDEPENDENT (built from the UNCORRECTED supply at `water_stressed.c:130-140`, before the
+# permuted cap), and it is what `tree/waterstress_tree.c` integrates into the drought-death hazard.
+# `out`, when given, receives the per-individual values for that hazard (Phase 2); the returned scalar
+# is unchanged in meaning and byte-identical when `wr_ind === nothing`.
+function _wscal_leafon(
+        w::WaterParams{TW}, inds, eeq::TE, wr::TR, gp_leafon, fpc_plain;
+        wr_ind = nothing, out = nothing,
+    ) where {TW, TE, TR}
     T = promote_type(TW, TE, TR)
     # `water_stressed.c:130` — no demand ⇒ UNSTRESSED (this is the branch F_diff previously scored as 0)
-    (eeq <= zero(eeq) || gp_leafon <= zero(gp_leafon) || fpc_plain <= zero(fpc_plain)) && return one(T)
+    if eeq <= zero(eeq) || gp_leafon <= zero(gp_leafon) || fpc_plain <= zero(fpc_plain)
+        out === nothing || fill!(out, one(T))
+        return one(T)
+    end
     demand_leafon = eeq * w.ALPHAM / (one(T) + w.GM * w.ALPHAM / gp_leafon)
-    demand_leafon <= zero(demand_leafon) && return one(T)
+    if demand_leafon <= zero(demand_leafon)
+        out === nothing || fill!(out, one(T))
+        return one(T)
+    end
     acc = zero(T)
     wsum = zero(T)
-    for ind in inds
+    for (ii, ind) in enumerate(inds)
         fpc_i = convert(T, ind.fpc)
-        ws_i = smoothmin(one(T), convert(T, ind.emax) * wr / demand_leafon, w.βwscal)
+        wr_i = wr_ind === nothing ? wr : convert(T, wr_ind[ii])   # ADR 0110
+        ws_i = smoothmin(one(T), convert(T, ind.emax) * wr_i / demand_leafon, w.βwscal)
+        out === nothing || (out[ii] = ws_i)
         acc += ws_i * fpc_i
         wsum += fpc_i
     end
@@ -1438,6 +1645,12 @@ struct Individual{T <: Real}
     is_grass::Bool
 end
 _wt(::Individual{T}) where {T} = T
+# ⚠ ADR 0110: the per-individual root profile is deliberately NOT a field here. It was, briefly, and a
+# `Vector{T}` inside this struct made the Enzyme reverse pass abort the whole test process with SIGABRT
+# (no Julia error — a bare LLVM-level abort, right after the grass Enzyme training item). `Individual` is
+# differentiated through; a heap-allocated field in it is exactly the AD hazard
+# `docs/water_supply_perpft_design.md` §4.3 warned about. The profiles now travel as a SEPARATE
+# `rootdists` argument, which Enzyme sees as constant data.
 
 # Backward-compatible constructor (pre-`c_sapwood_bg`): fills the below-ground root-sapwood pool with 0, so
 # every existing 16-arg call site is byte-identical. Seed the pool with the explicit 17-arg constructor.
@@ -1482,6 +1695,23 @@ function _transpire_total(w::AbstractVector{T}, whcs, rootdist, wr, transp_tot, 
     return (wnew, actual)
 end
 
+# ── ADR 0110: withdraw an ALREADY per-layer-resolved demand from the shared column ────────────────
+# The per-tree path builds `want[l] = Σ_i t_i·rootdist_i[l]·rel[l]/wr_i` (optionally with the C's
+# order-free FPC-share cap already applied per tree) inside the individual loop, so the only thing left
+# here is the shared column's own per-layer availability clamp — the C's `water_stressed.c:269-271`
+# `if (aet_layer[l] > w[l]*whcs[l]) aet_layer[l] = w[l]*whcs[l]`. Order-free: `want` is a plain sum.
+function _transpire_layers(w::AbstractVector{T}, want::AbstractVector, βw) where {T}
+    N = length(w)
+    wnew = similar(w)
+    actual = zero(T)
+    for l in 1:N
+        take = smoothmin(convert(T, want[l]), w[l], βw)
+        wnew[l] = w[l] - take
+        actual += take
+    end
+    return (wnew, actual)
+end
+
 """
     daily_step_canopy(p, inds, soil, st, f; phen=1.0, n_top1m=3) -> (st′, fluxes)
 
@@ -1506,7 +1736,8 @@ the per-individual daily NPP vector, whose annual sum is each individual's `bm_i
 """
 function daily_step_canopy(
         p::FDiffParams, inds::AbstractVector{<:Individual}, soil::SoilColumn, st::FDiffStateML,
-        f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing, hooks::FluxHooks = _NO_HOOKS
+        f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing, hooks::FluxHooks = _NO_HOOKS,
+        rootdists = nothing,
     )
     T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
     # `phen` is EITHER a single patch-wide scalar (every committed baseline + the Enzyme trainer pass one
@@ -1550,6 +1781,30 @@ function daily_step_canopy(
     wr = zero(T)
     for l in 1:N
         wr += convert(T, soil.rootdist[l]) * rel1[l]
+    end
+    # ADR 0110: PER-INDIVIDUAL root-weighted moisture. The C computes `wr` inside its per-individual loop
+    # from that individual's own `rootdist_n` (`lpj/water_stressed.c:87-100`), and it is ORDER-INDEPENDENT
+    # (it reads only the frozen `soil.w[]`). Off, or for an individual with no profile (grass, or any
+    # pre-0110 `Individual`), `wr_i ≡ wr` ⇒ byte-identical. `wr` itself stays the shared value everywhere
+    # else (the `FluxHooks` feature vector, the fallback), so hooks-on runs are unchanged too.
+    per_tree = w.per_tree_roots && rootdists !== nothing
+    wr_ind = if per_tree
+        v = Vector{T}(undef, length(inds))
+        for ii in eachindex(inds)
+            rdi = rootdists[ii]
+            if isempty(rdi)
+                v[ii] = wr                       # no rooting trait (grass) ⇒ the shared profile
+            else
+                acc = zero(T)
+                for l in 1:N
+                    acc += convert(T, rdi[l]) * rel1[l]
+                end
+                v[ii] = acc
+            end
+        end
+        v
+    else
+        nothing
     end
 
     par = 0.5 * w.dayseconds * f.swdown
@@ -1621,6 +1876,9 @@ function daily_step_canopy(
     gpp_tot = zero(T); npp_tot = zero(T); transp_demand_tot = zero(T); fapar_tot = zero(T)
     sup_acc = zero(T); dem_acc = zero(T)        # fpc-weighted supply/demand → stand water scalar (phenology)
     npp_inds = Vector{T}(undef, length(inds))   # per-individual daily NPP (per-m², patch basis) → bm_inc
+    # ADR 0110: per-layer withdrawal accumulator, allocated ONLY on the per-tree path (off ⇒ `nothing` ⇒
+    # the scalar `transp_demand_tot` path below is untouched and byte-identical).
+    want_layer = per_tree ? zeros(T, N) : nothing
     for (ii, ind) in enumerate(inds)
         phi = convert(T, _phen_at(phen, ii))
         fpc_i = convert(T, ind.fpc) * phi
@@ -1629,7 +1887,8 @@ function daily_step_canopy(
         tsi = temp_stress(ind.tstress, f.temp, dl)
         vms = vm_scales === nothing ? one(T) : vm_scales[ii]
         (_, _, vm, _) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar, dl; comp_vm = true, vm_scale = vms)
-        supply_i = convert(T, ind.emax) * wr * phi
+        wr_i = wr_ind === nothing ? wr : wr_ind[ii]      # ADR 0110: this tree's own root-weighted moisture
+        supply_i = convert(T, ind.emax) * wr_i * phi
         # wet-canopy demand reduction (1 − wet); water_stressed.c re-caps wet at 0.99
         (wet_i, _) = _wet_interc(convert(T, ind.intc), convert(T, ind.lai), phi, convert(T, ind.fpc), eeq, rain, w.α_PT)
         wet_dem = smoothmin(wet_i, T(0.99), w.βw)
@@ -1665,7 +1924,26 @@ function daily_step_canopy(
         gpp_tot += gpp_i
         fapar_tot += fpar_i
         # transpiration: min(supply, demand_stand)·fpc (water_stressed.c:153 after the per-layer sum)
-        transp_demand_tot += smoothmin(supply_i, demand, w.βtransp) * fpc_i
+        t_i = smoothmin(supply_i, demand, w.βtransp) * fpc_i
+        transp_demand_tot += t_i
+        if want_layer !== nothing
+            # ADR 0110: distribute THIS tree's transpiration down ITS OWN profile — the C's
+            # `aet·rootdist_n[l]·trf[l]` with `aet = min(supply,demand)/wr·fpc` (`water_stressed.c:266`).
+            # Optionally apply the C's ORDER-FREE cap (i) (`:159-161`): this tree may not draw more from a
+            # layer than its own FPC share of that layer's water. It depends only on this tree and the
+            # frozen `w1`, so this is a plain per-(tree,layer) `smoothmin` — NOT a loop-carried
+            # read-modify-write, and NOT the order-dependent residue cap. `want_layer` is a pure
+            # accumulation (a vectorized `+=`), so no iteration changes another's result.
+            rdi = isempty(rootdists[ii]) ? soil.rootdist : rootdists[ii]
+            share = t_i / (wr_i + T(1.0e-12))
+            for l in 1:N
+                c = share * convert(T, rdi[l]) * rel1[l]
+                if w.per_tree_fpc_cap
+                    c = smoothmin(c, fpc_i * w1[l], w.βw)
+                end
+                want_layer[l] += c
+            end
+        end
         # maintenance respiration is PER-M² (patch basis): the C multiplies the per-individual sapwood/
         # root carbon by `nind` (`npp_tree.c:51` `mresp = nind·(sapwood·… + root·…)`), consistent with
         # the per-m² `gpp_i`/`rd` here — so `bm_inc = Σ npp_i` accumulates on the same patch basis the
@@ -1679,7 +1957,9 @@ function daily_step_canopy(
     end
 
     # ── shared soil: withdraw the total transpiration demand (per-layer capped), then soil evap ──
-    (w2, transp) = _transpire_total(w1, convert.(T, soil.whcs), convert.(T, soil.rootdist), wr, transp_demand_tot, w.βw)
+    (w2, transp) = want_layer === nothing ?
+        _transpire_total(w1, convert.(T, soil.whcs), convert.(T, soil.rootdist), wr, transp_demand_tot, w.βw) :
+        _transpire_layers(w1, want_layer, w.βw)     # ADR 0110: each tree already drew down its own profile
     cover = smoothmin(fpc_tot, one(T), w.βevap)            # total canopy cover (≤ 1)
     (w3, soil_evap) = _soil_evap(w2, convert.(T, soil.whcs), convert.(T, soil.frac_evap), eeq, w.α_PT, cover, w.βevap, w.βw)
 
@@ -1691,8 +1971,11 @@ function daily_step_canopy(
     # stand water scalar — feeds next day's GSI water phenology, the annual `wscal_mean` that drives the
     # leaf:root allocation `lmtorm`, and Component S's `water_stress` feature. Default: the realized
     # `min(1, Σsupply·fpc / Σdemand·fpc)`. Opt-in `wscal_leafon`: the C's POTENTIAL leaf-on index (ADR 0051).
+    # ADR 0110: on the per-tree path also emit each individual's OWN water scalar (`wscal_ind`) — the
+    # quantity `tree/waterstress_tree.c` gates against that individual's own `minwscal`. `nothing` off.
+    wscal_ind = per_tree && w.wscal_leafon ? Vector{T}(undef, length(inds)) : nothing
     wscal = w.wscal_leafon ?
-        _wscal_leafon(w, inds, eeq, wr, gp_leafon, fpc_plain) :
+        _wscal_leafon(w, inds, eeq, wr, gp_leafon, fpc_plain; wr_ind = wr_ind, out = wscal_ind) :
         smoothmin(one(T), sup_acc / (dem_acc + T(1.0e-9)), w.βwscal)
     st′ = FDiffStateML{T}(w3, convert(T, snowpack′))
     fluxes = (
@@ -1701,6 +1984,9 @@ function daily_step_canopy(
         runoff = convert(T, runoff), rootmoist = convert(T, rootmoist),
         fapar = convert(T, fapar_tot), fpc = convert(T, fpc_tot), wscal = convert(T, wscal),
         npp_ind = npp_inds,       # per-individual daily NPP (per-m², patch basis) — the flux-then-integrate bm_inc source
+        wscal_ind = wscal_ind,    # ADR 0110: per-individual water scalar (`nothing` unless per_tree_roots);
+        # the daily quantity `waterstress_tree.c` gates against each tree's own `minwscal`
+        wr_ind = wr_ind,          # ADR 0110: per-individual root-weighted soil moisture (`nothing` off)
     )
     return (st′, fluxes)
 end
@@ -1784,7 +2070,7 @@ function rollout_daily_canopy(
         p::FDiffParams, st0::FDiffStateML, inds::AbstractVector{<:Individual}, soil::SoilColumn,
         forcings; phens = nothing, n_top1m::Int = 3, eeqs = nothing,
         phen_params = nothing, phen_state = nothing, pft_ids = nothing, hooks::FluxHooks = _NO_HOOKS,
-        phen_params_by_pft = nothing, grass_lf_mode::Symbol = :linear
+        phen_params_by_pft = nothing, grass_lf_mode::Symbol = :linear, rootdists = nothing   # ADR 0110
     )
     T = promote_type(_wt(p), _wt(st0), _wt(soil), _wt(first(forcings)), isempty(inds) ? Float64 : _wt(first(inds)))
     st = FDiffStateML{T}(convert.(T, st0.w), convert(T, st0.snowpack))
@@ -1804,7 +2090,7 @@ function rollout_daily_canopy(
     water_avail = one(T)                          # previous day's stand water scalar (moist cold-start)
     ph1 = phens === nothing ? one(T) : convert(T, phens[1])
     ee1 = eeqs === nothing ? nothing : eeqs[1]
-    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1, hooks = hooks)[2])}()
+    days = Vector{typeof(daily_step_canopy(p, inds, soil, st, first(forcings); phen = ph1, n_top1m = n_top1m, eeq_ext = ee1, hooks = hooks, rootdists = rootdists)[2])}()
     sizehint!(days, length(forcings))
     for (i, f) in enumerate(forcings)
         # phenology: supplied crutch (phens) OR self-computed — per-PFT (per-individual vector) or the
@@ -1819,7 +2105,7 @@ function rollout_daily_canopy(
             ph
         end
         ee = eeqs === nothing ? nothing : eeqs[i]
-        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = phen_arg, n_top1m = n_top1m, eeq_ext = ee, hooks = hooks)
+        (st, fl) = daily_step_canopy(p, inds, soil, st, f; phen = phen_arg, n_top1m = n_top1m, eeq_ext = ee, hooks = hooks, rootdists = rootdists)
         water_avail = fl.wscal                    # today's water status → tomorrow's water phenology
         if per_pft                                # update lag-1 grass light fraction from this day's tree leaf display
             if grass_lf_mode === :exp
@@ -1940,9 +2226,30 @@ struct TreePools{T <: Real}
     nind::T
     sla::T
     wooddens::T
+    d95max::T                     # rooting-depth trait, cm (the C's `Pfttree.D95max`, sampled per recruit
+    # in `tree/new_tree.c:170-202` and used at `:229-230` to set that individual's
+    # OWN `beta_root`). Component S predicts and validates this axis; ADR 0110 gives
+    # it a consumer. **0 = UNSET** ⇒ that individual falls back to the shared cell
+    # profile (grass always, since the C zeroes tree fields on grass rows; and every
+    # pre-ADR-0110 call site ⇒ byte-identical).
+    minwscal::T                   # drought tolerance, – (the C's `pft->minwscal`). Sets that individual's
+    # OWN drought-death threshold `mort_water_res − minwscal`
+    # (`tree/waterstress_tree.c:32`). Also sampled + validated by S; consumed by the
+    # Phase-2 hazard. **0 = UNSET** (safe: the C's per-PFT intervals start at 0.025).
     is_grass::Bool
 end
 _wt(::TreePools{T}) where {T} = T
+
+# Backward-compatible constructor (pre-`d95max`/`minwscal`, ADR 0110): leaves both traits UNSET (0), so the
+# individual keeps the shared cell root profile and carries no drought threshold — every existing 11-arg
+# call site is byte-identical. Pass them explicitly with the 13-arg constructor.
+TreePools{T}(
+    leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, height, crownarea, nind, sla, wooddens,
+    is_grass::Bool,
+) where {T <: Real} = TreePools{T}(
+    leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, height, crownarea, nind, sla, wooddens,
+    zero(T), zero(T), is_grass,
+)
 
 # Backward-compatible constructor (pre-`sapwood_bg_c`): fills the below-ground sapwood pool with 0, so every
 # existing 10-arg call site is byte-identical. Seed the pool with the explicit 11-arg constructor.
@@ -2137,7 +2444,14 @@ function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tre
     crownarea_new = height_new > 0 ? min(allom.allom1 * (height_new / allom2)^(allom.kpr / allom3), convert(T, allom.crownarea_max)) : zero(T)
     # carry the below-ground root-sapwood pool through growth unchanged (its prognostic C_LATERAL growth +
     # carbon-debt is the deferred design-§5.4 step; static-seed carry is byte-identical when the pool is 0).
-    return TreePools{T}(lm, sm, hm, rm, tree.sapwood_bg_c, height_new, crownarea_new, convert(T, tree.nind), sla, wd, tree.is_grass)
+    # ADR 0110: carry the rooting-depth and drought-tolerance traits through growth. They are IMMUTABLE
+    # after establishment in the C (`new_tree.c` sets them once), so growth must not touch them — but it
+    # must not DROP them either: the 11-arg constructor would silently reset both to the unset 0 and
+    # delete the per-tree rooting channel one year after establishment.
+    return TreePools{T}(
+        lm, sm, hm, rm, tree.sapwood_bg_c, height_new, crownarea_new, convert(T, tree.nind), sla, wd,
+        tree.d95max, tree.minwscal, tree.is_grass,
+    )
 end
 
 """
@@ -2405,6 +2719,29 @@ function individual_from_pools(tmpl::Individual{T}, tree::TreePools{T}, allom::A
 end
 
 """
+    individuals_from_pools(tmpls, pools, allom, fpars, soil; per_tree=false) -> Vector{Individual}
+
+Rebuild the whole per-individual roster for a year, returning `(inds, rootdists)`. The ONE place the
+per-tree root profiles ([`per_tree_rootdists`](@ref)) are built, so every annual-rebuild call site behaves
+identically and a new one cannot silently omit them. `per_tree=false` (the default, and what every
+pre-ADR-0110 call site gets) returns `rootdists === nothing` ⇒ byte-identical.
+
+`rootdists` is deliberately returned ALONGSIDE the roster rather than stored inside `Individual`: a
+`Vector` field in that struct aborts the Enzyme reverse pass (see the note on `Individual`). Pass it to
+[`daily_step_canopy`](@ref) as the `rootdists` keyword, where it is constant data.
+
+Called once a year, so the profile construction — including the `betaroot_from_d95max` bisection — is
+outside the daily loop and off the Enzyme reverse path.
+"""
+function individuals_from_pools(
+        tmpls, pools::AbstractVector, allom::Allometry.TreeAllometry, fpars, soil::SoilColumn{T};
+        per_tree::Bool = false,
+    ) where {T}
+    inds = Individual{T}[individual_from_pools(tmpls[i], pools[i], allom, fpars[i]) for i in eachindex(pools)]
+    return (inds, per_tree ? per_tree_rootdists(pools, soil) : nothing)
+end
+
+"""
     rollout_canopy_years(p, alloc, allom, st0, trees0, tmpls, soil, yearly_forcings;
                          phen_params=nothing, nlayers=60, n_top1m=3) -> (trees, st, pools_by_year, annual)
 
@@ -2504,10 +2841,11 @@ function rollout_canopy_years(
     annual = NamedTuple[]
     for (yr, forc) in enumerate(yearly_forcings)
         fpars = _patch_fpars(trees, allom; nlayers = nlayers)
-        inds = Individual{T}[individual_from_pools(tmpls[i], trees[i], allom, fpars[i]) for i in 1:n]
+        (inds, rdists) = individuals_from_pools(tmpls, trees, allom, fpars, soil; per_tree = p.water.per_tree_roots)   # ADR 0110
         (st, days) = rollout_daily_canopy(
             p, st, inds, soil, forc; phen_params = phen_params, n_top1m = n_top1m, hooks = hooks,
             pft_ids = pids, grass_lf_mode = grass_lf_mode, phen_params_by_pft = phen_params_by_pft,
+            rootdists = rdists,   # ADR 0110 — rebuilt with the roster each year, constant within it
         )
         bm_perm2 = zeros(T, n)
         gpp_yr = zero(T); npp_yr = zero(T); wsum = zero(T)
