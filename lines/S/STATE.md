@@ -55,6 +55,17 @@ retention measurement (a perturbation *ratio*, so the canopy basis cancels out o
 restoring force, and `anchor` still removes it); the shipped opt-in anchor and its testitem; Sahel as a real
 defect; ADR 0056's verdict (M said do not flip, and this says do not flip).
 
+✅ **MERGED AND GREEN — nothing about ADR 0105 is outstanding.** Work sha `1a2ec7e2` merged to `main` as
+**`803c62e2`**; `format` green on the branch sha AND on main's own post-merge run. The full Julia matrix
+(`test (lts)` ✅, `test (1)` ✅, `test (macOS, lts)` ✅) ran and passed on the earlier branch sha `2a3b6fe2`,
+and `git diff 2a3b6fe2 HEAD -- src/ test/ ext/ Project.toml` is **empty**, so the Julia tree that went green
+is the one that landed. `test (pre)` is red with the documented `ScopedValues` prerelease `MethodError` at
+LOAD time — confirmed from the job log, not waved away.
+⚠ **CI fired the whole Julia matrix on a diff of `scripts/*.jl` + Markdown.** Not a surprise and not a bug:
+GitHub filters on the **push span**, which after the mandated rebase contained line E's `src/components/energy.jl`
+default flip. The `repo-commit` skill already documents this (line M hit it the same day) — predict the gate
+set from `git diff --name-only <old-remote-tip>..HEAD`, not from `origin/main...HEAD`.
+
 ### DO THIS NEXT, IN THIS ORDER
 
 **A. THE RESIDUAL IS A COUPLING / F-FIDELITY ITEM AND IT BELONGS TO LINE M — raise it with the measurement
