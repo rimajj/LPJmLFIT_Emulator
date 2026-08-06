@@ -108,6 +108,17 @@ annual points (the probe's own header says so) would be measuring noise.
 **paired** (same 25 patches, same per-member seeds, same forcing), so the arm-to-arm differences are far
 better determined than the between-member spread (`sd/mean` 0.38–1.02) would suggest for any single arm.
 
+**The verdict survives line E's energy default flip, which landed on `main` between the two runs.** ADR 0075
+made `SEBParams.enable_two_layer = true` the default at 10:04 on the same day; jobs 1717190/1717247 predate
+it. Re-run on the rebased tree (**job 1717307**), REPORTS 8 and 9 are identical **to every printed digit** —
+every terminal ratio, every clause-1 score, the whole verdict table, and `mean water_stress` to 4 dp.
+⚠ **And the null is meaningful because the new path demonstrably executed** (ADR 0048's rule): the carbon
+handoff residuals *do* move, at the 1e-12 level (e.g. `boreal_siberia` 1.080e-12 → 5.684e-13,
+`mediterranean_iberia` 9.663e-13 → 1.876e-12), so the run is not accidentally identical — the ground-heat
+repartition simply does not reach the annual demography at the precision reported here. This is a
+per-CONFIGURATION re-verification, not a per-protocol one (ADR 0100's lesson), and it is what makes the
+numbers above quotable against today's `main` rather than against yesterday's.
+
 ## 3. Why the anchor helps in three cells and hurts in two — the mechanism, which is now unified
 
 The anchor does exactly what ADR 0103 built it to do: it lands the stand on the count model's **absolute**

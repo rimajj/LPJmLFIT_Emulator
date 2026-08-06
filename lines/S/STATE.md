@@ -44,6 +44,12 @@ rows, 4 minutes): one-step bias **−0.0014** stems/patch/yr held-out-cell OOS o
 +4.2 / −5.9 / +10.5 / −0.0 / +0.2 % against a coupled +35 / +15 / +38 / −48 / +4 % — wrong size in every
 cell, wrong sign in two. This was the #1 remaining item; it is measured empty on its own terms.
 
+**6b. THE VERDICT SURVIVES LINE E's ENERGY DEFAULT FLIP (ADR 0075), which landed on `main` between the
+runs.** Re-run on the rebased tree (job **1717307**): REPORTS 8/9 identical **to every printed digit**,
+`mean water_stress` to 4 dp. The null is meaningful because the new path demonstrably fired — the carbon
+handoff residuals DO move at the 1e-12 level (boreal 1.080e-12 → 5.684e-13). Per-CONFIGURATION
+re-verification, not per-protocol (ADR 0100's lesson).
+
 **7. WHAT IS NOT WITHDRAWN** (ADR 0105 §6 — read it before throwing out the family): ADR 0103 §2's 300-year
 retention measurement (a perturbation *ratio*, so the canopy basis cancels out of it — there IS no
 restoring force, and `anchor` still removes it); the shipped opt-in anchor and its testitem; Sahel as a real
