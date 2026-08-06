@@ -164,6 +164,14 @@ The ▶ ACTION block S wrote below (still present, now historical) asked M to ru
 5-cell oracle and decide a DEFAULT. **Done — jobs 1716489 + 1716493 (reproduced exactly), verdict in
 `docs/decisions/0056-*.md`, reply written into `lines/S/STATE.md` where S will read it.**
 
+✅ **SHIPPED AND GREEN.** Work sha `85db232d`: `format`, `test (lts)`, `test (1)`, `test (macOS, lts)` all
+success. (The full Julia matrix ran even though the commit touches no `src/`/`test/` — the push diff spans
+the rebase, which carried S's `slow.jl` + anchor testitem in. `test (pre)` red for the **diagnosed**
+prerelease reason: `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool},
+::Bool)` at LOAD time, confirmed from the job log, byte-identical to `b9eee1fd`/`12bf126b`.) Skill follow-up
+`d266fb86` correctly ran nothing (no `.jl`, ADR 0090). Merged to `main` as **`9835fd9b`**; main's own
+`format` is **success** and no other gate triggered there. **Nothing about ADR 0056 is outstanding.**
+
 **The criterion FAILED: do not flip, and do NOT tune `a`** — but read *why*, because the lazy reading is
 wrong in a way that matters if S comes back on it:
 - **The anchor fires perfectly.** Density × `patch_area` / target = **1.001 in all 5 cells** at `a = 0.5`,
