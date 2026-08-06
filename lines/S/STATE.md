@@ -104,7 +104,40 @@ the C's moves **0.90×** (boreal), 1.27× vs 1.00× (Hainich), 0.71× vs 1.23× 
 **S cannot and should not fix this.** Write it into `lines/M/STATE.md` as an integration point with the
 numbers, then stop.
 
-**B. S2 CONDITIONING is once again the top S-OWNED item — by ELIMINATION, not by promotion.** ADR 0102
+**B★ S2 — THE MOISTURE CONDITIONING. THE DATA LAYER IS BUILT, VALIDATED AND GLOBAL. WIRE IT, RETRAIN,
+RE-PIN. This is now THE critical path (ADR 0106 §5): it is the only channel through which a warming signal
+can reach the recruit model, and the acceptance criterion is a climate-change criterion.**
+
+**DONE (2026-08-06):** the six moisture descriptors are built **per (Cell, Year)** on a trailing 20-year
+window for **both** scenarios, **all 67 420 cells** — `MOISTURE=1 SCENARIO=… scripts/build_transient_boundary.py`
+(⚠ `export` MOISTURE, it is not in the wrapper's forward list). Tables:
+`/p/tmp/jamirp/emulator_global/tables/cell_year_env_{historic_w20,ssp370_w20}.parquet`.
+Jobs 1718339 / 1718347. **The signal is real:** global mean VPD **+20.4 %**, PET +4.9 %, humidity +19.9 %
+from 2019 to 2100; per cell the values take 20 / 81 distinct values where they took **1**.
+**Formulas ported verbatim from `climclusterpy/features/diagnostics.py` and GATED** on reproducing the frozen
+per-cell basis (a W=20 window ending 2019 IS the static 2000-2019 climatology) — **all six pass at 1e-7**.
+The gate caught a real ~0.3 % bug in 4 of 6 columns (an "annual mean" must be DAY-weighted, not a mean of 12
+monthly means); full write-up in the `slow-drf-pipeline` skill.
+
+**NOT DONE, in order — none of it is started:**
+1. **Wire it.** `build_slow_runtime_table.py::_write_copula_table` still takes a per-`Cell` MEAN of the six
+   (`envt = … .group_by("Cell").agg(mean)`, ~line 325). Replace with a join on `["Cell","Year"]` against the
+   new tables — the ADR-0026 treatment the boundary pair already gets via `_boundary_source`. Keep it behind
+   the existing opt-in so the default output stays byte-identical.
+2. **Retrain BOTH artifacts** (count DRF + recruit copula), historic + ssp370 + pooled. Owner has
+   pre-authorised the cluster cost and said not to procrastinate on it.
+3. **Re-pin with line M** — an ADR-0023 **both-sides** change; version the artifact, never mutate in place.
+4. **Score against ADR 0106's criterion GLOBALLY** — all 54 020 tree-bearing cells, both scenarios AND the
+   response between them, 10 % on medians and on each reported quantile. The offline machinery for this
+   exists (`emulator-validation-figures`, K-fold by cell, per-cell maps); a 5-cell result is now only a screen.
+
+**B2. CO2 HAS NO OWNER AND NO PLAN, and it is the largest single gap (ADR 0106 §5 item 2).** CO2 is the
+constant 369 ppm in **every training row of every deployed artifact** (ADR 0004) ⇒ the emulator has **no CO2
+response at all**, and the criterion demands one. A CO2 response needs training rows in which CO2 varies,
+which the current ground-truth pair does not provide (409.63 ppm flat from 2020). **This may require a new
+run of the original model — an owner-level cost decision. Raise it explicitly; do not let it sit.**
+
+**B3. (superseded framing, kept for the audit trail) S2 was "the top S-owned item by ELIMINATION".** ADR 0102
 demoted it because an unanchored level "compounds without bound"; item 6 measures the compounding as
 bounded and small, so that reason is withdrawn. The specified form is unchanged and its honest target is
 still modest: the six moisture descriptors recomputed **per cell-year** rather than frozen at present-day

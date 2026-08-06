@@ -1181,3 +1181,45 @@ pooled one:** the pooled `b` is near zero because per-cell biases of both signs 
 ⚠ **Do not read a large `mean rel` as a bias.** The probe prints `mean((pred−y)/max(y,1))` = +1.6 % beside
 an absolute `b` of −0.0014. Counts are small and right-skewed, so the ratio is dominated by rows with
 `y` ≈ 1. **The absolute bias is what compounds** — the recursion adds stems, not fractions.
+
+## Making a FROZEN per-cell conditioning column TRANSIENT (S2, ADR 0106) — and the gate that makes it safe
+
+The six moisture descriptors (`eco_diag_vpd_mean`, `eco_diag_pet_mean`, `eco_diag_p_pet_ratio`,
+`pr_cv_monthly`, `prec_mean`, `humid_mean`) are **per-cell constants** in `cell_year_feats.parquet` — one
+value per cell, identical in every year and in **both** scenarios — so **no warming signal can reach the
+recruit model through them.** Same for the boundary pair until ADR 0026 windowed it.
+
+**Run:** `MOISTURE=1 SCENARIO=historic|ssp370 OUT=<path> scripts/build_transient_boundary.py`
+(⚠ `MOISTURE` is not in `sbatch_python.sh`'s forward list — **`export` it**, CLAUDE.md §9). Emits
+`Cell, Year` + the two boundary columns + the six moisture ones on a trailing `WINDOW`-year climatology.
+Default (`MOISTURE` unset) is the byte-identical two-column output. Built: `cell_year_env_{historic_w20,
+ssp370_w20}.parquet`, all 67 420 cells, 2000–2019 / 2020–2100. Measured signal 2019→2100: VPD **+20.4 %**,
+PET +4.9 %, humidity +19.9 %.
+
+**THE GATE IS THE WHOLE SAFETY MECHANISM, and it is free.** A `W=20` window ending 2019 **is** the static
+2000–2019 climatology, so every column must reproduce the frozen per-cell value in `cell_year_feats` — the
+basis every deployed artifact was actually conditioned on. Port the formulas **verbatim** from
+`climclusterpy/features/diagnostics.py` (importable under conda `py311_new`; it is the authority) and let
+the gate prove it. A formula that is merely *reasonable* gives a column with the right name and the wrong
+meaning, which no coverage, finiteness or R² check can see (ADR 0023).
+
+Three traps it caught or would catch:
+
+- ⚠ **An "annual mean" must be DAY-WEIGHTED, not the mean of 12 monthly means.** Months are 28–31 days, so
+  the unweighted form is off by ~0.3 % — and it broke **four of six** columns (every one built from an annual
+  mean: `vpd_mean`, `pet_mean`, `p_pet_ratio`, `humid_mean`), while the columns that are monthly aggregates
+  passed at 1e-7. Use `np.average(monthly, axis=1, weights=DPM)`.
+- ⚠ **Precipitation is a monthly TOTAL, not a monthly mean** — a separate `monthly_sums_by_year`.
+- ⚠ **A pure RELATIVE gate is undefined for a column that legitimately reaches zero.** `eco_diag_vpd_mean`
+  is ~1e-4 kPa in 3 of 67 420 saturated cells against a median of 0.446, so float32 round-trip reads as a
+  2.6e-3 relative error while the **absolute** error over all cells peaks at 9.5e-07 kPa. Use a combined
+  abs+rel tolerance scaled by the column's own median. **Widen the metric only after fixing the real bug,
+  and only with the offending cells' magnitudes in hand** — otherwise this is indistinguishable from
+  tolerating a defect.
+- ⚠ **Cast to Float64 before any per-cell aggregation** of the reference: 4 of the 6 are Float32 in
+  `cell_year_feats` and polars accumulates a Float32 mean in Float32 (CLAUDE.md §4).
+
+**Still to do after the tables exist** (none of it is done): join the six on `["Cell","Year"]` in
+`build_slow_runtime_table.py::_write_copula_table` instead of the per-`Cell` mean (the ADR-0026 treatment
+the boundary pair already gets), retrain the count DRF **and** the copula, and re-pin with line M — an
+ADR-0023 **both-sides** change. Then score against ADR 0106's criterion globally, not on 5 cells.
