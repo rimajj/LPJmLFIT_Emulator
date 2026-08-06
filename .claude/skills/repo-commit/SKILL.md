@@ -231,6 +231,32 @@ Force a gate anyway — any workflow has `workflow_dispatch`:
 gh workflow run CI.yml --ref line/<X>        # or the Actions tab; gh may not be on PATH (see below)
 ```
 
+### ⚠ The table UNDER-predicts after a rebase: GitHub filters on the PUSH diff, not on `origin/main...HEAD`
+
+`git diff --name-only origin/main...HEAD` answers *"what did my line change relative to main?"* — but the
+`on: push: paths:` filter is evaluated against the **push event's** file set, i.e. **old remote tip → new
+tip**. After the mandated `git pull --rebase origin main`, that span includes **every commit the rebase
+carried in from main**, including other lines' `src/**` and `test/**` work. So a commit of your own that
+touches only `scripts/*.jl` + Markdown can still fire the **entire 4-job Julia matrix**
+(`[VERIFIED 2026-08-06]`, line M sha `85db232d`: predicted `format` only, got `format` + `test (lts)` +
+`test (1)` + `test (macOS, lts)`).
+
+Consequences, in both directions:
+
+- **Harmless but slow** — expect a ~10 min wait you did not budget for, on the first push after a rebase.
+- **It is not a false alarm, and a red one is still yours to read.** Those jobs test the merged tree you are
+  about to put on `main`, which is exactly the combination nobody else has run. Treat a failure as real
+  until the log says otherwise.
+- **The polling failure mode is the OPPOSITE of ADR 0090's.** 0090 warns about waiting for a gate that never
+  runs; this one is concluding "no gates, merge now" and pushing past a matrix that was in fact queued.
+  **Poll the sha you actually pushed** — and note that a *follow-up* commit pushed on top (e.g. a
+  `chore(skill):` capture with no `.jl`) has its own narrow push diff and correctly reports **no check-runs**,
+  so checking only the newest sha can make a green matrix look like it never happened.
+
+Cheap rule: after a rebase, ask for the gate set from the **push span**, not the merge-base —
+`git diff --name-only <old-remote-tip>..HEAD` (the old tip is what `git push` prints, and
+`git rev-parse origin/line/<X>` before you push).
+
 ### ⚠ The corollary that bites at SESSION END: your STATE.md refresh can ORPHAN the verdict
 
 The protocol **mandates** refreshing `lines/<X>/STATE.md` before the session ends (§handoff), and by the table
