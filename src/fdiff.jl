@@ -1386,8 +1386,15 @@ end
 # is the same-physics port; the light distribution + the stand aggregation are the only changes from
 # `daily_step_ml`. AD: ForwardDiff flows through the per-individual loop (fixed graph). Documented v1
 # simplifications: fixed (year-end) canopy structure with a daily phenology factor, sub-5 m saplings
-# absent from `ind`, per-individual root distribution approximated by the shared cell profile, and
-# interception/wet-canopy omitted (as in `daily_step_ml`).
+# absent from `ind`, and per-individual root distribution approximated by the shared cell profile (see
+# `docs/notes/water_supply_perpft_design.md` — the faithful per-individual supply is SCOPED/DEFERRED
+# because the C depletes layers in a daily-reshuffled random order under `-DPERMUTE`, which is neither
+# deterministic nor differentiable).
+# ⚠ CORRECTION (2026-08-06): this list used to end "and interception/wet-canopy omitted (as in
+# `daily_step_ml`)". That is STALE and it misled a docs pass into publishing it as a live limitation.
+# `daily_step_canopy` DOES model interception: `_wet_interc` runs per individual (:1533 for the
+# evaporated flux removed from infiltration, :1627 for the demand-reducing `wet`), and `interc` is a
+# term of the returned water-balance closure `precip = transp + evap + interc + runoff + Δ(Σw + snow)`.
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 """
     Individual{T}

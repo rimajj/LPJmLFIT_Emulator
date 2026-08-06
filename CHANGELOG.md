@@ -37,6 +37,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **`docs/README.md` + `docs/notes/README.md`** — a layout index for `docs/`: what each subdirectory is,
   which CI gate it triggers (most of `docs/` triggers **none**), and where a new document belongs.
 
+### Fixed
+- **The docs' Mermaid diagrams were never rendering — ALL of them, for months** (ADR 0091 amendment;
+  found by the owner opening the built site). Every diagram was embedded with ```` ```@eval ```` +
+  `Markdown.parse("```mermaid…")`, which reads correctly and produces a **grey code box of raw
+  `flowchart LR` text**. DocumenterMermaid converts a fence with an *expander* matching nodes of the
+  **parsed source AST** (order 7.9); an `@eval` block emits its output during that same expansion pass,
+  after the matcher walked the node, so the fence is never converted. Measured on the built site: **0**
+  `class="mermaid"` elements while DocumenterMermaid's `mermaid.esm.min.mjs` loader was injected on every
+  page — renderer present and idle. **Nothing caught it because Mermaid draws client-side, so a green
+  strict docs build is not evidence a diagram renders.** Fix: fences are now literal markdown inside
+  `<!-- BEGIN MERMAID <name> … -->` markers that `scripts/gen_diagrams.jl` rewrites, and the two pages
+  are `targets()` alongside the `.mmd`, so the staleness gate covers the embedded fences and page-vs-source
+  drift is impossible. This fixes all five previously-dead diagrams on `docs/src/diagrams.md` as well as
+  the new one. Verified on the rebuilt site: **5** mermaid elements on `diagrams.html`, **1** on
+  `explanation/dataflow.html`, **0** code-block-wrapped `flowchart` occurrences. The check
+  (`grep -c 'class="mermaid"' docs/build/<page>.html`) is now recorded in `CLAUDE.md` and the `julia-test`
+  skill next to the regeneration commands.
+
 ### Changed
 - **`docs/` reorganised (ADR 0091).** The ten loose engineering notes moved from the top level of `docs/`
   into `docs/notes/`; the general-audience LaTeX report moved to `docs/report/` and `docs/figs/` with it

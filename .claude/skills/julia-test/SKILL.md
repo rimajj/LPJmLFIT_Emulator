@@ -243,6 +243,28 @@ and `docs/src/generated/components.mmd` sat stale from the Phase-4 commit `77394
 failing. Still run `--check` locally when you touch `src/registry.jl` — it is far faster than a suite round
 trip — but the safety net is real now.
 
+⚠ **NEVER embed a mermaid diagram with an `@eval` block — it renders NOTHING, silently
+(`[VERIFIED 2026-08-06]`, ADR 0091 amendment).** `docs/src/diagrams.md` did exactly this for months:
+```@eval
+Markdown.parse("```mermaid\n" * read(f, String) * "\n```")
+```
+reads perfectly and produces a grey code box full of raw `flowchart LR …` text. DocumenterMermaid
+converts a fence via an **expander** (`Selectors.matcher(::MermaidExpander,…) = Documenter.iscode(node,
+"mermaid")`, order 7.9) that matches nodes of the **parsed source AST**; an `@eval` block emits its output
+*during that same expansion pass*, after the matcher walked the node, so the fence is never converted to a
+`MermaidBlock`. The tell: the built HTML has **zero** `class="mermaid"` elements while
+DocumenterMermaid's `mermaid.esm.min.mjs` loader IS injected on every page — renderer present, nothing
+marked for it. The strict docs build passes either way (Mermaid draws client-side, so Documenter never
+validates it), which is why this survived: **no gate catches an unrendered diagram.**
+Fix in use: the fence is LITERAL markdown inside `<!-- BEGIN MERMAID <name> … -->` / `<!-- END MERMAID
+<name> -->` markers that `gen_diagrams.jl` rewrites, with the pages themselves as `targets()` so the
+staleness gate covers them. **The only check that catches this is on the built HTML:**
+```bash
+grep -c 'class="mermaid"' docs/build/diagrams.html docs/build/explanation/dataflow.html   # must be > 0
+```
+Run that after ANY change to how a diagram is embedded. Also note the diagram JS comes from a **CDN**
+(jsdelivr), so a machine with no outbound internet shows a blank area even when the markup is right.
+
 **What you must regenerate, and when.** Three `.mmd` are generated: `dataflow.mmd` + `components.mmd` (from
 `COMPONENTS`/`FLUXES`) and `dataflow_full.mmd` (from `DATA_NODES`/`DATA_EDGES`/`STAGES` — the full data-flow
 graph). Rerun `gen_diagrams.jl` in the SAME commit whenever you change:

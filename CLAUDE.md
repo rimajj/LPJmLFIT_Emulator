@@ -191,6 +191,16 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   `test/testitems/diagram_registry_tests.jl` regenerates all three `.mmd` and byte-compares, so a stale
   diagram reds `CI`. It also fires on an `src/interface.jl` **field** change with no registry edit at all —
   the full diagram's edge labels are `fieldnames(T)`.
+- ⚠ **A GREEN DOCS BUILD IS NOT EVIDENCE THAT A DIAGRAM RENDERS (`[VERIFIED 2026-08-06]`, ADR 0091
+  amendment).** Every mermaid diagram in the docs was embedded via ```` ```@eval ```` +
+  `Markdown.parse("```mermaid…")` and **rendered as a raw grey code box for months** — on the pre-existing
+  `diagrams.md` too. DocumenterMermaid converts a fence with an **expander matching the parsed SOURCE AST**
+  (order 7.9); an `@eval` block emits its output during that same pass, too late to be matched. Mermaid
+  draws client-side, so the strict build validates nothing. Fences must be **literal markdown** inside the
+  `<!-- BEGIN MERMAID <name> … -->` markers `scripts/gen_diagrams.jl` rewrites (the pages are `targets()`,
+  so the staleness gate covers them). **The only check that catches it inspects the built HTML:**
+  `grep -c 'class="mermaid"' docs/build/diagrams.html` must be > 0. Also: the mermaid JS is a **CDN**
+  (jsdelivr) import, so a machine with no outbound internet shows a blank area even when the markup is right.
 - **ReferenceTests baselines** are committed text/CSV under `test/testitems/references/`. Regenerate
   **only** on an intentional physics change, and track *which* baseline moved (the "no committed baseline
   moves unless deliberate" discipline). `scripts/regen_fdiff_baselines.jl` regenerates the F_diff set.

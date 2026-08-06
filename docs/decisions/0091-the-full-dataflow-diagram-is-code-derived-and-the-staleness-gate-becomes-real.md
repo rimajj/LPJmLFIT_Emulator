@@ -117,3 +117,53 @@ published page instead.
   evidence: every one is live, referenced by name from source and tests —
   `phase3_fdiff_cbinary_validation.md` alone has 31 inbound references including `src/fdiff.jl` and about
   ten test files. They were **misfiled, not obsolete**.
+
+---
+
+## Amendment — 2026-08-06, same day (the diagrams were never actually RENDERING)
+
+Recorded as a labelled amendment rather than a superseding record because it lands the same day, before
+any other work depended on this ADR, and it corrects a mechanism this ADR asserted rather than a decision
+it made. The decision (code-derived diagram + four gates) is unchanged.
+
+**The owner opened the built docs and the diagram was raw text in a grey code box.** Not only the new one
+— the *pre-existing* `Diagrams` page too. These diagrams had never rendered.
+
+**Cause.** Every page embedded its diagram with
+
+```
+​```@eval
+Markdown.parse("```mermaid\n" * read(f, String) * "\n```")
+​```
+```
+
+DocumenterMermaid converts a mermaid fence with an **expander**:
+`Selectors.matcher(::Type{MermaidExpander}, node, page, doc) = Documenter.iscode(node, "mermaid")` at
+expansion order 7.9, matching nodes of the **parsed source AST**. An `@eval` block produces its output
+*during that same expansion pass* — after the matcher already walked that node — so the returned fence is
+never turned into a `MermaidBlock` and falls through to Documenter's ordinary code-block rendering.
+
+**Why nothing caught it.** Mermaid draws client-side, so the strict docs build never validates a diagram;
+it only checks that the block *ran*. The build was green with zero diagrams rendered. Measured on the
+built site: **0** occurrences of `class="mermaid"`, while DocumenterMermaid's `mermaid.esm.min.mjs` loader
+was injected on every page — the renderer was present and idle. This ADR's own "Alternatives rejected"
+section said generating live in the docs build was *also* active; that was wrong, and it was wrong in the
+direction that mattered.
+
+**Fix.** The fence is now **literal markdown in the page source**, inside
+`<!-- BEGIN MERMAID <name> … -->` / `<!-- END MERMAID <name> -->` markers that `scripts/gen_diagrams.jl`
+rewrites from the `.mmd` sources. The two pages (`docs/src/diagrams.md`,
+`docs/src/explanation/dataflow.md`) are now `targets()` alongside the three `.mmd`, so gate 1 (staleness)
+covers the embedded fences too and page-vs-source drift stays impossible. All five previously-dead
+diagrams on `diagrams.md` are fixed by the same change.
+
+**Verified:** the rebuilt site has **5** `class="mermaid"` elements on `diagrams.html` and **1** on
+`explanation/dataflow.html`, with **0** code-block-wrapped `flowchart` occurrences; strict docs build
+exit 0; `--check` idempotent; Runic clean.
+
+**The transferable lesson, and the reason this is worth a record:** *a green docs build is not evidence
+that a diagram renders.* The only check that distinguishes them inspects the built HTML —
+`grep -c 'class="mermaid"' docs/build/<page>.html` — and it is now written into the `julia-test` skill next
+to the regeneration commands. Two further consequences: the CDN dependency means a machine without
+outbound internet shows a blank area even when the markup is correct, and an `@eval`-embedded fence must
+never be reintroduced as a "simplification" (the generator carries a comment saying so).

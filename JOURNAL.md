@@ -1030,3 +1030,50 @@ Entry template:
   honest simplifications (year-end structure + daily leaf-out, no stems under 5 m, shared root profile, no
   interception) and the patch-ensemble-vs-modal-patch caveat.
 - **Next (owner):** nothing required. ADR 0091 has the full record.
+
+## 2026-08-06 — integrator (same day, follow-up): the diagrams were never RENDERING
+
+- **The owner opened the built docs and sent a screenshot: the diagram was a grey code box of raw
+  `flowchart LR` text.** Not just the new page — the *pre-existing* `diagrams.md` too. These diagrams had
+  **never** rendered. I had flagged "I can't machine-check that it renders" in the handover, so the check
+  landed on the owner; that is the right instinct but the wrong division of labour, and the fix below makes
+  it mechanical.
+- **Cause:** every page embedded its diagram with ```` ```@eval ```` + `Markdown.parse("```mermaid…")`.
+  DocumenterMermaid converts a fence via an **expander** whose matcher is
+  `Documenter.iscode(node, "mermaid")` at expansion order 7.9, matching nodes of the **parsed source AST**.
+  An `@eval` block produces its output *during that same expansion pass*, after the matcher already walked
+  the node — so the returned fence is never turned into a `MermaidBlock` and falls through to ordinary
+  code-block rendering.
+- **Why no gate caught it:** Mermaid draws client-side, so the strict docs build only checks the block
+  *ran*, never that a diagram exists. The build was green with zero diagrams. Measured: **0** occurrences of
+  `class="mermaid"` in the built HTML, while the `mermaid.esm.min.mjs` loader WAS injected on every page —
+  the renderer was sitting there with nothing marked for it.
+- **Fix:** the fence is now **literal markdown** in the page source, inside
+  `<!-- BEGIN MERMAID <name> … -->` / `<!-- END MERMAID <name> -->` markers that `gen_diagrams.jl` rewrites
+  from the `.mmd` sources; both pages joined `targets()`, so gate 1 covers the embedded fences and
+  page-vs-source drift is impossible. Fixes all five dead diagrams on `diagrams.md` too.
+- **Verified mechanically this time:** rebuilt site has **5** `class="mermaid"` on `diagrams.html`, **1** on
+  `explanation/dataflow.html`, **0** code-block-wrapped `flowchart`; docs build exit 0; `--check`
+  idempotent; Runic clean.
+- **The lesson, now written into `CLAUDE.md` §2 and the `julia-test` skill:** *a green docs build is not
+  evidence that a diagram renders.* The only check that distinguishes them greps the built HTML for
+  `class="mermaid"`. Also noted: the mermaid JS is a jsdelivr **CDN** import, so a machine with no outbound
+  internet shows a blank area even when the markup is right.
+- **Also corrected a factual error I had shipped hours earlier:** the new page claimed rainfall
+  interception is not included. It **is** — `daily_step_canopy` calls `_wet_interc` per individual, removes
+  it from infiltration, and carries it in the water-balance closure. I had propagated a **stale comment** in
+  `src/fdiff.jl` that listed interception among the "v1 simplifications" from before it was added. Page
+  corrected; the stale source comment is flagged for line M (it is M-owned, and it is what misled me).
+- **And answered the owner's rooting-depth question in the docs**, because the answer is a real gap: S
+  samples and validates a per-tree rooting depth, `make_recruit_to_pools` deliberately writes only SLA and
+  wood density into the pools ("no per-tree consumer yet"), `Individual` has no rooting field, and all
+  individuals share one cell-average `rootdist` (`fdiff.jl` comment: "cell rootdist for all individuals,
+  v1"). The `SToF.rootdepth` scalar is derived BACKWARDS from that shared profile (`run.jl:63-67`), so it is
+  a summary of the average, not a per-tree prediction flowing in. Blocked, not forgotten: the faithful
+  version needs per-individual competitive uptake, which the C does in a daily-reshuffled random order
+  (`-DPERMUTE`) ⇒ non-deterministic and non-differentiable. `docs/notes/water_supply_perpft_design.md` is
+  SCOPED with recommendation DEFER for exactly that reason. Consequence to state in results:
+  **trait-driven differences in water access are absent from the physics**, so drought response through
+  rooting depth is not represented.
+- **Next (owner):** confirm the diagram now renders in the built docs. Open question for line M: whether to
+  open the per-tree rooting channel (a frozen S→M contract change) or keep deferring behind the learned lever.
