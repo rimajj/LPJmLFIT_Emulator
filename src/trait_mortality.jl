@@ -59,7 +59,8 @@ Everything is pure Base, allocation-free and type-generic (ADR 0014 keeps the ru
 module TraitMortality
 
 export PFTMortParams, MortHazard, pft_mort_params, mort_max, mort_npp, mort_age, mort_water, mort_temp,
-    leaf_carbon_sapl, update_bm_inc_counter, mortality_hazard, survival_prob
+    leaf_carbon_sapl, update_bm_inc_counter, mortality_hazard, survival_prob,
+    water_stress_increment, temp_stress_increment   # ADR 0110
 
 # ── C constants that are #defines in the SOURCE, not in any parameter file ────────────────────────────
 "`param.k_mort` — growth-efficiency coefficient in the `mort_npp` logistic (`par/lpjparam_fit.js`)."
@@ -273,6 +274,65 @@ function mort_water(p::PFTMortParams, water_stress::Real; bm_inc_counter::Intege
     T = float(promote_type(typeof(water_stress), typeof(p.mort_water_factor)))
     m = T(p.mort_water_factor) * T(water_stress) / T(NDAYYEAR) * (one(T) + T(bm_inc_counter))
     return min(one(T), m)
+end
+
+"""
+    water_stress_increment(p, phen, vpd, wscal, minwscal; soil_temp, aphen) -> Real
+
+**ONE DAY** of the C's drought-stress integral (`tree/waterstress_tree.c:31-38`) for ONE individual — the
+accumulator [`mort_water`](@ref) consumes and that ADR 0049 §3 could not supply. Faithful port:
+
+```
+if aphen > aphen_min  &&  soil_temp > 10  &&  wscal < (mort_water_res − minwscal)
+    Δ = phen · (vpd/1000) · ((mort_water_res − minwscal) − wscal)
+else
+    Δ = 0
+```
+
+and `0` otherwise. The caller sums `Δ` over the year and **resets to 0 at the coldest day**
+(`waterstress_tree.c:39-42`), then passes the sum to [`mort_water`](@ref).
+
+This is why ADR 0110's per-tree water status is the unblocking step: the threshold is
+`mort_water_res − minwscal` with **that individual's own** drought tolerance, compared against **that
+individual's own** daily `wscal`. Neither existed before — the emulator had one stand-wide annual mean of
+a different quantity on a different scale, and feeding that in would have been the ADR-0023 shift with
+extra steps (which is exactly why ADR 0049 zeroed this hazard rather than approximating it).
+
+Both gates are genuine: `aphen > aphen_min` is leaf-out (and larch's `aphen_min` is **10**, not the macro
+default 60 — a duplicated key in `par/pft_lpjmlfit.js`, see CLAUDE.md §3), and `soil_temp > 10` is
+biological soil activity.
+
+⚠ `soil_temp`: F_diff carries no soil temperature, so callers pass **air temperature**. This is the one
+non-faithful substitution in the port, and it follows the precedent already set and documented for the
+GSI phenology soil-temperature gate (`components/fast.jl`). Direction of the error, stated rather than
+buried: air temperature swings wider and warms sooner in spring than layer-0 soil, so the gate opens a
+little early and shuts a little late ⇒ this **over**-counts shoulder-season stress days. Bounded by the
+`wscal` gate, which is the binding one in a drought. Supply a real soil temperature when E's ground-heat
+column is wired through and this caveat retires.
+"""
+function water_stress_increment(
+        p::PFTMortParams, phen::Real, vpd::Real, wscal::Real, minwscal::Real;
+        soil_temp::Real, aphen::Real,
+    )
+    T = float(promote_type(typeof(phen), typeof(vpd), typeof(wscal), typeof(minwscal), typeof(soil_temp)))
+    thresh = T(p.mort_water_res) - T(minwscal)
+    (T(aphen) > T(p.aphen_min) && T(soil_temp) > T(10) && T(wscal) < thresh) || return zero(T)
+    return T(phen) * (T(vpd) / T(1000)) * (thresh - T(wscal))
+end
+
+"""
+    temp_stress_increment(p::PFTMortParams, temp) -> Int
+
+**ONE DAY** of the C's heat/cold-stress day count (`tree/tempstress_tree.c:29-30`): `1` when the day's
+temperature falls outside this PFT's `[temp_low, temp_high]` (the `"temp_stressed"` key, NOT the
+establishment `"temp"` gate), else `0`. The caller sums over the year, resets at the start of the
+vegetation period, and passes the count to [`mort_temp`](@ref).
+
+Unlike the water integral this carries no trait dependence at all — it is a per-PFT composition effect —
+but it IS climate-driven, so it is a warming-response channel that ADR 0049 also left at zero.
+"""
+function temp_stress_increment(p::PFTMortParams, temp::Real)
+    return (temp < p.temp_low || temp > p.temp_high) ? 1 : 0
 end
 
 """

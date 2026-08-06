@@ -509,6 +509,63 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
 > reproduces on the ensemble (it is why the stability clause fires at `a` ≥ 0.25). Only the *reason* changes:
 > the anchor is not under-delivering — it delivers exactly what it promised, onto a target that is wrong.
 
+> ## ▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06 (ADR 0110) — **per-tree root profiles and per-tree water status land in YOUR files; the two zeroed mortality hazards come back on**
+>
+> **What S did, and why it touches M's code.** Component S predicts a per-tree rooting depth (`D95max`) and a
+> per-tree drought tolerance (`minwscal`), validates both globally, and dropped both — `make_recruit_to_pools`
+> wrote only SLA and Wooddens, and `daily_step_canopy` collapsed the 23-layer profile to ONE scalar `wr`
+> (`fdiff.jl:1540-1546`) before the individual loop opened. Two trees differing only in rooting depth were
+> identical in the water balance, so drought response — ADR 0106's binding clause — could not exist. ADR 0109
+> finished the statistical search on that axis (`D95max` worst of four on all three arms, no flip), which
+> leaves "the trait has no physical consumer" as the remaining explanation.
+>
+> **The DEFER in `docs/water_supply_perpft_design.md` does not cover this, and the reason is specific.** That
+> study was scoped to a GRASS residual, and its finding "rooting depth is not the mechanism" rests on grass
+> sharing beech's `beta_root=0.8`. That is grass vs the AVERAGE tree. Tree-vs-tree it is false: `beta_root` is
+> set **per individual** from that individual's own `D95max` (`new_tree.c:229-230`), the trait spans
+> **51-1800 cm within one PFT**, and top-20 cm root share runs **69 % vs 4 %**.
+>
+> **★ The finding that unblocks it — the `-DPERMUTE` randomness does not touch the part we need.** `soil.w[]`
+> is FROZEN for the whole permuted loop (written once per patch-day afterwards, `waterbalance.c:117-138`), so
+> per-individual `wr`, `supply`, `pft->wscal` AND the routinely-firing "own FPC share" cap (`:159-161`) are all
+> **order-INDEPENDENT**. Only the residue cap (`:162-166`) and realized GPP are not. `aet_cor` is TWO caps and
+> the one that fires routinely is order-free. Full table in ADR 0110 §3. **Cap (ii) stays out of scope.**
+>
+> **Measured first (ADR 0108's method rule), on the C's own per-stem output, 5 biome cells:** across-tree
+> p5-p95 water-scalar span **0.19** (Iberia) / **0.16** (Sahel) where F carries one number; within-(PFT x age)
+> corr(`beta_root`,`wscal`) **0.83** in the Sahel; dry/wet spread amplification **112x** at Hainich;
+> drought-killed stems root **57 % shallower** than the mean at Hainich. Warming: the drought share of hazard
+> rises **x3.95** (Amazon) / x1.47 (Iberia) / x1.32 (Hainich). `scripts/diagnose_per_tree_water_access.py`.
+>
+> **What changed in M's files** (all opt-in, default byte-identical; flip criteria pre-registered in ADR 0110 §6):
+> - `src/fdiff.jl` — `betaroot_from_d95max` / `jackson_rootdist` / `per_tree_rootdists` (ports of
+>   `getbetaroot.c` + `getrootdist.c`, validated to **5e-7** against the C's OWN emitted `beta_root`);
+>   `TreePools` gains `d95max`/`minwscal` (0 = unset, backwards-compatible constructors); `getvpd`
+>   (`spitfire/getvpd.c`, the `relative_humidity=false` branch); `DailyForcing` gains `humid`;
+>   `daily_step_canopy` gains a `rootdists=` kwarg, per-tree `wr_i`, per-tree withdrawal with the order-free
+>   cap (i), and returns `wscal_ind`/`wr_ind`; new `WaterParams` flags `per_tree_roots`,
+>   `per_tree_fpc_cap`, `trait_drought_mortality`.
+> - `src/components/fast.jl` — `FDiffFastCore` gains `rootdists` + three per-individual annual accumulators
+>   (`water_stress_acc`, `temp_stress_acc`, `aphen_acc`) and `_accumulate_stress!`.
+> - `src/run.jl`/`src/interface.jl` — **NOT touched.** The design note's "the interface has no channel"
+>   objection targets the wrong struct: the per-tree carrier is `TreePools`, which already carried two traits.
+>   `SToF.rootdepth` is still the static read-back and still read by nobody (`step!` never dereferences `bc`).
+>
+> **⚠ ONE TRAP THAT COST A SUITE RUN, AND IT IS YOURS TO KNOW:** the per-tree profile was FIRST put in a
+> `Vector{T}` field on `Individual`. That aborted the whole test process with **SIGABRT** (bare LLVM abort, no
+> Julia error) right after the grass Enzyme reverse item — exactly the AD hazard the design note's §4.3 warned
+> about, in a place it did not predict. `Individual` is differentiated through; **do not put heap-allocated
+> fields in it.** The profiles now travel as a separate `rootdists` argument that Enzyme sees as constant.
+>
+> **What M owes / may want:** (a) review the F-side landing — S built it here under the ADR-0029 "M explicitly
+> hands the file over for one milestone" route and this block plus ADR 0110 is the record; (b) the flags stay
+> OFF until ADR 0110 §6's criteria are met, and criterion (e) (the historic->ssp370 response) needs a coupled
+> five-cell screen, which is M's harness; (c) `_accumulate_stress!` uses `soilt_gate`, i.e. **E's skin
+> temperature when the coupled driver sets it**, else the air-temp proxy — so the C's `soil->temp[0] > 10`
+> gate is faithful whenever E is coupled and a documented proxy otherwise; (d) the per-tree path is a
+> candidate explanation for M's §4 open items (ET 11-35 % high, tree FPC 0.31-0.72x, the Sahel dry-cell bias),
+> because all three are water-supply-shaped and all three were measured with one shared root profile.
+
 > ## ▶ NEW INTEGRATION POINT RAISED BY LINE S, 2026-08-06 (ADR 0105 §5, §7 item 3) — **the coupled count
 > ## residual is F's CANOPY diverging from the C's. It is not a Component-S training defect, and S cannot fix it.**
 >

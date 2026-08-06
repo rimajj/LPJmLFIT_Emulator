@@ -102,6 +102,19 @@ mutable struct FDiffFastCore{T <: AbstractFloat} <: AbstractFastCore
     water_avail::T
     snowpack::T                 # snow water equivalent (mm) — held here (SharedState.snowpack is immutable, v1)
     bm_inc_acc::Vector{T}
+    # ADR 0110: per-individual ANNUAL drought- and heat-stress accumulators — the two integrals ADR 0049
+    # §3 could not supply, so `mort_water`/`mort_temp` were set to zero. `water_stress_acc[i]` sums the C's
+    # `waterstress_tree.c` daily increment for individual `i` using ITS OWN daily `wscal` and ITS OWN
+    # `minwscal`; `temp_stress_acc[i]` counts its days outside `[temp_low, temp_high]`. Both are reset
+    # annually with `bm_inc_acc`, and both stay identically 0 unless `WaterParams.trait_drought_mortality`
+    # is on (the per-tree `wscal` they need only exists under `per_tree_roots`).
+    water_stress_acc::Vector{T}
+    temp_stress_acc::Vector{T}
+    aphen_acc::Vector{T}          # days since leaf unfolding (the C's `pft->aphen`), the first gate
+    # ADR 0110: per-individual root profiles, rebuilt annually beside the roster. `nothing` ⇒ every
+    # individual uses the shared cell profile (the pre-0110 behaviour). Held here, NOT inside
+    # `Individual` — a Vector field in that struct aborts the Enzyme reverse pass.
+    rootdists::Union{Nothing, Vector{Vector{T}}}
     gpp_acc::T
     npp_acc::T
     et_acc::T
@@ -142,7 +155,9 @@ function FDiffFastCore(
         grass_estab = FDiff.grass_estabparams(T), pft_ids = nothing, grass_lf_mode::Symbol = :linear
     ) where {T <: AbstractFloat}
     fpars = FDiff._patch_fpars(pools, allom)
-    inds = FDiff.Individual{T}[FDiff.individual_from_pools(tmpls[i], pools[i], allom, fpars[i]) for i in eachindex(pools)]
+    (inds, rdists) = FDiff.individuals_from_pools(
+        tmpls, pools, allom, fpars, soil; per_tree = params.water.per_tree_roots,
+    )   # ADR 0110
     p = FDiff._with_grass_gate(params, grass_demand_gate)
     pids = pft_ids === nothing ? Int[t.is_grass ? 8 : 3 for t in tmpls] : collect(Int, pft_ids)
     uids = unique(pids)
@@ -153,10 +168,38 @@ function FDiffFastCore(
     return FDiffFastCore{T}(
         p, alloc, galloc, allom, tmpls, pools, inds, soil, T(lat), grass_estab,
         pids, slot, pparams, pstates, pisg, grass_lf_mode, one(T),
-        0, one(T), zero(T), zeros(T, length(pools)), zero(T), zero(T), zero(T), zero(T), 0,
+        0, one(T), zero(T), zeros(T, length(pools)),
+        zeros(T, length(pools)), zeros(T, length(pools)), zeros(T, length(pools)), rdists,   # ADR 0110
+        zero(T), zero(T), zero(T), zero(T), 0,
         T(NaN),                       # soiltemp_skin: NaN ⇒ use air-temp proxy (byte-identical default)
         T(0.15),                      # last_albedo: reasonable default until the first step! records it
     )
+end
+
+# ── ADR 0110: the two per-individual annual stress integrals ADR 0049 §3 could not supply ────────
+# One day of `tree/waterstress_tree.c:31-38` and `tree/tempstress_tree.c:29-30`, per individual, using
+# THAT individual's own daily `wscal` (which exists only under `per_tree_roots`) and its own `minwscal`.
+# No-op unless `trait_drought_mortality` is on, so every existing run is byte-identical.
+#
+# `soilt` is the same gate source the GSI phenology already uses: Component E's skin temperature when the
+# coupled driver has set it, else the air-temperature proxy — so this is faithful whenever E is coupled.
+function _accumulate_stress!(fc::FDiffFastCore{T}, fl, phen_vec, soilt, temp, humid) where {T}
+    fc.params.water.trait_drought_mortality || return nothing
+    ws = fl.wscal_ind
+    ws === nothing && return nothing          # needs per_tree_roots; without it there is no per-tree wscal
+    @inbounds for i in eachindex(fc.pools)
+        pool = fc.pools[i]
+        (pool.is_grass || pool.nind <= 0) && continue
+        phi = convert(T, FDiff._phen_at(phen_vec, i))
+        phi > zero(T) && (fc.aphen_acc[i] += one(T))     # the C's `pft->aphen` day count
+        prm = TraitMortality.pft_mort_params(fc.pft_ids[i])
+        fc.water_stress_acc[i] += TraitMortality.water_stress_increment(
+            prm, phi, FDiff.getvpd(temp, humid), convert(T, ws[i]),
+            convert(T, pool.minwscal); soil_temp = soilt, aphen = fc.aphen_acc[i],
+        )
+        fc.temp_stress_acc[i] += TraitMortality.temp_stress_increment(prm, temp)
+    end
+    return nothing
 end
 
 const _STEFAN_BOLTZMANN = 5.670374419e-8   # W/m²/K⁴
@@ -184,7 +227,7 @@ function step!(fc::FDiffFastCore{T}, state::SharedState, bc::SToF, forcing::AtmF
     dl = FDiff.petpar_daylength(fc.lat, fc.doy)
     f = FDiff.DailyForcing{T}(
         swdown = T(forcing.swdown), lwnet = lwnet, temp = temp, precip = T(forcing.precip),
-        daylength = T(dl), co2 = T(forcing.co2),
+        daylength = T(dl), co2 = T(forcing.co2), humid = T(forcing.qair),   # ADR 0110
     )
     # PER-PFT GSI phenology (self-computed; soil-temp gate ≈ air temp): advance each DISTINCT PFT's filters
     # one day (a grass driven by the lag-1 forest-floor light `grass_lf·swdown`, `phenology_gsi.c:30-35`),
@@ -201,7 +244,9 @@ function step!(fc::FDiffFastCore{T}, state::SharedState, bc::SToF, forcing::AtmF
     phen_vec = T[phen_slot[fc.pft_slot[id]] for id in fc.pft_ids]
     # record the dynamic leaf-display-weighted stand albedo F uses (so E's Rn is consistent with F)
     fc.last_albedo = FDiff.patch_albedo(fc.inds, phen_vec, st.snowpack)
-    (st′, fl) = FDiff.daily_step_canopy(fc.params, fc.inds, fc.soil, st, f; phen = phen_vec)
+    (st′, fl) = FDiff.daily_step_canopy(
+        fc.params, fc.inds, fc.soil, st, f; phen = phen_vec, rootdists = fc.rootdists,   # ADR 0110
+    )
     # write soil water back into the authoritative shared state (fraction of WHC), in place
     @inbounds for l in 1:nlay
         state.w[l] = st′.w[l] / whcs[l]
@@ -231,6 +276,9 @@ function step!(fc::FDiffFastCore{T}, state::SharedState, bc::SToF, forcing::AtmF
     @inbounds for i in eachindex(fc.bm_inc_acc)
         fc.bm_inc_acc[i] += fl.npp_ind[i]
     end
+    # ADR 0110 (no-op unless trait_drought_mortality). `soilt_gate` = E's skin temperature when the
+    # coupled driver has set it, else the air-temp proxy — the same source the GSI phenology gate uses.
+    _accumulate_stress!(fc, fl, phen_vec, soilt_gate, temp, T(forcing.qair))
     et = fl.transp + fl.evap + fl.interc
     fc.gpp_acc += fl.gpp; fc.npp_acc += fl.npp; fc.et_acc += et; fc.wscal_acc += fl.wscal; fc.nday += 1
     le = et / T(86400) * T(LAMBDA_VAPORIZATION)          # mm/day → kg/m²/s → W/m² (λ·ET)
@@ -295,7 +343,9 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
     end
     fc.pools = newpools
     fpars = FDiff._patch_fpars(newpools, fc.allom)
-    fc.inds = FDiff.Individual{T}[FDiff.individual_from_pools(fc.tmpls[i], newpools[i], fc.allom, fpars[i]) for i in 1:n]
+    (fc.inds, fc.rootdists) = FDiff.individuals_from_pools(
+        fc.tmpls, newpools, fc.allom, fpars, fc.soil; per_tree = fc.params.water.per_tree_roots,
+    )   # ADR 0110
     # growth efficiency ≈ bm_inc per unit leaf area (a mortality driver S conditions on)
     leaf_area = sum(FDiff.agb_ind(newpools[i]) > 0 ? newpools[i].leaf_c * newpools[i].sla * newpools[i].nind : zero(T) for i in 1:n)
     growth_eff = leaf_area > 0 ? bm_inc_cell / leaf_area : zero(T)
@@ -314,6 +364,8 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
     # reset within-year accumulators + per-PFT phenology cold-start (mirrors rollout_canopy_years, which
     # calls rollout_daily_canopy per year without a carried phen_state)
     fill!(fc.bm_inc_acc, zero(T))
+    fill!(fc.water_stress_acc, zero(T)); fill!(fc.temp_stress_acc, zero(T))   # ADR 0110
+    fill!(fc.aphen_acc, zero(T))
     fc.gpp_acc = fc.npp_acc = fc.et_acc = fc.wscal_acc = zero(T)
     fc.nday = 0; fc.doy = 0; fc.water_avail = one(T)
     fc.pft_states = FDiff.PhenState{T}[FDiff.PhenState{T}() for _ in eachindex(fc.pft_states)]

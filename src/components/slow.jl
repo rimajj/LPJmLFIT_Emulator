@@ -169,10 +169,18 @@ function reconcile_demography!(
     # ── COMMIT the new population into the fast core (fixed roster ⇒ arrays keep their size) + rebuild inds ──
     fc.pools = pools
     fpars = FDiff._patch_fpars(pools, fc.allom)
-    fc.inds = FDiff.Individual{T}[FDiff.individual_from_pools(fc.tmpls[i], pools[i], fc.allom, fpars[i]) for i in eachindex(pools)]
+    (fc.inds, fc.rootdists) = FDiff.individuals_from_pools(
+        fc.tmpls, pools, fc.allom, fpars, fc.soil; per_tree = fc.params.water.per_tree_roots,
+    )   # ADR 0110
 
     # reset the within-year accumulators + per-PFT phenology cold-start (mirrors annual_step!)
     fill!(fc.bm_inc_acc, zero(T))
+    # ADR 0110: the C resets `tree->water_stress` at the coldest day (`waterstress_tree.c:39-42`) and
+    # `temp_stress`/`aphen` at the start of the vegetation period; the emulator's year boundary is the
+    # one reset point it has, so all three clear here with `bm_inc_acc`.
+    fill!(fc.water_stress_acc, zero(T))
+    fill!(fc.temp_stress_acc, zero(T))
+    fill!(fc.aphen_acc, zero(T))
     fc.gpp_acc = fc.npp_acc = fc.et_acc = fc.wscal_acc = zero(T)
     fc.nday = 0
     fc.doy = 0
@@ -240,7 +248,9 @@ end
 "Rebuild a `FDiff.TreePools` with a new `nind` (all other fields unchanged)."
 _with_nind(p::FDiff.TreePools{T}, n) where {T} = FDiff.TreePools{T}(
     p.leaf_c, p.sapwood_c, p.heartwood_c, p.root_c, p.sapwood_bg_c,
-    p.height, p.crownarea, convert(T, n), p.sla, p.wooddens, p.is_grass,
+    p.height, p.crownarea, convert(T, n), p.sla, p.wooddens,
+    p.d95max, p.minwscal,                     # ADR 0110 — a density change must not reset the traits
+    p.is_grass,
 )
 
 "Total live individual density Σ`nind` (indiv/m²) across the emulator's population history — the count N."
@@ -414,9 +424,24 @@ function make_recruit_to_pools(axis_names::AbstractVector{<:AbstractString})
         error("make_recruit_to_pools: axes must include \"SLA\" and \"Wooddens\"; got $(axis_names)")
     i_sla = Int(isla)                                # single-assignment Int captures (JET-safe, type-stable)
     i_wd = Int(iwd)
+    # ADR 0110: `D95max` (rooting depth, cm) and `minwscal` (drought tolerance) now HAVE per-tree consumers
+    # — a per-individual root profile feeding a per-individual water status, and that individual's own
+    # drought-death threshold. Both are located BY NAME and both are OPTIONAL: an artifact whose axis list
+    # lacks them yields index 0 ⇒ the trait is left UNSET (0) on `TreePools` ⇒ that individual keeps the
+    # shared cell profile and carries no threshold, i.e. exactly the pre-0110 behaviour. So an older `.rcop`
+    # still loads and still produces byte-identical pools. Single-assignment Ints (JET-safe, as above).
+    i_d95 = (j = findfirst(==("D95max"), axis_names); j === nothing ? 0 : Int(j))
+    i_mws = (j = findfirst(==("minwscal"), axis_names); j === nothing ? 0 : Int(j))
     function to_pools(traits, sapl::FDiff.TreePools{T}, allom) where {T <: AbstractFloat}
         sla_n = clamp(convert(T, traits[i_sla]), convert(T, 1.0e-3), convert(T, 0.1))
         wd_n = clamp(convert(T, traits[i_wd]), convert(T, 5.0e4), convert(T, 7.0e5))
+        # Clamped to the union of the C's per-PFT sampling intervals (`par/pft_lpjmlfit.js`): `D95max`
+        # `[51, 1800]` cm, `minwscal` `[0.025, 0.75]`. A drawn value outside those is the copula's tail,
+        # not physics. 0 (axis absent) stays 0 — the UNSET sentinel — and must NOT be clamped up.
+        d95_n = i_d95 == 0 ? zero(T) :
+            clamp(convert(T, traits[i_d95]), convert(T, 51.0), convert(T, 1800.0))
+        mws_n = i_mws == 0 ? zero(T) :
+            clamp(convert(T, traits[i_mws]), convert(T, 0.025), convert(T, 0.75))
         leaf = convert(T, sapl.leaf_c)
         sapw = convert(T, sapl.sapwood_c)
         h = leaf > zero(T) ?
@@ -425,7 +450,7 @@ function make_recruit_to_pools(axis_names::AbstractVector{<:AbstractString})
         crown = convert(T, Allometry.crown_area(allom, h))
         return FDiff.TreePools{T}(
             leaf, sapw, convert(T, sapl.heartwood_c), convert(T, sapl.root_c),
-            convert(T, sapl.sapwood_bg_c), h, crown, one(T), sla_n, wd_n, false,
+            convert(T, sapl.sapwood_bg_c), h, crown, one(T), sla_n, wd_n, d95_n, mws_n, false,
         )
     end
     return to_pools
@@ -493,13 +518,21 @@ function _merge_pair!(
     dom = na >= nb ? i : j
     sla_m = convert(T, pools[dom].sla)
     wd_m = convert(T, pools[dom].wooddens)
+    # ADR 0110: the rooting-depth and drought-tolerance traits take the DOMINANT parent's values, exactly
+    # as `sla`/`wooddens` do. Without this the merge would silently reset both to the 11-arg constructor's
+    # UNSET 0 at every K-cap merge — i.e. quietly delete the per-tree rooting channel from the surviving
+    # cohort. (This is why the merge is called out in ADR 0110 §5 step 1.)
+    d95_m = convert(T, pools[dom].d95max)
+    mws_m = convert(T, pools[dom].minwscal)
     tmpl_m = tmpls[dom]
     pft_m = pft_ids[dom]
     h_m = leaf_m > zero(T) ?
         convert(T, allom.k_latosa) * sapw_m / (leaf_m * sla_m * wd_m) :
         convert(T, pools[dom].height)
     crown_m = convert(T, Allometry.crown_area(allom, h_m))
-    pools[i] = FDiff.TreePools{T}(leaf_m, sapw_m, heart_m, root_m, sbg_m, h_m, crown_m, nm, sla_m, wd_m, false)
+    pools[i] = FDiff.TreePools{T}(
+        leaf_m, sapw_m, heart_m, root_m, sbg_m, h_m, crown_m, nm, sla_m, wd_m, d95_m, mws_m, false,
+    )
     ages[i] = age_m
     tmpls[i] = tmpl_m
     pft_ids[i] = pft_m
@@ -686,10 +719,21 @@ function _trait_hazards!(
         bm_delta = _cohort_bm_delta(fc, grow, i, reprod)
         age = convert(T, s.age[i])
         counters[i] = TraitMortality.update_bm_inc_counter(counters[i], age, bm_delta)
+        # ADR 0110 Phase 2: the two hazards ADR 0049 §3 set to ZERO are now fed their OWN integrals when
+        # `trait_drought_mortality` is on — `water_stress` is the C's `waterstress_tree.c` annual sum built
+        # from THIS individual's own daily `wscal` against ITS OWN `minwscal`, and `temp_stress` its own
+        # day count outside `[temp_low, temp_high]`. Off ⇒ both are zero and the hazard is unchanged.
+        # NB these are read from `fc`, whose accumulators are index-aligned with `fc.pools` at this call
+        # site (the same invariant `_cohort_bm_delta` relies on — `_commit_membership!` reallocates them).
+        (ws_i, ts_i) = if fc.params.water.trait_drought_mortality && i <= length(fc.water_stress_acc)
+            (convert(T, fc.water_stress_acc[i]), convert(T, fc.temp_stress_acc[i]))
+        else
+            (zero(T), zero(T))
+        end
         h = TraitMortality.mortality_hazard(
             prm; wooddens = convert(T, p.wooddens), sla = convert(T, p.sla), age = age,
             bm_delta = bm_delta, leafarea = convert(T, p.leaf_c) * convert(T, p.sla),
-            leaf_c = convert(T, p.leaf_c), water_stress = zero(T), temp_stress = zero(T),
+            leaf_c = convert(T, p.leaf_c), water_stress = ws_i, temp_stress = ts_i,
             bm_inc_counter = counters[i],
         )
         haz[i] = convert(T, h.total)
@@ -801,8 +845,15 @@ function _commit_membership!(
     fc.tmpls = collect(FDiff.Individual{T}, tmpls)
     fc.pft_ids = collect(Int, pft_ids)
     fc.bm_inc_acc = zeros(T, length(pools))
+    # ADR 0110: the stress accumulators are per-individual and MUST be reallocated with the roster,
+    # never `fill!`ed — a stale length makes the daily `water_stress_acc[i] +=` read out of bounds.
+    fc.water_stress_acc = zeros(T, length(pools))
+    fc.temp_stress_acc = zeros(T, length(pools))
+    fc.aphen_acc = zeros(T, length(pools))
     fpars = FDiff._patch_fpars(pools, fc.allom)
-    fc.inds = FDiff.Individual{T}[FDiff.individual_from_pools(fc.tmpls[i], pools[i], fc.allom, fpars[i]) for i in eachindex(pools)]
+    (fc.inds, fc.rootdists) = FDiff.individuals_from_pools(
+        fc.tmpls, pools, fc.allom, fpars, fc.soil; per_tree = fc.params.water.per_tree_roots,
+    )   # ADR 0110
     fc.gpp_acc = fc.npp_acc = fc.et_acc = fc.wscal_acc = zero(T)
     fc.nday = 0
     fc.doy = 0

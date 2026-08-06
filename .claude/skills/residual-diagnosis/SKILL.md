@@ -655,3 +655,53 @@ produced, because it is a real global number where the line had been quoting fiv
 **And when the claim has already been written down, correct every copy in the same commit** — ADR, ADR index,
 changelog, source comments, test headers, journal, STATE. A corrected ADR with an uncorrected code comment is
 how the wrong version survives.
+
+---
+
+## Before you SIMULATE to test a claim about the C, check whether the C already EMITS it per individual (ADR 0110, line S, 2026-08-06)
+
+The companion to the rule above. That one says *measure the baseline before arguing from code structure*.
+This one says *the measurement is often far cheaper than you assume, because the oracle already published the
+answer.*
+
+**The annual `ind` table is PER-STEM, and it carries derived state, not just inputs.** Its 29 columns include
+`wscal_mean` (each individual's own annual-mean water scalar), `minwscal`, `D95max`, `beta_root`, `D95`,
+`k_root`, `Age`, `Height`, and **the four realized hazards** `mort_npp` / `mort_age` / `mort_water` /
+`mort_temp` plus `mort` and `isdead`. So a whole class of questions — "do individuals actually differ in X?",
+"does X track trait Y once composition and size are controlled?", "how much of the hazard does the term we
+zeroed actually carry?", "does that change under warming?" — is a **parquet scan over the real trees the C
+grew**, not a simulation, not a proxy, and with no modelling assumptions of your own in the answer.
+
+**It is fast.** Row-group pruning makes a single-cell filter ~**0.1 s** over the 22 GB historic / 92 GB ssp370
+tables. There is no reason to reach for a simulated probe first.
+
+```python
+lf = pl.scan_parquet("/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet")
+df = lf.filter((pl.col("Cell") == 42490) & (pl.col("Type") <= 6) & (pl.col("D95max") > 0)).collect()
+```
+
+**Use it as an ORACLE for a port, not just for a baseline.** The table often contains both the input and the
+C's own derived output, which turns "is my port right?" into a direct comparison instead of a
+self-consistency check. ADR 0110 validated a `getbetaroot.c` port to **5e-7** by reading each stem's `D95max`
+*and* the `beta_root` the C computed from it. Prefer that to any golden file you generate yourself.
+
+**Four traps, all of which cost something here:**
+
+- **Grass rows have their tree fields ZEROED** (`fwriteoutput_ind.c:139-189`), so filter `Type <= 6` **AND**
+  `D95max > 0`. A bare `Type <= 6` is not enough on its own if ids drift.
+- **A raw correlation across a cell mixes three things** — between-PFT composition, tree size/ontogeny, and
+  the trait. Rooting depth in particular is set BOTH by the sampled trait and by tree height
+  (`getrootdepth`). Centre within **(PFT × age band)** and pool, or you will report a composition effect as a
+  trait effect. It matters: Hainich's raw and within-band numbers agreed (0.189 / 0.184) but the boreal cell's
+  flipped sign (−0.180 / +0.021).
+- **`wscal_mean` is an all-365-day POTENTIAL index and equals 1 on a no-demand day** (ADR 0051). Any spread
+  computed from it is a **lower bound** on the growing-season daily spread — say so with the number.
+- **A zero can be the trait, not a defect.** The Sahel showed exactly 0 drought mortality in the driest cell
+  of the five. Cause: `waterstress_tree` gates on `wscal < mort_water_res − minwscal`, and those stems average
+  `minwscal` 0.655 ⇒ a threshold of 0.095 against `wscal` 0.641, so it never fires — they are drought-tolerant
+  *by trait*. Chase a surprising zero to its gate before calling it a bug or a missing mechanism.
+
+**Pre-register the pass criterion in the script, before the run, and then report against it honestly** — the
+Phase-0 check here passed on its 3-part median rule while one sub-test failed at 2 of 5 cells, and the write-up
+says so rather than quietly dropping the sub-test. Rewriting a criterion after seeing its arm is the ADR-0104
+error. Worked example: `scripts/diagnose_per_tree_water_access.py`.
