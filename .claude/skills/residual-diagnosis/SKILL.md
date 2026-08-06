@@ -583,3 +583,13 @@ Here the offline AR(1) predicted +4.2 / −5.9 / +10.5 / −0.0 / +0.2 % per cel
 with the model fed the *reference's own* features, the residual is by construction everything the coupled
 loop adds. That located the defect in a different component (and a different line's paths) without a single
 further probe.
+
+**Under parallel lines, a REBASE can change the configuration your measurement was made in.** The mandated
+`git pull --rebase origin main` before a push can pull in another line's **default flip** — landing between
+your jobs and your ADR, so the numbers you are about to publish were measured on a configuration that no
+longer exists on `main`. Cheap fix: **after the final rebase, re-run the decisive probe and diff the two
+logs.** (Line E's ground-heat default landed 20 minutes before ADR 0105 was pushed; the re-run reproduced
+every printed digit, so the ADR could say so instead of carrying an unstated caveat.) ⚠ **A null here needs
+the fire-check too** — confirm the new path actually executed, or "identical" may just mean the flip never
+reached your code. The tell that made ADR 0105's null meaningful was that the 1e-12 carbon residuals *did*
+move while every reported quantity did not.
