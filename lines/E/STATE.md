@@ -35,6 +35,14 @@ storage) is still open** — it is the remaining physical term, not this flip.
   moment the default moved. **Two arms differing by a parameter must never print identical numbers** — if they
   do, one is not running what its label says. Report `_v6` is the corrected one; `_v5` is wrong sub-daily.
 
+**CI/merge status — nothing is outstanding.** ADR 0075 shipped as `8d3df15e`; branch CI green on every
+required gate (`format`, `test (lts)`, `test (1)`, plus non-required `test (macOS, lts)`). Merged to `main` as
+**`3ae2be10`**, whose own post-merge run is green on `format`, **`docs`** (the gate that never runs on a
+branch), `test (lts)`, `test (1)` and `test (macOS, lts)`. `test (pre)` is red for the **diagnosed** prerelease
+reason — `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)` at LOAD
+time, pulled from the job log, with zero mentions of any file this line touched. Do not chase it.
+Local CI-faithful suite before the push: **111 237 pass / 0 fail** (job 1717243).
+
 **Do not redo any of these three — all measured and closed:**
 - **`stab_amp` / `g_a`** — refuted (ADR 0073): modelled nocturnal `g_a` within **0.7 %** of DE-Hai's
   measured-`u*` value, substituting the measurement makes night H worse at all 4 sites, a 100× bracket never
