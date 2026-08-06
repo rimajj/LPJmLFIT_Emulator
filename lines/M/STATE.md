@@ -158,10 +158,43 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
+### 0. ✅ DONE 2026-08-06 — line S's flip criterion is ANSWERED (ADR 0056). Nothing is owed on it.
+
+The ▶ ACTION block S wrote below (still present, now historical) asked M to run the anchored arm on the
+5-cell oracle and decide a DEFAULT. **Done — jobs 1716489 + 1716493 (reproduced exactly), verdict in
+`docs/decisions/0056-*.md`, reply written into `lines/S/STATE.md` where S will read it.**
+
+**The criterion FAILED: do not flip, and do NOT tune `a`** — but read *why*, because the lazy reading is
+wrong in a way that matters if S comes back on it:
+- **The anchor fires perfectly.** Density × `patch_area` / target = **1.001 in all 5 cells** at `a = 0.5`,
+  and the level error it closes is **bigger than S's single-cell number**: **1.46–2.21×** free-running
+  (worst `tropical_amazon`), not Hainich's 1.41. ADR 0103 §2's 41 % is the mild case.
+- **Clause (i) was mis-specified, not under-delivered** — it asked the anchor to remove the count drift, but
+  the drift is in the *target* (F's canopy drives it) and ADR 0103's own Consequences already say the anchor
+  does not close ADR 0102 mechanism (A).
+- **Clause (ii) failed on a genuinely new finding:** anchoring closes a `density → fpc → target → density`
+  loop. Benign in 4 cells (Amazon steps down then RECOVERS; Hainich's gate metric **improves** 4.5 → 3.2
+  floors; mediterranean 13.9 → 5.8) and **runaway in `semiarid_sahel`** (`fpc` 0.281 → 0.057 monotone,
+  target 13.5 → 4.46). H1-vs-H2 was pre-stated and the per-year shape separated them — that took a second
+  job and it is what turned an assertion into a measurement.
+- **`semiarid_sahel` is now at FOUR independent symptoms** (ADR 0052 dry-cell bias · ADR 0053 `fpc` moving
+  opposite the C · M4's τ = 602 yr non-recovery · this loop). Item 5(c) below already flagged three. **This
+  is the strongest signal in the line's whole open queue for where to aim the next F-side diagnosis.**
+- If the anchor is ever enabled here, **`a = 0.5`, not 0.1** — at a 10-yr horizon 0.1 delivers 15–46 % of
+  the level correction and none of the drift benefit while still costing the Sahel.
+
+**Coordination note for the next session:** line S was running concurrently (`S-anchorAC`) the whole time.
+That was fine — ADR 0103 §6 named M's harness, so ownership was unambiguous — but the ADR *had* written in a
+race ("if M hasn't run it, S runs it first"), which is why this went out as its own immediate commit instead
+of being batched with the queued baseline work. **When a cross-line ADR assigns you a measurement, publish
+the verdict before starting anything else.**
+
+---
+
 **M1–M4 ALL DONE. M4 closed 2026-08-05 (ADR 0055): `ENGINEERING_STANDARDS` §2 has no stubbed gates left on
-this line.** The next milestone is **M5** (item 4). Read items 1–3 first: item 1 is an outstanding integration point
-that M4 just added a caveat to, item 2 is a prerequisite for any global coupled run, and item 3 is a NEW
-inbound request from line E that arrived while M4 was being written.
+this line.** The next milestone is **M5** (item 4). Items 2 and 3 are the queued baseline-moving pair and
+are **untouched by item 0** — start there. Item 1's `n_prev` integration point is now partly answered by
+ADR 0056 (the anchor is S's alternative to teacher-forcing, and it is not ready).
 
 ✅ **ADR 0055's BRANCH CI IS GREEN on every required gate** — work sha `b9eee1fd`: `format`, `test (1)`,
 `test (lts)` all success, plus the non-required `test (macOS, lts)`. `python` and `docs` correctly did NOT

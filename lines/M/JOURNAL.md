@@ -546,3 +546,46 @@ useful sign the coupled configuration was the one I thought it was.
   bug of mine, not the science: I asserted the shuffle decomposition's identity at `atol = 1e-9` while the
   fixture prints `%.6f`, so the check was testing the print format. 3e-6 is the right tolerance.
 - **Decisions:** ADR 0055.
+
+## 2026-08-06 — line S's flip criterion, answered: the anchor is healthy, the criterion was half wrong, and one cell is unstable (ADR 0056)
+
+- **Session opened on a rebase that changed the queue.** Line S shipped the level anchor (ADR 0103) and
+  pre-registered a criterion for flipping its default — as a measurement **on line M's harness**, with a
+  ▶ ACTION block written into `lines/M/STATE.md` and a note in S's own handoff that if M had not run it by
+  the next S session, S would. That made it the session's first action ahead of the standing M5/two-layer
+  queue, and correctly so.
+- **Pre-registered the thresholds in the script before submitting it.** S's clauses are qualitative
+  ("each should flatten", "stay there"); they were turned into numbers *in the source*, so the verdict could
+  not drift after seeing the output (`residual-diagnosis` — a threshold you wrote is a hypothesis too). Both
+  `a = 0.5` (horizon-correct per ADR 0103 §3b) and `a = 0.1` (the value the flip would install) were run.
+- **The verdict: (iii) passes by six orders, (i) and (ii) FAIL.** Reported as the finding, which is exactly
+  what ADR 0103 §6 asked for. But the two things worth more than the FAIL both cut *in the anchor's favour*:
+  - **It fires perfectly.** Density × `patch_area` / target = **1.001 in all five cells**. And the level
+    error it closes is **bigger than the single-cell evidence**: 1.46–**2.21×**, not Hainich's 1.41. ADR
+    0103's headline number is the mild case.
+  - **Clause (i) was mis-specified.** It asked the anchor to remove the count drift; the drift is in the
+    *target*, and ADR 0103's own Consequences already say the anchor does not close ADR 0102 mechanism (A).
+    The criterion asked for something the mechanism never claimed — worth saying loudly, because the lazy
+    reading ("the anchor underperformed") would send S to tune `a`, which cannot help.
+- **The one real finding is (ii), and it needed a second job to earn.** The first run showed
+  `semiarid_sahel` collapsing under the anchor (E/C 1.19 → 0.33) and it would have been easy to write that
+  up as "the anchor breaks the dry cell". Instead: two competing explanations were **stated before looking**
+  — H1, anchoring closes a `density → fpc → target → density` feedback that runs away; H2, an artefact of
+  the modal-patch initial canopy (the Sahel's is 22 stems vs an 11.28 ensemble mean, the largest offset of
+  the five), so the anchor's first act is a one-time thinning. They predict opposite *shapes*, so the probe
+  was extended to print the per-year `fpc` and target and resubmitted.
+  **It separated them cleanly, and differently per cell.** Four cells are H2 and benign — `tropical_amazon`
+  steps 0.760 → 0.351 then *recovers* to 0.446 with the target unmoved; Hainich troughs and recovers and its
+  gate metric **improves** 4.5 → 3.2 floors. `semiarid_sahel` is H1 and unambiguous: `fpc` 0.281 → **0.057**
+  monotone, no trough, no recovery, target following it down 13.5 → 4.46. Had I skipped the second job the
+  ADR would have asserted a mechanism it had not measured.
+- **The Sahel is now at four independent symptoms** (ADR 0052's dry-cell bias, ADR 0053's `fpc` moving
+  opposite the C's, M4's τ = 602 yr non-recovery, and now the only cell where closing the S↔F level loop is
+  unstable). ADR 0056 records the count and explicitly does **not** claim they share a cause.
+- **Coordination, since S was live the whole time.** `squeue` showed `S-anchorAC` running between my two
+  jobs — S measuring the anchor's autocorrelation side while M measured the flip criterion. Complementary,
+  not duplicated, and the ownership was unambiguous because ADR 0103 §6 named the harness. The race that
+  *was* real is the one the ADR wrote in ("if M hasn't run it, S runs it first"), so the verdict was pushed
+  straight through rather than batched with the queued baseline work, and the reply went into
+  `lines/S/STATE.md` — the same channel S used to reach M.
+- **Decisions:** ADR 0056. Jobs 1716489 (criterion) and 1716493 (criterion reproduced + the mechanism report).

@@ -203,6 +203,8 @@ struct CellRun
     n0_modal::Int                    # stems in the modal patch the driver starts from
     n0_ens::Float64                  # mean stems per patch in the same 2010 ind file
     resid::Float64                   # max |carbon handoff residual|
+    cscale::Float64                  # initial Σ vegc_full_ind·nind — the 1e-6·C_scale gate's scale
+    anchor::Float64                  # ADR 0103 `anchor` this arm ran with (0 = the pre-0103 recursion)
 end
 
 # `flux_feature_vector` positions (manifest `colnames` of the pinned _t8 table, re-asserted at load):
@@ -220,7 +222,19 @@ const I_WS, I_AGB, I_LAI, I_FPC, I_NPREV = 3, 7, 8, 9, 11
 #     ARM A (free) − ARM B (forced)  =  the AR-recursion amplification
 #     ARM B (forced) − 1             =  what the count model does on F's own drifting canopy features
 # It is a DRIVER-level intervention (`s.n_prev` is a public mutable field); nothing in `slow.jl` is touched.
-function run_cell(k; teacher::Bool = false)
+#
+# ── ARM C — the LEVEL ANCHOR (`anchor = a`, ADR 0103). ────────────────────────────────────────────────
+# Line S shipped the anchor opt-in and default-off, and PRE-REGISTERED the criterion for flipping the
+# default as a measurement on THIS harness (ADR 0103 §6 / `lines/M/STATE.md` ▶ ACTION FOR M). It is a
+# different intervention from arm B and the distinction is the whole point: arm B replaces the count-space
+# AR feature `s.n_prev` with the C's truth (it needs the answer to work, so it can only ever be an
+# attribution arm, never a shippable model); the anchor uses NO external information — it blends the AR
+# ratio with the ratio that would land the stand on the count DRF's OWN absolute prediction,
+# `D_want = target/patch_area`. Arm C is therefore a candidate default; arm B is a diagnostic bound.
+# `a = 0.5` is the value ADR 0103 §3b's non-monotone convergence curve selects for a 10-year horizon
+# (retention 0.24 at yr 10 vs 0.62 at `a = 0.1`); `a = 0.1` is the proposed steady-state default and is run
+# beside it because that is the value the flip would actually install.
+function run_cell(k; teacher::Bool = false, anchor::Float64 = 0.0)
     name = names[k]
     forc, tairK = forcings_of(name)
     soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
@@ -231,8 +245,12 @@ function run_cell(k; teacher::Bool = false)
     rc = RecruitCopula{Float64}(cop, af, xcop, make_recruit_to_pools(axnames), live_flux_cond)
     s = FluxDrivenSlowEmulator(
         core, forest; boundary = copy(bnds[k]), n_init = n_inits[k], age0 = age0s[k],
-        seed = 1, recruit_copula = rc
+        seed = 1, recruit_copula = rc, anchor = anchor
     )
+    # `patch_area` is left at its 225.0 m² default DELIBERATELY: ADR 0103 §4 makes it a property of the
+    # ARTIFACT's training run, and the pinned `_t8` tables come from this tree's `par/lpjparam_fit.js`
+    # runs, which set `patcharea = 225.0`. It is inert when `anchor == 0`.
+    cscale0 = sum(FDiff.vegc_full_ind(p) * Float64(p.nind) for p in core.pools)
     ctruth = cnt_series(name, 1, "n_mean")
     cb = ClimBuf()
     slaq = Vector{Float64}[]; wdq = Vector{Float64}[]; dens = Float64[]
@@ -249,12 +267,14 @@ function run_cell(k; teacher::Bool = false)
     end
     return CellRun(
         name, copy(s.target_history), dens, copy(s.feature_history),
-        slaq, wdq, n0_modal, n0_ens, maximum(abs, s.resid_history)
+        slaq, wdq, n0_modal, n0_ens, maximum(abs, s.resid_history), cscale0, anchor
     )
 end
 
 runs = [run_cell(k) for k in eachindex(names)]
 forced = [run_cell(k; teacher = true) for k in eachindex(names)]
+anch5 = [run_cell(k; anchor = 0.5) for k in eachindex(names)]
+anch1 = [run_cell(k; anchor = 0.1) for k in eachindex(names)]
 
 # ── REPORT 1 — counts, year-matched, in units of the seed1-vs-seed2 noise floor ──────────────────────
 @printf("\n=== M3 S-SIDE / COUNTS — coupled per-patch tree N vs the C's per-patch ensemble ===\n")
@@ -323,11 +343,11 @@ end
 
 # ── REPORT 4 — ATTRIBUTION arm B: does teacher-forcing `n_prev` back onto its trained basis kill the
 #    drift? (free − forced = the AR-recursion amplification; forced − 1 = what F's canopy features do) ──
-@printf("\n=== ATTRIBUTION — free-running vs `n_prev`-teacher-forced, E/C per-patch count ratio ===\n")
+@printf("\n=== ATTRIBUTION — free-running vs `n_prev`-teacher-forced vs ANCHORED, E/C per-patch count ratio ===\n")
 @printf("%-22s %-8s%s\n", "cell", "arm", join((@sprintf("%7d", y) for y in Y0:Y1)))
 for k in eachindex(runs)
     c1 = cnt_series(runs[k].name, 1, "n_mean")
-    for (lab, r) in (("free", runs[k]), ("forced", forced[k]))
+    for (lab, r) in (("free", runs[k]), ("forced", forced[k]), ("anch0.5", anch5[k]), ("anch0.1", anch1[k]))
         row = join(
             (
                 y <= length(r.target) ? @sprintf("%7.2f", r.target[y] / c1[y]) : @sprintf("%7s", "-")
@@ -339,22 +359,107 @@ for k in eachindex(runs)
 end
 @printf("\n`forced` overwrites s.n_prev with the C's own per-patch ensemble mean after each year, putting\n")
 @printf("that ONE feature back on the basis the training table defines it on. Everything else is identical.\n")
+@printf("`anch*` uses NO external information — it blends in the ratio landing the stand on target/225 m².\n")
+@printf("So `forced` is an attribution BOUND (it needs the answer); `anch*` is a shippable candidate.\n")
 
-@printf("\n--- the same two arms as the GATE metric: mean |E-C| in seed1-vs-seed2 noise floors ---\n")
-@printf("%-22s %10s %10s %10s %10s\n", "cell", "floor", "free/fl", "forced/fl", "removed%")
+@printf("\n--- the same four arms as the GATE metric: mean |E-C| in seed1-vs-seed2 noise floors ---\n")
+@printf(
+    "%-22s %8s %8s %9s %9s %9s %8s\n",
+    "cell", "floor", "free/fl", "forced/fl", "anch.5/fl", "anch.1/fl", "removed%"
+)
 for k in eachindex(runs)
     c1 = cnt_series(runs[k].name, 1, "n_mean"); c2 = cnt_series(runs[k].name, 2, "n_mean")
     ok = .!isnan.(c1) .& .!isnan.(c2)
     fl = mean(abs.(c1[ok] .- c2[ok]))
-    ny = min(length(runs[k].target), length(forced[k].target), NYEAR)
-    dfree = mean(abs.(runs[k].target[1:ny] .- c1[1:ny]))
-    dforc = mean(abs.(forced[k].target[1:ny] .- c1[1:ny]))
+    ny = min(length(runs[k].target), length(forced[k].target), length(anch5[k].target), NYEAR)
+    d(r) = mean(abs.(r.target[1:ny] .- c1[1:ny]))
+    dfree = d(runs[k])
     @printf(
-        "%-22s %10.3f %10.1f %10.1f %9.0f%%\n",
-        runs[k].name, fl, dfree / fl, dforc / fl, 100 * (1 - dforc / dfree)
+        "%-22s %8.3f %8.1f %9.1f %9.1f %9.1f %7.0f%%\n",
+        runs[k].name, fl, dfree / fl, d(forced[k]) / fl, d(anch5[k]) / fl, d(anch1[k]) / fl,
+        100 * (1 - d(forced[k]) / dfree)
     )
 end
-@printf("removed%% = the share of the free-running error the recursion contributes (100%% = all of it)\n")
+@printf("removed%% = the share of the free-running error the RECURSION contributes (arm B; 100%% = all of it)\n")
+
+# ── REPORT 4b — ADR 0103 §6's PRE-REGISTERED FLIP CRITERION, evaluated clause by clause. ─────────────
+# The thresholds below are written BEFORE the run (`residual-diagnosis`: a threshold you wrote is a
+# hypothesis too) so this is a measurement and not a judgement call after seeing the numbers. S's clauses
+# are qualitative ("each should flatten", "stay there"); these make them falsifiable:
+#
+#   (i)   DRIFT REMOVED in the three drifting cells. Drift factor `d = (E/C)_2019 / (E/C)_2010` — 1.00 is
+#         a pure level offset with no drift, which is what "flat" means here. PASS iff |ln d| falls by
+#         ≥50 % vs the free arm AND the anchored |ln d| < 0.20 (a residual drift within ±22 % over the
+#         decade). Both clauses matter: a big relative cut off a huge drift is still a drifting model.
+#   (ii)  THE TWO NOISE-FLOOR CELLS STAY THERE. "At the floor" is read as the gate metric mean|E−C|/floor,
+#         which is 0.5 (Amazon) and 1.4 (Sahel) free. PASS iff the anchored value is ≤ 2.0 floors AND does
+#         not exceed 1.5× the free value — the anchor must not buy the drifting cells at their expense.
+#   (iii) CARBON CLOSES at ≤ 1e-6·C_scale in all five (the standing Gate-2 tolerance, unchanged).
+#
+# A clause that fails is the FINDING and goes back to S as such — ADR 0103 §6 is explicit that `a` must
+# not be tuned until it passes. Both `a` values are scored; the criterion is decided on `a = 0.5` (the
+# horizon-correct one), with `a = 0.1` reported because that is the value the flip would install.
+const DRIFTERS = ("boreal_siberia", "mediterranean_iberia", "temperate_hainich")
+const FLOORCELLS = ("tropical_amazon", "semiarid_sahel")
+driftfac(r, c1, ny) = (r.target[ny] / c1[ny]) / (r.target[1] / c1[1])
+
+@printf("\n=== ADR 0103 §6 FLIP CRITERION — pre-registered, clause by clause ===\n")
+@printf("(thresholds fixed before the run; horizon = 10 yr, which ADR 0103 §3b says sees a PARTIAL effect)\n\n")
+@printf(
+    "%-22s %6s %8s %8s %8s %9s %9s %8s\n",
+    "cell", "role", "d_free", "d_a0.5", "d_a0.1", "|lnd|drop", "fl_a0.5", "clause"
+)
+crit_i = Bool[]; crit_ii = Bool[]
+for k in eachindex(runs)
+    nm = runs[k].name
+    c1 = cnt_series(nm, 1, "n_mean"); c2 = cnt_series(nm, 2, "n_mean")
+    ok = .!isnan.(c1) .& .!isnan.(c2)
+    fl = mean(abs.(c1[ok] .- c2[ok]))
+    ny = min(length(runs[k].target), length(anch5[k].target), NYEAR)
+    df = driftfac(runs[k], c1, ny); d5 = driftfac(anch5[k], c1, ny); d1 = driftfac(anch1[k], c1, ny)
+    drop = 1 - abs(log(d5)) / max(abs(log(df)), 1.0e-12)
+    fl5 = mean(abs.(anch5[k].target[1:ny] .- c1[1:ny])) / fl
+    flfree = mean(abs.(runs[k].target[1:ny] .- c1[1:ny])) / fl
+    role, pass = if nm in DRIFTERS
+        p = drop >= 0.5 && abs(log(d5)) < 0.2
+        push!(crit_i, p)
+        ("drift", p)
+    elseif nm in FLOORCELLS
+        p = fl5 <= 2.0 && fl5 <= 1.5 * flfree
+        push!(crit_ii, p)
+        ("floor", p)
+    else
+        ("-", true)
+    end
+    @printf(
+        "%-22s %6s %8.3f %8.3f %8.3f %8.0f%% %9.2f %8s\n",
+        nm, role, df, d5, d1, 100 * drop, fl5, pass ? "PASS" : "FAIL"
+    )
+end
+@printf("\nd_* = (E/C)_2019/(E/C)_2010, the DRIFT: 1.00 = a pure level offset, no drift. |lnd|drop = how\n")
+@printf("much of the free arm's log-drift the anchor removes. fl_a0.5 = the gate metric in noise floors.\n")
+@printf(
+    "\n  (i)   drift removed in all 3 drifting cells : %s\n", all(crit_i) ? "PASS" : "FAIL"
+)
+@printf("  (ii)  both floor cells stay at the floor   : %s\n", all(crit_ii) ? "PASS" : "FAIL")
+
+# ── REPORT 4c — DID THE ANCHOR ACTUALLY FIRE? (ADR 0048's failure mode: an operator that never runs
+#    returns a clean null that reads as a pass.) With `a > 0` the stand is pulled toward `target/225`, so
+#    `D·225/target` → 1; unanchored it is free to sit anywhere, and ADR 0103 §2 measured 1.41 at Hainich
+#    under constant forcing. This is a MECHANISM check, not a skill one — it must move even if (i) fails. ─
+@printf("\n=== did the anchor FIRE? stand density × patch_area / the DRF's own target, 2019 ===\n")
+@printf("%-22s %10s %10s %10s %12s\n", "cell", "free", "anch0.5", "anch0.1", "carbon_ok")
+for k in eachindex(runs)
+    lvl(r) = (ny = min(length(r.target), length(r.dens), NYEAR); r.dens[ny] * 225.0 / r.target[ny])
+    cok = all(r -> r.resid <= 1.0e-6 * r.cscale, (runs[k], forced[k], anch5[k], anch1[k]))
+    @printf(
+        "%-22s %10.3f %10.3f %10.3f %12s\n",
+        runs[k].name, lvl(runs[k]), lvl(anch5[k]), lvl(anch1[k]), cok ? "yes" : "NO"
+    )
+end
+@printf("\n1.00 = the stand sits exactly where its own count model says. The free arm's departure from 1 is\n")
+@printf("the level error ADR 0103 §2 found at Hainich (1.41x under constant forcing) — no gate here reads it.\n")
+@printf("carbon_ok = max|handoff resid| <= 1e-6*C_scale in ALL FOUR arms (criterion iii).\n")
 
 # ── REPORT 5 — is the count drift INHERITED from the canopy? F's own canopy features vs the C's, both
 #    as a ratio to their 2010 value, next to the count ratio. Same-direction motion = inheritance. ─────
@@ -385,6 +490,40 @@ for r in runs
         (r.target[ny] / c1[ny]) / (r.target[1] / c1[1])
     )
 end
+# ── REPORT 5b — WHY the anchor does not remove the drift, and what it does to the Sahel. ─────────────
+# The anchor pins the ROSTER to the count DRF's absolute target; it cannot pin the TARGET, which the DRF
+# re-predicts each year from F's canopy features. So it closes a feedback loop that the pure AR ratio only
+# transmitted in relative terms: density → fpc/lai/agb → target → density. Two competing readings of the
+# Sahel's anchored collapse (E/C 1.19 → 0.33), and this report separates them:
+#   H1 FEEDBACK — anchoring cuts density, the cut lowers `fpc`, the lower `fpc` lowers the target, repeat.
+#      Signature: the anchored arm's OWN `fpc`/`agb` fall faster than the free arm's, monotonically.
+#   H2 INITIAL-CANOPY ARTEFACT — the driver starts from the MODAL patch, which at the Sahel is 22 stems vs
+#      an 11.28-stem ensemble mean (1.95×, the largest offset of the five). The anchor's first act is then
+#      a one-time thinning of nearly half the stand, and what follows is recovery, not instability.
+#      Signature: `fpc` steps down early and then FLATTENS, with the target following rather than leading.
+# H1 and H2 make opposite predictions about the shape, which is why the per-year series is printed and not
+# a start/end ratio. (`residual-diagnosis`: state the falsifiable alternative before reading the numbers.)
+@printf("\n=== WHY — per-year fpc and count target, free vs anch0.5 (H1 feedback vs H2 initial-canopy) ===\n")
+for k in eachindex(runs)
+    c1 = cnt_series(runs[k].name, 1, "n_mean")
+    @printf("%-22s %-14s%s\n", runs[k].name, "", join((@sprintf("%7d", y) for y in Y0:Y1)))
+    for (lab, r) in (("free", runs[k]), ("anch0.5", anch5[k]))
+        ny = min(length(r.feats), NYEAR)
+        for (qlab, qv) in (
+                ("fpc", [r.feats[y][I_FPC] for y in 1:ny]),
+                ("target", r.target[1:ny]),
+                ("E/C", [r.target[y] / c1[y] for y in 1:ny]),
+            )
+            @printf(
+                "%-22s %-8s %-5s%s\n", "", lab, qlab,
+                join((@sprintf("%7.3f", v) for v in qv))
+            )
+        end
+    end
+end
+@printf("\nH1 (feedback) predicts the anchored `fpc` falls faster than the free one and keeps falling;\n")
+@printf("H2 (modal-patch artefact) predicts an early step down that then FLATTENS. Read the shape.\n")
+
 @printf("\nF_* = the coupled canopy features the DRF was actually fed (s.feature_history); C_* = the C's own\n")
 @printf("same quantity from the ADR-0053 annual oracle (C_lai is all-PFT — a bound, not a match target).\n")
 @printf("E/C_cnt = how much the count ratio itself moved over the window (1.00 = no drift, only a level).\n")
@@ -397,4 +536,14 @@ for r in runs
         r.name, r.resid, mean(row[I_WS] for row in r.feats), r.dens[1], r.dens[end]
     )
 end
+@printf("\n--- criterion (iii): the carbon handoff closes in EVERY arm, per cell (resid / 1e-6*C_scale) ---\n")
+@printf("%-22s %10s %9s %9s %9s %9s\n", "cell", "C_scale", "free", "forced", "anch0.5", "anch0.1")
+for k in eachindex(runs)
+    q(r) = r.resid / (1.0e-6 * r.cscale)
+    @printf(
+        "%-22s %10.3e %9.2e %9.2e %9.2e %9.2e\n",
+        runs[k].name, runs[k].cscale, q(runs[k]), q(forced[k]), q(anch5[k]), q(anch1[k])
+    )
+end
+@printf("< 1.0 everywhere = criterion (iii) holds (the standing Gate-2 tolerance, ADR 0018).\n")
 @printf("\nDONE — the verdict is REPORT 1's |d|/fl and REPORT 2's shape, read with REPORTS 4-5's attribution.\n")
