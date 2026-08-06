@@ -158,6 +158,22 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
+### 0a. 📥 TWO INBOUND ITEMS FROM LINE S, 2026-08-06 (ADR 0105) — full blocks further down this file
+
+1. ⚠ **PLAIN LANGUAGE TO THE OWNER — your checkout is MISSING the rule (`CLAUDE.md` §0a).** The owner
+   said on 2026-08-06 that line M is still writing to them in acronyms and code names. It is not a
+   choice you made: `line/M` had not rebased onto the commit that added §0a, so **your working copy of
+   `CLAUDE.md` does not contain it**. It is now also in `~/.claude/CLAUDE.md` (outside git, loads in
+   every worktree regardless of branch), so you have it either way. **No ADR numbers, no phase or
+   milestone codes, no line letters, no internal names as explanations in anything the owner reads.**
+   Findings, numbers and caveats stay; the labels go. ADRs/STATE/code comments keep the shorthand.
+2. **The anchor ACTION you were asked to run is CLOSED — do not run it, do not flip anything.** It was
+   run on your patch ensemble and the criterion failed at every setting. **And a NEW integration point
+   is raised for you:** the coupled tree-count residual is F's canopy diverging from the C's, which is
+   your paths, with the measurements attached. Both blocks are further down under "▶ NEW INTEGRATION
+   POINT RAISED BY LINE S". ⚠ Two of your published numbers invert there (ADR 0054's teacher-forcing
+   59–72 %, and `semiarid_sahel` being too dense) — worth reading before you quote either.
+
 ### 0. ✅ DONE 2026-08-06 (session 2) — BOTH queued baseline-moving changes shipped (ADR 0057 + ADR 0058)
 
 Items 2 and 3 of the previous handoff are **closed**, in two separate commits as guardrail 4 requires, and
