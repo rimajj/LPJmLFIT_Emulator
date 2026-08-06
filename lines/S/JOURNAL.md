@@ -1226,3 +1226,35 @@ basis was available without waiting on anything.
   cross-line re-pin.
 - **Next:** the residual is a coupling / F-fidelity item and belongs to line M — raised with the
   measurement attached. S2 (the conditioning set) returns to the top of S's own queue by elimination.
+
+## 2026-08-06 (later still) — the acceptance criterion, and the moisture actually varies now
+
+The owner set the acceptance criterion and was right to be angry at the framing of the previous entry:
+nothing was near finished, because the emulator has no climate-change response at all. Recorded as ADR 0106
+and delivered to all four lines' start-here blocks, to `MEMORY.md`, and to `~/.claude/CLAUDE.md`.
+
+- **Done = everything (counts, trait distributions AND medians) within 10 %, on ALL cells, under climate
+  change too.** Supersedes every noise-floor stopping condition. One clause needed a stated default rather
+  than the owner's words: the original model's own two runs differ by 29 % of the mean for the per-patch
+  count in a low-density cell, so a literal 10 % is unmeetable there by any emulator ⇒ tolerance =
+  `max(10 %, the original's own two-run spread)`. Flagged, not absorbed.
+- **The binding constraint is the climate-change clause, not the fidelity numbers.** Trait medians are
+  already 9 of 10 within 10 % at the test cells. But the warming response is indistinguishable from zero,
+  and CO2 is a constant in every deployed training row so there is no CO2 response at all — which has no
+  owner and may need a new run of the original model.
+- **The moisture conditioning now exists.** All six descriptors built per cell-year for both scenarios, all
+  67 420 cells. Global mean humidity deficit +20.4 % and evaporative demand +4.9 % 2019 → 2100; per cell the
+  values now take 20 (historic) / 81 (ssp370) distinct values where they took **1**.
+- **The gate earned its keep twice, and both were the same trap in different sizes.** (1) I averaged 12
+  monthly means where the original averages DAYS; months are 28–31 days long, so four of six columns were
+  off by ~0.3 % — small enough to look like rounding, far too large to be zero. Fixed in the formula, which
+  is where a real failure belongs. (2) The last column then failed only in **3 cells of 67 420**, all with a
+  humidity deficit of ~1e-4 against a median of 0.446; the max ABSOLUTE error over all cells was 9.5e-07.
+  A pure relative test is undefined for a column that legitimately reaches zero, so the metric was widened
+  to a combined absolute+relative form — argued from the three cells' actual magnitudes, and only after the
+  real bug had been fixed rather than tolerated.
+- **Method rule:** an acceptance criterion is a deliverable and its absence is a defect. Months of
+  per-milestone gates with no project-level stopping condition is exactly how "the open questions are
+  closed" got reported as near-finished.
+- **Next:** wire the transient tail into the training-table builder, retrain both artifacts, re-pin with M,
+  then score globally against the 10 % criterion.
