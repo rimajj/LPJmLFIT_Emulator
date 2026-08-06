@@ -32,9 +32,40 @@ source model runs constant CO2 **on purpose** (no nitrogen limitation ⇒ unboun
 emulator with no CO2 response **matches the reference**. Never raise a CO2 feature, varying-CO2 training rows,
 or a new model run for CO2, and never list it as a defect.
 
+### ⏸ FIRST: THIS LINE'S WORK IS PUSHED AND GREEN BUT **NOT MERGED** — one command, blocked on a shared worktree
+
+Branch tip **`04e9d0b0`**. CI on the code-bearing sha **`c68ee134`**: `test (lts)` ✅ `test (1)` ✅
+`test (macOS, lts)` ✅ `format` ✅ (`test (pre)` ❌ = the documented `ScopedValues` prerelease `MethodError` at
+LOAD time, confirmed from the job log, `continue-on-error`). `git diff c68ee134 04e9d0b0` = `MEMORY.md` +
+`lines/S/STATE.md` only, i.e. **no gate-watched path**, so the verified tree is the one that would land.
+
+**Why it did not merge:** the integration worktree `/p/projects/open/Jamir/esm_land_emulator` had **91
+uncommitted changes** at 2026-08-06 15:14 — an **ACTIVE** integrator session (files written 50 s before the
+attempt, `.git/index` 32 s before) doing a large docs reorganization (`docs/*.md` → `docs/notes/`,
+`docs/component_s_public_report.*` → `docs/report/`) plus `CHANGELOG.md` / `CLAUDE.md` / `Project.toml` /
+`.github/workflows/**` / `MEMORY.md` / `docs/decisions/README.md` / four skills. `git merge` there fails with
+*"Your local changes … would be overwritten by merge"*, and pushing `main` forward from a temporary worktree
+would drop conflicts into the middle of that reorganization. **Left alone deliberately — do not `stash`,
+`checkout` or `reset` in that worktree.**
+
+**To land it (verify the worktree is clean first):**
+```bash
+INT=/p/projects/open/Jamir/esm_land_emulator
+git -C $INT status --short | head          # MUST be empty; if not, the integrator session is still working
+flock "$INT/.git/esm-integrate.lock" bash -eu -c '
+  git -C "$0" pull --ff-only origin main
+  git -C "$0" merge --no-ff --no-edit origin/line/S
+  git -C "$0" push origin main' "$INT"
+```
+Then check **main's own newest** CI run (the merge touches `src/**`, so `docs` runs on main having never run on
+the branch). **Expect a conflict in `MEMORY.md` and `docs/decisions/README.md`** — the integrator's WIP edits
+both and so does `c68ee134`; both are append-style, so keep both sides. No `src/`, `test/` or `scripts/`
+overlap.
+
 ### THE STATE IN SEVEN LINES
 
-1. **S2 (the moisture conditioning) is WIRED, GATED, TESTED and MERGED — ADR 0108, commit `c68ee134`.**
+1. **S2 (the moisture conditioning) is WIRED, GATED, TESTED and PUSHED GREEN — ADR 0108, commit `c68ee134`**
+   (merge pending, see the block above).
    `ENV_WINDOW=W` (builder) + `live_flux_cond_env_series` (runtime) + `years.i64` on every table +
    `env_basis` in every copula manifest. All opt-in; default byte-identical, verified against
    `git show <parent>:` rather than a re-run of the new code (job **1718598**). Julia suite **111 289 pass /
