@@ -355,3 +355,59 @@ correctness) · the MITgcm register/CITATION.cff/refs.bib/header citation set ·
 
 - **Next:** the E→M integration point is now **`enable_two_layer = true`**, superseding `λ_g = 1.0`. Then
   E4-B. See STATE `## NEXT`.
+
+---
+
+## 2026-08-06 — session 4 (line E): the column becomes the DEFAULT (E7b, ADR 0075), and the criterion fails at one site
+
+- **Task:** answer line M's pre-registered ask (ADR 0058 §5) — flip `SEBParams.enable_two_layer`, or decline in
+  an E-block ADR. This was the last thing standing between M and a single ground-heat scheme.
+- **Verdict: flipped (option 1), ADR 0075.** But the honest result is not the clean pass the ask anticipated.
+
+**1. The pre-registered criterion FAILED at AU-Rob.** Daily H R² arm A → arm C: DE-Hai 0.035 → 0.645,
+AU-ASM 0.329 → 0.775, AU-Tum −0.478 → −0.362, **AU-Rob 0.069 → −0.176**. I flipped anyway, on four grounds all
+published *before* this measurement (ADR 0075 §1): ADR 0073 had already excluded AU-Rob from scoring H
+(`ε_obs` −47.5 W/m²), its two `λ_g` fit targets disagree 13.6×, the fitted `λ_g = 1.0` arm fails there too
+(−0.172 ⇒ the site does not discriminate the schemes at all), and its pre-E7 "skill" coexists with a G R² of
+−4.02 at 2.4× the observed sd(G) — the bias cancellation ADR 0073 named. Daily G improves at **all four** sites
+including AU-Rob; Rn moves ≤ 0.005. **Writing the exception down was the whole job here** — a criterion that
+fails and gets quietly widened is worse than no criterion.
+
+**2. Found a real defect while checking the numbers I was about to act on.** ADR 0074 §6's sub-daily `T_skin`
+cost (AU-Tum 0.773 → 0.667, AU-Rob 0.385 → 0.166) is measured at `z1 = 0.2 m`, which is **not** the thickness
+ADR 0074 shipped as the default. At the shipped 0.75 m it is AU-Tum **0.547** and AU-Rob **−0.116**, and
+`lines/E/STATE.md` had been carrying the 0.2 m numbers with the thickness qualifier dropped. Cause: the probe's
+sub-daily 0.2 m arm called `run_site_stateful(...; enable_two_layer = true)` and **omitted `z_soil1`**, so it
+tracked the *package default* — honest while that default was 0.2 m, and a duplicate of the 0.75 m arm the
+moment ADR 0074 set the default to 0.75. Visible in `_v5.txt` as two byte-identical thickness arms; genuine in
+v1–v4. **A control arm must pin every value it controls for.** Fixed, re-ran as `_v6` (job 1717191), captured as
+`plumber2-reference` TRAP 3. The cheap tell: two arms differing by a parameter must never print identical
+numbers.
+
+**3. Also added what was missing rather than assuming it:** daily-step `T_skin` per site, which nothing had
+pinned even though `run.jl:93` solves once per day. It is where this decision actually lives, and the cost is
+small: 0.981 → 0.979 (AU-ASM), 0.900 → 0.851 (AU-Tum), 0.858 → 0.793 (AU-Rob).
+
+**4. Measured the blast radius before believing anyone's estimate of it (including my own STATE's).** Job
+1717194 = the full CI-faithful suite with *only* the default flipped: **111 227 pass / 3 fail**, all three E's
+own assertions. So the warning this line's STATE had carried for a week — "E must not flip either default, it
+moves every coupled/biome baseline, M lands it" — was wrong on **both** halves, and M's handoff item (b)
+(regenerate ADR 0055's fixtures) is **not** required for a green `main`. Retired that warning explicitly rather
+than deleting it.
+
+**5. The night-cold sign, restated as a measurement.** M asked for it re-pinned. It turned out the committed P2
+gate **cannot** move: it drives the stateless `solve_seb`, which never reads the flag (the fixture is a
+stratified sub-sample no prognostic column can be integrated along). So I added a *stateful* gate instead, and
+the sign does not just survive — it **deepens** (towers −0.95 → −3.17 K at AU-ASM, −1.99 → −3.67 at AU-Tum,
+−1.09 → −2.03 at AU-Rob; synthetic 30-day diurnal cycle −1.474 → −2.496 K, verified before committing it).
+Physically: pinning the night-time reference to the surface's own cooling top layer removes a warm bias that
+was partly masking the over-cooling.
+
+**Dead end worth one line:** the new gate first failed the *whole suite* at collection with
+`Test files must only include @testitem and @testsetup calls` — because I documented it with a `"""docstring"""`,
+which makes the top-level expression `Core.@doc @testitem(...)`. Identical message to the `*_test.jl` naming
+trap, completely different cause. Captured in CLAUDE.md §2 next to that trap.
+
+- **Jobs:** `E-e7v6` 1717191 (probe v6) · `E-flipblast` 1717194 (blast radius, 111 227/3) · `E-flip` 1717229
+  (the collection failure) · `E-flip2` 1717243 (the green suite).
+- **Next:** nothing owed to M — reply written into `lines/M/STATE.md`. E4-Experiment B is the next action.

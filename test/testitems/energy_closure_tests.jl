@@ -390,36 +390,115 @@ end
 #   4  STABLE + SELF-EQUILIBRATING — with a closed bottom and no restoring term, the only thing stopping
 #      a runaway is the surface feedback (T1 cold ⇒ G up ⇒ T1 warms). Assert it actually holds.
 # ══════════════════════════════════════════════════════════════════════════════════════════════════════
-@testitem "Component E — two-layer ground heat is OFF by default and changes nothing (ADR 0074)" tags = [:energy, :unit] begin
+@testitem "Component E — two-layer ground heat is ON by default; `false` restores the pre-E7 kernel (ADR 0075)" tags = [:energy, :unit] begin
     using LPJmLFITEmulator
     using Test
 
+    # ADR 0075 flipped this default, after ADR 0074 measured the scheme against four towers and ADR 0058
+    # measured it inside the coupled loop. Guardrail 4 is therefore served by the OPT-OUT below rather
+    # than by the default: `enable_two_layer = false` must still reproduce the pre-E7 closure exactly, so
+    # every published pre-E7 number stays reproducible from the shipped package.
     p = SEBParams{Float64}()
-    @test !p.enable_two_layer                       # guardrail 4: opt-in
+    @test p.enable_two_layer
 
     # The `lambda_g` kwarg on the kernel defaults to `p.lambda_g`, so the pre-E7 call is bit-for-bit the
-    # same computation — this is the mechanical statement of "default byte-identical".
+    # same computation. NB `solve_seb` never reads `enable_two_layer` — the scheme lives entirely in
+    # `solve!`, which is why every STATELESS caller (the P2 tower gate above included) is unaffected by
+    # this flip by construction, not by tolerance.
     args = (700.0, 350.0, 298.15, 1.0e5, 3.0, 0.15, 2.5, 25.0, 250.0, 295.15)
     @test solve_seb(p, args...) === solve_seb(p, args...; lambda_g = p.lambda_g)
 
-    # With the scheme disabled, `solve!` must not touch the two soil-layer temperatures beyond seeding
-    # them, and the deep-soil EWMA must still be the thing driving G.
-    clo = SEBEnergyClosure(; t_soil0 = 283.15)
-    st = SharedState()
     ff = FToE(le = 250.0, gpp = 0.0, npp = 0.0, rh = 0.0, firec = 0.0, flux_estabc = 0.0, ground_heat = 0.0)
     bc = SToE(albedo = 0.15, z0 = 2.5, lai = 4.0, height = 25.0)
     forc = AtmForcing(
         swdown = 700.0, lwdown = 350.0, tair = 298.15, qair = 0.008,
         wind = 3.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0
     )
+
+    # --- the OPT-OUT still is the pre-E7 closure: soil layers untouched, G driven by the air EWMA -----
+    p0 = SEBParams{Float64}(enable_two_layer = false)
+    clo0 = SEBEnergyClosure{Float64}(; params = p0, t_soil0 = 283.15)
+    st0 = SharedState()
     for _ in 1:10
-        solve!(clo, st, ff, bc, forc)
+        solve!(clo0, st0, ff, bc, forc)
     end
-    @test clo.t_soil1 == 283.15 && clo.t_soil2 == 283.15    # seeded, never integrated
-    @test clo.t_soil > 283.15                                # the EWMA is what moved
-    # and G is the EWMA term, not a half-cell conductance
-    (atm, _tof) = solve!(clo, st, ff, bc, forc)
-    @test isapprox(atm.g, p.lambda_g * (atm.t_skin - clo.t_soil); atol = 1.0e-9)
+    @test clo0.t_soil1 == 283.15 && clo0.t_soil2 == 283.15   # seeded, never integrated
+    @test clo0.t_soil > 283.15                                # the EWMA is what moved
+    (atm0, _tof0) = solve!(clo0, st0, ff, bc, forc)
+    @test isapprox(atm0.g, p0.lambda_g * (atm0.t_skin - clo0.t_soil); atol = 1.0e-9)
+
+    # --- and the DEFAULT is now the prognostic column -------------------------------------------------
+    clo = SEBEnergyClosure(; t_soil0 = 283.15)
+    st1 = SharedState()
+    for _ in 1:10
+        solve!(clo, st1, ff, bc, forc)
+    end
+    @test clo.t_soil1 != 283.15 && clo.t_soil2 != 283.15      # the column actually integrated
+    @test clo.t_soil > 283.15                                 # the air EWMA is still advanced (still state)
+    # G is the half-cell conductance against the PROGNOSTIC top layer, diagnosed from its PRE-step value.
+    t1_pre = clo.t_soil1
+    (atm, _tof) = solve!(clo, st1, ff, bc, forc)
+    kappa_g = 2 * p.lambda_soil / p.z_soil1
+    @test isapprox(atm.g, kappa_g * (atm.t_skin - t1_pre); atol = 1.0e-9)
+    # ...and the two schemes really do differ on identical forcing — this is what ADR 0075 moved.
+    @test !isapprox(atm.g, atm0.g; rtol = 1.0e-3)
+end
+
+# ADR 0072's night-cold failure mode, RESTATED under the ADR 0075 default rather than deleted.
+#
+# The P2 tower gate above pins that sign on `solve_seb`, which is scheme-independent, so the flip cannot
+# move it — but the *coupled* path can, and it does. Measured on the four PLUMBER2 towers
+# (`e7_two_layer_probe_v6.txt`, sub-daily, `z1 = 0.75 m`), nocturnal `T_skin` bias, pre-E7 arm → default:
+# AU-ASM −0.95 → −3.17 K, AU-Tum −1.99 → −3.67 K, AU-Rob −1.09 → −2.03 K. So the sign is unchanged and the
+# magnitude GROWS: pinning the surface's night-time reference to its own cooling top soil layer, instead of
+# to a 30-day mean of air temperature, removes a warm bias that was partly masking it. ADR 0074 §3/§6 and
+# ADR 0073 both name the missing term as canopy heat storage; this asserts the direction so that whoever
+# lands it trips this test and must update it with a measurement.
+# NB a `"""docstring"""` here (rather than `#`) makes this a `Core.@doc` expression and ReTestItems REJECTS
+# the whole file with "Test files must only include `@testitem` and `@testsetup` calls".
+@testitem "Component E — the ADR 0072 night-cold sign survives the default flip, and deepens (ADR 0075)" tags = [:energy, :scientific] begin
+    using LPJmLFITEmulator
+    using Test
+
+    # A synthetic repeating diurnal cycle at a SUB-DAILY step — "night" only exists sub-daily, and the
+    # towers above are scored the same way. 30 days is many multiples of the top layer's ~1 d timescale.
+    dt = 1800.0
+    steps_per_day = round(Int, 86400 / dt)
+    tair_of(h) = 288.15 + 6.0 * sinpi((h - 9.0) / 12.0)
+    sw_of(h) = max(0.0, 800.0 * sinpi((h - 6.0) / 12.0))
+
+    "Mean nocturnal (T_skin − Tair) over the last 10 days of a 30-day rollout, in K."
+    function night_dt(two_layer)
+        p = SEBParams{Float64}(enable_two_layer = two_layer, dt_seconds = dt)
+        clo = SEBEnergyClosure{Float64}(; params = p, t_soil0 = 288.15)
+        st = SharedState()
+        ff = FToE(le = 40.0, gpp = 0.0, npp = 0.0, rh = 0.0, firec = 0.0, flux_estabc = 0.0, ground_heat = 0.0)
+        bc = SToE(albedo = 0.15, z0 = 2.5, lai = 4.0, height = 25.0)
+        acc = 0.0
+        cnt = 0
+        for day in 1:30, k in 0:(steps_per_day - 1)
+            h = 24.0 * k / steps_per_day
+            (sw, ta) = (sw_of(h), tair_of(h))
+            forc = AtmForcing(
+                swdown = sw, lwdown = 320.0, tair = ta, qair = 0.008,
+                wind = 1.0, psurf = 1.0e5, precip = 0.0, co2 = 400.0
+            )
+            (atm, _tof) = solve!(clo, st, ff, bc, forc)
+            if day > 20 && sw <= 50.0                     # nocturnal, after the column has spun up
+                acc += atm.t_skin - ta
+                cnt += 1
+            end
+        end
+        return acc / cnt
+    end
+
+    # Measured on this synthetic cycle: −1.474 K (pre-E7) → −2.496 K (default), n = 250 nocturnal steps —
+    # the same direction and a comparable deepening to the three towers quoted above.
+    d_pre = night_dt(false)          # the pre-E7 closure
+    d_new = night_dt(true)           # the ADR 0075 default
+    @test d_pre < 0.0                # ADR 0072: the closure runs too cold at night...
+    @test d_new < 0.0                # ...and the flip does not repair that
+    @test d_new < d_pre              # ...it DEEPENS it, as measured at all three T_skin towers
 end
 
 @testitem "Component E — two-layer column: closure exact, energy-exact, stable (ADR 0074)" tags = [:energy, :scientific] begin

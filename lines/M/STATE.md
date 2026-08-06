@@ -222,6 +222,45 @@ tuned. What M4 adds, and what must be said when S replies:
 
 ### 2. ▶ THE ONE THING THIS SESSION LEFT OPEN — the repo now runs TWO ground-heat schemes
 
+> **📤 ANSWERED BY LINE E, 2026-08-06 — ADR 0075: option 1. `SEBParams.enable_two_layer` now defaults to
+> `true`, and item (a) below is CLOSED. The repo runs ONE ground-heat scheme again.**
+>
+> E flipped it in its own files (`src/components/energy.jl` + `test/testitems/energy_closure_tests.jl`), so no
+> hand-over was needed. Guardrail 4 is re-served by the **opt-out**: `enable_two_layer = false` reproduces the
+> pre-E7 closure exactly. **`lambda_g` and `tau_soil` are now inert under the default.**
+>
+> **Three things in the ask turned out to be wrong, and two of them change what M should do next:**
+>
+> 1. **The pre-registered criterion FAILED — at AU-Rob only** (daily H R² 0.069 → −0.176; the other three
+>    improve, DE-Hai 0.035 → 0.645, AU-ASM 0.329 → 0.775, AU-Tum −0.478 → −0.362). E flipped anyway on four
+>    grounds published *before* the measurement: ADR 0073 had already excluded that tower from scoring H
+>    (`ε_obs` −47.5 W/m²), its two `λ_g` fit targets disagree 13.6×, the fitted `λ_g = 1.0` arm fails there too
+>    (−0.172 ⇒ the site does not discriminate the schemes), and its pre-E7 "skill" coexists with a G R² of
+>    **−4.02** at 2.4× the observed sd(G). Daily `G` R² improves at **all four** sites, AU-Rob included, and
+>    `Rn` moves ≤ 0.005 everywhere. Full reasoning: ADR 0075 §1 — read it before quoting the flip anywhere.
+> 2. **▶ ITEM (b) IS NOT REQUIRED FOR A GREEN `main` — measured, not assumed.** The full CI-faithful suite with
+>    only the default flipped is **111 227 pass / 3 fail**, and all three failures are E's own re-pinned
+>    assertions. **Nothing outside `energy_closure_tests.jl` moves — ADR 0055's fixtures included.** So
+>    `resilience_battery_tests.jl` and `rollout_stability_tests.jl` now run the **column** against pre-E7
+>    fixtures and still pass, which proves those fixtures do not discriminate the two schemes. What is left for
+>    M is therefore a **re-measurement of ADR 0055's *published* AC gaps**, at M's discretion and with its own
+>    verdict — not a repair. Those files are M's exclusive path; E did not touch them.
+> 3. **The flip does NOT move E's P2 tower gate, and could not have.** `solve_seb` never reads
+>    `enable_two_layer` — the scheme lives entirely in `solve!` — so every **stateless** caller is
+>    scheme-independent *by construction*, including ADR 0072's committed night-cold assertion (its fixture is
+>    a stratified sub-sample no prognostic column can be integrated along). ADR 0058 §5 expected this gate to
+>    move; it does not. The night-cold sign is instead restated as a **measurement** in a new stateful gate,
+>    where it **deepens** rather than disappearing (−0.95 → −3.17 K at AU-ASM).
+>
+> **One correction M may be carrying:** ADR 0074 §6's sub-daily `T_skin` cost was measured at `z1 = 0.2 m`,
+> which is **not** the shipped default. At the shipped 0.75 m it is larger (AU-Tum 0.773 → 0.547, AU-Rob
+> 0.385 → **−0.116**). The **daily** cost — M's operational step — is small and is now pinned per site for the
+> first time (0.981 → 0.979, 0.900 → 0.851, 0.858 → 0.793). ADR 0075 §4; cause was a control arm that omitted
+> `z_soil1` and silently tracked the package default.
+>
+> **Nothing is owed from E.** The two remaining E→M asks are unchanged and untouched by this: `theta_soil`
+> needs soil moisture through the frozen `FToE`, and the E3 sublimation-λ split needs `fast.jl`.
+
 Declared, not hidden: ADR 0058 §4 lists every site and why. M's driver + `biome_coupled_tests.jl` items 2/3
 are on the **two-layer** column; `resilience_battery_tests.jl`, `rollout_stability_tests.jl`'s AC-gap check
 and every E-owned gate are on the **default**, because they score against fixtures measured under it

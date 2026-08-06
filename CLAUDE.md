@@ -151,6 +151,11 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   rejects any that isn't pure `@testitem`/`@testsetup` (`Test files must only include @testitem…`). Name
   diagnostic/repro **scripts** `*_probe.jl` / `*_diagnosis.jl` / `*_decomp.jl` — a stray
   `scripts/foo_test.jl` fails the entire suite at collection.
+  ⚠ **The same error fires on a `"""docstring"""` attached to a `@testitem`** (`[VERIFIED 2026-08-06]`, line E):
+  a docstring makes the top-level expression `Core.@doc @testitem(...)`, which is no longer "a `@testitem`
+  call", so ReTestItems rejects the **whole file** — one testitem's docstring costs the entire suite. Document a
+  testitem with `#` comments above it (a docstring on a helper *inside* the `begin` block is fine). The message
+  is identical to the naming trap's, so check for this before hunting a stray filename.
 - **Enzyme pin (CRITICAL):** `Enzyme = "0.13.0 - 0.13.188"` in **both** `Project.toml` and
   `test/Project.toml` `[compat]`. Enzyme **0.13.189** regressed the Enzyme-reverse **canopy** path with
   `LLVM error: Canonicalization failed` (`nn_canopy_training_tests.jl:22/:145`). Lift only when a fixed

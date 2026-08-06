@@ -27,8 +27,9 @@ abstract type AbstractEnergyClosure end
 
 Frozen physical constants and solver settings for the self-contained surface-energy-balance closure
 [`SEBEnergyClosure`](@ref) (DEVELOPMENT_PLAN §2.4; ADR 0017). All values are standard land-surface
-constants; the two tunables (`lambda_g`, `tau_soil`) govern the ground-heat term and its deep-soil
-reference temperature and are the only knobs a FLUXNET calibration of G would touch.
+constants. `lambda_g` and `tau_soil` govern the *pre-E7* ground-heat term and its deep-soil reference
+temperature; both are **inert under the default** since ADR 0075 turned the prognostic two-layer column on
+(`enable_two_layer`), and they apply only to the `enable_two_layer = false` opt-out.
 """
 Base.@kwdef struct SEBParams{T <: AbstractFloat}
     emissivity::T = 0.97            # surface longwave emissivity, – (vegetation/soil)
@@ -64,7 +65,16 @@ Base.@kwdef struct SEBParams{T <: AbstractFloat}
     # 1–2 orders past the critical Richardson number). This keeps the night surface coupled and is what
     # bounds the coupled skin–air ΔT (the `|T_skin − T_air| < 25/30 K` gates in coupled/biome tests depend
     # on it). Validate/tune `stab_amp`,`stab_k` against FLUXNET/PLUMBER2 (P2) before trusting nocturnal H.
-    # ── E7 / ADR 0074 — OPT-IN two-layer PROGNOSTIC ground heat (default OFF ⇒ byte-identical) ─────────
+    # ── E7 / ADR 0074 — two-layer PROGNOSTIC ground heat. DEFAULT ON since ADR 0075 ────────────────────
+    # ADR 0074 shipped this OFF (guardrail 4). ADR 0075 flipped it after two independent measurements:
+    # E's four PLUMBER2 towers (daily H R² up at 3 of 4 sites, daily G R² up from −4…−39 to +0.07…+0.72 at
+    # ALL 4, and daily sd(G) down from 3–7× observed to within 7 % of it at the two forest towers — still
+    # UNDER-amplitude at the two sparse/EBF ones) and line M's coupled loop (ADR 0058 — the pre-E7 term
+    # leaked a persistent +6.4 W/m² ground sink at `semiarid_sahel` under a repeating forcing, where the
+    # annual-mean ⟨G⟩ must be 0). Guardrail 4
+    # is now served by the OPT-OUT: `enable_two_layer = false` reproduces the pre-E7 closure exactly, so
+    # every pre-E7 number stays reproducible. Cost, measured and accepted: sub-daily `T_skin` skill at the
+    # two evergreen-broadleaf towers (ADR 0075 §4) — the coupled step is daily, where it is far smaller.
     # ADR 0073 measured the default single-conductance term `G = λ_g(T_skin − t_soil)` as the DOMINANT
     # nocturnal-H error: `λ_g = 7.0` is a *diurnal-amplitude* conductance applied to a τ=30 d EWMA of AIR
     # temperature, so `G_m` swings 5–7× harder than the towers show, and it carries no soil thermal
@@ -88,7 +98,7 @@ Base.@kwdef struct SEBParams{T <: AbstractFloat}
     # Terrarium.jl's half-cell `ImplicitSkinTemperature` + conduction column. The constants below are
     # those references' published values, NOT fitted here. No code is copied and neither package is a
     # dependency — ADR 0017 keeps E self-contained (see `docs/third_party_licensing.md`).
-    enable_two_layer::Bool = false
+    enable_two_layer::Bool = true
     lambda_soil::T = 0.42           # dry-soil heat conductivity, W/m/K
     # `z_soil1` is the one structural value NOT taken from the reference: MITgcm/SpeedyWeather use 0.2 m,
     # chosen for a model that steps in MINUTES. At our daily step 0.2 m is UNDER-RESOLVED IN TIME — the
@@ -308,10 +318,10 @@ function solve!(
         a = one(T) / p.tau_soil
         E.t_soil = (one(T) - a) * E.t_soil + a * tair
     end
-    # Ground-heat reference + conductance. Default (`enable_two_layer = false`): the τ-day EWMA of AIR
-    # temperature with the single conductance `lambda_g` — byte-identical to the pre-E7 closure. Opt-in
-    # (ADR 0074): the PROGNOSTIC top-layer temperature with the half-cell conductance `2λ_soil/z1`, so
-    # the ground reference is the surface's own thermal state rather than the air's.
+    # Ground-heat reference + conductance. Default (`enable_two_layer = true`, ADR 0074/0075): the
+    # PROGNOSTIC top-layer temperature with the half-cell conductance `2λ_soil/z1`, so the ground reference
+    # is the surface's own thermal state rather than the air's. Opt-out (`false`): the τ-day EWMA of AIR
+    # temperature with the single conductance `lambda_g` — byte-identical to the pre-E7 closure.
     two_layer = p.enable_two_layer
     kappa_g = two_layer ? T(2) * p.lambda_soil / p.z_soil1 : p.lambda_g
     t_ground = two_layer ? E.t_soil1 : E.t_soil
