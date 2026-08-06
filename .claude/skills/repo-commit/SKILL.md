@@ -475,3 +475,28 @@ truth = accuracy), and flattening one would have destroyed the actual finding.
 **Prevention, cheap:** before submitting a long measurement on a *shared* harness, `squeue -u $USER` and look
 for another line's tag on the same script. A duplicate run is not pure waste — two independent runs agreeing
 to the digit is what made this verdict unarguable — but knowing it is happening lets you split the work.
+
+### ⚠ A rule in the repo's `CLAUDE.md` is only as current as the branch you are STANDING ON
+
+Each work line is a **separate git worktree with its own checkout**, so a project-wide rule added to
+`CLAUDE.md` reaches a line only when that line rebases. Measured 2026-08-06: a behaviour rule added to
+`CLAUDE.md` §0a on `main` was present in `line/S` and `line/E` and **absent from the working copies of
+`line/M` and `line/O`** — those sessions were not ignoring it, their file did not contain it. The owner read
+the symptom as non-compliance. The same staleness applies to `.claude/hooks/*` and `.claude/settings.json`,
+so "put it in the hook" does not fix it either.
+
+**So, when adding a project-wide rule about BEHAVIOUR (not about the code):**
+
+| where | reaches whom | stale? |
+|---|---|---|
+| repo `CLAUDE.md` | only lines that have rebased past it | **yes** |
+| `lines/<X>/STATE.md` NEXT block | that one line, printed verbatim by its session-start banner | yes, but it is the line's own file so it rebases with them |
+| **`~/.claude/CLAUDE.md`** | **every session, every project, every worktree, immediately** | **no — outside git** |
+
+⇒ put the rule in **`~/.claude/CLAUDE.md`** as well as in the repo (the repo copy stays as the detailed
+record). Then check delivery rather than assuming it — `git merge-base --is-ancestor <sha> origin/line/<X>`
+per line, or `grep` the marker in each worktree's own `CLAUDE.md`.
+
+**And the related trap: another line's `STATE.md` NEXT block is the ONLY part their banner prints.** An
+inbound integration point written into the lower "contracts / inbound" section of their STATE is easy to
+miss — put a short pointer in their `## NEXT` block too, and leave the full block below.
