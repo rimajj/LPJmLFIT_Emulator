@@ -291,9 +291,21 @@ const BND = [
 # One `run_coupled_cell` call PER YEAR: the call is re-entrant (it rebuilds `bc_f` from
 # `stand_structure_tof(fc)` and all state lives in the mutables), so N one-year calls are the same
 # trajectory as one N-year call, and the canopy can be snapshotted annually.
+#
+# ── THE LEVEL-ANCHOR ARMS (`lvl0`/`lvl1`), opt-in via `ANCHOR=<a>` in the environment (ADR 0103). ─────
+# ⚠ `anchor0` above is TEACHER FORCING, a DIFFERENT intervention: it overwrites the AR feature with an
+# externally measured series, which injects that series' memory and is why M4 found it degrades the AC.
+# The LEVEL ANCHOR touches no feature — it blends the multiplicative roster update toward the count
+# model's own absolute target, so it removes a level error without importing anything external. M4's
+# caveat ("whatever S lands must be scored on the AC as well as the level") is therefore answered HERE
+# and not by `anchor0`. With ANCHOR unset (or 0) this script runs the same 7 arms and writes the same
+# committed fixtures, byte-for-byte — `anchor = 0` is the pre-0103 update exactly.
+const ANCHOR = parse(Float64, get(ENV, "ANCHOR", "0.0"))
+anc_of(tag) = (tag === :lvl0 || tag === :lvl1) ? ANCHOR : 0.0
+
 function run_member(
         k, member, patches; demog::Symbol = :free, order = collect(1:NY),
-        nyears::Int = NY, perturb_at::Int = 0
+        nyears::Int = NY, perturb_at::Int = 0, anchor::Float64 = 0.0
     )
     name = NAMES[k]
     forc, tairK = forcings_of(name)
@@ -307,7 +319,7 @@ function run_member(
         rc = RecruitCopula{Float64}(cop, af, xcop, make_recruit_to_pools(axnames), live_flux_cond)
         s = FluxDrivenSlowEmulator(
             core, forest; boundary = copy(BND[k]), n_init = NINIT[k], age0 = AGE0[k],
-            seed = member, recruit_copula = rc
+            seed = member, recruit_copula = rc, anchor = anchor
         )
     end
     # `run_coupled_cell` refuses a ClimBuf without a FluxDrivenSlowEmulator (it writes `s.boundary`), so
@@ -338,12 +350,15 @@ end
 const ORDERED = collect(1:NY)
 shuffled_for(member) = randperm(MersenneTwister(90210 + member), NY)
 
-const ARMS = (
+const BASE_ARMS = (
     (:free0, :free, false), (:free1, :free, true),
     (:pin0, :pin, false), (:pin1, :pin, true),
     (:fonly0, :none, false), (:fonly1, :none, true),
     (:anchor0, :anchor, false),
 )
+# `lvl0`/`lvl1` are the LEVEL ANCHOR on ordered / shuffled forcing. Both are needed: `lvl1` next to `free1`
+# and `pin1` is what says whether the anchor keeps the internal memory the shuffle test is measuring.
+const ARMS = ANCHOR > 0 ? (BASE_ARMS..., (:lvl0, :free, false), (:lvl1, :free, true)) : BASE_ARMS
 
 @printf("\n=== running the battery: %d cells x %d arms x <=25 members x %d years ===\n", length(NAMES), length(ARMS), NY)
 results = Dict{Tuple{String, Symbol}, Any}()
@@ -356,7 +371,7 @@ for (k, name) in enumerate(NAMES)
         t = time()
         runs = [
             run_member(
-                    k, m, ps; demog = demog,
+                    k, m, ps; demog = demog, anchor = anc_of(tag),
                     order = shuf ? shuffled_for(m) : ORDERED
                 ) for m in 1:length(ps)
         ]
@@ -490,8 +505,85 @@ end
 @printf("mean(last 20 yr)/mean(first 20 yr) of a CYCLED forcing, so 1.00 is the no-drift answer.\n")
 @printf("osc = fraction of years whose first difference flips sign (0.5 = white noise, ->1 = flip-flop).\n")
 
+# ── PART 4b — THE LEVEL ANCHOR (ADR 0103): does it fix the level WITHOUT costing the memory? ─────────
+# Only runs when ANCHOR>0. Two questions, and they are separate:
+#   MEMORY  — lvl1 vs free1/pin1 on shuffled forcing. If the anchor were destroying internal memory the
+#             way teacher forcing does, lvl1 would collapse toward pin1. It must not.
+#   LEVEL   — the 100-year CYCLED rollout's `drift` (mean of last 20 yr / mean of first 20 yr). The
+#             forcing repeats, so the honest answer is 1.00; the unanchored loop's departure from 1.00
+#             is the drift the anchor exists to remove.
+if ANCHOR > 0
+    @printf("\n=== (e) LEVEL ANCHOR a=%.2f — memory kept? (shuffled forcing, lag-1 AC) ===\n\n", ANCHOR)
+    @printf(
+        "%-22s %-4s %8s %8s %8s %8s %9s %9s\n",
+        "cell", "var", "free1", "pin1", "lvl1", "C_ac1", "lvl-free", "lvl-pin"
+    )
+    for name in NAMES, var in (:n, :agb)
+        f1 = acget(name, var, :free1); p1 = acget(name, var, :pin1); l1 = acget(name, var, :lvl1)
+        c1 = c_stat(name, 1, String(var), "ac1_detr")
+        @printf(
+            "%-22s %-4s %8.3f %8.3f %8.3f %8.3f %9.3f %9.3f\n",
+            name, String(var), f1, p1, l1, c1, l1 - f1, l1 - p1
+        )
+    end
+    # The headline. `lvl-free` alone cannot decide this: the free arm is NOT the truth, and it happens to
+    # sit ABOVE the C's AC in almost every pair, so a change that lowers the AC moves TOWARD the oracle
+    # even though it shows as a negative `lvl-free`. The decidable statistic is the distance to the C.
+    efree = Float64[]; epin = Float64[]; elvl = Float64[]
+    for name in NAMES, var in (:n, :agb)
+        c1 = c_stat(name, 1, String(var), "ac1_detr")
+        push!(efree, abs(acget(name, var, :free1) - c1))
+        push!(epin, abs(acget(name, var, :pin1) - c1))
+        push!(elvl, abs(acget(name, var, :lvl1) - c1))
+    end
+    @printf(
+        "\nMEAN |AC - C_AC| over the %d cell-variable pairs:  free1 %.4f   pin1 %.4f   lvl1 %.4f\n",
+        length(efree), mean(efree), mean(epin), mean(elvl)
+    )
+    @printf(
+        "anchored CLOSER to the oracle in %d of %d pairs; mean error %s\n",
+        count(elvl .< efree), length(efree), mean(elvl) < mean(efree) ? "IMPROVED" : "WORSENED"
+    )
+    @printf("\nlvl-free ~ 0 => the anchor left the internal memory alone. lvl-pin >> 0 => it did NOT collapse\n")
+    @printf("to the no-recursion control. A LARGE NEGATIVE lvl-free is the failure mode to look for: it would\n")
+    @printf("mean the anchor bought its level fix by flattening the emulator's own year-to-year dynamics.\n")
+
+    @printf("\n=== (f) LEVEL ANCHOR a=%.2f — %d-year CYCLED drift (honest answer = 1.00) ===\n\n", ANCHOR, LONGYEARS)
+    @printf(
+        "%-22s %9s %9s %9s %9s %9s %9s %10s\n",
+        "cell", "drift_fr", "drift_an", "ac50_fr", "ac50_an", "osc_fr", "osc_an", "resid_an"
+    )
+    for (k, name) in enumerate(NAMES)
+        ps = patchsets[name]
+        actrl = [
+            run_member(k, m, ps; demog = :free, nyears = LONGYEARS, anchor = ANCHOR)
+                for m in 1:min(NLONG, length(ps))
+        ]
+        aa = actrl[1].agb
+        adif = diff(aa)
+        aosc = count(i -> sign(adif[i]) != sign(adif[i - 1]), 2:length(adif)) / (length(adif) - 1)
+        i = findfirst(r -> r.name == name, longrows)
+        fr = longrows[i]
+        @printf(
+            "%-22s %9.3f %9.3f %9.3f %9.3f %9.3f %9.3f %10.1e\n",
+            name, fr.drift, mean(aa[(LONGYEARS - 19):LONGYEARS]) / mean(aa[1:20]),
+            fr.ac1_last50, ac_stats(aa[(LONGYEARS - 49):LONGYEARS]).ac1, fr.osc, aosc,
+            maximum(r.resid for r in actrl)
+        )
+        flush(stdout)
+    end
+    @printf("\ndrift_an closer to 1.00 than drift_fr = the anchor removed long-horizon level drift under a\n")
+    @printf("forcing that itself has none. ac50/osc are the guard against buying that with dead dynamics.\n")
+    @printf("resid_an is the carbon-handoff closure in the anchored arm — it must stay at the free arm's level.\n")
+end
+
 # ── PART 5 — write the committed fixture ──────────────────────────────────────────────────────────────
-acout = joinpath(REFDIR, "M_resilience_battery.csv")
+# ⚠ When the opt-in level-anchor arms are on, the battery carries EXTRA rows, so writing them into the
+# committed fixtures would silently move line M's baselines from line S's worktree. Redirect to scratch.
+const FIXDIR = ANCHOR > 0 ? get(ENV, "FIXDIR", "/p/tmp/jamirp/S_anchor_resilience") : REFDIR
+ANCHOR > 0 && mkpath(FIXDIR)
+ANCHOR > 0 && @printf("\n[level-anchor arms ON] fixtures redirected to %s — committed baselines untouched\n", FIXDIR)
+acout = joinpath(FIXDIR, "M_resilience_battery.csv")
 open(acout, "w") do io
     println(io, "# The COUPLED emulator's resilience battery vs the C oracle, 5 biome cells, $(Y0)-$(Y1),")
     println(io, "# historic, pinned _t8 + wscal_leafon=true. One row per (cell, variable, ARM); the arms are")
@@ -512,7 +604,7 @@ open(acout, "w") do io
 end
 @printf("\nwrote %s (%d rows)\n", acout, length(acrows))
 
-lout = joinpath(REFDIR, "M_resilience_battery_longrun.csv")
+lout = joinpath(FIXDIR, "M_resilience_battery_longrun.csv")
 open(lout, "w") do io
     println(io, "# The COUPLED emulator's $(LONGYEARS)-year CYCLED-forcing rollout: pool-perturbation recovery")
     println(io, "# (halve every tree carbon pool at year $(PERTURB_AT), frac=$(PERTURB_FRAC)) and long-horizon")
@@ -532,7 +624,7 @@ open(lout, "w") do io
 end
 @printf("wrote %s (%d rows)\n", lout, length(longrows))
 
-sout = joinpath(REFDIR, "M_resilience_battery_shuffle.csv")
+sout = joinpath(FIXDIR, "M_resilience_battery_shuffle.csv")
 open(sout, "w") do io
     println(io, "# The SHUFFLE TEST (DEVELOPMENT_PLAN §5) decomposed. free0/free1 = the deployed coupled loop")
     println(io, "# on ordered / year-shuffled forcing; pin1 = the same with `s.n_prev` reset to n_init every")

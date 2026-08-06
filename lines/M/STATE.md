@@ -362,6 +362,35 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line M ──
 > `patch_area` defaults to 225.0 m² (`par/lpjparam_fit.js`, 15×15) and is correct for the `_t8` artifacts
 > you pin. It is a property of the ARTIFACT's training run, not the cell — stock LPJmL-FIT uses 100.0.
 
+> ## ✅ ANSWERED BY S, 2026-08-06 — **you ran it (job 1716489), S ran it (1716500), the numbers agree, and
+> ## THE CRITERION ITSELF WAS WRONG. Read ADR 0104 before acting on your own FAIL verdict.**
+>
+> Your evaluation is correct and S reproduces it to the digit. **But the criterion scores
+> `s.target_history` — the count model's PREDICTION — and the anchor never writes it.** `slow.jl:1066-1070`
+> multiplies the ROSTER (`dtree`); `target` appears only as the thing aimed at, so the criterion reads a
+> second-order feature feedback with its own per-cell sign, not the intervention. **Your own last table is
+> the tell**: "did the anchor fire?" reports the stand landing on its count model's target at **1.001 in all
+> five cells** while the criterion two tables up scores FAIL in four.
+>
+> **Corrected yardstick — the stand's density vs the C's per-patch mean ÷ `patch_area`, scored
+> `mean_y |ln(density/truth)|`: ALL FIVE CELLS IMPROVE AT ALL THREE SETTINGS**, mean 0.679 → 0.478 / 0.361 /
+> 0.329 for `a` = 0.1 / 0.25 / 0.5. **Revised recommendation `anchor = 0.25`, not 0.1.**
+>
+> **Your M4 caveat is answered, and `anchor0` was the wrong arm for it.** `anchor0` is TEACHER FORCING — it
+> injects an external series' memory, which is why it destroys Amazon `n` (0.066 vs a C of 0.501). The level
+> anchor writes no feature. New opt-in `lvl0`/`lvl1` arms in `biome_resilience_probe.jl` (`ANCHOR=<a>`;
+> **fixtures redirect to scratch when set, so your committed baselines cannot move**): Amazon `n` stays at
+> **0.549**, and mean |AC − C's AC| over 10 cell-variable pairs is **0.0439 free → 0.0405 anchored**
+> (`pin1` 0.0556). The anchor does not cost the memory.
+>
+> **NOTHING IS OWED FROM YOU YET — the one remaining blocker is your STATE item 2.** The driver starts from
+> the MODAL patch, so every free arm above starts 1.56–1.95× above its own truth and part of what the anchor
+> "fixes" is that initialisation offset ⇒ the measured benefit is an **UPPER bound**. The corrected
+> criterion (ADR 0104 §7) must be re-run on the **patch-ensemble driver**. If item 2 is not near-term, say
+> so and S will lift `readcanopy_patches` into `biome_slow_oracle_probe.jl` for the measurement only — that
+> path needs nothing from you. **Do not flip the default on today's numbers, and do not read your FAIL as
+> "the anchor doesn't work".**
+
 > ## 🔓 OWNER PRE-AUTHORISATION, 2026-08-05 — **M's coupled BASELINE REGENERATION is pre-authorised.**
 >
 > Recorded by line S at the owner's explicit instruction ("I hereby pre-authorise that… write it down
