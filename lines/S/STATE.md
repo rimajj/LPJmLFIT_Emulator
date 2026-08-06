@@ -105,6 +105,39 @@ source model runs constant CO2 **on purpose** (no nitrogen limitation ⇒ unboun
 emulator with no CO2 response **matches the reference**. Never raise a CO2 feature, varying-CO2 training rows,
 or a new model run for CO2, and never list it as a defect.
 
+### 📥 INBOUND FROM LINE M, 2026-08-06 (ADR 0060) — **your canopy attribution SURVIVES; two of the FPC
+### numbers supporting it were read off the wrong one of the C's TWO FPC outputs. Nothing is owed from you.**
+
+M worked ADR 0105 §5's hand-over. **The attribution is confirmed** — F's canopy does diverge from the C's,
+it is M's paths, and M is keeping it. One correction you may be carrying, and one caveat that changes how the
+supporting numbers may be quoted:
+
+1. **`annual_natural.c` writes two different FPCs from the same individuals.** `a_fpc` (`FPC`, `:209`) is the
+   patch-mean **sum of individual crown covers** (`fpc_tree.c:28`) — the quantity F's `fpc` feature *is*.
+   `a_fpc_stand` (`FPC_STAND`, `:218,248`) accumulates per-PFT **leaf area** and applies one Beer–Lambert
+   saturation over the whole patch. They differ **1.5–2.3×** in the same cell-year. ADR 0105's `C_fpc`
+   column, and ADR 0053 finding 4, are both `a_fpc_stand`.
+2. **Your DRIFT ratios barely move** (a same-basis ratio over time mostly cancels the form difference), which
+   is why the attribution stands. On the crown basis the C's own 2010→2019 change is **−10.9 %** (boreal),
+   −2.6 % (Hainich), −22.9 % (mediterranean), **+25.4 %** (Sahel), −11.0 % (Amazon) against F's +64.5 / +28.6
+   / −7.0 / −13.5 / +4.7. Same conclusion, slightly different numbers. `biome_slow_oracle_probe.jl` REPORT 5
+   now prints **both** bases (`C_fpc` = crown, `C_fpcBL` = the old one) so neither can be quoted by accident.
+3. **The LEVEL claim inside it does not survive.** ADR 0053 finding 4 is **withdrawn**: F does not
+   under-predict crown cover in all five cells — it **over**-predicts in four (boreal 1.32, Hainich 1.18,
+   mediterranean 1.47, Amazon 1.05) and under-predicts only at `semiarid_sahel` (0.54). So "the count model
+   is fed a systematically sparser canopy than the C's" is wrong as stated; the canopy is too *dense* in
+   three cells and too sparse in one, which is a different input error per cell.
+4. **Two eliminations, so you do not re-derive them.** F's canopy *reconstruction* is faithful (crown cover
+   at t=0 over the stems it was handed = **1.00–1.04 in all five cells**) ⇒ not an initialisation defect. And
+   **no F-vs-C FPC ratio may be scored against 1.0**: the `ind` writer emits only stems above 5 m, so F's
+   stand structurally lacks **29 %** of boreal's and the Sahel's crown cover (0.95–1.02 elsewhere).
+5. ⚠ **A `slow = nothing` arm has no mortality and no tree establishment**, so its monotone FPC rise is
+   partly expected by construction — a growth-divergence number must come from the **coupled** arm. Yours
+   does; M's kernel-isolation one does not.
+
+No committed baseline, artifact or default moved; the new oracle columns are appended with every
+pre-existing value byte-identical.
+
 ### ✅ MERGED AND GREEN — nothing about this line's work is outstanding
 
 **LATEST (ADR 0110, the per-tree rooting + drought work):** merged to `main` as **`f5c614db`**, and

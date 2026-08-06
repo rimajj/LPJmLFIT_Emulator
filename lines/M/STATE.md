@@ -287,6 +287,37 @@ so a literal 10 % is unmeetable there by ANY emulator. Default in use: tolerance
    POINT RAISED BY LINE S". ⚠ Two of your published numbers invert there (ADR 0054's teacher-forcing
    59–72 %, and `semiarid_sahel` being too dense) — worth reading before you quote either.
 
+### 0-NEW. ✅ DONE 2026-08-06 (session 4) — the canopy attribution S handed over is ANSWERED, and it was a
+### reference-basis error: the oracle scored the wrong one of the C's TWO FPC outputs (ADR 0060)
+
+Item 2b below is **worked, not open**. Nothing in `src/` changed; no baseline moved.
+
+- **The C writes two FPCs from the same individuals.** `a_fpc` (`FPC`, `annual_natural.c:209`) is the
+  patch-mean **sum of individual crown covers** (`fpc_tree.c:28`). `a_fpc_stand` (`FPC_STAND`, `:218,248`)
+  accumulates per-PFT **leaf area** and applies ONE Beer–Lambert saturation over the whole patch. Different
+  functional forms; **1.5–2.3× apart** in the same cell-year. `src/allometry.jl::fpc` implements the crown
+  form ⇒ `a_fpc` is comparable. The extractor used `a_fpc_stand` and the probe header called it "CLEAN",
+  citing `fpc_tree.c:28` — the right C line for the wrong file. `a_fpc.nc` was in all five run dirs, unread.
+- **ADR 0053 finding 4 is WITHDRAWN and item 4(d) below with it.** Not "F under-predicts FPC in all five
+  cells (0.31–0.72×)" but: boreal **1.32**, Hainich **1.18**, mediterranean **1.47**, Amazon **1.05**,
+  `semiarid_sahel` **0.54**. Sign flips in four of five.
+- **F's canopy RECONSTRUCTION is faithful and is eliminated** — new PART 6 column: F's crown cover at
+  **t = 0** over the crown cover of the stems it was handed = **1.00–1.04 in all five cells**.
+- **Never read an FPC ratio against 1.0** — the `ind` writer emits only stems > 5 m, so F's stand lacks
+  **29 %** of boreal's and the Sahel's crown cover (`>5m_frac` 0.71; 0.95–1.02 elsewhere). Printed per cell.
+- ⚠ **This arm cannot convict F's growth by itself:** under `slow = nothing` the fast core has **no
+  mortality and no tree establishment** (only grass, `fast.jl:272`, `n_est = 0` here), so a monotone FPC rise
+  is partly expected. Two things survive: the **Sahel shrinks 0.71 → 0.47** with nothing able to remove
+  cover but F's own allocation (fourth independent symptom of ADR 0052's dry-cell bias, same cell), and S's
+  **coupled** arm drifts 1.56× vs the C's 0.90× where this arm gives 1.65× ⇒ mortality is a small part.
+  **Quote a growth-divergence number from the coupled arm, never from this one.**
+- **S's ADR 0105 attribution SURVIVES** — a same-basis ratio over time mostly cancels the form difference
+  (the C's own crown drift is −10.9 / −2.6 / −22.9 / **+25.4** / −11.0 %). The *level* claim inside it does
+  not. Both bases now print side by side in `biome_slow_oracle_probe.jl` REPORT 5.
+- Committed tables gain `fpc_tree_crown` (+ `fpc_grass_crown` monthly), **appended last, every pre-existing
+  value byte-identical, verified row-by-row** ⇒ guardrail 4 untouched. Jobs 1718928 / 1718932 / **1718979**.
+- **CI: this diff touches no `src/`, no `python/`, no `docs/src/` ⇒ `format` only** (two `.jl` scripts).
+
 ### 0. ✅ DONE 2026-08-06 (session 3) — the water-stress DEFAULT is flipped (ADR 0059)
 
 Line S's explicit GO ("yours to land, unilaterally, S's side is already in") is **acted on**. The flag
@@ -363,7 +394,9 @@ only the default flipped and nothing outside `energy_closure_tests.jl` moved, AD
 What remains is an optional **re-measurement of ADR 0055's published autocorrelation gaps** on the new
 scheme, at M's discretion and with its own verdict — not a repair.
 
-### 2b. ▶ THE HIGHEST-VALUE OPEN ITEM — S hands M an attribution: the coupled count residual is F's CANOPY
+### 2b. ✅ WORKED 2026-08-06 by ADR 0060 — read item 0-NEW at the top FIRST. The attribution survives; its
+### FPC level numbers do not, because they were read off the wrong one of the C's two FPC outputs.
+### (original block kept below for the record)
 
 Full block below under "▶ NEW INTEGRATION POINT RAISED BY LINE S" — read it before quoting any coupled
 demography number, because **two of this line's published numbers invert there**: ADR 0054's "teacher
@@ -463,8 +496,14 @@ b. **Attribute Hainich's flat +12 %** with the kernel-isolation drive (`fdiff-va
 c. **The Sahel decline IS ADR 0052's dry-cell bias end-to-end.** ⚠ M4 sharpens this: the Sahel is also the
    ONE cell that does not recover from a pool perturbation (τ 602 yr, r² 0.38 vs 47–54 yr elsewhere). Same
    cell, third independent symptom. Fixing (a) may fix all three; measure before assuming.
-d. **F under-predicts tree FPC in all 5 cells (0.31–0.72×)** *despite* starting from a patch 1.12–1.72×
-   denser than the ensemble — the most robust structural finding in the set, and still unattributed.
+d. ~~**F under-predicts tree FPC in all 5 cells (0.31–0.72×)**~~ **WITHDRAWN 2026-08-06 (ADR 0060) — it was
+   a reference-basis artifact** (the C's two FPC outputs; see item 0-NEW at the top). Corrected: F
+   **over**-predicts crown cover in four cells (boreal 1.32, Hainich 1.18, mediterranean 1.47, Amazon 1.05)
+   and under-predicts only at `semiarid_sahel` (0.54). **Replacement item, narrower:** F's canopy
+   *reconstruction* is faithful (t=0 ratio 1.00–1.04, eliminated), so what is left is F's **growth** —
+   over-running the C in three cells, collapsing in the Sahel. Score it on the **coupled** arm, which has
+   mortality; the `slow = nothing` arm has none and so cannot convict it. Start with the Sahel, the one cell
+   this arm does convict and the fourth symptom of (c)'s dry-cell bias.
 
 ### 5. M4's own open findings (line-M work, not blockers)
 

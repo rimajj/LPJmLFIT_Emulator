@@ -1,5 +1,14 @@
 # ADR 0053 — the M3 F-side oracle: two reference-basis artifacts that outweigh the physics they hide
 
+> ⚠ **§"What IS established" finding 4 is WITHDRAWN by
+> [ADR 0060](0060-the-c-emits-two-different-fpcs-and-the-oracle-scored-the-wrong-one.md)** (2026-08-06).
+> *"F under-predicts tree FPC in all five cells (0.31–0.72×)"* was itself a third reference-basis artifact of
+> exactly the kind this ADR is about: the C emits **two** different FPCs and this work scored `a_fpc_stand`
+> (per-PFT leaf area through one Beer–Lambert saturation over the patch) against an F side that computes
+> `a_fpc` (the sum of individual crown covers). On the comparable output F **over**-predicts in four of five
+> cells. **The other three basis corrections in this ADR — exact grass removal via the id-419 output, the
+> 25-patch ensemble, and year-matched scoring — stand unchanged**, as does every other finding here.
+
 - **Status:** accepted (2026-07-30)
 - **Line:** M (multi-cell coupled S+F+E, P3) — ADR block 0050–0069
 - **Builds on:** ADR 0050 (per-cell inputs), ADR 0051 (the C-faithful leaf-on `wscal`), ADR 0052 (no soil
