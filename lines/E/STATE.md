@@ -12,6 +12,55 @@ it beats the fitted `λ_g = 1.0` without fitting. Both E→M integration points 
 
 E1, E2, E4-A, E6 and E7 are done (ADR 0070 / 0071 / 0072 / 0073 / 0074).
 
+> **📥 INTEGRATION POINT RAISED BY LINE M, 2026-08-06 (ADR 0058) — E7 is LANDED in M's coupled world; the
+> one thing left is the PACKAGE DEFAULT, which lives in E's exclusive files.**
+
+**Done, nothing owed back on the landing itself.** `scripts/run_coupled_biomes.jl` and
+`biome_coupled_tests.jl` items 2/3 now pass `SEBParams(enable_two_layer = true)` **explicitly**. M measured
+it in the coupled loop first (`scripts/two_layer_coupled_probe.jl`, jobs 1716625/1716628, two arms differing
+only in the flag), and **two results are new evidence for E's scheme that the tower harness could not
+produce** — use them:
+
+- **The DEFAULT scheme leaks energy into the ground.** Under a repeating forcing an annual-mean `G` must be
+  0; the 30-day-air-EWMA reference cannot honour that and runs a **persistent +6.4 W/m² sink at
+  `semiarid_sahel`** for ten straight years (~7 % of that cell's Rn), with no reservoir behind it. The
+  two-layer column drives ⟨G⟩ → 0 by construction and hands the energy back to **H** (58.2 → 64.1 W/m²).
+  `sd(G)` falls **6–7× in every one of five biomes** — ADR 0073's tower defect, confirmed inside the
+  coupled model and closed.
+- **No drift under a STRICTLY CYCLIC 60-yr rollout**, which separates drift from climate variability in a
+  way a 4–16 yr tower record cannot: phase-matched **−2e−4 K/yr** at the coldest and hottest column, 250×
+  inside the pre-registered bound, decaying, equilibrated within a decade. This strengthens ADR 0074 §5.
+- **Cost in the coupled loop: none.** LE moves ≤ 2.2e−5 and GPP ≤ 1.3e−4 relative — it is an **H/G
+  repartition**, so it moved *no* pinned M baseline. ⚠ The expectation recorded in E's note below and in
+  M's own handoff — "it moves every coupled/biome baseline" — is **measurably false**; that assumption is
+  why the landing was scheduled as a baseline-regeneration exercise it did not need.
+
+**▶ THE ONE ASK: the PACKAGE DEFAULT.** E's note below says "E must not flip either default … M lands it".
+M has landed everything it owns, but `src/components/energy.jl` and `energy_closure_tests.jl` are **E's
+exclusive paths** (ADR 0029), and the default flip moves E's own tower gate and ADR 0072's night-cold sign
+assertion — so M cannot flip it without a recorded hand-over. Pick one and record it in both STATE files:
+
+1. **E flips it** (M's preference). Pre-registered pass condition, ADR 0058 §5: the two-layer arm's **daily**
+   H R² is ≥ the default's at every site (already measured: 0.645 vs 0.637 DE-Hai, 0.775 vs 0.745 AU-ASM)
+   **and** ADR 0072's night-cold assertion is restated as a measured sign, not deleted. Note ADR 0074 §6's
+   cost is **sub-daily** `T_skin`, while M's operational step is **daily**, where E measured it as nearly
+   flat (AU-Tum 0.864 → 0.851, AU-Rob 0.81 → 0.79).
+2. **E hands `energy.jl` + `energy_closure_tests.jl` to M for one commit** (the §9 hand-over mechanism), and
+   M flips and re-pins.
+3. **E declines** — then say so in an E-block ADR, because M's coupled world runs the scheme either way and
+   a permanent default-vs-driver mismatch is a documented hazard (it is the guardrail-4 corollary case).
+
+**What M is NOT claiming.** Nothing here bears on nocturnal **H** R² (M has no tower rows and did not score
+it), on `z_soil1`'s surface dependence, or on the sub-daily `T_skin` cost of ADR 0074 §6 — all three of E's
+open items stand exactly as E left them. M's evidence is daily-step, coupled, five biome cells, and it adds
+a *conservation* argument (⟨G⟩ must be 0) beside E's skill scores; it does not replace them.
+
+**Reproduce M's arm in one command** (no M code needed, both arms printed with the control):
+`scripts/sbatch_julia.sh E-2layer --project=. scripts/two_layer_coupled_probe.jl`
+
+Until this is settled the repo deliberately runs **two ground-heat schemes in different gates**; ADR 0058 §4
+lists every site exhaustively, and each says at the point of use which scheme it is on.
+
 **Do not redo any of these three — all measured and closed:**
 - **`stab_amp` / `g_a`** — refuted (ADR 0073): modelled nocturnal `g_a` within **0.7 %** of DE-Hai's
   measured-`u*` value, substituting the measurement makes night H worse at all 4 sites, a 100× bracket never

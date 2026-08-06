@@ -26,6 +26,15 @@
 # silently removing it. Structural gates asserting member-INVARIANT properties (conservation,
 # determinism, boundedness) deliberately stay single-member — ADR 0057 §4.
 #
+# ── GROUND-HEAT SCHEME (ADR 0058, 2026-08-06): E's opt-in TWO-LAYER prognostic soil column ───────────
+# `SEBParams(enable_two_layer = true)` (ADR 0074) replaces the single conductance against a 30-day EWMA of
+# AIR temperature. The package default is still `false` (guardrail 4 — E owns `energy.jl`); this driver
+# passes it EXPLICITLY, so every number below must be labelled as the two-layer arm. Measured in the
+# coupled loop (`scripts/two_layer_coupled_probe.jl`): LE and GPP move by ≤ 1.3e-4 relative — it is an H/G
+# repartition, not a coupled-physics change — while the default's annual-mean G runs up to **+6.4 W/m²**
+# (an energy sink with no reservoir behind it; the two-layer column drives ⟨G⟩ → 0 by construction) and
+# its sd(G) is 6–7× too large, the same defect ADR 0073 measured against the towers.
+#
 # Run (SLURM, per CLAUDE.md §2):  scripts/sbatch_julia.sh M-biomes --project=. scripts/run_coupled_biomes.jl
 using LPJmLFITEmulator
 using LPJmLFITEmulator.FDiff
@@ -107,10 +116,10 @@ function forcings_of(name)
     return forc, tairK[1:n]
 end
 
-"ONE patch through the coupled loop — its own core, soil water and energy closure."
+"ONE patch through the coupled loop — its own core, soil column, soil water and energy closure."
 function run_patch(pools, tmpls, soil, lat, forc, tairK)
     core = FDiffFastCore(deepcopy(pools), deepcopy(tmpls), soil, lat)
-    clo = SEBEnergyClosure(; t_soil0 = mean(tairK))
+    clo = SEBEnergyClosure(; t_soil0 = mean(tairK), params = SEBParams{Float64}(; enable_two_layer = true))
     state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
     out = run_coupled_cell(core, clo, state, forc; days_per_year = 365)
     gs = 152:243        # a coarse common N-hemisphere growing-season window
@@ -149,6 +158,7 @@ common_patches, common_modal = readcanopy_patches(joinpath(REFDIR, "hainich_indi
 
 @printf("\n=== COUPLED S+F+E EMULATOR ACROSS BIOMES — PER-CELL soil + canopy (real GSWP3-W5E5, %d yr) ===\n", YEARS)
 @printf("Canopy basis: the %d-patch ENSEMBLE MEAN (the C's own output basis, ADR 0057).\n", 25)
+@printf("Ground heat:  E's TWO-LAYER prognostic column, passed explicitly (ADR 0074/0058; default is off).\n")
 @printf(
     "%-22s %5s %6s %6s %7s %7s %7s %7s %8s %6s %6s %8s\n",
     "biome", "lat", "Tair", "Tskin", "LE", "H", "Rn", "Bowen", "maxRes", "npat", "ntree", "GPP"
