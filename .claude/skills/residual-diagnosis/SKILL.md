@@ -1,6 +1,6 @@
 ---
 name: residual-diagnosis
-description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation.
+description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
 ---
 
 # residual-diagnosis — don't chase a residual blind
@@ -617,3 +617,38 @@ before anyone has to argue about it. Apply this to every row of a gap table, wit
 one reached `MEMORY.md`, all four lines' `## NEXT` blocks and `~/.claude/CLAUDE.md` before it was caught. When
 a correction lands, **fix every place the claim was broadcast in the same commit**, and if the owner reports
 having corrected it before, record it as *standing, do-not-re-litigate* rather than as a fact.
+
+## A basis error does NOT invalidate every claim built on it — sort them by RATIO vs LEVEL (added 2026-08-06, ADR 0060)
+
+When you find that a comparison used the wrong reference column, the reflex is either to withdraw everything
+downstream or to hope none of it mattered. Neither is right, and there is a cheap rule that sorts them:
+
+> **A ratio of the same quantity over time is partly robust to a basis substitution; a level is not.**
+
+Measured, on the two FPC outputs LPJmL-FIT writes from the same trees (crown-cover sum vs a leaf-area
+Beer–Lambert form, **1.5–2.3× apart**): every *level* claim inverted — "the fast core under-predicts canopy
+cover in all five cells (0.31–0.72×)" became over-prediction in four of five (1.05–1.47×) — while the *drift*
+ratios moved almost not at all (the C's own 2019/2010 ratio: 0.89 vs 0.90 boreal, 0.97 vs 1.00 Hainich, 1.25
+vs 1.23 Sahel; only mediterranean 0.77 vs 0.67 and Amazon 0.89 vs 0.99 shifted materially). So a sibling
+line's attribution built on the *drift* survived intact while the *level* statement inside it died.
+
+- **Enumerate the downstream claims and label each RATIO or LEVEL before re-running anything.** That predicts
+  which ones need re-measuring and which only need a footnote, and it is usually a 5-minute reading exercise.
+- **Emit BOTH columns and keep printing them side by side.** Withdrawing the wrong one and deleting it means
+  the next session cannot tell a corrected number from an uncorrected one. Two adjacent columns can never be
+  substituted silently again; one column with a better name can.
+- **Cross-check the corrected reference through a SECOND, independent reader before quoting it.** Two
+  harnesses reading one table and agreeing to the digit is what licenses the number — and it is nearly free
+  when a sibling probe already loads the same fixture.
+- **Add the column additively and prove it.** Append new columns last and diff every pre-existing value
+  row-by-row against the pre-edit file. A basis fix that also moves a committed baseline is two changes
+  wearing one commit, and guardrail 4 cannot tell them apart.
+
+**And separate an INITIALISATION gap from a GROWTH gap before attributing either.** A reconstructed initial
+state scored at the first *annual* output already contains a year of the model's own dynamics. Read the
+quantity at **t = 0**, before any step, against the exact inputs the state was built from: here that gave
+1.00–1.04 in all five cells and **eliminated the reconstruction as a cause in one column**, leaving growth.
+Sibling trap in the same arm: a kernel-isolation configuration that switches demography off has **no
+mortality and no establishment**, so a monotone rise in a standing-stock quantity is *expected by
+construction* and that arm cannot convict the growth code. Quote a growth number from the coupled arm; the
+isolation arm can only convict a cell where the quantity moves in the direction nothing else can produce.
