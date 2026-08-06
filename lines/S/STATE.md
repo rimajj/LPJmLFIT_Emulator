@@ -34,7 +34,9 @@ or a new model run for CO2, and never list it as a defect.
 
 ### ✅ MERGED AND GREEN — nothing about this line's work is outstanding
 
-Work merged to `main` as **`362d115d`** (branch sha `f0e80be8`). Branch CI on the code-bearing sha
+Work merged to `main` as **`362d115d`**, and **`main`'s OWN post-merge run is green**: `test (lts)` ✅
+`test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅ **`docs` ✅** (the whole-package gate that never runs on a
+branch — §9 note 5's one case that always deserves the look, and it passed). Branch CI on the code-bearing sha
 **`c68ee134`**: `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅. `test (pre)` ❌ = the documented
 `ScopedValues` prerelease `MethodError` at LOAD time — confirmed from the job log, `continue-on-error`, not
 ours. Every commit after `c68ee134` touched only `docs/`, `changelog.d/`, `.claude/skills/`, `MEMORY.md` and
