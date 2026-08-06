@@ -593,3 +593,27 @@ every printed digit, so the ADR could say so instead of carrying an unstated cav
 the fire-check too** — confirm the new path actually executed, or "identical" may just mean the flip never
 reached your code. The tell that made ADR 0105's null meaningful was that the 1e-12 carbon residuals *did*
 move while every reported quantity did not.
+
+## An ABSENT behaviour is not automatically a MISSING one (added 2026-08-06, ADR 0107)
+
+Before calling anything a gap, defect or limitation: **check whether it was DESIGNED OUT.** One question per
+candidate row — *is there an accepted decision saying this should not be there?* — and `grep` the ADR index
+for the term before writing the row.
+
+A gap list built by asking *"what does the model not do?"* will confidently promote **every deliberate
+simplification to a defect.** ADR 0106 listed "the emulator has no CO2 response" as "FAILS COMPLETELY, the
+largest single gap" and escalated it to a possible new run of the reference model. It is the opposite: the
+reference model is deliberately run at constant CO2 (its own CO2 response is wrong without nitrogen
+limitation), so **an emulator with no CO2 response MATCHES the reference** — adding one would be a fidelity
+*regression*. The governing decision (ADR 0004) was **listed in the offending document's own `Related` line**:
+**citing a decision is not reading it**, and retrieval next to contradiction is a real failure mode.
+
+**Corollary, and it is the mechanical fix: under a "match the reference" criterion, state every candidate gap
+as a COMPARISON against the reference, never as an absolute capability.** "X has no Y" is not a finding.
+"X's Y differs from the reference's Y" is — and phrasing it that way makes the CO2 row self-evidently false
+before anyone has to argue about it. Apply this to every row of a gap table, without exception.
+
+⚠ **And a wrong claim in a handoff banner is not a documentation error — it is misdirected sessions.** This
+one reached `MEMORY.md`, all four lines' `## NEXT` blocks and `~/.claude/CLAUDE.md` before it was caught. When
+a correction lands, **fix every place the claim was broadcast in the same commit**, and if the owner reports
+having corrected it before, record it as *standing, do-not-re-litigate* rather than as a fact.
