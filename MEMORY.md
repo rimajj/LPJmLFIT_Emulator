@@ -142,6 +142,54 @@ is the offline S.
   **establishment**; these are the coupled-rollout **default** now (tree-only paths byte-identical). One
   residual remains — see §5 water-supply.
 
+### Cost + the patch ensemble (cross-cutting; ADR 0093 answers ADR 0092)
+- ⚠ [VERIFIED 2026-08-07] **THE SHIPPED JULIA EMULATOR IS 3.8× SLOWER PER CELL-YEAR THAN THE C IT REPLACES**
+  — 1.096 core-s/cell-yr at 25 patches vs the C's 0.290 (temperate) / 0.383 (boreal). Cause: its
+  **per-individual daily step is 51× the C's** (3.998e-3 vs 7.84e-5 core-s/ind-yr); its per-patch fixed cost
+  is only **0.066×** the C's. ⇒ closing the per-tree gap alone is **37×** with 25 patches intact and zero
+  fidelity risk; 8 patches then costs 0.0093, inside the derived T31 land allowance (0.0135). **Price every
+  future speed proposal against the JULIA cost model, never the C's** — all four candidate architectures
+  looked good against the C and are slower than the existing code at 8 patches. **No end-to-end
+  emulator-vs-C timing existed before this**; make one a standing gate.
+- [VERIFIED 2026-08-07] C cost anatomy: **72–86 %** is per-individual-per-day photosynthesis, the λ bisection
+  alone **33.3 %** (≤30 photosynthesis calls per tree per day, `water_stressed.c:207`). The C carries
+  **108–150 individuals per patch in memory**; the `ind` writer emits only the **7.3** stems >5 m. Cost is
+  exactly linear in npatch (0.0176–0.0185 core-s/patch-yr at npatch 1 and 50). **Offline production is NOT
+  cost-constrained** — the whole 2-seed × 2-scenario ground truth was 35 000 core-h (17 h on 2048 cores);
+  the compute case exists only for online coupling.
+- [VERIFIED 2026-08-07] **npatch is a NUMERICAL parameter**: npatch=50 vs 25 (8 553 cells) moves every
+  cell-mean by **<0.15 %**. But **the 25 patches are not 25 samples** — the cell-level seedbank
+  (`getsapling.c`, `cell->treelist`, filled `foreachpatch`) couples the TRAIT pool: n_eff = 12.9 (n_trees),
+  8.2 (Wooddens), 5.2 (SLA), 4.8 (D95max). The control that proves the channel: median **Height** — same
+  stems, same patches, **not inherited** — has n_eff ≈ 25. Cutting 25→8 patches costs sd ×1.15–1.43.
+- ⚠ [VERIFIED 2026-08-07] **AT npatch=25 THE C'S OWN ANSWER IS OUTSIDE THE 10 % BAND** for several
+  acceptance quantities: bootstrap CV vegc **11.3 %**, Height median 11.3 %, minwscal median 11.0 %,
+  **D95max median 22.7 %** (Amazon, 50 000 patches). Production two-seed medians: n_trees 7.6 %,
+  D95max 11.6 %; in the <2 stems/patch stratum (7 964 cells) 31.6 % / 42.7 %. ADR 0106's
+  `max(10 %, the model's own two-run spread)` clause is load-bearing, not decorative.
+- ⚠ [VERIFIED 2026-08-07] **THE TRAIT RESPONSE IS NOT A PER-CELL OBSERVABLE.** hist 2019 → ssp370 2099, the
+  two seeds disagree on the **SIGN** in 33.2 / 36.7 / 34.4 % of cells (Wooddens / D95max / minwscal;
+  S/N 1.25 / 0.92 / 1.68), while the AREA-MEAN vegc response is −11.28 % against 0.055 % noise. Score the
+  response on a **multi-seed mean** and/or in aggregate. **Deattenuating for target noise re-points the
+  diagnosis: TWO broken axes, not four** — SLA 0.851→**1.08** and minwscal 0.689→**0.99** are already right;
+  only Wooddens (0.63) and D95max (0.51) are broken, exactly the two ADR 0046/0049 attribute to within-PFT
+  differential survival. **Two more reference seeds = 35 000 core-h ≈ 17 h**, the best compute buy identified.
+- [VERIFIED 2026-08-07] **REFUTED patch-reduction routes — do not re-propose** (full numbers ADR 0093 §4):
+  one big patch (recruitment ∝ `exp(−LAI)`; merging 25×225 m² costs **−81.3 %** recruitment) · structural
+  stratification/quadrature (VRF **1.00–1.13** for trait medians) · time-averaging (anomaly e-folding
+  **32–41 yr**) · a smooth trait density with no individuals (`bm_inc_counter` is trait-correlated and
+  factorising it out **flips the selection sign in PFTs 1/2/3/5**) · a roster ensemble without daily physics
+  (3 of 4 hazards need per-tree daily `wscal`).
+- [VERIFIED 2026-08-07] **SURVIVED, and cheap:** **share the soil column, never the canopy** — between-patch
+  CV of patch-mean `wscal` is median **0.0126** / p90 0.0667 (41 587 cells) while mean-field light error is
+  **−31 % at 5 m / −47 % at 20 m**; this asymmetry is what removes the Amdahl floor. **Trait-dependent
+  mortality is nearly free**: keeping `mort_max(wooddens)` per-individual holds the Wooddens selection
+  differential at **0.98–1.06 across all seven PFTs** even with growth efficiency collapsed to a patch mean
+  (`src/trait_mortality.jl`, wired, **default OFF**). A **bounded Beta on each PFT's own trait interval**
+  beats the shipped copula 2–3× on per-cell KS (**0.042–0.073** vs 0.129–0.173), two moments, no fitting.
+  **The determinism dividend is free**: predicting the ensemble expectation rather than drawing a
+  realisation is worth **+2.9 to +14.4 pp** of cells inside the 10 % band.
+
 ### Scoring a RECURSIVE emulator (cross-cutting method; ADR 0054, line M)
 - ⚠ [VERIFIED 2026-08-06, ADR 0105] **THE NEXT BULLET'S 59–72 % IS SUPERSEDED AND ITS SIGN INVERTS — read
   this first.** That number was measured on the driver's **modal** patch and scored on `target_history`
