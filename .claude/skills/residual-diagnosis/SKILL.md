@@ -705,3 +705,45 @@ self-consistency check. ADR 0110 validated a `getbetaroot.c` port to **5e-7** by
 Phase-0 check here passed on its 3-part median rule while one sub-test failed at 2 of 5 cells, and the write-up
 says so rather than quietly dropping the sub-test. Rewriting a criterion after seeing its arm is the ADR-0104
 error. Worked example: `scripts/diagnose_per_tree_water_access.py`.
+
+---
+
+## 5. Before calling a residual real: is the TARGET noisier than the residual? (ADR 0093, integrator, 2026-08-07)
+
+LPJmL-FIT is stochastic and its own answer at the production `npatch=25` is **already outside the 10 %
+acceptance band** for several quantities. So a "miss" can be the target's own scatter. Do these three
+checks *before* diagnosing a residual against any per-cell C statistic.
+
+**(a) Look up the noise floor for the quantity you are scoring.** Bootstrap CV of the C's own cell estimator
+at `npatch=25` (Amazon replicate run, 50 000 patches): `n_trees` 8.9 % · `vegc` **11.3 %** · median Height
+**11.3 %** · median Wooddens 3.3 % · median SLA 2.4 % · median minwscal **11.0 %** · **median D95max 22.7 %**.
+Production two-seed medians over 53 111 cells: `n_trees` 7.6 %, `D95max` 11.6 %; in the **<2 stems/patch**
+stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. **A 12 % per-cell miss on `vegc` in a sparse
+cell is not a residual — it is the model.** ADR 0106's tolerance is `max(10 %, the two-run spread)`; use the
+second branch.
+
+**(b) The 25 patches are NOT 25 samples — correct for it.** The cell-level seedbank (`getsapling.c`,
+`cell->treelist`, filled `foreachpatch`) couples the **inherited** trait pool: measured `n_eff` = 12.9
+(`n_trees`), 8.2 (Wooddens), 5.2 (SLA), **4.8 (D95max)**. The control that isolates the channel: median
+**Height** — same stems, same patches, *not* inherited — has `n_eff ≈ 25`. So if a trait statistic looks
+noisy and a size statistic on the same stems does not, that is the seedbank, not your code.
+
+**(c) Deattenuate before concluding a RESPONSE is broken.** Scoring a warming response against ONE seed
+regresses on a noisy regressor and biases every slope toward zero. Estimate reliability
+`λ = Var(true)/(Var(true)+Var(noise))` from the two seeds that already exist in both scenarios, and report
+the raw slope **and** `slope/λ`. Measured: SLA `0.851 → 1.08` and minwscal `0.689 → 0.99` — **already
+correct**, not broken; only Wooddens (0.63) and D95max (0.51) are genuine. This single correction re-pointed
+the project's whole response diagnosis from four broken axes to two.
+
+⚠ **The per-cell trait response is not an observable at all in single-seed truth.** The two seeds disagree
+on the **sign** of the hist→ssp370 trait shift in **33–37 %** of cells (S/N 1.25 / 0.92 / 1.68 for
+Wooddens / D95max / minwscal), while the **area-mean** `vegc` response is −11.28 % against 0.055 % noise
+(S/N ≈ 200). Score a response on a multi-seed mean and/or in aggregate; a per-cell single-seed response
+plot is mostly noise. Two more reference seeds cost ~35 000 core-h ≈ 17 h on 2048 cores.
+
+**A cost regression is a residual too, and nobody was checking.** Before optimising anything, time the
+emulator end-to-end against the C on the same cells and years. Measured 2026-08-07: the shipped Julia
+emulator is **3.8× SLOWER** per cell-year than the C it replaces (1.096 vs 0.290–0.383 core-s), because its
+per-individual daily step is **51×** the C's while its per-patch fixed cost is **0.066×**. Every speed
+proposal must be priced against the **Julia** cost model — four architectures that looked good against the C
+were all slower than the existing code at 8 patches. Harness: `/p/tmp/jamirp/npatch_analysis/bench_emulator.jl`.
