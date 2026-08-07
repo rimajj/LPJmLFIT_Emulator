@@ -53,7 +53,7 @@ flowchart LR
     end
     subgraph sg_lpjml["LPJmL-FIT (the C reference model / oracle)"]
         direction TB
-        LPJML["<b>LPJmL-FIT v5.6.004</b><br/>individual=true, 25 patches/cell, carbon-only, stochastic gap model (-DPERMUTE)"]
+        LPJML["<b>LPJmL-FIT v5.6.004</b><br/>individual=true, carbon-only, stochastic gap model (-DPERMUTE); N replicate patches per cell (25 in the current training runs)"]
     end
     subgraph sg_truth["LPJmL-FIT output = ground truth"]
         direction TB
@@ -227,13 +227,62 @@ different question than it was taught. The function that builds it is
 the atmospheric forcing, the canopy structure S derived for it, the surface temperature from the
 energy component, and its per-cell soil column.
 
-### Inside F: individual trees, not one average tree
+### How vegetation is represented: patches, individuals, cohorts
 
-"Reused from LPJmL-FIT" invites a fair question: the original model computes the daily biophysics for
-**each individual tree separately** and then adds them up — does ours?
+This is the part most worth understanding, because it is where the emulator's structure differs from the
+original's most.
 
-**Yes, for the parts the original does per individual.** The fast core carries the patch's real set of
-individuals — a distribution of tree sizes and plant types plus grass — and loops over them. Concretely:
+**What LPJmL-FIT does.** It does not model "a forest" as an average. It simulates each grid cell as a set
+of **replicate patches** — independent versions of the same cell, each with its own random history of
+tree death and establishment — and every gridded number it reports is the **average across those
+patches**. Inside each patch it tracks **every tree as its own individual**, with its own size, age and
+traits, and computes the daily biophysics for each one separately before adding them up. The patches
+exist because the model is a *gap* model: what matters is that a big tree dies here and a gap opens there,
+and one patch cannot represent that distribution on its own.
+
+!!! note "The number of patches is a run setting, not a fixed property"
+    The training runs the emulator currently learns from use **25 patches per cell**. A planned
+    regeneration uses **500**. So "25" is a property of *this dataset*, not of LPJmL-FIT or of the
+    emulator — treat any number quoted per patch as attached to the run it came from.
+
+**What the emulator does — the three differences.**
+
+| | LPJmL-FIT | The emulator |
+|---|---|---|
+| **Patches** | N replicate patches per cell; reported numbers are the patch average | Runs the same patches and averages them the same way |
+| **Trees** | Every tree is its own individual | Groups of near-identical trees are carried as **cohorts** — one entry with a size, a plant type and a count |
+| **Smallest trees** | All trees, including saplings | **Nothing under 5 m**, because the original's tree output file does not write them |
+
+**On patches:** the emulator now runs every patch and averages, matching the original. This is recent and
+the previous behaviour was wrong in an instructive way: it used to run a **single "modal" patch** — the one
+with the most living trees. Because that patch is *selected for being the densest*, it was biased dense by
+construction: its leaf cover ran **1.12–1.72×** the true patch average and its photosynthesis up to
+**1.33×**. That is selection bias, not sampling noise, so averaging more patches would not have fixed it —
+the fix was to stop picking a patch. A few diagnostic scripts still deliberately run the modal patch so
+they keep reproducing older published numbers; a modal-patch number and a patch-average number are **not
+comparable**, and nothing in the code stops you comparing them by accident.
+
+**On cohorts — the real structural difference.** The emulator's unit is not a tree, it is a **cohort**: a
+group of trees sharing a size and plant type, carried once with a count attached. In practice this starts
+out equivalent to individual trees, because the starting population is built one-for-one from the
+original model's tree list, and the list then grows and shrinks as the run proceeds — establishment adds
+an entry, death removes one. So the emulator is not pinned to a fixed number of trees.
+
+The cohort representation only *bites* if the list gets long. There is a ceiling: if the number of entries
+exceeds it, the two most similar tree groups — closest in height — are merged into one. **At the current
+setting that merge never happens**, so nothing is being compressed today. But it is a known unfixed
+problem rather than a solved one: the merge does not conserve traits correctly, and the error it would
+introduce is **3–5× the size of the signal being measured**. Anyone who tightens that ceiling, or scales
+the population up so the list gets longer, has to fix the merge first. That is the main thing to watch
+when moving to 500-patch training runs.
+
+### Inside F: the daily biophysics really is per individual
+
+Given the above, the fair follow-up is whether the fast core actually computes the daily biophysics per
+tree, or takes a shortcut on one average tree.
+
+**It is per individual, for the parts the original does per individual.** The fast core loops over the
+patch's entries — tree cohorts plus grass. Concretely:
 
 - **Light competition is per individual, and it is vertical.** Tall dominant trees absorb sunlight
   first; suppressed trees below them receive only what is transmitted. Each individual photosynthesises
@@ -265,44 +314,44 @@ by its ground cover. Moving to the real set of individuals closed both gaps.
     the water-balance closure. (An older source comment listing interception as missing described the
     state before it was added.)
 
-    There is a further dimension above the individual: the original runs **25 independent patches per
-    cell** and averages them. Whether the emulator is driven from one representative patch or from the
-    whole ensemble measurably changes the levels it reports, so the two are not interchangeable — the
-    ensemble is the correct basis, and any single-patch number is biased dense by construction.
+### Rooting depth: predicted, and only now getting a consumer
 
-### The rooting-depth gap: we predict it, and then do not use it
+Worth stating plainly, because the answer changed recently and the older explanation was wrong in a way
+that mattered.
 
-Worth stating plainly, because it looks like an oversight and is in fact a known, blocked one.
+**The situation until recently.** The slow emulator predicts a rooting depth for every tree, and its
+accuracy on that trait is validated. Nothing downstream used it. The fast core collapsed the soil profile
+to a single shared number before it began looping over trees, so **two trees differing only in rooting
+depth behaved identically in the water balance**, and drought response through rooting depth could not be
+represented at all.
 
-The slow emulator **does** predict a rooting depth per tree — it is one of the trait axes it samples and
-one of the axes its accuracy is validated on. But nothing downstream consumes it. The trait sampler
-deliberately writes only leaf-area-per-mass and wood density into each tree, because those are the two
-the fast core reads; rooting depth is sampled, scored, and then dropped. On the fast side there is no
-per-tree rooting field at all, and every individual withdraws water through **one shared cell-average
-root profile**. The single rooting-depth number that the slow-to-fast interface does carry is derived
-*backwards* out of that shared profile — it is a summary of the average, not a per-tree prediction
-flowing in.
+**What has changed.** A per-tree mechanism has now been built, validated against the original model's own
+output, and merged: each tree gets its own root profile, draws water down that profile, and gets its own
+water-stress and temperature-stress signal, which then feeds its chances of dying. **It ships switched
+off.** So the default behaviour today is still the shared average profile described above — but the
+mechanism now exists rather than being absent, and turning it on is a measurement, not a build.
 
-So why not simply give each tree its own profile? Because the honest version of that change is a
-different piece of physics, and it is currently blocked:
+**Why it was previously thought to be blocked, and why that was too broad a claim.** An earlier scoping
+study concluded that per-individual water supply could not be ported faithfully, because the original
+model lets trees deplete soil layers **in a randomly reshuffled order each day** — each tree capped by
+what earlier trees left. That is genuinely not reproducible or differentiable. But it blocks only *that
+one piece*: the order-dependent "take what's left" cap. Giving each tree its own root profile, its own
+draw and its own drought stress does **not** depend on the order at all, because those quantities are
+read from soil moisture that is held fixed for the whole day before the random-order competition happens.
+The order-independent parts could therefore be ported exactly; only the competitive residue cap remains
+out of scope, and even that is now understood as "needs to be reproduced as an average over random
+orders" rather than impossible.
 
-- **The interface has no channel for it.** The slow-to-fast contract carries one rooting number for the
-  whole stand. Widening it to a per-tree profile is a change to a frozen contract between two work
-  streams, not a local edit.
-- **It only bites on the supply side, and that is the blocked part.** Water *demand* is stand-level in
-  the original too, so per-tree roots would change only which layers each tree draws *from*. Making that
-  faithful means per-individual competitive uptake — trees depleting layers in turn, each capped by what
-  is left.
-- **The original does that in a randomised order**, re-shuffled daily. That makes it both
-  non-deterministic and non-differentiable, and differentiability is a hard requirement for this core.
-  A scoping study concluded a faithful port is *structurally impossible* on that path and recommended
-  deferring it behind a learned-correction approach instead.
+!!! warning "A stale design note"
+    `docs/notes/water_supply_perpft_design.md` still carries its original "scoped, recommend deferring"
+    status and was not updated when the above landed. It is not wrong about the mechanism it actually
+    analysed — the order-dependent cap, still deferred — but read on its own it is easily taken as
+    blocking *all* per-tree water mechanisms, which is no longer true.
 
-The consequence to keep in mind when reading results: **trait-driven differences in water access are
-currently absent from the physics**, even though the trait itself is predicted and validated. Two trees
-that differ only in rooting depth behave identically in the water balance. Anything that depends on deep
-versus shallow rooting — drought response above all — is therefore not yet represented, and that is a
-gap in the science, not just in the code. The design study is `docs/notes/water_supply_perpft_design.md`.
+**What to carry into reading results.** Because the switch is off by default, trait-driven differences in
+water access are still absent from the physics in a default run, and drought response through rooting
+depth is still not represented in those numbers. That is a real limit on what present results can say —
+but it is now a switch waiting on evidence, not a missing capability.
 
 **E — the energy balance** (sub-daily; a closure the original model does not have). It reads the
 atmospheric forcing *including wind and pressure*, the canopy structure from S, and the latent and

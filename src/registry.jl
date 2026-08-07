@@ -184,9 +184,11 @@ const DATA_NODES = [
         path_key = "lpjml.restart_historical_spinup_end"
     ),
     # ── The C model ──────────────────────────────────────────────────────────────────────────────
+    # ⚠ The patch count is a RUN SETTING, not a property of the model — the current training runs use
+    # 25 and a planned regeneration uses 500. Never state a bare number here as if it were fixed.
     DataNode(
         id = :LPJML, label = "LPJmL-FIT v5.6.004", kind = :model, stage = :lpjml,
-        detail = "individual=true, 25 patches/cell, carbon-only, stochastic gap model (-DPERMUTE)",
+        detail = "individual=true, carbon-only, stochastic gap model (-DPERMUTE); N replicate patches per cell (25 in the current training runs)",
         path_key = "lpjml.binary"
     ),
     # ── Its outputs = the ground truth ───────────────────────────────────────────────────────────

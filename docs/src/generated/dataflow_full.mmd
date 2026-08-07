@@ -24,7 +24,7 @@ flowchart LR
     end
     subgraph sg_lpjml["LPJmL-FIT (the C reference model / oracle)"]
         direction TB
-        LPJML["<b>LPJmL-FIT v5.6.004</b><br/>individual=true, 25 patches/cell, carbon-only, stochastic gap model (-DPERMUTE)"]
+        LPJML["<b>LPJmL-FIT v5.6.004</b><br/>individual=true, carbon-only, stochastic gap model (-DPERMUTE); N replicate patches per cell (25 in the current training runs)"]
     end
     subgraph sg_truth["LPJmL-FIT output = ground truth"]
         direction TB
