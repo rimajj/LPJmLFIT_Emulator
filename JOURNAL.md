@@ -1077,3 +1077,46 @@ Entry template:
   rooting depth is not represented.
 - **Next (owner):** confirm the diagram now renders in the built docs. Open question for line M: whether to
   open the per-tree rooting channel (a frozen S→M contract change) or keep deferring behind the learned lever.
+
+## 2026-08-07 — integrator: the patch ensemble is named as THE central production problem (owner)
+
+- **Owner instruction, after reading the new data-flow page and asking two questions that landed hard:**
+  *"this is a major gap in the whole strategy of the whole emulator project. make sure to document that as
+  THE major thing to solve. in the next session i want to talk about a strategy how we solve that.
+  computing 25 patches for testing and validating is fine — but we have to find a strategy for production
+  mode. Maybe we can get the same results with 25 representative patches as a 500 patch run? anyway…
+  whether we use less patches or representative/averaged one we will see, but that is the central task and
+  challenge!"*
+- **The two questions that exposed it.** (1) *"LPJmL-FIT needs to run many patches because it initiates
+  random individuals and wants to see what survives under environmental filtering. We want to predict
+  exactly that. So why are we running the full X patches again, instead of running the cohorts that exist
+  on average on these X patches?"* (2) *"If we are also running each patch, what is the computing cost
+  benefit of the emulator currently?"* Both are correct and neither had an answer written down anywhere.
+- **The honest answer, now recorded:** the emulator does NOT re-run the filtering (S predicts the
+  survivors), but the coupled driver still evaluates the daily physics on every patch (ADR 0057 — correct,
+  for comparison validity), so **the runtime-dominating term is unchanged from the C model**. The compute
+  saving is the ~1000-yr **spin-up**, not per-simulated-day cost. That is fine for validation and
+  inadequate for production; the planned 500-patch regeneration makes per-cell physics 20× worse and a
+  global coupled online run at that scale is not affordable.
+- **What a solution must not break** (so nobody "just averages the patches"): the comparison basis (the C's
+  gridded truth IS a patch mean — the modal patch carried FPC 1.12–1.72× / GPP up to 1.33×, ADR 0053/0057);
+  the **nonlinearity** `mean(f(state)) ≠ f(mean(state))`, with the in-repo counter-example that a *denser*
+  patch made slightly *less* carbon because its GPP was water-limited; and within-patch suppression
+  structure, which an averaged stand fabricates.
+- **Recorded as ADR 0092 with Status: OPEN** — deliberately a problem statement, not a decision. Option
+  space (fewer / representative-stratified / effective-stand + correction / hybrid) is listed with none
+  preferred, because the owner asked to decide the strategy in discussion. Four experiments named; the two
+  cheap decisive ones are the ensemble-mean convergence curve vs patch count, and the **end-to-end
+  emulator-vs-original timing, which has never been made** (`bench_slow_speedup.jl` times the slow
+  component — the part that was already cheap).
+- **Made unmissable in the three files a session actually reads:** `MEMORY.md` §5 as a new top frontier row
+  **P0★** above P1–P6, `MEMORY.md` §4 decision index, and `STEERING_PROMPT.md` as a new **P0★** order above
+  P1 carrying an explicit ⛔ *do not pick a strategy unilaterally*. The owner-facing docs page carries a
+  `!!! danger` box in plain language.
+- **Standing disclosure obligation added:** no claim that the emulator is "faster than LPJmL-FIT" without
+  stating that the saving is the spin-up and the per-day physics cost is unchanged.
+- **Interaction with the 500-patch regeneration:** a longer roster is exactly the condition that wakes the
+  dormant k-cap cohort merge, whose latent defect is 3.1–5.1× the signal (ADR 0048). Any patch strategy
+  that scales the population must re-check that first.
+- **Next (owner):** the strategy discussion. Unilateral prep that does not prejudge it = the two cheap
+  measurements above.

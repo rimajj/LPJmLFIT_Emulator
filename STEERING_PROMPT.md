@@ -141,6 +141,27 @@ belongs in the `fdiff-validate` skill, parameterized by cell index — not rewri
 
 ## Orders (priority order; gates are self-verification checkpoints you apply yourself — no sign-off needed)
 
+**P0★ — THE PRODUCTION PATCH STRATEGY. The central task and challenge (owner instruction, 2026-08-07).**
+LPJmL-FIT runs many replicate patches per cell because it is a stochastic gap model — it seeds random
+individuals and lets environmental filtering pick the survivors. **Component S predicts that outcome
+directly, so the emulator does not need patches to do the filtering.** Yet the coupled driver still runs the
+daily physics on *every* patch (ADR 0057, correctly, for validity of comparison). Consequence: **the term
+that dominates runtime is unchanged from the C model**, and the emulator's compute case currently rests
+almost entirely on skipping the ~1000-year spin-up — not on being cheaper per simulated day. 25 patches for
+testing and validation is fine and stays. **Production has no viable configuration yet**, and the planned
+500-patch training regeneration makes the per-cell physics cost 20× worse; a globally coupled online run at
+that scale is not affordable.
+*Option space, none preferred yet:* fewer patches · representative/stratified patches · one effective stand
+plus a nonlinearity correction · a hybrid (ensemble in validation, cheaper production mode with a measured,
+disclosed bias).
+*What must NOT be broken:* the comparison basis (the C's gridded truth **is** a patch mean), the
+nonlinearity (`mean(f(state)) ≠ f(mean(state))` — a *denser* patch was measured making slightly *less*
+carbon), and within-patch suppression structure.
+⛔ **DO NOT pick a strategy unilaterally — the owner has asked to decide it in discussion.** The useful
+unilateral work is the cheap decisive measurement: the ensemble-mean convergence curve vs patch count, and
+the end-to-end emulator-vs-original timing that **has never been made**. Full framing + the four
+experiments: **ADR 0092**.
+
 **P1 — Put S in the coupled loop.** Implement `AbstractSlowEmulator` concretely (port the Python
 LightGBM+copula to Julia — ADR 0019); wire it into `run_coupled_cell`; implement the §growth split
 (ADR 0018); conserve carbon at the handoff via flux-then-integrate.

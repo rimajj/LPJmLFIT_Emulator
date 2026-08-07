@@ -245,6 +245,31 @@ and one patch cannot represent that distribution on its own.
     regeneration uses **500**. So "25" is a property of *this dataset*, not of LPJmL-FIT or of the
     emulator — treat any number quoted per patch as attached to the run it came from.
 
+!!! danger "The central unsolved problem: what to do about patches in production"
+    This deserves to be stated at full strength rather than buried, because it affects the point of the
+    whole project.
+
+    The original model needs many patches because it *discovers* which trees survive by simulating random
+    ones and letting the environment filter them. **The emulator predicts that outcome directly — so it
+    does not need patches to work out who survives.** But it still runs the full daily physics on every
+    patch. That means the part that dominates the running time is *unchanged* from the original model.
+
+    The consequence is uncomfortable and worth being blunt about: **the emulator's speed advantage today
+    comes almost entirely from not having to spin up** — the original needs roughly a thousand simulated
+    years to settle before it can start, and the emulator predicts that state instead. It does **not**
+    currently come from being cheaper per simulated day. No like-for-like timing of the emulator against
+    the original has ever been made, so that is an argument rather than a measured result.
+
+    Running every patch is the right thing to do for testing and validation, and stays. What is missing is
+    a **production** configuration — and the planned move to 500 patches makes the per-cell cost twenty
+    times worse, which a global coupled run cannot absorb.
+
+    Possible directions, none chosen: use fewer patches; use a small set of *representative* patches
+    covering the range of stand conditions; or run one averaged stand plus a correction for the fact that
+    the average of the fluxes is not the flux of the average stand. Whichever it is, it has to respect the
+    three reasons the patches are there — the comparison basis, the strong non-linearity of the physics,
+    and the fact that trees shade each other *within* a patch. Written up in decision record 0092.
+
 **What the emulator does — the three differences.**
 
 | | LPJmL-FIT | The emulator |

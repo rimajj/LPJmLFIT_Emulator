@@ -37,6 +37,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **`docs/README.md` + `docs/notes/README.md`** — a layout index for `docs/`: what each subdirectory is,
   which CI gate it triggers (most of `docs/` triggers **none**), and where a new document belongs.
 
+### Added
+- **THE central production problem is now named and recorded: the patch ensemble**
+  ([ADR 0092](docs/decisions/0092-the-patch-ensemble-is-the-central-production-problem.md); owner
+  instruction 2026-08-07, *"a major gap in the whole strategy of the whole emulator project … document that
+  as THE major thing to solve … that is the central task and challenge"*). LPJmL-FIT runs replicate patches
+  because it is a **stochastic gap model** — it seeds random individuals and lets environmental filtering
+  choose survivors. **Component S predicts that outcome directly, so the emulator does not need patches to
+  do the filtering** — yet the coupled driver still evaluates the daily physics on **every** patch (ADR
+  0057, correct for comparison validity). Consequence, now stated plainly: **the runtime-dominating term is
+  unchanged from the C model, and the emulator's compute case rests almost entirely on skipping the
+  ~1000-year spin-up, not on being cheaper per simulated day.** 25 patches stays fine for testing and
+  validation; **production has no viable configuration yet**, and the planned 500-patch regeneration makes
+  per-cell physics 20× worse — a global coupled online run at that scale is unaffordable. Records what a
+  solution must not break (comparison basis · the nonlinearity `mean(f(state)) ≠ f(mean(state))`, with the
+  measured counter-example that a *denser* patch produced slightly *less* carbon · within-patch suppression
+  structure), an option space with **none preferred** (fewer / representative-stratified / effective stand
+  + bias correction / hybrid), and four experiments — of which the **end-to-end emulator-vs-original timing
+  has never been made**. **Status OPEN on purpose:** the owner has asked to decide the strategy in
+  discussion, so the ADR frames rather than decides. Raised to the top of `MEMORY.md` §5 and
+  `STEERING_PROMPT.md` as **P0★**, above P1–P6, with an explicit "do not pick a strategy unilaterally".
+  **Standing disclosure obligation:** no claim that the emulator is "faster than LPJmL-FIT" without saying
+  the saving is the spin-up.
+
 ### Fixed
 - **The docs' Mermaid diagrams were never rendering — ALL of them, for months** (ADR 0091 amendment;
   found by the owner opening the built site). Every diagram was embedded with ```` ```@eval ```` +
