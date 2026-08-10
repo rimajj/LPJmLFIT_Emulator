@@ -838,3 +838,16 @@ scores any number of arms on the one canonical basis. Committed table:
 `test/testitems/references/S_truth_yardstick_summary.csv`. **λ for 1/2/4 seeds** — counts .908/.952/.975 ·
 carbon .616/.762/.865 · SLA .645/.784/.879 · Wooddens .510/.676/.807 · D95max **.198/.330/.497** · minwscal
 .640/.780/.877 · Height .315/.480/.648 — which is also the quantitative case for the extra reference seeds.
+
+**(8) SCORE THE PER-CELL PATTERN *AND* THE AREA-MEAN TOTAL — they fail independently, and one alone hides the
+defect.** Added 2026-08-10 with the count side (`COUNT_DIR=<pooled count table with y.f64 + preds_oos.f64>`,
+which `diagnose_truth_yardstick.py` scores alongside the trait axes). Measured on the shipped generation:
+**counts** deattenuated per-cell slope **1.01** but area-mean response only **0.69×** the truth — the right
+*pattern*, too small a *total*. **Wooddens** is the exact mirror: area-mean **1.13×** but per-cell **0.66** —
+the right *total*, in the *wrong places*. Either statistic alone reports one of them as fine. So: a per-cell
+slope near 1 does **not** mean the response is right, and a correct area mean does **not** either. ⇒ **the
+tree-count warming response is faithful per cell; the response error lives in the TRAIT axes** — do not write
+"the warming response is indistinguishable from zero" without naming the quantity.
+**And cross-check the basis whenever the truth comes from a second table** (ADR 0030): the count table's own
+seed1 response vs this reduction's correlated at **r = 0.9948** — two independent code paths over one run.
+Below ~0.9 you are comparing different quantities and no slope is comparable to the rest of the panel.
