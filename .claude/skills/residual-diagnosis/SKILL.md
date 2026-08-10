@@ -728,6 +728,8 @@ second branch.
 **Height** — same stems, same patches, *not* inherited — has `n_eff ≈ 25`. So if a trait statistic looks
 noisy and a size statistic on the same stems does not, that is the seedbank, not your code.
 
+⚠ **(c)'s NUMBERS ARE SUPERSEDED — see `## 5c-CORRECTED` at the end of this file (ADR 0111); the method below is right, the numbers are not.**
+
 **(c) Deattenuate before concluding a RESPONSE is broken.** Scoring a warming response against ONE seed
 regresses on a noisy regressor and biases every slope toward zero. Estimate reliability
 `λ = Var(true)/(Var(true)+Var(noise))` from the two seeds that already exist in both scenarios, and report
@@ -784,3 +786,91 @@ Sibling trap in the same arm: a kernel-isolation configuration that switches dem
 mortality and no establishment**, so a monotone rise in a standing-stock quantity is *expected by
 construction* and that arm cannot convict the growth code. Quote a growth number from the coupled arm; the
 isolation arm can only convict a cell where the quantity moves in the direction nothing else can produce.
+
+## 5c-CORRECTED. THE YARDSTICK ITSELF WAS WRONG THREE WAYS — use these numbers, not §5(c)'s (line S, 2026-08-10, ADR 0111)
+
+§5's *method* is right and its (a)/(b) numbers stand. **Its (c) numbers do not.** Reproducing that correction
+on one self-consistent basis over **51 767 of the 54 020 tree-bearing cells**, both scenarios, turned up three
+independent errors — and each is a trap you can repeat in any two-seed analysis.
+
+**(1) `λ` and `slope/λ` are easy to transpose, and the transposition is self-consistent.** Both numbers are
+in the same range for a broken axis, and both satisfy `deatt ≥ slope`, so neither an eyeball nor an
+internal-consistency check catches a swap. ADR 0093 §3e has them swapped in exactly its Wooddens and D95max
+rows. **Guard:** print `slope`, `λ` and `slope/λ` in ONE row from ONE expression, never assemble the table by
+hand from two sources.
+
+**(2) `λ` IS BASIS-SPECIFIC. A reliability belongs to a STATISTIC.** Dividing statistic A's slope by
+statistic B's reliability is undefined, and it happened here because λ was log-space/single-year/≥50
+stems/43 257 cells/uncapped while the slope was linear/all-years-pooled/≥30 stems/52 074 cells/`STEM_CAP=400`.
+**Guard:** compute λ and the slope in the same function, over the same rows. Then run the check below.
+
+**★ (3) THE CHECK THAT VALIDATES A DEATTENUATION: vary the basis and watch the QUOTIENT.** Across the capped
+and uncapped bases the raw slope moved up to **21 %** and λ up to **25 %**, while `slope/λ` moved **≤3 %** on
+all four production trait axes. That invariance is what licenses steering by a deattenuated number. `Height`
+FAILED it (1.05 vs 0.85) and is therefore quotable only as a range. **If the quotient is not basis-invariant,
+you do not have a deattenuated slope — you have two errors that happened to divide.**
+
+**(4) A PER-PATCH DENSITY MUST BE DIVIDED BY THE CONFIGURED PATCH COUNT, NEVER BY THE OCCUPIED ONE.** Dividing
+a cell's stem count by the number of patches that happen to hold a tree makes the denominator co-vary with the
+numerator across seeds and **cancels part of the sampling noise** — it understated the sparse stratum's floor
+by **3×** (10.5 % where the truth is 27.0 %). Use the configured `npatch` (25 here) and assert no cell-year
+exceeds it. ⚠ `cell_npatch.parquet` is itself derived from occupied patches, so it is the wrong table for this.
+**Tell:** a "reproduction" that misses a published number by ~3× is a bug, not a basis nuance.
+
+**(5) ALWAYS NAME THE FLOOR'S BASIS — per-cell-YEAR and per-cell CLIMATOLOGY differ by 2–3×.** A 20-year mean
+averages ~√20 of the noise away. Per cell-year: counts 8.59 %, carbon 11.93 %, sparse stratum **27.0 % /
+37.2 %** — which is the basis §5(c)'s 31.6 %/42.7 % lives on, though **those two numbers are not exactly
+reproducible and the ~14 % gap is unresolved**: the year, dead stems and grass inclusion were each tested and
+ruled out (job 1743684), leaving an undocumented difference in that record's per-cell estimator. Per-cell
+20-yr climatology: counts 6.77 %, carbon 10.16 %, sparse stratum 16.6 % / 25.3 %. **Use a floor you can
+regenerate with one command, and state its population** (here: survivors, `Type<=6`, divided by the
+configured `NPATCH=25`). **`D95max` exceeds 10 % in EVERY density stratum** (10.1–15.4 %).
+
+**(6) ABOVE 1.0, A BIGGER SLOPE IS WORSE. The target is 1.0.** Score `|deattenuated slope − 1|`, not the
+slope. The corrected panel (2-seed deattenuated, shipped pin): **SLA 1.28 — OVER-responds by ~30 %**, minwscal
+1.06 correct, **Wooddens 0.66 — the worst axis**, **D95max 0.73 — NOT the worst** (its raw 0.163 is mostly
+attenuation: λ = 0.198, the only quantity whose per-cell response S/N is below 1, at 0.50). So retire **both**
+"four broken axes" *and* "two broken axes at 0.63/0.51".
+
+**(7) Score the AGGREGATE as primary.** Area-weighted response S/N is **25–489** against a per-cell 0.5–3.1 —
+but report LATITUDE BANDS, because above-ground carbon responds −1.5 % (tropical) / −3.9 % (temperate) /
+**+19.4 % (boreal)** against a global −0.54 %. A global mean alone calls that "almost no carbon response".
+
+**Don't re-derive any of this.** `scripts/build_truth_yardstick_tables.py` (stage 1, 2.55e9 stem-year rows →
+small per-cell tables in 3.5 min) then `scripts/diagnose_truth_yardstick.py` with `PRED_DIR=<dir1>,<dir2>`
+scores any number of arms on the one canonical basis. Committed table:
+`test/testitems/references/S_truth_yardstick_summary.csv`. **λ for 1/2/4 seeds** — counts .908/.952/.975 ·
+carbon .616/.762/.865 · SLA .645/.784/.879 · Wooddens .510/.676/.807 · D95max **.198/.330/.497** · minwscal
+.640/.780/.877 · Height .315/.480/.648 — which is also the quantitative case for the extra reference seeds.
+
+**(8) SCORE THE PER-CELL PATTERN *AND* THE AREA-MEAN TOTAL — they fail independently, and one alone hides the
+defect.** Added 2026-08-10 with the count side (`COUNT_DIR=<pooled count table with y.f64 + preds_oos.f64>`,
+which `diagnose_truth_yardstick.py` scores alongside the trait axes). Measured on the shipped generation:
+**counts** deattenuated per-cell slope **1.01** but area-mean response only **0.69×** the truth — the right
+*pattern*, too small a *total*. **Wooddens** is the exact mirror: area-mean **1.13×** but per-cell **0.66** —
+the right *total*, in the *wrong places*. Either statistic alone reports one of them as fine. So: a per-cell
+slope near 1 does **not** mean the response is right, and a correct area mean does **not** either. ⇒ **the
+tree-count warming response is faithful per cell; the response error lives in the TRAIT axes** — do not write
+"the warming response is indistinguishable from zero" without naming the quantity.
+**And cross-check the basis whenever the truth comes from a second table** (ADR 0030): the count table's own
+seed1 response vs this reduction's correlated at **r = 0.9948** — two independent code paths over one run.
+Below ~0.9 you are comparing different quantities and no slope is comparable to the rest of the panel.
+
+**(9) BAND THE RESPONSE RATIO, AND GUARD ITS DENOMINATOR — an aggregate ratio is two traps at once.**
+Added 2026-08-10; both traps fired inside one afternoon's work.
+* **A positive GLOBAL ratio hides wrong-SIGNED regional responses.** Measured, area-weighted prediction ÷
+  truth by latitude band: tree counts +0.71 globally but **−0.51 in the tropics** (temperate 0.93, boreal 1.07
+  are fine); SLA +1.94 globally but **−3.91 subtropical** and **−0.29 temperate**; minwscal +2.95 but
+  **−4.45 boreal**. So "counts respond 31 % too weakly" was never the defect — a correct mid-latitude and
+  boreal response plus a tropical **sign error** was. A global aggregate is a ratio of near-cancelling sums
+  (the truth's global mean count response is ~3 % of its between-cell spread), so it can look right while the
+  pattern is wrong, and vice versa.
+* **★ A ratio whose DENOMINATOR is not determined must print `n/d`, never a number.** Guard: compute the
+  truth aggregate's own two-seed noise **in that band** and require S/N ≥ 3. `D95max`'s tropical band comes
+  out S/N 1 — no D95max claim is possible for the tropics on this reference data at `npatch=25`.
+* **And keep exactly ONE definition of "the aggregate ratio".** An unweighted mean-ratio and an area-weighted
+  one disagreed by **20×** on `Height` (0.14 vs 2.88) because its global aggregate is a near-zero residue
+  (S/N 4) — and a draft ADR had already published the 0.14 as "the emulator delivers 14 % of the height
+  response". The band ratios then showed Height is roughly RIGHT (0.92–1.51). **Neither number was a result.**
+  If two "global" numbers for the same quantity can coexist in your output, one of them will end up in a
+  conclusion.

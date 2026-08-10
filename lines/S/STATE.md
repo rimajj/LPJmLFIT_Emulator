@@ -7,6 +7,42 @@
 
 ## NEXT — start here
 
+> ## 🚨 FIRST: THE MERGE OF THIS WORK IS BLOCKED BY A STORAGE FAULT, NOT BY ANYTHING IN THE CODE (2026-08-10)
+>
+> **`origin/line/S` = `d6ab26eb` holds all six commits of the rung-0 work and its branch CI is GREEN** on the
+> code-bearing sha **`184f4b2b`** (`test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅; `test (pre)` ❌ = the
+> documented `ScopedValues` prerelease `MethodError`, confirmed from the job log, `continue-on-error`).
+> **`main` is UNTOUCHED at `a70e2bbc`** and `line/S` is 6 ahead / 6 behind, so it needs a rebase before merging.
+>
+> **Why it stopped:** the `/p/projects` filesystem began returning **`Input/output error`** on files under
+> `/p/projects/open/Jamir/` — **21 of 90** pack/idx files under `esm_land_emulator/.git/objects/pack/` are
+> unreadable, plus some working-tree files. Every git operation that reads an object (`commit`, `log`,
+> `status`, `fetch`, `merge`) dies with **`Bus error (core dumped)`**; `git rev-parse <ref>` and `git ls-remote`
+> still work because they touch only ref files and the network. Reproduced on **login03 AND login02**, and with
+> plain **`dd`** rather than git ⇒ **storage, not a node, not git, not this change.** At least two lines were
+> hit at once (core files appeared in `wt-S` and `wt-M`).
+>
+> **What to do, in order:**
+> 1. **Do NOT repair in place.** No `git gc`, no `git repack`, no deleting packs, no push from this checkout —
+>    writing to a filesystem returning EIO is how a recoverable incident becomes an unrecoverable one.
+> 2. **GitHub is the authoritative, verified-complete copy.** Every locally unreadable file was fetched intact
+>    through the API. Recover by **re-cloning** to a healthy path once storage is back (or ask PIK support).
+> 3. **Then finish the merge**: rebase `line/S` onto `main`, re-push with `--force-with-lease`, re-check the
+>    gates on the new sha (the rebase changes it, and a pre-rebase green does NOT carry over), and merge.
+> 4. ⚠ **`git verify-pack -s` is NOT a health check** — `-s` is stat-only and returned rc=0 on all 45 packs
+>    while 21 of them could not be read at all. Use `dd if=<pack> of=/dev/null`.
+>
+> Nothing about the science below is affected: the reduction tables live on **`/p/tmp`, which is healthy**, and
+> the committed reference CSV is intact on the remote.
+
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 0 (fix the yardstick) is DONE and merged — ADR 0111,
+> 2026-08-10. START RUNG 1 (S alone, fed the C's own per-tree fluxes; arms A/B/C/D).** Score every arm with
+> `scripts/diagnose_truth_yardstick.py`, which now IS the yardstick — do not invent a new metric, and do not
+> re-derive a noise floor. The four things rung 0 changed that you must not undo are in item 3 and the
+> assignment block below; the sharpest one: **the response target is 1.0, not as-high-as-possible**, and
+> **counts already respond faithfully per cell (deattenuated 1.01) — the response error is in the TRAIT axes,
+> and in the tropics.**
+
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
 
 **Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution
@@ -28,29 +64,106 @@ Two owner decisions re-rank everything:
 
 Three things that change how you score anything (skill `residual-diagnosis` §5):
 
-1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — bootstrap CV `vegc`
-   11.3 %, median Height 11.3 %, median minwscal 11.0 %, **median D95max 22.7 %**; in the <2 stems/patch
-   stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. ADR 0106's `max(10 %, the two-run spread)`
-   branch is load-bearing. **Quote a noise floor with every fidelity number.**
+1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — and **ALWAYS SAY
+   WHICH BASIS** (ADR 0111 §3; the two differ by 2–3× and both are correct for their own question).
+   **Per-cell-YEAR** (a single year's full roster): counts 8.59 %, carbon 11.93 %, and in the <2 stems/patch
+   stratum **27.0 % / 37.2 %** — the basis ADR 0093's 31.6 %/42.7 % lives on, though ⚠ **those two are NOT
+   exactly reproducible (~14 % gap, unresolved): the year, dead stems and grass inclusion were each tested and
+   ruled out (job 1743684), leaving an undocumented difference in that record's per-cell estimator.** Use a
+   floor you can regenerate with one command and whose population is stated (here: survivors, `Type<=6`, ÷ the
+   configured `NPATCH=25`). **Per-cell 20-yr
+   climatology**: counts 6.77 %, carbon 10.16 %, sparse stratum 16.6 % / 25.3 %. **`D95max` exceeds 10 % in
+   EVERY density stratum** (10.1–15.4 %, still 13.7 % in the densest) — its per-cell median is simply not a
+   10 %-resolvable quantity here. Carbon at 10.2 % globally ⇒ ADR 0106's `max(10 %, …)` branch binds for
+   carbon almost everywhere. **Quote a noise floor with every fidelity number, and name its basis.**
+   Committed table: `test/testitems/references/S_truth_yardstick_summary.csv`.
 2. **The 25 patches are worth `n_eff` 4.8–12.9**, not 25, because the cell-level seedbank couples the
    *inherited* trait pool. The control that proves it: median **Height** — same stems, not inherited — is
    `n_eff ≈ 25`.
 3. **The per-cell trait response is not an observable in single-seed truth** (the two seeds disagree on the
-   *sign* in 33–37 % of cells). Score responses on a multi-seed mean and **deattenuate**: doing so shows
-   **two** broken axes, not four — SLA `0.851→1.08` and minwscal `0.689→0.99` are already correct; only
-   Wooddens (0.63) and D95max (0.51) are broken. **Stop writing "four broken axes".**
+   response's *sign* in 18.7–42.2 % of cells; per-cell S/N 0.50–3.14). Score responses on a multi-seed mean
+   and **deattenuate**. ⚠ **THE PANEL THAT USED TO BE HERE WAS WRONG THREE WAYS AND IS CORRECTED BY
+   ADR 0111** (λ and the deattenuated slope were swapped in two rows of ADR 0093 §3e; the two factors were on
+   different bases; and a per-patch density had been divided by *occupied* patches). On one self-consistent
+   basis, 51 767 of 54 020 cells, both scenarios, 2-seed deattenuated: **SLA 1.28 — OVER-responds by ~30 %**
+   (it was read as "already correct at 1.08"), **minwscal 1.06 — correct**, **Wooddens 0.66 — the WORST
+   axis**, **D95max 0.73 — NOT the worst** (its raw 0.163 is mostly attenuation: λ = 0.198, the only
+   quantity with per-cell S/N below 1). **The target is 1.0, not as-high-as-possible** — above 1.0 a bigger
+   slope is worse, which is the one reading of ADR 0109 that does not survive. **Stop writing "four broken
+   axes" AND "two broken axes at 0.63/0.51".**
 
 **Refuted, do not re-propose** (ADR 0093 §4, with numbers): one big patch · structural stratification/quadrature ·
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-#### YOUR ASSIGNMENT — **rungs 0 and 1. Nothing blocks you; start today.**
+#### YOUR ASSIGNMENT — **rung 0 is DELIVERED (ADR 0111). START RUNG 1.**
 
-**Rung 0 — fix the yardstick** (existing artefacts, no new model runs). A per-cell per-quantity noise floor
-from the two seeds **stratified by stem density**; the deattenuated response slope for all four trait axes;
-and an **aggregate** response metric as the new primary (the area-mean carbon response has signal-to-noise
-≈ 200 where the per-cell one is ≈ 1–3). Then retire "four broken axes" from every document that says it.
-*(The integrator is separately scheduling two more reference seeds, ~35 000 core-h ≈ 17 h on 2048 cores.)*
+**✅ Rung 0 — fix the yardstick — DONE, 2026-08-10, ADR 0111.** All three deliverables, on **51 767 of the
+54 020 tree-bearing cells** (≥30 stems in all four runs), **both scenarios and the response between them**, no
+new model runs, ~15 min of compute in 6 jobs. Do **not** redo it; **use it**:
+
+```bash
+# stage 1 (already run; rerun only if the ground-truth tables change) — jobs 1743333 / 1743334
+export SCENARIOS=historic SEEDS=1,2 CAP=400 OUT=/p/tmp/jamirp/emulator_global/yardstick_v1
+scripts/sbatch_python.sh S-yardhist scripts/build_truth_yardstick_tables.py
+# stage 2 — score ANY copula table's OOS predictions on the ONE canonical basis
+export YARD=/p/tmp/jamirp/emulator_global/yardstick_v1 BASIS=capped400 PRED_DIR=<dir1>,<dir2>
+export COUNT_DIR=/p/tmp/jamirp/emulator_global/slow_count_pooled_w20_t8    # optional: scores the COUNT side too
+scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py   # jobs 1743409/1743410/1743515
+# ⚠ every knob above must be EXPORTed — sbatch_python.sh forwards only a fixed list (CLAUDE.md §9)
+```
+
+- **The floor** is item 1 above; the machine-readable table is
+  `test/testitems/references/S_truth_yardstick_summary.csv` (272 rows: floor × 2 bases × 2 scenarios × 6
+  density strata · reliability · aggregate response × 5 latitude bands · re-scored slopes).
+- **The deattenuated panel** is item 3 above. **λ for 1/2/4 seeds** (capped basis): counts .908/.952/.975 ·
+  carbon .616/.762/.865 · SLA .645/.784/.879 · Wooddens .510/.676/.807 · **D95max .198/.330/.497** ·
+  minwscal .640/.780/.877 · Height .315/.480/.648 · Age .604/.753/.859. ⇒ **the two extra seeds are worth
+  more than they looked**: they roughly halve the attenuation on exactly the two axes that matter.
+- **The aggregate response is now the PRIMARY response statistic**, per-cell a reported secondary:
+  area-weighted S/N **25–489** vs per-cell 0.5–3.1. Global: stems/patch −1.74 %, above-ground C −0.54 %,
+  SLA −1.58 %, Wooddens +0.74 %, D95max +1.19 %, minwscal +1.27 %, Age −4.43 %. **Report the latitude bands
+  too** — above-ground C is −1.5 % tropical / −3.9 % temperate / **+19.4 % boreal**, so the global mean alone
+  calls a model that gains a fifth of its boreal stand carbon "almost no carbon response".
+- **★ THE COUNT RESPONSE IS FAITHFUL, and it is the first quantity ADR 0106 names** (ADR 0111 §4b, from the
+  pooled count table's own OOS predictions, `COUNT_DIR=…/slow_count_pooled_w20_t8`): raw slope 0.958, λ
+  0.908/0.952, **deattenuated 1.056 (1-seed) / 1.006 (2-seed)**, with a **r = 0.9948** cross-check between the
+  count table's own seed1 response and this reduction's (two independent code paths — the ADR-0030 check).
+  ⇒ **do NOT write "the warming response is indistinguishable from zero" any more; that is not true of
+  counts.** The response error lives in the trait axes.
+- **★ SCORE THE BAND, NOT THE GLOBE — a positive global response ratio HIDES WRONG-SIGNED REGIONAL
+  RESPONSES** (ADR 0111 §5b). Area-weighted prediction ÷ truth by band (`n/d` = the truth's band response is
+  undetermined, S/N < 3):
+
+  | quantity | GLOBAL | tropical | subtropical | temperate | boreal |
+  |---|---|---|---|---|---|
+  | stems per patch | +0.71 | **−0.51** | +3.41 | +0.93 | +1.07 |
+  | SLA | +1.94 | +0.69 | **−3.91** | **−0.29** | +3.19 |
+  | Wooddens | +1.06 | +0.86 | +1.23 | +0.43 | +1.40 |
+  | D95max | +1.75 | **n/d** (S/N 1) | +1.09 | +3.08 | +1.75 |
+  | minwscal | +2.95 | +3.62 | +1.80 | +1.22 | **−4.45** |
+  | Height *(diag)* | +2.88 (S/N 4) | +1.51 | +1.00 | +1.42 | +0.92 |
+
+  **Four wrong-signed band responses no earlier statistic could see.** The count story is NOT "31 % too weak":
+  temperate (0.93) and boreal (1.07) are right and **the tropics respond the wrong way (−0.51)** — a concrete,
+  localised target. **Wooddens is the best-behaved axis in aggregate (0.43–1.40) while having the WORST
+  per-cell slope (0.66)** — the right total in the wrong places. Per-cell pattern and regional total are
+  different questions; publish both.
+- ⚠ **A RATIO WITH AN UNDETERMINED DENOMINATOR IS NOT A NUMBER — this bit THIS session.** A draft of ADR 0111
+  reported "the emulator delivers 14 % of the truth's height response" from an *unweighted* mean-ratio;
+  area-weighted the same quantity is **2.88**, Height's global S/N is **4** (weakest of any quantity), and the
+  band ratios say Height is roughly RIGHT (0.92–1.51). **Neither 0.14 nor 2.88 is a result.** The script now
+  keeps exactly ONE definition (area-weighted) and prints `n/d` below S/N 3. Do not reintroduce a second one.
+- ⚠ **`Height` fails the basis-robustness check** (deatt 1.05 capped vs 0.85 uncapped) — quote it as a range,
+  never a number. The four production axes move ≤3 % between bases, which is what licenses steering by them.
+- ⚠ Everything here is **OFFLINE** ⇒ an upper bound on the coupled model (ADR 0105 §5).
+
+**▶ INTEGRATION POINT RAISED BY LINE S (2026-08-10) — `EXECUTION_PLAN.md` rung 0 quotes superseded numbers**
+(the swapped λ/deattenuated pair, and the `<2` stratum tolerances with no basis named). That file is
+**integrator-owned**, so this line does not edit it. The replacement text is ADR 0111 §3, §4 and §7.
+
+*(The integrator is separately scheduling two more reference seeds, ~35 000 core-h ≈ 17 h on 2048 cores — the
+λ table above is the quantitative case for them.)*
 
 **Rung 1 — S alone, on the C's OWN fluxes.** No C/Julia mixing needed: **the `ind` parquet already IS the C's
 fast part** — per (Cell, Patch, Year) it carries each tree's growth, water stress and four death rates. Run
@@ -73,7 +186,10 @@ selection differential at **0.98–1.06 across all seven PFTs** provided `mort_m
 **FLIP CRITERION for `trait_mortality`** (pre-registered, guardrail-4 corollary — decide from arm C vs arm B
 only, and do not re-read it after the fact): flip the default ON if C improves the **deattenuated Wooddens
 response slope** by ≥ +0.10 over B **and** loses ≤ 1.0 pp of cells inside the 10 % band on every trait axis
-and on counts.
+and on counts. **This is now measurable exactly as written, and the number to beat is on the record:
+Wooddens deattenuated is 0.66 (2-seed) / 0.69 (1-seed).** Score every arm with
+`scripts/diagnose_truth_yardstick.py PRED_DIR=<arm>` so all arms share the one basis, and read the level
+guardrail against item 1's stratified tolerances rather than a literal 10 %.
 
 **Integration point you own one side of:** S → M, the demography entry point the C hook will call in rung 2.
 M owns the harness; you own the shape of what it calls. Record it in both STATE files.
