@@ -819,8 +819,12 @@ exceeds it. ⚠ `cell_npatch.parquet` is itself derived from occupied patches, s
 
 **(5) ALWAYS NAME THE FLOOR'S BASIS — per-cell-YEAR and per-cell CLIMATOLOGY differ by 2–3×.** A 20-year mean
 averages ~√20 of the noise away. Per cell-year: counts 8.59 %, carbon 11.93 %, sparse stratum **27.0 % /
-37.2 %** (this is the basis of §5(c)'s 31.6 %/42.7 %). Per-cell 20-yr climatology: counts 6.77 %, carbon
-10.16 %, sparse stratum 16.6 % / 25.3 %. **`D95max` exceeds 10 % in EVERY density stratum** (10.1–15.4 %).
+37.2 %** — which is the basis §5(c)'s 31.6 %/42.7 % lives on, though **those two numbers are not exactly
+reproducible and the ~14 % gap is unresolved**: the year, dead stems and grass inclusion were each tested and
+ruled out (job 1743684), leaving an undocumented difference in that record's per-cell estimator. Per-cell
+20-yr climatology: counts 6.77 %, carbon 10.16 %, sparse stratum 16.6 % / 25.3 %. **Use a floor you can
+regenerate with one command, and state its population** (here: survivors, `Type<=6`, divided by the
+configured `NPATCH=25`). **`D95max` exceeds 10 % in EVERY density stratum** (10.1–15.4 %).
 
 **(6) ABOVE 1.0, A BIGGER SLOPE IS WORSE. The target is 1.0.** Score `|deattenuated slope − 1|`, not the
 slope. The corrected panel (2-seed deattenuated, shipped pin): **SLA 1.28 — OVER-responds by ~30 %**, minwscal

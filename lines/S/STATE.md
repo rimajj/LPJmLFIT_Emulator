@@ -31,7 +31,11 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — and **ALWAYS SAY
    WHICH BASIS** (ADR 0111 §3; the two differ by 2–3× and both are correct for their own question).
    **Per-cell-YEAR** (a single year's full roster): counts 8.59 %, carbon 11.93 %, and in the <2 stems/patch
-   stratum **27.0 % / 37.2 %** — this is the basis of ADR 0093's 31.6 %/42.7 %. **Per-cell 20-yr
+   stratum **27.0 % / 37.2 %** — the basis ADR 0093's 31.6 %/42.7 % lives on, though ⚠ **those two are NOT
+   exactly reproducible (~14 % gap, unresolved): the year, dead stems and grass inclusion were each tested and
+   ruled out (job 1743684), leaving an undocumented difference in that record's per-cell estimator.** Use a
+   floor you can regenerate with one command and whose population is stated (here: survivors, `Type<=6`, ÷ the
+   configured `NPATCH=25`). **Per-cell 20-yr
    climatology**: counts 6.77 %, carbon 10.16 %, sparse stratum 16.6 % / 25.3 %. **`D95max` exceeds 10 % in
    EVERY density stratum** (10.1–15.4 %, still 13.7 % in the densest) — its per-cell median is simply not a
    10 %-resolvable quantity here. Carbon at 10.2 % globally ⇒ ADR 0106's `max(10 %, …)` branch binds for

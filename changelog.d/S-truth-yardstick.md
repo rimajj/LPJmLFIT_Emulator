@@ -20,6 +20,11 @@
 
 ### Changed
 
+- **The `<2 stems/patch` tolerances quoted in an earlier record (31.6 % counts / 42.7 % carbon) are not exactly
+  reproducible** — the stated-basis values are 27.3 % / 37.8 %. The year, dead stems and grass inclusion were
+  each tested and ruled out as the cause; the remainder is an undocumented difference in that record's
+  per-cell estimator. The new floor states its population and regenerates with one command.
+
 - **The response panel, corrected on one self-consistent basis:** SLA over-responds by 25–35 % (previously
   read as "already correct"), Wooddens is the worst axis at 0.66–0.69, D95max is **not** the worst
   (0.72–0.85 — its small raw slope was mostly attenuation, its reliability being 0.198), minwscal is correct

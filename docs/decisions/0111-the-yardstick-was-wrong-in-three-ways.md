@@ -106,11 +106,20 @@ SLA 2.53 %, Wooddens 3.81 %, D95max 12.62 %, minwscal 4.53 %.
 
 Three things follow, and all three are load-bearing:
 
-1. **ADR 0093 §3c's `<2` stratum tolerances (count 31.6 %, carbon 42.7 %) are the PER-CELL-YEAR basis**, and
-   are reproduced here as 27.0 % / 37.2 % (the residual is 2019-only vs 20 years pooled). On a
-   **climatological** basis the same stratum is **16.6 % / 25.3 %** — a 20-year mean averages ~√20 of the
-   noise away. Both are correct for their own question; quoting one as the tolerance for the other is a
-   ~2–3× error in whichever direction you make it. **Say which basis a tolerance is on, every time.**
+1. **ADR 0093 §3c's `<2` stratum tolerances (count 31.6 %, carbon 42.7 %) live on the PER-CELL-YEAR basis, and
+   are NOT reproduced exactly — I get 27.3 % / 37.8 %, and the ~14 % relative gap is unresolved.** Three
+   candidate causes were tested and all three are **ruled out by measurement** (job **1743684**): the year
+   (2019 alone gives 27.27 % / 37.83 %, so pooling 20 years is not it — 2000 gives 28.6 %, 2010 26.4 %);
+   including **dead** stems (27.16 % / 37.86 %, no effect); and including **grass** rows, which collapses the
+   spread to ~0 % because the grass roster is deterministic — the opposite direction, and a caution in its own
+   right. What remains is an undocumented difference in the other record's per-cell estimator (its patch-table
+   population and filters are not stated there, and its `<2` stratum holds 7 964 cells against my 7 253
+   cell-years). **That is itself the rung-0 lesson: an unstated basis cannot be reproduced, so this record
+   states its own** — survivors only (`isdead == 0`), `Type <= 6`, divided by the configured `NPATCH = 25`.
+   Use the numbers in the table above, which are reproducible by one command.
+   On a **climatological** basis the same stratum is **16.6 % / 25.3 %** — a 20-year mean averages ~√20 of the
+   noise away. Both bases are correct for their own question; quoting one as the tolerance for the other is a
+   ~2× error in whichever direction you make it. **Say which basis a tolerance is on, every time.**
 2. **`D95max` is the only quantity whose tolerance exceeds 10 % in EVERY density stratum** (10.1–15.4 %), and
    it does not improve with density — 13.7 % in the densest stratum. Its per-cell median is not a
    10 %-resolvable quantity in this reference data at `npatch=25`, on either basis.
