@@ -1120,3 +1120,58 @@ Entry template:
   that scales the population must re-check that first.
 - **Next (owner):** the strategy discussion. Unilateral prep that does not prejudge it = the two cheap
   measurements above.
+
+## 2026-08-10 — integrator: a storage scare, line M merged, and collation gets a trigger
+
+**Three things happened, in this order.**
+
+**1. A `/p` storage fault, misdiagnosed by me as permanent, then cleared.** The session opened with `git log`
+dying of `Bus error (core dumped)`. `dd` (not git) returned `Input/output error` on every pack file, on
+working-tree files in all five checkouts, on `/p/tmp` (the 186 GB daily set, 12 of 15 files; the 21 GB
+first-seed `ind` table; the feature table), on borrowed Terrarium.jl files, and on `/p/projects/waldspektrum`
+(~40 % of the reference output). Metadata stayed readable throughout; only contents were unreachable. Cores
+appeared from **login02 and login03**, and line S hit it independently and recorded it in a commit message —
+so it was infrastructure, not this session.
+
+**I reported it to the owner as permanent data loss and recommended a support ticket. That was wrong, and the
+owner rejected it and was right to.** By ~14:30 everything read back: reference output 3530/3733 readable and
+**0 unreadable** (the 203 residual were zero-byte job logs, which my probe mislabelled "problems"), all 15
+daily files clean, `git fsck` clean. **Nothing was lost.** The proof worth reusing: the CO2 forcing file's md5
+came back `ed5699b9c92d4d25857889f644b153db` — the value `CLAUDE.md` recorded months ago — which settles
+"did it exist?" and "is it intact?" in one step. Every readable tracked file also matched its committed hash,
+and **nothing was uncommitted in any of the five checkouts.** The error was conflating *persistent over ten
+minutes* with *permanent*; the untested alternative was a sick client, and the cross-node check I eventually
+ran only executed after recovery, so it proved nothing. Lesson recorded in the `repo-commit` skill (line S)
+and in the durable memory. Also: **90 core dumps / 11.7 GB deleted** — they are a *symptom*, not a cause (the
+first crash preceded any core, reads not writes were failing, and files failed in storage areas the cores were
+never written to).
+
+**2. `line/M` merged** (`ac01e736`): the narrow rung-2 demography entry point raised with line S as a
+proposal, plus its skill capture. One real conflict, in the shared `repo-commit` skill, where line S had
+appended the storage-fault + stale-`index.lock` sections and line M the inbound-block section — **kept both**,
+which is exactly what line M's own new section warns about. Verified afterwards that both of line M's inbound
+blocks (2026-08-06 and 2026-08-10) survived in `lines/S/STATE.md` and that S's `## NEXT` was intact. All four
+lines are now at zero unmerged commits.
+
+**3. `changelog.d` collation got a trigger, because it had none (ADR 0095).** 56 fragments had accumulated
+since 2026-07-28 — from all four lines *and the integrator* — while `CHANGELOG.md` was itself edited three
+times in that window. Root cause is structural, not sloth: **there is no orchestrator.** ADR 0028 has every
+line merge its own branch, so nothing convenes the "integration point" ADR 0029 assigned the chore to, and
+"the integrator" is whichever session happens to launch in the `main` worktree. No gate watched
+`changelog.d/`, and fragments cannot conflict by design ⇒ **the debt was invisible by construction.** Fixed by
+attaching it to the one event that provably happens (the merge, inside the same `flock`), making the work one
+command (`scripts/collate_changelog.py`), and making the residue visible (a sixth CI gate, `changelog`,
+running `--check` on `main` only — a fragment on a line branch is correct). Generalised in `CLAUDE.md` §9 as a
+chore → event → visibility table, because the same shape produced guardrail 4's corollary.
+
+Collation landed 57 fragments / 131 chunks / 247 bullets, `CHANGELOG.md` 1247 → 3117 lines, **purely additive
+(1870 insertions, 0 deletions)**, verified by a difflib opcode check plus an exact-match test that all 247
+bullets are present. The new gate then ran on `main` and passed, and was the only check the push triggered —
+as predicted from the path table.
+
+**One process note worth keeping:** mid-verification I ran `git checkout -- CHANGELOG.md` to undo a planted
+test fragment and silently reverted the entire uncommitted 56-fragment collation with it. Harmless because
+nothing was committed yet and the fragments were still in `HEAD`, but the general form is real — **a
+path-scoped `git checkout` reverts *all* uncommitted work on that path, not just your last edit.** Caught it
+only because the next verification step printed an empty diff where 1832 insertions were expected. Verify
+after reverting, not just after changing.
