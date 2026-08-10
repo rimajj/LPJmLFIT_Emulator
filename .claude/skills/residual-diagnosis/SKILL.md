@@ -874,3 +874,46 @@ Added 2026-08-10; both traps fired inside one afternoon's work.
   response". The band ratios then showed Height is roughly RIGHT (0.92–1.51). **Neither number was a result.**
   If two "global" numbers for the same quantity can coexist in your output, one of them will end up in a
   conclusion.
+
+## ★ THE FORCING BASIS IS A REFERENCE BASIS — AND A METRIC A NULL ALSO PASSES HAS NO POWER (line S, 2026-08-10, ADR 0112)
+
+Two checks to run **before** you interpret any fidelity or response number of a learned component. They are
+cheap, they are mechanical, and skipping the first one let "the count response is faithful" stand as a result
+for a model that had been handed the answer.
+
+**(1) Ask what the model was HANDED, not just what it was scored against.** Trace every conditioning feature
+back to who computed it. In this repo the production count model's 15 features are *all* built from LPJmL-FIT's
+own output for the same `(Cell, Patch, Year)` — and one of them, `n_prev`, is FIT's own answer for the previous
+year. Plus: **K-fold *by cell* holds out SPACE, not TIME.** Held-out cells with per-row prediction is still a
+one-step score in which nothing the model predicts is ever fed back. Three labels, and one is mandatory on
+every number you publish:
+
+| label | what the model is handed |
+|---|---|
+| **one-step, C-forced** | the reference model's own state *and* fluxes for the same step, incl. its previous-year answer |
+| **flux-forced, state-recursed** | the reference model's fluxes; the model's own previous state |
+| **free-running** | boundary conditions only |
+
+The tell that you need this check: a feature list containing anything named `*_prev`, `*_init`, `lag*`, `n_0`,
+or any "AR state". Grep the table builder for `shift(` / `.over(` — that is where a lagged truth enters.
+
+**(2) Then build the null that is handed the same thing and learns nothing**, and score it through the SAME
+code path, on the SAME cell set, in the SAME process (that is why `diagnose_truth_yardstick.py` takes a
+comma-separated `COUNT_DIR` — two invocations is how two bases drift apart). For a lagged-truth feature the
+null is "predict the lagged truth": `scripts/build_count_persistence_null.py`, ~40 lines, symlinks the shared
+provenance arrays so it cannot drift from its source table.
+
+What that measured here: R² 0.9622 (null) vs 0.9824 (model); per-cell response slope 0.980 vs 0.958;
+deattenuated 1.029 vs 1.006; and the null reproduced the *regional* pattern including a wrong-signed tropical
+response that had just been written up as "a concrete, localised target". ⇒ **the per-cell deattenuated slope
+has essentially no power against persistence**, so it cannot be used to argue the emulator responds; and the
+band-wise sign pattern was a property of the statistic, not a defect to go and fix. The statistic that *did*
+discriminate was the **aggregate area-weighted ratio** (0.536 / 0.691 / 1.0 target).
+
+⚠ **A null is a CONTROL, not a floor.** Do not quote it as "the skill of no model". The persistence null's own
+aggregate ratio is 0.536 rather than 1.0 purely because a one-year lag under a trend shifts an N-year window
+mean by `(first − last)/N` — an artifact of the null, not a property of the emulator.
+
+⚠ **And do not read a null result as "the model is worthless".** State both directions: this model removes
+**53.3 %** of the null's residual variance and adds a third of the missing response amplitude. The finding is
+about what the *metric* proves, not about whether the model does anything.
