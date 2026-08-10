@@ -803,3 +803,45 @@ schedule).
 The current chore→event→visibility table lives in `CLAUDE.md` §9. **A `changelog` gate red on `main` is not a
 mystery and needs no diagnosis** — someone merged without collating; run
 `python3 scripts/collate_changelog.py`, commit, push.
+
+## ⚠ "PERSISTENT FOR TEN MINUTES" IS NOT "PERMANENTLY LOST" — prove it before you escalate (`[VERIFIED 2026-08-10]`, integrator)
+
+Appended to the storage-fault section above, which documents the *diagnosis*. This is about the *verdict*, and
+getting it wrong cost the owner's trust in the report. Same incident: I measured the fault correctly (`dd`,
+four independent tools, cores on two login nodes, a sibling line hitting it too), and then **told the owner it
+was permanent data loss and recommended a support ticket.** It was transient. Everything read back within the
+hour, `git fsck` clean, **nothing lost**. The owner refused to file the ticket and was right.
+
+**The reasoning error, exactly:** I retried over ~10 minutes, saw the failures persist, and concluded
+*permanent*. Persistence over minutes is evidence of a fault, not of destruction — and the one hypothesis that
+would have made the data fine (a sick GPFS client on this login node) went untested until *after* recovery, at
+which point the test proved nothing.
+
+**Before telling anyone data is lost:**
+
+1. **Say "currently unreadable", not "lost".** Intact metadata (`stat` gives size/mtime) with unreadable
+   contents means the data blocks were unreachable, not destroyed — they live in different places. That
+   distinction is the whole verdict.
+2. **Prove existence AND current integrity with a RECORDED CHECKSUM.** `CLAUDE.md` §1 stores md5s for exactly
+   this. The CO2 forcing file came back `ed5699b9c92d4d25857889f644b153db` — the value recorded months
+   earlier — settling both questions in one command. For tracked files, `git` blob hashes do the same for
+   everything at once (and confirmed **zero** uncommitted work across all five checkouts).
+3. **Test from a second node WHILE THE FAULT IS LIVE** (`sbatch` a `dd` loop). After recovery it is worthless.
+   Cores appearing on *two* login nodes is the other discriminator against one bad machine.
+4. **Zero-byte files are not damage.** A probe that lumps "empty" in with "unreadable" inflates the blast
+   radius — 203 of my "damaged" reference files were 0-byte job logs. Count them separately.
+5. **Core dumps are a SYMPTOM.** The first crash precedes any core; reads were failing, not writes; and files
+   failed in storage areas the cores were never written to. Deleting them is housekeeping (11.7 GB), not a fix.
+
+## ⚠ A PATH-SCOPED `git checkout -- <path>` REVERTS *ALL* UNCOMMITTED WORK ON THAT PATH (`[VERIFIED 2026-08-10]`, integrator)
+
+Obvious in the abstract, invisible in the moment. Mid-verification I planted a throwaway fragment to prove the
+new `changelog` gate fires, then ran `git checkout -- CHANGELOG.md` to undo it — **and silently reverted the
+entire uncommitted 56-fragment collation with it** (1832 insertions, gone). Harmless only because nothing was
+committed yet and the fragments were still in `HEAD`.
+
+* **Undo a *test* artifact by removing the test artifact** (`rm` the planted file and re-run the generator),
+  never by reverting a shared file your real work is also sitting in.
+* **Commit — or `git stash push -- <path>` — before planting anything you intend to throw away.**
+* **Verify AFTER reverting, not only after changing.** This was caught solely because the next check printed
+  an empty diff where 1832 insertions were expected. A revert is a change and deserves the same check.
