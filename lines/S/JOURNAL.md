@@ -1538,3 +1538,34 @@ did, on all 121 495 658 rows of both scenarios, with no fallback needed.
 
 Written up as decision record 0112, with three falsifiable predictions for A1 so the framing can be refuted
 rather than believed.
+
+Then arm A1 itself, the same afternoon. Four minutes on 48 cores over all 121 495 658 rows, and the answer is
+clean and not what I expected. Making the count feed itself barely touches the **level**: error against FIT
+grows from 0.60 to 1.41 stems per patch over a dozen years, reaches 1.72 by year 80 and then stops growing, and
+the mean bias never exceeds +0.16 on a mean of 8.28 — under 2 %, flat after year 20. There is no runaway. That
+contradicts the natural reading of the earlier single-cell drift result ("the recursion is unanchored, it needs
+a level anchor") at global scale, and agrees with ADR 0105, which had already found the anchor harmful on the
+patch ensemble. So: no anchor, and if a future arm claims a runaway it has to show it on this lead-time table.
+
+What the recursion destroys is the **response**. The area-weighted global count response ratio goes from +0.707
+to **−0.226** — wrong sign — and every latitude band degrades: temperate 0.93 → 0.45, boreal 1.07 → 0.70,
+tropical −0.51 → −3.62. Meanwhile the per-cell deattenuated slope moves 1.006 → 0.976. Across three arms whose
+accuracy spans R² 0.982 → 0.962 → 0.918 and whose global response spans +0.707 → +0.685 → −0.226, that slope
+never leaves 0.976–1.029. It is dead as a discriminator and I have retired it for counts: this morning it
+couldn't tell the model from a null, this afternoon it couldn't tell +0.707 from −0.226.
+
+Two corrections fell out. First, the count path of the yardstick still carried a **second** definition of the
+aggregate ratio — the unweighted mean-ratio ADR 0111 had removed on the trait side. It agrees with the
+area-weighted one on the production arm (0.691 vs 0.707) and disagrees fourfold on the recursed arm (−0.93 vs
+−0.226), because an unweighted mean-ratio is dominated by cells whose own denominator is near zero. Fixed, and
+the two records that quote the unweighted number are corrected in ADR 0113 §5 rather than edited. Second, that
+correction makes this morning's null result stronger, not weaker: area-weighted, the null is 0.685 against the
+model's 0.707. So on *every* count response statistic the null matches the production model, and the only place
+the learned model clearly wins is accuracy.
+
+And one scoping finding worth carrying forward: an offline S-only arm **cannot** measure recursion damage to the
+trait axes. The trait sampler is conditioned on four flux columns plus static climate and constant CO₂ — no
+roster state, no lagged trait — so nothing a state recursion does can reach it. The trait axes' free-running
+error is inherited from the fast core's fluxes, which makes it rung 3/4 work on line M's harness, not rung 1's.
+Arms C and D can still be scored on the trait axes, but only on the one-step basis, and every such verdict has
+to say so — including `trait_mortality`'s pre-registered flip criterion, whose text I did not touch.

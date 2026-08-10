@@ -23,8 +23,32 @@
   row's own features. Measured consequence: a persistence null reaches R² 0.9622 against the production model's
   0.9824 and a deattenuated count response slope of 1.029 against 1.006 — so "the count response is faithful
   per cell" is retired as evidence about the emulator, and the wrong-signed regional count responses of
-  ADR 0111 §5b are shown to be present in the null as well. The one statistic that still discriminates is the
-  aggregate area-weighted response ratio (0.536 null / 0.691 model / 1.0 target).
+  ADR 0111 §5b are shown to be present in the null as well. On the aggregate area-weighted response ratio the
+  two are also close (0.685 null / 0.707 model / 1.0 target), so on every response statistic the null matches
+  the production model — the only place the learned model clearly wins is accuracy.
 - **`EXECUTION_PLAN.md` rung 1's arm list is superseded** — its arm B is what is already measured, and the
   missing control is arm A. Replacement ladder in ADR 0112 §4b. That file is integrator-owned; this is an
   integration point, not an edit.
+
+### Added (arm A1, ADR 0113)
+
+- **The rung-1 recursion arm is measured.** Making the count feed itself (`rung1_count_recursion_arm.jl`,
+  4 min on 48 cpus over 121 495 658 rows) leaves the *level* almost untouched — error against LPJmL-FIT grows
+  from 0.60 to 1.72 stems per patch over 80 years and then stops growing, with a mean bias never above 2 % —
+  but the *warming response* collapses and reverses sign: the area-weighted global count response ratio goes
+  from +0.707 (one-step) to **−0.226**, and every latitude band gets worse. So for stem counts the level is not
+  what fails the acceptance criterion; the response is.
+- **The per-cell response slope is retired as a discriminator for counts.** Three arms whose out-of-sample R²
+  spans 0.982 → 0.962 → 0.918 and whose global response ratio spans +0.707 → +0.685 → −0.226 all score a
+  deattenuated per-cell slope between 0.976 and 1.029.
+- **No level anchor for the global count recursion** — there is no runaway to anchor at this scale, which
+  contradicts the natural reading of the earlier single-cell drift result and agrees with ADR 0105.
+
+### Fixed
+
+- **A second, unweighted definition of the aggregate response ratio was still live in the count path** of
+  `scripts/diagnose_truth_yardstick.py` — the trap ADR 0111 closed on the trait side. It agrees with the
+  area-weighted definition on the production arm (0.691 vs 0.707) and disagrees by a factor of four on the
+  recursed arm (−0.93 vs −0.226). Now one definition, area-weighted, `n/d` below signal-to-noise 3.
+  Consequence: ADR 0111 §4b's "area-mean 0.691×" is the unweighted number mislabelled; the area-weighted value
+  is 0.707, and the conclusion it supported is unchanged.
