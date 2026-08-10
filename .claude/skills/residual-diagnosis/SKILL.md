@@ -917,3 +917,22 @@ mean by `(first − last)/N` — an artifact of the null, not a property of the 
 ⚠ **And do not read a null result as "the model is worthless".** State both directions: this model removes
 **53.3 %** of the null's residual variance and adds a third of the missing response amplitude. The finding is
 about what the *metric* proves, not about whether the model does anything.
+
+## WHEN YOU CLOSE A "ONE DEFINITION ONLY" TRAP, GREP FOR THE OTHER CODE PATH — IT SURVIVED (line S, 2026-08-10, ADR 0113 §5)
+
+ADR 0111 removed the second (unweighted) definition of the aggregate response ratio from the **trait** scoring
+path and wrote "do not reintroduce a second one". The **count** path in the same file kept it for another month,
+because nobody grepped. It was invisible for exactly the reason these bugs always are: on the production arm the
+two definitions agree (0.691 unweighted vs 0.707 area-weighted). It only showed up on a new arm, where they
+disagreed **fourfold and by sign** (−0.93 vs −0.226) — an unweighted mean-ratio is dominated by cells whose own
+denominator is near zero, which is why the weighted one is the definition to keep.
+
+So: after fixing a definition, `grep -n "<the quantity>" <file>` and check **every** call site, and prefer
+computing the blessed quantity **once** in a helper both paths call (here: `band_ratios(...)["GLOBAL"]`) over
+fixing two copies. And when two definitions of the same statistic agree on your current data, that is not
+evidence they are the same quantity — it is the reason the bug survives to the run where they differ.
+
+**The related honesty rule:** a corrected label can make an earlier finding *stronger*, and you have to say so.
+Correcting this one moved the persistence null from "0.536 vs the model's 0.691" to "**0.685 vs 0.707**" — i.e.
+the null matches the production model on the aggregate response too, so the finding got sharper, not softer.
+Re-read what the corrected number does to the conclusion; do not assume a correction only ever costs you.
