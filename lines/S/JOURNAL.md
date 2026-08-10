@@ -1411,3 +1411,58 @@ ADR 0106 makes the *response* binding, so it can reject a change that improves t
 0.4 pp of the non-binding one. Editing it now would be the ADR-0104 error in a new costume; instead ADR 0109 §5
 registers a correct three-clause criterion (response-primary, level as a stated-band guardrail, `agb` named as
 reported-not-gating out loud) for a **new** arm.
+
+---
+
+## Session — 2026-08-10 · rung 0: fix the yardstick (ADR 0111)
+
+`EXECUTION_PLAN.md` landed on `main` after the last handoff was written, and it puts line S on **rung 0**
+(re-score existing artefacts on a corrected yardstick; no new model runs). That supersedes the ordering in my
+own `## NEXT` block, which was written a day earlier. So I did rung 0 rather than item 0★★.
+
+**I set out to reproduce a published correction and found the correction was broken three ways.** The plan's
+rung-0 text says the deattenuated response slopes are "SLA 1.08, minwscal 0.99 — already correct; only
+Wooddens (0.63) and D95max (0.51) are broken", sourced from ADR 0093 §3e.
+
+1. **The λ column and the deattenuated column are swapped in exactly two rows.** ADR 0093's λ came from
+   `crn_headroom.json`; its `lambda_1seed` is SLA 0.788, minwscal 0.697, Wooddens 0.628, D95max 0.510. The SLA
+   and minwscal rows of §3e are internally consistent with that. The Wooddens/D95max rows are not: 0.63 and
+   0.51 **are the λs**, and 0.55 = 0.346/0.628 and 0.32 = 0.163/0.510 are the quotients. Two lines of
+   arithmetic; I nearly wrote the ADR around the wrong pair before checking.
+2. **λ and the slope were never on the same basis.** λ: log-space, single year 2019→2099, ≥50 stems, 43 257
+   cells, uncapped, cell-mean-of-per-patch. Slope: linear, all years pooled, ≥30 stems, 52 074 cells,
+   `STEM_CAP=400`. A reliability belongs to a *statistic*. This is ADR 0030's rule — it had been applied to
+   the level and never to the response.
+3. **My own first version was wrong too**, and it is the most reusable lesson: I divided a cell's stem count
+   by the number of patches that *held a tree* instead of the configured 25. That makes the denominator
+   correlate with the numerator across seeds and cancels part of the sampling noise — the sparse stratum's
+   floor came out 10.5 % where the honest number is 27.0 %. I only caught it because my "reproduction" of
+   ADR 0093's 31.6 % was 3× too small and I refused to write that off as a basis difference. **A reproduction
+   that misses by 3× is a bug, not a nuance.** `cell_npatch.parquet` would not have saved me: it is itself
+   built from occupied patches.
+
+**What the corrected panel says** (2-seed deattenuated, shipped pin, 51 767 of 54 020 cells, both scenarios):
+SLA **1.28 — over-responds by ~30 %**, minwscal 1.06 correct, Wooddens **0.66 — the worst axis**, D95max
+**0.73 — not the worst**. D95max looked broken because its regressor is nearly noise (λ = 0.198; it is the
+only quantity whose per-cell response signal-to-noise is below 1, at 0.50). Its raw slope of 0.163 is mostly
+attenuation.
+
+**The result I trust most is a robustness check I almost did not run.** Between the capped and uncapped bases
+the raw slope moves up to 21 % and λ up to 25 %, but the quotient moves ≤3 % on all four axes. That is what an
+errors-in-variables correction should do, and it is the only reason I am willing to publish the deattenuated
+numbers as steering quantities. `Height` fails it (1.05 vs 0.85) and is therefore quoted as a range only.
+
+**The aggregate metric was the easy win.** Area-weighted response signal-to-noise is 25–489; per-cell is
+0.5–3.1. And the latitude bands matter more than the global mean: above-ground carbon responds −1.5 % in the
+tropics and **+19.4 % in the boreal** against a global −0.5 %, so a global-mean-only report would describe a
+model that gains a fifth of its boreal stand carbon as having almost no carbon response.
+
+**One correction lands on my own line's previous work.** ADR 0109 read "the transient tail raises the slope on
+all four axes" as unambiguously good. Deattenuated, SLA and minwscal sit *above* 1.0, so raising them is
+movement away from faithful. The arm's verdict survives (it is closer to 1.0 on the two axes with the biggest
+margins) but the reading "higher is better" does not. I did **not** re-read the flip criterion — that is
+ADR 0104's error — only recorded that its statistic must be `|deattenuated slope − 1|` against a multi-seed
+mean.
+
+Cost: 6 SLURM jobs, ~15 min of compute total. The expensive-looking part (2.55 × 10⁹ stem-year rows) ran in
+3.5 min because `Cell` predicate pushdown works on those parquets.

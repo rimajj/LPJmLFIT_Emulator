@@ -28,29 +28,74 @@ Two owner decisions re-rank everything:
 
 Three things that change how you score anything (skill `residual-diagnosis` §5):
 
-1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — bootstrap CV `vegc`
-   11.3 %, median Height 11.3 %, median minwscal 11.0 %, **median D95max 22.7 %**; in the <2 stems/patch
-   stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. ADR 0106's `max(10 %, the two-run spread)`
-   branch is load-bearing. **Quote a noise floor with every fidelity number.**
+1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — and **ALWAYS SAY
+   WHICH BASIS** (ADR 0111 §3; the two differ by 2–3× and both are correct for their own question).
+   **Per-cell-YEAR** (a single year's full roster): counts 8.59 %, carbon 11.93 %, and in the <2 stems/patch
+   stratum **27.0 % / 37.2 %** — this is the basis of ADR 0093's 31.6 %/42.7 %. **Per-cell 20-yr
+   climatology**: counts 6.77 %, carbon 10.16 %, sparse stratum 16.6 % / 25.3 %. **`D95max` exceeds 10 % in
+   EVERY density stratum** (10.1–15.4 %, still 13.7 % in the densest) — its per-cell median is simply not a
+   10 %-resolvable quantity here. Carbon at 10.2 % globally ⇒ ADR 0106's `max(10 %, …)` branch binds for
+   carbon almost everywhere. **Quote a noise floor with every fidelity number, and name its basis.**
+   Committed table: `test/testitems/references/S_truth_yardstick_summary.csv`.
 2. **The 25 patches are worth `n_eff` 4.8–12.9**, not 25, because the cell-level seedbank couples the
    *inherited* trait pool. The control that proves it: median **Height** — same stems, not inherited — is
    `n_eff ≈ 25`.
 3. **The per-cell trait response is not an observable in single-seed truth** (the two seeds disagree on the
-   *sign* in 33–37 % of cells). Score responses on a multi-seed mean and **deattenuate**: doing so shows
-   **two** broken axes, not four — SLA `0.851→1.08` and minwscal `0.689→0.99` are already correct; only
-   Wooddens (0.63) and D95max (0.51) are broken. **Stop writing "four broken axes".**
+   response's *sign* in 18.7–42.2 % of cells; per-cell S/N 0.50–3.14). Score responses on a multi-seed mean
+   and **deattenuate**. ⚠ **THE PANEL THAT USED TO BE HERE WAS WRONG THREE WAYS AND IS CORRECTED BY
+   ADR 0111** (λ and the deattenuated slope were swapped in two rows of ADR 0093 §3e; the two factors were on
+   different bases; and a per-patch density had been divided by *occupied* patches). On one self-consistent
+   basis, 51 767 of 54 020 cells, both scenarios, 2-seed deattenuated: **SLA 1.28 — OVER-responds by ~30 %**
+   (it was read as "already correct at 1.08"), **minwscal 1.06 — correct**, **Wooddens 0.66 — the WORST
+   axis**, **D95max 0.73 — NOT the worst** (its raw 0.163 is mostly attenuation: λ = 0.198, the only
+   quantity with per-cell S/N below 1). **The target is 1.0, not as-high-as-possible** — above 1.0 a bigger
+   slope is worse, which is the one reading of ADR 0109 that does not survive. **Stop writing "four broken
+   axes" AND "two broken axes at 0.63/0.51".**
 
 **Refuted, do not re-propose** (ADR 0093 §4, with numbers): one big patch · structural stratification/quadrature ·
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-#### YOUR ASSIGNMENT — **rungs 0 and 1. Nothing blocks you; start today.**
+#### YOUR ASSIGNMENT — **rung 0 is DELIVERED (ADR 0111). START RUNG 1.**
 
-**Rung 0 — fix the yardstick** (existing artefacts, no new model runs). A per-cell per-quantity noise floor
-from the two seeds **stratified by stem density**; the deattenuated response slope for all four trait axes;
-and an **aggregate** response metric as the new primary (the area-mean carbon response has signal-to-noise
-≈ 200 where the per-cell one is ≈ 1–3). Then retire "four broken axes" from every document that says it.
-*(The integrator is separately scheduling two more reference seeds, ~35 000 core-h ≈ 17 h on 2048 cores.)*
+**✅ Rung 0 — fix the yardstick — DONE, 2026-08-10, ADR 0111.** All three deliverables, on **51 767 of the
+54 020 tree-bearing cells** (≥30 stems in all four runs), **both scenarios and the response between them**, no
+new model runs, ~15 min of compute in 6 jobs. Do **not** redo it; **use it**:
+
+```bash
+# stage 1 (already run; rerun only if the ground-truth tables change) — jobs 1743333 / 1743334
+export SCENARIOS=historic SEEDS=1,2 CAP=400 OUT=/p/tmp/jamirp/emulator_global/yardstick_v1
+scripts/sbatch_python.sh S-yardhist scripts/build_truth_yardstick_tables.py
+# stage 2 — score ANY copula table's OOS predictions on the ONE canonical basis
+export YARD=/p/tmp/jamirp/emulator_global/yardstick_v1 BASIS=capped400 PRED_DIR=<dir1>,<dir2>
+scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py     # jobs 1743409 / 1743410
+```
+
+- **The floor** is item 1 above; the machine-readable table is
+  `test/testitems/references/S_truth_yardstick_summary.csv` (272 rows: floor × 2 bases × 2 scenarios × 6
+  density strata · reliability · aggregate response × 5 latitude bands · re-scored slopes).
+- **The deattenuated panel** is item 3 above. **λ for 1/2/4 seeds** (capped basis): counts .908/.952/.975 ·
+  carbon .616/.762/.865 · SLA .645/.784/.879 · Wooddens .510/.676/.807 · **D95max .198/.330/.497** ·
+  minwscal .640/.780/.877 · Height .315/.480/.648 · Age .604/.753/.859. ⇒ **the two extra seeds are worth
+  more than they looked**: they roughly halve the attenuation on exactly the two axes that matter.
+- **The aggregate response is now the PRIMARY response statistic**, per-cell a reported secondary:
+  area-weighted S/N **25–489** vs per-cell 0.5–3.1. Global: stems/patch −1.74 %, above-ground C −0.54 %,
+  SLA −1.58 %, Wooddens +0.74 %, D95max +1.19 %, minwscal +1.27 %, Age −4.43 %. **Report the latitude bands
+  too** — above-ground C is −1.5 % tropical / −3.9 % temperate / **+19.4 % boreal**, so the global mean alone
+  calls a model that gains a fifth of its boreal stand carbon "almost no carbon response".
+- **Sharpest single diagnostic:** the emulator's area-mean response ÷ the truth's — SLA **2.37**, Wooddens
+  1.13, D95max **1.71**, minwscal **3.20**, Height **0.14**. A per-cell slope < 1 with a correct area mean
+  means the right *total* response in the *wrong places*.
+- ⚠ **`Height` fails the basis-robustness check** (deatt 1.05 capped vs 0.85 uncapped) — quote it as a range,
+  never a number. The four production axes move ≤3 % between bases, which is what licenses steering by them.
+- ⚠ Everything here is **OFFLINE** ⇒ an upper bound on the coupled model (ADR 0105 §5).
+
+**▶ INTEGRATION POINT RAISED BY LINE S (2026-08-10) — `EXECUTION_PLAN.md` rung 0 quotes superseded numbers**
+(the swapped λ/deattenuated pair, and the `<2` stratum tolerances with no basis named). That file is
+**integrator-owned**, so this line does not edit it. The replacement text is ADR 0111 §3, §4 and §7.
+
+*(The integrator is separately scheduling two more reference seeds, ~35 000 core-h ≈ 17 h on 2048 cores — the
+λ table above is the quantitative case for them.)*
 
 **Rung 1 — S alone, on the C's OWN fluxes.** No C/Julia mixing needed: **the `ind` parquet already IS the C's
 fast part** — per (Cell, Patch, Year) it carries each tree's growth, water stress and four death rates. Run
@@ -73,7 +118,10 @@ selection differential at **0.98–1.06 across all seven PFTs** provided `mort_m
 **FLIP CRITERION for `trait_mortality`** (pre-registered, guardrail-4 corollary — decide from arm C vs arm B
 only, and do not re-read it after the fact): flip the default ON if C improves the **deattenuated Wooddens
 response slope** by ≥ +0.10 over B **and** loses ≤ 1.0 pp of cells inside the 10 % band on every trait axis
-and on counts.
+and on counts. **This is now measurable exactly as written, and the number to beat is on the record:
+Wooddens deattenuated is 0.66 (2-seed) / 0.69 (1-seed).** Score every arm with
+`scripts/diagnose_truth_yardstick.py PRED_DIR=<arm>` so all arms share the one basis, and read the level
+guardrail against item 1's stratified tolerances rather than a literal 10 %.
 
 **Integration point you own one side of:** S → M, the demography entry point the C hook will call in rung 2.
 M owns the harness; you own the shape of what it calls. Record it in both STATE files.
