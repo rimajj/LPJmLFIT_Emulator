@@ -7,6 +7,34 @@
 
 ## NEXT — start here
 
+> ## 🚨 FIRST: THE MERGE OF THIS WORK IS BLOCKED BY A STORAGE FAULT, NOT BY ANYTHING IN THE CODE (2026-08-10)
+>
+> **`origin/line/S` = `d6ab26eb` holds all six commits of the rung-0 work and its branch CI is GREEN** on the
+> code-bearing sha **`184f4b2b`** (`test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅; `test (pre)` ❌ = the
+> documented `ScopedValues` prerelease `MethodError`, confirmed from the job log, `continue-on-error`).
+> **`main` is UNTOUCHED at `a70e2bbc`** and `line/S` is 6 ahead / 6 behind, so it needs a rebase before merging.
+>
+> **Why it stopped:** the `/p/projects` filesystem began returning **`Input/output error`** on files under
+> `/p/projects/open/Jamir/` — **21 of 90** pack/idx files under `esm_land_emulator/.git/objects/pack/` are
+> unreadable, plus some working-tree files. Every git operation that reads an object (`commit`, `log`,
+> `status`, `fetch`, `merge`) dies with **`Bus error (core dumped)`**; `git rev-parse <ref>` and `git ls-remote`
+> still work because they touch only ref files and the network. Reproduced on **login03 AND login02**, and with
+> plain **`dd`** rather than git ⇒ **storage, not a node, not git, not this change.** At least two lines were
+> hit at once (core files appeared in `wt-S` and `wt-M`).
+>
+> **What to do, in order:**
+> 1. **Do NOT repair in place.** No `git gc`, no `git repack`, no deleting packs, no push from this checkout —
+>    writing to a filesystem returning EIO is how a recoverable incident becomes an unrecoverable one.
+> 2. **GitHub is the authoritative, verified-complete copy.** Every locally unreadable file was fetched intact
+>    through the API. Recover by **re-cloning** to a healthy path once storage is back (or ask PIK support).
+> 3. **Then finish the merge**: rebase `line/S` onto `main`, re-push with `--force-with-lease`, re-check the
+>    gates on the new sha (the rebase changes it, and a pre-rebase green does NOT carry over), and merge.
+> 4. ⚠ **`git verify-pack -s` is NOT a health check** — `-s` is stat-only and returned rc=0 on all 45 packs
+>    while 21 of them could not be read at all. Use `dd if=<pack> of=/dev/null`.
+>
+> Nothing about the science below is affected: the reduction tables live on **`/p/tmp`, which is healthy**, and
+> the committed reference CSV is intact on the remote.
+
 > **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 0 (fix the yardstick) is DONE and merged — ADR 0111,
 > 2026-08-10. START RUNG 1 (S alone, fed the C's own per-tree fluxes; arms A/B/C/D).** Score every arm with
 > `scripts/diagnose_truth_yardstick.py`, which now IS the yardstick — do not invent a new metric, and do not
