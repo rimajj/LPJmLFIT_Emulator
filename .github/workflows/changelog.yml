@@ -1,0 +1,52 @@
+# Changelog-fragment collation gate (ADR 0095).
+#
+# WHY THIS EXISTS: `changelog.d/` removed the *authoring* conflict on CHANGELOG.md (ADR 0029), but
+# collation was assigned to "the integrator, at an integration point" — a role with no holder and a
+# trigger that names no observable event. Result: 56 fragments accumulated silently over 13 days
+# (2026-07-28 -> 2026-08-10) while CHANGELOG.md was edited three times in that window. Nothing was
+# broken and nothing complained, which is precisely the failure mode. This gate makes the debt visible.
+#
+# WHEN THIS RUNS (ADR 0090): only on `main`, and only when a collation-relevant path changed.
+#
+# Deliberately NOT run on `line/**`: an uncollated fragment on a work line is CORRECT — that is where
+# fragments are authored. It is only debt once it has reached `main`. So the gate asks exactly one
+# question: "does `main` carry a fragment nobody folded into CHANGELOG.md?"
+#
+# TO FIX A RED RUN HERE — one command, on `main`, no judgement required:
+#     python3 scripts/collate_changelog.py && git add -A CHANGELOG.md changelog.d && git commit
+# The merge ritual (CLAUDE.md §9 / the repo-commit skill) does this inside the same `flock` as the
+# merge, so in normal operation `main` never carries an uncollated fragment and this never fires.
+name: changelog
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'changelog.d/**'
+      - 'CHANGELOG.md'
+      - 'scripts/collate_changelog.py'
+      - '.github/workflows/changelog.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'changelog.d/**'
+      - 'CHANGELOG.md'
+      - 'scripts/collate_changelog.py'
+      - '.github/workflows/changelog.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uncollated:
+    name: uncollated fragments
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # --check exits 1 and lists the offending fragments (grouped by work line) when `main`
+      # carries any. It is a pure-stdlib script: no deps to install, runs in seconds.
+      - name: No uncollated changelog fragments on main
+        run: python3 scripts/collate_changelog.py --check

@@ -1,6 +1,6 @@
 ---
 name: repo-commit
-description: Commit/push/merge discipline for the LPJmL-FIT emulator under PARALLEL WORK LINES (ADR 0028/0029) — the branch-per-line + git-worktree model, the rebase→push→green-branch-CI→merge-to-main ritual, the mandatory STATE.md NEXT handoff before a session ends, where each artifact is written (per-line JOURNAL/STATE + changelog.d fragments, never CHANGELOG.md from a line), per-line SLURM tags and ADR number blocks, the pre-push checklist against the 5 CI gates, the commit trailer, and how to check CI via the GitHub REST API (gh not on PATH). ALSO how to write an INBOUND block into a sibling line's STATE.md so it survives (it is the only sanctioned cross-line file edit, it WILL rebase-conflict, and resolving that conflict with --theirs silently deletes the message — anchor it before a long-lived heading, always keep BOTH sides, check your previous inbound still exists on main, and mirror the raise in your own STATE). ALSO that CI is PATH-FILTERED (ADR 0090): most commits (docs, prose, skills, ADRs, STATE/JOURNAL, the LaTeX report) trigger NO gate at all and are mergeable immediately, and a gate that does not trigger reports no check-run — so a poll that waits for `test (lts)` to complete HANGS FOREVER; work out the expected gate set from `git diff --name-only origin/main...HEAD` first. Use whenever committing, pushing, merging a line, or checking CI for this repo.
+description: Commit/push/merge discipline for the LPJmL-FIT emulator under PARALLEL WORK LINES (ADR 0028/0029) — the branch-per-line + git-worktree model, the rebase→push→green-branch-CI→merge-to-main ritual, the mandatory STATE.md NEXT handoff before a session ends, where each artifact is written (per-line JOURNAL/STATE + changelog.d fragments, never CHANGELOG.md from a line), per-line SLURM tags and ADR number blocks, the pre-push checklist against the 6 CI gates, the commit trailer, and how to check CI via the GitHub REST API (gh not on PATH). ALSO who orchestrates integration (nobody — each line merges itself, so an integrator-owned chore addressed to "the integrator at an integration point" rots: 56 changelog fragments sat 13 days) and the rule that follows — every integrator chore needs a triggering EVENT plus a VISIBILITY mechanism; changelog collation now runs inside the merge `flock` via scripts/collate_changelog.py, gated by the `changelog` CI check on main (ADR 0095). ALSO how to write an INBOUND block into a sibling line's STATE.md so it survives (it is the only sanctioned cross-line file edit, it WILL rebase-conflict, and resolving that conflict with --theirs silently deletes the message — anchor it before a long-lived heading, always keep BOTH sides, check your previous inbound still exists on main, and mirror the raise in your own STATE). ALSO that CI is PATH-FILTERED (ADR 0090): most commits (docs, prose, skills, ADRs, STATE/JOURNAL, the LaTeX report) trigger NO gate at all and are mergeable immediately, and a gate that does not trigger reports no check-run — so a poll that waits for `test (lts)` to complete HANGS FOREVER; work out the expected gate set from `git diff --name-only origin/main...HEAD` first. Use whenever committing, pushing, merging a line, or checking CI for this repo.
 ---
 
 # repo-commit — commit, push & merge under parallel work lines
@@ -28,6 +28,13 @@ git push --force-with-lease origin line/<X>    # NOT a plain push (the rebase re
 flock "$INT/.git/esm-integrate.lock" bash -eu -c '
   git -C "$0" pull --ff-only origin main
   git -C "$0" merge --no-ff --no-edit "origin/line/$1"
+  # COLLATE the changelog fragments now on main (ADR 0095). You hold the lock ⇒ you ARE the
+  # integrator for this moment. Skip it and the `changelog` gate reds main. One command:
+  ( cd "$0" && python3 scripts/collate_changelog.py )
+  if ! git -C "$0" diff --quiet -- CHANGELOG.md changelog.d; then
+    git -C "$0" add CHANGELOG.md changelog.d
+    git -C "$0" commit -m "docs(changelog): collate changelog.d fragments into CHANGELOG.md"
+  fi
   git -C "$0" push origin main
 ' "$INT" <X>
 # finally: check main's OWN latest CI run.
@@ -761,3 +768,38 @@ Mechanics that make it survivable:
 * **Make the ask decidable.** State the concrete proposal, name the single thing that is genuinely theirs
   to decide, and enumerate the options with their costs — a sibling mid-milestone will not design your
   interface from an open question, but will tick a box.
+
+## WHO ORCHESTRATES INTEGRATION? NOBODY — AND THAT IS WHY A CHORE WITH NO EVENT ROTS (ADR 0095)
+
+Two different things get called "integration" here, and only one of them has ever worked:
+
+| | who does it | trigger | state |
+|---|---|---|---|
+| **merging a branch to `main`** | **each line, for itself** (the `flock`'d ritual above) | the line's own milestone | ✅ works — all four lines merged 2026-08-10 |
+| **integrator-owned shared-file chores** | "the integrator" = whoever happens to launch in the `main` worktree | *"at an integration point"* | ❌ rotted |
+
+**There is no orchestrator.** ADR 0028 deliberately decentralised merging, which removed the contention it
+was designed to remove — but it also means nothing ever *convenes* an "integration point" for a nominated
+integrator to attend. So a chore addressed to "the integrator" is addressed to nobody in particular.
+
+Measured cost: `changelog.d/` collation sat for **13 days / 56 fragments / 245 bullets** from all four lines
+*and the integrator itself*, while `CHANGELOG.md` was edited three times in the same window. Nothing failed —
+no gate watched `changelog.d/`, and fragments cannot conflict by design. **The debt was invisible by
+construction**, which is the whole lesson. It is the same shape as guardrail 4's corollary (three opt-in
+flags whose defaults were known wrong sat for weeks, each line recording the flip as the *other's* to
+schedule).
+
+**The rule that follows — apply it to any new integrator-owned chore, or it will rot identically:**
+
+1. **Name the EVENT that triggers it**, and pick one that provably happens. Merges happen constantly, so
+   collation attaches to the merge. "At an integration point", "periodically", "when convenient" and "the
+   integrator will" are all non-events.
+2. **Name what makes the RESIDUE VISIBLE** — a gate, a cap, a red check. If skipping it produces no signal,
+   it will be skipped indefinitely and nobody will be at fault.
+3. **Make the work one command**, so the trigger is cheap to honour (`scripts/collate_changelog.py`).
+4. **You hold the lock ⇒ you are the integrator for that moment.** Collating on `main` is not a breach of
+   "never edit `CHANGELOG.md` from a line branch" — the edit happens on `main`, in the integration worktree.
+
+The current chore→event→visibility table lives in `CLAUDE.md` §9. **A `changelog` gate red on `main` is not a
+mystery and needs no diagnosis** — someone merged without collating; run
+`python3 scripts/collate_changelog.py`, commit, push.

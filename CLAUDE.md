@@ -573,8 +573,9 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   CI-equivalent checks (CI-faithfully on SLURM) before pushing.
 - **Commit trailer:** end every commit message with
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
-- **The 5 CI gates:** `CI` (Julia tests), `format` (Runic), `docs` (Documenter), `python` (ruff+pytest),
-  `TagBot`. The Julia matrix shows jobs `test (lts)` **(required)**, `test (1)` **(required)**,
+- **The 6 CI gates:** `CI` (Julia tests), `format` (Runic), `docs` (Documenter), `python` (ruff+pytest),
+  `changelog` (uncollated fragments on `main`; ADR 0095), `TagBot`. The Julia matrix shows jobs
+  `test (lts)` **(required)**, `test (1)` **(required)**,
   `test (pre)` (`continue-on-error`, allowed to fail on Julia-prerelease API churn), plus non-required
   `test (macOS, lts)`. **Never merge on a red required check.**
 - **⚠ EACH GATE IS PATH-FILTERED AND MOST COMMITS TRIGGER NONE OF THEM (ADR 0090).** A gate runs only when a
@@ -587,6 +588,7 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   | `format` (Runic) | any `**/*.jl` · own workflow |
   | `python` (ruff+pytest) | `python/**` · own workflow (**`scripts/*.py` is NOT linted by CI**) |
   | `docs` (Documenter) | `docs/src/**` · `docs/make.jl` · `docs/Project.toml` · `src/**` · `Project.toml` · own workflow |
+  | `changelog` (uncollated fragments) | `changelog.d/**` · `CHANGELOG.md` · `scripts/collate_changelog.py` · own workflow — **`main` ONLY**, never `line/**` (a fragment on a line branch is correct; it is debt only once it reaches `main`) |
 
   **`docs/report/component_s_public_report.{tex,pdf}`, `docs/report/figs/**` and `docs/decisions/**` trigger NOTHING** —
   they live under `docs/` but are not in the Documenter page tree. Every workflow also has
@@ -756,13 +758,31 @@ rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (i
 |---|---|
 | Narrative / what happened | `lines/<X>/JOURNAL.md` (append) |
 | Durable line state + the **NEXT handoff** | `lines/<X>/STATE.md` |
-| Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line** |
+| Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line**; whoever merges to `main` folds it in with `scripts/collate_changelog.py` (ADR 0095) |
 | A decision | an ADR from **your block** — TIER 1: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · integrator/cross-cutting 0090–0099 · **TIER 2** (use when your tier-1 block is exhausted): **S 0100–0119** · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0160–0169. `0001–0029` and **S's `0030–0049`** are EXHAUSTED (ADR 0049 was the last; ADR 0100 opened S's tier 2). Add the row to your line's subsection of `docs/decisions/README.md` |
 | Cross-cutting `[VERIFIED]` fact | `MEMORY.md` (shared, additive) |
 | A procedure / gotcha | a skill / this file (§8 routing unchanged) |
 
 `CHANGELOG.md`, the shared `MEMORY.md`, `Project.toml`, and cross-cutting ADRs (0001–0029) are
 **integrator-owned**. The root `JOURNAL.md` is the **integration** journal (single-writer ⇒ conflict-free).
+
+⚠ **"Integrator-owned" names a ROLE, NOT A PERSON OR A SCHEDULE — and an integrator-owned chore with no
+event attached to it silently rots (ADR 0095).** There is **no orchestrator** in this repo: each line merges
+its *own* branch to `main` (the `flock`'d ritual below), so nothing ever convenes an "integration point" for
+someone to attend. Measured cost of leaving a chore triggerless: `changelog.d/` collation was specified as
+*"the integrator collates at an integration point"* and **56 fragments piled up over 13 days** while
+`CHANGELOG.md` was itself edited three times in the same window — no gate, no conflict, no complaint.
+So, for every integrator-owned chore, state **which event triggers it** and **what makes the residue visible**:
+
+| integrator chore | trigger (an event that provably happens) | visibility |
+|---|---|---|
+| `changelog.d/` → `CHANGELOG.md` | **every merge to `main`**, inside the same `flock` — `scripts/collate_changelog.py` | `changelog` CI gate on `main` (ADR 0095) |
+| shared `MEMORY.md` consolidation | every ~5 sessions (`consolidate-memory` skill) | the ≤400-line / ≤15k-token cap |
+| `[compat]` pin after a dep bump | a red required gate whose diff cannot explain it (§5) | `CI` on every branch |
+| cross-cutting ADR / `EXECUTION_PLAN.md` | an owner steer, or a line raising an integration point | both lines' `STATE.md` |
+
+**You hold the lock ⇒ you are the integrator for that moment.** Collating on `main` does not violate "never
+edit `CHANGELOG.md` from a line": you are editing it in the integration worktree, on `main`, not on your branch.
 
 ### Ownership + contracts
 
@@ -815,6 +835,13 @@ git push --force-with-lease origin line/<X>    # NOT a plain push — see (2) be
 flock "$INT/.git/esm-integrate.lock" bash -eu -c '
   git -C "$0" pull --ff-only origin main
   git -C "$0" merge --no-ff --no-edit "origin/line/$1"
+  # COLLATE the changelog fragments now on main (ADR 0095) — you hold the lock, so you are the
+  # integrator for this moment. Skipping it reds the `changelog` gate on main; it is one command.
+  ( cd "$0" && python3 scripts/collate_changelog.py )
+  if ! git -C "$0" diff --quiet -- CHANGELOG.md changelog.d; then
+    git -C "$0" add CHANGELOG.md changelog.d
+    git -C "$0" commit -m "docs(changelog): collate changelog.d fragments into CHANGELOG.md"
+  fi
   git -C "$0" push origin main
 ' "$INT" <X>
 # then check main's OWN latest CI run (see (5)).
