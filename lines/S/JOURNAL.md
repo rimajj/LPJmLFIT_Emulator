@@ -1466,3 +1466,32 @@ mean.
 
 Cost: 6 SLURM jobs, ~15 min of compute total. The expensive-looking part (2.55 × 10⁹ stem-year rows) ran in
 3.5 min because `Cell` predicate pushdown works on those parquets.
+
+### Postscript, same session — the merge, and a storage fault worth knowing about
+
+The merge took longer than the science. `/p/projects` began returning `Input/output error` on individual files:
+**21 of 90** pack files in the shared repository became unreadable, so `git` and `curl` died with
+`Bus error (core dumped)` and littered 53 core files in this worktree (and 24 in `wt-M` — a second line was hit
+at the same moment). Three things I would do faster next time, all now in the `repo-commit` skill:
+
+1. **`dd`, not git, decides whether a repository is corrupt.** I wasted a cycle concluding "the object store is
+   fine" from `git verify-pack -s`, which is **stat-only** and returned `rc=0` on all 45 packs while 21 of them
+   could not be read at all. A one-line `dd` loop over the packs answered it definitively, and reproducing on
+   `login02` ruled out a bad machine in another ten seconds.
+2. **`fatal: Unable to write index.` means a stale `index.lock`.** The fault killed a git process and left the
+   lock behind; three merge attempts then failed with a message that mentions neither locks nor storage. I found
+   it only after checking `ls -la $INT/.git/*.lock`.
+3. **My own retry loop lied to me.** It printed `MERGE+PUSH SUCCEEDED` while the merge was still failing,
+   because the `if` tested the exit status of the `tail` at the end of a pipe. I caught it only because I print
+   the tip of `main` after every merge — that habit is the sole reason I did not report a merge that never
+   happened.
+
+Two judgement calls worth recording. I did **not** attempt any in-place repair — no `gc`, no `repack`, no
+deleting packs — on a filesystem returning EIO, and instead verified through the GitHub API that every locally
+unreadable file was intact on the remote, which turned the incident into a delay rather than a data question.
+And while local `git commit` was impossible I landed the handoff through the GitHub API, so the next session
+would not inherit a "merge pending" note with no explanation of why.
+
+The rebase then hit one conflict, in the shared `residual-diagnosis` skill, where line M had appended a section
+of its own. Both appends were kept: that file is append-only by convention, and taking either side would have
+silently deleted another line's work.

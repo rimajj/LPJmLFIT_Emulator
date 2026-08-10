@@ -670,3 +670,68 @@ in **`~/.claude/CLAUDE.md`** — that file exists precisely so a rule survives a
 A program-landing commit touches no `.jl`, no `python/`, no `docs/src/` ⇒ **no CI gate runs and it is mergeable
 immediately** (ADR 0090). Confirm with `git diff --name-only origin/main...HEAD` rather than waiting for a
 verdict that never arrives.
+
+## `fatal: Unable to write index.` ON MERGE = A STALE `index.lock`, USUALLY FROM A CRASHED GIT (`[VERIFIED 2026-08-10]`, line S)
+
+A storage fault (next section) killed a git process mid-operation and left **`$INT/.git/index.lock`** behind.
+Every subsequent `git merge` in the integration worktree then died with **`fatal: Unable to write index.`** — a
+message that mentions no lock and reads like a permissions or disk-full problem. It cost three failed merge
+attempts before the lock was spotted.
+
+**Diagnose in this order, it takes 20 seconds:**
+
+```bash
+ls -la "$INT/.git/"*.lock                 # a lock file older than a few seconds IS the answer
+pgrep -a -u "$USER" git                   # MUST be empty before you call the lock stale
+df -h "$INT"; ls -la "$INT/.git/index"    # rule out full disk / permissions
+```
+
+Only when **no git process is running** is the lock stale; then `rm -f "$INT/.git/index.lock"` and retry. A
+lock removed while a real git process holds it corrupts that operation — never skip the `pgrep`.
+
+⚠ **AND CHECK YOUR OWN ERROR HANDLING BEFORE YOU BELIEVE A SUCCESS.** The retry loop written for this printed
+`MERGE+PUSH SUCCEEDED` while the merge was still failing, because the status tested was the **`tail`** at the
+end of the pipe, not the merge:
+
+```bash
+if flock ... bash -eu -c "...git merge...; git push..." 2>&1 | tail -5; then   # WRONG: tests `tail`
+out=$(flock ... bash -eu -c "...");  rc=$?;  echo "$out" | tail -8             # RIGHT: capture, then print
+```
+
+Use `set -o pipefail`, or capture into a variable and test `$?` before printing. Then **verify from the
+outside**: `git -C "$INT" log --oneline -2` must show your merge commit and the remote's `main` must have moved.
+
+## ⚠ A `/p/projects` STORAGE FAULT LOOKS LIKE A CORRUPT REPOSITORY BUT IS NOT (`[VERIFIED 2026-08-10]`, line S)
+
+Symptom: `git` and `curl` dying with **`Bus error (core dumped)`**, dozens of `core-<host>-<pid>` files
+appearing in the worktrees, and every git command that reads an object (`commit` / `log` / `status` / `fetch` /
+`merge`) crashing — while `git rev-parse <ref>` and `git ls-remote` keep working, because refs are plain files
+and the network is fine.
+
+**Prove it is storage — not git, not the repo — before touching anything:**
+
+```bash
+for p in "$INT"/.git/objects/pack/*.pack "$INT"/.git/objects/pack/*.idx; do
+  dd if="$p" of=/dev/null bs=1M status=none 2>/dev/null || echo "EIO: $p"; done
+```
+
+`dd` is not git, so an `Input/output error` here is the filesystem. On 2026-08-10, **21 of 90** pack/idx files
+were unreadable; `/p/tmp` and `/home` stayed healthy throughout; and the fault **cleared on its own** within the
+hour and then came back. Reproduce on a second login node (`ssh login02`) to rule out one bad machine.
+
+⚠ **`git verify-pack -s` IS NOT A HEALTH CHECK** — `-s` is stat-only and reported `rc=0` on all 45 packs while
+21 of them could not be read at all. It is exactly why an early diagnosis in this incident said "the object
+store is fine".
+
+**Do NOT repair in place:** no `git gc`, no `git repack`, no deleting packs, no push from that checkout —
+writing to a filesystem returning EIO turns a recoverable incident into an unrecoverable one. GitHub is the
+authoritative copy; verify a file survived with `GET /repos/.../contents/<path>?ref=<branch>` (returns the
+blob) and recover by **re-cloning to a healthy path**. A merge that dies mid-way leaves `$INT` **clean**
+(verified: no `MERGE_HEAD`, HEAD unmoved), so retrying once reads come back is safe.
+
+**Housekeeping:** delete the `core-*` files **your own** crashes produced (gitignored, ~1.3 MB each, 53 in one
+hour) and leave another line's worktree alone — interleaved PIDs in two worktrees mean two sessions are hitting
+it, not that they are yours. `ulimit -c 0` in the same shell does not reliably stop them. And when local git
+cannot commit at all, a handoff can still be landed through the GitHub API
+(`PUT /repos/.../contents/<path>` with the file's blob `sha` and `branch`) — which is how this incident's
+`lines/S/STATE.md` note was recorded while `git commit` was impossible.
