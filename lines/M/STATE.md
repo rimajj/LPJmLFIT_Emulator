@@ -231,12 +231,18 @@ and the five gotchas are in the **`lpjmlfit-cbinary`** skill — read it before 
 ▶ **WHAT TO DO NEXT ON RUNG 2 — the substitution half.** The C now *offers* the roster; it does not yet
 *accept* a replacement. Two steps:
 
-1. **Raise the S → M integration point with a concrete proposal, not an open question.** `EXECUTION_PLAN.md`
-   §6 says S owns the entry point's *shape* and M owns the harness. S is on rungs 0/1 and will not design
-   it unprompted — so put a concrete reply format into `lines/S/STATE.md` as an ▶ INBOUND block (ADR 0056's
-   lesson: an ADR alone is not a channel) with the `pre` schema attached: *given this roster, return the
-   `treeidx` set that dies and the recruits (pft id + the four trait axes) that appear.* Note that S has
-   **not** yet seen the ADR-0060 inbound either — check whether that block survived to `main`.
+1. ✅ **DONE 2026-08-10 — the S → M integration point is RAISED** as an ▶ INBOUND block at the head of
+   `lines/S/STATE.md` (ADR 0056's lesson: an ADR alone is not a channel), with a concrete proposal rather
+   than an open question: *given the `pre` roster, return the `treeidx` set that dies and the recruits
+   (`pft_id` + `SLA`/`Wooddens`/`D95max`/`minwscal`) that appear.* It names the ONE thing that is genuinely
+   S's to decide — the shipped demography predicts a per-patch **count**, not which individual dies, and
+   turning a count into a kill set is itself a demographic operator M must not invent — and offers three
+   options: (a) S returns the kill set, (b) S returns a target count plus a *stated* victim rule (e.g. rank
+   or draw on the C's own `mort_prob`, which the dump carries), (c) S returns per-individual survival
+   probabilities and M draws. (b) is cheapest but borrows the C's hazard *ordering*, which makes the arm
+   partly a C arm — that must be said in whatever the rung-2 result claims. **Nothing is owed from M until
+   S replies; check `lines/S/STATE.md`.** The ADR-0060 inbound is re-placed in the same file, above this one.
+   ⚠ Do not start the read-back's *field list* on option (b) before S answers — options (a) and (c) change it.
 2. **Write the C read-back while waiting** — it does not depend on S's answer, only its field list does.
    Where: kills go where `annual_tree` sets `isdead` (`src/tree/annual_tree.c:31-38`), recruits where
    `establishmentpft_ind` calls `addpft` + `establishment_tree_ind` (`:100-115`, `:124-140`); overriding a

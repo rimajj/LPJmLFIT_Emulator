@@ -1,6 +1,6 @@
 ---
 name: repo-commit
-description: Commit/push/merge discipline for the LPJmL-FIT emulator under PARALLEL WORK LINES (ADR 0028/0029) — the branch-per-line + git-worktree model, the rebase→push→green-branch-CI→merge-to-main ritual, the mandatory STATE.md NEXT handoff before a session ends, where each artifact is written (per-line JOURNAL/STATE + changelog.d fragments, never CHANGELOG.md from a line), per-line SLURM tags and ADR number blocks, the pre-push checklist against the 5 CI gates, the commit trailer, and how to check CI via the GitHub REST API (gh not on PATH). ALSO that CI is PATH-FILTERED (ADR 0090): most commits (docs, prose, skills, ADRs, STATE/JOURNAL, the LaTeX report) trigger NO gate at all and are mergeable immediately, and a gate that does not trigger reports no check-run — so a poll that waits for `test (lts)` to complete HANGS FOREVER; work out the expected gate set from `git diff --name-only origin/main...HEAD` first. Use whenever committing, pushing, merging a line, or checking CI for this repo.
+description: Commit/push/merge discipline for the LPJmL-FIT emulator under PARALLEL WORK LINES (ADR 0028/0029) — the branch-per-line + git-worktree model, the rebase→push→green-branch-CI→merge-to-main ritual, the mandatory STATE.md NEXT handoff before a session ends, where each artifact is written (per-line JOURNAL/STATE + changelog.d fragments, never CHANGELOG.md from a line), per-line SLURM tags and ADR number blocks, the pre-push checklist against the 5 CI gates, the commit trailer, and how to check CI via the GitHub REST API (gh not on PATH). ALSO how to write an INBOUND block into a sibling line's STATE.md so it survives (it is the only sanctioned cross-line file edit, it WILL rebase-conflict, and resolving that conflict with --theirs silently deletes the message — anchor it before a long-lived heading, always keep BOTH sides, check your previous inbound still exists on main, and mirror the raise in your own STATE). ALSO that CI is PATH-FILTERED (ADR 0090): most commits (docs, prose, skills, ADRs, STATE/JOURNAL, the LaTeX report) trigger NO gate at all and are mergeable immediately, and a gate that does not trigger reports no check-run — so a poll that waits for `test (lts)` to complete HANGS FOREVER; work out the expected gate set from `git diff --name-only origin/main...HEAD` first. Use whenever committing, pushing, merging a line, or checking CI for this repo.
 ---
 
 # repo-commit — commit, push & merge under parallel work lines
@@ -735,3 +735,29 @@ it, not that they are yours. `ulimit -c 0` in the same shell does not reliably s
 cannot commit at all, a handoff can still be landed through the GitHub API
 (`PUT /repos/.../contents/<path>` with the file's blob `sha` and `branch`) — which is how this incident's
 `lines/S/STATE.md` note was recorded while `git commit` was impossible.
+## AN INBOUND BLOCK IN A SIBLING'S `STATE.md` WILL CONFLICT — write it so the resolution is obvious (`[VERIFIED 2026-08-10]`, line M, ADR 0061)
+
+ADR 0056's rule stands: **an ADR alone is not a channel** — to reach another line you must write an
+`### 📥 INBOUND FROM LINE <X>` block into *their* `STATE.md`, which is the one sanctioned exception to
+"never edit another line's file". But that file is also the one they rewrite most often, so the block
+**will** hit a rebase conflict, and the conflict is the dangerous part: the sibling's side is usually a
+whole new banner at the head of the file, so `git` presents *their new section* against *your entire
+block* and "take theirs" silently deletes the message. Line M lost four days of an ADR-0060 correction
+exactly that way — the block was written on the 6th, S rewrote the head of its own STATE on the 7th, and
+the inbound never reached `main` until it was re-placed by hand on the 10th.
+
+Mechanics that make it survivable:
+
+* **Anchor the block to a stable heading, not to the top of the file.** Insert it immediately *before* a
+  long-lived section (`### ✅ MERGED AND GREEN`, `### THE STATE IN SEVEN LINES`), never as the new first
+  line — the head of a `## NEXT` block is precisely what the owning line replaces each session.
+* **On a conflict, the resolution is always "keep BOTH".** Take their side verbatim, then re-insert your
+  block at the anchor. Never resolve an inbound conflict with `--ours`/`--theirs`.
+* **Check whether your PREVIOUS inbound is still there** before adding a new one — `grep '📥 INBOUND FROM
+  LINE <you>' lines/<them>/STATE.md` and, if it is missing, `git log --oneline -S'INBOUND FROM LINE <you>'
+  -- lines/<them>/STATE.md`. A block that never reached `main` is invisible to them and to you.
+* **Record the raise in YOUR OWN `STATE.md` too**, with what you asked and what you are blocked on. That
+  copy cannot be lost by their next rewrite, and it is what tells your next session the ball is not yours.
+* **Make the ask decidable.** State the concrete proposal, name the single thing that is genuinely theirs
+  to decide, and enumerate the options with their costs — a sibling mid-milestone will not design your
+  interface from an open question, but will tick a box.
