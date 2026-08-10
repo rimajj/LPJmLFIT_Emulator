@@ -7,33 +7,34 @@
 
 ## NEXT — start here
 
-> ## 🚨 FIRST: THE MERGE OF THIS WORK IS BLOCKED BY A STORAGE FAULT, NOT BY ANYTHING IN THE CODE (2026-08-10)
+> ## ✅ MERGED — and the storage incident that delayed it is worth 60 seconds of your attention (2026-08-10)
 >
-> **`origin/line/S` = `d6ab26eb` holds all six commits of the rung-0 work and its branch CI is GREEN** on the
-> code-bearing sha **`184f4b2b`** (`test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅; `test (pre)` ❌ = the
-> documented `ScopedValues` prerelease `MethodError`, confirmed from the job log, `continue-on-error`).
-> **`main` is UNTOUCHED at `a70e2bbc`** and `line/S` is 6 ahead / 6 behind, so it needs a rebase before merging.
+> **Rung 0 is merged to `main` as `20a7dc54`.** Branch CI was green on the rebased sha **`abfe4a6a`**
+> (`test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅; `test (pre)` ❌ = the documented
+> `ScopedValues` prerelease `MethodError`, confirmed from the job log, `continue-on-error`). **`main`'s OWN
+> post-merge run is GREEN too** — `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅, with `test (pre)` red on
+> the same `ScopedValues` `MethodError` (verified from `main`'s own job log, not assumed). `docs` and `python`
+> did not run on either, because the diff touches no `docs/src/**`, `src/**` or `python/**` (ADR 0090) — that
+> is correct, not a gap, so there is nothing further to wait for.
 >
-> **Why it stopped:** the `/p/projects` filesystem began returning **`Input/output error`** on files under
-> `/p/projects/open/Jamir/` — **21 of 90** pack/idx files under `esm_land_emulator/.git/objects/pack/` are
-> unreadable, plus some working-tree files. Every git operation that reads an object (`commit`, `log`,
-> `status`, `fetch`, `merge`) dies with **`Bus error (core dumped)`**; `git rev-parse <ref>` and `git ls-remote`
-> still work because they touch only ref files and the network. Reproduced on **login03 AND login02**, and with
-> plain **`dd`** rather than git ⇒ **storage, not a node, not git, not this change.** At least two lines were
-> hit at once (core files appeared in `wt-S` and `wt-M`).
+> **Three things this incident taught, all now in the `repo-commit` skill — read them BEFORE you next merge:**
+> 1. **`/p/projects` returned `Input/output error` on 21 of 90 pack files**, so `git` and `curl` died with
+>    `Bus error (core dumped)` and every object-reading git command failed, while `git rev-parse` and
+>    `ls-remote` kept working. Reproduced on **two login nodes** and with plain **`dd`** ⇒ storage, not git,
+>    not the repo. It cleared on its own within the hour, came back, then cleared again. `/p/tmp` and `/home`
+>    were healthy throughout. **Never repair in place** (no `gc`, no `repack`, no deleting packs); GitHub is
+>    the verified-complete copy and the recovery route is a re-clone to a healthy path.
+> 2. **`git verify-pack -s` is NOT a health check** — stat-only, `rc=0` on all 45 packs while 21 were
+>    unreadable. It is what made an early diagnosis in this session say "the object store is fine".
+> 3. **`fatal: Unable to write index.` on merge = a STALE `$INT/.git/index.lock`** left by the git process the
+>    fault killed. Three merge attempts died on it. Check `ls -la "$INT/.git/"*.lock` and require
+>    `pgrep -u $USER git` to be EMPTY before removing it. ⚠ And one of those "attempts" printed
+>    `MERGE+PUSH SUCCEEDED` while actually failing, because the exit status tested was the `tail` at the end of
+>    a pipe — capture the output and test `$?`, then verify `main` actually moved.
 >
-> **What to do, in order:**
-> 1. **Do NOT repair in place.** No `git gc`, no `git repack`, no deleting packs, no push from this checkout —
->    writing to a filesystem returning EIO is how a recoverable incident becomes an unrecoverable one.
-> 2. **GitHub is the authoritative, verified-complete copy.** Every locally unreadable file was fetched intact
->    through the API. Recover by **re-cloning** to a healthy path once storage is back (or ask PIK support).
-> 3. **Then finish the merge**: rebase `line/S` onto `main`, re-push with `--force-with-lease`, re-check the
->    gates on the new sha (the rebase changes it, and a pre-rebase green does NOT carry over), and merge.
-> 4. ⚠ **`git verify-pack -s` is NOT a health check** — `-s` is stat-only and returned rc=0 on all 45 packs
->    while 21 of them could not be read at all. Use `dd if=<pack> of=/dev/null`.
->
-> Nothing about the science below is affected: the reduction tables live on **`/p/tmp`, which is healthy**, and
-> the committed reference CSV is intact on the remote.
+> The rebase also hit one conflict, in the shared `residual-diagnosis` skill, where line M had appended its own
+> section. **Both appends were kept** — that file is append-only by convention, so dropping either would have
+> destroyed another line's work.
 
 > **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 0 (fix the yardstick) is DONE and merged — ADR 0111,
 > 2026-08-10. START RUNG 1 (S alone, fed the C's own per-tree fluxes; arms A/B/C/D).** Score every arm with
