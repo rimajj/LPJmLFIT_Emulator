@@ -91,11 +91,29 @@ scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py   # job
   count table's own seed1 response and this reduction's (two independent code paths — the ADR-0030 check).
   ⇒ **do NOT write "the warming response is indistinguishable from zero" any more; that is not true of
   counts.** The response error lives in the trait axes.
-- **Sharpest single diagnostic:** the emulator's area-mean response ÷ the truth's — counts **0.69**, SLA
-  **2.37**, Wooddens 1.13, D95max **1.71**, minwscal **3.20**, Height **0.14**. A per-cell slope < 1 with a
-  correct area mean means the right *total* response in the *wrong places* — and **counts are the mirror
-  image of Wooddens**: counts get the pattern right (slope ≈ 1) and under-shoot the total (0.69×), Wooddens
-  gets the total right (1.13×) and the pattern wrong (0.66). Different defects, different fixes.
+- **★ SCORE THE BAND, NOT THE GLOBE — a positive global response ratio HIDES WRONG-SIGNED REGIONAL
+  RESPONSES** (ADR 0111 §5b). Area-weighted prediction ÷ truth by band (`n/d` = the truth's band response is
+  undetermined, S/N < 3):
+
+  | quantity | GLOBAL | tropical | subtropical | temperate | boreal |
+  |---|---|---|---|---|---|
+  | stems per patch | +0.71 | **−0.51** | +3.41 | +0.93 | +1.07 |
+  | SLA | +1.94 | +0.69 | **−3.91** | **−0.29** | +3.19 |
+  | Wooddens | +1.06 | +0.86 | +1.23 | +0.43 | +1.40 |
+  | D95max | +1.75 | **n/d** (S/N 1) | +1.09 | +3.08 | +1.75 |
+  | minwscal | +2.95 | +3.62 | +1.80 | +1.22 | **−4.45** |
+  | Height *(diag)* | +2.88 (S/N 4) | +1.51 | +1.00 | +1.42 | +0.92 |
+
+  **Four wrong-signed band responses no earlier statistic could see.** The count story is NOT "31 % too weak":
+  temperate (0.93) and boreal (1.07) are right and **the tropics respond the wrong way (−0.51)** — a concrete,
+  localised target. **Wooddens is the best-behaved axis in aggregate (0.43–1.40) while having the WORST
+  per-cell slope (0.66)** — the right total in the wrong places. Per-cell pattern and regional total are
+  different questions; publish both.
+- ⚠ **A RATIO WITH AN UNDETERMINED DENOMINATOR IS NOT A NUMBER — this bit THIS session.** A draft of ADR 0111
+  reported "the emulator delivers 14 % of the truth's height response" from an *unweighted* mean-ratio;
+  area-weighted the same quantity is **2.88**, Height's global S/N is **4** (weakest of any quantity), and the
+  band ratios say Height is roughly RIGHT (0.92–1.51). **Neither 0.14 nor 2.88 is a result.** The script now
+  keeps exactly ONE definition (area-weighted) and prints `n/d` below S/N 3. Do not reintroduce a second one.
 - ⚠ **`Height` fails the basis-robustness check** (deatt 1.05 capped vs 0.85 uncapped) — quote it as a range,
   never a number. The four production axes move ≤3 % between bases, which is what licenses steering by them.
 - ⚠ Everything here is **OFFLINE** ⇒ an upper bound on the coupled model (ADR 0105 §5).

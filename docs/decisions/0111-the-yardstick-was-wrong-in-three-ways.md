@@ -183,6 +183,7 @@ Scored the same way from the pooled count table's own out-of-sample predictions
 | λ (1 seed / 2 seeds) | 0.908 / 0.952 |
 | **deattenuated slope** | **1.056 (1-seed) / 1.006 (2-seed)** |
 | aggregate (area-mean) response, prediction ÷ truth | **0.691** |
+| **the same by band** | tropical **−0.51** · subtropical +3.41 · temperate **+0.93** · boreal **+1.07** |
 
 Two things worth having:
 
@@ -190,6 +191,9 @@ Two things worth having:
   need the least correction of any quantity because their λ is the highest (0.908). Any statement that "the
   warming response is indistinguishable from zero" is **not** true of counts on this basis. The trait axes are
   where the response error lives.
+- **But the global 0.691 is not a uniform under-response — it is a TROPICAL SIGN ERROR** (see §5b): the
+  temperate (0.93) and boreal (1.07) bands are right and the tropics respond the **wrong way** (−0.51). Do
+  not read the global number as "counts respond 31 % too weakly".
 - **It is the mirror image of Wooddens.** Counts get the per-cell *pattern* right (slope ≈ 1) and under-shoot
   the *total* (area-mean 0.69×); Wooddens gets the total right (1.13×) and the pattern wrong (0.66). Those are
   different defects and they want different fixes — which is only visible because both statistics are now
@@ -206,14 +210,14 @@ Area-weighted (cos φ) mean over the same 51 767 cells; noise from the two seeds
 
 | quantity | historic level | response | % | 2-seed noise | S/N | emulator's aggregate response ÷ truth's (`_t8`) |
 |---|---|---|---|---|---|---|
-| stems per patch | 7.053 | −0.122 | −1.74 % | 0.0042 | **29** | — |
+| stems per patch | 7.053 | −0.122 | −1.74 % | 0.0042 | **29** | **0.71** |
 | above-ground C per patch | 5496 | −29.9 | −0.54 % | 1.19 | **25** | — |
 | vegetation C per patch | 7407 | −40.6 | −0.55 % | 0.83 | **49** | — |
-| SLA median | 0.02441 | −3.86e−4 | −1.58 % | 7.9e−7 | **489** | **2.37** |
-| Wooddens median | 238 695 | +1756 | +0.74 % | 43.9 | **40** | **1.13** |
-| D95max median | 358.8 | +4.28 | +1.19 % | 0.075 | **57** | **1.71** |
-| minwscal median | 0.2925 | +0.00371 | +1.27 % | 1.2e−4 | **32** | **3.20** |
-| Height median | 7.862 | −0.0130 | −0.17 % | 0.0035 | 3.8 | **0.14** |
+| SLA median | 0.02441 | −3.86e−4 | −1.58 % | 7.9e−7 | **489** | **1.94** |
+| Wooddens median | 238 695 | +1756 | +0.74 % | 43.9 | **40** | **1.06** |
+| D95max median | 358.8 | +4.28 | +1.19 % | 0.075 | **57** | **1.75** |
+| minwscal median | 0.2925 | +0.00371 | +1.27 % | 1.2e−4 | **32** | **2.95** |
+| Height median | 7.862 | −0.0130 | −0.17 % | 0.0035 | **3.8 — weakest** | 2.88, **not determined** |
 | Age median | 33.87 | −1.500 | −4.43 % | 0.041 | **36** | (no prediction) |
 
 **Per-cell S/N is 0.5–3.1; area-weighted S/N is 25–489.** The response is a well-determined aggregate
@@ -225,12 +229,40 @@ The latitude-band panel is where the structure is: above-ground carbon responds 
 alone would report "almost no carbon response" for a model that gains a fifth of its boreal stand carbon.
 **Report the bands, not only the global number.**
 
-The aggregate ratio column is the sharpest statement of the emulator's response error and it agrees with §4's
-deattenuated slopes: **over-responds on SLA (2.4×) and minwscal (3.2×), roughly right on Wooddens (1.1×),
-over-responds on D95max (1.7×), and delivers 14 % of the truth's height response.** The apparent conflict
-between "Wooddens under-responds per cell (0.66)" and "Wooddens is right in aggregate (1.13)" is not a
-contradiction: a per-cell slope below 1 with a correct area mean means the emulator puts the right total
-response in the wrong places.
+### 5b. ★ THE BAND-WISE RATIO IS THE RESULT — a positive global ratio hides WRONG-SIGNED regional responses
+
+A global aggregate is a ratio of near-CANCELLING sums (the truth's global mean count response is ~3 % of its
+between-cell spread, because regional responses partly oppose each other), so it can look right while the
+pattern is wrong. Area-weighted **prediction response ÷ truth response** by band, each with the band's own
+two-seed signal-to-noise; **`n/d` = the truth's band response is not determined (S/N < 3), so no ratio is:**
+
+| quantity | GLOBAL | tropical | subtropical | temperate | boreal |
+|---|---|---|---|---|---|
+| stems per patch | +0.71 | **−0.51** (S/N 6) | +3.41 | +0.93 | +1.07 |
+| SLA median | +1.94 | +0.69 | **−3.91** | **−0.29** | +3.19 |
+| Wooddens median | +1.06 | +0.86 | +1.23 | +0.43 | +1.40 |
+| D95max median | +1.75 | **n/d** (S/N 1) | +1.09 | +3.08 | +1.75 |
+| minwscal median | +2.95 | +3.62 | +1.80 | +1.22 | **−4.45** |
+| Height median *(diagnostic)* | +2.88 (S/N **4**) | +1.51 | +1.00 | +1.42 | +0.92 |
+
+- **Four wrong-SIGNED band responses that the global ratio hides:** tree counts in the **tropics** (−0.51),
+  SLA in the **subtropics** (−3.91) and the **temperate** band (−0.29), and minwscal in the **boreal**
+  (−4.45). Counts are the sharpest case: a global +0.71 that reads as a mild under-response is in fact a
+  correct temperate (0.93) and boreal (1.07) response **plus a tropical response of the wrong sign**. That is
+  a concrete, localised target, and it is invisible in every response statistic published before this record.
+- **Wooddens is the best-behaved axis in aggregate** (0.43–1.40 across bands) despite having the *worst*
+  per-cell slope (0.66) — the right total in the wrong places. §4 measures the per-cell *pattern*, §5b the
+  regional *totals*; they are different questions and this is what it looks like when they disagree.
+- **D95max's tropical band is undetermined** (the truth's own two-seed noise swamps its response, S/N 1), so
+  no D95max claim may be made for the tropics on this reference data at `npatch=25`.
+
+⚠ **THE GUARD CAUGHT ONE OF THIS RECORD'S OWN DRAFT CLAIMS, so it is stated rather than quietly fixed.** An
+earlier draft of §5 reported "the emulator delivers **14 %** of the truth's height response", from an
+*unweighted* mean-ratio. Area-weighted, the same quantity reads **2.88** — and Height's global S/N is **4**,
+the weakest of any quantity, because its global aggregate is a near-zero residue. **Neither 0.14 nor 2.88 is a
+result**, and the band ratios (0.92–1.51) say Height's response is in fact roughly right per band. Two rules
+now enforced in the script: there is exactly **ONE** definition of the aggregate ratio (area-weighted), and a
+ratio whose denominator is not determined prints **`n/d`**, never a number.
 
 ---
 
@@ -278,6 +310,9 @@ raw slope. `_t9envT` stays unpinned; M's `_t8` pin is untouched; nothing in `src
   own features, so every slope here is an **upper bound** on the coupled model's (ADR 0105 §5). The coupled
   ensemble screen is still the blocker it has been.
 - **`Age` has no prediction file**, so its truth-side reliability is published and its slope is not.
+- **The aggregate pred÷truth ratio IS banded** (§5b) and carries a determinacy guard, after an unbanded,
+  unweighted version produced a headline number that did not survive (see §5b's warning). Any criterion
+  written against a response ratio must name the **band** and respect the `n/d` guard.
 - Nothing here touches `src/`, any committed baseline, or any pinned artifact.
 
 ---

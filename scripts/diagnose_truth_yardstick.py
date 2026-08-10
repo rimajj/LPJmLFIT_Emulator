@@ -314,7 +314,47 @@ def aggregate_response(j: pl.DataFrame) -> None:
 
 
 # ----------------------------------------------------------------------------- 4. score the emulator
-def score_emulator(resp: pl.DataFrame, pred_dir: str) -> None:
+def band_ratios(cell: np.ndarray, dp: np.ndarray, d1: np.ndarray, d2: np.ndarray,
+                ll: pl.DataFrame) -> dict:
+    """Area-weighted (prediction response ÷ truth response) per latitude band, WITH a determinacy guard.
+
+    Why banding is not optional: a global aggregate is a ratio of near-CANCELLING sums (the truth's global
+    mean count response is ~3 % of its between-cell spread, because regional responses partly oppose each
+    other), so a wrong regional pattern can still produce a right-looking global ratio — or a right pattern a
+    wrong-looking one.
+
+    Why the guard is not optional either: when a band's TRUTH response is small compared with its own
+    two-seed noise, the ratio's denominator is undetermined and the ratio is meaningless at any value. It is
+    reported as `n/d` rather than as a number. This is how `Height`'s "0.14" was caught: on an unweighted
+    global mean it read 0.14, area-weighted it read 2.88, and its band S/N shows why neither is a result.
+    """
+    lat = pl.DataFrame({"Cell": cell}).join(ll.select(["Cell", "lat", "w"]), on="Cell", how="left")
+    la = np.abs(lat["lat"].to_numpy().astype(float))
+    w = lat["w"].to_numpy().astype(float)
+    dbar = 0.5 * (d1 + d2)
+    out = {}
+    for band, lo, hi in [("GLOBAL", 0.0, 90.1)] + LAT_BANDS:
+        m = np.isfinite(la) & (la >= lo) & (la < hi) & (w > 0)
+        if m.sum() < 20:
+            continue
+        ww = w[m] / w[m].sum()
+        num = float((dp[m] * ww).sum())
+        den = float((dbar[m] * ww).sum())
+        # the truth aggregate's OWN two-seed noise in this band -> is the denominator even determined?
+        noise = abs(float((d1[m] * ww).sum()) - float((d2[m] * ww).sum())) / np.sqrt(2.0)
+        snr = abs(den) / noise if noise > 0 else float("inf")
+        out[band] = (num / den if den != 0 else np.nan, int(m.sum()), num, den, snr)
+    return out
+
+
+def fmt_band(br: dict, indent: str) -> str:
+    """`n/d` where the truth's band response is not determined (S/N < 3) — never a number."""
+    return indent + "band pred/truth: " + "  ".join(
+        f"{b} " + (f"{v[0]:+.2f}" if v[4] >= 3.0 else "n/d") + f"(S/N {v[4]:.0f})" for b, v in br.items()
+    )
+
+
+def score_emulator(resp: pl.DataFrame, pred_dir: str, ll: pl.DataFrame) -> None:
     d = Path(pred_dir)
     man = {}
     for ln in (d / "manifest_copula.txt").read_text().splitlines():
@@ -343,31 +383,38 @@ def score_emulator(resp: pl.DataFrame, pred_dir: str) -> None:
         p = h.join(s, on="Cell", how="inner").with_columns((pl.col("ps") - pl.col("ph")).alias("Dp"))
         q = f"{axis}_med"
         t = resp.select(["Cell", f"D1_{q}", f"D2_{q}"]).join(p.select(["Cell", "Dp"]), on="Cell", how="inner")
+        cellv = t["Cell"].to_numpy()
         d1 = t[f"D1_{q}"].to_numpy().astype(float)
         d2 = t[f"D2_{q}"].to_numpy().astype(float)
         dp = t["Dp"].to_numpy().astype(float)
         ok = np.isfinite(d1) & np.isfinite(d2) & np.isfinite(dp)
-        d1, d2, dp = d1[ok], d2[ok], dp[ok]
+        cellv, d1, d2, dp = cellv[ok], d1[ok], d2[ok], dp[ok]
         dbar = 0.5 * (d1 + d2)
         sl1 = float((dp * d1).sum() / (d1 * d1).sum())
         slb = float((dp * dbar).sum() / (dbar * dbar).sum())
         # λ recomputed on THESE cells (the pred join shrinks the set) so the quotient is self-consistent
         st = reliability(d1, d2)
         l1, l2 = st["lambda_1seed"], st["lambda_2seed"]
-        aggr = float(dp.mean() / dbar.mean()) if dbar.mean() != 0 else np.nan
+        br = band_ratios(cellv, dp, d1, d2, ll)
+        aggr = br["GLOBAL"][0] if br["GLOBAL"][4] >= 3.0 else float("nan")   # AREA-WEIGHTED, one definition
         rec(section="emulator_slope", scenario="hist->ssp370", basis=BASIS, quantity=q, stratum="ALL",
             n_cells=int(ok.sum()), pred_dir=d.name, slope_vs_seed1=sl1, slope_vs_2seed_mean=slb,
             lambda_1seed=l1, lambda_2seed=l2, deatt_slope_1seed=sl1 / l1 if l1 else np.nan,
             deatt_slope_2seed=slb / l2 if l2 else np.nan, aggregate_response_ratio=aggr)
         print(f"{axis:12s} {int(ok.sum()):7d} {sl1:15.3f} {slb:16.3f} {l1:6.3f} {l2:6.3f} "
               f"{sl1 / l1 if l1 else np.nan:13.3f} {slb / l2 if l2 else np.nan:13.3f} {aggr:16.3f}")
+        print(fmt_band(br, "             "))
+        for b, (ratio, n, num, den, snr) in br.items():
+            rec(section="band_response_ratio", scenario="hist->ssp370", basis=BASIS, quantity=q, stratum=b,
+                n_cells=n, pred_dir=d.name, response=num, hist_level=den, response_snr=snr,
+                aggregate_response_ratio=ratio if snr >= 3.0 else None)
     print("\n    NOTE on `deatt`: `slope/λ` is only meaningful when the slope and λ are computed on the SAME")
     print("    statistic, units, cells and basis — which is what this block does and what ADR 0093 §3e did")
     print("    NOT do (its λ was log-space, single-year 2019/2099, >=50 stems, 43 257 cells; the slope was")
     print("    linear, all-years-pooled, >=30 stems, 52 074 cells).")
 
 
-def score_counts(resp: pl.DataFrame, count_dir: str) -> None:
+def score_counts(resp: pl.DataFrame, count_dir: str, ll: pl.DataFrame) -> None:
     """The COUNT side of the same question, from a pooled count table's OOS predictions.
 
     `n_living` is per (Cell, Patch, Year), so a per-cell mean over rows is stems per patch — the same
@@ -400,6 +447,7 @@ def score_counts(resp: pl.DataFrame, count_dir: str) -> None:
     d1 = t["D1_n_per_patch"].to_numpy()
     d2 = t["D2_n_per_patch"].to_numpy()
     ok = np.isfinite(dtab) & np.isfinite(dp) & np.isfinite(d1) & np.isfinite(d2)
+    cellv = t["Cell"].to_numpy()[ok]
     dtab, dp, d1, d2 = dtab[ok], dp[ok], d1[ok], d2[ok]
     dbar = 0.5 * (d1 + d2)
     st = reliability(d1, d2)
@@ -421,6 +469,12 @@ def score_counts(resp: pl.DataFrame, count_dir: str) -> None:
           f"{slb:.3f}   λ1 {l1:.3f} λ2 {l2:.3f}")
     print(f"    DEATTENUATED  {sl1 / l1:.3f} (1-seed)  {slb / l2:.3f} (2-seed)     "
           f"aggregate pred/truth {dp.mean() / dbar.mean():.3f}")
+    br = band_ratios(cellv, dp, d1, d2, ll)
+    print(fmt_band(br, "    "))
+    for b, (ratio, n, num, den, snr) in br.items():
+        rec(section="band_response_ratio", scenario="hist->ssp370", basis=BASIS, quantity="n_per_patch",
+            stratum=b, n_cells=n, pred_dir=d.name, response=num, hist_level=den, response_snr=snr,
+            aggregate_response_ratio=ratio if snr >= 3.0 else None)
 
 
 def main() -> int:
@@ -443,9 +497,9 @@ def main() -> int:
     resp, lam = response_tables(j)
     aggregate_response(j)
     for pd_ in PRED_DIRS:
-        score_emulator(resp, pd_)
+        score_emulator(resp, pd_, ll)
     if COUNT_DIR:
-        score_counts(resp, COUNT_DIR)
+        score_counts(resp, COUNT_DIR, ll)
     if OUT_PERCELL:
         resp.write_parquet(OUT_PERCELL)
         print(f"\nwrote per-cell responses -> {OUT_PERCELL}")

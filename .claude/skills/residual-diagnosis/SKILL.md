@@ -851,3 +851,22 @@ tree-count warming response is faithful per cell; the response error lives in th
 **And cross-check the basis whenever the truth comes from a second table** (ADR 0030): the count table's own
 seed1 response vs this reduction's correlated at **r = 0.9948** — two independent code paths over one run.
 Below ~0.9 you are comparing different quantities and no slope is comparable to the rest of the panel.
+
+**(9) BAND THE RESPONSE RATIO, AND GUARD ITS DENOMINATOR — an aggregate ratio is two traps at once.**
+Added 2026-08-10; both traps fired inside one afternoon's work.
+* **A positive GLOBAL ratio hides wrong-SIGNED regional responses.** Measured, area-weighted prediction ÷
+  truth by latitude band: tree counts +0.71 globally but **−0.51 in the tropics** (temperate 0.93, boreal 1.07
+  are fine); SLA +1.94 globally but **−3.91 subtropical** and **−0.29 temperate**; minwscal +2.95 but
+  **−4.45 boreal**. So "counts respond 31 % too weakly" was never the defect — a correct mid-latitude and
+  boreal response plus a tropical **sign error** was. A global aggregate is a ratio of near-cancelling sums
+  (the truth's global mean count response is ~3 % of its between-cell spread), so it can look right while the
+  pattern is wrong, and vice versa.
+* **★ A ratio whose DENOMINATOR is not determined must print `n/d`, never a number.** Guard: compute the
+  truth aggregate's own two-seed noise **in that band** and require S/N ≥ 3. `D95max`'s tropical band comes
+  out S/N 1 — no D95max claim is possible for the tropics on this reference data at `npatch=25`.
+* **And keep exactly ONE definition of "the aggregate ratio".** An unweighted mean-ratio and an area-weighted
+  one disagreed by **20×** on `Height` (0.14 vs 2.88) because its global aggregate is a near-zero residue
+  (S/N 4) — and a draft ADR had already published the 0.14 as "the emulator delivers 14 % of the height
+  response". The band ratios then showed Height is roughly RIGHT (0.92–1.51). **Neither number was a result.**
+  If two "global" numbers for the same quantity can coexist in your output, one of them will end up in a
+  conclusion.

@@ -31,3 +31,9 @@
   the total right (1.13×) and the pattern wrong (0.66).
 - **The aggregate (area-weighted, latitude-banded) response is now the primary response statistic** and the
   per-cell map a reported secondary: area-weighted signal-to-noise is 25–489 against a per-cell 0.5–3.1.
+- **Banding the response ratio found four wrong-signed regional responses that no earlier statistic could
+  see** — tree counts in the tropics, specific leaf area in the subtropics and mid-latitudes, drought
+  tolerance in the boreal zone — so the count shortfall is not a uniform 31 % under-response but a correct
+  mid-latitude and boreal response plus a tropical response of the wrong sign. Ratios whose denominator is
+  not determined by the reference data now print `n/d` instead of a number, which caught and retracted a
+  draft claim of this work's own ("14 % of the height response") before it was published.
