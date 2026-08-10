@@ -1399,3 +1399,27 @@ s; rev=true)`, which turns the march into ~80 batched `DRF.predict` calls instea
 the sort key as one composite `Int64` (`((scen*67421 + cell)*64 + patch)*4096 + year`) rather than 24 M tuples.
 Runtime: **~4 min for all 5 folds** over 121 M rows on 48 cpus (the forests subsample 200 k rows, so training
 cost does not scale with the table).
+
+### The lead-restricted diagnostic — a validity HORIZON instead of a single fidelity number (ADR 0114)
+
+Once an arm recurses its own state, "how good is it?" has no single answer — the answer is a curve in *lead
+time* (years since the chain was last handed the truth). `scripts/rung1_response_decay.py` computes it from an
+arm directory + the keys, with **no refit**: `lead` per row from the same chain definition the arm used, then
+(1) the area-weighted response ratio restricted to rows at `lead <= k` for k = 1…80, and (2) `sd(pred)`,
+`sd(truth)` and their correlation at each exact lead. It runs in ~2 min on 24 cpus over 121 M rows.
+
+Two traps, both live:
+
+1. **Restricting the lead also shortens the CLIMATE WINDOW**, so the truth's own response changes with `k` and
+   the curve is not a clean function of recursion depth. **You must score a control arm on the identical rows**
+   (`REF=<one-step dir>`) and read `arm ÷ control`, not the arm alone. This is why ADR 0114's per-band curve is
+   labelled arm-only: the control's band columns are not printed yet.
+2. **A lead-restricted subset has its own basis** — two-seed deattenuation and the ≥30-stem paired cell set are
+   undefined on it, so the script scores against the count table's own seed-1 `y` on all 53 607 cells. The same
+   quantity reads **+0.835 / −0.635** on that basis and **+0.707 / −0.226** on the yardstick's. Signs and
+   ordering agree; magnitudes differ up to **2.8×**. Never quote a decay ratio against the yardstick's number.
+
+And the interpretation rule that came out of it: **a bounded, saturating drift can still destroy a response** if
+it is the size of the signal and depends on lead — which it does whenever the two scenarios' chains have
+different lengths. Check `sd(pred)/sd(truth)` before blaming the predictor's output form: at 0.90 after 80 years
+the distribution is intact and a variance-preserving predictor fixes nothing.

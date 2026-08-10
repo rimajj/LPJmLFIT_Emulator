@@ -1569,3 +1569,31 @@ roster state, no lagged trait — so nothing a state recursion does can reach it
 error is inherited from the fast core's fluxes, which makes it rung 3/4 work on line M's harness, not rung 1's.
 Arms C and D can still be scored on the trait axes, but only on the one-step basis, and every such verdict has
 to say so — including `trait_mortality`'s pre-registered flip criterion, whose text I did not touch.
+
+The follow-up diagnostic ran the same evening, because everything it needed was already on disk — the arm's own
+predictions plus the proven keys, two minutes on 24 cores, no retraining. It answered the question ADR 0113 left
+open and killed the obvious fix. The recursion is **not** collapsing onto an average: after 80 years of feeding
+on itself the prediction still carries 90 % of the truth's between-patch spread and correlates with it at 0.94
+(the one-step arm sits at 0.975). So a variance-preserving or distribution-sampling count predictor would not
+help, and I have recorded that as a decision so it does not get proposed again without refuting the measurement.
+
+What actually breaks is smaller and more awkward. The recursion's own level drift reaches +0.155 stems per patch
+and then flattens — and FIT's entire global count response is about −0.14 stems per patch. The drift is the size
+of the signal, and it is not the same size in the two scenarios, because the ssp370 chains run 80 years and the
+historic ones 19. A difference of two biases at different depths is what the response statistic then reports.
+
+The useful number that falls out is a **validity horizon**. Restricting to rows within k years of the last time
+the chain was handed the truth: at one step the count response is right in *every* latitude band, 0.90 to 1.07 —
+the best evidence yet that the count model does have a warming response. Temperate then decays 1.07 → 1.03 (3 yr)
+→ 0.95 (5) → 0.77 (10) → 0.59 (20) → 0.45 (80); the tropics decay faster and go wrong-signed; boreal holds and
+overshoots to 1.36 before collapsing, which fits its being the band with the large real response. Controlled
+against the one-step arm on identical rows — necessary, because restricting the lead also shortens the climate
+window — the recursion is indistinguishable from truth-fed up to about 3 years and inverted by 40.
+
+Two honesty notes I put in the record rather than smoothing over. This diagnostic scores against the count
+table's own seed-1 truth on 53 607 cells, because two-seed deattenuation and the ≥30-stem paired set are not
+defined on a lead-restricted subset; the same quantity reads +0.835/−0.635 here against +0.707/−0.226 on the
+yardstick's basis. Every sign and ordering agrees, the magnitudes differ up to 2.8×, so a decay ratio must never
+be quoted against the yardstick's number. And the control column is undetermined at k = 5–20 and its per-band
+values are not printed at all, so the per-band decay curve is arm-only — the contrast the control actually
+establishes is k ≤ 3 versus k ≥ 40. Fixing that print is item 4 of the decision.
