@@ -39,7 +39,8 @@ Usage (SLURM):
 Env: YARD (stage-1 dir), PRED_DIR (optional), BASIS (capped400|pooled; default capped400 = the basis the
      published slopes were scored on), MIN_CELL_STEMS (30), OUT_SUMMARY (CSV; default
      <repo>/test/testitems/references/S_truth_yardstick_summary.csv), OUT_PERCELL (optional parquet),
-     COUNT_DIR (optional pooled COUNT table with y.f64 + preds_oos.f64 — scores the count response too).
+     COUNT_DIR (optional; one or MORE comma-separated pooled COUNT tables with y.f64 + preds_oos.f64 —
+     scores the count response too, all in one process so an arm and its null control share the cell set).
 """
 
 from __future__ import annotations
@@ -53,7 +54,9 @@ import polars as pl
 _REPO = Path(__file__).resolve().parent.parent
 YARD = Path(os.environ.get("YARD", "/p/tmp/jamirp/emulator_global/yardstick_v1"))
 PRED_DIRS = [d.strip() for d in os.environ.get("PRED_DIR", "").split(",") if d.strip()]
-COUNT_DIR = os.environ.get("COUNT_DIR", "").strip()
+#: one or MORE pooled count tables (comma-separated), so an ARM and its null control are scored in the same
+#: process, against the same paired cell set — the rung-1 arms must never be compared across two invocations.
+COUNT_DIRS = [d.strip() for d in os.environ.get("COUNT_DIR", "").split(",") if d.strip()]
 BASIS = os.environ.get("BASIS", "capped400").strip()
 MIN_CELL_STEMS = int(os.environ.get("MIN_CELL_STEMS", "30"))
 #: the CONFIGURED patch ensemble size — the denominator of every per-patch density here. It must be the
@@ -498,8 +501,8 @@ def main() -> int:
     aggregate_response(j)
     for pd_ in PRED_DIRS:
         score_emulator(resp, pd_, ll)
-    if COUNT_DIR:
-        score_counts(resp, COUNT_DIR, ll)
+    for cd_ in COUNT_DIRS:
+        score_counts(resp, cd_, ll)
     if OUT_PERCELL:
         resp.write_parquet(OUT_PERCELL)
         print(f"\nwrote per-cell responses -> {OUT_PERCELL}")
