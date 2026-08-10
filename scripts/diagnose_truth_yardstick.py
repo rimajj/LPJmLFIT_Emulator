@@ -38,7 +38,8 @@ Usage (SLURM):
       scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py
 Env: YARD (stage-1 dir), PRED_DIR (optional), BASIS (capped400|pooled; default capped400 = the basis the
      published slopes were scored on), MIN_CELL_STEMS (30), OUT_SUMMARY (CSV; default
-     <repo>/test/testitems/references/S_truth_yardstick_summary.csv), OUT_PERCELL (optional parquet).
+     <repo>/test/testitems/references/S_truth_yardstick_summary.csv), OUT_PERCELL (optional parquet),
+     COUNT_DIR (optional pooled COUNT table with y.f64 + preds_oos.f64 — scores the count response too).
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ import polars as pl
 _REPO = Path(__file__).resolve().parent.parent
 YARD = Path(os.environ.get("YARD", "/p/tmp/jamirp/emulator_global/yardstick_v1"))
 PRED_DIRS = [d.strip() for d in os.environ.get("PRED_DIR", "").split(",") if d.strip()]
+COUNT_DIR = os.environ.get("COUNT_DIR", "").strip()
 BASIS = os.environ.get("BASIS", "capped400").strip()
 MIN_CELL_STEMS = int(os.environ.get("MIN_CELL_STEMS", "30"))
 #: the CONFIGURED patch ensemble size — the denominator of every per-patch density here. It must be the
@@ -365,6 +367,62 @@ def score_emulator(resp: pl.DataFrame, pred_dir: str) -> None:
     print("    linear, all-years-pooled, >=30 stems, 52 074 cells).")
 
 
+def score_counts(resp: pl.DataFrame, count_dir: str) -> None:
+    """The COUNT side of the same question, from a pooled count table's OOS predictions.
+
+    `n_living` is per (Cell, Patch, Year), so a per-cell mean over rows is stems per patch — the same
+    quantity as `n_per_patch` here, and the first quantity ADR 0106 names. Its λ is the highest of any
+    quantity (0.908 for one seed), so the count slope needs the least correction and is the most directly
+    readable of the panel.
+    """
+    d = Path(count_dir)
+    man = {}
+    for ln in (d / "manifest.txt").read_text().splitlines():
+        if "\t" in ln:
+            k, v = ln.split("\t", 1)
+            man[k] = v
+    cells = np.fromfile(d / "cells.i64", dtype="<i8")
+    scen = np.fromfile(d / man["scenario_tag"], dtype="<i8")
+    y = np.fromfile(d / "y.f64", dtype="<f8")
+    pr = np.fromfile(d / "preds_oos.f64", dtype="<f8")
+    print(f"\n--- 4b. THE COUNT RESPONSE, from {d.name} (target {man['target']}, n={len(y):,}) ---")
+    if not (len(cells) == len(scen) == len(y) == len(pr)):
+        print(f"    SKIPPED: length mismatch cells {len(cells)} scen {len(scen)} y {len(y)} pred {len(pr)}")
+        return
+    g = (pl.DataFrame({"Cell": cells, "s": scen, "y": y, "p": pr})
+         .group_by(["Cell", "s"]).agg(pl.col("y").mean().alias("y"), pl.col("p").mean().alias("p")))
+    h = g.filter(pl.col("s") == 0).select("Cell", pl.col("y").alias("yh"), pl.col("p").alias("ph"))
+    s = g.filter(pl.col("s") == 1).select("Cell", pl.col("y").alias("ys"), pl.col("p").alias("ps"))
+    t = (h.join(s, on="Cell", how="inner")
+         .join(resp.select(["Cell", "D1_n_per_patch", "D2_n_per_patch"]), on="Cell", how="inner"))
+    dtab = (t["ys"] - t["yh"]).to_numpy()          # the count table's OWN truth response (seed1)
+    dp = (t["ps"] - t["ph"]).to_numpy()
+    d1 = t["D1_n_per_patch"].to_numpy()
+    d2 = t["D2_n_per_patch"].to_numpy()
+    ok = np.isfinite(dtab) & np.isfinite(dp) & np.isfinite(d1) & np.isfinite(d2)
+    dtab, dp, d1, d2 = dtab[ok], dp[ok], d1[ok], d2[ok]
+    dbar = 0.5 * (d1 + d2)
+    st = reliability(d1, d2)
+    sl_tab = float((dp * dtab).sum() / (dtab * dtab).sum())
+    sl1 = float((dp * d1).sum() / (d1 * d1).sum())
+    slb = float((dp * dbar).sum() / (dbar * dbar).sum())
+    # the ADR-0030 cross-check: the count table's own seed1 response vs THIS reduction's seed1 response.
+    # These are two independent code paths over the same run; a low correlation means the two are not the
+    # same quantity and no slope below is comparable to the trait panel's.
+    xchk = float(np.corrcoef(dtab, d1)[0, 1])
+    l1, l2 = st["lambda_1seed"], st["lambda_2seed"]
+    rec(section="count_slope", scenario="hist->ssp370", basis=BASIS, quantity="n_per_patch", stratum="ALL",
+        n_cells=int(ok.sum()), pred_dir=d.name, slope_vs_seed1=sl1, slope_vs_2seed_mean=slb,
+        lambda_1seed=l1, lambda_2seed=l2, deatt_slope_1seed=sl1 / l1, deatt_slope_2seed=slb / l2,
+        aggregate_response_ratio=float(dp.mean() / dbar.mean()) if dbar.mean() else np.nan)
+    print(f"    cells {int(ok.sum()):,}  basis cross-check r(table's own seed1 D, this reduction's seed1 D) "
+          f"= {xchk:.4f}   {'OK' if xchk > 0.9 else 'LOW — the two are not the same quantity, stop'}")
+    print(f"    slope vs the table's own truth {sl_tab:.3f} | vs this seed1 {sl1:.3f} | vs 2-seed mean "
+          f"{slb:.3f}   λ1 {l1:.3f} λ2 {l2:.3f}")
+    print(f"    DEATTENUATED  {sl1 / l1:.3f} (1-seed)  {slb / l2:.3f} (2-seed)     "
+          f"aggregate pred/truth {dp.mean() / dbar.mean():.3f}")
+
+
 def main() -> int:
     print("=" * 118)
     print("RUNG 0 — THE YARDSTICK: the reference model's own noise floor, response reliability, and "
@@ -386,6 +444,8 @@ def main() -> int:
     aggregate_response(j)
     for pd_ in PRED_DIRS:
         score_emulator(resp, pd_)
+    if COUNT_DIR:
+        score_counts(resp, COUNT_DIR)
     if OUT_PERCELL:
         resp.write_parquet(OUT_PERCELL)
         print(f"\nwrote per-cell responses -> {OUT_PERCELL}")

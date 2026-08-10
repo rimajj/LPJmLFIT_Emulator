@@ -36,6 +36,15 @@ from `/p/tmp/jamirp/npatch_analysis/crn_headroom.json` (`lambda_1seed`), which r
 and D95max 0.32, not 0.63 and 0.51** — i.e. worse than published, and `EXECUTION_PLAN.md` §3 rung 0 carries
 the swapped pair forward as the target to reproduce.
 
+⚠ **The competing reading, and why it is rejected.** The published rows are *also* internally consistent if
+one assumes λ really was 0.55/0.32 from some other source (0.346/0.55 = 0.63 ✓, 0.163/0.32 = 0.51 ✓), so
+arithmetic alone does not decide it. What decides it is that the ADR's two "deattenuated" entries equal
+`crn_headroom.json`'s `lambda_1seed` for those same two axes to three decimals (**0.628 → 0.63**,
+**0.510 → 0.51**) while its other two rows use that file's λ verbatim (0.788 → 0.79, 0.697 → 0.70). Under the
+competing reading that coincidence would have to happen twice, by chance, against numbers sitting in the same
+file. **In any case defect (a) is not what the conclusions rest on:** defect (b) below means neither reading
+was quotable, and §4's single-basis measurement supersedes both.
+
 **(b) The λ and the slope were computed on DIFFERENT BASES, so their quotient was never quotable.** The λ is
 log-space, single-year (hist 2019 → ssp 2099), cell-mean-of-per-patch values, ≥ 50 stems, 43 257 cells,
 uncapped. The slope (ADR 0109) is linear-space, per-cell median **pooled over all years**, ≥ 30 stems,
@@ -161,6 +170,33 @@ it is reported as a range and never as a number.
 ⚠ This re-ranking does **not** retract ADR 0110. That record acted on `D95max`'s **level** gap (28–33 % of
 cells within 10 %, which stands) and on a measured physical mechanism, not on the response ranking. What
 changes is the *response* story: the rooting-depth axis's response was oversold as broken.
+
+### 4b. The COUNT response — the first quantity the acceptance criterion names — is FAITHFUL
+
+Scored the same way from the pooled count table's own out-of-sample predictions
+(`slow_count_pooled_w20_t8`, target `n_living`, 121 495 658 rows), on the same 51 767 cells:
+
+| | value |
+|---|---|
+| basis cross-check `r`(count table's own seed1 response, this reduction's seed1 response) | **0.9948** |
+| raw slope vs the count table's own truth / vs this seed1 / vs the 2-seed mean | 0.982 / 0.958 / 0.958 |
+| λ (1 seed / 2 seeds) | 0.908 / 0.952 |
+| **deattenuated slope** | **1.056 (1-seed) / 1.006 (2-seed)** |
+| aggregate (area-mean) response, prediction ÷ truth | **0.691** |
+
+Two things worth having:
+
+- **The per-cell tree-count response channel is open and correctly scaled** — deattenuated 1.01, and counts
+  need the least correction of any quantity because their λ is the highest (0.908). Any statement that "the
+  warming response is indistinguishable from zero" is **not** true of counts on this basis. The trait axes are
+  where the response error lives.
+- **It is the mirror image of Wooddens.** Counts get the per-cell *pattern* right (slope ≈ 1) and under-shoot
+  the *total* (area-mean 0.69×); Wooddens gets the total right (1.13×) and the pattern wrong (0.66). Those are
+  different defects and they want different fixes — which is only visible because both statistics are now
+  published side by side.
+- The 0.9948 cross-check is the ADR-0030 discipline doing its job: the count table and this reduction are two
+  independent code paths over the same run, so their agreement is what makes the count slope comparable to the
+  trait panel rather than a different quantity.
 
 ---
 

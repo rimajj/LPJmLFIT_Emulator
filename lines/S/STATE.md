@@ -68,7 +68,9 @@ export SCENARIOS=historic SEEDS=1,2 CAP=400 OUT=/p/tmp/jamirp/emulator_global/ya
 scripts/sbatch_python.sh S-yardhist scripts/build_truth_yardstick_tables.py
 # stage 2 — score ANY copula table's OOS predictions on the ONE canonical basis
 export YARD=/p/tmp/jamirp/emulator_global/yardstick_v1 BASIS=capped400 PRED_DIR=<dir1>,<dir2>
-scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py     # jobs 1743409 / 1743410
+export COUNT_DIR=/p/tmp/jamirp/emulator_global/slow_count_pooled_w20_t8    # optional: scores the COUNT side too
+scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py   # jobs 1743409/1743410/1743515
+# ⚠ every knob above must be EXPORTed — sbatch_python.sh forwards only a fixed list (CLAUDE.md §9)
 ```
 
 - **The floor** is item 1 above; the machine-readable table is
@@ -83,9 +85,17 @@ scripts/sbatch_python.sh S-yardscore scripts/diagnose_truth_yardstick.py     # j
   SLA −1.58 %, Wooddens +0.74 %, D95max +1.19 %, minwscal +1.27 %, Age −4.43 %. **Report the latitude bands
   too** — above-ground C is −1.5 % tropical / −3.9 % temperate / **+19.4 % boreal**, so the global mean alone
   calls a model that gains a fifth of its boreal stand carbon "almost no carbon response".
-- **Sharpest single diagnostic:** the emulator's area-mean response ÷ the truth's — SLA **2.37**, Wooddens
-  1.13, D95max **1.71**, minwscal **3.20**, Height **0.14**. A per-cell slope < 1 with a correct area mean
-  means the right *total* response in the *wrong places*.
+- **★ THE COUNT RESPONSE IS FAITHFUL, and it is the first quantity ADR 0106 names** (ADR 0111 §4b, from the
+  pooled count table's own OOS predictions, `COUNT_DIR=…/slow_count_pooled_w20_t8`): raw slope 0.958, λ
+  0.908/0.952, **deattenuated 1.056 (1-seed) / 1.006 (2-seed)**, with a **r = 0.9948** cross-check between the
+  count table's own seed1 response and this reduction's (two independent code paths — the ADR-0030 check).
+  ⇒ **do NOT write "the warming response is indistinguishable from zero" any more; that is not true of
+  counts.** The response error lives in the trait axes.
+- **Sharpest single diagnostic:** the emulator's area-mean response ÷ the truth's — counts **0.69**, SLA
+  **2.37**, Wooddens 1.13, D95max **1.71**, minwscal **3.20**, Height **0.14**. A per-cell slope < 1 with a
+  correct area mean means the right *total* response in the *wrong places* — and **counts are the mirror
+  image of Wooddens**: counts get the pattern right (slope ≈ 1) and under-shoot the total (0.69×), Wooddens
+  gets the total right (1.13×) and the pattern wrong (0.66). Different defects, different fixes.
 - ⚠ **`Height` fails the basis-robustness check** (deatt 1.05 capped vs 0.85 uncapped) — quote it as a range,
   never a number. The four production axes move ≤3 % between bases, which is what licenses steering by them.
 - ⚠ Everything here is **OFFLINE** ⇒ an upper bound on the coupled model (ADR 0105 §5).
