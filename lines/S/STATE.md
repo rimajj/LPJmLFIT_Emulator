@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0113 ⇒ next free is 0114, and only SIX remain in this block.**
+> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0114 ⇒ next free is 0115, and only FIVE remain in this block.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## NEXT — start here
@@ -60,20 +60,34 @@
 > and ADR 0112 §3; the conclusions they supported are unchanged). The rest of item 1/2/3 — the noise floor, the
 > λ table, aggregate-over-per-cell, the TRAIT panel — **stands unchanged**.
 
-> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 1's arms A0, A0-null and A1 are DONE (ADR 0112 + 0113).
-> NEXT: find out WHY the recursion kills the response, with the cheap diagnostic that needs no refit — then
-> scope arms C and D honestly.** Concretely, in order:
+> **✅ THAT DIAGNOSTIC IS ALSO DONE — ADR 0114** (job 1747677, `scripts/rung1_response_decay.py`, 2 min, no
+> refit). Two results, both decision-bearing:
+> * **the recursion is NOT regressing to a conditional mean** — at lead 80 it still carries `sd(pred)/sd(truth)`
+>   **0.904** and **corr 0.940** ⇒ **DO NOT build a variance-preserving or distribution-sampling count predictor
+>   to fix this.** Any such proposal must refute ADR 0114 §1 first. What breaks is a **lead-dependent level
+>   drift** (+0.155 stems/patch, saturating) that is **the same size as FIT's entire global count response
+>   (≈ −0.14 stems/patch)** and differs between scenarios because ssp370 chains run 80 yr and historic 19.
+> * **the validity horizon:** at ONE step the count response is right in **every band (0.90–1.07)** — the best
+>   evidence yet that the count model does respond — then temperate decays 1.07 → 0.95 (5 yr) → 0.77 (10) →
+>   0.59 (20) → 0.45 (80), the tropics go wrong-signed, boreal holds/overshoots to 1.36 first. Controlled
+>   against the one-step arm on identical rows: **indistinguishable up to ~3 yr, inverted by 40.**
+> * ⚠ **ADR 0114's ratios are on ITS OWN basis** (the table's own seed-1 truth, 53 607 cells): one-step +0.835 /
+>   A1 −0.635 there vs **+0.707 / −0.226** on the yardstick. Signs and ordering agree, magnitudes differ up to
+>   2.8× — **never quote a decay ratio against the yardstick's number.**
+
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": arms A0, A0-null and A1 plus the decay diagnostic are DONE
+> (ADR 0112 + 0113 + 0114). NEXT: chase the LEAD-DEPENDENT DRIFT (two cheap arms, both on existing artefacts),
+> and only then scope arms C and D — which need a ROSTER and are not offline-table arms.** In order:
 >
-> **(i) The lead-time-resolved response decay (cheap: everything is on disk, no forest refit).** A1's arm
-> predictions (`/p/tmp/jamirp/emulator_global/rung1_count_arm_a1/preds_oos.f64`) plus the proven keys
-> (`/p/tmp/jamirp/emulator_global/rung1_keys_t8/{years,patches}.i64`) are enough to recompute the area-weighted
-> aggregate response ratio **restricted to rows at lead ≤ k**, for k = 1, 2, 5, 10, 20, 40, 80. That curve says
-> how fast the response information dies and over what horizon the emulator's own count is still informative —
-> which is exactly the number an ESM run needs, and it decides whether the defect is architectural or in the
-> count model. Pair it with **Var(pred) vs Var(truth) per lead step** (ADR 0113 §6, the one open question): if
-> A1's prediction variance collapses while its bias stays flat, the recursion is regressing to a conditional
-> mean, and the fix is a variance-preserving predictor (predict the ensemble *expectation* explicitly, or sample
-> the conditional distribution) rather than a better mean.
+> **(i) The two drift arms (ADR 0114 §5.3), each a separate run, each scored beside A0 and A0-null in ONE
+> `diagnose_truth_yardstick.py` process.** (a) Train the count model on the **ratio** `n_t / n_{t-1}` instead of
+> the level and recurse that — the AR target already cancels the level, so this tests whether the drift is an
+> artefact of predicting a level from a lagged level. (b) Score historic vs ssp370 **at matched LEAD DEPTH**
+> rather than matched calendar window, which isolates how much of the sign flip is the unequal-chain-length
+> artefact rather than a property of the recursion. Both reuse `X.f64`/`y.f64` + the proven keys in
+> `/p/tmp/jamirp/emulator_global/rung1_keys_t8/`; (a) needs one refit (≈ 4 min for all 5 folds, ADR 0113).
+> **Also close ADR 0114 §5.4 while you are in that script: print the CONTROL's per-band columns**, without which
+> the per-band decay curve is arm-only.
 >
 > **(ii) Then arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
 > `trait_mortality` selects *which individuals* die by trait, and the bounded-Beta family replaces the recruit
