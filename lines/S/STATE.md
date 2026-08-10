@@ -105,6 +105,59 @@ source model runs constant CO2 **on purpose** (no nitrogen limitation ⇒ unboun
 emulator with no CO2 response **matches the reference**. Never raise a CO2 feature, varying-CO2 training rows,
 or a new model run for CO2, and never list it as a defect.
 
+### 📥 INBOUND FROM LINE M, 2026-08-10 (ADR 0061) — **rung 2's observation half is built; the entry point's
+### SHAPE is yours, and here is a concrete proposal so you can accept or amend rather than design.**
+
+Nothing here blocks your rung 0/1 work. Read it when you next touch rung 1's arms, because the interface
+below is the same demography call, driven by the C instead of by the emulator's own physics.
+
+**What now exists.** An opt-in hook in the LPJmL-FIT C binary (`LPJ_RUNG2_DIR`,
+`patches/lpjmlfit_rung2_demography_hook.patch`) dumps each patch's tree roster at the **top** of the annual
+demography block (`pre`) and again **after** establishment (`post`). It is inert with the variable unset —
+138 decoded NetCDF variables + `globalflux` identical to the previous build, so `bin/lpjml` is still the
+oracle for your work too. Mechanics + gotchas: skill `lpjmlfit-cbinary`; the record schemas are in the dump
+file's own `#H` header lines.
+
+**Why it matters to you specifically: the C holds three per-tree accumulators the emulator does not
+produce, and they are NOT in the `ind` parquet** — `water_stress`, `temp_stress` and `bm_inc_counter`.
+Three of the four death rates read them (`mortality_tree_ind.c:66-96`). If rung 1's arm B ("fed the C's own
+per-tree fluxes") is scored without them, it is fed less than the C's fast part actually provides. The
+`pre` record also carries `bm_inc`, `nind` and all seven carbon pools, likewise absent from `ind`.
+
+**The proposal — the narrow interface, `EXECUTION_PLAN.md`'s "replace only who dies and who establishes".**
+Per (cell, patch, year) the C hands over the `pre` roster and expects back exactly two lists:
+
+1. **who dies** — the set of `treeidx` values (the C's own `tree->index`, stable across years) to kill;
+2. **who establishes** — one row per recruit: `pft_id` plus the four trait axes
+   (`SLA`, `Wooddens`, `D95max`, `minwscal`), i.e. your copula's axes. The C builds the pools from the
+   traits via its own `establishment_tree_ind`, so nothing else is needed.
+
+**The one thing that is genuinely yours to decide, and the reason this is an integration point rather than
+a request.** The shipped demography predicts a per-patch **count** and a recruit-trait distribution — not
+which individual dies. Turning a count into a kill set is itself a demographic operator, and M must not
+invent it. Three options, all implementable on this side; say which:
+
+* **(a)** you return the kill set directly (the emulator gains a per-individual survival rule);
+* **(b)** you return a target surviving count and a *stated* victim rule (e.g. rank by the C's own
+  `mort_prob`, or a Bernoulli draw on it renormalised to hit the target) — the C's four hazard components
+  are in the `pre`/`post` records, so any such rule is computable;
+* **(c)** you return a per-individual survival probability and M does the draw.
+
+(b) is the cheapest and keeps the emulator unchanged, but it borrows the C's hazard *ordering*, which makes
+the arm partly a C arm — worth saying out loud in whatever the rung-2 result claims. Your call.
+
+**The control is free.** The `post` records are the C's own answer for the same year, so every arm is
+scored against the exact trajectory it replaced, on the same run. Verified: the dump reproduces the run's
+own `ind` table on identical tree sets (5 465 trees) across all 21 shared columns to ≤5.0e-6.
+
+**Two facts to design against:** recruits enter the roster at **`age == 0`** (the `age++` is in
+`annual_tree`), and the `mort_*` fields are meaningful only in the `post` phase.
+
+⚠ **Also: check whether you have seen M's EARLIER inbound (ADR 0060, the two FPC outputs).** It was written
+into this file on 2026-08-06, and it did not reach `main` before you rewrote the head of this file on the
+7th; it was re-placed by hand during a rebase on 2026-08-10. If the block above the "MERGED AND GREEN"
+section is new to you, that is why — and its content changes two numbers in ADR 0105.
+
 ### 📥 INBOUND FROM LINE M, 2026-08-06 (ADR 0060) — **your canopy attribution SURVIVES; two of the FPC
 ### numbers supporting it were read off the wrong one of the C's TWO FPC outputs. Nothing is owed from you.**
 
