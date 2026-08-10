@@ -7,6 +7,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **`EXECUTION_PLAN.md` — the current order of work, as an error-attribution ladder
+  ([ADR 0093](docs/decisions/0093-the-patch-ensemble-is-not-the-bottleneck-the-per-tree-loop-is.md) +
+  [ADR 0094](docs/decisions/0094-per-year-esm-speed-is-the-goal-the-spinup-saving-is-not.md); owner-approved
+  2026-08-07).** Two measurements re-rank the whole programme. **(1) The shipped Julia emulator is 3.8× SLOWER
+  per cell-year than the C model it replaces** (1.096 vs 0.290–0.383 core-s), its per-individual daily step
+  costing 51× the C's while its per-patch fixed cost is 0.066× — so the ~100× needed for an ESM decomposes as
+  **37× single-core engineering + ~3× patch reduction**, and the patch ensemble is the *last* lever, not the
+  first. No end-to-end emulator-vs-C timing had ever been made, which is how that regression went unnoticed;
+  one becomes a required gate. **(2) The owner re-ranks the compute case** — per-year ESM speed is goal #2 and
+  the spin-up saving is explicitly not the goal, superseding ADR 0092's conclusion. Also measured and recorded:
+  `npatch` is numerical (<0.15 % on every cell-mean at 50 vs 25); the 25 patches are worth `n_eff` 4.8–12.9
+  because the cell-level seedbank couples the *inherited* trait pool (isolated by the non-inherited
+  median-Height control at `n_eff ≈ 25`); at `npatch=25` the C's own answer is already outside the 10 % band on
+  carbon, median height, minwscal and rooting depth; the per-cell trait response is below the two-seed noise
+  floor (signs disagree in 33–37 % of cells) while the area-mean response has signal-to-noise ≈ 200; and
+  deattenuating for target noise shows **two** broken response axes, not four. Five patch-reduction routes are
+  refuted with numbers (one big patch, structural stratification, time-averaging, a smooth trait density with
+  no individuals, a roster ensemble without daily physics) and three cheap wins survive (share the soil column
+  but never the canopy; trait-dependent mortality holds the wood-density selection at 0.98–1.06 across all
+  seven PFTs; a bounded Beta per trait interval beats the shipped copula 2–3× on per-cell KS). The ladder is
+  wired into all four lines' `STATE.md` handoffs with rung ownership — S 0/1, M 2/3/4, O 5, E off the critical
+  path — and the pre-registered flip criterion for `trait_mortality`. `docs/decisions/README.md` marks ADR 0092
+  resolved. Adds a fifth pre-check to the `residual-diagnosis` skill: *is the target noisier than the residual?*
 - **A FULL data-flow diagram, generated from the code, plus the staleness gate that was missing
   ([ADR 0091](docs/decisions/0091-the-full-dataflow-diagram-is-code-derived-and-the-staleness-gate-becomes-real.md);
   owner request 2026-08-06).** New page `docs/src/explanation/dataflow.md` embedding a new generated

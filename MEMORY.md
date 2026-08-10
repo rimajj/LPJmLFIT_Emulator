@@ -20,6 +20,14 @@
 
 ## 0. Router — which line am I, and where do I continue?
 
+
+> ⛳ **THE ORDER OF WORK IS `EXECUTION_PLAN.md`** (owner-approved 2026-08-07; ADR 0093 + 0094). The project runs
+> as an **error-attribution ladder** — rung 0/1 line S · rung 2/3/4 line M · rung 5 (speed) line O · line E off
+> the critical path. Two owner decisions re-rank everything: **per-year ESM speed is now goal #2** and the
+> spin-up saving is explicitly not the goal (ADR 0094), and **the shipped Julia emulator is 3.8× SLOWER per
+> cell-year than the C model it replaces** — the ~100× needed decomposes as **37× single-core engineering +
+> ~3× patches**, so the patch ensemble is the *last* lever, not the first (ADR 0093).
+
 Work runs as **4 parallel lines**, one long-lived branch + git worktree each (ADR 0028/0029). A session's line
 is the branch in the worktree it was launched from; the `SessionStart` hook prints it plus that line's
 `## NEXT` action. **Continue from your line's STATE.md, not from this file.**
@@ -374,6 +382,19 @@ is the offline S.
 
 ### 🔓 OWNER DECISIONS — standing, do not re-litigate
 
+- **PER-YEAR ESM SPEED IS THE GOAL; THE SPIN-UP SAVING IS NOT (ADR 0094, owner 2026-08-07).** Verbatim:
+  *"teh savigns for the spin-up is boring and not my main goal. I want a fast emulator that can be run in an
+  ESM without to much compute cost."* Goal ordering: **(1)** faithful per ADR 0106 → **(2)** fast enough for an
+  ESM → **(3)** coupled. This **supersedes ADR 0092's** conclusion that the compute case rests on skipping the
+  ~1000-yr spin-up. The spin-up saving stays true and useful; it is **not** the compute case and must never be
+  offered as the answer to *"is it fast?"*. Gate: ≤**0.030** core-s/cell-yr intermediate, ≤**0.0135** target
+  (⚠ a convention = 10 % of a measured SpeedyWeather coupled cost, not an owner-set budget — replaceable);
+  **every speed claim names the atmosphere it is measured against.** Fidelity is NOT relaxed to buy speed.
+- **THE OWNER APPROVED THE ERROR-ATTRIBUTION LADDER (ADR 0093 §6, 2026-08-07):** *"I want to execute your
+  plan."* Executable form + rung ownership + pre-registered gates: **`EXECUTION_PLAN.md`**. Owner answers to
+  the three open questions: the **compensating-errors** hypothesis is plausible (*"yes sounds true"*) ⇒ if
+  rung 1 scores worse than the coupled result that is the FINDING, not a failed test; the rung-2 interface is
+  **NARROW** (replace only who dies and who establishes, leave turnover/allocation/growth to the C).
 - **Reuse + licensing is CLOSED (ADR 0080/0081, 2026-07-28).** The owner is a member of both the LPJmL-FIT
   group and TUM-PIK-ESM, so reuse SpeedyWeather / Terrarium / LPJmL-hybrid-photosynthesis / NeuralCrop
   freely. Do **not** raise licensing or re-audit an upstream licence. The one obligation is transparent

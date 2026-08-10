@@ -5,6 +5,7 @@ against the live PIK cluster unless marked otherwise. If a fact here contradicts
 the observation and fix this file.
 
 **Onboarding order:** this file → `00_START_HERE.md` (short pointer) → `MEMORY.md` (durable state) →
+**`EXECUTION_PLAN.md` (the current order of work — which rung your line is on) →**
 the relevant `docs/decisions/ADR-*`. Target: productive in < 15k tokens. `JOURNAL.md` / `CHANGELOG.md`
 are append-only history — read them only when you need the story behind a specific decision.
 
@@ -640,6 +641,10 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   verified facts, decision index, open TODOs; capped). `JOURNAL.md` — append-only session narrative.
   `CHANGELOG.md` — Keep-a-Changelog (newest at top).
 - Design/plan (stable): `DESIGN.md` (frozen schemas + interface contract §8), `DEVELOPMENT_PLAN.md`
+- **`EXECUTION_PLAN.md` — THE CURRENT PROGRAM (owner-approved 2026-08-07; ADR 0093 + 0094).** The dated,
+  executable order of work: the error-attribution ladder, rung ownership per line, entry/exit gates, the
+  pre-registered flip criteria, and the speed gate. **Integrator-owned — a line raises a change as an
+  integration point, it does not edit this file.** Read it before planning anything.
   (phased plan), `RESEARCH_SURVEY.md`, `ECOSYSTEM_AND_COUPLING.md`, `ENGINEERING_STANDARDS.md`.
 - Decisions: `docs/decisions/README.md` (ADR index). Steering: `STEERING_PROMPT.md` +
   `PROJECT_REVIEW_2026-07-22.md`.

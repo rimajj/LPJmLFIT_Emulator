@@ -6,6 +6,61 @@
 
 ## NEXT — start here
 
+### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
+
+**Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution
+ladder**, because offline Component S (98.2 % of count variance) and the coupled driver (terminal density
+0.52–1.38×) were being measured together and ADR 0105 proved they cannot be one error — *"offline bias predicts
+the coupled error with the wrong size in every cell and the wrong sign in two."* **Do not climb two rungs at
+once. Do not report a coupled score without the isolated ones beside it.**
+
+Two owner decisions re-rank everything:
+
+* **ADR 0094 — per-year ESM speed is now goal #2, ahead of everything except fidelity.** The spin-up saving is
+  explicitly *not* the goal (*"boring and not my main goal"*). ⚠ And the measurement that forced it: **the
+  shipped Julia emulator is 3.8× SLOWER per cell-year than the C model it replaces** (1.096 vs 0.290–0.383
+  core-s), because its per-individual daily step costs **51×** the C's. **Never claim "faster than LPJmL-FIT"
+  without a measured end-to-end number that names the atmosphere it is against.**
+* **ADR 0093 — the patch ensemble is NOT the bottleneck.** The ~100× decomposes as **37× single-core
+  engineering + ~3× patches**. Price every speed proposal against the **Julia** cost model, never the C's:
+  four candidate architectures looked good against the C and are all slower than the existing code at 8 patches.
+
+Three things that change how you score anything (skill `residual-diagnosis` §5):
+
+1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — bootstrap CV `vegc`
+   11.3 %, median Height 11.3 %, median minwscal 11.0 %, **median D95max 22.7 %**; in the <2 stems/patch
+   stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. ADR 0106's `max(10 %, the two-run spread)`
+   branch is load-bearing. **Quote a noise floor with every fidelity number.**
+2. **The 25 patches are worth `n_eff` 4.8–12.9**, not 25, because the cell-level seedbank couples the
+   *inherited* trait pool. The control that proves it: median **Height** — same stems, not inherited — is
+   `n_eff ≈ 25`.
+3. **The per-cell trait response is not an observable in single-seed truth** (the two seeds disagree on the
+   *sign* in 33–37 % of cells). Score responses on a multi-seed mean and **deattenuate**: doing so shows
+   **two** broken axes, not four — SLA `0.851→1.08` and minwscal `0.689→0.99` are already correct; only
+   Wooddens (0.63) and D95max (0.51) are broken. **Stop writing "four broken axes".**
+
+**Refuted, do not re-propose** (ADR 0093 §4, with numbers): one big patch · structural stratification/quadrature ·
+time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
+without daily physics.
+
+#### YOUR ASSIGNMENT — **continue your own observational programme; you are NOT on the ladder's critical path.**
+
+E keeps its existing queue. Two things are asked of you by the program, neither of which reorders your work:
+
+1. **You are a REQUIRED REVIEWER for rung 5b** — "one shared soil column per cell" (line M owns it). It is
+   licensed by measurement on soil *water* (between-patch CV of patch-mean `wscal` is median **0.0126**,
+   p90 0.0667, over 41 587 cells) but that licence says **nothing** about the ground-heat column you own,
+   nor about litter/soil carbon. When M raises it, your job is to say whether sharing one thermal column per
+   cell is defensible, and if not, what would have to be measured first. Do not pre-empt it; wait for the
+   integration point.
+2. **Apply the new scoring rules to your own numbers too** (skill `residual-diagnosis` §5): quote a noise
+   floor with every fidelity claim, and never present a per-cell single-seed response as a response.
+
+If you have slack and want a high-value contribution to goal #2, the honest answer is that **rung 5's timing
+gate is line O's** — coordinate rather than duplicate.
+
+---
+
 
 ### 0★ 🎯 THE ACCEPTANCE CRITERION CHANGED — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
 

@@ -2,6 +2,14 @@
 
 A router, not a status page. Goal: be productive in **< 15k tokens**.
 
+
+> ⛳ **THE ORDER OF WORK IS `EXECUTION_PLAN.md`** (owner-approved 2026-08-07; ADR 0093 + 0094). The project runs
+> as an **error-attribution ladder** — rung 0/1 line S · rung 2/3/4 line M · rung 5 (speed) line O · line E off
+> the critical path. Two owner decisions re-rank everything: **per-year ESM speed is now goal #2** and the
+> spin-up saving is explicitly not the goal (ADR 0094), and **the shipped Julia emulator is 3.8× SLOWER per
+> cell-year than the C model it replaces** — the ~100× needed decomposes as **37× single-core engineering +
+> ~3× patches**, so the patch ensemble is the *last* lever, not the first (ADR 0093).
+
 ## 0. Which line are you? (read this first)
 
 Work runs as **4 parallel session lines** (ADR [0028](docs/decisions/0028-parallel-session-lines.md) /

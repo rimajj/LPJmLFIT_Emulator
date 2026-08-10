@@ -6,6 +6,88 @@
 
 ## NEXT — start here
 
+### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
+
+**Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution
+ladder**, because offline Component S (98.2 % of count variance) and the coupled driver (terminal density
+0.52–1.38×) were being measured together and ADR 0105 proved they cannot be one error — *"offline bias predicts
+the coupled error with the wrong size in every cell and the wrong sign in two."* **Do not climb two rungs at
+once. Do not report a coupled score without the isolated ones beside it.**
+
+Two owner decisions re-rank everything:
+
+* **ADR 0094 — per-year ESM speed is now goal #2, ahead of everything except fidelity.** The spin-up saving is
+  explicitly *not* the goal (*"boring and not my main goal"*). ⚠ And the measurement that forced it: **the
+  shipped Julia emulator is 3.8× SLOWER per cell-year than the C model it replaces** (1.096 vs 0.290–0.383
+  core-s), because its per-individual daily step costs **51×** the C's. **Never claim "faster than LPJmL-FIT"
+  without a measured end-to-end number that names the atmosphere it is against.**
+* **ADR 0093 — the patch ensemble is NOT the bottleneck.** The ~100× decomposes as **37× single-core
+  engineering + ~3× patches**. Price every speed proposal against the **Julia** cost model, never the C's:
+  four candidate architectures looked good against the C and are all slower than the existing code at 8 patches.
+
+Three things that change how you score anything (skill `residual-diagnosis` §5):
+
+1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — bootstrap CV `vegc`
+   11.3 %, median Height 11.3 %, median minwscal 11.0 %, **median D95max 22.7 %**; in the <2 stems/patch
+   stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. ADR 0106's `max(10 %, the two-run spread)`
+   branch is load-bearing. **Quote a noise floor with every fidelity number.**
+2. **The 25 patches are worth `n_eff` 4.8–12.9**, not 25, because the cell-level seedbank couples the
+   *inherited* trait pool. The control that proves it: median **Height** — same stems, not inherited — is
+   `n_eff ≈ 25`.
+3. **The per-cell trait response is not an observable in single-seed truth** (the two seeds disagree on the
+   *sign* in 33–37 % of cells). Score responses on a multi-seed mean and **deattenuate**: doing so shows
+   **two** broken axes, not four — SLA `0.851→1.08` and minwscal `0.689→0.99` are already correct; only
+   Wooddens (0.63) and D95max (0.51) are broken. **Stop writing "four broken axes".**
+
+**Refuted, do not re-propose** (ADR 0093 §4, with numbers): one big patch · structural stratification/quadrature ·
+time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
+without daily physics.
+
+#### YOUR ASSIGNMENT — **rung 5 (speed) is YOURS, and it is now goal #2. Start 5-pre TODAY.**
+
+ADR 0094 makes per-cell-year ESM speed a first-class deliverable. The gate, from `EXECUTION_PLAN.md` §0:
+
+| | core-s per cell-year, full coupled S+F+E |
+|---|---|
+| today, 25 patches (MEASURED) | 1.096 |
+| the C it replaces (MEASURED) | 0.290–0.383 |
+| **T63-class intermediate milestone** | **≤ 0.030** (37× from today) |
+| **T31-class target** | **≤ 0.0135** (81×) |
+
+⚠ Both allowances are a **convention** (10 % of a measured SpeedyWeather coupled cost), not an owner-set
+budget — say so whenever you quote them, and always name the atmosphere.
+
+**5-pre — THE TIMING GATE. Start now; nothing blocks it.** No end-to-end emulator-vs-C timing has ever
+existed, which is exactly how a **3.8× regression** went unnoticed across ~40 sessions. Deliver a reproducible
+harness reporting core-s per cell-year for the emulator **and** for the C on the same cells and years, plus a
+profile attributing the emulator's cost. Starting point:
+`/p/tmp/jamirp/npatch_analysis/bench_emulator.jl`. Then raise an **integration point** so the integrator wires
+it as a required CI gate (workflows are integrator-owned) — a performance regression should red CI like a
+physics one.
+
+**5a — close the per-tree gap: 37×, ZERO fidelity risk.** The Julia per-individual daily step costs **51×**
+the C's (3.998e-3 vs 7.84e-5 core-s per individual-year) while the per-patch fixed cost is only **0.066×**
+(3.3e-4 vs 5.0e-3). Closing it alone takes 25 patches from 1.096 → **0.0296**; 8 patches then lands at
+**0.0093**, inside the T31 allowance with 45 % margin. In the C, 72–86 % of runtime is per-individual per-day
+photosynthesis and the λ bisection alone is **33.3 %** (≤30 photosynthesis calls per tree per day,
+`water_stressed.c:207`) — a fixed-iteration or analytic λ closure is the first place to look, and the
+gradient-friendly core wants it anyway. **It must come out byte-identical against the committed baselines** —
+it is the same computation, faster.
+
+🚫 **DO NOT EDIT `src/fdiff.jl` / `fdiff_smoothops.jl` / `components/fast.jl` until line M clears rung 4 or
+records a hand-over** (CLAUDE.md §9 Gap 1 — M owns the F core). The collision is a git conflict in a 2 000-line
+physics file, not a scientific one, so **profile and write the optimisation plan now, land the edits after.**
+
+**5d threads across cells** (54 020 cells are embarrassingly parallel) then **5e GPU — deliberately LAST.**
+Why last, so it is not relitigated: threads already saturate a CPU node; the 51× gap is single-core
+inefficiency and a GPU running inefficient code is still inefficient; and the workload fits badly — variable
+roster length per patch, a per-tree branching death test, and an iterative λ solve with a data-dependent trip
+count all cause lane divergence. Re-ask with measured numbers after 5a and 5d.
+
+**Then rung 6, the ESM coupling** — your existing remit, unchanged.
+
+---
+
 
 ### 0★ 🎯 THE ACCEPTANCE CRITERION CHANGED — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
 

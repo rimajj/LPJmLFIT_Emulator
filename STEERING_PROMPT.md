@@ -1,5 +1,11 @@
 # Steering Prompt — LPJmL-FIT Hybrid Emulator (hand this to the coding agent)
 
+> ⚠ **PARTLY STALE — read `EXECUTION_PLAN.md` for the current order of work** (owner-approved 2026-08-07).
+> This file's **mission and prime directives stand**; its *ordering*, its "§Ground truth (session 27)" status
+> block and its **main-only workflow are superseded** — by ADR 0028/0029 (branch-per-line + worktrees) and by
+> ADR 0093/0094 (the error-attribution ladder; per-year ESM speed as goal #2, the spin-up saving explicitly
+> not the goal). Do not plan from the status section below.
+
 You are the engineering agent for an ESM-ready hybrid land component derived from LPJmL-FIT. You have
 full workspace + repo access (private GitHub `rimajj/LPJmLFIT_Emulator`; local
 `/p/projects/open/Jamir/esm_land_emulator`). This prompt supersedes the stale "§4 CURRENT STATUS" in

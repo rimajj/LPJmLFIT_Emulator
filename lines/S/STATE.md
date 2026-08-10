@@ -7,6 +7,79 @@
 
 ## NEXT — start here
 
+### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
+
+**Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution
+ladder**, because offline Component S (98.2 % of count variance) and the coupled driver (terminal density
+0.52–1.38×) were being measured together and ADR 0105 proved they cannot be one error — *"offline bias predicts
+the coupled error with the wrong size in every cell and the wrong sign in two."* **Do not climb two rungs at
+once. Do not report a coupled score without the isolated ones beside it.**
+
+Two owner decisions re-rank everything:
+
+* **ADR 0094 — per-year ESM speed is now goal #2, ahead of everything except fidelity.** The spin-up saving is
+  explicitly *not* the goal (*"boring and not my main goal"*). ⚠ And the measurement that forced it: **the
+  shipped Julia emulator is 3.8× SLOWER per cell-year than the C model it replaces** (1.096 vs 0.290–0.383
+  core-s), because its per-individual daily step costs **51×** the C's. **Never claim "faster than LPJmL-FIT"
+  without a measured end-to-end number that names the atmosphere it is against.**
+* **ADR 0093 — the patch ensemble is NOT the bottleneck.** The ~100× decomposes as **37× single-core
+  engineering + ~3× patches**. Price every speed proposal against the **Julia** cost model, never the C's:
+  four candidate architectures looked good against the C and are all slower than the existing code at 8 patches.
+
+Three things that change how you score anything (skill `residual-diagnosis` §5):
+
+1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — bootstrap CV `vegc`
+   11.3 %, median Height 11.3 %, median minwscal 11.0 %, **median D95max 22.7 %**; in the <2 stems/patch
+   stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. ADR 0106's `max(10 %, the two-run spread)`
+   branch is load-bearing. **Quote a noise floor with every fidelity number.**
+2. **The 25 patches are worth `n_eff` 4.8–12.9**, not 25, because the cell-level seedbank couples the
+   *inherited* trait pool. The control that proves it: median **Height** — same stems, not inherited — is
+   `n_eff ≈ 25`.
+3. **The per-cell trait response is not an observable in single-seed truth** (the two seeds disagree on the
+   *sign* in 33–37 % of cells). Score responses on a multi-seed mean and **deattenuate**: doing so shows
+   **two** broken axes, not four — SLA `0.851→1.08` and minwscal `0.689→0.99` are already correct; only
+   Wooddens (0.63) and D95max (0.51) are broken. **Stop writing "four broken axes".**
+
+**Refuted, do not re-propose** (ADR 0093 §4, with numbers): one big patch · structural stratification/quadrature ·
+time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
+without daily physics.
+
+#### YOUR ASSIGNMENT — **rungs 0 and 1. Nothing blocks you; start today.**
+
+**Rung 0 — fix the yardstick** (existing artefacts, no new model runs). A per-cell per-quantity noise floor
+from the two seeds **stratified by stem density**; the deattenuated response slope for all four trait axes;
+and an **aggregate** response metric as the new primary (the area-mean carbon response has signal-to-noise
+≈ 200 where the per-cell one is ≈ 1–3). Then retire "four broken axes" from every document that says it.
+*(The integrator is separately scheduling two more reference seeds, ~35 000 core-h ≈ 17 h on 2048 cores.)*
+
+**Rung 1 — S alone, on the C's OWN fluxes.** No C/Julia mixing needed: **the `ind` parquet already IS the C's
+fast part** — per (Cell, Patch, Year) it carries each tree's growth, water stress and four death rates. Run
+four arms and report all: **A** free-running (control) · **B** fed the C's own per-tree fluxes · **C** = B +
+`trait_mortality` ON · **D** = C + the bounded-Beta trait family replacing the copula marginals.
+
+⚠ **PRE-REGISTERED, so it cannot be reinterpreted later: if rung 1 scores WORSE than the coupled result, that
+is THE FINDING, not a failed test.** The owner has agreed the compensating-errors hypothesis is plausible —
+S may have been tuned while F was biased, two errors that cancel today and stop cancelling under warming.
+Teacher-forcing already made the score worse in **all five** cells (0.149→0.277, 0.086→0.153, 0.180→0.259,
+0.349→0.460, 0.029→0.069), which is backwards. That would also explain the flat warming response directly.
+
+Three cheap wins to fold in and measure **separately** (ADR 0093 §5): the **determinism dividend** is free —
+predicting the ensemble expectation rather than a draw is worth **+2.9 to +14.4 pp** of cells inside the 10 %
+band; a **bounded Beta on each PFT's own trait interval** beats the shipped copula 2–3× on per-cell KS
+(**0.042–0.073** vs 0.129–0.173), two moments, no fitting; and `trait_mortality` holds the wood-density
+selection differential at **0.98–1.06 across all seven PFTs** provided `mort_max(wooddens)` stays
+**per-individual** (collapse it too and it flips sign in PFTs 3, 5, 6).
+
+**FLIP CRITERION for `trait_mortality`** (pre-registered, guardrail-4 corollary — decide from arm C vs arm B
+only, and do not re-read it after the fact): flip the default ON if C improves the **deattenuated Wooddens
+response slope** by ≥ +0.10 over B **and** loses ≤ 1.0 pp of cells inside the 10 % band on every trait axis
+and on counts.
+
+**Integration point you own one side of:** S → M, the demography entry point the C hook will call in rung 2.
+M owns the harness; you own the shape of what it calls. Record it in both STATE files.
+
+---
+
 
 ### 0★ 🎯 THE ACCEPTANCE CRITERION — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
 

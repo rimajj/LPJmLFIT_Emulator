@@ -1,7 +1,17 @@
 # ADR 0093 — the patch ensemble is not the bottleneck; the per-tree daily loop is. And the plan is to attribute error before removing cost
 
-* **Status:** **PROPOSED — evidence is measured and settled; the SEQUENCING half is under discussion with
-  the owner (2026-08-07) and is not yet accepted.** Do not treat §6 as frozen.
+* **Status:** **accepted** — owner approved the §6 ladder on 2026-08-07: *"I want to execute your plan."*
+  The executable form, with rung ownership and gates, is **`EXECUTION_PLAN.md`** (integrator-owned, revisable);
+  this record is the immutable evidence + rationale behind it. **ADR 0092 is thereby RESOLVED** (its problem
+  statement is answered here; its compute-case conclusion is superseded by **ADR 0094**).
+* **Owner answers to §6's three open questions (2026-08-07), verbatim where quoted:**
+  1. the **compensating-errors hypothesis** — *"yes sounds true."* ⇒ pre-registered in `EXECUTION_PLAN.md` §1:
+     if rung 1 scores worse than the coupled result, that is the finding, not a failed test.
+  2. **rung-2 interface width** — *"whatever you recommend to do first."* ⇒ **NARROW**: replace only who dies
+     and who establishes; leave turnover, allocation and growth to the C, so the C's per-tree stress and
+     growth-failure accumulators (which three of the four hazards read) stay intact.
+  3. **the compute framing** — *"teh savigns for the spin-up is boring and not my main goal. I want a fast
+     emulator that can be run in an ESM without to much compute cost."* ⇒ **ADR 0094**.
 * **Date:** 2026-08-07
 * **Line:** cross-cutting / integrator (block 0090–0099)
 * **Answers:** **ADR 0092** (OPEN — "the patch ensemble is THE central production problem, and the compute
@@ -230,9 +240,10 @@ the mechanism ADR 0025 removed by construction. Every arrow points the same way.
 
 ---
 
-## 6. PROPOSED strategy — attribute the error before removing the cost
+## 6. Strategy — attribute the error before removing the cost
 
-**This section is under discussion and is NOT accepted.**
+**ACCEPTED 2026-08-07. The executable form — rung ownership, entry/exit gates, the parallelism map, the
+pre-registered flip criteria — is `EXECUTION_PLAN.md`. Read that to work; read this for why.**
 
 The owner's diagnosis is correct: too many things are being changed at once, and the record shows the
 symptom. Offline Component S looks excellent (count OOS R² 0.982, per-cell-mean R² 0.9989) while the coupled

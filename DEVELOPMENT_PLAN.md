@@ -1,5 +1,9 @@
 # Development Plan: ESM-Ready LPJmL-FIT Emulator / Hybrid Land Component
 
+> ⛳ **This file is the STABLE phased architecture. The CURRENT order of work is `EXECUTION_PLAN.md`**
+> (owner-approved 2026-08-07; ADR 0093 + 0094) — the error-attribution ladder, rung ownership per line, and
+> the speed gate. Where the two disagree on *sequencing*, `EXECUTION_PLAN.md` wins.
+
 This plan turns the established two-timescale framing and coupling physics (handover §2) into a concrete, phased, research-backed development program, given the source-code findings (`SOURCE_FINDINGS.md`) and literature (`RESEARCH_SURVEY.md`). It makes the emulator-vs-hybrid decision explicitly, specifies the architecture and conservation placement, the data generation, the training and stability strategy, and the evaluation — all phased with checkpoints, prototype-on-one-cell first, code generalizable to many cells.
 
 ---

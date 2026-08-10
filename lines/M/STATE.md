@@ -158,6 +158,87 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
+### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
+
+**Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution
+ladder**, because offline Component S (98.2 % of count variance) and the coupled driver (terminal density
+0.52–1.38×) were being measured together and ADR 0105 proved they cannot be one error — *"offline bias predicts
+the coupled error with the wrong size in every cell and the wrong sign in two."* **Do not climb two rungs at
+once. Do not report a coupled score without the isolated ones beside it.**
+
+Two owner decisions re-rank everything:
+
+* **ADR 0094 — per-year ESM speed is now goal #2, ahead of everything except fidelity.** The spin-up saving is
+  explicitly *not* the goal (*"boring and not my main goal"*). ⚠ And the measurement that forced it: **the
+  shipped Julia emulator is 3.8× SLOWER per cell-year than the C model it replaces** (1.096 vs 0.290–0.383
+  core-s), because its per-individual daily step costs **51×** the C's. **Never claim "faster than LPJmL-FIT"
+  without a measured end-to-end number that names the atmosphere it is against.**
+* **ADR 0093 — the patch ensemble is NOT the bottleneck.** The ~100× decomposes as **37× single-core
+  engineering + ~3× patches**. Price every speed proposal against the **Julia** cost model, never the C's:
+  four candidate architectures looked good against the C and are all slower than the existing code at 8 patches.
+
+Three things that change how you score anything (skill `residual-diagnosis` §5):
+
+1. **At the production `npatch=25` the C's own answer is already outside the 10 % band** — bootstrap CV `vegc`
+   11.3 %, median Height 11.3 %, median minwscal 11.0 %, **median D95max 22.7 %**; in the <2 stems/patch
+   stratum (7 964 cells) 31.6 % on counts and 42.7 % on carbon. ADR 0106's `max(10 %, the two-run spread)`
+   branch is load-bearing. **Quote a noise floor with every fidelity number.**
+2. **The 25 patches are worth `n_eff` 4.8–12.9**, not 25, because the cell-level seedbank couples the
+   *inherited* trait pool. The control that proves it: median **Height** — same stems, not inherited — is
+   `n_eff ≈ 25`.
+3. **The per-cell trait response is not an observable in single-seed truth** (the two seeds disagree on the
+   *sign* in 33–37 % of cells). Score responses on a multi-seed mean and **deattenuate**: doing so shows
+   **two** broken axes, not four — SLA `0.851→1.08` and minwscal `0.689→0.99` are already correct; only
+   Wooddens (0.63) and D95max (0.51) are broken. **Stop writing "four broken axes".**
+
+**Refuted, do not re-propose** (ADR 0093 §4, with numbers): one big patch · structural stratification/quadrature ·
+time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
+without daily physics.
+
+#### YOUR ASSIGNMENT — **rungs 2, 3, 4** (then 5b and 5c). **You may start rung 2 NOW, in parallel with S's rung 1.**
+
+**Rung 2 — S + the REAL C fast part, closed annual loop.** The harness build does not depend on rung 1's
+answer, only its interpretation does, so it is not blocked.
+
+* **NARROW INTERFACE FIRST — this is the owner-delegated recommendation (ADR 0093 §Owner answers).** Replace
+  **only who dies and who establishes.** Leave turnover, allocation and growth to the C. Reason: it keeps the
+  C's internal per-tree accumulators intact — the running water stress and the growth-failure counter — which
+  **three of the four death rates read** (`waterstress_tree.c:31-38`, `mortality_tree_ind.c:66-96`) and which
+  the emulator does not currently produce. It also halves the interface surface, so a failure is attributable.
+  Widen later, one function at a time, each its own experiment.
+* **The hook point.** The whole demography is one loop, `src/lpj/annual_natural.c:55-232` in
+  `/home/jamirp/lpjml56fit`: `annualpft` at :73, `light` at :118 (**dead** under `individual=true`), fire at
+  :121-135, `establishmentpft_ind` at :145. Add an **opt-in config flag** that dumps the patch roster +
+  accumulated per-tree fluxes at the top and reads a replacement roster at the bottom. Mechanics precedent:
+  `patches/lpjmlfit_daily_grass_gpp.patch` + rebuild (skill `lpjmlfit-cbinary`). Keep the stock binary
+  byte-identical. Per-year file I/O is free at a handful of cells.
+* **This is a THROWAWAY test harness, not a deliverable.** Build it cheap. Its only job: is the defect in S,
+  in F, or in the loop? Fallbacks if it stalls — restart-file year-stepping (needs a writer for
+  `fwritecell.c` → `fwritestandlist` → `fwritestand` → `fwritepftlist`), or `ccall` into a shared-library
+  LPJmL (**not worth it**: global state, MPI, its own I/O).
+
+**Rung 3 — F alone, on the C's own canopy.** Partly exists (`fdiff-validate`). The open item is the **decadal
+canopy drift**: over 2010–2019 F's leaf cover moves **1.56×** where the C's moves 0.90× (boreal), 1.27 vs 1.00
+(Hainich), **0.71 vs 1.23** (Sahel). Score **year-matched over the decade** and read the ratio's SHAPE — a
+10-year-mean ratio hides drift. Run `fdiff-validate`'s four mandatory basis checks first.
+
+**Rung 4 — coupled.** Only after 1–3 are clean, and report the decomposition explicitly:
+residual = (rung 1) ⊕ (rung 3) ⊕ (the loop). **If the three do not add up, the loop is amplifying** — that is
+a result and deserves its own ADR from your block (0120–0139, unopened).
+
+**Later, yours:** rung **5b** one shared soil column per cell — licensed by measurement (between-patch CV of
+patch-mean `wscal` is median **0.0126** / p90 0.0667 over 41 587 cells) but **share the soil column, NEVER the
+canopy** (mean-field light is wrong by −31 % at 5 m, −47 % at 20 m). This is the step that removes the fixed
+cost capping everything else at ~3×. **E must review it** — it touches E's ground-heat column. And rung **5c**
+25 → 8–12 patches in `scripts/run_coupled_biomes.jl` (sd cost ×1.15–1.43; `npatch` is numerical, <0.15 % on
+every cell-mean at 50 vs 25).
+
+**Integration points you own one side of:** S → M (the demography entry point) · **M → O: the hand-over of
+`src/fdiff.jl` for performance work after rung 4** — O must not edit it before then (CLAUDE.md §9 Gap 1) ·
+M → E (the shared soil column).
+
+---
+
 ### 0★ 🎯 THE ACCEPTANCE CRITERION CHANGED — READ THIS BEFORE PLANNING ANYTHING (owner, 2026-08-06; ADR 0106)
 
 The owner has stated what **finished** means, and it **supersedes every per-milestone stopping condition on
