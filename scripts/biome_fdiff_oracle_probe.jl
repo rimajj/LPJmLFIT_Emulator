@@ -13,8 +13,17 @@
 #            (`fast.jl:234`). Recovered here from `FToE.le` (the only ET the seam exposes) by inverting
 #            `le = et/86400·λ`. CONTAMINATED: the C's transpiration includes grass, F's does not. The
 #            per-cell grass GPP share is the honest upper bound and is printed alongside.
-#   FPC    — C side = Σ `a_fpc_stand` bands 1..7 (the seven tree PFTs). F side = `stand_structure_tof().fpc`
-#            = Σ `ind.fpc`, capped at 1. Same quantity (`fpc_tree.c:28`), tree-only on both sides. CLEAN.
+#   FPC    — ⚠ CORRECTED 2026-08-06 (ADR 0060). F side = `stand_structure_tof().fpc` = Σ `ind.fpc`, capped
+#            at 1 — the sum of individual CROWN COVERS (`src/allometry.jl::fpc` = `fpc_tree.c:28`). The C
+#            emits TWO different FPCs and this probe originally scored the WRONG one:
+#              `fpc_tree_crown` (= `a_fpc`, `annual_natural.c:209` `+= pft->fpc/npatch`) IS the same
+#                              quantity as F's — score against THIS one. Primary column below.
+#              `fpc_tree`       (= `a_fpc_stand`, `annual_natural.c:218,248`) sums per-PFT LEAF AREA and
+#                              applies one Beer-Lambert saturation over the whole patch — the C's own
+#                              comment is "effective FPC as if tree crowns where spread over the whole
+#                              forest patch". A DIFFERENT functional form, 1.4-2.4x larger in these cells.
+#            Both are printed so the substitution can never be silent again. ADR 0053 finding 4 ("F
+#            under-predicts tree FPC in all five cells, 0.31-0.72x") was this artifact and is WITHDRAWN.
 #   LAI    — reported LAST and flagged, because the basis is only partly matchable. F's `SToF.lai` is
 #            Σ `lai_i·fpc_i` = the cover-weighted WITHIN-CROWN LAI, which is NOT a stand LAI; the stand
 #            value needs the `1/(1-exp(-k·LAI))` crown-area factor (CLAUDE.md §3, and F already forms
@@ -34,9 +43,9 @@
 #
 # CONFIG. `slow = nothing` — kernel isolation (`fdiff-validate`): demography is held at the C-derived 2010
 # canopy so a GPP gap localizes to F's flux physics instead of compounding with S's counts. `wscal_leafon =
-# true` — ADR 0051's C-faithful leaf-on index, passed EXPLICITLY because the package default stays `false`
-# pending the two-sided integration with line S (ADR 0051 §Consequences); every number below is therefore a
-# `wscal_leafon=true` number and must be reported as such.
+# true` — ADR 0051's C-faithful leaf-on index. It is now also the PACKAGE DEFAULT (ADR 0059, 2026-08-06),
+# but it is still passed EXPLICITLY here so this probe's label stays true if a default moves again; every
+# number below is a `wscal_leafon=true` number and must be reported as such.
 #
 # CARRY THESE ADR-0052 CAVEATS INTO ANY HEADLINE (they are physics limits, not tuning targets):
 #   * `boreal_siberia` — F_diff has NO soil ice, so its root-zone water never collapses and every
@@ -142,7 +151,10 @@ function read_oracle()
     o = Dict{Tuple{String, Int}, Dict{String, Float64}}()
     for r in eachindex(d["name"])
         k = (String(d["name"][r]), parse(Int, d["month"][r]))
-        cols = ("gpp_tree", "gpp_grass", "gpp_total", "transp_total", "et_total", "fpc_tree", "lai_stand_total")
+        cols = (
+            "gpp_tree", "gpp_grass", "gpp_total", "transp_total", "et_total",
+            "fpc_tree", "fpc_tree_crown", "lai_stand_total",
+        )
         o[k] = Dict(c => parse(Float64, d[c][r]) for c in cols)
     end
     return o
@@ -156,7 +168,7 @@ function read_annual()
         k = (String(d["name"][r]), parse(Int, d["year"][r]))
         o[k] = Dict(
             c => parse(Float64, d[c][r])
-                for c in ("gpp_tree", "et_total", "fpc_tree", "lai_stand_total")
+                for c in ("gpp_tree", "et_total", "fpc_tree", "fpc_tree_crown", "lai_stand_total")
         )
     end
     return o
@@ -193,6 +205,9 @@ function run_patch(lat, soil, pools, tmpls, forc, tairK)
     clo = SEBEnergyClosure(; t_soil0 = mean(tairK))
     state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
     bc_f = LPJmLFITEmulator.stand_structure_tof(core)
+    # t=0 crown cover, BEFORE any daily physics or `annual_step!`. Without it the yr-1 column mixes the
+    # canopy RECONSTRUCTION with one year of F's own growth, and those need different fixes (ADR 0060).
+    fpc0 = bc_f.fpc
     gpp = Float64[]; et = Float64[]; fpc = Float64[]; lai = Float64[]
     ngrass = 0
     for (i, f) in enumerate(forc)
@@ -207,7 +222,7 @@ function run_patch(lat, soil, pools, tmpls, forc, tairK)
             ngrass = count(ind -> ind.is_grass, core.inds)
         end
     end
-    return gpp, et, fpc, lai, ngrass
+    return gpp, et, fpc, lai, ngrass, fpc0
 end
 
 """
@@ -220,6 +235,7 @@ function run_cell(lat, soil, patches, modal, forc, tairK)
         gpp = mean(getindex.(runs, 1)), et = mean(getindex.(runs, 2)),
         fpc = mean(getindex.(runs, 3)), lai = mean(getindex.(runs, 4)),
         ngrass = sum(getindex.(runs, 5)), npatch = length(runs),
+        fpc0 = mean(getindex.(runs, 6)),
     )
     m = runs[modal]
     return ens, (; gpp = m[1], et = m[2], fpc = m[3], lai = m[4])
@@ -239,7 +255,8 @@ annual = read_annual()
 
 @printf("=== M3 F-SIDE — F_diff vs the C oracle, 5 biome cells, %d yr, slow=nothing, ", YEARS)
 @printf("wscal_leafon=TRUE ===\n")
-@printf("(the package DEFAULT is wscal_leafon=false; every number here is the C-faithful leaf-on run)\n\n")
+@printf("(wscal_leafon is ALSO the package default since ADR 0059; passed explicitly so the label holds)\n")
+@printf("(FPC is scored against the C's CROWN-cover output a_fpc, not a_fpc_stand — ADR 0060)\n\n")
 
 # ── PART 1 — GPP, the clean headline ────────────────────────────────────────────────────────────────
 @printf("--- PART 1: TREE GPP (gC/m2/day). C = d_gpp - d_grass_gpp, grass removed EXACTLY. CLEAN. ---\n")
@@ -285,21 +302,29 @@ end
 @printf("    `C_transp` is the transpiration-only part of C_ET, shown so the grass-contaminated fraction\n")
 @printf("    of the comparison is visible: only that column carries grass, evap/interc do not.\n")
 
-# ── PART 3 — structure: FPC (clean) then stand LAI (flagged) ─────────────────────────────────────────
-@printf("\n--- PART 3: STRUCTURE. FPC is tree-only on BOTH sides (clean). LAI's C side is ALL-PFT. ---\n")
+# ── PART 3 — structure: FPC on BOTH C bases, then stand LAI (flagged) ────────────────────────────────
+# `C_crown` is the comparable one (ADR 0060): F's `fpc` is a sum of individual crown covers, which is the
+# C's `a_fpc`. `C_BLstand` is `a_fpc_stand`, a leaf-area Beer-Lambert form — printed only so the size of
+# the substitution stays visible; `ratio_BL` is the number ADR 0053 finding 4 was read off, and it is NOT
+# an F-vs-C fidelity statement.
+@printf("\n--- PART 3: STRUCTURE. FPC scored on the C's CROWN-COVER output (ADR 0060). LAI C side ALL-PFT. ---\n")
 @printf(
-    "%-22s %8s %8s %7s | %9s %9s %7s %7s %6s\n",
-    "cell", "fpc_F", "fpc_C", "ratio", "lai_F", "lai_C*", "ratio", "npatch", "grass"
+    "%-22s %8s %8s %8s | %9s %9s %9s %7s | %7s %6s\n",
+    "cell", "fpc_F", "C_crown", "ratio", "C_BLstand", "ratio_BL", "crown/BL", "lai_F", "lai_C*", "grass"
 )
 for name in names
     fp = res[name].fpc; la = res[name].lai
-    cf = oracle[(name, 1)]["fpc_tree"]; cl = oracle[(name, 1)]["lai_stand_total"]
+    cf = oracle[(name, 1)]["fpc_tree_crown"]
+    cbl = oracle[(name, 1)]["fpc_tree"]
+    cl = oracle[(name, 1)]["lai_stand_total"]
     @printf(
-        "%-22s %8.3f %8.3f %7.2f | %9.3f %9.3f %7.2f %7d %6d\n",
-        name, mean(fp), cf, mean(fp) / cf, mean(la), cl, mean(la) / cl,
-        res[name].npatch, res[name].ngrass
+        "%-22s %8.3f %8.3f %8.2f | %9.3f %9.2f %9.2f %7.3f | %7.3f %6d\n",
+        name, mean(fp), cf, mean(fp) / cf, cbl, mean(fp) / cbl, cf / cbl,
+        mean(la), cl, res[name].ngrass
     )
 end
+@printf("    `ratio` (vs C_crown) is the FIDELITY number. `ratio_BL` compares against a DIFFERENT C\n")
+@printf("    quantity and is shown only to size the ADR-0053 basis error; do not quote it as a miss.\n")
 @printf("    * lai_C is a_lai_stand = ALL-PFT stand LAI (grass included, not splittable); lai_F is\n")
 @printf("      tree-only on the C's stand basis (the 1/(1-exp(-k·LAI)) reconstruction). Indicative only.\n")
 @printf("    `grass` = the count of is_grass individuals in F's core (0 ⇒ F is genuinely tree-only).\n")
@@ -308,19 +333,24 @@ end
 @printf("\n--- PART 4: F-side canopy DRIFT over the %d yr (slow=nothing ⇒ F's own growth only) ---\n", YEARS)
 @printf("    F's canopy drifts under slow=nothing, so a 10-yr-mean ratio mixes flux physics with drift.\n")
 @printf("    Each F year is therefore scored against the C's SAME year (M_fdiff_oracle_biomes_annual.csv).\n")
+#    `Cdrift%` is the C's OWN crown-FPC change over the same years, so F's drift is read against the
+#    reference's drift rather than against zero — the C's canopy is not static either (ADR 0060).
 @printf(
-    "%-22s %8s %8s %7s | %8s %8s %8s %8s\n",
-    "cell", "fpc_y1", "fpc_y10", "drift%", "gpp_y1/C", "gpp_y10/C", "best_yr", "best"
+    "%-22s %8s %8s %7s %8s | %8s %8s %8s %8s\n",
+    "cell", "fpc_y1", "fpc_y10", "drift%", "Cdrift%", "gpp_y1/C", "gpp_y10/C", "best_yr", "best"
 )
 for name in names
     fp = res[name].fpc
     fg = [mean(res[name].gpp[((y - 1) * 365 + 1):(y * 365)]) for y in 1:YEARS]
     cg = [annual[(name, Y0 + y - 1)]["gpp_tree"] for y in 1:YEARS]
+    cf1 = annual[(name, Y0)]["fpc_tree_crown"]
+    cf2 = annual[(name, Y0 + YEARS - 1)]["fpc_tree_crown"]
     rat = fg ./ cg
     bi = argmin(abs.(rat .- 1))
     @printf(
-        "%-22s %8.3f %8.3f %+7.1f | %8.2f %8.2f %8d %8.2f\n",
+        "%-22s %8.3f %8.3f %+7.1f %+8.1f | %8.2f %8.2f %8d %8.2f\n",
         name, fp[1], fp[end], 100 * (fp[end] - fp[1]) / max(fp[1], 1.0e-9),
+        100 * (cf2 - cf1) / max(cf1, 1.0e-9),
         rat[1], rat[end], Y0 + bi - 1, rat[bi]
     )
 end
@@ -337,3 +367,35 @@ for name in names
 end
 @printf("A ratio that walks monotonically away from 1 is DRIFT (a structural problem); one that is flat but\n")
 @printf("offset is a genuine flux-level bias. The two need different fixes — read the row shape, not a mean.\n")
+
+# ── PART 6 — the same year-matched treatment for FPC, on the CROWN basis (ADR 0060) ─────────────────
+# This is the table ADR 0053 finding 4 should have been read off. yr-1 is the least-confounded column:
+# F starts from the C's own reconstructed 2010 canopy, so a yr-1 ratio far from 1 is an INITIALISATION
+# or allometry gap, while a row walking away from 1 is F's growth diverging from the C's.
+@printf("\n--- PART 6: YEAR-MATCHED FPC ratios (F year k / C `a_fpc` crown cover year k) ---\n")
+@printf("%-22s%7s%s%9s%9s\n", "cell", "t0", yearcols(Y0:(Y0 + YEARS - 1)), ">5m_frac", "t0/>5m")
+for name in names
+    fp = res[name].fpc
+    rat = [@sprintf("%.2f", fp[y] / annual[(name, Y0 + y - 1)]["fpc_tree_crown"]) for y in 1:YEARS]
+    # What fraction of the C's OWN 2010 crown cover is present in the >5 m population F is built from:
+    # the `ind` writer drops stems below `height_min = 5 m` (CLAUDE.md §3), so F's stand is missing that
+    # part by construction and its ratio is biased DOWN by exactly this factor.
+    rows = readcsv(joinpath(REFDIR, "M_individuals_$(name)_2010.csv"))
+    acc = Dict{String, Float64}()
+    for i in eachindex(rows["patch"])
+        parse(Int, rows["type"][i]) <= 6 || continue
+        acc[rows["patch"][i]] = get(acc, rows["patch"][i], 0.0) + parse(Float64, rows["fpc_ind"][i])
+    end
+    frac = (sum(values(acc)) / length(acc)) / annual[(name, Y0)]["fpc_tree_crown"]
+    # `t0` is F's crown cover BEFORE any physics, over the C's own 2010 a_fpc. Dividing it by `>5m_frac`
+    # asks the only question the reconstruction can be held to: given the stems F was actually handed,
+    # does F reproduce THEIR crown cover? 1.00 = yes. Anything else is allometry, not growth.
+    t0 = res[name].fpc0 / annual[(name, Y0)]["fpc_tree_crown"]
+    @printf("%-22s%7.2f%s%9.2f%9.2f\n", name, t0, yearcols(rat), frac, t0 / frac)
+end
+@printf("`>5m_frac` = (Σ fpc_ind over the committed 2010 individuals, patch mean) / the C's own a_fpc for\n")
+@printf("that year. It is < 1 because the `ind` writer emits only stems above 5 m, so F's stand cannot\n")
+@printf("contain the sub-5 m crown cover the C's output includes. Read every ratio against THIS, not 1.0.\n")
+@printf("`t0/>5m` SEPARATES the two failure modes: it is F's canopy RECONSTRUCTION scored against the\n")
+@printf("exact stems it was given (1.00 = faithful), with no growth in it. The walk from the 2010 column\n")
+@printf("to 2019 is then F's GROWTH diverging from the C's. They need different fixes.\n")

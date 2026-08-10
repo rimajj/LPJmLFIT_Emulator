@@ -1,0 +1,218 @@
+diff --git a/src/lpj/Makefile b/src/lpj/Makefile
+index 6f4267c..9d4ae27 100644
+--- a/src/lpj/Makefile
++++ b/src/lpj/Makefile
+@@ -52,7 +52,8 @@ OBJS    = update_daily.$O update_annual.$O init_annual.$O\
+           npp_contr_biol_n_fixation.$O fprintoutputjson.$O fscancorridor.$O\
+           isindividual_output.$O establishmentpft_ind.$O\
+           fwriteoutput_ind.$O getsapling.$O mergesapling.$O getmaxagb.$O\
+-          getmaxpft.$O fwritesaplings.$O freadsaplings.$O fprintsaplings.$O
++          getmaxpft.$O fwritesaplings.$O freadsaplings.$O fprintsaplings.$O\
++          rung2_hook.$O
+ 
+ INC     = ../../include
+ LIBDIR  = ../../lib
+diff --git a/src/lpj/annual_natural.c b/src/lpj/annual_natural.c
+index bffc246..1d175d4 100644
+--- a/src/lpj/annual_natural.c
++++ b/src/lpj/annual_natural.c
+@@ -20,6 +20,7 @@
+ #include "grass.h"
+ #include "tree.h"
+ #include "landuse.h"
++#include "rung2hook.h"
+ 
+ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+                     int npft,             /**< number of natural pfts */
+@@ -54,6 +55,9 @@ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+   frac=stand->frac/stand->npatch;
+   foreachpatch(patch,np,stand)
+   {
++  /* rung-2 demography hook: state BEFORE turnover/allocation/mortality/establishment.
++     No-op unless LPJ_RUNG2_DIR is set (include/rung2hook.h). */
++  rung2_dump_patch(stand,patch,np,year,"pre",config);
+   pft_len=getnpft(&patch->pftlist); /* get number of established PFTs */
+   if(pft_len>0)
+   {
+@@ -229,8 +233,11 @@ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+       //        pft->fpc,pft->par->name,sprintcoord(line,&stand->cell->coord));
+ #endif
+   } /* of foreachpft */
++  /* rung-2 demography hook: the C's OWN answer — state AFTER mortality and
++     establishment, with the four hazard components that produced it. */
++  rung2_dump_patch(stand,patch,np,year,"post",config);
+   } /* of foreachpatch */
+-  
++
+   free(mort_tree);
+   free(ntree);
+   
+diff --git a/include/rung2hook.h b/include/rung2hook.h
+new file mode 100644
+index 0000000..33f3b0a
+--- /dev/null
++++ b/include/rung2hook.h
+@@ -0,0 +1,28 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**                r  u  n  g  2  h  o  o  k  .  h                                 \n**/
++/**                                                                                \n**/
++/**     Opt-in demography observation hook for the LPJmL-FIT emulator's            \n**/
++/**     error-attribution ladder (rung 2: replace only who dies and who            \n**/
++/**     establishes, leave turnover/allocation/growth to the C).                   \n**/
++/**                                                                                \n**/
++/**     NOT part of stock LPJmL-FIT. Activated only when the environment           \n**/
++/**     variable LPJ_RUNG2_DIR is set; with it unset every entry point below       \n**/
++/**     returns immediately and the model is byte-identical to the stock build.    \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#ifndef RUNG2HOOK_H
++#define RUNG2HOOK_H
++
++/* TRUE when LPJ_RUNG2_DIR is set (resolved once, cached). */
++extern Bool rung2_enabled(void);
++
++/* Dump one patch's tree roster.  `phase` is "pre" (top of the demography
++   block, before turnover/allocation/mortality) or "post" (after
++   establishment, i.e. the C's own answer for that year).  A no-op unless
++   rung2_enabled(). */
++extern void rung2_dump_patch(const Stand *stand, const Patch *patch, int np,
++                             int year, const char *phase, const Config *config);
++
++#endif
+diff --git a/src/lpj/rung2_hook.c b/src/lpj/rung2_hook.c
+new file mode 100644
+index 0000000..c82c4b5
+--- /dev/null
++++ b/src/lpj/rung2_hook.c
+@@ -0,0 +1,129 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**                r  u  n  g  2  _  h  o  o  k  .  c                              \n**/
++/**                                                                                \n**/
++/**     Opt-in demography observation hook — see include/rung2hook.h.              \n**/
++/**                                                                                \n**/
++/**     Purpose: expose, at the exact point LPJmL-FIT decides who dies and who     \n**/
++/**     establishes, the complete per-tree state and the accumulators the four     \n**/
++/**     death rates read, so an external demography can be scored against — and    \n**/
++/**     later substituted for — the C's own answer.                                \n**/
++/**                                                                                \n**/
++/**     Byte-identity: every entry point returns immediately when the environment  \n**/
++/**     variable LPJ_RUNG2_DIR is unset, and nothing here writes to model state.   \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#include "lpj.h"
++#include "tree.h"
++#include "grass.h"
++#include "rung2hook.h"
++
++#define R2 "%.17g"
++
++static int enabled = -1;   /* -1 = not yet resolved, 0 = off, 1 = on */
++static const char *dir = NULL;
++static FILE *out = NULL;
++
++Bool rung2_enabled(void)
++{
++  if(enabled < 0)
++  {
++    dir = getenv("LPJ_RUNG2_DIR");
++    enabled = (dir != NULL && dir[0] != '\0') ? 1 : 0;
++  }
++  return (enabled == 1) ? TRUE : FALSE;
++} /* of 'rung2_enabled' */
++
++static FILE *rung2_file(const Config *config)
++{
++  char path[1024];
++  if(out != NULL)
++    return out;
++  snprintf(path, sizeof(path), "%s/roster_rank%04d.txt", dir, config->rank);
++  out = fopen(path, "w");
++  if(out == NULL)
++    fail(OPEN_COUPLER_ERR, FALSE, "rung2: cannot open '%s' for writing", path);
++  /* Column headers, one per record kind.  Written once per file so a reader
++     never has to carry a hard-coded schema. */
++  fprintf(out,
++          "#H P phase lon lat year patch npatch patcharea fpar_leafon_grass "
++          "treelen ntree_alive aprec\n");
++  fprintf(out,
++          "#H T phase lon lat year patch treeidx pft_id age "
++          "sla wooddens D95max minwscal k_root emax beta_root beta_2 leaf_longevity "
++          "height crownarea boleht nind fpc fapar afpar "
++          "leaf_c sapwood_c heartwood_c root_c sapwood_bg_c heartwood_bg_c debt_c "
++          "bm_inc_c anpp agpp atransp wscal_mean water_stress temp_stress "
++          "bm_inc_counter gddtw aphen_raingreen sapwood_old leaf_old "
++          "isdead mort_prob mort_npp mort_age mort_water mort_temp\n");
++  fprintf(out,
++          "#H G phase lon lat year patch pft_id fpc nind bm_inc_c anpp agpp\n");
++  return out;
++} /* of 'rung2_file' */
++
++void rung2_dump_patch(const Stand *stand, const Patch *patch, int np, int year,
++                      const char *phase, const Config *config)
++{
++  FILE *f;
++  const Pft *pft;
++  const Pfttree *tree;
++  int p, ntree_alive;
++  Real lon, lat;
++  if(!rung2_enabled())
++    return;
++  f = rung2_file(config);
++  lon = stand->cell->coord.lon;
++  lat = stand->cell->coord.lat;
++
++  ntree_alive = 0;
++  foreachpft(pft, p, &patch->pftlist)
++    if(istree(pft))
++    {
++      tree = pft->data;
++      if(!tree->isdead)
++        ntree_alive++;
++    }
++
++  fprintf(f, "P %s " R2 " " R2 " %d %d %d " R2 " " R2 " %d %d " R2 "\n",
++          phase, lon, lat, year, np, stand->npatch, param.patcharea,
++          patch->fpar_leafon_grass, stand->cell->treelen, ntree_alive,
++          stand->cell->balance.aprec);
++
++  foreachpft(pft, p, &patch->pftlist)
++  {
++    if(istree(pft))
++    {
++      tree = pft->data;
++      fprintf(f,
++              "T %s " R2 " " R2 " %d %d %d %d %d "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " %d "
++              "%d " R2 " " R2 " " R2 " " R2 " "
++              "%d " R2 " " R2 " " R2 " " R2 " " R2 "\n",
++              phase, lon, lat, year, np, tree->index, pft->par->id, tree->age,
++              pft->sla, tree->wooddens, tree->D95max, pft->minwscal,
++              tree->k_root, pft->emax, pft->beta_root, pft->beta_2,
++              pft->longevity,
++              tree->height, tree->crownarea, tree->boleht, pft->nind, pft->fpc,
++              pft->fapar, pft->afpar,
++              tree->ind.leaf.carbon, tree->ind.sapwood.carbon,
++              tree->ind.heartwood.carbon, tree->ind.root.carbon,
++              tree->ind.sapwood_bg.carbon, tree->ind.heartwood_bg.carbon,
++              tree->ind.debt.carbon,
++              pft->bm_inc.carbon, pft->anpp, pft->agpp, pft->atransp,
++              pft->wscal_mean, tree->water_stress, tree->temp_stress,
++              tree->bm_inc_counter, tree->gddtw, tree->aphen_raingreen,
++              tree->sapwood_old, tree->leaf_old,
++              (int)tree->isdead, tree->mort_prob, tree->mort_npp,
++              tree->mort_age, tree->mort_water, tree->mort_temp);
++    }
++    else
++      fprintf(f, "G %s " R2 " " R2 " %d %d %d " R2 " " R2 " " R2 " " R2 " " R2 "\n",
++              phase, lon, lat, year, np, pft->par->id, pft->fpc, pft->nind,
++              pft->bm_inc.carbon, pft->anpp, pft->agpp);
++  }
++  fflush(f);
++} /* of 'rung2_dump_patch' */

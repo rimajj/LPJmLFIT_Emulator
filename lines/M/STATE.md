@@ -195,6 +195,58 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
+### 0-NEW. ✅ DONE 2026-08-10 (session 5) — RUNG 2's OBSERVATION HALF IS BUILT AND GATED (ADR 0061)
+
+**Start here, then go to the assignment block below — rung 2's first half is done, its second half is the
+next thing to do, and one number in the assignment block is now measured rather than assumed.**
+
+An **opt-in demography hook** now exists in the C, activated by the environment variable
+`LPJ_RUNG2_DIR`. It dumps each patch's tree roster at the **top** of the annual demography block (`pre`)
+and again **after establishment** (`post`). Patch: `patches/lpjmlfit_rung2_demography_hook.patch`
+(`include/rung2hook.h` + `src/lpj/rung2_hook.c` + two call sites in `annual_natural.c`). Full mechanics
+and the five gotchas are in the **`lpjmlfit-cbinary`** skill — read it before touching this.
+
+- **The feasibility question the substitution half depends on is ANSWERED: yes.** Everything the narrow
+  interface needs is live at the hook point — `water_stress`, `temp_stress`, `bm_inc_counter` (the
+  accumulators three of the four death rates read), plus `bm_inc`, `nind` and all seven carbon pools.
+  **None of those is in the `ind` output**, so this is not a re-derivation of an existing table.
+- **Gate A — the rebuild did not move the physics.** `bin/lpjml` was rebuilt (in place; the Jul-21 build
+  is gone) and with `LPJ_RUNG2_DIR` unset it is **numerically identical**: 138 decoded NetCDF variables +
+  `globalflux` unchanged on a matched cell-42490 / 2000–2019 / `--ntasks=1` run. `cmp` calls 20 of 21
+  outputs different (ADR 0043's `history` timestamp) — use
+  `scripts/diagnose_cbinary_rebuild_equality.py`, **after every future rebuild**.
+- **Gate B — the dump says what the C says.** Same run emitting both: identical tree sets (**5 465 trees,
+  0 rows on either side alone**), **all 21 shared columns to ≤5.0e-6** (the `%g` floor), hazard components
+  included. `scripts/diagnose_rung2_roster_vs_ind.py`. Accounting closes: `post`-alive of year *N* ==
+  `pre` of year *N+1* in all 19 transitions; **recruits enter at `age == 0`**.
+- ⚠ **`mort_prob`/`mort_npp`/`mort_age`/`mort_water`/`mort_temp` are valid ONLY at `post`** — at `pre` in
+  the first year after a restart they are uninitialised memory (a `6.9e-310` denormal was observed).
+- **Cost is nil** — 7 s vs 6–7 s, 13.4 MB for 20 yr × 25 patches. The plan's "per-year file I/O is free at
+  a handful of cells" is now measured, not assumed.
+- **The generalisable mistake, already in `MEMORY.md`:** the first run of gate B printed `0.000e+00` for
+  **nine** columns because the join kept one column per colliding name and nine checks compared a column
+  **against itself**. Caught only because a tenth colliding column had a unit conversion. **An exact zero
+  on a float comparison of two independently written representations is an aliasing bug, not agreement.**
+
+▶ **WHAT TO DO NEXT ON RUNG 2 — the substitution half.** The C now *offers* the roster; it does not yet
+*accept* a replacement. Two steps:
+
+1. **Raise the S → M integration point with a concrete proposal, not an open question.** `EXECUTION_PLAN.md`
+   §6 says S owns the entry point's *shape* and M owns the harness. S is on rungs 0/1 and will not design
+   it unprompted — so put a concrete reply format into `lines/S/STATE.md` as an ▶ INBOUND block (ADR 0056's
+   lesson: an ADR alone is not a channel) with the `pre` schema attached: *given this roster, return the
+   `treeidx` set that dies and the recruits (pft id + the four trait axes) that appear.* Note that S has
+   **not** yet seen the ADR-0060 inbound either — check whether that block survived to `main`.
+2. **Write the C read-back while waiting** — it does not depend on S's answer, only its field list does.
+   Where: kills go where `annual_tree` sets `isdead` (`src/tree/annual_tree.c:31-38`), recruits where
+   `establishmentpft_ind` calls `addpft` + `establishment_tree_ind` (`:100-115`, `:124-140`); overriding a
+   recruit's traits after `addpft` is the cheap route, since `establishment_tree_ind` builds the pools from
+   them. Keep the same env-var opt-in so the stock path stays inert. Rendezvous: the harness runs few
+   cells, so a file-per-year with a spin-wait beats FIFOs on debuggability.
+
+**Rung 3 (F's decadal canopy drift) is untouched by this session** and remains the other open M item — the
+previous handoff's narrowed version of it is item 4(d) further down.
+
 #### YOUR ASSIGNMENT — **rungs 2, 3, 4** (then 5b and 5c). **You may start rung 2 NOW, in parallel with S's rung 1.**
 
 **Rung 2 — S + the REAL C fast part, closed annual loop.** The harness build does not depend on rung 1's
@@ -286,6 +338,56 @@ so a literal 10 % is unmeetable there by ANY emulator. Default in use: tolerance
    your paths, with the measurements attached. Both blocks are further down under "▶ NEW INTEGRATION
    POINT RAISED BY LINE S". ⚠ Two of your published numbers invert there (ADR 0054's teacher-forcing
    59–72 %, and `semiarid_sahel` being too dense) — worth reading before you quote either.
+   **↳ ✅ THE CANOPY HALF OF THIS IS WORKED — see item 0-NEW immediately below (ADR 0060).** S's attribution
+   survives, but the FPC numbers on both sides came from the wrong one of the C's two FPC outputs, and a
+   third published claim (ADR 0053 finding 4) is withdrawn as a result. Read 0-NEW before quoting any FPC.
+
+### 0-NEW. ✅ DONE 2026-08-06 (session 4) — the canopy attribution S handed over is ANSWERED, and it was a
+### reference-basis error: the oracle scored the wrong one of the C's TWO FPC outputs (ADR 0060)
+
+Item 2b below is **worked, not open**. Nothing in `src/` changed; no baseline moved.
+
+- **The C writes two FPCs from the same individuals.** `a_fpc` (`FPC`, `annual_natural.c:209`) is the
+  patch-mean **sum of individual crown covers** (`fpc_tree.c:28`). `a_fpc_stand` (`FPC_STAND`, `:218,248`)
+  accumulates per-PFT **leaf area** and applies ONE Beer–Lambert saturation over the whole patch. Different
+  functional forms; **1.5–2.3× apart** in the same cell-year. `src/allometry.jl::fpc` implements the crown
+  form ⇒ `a_fpc` is comparable. The extractor used `a_fpc_stand` and the probe header called it "CLEAN",
+  citing `fpc_tree.c:28` — the right C line for the wrong file. `a_fpc.nc` was in all five run dirs, unread.
+- **ADR 0053 finding 4 is WITHDRAWN and item 4(d) below with it.** Not "F under-predicts FPC in all five
+  cells (0.31–0.72×)" but: boreal **1.32**, Hainich **1.18**, mediterranean **1.47**, Amazon **1.05**,
+  `semiarid_sahel` **0.54**. Sign flips in four of five.
+- **F's canopy RECONSTRUCTION is faithful and is eliminated** — new PART 6 column: F's crown cover at
+  **t = 0** over the crown cover of the stems it was handed = **1.00–1.04 in all five cells**.
+- **Never read an FPC ratio against 1.0** — the `ind` writer emits only stems > 5 m, so F's stand lacks
+  **29 %** of boreal's and the Sahel's crown cover (`>5m_frac` 0.71; 0.95–1.02 elsewhere). Printed per cell.
+- ⚠ **This arm cannot convict F's growth by itself:** under `slow = nothing` the fast core has **no
+  mortality and no tree establishment** (only grass, `fast.jl:272`, `n_est = 0` here), so a monotone FPC rise
+  is partly expected. Two things survive: the **Sahel shrinks 0.71 → 0.47** with nothing able to remove
+  cover but F's own allocation (fourth independent symptom of ADR 0052's dry-cell bias, same cell), and S's
+  **coupled** arm drifts 1.56× vs the C's 0.90× where this arm gives 1.65× ⇒ mortality is a small part.
+  **Quote a growth-divergence number from the coupled arm, never from this one.**
+- **S's ADR 0105 attribution SURVIVES** — a same-basis ratio over time mostly cancels the form difference
+  (the C's own crown drift is −10.9 / −2.6 / −22.9 / **+25.4** / −11.0 %). The *level* claim inside it does
+  not. Both bases now print side by side in `biome_slow_oracle_probe.jl` REPORT 5.
+- Committed tables gain `fpc_tree_crown` (+ `fpc_grass_crown` monthly), **appended last, every pre-existing
+  value byte-identical, verified row-by-row** ⇒ guardrail 4 untouched. Jobs 1718928 / 1718932 / **1718979**.
+- **CI:** the diff touches `test/testitems/references/**` (which is under `test/**`) and two `.jl` scripts,
+  so it triggers **`format` + all four Julia jobs** — not `format` alone. `docs` and `python` do not run
+  (`docs/decisions/**` and `scripts/*.py` are outside their path filters).
+
+▶ **WHAT TO DO NEXT ON THIS ITEM (the narrowed F-side item, and it is the highest-value one left).** The
+remaining defect is F's **growth**, not its canopy reconstruction and not a uniform sparseness. Two steps,
+in order, and neither needs anything from another line:
+
+1. **Score the growth divergence on the COUPLED arm, not the kernel-isolation arm.** `slow = nothing` has no
+   mortality, so it cannot separate "F grows too fast" from "nothing is killing trees". The coupled arm
+   already exists (`biome_slow_oracle_probe.jl`, now printing both FPC bases) — read F's `fpc` trajectory
+   against `fpc_tree_crown` there and quote *that*.
+2. **Then take `semiarid_sahel` first.** It is the only cell the kernel arm convicts on its own (crown cover
+   falls 0.71 → 0.47 with nothing able to remove cover but F's own allocation) and it is now the **fourth**
+   independent symptom of the same dry-cell root-zone bias in the same cell — with items 4(a) (ET 11–35 %
+   high while F carries no grass transpiration) and 4(c) already pointing at the demand side. Fixing the
+   demand side may close all four; measure before assuming. Run `residual-diagnosis` first.
 
 ### 0. ✅ DONE 2026-08-06 (session 3) — the water-stress DEFAULT is flipped (ADR 0059)
 
@@ -363,7 +465,9 @@ only the default flipped and nothing outside `energy_closure_tests.jl` moved, AD
 What remains is an optional **re-measurement of ADR 0055's published autocorrelation gaps** on the new
 scheme, at M's discretion and with its own verdict — not a repair.
 
-### 2b. ▶ THE HIGHEST-VALUE OPEN ITEM — S hands M an attribution: the coupled count residual is F's CANOPY
+### 2b. ✅ WORKED 2026-08-06 by ADR 0060 — read item 0-NEW at the top FIRST. The attribution survives; its
+### FPC level numbers do not, because they were read off the wrong one of the C's two FPC outputs.
+### (original block kept below for the record)
 
 Full block below under "▶ NEW INTEGRATION POINT RAISED BY LINE S" — read it before quoting any coupled
 demography number, because **two of this line's published numbers invert there**: ADR 0054's "teacher
@@ -463,8 +567,14 @@ b. **Attribute Hainich's flat +12 %** with the kernel-isolation drive (`fdiff-va
 c. **The Sahel decline IS ADR 0052's dry-cell bias end-to-end.** ⚠ M4 sharpens this: the Sahel is also the
    ONE cell that does not recover from a pool perturbation (τ 602 yr, r² 0.38 vs 47–54 yr elsewhere). Same
    cell, third independent symptom. Fixing (a) may fix all three; measure before assuming.
-d. **F under-predicts tree FPC in all 5 cells (0.31–0.72×)** *despite* starting from a patch 1.12–1.72×
-   denser than the ensemble — the most robust structural finding in the set, and still unattributed.
+d. ~~**F under-predicts tree FPC in all 5 cells (0.31–0.72×)**~~ **WITHDRAWN 2026-08-06 (ADR 0060) — it was
+   a reference-basis artifact** (the C's two FPC outputs; see item 0-NEW at the top). Corrected: F
+   **over**-predicts crown cover in four cells (boreal 1.32, Hainich 1.18, mediterranean 1.47, Amazon 1.05)
+   and under-predicts only at `semiarid_sahel` (0.54). **Replacement item, narrower:** F's canopy
+   *reconstruction* is faithful (t=0 ratio 1.00–1.04, eliminated), so what is left is F's **growth** —
+   over-running the C in three cells, collapsing in the Sahel. Score it on the **coupled** arm, which has
+   mortality; the `slow = nothing` arm has none and so cannot convict it. Start with the Sahel, the one cell
+   this arm does convict and the fourth symptom of (c)'s dry-cell bias.
 
 ### 5. M4's own open findings (line-M work, not blockers)
 

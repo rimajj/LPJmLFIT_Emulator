@@ -376,6 +376,25 @@ is the offline S.
   Corollary, same ADR: **a flux diagnosed at the start of a step must be compared against the pre-step state** —
   reading the reservoir after the update is off by exactly `conductance × Δstate`.
 
+- **The C oracle binary was rebuilt 2026-08-10 and carries an INERT demography hook — and it is gated, not
+  assumed (`[VERIFIED 2026-08-10]`, ADR 0061, line M).** `/home/jamirp/lpjml56fit/bin/lpjml` now contains the
+  opt-in rung-2 roster dump (`patches/lpjmlfit_rung2_demography_hook.patch`), activated only by the
+  environment variable `LPJ_RUNG2_DIR`. With it unset the model is **numerically identical to the previous
+  build**: 138 decoded NetCDF variables across 20 files plus the `globalflux` text output unchanged on a
+  matched cell-42490 / 2000–2019 / `--ntasks=1` run. Every other line may keep using it unchanged. Two rules
+  this establishes for **any** future C rebuild: (a) run `scripts/diagnose_cbinary_rebuild_equality.py` before
+  quoting a C-vs-emulator number — nothing was gating rebuilds before; (b) a file-level `cmp` on a NetCDF
+  calls **20 of 21 outputs different** for two byte-identical-physics runs (ADR 0043's `history` timestamp),
+  so it is not an equality test.
+- **⚠ A join between two tables that share column names can compare a column against ITSELF and report a
+  perfect match (`[VERIFIED 2026-08-10]`, ADR 0061 §5).** Nine columns of a roster-vs-`ind` check printed
+  `0.000e+00` — the most reassuring possible output — because polars' join kept one column per colliding
+  name. It was caught only because a tenth colliding column carried a unit conversion, so its
+  self-comparison gave `1 − 1/365` instead of zero. **Prefix one side's columns wholesale before joining**,
+  and treat an exact zero on a *float* comparison of two independently written representations as an
+  aliasing bug: the honest signature of agreement is the writers' format floor (here ~5e-6, `%g`'s six
+  significant digits), not zero.
+
 ---
 
 ## 4. Frozen decisions — pointer + the load-bearing constraints

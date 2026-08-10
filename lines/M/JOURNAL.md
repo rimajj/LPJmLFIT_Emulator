@@ -690,3 +690,45 @@ useful sign the coupled configuration was the one I thought it was.
   stale "the default is off" comments in the driver and gate are corrected.
 - **Decisions:** ADR 0059. Jobs 1718279 (flip-only suite: the 3 expected failures), 1718307 (pins),
   1718316 (suite with the regenerated pins), 1718317 (driver).
+
+## 2026-08-10 (session 5) — the rung-2 harness starts, as an OBSERVATION half (ADR 0061)
+
+- **The program changed under this line while it was mid-item.** The rebase brought in
+  `EXECUTION_PLAN.md` (owner-approved 2026-08-07): a strict error-attribution ladder, with rungs 2/3/4
+  assigned to M and an explicit "you may start rung 2 NOW, in parallel with S's rung 1". So the narrowed
+  canopy item the last handoff left (score F's growth on the coupled arm) is **rung 3**, still M's, and it
+  is deliberately not what this session did. Two conflicts in the rebase, both from writing into a sibling
+  line's file: the ADR-0060 inbound block into `lines/S/STATE.md` (re-placed after S's new banner rather
+  than dropped — S still has not seen it) and two additive sections colliding in a shared skill.
+- **What I built.** An opt-in demography hook in the C, activated by `LPJ_RUNG2_DIR`, dumping each patch's
+  tree roster at the top of the annual demography block (`pre`) and again after establishment (`post`).
+  Patch: `patches/lpjmlfit_rung2_demography_hook.patch`. Nothing in `src/` changed.
+- **Why observation first, and it was not caution.** The substitution half depends on a factual question
+  nobody had checked: *is the state the emulator needs actually live at that point?* Three of the four death
+  rates read per-tree accumulators (`water_stress`, `temp_stress`, `bm_inc_counter`) that the `ind` output
+  does not carry, along with `bm_inc`, `nind` and every carbon pool. The dump answers it — **yes, all of it
+  is there** — and it simultaneously produces the control the substitution will be scored against.
+- **Deviation from the plan's wording, recorded not smuggled:** an environment variable, not a config key.
+  A config key means editing `fscanconfig.c` + `fprintconfig.c` and re-issuing every run config; an env var
+  costs one `getenv` and leaves every `.js` byte-identical. For a throwaway harness that is the trade.
+- **I overwrote the oracle binary before thinking about it.** `make main` writes `bin/lpjml` in place and
+  the only backup in the tree is the pre-daily-grass one, so the Jul-21 build is gone. It turned out fine
+  because the change is additive and inert, but it was luck, and the fix is a gate rather than an apology:
+  **138 decoded NetCDF variables + `globalflux` identical** to the previous build on a matched
+  cell-42490 / 2000–2019 / `--ntasks=1` run with the hook off. A file-level `cmp` calls **20 of 21 outputs
+  different** — ADR 0043's `history` timestamp, in the wild. Nothing was gating C rebuilds before today.
+- **The dump is verified against the C's own `ind` table on the same run:** identical tree sets (5 465
+  trees, zero rows on either side alone) and **all 21 shared columns to ≤5.0e-6**, which is the floor
+  `ind`'s `%g` imposes, hazard components included. Accounting closes from the dump alone — post-alive of
+  year *N* equals `pre` of year *N+1* in all 19 transitions, recruits enter at `age == 0`.
+- **The mistake worth more than the result.** The first run of that gate printed `0.000e+00` for **nine**
+  columns and I nearly took it. The join kept one column per colliding name, so nine checks compared a
+  column against **itself**. It survived only because a tenth colliding column had a unit conversion in it,
+  making its self-comparison read `1 − 1/365` instead of zero. Generalisable and now in `MEMORY.md`: an
+  exact zero on a *float* comparison of two independently written representations is an aliasing bug, not
+  agreement — the honest signature is the writers' format floor. Prefix one side wholesale before joining.
+- **Cost is nil**: 7 s wall with the hook on vs 6–7 s off; 13.4 MB of text for 20 years × 25 patches. The
+  plan's "per-year file I/O is free at a handful of cells" is confirmed rather than assumed.
+- **Decisions:** ADR 0061. Jobs 1743335 (rebuild gate), 1743342 (hook smoke), 1743390 (hook + `ind`).
+- **Skills:** `lpjmlfit-cbinary` gains the rebuild recipe, the mandatory post-rebuild gate, and the hook's
+  five gotchas (neither run wrapper emits `ind` or exports the variable; `mort_*` are `post`-only).

@@ -1,6 +1,6 @@
 ---
 name: lpjmlfit-cbinary
-description: Build/run the LPJmL-FIT C binary (the numerical-regression oracle + daily data generator) on the PIK cluster — exact module set (json-c 0.13.1 not 0.17), restart-from-spinup subset runs, config-only daily output, lpjcheck pre-flight, SLURM templates, and the individual=true dead-code check. Use whenever running the C oracle, generating daily data, or reasoning about what the FIT config actually executes.
+description: Build/run the LPJmL-FIT C binary (the numerical-regression oracle + daily data generator) on the PIK cluster — exact module set (json-c 0.13.1 not 0.17), restart-from-spinup subset runs, config-only daily output, lpjcheck pre-flight, SLURM templates, and the individual=true dead-code check. Use whenever running the C oracle, generating daily data, or reasoning about what the FIT config actually executes. ALSO how to REBUILD the binary (target is `make main` not `lpjml`; a new source file needs three edits incl. src/lpj/Makefile; `-Werror`; the json_object_iterator.h shim on CPATH) and the gate you MUST run afterwards — a rebuild changes the reference basis every F-vs-C number is measured against, two builds are never byte-identical (getbuild.c stamps a date), and `cmp` on a NetCDF calls 20 of 21 outputs different for identical physics because LPJmL writes a timestamp into `history`; use scripts/diagnose_cbinary_rebuild_equality.py on DECODED variables with a matched cell set and --ntasks. ALSO the opt-in rung-2 demography hook (LPJ_RUNG2_DIR, patches/lpjmlfit_rung2_demography_hook.patch, ADR 0061): what the pre/post roster dump carries that the `ind` output cannot (water_stress, temp_stress, bm_inc_counter, bm_inc, nind, the carbon pools), that mort_* are valid only at `post`, that recruits enter at age 0, and that neither run wrapper emits `ind` or exports the variable.
 ---
 
 # lpjmlfit-cbinary — run the LPJmL-FIT oracle
@@ -101,3 +101,67 @@ reduction is `reduce_grass`, fpc-only); per-PFT `gp_pft`/`gc_pft` into GPP (diag
 `gp_stand`). Active param file is `par/pft_lpjmlfit.js` (beech = ANGIO allometry), NOT `par/pft.js`.
 `-DPERMUTE` is active ⇒ daily PFT-depletion order is randomized (non-deterministic / order-averaged), which
 is why a faithful per-PFT competitive-supply port is neither differentiable nor deterministic.
+
+## REBUILDING the binary — the exact recipe, and the gate you MUST run afterwards (ADR 0061)
+
+Nothing was gating C rebuilds until 2026-08-10, and the oracle binary is what every F-vs-C number on the
+project is measured against. **A rebuild is a change to the reference basis (guardrail 7). Gate it.**
+
+```bash
+cd /home/jamirp/lpjml56fit
+source /etc/profile.d/00-modulepath.sh; source /etc/profile.d/modules.sh
+module purge; module load intel/oneAPI/2024.0.0 udunits/2.2.28 json-c/0.13.1 openssl/3.6.0 \
+       netcdf-c curl/8.4.0 expat/2.5.0
+export CPATH="$PWD/json_compat:$CPATH"      # the local json_object_iterator.h shim
+make main                                   # target is `main`, NOT `lpjml`; ~1 min incremental
+```
+
+Adding a **new source file** needs three edits: the `.c` under `src/lpj/`, its header under `include/`,
+and `<name>.$O` appended to the object list in `src/lpj/Makefile`. The build is `-Werror`, so a warning is
+a failure; and `include/errmsg.h` has no `OPEN_OUTPUT_ERR` — pick an existing code.
+
+**Then the gate — a run comparison, because two builds are never byte-identical** (`getbuild.c` stamps a
+build date). Re-run one cell with the new binary and compare against a run the previous binary made with
+the *same config, same cell set and same `--ntasks`* (ADR 0041: a differently-decomposed run is a different
+trajectory, so a mismatch would be unattributable):
+
+```bash
+RUNTAG=<line>_rebuild_gate SUBMIT=yes bash scripts/run_fdiff_validation_cell.sh   # ~7 s, cell 42490
+python scripts/diagnose_cbinary_rebuild_equality.py --ref <old_run>/output --new <new_run>/output
+```
+
+⚠ **Do NOT judge this with `cmp`.** LPJmL writes a wall-clock timestamp + the config path into every
+NetCDF's `history` attribute, so `cmp` calls **20 of 21 outputs different** for two runs with identical
+physics (ADR 0043). The script hashes **decoded variables** instead and compares the text outputs
+byte-for-byte. Measured on the 2026-08-10 rebuild: 138 variables + `globalflux` identical, 0 differ.
+
+## The rung-2 demography hook (opt-in; inert by default) — ADR 0061
+
+`patches/lpjmlfit_rung2_demography_hook.patch` adds `include/rung2hook.h` + `src/lpj/rung2_hook.c` and two
+call sites in `annual_natural.c`. **Activated only by `export LPJ_RUNG2_DIR=<dir>`**; unset, every entry
+point returns immediately (this is what makes the shipped `bin/lpjml` still the oracle). It writes
+`<dir>/roster_rank%04d.txt` with three self-describing record kinds (`#H` header lines in the file):
+
+* `P` — patch context (`npatch`, `patcharea`, `fpar_leafon_grass`, `treelen`, live trees, `aprec`)
+* `T` — one line per tree, 49 fields, at two phases: **`pre`** = before turnover/allocation/mortality,
+  **`post`** = the C's own answer after establishment
+* `G` — one line per grass PFT
+
+It carries what `ind` cannot: `water_stress`, `temp_stress`, `bm_inc_counter` (the accumulators three of
+the four death rates read), `bm_inc`, `nind`, all seven carbon pools, `crownarea`, `boleht`, `fapar`.
+
+Gotchas, each paid for once:
+
+* **`mort_*` are meaningful only at `post`.** They are written by `mortality_tree_ind`, which runs after the
+  `pre` dump; in the first year after a restart they hold uninitialised memory (a `6.9e-310` denormal).
+* **Recruits appear at `post` with `age == 0`** — `annual_tree` does the `age++`, so they first read as age
+  1 the following year. Dead trees stay in the patch list with `isdead = 1` and are gone by the next `pre`.
+  Accounting closes exactly: `post`-alive of year *N* == `pre` of year *N+1*.
+* **`run_fdiff_validation_cell.sh` and `run_daily_subset.sh` emit no `ind` table.** To cross-check the dump
+  you must add `{ "id" : "ind", "file" : { "fmt" : "txt", "name" : "output/ind_<y0>_<y1>.csv" }}` to the
+  generated `lpjml.js` by hand.
+* Neither wrapper exports the variable either — generate with `SUBMIT=no`, insert
+  `export LPJ_RUNG2_DIR=...` into the generated `slurm.jcf`, then `sbatch` it.
+* Verify the dump with `scripts/diagnose_rung2_roster_vs_ind.py` (post + stems >5 m must reproduce the
+  run's own `ind` table: identical tree sets, all 21 shared columns to ≤5e-6 — `ind`'s `%g` gives only six
+  significant digits, so a tolerance below ~1e-5 is meaningless).

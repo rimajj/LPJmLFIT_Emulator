@@ -595,10 +595,13 @@ end
 
 # ── REPORT 5 — is the count drift INHERITED from the canopy? F's own canopy features vs the C's, both
 #    as a ratio to their 2010 value, next to the count ratio. Same-direction motion = inheritance. ─────
+#    ⚠ `C_fpc` is the CROWN-cover output `a_fpc` (`fpc_tree_crown`), which is the quantity F's `fpc`
+#    feature actually is (ADR 0060). `C_fpcBL` is the leaf-area Beer-Lambert `a_fpc_stand` this report
+#    used before 2026-08-06 — kept visible because ADR 0105's canopy-drift attribution was read off it.
 @printf("\n=== IS THE DRIFT INHERITED? 2019/2010 ratio of each quantity to its own 2010 value ===\n")
 @printf(
-    "%-22s %9s %9s %9s %9s %9s %9s\n",
-    "cell", "F_fpc", "C_fpc", "F_lai", "C_lai", "F_agb", "E/C_cnt"
+    "%-22s %9s %9s %9s %9s %9s %9s %9s\n",
+    "cell", "F_fpc", "C_fpc", "C_fpcBL", "F_lai", "C_lai", "F_agb", "E/C_cnt"
 )
 cfpc = readcsv(joinpath(REFDIR, "M_fdiff_oracle_biomes_annual.csv"))
 function c_ann(name, col)
@@ -613,11 +616,13 @@ end
 for r in runs
     ny = min(length(r.feats), NYEAR)
     f = r.feats
-    cfp = c_ann(r.name, "fpc_tree"); cla = c_ann(r.name, "lai_stand_total")
+    cfp = c_ann(r.name, "fpc_tree_crown"); cbl = c_ann(r.name, "fpc_tree")
+    cla = c_ann(r.name, "lai_stand_total")
     c1 = cnt_series(r.name, 1, "n_mean")
     @printf(
-        "%-22s %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f\n",
-        r.name, f[ny][I_FPC] / f[1][I_FPC], cfp[ny] / cfp[1], f[ny][I_LAI] / f[1][I_LAI],
+        "%-22s %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f\n",
+        r.name, f[ny][I_FPC] / f[1][I_FPC], cfp[ny] / cfp[1], cbl[ny] / cbl[1],
+        f[ny][I_LAI] / f[1][I_LAI],
         cla[ny] / cla[1], f[ny][I_AGB] / f[1][I_AGB],
         (r.target[ny] / c1[ny]) / (r.target[1] / c1[1])
     )
