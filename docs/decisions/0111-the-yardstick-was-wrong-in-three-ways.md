@@ -204,7 +204,7 @@ Two things worth having:
   temperate (0.93) and boreal (1.07) bands are right and the tropics respond the **wrong way** (−0.51). Do
   not read the global number as "counts respond 31 % too weakly".
 - **It is the mirror image of Wooddens.** Counts get the per-cell *pattern* right (slope ≈ 1) and under-shoot
-  the *total* (area-mean 0.69×); Wooddens gets the total right (1.13×) and the pattern wrong (0.66). Those are
+  the *total* (area-mean 0.69×); Wooddens gets the total right (1.06×) and the pattern wrong (0.66). Those are
   different defects and they want different fixes — which is only visible because both statistics are now
   published side by side.
 - The 0.9948 cross-check is the ADR-0030 discipline doing its job: the count table and this reduction are two

@@ -7,6 +7,14 @@
 
 ## NEXT — start here
 
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 0 (fix the yardstick) is DONE and merged — ADR 0111,
+> 2026-08-10. START RUNG 1 (S alone, fed the C's own per-tree fluxes; arms A/B/C/D).** Score every arm with
+> `scripts/diagnose_truth_yardstick.py`, which now IS the yardstick — do not invent a new metric, and do not
+> re-derive a noise floor. The four things rung 0 changed that you must not undo are in item 3 and the
+> assignment block below; the sharpest one: **the response target is 1.0, not as-high-as-possible**, and
+> **counts already respond faithfully per cell (deattenuated 1.01) — the response error is in the TRAIT axes,
+> and in the tropics.**
+
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
 
 **Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution

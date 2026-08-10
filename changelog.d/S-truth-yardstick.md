@@ -33,7 +33,7 @@
   a 0.9948 cross-check between two independent code paths — so "the response is indistinguishable from zero"
   is not true of counts; the response error lives in the trait axes. Counts are the mirror image of wood
   density: counts get the per-cell pattern right and under-shoot the global total (0.69×), wood density gets
-  the total right (1.13×) and the pattern wrong (0.66).
+  the total right (1.06×) and the pattern wrong (0.66).
 - **The aggregate (area-weighted, latitude-banded) response is now the primary response statistic** and the
   per-cell map a reported secondary: area-weighted signal-to-noise is 25–489 against a per-cell 0.5–3.1.
 - **Banding the response ratio found four wrong-signed regional responses that no earlier statistic could
