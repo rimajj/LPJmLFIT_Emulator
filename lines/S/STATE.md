@@ -2,47 +2,103 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100).
+> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0113 ⇒ next free is 0114, and only SIX remain in this block.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## NEXT — start here
 
-> ## ✅ MERGED — and the storage incident that delayed it is worth 60 seconds of your attention (2026-08-10)
+> ## ✅ RUNG 1 IS OPEN, AND ITS FIRST TWO FINDINGS CHANGE HOW YOU READ EVERY S NUMBER (2026-08-10, ADR 0112 + 0113)
 >
-> **Rung 0 is merged to `main` as `20a7dc54`.** Branch CI was green on the rebased sha **`abfe4a6a`**
-> (`test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅; `test (pre)` ❌ = the documented
-> `ScopedValues` prerelease `MethodError`, confirmed from the job log, `continue-on-error`). **`main`'s OWN
-> post-merge run is GREEN too** — `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅, with `test (pre)` red on
-> the same `ScopedValues` `MethodError` (verified from `main`'s own job log, not assumed). `docs` and `python`
-> did not run on either, because the diff touches no `docs/src/**`, `src/**` or `python/**` (ADR 0090) — that
-> is correct, not a gap, so there is nothing further to wait for.
+> **Read ADR 0112 and 0113 before anything else in this file — several statements further down are superseded
+> by them and are flagged in the ⚠ block below.** Both are on this branch; no new model runs were needed; total
+> compute ~25 min in 5 jobs (1747638, 1747642, 1747655, 1747656, 1747662).
 >
-> **Three things this incident taught, all now in the `repo-commit` skill — read them BEFORE you next merge:**
-> 1. **`/p/projects` returned `Input/output error` on 21 of 90 pack files**, so `git` and `curl` died with
->    `Bus error (core dumped)` and every object-reading git command failed, while `git rev-parse` and
->    `ls-remote` kept working. Reproduced on **two login nodes** and with plain **`dd`** ⇒ storage, not git,
->    not the repo. It cleared on its own within the hour, came back, then cleared again. `/p/tmp` and `/home`
->    were healthy throughout. **Never repair in place** (no `gc`, no `repack`, no deleting packs); GitHub is
->    the verified-complete copy and the recovery route is a re-clone to a healthy path.
-> 2. **`git verify-pack -s` is NOT a health check** — stat-only, `rc=0` on all 45 packs while 21 were
->    unreadable. It is what made an early diagnosis in this session say "the object store is fine".
-> 3. **`fatal: Unable to write index.` on merge = a STALE `$INT/.git/index.lock`** left by the git process the
->    fault killed. Three merge attempts died on it. Check `ls -la "$INT/.git/"*.lock` and require
->    `pgrep -u $USER git` to be EMPTY before removing it. ⚠ And one of those "attempts" printed
->    `MERGE+PUSH SUCCEEDED` while actually failing, because the exit status tested was the `tail` at the end of
->    a pipe — capture the output and test `$?`, then verify `main` actually moved.
+> **1. Every published global Component-S number is a ONE-STEP TEACHER-FORCED score** (ADR 0112). All 15
+> features of the production count model are built from LPJmL-FIT's own output for that very
+> `(Cell, Patch, Year)` — including `n_prev`, FIT's own previous-year stem count — and the evaluation predicts
+> each row from that row's own features. **K-fold BY CELL holds out space, not time.** So rung 1's arm B ("fed
+> the C's own per-tree fluxes") was never work to be done: it is what the published panel already is. The
+> missing control was arm A.
+> **The null that follows:** predict `n_prev`, learn nothing ⇒ R² **0.9622** against the production model's
+> 0.9824, per-cell response slope **0.980** vs 0.958, deattenuated **1.029** vs 1.006, area-weighted aggregate
+> ratio **0.685** vs 0.707, and it reproduces the regional band pattern including the wrong-signed tropics.
+> ⇒ **on every count RESPONSE statistic the null matches the production model; the only place the learned model
+> clearly wins is accuracy.**
 >
-> The rebase also hit one conflict, in the shared `residual-diagnosis` skill, where line M had appended its own
-> section. **Both appends were kept** — that file is append-only by convention, so dropping either would have
-> destroyed another line's work.
+> **2. Arm A1 — making the count feed itself — destroys the RESPONSE and leaves the LEVEL alone** (ADR 0113).
+> Error against FIT grows 0.60 → 1.41 stems/patch over 12 years, **1.72 by year 80 and then stops**, bias never
+> above **+0.16 on a mean of 8.28 (< 2 %)** and flat after year 20 — **no runaway.** But the area-weighted global
+> count response ratio goes **+0.707 → −0.226 (WRONG SIGN)**, temperate 0.93 → 0.45, boreal 1.07 → 0.70,
+> tropical −0.51 → −3.62. ⇒ **for counts the LEVEL is not what fails ADR 0106 — the RESPONSE is**, and A1 is a
+> **strict lower bound** (six other roster-state features still come from FIT), so free-running can only be
+> worse.
+>
+> **3. THE PER-CELL DEATTENUATED COUNT SLOPE IS RETIRED AS A DISCRIMINATOR.** Three arms spanning R²
+> 0.982 → 0.962 → 0.918 and a global response ratio spanning **+0.707 → +0.685 → −0.226** all score it between
+> **0.976 and 1.029**. Do not use it to support any claim about the emulator's response. For counts the primary
+> statistic is the **area-weighted aggregate ratio + its latitude bands**; per-cell is a secondary quoted only
+> with the null beside it.
+>
+> **4. DO NOT build a level anchor for the global count recursion.** ADR 0113 §2d measures no runaway, and
+> ADR 0105 already measured the anchor harmful on the patch ensemble. A future arm claiming a runaway must show
+> it on ADR 0113's lead-time table first.
+>
+> **5. An offline S-only arm CANNOT measure recursion damage to the TRAIT axes** (ADR 0113 §2e). The trait
+> sampler is conditioned on four flux columns + static climate + constant CO₂ — no roster state, no lagged
+> trait — so nothing a state recursion does can reach it. Trait free-running error is inherited from the fast
+> core's fluxes ⇒ rung 3/4, line M. Arms C/D are still scoreable on the trait axes, but **only on the one-step
+> basis, and every such verdict must say so** — including `trait_mortality`'s flip criterion, whose text is
+> unchanged.
+>
+> **⚠ SUPERSEDED BY THE ABOVE — sentences still present further down this file:** (a) item 3's / §5b's
+> "**counts already respond faithfully per cell (deattenuated 1.01)**" and "**do NOT write 'the warming response
+> is indistinguishable from zero' any more**" — a null scores 1.029, so the per-cell number is not evidence, and
+> free-running counts respond with the WRONG SIGN; (b) "**the tropics respond the wrong way — a concrete,
+> localised target**" on COUNTS — the null does that too, so it is a property of the statistic, not a defect to
+> go and fix; (c) every "aggregate ratio" quoted as **0.691** (and the null's 0.536) is the **unweighted**
+> definition, mislabelled — area-weighted they are **0.707** and **0.685** (ADR 0113 §5 corrects ADR 0111 §4b
+> and ADR 0112 §3; the conclusions they supported are unchanged). The rest of item 1/2/3 — the noise floor, the
+> λ table, aggregate-over-per-cell, the TRAIT panel — **stands unchanged**.
 
-> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 0 (fix the yardstick) is DONE and merged — ADR 0111,
-> 2026-08-10. START RUNG 1 (S alone, fed the C's own per-tree fluxes; arms A/B/C/D).** Score every arm with
-> `scripts/diagnose_truth_yardstick.py`, which now IS the yardstick — do not invent a new metric, and do not
-> re-derive a noise floor. The four things rung 0 changed that you must not undo are in item 3 and the
-> assignment block below; the sharpest one: **the response target is 1.0, not as-high-as-possible**, and
-> **counts already respond faithfully per cell (deattenuated 1.01) — the response error is in the TRAIT axes,
-> and in the tropics.**
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": rung 1's arms A0, A0-null and A1 are DONE (ADR 0112 + 0113).
+> NEXT: find out WHY the recursion kills the response, with the cheap diagnostic that needs no refit — then
+> scope arms C and D honestly.** Concretely, in order:
+>
+> **(i) The lead-time-resolved response decay (cheap: everything is on disk, no forest refit).** A1's arm
+> predictions (`/p/tmp/jamirp/emulator_global/rung1_count_arm_a1/preds_oos.f64`) plus the proven keys
+> (`/p/tmp/jamirp/emulator_global/rung1_keys_t8/{years,patches}.i64`) are enough to recompute the area-weighted
+> aggregate response ratio **restricted to rows at lead ≤ k**, for k = 1, 2, 5, 10, 20, 40, 80. That curve says
+> how fast the response information dies and over what horizon the emulator's own count is still informative —
+> which is exactly the number an ESM run needs, and it decides whether the defect is architectural or in the
+> count model. Pair it with **Var(pred) vs Var(truth) per lead step** (ADR 0113 §6, the one open question): if
+> A1's prediction variance collapses while its bias stays flat, the recursion is regressing to a conditional
+> mean, and the fix is a variance-preserving predictor (predict the ensemble *expectation* explicitly, or sample
+> the conditional distribution) rather than a better mean.
+>
+> **(ii) Then arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
+> `trait_mortality` selects *which individuals* die by trait, and the bounded-Beta family replaces the recruit
+> marginals — both need a ROSTER, so both are demography-rollout arms. Today the only rollout harness is
+> single-cell Hainich (`scripts/trait_mortality_arm_probe.jl`, and ADR 0101: **one run of it is not a
+> measurement** — quote mean ± SEM over ~8 seeds). Options, pick deliberately and record the choice: build a
+> global offline demography rollout (real work, and it overlaps line M's rung-2 harness — raise it as an
+> integration point before starting), or run C and D at the biome-cell set with the seed ensemble and label the
+> result "5 of 54 020" (guardrail 6). **Do not quietly score C or D on the one-step copula table and call it
+> the flip test** — that would repeat ADR 0104's error in a new place.
+>
+> **Score everything with `scripts/diagnose_truth_yardstick.py`** — `COUNT_DIR` now takes a comma-separated list
+> so an arm, its null and the control are scored in ONE process on ONE cell set. Always pass `OUT_SUMMARY` to a
+> scratch path for an arm run; the committed `S_truth_yardstick_summary.csv` is rung 0's table and no arm has
+> earned a place in it yet. **Do not invent a new metric and do not re-derive a noise floor.**
+>
+> **Integration point you own one side of:** S → M, the demography entry point the C hook will call in rung 2.
+> M owns the harness; you own the shape of what it calls. ⚠ ADR 0113 §2e makes this *more* urgent: the trait
+> axes' free-running error is only measurable on M's harness, so the rung-2 interface is now on the critical
+> path for the trait side of the acceptance criterion, not just for counts.
+>
+> **Two integration points raised, both on the integrator-owned `EXECUTION_PLAN.md`:** rung 0's superseded
+> numbers (replacement text = ADR 0111 §3/§4/§7) and rung 1's arm list, whose A/B collapse into one already-done
+> arm (replacement ladder = ADR 0112 §4b).
+
 
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
 

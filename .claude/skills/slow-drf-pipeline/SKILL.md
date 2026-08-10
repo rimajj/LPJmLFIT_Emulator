@@ -1348,3 +1348,54 @@ slice, so it is a read, not a new derivation), and score against ADR 0106's crit
 54 020 tree-bearing cells, both scenarios AND the response between them — not on 5 cells. The **count DRF is
 untouched** by this (its features are the 11 head columns + the 4-column boundary tail): whether it should
 also see moisture is a separate question and must be **priced offline** first (see the exposure-bias section).
+
+---
+
+## SCORING A RUNG-1 ARM: the arm-directory contract, and getting the (Cell, Patch, Year) key back (line S, 2026-08-10, ADR 0112)
+
+Every arm — the production model, a null, a recursion, a flag flip — is scored by ONE command on ONE basis:
+
+```bash
+export YARD=/p/tmp/jamirp/emulator_global/yardstick_v1 BASIS=capped400
+export COUNT_DIR=<A0 dir>,<null dir>,<arm dir>          # comma-separated: one process, one cell set
+export OUT_SUMMARY=/p/tmp/jamirp/emulator_global/<tag>.csv   # NEVER the committed reference for a scratch arm
+scripts/sbatch_python.sh S-yardarms scripts/diagnose_truth_yardstick.py
+```
+
+**An arm directory is four files.** `preds_oos.f64` (Float64, one per row, aligned to the source table's rows)
+plus `cells.i64`, `y.f64` and the scenario tag — **symlink** those three to the source table so the arm cannot
+drift from what it is an arm of — plus a `manifest.txt` that copies the source manifest and adds what the arm
+did. `pred_<axis>.f64` + `manifest_copula.txt` + `cells.i64` is the same contract on the trait side (`PRED_DIR`).
+Unpredicted rows carry `NaN`: the yardstick's per-cell mean then makes that cell non-finite and it is dropped,
+which is the honest behaviour — never backfill a row with the truth.
+
+**The frozen production tables (`*_t8` and older) carry NO Year and NO Patch** — `years.i64` only arrived with
+ADR 0108 — so anything that has to march in time needs a key attachment first:
+
+```bash
+export SRC=<frozen table> OUT=/p/tmp/jamirp/emulator_global/rung1_keys_t8 SEED=1
+NCPUS=48 PARTITION=priority QOS=priority scripts/sbatch_python.sh S-keys scripts/attach_count_table_keys.py
+```
+
+It replays the builder's key pipeline from the `ind` parquet (survivor count per `(Cell, Patch, Year)` →
+soilmoist **inner** join → the `_prev_year + 1 == Year` shift/filter → sort) and **proves** the alignment
+before writing: recomputed `n_living == y.f64`, recomputed `n_prev == X[:, n_prev]`, recomputed `Cell ==
+cells.i64`, row for row. Measured **121 495 658/121 495 658 rows, 100.0000 %, both scenarios** — 12 min on 48
+cpus, no fallback needed.
+
+⚠ **DO NOT INFER THE CHAIN. Both shortcuts were measured and both are wrong:**
+- *equal-length blocking* ("each cell block is patches × years") — the block length is not a multiple of the
+  year span for **24.8 %** of historic and **49.9 %** of ssp370 cells, because a patch that loses every tree
+  for one year breaks its own run through the builder's filter;
+- *`n_prev[i+1] == y[i]` segmentation* — `n_living` is a small integer, so two adjacent patches whose runs join
+  on the same count are silently **MERGED**, carrying one patch's prediction into another's first year, and it
+  concentrates in the sparse cells whose noise floor is already worst. The usual row-count guard cannot see it.
+
+**The recursion arm itself** (`scripts/rung1_count_recursion_arm.jl`) marches per chain and must change exactly
+one thing — same `fold = mod(hash(cell), KFOLDS)`, same `NTREES/MAX_DEPTH/MIN_LEAF/SUBSAMPLE`, same
+`seed = 1` — or the difference from A0 is not the recursion. Two implementation notes worth keeping: sort the
+chains by **decreasing length** so the chains still alive at step `s` are the prefix `1:searchsortedlast(lens,
+s; rev=true)`, which turns the march into ~80 batched `DRF.predict` calls instead of a per-row loop; and build
+the sort key as one composite `Int64` (`((scen*67421 + cell)*64 + patch)*4096 + year`) rather than 24 M tuples.
+Runtime: **~4 min for all 5 folds** over 121 M rows on 48 cpus (the forests subsample 200 k rows, so training
+cost does not scale with the table).

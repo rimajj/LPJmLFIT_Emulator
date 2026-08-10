@@ -1,6 +1,6 @@
 ---
 name: residual-diagnosis
-description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
+description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. ALSO the FORCING-basis check every learned-component score needs before it is believed (ADR 0112): trace each conditioning feature back to who computed it, because K-fold BY CELL holds out space not time and a lagged-truth feature (`n_prev`, `*_init`, any AR state — grep the table builder for `shift(`) makes the score one-step teacher-forced; then build the NULL that is handed the same thing and learns nothing and score it in the SAME process — a metric the null also passes (here a deattenuated response slope of 1.03 vs the model's 1.01) has no power and cannot be quoted as evidence. And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
 ---
 
 # residual-diagnosis — don't chase a residual blind
@@ -874,3 +874,65 @@ Added 2026-08-10; both traps fired inside one afternoon's work.
   response". The band ratios then showed Height is roughly RIGHT (0.92–1.51). **Neither number was a result.**
   If two "global" numbers for the same quantity can coexist in your output, one of them will end up in a
   conclusion.
+
+## ★ THE FORCING BASIS IS A REFERENCE BASIS — AND A METRIC A NULL ALSO PASSES HAS NO POWER (line S, 2026-08-10, ADR 0112)
+
+Two checks to run **before** you interpret any fidelity or response number of a learned component. They are
+cheap, they are mechanical, and skipping the first one let "the count response is faithful" stand as a result
+for a model that had been handed the answer.
+
+**(1) Ask what the model was HANDED, not just what it was scored against.** Trace every conditioning feature
+back to who computed it. In this repo the production count model's 15 features are *all* built from LPJmL-FIT's
+own output for the same `(Cell, Patch, Year)` — and one of them, `n_prev`, is FIT's own answer for the previous
+year. Plus: **K-fold *by cell* holds out SPACE, not TIME.** Held-out cells with per-row prediction is still a
+one-step score in which nothing the model predicts is ever fed back. Three labels, and one is mandatory on
+every number you publish:
+
+| label | what the model is handed |
+|---|---|
+| **one-step, C-forced** | the reference model's own state *and* fluxes for the same step, incl. its previous-year answer |
+| **flux-forced, state-recursed** | the reference model's fluxes; the model's own previous state |
+| **free-running** | boundary conditions only |
+
+The tell that you need this check: a feature list containing anything named `*_prev`, `*_init`, `lag*`, `n_0`,
+or any "AR state". Grep the table builder for `shift(` / `.over(` — that is where a lagged truth enters.
+
+**(2) Then build the null that is handed the same thing and learns nothing**, and score it through the SAME
+code path, on the SAME cell set, in the SAME process (that is why `diagnose_truth_yardstick.py` takes a
+comma-separated `COUNT_DIR` — two invocations is how two bases drift apart). For a lagged-truth feature the
+null is "predict the lagged truth": `scripts/build_count_persistence_null.py`, ~40 lines, symlinks the shared
+provenance arrays so it cannot drift from its source table.
+
+What that measured here: R² 0.9622 (null) vs 0.9824 (model); per-cell response slope 0.980 vs 0.958;
+deattenuated 1.029 vs 1.006; and the null reproduced the *regional* pattern including a wrong-signed tropical
+response that had just been written up as "a concrete, localised target". ⇒ **the per-cell deattenuated slope
+has essentially no power against persistence**, so it cannot be used to argue the emulator responds; and the
+band-wise sign pattern was a property of the statistic, not a defect to go and fix. The statistic that *did*
+discriminate was the **aggregate area-weighted ratio** (0.536 / 0.691 / 1.0 target).
+
+⚠ **A null is a CONTROL, not a floor.** Do not quote it as "the skill of no model". The persistence null's own
+aggregate ratio is 0.536 rather than 1.0 purely because a one-year lag under a trend shifts an N-year window
+mean by `(first − last)/N` — an artifact of the null, not a property of the emulator.
+
+⚠ **And do not read a null result as "the model is worthless".** State both directions: this model removes
+**53.3 %** of the null's residual variance and adds a third of the missing response amplitude. The finding is
+about what the *metric* proves, not about whether the model does anything.
+
+## WHEN YOU CLOSE A "ONE DEFINITION ONLY" TRAP, GREP FOR THE OTHER CODE PATH — IT SURVIVED (line S, 2026-08-10, ADR 0113 §5)
+
+ADR 0111 removed the second (unweighted) definition of the aggregate response ratio from the **trait** scoring
+path and wrote "do not reintroduce a second one". The **count** path in the same file kept it for another month,
+because nobody grepped. It was invisible for exactly the reason these bugs always are: on the production arm the
+two definitions agree (0.691 unweighted vs 0.707 area-weighted). It only showed up on a new arm, where they
+disagreed **fourfold and by sign** (−0.93 vs −0.226) — an unweighted mean-ratio is dominated by cells whose own
+denominator is near zero, which is why the weighted one is the definition to keep.
+
+So: after fixing a definition, `grep -n "<the quantity>" <file>` and check **every** call site, and prefer
+computing the blessed quantity **once** in a helper both paths call (here: `band_ratios(...)["GLOBAL"]`) over
+fixing two copies. And when two definitions of the same statistic agree on your current data, that is not
+evidence they are the same quantity — it is the reason the bug survives to the run where they differ.
+
+**The related honesty rule:** a corrected label can make an earlier finding *stronger*, and you have to say so.
+Correcting this one moved the persistence null from "0.536 vs the model's 0.691" to "**0.685 vs 0.707**" — i.e.
+the null matches the production model on the aggregate response too, so the finding got sharper, not softer.
+Re-read what the corrected number does to the conclusion; do not assume a correction only ever costs you.

@@ -1495,3 +1495,77 @@ would not inherit a "merge pending" note with no explanation of why.
 The rebase then hit one conflict, in the shared `residual-diagnosis` skill, where line M had appended a section
 of its own. Both appends were kept: that file is append-only by convention, and taking either side would have
 silently deleted another line's work.
+
+---
+
+## 2026-08-10 (line S) — rung 1 opened, and the first thing it found was that rung 1's arm B was already done
+
+Rung 0 merged green, so I started rung 1: "S alone, on the C's own fluxes", four arms A/B/C/D. Before building
+arm B — "fed the C's own per-tree fluxes each year" — I went to check what the production emulator is
+conditioned on, so that arm B would differ from the control by exactly one thing.
+
+It differs by nothing. Every one of the 15 features the production count model reads is built from LPJmL-FIT's
+own output for that very (Cell, Patch, Year): `build_slow_runtime_table.py` computes the carbon uptake, growth
+efficiency and water stress from the `ind` roster, the soil moisture from the C's own daily root-zone water,
+the six size/structure features from the same roster — and `n_prev` is FIT's own stem count for that patch in
+the previous year. `eval_slow_drf.jl:61` then predicts each row from that row's own features. Held-out *cells*,
+never held-out *time*, and nothing the model predicts is ever fed back. The copula's four flux conditioning
+columns are C-derived too (it has no lagged trait, which matters later). So the published panel — all of
+ADR 0111 — **is** arm B. The arm that has never been measured globally is A, free-running.
+
+The sharpest consequence is on counts, because one of the 15 inputs is the answer, lagged a year. I built the
+null that follows from that: predict `n_prev`, learn nothing. It reaches R² **0.9622** where the production
+model reaches 0.9824, per-cell response slope **0.980** where the model gets 0.958, deattenuated **1.029**
+where the model gets 1.006 — and it reproduces the regional pattern ADR 0111 called "a concrete, localised
+target", tropics wrong-signed included (−0.43 vs the model's −0.51). So "the count response is faithful per
+cell (1.006)" is a statement a model with no warming response of its own also satisfies. It is retired as
+evidence. What survives as a discriminating statistic is the aggregate area-weighted ratio: 0.536 for the null,
+0.691 for the model, 1.0 for the target — the learned model does add response amplitude, about a third of the
+way. And the null is a control, not a floor: a one-year lag under a trend shifts an N-year window mean by
+(first − last)/N, which is exactly why it lands below 1.0 rather than at it, so nobody should quote 0.536 as
+"the skill of no model".
+
+Then the missing arm. A1 feeds each year's own prediction in as next year's previous-year count and changes
+nothing else — same folds, same forests, same seed — so A1 minus A0 is the recursion and nothing else. It needed
+the (Cell, Patch, Year) key, which the frozen table does not carry (it predates ADR 0108). Both ways of guessing
+it fail on the real data, and I measured both before rejecting them: equal-length blocking is wrong for 24.8 %
+of historic and 49.9 % of ssp370 cells, because a patch that loses every tree for one year breaks its own run;
+and segmenting on "last year's count equals this row's `n_prev`" silently merges adjacent patches that happen to
+join on the same small integer, worst in exactly the sparse cells whose noise floor is already worst. So the
+keys are recomputed from the `ind` parquet by replaying the builder's own pipeline and then *proved* — the
+recomputed count, previous count and cell must equal `y.f64`, `X[:, n_prev]` and `cells.i64` row for row. They
+did, on all 121 495 658 rows of both scenarios, with no fallback needed.
+
+Written up as decision record 0112, with three falsifiable predictions for A1 so the framing can be refuted
+rather than believed.
+
+Then arm A1 itself, the same afternoon. Four minutes on 48 cores over all 121 495 658 rows, and the answer is
+clean and not what I expected. Making the count feed itself barely touches the **level**: error against FIT
+grows from 0.60 to 1.41 stems per patch over a dozen years, reaches 1.72 by year 80 and then stops growing, and
+the mean bias never exceeds +0.16 on a mean of 8.28 — under 2 %, flat after year 20. There is no runaway. That
+contradicts the natural reading of the earlier single-cell drift result ("the recursion is unanchored, it needs
+a level anchor") at global scale, and agrees with ADR 0105, which had already found the anchor harmful on the
+patch ensemble. So: no anchor, and if a future arm claims a runaway it has to show it on this lead-time table.
+
+What the recursion destroys is the **response**. The area-weighted global count response ratio goes from +0.707
+to **−0.226** — wrong sign — and every latitude band degrades: temperate 0.93 → 0.45, boreal 1.07 → 0.70,
+tropical −0.51 → −3.62. Meanwhile the per-cell deattenuated slope moves 1.006 → 0.976. Across three arms whose
+accuracy spans R² 0.982 → 0.962 → 0.918 and whose global response spans +0.707 → +0.685 → −0.226, that slope
+never leaves 0.976–1.029. It is dead as a discriminator and I have retired it for counts: this morning it
+couldn't tell the model from a null, this afternoon it couldn't tell +0.707 from −0.226.
+
+Two corrections fell out. First, the count path of the yardstick still carried a **second** definition of the
+aggregate ratio — the unweighted mean-ratio ADR 0111 had removed on the trait side. It agrees with the
+area-weighted one on the production arm (0.691 vs 0.707) and disagrees fourfold on the recursed arm (−0.93 vs
+−0.226), because an unweighted mean-ratio is dominated by cells whose own denominator is near zero. Fixed, and
+the two records that quote the unweighted number are corrected in ADR 0113 §5 rather than edited. Second, that
+correction makes this morning's null result stronger, not weaker: area-weighted, the null is 0.685 against the
+model's 0.707. So on *every* count response statistic the null matches the production model, and the only place
+the learned model clearly wins is accuracy.
+
+And one scoping finding worth carrying forward: an offline S-only arm **cannot** measure recursion damage to the
+trait axes. The trait sampler is conditioned on four flux columns plus static climate and constant CO₂ — no
+roster state, no lagged trait — so nothing a state recursion does can reach it. The trait axes' free-running
+error is inherited from the fast core's fluxes, which makes it rung 3/4 work on line M's harness, not rung 1's.
+Arms C and D can still be scored on the trait axes, but only on the one-step basis, and every such verdict has
+to say so — including `trait_mortality`'s pre-registered flip criterion, whose text I did not touch.
