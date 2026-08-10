@@ -195,6 +195,58 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
+### 0-NEW. ✅ DONE 2026-08-10 (session 5) — RUNG 2's OBSERVATION HALF IS BUILT AND GATED (ADR 0061)
+
+**Start here, then go to the assignment block below — rung 2's first half is done, its second half is the
+next thing to do, and one number in the assignment block is now measured rather than assumed.**
+
+An **opt-in demography hook** now exists in the C, activated by the environment variable
+`LPJ_RUNG2_DIR`. It dumps each patch's tree roster at the **top** of the annual demography block (`pre`)
+and again **after establishment** (`post`). Patch: `patches/lpjmlfit_rung2_demography_hook.patch`
+(`include/rung2hook.h` + `src/lpj/rung2_hook.c` + two call sites in `annual_natural.c`). Full mechanics
+and the five gotchas are in the **`lpjmlfit-cbinary`** skill — read it before touching this.
+
+- **The feasibility question the substitution half depends on is ANSWERED: yes.** Everything the narrow
+  interface needs is live at the hook point — `water_stress`, `temp_stress`, `bm_inc_counter` (the
+  accumulators three of the four death rates read), plus `bm_inc`, `nind` and all seven carbon pools.
+  **None of those is in the `ind` output**, so this is not a re-derivation of an existing table.
+- **Gate A — the rebuild did not move the physics.** `bin/lpjml` was rebuilt (in place; the Jul-21 build
+  is gone) and with `LPJ_RUNG2_DIR` unset it is **numerically identical**: 138 decoded NetCDF variables +
+  `globalflux` unchanged on a matched cell-42490 / 2000–2019 / `--ntasks=1` run. `cmp` calls 20 of 21
+  outputs different (ADR 0043's `history` timestamp) — use
+  `scripts/diagnose_cbinary_rebuild_equality.py`, **after every future rebuild**.
+- **Gate B — the dump says what the C says.** Same run emitting both: identical tree sets (**5 465 trees,
+  0 rows on either side alone**), **all 21 shared columns to ≤5.0e-6** (the `%g` floor), hazard components
+  included. `scripts/diagnose_rung2_roster_vs_ind.py`. Accounting closes: `post`-alive of year *N* ==
+  `pre` of year *N+1* in all 19 transitions; **recruits enter at `age == 0`**.
+- ⚠ **`mort_prob`/`mort_npp`/`mort_age`/`mort_water`/`mort_temp` are valid ONLY at `post`** — at `pre` in
+  the first year after a restart they are uninitialised memory (a `6.9e-310` denormal was observed).
+- **Cost is nil** — 7 s vs 6–7 s, 13.4 MB for 20 yr × 25 patches. The plan's "per-year file I/O is free at
+  a handful of cells" is now measured, not assumed.
+- **The generalisable mistake, already in `MEMORY.md`:** the first run of gate B printed `0.000e+00` for
+  **nine** columns because the join kept one column per colliding name and nine checks compared a column
+  **against itself**. Caught only because a tenth colliding column had a unit conversion. **An exact zero
+  on a float comparison of two independently written representations is an aliasing bug, not agreement.**
+
+▶ **WHAT TO DO NEXT ON RUNG 2 — the substitution half.** The C now *offers* the roster; it does not yet
+*accept* a replacement. Two steps:
+
+1. **Raise the S → M integration point with a concrete proposal, not an open question.** `EXECUTION_PLAN.md`
+   §6 says S owns the entry point's *shape* and M owns the harness. S is on rungs 0/1 and will not design
+   it unprompted — so put a concrete reply format into `lines/S/STATE.md` as an ▶ INBOUND block (ADR 0056's
+   lesson: an ADR alone is not a channel) with the `pre` schema attached: *given this roster, return the
+   `treeidx` set that dies and the recruits (pft id + the four trait axes) that appear.* Note that S has
+   **not** yet seen the ADR-0060 inbound either — check whether that block survived to `main`.
+2. **Write the C read-back while waiting** — it does not depend on S's answer, only its field list does.
+   Where: kills go where `annual_tree` sets `isdead` (`src/tree/annual_tree.c:31-38`), recruits where
+   `establishmentpft_ind` calls `addpft` + `establishment_tree_ind` (`:100-115`, `:124-140`); overriding a
+   recruit's traits after `addpft` is the cheap route, since `establishment_tree_ind` builds the pools from
+   them. Keep the same env-var opt-in so the stock path stays inert. Rendezvous: the harness runs few
+   cells, so a file-per-year with a spin-wait beats FIFOs on debuggability.
+
+**Rung 3 (F's decadal canopy drift) is untouched by this session** and remains the other open M item — the
+previous handoff's narrowed version of it is item 4(d) further down.
+
 #### YOUR ASSIGNMENT — **rungs 2, 3, 4** (then 5b and 5c). **You may start rung 2 NOW, in parallel with S's rung 1.**
 
 **Rung 2 — S + the REAL C fast part, closed annual loop.** The harness build does not depend on rung 1's
