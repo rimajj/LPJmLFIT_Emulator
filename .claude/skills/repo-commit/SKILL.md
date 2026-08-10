@@ -620,3 +620,53 @@ sentence, because "I reran it and it went green" is otherwise indistinguishable 
 
 ⚠ **Do not report a merge as green before `main`'s own run has reported** (§9 note 5). Branch-green + a green
 local suite is not the same statement, and quoting the outcome early means retracting it in the next message.
+
+---
+
+## INTEGRATOR: broadcasting a program change to all four lines so it is actually EXECUTED
+
+When the owner re-steers the project (ADR 0106 the acceptance criterion · 0107 CO2 · 0093/0094 the
+error-attribution ladder + the speed goal), writing an ADR is **not enough** — a line session reads its
+`STATE.md` handoff, not `docs/decisions/`. This is the integrator's landing procedure. Do it from `main`.
+
+**1. The load-bearing constraint: WHERE the block goes decides whether it is read.**
+`.claude/hooks/session-line-context.sh` injects `lines/<X>/STATE.md` from the `## NEXT` heading **to the next
+`## ` heading** (fence-aware, so a `## ` inside a ``` block does not truncate it). So:
+
+* Put the program block **immediately after `## NEXT — start here`**, above whatever the previous session
+  wrote. Anything under a *later* `## ` heading is invisible to the hook.
+* Insert with an exact-anchor script and `assert count == 1`, never by hand across four files:
+  ```python
+  anchor = "## NEXT — start here\n"
+  assert s.count(anchor) == 1, (L, s.count(anchor))
+  s = s.replace(anchor, anchor + BLOCK + "\n---\n", 1)
+  ```
+* **Verify the render before committing** — this is the whole point, and it is one command:
+  ```bash
+  for L in S M E O; do
+    awk '/^```/{f=!f} /^## NEXT/{n=1} n && !f && /^## / && !/^## NEXT/{exit} n' lines/$L/STATE.md | sed -n '3p'
+  done   # must print YOUR new heading four times
+  ```
+
+**2. Write ONE integrator-owned plan file, and make the per-line blocks pointers + assignments.** Duplicating
+the plan four times guarantees four divergent copies. `EXECUTION_PLAN.md` holds the program; each line's block
+carries only *that line's assignment*, its pre-registered gates, and what it must **not** start yet. Say
+explicitly in the plan that a line raises a change to it as an **integration point** rather than editing it.
+
+**3. Tailor per line, and name the cross-line integration points in BOTH lines' STATE.md.** A hand-over of an
+owned path (e.g. `src/fdiff.jl` from M to O for performance work — CLAUDE.md §9 Gap 1 allows it *recorded*)
+must appear on both sides, with a 🚫 "do not edit before X" on the receiving side. Otherwise two lines edit one
+physics file and the conflict surfaces at merge.
+
+**4. Pre-register anything that could be reinterpreted later**, in the line block itself, not only in the ADR:
+flip criteria (which arm, which threshold, decided against which control) and *"if the result comes out
+backwards, that is the finding, not a failed test"*. Writing it into the handoff is what stops the ADR-0104
+error — a criterion re-read after seeing its arm.
+
+**5. Cover every entry path, then check the gate set.** `MEMORY.md` (router banner + the standing owner
+decision), `00_START_HERE.md`, `CLAUDE.md` (onboarding order **and** the §7 doc map), plus a staleness banner
+on anything now superseded (`STEERING_PROMPT.md`), and `CHANGELOG.md`. A standing *owner instruction* also goes
+in **`~/.claude/CLAUDE.md`** — that file exists precisely so a rule survives a stale checkout.
+A program-landing commit touches no `.jl`, no `python/`, no `docs/src/` ⇒ **no CI gate runs and it is mergeable
+immediately** (ADR 0090). Confirm with `git diff --name-only origin/main...HEAD` rather than waiting for a
+verdict that never arrives.
