@@ -7,6 +7,1876 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+
+- **`scripts/collate_changelog.py` — deterministic, idempotent fragment collation.** Splits each fragment on
+  its `### <Category>` headings (**most fragments are multi-category**; one has six, which is why hand
+  collation is error-prone), groups into **one new `### <Category>` group** inserted after `## [Unreleased]`
+  matching the file's existing shape, and deletes the collated fragments. Verified on the first run: **1832
+  insertions, 0 deletions, 245/245 bullets present** — the change to `CHANGELOG.md` is provably purely
+  additive. **Errors on an unknown category** rather than silently inventing a section; the allowed list is
+  the six Keep-a-Changelog ones plus the seven already in practice here (`Documentation`, `Validation`,
+  `Verified`, `Measured`, `Verdict`, `Gates`, `Notes`, with `Documented` an alias). Preserves a heading's
+  parenthetical qualifier as an italic lead-in. Derives the repo root from `__file__`, so running it from a
+  line worktree cannot write into the integrator worktree. `--check` and `--dry-run` included.
+- **A sixth CI gate, `changelog`.** Runs `--check` on **`main` only** — a fragment on a `line/**` branch is
+  correct, since that is where fragments are authored; it is debt only once it reaches `main`. So a merge that
+  skips collation reds `main` with the exact list and the one command that fixes it. Pure-stdlib, seconds, no
+  dependencies. Deliberately **not** a bot that commits to `main` (write permissions, push-loop risk, no
+  precedent) and deliberately **not** a count-or-age threshold (a knob that drifts; "zero uncollated on
+  `main`" is the actual invariant).
+
+### Changed
+
+- **Changelog collation now attaches to the merge, not to a role
+  ([ADR 0095](docs/decisions/0095-integrator-chores-need-an-event-not-a-role.md); owner question,
+  2026-08-10).** ADR 0029 fixed changelog *authoring* — per-line `changelog.d/` fragments with disjoint
+  filenames — and that half worked. It left collation as *"the integrator collates … at an integration
+  point"*, which named no event that reliably happens: ADR 0028 has **every line merge its own branch**, so
+  nothing convenes an integration point and "the integrator" is whichever session happens to launch in the
+  `main` worktree. Measured cost: **56 fragments uncollated for 13 days** (oldest 2026-07-28; 129 category
+  chunks, 245 bullets; S 31 · M 13 · E 6 · O 5 · integrator 1) while `CHANGELOG.md` was itself edited three
+  times in the same window. Nothing failed — no gate watched `changelog.d/` and fragments cannot conflict by
+  design, so the debt was **invisible by construction**. Now: **whoever merges to `main` collates, inside the
+  same `flock`** (holding the lock *is* holding the integrator role; the edit happens on `main`, so the
+  "never edit `CHANGELOG.md` from a line branch" rule is intact).
+- **`CLAUDE.md` §9 now states that "integrator-owned" names a role, not a person or a schedule**, and carries
+  a chore → **event** → **visibility** table for all four integrator chores. A new integrator-owned chore
+  must name both, or it rots the same way — the same shape as guardrail 4's corollary, where three opt-in
+  flags with known-wrong defaults sat for weeks because each line recorded the flip as the other's to schedule.
+
+### Added
+
+- **The nocturnal-H diagnosis for Component E (line E, milestone E6; ADR 0073 — supersedes ADR 0072 items 4
+  and 6).** `scripts/e_nocturnal_h_decomp.jl` attributes the H error by **exact algebra** rather than by
+  parameter sweep. Because `H` is the exact residual `Rn_m − LE − G_m`, its error obeys identically
+  `ΔH = ΔRn − ΔG + ε_obs`, where `ε_obs = Rn_o − LE − H_o − G_o` is the **tower's own non-closure** — an error
+  no closing model can remove. `g_a` appears in none of the three terms. The probe reports, per site: a harness
+  check (model self-closure `= 0.0` exactly; the identity closes to `≤ 2.3e-13`; ADR 0072's night numbers
+  reproduced digit for digit), the decomposition night/day/all, `G` scored against **both** the measured plate
+  `Qg` and the budget-implied sink `G_res = Rn_o − LE − H_o`, **night-only** `Rn` (never reported before), a
+  100× `g_a` bracket, the tower's measured-`u*` `g_a` substituted into the real solver, the model's **native
+  daily step**, the observation-implied `λ_g`, and a `λ_g` sensitivity table.
+- `scripts/build_e_seb_validation_table.py` now also emits **`ustar`** (u\* ≤ 0 masked — a documented OzFlux
+  artifact). Row counts are unchanged at all four sites, so ADR 0072's basis is untouched.
+- A synthetic CI testitem pinning the **lever ranking** (`test/testitems/energy_closure_tests.jl` — *"nocturnal
+  H is a ground-heat lever, not an aerodynamic one"*), so the refuted hypothesis cannot quietly re-open.
+
+- **Component E is now validated against flux towers (line E, milestone E4 — the P2 gate; ADR 0072).**
+  `scripts/build_e_seb_validation_table.py` stages a tower-forced driving table per PLUMBER2 site (the tower's
+  own `swdown/lwdown/tair/psurf/wind`, its measured LE, its **observed albedo** from Σ SWup/Σ SWdown, its canopy
+  and — load-bearing — its **measurement height**, which overrides `SEBParams.z_ref`), and
+  `scripts/validate_e_seb_vs_plumber2.jl` runs `solve_seb` over every step and scores H, T_skin and Rn: bias,
+  RMSE, MAE, R², OLS slope, all/day/**night**, half-hourly **and daily**, the fraction inside PLUMBER2's own
+  `|h_cor_uc|` band, the mean diurnal cycle, and a `stab_amp`/`stab_k` sweep.
+- **The gate is frozen as a regression test**: two committed extracts sampled every 12th day of year at every
+  3rd hour across the whole record (`test/testitems/references/e4_seb_drive_{DE-Hai,AU-ASM}.csv`) re-run the same comparison inside
+  `test/testitems/energy_closure_tests.jl`, with the known night-cold-bias pinned as a sign assertion so a
+  future fix trips the test instead of drifting silently.
+
+- **Component-E observational reference (line E, milestone E1; ADR 0070).** PLUMBER2 v1-0 is now staged and
+  loadable: `scripts/fetch_plumber2_sites.py` downloads 9 sites (DE-Hai — the Hainich prototype cell — plus
+  one tower per biome slot of `test/testitems/biome_coupled_tests.jl`, plus the 4 OzFlux sites that carry
+  `LWup`) from the anonymously-readable NCI THREDDS `ks32` collection and writes a `manifest.json` with a
+  `sha256` per file; `scripts/validate_e_plumber2_load.py` loads Flux + Met into a model-facing half-hourly
+  frame and emits the sanity report — coverage, QC-flag composition, unit/range checks, the observed
+  `Rn = LE + H + G` residual and closure slope, daytime Bowen ratio, a mean-diurnal `SWdown` peak-hour check
+  of the time axis, and `T_skin` inverted from `LWup` at E's own emissivity — plus
+  `halfhourly_/daily_/diurnal_<site>.parquet` (the daily gate *and* the retained sub-daily cycle).
+  `config/paths.yaml` `data.energy_reference` is no longer a TODO.
+
+- Component E gate pinning ADR 0072's night-cold sign **under the new default**, where it deepens rather than
+  disappears (towers: −0.95 → −3.17 K at AU-ASM, −1.99 → −3.67 K at AU-Tum, −1.09 → −2.03 K at AU-Rob;
+  synthetic diurnal cycle −1.474 → −2.496 K), so the outstanding canopy-heat-storage term trips it.
+- Daily-step `T_skin` per site in the two-layer probe — never pinned before, though `run.jl` solves once per
+  day: R² 0.981 → 0.979 (AU-ASM), 0.900 → 0.851 (AU-Tum), 0.858 → 0.793 (AU-Rob).
+
+- **Component E: opt-in two-layer prognostic ground-heat column** (`SEBParams.enable_two_layer`, default
+  `false` ⇒ every baseline byte-identical). Replaces the single conductance against a 30-day EWMA of *air*
+  temperature with a prognostic two-layer soil column (`G = κ_g(T_skin − T1)`, `κ_g = 2λ_soil/z1`, the
+  MITgcm land-package `T1`/`T2` update), so the ground reference is the surface's own thermal state.
+  An **independent implementation** of the MITgcm formulation, cross-read against SpeedyWeather.jl's
+  `LandBucketTemperature` and Terrarium.jl's half-cell skin temperature; no code copied, no new dependency
+  (ADR 0074, ADR 0017). `SEBParams` also gains an explicit `dt_seconds`, which is what makes a sub-daily
+  step well-defined.
+- `scripts/e_two_layer_probe.jl` + `scripts/e_seb_drive_common.jl` (shared PLUMBER2 drive-table readers and
+  metrics, extracted so future probes stop copying them).
+
+- **Wind + surface pressure for Component E (line E, milestone E2; ADR 0071).**
+  `scripts/remap_wind_psurf_cells.py` remaps daily `sfcwind` [m/s] and `ps` [Pa] from the ISIMIP3a obsclim
+  GSWP3-W5E5 tree — the same climate family the LPJmL-FIT run itself consumed — onto the model's orderA cells
+  (`grid.nc` `cellid` → lat/lon → source axis, matched by value with an exactness assertion), dropping 29
+  February for the model's noleap-365 calendar. Writes the committed per-cell fixtures
+  `test/testitems/references/wind_psurf_<biome>.csv` (`year,doy,wind,psurf`, 2010–2019 × 365 d) for the same
+  five biome cells as `biome_forcing_<biome>.csv`. `config/paths.yaml`
+  `lpjml.energy_extra_inputs.{sfcwind,ps}` are no longer TODOs.
+- The script carries its own four-part gate, all **PASS at all five cells**: exact agreement with an
+  independent `xarray` label lookup; an obsclim-`tas`-vs-`temperature_test.clm` round-trip
+  (`max|Δ| = 0.000 °C` over 365 days) that proves the lat/lon ↔ orderA-cell mapping against a file the C run
+  actually read; calendar agreement with the LPJmL-prepared noleap wind (to its 0.01 m/s quantization); and a
+  physical cross-check at Hainich against the DE-Hai tower — grid wind −10.1 %, psurf +1649 Pa, i.e. a 0.5°
+  cell mean ≈143 m below the tower.
+
+- **Line M — the level anchor's flip criterion is measured, and it FAILS (ADR 0056, answering ADR 0103 §6).**
+  `scripts/biome_slow_oracle_probe.jl` gains two anchored arms (`anchor = 0.5` and `0.1`) beside the existing
+  free and `n_prev`-teacher-forced ones, a clause-by-clause evaluation of line S's pre-registered criterion
+  with thresholds fixed in-script before the run, a mechanism check that the anchor actually fired, and a
+  per-year report separating the two competing explanations of the one cell that breaks.
+
+- **M3 F-side — a per-cell F_diff-vs-C oracle for all five biome cells** (ADR 0053). The C's daily
+  `d_gpp`/`d_transp` are grid-cell totals over **all** PFTs while the coupled driver's canopy is tree-only,
+  so the grass share was removed **exactly** rather than caveated: four cheap single-cell re-runs
+  (`CELL=<c> RUNTAG=M_grass_val scripts/run_fdiff_grass_gpp_cell.sh`, ~9 s each) added the custom per-PFT
+  daily grass GPP output, giving `gpp_tree = d_gpp − d_grass_gpp`. Grass carries **42.4 %** of GPP at boreal
+  Siberia, 28.4 % mediterranean, 19.3 % Sahel, 5.8 % Hainich, 0.2 % Amazon.
+  - `scripts/extract_biome_fdiff_oracle.py` → the committed `test/testitems/references/M_fdiff_oracle_biomes.csv`
+    (+ `_meta.json`): per-cell monthly climatology 2010–2019 of tree GPP, ET and its three components,
+    tree FPC and stand LAI, each with its basis recorded and its splittability stated.
+  - `scripts/biome_fdiff_oracle_probe.jl` → the F side, on the C's own **25-patch ensemble** basis, at
+    ADR 0051's `wscal_leafon = true` (passed explicitly; the package default stays `false`).
+
+- `fpc_tree_crown` (and `fpc_grass_crown` on the monthly table) in
+  `test/testitems/references/M_fdiff_oracle_biomes{,_annual}.csv`, plus `fpc_tree_crown_mean`,
+  `fpc_grass_crown_mean` and `crown_over_stand_fpc` in `M_fdiff_oracle_meta.json`. Appended last, with both
+  `basis` strings now naming which functional form they are — **every pre-existing column is byte-identical**
+  (verified row-by-row), so no committed baseline moves.
+- `scripts/biome_fdiff_oracle_probe.jl` PART 6: year-matched FPC ratios on the crown basis, the `>5m_frac`
+  column (the fraction of the C's own crown cover that lives in the stems above 5 m the `ind` writer
+  actually emits — 0.71 at boreal and the Sahel, so no ratio may be read against 1.0), and F's crown cover
+  at **t = 0**. That last column separates the canopy reconstruction from the fast core's growth and shows
+  the **reconstruction is faithful (1.00–1.04 in all five cells)**, eliminating it as a cause.
+  `biome_slow_oracle_probe.jl`'s canopy report now prints both bases side by side.
+
+- **Line M / M2 — the flux-driven Component S now runs in the MULTI-CELL coupled loop.** All five biome
+  cells (boreal / temperate / mediterranean / semi-arid / tropical) build their own `FluxDrivenSlowEmulator`
+  from their own `n_init` / `age0` / slow boundary — folded into the committed `references/M_cells.csv` by
+  `scripts/extract_cell_slow_init.py` — plus their own per-cell `ClimBuf` for the transient bioclimatic
+  boundary. Previously the driver ran `slow=nothing`, so the coupled evidence for S was single-cell
+  (Hainich) while the global evidence was offline-only.
+
+  New gate (third test item in `test/testitems/biome_coupled_tests.jl`), asserted in **every** cell: carbon
+  at the S↔F handoff ≤1e-6·C_scale and <1e-6; energy <1e-6 W/m²; deterministic under seed; a fixed-N control
+  proving F alone cannot move tree N; and the `ClimBuf` driving only the two climate axes
+  (`soil_depth`/`co2` pass through) with its recomputed `gdd5` ordering the cells the same way their baked
+  C-derived `gdd5` does.
+
+- **M3 S-side — the coupled demography/trait oracle vs the LPJmL-FIT C truth, closing the P3 gate**
+  (ADR 0054). `scripts/extract_biome_slow_oracle.py` builds the C's per-cell demography + trait reference
+  for the five biome cells from the annual `ind` parquet (historic, both seeds, 2010–2019) on ADR 0053's
+  four bases — tree-only via the imported `TREE_TYPES`, the C's **25-patch ensemble** rather than a per-cell
+  total, year-matched, and the writer's `height > 5 m` population — committed as
+  `test/testitems/references/M_slow_oracle_{counts,traits}.csv` + `M_slow_oracle_meta.json`.
+  `scripts/biome_slow_oracle_probe.jl` scores the coupled S+F+E loop against it in seed1-vs-seed2 noise
+  floors, with an `n_prev` teacher-forcing arm that attributes the error.
+- A CI `@testitem` guarding the new fixture's **basis** (`biome_coupled_tests.jl`): coverage, the per-patch
+  identity `n_mean · npatch == n_cell_total` at `npatch == 25`, a two-extractor population cross-check
+  against `M_cells.csv`'s `n_trees`, quantile monotonicity, a strictly positive q05 on every axis (the
+  zeroed-grass-row tell) and `Height` q05 ≥ 5 m. The skill measurement itself stays cluster-only — the
+  pinned `_t8` pair is 180 MB on `/p/tmp` and CI has no cluster.
+
+- **The M4 RESILIENCE BATTERY (line M, milestone M4; ADR 0055).** `ENGINEERING_STANDARDS` §2's last stubbed
+  gates — three `@test_skip false` in `resilience_battery_tests.jl` (item 11) and one in
+  `rollout_stability_tests.jl` (item 4) — are replaced by real tests, and the metrics behind them are
+  measured rather than quoted. Method reimplemented from Bathiany et al. 2024 (doi:10.1111/gcb.17613);
+  `LPJ_resilience` has no licence, so none of its code is copied.
+  - `scripts/extract_resilience_reference.py` — the C's own memory from the annual `ind` parquet,
+    **52 544 / 52 551 cells (seed1/seed2) × 2000–2019** — the full extent of the historic table, 52 224
+    cells present in both seeds — on ADR 0053/0054's four bases. Emits `references/M_resilience_reference_{cells,gradient,series}.csv` + `_meta.json`. Its
+    per-year patch-ensemble means are asserted equal to `M_slow_oracle_counts.csv`'s on all 100 overlapping
+    cell-years — a different script, a different scan, the same population.
+  - `scripts/biome_resilience_probe.jl` — the coupled side: a **3×2 shuffle design** (forcing
+    ordered/year-shuffled × demography free/`n_prev`-pinned/absent) plus ADR 0054's teacher-forced anchor
+    arm, over a **one-member-per-patch ensemble** of the year-2000 canopy, then a 100-year cycled rollout
+    carrying a pool-perturbation recovery experiment. Emits `references/M_resilience_battery.csv`,
+    `_shuffle.csv`, `_longrun.csv`.
+  - `scripts/extract_biome_forcing.py` gains `FIRSTYEAR`/`LASTYEAR` (default unchanged; the widened
+    2000–2019 window reproduces the committed 2010–2019 fixture **byte-identically** on all five cells).
+  - CI computes what CI honestly can — the estimator against synthetic AR(1)/ramp series with known
+    answers, and a real `slow = nothing` F+E rollout that is perturbed, shuffled and run 60 years — and
+    gates the cluster-measured numbers as fixtures. No `src/` change; every committed baseline is
+    byte-identical.
+
+- **Per-cell input provisioning for the multi-cell coupled S+F+E driver ([ADR 0050](docs/decisions/0050-per-cell-input-provisioning.md)) — milestone M1.**
+  The coupled driver was already N-cell-agnostic, but all five biome cells reused **Hainich's** soil column
+  and **Hainich's** canopy. Each cell now carries its own inputs, produced by two new committed extractors:
+  - **`scripts/extract_cell_soilcolumn.py`** — the per-layer soil column that previously had *no* generating
+    script at all. `whcs_mm` = the C's own `WHC_NAT` output (the patch-ensemble-mean `whc` fraction,
+    `soilpar_output.c:42`) × the cell-invariant layer thickness read from `depth_bnds`, reduced by a mean over
+    all 240 monthly steps; `rootdist` = the fpc-weighted mean over the cell's living trees of each
+    individual's own `getrootdist.c` profile, using FIT's own `beta_root` with the rooted depth recovered by
+    inverting the emitted `D95` (`R = ln(1−(1−β^D95)/0.95)/ln β`, [VERIFIED] `R ≥ D95` and `R ≤ 2000 cm` for
+    every individual in all five cells). **Gate: re-extracting cell 42490 reproduces all 23 printed rows of
+    the committed `hainich_soilcolumn.txt` byte-identically** (`max|Δwhcs| = 3.7e-5 mm`,
+    `max|Δrootdist| = 4.3e-7`) — which required finding that the fixture came from the *single-cell* run, not
+    the 512-task global one (they differ by 1.6e-4 relative in layer 0 under `-DPERMUTE`), and that the time
+    mean must accumulate in float32.
+  - **`scripts/extract_cell_individuals.py`** — the N-cell generalization of `extract_fdiff_individuals.py`
+    (whose reconstruction physics it imports rather than duplicates). Reproduces the committed Hainich
+    numbers exactly (`cell_fapar_leafon` 0.8339690, 297/272/25 individuals) and validates every other cell
+    against **that cell's own** C daily FAPAR from a fresh single-cell re-run.
+  - `scripts/extract_biome_forcing.py` now holds **the** canonical N-cell registry (`cells_from_env`), which
+    both new extractors import, and `references/M_cells.csv` carries cell/lat/lon from `grid.nc` `cellid`, so
+    the hard-coded `BIOMES` dict and hard-coded latitude list are gone. Its committed forcing output is
+    byte-identical after the refactor.
+
+  The emergent rooting gradient comes straight out of FIT's trait distributions: top-1 m root fraction
+  99.3 % (semi-arid Sahel) → 88.6 % (boreal) → 87.8 % (Hainich) → 61.5 % (mediterranean) → 53.2 % (tropical
+  Amazon), effective D95 72 cm → 690 cm. `scripts/run_coupled_biomes.jl` now runs both the per-cell and the
+  legacy common-Hainich configuration, so the **vegetation+soil** contribution is separable from the climate
+  contribution for the first time: +10.8 W/m² LE in the Amazon, −7.6 W/m² in the Sahel, mediterranean Bowen
+  1.27 → 0.65. Energy still closes to ~1e-14 W/m² in every cell.
+  Gated by `test/testitems/biome_coupled_tests.jl` (now two test items: the per-cell inputs are well-formed
+  **and pairwise distinct** — the guard against silently falling back to one cell's inputs — plus the
+  unchanged energy-closure and climate-partitioning assertions). Suite 106,987 pass / 0 fail / 4 broken.
+  `hainich_soilcolumn.txt` and `hainich_individuals_2010.csv` are untouched, so no committed baseline moves.
+  Honest limitations: the canopy reconstruction is leaf-on, so reconstructed/C peak FAPAR runs ~1.3–1.6
+  across the five cells (Hainich 1.60); `getrootdist`'s permafrost redistribution of roots below
+  `mean_maxthaw` is not ported (no output carries the thaw state); and every biome still runs beech ANGIO
+  PFT parameters (milestone M5).
+  \+ skill: `provision-coupled-cell`.
+
+- **An opt-in demography observation hook in the LPJmL-FIT C binary** (`patches/lpjmlfit_rung2_demography_hook.patch`),
+  the observation half of the rung-2 harness. Activated by the environment variable `LPJ_RUNG2_DIR`; with it
+  unset the model is numerically identical to the previous build. Dumps each patch's tree roster at the top
+  of the annual demography block and again after establishment, including the three per-tree accumulators
+  three of the four death rates read (`water_stress`, `temp_stress`, `bm_inc_counter`) and all seven carbon
+  pools — none of which the `ind` output carries. ADR 0061.
+- `scripts/diagnose_cbinary_rebuild_equality.py` — the gate to run after **any** rebuild of the C binary.
+  Compares **decoded NetCDF variables** (a file-level `cmp` is defeated by LPJmL's `history` timestamp,
+  ADR 0043) plus the text outputs byte-for-byte.
+- `scripts/diagnose_rung2_roster_vs_ind.py` — proves the hook's post-demography roster reproduces the C's
+  own `ind` table on the same run (5 465 trees, identical tree sets, all 21 shared columns to ≤5.0e-6).
+
+- **Line M / M2 (in progress):** `scripts/extract_cell_slow_init.py` — folds the per-cell Component-S
+  initial state (`n_init`, `age0`) and the 4-column slow boundary
+  (`eco_diag_gdd_5, tas_cold_month, soil_depth, co2`, in the runtime
+  `flux_feature_vector`/`live_flux_cond` tail order) out of line S's `cell_meta.parquet` sidecar and into the
+  committed `references/M_cells.csv`, so the multi-cell coupled driver and its CI gate read one tracked table
+  instead of a `/p/tmp` DVC artifact. Re-verifies the artifact's trained boundary order against its own
+  `*_meta.txt` rather than assuming it, and **aborts** if any requested cell is absent from the pinned
+  `cell_meta` (a cell the pinned DRF never saw has no honest `n_init`/`age0`).
+
+- **The project's licensing basis — order P5 is done ([ADR 0080](docs/decisions/0080-licensing-basis.md)).**
+  **Outbound = AGPL-3.0-or-later**, and it is *forced* rather than chosen: it is simultaneously what
+  LPJmL-FIT's AGPL-3.0 copyleft requires of a derivative work and a licence the **EUPL-1.2 Appendix** names
+  as a "Compatible Licence", so EUPL Art. 5's compatibility clause sanctions combining with Terrarium.jl and
+  SpeedyWeather.jl (**both EUPL-1.2** — verified upstream, not MIT). That makes the position valid whether or
+  not a package dependency counts as a derivative work — the question EUPL Art. 1 explicitly leaves to
+  national law — which is the main reason a permissive outbound licence was rejected. **Terrarium.jl's
+  `NOTICE` extends Art. 5 to *any* licence for "the normal use of the Work as a library"**, so taking it as
+  `[weakdeps]` + a package extension is clean: **P4 (online coupling) is unblocked**, with runtime `[deps]`
+  still empty (ADR 0014). The ADR separates **READ / DEPEND / VENDOR** as three different acts with different
+  rules — vendoring third-party code now requires its own ADR — and fixes NeuralCrop.jl as *method-only*
+  permanently (CC-BY-NC's NonCommercial term cannot be combined with AGPL-3.0 §7, so a work derived from both
+  would be undistributable) and LPJ_resilience as reimplement-from-paper (unlicensed ⇒ all rights reserved).
+  ADR 0017 is **annotated, not superseded**: its licensing driver was only ever about the VENDOR tier, and its
+  outcome stands on its two independent drivers. New operational companion
+  `docs/third_party_licensing.md` — the inbound-work register (licence, tier, *how it was verified*,
+  obligation) plus the mandatory before-you-take-a-dependency checklist, driven by the new
+  `dependency-license-gate` skill.
+
+- **The SpeedyWeather ↔ Terrarium online-coupling harness runs on this cluster (P4).** Terrarium 0.1.3 +
+  SpeedyWeather 0.21.1 now install alongside the emulator, and the upstream coupled model has been **verified
+  running on a compute node** (6 simulated hours, `vegetation = nothing`, 4608/4608 cells finite, Float32
+  held, T_skin −16.7…25.0 °C) — the control run against which our own physics will be judged.
+  `[VERIFIED]` **SpeedyWeather ships `SpeedyWeatherTerrariumExt`**, giving
+  `SpeedyWeather.LandModel(::SpectralGrid, ::Terrarium.AbstractModel)`, so Terrarium is the *supported*
+  land-model socket and we write no atmosphere↔land plumbing. New `docs/p4_online_coupling_design.md` is the
+  design of record (every API claim read from the installed packages), new `scripts/online_coupling/` holds
+  the harness, and the new **`online-coupling-env`** skill captures the four traps that each cost a failed
+  job: Julia **1.10.0 cannot precompile this stack** (`KeyError: "KernelAbstractions"`; 1.10.10 does it in
+  81 s), `SpeedyWeather.EarthOrography` **downloads an artifact inside `initialize!`** so assets must be
+  warmed on the login node, **Terrarium state is °C not Kelvin**, and `Pkg.status()` throws
+  `KeyError: "Dates"`. The design's central finding: Terrarium steps at Δt = 300 s while F is daily and S
+  annual, so rate processes couple directly but stateful ones need a piecewise-constant tendency — which
+  ForwardEuler integrates to exactly the daily total, preserving conservation by construction. **No
+  LPJmL-FIT physics is in the coupled loop yet**; the `FDiffPhotosynthesis` spike is specified in §4.
+
+- **Line O / O3a — a real, spatially varying soil texture for the online (Terrarium) soil, plus a guard
+  against the silent degeneracy it fixes** ([ADR 0083](docs/decisions/0083-online-soil-texture-and-degeneracy-guard.md)).
+  Terrarium's default stratigraphy is pure sand (`clay = 0`), which collapses SURFEX's wilting point and
+  field capacity to *exactly zero* and makes `plant_available_water ≡ 1` everywhere — no error, just
+  "fully unstressed everywhere". The online soil now uses a single `PrescribedSoilHorizon` carrying the
+  LPJmL-FIT ground-truth soil-texture map (`scripts/online_coupling/build_soil_texture_field.py` →
+  `soil_texture.jl`), with SURFEX porosity, and `assert_nondegenerate_soil` throws on any configuration
+  where `field_capacity <= wilting_point`.
+- The texture must be supplied through `TerrariumLand`'s `fields`, **not** `InputSources`:
+  `SpeedyWeatherTerrariumExt` builds its `ModelIntegrator` with an empty `InputSources`, so the input
+  path used by Terrarium's own SoilGrids example is silently dropped under SpeedyWeather. A gate asserts
+  the texture actually reached the model state.
+
+- `scripts/biome_slow_oracle_probe.jl` — an opt-in level-anchor arm (`ANCHOR=<a>`) with the pre-registered
+  criterion evaluated mechanically, plus the physical-stand table the corrected yardstick needs. With
+  `ANCHOR` unset the script runs its previous two arms and prints its previous reports unchanged.
+- `scripts/biome_resilience_probe.jl` — opt-in `lvl0`/`lvl1` arms scoring the level anchor's effect on
+  year-to-year memory, reported as distance to the C oracle. These are **not** the existing `anchor0` arm
+  (which is teacher forcing). Mean `|AC − C's AC|` **0.0439 free → 0.0405 anchored**; the anchor does not
+  buy its level fix with dead dynamics. With `ANCHOR` unset the battery and its committed fixtures are
+  unchanged; with it set, fixture writes are redirected to scratch so no committed baseline can move.
+
+- `scripts/diagnose_ind_type_composition.py` — global per-`Type` census of the `ind` ground truth: stems,
+  cells, cells lost entirely, and the per-cell trait-median shift induced by a PFT-set restriction.
+
+- **Spatially BLOCKED cross-validation for the recruit-trait copula evaluation** (line S, ADR 0040 —
+  the gate on promoting ADR 0038's 14-column artifact). `scripts/eval_slow_copula.jl` gains
+  `FOLD_MODE=hash|block`, `BLOCK_DEG`, `BUFFER_DEG`, `CELL_LATLON` and `MTRY`. Blocked mode assigns folds to
+  B°×B° tiles and then removes from each fold's TRAINING set every cell within `BUFFER_DEG` of any of that
+  fold's test cells, so the evaluation can distinguish an environmental response from spatial interpolation
+  off the test cell's immediate neighbours. All five knobs default to the pre-existing behaviour and the
+  `pred_<axis>.f64` bytes are **verified byte-identical** with them unset (six of six files on the 50-cell
+  smoke table).
+- `scripts/build_slow_spatial_controls.py` — provisions the three position artifacts the experiment needs
+  from `grid.nc`: `cell_latlon.txt` (plain text, because the eval has no Parquet/NetCDF dependency),
+  `cell_geo_tail.parquet` (a pure-position conditioning tail) and `cell_env_perm_tail_s<seed>.parquet`
+  (the true env tuples permuted across cells — same width, same cell-level 6-way joint, zero geography,
+  asserted by a lexicographic bijection check and a neighbour-correlation report).
+- `scripts/blocked_cv_folds_probe.jl` — gates the fold machinery before any compute is spent: re-derives the
+  realized nearest-training-cell distance by great-circle brute force (independently of the eval's own grid
+  dilation) and asserts the buffer is honoured, plus a block-size × buffer design sweep.
+- `scripts/diagnose_slow_neighbour_skill.py` — scores an EXISTING matched prediction pair stratified by each
+  test cell's distance to its nearest training cell, at zero new compute.
+- `scripts/build_slow_copula_env_augment.py` gains `ENV_PARQUET` / `TAIL_TAG` so the ablation control tails
+  ride the same verified transform instead of a forked script, with a new one-row-per-`Cell` gate on the
+  input (the `group_by("Cell").mean()` is the identity for a per-cell tail, so a duplicated `Cell` would
+  otherwise be silently AVERAGED into a tuple present in neither marginal).
+
+- `scripts/build_slow_cell_env_sidecar.py` emits `tables/cell_env.parquet` — the per-cell env conditioning
+  sidecar the 14-column recruit-trait copula needs to be coupled-runnable at all. Until now nothing in the
+  runtime supplied those six values: every caller hand-built them from `cell_year_feats.parquet` inside a
+  bespoke script, which is unreachable from CI and basis-sensitive. Both open handoffs listed this as a
+  standing blocker. 67 420 cells (a superset of the pinned table's 58 766, so line M can provision any grid
+  cell), 2.0 MiB, with a manifest recording the basis, the year span, and the column order a positional
+  consumer must respect.
+
+- `scripts/verify_hainich_demo_artifacts.sh` — the byte-identity gate (guardrail 4) for any Component-S
+  pipeline change claimed to be a no-op at the prototype cell. Regenerates all four committed Hainich demo
+  artifacts and gives a **two-tier** verdict: `PASS`, `FAIL` (the edit moved the table), or `STALE-FIXTURE`
+  (the fixture was already out of date) — a one-tier gate cannot tell those apart.
+- `scripts/diagnose_slow_table_drift.py` — the control for that gate: builds the same single-cell table with
+  `build_slow_runtime_table.py` as of a git `REF` and with the working tree, and diffs `X` column-by-column.
+  Answers "did my edit change the table, or was the fixture already stale?" with a measurement.
+- `scripts/diagnose_lai0_growth_eff.py` — the `lai == 0` / `growth_eff` census per seed and per tree
+  population, and the reproducer for the cross-seed-join diagnosis above.
+- **`VERSION=<tag>`** on `run_global_slow_{training,copula}.sh` and `run_pooled_slow_{training,copula}.sh`:
+  suffixes every table dir, artifact and log so a retrain on a changed basis writes **new versioned files**
+  and line M re-pins deliberately (ADR 0029/0031), instead of overwriting artifacts M depends on.
+
+- **`.rcop` format v2 carries `qrf`** (`DRF.save_copula(...; qrf)` / `load_copula` → 6-tuple). The QRF leaf
+  weighting selects a different conditional distribution from the same forests and previously lived ONLY in
+  the sidecar `_meta.txt`, while line M's contract pins a `.rcop` *path* — so a consumer that missed the
+  sidecar silently sampled the estimator that was not scored, with every draw in range. Flipping it changes
+  all three of t9's golden draws. v1 still loads and means `qrf = false`, `qrf` is the sixth tuple element so
+  all five pre-existing 5-way call sites are untouched, and a forged v99 header is refused ⇒ guardrail 4
+  holds and nothing line M pinned needs regenerating. Recorded as a **version bump** of the frozen S→M
+  contract, not a mutation.
+- **`FluxDrivenSlowEmulator` rejects a conditioning-width mismatch at CONSTRUCTION.** `DRF._check_nfeat`
+  fires only inside `sample_copula!`, reached only when a patch actually recruits — so a cell that thins
+  every year, or an all-grass patch, never draws, and a mis-wired coupled run completes "successfully" while
+  conserving carbon. The constructor is the only place holding both the boundary and the copula, so it now
+  probes the policy once. A new testitem builds a 14-column `qrf=true` copula **through the emulator** (a
+  composition no test had ever run), plus both crossed mismatches and a wrong-length boundary.
+- Measured the previously-unmeasured **leaf geometry at the production config** (`rcop_leaf_geometry_probe.jl`
+  on t9): 33 449–46 036 leaves/tree, **52.3–67.0 % of stored values still depth-capped**, and only 84–86 % of
+  large leaves at `max_depth` (vs 99.9–100 % at 50k/d14). Depth is therefore **not** exhausted at d22/2M and
+  is still free in bytes.
+
+*post-merge measurement:*
+
+- **The production config TRANSFERS to the `pooled_w20` basis line M actually pins** (job 1647661, 57 719
+  cells, A/B on one basis via `score_slow_copula_dispersion.py`): Wooddens `emu_r` 0.8261 → **0.9095**,
+  `sd_ratio` 0.6119 → **0.8493** (criterion 2 **FAIL → PASS**), slope `Y1~pred` 1.3501 → 1.0708. Criterion 3
+  improves on all four axes against the *pooled* baseline (SLA .0039→.0009, Wooddens .0065→.0007, D95max
+  .0020→.0014, minwscal .0040→.0003), and every axis gains `emu_r` (SLA +0.0510, Wooddens +0.0834, D95max
+  +0.0996, minwscal +0.0131).
+  **Read it correctly:** this is the FULL three-lever delta against a 60-tree/50k/d14/ncond-8/QRF=0 baseline,
+  **not** the isolated conditioning lever — the comparable full-stack figures are historic +0.087 `emu_r` /
+  +0.1766 `sd_ratio` versus pooled +0.0834 / +0.2374, so the config transfers and does *better* on dispersion
+  there. Criteria 1 and 4 remain uncomputable for pooled (no pooled seed2), and this does **not** resolve the
+  spatial-address question — the pooled folds are still `mod(hash(cell), k)` and the env columns are identical
+  for a cell across both scenarios, so spatially blocked CV is still the gate on production.
+
+- `scripts/rcop_acceptance_probe.jl` — acceptance test for a **production** recruit-trait copula artifact,
+  run in a FRESH process against the shipped `.rcop` + its sidecar `_meta.txt`. `train_slow_copula.jl`
+  already round-trips the bundle inside the process that built it, with the forests still in memory; that
+  proves serialization is self-consistent but not that a later process can use the file. The probe closes
+  that gap: it times the load, checks every axis forest's `nfeat` against the header `ncond`, cross-checks
+  the sidecar's `ncond`/`cond_cols`/`axes`, reproduces the golden `(seed, x)→draw` pairs, rebuilds the
+  conditioning row through the actual runtime policy (`live_flux_cond` or `live_flux_cond_env`) and asserts
+  it equals the artifact's own fallback row, and confirms a wrong-width row is REJECTED rather than
+  silently answered. On `recruit_copula_global_historic_t9.rcop` (484.5 MiB): **load 6.77 s = 71.6 MiB/s
+  measured** (an earlier handoff's "~12 s at 42 MB/s" was an unmeasured estimate), all checks PASS.
+- `scripts/score_slow_copula_dispersion.py` — the **seed1-only** between-cell statistics (`emu_r`,
+  `sd(pred)/sd(Y1)`, OLS slope) with an A/B diff of two prediction sets on one basis. The ADR-0030 gate
+  needs a **seed2** realization for its ceiling, `%GAP` and `r_center`, and a seed2 table exists for
+  `historic` ONLY — so criterion 2 (the under-dispersion axis the whole S2 milestone is about) was not
+  measurable for the `pooled` artifact line M pins. This measures it. The per-cell reduction is IMPORTED
+  from `noise_floor_vs_emulator.percell_table` rather than reimplemented, so it cannot drift from the
+  gate's own definition; it prints, rather than hides, that criteria 1 and 4 stay unmeasured without a
+  seed2.
+
+- **Two probes that decompose the Component-S recruit-trait GAP before any conditioning change is written**
+  (milestone S2). `scripts/diagnose_copula_cond_ceiling.py` splits the ADR-0030 per-cell trait GAP into
+  *estimator inefficiency* vs *new-covariate headroom* by fitting a direct per-cell regressor (K-fold by cell)
+  on the current conditioning versus a wider environmental set; it validates itself against the documented
+  `emu_r`/`floor_r`/`sd_ratio` first and stops if they disagree. `scripts/diagnose_copula_capacity.sh` re-runs
+  the K-fold-by-cell OOS evaluation at a chosen estimator capacity on an **unchanged** table — via a shadow
+  directory of input-only symlinks, so a re-evaluation can never overwrite a validated generation's
+  `pred_<axis>.f64` — and scores the ADR-0030 gate, measuring capacity in isolation from any conditioning
+  change.
+
+- **`scripts/diagnose_count_recursion_anchor.jl`** — the three-section diagnosis behind ADR 0102:
+  (a) **coherence**, the per-year `n_prev` / `target` / raw ratio / clamped `ρ` / realized-density table with
+  the clamp-binding count and the cumulative AR-vs-roster divergence; (b) **anchoring**, an `n_init` sweep
+  measuring whether the recursion forgets its initial condition; (c) **level anchor**, the decisive test —
+  perturb the initial density and measure retention against horizon. It prints an explicit verdict for the
+  "(B) is empty" outcome, because a null there is a real and reportable result rather than a failed probe.
+
+- **Component S: the ADR-0030 gate's criterion 3 is now actually measured.** The criterion is *pooled KS*, but
+  the copula evaluator prints `nqrmse` and the noise-floor gate prints neither, so every capacity rung had been
+  scored without it. `scripts/score_slow_copula_ks.py` reports pooled KS, median per-cell KS, `nqrmse` and
+  median relative quantile error per axis on one row universe, importing the same `ks2` that produced the
+  published `metrics_traits.txt` numbers. The two statistics are not interchangeable — they disagree by ~55×
+  in magnitude (`agb`: `nqrmse` 0.6432 vs KS 0.0116) and in *direction* — and on the corrected statistic the
+  `b6x2M` capacity rung **improves the pooled marginal on all four trait axes**, reversing the verdict
+  recorded in ADR 0037.
+- **Component S: per-rung leaf geometry.** `eval_slow_copula.jl` now prints leaves per tree, the leaf-size
+  distribution, the share of stored values sitting at `depth == max_depth`, and the size-biased expected draw
+  pool. Measured on the `t8` artifact, 99.9–100 % of leaves holding at least `2·min_leaf` values sit exactly at
+  `max_depth` and 57–67 % of all stored values are in one — so the marginal forests are truncated by the depth
+  budget, and `max_depth` is a lever that costs no artifact bytes while `subsample` scales them linearly.
+- **Component S: `scripts/build_slow_copula_env_augment.py`** derives an extended-conditioning copula table by
+  appending the per-cell env tail to an existing table's `Xc` rather than rebuilding from the `ind` parquet, so
+  a conditioning experiment cannot be confounded by the polars-streaming key-set non-determinism of ADR 0036
+  §5b. Verified bitwise-identical on the inherited columns across all 197 721 867 rows.
+
+- **ADR 0043 — the cross-build gate PASSES: the `Feb  5 2026` and `Jul 21 2026` LPJmL-FIT builds are
+  trajectory-identical and may be pooled as a pure seed pair.** Closes the question ADR 0041 specified
+  but could not run to a verdict. The matched-decomposition gate (full-grid 67 420 cells / 2048 tasks,
+  a faithful re-run of the ssp370 seed1 member) reproduces the seed1 ground truth bit-for-bit:
+  `globalflux` `cmp`-identical, `vegc` identical across all seven variables by SHA-256, and the 193 GB
+  per-individual `ind` roster `cmp`-identical over all 81 years — a far stronger result than the gate
+  required, since `ind` is the finest grain the model emits.
+- `scripts/diagnose_ind_seed_independence.py` gains **`--log-dir <run_dir>`**, which resolves the newest
+  non-empty `lpjml_*.out` instead of taking a pinned job id, and now treats a 0-byte log as a distinct
+  provenance FATAL rather than a gate failure.
+
+- `scripts/exposure_bias_probe.jl` — prices the exposure-bias retrain **offline** from the existing `_t8`
+  tables (one-step bias `b`, AR gain `g = ∂pred/∂n_prev`, and the implied compounding `b(1−g^k)/(1−g)`)
+  before anything is spent on training. Its verdict: the bias is **empty** (−0.0014 stems/patch/yr
+  held-out-cell OOS on counts of ~10, `g = 0.56` ⇒ a bounded 2.28× amplification), so the retrain is
+  cancelled rather than deferred (ADR 0105 §5).
+- `scripts/biome_slow_oracle_probe.jl` — REPORTS 8 and 9: the same five biome cells run with **one
+  ensemble member per patch** (the basis the C reports and the count model was trained on), scoring the
+  ADR 0104 §7 criterion clause by clause and splitting the residual with a teacher-forced arm. The modal
+  reports are unchanged and reproduce ADR 0104's published numbers in the same run, so the two bases are
+  visible side by side.
+- `scripts/biome_resilience_probe.jl` — the memory clause's PASS/FAIL is now computed in-script, including
+  its new per-pair tolerance, instead of being read off the table by hand.
+
+- **Runtime-consistency is now observable and CI-gated, not inferred (ADR 0034).**
+  `FluxDrivenSlowEmulator.feature_history` records the exact `flux_feature_vector` row handed to the forest
+  each year (diagnostic only — no numerical change, every committed baseline byte-identical), and
+  `scripts/train_slow_drf.jl` writes the trained `y_min`/`y_max`/`feat_min`/`feat_max` bands into every
+  artifact meta. `slow_production_drf_tests.jl` now asserts the RUNTIME rows against that band. This replaces
+  a check that could not fail: a DRF prediction is a convex combination of training leaf means, so "predicted
+  targets are inside the training band" holds however out-of-domain the input is — which is exactly how a
+  two-order-of-magnitude proxy-basis shift stayed invisible behind green gates.
+- `scripts/measure_hainich_gate_bands_probe.jl` — re-measures every threshold the four committed-Hainich-fixture
+  gates assert, in one run, plus the two checks the tests structurally cannot do (artifact-vs-artifact basis
+  agreement, and runtime-vs-trained feature band). `DRF_ART`/`DRF_META` point it at an older artifact to
+  produce the BEFORE column of a before/after table; it reproduced the documented pre-S1c numbers
+  (0.39 / 1.25 / 0.67) exactly, which is what validates the harness.
+
+- **A LEVEL ANCHOR for the coupled stand — opt-in, default-off, and it closes a 41 % over-density nothing
+  in this project could see ([ADR 0103](docs/decisions/0103-the-level-anchor-ships-the-conversion-was-a-constant.md)).**
+  `FluxDrivenSlowEmulator(...; anchor = a, patch_area = 225.0)`. ADR 0102 measured that the coupled stand has
+  no level anchor — it is advanced by a pure ratio, `D_T = D_0·Πρ_t`, so the count DRF's *absolute* skill
+  never reaches it — and then **deferred the fix on a false premise** (see below). It is now built:
+  - **Mechanism.** A **geometric** blend of the AR ratio and the ratio that lands the stand on the DRF's
+    absolute target: `ρ_eff = (target/n_prev)^(1−a)·(D_want/D)^a` with `D_want = target/patch_area`, clamped
+    by `max_mort`/`max_estab` exactly as before. Geometric rather than arithmetic keeps the update
+    multiplicative and strictly positive, so the carbon routing is untouched and `a` is a **relaxation rate**
+    (time constant ≈ `1/a` years) rather than a mixing weight.
+  - **`anchor = 0` does not evaluate the branch** ⇒ every committed baseline, ReferenceTest and AD gate is
+    byte-identical. This is the ADR-0049 opt-in pattern reused unchanged, and it is *measured*, not asserted:
+    the new testitem compares the full density trajectory with `==`, not `isapprox`.
+  - **Measured** (job 1707102, Hainich, 150 yr, the same 4× initial-density sweep as ADR 0102 §3):
+
+    | `anchor` | retention | terminal spread | stand ÷ its own count target |
+    |---|---|---|---|
+    | 0.00 | 1.0364 | 4.207× | **1.409** |
+    | 0.10 | **0.0513** | 1.074× | **1.000** |
+    | 0.25 | 0.0491 | 1.071× | 1.000 |
+    | 0.50 | 0.0513 | 1.074× | 1.000 |
+    | 1.00 | 0.0762 | 1.111× | 1.000 |
+
+    The initialisation is forgotten (retention ÷20) **and** a previously invisible level error is closed: the
+    unanchored stand settles **1.409× denser than its own count model's absolute prediction**. Every existing
+    gate — the ADR-0030 per-cell trait gate, the count R², the trained-band check — reads ratios,
+    distributions or correlations, so **none of them can see an absolute-level error**.
+  - **Recommendation for line M: `anchor = 0.1`** — 0.1–0.5 are equivalent and `a = 1` is measurably *worse*
+    (retention 0.076), because a hard anchor overwrites the stand's own dynamics each year so a perturbation
+    is re-imposed through the clamp and the recruit branch instead of relaxing away. This is the measured
+    value the owner's standing pre-authorisation of M's baseline regeneration was waiting on.
+  - **`patch_area` travels with the ARTIFACT, not the cell.** 225 m² is `param.patcharea` of the training
+    runs — a global constant in this configuration, so no `cell_meta.parquet` column — but stock LPJmL-FIT
+    uses **100.0**, so an artifact built from a different `patcharea` run must pass its own value or the
+    anchor pulls the stand to a level wrong by the ratio of the two areas. Inert when `anchor == 0`.
+- `test/testitems/slow_level_anchor_tests.jl` — pins byte-identity at `a = 0` (with `==`), that `a > 0`
+  actually anchors (so the test cannot pass on a no-op — the ADR-0048 never-fired-null failure mode), that
+  retention drops, that `patch_area` is load-bearing when on and inert when off, carbon closure, determinism,
+  and the `[0,1]` kwarg validation in both directions.
+
+- `scripts/diagnose_per_tree_water_access.py` — the Phase-0 kill/proceed check for the rooting-depth gap.
+  Measures, on the LPJmL-FIT C model's own per-individual `ind` output rather than by simulation, how
+  differently real trees in the same cell and year experience water: the across-tree spread of `wscal_mean`,
+  its amplification in dry years, the within-(PFT × age-band) correlation with each stem's own `beta_root` /
+  `D95max`, and the share of total mortality hazard carried by `mort_water` / `mort_temp` together with the
+  selection differential those hazards impose on rooting depth. Pre-registered pass criterion; both
+  scenarios; 5 biome cells.
+
+- **Per-tree root profiles and per-tree water status** in the differentiable fast core (ADR 0110, opt-in via
+  `WaterParams.per_tree_roots`, default off ⇒ every committed baseline byte-identical). Each individual with a
+  rooting-depth trait now gets its own root-weighted soil moisture, its own water supply, its own water
+  scalar, and withdraws down its own profile — instead of every tree sharing one cell-average profile
+  collapsed to a single scalar. Two trees differing only in rooting depth are no longer identical in the
+  water balance.
+  - `FDiff.betaroot_from_d95max` / `FDiff.jackson_rootdist` / `FDiff.per_tree_rootdists` — ports of the C's
+    `soil/getbetaroot.c` and `lpj/getrootdist.c`, **validated to 5e-7 against the C's own emitted
+    `beta_root`** across the full trait range (an oracle test, not self-consistency).
+  - `FDiff.getvpd` — port of `spitfire/getvpd.c` on the `relative_humidity = false` branch this configuration
+    takes; `DailyForcing` gains `humid` (specific humidity, already column 7 of every committed forcing
+    fixture).
+  - `TreePools` gains `d95max` and `minwscal`; `Individual` unchanged (see below); `daily_step_canopy` takes a
+    `rootdists` keyword and returns `wscal_ind` / `wr_ind`.
+  - The C's **order-free** first cap — no individual may draw more from a layer than its own FPC share
+    (`water_stressed.c:159-161`) — via `WaterParams.per_tree_fpc_cap`. The order-*dependent* residue cap
+    stays out of scope.
+- **The drought and heat mortality hazards can be switched on** (ADR 0110, `WaterParams.trait_drought_mortality`,
+  default off). ADR 0049 §3 set `mort_water` and `mort_temp` to zero because the emulator had neither the C's
+  per-individual daily water scalar nor a per-tree drought threshold; both now exist.
+  `TraitMortality.water_stress_increment` / `temp_stress_increment` port `tree/waterstress_tree.c` and
+  `tree/tempstress_tree.c` one day at a time, and `FDiffFastCore` accumulates them per individual over the
+  year.
+
+- Component S: `src/trait_mortality.jl` (`module TraitMortality`) — the LPJmL-FIT per-individual tree
+  mortality hazard, ported in full from `mortality_tree_ind.c:89-133`: the wood-density-dependent
+  `mort_max`, the growth-efficiency logistic, age/water/temperature stress, their **additive** combination
+  with per-component and total caps, and the two hard kills. This is the trait-dependent selection operator
+  ADR 0046 confirmed as the lever for FIT's within-PFT wood-density warming shift. It has **no call site**:
+  every committed baseline, ReferenceTest and AD path is byte-identical (guardrail 4), and the runtime
+  `[deps]` stays empty (ADR 0014). ADR 0047.
+- Component S: `scripts/build_mort_params_reference.py` →
+  `test/testitems/references/S_pft_mortality_params.csv` — the ONE per-PFT mortality-parameter table,
+  generated by expanding `$LPJROOT/par/pft_lpjmlfit.js` with the same `cpp -P` LPJmL itself pipes it
+  through (`openconfig.c:28,467`). All three consumers now gate against it (the Julia table via
+  `test/testitems/slow_trait_mortality_tests.jl`, `build_slow_flux_table.py::PFT_PARAMS` via a new
+  import-time `gate_pft_params_against_reference()`, and the same under CI via
+  `python/tests/test_mort_params_reference.py`) — no hand-maintained second copy, which is the ADR-0031
+  defect class. The pytest includes a mutation test: perturbing one value must make the gate fail.
+- Component S: `scripts/kcap_merge_confound_probe.jl` — measures whether the k-cap merge's dominant-parent
+  trait inheritance confounds a trait-response measurement, and the rollout's constant-forcing baseline
+  drift and recruitment relaxation timescale. ADR 0048.
+
+- **`DRF.predict_quantile` gains the Meinshausen (2006) quantile-regression-forest leaf weighting, opt-in via
+  `qrf = true`** (ADR 0037), threaded through `DRF.sample_copula!` and reachable from
+  `scripts/eval_slow_copula.jl` with `QRF=1`. The default remains the pre-existing equal-weight
+  concatenation, so every committed artifact, golden draw pair and reference baseline is bitwise unchanged.
+- **Opt-in EXTENDED recruit-copula conditioning**, in lockstep on both sides: `COPULA_ENV_COLS` in
+  `scripts/build_slow_runtime_table.py` appends per-cell `cell_year_feats` columns after the boundary tail,
+  and `live_flux_cond_env(env)` in `src/components/slow.jl` builds the matching runtime row. Both default to
+  an empty tail, which reproduces the existing 8-column conditioning exactly. Implemented as a policy
+  FACTORY rather than a new field because `RecruitCopula.cond` is already pluggable (ADR 0025) — so this
+  needs no struct change, no `.rcop` format change, and no change to `live_flux_cond`, and it leaves the
+  count DRF's shared boundary tail (hence its `nfeat` and line M's pinned count artifact) untouched.
+- `scripts/diagnose_copula_cond_ceiling.py` gains `ENV_SETS`, ranking compact candidate covariate subsets by
+  what they add over the current conditioning — because adding all 28 environmental columns would grow `Xc`
+  from 12.6 GB to ~57 GB and push `mtry = round(sqrt(p))` from 3-of-8 to 6-of-36, diluting the informative
+  columns among correlated climate ones.
+
+- **Component S / Phase 3A Stage 3 — the RESPONSE arm (ADR 0100).** `scripts/trait_mortality_arm_probe.jl`
+  gained `MODE=response`: a 2×2 of {`trait_mortality` on, off} × {historic, ssp370 forcing}, all four rollouts
+  advanced in one process at matched year indices, scored as a double difference. New extractor
+  `scripts/build_hainich_response_forcing.py` pulls **real** daily forcing for both scenarios from the same
+  orderA `.clm` files the two LPJmL-FIT ground-truth runs read (+2.45 K, +709 gdd5 at Hainich), behind three
+  hard gates — it reproduces the committed `climbuf_hainich_boundary_w20.csv` and `hainich_forcing_2010.csv`,
+  and asserts ADR 0004's flat ssp370 CO2. New committed fixture
+  `test/testitems/references/S_hainich_response_boundary.csv` (per-scenario-year transient boundary + the
+  per-year forcing means, so the uncommitted daily forcing is verifiable without shipping it).
+- **Line S ADR block tier 2.** `docs/decisions/README.md` and `CLAUDE.md` §9 now pre-allocate a second ADR
+  block per line (S 0100–0119 · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0160–0169); ADR 0049
+  had exhausted line S's tier-1 block 0030–0049 mid-milestone.
+
+- **`scripts/run_response_seed_ensemble.sh`** + **`scripts/summarize_response_seed_ensemble.py`** — submit
+  and reduce a response ensemble. The summarizer reports mean ± SEM, `t` and a 95 % CI with `n`, derives the
+  three response numbers from the four 2×2 corners (and self-checks them against the log's printed ×FIT
+  values, catching the unit bug of re-scaling an already-scaled ratio), refuses to mix artifacts or initial
+  conditions in one ensemble, and **excludes** rather than averages any run that violated a precondition.
+- **A second precondition on any response measurement (ADR 0101 §2):** *hard kills = 0 and count-override
+  (shortfall) years = 0*, alongside ADR 0048's merge dormancy. Changing only `n_init` 11.0 → 7.0 fires
+  6 hard kills plus one count-override year and swings the operator's contribution from `+0.756×` to
+  `−3.714×` FIT — the hazard stops redistributing a DRF-set count and the double difference measures a
+  different object.
+- `test/testitems/references/S_response_seed_ensemble.csv` — the 32 per-seed rows behind every number above
+  (three artifacts, all four corners, both preconditions per row).
+- `scripts/trait_mortality_arm_probe.jl` gains `SEED`, `DRF_ART`/`RCOP_ART`, `N_INIT`/`AGE0`/`BOUNDARY`.
+  `SEED=1` on the committed demo pair reproduces ADR 0100's primary **to the digit** (`R_ctl` −5 945.79,
+  `R_arm` −2 545.21, interaction +3 400.58), so the ensemble is a superset of that measurement rather than a
+  different harness. Two messages that asserted the *demo* artifact's properties as if they were the
+  harness's were fixed: "not inert ⇒ out-of-band extrapolation" (which mis-reported a correctly-trained
+  artifact as broken — the global artifacts' boundary channel is live *and* in band, worth 1 105 gC/m³ mean
+  on the historic-only pair and 3 165 gC/m³ = 1.30× FIT on the pooled one, against the demo's **exactly 0.0
+  in all 8 seeds**, a harder confirmation of ADR 0100 §4 than the single run it had), and the claim that the
+  boundary rows always read `Inf`.
+
+- `scripts/build_slow_ind_parquet.py` — the missing `ind_*.csv` → parquet step, parameterized by
+  `SRC`/`OUT`. Previously reachable only via the FROZEN sibling repo's `global_extract.py`, whose
+  `--which` is argparse-restricted to a hard-coded three-entry dict, so a new scenario/seed could
+  not be named at all. Asserts the frozen 29-column `IND_COLUMNS` header and keeps the
+  load-bearing `schema_overrides` (polars infers `Wooddens` as integer from the first rows).
+- `scripts/diagnose_ind_seed_independence.py` — gate a new ground-truth member before deriving
+  anything from it: completion line (not SLURM state), final year, size *differs* from the sibling,
+  and sampled MB windows differ at every offset. Equal size is the copy signature.
+- `scripts/diagnose_ind_binary_equality.py` — per-cell bit-equality of a subset re-run against the
+  global ground truth, **with a decomposition control** (single cell vs a block containing it), so
+  a mismatch is attributable to the binary rather than to the MPI decomposition. Needed because the
+  current `bin/lpjml` is not merely "Feb-5 source + the daily-grass-GPP patch" but also a
+  RHEL8→RHEL9 toolchain rebuild.
+- Recovered the ssp370 CO2 forcing that the seed1 run read and installed it durably at
+  `/p/projects/waldspektrum/priesner/clustering/global/global_co2_ann_1700_2019_const_2100.txt`
+  (md5 `ed5699b9c92d4d25857889f644b153db`). Its original path was inside a scripts directory that
+  was repurposed for an unrelated project, so the seed1 config had become unrunnable. Identity
+  established four independent ways (git blob, a filesystem snapshot whose mtime predates the run,
+  reconstruction from the TRENDY v12 source, and the documented 409.63 ppm constant).
+
+- **Component S: the emulator's BIOMASS and SIZE distributions are now validated per-cell out-of-sample**
+  (ADR 0036). An opt-in `STRUCT_AXES=agb,Height` adds per-stem aboveground biomass and height to the
+  `MODE=copula` table as appended diagnostic axes, so they get the same K-fold-BY-CELL OOS treatment as the
+  four production recruit traits — plus new figures `12_biomass_percell` / `13_map_biomass` and
+  `metrics_biomass.txt`, where predicted stand biomass is composed from the emulator's two halves
+  (`OOS count x OOS per-stem agb`) and reported against LPJmL-FIT's own per-patch `sum(agb)`.
+  The axes are **structurally excluded** from the serialized production `.rcop` that line M pins (ADR 0025),
+  and the production axes' OOS predictions are **bit-identical** with the option on or off (gated by a
+  50-cell smoke that `cmp`s them).
+- `scripts/run_slow_validation_figures.sh` — the whole validation figure set for a generation (historic +
+  ssp370 + pooled) plus one self-contained HTML report, as ONE SLURM job.
+- `scripts/build_slow_validation_report.py` — inlines a generation's figures and `metrics*.txt` into a single
+  portable HTML page (a reporter: every number is read verbatim from the metrics files).
+- `scripts/run_pooled_slow_copula.sh` gained the `DEPENDENCY=afterok:<jid>` knob the other three
+  orchestrators already had.
+
+- **Trait-dependent mortality is wired into the coupled loop, opt-in (ADR 0049, Phase 3A Stage 2).**
+  `FluxDrivenSlowEmulator(...; trait_mortality = true)` replaces the composition-preserving uniform
+  ρ-thinning with ADR 0047's ported LPJmL-FIT per-individual hazard: each tree cohort's share of the year's
+  deaths is set by its own `wooddens`/`sla`/age through `TraitMortality.mortality_hazard`, then reconciled
+  with the DRF's count target by a **proportional-hazards tilt** `f_i = (1 − mort_i)^θ` — bounded in [0,1],
+  order-preserving, and recovering FIT exactly at `θ = 1`. The default (`false`) does not evaluate the
+  hazard, so every committed baseline, ReferenceTest and AD path is byte-identical and the runtime `[deps]`
+  stays empty. New: `TraitMortDiag` + `trait_mortality_diag(s)` (the per-year mean hazard, tilt, hard-kill
+  count and count-target `shortfall`), so "did the operator fire" is observable before any before/after Δ is
+  believed. Requires real `fc.pft_ids` — the lookup **errors** rather than defaulting to beech.
+- `test/testitems/references/S_age_wooddens_gradient.csv` — FIT's own per-PFT age–wooddens gradient, the
+  ID-free acceptance target of ADR 0046 §3, as a committed fixture. Generated by
+  `scripts/build_age_wooddens_gradient_reference.py` on byte-for-byte the basis that produced the ADR, which
+  it **asserts** reproduces to 1 gC/m³ (`CHECK=1` re-verifies against a fresh scan). Two refinements of the
+  ADR fall out: **id 2's gradient is non-monotone too** (it dips at the 40–80 yr bin despite a positive
+  one-year selection differential), and id 5 has **no stems above 160 yr** at all (longevity 125) while id 2
+  has none above 320 — so a gradient test must not assume seven bins per PFT.
+- `scripts/trait_mortality_arm_probe.jl` — the Stage-2 arm measurement on the ADR-0048 protocol: arm and
+  matched constant-forcing control re-run in the same process at matched year indices, the operator's own
+  diagnostics printed first, the produced age–wooddens gradient scored against the fixture, and the
+  gross-vs-net turnover diagnostic that explains the tilt distribution.
+
+- **Component S — the recruit-trait moisture conditioning can now vary with the climate (ADR 0108).** Six of
+  the fourteen numbers the recruit-trait sampler is conditioned on describe a cell's moisture *climate*, and
+  they were a per-cell average of 2000-2019 weather reused unchanged for every year of every scenario — so a
+  tree establishing in 2100 was conditioned on its cell's present-day moisture climate. (The sampler is not
+  otherwise blind to moisture: four of the remaining eight numbers do change year by year, and measured
+  against the original model the emulator's per-cell trait shift between scenarios already tracks the real one
+  with a slope of 0.85 for leaf area per unit mass but only 0.16 for rooting depth — partial, and worst
+  exactly where a moisture climate should matter most.) Three additions open the frozen channel, all switched
+  off by default:
+  - `ENV_WINDOW=W` in `scripts/build_slow_runtime_table.py` builds the tail per cell **and year** from the
+    trailing-W-year tables instead of averaging it away.
+  - `live_flux_cond_env_series` in `src/components/slow.jl` is the matching runtime policy, advancing the tail
+    one row per simulated year in step with the existing time-varying temperature tail.
+  - every training table now writes a per-row `years.i64` alongside `cells.i64`, because the year cannot be
+    recovered from a finished table after the fact (measured: the per-cell-year columns are ambiguous between
+    two years for ~140 of 1.35 M historic cell-years).
+- `scripts/run_moisture_conditioning_arm.sh` runs the comparison as one job: one base table, the old and the
+  new tail appended to it, so the two differ in those six columns and nothing else and are scored on identical
+  cell folds.
+- `scripts/diagnose_env_window_gate.py` is the gate: with the switch off the builder reproduces the previous
+  version's output byte-for-byte, with it on only the six columns move, and every probed row carries its own
+  cell-and-year values re-derived independently from the source data.
+
+- **The reference model's own yardstick, on 51 767 of the 54 020 tree-bearing cells and both scenarios**
+  (`EXECUTION_PLAN.md` rung 0, line S; ADR 0111). `scripts/build_truth_yardstick_tables.py` reduces all four
+  ground-truth `ind` parquets (2.55 × 10⁹ stem-year rows) to small per-cell tables in 3.5 min;
+  `scripts/diagnose_truth_yardstick.py` turns them into a stratified per-quantity noise floor on two stated
+  bases, the reliability λ of the single-seed warming response for 1/2/4 seeds, an area-weighted +
+  latitude-band aggregate response metric, and a re-scored deattenuated response slope for any copula table's
+  out-of-sample predictions. Committed reference:
+  `test/testitems/references/S_truth_yardstick_summary.csv` (272 rows).
+
+- Component S: `scripts/diagnose_slow_response_power.py` — the first PAIRED tile-cluster bootstrap of the
+  warming-response statistics (`Rr`/`Ra`/`Rb`), gated on reproducing all seven ADR-0042 arms from their
+  stored predictions (achieved to ≤5e-5). Closes ADR 0042 §10 caveat 7b.
+- Component S: `scripts/diagnose_wooddens_shift_decomposition.py` — decomposes LPJmL-FIT's own
+  historic→ssp370 wood-density shift into PFT composition / within-PFT / interaction, and the within-PFT
+  part further over age classes, plus the selection differential and the age–trait gradient.
+
+### Changed
+
+- **Component E: the two-layer prognostic ground-heat column is now the DEFAULT** (`SEBParams.enable_two_layer`,
+  ADR 0075). This answers line M's pre-registered ask (ADR 0058 §5) and closes the two-scheme split the
+  repository has been running since. Guardrail 4 is re-served by the **opt-out** — `enable_two_layer = false`
+  reproduces the pre-E7 closure exactly, so every published pre-E7 number stays reproducible — and
+  `lambda_g` / `tau_soil` are inert under the default. Daily step, four PLUMBER2 towers: H R² up at three of
+  four sites (DE-Hai 0.035 → 0.645, AU-ASM 0.329 → 0.775, AU-Tum −0.478 → −0.362), G R² up from −4…−39 to
+  +0.07…+0.72 at **all four**, Rn flat within 0.005. The pre-registered criterion **fails at AU-Rob**
+  (0.069 → −0.176), the one site ADR 0073 had already excluded from scoring H (`ε_obs` −47.5 W/m²; its two
+  `λ_g` targets disagree 13.6×; the fitted `λ_g = 1.0` arm fails there too) — recorded in ADR 0075 §1 rather
+  than smoothed over. Stateless callers, including E's committed P2 tower gate, are unaffected **by
+  construction**: `solve_seb` never reads the flag.
+
+- `solve_seb` gained a trailing `lambda_g =` keyword defaulting to `p.lambda_g` — the default call is
+  bit-for-bit the previous computation.
+- `docs/src/explanation/architecture.md`: the component-E section still claimed E **reuses** Terrarium.jl's
+  `SurfaceEnergyBalance`. ADR 0017 superseded that in July — E is self-contained. Corrected, with the
+  Terrarium/SpeedyWeather relationship (coupling substrate, cross-read only) stated accurately.
+
+- Nothing shipped moves. `anchor` stays opt-in and default `0`; no committed baseline, artifact or fixture
+  was regenerated, and `src/` is untouched by this change.
+
+- **Line M re-pinned the Component-S artifact to the `_t8` generation** (ADR 0023 — a deliberate, two-sided
+  adoption): `drf_forest_global_pooled_w20_t8.drf` + `recruit_copula_global_pooled_w20_t8.rcop`, sha256s
+  recorded in `lines/M/STATE.md`. `_t8` re-derives the population on the ADR-0035 feature bases, so a
+  *coupled* run no longer inherits the retired `soilmoist`/`lai` bases; the previous `pooled_w20` pin had
+  never been trained on the `semiarid_sahel` cell at all. Verified independently rather than from the
+  handoff note — both halves deserialize, the meta `colnames`/`cond_cols` tails match
+  `flux_feature_vector`/`live_flux_cond`, `nfeat = 8` per axis forest confirms ADR 0036's diagnostic axes
+  are absent from the `.rcop`, and 5/5 cell coverage was read out of the parquet directly.
+
+- `scripts/extract_cell_slow_init.py` emits round-trippable `repr` (`%.17g`) values instead of `%.6f`.
+  These feed DRF split thresholds, and `%.6f` truncated Hainich's `eco_diag_gdd_5` 1863.695068359375 →
+  1863.695068. With exact output, `M_cells.csv`'s Hainich row is bit-identical to the committed
+  `drf_forest_hainich_meta.txt`'s own baked boundary/`n_init`/`age0`, which upgrades the provenance check
+  from a tolerance to an exact equality.
+
+- `DEVELOPMENT_PLAN` §5's first resilience bullet is annotated in place: its `~0.2-in-wet → ~0.75-in-dry`
+  lag-1 autocorrelation gradient is **not reproduced** on this run (see the verdict below), so it cannot be
+  used as an acceptance criterion as written. The second bullet (variance/SD vs climate) is the replacement.
+- The live P3-vs-Phase-6 inconsistency for this gate is settled: it is Phase-6 *work* pulled forward into
+  P3 / line M, because everything it needs exists now. The "Phase-6 scaffold" comments are gone.
+
+- **Line M / ADR 0057 — the production 5-biome coupled driver runs the PATCH ENSEMBLE, not the modal
+  patch, and the CI signatures were regenerated for it.** LPJmL-FIT simulates each cell as 25 replicate
+  patches and every gridded output it writes is the patch-ensemble mean; ADR 0053 made that the M-line
+  comparison basis and moved the oracle probes to it, but `scripts/run_coupled_biomes.jl` and the CI gate
+  pinning its per-cell signatures (`biome_coupled_tests.jl` item 2) were left driving the single **modal**
+  (= densest) patch. Both now run every patch independently — its own core, soil water and energy closure —
+  and average the outputs. This is a deliberate baseline move under guardrail 4, in its own commit.
+
+  **The artifact is small in energy and large in carbon** (`scripts/biome_ensemble_pin_probe.jl`, job
+  1716587, both bases measured in one run, 2 yr): `mod/ens` is **1.009–1.057 on LE** but up to **1.331 on
+  GPP** (boreal). LE is water- or energy-limited in all five climates and therefore buffered against canopy
+  density; GPP is not. The density artifact does **not** predict the flux one — `semiarid_sahel` has the
+  largest FPC artifact (1.588×) and the smallest flux artifact in the set (GPP **0.990**: extra leaf area
+  buys nothing when water is the constraint) — and the ratio is horizon-dependent, flipping sign at the
+  driver's 10-year horizon for the Sahel (0.821) and mediterranean (0.961). It can never be carried as a
+  per-cell correction factor; re-run on the ensemble instead.
+
+  The same job reproduced the OLD committed pins to every printed digit on the modal basis, which is what
+  makes this a measured basis change rather than a re-record of whatever the new code prints. The new pins
+  stay a driver-level fallback detector: minimum pairwise separation 13.2 % on LE (gate rtol 2 %) and 27.0 %
+  on GPP (rtol 3 %). The ensemble costs **10.6 s** for the whole five-cell CI set, and the gate now asserts
+  the Phase-4 energy closure **per patch** — 25× more closure evidence than before.
+
+  Five gates/probes stay single-member **on purpose**, each carrying the reason at the reader (ADR 0057 §4):
+  the M2 conservation/determinism gate, the rollout-stability and resilience-battery gates (member-invariant
+  structural claims), `scripts/wscal_leafon_probe.jl` (so it still reproduces ADR 0051's published numbers)
+  and `scripts/boreal_soilice_probe.jl` (a seasonal shape, not a level).
+
+  Rule recorded: **a canopy basis is part of a result's reference basis (guardrail 7) — state it where the
+  number is produced**, because a modal-patch number and an ensemble number are not comparable and nothing
+  in the code makes the difference visible.
+
+- The C oracle binary `/home/jamirp/lpjml56fit/bin/lpjml` was rebuilt on 2026-08-10 and now contains the
+  (inert) hook. Verified numerically identical to the previous build: 138 decoded NetCDF variables plus
+  `globalflux` unchanged on a matched single-cell 2000–2019 run. A copy is kept as `bin/lpjml_rung2`.
+
+- **Line M / ADR 0058 — the coupled driver adopts line E's two-layer prognostic ground-heat column
+  (ADR 0074), and it turns out to be free.** `scripts/run_coupled_biomes.jl` and `biome_coupled_tests.jl`
+  items 2 and 3 now pass `SEBParams(enable_two_layer = true)` **explicitly**; the package default stays
+  `false` (`src/components/energy.jl` is line E's file). This closes E's fourth integration point, which
+  had superseded ADR 0073's `lambda_g = 1.0` request, which had superseded ADR 0072's refuted `stab_amp`
+  one — neither of the earlier two is live.
+
+  **Two questions, both pre-registered, both measured** (`scripts/two_layer_coupled_probe.jl`, jobs 1716625
+  / 1716628; two arms differing only in the flag, driven through the real `run_coupled_cell`):
+
+  *What moves?* LE by ≤ **2.2e−5** relative and GPP by ≤ **1.3e−4** — against a stated 1e−3 threshold — so
+  it is an **H/G repartition**, not a coupled-physics change, and the LE/GPP pins ADR 0057 just
+  regenerated move by ≤ 4e−5. What does move is the ground-heat term itself, and the reason is worth more
+  than the pass: under a repeating forcing a soil column must take up **zero** net heat per year, and the
+  default scheme — whose reference is a 30-day EWMA of *air* temperature — cannot honour that. It ran a
+  **persistent +6.4 W/m² sink at `semiarid_sahel`** for ten straight years (~7 % of that cell's Rn) with
+  no reservoir behind it, and the two-layer column hands that energy back to H (58.2 → 64.1 W/m²) while
+  driving ⟨G⟩ → 0 by construction. `sd(G)` falls **6–7×** in every cell — the defect ADR 0073 measured
+  against the towers, now confirmed inside the coupled model at five biomes and closed.
+
+  *Does the closed column drift?* ADR 0074 §5 could only bound this on 4–16 yr tower records where
+  variability and drift are entangled; under M's **strictly cyclic** 60-yr rollout they are not.
+  Phase-matched drift is **−2e−4 K/yr** at both the coldest and hottest column (250× inside the stated
+  0.05 K/yr bound), decaying, equilibrated within a decade, with the 60-yr AGB ratio unchanged between
+  arms and energy closing at 2.8e−14.
+
+  **A metric bug worth carrying:** the first drift number was `(T2[end] − T2[end−9])/9` = **0.222 K/yr**,
+  ~1000× the truth, because the committed forcing is a **10-year cycle** and those two years sit at
+  different phases of it — the same trap that makes a raw `T1(y1)` vs `T1(y60)` look like a 5.8 K drift.
+  **Under a cyclic forcing, compare only years an integer number of cycles apart.** The per-cycle series
+  printed beside the summary is what caught it.
+
+  ADR 0058 §4 lists exhaustively which gates deliberately stay on the default scheme (those scored against
+  ADR 0055's fixtures, and every E-owned gate) and §5 hands the **default flip** back to line E with a
+  pre-registered pass condition, so an opt-in whose default is now known to be worse cannot quietly stall.
+
+- **Line M / ADR 0059 — the C-faithful leaf-on water scalar is now the DEFAULT, and it is worth 3.5× of the
+  Sahel's carbon.** `WaterParams.wscal_leafon` flips to `true`; guardrail 4 is re-served by the **opt-out**
+  (`wscal_leafon = false` reproduces the pre-ADR-0051 expression exactly, and both arms run on every CI
+  pass). This closes the flip line S GO'd explicitly and that CLAUDE.md's guardrail-4 corollary names by
+  name as "a defect on a timer" — it shipped opt-in while ADR 0051 measured it, then sat off for a week
+  with each line recording the flip as the other's to schedule.
+
+  **A full CI-faithful suite with only the default flipped failed 3 assertions out of 111,237** — the
+  opt-in guarantee itself, and `semiarid_sahel`'s two pinned signatures. Nothing else in the tree moves.
+  Four of five cells shift by ≤ 1.2 %; the Sahel's GPP goes **0.386 → 1.367 gC/m²/day (+254 %)**, which
+  against the C's own tree GPP of 1.513 is **0.26× → 0.90×**. The pre-flip expression scored every leaf-off
+  day as fully water-stressed, and that number drives the leaf:root allocation `lmtorm` — so the cell with
+  the most leaf-off days starved its own leaf pool. **The honest cost is in the same cell:** its ET goes
+  from 1.19× to 1.26× the C's, i.e. the flip trades a large carbon gain for a ~6 % worse ET overshoot
+  (ADR 0053's open item (a), unchanged in kind).
+
+  **Why this was worth doing beyond faithfulness:** until now the gate pinned a configuration *no published
+  F-vs-C comparison ever ran* — every oracle probe on this line passes `wscal_leafon = true` explicitly, so
+  the default arm was the one nobody scored. A default and a measurement basis that disagree is the
+  train/inference-shift hazard in its cheapest form, and it survived precisely because both were
+  individually documented. Line S's independent endorsement is on the conditioning side: Hainich's annual
+  `water_stress` goes 0.3050 → 0.0034 against a C truth of 0.0014 and a trained band of [0, 0.04315].
+
+  Also aligned with line E's parallel default flip (ADR 0075): the pin probe and the coupled gate no longer
+  hardcode a ground-heat flag where they meant "the package default", and the stale "the default is off"
+  comments are corrected. A control arm that hardcodes a flag stops being a control the moment the default
+  moves — which is exactly what ADR 0075 §4 paid for.
+
+  `biome_coupled_tests.jl` item 2's pinned LE/GPP are regenerated for the new defaults
+  (`scripts/biome_ensemble_pin_probe.jl`, job 1718307), in their own commit.
+
+- **The ONLINE configuration is now ESM-first and validated against OBSERVATIONS, not LPJmL-FIT
+  ([ADR 0082](docs/decisions/0082-online-esm-first-ownership-and-validation.md), owner decision).** Two
+  explicit configurations replace one compromised model. **OFFLINE** is unchanged and keeps guardrail 3 (the C
+  binary is the oracle). **ONLINE** hands skin temperature, the surface energy balance and the soil
+  water/thermal column to **Terrarium**, and is scored against PLUMBER2/FLUXNET fluxes and observed
+  LAI/biomass/tree-cover — so a divergence from LPJmL-FIT online is no longer automatically a bug.
+  Conservation (guardrail 2) binds both. Our contribution online is **vegetation**: Component S, FIT
+  photosynthesis behind `AbstractPhotosynthesis`, and FIT's water-limited ET behind the pluggable
+  **`AbstractEvapotranspiration`** slot. The deciding evidence for handing over the SEB: Terrarium computes LE
+  *through* the ET scheme **inside** its skin-temperature solve and then recomputes ET at the converged
+  T_skin (`surface_energy_balance.jl:128/149-151`), so LE and T_skin are mutually consistent — whereas
+  Component E takes LE from F evaluated at a *different* temperature and makes H the residual (ADR 0017's
+  documented "no privileged residual" exception). Offline that is a caveat; online it is a defect, because
+  SpeedyWeather computes its own humidity flux. We also inherit two-phase heat conduction with freeze curves,
+  which we do not have and which is not optional for boreal/permafrost land. **`ClimBuf`** cold-starts from a
+  ~20–30 yr SpeedyWeather-only spin-up on **its own** climate; obsclim seeding is rejected because
+  SpeedyWeather's climate is not Earth's, which would bias the establishment gate for a full trailing window.
+  ADR 0017's scope narrows to offline **without** being superseded — Component E remains the offline closure
+  and an independent cross-check on Terrarium's SEB.
+- **`soilmoist` must map to the layer-mean of Terrarium's `plant_available_water`, not
+  `saturation_water_ice`.** The latter is normalized by **porosity** (θ/θ_sat) while LPJmL's `w` is a fraction
+  of **water-holding capacity**, so substituting it is a *definitional* mismatch rather than a distribution
+  shift; `FieldCapacityLimitedPAW` computes `min((θw−θwp)/(θfc−θwp), 1)`, which is exactly LPJmL's semantics.
+  Training reference measured for comparison (historic, 1 348 400 cell-years): `soilmoist` min 0.017,
+  q50 0.464, mean 0.508. Re-validating — and if needed retraining — Component S on Terrarium-derived
+  `soilmoist` is an **integration point with line S** (a version-bumped online artifact, never an in-place
+  mutation), and is a hard gate on online demography.
+
+- `scripts/online_coupling/diagnose_soilmoist_shift.jl` now runs on the prescribed soil, evaluates
+  plant-available water with Terrarium's own `compute_plant_available_water` (instead of a hand-rolled
+  re-derivation that ignored the organic fraction), and reports the ADR 0082 §4 `soilmoist` comparison
+  over land columns only, as both an unweighted layer mean and a thickness-weighted top-2 m mean.
+
+- **The licensing question is CLOSED; reuse is authorized; citation is the requirement
+  ([ADR 0081](docs/decisions/0081-owner-closes-licensing-reuse-authorized.md)).** The owner is a member of
+  **both** upstream groups — the **LPJmL-FIT** group and **TUM-PIK-ESM**, which hosts SpeedyWeather.jl,
+  Terrarium.jl and LPJmL-hybrid-photosynthesis — the fact missing from every prior analysis. So those models
+  are reused freely, with no licence analysis, licence decision or upstream re-audit needed, including for P4
+  online coupling. `LICENSE` is no longer a blocker or a tracked TODO. **The one standing obligation is
+  transparent citation** across four surfaces kept in agreement: the register (now
+  `docs/third_party_licensing.md` — *reuse + citation*, reframed from a licence gate), `CITATION.cff`,
+  `docs/src/refs.bib`, and the header of every source file with derived content — stated *accurately*, neither
+  overstated nor omitted. The `dependency-license-gate` skill is replaced by **`reuse-citation`**, and the
+  licensing sections of `CLAUDE.md`, `MEMORY.md` and `lines/O/STATE.md` collapse to "closed, cite, move on" so
+  no future session relitigates it. ADR 0080 is retained for its verified upstream register and its
+  depend-don't-vendor hygiene, with only its §4 owner-action checklist superseded. **Not reopened, and not
+  licence caveats:** NeuralCrop.jl stays method-only (CC-BY-NC, a different author outside both groups) and
+  runtime `[deps]` stays empty (ADR 0014 — a *technical* constraint from the GitHub-egress-free compute nodes,
+  so Terrarium/SpeedyWeather still enter as `[weakdeps]` + an extension).
+
+- **Amendment, same day — NeuralCrop.jl is usable too.** ADR 0081 first read CC-BY-NC as "no code"; the owner
+  corrected it and is right: **NonCommercial permits non-commercial use, and this project is research use.**
+  So NeuralCrop.jl's code may be reused, cited (arXiv:2512.20177). Only a future commercial release would
+  need a rethink. The one genuine exception is **LPJ_resilience** — and not for NonCommercial reasons: it
+  carries no licence at all, so its published metrics are implemented from the paper.
+
+- **Component S — the level anchor's pre-registered flip criterion was scored on the wrong quantity, and is
+  re-specified** (ADR 0104). Evaluated verbatim on the 5-cell coupled oracle the criterion FAILS, reproduced
+  independently by lines S and M to the same digits. It scores the count model's *prediction*, which the
+  anchor never writes; the anchor multiplies the roster density. On the corrected yardstick — the stand's
+  density against the C's per-patch mean ÷ `patch_area` — the anchor improves **all five cells at all three
+  settings**, mean `|ln(density/truth)|` **0.679 → 0.478 / 0.361 / 0.329** for `a` = 0.1 / 0.25 / 0.5.
+  Revised recommendation **`anchor = 0.25`** (was 0.1). The default stays **off**: a modal-patch
+  initialisation confound must be cleared on the patch-ensemble driver first.
+
+- **Component-S trait gate (`scripts/noise_floor_vs_emulator.py`) is now basis-clean and
+  attenuation-corrected (ADR 0030).** The seed1-vs-seed2 per-cell trait floor is measured on the emulator's
+  OWN stem population (two `MODE=copula` builds differing only in `SEED`), gated by a `seed1-basis ≥ 0.99`
+  cross-check against an independent parquet re-derivation (now **1.000** on all four axes, was
+  0.973/0.488/0.761/0.092). `floor_r` is a realization-vs-realization correlation, so the reported ceiling is
+  `√(rel_P·rel_Y)` from each side's split-half reliability, and the headline metric is `(GAP, r_center)` plus
+  the between-cell dispersion ratio. Exact per-axis headroom (ids-1..5 population): **Wooddens +0.226 ·
+  minwscal +0.153 · SLA +0.115 · D95max +0.102**.
+- `scripts/sbatch_python.sh` forwards the full env-knob set (`MODE`, `SCENARIO`, `BOUNDARY_WINDOW`,
+  `STEM_CAP`, `SOIL_TBL_PATH`, `LAI_TBL_PATH`, …). Previously an unlisted knob passed as a command prefix
+  reached the wrapper but **not** the job, so e.g. `MODE=copula` silently built a *count* table.
+
+- **ADR 0040 rejects the decision rule proposed in ADR 0038** for the address-vs-response question. The
+  fold-mode-matched address null under `block(15°,5°)` is Wooddens **0.140/0.210**, not the `r≈0.80` that
+  ADR 0038 named — that figure is a pure address's skill under `mod(hash(cell),k)` folds, so using it as a
+  blocked-fold threshold is a reference-basis error (guardrail 7) that would have declared a strong response
+  an address. The corrected rule is pre-registered before any forest result is read.
+- **A second promotion gate is added: the warming Δ-response.** `emu_r` is a level statistic and
+  `sd(Δobs)/sd(level)` is only 0.198–0.306, so the existing gate is 3–5× more sensitive to spatial
+  interpolation than to the transient response a coupled run depends on. Measured from existing predictions,
+  the shipped env-conditioned artifact damps the mean Wooddens warming shift by **37 %** (tile-cluster
+  bootstrap CI excludes zero) and both arms capture only 24–62 % of the transient pattern against a
+  0.87–0.96 split-half ceiling.
+- ADR 0038's saturation fit and its "0.889 needs ~1052× the table" extrapolation are re-labelled
+  **unresolved**: they rest on +0.002/+0.003 `emu_r` increments against a spatial-sampling sd of order 0.01,
+  with no seed replication anywhere in the ladder.
+
+- **ADR 0042 adjudicates ADR 0040's pre-registered address-vs-response rule on the completed seven-arm forest
+  matrix: RESPONSE — the six env conditioning columns are not merely a spatial address**, and the verdict is
+  **final**: the second colouring's flip thresholds were recorded in the ADR *before* the deciding rung landed,
+  and the two colourings' blocked deltas then agreed to 0.0024 against a 0.0157 tolerance, so the
+  "NOT RESOLVABLE" clause does not fire and clause 1 is met on both colourings on all four axes. Wooddens `Δ_blocked = +0.0315` [+0.0011, +0.0633], clearing the pre-registered bar
+  `0.5·Δ_hash = +0.0201`, while the pure-position control collapses 0.1868 below the treatment and 0.1553
+  below no tail at all. The frozen 1-NN surrogate screen predicted ~86 % retention and the forests delivered
+  78/119/137 % on the three axes with a resolvable delta.
+- The salt replicate also validated the experimental design, which is the most transferable result here:
+  re-colouring the spatial blocks moved the **single-arm** blocked `emu_r` by +0.0136 (half the delta under
+  test) but moved the **paired delta** by only +0.0024, because the colouring effect is common to both arms and
+  cancels in the difference. A blocked *level* is therefore colouring-sensitive and must not be quoted alone or
+  across colourings; a blocked *paired delta* at a shared colouring is robust. Build blocked comparisons as
+  paired deltas.
+- **ADR 0040 §4's attribution of the transient damping to the env tail is refuted**, using the matched `p8`
+  arm that ADR itself asked for: the ncond-8 baseline damps the Wooddens warming shift 39.9 % on its own. Its
+  §5 promotion gate is therefore simultaneously *met* and *mis-specified* — passable by a change that degrades
+  the transient — and is re-specified on `Rb` **and** `Rr` **and** `|Ra − 1|` at both fold modes. Under the
+  re-specified gate the tail fails: `Rr` (transient pattern) flips sign with fold design, +0.0395 at hash to
+  −0.0305 at blocked. The two gates dissociate — the level delta survives blocking, the transient one does not.
+- Line M's re-pin refusal **stands on new grounds** (the old ones are refuted); the request to fix
+  `extract_cell_slow_init.py`'s `cond_cols[-4:]` check to the positional `cond_cols[4:8]` is unchanged.
+- Corrects two ADR 0040 statements: `eco_diag_gdd_5`/`tas_cold_month` **are** time- and scenario-varying on the
+  `pooled_w20` tables the forests read (per-cell constants only in `cell_year_feats.parquet`), and the single
+  "spatial-sampling sd of order 0.01" is superseded by a measured 0.004–0.006 (hash) / 0.012–0.016 (blocked).
+
+- ADR 0031's global re-derivation runs on the `t7` artifact generation
+  (`…_t7.drf` / `…_t7.rcop`, `slow_{count,copula}_*_t7/`). The pre-0031 artifacts are retained unchanged; every
+  global Component-S fidelity number published before this is on the truncated population (ids 1–5,
+  45 009 cells) and is superseded by the re-measured `t7` numbers, not silently restated.
+
+- **Milestone S2's gate is MET for the first time, and ADR 0037's thesis is superseded (ADR 0038).** The
+  12-rung QRF × capacity matrix completed. The ESTIMATOR lever is the larger one on `emu_r` (+0.050 vs
+  +0.037) but **saturates at Wooddens 0.867** — fitted asymptote 0.8696 (half-life 1.82 doublings), 0.0194 short of
+  0.889 at infinite subsample, and reaching the threshold at the terminal marginal rate would need 14.7 more
+  doublings = 1052× the entire 197 721 867-row table — so it cannot close the gap at any
+  artifact size. `ncond` 8→14 at **fixed** 6×2M/d22/QRF=1 delivers **+0.037 `emu_r` and +0.0966 `sd_ratio`**,
+  the larger lever on criterion 2 (the axis that was actually failing), and carries both criteria across.
+  **S2's premise — "expand the conditioning" — is vindicated, not refuted:** the estimator had to be fixed
+  *before* the conditioning could pay, because at 50k subsample there is ~0.93 rows/cell and six extra
+  columns have no resolution in which to express themselves. ADR 0037's "second-order lever, ~4× smaller" is
+  wrong by ~4× in the opposite direction, and its 0.916 was a per-cell **LightGBM upper bound** that did not
+  transfer to the DRF.
+  Shipped config `env-qrf-b6x2M` (6 trees × 2M subsample, `max_depth` 22, `min_leaf` 20,
+  `QRF=1`, `ncond` 14): Wooddens `emu_r` **0.901** (58.0 % of the GAP closed, and ≥56.7 % under all five
+  defensible conventions), `sd_ratio` **0.8541**, pooled KS improving on **all four** axes
+  (.0032/.0024/.0019/.0013), `r_center` gaining on all four. The comparison is PAIRED (folds and quantile
+  levels depend only on cell id / row index) and its basis is identical at the **inode** level.
+  Artifact `recruit_copula_global_historic_t9.rcop`: 507 985 666 B, **load 6.77 s = 71.6 MiB/s measured**
+  (an earlier "~12 s at 42 MB/s" was never measured), byte-reproducible across independent re-runs. `b6x8M`
+  rejected: +0.002 `emu_r` for 4× the bytes and worse pooled KS on all four axes.
+- **The `.rcop` size coefficient is 10.58**, not 10.7 (`bytes ≈ C·ntrees·subsample·naxes`; t8 gives 10.66).
+- **The subsample lever is exhausted past ~2M rows/tree at BOTH conditioning widths** (+0.003 at `ncond` 8,
+  +0.002 at 14); the *level* it plateaus at is set by the conditioning, not by capacity. The "tree count is
+  inert" trio (12/24/40 × 500k) is a different experiment and is **not** evidence of subsample saturation.
+- **QRF's payoff shrinks as capacity grows, and the mechanism is measured**: the pooled-default max-leaf
+  weight share is median 11.2 % at t8's 60 trees = 6.7× QRF's `1/T`, but median 48.9 % at t9's 6 trees =
+  only 2.9× — so what QRF corrects is largely absent at 6 trees (+0.013 `emu_r` at 40 trees/50k vs +0.002 at
+  6 trees/2M, where it also *costs* 0.013 of dispersion).
+
+- **Milestone S2 is re-scoped on measurement: the trait GAP is dominated by ESTIMATOR CAPACITY, not by a
+  missing covariate.** On `t8` historic (52 165 cells) the estimator share of the GAP is
+  +0.080/+0.102/+0.089/+0.032 (SLA/Wooddens/D95max/minwscal) against a new-covariate share of
+  +0.011/+0.025/+0.042/+0.004. Wooddens reaches `r` 0.916 and `sd_ratio` 0.896 from the *existing* eight
+  conditioning columns — both already past the S2 gate targets (0.889 / 0.75). Mechanism, measured on the
+  production artifact: `SUBSAMPLE=50000` against ~158M training rows yields **1063 leaves per tree for 54 020
+  cells**, so each leaf hands ~51 cells one identical conditional distribution, and `DRF.predict_quantile`
+  pools leaf values across trees into a mixture that reproduces the global marginal (pooled `nqrmse` 0.013,
+  KS 0.0065) while leaving the per-cell conditional under-resolved (`sd(pred)/sd(Y1)` 0.678, slope
+  `Y1~pred` 1.20). Pooled-marginal metrics are structurally blind to this. The conditioning expansion remains
+  a real but secondary, separately-attributable follow-up, because the boundary tail carries no moisture or
+  precipitation climatology while FIT's establishment gates are temperature *and* moisture.
+
+- **Line M's "the count recursion is unanchored" (ADR 0054) is answered, and it decomposes into THREE
+  defects with three owners
+  ([ADR 0102](docs/decisions/0102-the-count-recursion-has-no-level-anchor.md)).** M measured that a
+  free-running coupled rollout integrates a ~5 %/yr one-step count bias into +36–81 % over ten years, that
+  teacher-forcing `s.n_prev` onto the C truth removes **59–72 %** of the coupled count error, and correctly
+  refused to fix it inside `src/components/slow.jl` (line S's exclusive path, ADR 0029). Measured on the S
+  side at Hainich over 150 constant-forcing years:
+  - **(A) Exposure bias** — the training `n_prev` is the C's own previous `n_living` (a `shift(1)` of the
+    truth) while the runtime feeds the DRF its own output. Real, but **training-side**: it needs scheduled
+    sampling or dropping `n_prev` from the feature set, i.e. a global retrain. Not closable from `slow.jl`.
+  - **(B) State incoherence** — `slow.jl:1026` clamps `ρ` but `:1110` assigns the **unclamped** `target` to
+    `n_prev`, so a clamp-binding year desynchronises the AR state from the roster permanently. This was the
+    leading hypothesis and it is **MEASURED EMPTY**: the clamp binds **0 of 150 years** and the roster
+    tracks the `ρ` it was handed to `1.5e-13`. Closed; do not spend time here.
+  - **(C) No level anchor — the dominant defect, and new.** `ρ` is a unit-free ratio and the roster is
+    advanced multiplicatively, `D_T = D_0·Πρ_t`, so the count DRF's **absolute** skill (OOS R² 0.982) is
+    used only through year-on-year ratios and its level is discarded by construction. Perturb the initial
+    stand density by **4×** and the terminal densities still differ by **4.21×** after **300** identical-forcing
+    years — **retention 1.036**, and the horizon sweep shows it converging to a **non-zero asymptote of
+    ≈1.04** (peaking at 1.40 around year 25, then flat from year 150 to year 300) rather than decaying to 0.
+    There is no restoring force — not a weak one, none. The dissociation is the finding: an `n_init` sweep
+    shows the **AR state** converging (terminal spread 6.7 %, retention **0.092**, four of five seeds
+    landing on an identical 6.7529) while the **physical stand** those same runs carry retains **60.2 %** of
+    its spread. So the constructor docstring's "self-corrected by the `max_*` clamp thereafter" is true of
+    the AR state and **false of the stand**.
+  - **This completes M's own same-day decomposition (`9ad8721b`)** rather than correcting it. M split the
+    +36–81 % into a recursion factor **×1.26–1.53** and a **year-1 level offset ×1.05–1.12**. What is added
+    here is the level term's *fate*: teacher forcing repairs the **ratio** each year and nothing repairs the
+    **level**, so that offset — and any level error acquired later — is permanent. It is visible in M's own
+    numbers: the forced boreal arm flattens to **1.12–1.17**, flat but still displaced by the 1.12 it
+    started with. An initialisation artifact that never decays is a free parameter, not an artifact.
+  - **Consequence for the queue:** milestone **S2 (recruit conditioning) is no longer top priority**. An
+    unanchored level compounds without bound and no conditioning skill can correct it, because the channel
+    that would carry the correction is discarded upstream. The fix is **specified but deliberately not
+    landed** — it needs the count↔density conversion (patch area) at the S↔F seam, i.e. an `interface.jl`
+    addition (line M's) plus a `slow.jl` change (S's), and it moves every committed coupled baseline.
+  - **ADR 0101 §5 is re-read:** the 4.5×-FIT swing from `n_init` 11.0 → 7.0 is not an artifact quirk, it is
+    this recursion property. That promotes S→M integration point #2 from a provenance defect to a
+    correctness one.
+
+- **`docs/component_s_public_report.tex` — four corrections, three of them substantive.**
+  - The warming-response damping is **39.9 %**, not ≈ 37 %, and the deficit is **971.5** internal units, not
+    892, giving **+1461** rather than +1541. The 37 %/−892 pair was arm **B** (`p14env-hash`), the *refused*
+    env arm, quoted as if it were the deployed configuration (ADR 0044 §Consequences).
+  - The `Rr` **ceiling is stated on the patch-year reliability basis** (Wooddens **0.9543**, all four axes
+    0.94–0.97), replacing the superseded stem-parity ceiling (0.9201, range 0.87–0.96) and the flattering
+    percentages computed against it. The basis is now named in the text.
+  - **New: the defect is placement, not shrinkage** — dispersion ratio **1.034** against a target of 1 while
+    the pattern captures 39 % of ceiling, i.e. right-sized shifts in the wrong cells. Any lever justified by
+    "fixing attenuation" is aimed at a defect that is not present.
+  - **Recursive stability moves from "not yet tested — no evidence either way" to "not established
+    (measured, negative)"**, and the roadmap is **reordered**: anchoring the recursion becomes item 1, ahead
+    of the warming-response gap, per ADR 0102. The claim that the trait-conditioning work "is the single
+    highest-value piece of remaining work" is retired.
+  - A new §`sec:traitmort` reports Phase 3A honestly: the operator changes the **level** of community wood
+    density by `+7 041 ± 334` (t = 21) and reproduces FIT's age–wood-density signature, while its
+    contribution to the warming **response** is `+0.26 [−0.38, +0.90]` × the FIT shift — not distinguishable
+    from zero. The report's standing claim that mortality is trait-blind is scoped to the *deployed*
+    configuration.
+
+- CLAUDE.md §3 gains two C-oracle gotchas: a chained child that hardcodes a parent's job id is not
+  resubmit-safe (and an empty log is indistinguishable from an unfinished run unless called out), and a
+  file-level `cmp` on a NetCDF output is the wrong equality test because LPJmL writes a timestamped
+  `history` attribute.
+- Reclaimed ~181 GB by deleting the cross-build gate's redundant `ind_2020_2100.csv`, retained only until
+  its bit-identity to the seed1 original was proven.
+
+- Component S — the level anchor's default question is **closed**: the flip criterion re-registered in
+  ADR 0104 §7 was run on the 25-patch ensemble and **fails at all three settings**, so `anchor` stays
+  opt-in and default `0` (ADR 0105). Most of the level defect it was built for was the modal-patch
+  initialisation the earlier measurement started from: free-running terminal density/truth across the five
+  biome cells is 1.04–1.38× (and 0.52× at the Sahel) on the ensemble, against 1.55–3.01× on the modal
+  patch. No code, artifact, baseline or default moved.
+
+- **Measured, and documented as debt: 4 of 15 runtime feature columns are still outside the trained band
+  (ADR 0034), from three separate causes** — `water_stress` 0.323–0.331 vs [0, 0.043] (an **F_diff-vs-C**
+  difference; the F core is line M's), `soilmoist` 0.792–0.999 vs [0.842, 0.867] (a year-end instantaneous
+  value against an annual-mean training basis), and `lai`/`fpc` (one patch against the C's cell-mean
+  `LAI_STAND`). So the demo emulator is conditioned consistently on 11 of 15 columns, **not** fully
+  runtime-consistent, and the Gate-3 improvement above must not be re-cited as such. The set is pinned by the
+  new assertion, so a *new* column drifting out fails CI. Fixing the two S-side causes is milestone **S1d**,
+  which precedes S2; `water_stress` is raised to line M.
+
+- `make_recruit_to_pools` writes the sampled `D95max` and `minwscal` into each recruit's `TreePools` (located
+  by axis name; an artifact lacking those axes still loads and leaves both unset ⇒ unchanged behaviour).
+  `_merge_pair!`, `_with_nind` and `grow_individual` carry both traits — without that, every cohort merge,
+  density change or growth step would silently reset them.
+
+- Component S: the k-cap merge is measured as **dormant, not harmless** (ADR 0048). At the default
+  `k_cap = max(2K, 40)` it fires **0 times in 150 years** at Hainich — establishment fires in only 12–14 of
+  149 years, so the roster never doubles — which makes the obvious default-vs-disabled null a
+  non-measurement. Forced to fire at `k_cap = 20` it moves the community wood-density mean by up to
+  **3.1–5.1× the FIT warming shift**. Stage 2 is unblocked without a merge fix, with an explicit re-check
+  trigger for any config that tightens the cap or scales the roster.
+- Component S: a new mandatory control for every Phase-3A response arm — the rollout's **constant-forcing**
+  community wood density drifts **1.34× the FIT warming shift in the OPPOSITE direction, settling in ~52
+  years** (production copula-on config, no climate signal present). Any response arm must be differenced
+  against a matched constant-forcing control re-run in the same generation, and measured past the
+  transient. Recruitment dilution gives `τ ≈ 94 yr`, an upper bound on how fast any recruit-mediated fix
+  can act. ADR 0048.
+
+- `scripts/trait_mortality_arm_probe.jl`: the response headline is a **window mean** (`SCORE_WINDOW`, default
+  the last 20 yr) rather than a terminal-year read — with real interannual forcing the year-to-year
+  interaction swings by more than the signal — and `K_CAP` is exposed so the k-cap merge can be held dormant.
+  `MODE=stage2` is unchanged and reproduces every ADR-0049 headline number (job 1700483).
+
+- **The Phase-3A response arm is now a SEED ENSEMBLE, and ADR 0100's response contribution does not survive
+  it ([ADR 0101](docs/decisions/0101-the-response-arm-needs-a-seed-ensemble-and-the-baseline-defect-was-cell-scope.md)).**
+  ADR 0100 handed forward a falsifiable prediction — re-run its 2×2 against the global `pooled_w20`
+  artifacts and `|R_ctl|` should shrink or flip. It does. But running it also exposed that the number being
+  predicted was never resolvable from one run:
+  - **`SEED` was hard-coded to 1.** Exposed as a knob, the double difference has a **seed sd of 0.67–1.74×
+    the FIT reference shift — the same size as the effect.** Holding the seed common across the four corners
+    does *not* pair them (`sd(Δ_ssp)` 2 419 ≡ `sd(interaction)` 2 452 gC/m³; the rosters diverge after
+    year 1), so replication is the only variance lever: ~8 seeds resolve a 1×-FIT effect, **~115** the 0.26×
+    actually measured.
+  - **The operator's contribution to the warming RESPONSE is indistinguishable from zero on both global
+    artifacts** — `+0.048 [−0.380, +0.476]` (historic-only, n = 12) and `+0.263 [−0.377, +0.903]`
+    (`pooled_w20_t8`, the pair line M pins, n = 12). **Both CIs exclude ADR 0100's `+1.40×`**, and even on
+    ADR 0100's own demo artifact the 8-seed CI `[−0.100, +2.812]` straddles zero. Its `+1.398` was a *fair*
+    draw — 0.03 from that artifact's mean — with ~6× overstated precision. **Phase 3A's Stage-3 response
+    claim is withdrawn; `+1.40× FIT` must not be quoted.**
+  - **ADR 0049's LEVEL claim is confirmed and strengthened:** `+6 718 ± 286` / `+7 041 ± 334` /
+    `+8 959 ± 862` gC/m³ across the three artifacts, `t` = 10.4–23.5. Replication makes this one *stronger*.
+  - **ADR 0100's headline finding was a single-cell FIXTURE artefact, and the sign reverses on a global
+    artifact.** `R_ctl` = `−1.234 [−2.058, −0.411]` on the demo pair (significant, so ADR 0100 §2 was real
+    *for its artifact*) but **`+0.417 [+0.050, +0.784]` — FIT's own sign — on the global historic-only pair**,
+    and `−0.000 ± 0.367` on the pooled one. The deployment defect is milder and different: *no* warming
+    response where FIT has +1×, which is a conditioning-set question (milestone S2).
+  - **The attribution was wrong: cell scope, not scenario coverage.** demo → global-historic with the
+    scenario held fixed gives `ΔR_ctl = +1.651 ± 0.386` (`t` = +4.28); global-historic → pooled with the
+    scope held fixed gives `−0.417 ± 0.403` (`t` = −1.03). The mechanism is in the metadata: cross-**cell**
+    pooling widens the `soilmoist` trained band **4.79×** (0.209 → 1.002) while adding the entire ssp370
+    scenario widens it **−0.04 %**. ⇒ **an excursion diagnostic localises a channel; it does not identify
+    which axis of the training design to change.** ADR 0100 §5's measurement was right and its causal
+    reading was not.
+
+- **Component S (S1d, ADR 0035): `soilmoist` and `lai` are on ONE basis in the training table and the
+  coupled runtime — and neither fix is the one ADR 0034 predicted.**
+  - `soilmoist` was not a time-aggregation mismatch but the **wrong variable**: the training column reduced
+    the C `swc` output (total water over SATURATION capacity, `update_daily.c:411`) while the runtime fed
+    `state.w` (plant-available water as a fraction of WHC). `swc` cannot be inverted back — LPJmL-FIT emits
+    no `wsats`/`wpwps`. Both sides now use the root-zone (`forrootmoist`, top 1 m), `whcs`-weighted mean of
+    `w` at year end: new deriver `scripts/build_rootmoist_soilmoist_feature.py` (from `d_rootmoist.nc` +
+    `whc_nat.nc`) and new `LPJmLFITEmulator.root_zone_soilmoist` in `src/components/slow.jl`, which all
+    three `slow.jl` call sites use. This finally matches `FToS.soilmoist`'s own documented definition.
+  - `lai` is now the **per-patch** stand LAI, reconstructed in-row from the emitted `LAI` + `fpc_ind`
+    (`build_slow_runtime_table.py::patch_stand_lai_expr`), replacing the C `LAI_STAND` cell-mean join that
+    was broadcast onto per-patch rows. Contrary to the previously documented limitation, this IS
+    reconstructable from the 29-column `ind` output; the new
+    `scripts/diagnose_patch_lai_reconstruction.py` validates it against the C's own crown allometry
+    (median relative error 1.8e-8 over 22 498 stems in five biomes). `growth_eff`'s divisor inherits the
+    fix, so its numerator and denominator are finally the same patch and the same stem population.
+- `flux_feature_vector` takes the fast core's `SoilColumn` as a sixth positional argument (it had no caller
+  outside `slow.jl`). The frozen S→M contract — feature-column ORDER, `live_flux_cond`, the `.drf`/`.rcop`
+  format, `FluxDrivenSlowEmulator` kwargs — is unchanged.
+- Committed Hainich demo artifacts `drf_forest_hainich.drf` (+ meta) and `recruit_copula_hainich.rcop`
+  (+ meta) regenerated **together from one table build**; the two oracle reference CSVs are unchanged.
+- `scripts/build_swc_soilmoist_feature.py` and `scripts/build_laistand_lai_feature.py` marked SUPERSEDED
+  (retained so the pre-0035 tables and artifacts stay reproducible). The new `soilmoist` table is written
+  to a new `_ye` path; no existing artifact is overwritten in place.
+
+- **The GLOBAL Component-S tables and artifacts are re-derived as generation `t8`** on the ADR-0035 feature
+  bases (`soilmoist` = root-zone year-end plant-available fraction of WHC; `lai` = the per-patch
+  reconstruction), for historic, SSP370 and the pooled multi-regime pair. `_t7` is untouched; line M re-pins
+  deliberately.
+- `noise_floor_vs_emulator.py` reports the ADR-0030 floor / ceiling / dispersion arithmetic for the structure
+  axes too, tagged `[diag]` and strictly outside the gate's verdict and exit code.
+- Figures 09-11 size their panel grid from the axis count instead of a hard-coded 2x2 (which would have
+  silently dropped any axis past the fourth), and switch to log axes for heavy-tailed axes.
+
+- `_merge_pair!` / `_apply_kcap_merge!` / `_commit_membership!` take an optional `counters` keyword carrying
+  the per-cohort `bm_inc_counter` roster (inherited from the dominant parent on a merge, committed atomically
+  with `pools`/`ages`/`tmpls`/`pft_ids`). Defaulted to `nothing`, so every pre-0049 call is unchanged.
+
+- `scripts/pool_slow_tables.py` now refuses to pool two scenarios whose conditioning tails were built on
+  different time bases — a static half and a time-varying half would fabricate part of the scenario contrast —
+  and carries the per-row year through to the pooled table.
+
+- **The `<2 stems/patch` tolerances quoted in an earlier record (31.6 % counts / 42.7 % carbon) are not exactly
+  reproducible** — the stated-basis values are 27.3 % / 37.8 %. The year, dead stems and grass inclusion were
+  each tested and ruled out as the cause; the remainder is an undocumented difference in that record's
+  per-cell estimator. The new floor states its population and regenerates with one command.
+
+- **The response panel, corrected on one self-consistent basis:** SLA over-responds by 25–35 % (previously
+  read as "already correct"), Wooddens is the worst axis at 0.66–0.69, D95max is **not** the worst
+  (0.72–0.85 — its small raw slope was mostly attenuation, its reliability being 0.198), minwscal is correct
+  at 1.05. "Four broken axes" and "two broken axes at 0.63/0.51" are both retired.
+- **The tree-count warming response is measured as faithful** — per-cell deattenuated slope 1.01, validated by
+  a 0.9948 cross-check between two independent code paths — so "the response is indistinguishable from zero"
+  is not true of counts; the response error lives in the trait axes. Counts are the mirror image of wood
+  density: counts get the per-cell pattern right and under-shoot the global total (0.69×), wood density gets
+  the total right (1.06×) and the pattern wrong (0.66).
+- **The aggregate (area-weighted, latitude-banded) response is now the primary response statistic** and the
+  per-cell map a reported secondary: area-weighted signal-to-noise is 25–489 against a per-cell 0.5–3.1.
+- **Banding the response ratio found four wrong-signed regional responses that no earlier statistic could
+  see** — tree counts in the tropics, specific leaf area in the subtropics and mid-latitudes, drought
+  tolerance in the boreal zone — so the count shortfall is not a uniform 31 % under-response but a correct
+  mid-latitude and boreal response plus a tropical response of the wrong sign. Ratios whose denominator is
+  not determined by the reference data now print `n/d` instead of a number, which caught and retracted a
+  draft claim of this work's own ("14 % of the height response") before it was published.
+
+- Component S: the reliability ceiling used by every "% of ceiling" claim is corrected. Patch-year-parity
+  split-halves (reconstructed exactly from runs of identical broadcast `Xc` values, needing no `Year`
+  column) raise the Wooddens ceiling 0.9201 → 0.9543 and lower the deployed arm's dispersion ratio
+  1.0728 → 1.034 (ADR 0044).
+- `CLAUDE.md` §3: the claim that FIT draws recruit traits uniformly from per-PFT intervals is replaced —
+  establishment is a two-channel mixture that is 44–80 % **inherited** from the live community
+  (ADR 0045). §9 gains the `priority`-partition/QOS limits.
+
+- **CI now runs only when the changed paths can change its verdict (ADR 0090, owner decision).** Every
+  workflow was previously unfiltered, so the Julia matrix — four jobs at ~10 min each including macOS — ran
+  identically for a change to `src/fdiff.jl` and for a sentence in a LaTeX report. Each gate now declares its
+  inputs: `CI` ← `src/** ext/** test/** Project.toml docs/src/generated/**`; `format` ← any `**/*.jl`;
+  `python` ← `python/**`; `docs` ← `docs/src/** docs/make.jl docs/Project.toml src/** Project.toml`.
+  All four also gain `workflow_dispatch` so any gate can be forced on demand.
+- **A prose/docs/skill/ADR/handoff-only commit now triggers no gate and is mergeable immediately.** Note the
+  consequence: a workflow that does not trigger reports **no check-run at all** (not a "skipped" one), so a
+  poll that waits for `test (lts)` to complete hangs forever. The merge ritual now derives the expected gate
+  set from `git diff --name-only origin/main...HEAD`. Updated in `CLAUDE.md` §5/§9, the `repo-commit` skill,
+  `ENGINEERING_STANDARDS.md`, `STEERING_PROMPT.md` and `MEMORY.md`.
+- ADR numbering: the cross-cutting block 0001–0029 is exhausted; **0090–0099 is now the integrator block**.
+
+### Fixed
+
+*in the validation itself, before the verdict was accepted:*
+
+- **`Qle_cor`/`Qh_cor` can be ≈0 garbage instead of a fill value.** At DE-Hai the uncorrected `le` is all-NaN for
+  2010–2012 and the energy-balance correction emitted ≈0 there (annual mean `le_cor` 0.39 / −0.09 / 0.04 W/m²
+  vs 30–40 W/m² in 2000–2009), so a finiteness filter kept 36 550 rows of it and the closure — fed LE ≈ 0 —
+  put all the available energy into H, inflating DE-Hai's apparent H bias to +39.8 W/m². The driving-table
+  builder now also requires the **uncorrected** `le` to be finite (DE-Hai → its 175 344 jointly-valid steps,
+  matching ADR 0070's coverage). Found by the new regression fixture on its first run.
+
+- **`scripts/e_two_layer_probe.jl`: the sub-daily `z1 = 0.2 m` control arm omitted `z_soil1` and so silently
+  tracked the package default.** Honest while that default was 0.2 m; the moment ADR 0074 set it to 0.75 m the
+  arm labelled `z1=0.2` became a duplicate of the 0.75 m arm (visible as two byte-identical thickness arms in
+  `e7_two_layer_probe_v5.txt`). Consequence: ADR 0074 §6's sub-daily `T_skin` figures are at 0.2 m, not at the
+  shipped default — at 0.75 m the cost is larger (AU-Tum 0.773 → 0.547, AU-Rob 0.385 → **−0.116**). Corrected
+  in ADR 0075 §4, re-measured in report `_v6`, and captured in the `plumber2-reference` skill.
+
+- The F-side comparison now runs the **patch ensemble** instead of the modal patch. The modal patch that
+  `run_coupled_biomes.jl` / `wscal_leafon_probe.jl` select is systematically denser than the 25-patch
+  ensemble mean the C reports — FPC **1.72×** (Sahel), 1.48× (boreal), 1.19×, 1.14×, 1.12× — i.e. a
+  reference-basis artifact the same size as the flux biases being measured.
+
+- **The F-vs-C canopy-cover comparison scored the wrong one of the C's two FPC outputs, and correcting it
+  flips the sign in four of five biome cells** (ADR 0060). LPJmL-FIT writes both `a_fpc` (the patch-mean sum
+  of individual crown covers, `fpc_tree.c:28`) and `a_fpc_stand` (per-PFT leaf area through a single
+  Beer–Lambert saturation over the whole patch) — different functional forms of different arguments,
+  differing 1.5–2.3× in the same cell-year. The fast core computes the crown form, so `a_fpc` is the
+  comparable output; the oracle used `a_fpc_stand`. **Withdraws ADR 0053 finding 4** ("the fast core
+  under-predicts tree FPC in all five cells, 0.31–0.72×"): on the comparable output it *over*-predicts in
+  four cells (1.05–1.47×) and under-predicts only in the semi-arid Sahel (0.54×).
+
+- **The 5-biome energy/partitioning test could not detect a driver-level fallback** (M1 review debt #1): it
+  passed verbatim when all five cells reverted to Hainich's soil and canopy, because its assertions were
+  closure, finiteness and qualitative orderings. It now pins each cell's own mean LE and GPP (±2 % / ±3 %,
+  against a 24.9…119.3 W/m² between-cell spread) and asserts the five signatures are mutually
+  distinguishable at those tolerances.
+
+- Nothing — no runtime code changed. Every committed baseline stays byte-identical; the probe passes
+  `wscal_leafon = true` explicitly rather than moving the default (ADR 0051, still line S's to schedule).
+
+- **CI (integrator, `main` `47c6407a`):** pinned `JET = "0.9, 0.11"` in `test/Project.toml` `[compat]`.
+  JET **0.12.0** removed the `target_defined_modules` configuration that `test/jet_tests.jl` passes, so
+  `test (1)` (Julia 1.12) errored with `JETConfigError` **repo-wide** on a fresh resolve — reproduced
+  identically on `line/M` and `line/O` with no test-tree change, while `test (lts)` stayed green (JET 0.11+
+  needs Julia ≥1.12, so 1.10 resolves 0.9.20). Second instance of the "CI resolves deps fresh ⇒ a missing
+  `[compat]` absorbs a breaking bump" class after Enzyme 0.13.189.
+
+- `julia-test` skill: the "run the full suite" recipe hard-coded `cd` to what is now the **integrator**
+  worktree, so following it from a line session would have submitted a suite testing `main` instead of the
+  branch under test.
+
+- **Line M / ADR 0051 — F_diff's daily `wscal` was the REALIZED supply/demand ratio; the C's is a
+  POTENTIAL leaf-on index.** This closes the last of ADR 0034 §1's three runtime↔training conditioning
+  shifts (the other two were line S's, ADR 0035), and it was the stated blocker on M3.
+
+  Both sides carry the column name `water_stress` and both form it as `1 − wscal_mean`, which is why the
+  gap was recorded as "same definition on both sides". Reading the expressions
+  (`water_stressed.c:130-140`, `gp_sum.c:57-67`) shows they are different physical variables: the C asks
+  *if this canopy were at FULL leaf cover, could the soil meet the evaporative demand?* — no `phen` in the
+  numerator, the leaf-on conductance `gp_stand_leafon` (normalized by the **plain** `Σfpc`) and no
+  `(1−wet)` in the denominator, and `wscal = 1` (**unstressed**) on a no-demand day. F_diff's
+  `min(1, Σsupply·fpc / Σdemand·fpc)` carried `phen` **squared** in the numerator and degenerated to **0**
+  (maximally stressed) as leaf display vanished.
+
+  Available as **`WaterParams.wscal_leafon`, default `false`** — every committed baseline and the AD trainer
+  are byte-identical (guardrail 4). Enabling it moves Hainich's annual `water_stress` from 6–7 trained-band
+  widths above the C's `[0, 0.04315]` to **inside** it (0.3050 → 0.0034 against a C truth of 0.0014, a
+  **152×** error reduction), and puts `tropical_amazon` **inside the seed1-vs-seed2 noise floor** (0.4×);
+  `semiarid_sahel` improves 6.7×, `mediterranean_iberia` 2.1×. `boreal_siberia` is **not** closed — the C
+  says it *is* stressed (0.3146) and the C-faithful expression under-stresses it to 0.000, with F_diff's
+  absent soil-ice/permafrost representation the leading (explicitly unverified) hypothesis.
+
+  Why it gated M3: coupled on the pinned `_t8` forest, end-of-run tree N moves **−36.4 % in
+  `semiarid_sahel`** (19 → 12) — the cell whose conditioning shift was largest — so a per-cell demography
+  score taken before this fix was reading a badly displaced Sahel.
+
+  Evidence: `scripts/wscal_leafon_probe.jl` (the coupled A/B, 5 cells × 10 yr) and
+  `scripts/wscal_c_truth_diagnosis.py` (the reference, derived per cell/year exactly as the training table
+  forms the column, scored against the seed1-vs-seed2 noise floor). Gate:
+  `test/testitems/wscal_leafon_tests.jl` — the C's semantics (phenology-independence, the no-demand
+  branch, the cap) plus the end-to-end in-band result, all on committed fixtures.
+
+- **Line M — `FToS.soilmoist` now uses the ADR-0035 root-zone basis.** `components/fast.jl` built it as
+  `sum(state.w)/length(state.w)`, an unweighted mean over all 23 layers, while `interface.jl:37` documents
+  the field as the root-zone fraction of WHC and Component S computes exactly that
+  (`root_zone_soilmoist` — the top 1 m, `whcs`-weighted, what the C's `rootmoist` measures). Two
+  definitions of one named quantity is the hazard ADR 0035 exists to remove. Nothing consumed the field
+  numerically, so this is a definition alignment, not a physics change.
+
+- **Line M / ADR 0052 — F_diff has no soil ice, and that is the CONFIRMED cause of the boreal
+  water-stress residual ADR 0051 left open.** Ran ADR 0051's own recorded falsifiable test (no new HPC
+  run — `d_rootmoist.nc` is already in the global daily output). Recovering the C's root-zone
+  plant-available fraction as `rootmoist / Σ_{l<3} whc_nat[l]·soildepth[l]` (per ADR 0035 `rootmoist` is
+  the only C output carrying the model's `w`) gives **exactly 0.000 for Nov–Apr** at `boreal_siberia` —
+  every drop in the top metre is ice — against F_diff's flat **0.67–0.91 all year**, so `emax·wr` beats
+  the leaf-on demand every day and the leaf-on `wscal` is pinned at **1.000 in all twelve months**. Not a
+  bad `wscal`: the right `wscal` of a soil column that cannot freeze.
+
+  The same measurement identified a **second, distinct residual**: F_diff's root-zone water runs
+  systematically **too dry in dry cells** (Sahel Jan 0.361 vs the C's 0.533; mediterranean Jul 0.239 vs
+  0.369), same seasonal shape — which is what remains of those two cells' ADR-0051 gap and points the
+  opposite way (over-stress). The five-cell `water_stress` picture is now fully attributed to three
+  separate causes, one of them fixed. No code change; both fixes are deliberately left scoped as
+  ADR-0052 consequences with their reference bases established.
+
+  New reusable check: the C's `rootmoist` + `whc_nat` give a per-cell, per-day reference for the
+  emulator's root-zone water anywhere on the global grid, with no new HPC run —
+  `scripts/boreal_soilice_diagnosis.py` (C side) and `scripts/boreal_soilice_probe.jl` (F side).
+
+- **Two third-party attribution defects found by the ADR 0080 audit** (comment-only; behaviour and every
+  committed baseline byte-identical, guardrail 4). (1) The TBPTT trainer described itself as "the finished
+  port of NeuralCrop.jl's `train_loop_rollout!` scaffold" (`ext/FDiffTrainingExt.jl` ×3,
+  `src/LPJmLFITEmulator.jl`, `src/fdiff.jl`) while the same sentence said "no code copied" — and NeuralCrop.jl
+  is CC-BY-NC, so an inaccurate provenance claim is itself the exposure. A direct comparison against
+  `NeuralCrop.jl/src/training/training_loop.jl` confirmed **no shared expression**: the only overlap is
+  `Zygote.withgradient` → finite-loss guard → `Optimisers.update` in a windowed day loop, i.e. those
+  libraries' documented API plus TBPTT itself (Williams & Peng 1990), while the reference spreads jld2
+  chunk loading, per-cell batching, `ps_frozen`, device dispatch, an LR schedule, a validation split and
+  checkpointing across 19 positional arguments and lacks our detached-state carry (`_advance_state`). The
+  wording now states independent implementation with NeuralCrop cited as prior art. (2)
+  `patches/json_object_iterator.h.shim` contains verbatim declarations from json-c's public header but
+  carried no MIT notice; json-c's copyright + permission notice is now reproduced in it.
+
+- `CLAUDE.md` §1: `28008` is Hainich's index in `input_VERSION2/grid.bin` — a **longitude-major global**
+  grid — not in a `-DSINGLESITE` grid. That file and the orderA `soil_code_test.grid.clm` are not
+  interchangeable row-for-row, nor are their paired soil-code files.
+
+- Withdrew two published Component-S claims (ADR 0030): the trait floor is **not** 0.90–0.97 on the
+  population the emulator trains on (Wooddens is **0.694**, so the "+0.40 headroom" was ~3× inflated), and
+  **D95max is not "at floor"** (+0.102 to the reachable ceiling, not +0.021). The "per-cell-median
+  instability" explanation of the low basis cross-checks was also wrong — the cause is PFT-set truncation
+  (ADR 0031). Split-half analysis shows the floor is **trajectory divergence**, not finite-stem noise.
+
+- `scripts/diagnose_copula_capacity.sh` now passes `BLOCK_SALT` **explicitly** into
+  `scripts/eval_slow_copula.jl` and echoes it in the `=== FOLDS:` header. It previously appeared nowhere in
+  the driver, so a salt-1 rung depended on `sbatch --export=ALL` inheritance reaching a variable the Julia
+  invocation's own env prefix did not list — and the log header would not have revealed a silent fallback to
+  salt 0. That failure mode fabricates a *perfectly agreeing* blocked-CV replicate, which is exactly what
+  ADR 0040 §5's "NOT RESOLVABLE if the two salts disagree" clause exists to detect, so it would have forced
+  a false RESOLVED. Same class as ADR 0041's inert `random_seed` under `FROM_RESTART`.
+
+- `scripts/diagnose_copula_capacity.sh` gained an `EXCLUDE=` knob that emits a real
+  `#SBATCH --exclude=`. The `SBATCH_EXCLUDE` environment variable recommended for the known
+  flaky-node mode is **not** a recognised sbatch input on this cluster and is ignored silently:
+  job 1680828 died `0:53`/no-log on `cso14c74`, and the resubmission carrying
+  `SBATCH_EXCLUDE=cso14c74` (job 1681087) landed on `cso14c74` again and died the same way.
+
+- `lines/S/STATE.md` recorded the pooled `t8` copula baseline as "60-tree/50k/d14"; the evaluation that
+  produced those predictions ran at **40** trees (`run_pooled_slow_copula.sh` defaults). The 60 is
+  `train_slow_copula.jl`'s artifact setting, printed later in the same log.
+
+- `scripts/diagnose_slow_address_prereg.py` built its bootstrap tile-cluster labels through a join that
+  returns rows in the latlon frame's order while the statistic's arrays are in `group_by` output order, with a
+  `tl[:min(len(tl), len(dy))]` truncation absorbing any length mismatch. The labels were a permutation of the
+  rows they clustered, which degenerates a tile bootstrap toward an independent-cell bootstrap and
+  **understates** the spatial sd — the exact error the clustering exists to remove. Point estimates never
+  touch the labels, so only the CIs were wrong. Detected because `cluster_boot` has a fixed seed yet two runs
+  over identical inputs printed different intervals. Fixed with a cell-indexed lookup plus a length assertion,
+  and verified by running each gate twice and diffing: both now byte-identical. The re-measured intervals are
+  3–5× wider and materially change what may be claimed — the blocked-fold damping is no longer significant,
+  and no inter-arm difference is resolvable from marginal CIs (a paired difference bootstrap is the missing
+  statistic, noted as a caveat with its fix).
+
+- The sidecar's gate caught a real train/inference shift on its first run, which is why it exists. Four of the
+  six env columns are stored `Float32` in `cell_year_feats.parquet` and polars' `group_by().mean()`
+  accumulates in `Float32`, so the obvious aggregation lands ~3.35e-07 relative away from the values the
+  shipped artifact was conditioned on — 199 093 of 200 000 probed rows differed, max |diff| 7.63e-05 on
+  `eco_diag_pet_mean` (exactly `5·2⁻¹⁶`). Casting to `Float64` before the mean reproduces the shipped
+  `Xc.f64` tail **bit-exactly**. The gate compares against the shipped `Xc` rather than against a re-run of
+  the producing code, because the latter would be circular. Recorded in CLAUDE.md §4.
+
+- **Component S now trains on LPJmL-FIT's COMPLETE tree PFT set (`Type ∈ 0..6`)** — ADR 0031. `TREE_TYPES` was
+  `[1,2,3,4,5]`, a stale-yaml port defect that silently dropped the tropical broadleaved evergreen (id 0) and
+  the boreal larch (id 6): **32.5 % of survivor tree stems** and **16.7 % of tree-bearing cells** (the tropical
+  belt + the Siberian larch zone) were invisible to the emulator. Measured on the seed2 historic copula table,
+  the widening takes it from 133.5 M stems / 45 072 cells to **197.8 M stems / 54 058 cells**, and `minwscal`
+  from the truncated `[0.025, 0.30]` span to FIT's true `[0.025, 0.75]`.
+  The constant now lives in **one** place (`lpjmlfit_emulator.data.TREE_TYPES`); `features.py`,
+  `python/config/config.yaml` and every `scripts/build_slow_*.py` / `noise_floor_vs_emulator.py` **import** it
+  instead of re-declaring it, so the two copies that caused the defect cannot drift again.
+- **`growth_eff` now matches the runtime's zero-leaf-area guard** (`fast.jl:369`
+  `leaf_area > 0 ? applied/leaf_area : 0`), replacing a `÷ max(lai, EPS)` divisor that turned a joined
+  `LAI_STAND == 0` into `applied_npp × 1e6` — a train/inference shift on a primary mortality driver (ADR 0023).
+  The C oracle guards it the same way (`mortality_tree_ind.c:95`). The previously **unexplained** seed1-vs-seed2
+  asymmetry is now diagnosed: there is exactly one `cell_year_lai_*` table and it is **seed1-derived**, so
+  joining it onto seed1 `ind` is self-consistent (**0** of 23.9 M tree groups hit `lai == 0`) while seed2 hits
+  21 501 groups / 204 867 stems. Under the new rule that same seed2 build maxes at 4.3e4 instead of 1.19e9,
+  right at seed1's 3.1e4. A `GROWTH_EFF_MAX` assertion now fails the build loud, because the coverage guards
+  structurally cannot catch it (a zero `lai` is *present*, not missing).
+- **All seven tree PFTs' mortality parameters are now `[VERIFIED]` per-PFT** in
+  `scripts/build_slow_flux_table.py::PFT_PARAMS`, read from the active `par/pft_lpjmlfit.js` by a brace-depth
+  parse that reproduces the previously-verified beech row as its own cross-check. Adding ids 0/6 exposed that
+  the old dict applied temperate/angiosperm values to *every* id and was therefore also wrong for ids 1, 2, 4
+  and 5 — most sharply id 5, whose longevity is **125**, not `TREE_LONGEVITY` 400 (a 3.2× age-mortality error),
+  and whose `mort_water_factor` is 20, not 5. An unknown `Type` now raises instead of silently taking
+  temperate defaults.
+
+- **The ADR-0030 gate now refuses to quote a floor from two seeds that are the same seed.** The ceiling is
+  `sqrt(rel_P·rel_Y)` with `rel_Y = floor_r`, so a duplicated realization gives `floor_r ≡ 1` and fabricated
+  headroom on every axis, with no error — and the existing `seed1-basis ≥ 0.99` check compares a table to the
+  parquet of the *same* seed, so it reads 1.000 and is structurally blind. **The ssp370
+  `..._random_seed2` ground truth IS such a duplicate**: `ind_2020_2100.csv` is 193 097 583 638 B in both
+  seeds with equal md5 on blocks at MB 0/30000/120000, because its config sets `"random_seed": 2` but its
+  `restart_filename` points at the *historic seed1* `restart_2019.lpj` — under `-DFROM_RESTART` the per-cell
+  RAND48 state is restored, making the seed inert. (The historic pair is genuinely independent: each reads
+  its own relative `restart/restart_1999.lpj`.) Self-tested both ways: the negative control aborts, the
+  positive control passes and reproduces the published baseline exactly.
+- **The struct-axes disagreement message was misdirected.** It said "Rebuild the seed2 table with the same
+  `STRUCT_AXES`", but the seed2 tables *do* carry agb+Height — it is the seed1 **shadow** manifest that
+  `diagnose_copula_capacity.sh`'s `TRAIT_ONLY=1` trimmed. Following it cost a pointless multi-hour rebuild
+  and fixed nothing. The message now names the narrower side and points at `TRAIT_ONLY`.
+
+- **The copula env-augment dropped every manifest-named sidecar except `cells.i64`
+  (`scripts/build_slow_copula_env_augment.py`).** `pooled` tables carry `scenario_tag  scenario.i64` (the
+  per-row scenario label `eval_slow_copula_scenario_holdout.jl` splits on), and the symlink loop handled
+  only `Y_*.f64` + `cells.i64`. A pooled augment therefore produced a table whose copied manifest still
+  declared `scenario.i64` while the 337 MB file was absent from the output — a dangling reference that
+  TRAINS fine (the trainer never reads it) and only fails later in the scenario-holdout eval, far from the
+  cause. Sidecars are now resolved BY NAME from the manifest, missing-in-source is a hard error, and a
+  post-write assertion re-checks that every name the emitted manifest declares resolves in the output.
+  First exercised building `slow_copula_pooled_w20_t8env`.
+- **The copula sidecar meta hard-coded the 8-column conditioning policy
+  (`scripts/train_slow_copula.jl`).** Its header line always read `Conditioning order = live_flux_cond
+  (4 flux drivers + boundary tail)`, which is correct only while every artifact is 8 wide. A 14-column
+  artifact is built by `live_flux_cond_env`, so the one human-readable statement of the train/inference
+  contract named the WRONG runtime policy — precisely the silent shift ADR 0023 warns about. The line is
+  now derived from `ncond`.
+
+- `scripts/diagnose_copula_capacity.sh`'s artifact-clobber guard was locale-sensitive: it hashed
+  `ls pred_*.f64 | sort`, and the login node collates in `en_US.UTF-8` (case-insensitive) while the SLURM
+  batch shell collates in `C`, so the same untouched files hashed differently and the guard reported a false
+  "the shadow leaked". Both sides now force `LC_ALL=C`, and the failure path prints the name/size/mtime
+  triples so a real incident is distinguishable from a guard artefact.
+
+- **Line M's `wscal_leafon` default flip is unblocked from S's side and pre-authorised.** M recorded it as
+  "S's to schedule" and it had sat, because flipping the default reds `slow_production_drf_tests.jl`'s
+  assertion that the out-of-band conditioning set is *exactly* `{water_stress}`. That assertion now admits
+  **exactly the two admissible states** — `{water_stress}` with the flag off, the **empty set** with it on —
+  and still fails on any third outcome, so the flip no longer needs a synchronised two-sided commit. S
+  endorses it on M's own measurement (ADR 0051): Hainich's `water_stress` goes **0.3050 → 0.0034** against a
+  C truth of 0.0014 and a trained band of [0, 0.04315], so the flip **closes S's last out-of-band
+  conditioning column**. Expect it to move M's pinned per-cell coupled baselines — a deliberate regeneration
+  under guardrail 4.
+
+  Hainich cell 42490 only (guardrail 6), constant repeated-2010 forcing, committed demo artifact pair. No
+  committed baseline, artifact, fixture or default moved; runtime `[deps]` stays empty.
+
+- **Component S / DRF: a wrong-length conditioning row was an out-of-bounds heap read, not an error.**
+  `DRF._leaf` reads `x[f]` inside an `@inbounds` block, so querying an `nfeat`-feature forest with a shorter
+  row returned whatever bytes followed `x` and produced a plausible in-range trait. `predict` and
+  `predict_quantile` now check the length, and `DRF.load_copula` fails fast when any marginal's `nfeat`,
+  `length(cond_cols)` or `length(x)` disagrees with the header's `ncond` — the only enforcement of the
+  ADR-0023 train/inference contract once a copula's conditioning width changes. Byte-identical for every
+  correctly-sized call: the committed Hainich fixture's golden draws are unchanged.
+- **Component S: the extended-conditioning env tail selected ZERO cells for SSP370.** `cell_year_feats` is a
+  historic climatology table (Year 2000–2019) that the static boundary reads whole for every scenario, but the
+  env branch filtered `Year >= FIRSTYEAR[scenario]` — 67 420 cells for `historic`, **0** for `ssp370`, which
+  then failed downstream with a message blaming a coverage hole. Both `build_slow_runtime_table.py` and the
+  new augment script now use the boundary's basis, verified byte-identical for `historic`.
+- **Component S: the capacity harness aborted before submitting when its source table held no predictions.**
+  Its clobber-guard fingerprint ran `ls pred_*.f64`, which exits non-zero on an empty match and, under
+  `set -o pipefail`, killed `diagnose_copula_capacity.sh` before `sbatch`.
+
+- The ssp370 seed2 **independence gate had failed spuriously**: when the hung member was resubmitted, its
+  chained gate jcf still named the *cancelled* attempt's 0-byte log, so it reported `no completion line at
+  all` for a C run that had in fact terminated cleanly over all 67 420 cells — and left the 93 GB parquet
+  conversion stranded on `DependencyNeverSatisfied`. Re-run against the real log, the member **passes all
+  four checks** and is confirmed a genuine second realization.
+
+- **The committed Hainich demo count DRF is regenerated onto the REAL feature basis, so the two artifacts one
+  emulator loads together are on ONE basis again (ADR 0032 closed, milestone S1c).**
+  `test/testitems/references/drf_forest_hainich.drf` + `_meta.txt` were trained on the retired proxy features
+  (`soilmoist = 0.7`, `lai = 21.2`, `growth_eff = 19`) while `recruit_copula_hainich.rcop` beside them was on
+  the real ones — a live ADR-0023 train/inference shift on the artifact the in-loop gates read first. Both are
+  now rebuilt from a single table build; the `.rcop`, its meta and both `hainich_slow_oracle_*.csv` came back
+  **byte-identical**, and the `.rcop`'s conditioning row now lies inside the `.drf`'s trained band on all
+  **8/8** shared columns (0 violations). Every re-measured Hainich drift threshold improved: Gate-3 Height
+  `nqrmse` **0.3895 → 0.2998**, median Height ratio 1.2463 → 1.1316, settled count ratio 0.6734 → **1.2808**
+  (the in-domain flux drivers raise the count from ~6.8 to ~12.9 stems/patch, and more stems sharing the same
+  carbon are smaller trees). The Gate-3 alarm is **tightened 0.45 → 0.40** accordingly — no threshold widened.
+
+- **ADR 0102 §4's central claim was wrong, and the correction matters more than the fix.** It stated the
+  anchor "requires the count↔density conversion at the S↔F seam — an `interface.jl` addition, which is line
+  M's", and on that basis deferred a one-file change into a cross-line integration point. **The conversion is
+  a documented constant:** `par/lpjparam_fit.js:17` sets `"patcharea": 225.0` m² (15×15) and
+  `src/tree/new_tree.c:209` gives every individual `nind = 1/patcharea`. **The project owner caught it.**
+  Verified rather than taken on trust, per CLAUDE.md §3: `cpp -P` over the *live* config yields exactly one
+  `"patcharea"` (225.0, no duplicate-key override — the trap that makes larch's `aphen_min` 10 instead of
+  60), and the committed fixture agrees end-to-end (`sum(nind) × 225 = 17.000`, every individual at `1/225`).
+  Two transferable lessons:
+  - **"X cancels" is a statement about an expression, not about X.** CLAUDE.md's own sentence — "with
+    `nind = 1/patcharea` the patcharea cancels" — is true of the ADR-0035 per-patch LAI derivation and was
+    read as a general property of the quantity. The follow-up question, *cancels against what?*, was never
+    asked.
+  - **Before routing work to another line, confirm the thing you need is actually theirs.** ADR 0029 stops
+    lines editing each other's files; it does not make a constant from a third repository into another line's
+    property. Deferring a one-file change to a negotiation is a real cost.
+
+- A `Vector` field on `FDiff.Individual` aborts the Enzyme reverse pass with SIGABRT (a bare LLVM abort with
+  no Julia error, surfacing right after the grass Enzyme training test item). The per-tree root profiles now
+  travel as a separate argument that Enzyme sees as constant data. Recorded on the struct so it is not
+  reintroduced.
+
+- Component S: two previously unrecorded facts about the C parameter file, both surfaced by generating the
+  reference instead of transcribing it. PFT id 6 (larch) declares `aphen_min`/`aphen_max` **twice** —
+  macro defaults 60/245 followed by an override pair 10/200 — and json-c's last-wins lookup makes 10/200
+  effective, so larch accumulates water stress six times earlier in the season than the other six tree
+  PFTs. And `sla_median` (0.01986) is a single global default that lies **outside** `[low, high]` for ids
+  1, 2, 3 and 5, so it is not a central value of the interval recruits are drawn on. The builder enumerates
+  the duplicate keys and asserts the set is unchanged, so a new silent override cannot slip through.
+
+- **The distributional forest was not using its own estimator.** `predict_quantile` concatenated every tree's
+  leaf values and took an unweighted quantile, giving each stored value weight `1/sum_t |L_t(x)|` — so a tree
+  contributed in proportion to how large its leaf happened to be, instead of the `1/T` a quantile-regression
+  forest prescribes. The two coincide only for equal leaf sizes, and the production global copula is far from
+  that: over the Wooddens marginal's 70 854 leaves, sizes run min 20 / median 26 / q99 371 / max 4016
+  (coefficient of variation 2.01). Routing real conditioning rows through that 60-tree forest, the largest
+  leaf hit takes **median 11.1 % / mean 12.2 % / q90 18.8 %** of the prediction weight against QRF's
+  **1.7 % = 1/60** — a **6.7x typical over-weight, 11.3x in the sparse-conditioning decile**
+  (`scripts/rcop_leaf_geometry_probe.jl`; 5.8-6.7x typical across the four axes). The bias has a
+  direction: a big leaf spans a wide region of conditioning space, so its values approximate the global
+  marginal and over-weighting it drags each cell's conditional toward that marginal — an attenuation
+  mechanism. Those large leaves are **depth-capped, not gain-exhausted**: 99.9-100 % of leaves holding at
+  least `2*min_leaf` values sit at exactly `depth == max_depth`, and 57-67 % of all stored values are in one.
+  Verified as a weighting effect and not the accompanying quantile-convention change: measured separately on
+  the production artifact, the convention accounts for 0.002-0.014 % and the weighting for 1.67-4.43 %, a
+  315-1507x ratio. `DRF.predict` was already correct (it averages leaf means at `1/T`), so the count DRF and
+  every count skill number are unaffected.
+
+- Nothing in shipped code: `trait_mortality` remains opt-in and default-off, so every committed baseline,
+  ReferenceTest and AD path is byte-identical and runtime `[deps]` stays empty.
+
+- **S→M integration point #2 (raised, not yet landed):** the `pooled_w20` artifact ships **no
+  `cell_meta.parquet`** — its meta names one that does not exist — and its two training sub-tables disagree
+  on Hainich's per-cell seed (`n_init`/`age0` 11.0/43.556 vs 7.0/46.0), a **4.5× FIT** swing in the measured
+  response. `M_slow_init_meta.json` silently resolves this to the well-behaved branch (so nothing is broken
+  in M's current pin) and takes its **boundary row** from `slow_runtime_historic_t8` — a table the pinned
+  artifact was never trained on (gdd5 1 863.7 vs the training basis's 1 698.0, 23 % of the warming signal) —
+  while on that artifact the boundary channel is worth **3 165 gC/m³ = 1.30× FIT** on ensemble average.
+  Either ship a pooled `cell_meta.parquet` or record the substitution and its consequence in the pin's
+  provenance.
+
+  Hainich cell 42490 only (guardrail 6); `trait_mortality` stays opt-in and default-off; runtime `[deps]`
+  stays empty; `MODE=stage2` is untouched and remains the ADR-0049 regression; no committed baseline moved.
+  Nothing here may be quoted against the ADR-0044 global gate — which ADR 0101 now argues is the *only*
+  right instrument for a response claim, with the required replication count measured.
+
+- The `lai == 0 → growth_eff` blow-up class (ADR 0031) is now structurally impossible rather than guarded:
+  `lai` is derived from the same `ind` rows being aggregated, so it can no longer come from a different
+  seed's trajectory via a cross-seed join.
+
+- **The ssp370 `random_seed2` ground truth was a bit-identical copy of seed1; produced the real
+  one.** `random_seed` is **inert** in any `-DFROM_RESTART` run: with `"new_seed": false` the
+  per-cell RAND48 seeds are restored from the restart file (`newgrid.c:507-513` →
+  `freadcell.c:37`) and the code that would apply `config->seed_start` is gated off
+  (`newgrid.c:520-521`); `seed_start` is applied once at parse time (`fscanconfig.c:231`) and then
+  overwritten from the restart header (`openrestart.c:139-140`). The broken member set
+  `random_seed: 2` but restarted from the **historic seed1** `restart_2019.lpj`, so it inherited
+  seed1's exact state — and because `new_seed` is false the log prints `Reading random seeds from
+  restart file.` instead of `Random seed: 2`, so nothing warned. A noise floor built from it
+  reports `floor_r ≡ 1`, i.e. fabricated emulator headroom. **A second seed is a second SPIN-UP
+  carried forward**, not a changed `random_seed` (ADR 0041).
+
+- **`build_slow_runtime_table.py`: a silent row-set corruption in the global count tables.**
+  `polars` `collect(engine="streaming")` is not deterministic in the KEY SET it emits at global scale (only
+  its float-sum jitter was documented): two ssp370 builds over the same `ind` parquet produced 99 023 397 vs
+  99 028 310 rows — 141 cells differed, 4 913 rows missing, 12 cells with DUPLICATED keys — and the AR
+  self-join amplified each duplicate into four rows. The existing coverage guards structurally could not catch
+  it, because duplication makes `dropped = h_before − h_after` go negative so a `drop_frac` test never fires.
+  Now a hard `(Cell,Patch,Year)` key-set invariant fails the build loud, and the AR lag is taken with a window
+  shift instead of a 100M x 100M self-join (gated: rebuilding the historic table reproduces the shipped one
+  with `y`/`cells` byte-identical and `X` to 0.000e+00 relative difference). The affected per-scenario ssp370
+  artifact was rebuilt; its OOS R² is unchanged at 0.9823.
+- Documentation corrections that were substantive, not cosmetic: `STEM_CAP` is a patch-year **cluster**
+  subsample, not the per-stem sample it was documented as (so the stand-biomass composite is refused for the
+  pooled pair, whose two tables weight the scenarios differently); the biomass `basis_ratio` is an exact
+  identity on matched rows and therefore a **row-universe** check, not the `Cov(N, mean size)` correction it
+  was described as; figure 06 is not a distributional check, because the count DRF is scored with a
+  conditional mean; and the default (non-transient) boundary is the 2000-2019 historic climatology for BOTH
+  scenarios.
+
+- **Documented a measured defect in the Component-S training population (ADR 0031): `TREE_TYPES =
+  [1,2,3,4,5]` drops a third of LPJmL-FIT's forest.** `Type` in the annual `ind` output is the 0-based
+  `pftpar` index, and ids **0–6 are all seven tree PFTs** (7/8/9 grass, 10–21 crops), so the production
+  DRF/copula builders silently omit id 0 (tropical broadleaved evergreen) and id 6 (boreal larch):
+  **64 179 572 of 197 721 867 survivor tree stems = 32.5 %**, with **9 011 of 54 020 tree-bearing cells
+  (16.7 %) invisible to Component S** — the tropical belt and the Siberian larch zone — and 41.8 % of cells
+  losing more than half their stems. Because FIT draws traits uniformly from per-PFT `[low, high]` intervals,
+  the truncation also biases retained cells: per-cell trait medians correlate only 0.09–0.97 between the two
+  populations, and the complete set carries 1.3–2.7× more between-cell spread. Provenance is a stale sibling
+  `configs/config.yaml`, never an ADR; the correct constant already exists at
+  `python/src/lpjmlfit_emulator/features.py:50`, and the python LightGBM `DirectEmulator` path is unaffected.
+  Every declaration site now carries an ADR-0031 pointer; the correction itself (one imported constant +
+  re-derive → retrain → re-validate → re-measure the ADR-0030 gate, with versioned artifacts and an
+  integration point with line M) is the next line-S work item. Committed baselines, golden fixtures and the
+  runtime are untouched — Hainich contains only ids 1–5, which is why every single-cell gate stayed green.
+- Recorded (not yet fixed) a related conditioning hazard: `growth_eff = applied_npp / max(lai, EPS)` divides
+  by `EPS = 1e-6` where the joined `LAI_STAND` is exactly 0 (202 106 of 1 348 400 historic cell-years),
+  producing a `growth_eff` maximum of **1.19e9**. The coverage guards cannot catch it — the feature tables are
+  complete, so a zero is *present*, not missing.
+
+- **Three independent errors in the yardstick the emulator's warming response was being judged against**
+  (ADR 0111). ADR 0093 §3e had the reliability and the deattenuated slope **swapped** in the Wooddens and
+  D95max rows; the reliability and the slope had been computed on **different bases** (log-space single-year
+  vs linear all-years-pooled), so their quotient was undefined; and a per-patch density had been divided by
+  the number of **occupied** patches, which cancels part of its own sampling noise and understated the sparse
+  stratum's floor by 3× (10.5 % instead of 27.0 %).
+
+- Component S: `Rb` is demoted to a veto-only criterion. It is unresolvable as a paired delta
+  (`sd_paired` = 533 blocked) and a zero-information permutation buys it at 3.30σ, so "the damping fell
+  from A % to B %" is inadmissible in every form (ADR 0044).
+
+### Deprecated
+
+- **`recruit_copula_global_historic_t9.rcop` is the historic-STATIC artifact and is NOT line M's production
+  copula.** The six env columns have within-cell sd **exactly 0 for 100 % of cells** — they are per-cell
+  constants broadcast across years, so they cannot encode a warming response, and in the pooled table a
+  cell's historic and ssp370 rows carry bit-identical env values. A 1-NN lookup on those columns reaches
+  Wooddens r = 0.800 with a median distance to the nearest training neighbour of **1.00°** (q25 = 0.50°, the
+  adjacent cell), against r = 0.445 / 14.51° for the existing boundary constants — so they resolve to a
+  geographic address, and K-fold-**by-cell** CV cannot separate a transferable environmental response from
+  spatial interpolation. The +0.037 is a valid offline gain whose generalization is **unestablished**;
+  production turns on a spatially blocked re-score, which is now the named next step.
+
+### Documentation
+
+- **Recorded that `run_global_slow_copula.sh` scores a different estimator than it ships**: `NTREES` (60)
+  feeds `train_slow_copula.jl` ⇒ the shipped `.rcop`, while `EVAL_NTREES` (40) feeds `eval_slow_copula.jl` ⇒
+  the scored OOS. So every published **t8** gate number describes a 40-tree estimator while the artifact line
+  M pins is 60-tree (read off the artifacts: t8 `ntrees=60`, 3 000 000 stored leaf values = 60 × 50 000; t9
+  `ntrees=6`, 12 000 000 = 6 × 2 000 000). **t9 is the first generation where the two agree.** Tree count is
+  nearly inert for skill (±0.002 over 3.3×) so the t8 headline barely moved, but it is *not* inert for the
+  leaf-weight skew the QRF argument rests on (6.7× `1/T` at 60 trees vs 2.9× at 6) — attribute weighting
+  figures to the right object. Also resolves the apparent "40 vs 60" contradiction in
+  `diagnose_copula_capacity.sh`'s size comment: both are right, about different objects.
+
+- ADR 0110 — the "structurally impossible" per-individual water-supply verdict was reached on **grass** and
+  does not apply to **trees**. `beta_root` is set per individual from that individual's own `D95max`
+  (`new_tree.c:229-230`), the trait spans 51–1800 cm within a single PFT, and the C's per-individual `wr`,
+  `supply`, `wscal` and the routinely-firing "own FPC share" cap are all **order-independent** — the
+  `-DPERMUTE` randomness touches only the residue cap and realized GPP. Measured: across-tree water-scalar
+  spread of 0.16–0.19 in the water-limited cells (our fast core carries one number), a 0.83 within-band
+  correlation between a stem's root profile and its own water status in the Sahel, and drought-killed stems
+  rooting 57 % shallower than the population mean at Hainich. Verdict PASS; per-tree roots + per-tree water
+  + un-zeroing the two hazards ADR 0049 left at zero is the decided path, in three separately-gated
+  default-byte-identical steps.
+
+- ADR 0110 — the "structurally impossible" per-individual water-supply verdict was reached on **grass** and
+  does not apply to **trees**, and the `-DPERMUTE` randomness behind it does not touch the per-individual
+  quantities the drought channel needs (they read a soil column frozen for the whole permuted loop). Narrows
+  `docs/water_supply_perpft_design.md`'s DEFER to the order-dependent residue cap alone; reopens the channel
+  ADR 0049 §3 closed. Flip criteria pre-registered.
+
+- `CLAUDE.md` §0a — a standing project-level rule binding **every** work line: reports to the project owner
+  must be in plain language. No decision-record numbers, no milestone or phase codes, no repo jargon
+  standing in for an explanation; a label is a pointer, never an explanation. Numbers, findings and caveats
+  all stay — only the internal shorthand goes. The section carries a translation table. It binds
+  user-facing text only; ADRs, STATE files, journals and code comments keep the precise shorthand, where it
+  is load-bearing. Owner instruction, 2026-08-06.
+
+### Verified
+
+- **E7 beats the fitted `λ_g = 1.0` it was only asked to match**, with nothing fitted (497k PLUMBER2 tower
+  steps, 4 sites; harness reproduces ADR 0073's published numbers digit for digit). Daily step, at the two
+  sites whose towers can score H: DE-Hai H R² 0.035 → 0.645 (fitted arm 0.637) and G R² −39.4 → 0.717
+  (0.657); AU-ASM H R² 0.329 → 0.775 (0.745) and G R² −15.4 → 0.614 (0.477). `Rn` unchanged within ±0.005.
+- Sub-daily, the diurnal amplitude of `G` becomes correct at closed-canopy sites (DE-Hai all-hours sd(G)
+  5.75 vs observed 5.66, against the default's 34.7) and **night `G` R² turns positive at DE-Hai (+0.394)**.
+  Nocturnal **H** R² stays negative (−0.324) exactly as ADR 0073's `ε_obs` bound requires.
+- No secular drift: at the 16-year AU-Tum record the second-half annual-mean trend is −0.059 K/yr (T1) and
+  −0.015 K/yr (T2), with mean daily `G` 0.001–0.072 W/m² — the closed-bottom column self-equilibrates, so
+  no deep-restore term is needed.
+- Known limitations, quoted rather than hidden: one global `z1` cannot serve both a closed canopy and a
+  sparse desert (AU-ASM's observed all-hours sd(G) is 64 W/m²), and sub-daily `T_skin` degrades at
+  AU-Tum/AU-Rob.
+
+### Measured
+
+*no default changed:*
+
+- **The extra conditioning describing each cell's moisture climate turns out to trade present-day accuracy
+  against climate response, and the time-varying version buys the response back (ADR 0109).** Scored on
+  identical rows across 52,074 cells in both scenarios: adding those six numbers as fixed per-cell values
+  improves how many cells land within 10 % of the original model (by 3–5 percentage points) and *degrades* how
+  well the emulator reproduces the original's shift between present-day and the warm future — on all four
+  traits. Making them time-varying recovers most of that shift (for wood density the original's mean shift is
+  +2406, the frozen version predicts +1529, the time-varying one +2402) at a cost of under one percentage
+  point of present-day accuracy. The time-varying version is **not** switched on: the go/no-go test written
+  down beforehand was not met, and the coupled check it also requires has not been run. Nothing that was
+  running changes.
+
+### Verdict
+
+*same 497 936 tower steps, 4 sites — full numbers in ADR 0073:*
+
+- **The stability / `g_a` hypothesis is REFUTED, three independent ways.** The closure's nocturnal `g_a` is
+  within **0.7 %** of DE-Hai's measured-`u*` value (0.05724 vs 0.05685 m/s) and within a factor 2 at every
+  site; substituting the measurement makes nocturnal H **worse at all four sites**; and a **100× `g_a`
+  bracket cannot reach positive nocturnal R²** anywhere (best −0.06). ADR 0072's monotone `stab_amp` sweep was
+  a **bias-cancellation artifact** — suppressing `g_a` offsets the ground-heat error without fixing it.
+- **The mechanism is the ground-heat term's timescale.** `G = λ_g(T_skin − t_soil)` with `λ_g = 7.0` and a
+  τ = 30 d EWMA reference has no diurnal soil inertia and no canopy decoupling: sd(`G_model`) is **5–7×**
+  sd(`G_observed`) at the closed-canopy forest sites (34.7 vs 5.7 W/m² at DE-Hai), G night R² −3.4…−51.1, and
+  **88 % of DE-Hai's +14.04 W/m² nocturnal H bias is `ΔG`**.
+- **`λ_g ≈ 1.0`, not 7.0, at the daily step the coupled model actually runs** (`run.jl:93` calls `solve!` once
+  per day). Three independent lines agree: the observation-implied `λ_g` is **0.83–1.10** at all four sites at
+  the daily step; `λ_g ≈ 1.0` reproduces the observed daily sd(`G_o`) of 4.3–6.3 W/m²; and daily H skill
+  improves at 3 of 4 sites — **DE-Hai R² 0.03 → 0.64** (RMSE 38.1 → 23.4), **AU-ASM 0.33 → 0.74** (31.8 → 19.6).
+  A broad optimum (0.5 and 1.0 score alike), degrading only the already-suspect AU-Rob.
+- **Part of the residual is UNCLOSABLE.** Mean nocturnal `ε_obs`: DE-Hai **−0.32** (the tower closes — the
+  trustworthy site), AU-ASM −12.0, AU-Rob −47.5, AU-Tum **−62.3** W/m². At the daily step `ε_obs` accounts for
+  essentially the entire mean H bias at three sites, while DE-Hai's daily H bias is **+0.87 W/m²**. AU-Tum and
+  AU-Rob **cannot** honestly score a closing model's nocturnal H; they remain valid for `T_skin`.
+- **Nocturnal *skill* (R² > 0) is not recoverable by any parameter value in the present form** — that needs a
+  force-restore / two-layer soil scheme with a real diurnal wave plus canopy heat storage. This bounds line O:
+  the online sub-daily coupling inherits an R² < 0 nocturnal H until that lands.
+- **No default changed and no physics changed** (guardrail 4). `lambda_g` is already a `SEBParams` field, so
+  `SEBEnergyClosure(params = SEBParams(lambda_g = 1.0))` works today with zero code change. Flipping the
+  default moves every coupled/biome baseline ⇒ **`lambda_g` is now the live E→M integration point, and
+  `stab_amp` is withdrawn as one.**
+
+*497 936 tower steps, 4 sites — full numbers in ADR 0072:*
+
+- **`Rn` verified:** R² 0.986–0.996, bias +1.95…+10.2 W/m², under the towers' own albedo.
+- **`T_skin` verified where observable:** daily RMSE 1.41–1.97 K, R² 0.76–0.95 (AU-Tum / AU-ASM / AU-Rob).
+  Not at Hainich — PLUMBER2 carries no `LWup` there.
+- **`H` verified in the mean, not in variability:** every site's bias (+6.4 to −19.2 W/m²) is inside the
+  dataset's own uncertainty and **76.4 % of DE-Hai daily means fall inside `|h_cor_uc|`**, but daily R² is 0.125
+  (AU-Tum) to 0.778 (AU-ASM) and **nocturnal H has R² −1.0…−5.6 everywhere**.
+- **Named failure mode:** the closure runs **1–2 K too cold at night** (modelled night `T_skin − Tair` −3.4/−2.6/
+  −1.8 K vs observed −1.4/−1.7/−0.7 K) — too little nocturnal turbulent + ground coupling.
+- **Methodological finding:** half-hourly H R² (0.647 at DE-Hai) is **inflated by the diurnal cycle**; the daily
+  mean (0.257) is the honest number.
+- **Stability correction:** ON beats OFF at night (RMSE 37.0 vs 41.7 DE-Hai; 29.7 vs 46.4 AU-ASM), and the sweep
+  is monotone in `stab_amp` up to 0.9 ⇒ the 0.75 default is **too weak**. No default was changed (guardrail 4);
+  the retune is an integration point with line M, and the monotonicity suggests the bounded-tanh *form*, not the
+  coefficient, is the real limit.
+
+*full numbers in ADR 0055:*
+
+- **The documented AC-vs-climate gradient is not in this model on this basis.** Detrended lag-1
+  autocorrelation of the per-patch living tree count is **flat at 0.452–0.541 across all ten P/PET
+  deciles**, and the driest decile is the **lowest**, not the highest; `agb` behaves the same
+  (0.448–0.544). The seed1-vs-seed2 floor is 0.042–0.062, so the flatness is a result, not noise. Two
+  diagnostics rule out shot-noise attenuation as the explanation: the noise-immune `r₂/r₁` sits *below*
+  `r₁` everywhere (0.31–0.41) rather than above it, and the between-patch spread is 1.18–12.6× larger than
+  the year-to-year variance of the patch mean, i.e. a persistent patch offset rather than sampling noise —
+  which is also why the obvious variance-based attenuation correction was written, measured, and discarded.
+- **The variance gradient is real and large:** CV 1.149 (driest) → 0.143 (wettest), 8×, monotone over the
+  dry half.
+- **Carried caveat:** 20 years is all the historic `ind` table has, and linear detrending is a high-pass
+  filter, so memory with a timescale ≳ 10 yr is removed with the trend. The honest statement is "not
+  resolvable on this window and basis", not "the literature is wrong".
+- **The coupled emulator has NO AC gap.** The deployed arm sits **0.1–0.6 between-patch SDs** from the C on
+  every cell and both variables (mean 0.32) — the first coupled result on this line inside the noise floor
+  everywhere. Consistent with ADR 0054, whose error is in the count **level**: a detrended lag-1
+  autocorrelation is blind to a level and to a monotone drift.
+- **The shuffle test PASSES and the memory is F's carbon pools, not S's recursion.** Destroying the
+  climate's year-to-year sequencing leaves AC at **0.460–0.653** (inherited ≤ 0.146 either way), pinning
+  the count-space AR feature leaves **0.391–0.704**, and `slow = nothing` already carries **0.454–0.691**.
+  `|free1 − pin1| ≤ 0.135`: **ADR 0054's unanchored recursion drives the count level drift and contributes
+  essentially nothing to the memory timescale** — two different failure modes, one of them absent.
+- **ADR 0054's teacher-forced anchor arm makes the AC WORSE in two cells** (Amazon `n` 0.066 vs a C of
+  0.501 = 2.3 SDs; mediterranean 1.2 SDs). It is a diagnostic, not a fix to deploy — a caveat on the open
+  line-S integration point, which was raised on the level improvement alone.
+- **No limit cycle** over 100 cycled years (`osc` 0.06–0.50, at or below white noise), nothing non-finite,
+  carbon closing at ≤ 2.1e-11 throughout. **Three open findings recorded rather than smoothed over:**
+  `semiarid_sahel` does not recover from the pool perturbation (τ 602 yr, r² 0.38, vs 47–54 yr / 0.60–0.73
+  elsewhere); there is **no steady state under cyclic forcing** (AGB drifts 1.39–5.15× over the century);
+  and the AC-implied timescale (1.2–2.9 yr) is **~20× shorter** than the measured recovery time (~50 yr),
+  so an autocorrelation must not be read as a restoring rate.
+
+### Gates
+
+- `soilmoist` is **inside** the trained band (was 5.1× band width); `lai` fell from 2.9× to 0.021× (12-yr)
+  / 0.086× (20-yr). The pinned out-of-band set in `slow_production_drf_tests.jl` shrinks to
+  `{water_stress}` alone — an F_diff-vs-C difference owned by line M — with new bounds asserting
+  `soilmoist` exactly inside and `lai`/`fpc` ≤ 0.2 band widths.
+- Thresholds **tightened, none widened**: DIRECT copula draws SLA 0.22 → 0.10 (measured 0.1274 → 0.0391)
+  and Wooddens 0.12 → 0.06 (0.0346 → 0.0273). Gate-3 Height `nqrmse` 0.2998 → 0.2990 (alarm stays 0.40),
+  settled count ratio 1.2808 → 1.1597, carbon residual 1.9e-12, artifact basis-agreement violations 0.
+
+### Notes
+
+- **T_skin is not observable at Hainich from PLUMBER2**: its FLUXNET2015/LaThuile-sourced files carry no
+  upwelling longwave. T_skin validation moves to the OzFlux subset (ADR 0070); Component E's LE/H/T_skin stay
+  `[ASSUMPTION]` until milestone E4.
+- Observed daytime Bowen ratios reproduce the ordering `biome_coupled_tests.jl` asserts: GF-Guy 0.30 <
+  AU-Rob 0.52 ≈ AU-How 0.54 < AU-Tum 0.80 < DE-Hai 0.96 < FI-Hyy 1.23 < FR-Pue 1.70 < US-SRM 3.31 < AU-ASM 4.57.
+
+- **SSP370 surface pressure remains unsourced** — the raw MPI-ESM1-2-HR set has `sfcwind` but no `ps`, and no
+  LPJmL-prepared `ps` exists on the cluster. The future branch of E stays on a fixed pressure.
+- The tower comparison shows grid-cell forcing ≠ tower forcing, so E4 must drive with the **tower's** wind and
+  psurf when scoring against tower fluxes, and with these remapped fields for model-grid runs.
+- Feeding the fields into the coupled driver touches `src/run.jl` (line M's path) — an integration point, not
+  part of this change.
+
+- **The anchor fires perfectly and the level error it closes is larger than the single-cell evidence showed.**
+  Stand density × `patch_area` / the DRF's own target is **1.001 in all five biome cells** at `a = 0.5`, versus
+  **1.46–2.21** free-running — so ADR 0103 §2's 41 % over-density is a Hainich number, and across biomes the
+  free-running stand sits **46–121 %** denser than its own count model's absolute prediction (worst
+  `tropical_amazon`, 2.21×). No gate in this project reads that level.
+- **Criterion (iii) carbon closes** in every cell and every arm by six orders of margin; **(i) and (ii) fail.**
+  (i) fails structurally — the drift lives in the DRF's *target*, which F's canopy drives, and ADR 0103 itself
+  states the anchor does not close ADR 0102 mechanism (A); the criterion asked for something the mechanism
+  never claimed. (ii) fails on a new finding: anchoring closes a `density → fpc → target → density` loop that
+  is benign in four cells (`tropical_amazon` steps down then recovers, Hainich's gate metric improves
+  4.5 → 3.2 noise floors) and **runaway in `semiarid_sahel`** (`fpc` 0.281 → 0.057 monotone, target
+  13.5 → 4.46, E/C 1.19 → 0.33). That is the Sahel's fourth independent symptom.
+- `anchor = 0.1` is the worst available setting at line M's 10-year horizon: 15–46 % of the level correction
+  and essentially none of the drift benefit, while still costing the Sahel.
+
+- No `src/` change; every committed baseline is byte-identical. `wscal_leafon` remains `false` by default —
+  flipping it is still the open two-sided integration point with line S (ADR 0051).
+
+### Added
 - **`EXECUTION_PLAN.md` — the current order of work, as an error-attribution ladder
   ([ADR 0093](docs/decisions/0093-the-patch-ensemble-is-not-the-bottleneck-the-per-tree-loop-is.md) +
   [ADR 0094](docs/decisions/0094-per-year-esm-speed-is-the-goal-the-spinup-saving-is-not.md); owner-approved
