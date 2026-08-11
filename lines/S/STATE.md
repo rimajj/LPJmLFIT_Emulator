@@ -75,19 +75,63 @@
 >   A1 −0.635 there vs **+0.707 / −0.226** on the yardstick. Signs and ordering agree, magnitudes differ up to
 >   2.8× — **never quote a decay ratio against the yardstick's number.**
 
-> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": arms A0, A0-null and A1 plus the decay diagnostic are DONE
-> (ADR 0112 + 0113 + 0114). NEXT: chase the LEAD-DEPENDENT DRIFT (two cheap arms, both on existing artefacts),
-> and only then scope arms C and D — which need a ROSTER and are not offline-table arms.** In order:
+> ## ✅ BOTH DRIFT ARMS ARE DONE, AND THE DRIFT HAS A NAME NOW (2026-08-11, ADR 0115)
 >
-> **(i) The two drift arms (ADR 0114 §5.3), each a separate run, each scored beside A0 and A0-null in ONE
-> `diagnose_truth_yardstick.py` process.** (a) Train the count model on the **ratio** `n_t / n_{t-1}` instead of
-> the level and recurse that — the AR target already cancels the level, so this tests whether the drift is an
-> artefact of predicting a level from a lagged level. (b) Score historic vs ssp370 **at matched LEAD DEPTH**
-> rather than matched calendar window, which isolates how much of the sign flip is the unequal-chain-length
-> artefact rather than a property of the recursion. Both reuse `X.f64`/`y.f64` + the proven keys in
-> `/p/tmp/jamirp/emulator_global/rung1_keys_t8/`; (a) needs one refit (≈ 4 min for all 5 folds, ADR 0113).
-> **Also close ADR 0114 §5.4 while you are in that script: print the CONTROL's per-band columns**, without which
-> the per-band decay curve is arm-only.
+> The two experiments ADR 0114 pre-registered are run, on all 121 495 658 rows and both scenarios; total
+> compute ~10 min in 4 jobs (1753653, 1753655, 1753666, 1753667). Both hypotheses are **refuted**, and the
+> refutations point somewhere better:
+>
+> **1. Training the count model on the year-on-year RATIO instead of the level is worse on every axis**
+> (arms R0 teacher-forced / R1 recursed, `scripts/rung1_count_ratio_arm.jl`). Five arms in one yardstick
+> process: R² **0.9824 / 0.9622 / 0.9742 / 0.9182 / 0.6778** and aggregate area-weighted response
+> **+0.707 / +0.685 / +0.766 / −0.226 / −1.099** for A0 / null / **R0** / A1 / **R1**. One-step the ratio target
+> is a small real gain (+0.766, tropics −0.15 vs −0.51); recursed it collapses — drift +0.408 vs A1's +0.155 at
+> lead 20, and a top prediction of **799.5 stems in a patch whose observed maximum is 42**.
+> ⇒ **THE LEVEL TARGET IS ITSELF THE LEVEL ANCHOR** — a forest predicting `n_t` cannot leave the training range
+> `[1, 42]`; a product of 80 biased multipliers can. **Do not propose another target form without beating
+> ADR 0115 §1's table**, and note this retro-explains ADR 0113's "no runaway to anchor".
+>
+> **2. The sign inversion is NOT an unequal-chain-length artefact — ADR 0114 §2's stated cause is wrong.**
+> Scored at MATCHED LEAD DEPTH (each cell's two scenario means built lead by lead over only the leads present
+> in both, equal weight; mean 18.2 shared leads): GLOBAL **A1 −1.52, R1 −4.91, one-step control +0.52 on the
+> same rows**. ⚠ Matched-lead scoring saturates at 19 yr (where the historic chains stop), so k = 20/40/80 are
+> the same rows — never present them as three horizons.
+>
+> **3. WHAT THE DRIFT ACTUALLY IS, and this is the finding: the recursion's bias depends on the climate it is
+> run under.** Bias at exactly lead s, by scenario (stems/patch): historic −0.014 → −0.070 (5) → +0.024 (18)
+> while ssp370 −0.013 → +0.001 → **+0.150**, so the part that does NOT cancel grows monotonically
+> **+0.002 → +0.071 → +0.126** against a one-step control's +0.002 → +0.024 → +0.051. FIT's own global count
+> response is **≈ −0.14 stems/patch** ⇒ at lead 18 the recursion manufactures **90 % of the true signal with the
+> opposite sign**. The failure is **not** inaccuracy (level bias < 2 %, 90 % of the spread survives) — it is that
+> the error is **climate-dependent**, which eats exactly the difference ADR 0106 is about.
+>
+> **4. ADR 0114 §5.4 is closed:** the control's per-band columns print at every horizon and are flat
+> (temperate 1.07 → 0.95, GLOBAL +0.90 → +0.83) against the arm's 1.07 → 0.45 / +0.93 → −0.64 ⇒ ADR 0114 §3's
+> per-band decay curve is the recursion's, not the row subset's. At lead 1 A1 and the control agree in every
+> band, which also confirms the arm scripts' refit reproduces the production forest exactly.
+>
+> **5. The retired per-cell deattenuated slope stays retired** — five arms spanning +0.766 → −1.099 all score
+> between **0.976 and 1.044**. Third demonstration.
+>
+> **6. ⚠ A UNITS CORRECTION you may see referenced:** `rung1_response_decay.py` divided the already-per-patch
+> `n_living` by the ensemble size a second time. Every **ratio** it ever produced is unaffected (the factor
+> cancels), so ADR 0114's ratios/sd-ratios/correlations stand; only its **level** panels were 25× too small for
+> their label. ADR 0114 §1's mean row is on the old scaling and is flagged there rather than re-scaled.
+
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": the count-recursion diagnosis is finished — arms A0, A0-null, A1,
+> R0, R1 plus the decay, scenario-drift and matched-lead panels (ADR 0112–0115). NEXT: ONE cheap no-refit
+> diagnostic that names the conditioning channel making the drift climate-dependent; then scope arms C and D,
+> which need a ROSTER and are not offline-table arms.** In order:
+>
+> **(i) Name the channel (ADR 0115 §6.3) — no refit, one 24-cpu job on existing artefacts.** At a fixed lead
+> (use 18, the deepest both scenarios reach), compute per cell the arm's **excess drift** — its own
+> `bias(ssp370) − bias(historic)` minus the one-step control's on the same rows — and regress it on that
+> cell's **ssp370-minus-historic change in each of the 15 conditioning features** (`X.f64` is right there, and
+> `rung1_keys_t8` gives the year/patch). Report standardised coefficients and the univariate correlations,
+> **with the control's own decomposition beside it**; the answer is which feature carries the scenario signal
+> into the error, and it is the prerequisite for any arm that claims to fix it. Extend
+> `scripts/rung1_response_decay.py` or write a sibling — but keep the SAME lead/chain definition
+> (`lead_index`), or the panel is not comparable to ADR 0115 §3.
 >
 > **(ii) Then arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
 > `trait_mortality` selects *which individuals* die by trait, and the bounded-Beta family replaces the recruit
@@ -99,19 +143,21 @@
 > result "5 of 54 020" (guardrail 6). **Do not quietly score C or D on the one-step copula table and call it
 > the flip test** — that would repeat ADR 0104's error in a new place.
 >
-> **Score everything with `scripts/diagnose_truth_yardstick.py`** — `COUNT_DIR` now takes a comma-separated list
-> so an arm, its null and the control are scored in ONE process on ONE cell set. Always pass `OUT_SUMMARY` to a
-> scratch path for an arm run; the committed `S_truth_yardstick_summary.csv` is rung 0's table and no arm has
-> earned a place in it yet. **Do not invent a new metric and do not re-derive a noise floor.**
+> **Score everything with `scripts/diagnose_truth_yardstick.py`** — `COUNT_DIR` takes a comma-separated list so
+> an arm, its null and the control are scored in ONE process on ONE cell set (jobs 1747662 and 1753655 both did
+> five-way). Always pass `OUT_SUMMARY` to a scratch path for an arm run; the committed
+> `S_truth_yardstick_summary.csv` is rung 0's table and no arm has earned a place in it yet. **Do not invent a
+> new metric and do not re-derive a noise floor.**
 >
 > **Integration point you own one side of:** S → M, the demography entry point the C hook will call in rung 2.
 > M owns the harness; you own the shape of what it calls. ⚠ ADR 0113 §2e makes this *more* urgent: the trait
 > axes' free-running error is only measurable on M's harness, so the rung-2 interface is now on the critical
 > path for the trait side of the acceptance criterion, not just for counts.
 >
-> **Two integration points raised, both on the integrator-owned `EXECUTION_PLAN.md`:** rung 0's superseded
-> numbers (replacement text = ADR 0111 §3/§4/§7) and rung 1's arm list, whose A/B collapse into one already-done
-> arm (replacement ladder = ADR 0112 §4b).
+> **Three integration points raised, all on the integrator-owned `EXECUTION_PLAN.md`:** rung 0's superseded
+> numbers (replacement text = ADR 0111 §3/§4/§7); rung 1's arm list, whose A/B collapse into one already-done
+> arm (replacement ladder = ADR 0112 §4b); and rung 1's exit criterion, which should now name the
+> **scenario-asymmetric drift** rather than the response ratio alone (ADR 0115 §6).
 
 
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
