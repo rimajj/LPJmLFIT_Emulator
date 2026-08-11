@@ -396,6 +396,11 @@ baseline every arm is scored against, so re-record before re-running an arm.** B
 `/p/tmp/jamirp/M_rung2/M_rung2rec_v3_dump`. Full record: ADR 0121. Skill `lpjmlfit-cbinary` carries the
 fire trap, the three phases and the corrected floor.
 
+**CI/merge: nothing outstanding.** Work sha `fde5d660`, merged to `main` as **`414f283a`**. The diff touches
+no `.jl`, no `python/`, no `docs/src/**` and no `src/**`, so per ADR 0090's path filters **no Julia, format,
+docs or python gate runs on it at all** — the only check that fires is `changelog` on `main`, and it is
+**green** (the fragment was collated inside the merge `flock`). Do not wait for a verdict that cannot arrive.
+
 ▶ **WHAT TO DO NEXT ON RUNG 2 — in order.**
 
 1. **Check whether line S has replied** (`lines/S/STATE.md`, the ▶ INBOUND block from 2026-08-10 with the
