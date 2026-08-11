@@ -78,8 +78,8 @@ def parse(path: str) -> dict | None:
     r_ctl = float(ms.group(1)) - float(mh.group(1))
     r_arm = float(ms.group(2)) - float(mh.group(2))
     inter = float(ms.group(3)) - float(mh.group(3))
-    for got, pat, name in ((r_ctl, r"R_ctl \(pre-0049.*?= (-?[\d.]+)", "R_ctl"),
-                           (r_arm, r"R_arm \(with.*?= (-?[\d.]+)", "R_arm"),
+    for got, pat, name in ((r_ctl, r"R_ctl \(.*?\) = (-?[\d.]+)", "R_ctl"),
+                           (r_arm, r"R_arm \(.*?\) = (-?[\d.]+)", "R_arm"),
                            (inter, r"INTERACTION.*?= (-?[\d.]+)", "interaction")):
         want = num(pat)
         # the log prints 4 decimals of a x-FIT ratio, so allow one unit in that last place
@@ -101,22 +101,52 @@ def parse(path: str) -> dict | None:
         "wd_ctl_ssp": float(ms.group(1)), "wd_arm_ssp": float(ms.group(2)),
         "d_ssp": float(ms.group(3)),
         "R_ctl": r_ctl, "R_arm": r_arm, "interaction": inter,
+        # ARM=recruit runs with TRAIT_MORT=0 print NO trait-mortality diagnostics at all, because the
+        # operator is off on BOTH sides of that contrast. Absent is 0 there, not unknown — but only
+        # because `arm` says which contrast this log is; never default a missing precondition to 0
+        # without that check (a truncated trait_mortality log would then read as clean).
+        "arm": num(r"(?m)^ARM=(\S+)", str) or "trait_mortality",
         "hard_kills": num(r"hard kills \(cumulative\):\s+(\d+)", int),
         "shortfall_years": len(re.findall(r"max rel\. shortfall", s)),
         "n_merge": nmerge,
         "bnd_live": num(r"BOUNDARY-CHANNEL LIVENESS.*?= ([\d.e+-]+)"),
+        # ARM=recruit preconditions (ADR 0119): the rule must have DRAWN, and the seedbank must have
+        # FILLED — an empty bank means every draw came from the static uniform channel, which cannot
+        # respond to climate at all, so such a run is inert by construction and bounds nothing.
+        "estab_draws": num(r"arm \(R1\) establishment draws:\s+(\d+)", int),
+        "inherit_pct": num(r"inherited / background:\s+\d+ / \d+ = ([\d.]+)"),
+        "sb_weight": num(r"seedbank at the final draw:\s+\d+ entries, ([\d.e+-]+)"),
+        "d_drawn_wd": num(r"Δ\(mean drawn wooddens\), ssp370 − historic = (-?[\d.]+)"),
     }
 
 
+def usable(r: dict) -> bool:
+    """The preconditions a response number is only interpretable under, per arm."""
+    if r["shortfall_years"] or r["n_merge"] not in (0, None):
+        return False
+    if r["arm"] == "recruit":
+        # the trait-mortality lines are legitimately absent (TRAIT_MORT=0) OR present (TRAIT_MORT=1)
+        if r["hard_kills"] not in (0, None):
+            return False
+        # ADR 0119: no draw => the rule never ran; empty seedbank => only the static uniform channel ran
+        return bool(r["estab_draws"]) and bool(r["sb_weight"])
+    return r["hard_kills"] == 0
+
+
 def report(rows: list[dict], label: str) -> None:
-    ok = [r for r in rows if r["hard_kills"] == 0 and r["shortfall_years"] == 0
-          and (r["n_merge"] in (0, None))]
-    bad = [r for r in rows if r not in ok]
+    ok = [r for r in rows if usable(r)]
+    bad = [r for r in rows if not usable(r)]
+    arms = sorted({r["arm"] for r in rows})
     print(f"\n=== {label} ===")
+    if len(arms) > 1:
+        print(f"  ⚠ MIXED ARMS in one ensemble {arms} — these are NOT replicates of one"
+              " measurement; split the globs.")
+    print(f"  arm = {arms[0] if len(arms) == 1 else arms}")
     print(f"  n = {len(ok)} usable of {len(rows)} logs"
           + (f"   EXCLUDED {len(bad)}: " +
              ", ".join(f"seed {r['seed']} (hk={r['hard_kills']}, "
-                       f"shortfall={r['shortfall_years']}, merge={r['n_merge']})"
+                       f"shortfall={r['shortfall_years']}, merge={r['n_merge']}, "
+                       f"draws={r['estab_draws']}, sb={r['sb_weight']})"
                        for r in bad) if bad else ""))
     if not ok:
         print("  ⚠ nothing usable — every run violated a precondition; this bounds NOTHING")
@@ -130,13 +160,22 @@ def report(rows: list[dict], label: str) -> None:
     hdr = ("quantity", "mean", "sd", "sem", "t", "95% CI", "unit")
     print("  {:<26}{:>10}{:>10}{:>9}{:>7}  {:<20}{}".format(*hdr))
     df = len(ok) - 1
-    for key, name, scale, unit in (
+    quantities = [
         ("d_hist", "level effect, historic", 1.0, "gC/m3"),
         ("d_ssp", "level effect, ssp370", 1.0, "gC/m3"),
         ("R_ctl", "baseline warming resp.", FIT_SHIFT, "xFIT"),
         ("R_arm", "arm warming response", FIT_SHIFT, "xFIT"),
         ("interaction", "OPERATOR's contribution", FIT_SHIFT, "xFIT"),
-    ):
+    ]
+    if arms == ["recruit"]:
+        # the sampler's OWN scenario response, upstream of growth and mortality (the probe's (d2) panel):
+        # the mechanism the kill condition is about, and the one quantity here that is not a stand outcome
+        quantities += [("d_drawn_wd", "drawn-marginal response", FIT_SHIFT, "xFIT"),
+                       ("inherit_pct", "inherited share, historic", 1.0, "%")]
+    for key, name, scale, unit in quantities:
+        if any(r.get(key) is None for r in ok):
+            print(f"  {name:<26}{'(absent from at least one log — not summarised)':>10}")
+            continue
         v = [r[key] / scale for r in ok]
         m = st.mean(v)
         sd = st.stdev(v) if len(v) > 1 else 0.0
@@ -166,10 +205,10 @@ def main() -> int:
         allrows += rows
     out = os.environ.get("CSV")
     if out and allrows:
-        cols = ["log", "drf", "seed", "n_init", "age0", "score_window", "wd_ctl_hist",
+        cols = ["log", "arm", "drf", "seed", "n_init", "age0", "score_window", "wd_ctl_hist",
                 "wd_arm_hist", "d_hist", "wd_ctl_ssp", "wd_arm_ssp", "d_ssp", "R_ctl",
                 "R_arm", "interaction", "hard_kills", "shortfall_years", "n_merge",
-                "bnd_live"]
+                "bnd_live", "estab_draws", "inherit_pct", "sb_weight", "d_drawn_wd"]
         with open(out, "w") as fh:
             fh.write("# Phase-3A response 2x2, PER SEED (ADR 0101). Hainich cell 42490 only.\n")
             fh.write("# R_ctl/R_arm/interaction are gC/m3; divide by 2432.9 for xFIT (ADR 0046 s1).\n")

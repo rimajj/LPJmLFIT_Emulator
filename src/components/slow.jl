@@ -487,8 +487,17 @@ end
 
 One year's ported-establishment diagnostics (ADR 0119): the simulation `year`, whether a recruit was drawn
 at all (`drew`), the drawn recruit's `pft_id`, whether it came from the seedbank (`inherited`), the number
-of bioclimatically eligible PFTs (`n_elig`) and the inherited share that implied (`w_inherit`), and the
-seedbank's size in entries (`sb_entries`) and individual-years (`sb_weight`).
+of bioclimatically eligible PFTs (`n_elig`) and the inherited share that implied (`w_inherit`), the
+seedbank's size in entries (`sb_entries`) and individual-years (`sb_weight`), and the four DRAWN TRAIT
+VALUES as they left the sampler (`sla`, `wooddens`, `d95max`, `minwscal` — before `_recruit_pools`'s
+clamps, so a value outside its interval is visible here rather than silently corrected).
+
+The trait values are recorded because the inheritance channel makes the recruit marginal a FUNCTIONAL OF
+THE EMULATOR'S OWN COMMUNITY — the feedback loop ADR 0025 §4 excluded on principle and ADR 0119 §6's kill
+condition exists to test. Without them an arm can only see the feedback's effect on the standing
+community, in which the sampler's own drift is confounded with growth and mortality; with them the drawn
+marginal can be tracked directly, and compared BETWEEN forcings, which is what "the error became
+climate-dependent" means (ADR 0112-0116).
 
 **Read `sb_weight` and `inherited` before interpreting any arm run with this operator.** The ported rule
 has two channels with different marginals, mixed at a weight that depends on the cell's eligible-PFT
@@ -505,6 +514,10 @@ struct EstabDiag
     w_inherit::Float64
     sb_entries::Int
     sb_weight::Float64
+    sla::Float64
+    wooddens::Float64
+    d95max::Float64
+    minwscal::Float64
 end
 
 """
@@ -1421,6 +1434,8 @@ function reconcile_demography!(
                         s.year, true, d.pft_id, d.inherited, length(elig),
                         Establishment.w_inherit(length(elig)), length(re.seedbank.entries),
                         Float64(Establishment.seedbank_weight(re.seedbank)),
+                        Float64(d.sla), Float64(d.wooddens),
+                        Float64(d.d95max), Float64(d.minwscal),
                     ),
                 )
                 # `set_pft_id` writes the DRAWN id into the roster; the canopy template still comes from

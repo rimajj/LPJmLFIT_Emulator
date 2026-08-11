@@ -323,6 +323,20 @@ end
     # `set_pft_id = false` (the default) leaves the roster's ids alone — the drawn id is recorded only,
     # because the canopy TEMPLATE still carries the donor cohort's per-PFT physiology
     @test all(id in pft_ids for id in arm_core.pft_ids)
+    # the diagnostics carry the DRAWN trait values themselves, so the recruit marginal can be tracked
+    # directly (the feedback channel ADR 0119 §6's kill condition is written on) instead of being inferred
+    # from the standing community, where the sampler's drift is confounded with growth and mortality
+    for d in dg
+        @test 0.005 <= d.sla <= 0.07
+        @test 7.0e4 <= d.wooddens <= 6.5e5
+        @test 51.0 <= d.d95max <= 1800.0
+        @test 0.025 <= d.minwscal <= 0.75
+    end
+    # and they are the values that reached the roster: the recruit appended in the diagnostics' own year
+    # carries them through `_recruit_pools` unchanged (the clamps are no-ops on an in-interval draw)
+    @test length(recruits) == length(dg)        # one appended cohort per draw (no k-cap merge in 6 yr)
+    @test [d.sla for d in dg] == [p.sla for p in recruits]
+    @test [d.wooddens for d in dg] == [p.wooddens for p in recruits]
 
     # ── (3) CARBON STILL CLOSES (guardrail 2) and the roster stays in lockstep ──
     @test abs(arm.last_resid) < 1.0e-6 * max(1.0, sum(FDiff.vegc_full_ind(p) * p.nind for p in arm_core.pools))
@@ -404,4 +418,44 @@ end
     @test_throws ErrorException RecruitEstablishment(; eligible = [8])
     @test_throws ErrorException RecruitEstablishment(; eligible = [3, 22])
     @test_throws ErrorException RecruitEstablishment(; eligible = Int[])   # neither channel could fire
+end
+
+# The bioclimatic gate against an INDEPENDENT implementation, on real cell-years (ADR 0170). The committed
+# fixture is produced by `scripts/build_estab_eligibility.py`, which evaluates `establish.c:29-33` +
+# `establishmentpft_ind.c:91` in Python from the .clm forcing; this reproduces every row with the Julia
+# `Establishment.eligible_pfts`. Two code paths, one answer — the ADR-0030 cross-check — so a future edit
+# to either cannot drift silently. It also pins the two facts the fixture exists to carry: the eligible set
+# MOVES within a scenario (the boreal ids gate out under warming as `temp_min20` crosses 0 °C), and
+# `w_inherit` is the closed form 4/(4 + n_elig) of whatever set that year has.
+@testitem "Ported FIT establishment (ADR 0170) — the eligibility gate reproduces the Python table" tags = [:scientific, :slow] begin
+    using LPJmLFITEmulator.Establishment
+
+    path = joinpath(@__DIR__, "references", "S_hainich_estab_eligibility.csv")
+    @test isfile(path)
+    lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
+    hdr = split(strip(lines[1]), ',')
+    col(r, k) = r[findfirst(==(k), hdr)]
+
+    nrow = 0
+    moved = Dict{String, Set{Vector{Int}}}()
+    for l in lines[2:end]
+        r = split(strip(l), ',')
+        scen = String(col(r, "scenario"))
+        want = [p for p in 0:6 if col(r, "elig_$p") == "1"]
+        got = Establishment.eligible_pfts(
+            parse(Float64, col(r, "temp_min20")), parse(Float64, col(r, "temp_max20")),
+            parse(Float64, col(r, "gdd5_annual")); aprec = parse(Float64, col(r, "aprec")),
+        )
+        @test got == want
+        @test length(want) == parse(Int, col(r, "n_elig"))
+        @test Establishment.w_inherit(length(want)) ≈ parse(Float64, col(r, "w_inherit")) atol = 1.0e-6
+        push!(get!(moved, scen, Set{Vector{Int}}()), want)
+        nrow += 1
+    end
+    @test nrow >= 160                                   # 81 historic + 81 ssp370 years at cell 42490
+    # the gate is CONSTANT over the historic years at this cell and MOVES under ssp370 — if this ever
+    # flips, the fixture was rebuilt on a different basis (`tas_cold_month` instead of `temp_min20` is
+    # the way to get it wrong: it runs ~0.7 °C warmer and deletes the three boreal ids outright)
+    @test moved["historic"] == Set([[1, 2, 3, 4, 5, 6]])
+    @test moved["ssp370"] == Set([[1, 2, 3, 4, 5, 6], [1, 2, 3]])
 end
