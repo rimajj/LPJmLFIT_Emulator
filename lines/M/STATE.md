@@ -430,8 +430,12 @@ unusable as a replay basis; the harness now fails loudly on one.**
    substituted**.
 4. **Rung 3 (F's decadal canopy drift) is still untouched** — item 0-NEW below and item 4(d) further down.
 
-**CI/merge:** the diff touches `test/**` (the regenerated fixture) and `.jl`, so **`CI` (4 Julia jobs) and
-`format` DO run**. `python`/`docs` do not (no `python/`, no `docs/src/**`).
+**CI/merge: nothing outstanding.** Work sha **`c74b6ec9`**, merged to `main` as **`21bfa162`** (+ the
+changelog collation `913c87f1`). Branch CI green on the required jobs — `test (lts)` success, `test (1)`
+success, `format` success, `test (macOS, lts)` success; `test (pre)` red for the usual unrelated
+Julia-prerelease churn (`continue-on-error`, do not chase it). The `changelog` gate on `main` is green (the
+fragment was collated inside the merge `flock`). `python`/`docs` did not run and could not (no `python/`,
+no `docs/src/**`).
 
 ### 0-PREV3. ✅ DONE 2026-08-11 (session 8) — S's PORTED HAZARD REPRODUCES THE C **EXACTLY**, AND THE
 ### RENDEZVOUS'S ONE-YEAR LAG INVERTS THE TRAIT SELECTION ⇒ ARM C IS NOT YET SCORABLE ON TRAITS (ADR 0122)
