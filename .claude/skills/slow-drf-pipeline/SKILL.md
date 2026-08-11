@@ -1511,3 +1511,44 @@ a large stem decline but ~96 % of a large increase, so where LPJmL-FIT thins a s
 follow it down — and because FIT's global count response is a net loss, that rectified error *is* the spurious
 positive drift. **Score any proposed fix on the loss side** (decile-1 excess must fall without decile 10's
 magnitude rising); an aggregate response ratio cannot tell a real fix from a compensating positive bias.
+
+## ⚠ THE COPULA'S TRAIT MARGINALS ARE TRAINED ON *SURVIVORS*, AND THAT IS A PREMISE WITH AN EXPIRY DATE (ADR 0025 §3 → ADR 0118)
+
+**The fact.** `build_slow_runtime_table.py::copula_table`'s `stem_filt` is `Type in TREE_TYPES & isdead == 0`
+— **every surviving stem, all ages**. It is NOT a recruit population, despite "recruit copula". ADR 0025 §3
+chose that deliberately and stated the premise: the emulator's mortality is **trait-blind**, so the community
+distribution equals the establishment distribution, so fitting to survivors makes the community converge to
+FIT's survivor distribution by construction. The same paragraph names its own expiry condition — *"if
+trait-dependent mortality is ever added, this training target must change."*
+
+**Why it matters the moment anyone touches `trait_mortality`.** Recruits drawn from a survivor marginal
+already carry FIT's accumulated selection; a trait-selective survival rule then applies it twice. **Uniform
+thinning (the natural null) is unaffected**, because that is exactly the design the target was matched to —
+so the bias lands on the arm and not on its null, i.e. directly on the headline difference.
+
+**Sized, so you can price it** (`scripts/diagnose_copula_selection_confound.py`, ~7 min, no refit; 197.7 M
+historic + 828.8 M ssp370 surviving stems, both seeds, agreement ≲ 2 %). Within a cell-PFT group the
+standing marginal sits above its own youngest-stem marginal by **+12.18 % on Wooddens** (the axis ADR 0049's
+flip criterion is written on), with **0.56 of it not cancelling in a warming response**; SLA +0.80 %,
+D95max −2.35 %, minwscal +0.44 %. All four are **lower bounds** — the `ind` writer emits only stems above
+5 m, so pre-5 m selection is invisible.
+
+**Consequences to carry into any trait-mortality arm:**
+* `C1 − C0` is **not** "how much of the trait response is selection" — it is selection applied to an
+  already-selected marginal, minus none;
+* read **θ** before interpreting the difference: the confound and the arm's power scale together (near-zero
+  θ ⇒ the operator never fired; ADR 0117 §6.i, Hainich θ median 8.5e-12);
+* discriminate on the per-PFT **gradient shape** (`S_age_wooddens_gradient.csv`, non-monotone ids 0 and 3),
+  which a roughly uniform double count cannot fake, not on the level alone.
+
+**The clean fix is NOT a re-fit of existing data.** A recruit-marginal target cannot be built from the `ind`
+parquet at all — it never emits a recruit. Line M's rung-2 `pre`/`post` roster dump *does* see recruits at
+`age == 0` (ADR 0061/0120), so the retrain is a rung-2 by-product with no new model run — but it bumps the
+S→M artifact version, so it is an integration point, not a patch.
+
+**Arm D note.** ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on per-cell KS (0.042–0.073 vs
+0.129–0.173)" has **no committed reproducer in this repo** — no script, no fixture — and its "two-moment
+fit, no fitting procedure" wording indicates the Beta used each cell's **observed** moments while the
+copula's figure is **K-fold-by-cell out-of-sample** (`score_slow_copula_ks.py`). Treat the 2–3× as an
+**oracle-conditioned upper bound** until re-measured like-for-like: a deployed Beta still needs a learned
+map from features to (mean, variance), which is the cost the copula's marginal forests already pay.
