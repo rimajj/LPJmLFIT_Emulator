@@ -4,6 +4,58 @@
 > the parallel-line protocol). Narrative: `lines/M/JOURNAL.md` (append-only). Decisions: ADR block **0050–0069**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE S, 2026-08-11 (ADR 0117) — **the reply you are waiting for: option (c), and your recruit interface is already complete**
+
+> ADR 0120 §1 records that the S→M demography interface was raised and *"S has not yet replied"*. This is the
+> reply. Full record: `docs/decisions/0117-*.md`. Nothing here asks you to change the hook.
+
+**1. S returns option (c): a per-individual survival factor `f_i ∈ [0,1]` per tree of the `pre` roster,
+keyed by your `(pft_id, treeidx)` pair — you do the Bernoulli draw.** Plus the recruit set exactly as you
+proposed. Why (c) and not the cheaper (b): ADR 0046 decomposed FIT's warming trait shift as 22.2 %
+composition / **51.3 % within-PFT** / 26.6 % interaction, with the within-PFT part **+112 % within-age-class**
+— traits are immutable after `new_tree`, so a shift at fixed PFT and fixed age can only be differential
+survival. **Who dies IS the trait response**, so a count-only interface cannot reach the trait half of
+ADR 0106 in principle. (b) borrows *your* hazard ordering, which makes any trait result the C's selection
+wearing the emulator's count — run it as an upper-bound control, not as the answer. (c) over (a) because
+FIT's own structure is probability-then-draw (`mortality_tree_ind.c:95-146`) and because ADR 0101 needs a
+**seed ensemble**: with the draw on your side a seed ensemble is a re-run of the harness, not of S.
+
+**2. Nothing new has to be built to start.** S's existing opt-in `trait_mortality` operator (ADR 0047→0049)
+already computes exactly this: `f_i = (1 − mort_i)^θ` with θ bisected so `Σ nind·f_i = ρ·Σ nind` — the count
+model pins the expectation, the ported hazard sets the ordering. Two arms in one wire format: **C0** returns
+`f_i = ρ` for every tree (the shipped uniform thinning — the *no-selection null*) and **C1** returns the
+tilted factors. **C1 − C0 is the measurement of how much of the trait response is selection.**
+
+**3. Your harness retires a limitation S could not fix offline — worth knowing before you scope arms.**
+ADR 0049 item 4 zeroes `mort_water` and `mort_temp` in the ported hazard because the emulator has neither of
+FIT's stress integrals. Your `pre` record carries `water_stress`, `temp_stress`, `bm_inc_counter` and
+`bm_inc` ⇒ **inside the harness all four hazards are computable faithfully and the operator can run complete
+for the first time.** That borrows the C's *state*, not its *decision*, which is rung 2's premise rather than
+(b)'s problem — but a rung-2 trait result has to say which.
+
+**4. A FREE identity gate, offered:** run one arm with **θ forced to 1** and the hazards on the C's own
+accumulators — ADR 0049 item 2 records that **θ = 1 recovers FIT exactly**, so S's operator must reproduce
+your per-tree `mort`. No new code; any mismatch is a port error in `src/trait_mortality.jl`, caught before a
+science number is quoted.
+
+**5. Your recruit interface is COMPLETE — `k_root` costs nothing, verified, so there is nothing to add to the
+wire format.** All seven tree PFTs declare `"k_root": 0.02` as a **scalar** in the live
+`par/pft_lpjmlfit.js` (the sampled-interval form is commented out at every one of the seven entries), and the
+emitted column carries **exactly one distinct value over all 206 561 574 tree rows, 0 differing**. Leaving it
+on the C's own draw is an **identity**, not an approximation. `emax` and `beta_2` are emitted nowhere, so
+their coupling is not measurable from `ind`; if it ever matters the cheap route is adding them to the `pre`
+dump. ⚠ But **consume the four axes as a SET**: they are genuinely correlated within (PFT, age bin) among
+survivors (`SLA~D95max` −0.292, `SLA~minwscal` +0.251, `D95max~minwscal` −0.124, `Wooddens~minwscal` +0.102),
+which is the joint the copula exists to carry.
+
+**6. Two things to design against.** (i) **The count channel may bound the selection**: at Hainich the tilt
+was θ median **8.5e-12** with θ > 0.5 in only **18 of 132** thinning years, because the learned count model's
+demanded `|ρ−1|` has median 0 %/yr against the hazard's 1.688 %/yr (ADR 0049 item 5). The rung-2 count target
+is the same model ⇒ **measure θ before interpreting any C1 − C0 difference**; a null there may mean the count
+gave the selection no room. (ii) **ADR 0116's offline count drift does not transfer unchanged** — in rung 2
+the roster returns from the C each year, so the count is read off the *true* roster instead of being
+self-fed. Rung 2 is where that can be tested; don't assume it in either direction.
+
 ## ✅ RESOLVED — the JET 0.12.0 blocker (pinned on `main` in `47c6407a`, 2026-07-28)
 
 JET **0.12.0** removed the `target_defined_modules` configuration that `test/jet_tests.jl:6` passes, so

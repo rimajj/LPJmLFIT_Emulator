@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0116 ⇒ next free is 0117, and only THREE remain in this block — raise the next-block allocation with the integrator BEFORE you need it (the block map is CLAUDE.md §9, integrator-owned).**
+> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0117 ⇒ next free is 0118, and only TWO remain in this block — raise the next-block allocation with the integrator BEFORE you need it (the block map is CLAUDE.md §9, integrator-owned).**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## NEXT — start here
@@ -157,10 +157,55 @@
 > **5. ⚠ Correction recorded, not edited: ADR 0115 §3's control row at lead 5 reads +0.024; it should read
 > +0.031** (its own CSV's lead-4 value, copied one row off). No conclusion of ADR 0115 changes.
 
-> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": the offline count-recursion diagnosis is FINISHED — arms A0,
-> A0-null, A1, R0, R1, the decay/scenario-drift/matched-lead panels, and now the channel attribution
-> (ADR 0112–0116). Everything cheap and offline has been done; what remains needs a ROSTER. NEXT: scope arms
-> C and D deliberately, and raise the rung-2 interface with line M.**
+> ## ✅ THE S→M INTERFACE IS ANSWERED, AND IT UNBLOCKS ARM C (2026-08-11, ADR 0117)
+>
+> M raised the rung-2 demography interface on 2026-08-10 and re-raised it in ADR 0120 §1 (*"S has not yet
+> replied"*). **Replied** — ADR 0117, and an ▶ INBOUND block at the head of `lines/M/STATE.md`
+> (mirrored here; if a rebase conflicts on that file, **keep BOTH sides**).
+>
+> **1. S returns option (c)** — a per-individual survival factor `f_i ∈ [0,1]` per tree of the C's `pre`
+> roster, keyed by `(pft_id, treeidx)`; **M does the Bernoulli draw**. Decided by ADR 0046: FIT's warming
+> trait shift is **51.3 % within-PFT + 26.6 % interaction**, and +112 % *within age class* — with traits
+> immutable after `new_tree`, that can only be differential survival, so **a count-only interface cannot
+> reach the trait half of ADR 0106 in principle.** (b) borrows the C's hazard *ordering* ⇒ upper-bound
+> control only. (c) over (a) because FIT is itself probability-then-draw, and ADR 0101's seed ensemble is
+> then a re-run of M's harness rather than of S.
+>
+> **2. THIS IS ARM C, AND IT NEEDS NO NEW MODEL.** `trait_mortality` (ADR 0047→0049) already emits exactly
+> this shape: `f_i = (1 − mort_i)^θ`, θ bisected so `Σ nind·f_i = ρ·Σ nind`. **C0** = `f_i = ρ` everywhere
+> (the shipped uniform thinning = the no-selection null); **C1** = the tilted factors. **C1 − C0 measures
+> how much of the trait response is selection.** The blocker on arm C was never the operator — it was that
+> S has only a single-cell Hainich rollout and the arm needs a ROSTER. **M's harness is that roster**, so
+> the option in the old handoff ("build a global offline demography rollout") is superseded: **do not build
+> one.** Arm C runs inside rung 2, on M's harness, as an integration point already accepted on both sides.
+>
+> **3. The harness also retires ADR 0049 item 4's limitation** — `mort_water`/`mort_temp` are zeroed offline
+> because S has neither of FIT's stress integrals, but the C's `pre` record carries `water_stress`,
+> `temp_stress`, `bm_inc_counter` and `bm_inc`, so **all four hazards run faithfully for the first time**.
+> That borrows the C's *state*, not its *decision* — rung 2's premise, not (b)'s problem — and any result
+> must say so.
+>
+> **4. ⚠ THE RISK TO MEASURE FIRST: the count channel may bound the selection.** At Hainich θ median was
+> **8.5e-12**, θ > 0.5 in only **18 of 132** thinning years, because the count model's demanded `|ρ−1|` has
+> median 0 %/yr against the hazard's 1.688 %/yr (ADR 0049 item 5). **Read θ before interpreting any
+> C1 − C0 difference** — a null may mean the count gave the selection no room, not that selection is absent.
+>
+> **5. Arm D (the bounded-Beta recruit marginals) is NOT unblocked by this** and is still unscoped. Same
+> rule as before: it needs a roster, so it belongs in the same harness — **do not quietly score it on the
+> one-step copula table and call it the flip test** (that would repeat ADR 0104's error).
+>
+> **6. Verified while answering, and it closes M's open question:** `k_root` — one of the three recruit axes
+> the hook leaves on the C's own draw — is a **scalar 0.02 for all seven tree PFTs** in the live parameter
+> file (the sampled-interval form is commented out at every entry) and carries **exactly one distinct value
+> over all 206 561 574 tree rows**. Leaving it to the C is an **identity**, so the four-axis recruit
+> interface is complete. `emax`/`beta_2` are emitted nowhere ⇒ not measurable from `ind`; say that rather
+> than assuming either way. The four axes ARE mutually correlated within (PFT, age bin) — `SLA~D95max`
+> −0.292, `SLA~minwscal` +0.251 — so they must be consumed as a **set**.
+
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": the offline count-recursion diagnosis is FINISHED (ADR 0112–0116)
+> and the S→M interface is answered (ADR 0117). Arm C is unblocked but runs on M's harness, not here — so
+> the next S action is to AGREE THE ARM-C RUN WITH M (who runs it, on which cells, with how many seeds),
+> and meanwhile scope arm D. Nothing cheap and offline remains on the count side.**
 >
 > **(i) Arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
 > `trait_mortality` selects *which individuals* die by trait, and the bounded-Beta family replaces the recruit
