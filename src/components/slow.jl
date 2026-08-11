@@ -433,28 +433,152 @@ function make_recruit_to_pools(axis_names::AbstractVector{<:AbstractString})
     i_d95 = (j = findfirst(==("D95max"), axis_names); j === nothing ? 0 : Int(j))
     i_mws = (j = findfirst(==("minwscal"), axis_names); j === nothing ? 0 : Int(j))
     function to_pools(traits, sapl::FDiff.TreePools{T}, allom) where {T <: AbstractFloat}
-        sla_n = clamp(convert(T, traits[i_sla]), convert(T, 1.0e-3), convert(T, 0.1))
-        wd_n = clamp(convert(T, traits[i_wd]), convert(T, 5.0e4), convert(T, 7.0e5))
-        # Clamped to the union of the C's per-PFT sampling intervals (`par/pft_lpjmlfit.js`): `D95max`
-        # `[51, 1800]` cm, `minwscal` `[0.025, 0.75]`. A drawn value outside those is the copula's tail,
-        # not physics. 0 (axis absent) stays 0 — the UNSET sentinel — and must NOT be clamped up.
-        d95_n = i_d95 == 0 ? zero(T) :
-            clamp(convert(T, traits[i_d95]), convert(T, 51.0), convert(T, 1800.0))
-        mws_n = i_mws == 0 ? zero(T) :
-            clamp(convert(T, traits[i_mws]), convert(T, 0.025), convert(T, 0.75))
-        leaf = convert(T, sapl.leaf_c)
-        sapw = convert(T, sapl.sapwood_c)
-        h = leaf > zero(T) ?
-            convert(T, allom.k_latosa) * sapw / (leaf * sla_n * wd_n) :
-            convert(T, sapl.height)
-        crown = convert(T, Allometry.crown_area(allom, h))
-        return FDiff.TreePools{T}(
-            leaf, sapw, convert(T, sapl.heartwood_c), convert(T, sapl.root_c),
-            convert(T, sapl.sapwood_bg_c), h, crown, one(T), sla_n, wd_n, d95_n, mws_n, false,
+        # 0 (axis absent) stays 0 — the UNSET sentinel — and must NOT be clamped up, so the two optional
+        # axes are passed through `_recruit_pools`'s `unset` path rather than clamped here.
+        return _recruit_pools(
+            traits[i_sla], traits[i_wd],
+            i_d95 == 0 ? nothing : traits[i_d95], i_mws == 0 ? nothing : traits[i_mws],
+            sapl, allom,
         )
     end
     return to_pools
 end
+
+"""
+    _recruit_pools(sla, wooddens, d95max, minwscal, sapl::FDiff.TreePools{T}, allom) -> FDiff.TreePools{T}
+
+Build a recruit's per-individual pools from four drawn trait values — the ONE place a sampled recruit
+becomes a `TreePools`, shared by the copula sampler ([`make_recruit_to_pools`](@ref)) and by the ported
+FIT establishment rule ([`RecruitEstablishment`](@ref)). Two samplers landing on two slightly different
+pool constructions would make their arms incomparable for a reason that has nothing to do with the
+samplers, so there is exactly one code path.
+
+Every carbon pool of the fixed `sapl` is kept UNCHANGED (so the establishment carbon debit is independent
+of the draw ⇒ conservation is unaffected); height is re-derived from the pipe model and crown area from
+the Jucker allometry (matching `_merge_pair!`). `sla`/`wooddens` are clamped to the union of the C's
+per-PFT sampling intervals, `d95max` to `[51, 1800]` cm and `minwscal` to `[0.025, 0.75]` — a value
+outside those is a sampler tail, not physics. Passing `nothing` for either optional axis leaves it at the
+UNSET sentinel 0 (that individual keeps the shared cell root profile and carries no drought threshold,
+i.e. the pre-ADR-0110 behaviour).
+"""
+function _recruit_pools(
+        sla, wooddens, d95max, minwscal, sapl::FDiff.TreePools{T}, allom
+    ) where {T <: AbstractFloat}
+    sla_n = clamp(convert(T, sla), convert(T, 1.0e-3), convert(T, 0.1))
+    wd_n = clamp(convert(T, wooddens), convert(T, 5.0e4), convert(T, 7.0e5))
+    d95_n = d95max === nothing ? zero(T) :
+        clamp(convert(T, d95max), convert(T, 51.0), convert(T, 1800.0))
+    mws_n = minwscal === nothing ? zero(T) :
+        clamp(convert(T, minwscal), convert(T, 0.025), convert(T, 0.75))
+    leaf = convert(T, sapl.leaf_c)
+    sapw = convert(T, sapl.sapwood_c)
+    h = leaf > zero(T) ?
+        convert(T, allom.k_latosa) * sapw / (leaf * sla_n * wd_n) :
+        convert(T, sapl.height)
+    crown = convert(T, Allometry.crown_area(allom, h))
+    return FDiff.TreePools{T}(
+        leaf, sapw, convert(T, sapl.heartwood_c), convert(T, sapl.root_c),
+        convert(T, sapl.sapwood_bg_c), h, crown, one(T), sla_n, wd_n, d95_n, mws_n, false,
+    )
+end
+
+"""
+    EstabDiag
+
+One year's ported-establishment diagnostics (ADR 0119): the simulation `year`, whether a recruit was drawn
+at all (`drew`), the drawn recruit's `pft_id`, whether it came from the seedbank (`inherited`), the number
+of bioclimatically eligible PFTs (`n_elig`) and the inherited share that implied (`w_inherit`), and the
+seedbank's size in entries (`sb_entries`) and individual-years (`sb_weight`).
+
+**Read `sb_weight` and `inherited` before interpreting any arm run with this operator.** The ported rule
+has two channels with different marginals, mixed at a weight that depends on the cell's eligible-PFT
+count, and the inheritance channel cannot fire at all until the seedbank has filled. An arm whose
+seedbank stayed empty measured the uniform background channel and nothing else — the same class of null
+that ADR 0048 had to correct once already, and the reason `trait_mortality` records `theta`.
+"""
+struct EstabDiag
+    year::Int
+    drew::Bool
+    pft_id::Int
+    inherited::Bool
+    n_elig::Int
+    w_inherit::Float64
+    sb_entries::Int
+    sb_weight::Float64
+end
+
+"""
+    RecruitEstablishment{T}(; seedbank = Establishment.Seedbank{T}(), eligible = 0:6, set_pft_id = false)
+
+Opt-in **ported FIT establishment rule** for recruit traits (ADR 0119) — the alternative to
+[`RecruitCopula`](@ref) that computes the recruit marginal from the C's parameters instead of learning it
+from the C's output. Pass it as `FluxDrivenSlowEmulator(...; recruit_establishment = ...)`; the default
+`nothing` leaves every code path byte-identical.
+
+WHY IT IS NOT A COPULA VARIANT. The copula's marginals are fit on FIT's `ind` output, which holds only
+stems above 5 m — survivors — so they already carry the trait selection ADR 0049's mortality operator
+adds, double-counting it by a measured +12.18 % on `Wooddens` within a cell-PFT group (ADR 0118 §1-2).
+This rule reads no FIT output at all: uniform draws on each PFT's own intervals, mixed with inheritance
+from the emulator's own top-AGB seedbank at the closed-form weight `4/(4 + n_elig)` (ADR 0045). See
+`Establishment` for the ported equations and their C line numbers.
+
+Fields:
+  * `seedbank` — the rolling top-AGB `Establishment.Seedbank`, updated from the emulator's OWN roster
+    every year by `reconcile_demography!` (before thinning, matching FIT's `getsapling` before
+    `annual_stand`). Starts EMPTY, so the first years draw from the background channel only; seed it by
+    calling `Establishment.seedbank_update!` yourself if an arm needs a warm bank at year 0.
+  * `eligible` — the bioclimatic eligibility policy: either a fixed collection of PFT ids, or a callable
+    `s -> ids` evaluated each year (e.g. from a `ClimBuf`'s 20-year window via
+    `Establishment.eligible_pfts`). A fixed set is the honest default for a single cell whose eligible set
+    is climatologically stable; a callable is what opens the gate under warming.
+  * `set_pft_id` — `false` (default) keeps the recruit cohort's PFT id and canopy template from the
+    shortest-tree cohort, as the copula path does, and records the drawn id in the diagnostics only.
+    `true` writes the DRAWN id into `fc.pft_ids`, which changes the recruit's phenology and (with
+    `trait_mortality`) its mortality parameters — but NOT its `FDiff.Individual` template, which still
+    carries the donor cohort's per-PFT physiology (`alphaa`, `emax`, `intc`, albedos, `photo`,
+    `tstress`). ⚠ So `true` produces a deliberately INCONSISTENT individual until a per-PFT template
+    registry exists; it is here to be measured, not to be switched on by default. That registry is the
+    integration point with line M (`fc.tmpls` is built by M's drivers).
+    ⚠ It is also BOUNDED BY THE FAST CORE: `_commit_membership!` refuses a cohort whose PFT id is absent
+    from `fc.pft_slot` (the per-PFT phenology registry, built once at `FDiffFastCore` construction), so
+    with `set_pft_id = true` every eligible id must already be in the roster. The
+    `FluxDrivenSlowEmulator` constructor checks that up front for a fixed eligible set rather than letting
+    it fail mid-run.
+  * `diag` — per-year [`EstabDiag`](@ref) records. Empty ⇒ the operator never drew, which is how a probe
+    proves the rule fired before interpreting a trajectory.
+"""
+mutable struct RecruitEstablishment{T <: AbstractFloat}
+    seedbank::Establishment.Seedbank{T}
+    eligible::Any
+    set_pft_id::Bool
+    diag::Vector{EstabDiag}
+end
+function RecruitEstablishment{T}(;
+        seedbank::Establishment.Seedbank{T} = Establishment.Seedbank{T}(),
+        eligible = 0:6, set_pft_id::Bool = false,
+    ) where {T <: AbstractFloat}
+    # A FIXED eligible set is checked here, at construction: `Establishment.pft_estab_params` would
+    # otherwise error the first time the background channel happened to pick the bad id, which — because
+    # the channel is a Bernoulli draw on `w_inherit` — may be many years into a run or never. A callable
+    # policy is checked when it is applied (same error, first offending year).
+    if !(eligible isa Function)
+        ids = collect(Int, eligible)
+        for id in ids
+            Establishment.pft_estab_params(id)      # errors on grass/crop/out-of-range
+        end
+        isempty(ids) && isempty(seedbank.entries) && error(
+            "RecruitEstablishment: `eligible` is empty and the seedbank is empty — neither channel can " *
+                "produce a recruit. Pass the cell's eligible PFT ids (`Establishment.eligible_pfts`), or " *
+                "a callable policy if the gate should move with the climate."
+        )
+    end
+    return RecruitEstablishment{T}(seedbank, eligible, set_pft_id, EstabDiag[])
+end
+RecruitEstablishment(; kwargs...) = RecruitEstablishment{Float64}(; kwargs...)
+
+"The eligible PFT ids this year: a fixed collection is returned as-is, a callable is applied to `s`."
+_estab_eligible(re::RecruitEstablishment, s) =
+    re.eligible isa Function ? collect(Int, re.eligible(s)) : collect(Int, re.eligible)
 
 "nind-weighted mean age over the TREE cohorts (the demographic mean-age DRF feature); 0 if no living tree."
 function _mean_age_weighted(ages, pools::AbstractVector{FDiff.TreePools{T}}) where {T}
@@ -930,6 +1054,8 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     # ── LEVEL ANCHOR (ADR 0103); `anchor = 0` ⇒ pre-0103 behaviour byte-for-byte ──
     anchor::T
     patch_area::T
+    # ── PORTED FIT ESTABLISHMENT (ADR 0119); `nothing` ⇒ pre-0119 behaviour byte-for-byte ──
+    recruit_establishment::Union{Nothing, RecruitEstablishment{T}}
 end
 
 """
@@ -975,6 +1101,15 @@ blends in the ratio that would place the stand on the DRF's absolute target,
 toward the target with a time constant of roughly `1/anchor` years (`anchor = 1` places it outright). `0`
 leaves every code path, committed baseline and AD gate byte-identical — the branch is not evaluated.
 
+`recruit_establishment` (default `nothing`; ADR 0119) opts the recruit trait draw into the **ported FIT
+establishment rule** instead of a learned marginal — uniform draws on each PFT's own parameter-file
+intervals mixed with inheritance from the emulator's own rolling top-AGB seedbank at the closed-form
+weight `4/(4 + n_elig)`. It is **mutually exclusive with `recruit_copula`** (both set the same marginal,
+from bases that differ by a measured +12.18 % on `Wooddens`; the constructor errors rather than pick).
+`nothing` leaves every code path, committed baseline and AD gate byte-identical — the rule is not even
+evaluated. See [`RecruitEstablishment`](@ref) for the fields and what must be read before interpreting an
+arm run with it.
+
 `patch_area` (default `225.0` m²) is the count↔density conversion: the count DRF is trained on stems **per
 patch** while the roster carries stems **per m²**. 225 m² (15×15) is `param.patcharea` in
 `par/lpjparam_fit.js`, the value the training runs used, and `new_tree.c:209` gives every individual
@@ -990,8 +1125,33 @@ function FluxDrivenSlowEmulator(
         recruit_copula::Union{Nothing, RecruitCopula{T}} = nothing,
         boundary_series::Union{Nothing, AbstractVector} = nothing,
         trait_mortality::Bool = false, anchor = zero(T), patch_area = T(225.0),
+        recruit_establishment::Union{Nothing, RecruitEstablishment{T}} = nothing,
     ) where {T <: AbstractFloat}
     zero(T) <= anchor <= one(T) || error("anchor must be in [0, 1] (got $anchor)")
+    # The two recruit samplers answer the SAME question from opposite bases (learned-from-survivors vs
+    # ported-from-parameters), so holding both would make the arm's recruit marginal depend on an
+    # undocumented precedence rule. Refuse instead — this is the ADR-0023 shift class, and it is silent.
+    (recruit_copula !== nothing && recruit_establishment !== nothing) && error(
+        "recruit_copula and recruit_establishment are mutually exclusive: both set the recruit trait " *
+            "marginal, from bases that differ by a measured +12.18 % on Wooddens (ADR 0118 §2). Pick one."
+    )
+    # With `set_pft_id = true` the drawn id reaches `fc.pft_ids`, and `_commit_membership!` refuses an id
+    # absent from `fc.pft_slot` (built once, at `FDiffFastCore` construction). Check a FIXED eligible set
+    # here so the run fails at construction rather than in whichever later year the background channel
+    # first happens to draw the missing id (ADR 0119; the same class of never-reached-path hazard the
+    # copula width probe exists for).
+    let re0 = recruit_establishment
+        if re0 !== nothing && re0.set_pft_id && !(re0.eligible isa Function)
+            missing_ids = [id for id in collect(Int, re0.eligible) if !haskey(fc.pft_slot, id)]
+            isempty(missing_ids) || error(
+                "recruit_establishment has set_pft_id = true with eligible ids $(missing_ids) absent " *
+                    "from the fast core's per-PFT registry (fc.pft_slot has " *
+                    "$(sort(collect(keys(fc.pft_slot))))). A recruit carrying one of those would be " *
+                    "rejected by _commit_membership!. Either restrict `eligible` to the roster's own " *
+                    "ids, or leave set_pft_id = false (the drawn id is still recorded in the diagnostics)."
+            )
+        end
+    end
     ridx = 0
     hmin = typemax(T)
     for (i, p) in enumerate(fc.pools)
@@ -1054,7 +1214,7 @@ function FluxDrivenSlowEmulator(
         sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], Vector{Float64}[], 0,
         DRF.Xoshiro256pp(seed), kcap, recruit_copula, bser,
         trait_mortality, zeros(Int, length(fc.pools)), TraitMortDiag[],
-        T(anchor), T(patch_area),
+        T(anchor), T(patch_area), recruit_establishment,
     )
 end
 
@@ -1134,6 +1294,31 @@ function reconcile_demography!(
     bs = s.boundary_series                          # bind first, THEN narrow (a struct-field `!== nothing`
     if bs !== nothing                               # guard doesn't refine a re-read field; the local does)
         s.boundary = bs[clamp(s.year + 1, 1, length(bs))]
+    end
+
+    # ── PORTED ESTABLISHMENT (ADR 0119), opt-in: refresh the rolling top-AGB seedbank from THIS patch's
+    #    own roster, BEFORE the year's thinning and establishment. That is FIT's order — `getsapling`
+    #    runs in `update_annual.c:77`, ahead of `annual_stand` → mortality → `establishmentpft_ind` — so
+    #    a recruit drawn below can inherit from a parent that dies later the same year, exactly as in the
+    #    C. AGB is the C's `agb_tree_sum` = leaf + sapwood + heartwood per individual (`tree.h:249`);
+    #    root and below-ground sapwood are excluded. Nothing here runs when the hook is off. ──
+    re = s.recruit_establishment
+    if re !== nothing
+        ntr = length(pools)
+        agb_ind = Vector{T}(undef, ntr)
+        wts = Vector{T}(undef, ntr)
+        trs = Vector{NTuple{4, T}}(undef, ntr)
+        for i in 1:ntr
+            p = pools[i]
+            agb_ind[i] = p.is_grass ? zero(T) :
+                convert(T, p.leaf_c) + convert(T, p.sapwood_c) + convert(T, p.heartwood_c)
+            wts[i] = p.is_grass ? zero(T) : convert(T, p.nind) * s.patch_area
+            trs[i] = (
+                convert(T, p.sla), convert(T, p.wooddens),
+                convert(T, p.d95max), convert(T, p.minwscal),
+            )
+        end
+        Establishment.seedbank_update!(re.seedbank, s.year, agb_ind, wts, pft_ids, trs)
     end
 
     # ── DRF TARGET → demographic-change ratio ρ (unit-free; count↔density cancels) ──
@@ -1218,7 +1403,27 @@ function reconcile_demography!(
         #    cohort's veg C is an establishment influx (0 contribution to cveg_start, no growth accounted). ──
         dn = (ρ - one(T)) * dtree
         if dn > 0
-            recruit_ind = if s.recruit_copula === nothing
+            recruit_pft = fc.pft_ids[s.recruit_idx]
+            recruit_ind = if re !== nothing
+                # ── PORTED FIT ESTABLISHMENT (ADR 0119): the recruit's traits come from the C's own
+                #    parameters — uniform on the drawn PFT's intervals, or inherited from the seedbank
+                #    refreshed above and diffused by `new_tree.c`'s corridor rule — never from a marginal
+                #    learned on FIT's survivors (which is what double-counts selection, ADR 0118 §1). ──
+                elig = _estab_eligible(re, s)
+                d = Establishment.draw_recruit!(s.rng, re.seedbank, elig)
+                push!(
+                    re.diag,
+                    EstabDiag(
+                        s.year, true, d.pft_id, d.inherited, length(elig),
+                        Establishment.w_inherit(length(elig)), length(re.seedbank.entries),
+                        Float64(Establishment.seedbank_weight(re.seedbank)),
+                    ),
+                )
+                # `set_pft_id` writes the DRAWN id into the roster; the canopy template still comes from
+                # the donor cohort either way (see `RecruitEstablishment` — deliberately measured, not on).
+                re.set_pft_id && (recruit_pft = d.pft_id)
+                _recruit_pools(d.sla, d.wooddens, d.d95max, d.minwscal, s.sapl, fc.allom)::FDiff.TreePools{T}
+            elseif s.recruit_copula === nothing
                 s.sapl
             else
                 rc = s.recruit_copula
@@ -1231,7 +1436,7 @@ function reconcile_demography!(
             recruit = _with_nind(recruit_ind, dn)
             push!(pools, recruit)
             push!(tmpls, fc.tmpls[s.recruit_idx])
-            push!(pft_ids, fc.pft_ids[s.recruit_idx])
+            push!(pft_ids, recruit_pft)
             push!(ages, zero(T))
             # a recruit starts with a clean counter (`mortality_tree_ind.c:72` resets it at age 1 anyway)
             s.trait_mortality && push!(counters, 0)
@@ -1282,3 +1487,15 @@ proves the operator fired before interpreting a trajectory. See [`TraitMortDiag`
 why `theta` is the number to read first.
 """
 trait_mortality_diag(s::FluxDrivenSlowEmulator) = s.mort_diag
+
+"""
+    establishment_diag(s::FluxDrivenSlowEmulator) -> Vector{EstabDiag}
+
+The per-year ported-establishment diagnostics (ADR 0119) — EMPTY when the rule is off, and also empty when
+it is on but the patch never recruited (`ρ ≤ 1` every year, or an all-grass patch), which is exactly the
+case a before/after Δ must not be read through. See [`EstabDiag`](@ref) for the two fields to read first
+(`sb_weight` and `inherited`: the inheritance channel cannot fire until the seedbank has filled, and the
+two channels have different marginals).
+"""
+establishment_diag(s::FluxDrivenSlowEmulator) =
+    s.recruit_establishment === nothing ? EstabDiag[] : s.recruit_establishment.diag

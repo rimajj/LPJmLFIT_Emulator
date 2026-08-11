@@ -2,10 +2,79 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0117 ⇒ next free is 0118, and only TWO remain in this block — raise the next-block allocation with the integrator BEFORE you need it (the block map is CLAUDE.md §9, integrator-owned).**
+> **0030–0049 is EXHAUSTED** and so is the **tier-2 block 0100–0119** (ADR 0119 spent the last number). Line
+> S's **TIER-3 block is 0170–0189** — allocated in CLAUDE.md §9 at ADR 0119's merge under §9's rule that
+> whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
+> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0170.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## NEXT — start here
+
+> ## ✅ THE PORTED ESTABLISHMENT RULE IS BUILT AND SHIPPED OPT-IN (2026-08-11, ADR 0119)
+>
+> The owner's steer of the same day is **implemented**, not planned. `src/establishment.jl`
+> (`module Establishment`, pure Base) computes FIT's recruit marginal from the C's parameter files; the
+> opt-in hook is `FluxDrivenSlowEmulator(...; recruit_establishment = RecruitEstablishment(...))`, default
+> `nothing` ⇒ every committed baseline, the AD gate and every pinned artifact byte-identical. Parameters live
+> in one generated artifact (`test/testitems/references/S_pft_estab_params.csv` via
+> `scripts/build_estab_params_reference.py`), gated row-by-row by `test/testitems/slow_establishment_tests.jl`
+> (160 186 + 69 assertions, both items green). Full suite: job 1758701.
+>
+> **1. Reading the C corrected three things this repo thought it knew** — details in ADR 0119 §1 and the
+> `slow-drf-pipeline` skill, but the first one matters for any future edit of the sampler:
+> * the inheritance jitter **does not reflect at the interval edges**; it redraws *uniformly between the
+>   parent and the crossed bound* (inward, with a point mass ON the bound). ADR 0045, the skill and this
+>   line's own last journal entry all said "reflected". A reflection is a different stationary shape exactly
+>   at the narrow boreal intervals.
+> * the seedbank accumulates **individual-YEARS with no de-duplication** — 30 years of dominance is 30 draws
+>   — so inheritance favours *persistently* dominant genotypes.
+> * `getsapling` runs **before** the year's mortality, so a recruit can inherit from a parent that dies the
+>   same year. The hook keeps that order.
+>
+> **2. Two invariants FIT gets for free had to be enforced explicitly, and one of them would have failed
+> silently.** `draw_new_trait`'s inward redraw keeps a child in range **only if the parent is in range**. A
+> roster rebuilt from the `ind` output carries `d95max`/`minwscal` at the ADR-0110 UNSET sentinel 0, so
+> diffusing from it would have put every inherited rooting depth *below* its own PFT's floor — in
+> range-looking numbers. An UNSET axis now falls back to the uniform channel **for that one axis**; a finite
+> out-of-range parent is clamped on insertion (a guard, not physics — if it ever fires on `sla`/`wooddens`,
+> investigate upstream).
+>
+> **3. What is deliberately NOT wired: the drawn PFT IDENTITY.** `set_pft_id` defaults to `false` because
+> `fc.tmpls` still carries the donor cohort's physiology, and because `_commit_membership!` refuses an id
+> absent from `fc.pft_slot`. The constructor now checks a fixed eligible set up front instead of failing in
+> whichever later year the background channel first draws the missing id. **A per-PFT template registry is
+> the line-M integration point** (M builds `fc.tmpls`) — raise it when the arm needs identity.
+>
+> **4. NO SCIENCE NUMBER IS CLAIMED, and the flip criterion is pre-registered (ADR 0119 §6)** with an
+> explicit **kill condition**: if the recruit channel makes the error climate-dependent the way the count
+> recursion did (ADR 0112–0116), the flip is REFUSED and that becomes the result. The arm is rung 2 on M's
+> roster harness (R0 = pinned copula vs R1 = ported rule, both under the C1 mortality arm); it is written as
+> an ACTION in `lines/M/STATE.md`.
+>
+> **⏩ WHAT TO DO NEXT, in order:**
+>
+> 1. **PRE-TEST THE KILL CONDITION AT HAINICH, OFFLINE, BEFORE M's HARNESS EXISTS.** S already has a
+>    single-cell rollout (`scripts/trait_mortality_arm_probe.jl`) and the hook is a two-line change to it:
+>    run R0 (pinned copula) vs R1 (ported rule) under the same count model and the same mortality arm, with
+>    ADR 0101's seed ensemble (**one run is not a measurement** — quote mean ± SEM over ~8 seeds), and read
+>    whether the community trait mean's bias diverges between two forcings. Cheap, and it either finds the
+>    feedback problem early or buys confidence before M spends harness time. ⚠ **Label it "1 of 54 020"**
+>    (guardrail 6) — it is a smoke test of the kill condition, never fidelity evidence.
+> 2. **DERIVE THE PER-CELL ELIGIBLE-PFT SET** — the concrete blocker to running the port anywhere but a
+>    hand-configured cell. `Establishment.eligible_pfts` needs `temp_min20`, `temp_max20` (20-yr running
+>    means of the year's coldest/warmest MONTHLY mean, `climbuf.c:134-137,153-154`) and `gdd5`; the monthly
+>    inputs already exist in the transient-boundary builder's pipeline. Emit it as a per-cell(-year) table so
+>    a warming cell's gate can open and close during a run, and gate it against a cell whose FIT-observed PFT
+>    set is known (Hainich has ids 1–5, the Sahel/Amazon 0 and 7).
+> 3. **Arm D is DESCOPED, not pending.** ADR 0119's consequence: if establishment is ported rather than
+>    learned, the marginal-family question (bounded Beta vs empirical copula) applies only to whatever
+>    remains learned, so re-establishing ADR 0093 §5.3's 2–3× KS claim like-for-like is no longer a
+>    prerequisite for anything on the recruit side. Do it only if the learned path needs it.
+>
+> **Two things NOT to do:** do not build a global offline demography rollout (ADR 0117 §2 — M's harness is
+> the roster), and do not flip `recruit_establishment` on by default on anything other than ADR 0119 §6's
+> criterion (three flags have already rotted in the off position; this one has a named arm, line, pass
+> condition and kill condition).
 
 > ## ✅ ARM C IS SCOPED, AND IT TURNS OUT TO REST ON AN INVALIDATED TRAINING TARGET (2026-08-11, ADR 0118)
 >

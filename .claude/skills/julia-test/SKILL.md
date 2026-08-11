@@ -123,6 +123,42 @@ Ignore benign `curl_easy_setopt: 48` spew.
   and `cbinary_validation_tests.jl` (vs the C oracle), `conservation_closure_tests.jl`, `energy_closure_tests.jl`,
   `coupled_run_tests.jl`, `biome_coupled_tests.jl`, plus `aqua_tests.jl` / `jet_tests.jl`.
 
+### Iterating on ONE test-item file without the 6-minute suite (line S, 2026-08-11)
+
+While WRITING a new `@testitem` file you need the fast loop, not the durable one — the CI-faithful SLURM
+suite is the gate you run **once, before pushing**, not after every typo. ReTestItems has no
+run-just-this-file entry point here, but a 10-line shim gives one, and it reproduces RTI's semantics well
+enough to be trusted for authoring (each item body evaluated in its OWN fresh module, so `const`, `using`
+and helper definitions behave exactly as they do under RTI):
+
+```julia
+# scratchpad/run_item.jl — throwaway; keep it in the scratchpad, NOT in the repo (a stray
+# `*_test.jl`/`*_tests.jl` anywhere in the tree fails the whole suite at collection — see the naming trap)
+using Test
+macro testitem(name, args...)
+    body = args[end]
+    quote
+        @testset $(name) begin
+            m = Module(gensym(:TI)); Core.eval(m, :(using Test)); Core.eval(m, $(QuoteNode(body)))
+        end
+    end
+end
+include(ARGS[1])          # pass an ABSOLUTE path: `include` resolves relative to the SHIM's directory
+```
+
+```bash
+ALLOW_LOGIN_HEAVY=1 JULIA_DEPOT_PATH=$HOME/.julia \
+  /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia --project=. \
+  <scratchpad>/run_item.jl "$PWD/test/testitems/<file>.jl"
+```
+
+Measured on `slow_establishment_tests.jl`: **2.4 s + 8.5 s** for the two items (160k + 69 assertions)
+against ~6 min for the suite — the difference between four iterations and one. `@test` inside `Core.eval`
+still registers with the enclosing `@testset` (Test's state is task-local, not lexical), so failures print
+with the right file and line. Two limits: it is a **few-second** run, so it stays inside the `slurm-guard`
+exemption only while the items are cheap, and it does **not** run Aqua/JET/format or the other 86 items —
+a passing item file is not a green suite, and `src/` changes still need the full SLURM run before pushing.
+
 ## Auditing a gate or fixture assertion you just wrote
 
 This repo's trust model IS its gates and committed fixtures, so a gate that looks green while proving

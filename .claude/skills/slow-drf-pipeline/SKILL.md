@@ -1547,7 +1547,8 @@ one: *"which trees are born is — apart from the inheritance functionality — 
 distributions. why should we train on that?? what matters and what we have to learn is who survives the
 environmental filtering."* **FIT's establishment rule needs no training data** — a uniform draw on each
 PFT's own `[low, high]` from `par/pft_lpjmlfit.js`, plus inheritance from the cell's 50-yr rolling top-AGB
-seedbank with `new = old·(1 + 0.1·gasdev)` reflected at the interval edges, mixed at the closed-form
+seedbank with `new = old·(1 + 0.1·gasdev)` **redrawn inward at the interval edges** (NOT reflected — see the
+implemented section below, this wording was wrong), mixed at the closed-form
 `w_inherit = 4/(4 + n_elig)` (ADR 0045). Every input is in the parameter file or computable from the
 emulator's own roster ⇒ **implement it; do not fit it, and do not ask line M's roster dump for recruits.**
 
@@ -1569,3 +1570,75 @@ fit, no fitting procedure" wording indicates the Beta used each cell's **observe
 copula's figure is **K-fold-by-cell out-of-sample** (`score_slow_copula_ks.py`). Treat the 2–3× as an
 **oracle-conditioned upper bound** until re-measured like-for-like: a deployed Beta still needs a learned
 map from features to (mean, variance), which is the cost the copula's marginal forests already pay.
+
+## THE PORTED ESTABLISHMENT RULE — implemented, opt-in (ADR 0119, line S, 2026-08-11)
+
+The route above is **landed**. `src/establishment.jl` (`module Establishment`, pure Base) + the opt-in
+`FluxDrivenSlowEmulator(...; recruit_establishment = RecruitEstablishment(...))` hook. Default `nothing` ⇒
+byte-identical; **mutually exclusive with `recruit_copula`** (the constructor errors — both set the same
+marginal from bases differing by ADR 0118's +12.18 %).
+
+**Regenerate/verify the parameters** (never hand-transcribe an interval — ADR 0031):
+
+```bash
+python3 scripts/build_estab_params_reference.py            # → test/testitems/references/S_pft_estab_params.csv
+CHECK=1 python3 scripts/build_estab_params_reference.py    # exit 1 on drift vs the live .js files
+```
+
+It reuses `build_mort_params_reference.cpp_json` (one parser, not a second copy) and asserts the two facts
+the closed-form mixture weight rests on: `k_est_inherit / k_est_inherit_bg == 4`, and per-PFT `alpha_r ==
+param.alpha_r` (so `f_sap` cancels). If a parameter edit breaks either, `4/(4 + n_elig)` silently becomes an
+approximation — the builder stops instead.
+
+**Five things the C says that a summary of it gets wrong** (all verified against the source; the first one
+was wrong in this skill and in ADR 0045 until now):
+
+1. **`draw_new_trait`'s boundary rule is an INWARD UNIFORM REDRAW, not a reflection** (`new_tree.c:55-59`):
+   a draw below `low` becomes `low + (old − low)·U`, above `high` becomes `old + (high − old)·U`. So it
+   biases the child toward the parent and puts a **point mass exactly ON the bound** when the parent sits
+   there. A reflection would put mass on the far side. It matters where the intervals are narrow — boreal
+   `minwscal` `[0.05, 0.15]`, id 6 `d95max` `[51, 300]`.
+2. **The seedbank accumulates individual-YEARS with no de-duplication** (`getsapling.c`): 30 years of
+   dominance = 30 draws, so inheritance favours *persistently* dominant genotypes, not merely current ones.
+   Yearly width is `trunc(n_max·npatch·patcharea/100)` = **15 per patch** (393 for the 25-patch ensemble),
+   selected by the n-th largest `agb_tree` = `leaf + sapwood + heartwood` per individual (root and
+   below-ground sapwood are NOT in it).
+3. **It is per-cell.** The cross-cell MPI merge is gated on `config->isequal`, TRUE only when every cell
+   shares identical coordinates ⇒ dead in every real run (`mergesapling()` has no live caller).
+4. **`getsapling` runs BEFORE the year's mortality/establishment** (`update_annual.c:77`), so a recruit can
+   inherit from a parent that dies later the same year. The emulator's hook keeps that order (seedbank
+   refreshed at the top of `reconcile_demography!`, before ρ).
+5. **`n_elig` is genuinely cell-dependent**, so the channel mix is not a constant: `gdd5min` spans
+   0/350/900/1200, the three boreal PFTs have `temp_high = 0` (eligible only where the 20-yr mean coldest
+   month is below freezing), and `establish()` admits **no tree at all** where the 20-yr mean warmest month
+   is ≤ 10 °C.
+
+**Traps in USING the hook:**
+
+* **Read `establishment_diag(s)` before interpreting anything** — `sb_weight` and `inherited`. The
+  inheritance channel cannot fire until the seedbank has filled, so an early-years arm measures the uniform
+  background channel only. Empty diag ⇒ the patch never recruited (ρ ≤ 1 every year, or all grass).
+* **An UNSET trait axis is not zero-valued physics.** `TreePools` uses 0 as the ADR-0110 sentinel for
+  `d95max`/`minwscal`, and any roster reconstructed from `ind` has them unset. The seedbank records those as
+  `NaN` and falls back to the uniform draw **for that one axis**; a finite parent outside its own PFT's
+  interval is clamped on insertion, because the inward redraw only keeps a child in range if the parent is
+  in range. If the clamp fires on `sla`/`wooddens` in a real arm, something upstream put a tree outside its
+  parameter range — investigate, don't absorb.
+* **`set_pft_id = true` is bounded by the fast core.** `_commit_membership!` refuses a PFT id absent from
+  `fc.pft_slot` (built once at `FDiffFastCore` construction), so every eligible id must already be in the
+  roster; the emulator constructor now checks that up front for a fixed eligible set. And the recruit's
+  `FDiff.Individual` template is still the DONOR cohort's, so `true` is a knowingly inconsistent individual
+  until a per-PFT template registry exists (line M integration point). Default `false`.
+* **The port is DISTRIBUTIONAL.** FIT's per-cell RAND48 stream and process-global `gasdev` pair cache are
+  not reproducible, and one appended cohort per year replaces FIT's Poisson counts (a Bernoulli on
+  `w_inherit`, exact for the channel MIX in expectation). Never claim a trajectory match from it.
+* **Writing a deterministic test against the channel mix needs the mix switched OFF.** `Seedbank(; n_top = 0)`
+  keeps the bank permanently empty ⇒ background channel only, which is how the `set_pft_id` contrast is made
+  seed-independent. Without that, a Hainich arm drew beech 5 times out of 5 at one seed purely because beech
+  dominates its seedbank — a passing assertion that proves nothing.
+
+**The flip criterion is pre-registered in ADR 0119 §6** (rung 2, R0 = pinned copula vs R1 = ported rule,
+both under the C1 mortality arm; primary condition = the per-PFT age–`Wooddens` gradient shape; **kill
+condition** = the recruit channel making the error climate-dependent the way the count recursion did). Do
+not flip the default on anything else — and note the criterion is an ACTION in `lines/M/STATE.md`, because M
+owns the roster harness and the artifact pin.
