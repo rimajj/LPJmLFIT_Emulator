@@ -1,6 +1,6 @@
 ---
 name: lpjmlfit-cbinary
-description: Build/run the LPJmL-FIT C binary (the numerical-regression oracle + daily data generator) on the PIK cluster — exact module set (json-c 0.13.1 not 0.17), restart-from-spinup subset runs, config-only daily output, lpjcheck pre-flight, SLURM templates, and the individual=true dead-code check. Use whenever running the C oracle, generating daily data, or reasoning about what the FIT config actually executes. ALSO how to REBUILD the binary (target is `make main` not `lpjml`; a new source file needs three edits incl. src/lpj/Makefile; `-Werror`; the json_object_iterator.h shim on CPATH) and the gate you MUST run afterwards — a rebuild changes the reference basis every F-vs-C number is measured against, two builds are never byte-identical (getbuild.c stamps a date), and `cmp` on a NetCDF calls 20 of 21 outputs different for identical physics because LPJmL writes a timestamp into `history`; use scripts/diagnose_cbinary_rebuild_equality.py on DECODED variables with a matched cell set and --ntasks. ALSO the opt-in rung-2 demography hooks (patches/lpjmlfit_rung2_hook_v3.patch, ADR 0061 + 0120 + 0121) — BOTH the OBSERVATION half (LPJ_RUNG2_DIR: the THREE-phase pre/mort/post roster dump, what it carries that the `ind` output cannot — water_stress, temp_stress, bm_inc_counter, bm_inc, nind, the carbon pools — plus the cell-level channels seed / gasdev_iset / seedbank checksums; that recruits enter at age 0; that neither run wrapper emits `ind` or exports the variable) and the SUBSTITUTION half (LPJ_RUNG2_APPLY_DIR: the K/R/MORT_C/ESTAB_C wire protocol, run an arm with scripts/run_rung2_replay_arm.sh, MODE=record to re-record the baseline after a rebuild, ALWAYS run MODE=none as the null control first, and the replay floor to quote: kills 1.000 exact, recruits 0.907, both 1.367). Carries the traps: READ A KILL SET FROM THE `mort` PHASE, NEVER FROM `post`, because `isdead` has more than one author and fire_tree_ind sets it AFTER the hook point while drawing erand48 only for trees not already dead — replaying fire's victims as demographic kills both claims a death the interface does not own and moves the per-cell random stream; a null control validates the TRANSPORT, not the payload, which is why MODE=none stayed green through that; the kill key is (pft_id, treeidx) not treeidx because tree->index is a PER-PFT counter; a recruit has SEVEN sampled trait axes and only four are substituted; `sapwood_old` is a DEAD FIELD, `cell->treelen_old` is uninitialised because its writer sits behind the dead config->isequal branch and mergesapling() has no caller, and the mort_* columns are uninitialised for any tree not yet through mortality_tree_ind INCLUDING every recruit at its own post — so a consistency check between two readers of one buffer cannot detect uninitialised memory, only two independent runs can; a local named `v` will not compile because discharge.h does #define v; and piping a `module load` runs it in a subshell so the build loses its compiler.
+description: Build/run the LPJmL-FIT C binary (the numerical-regression oracle + daily data generator) on the PIK cluster — exact module set (json-c 0.13.1 not 0.17), restart-from-spinup subset runs, config-only daily output, lpjcheck pre-flight, SLURM templates, and the individual=true dead-code check. Use whenever running the C oracle, generating daily data, or reasoning about what the FIT config actually executes. ALSO how to REBUILD the binary (target is `make main` not `lpjml`; a new source file needs three edits incl. src/lpj/Makefile; `-Werror`; the json_object_iterator.h shim on CPATH) and the gate you MUST run afterwards — a rebuild changes the reference basis every F-vs-C number is measured against, two builds are never byte-identical (getbuild.c stamps a date), and `cmp` on a NetCDF calls 20 of 21 outputs different for identical physics because LPJmL writes a timestamp into `history`; use scripts/diagnose_cbinary_rebuild_equality.py on DECODED variables with a matched cell set and --ntasks. ALSO the opt-in rung-2 demography hooks (patches/lpjmlfit_rung2_hook_v3.patch, ADR 0061 + 0120 + 0121) — BOTH the OBSERVATION half (LPJ_RUNG2_DIR: the THREE-phase pre/mort/post roster dump, what it carries that the `ind` output cannot — water_stress, temp_stress, bm_inc_counter, bm_inc, nind, the carbon pools — plus the cell-level channels seed / gasdev_iset / seedbank checksums; that recruits enter at age 0; that neither run wrapper emits `ind` or exports the variable) and the SUBSTITUTION half (LPJ_RUNG2_APPLY_DIR: the K/R/MORT_C/ESTAB_C wire protocol, run an arm with scripts/run_rung2_replay_arm.sh, MODE=record to re-record the baseline after a rebuild, ALWAYS run MODE=none as the null control first, and the replay floor to quote: kills 1.000 exact, recruits 0.907, both 1.367). ALSO the theta=1 IDENTITY GATE every rung-2 mortality result depends on (scripts/diagnose_rung2_hazard_identity.jl, ADR 0122): S's ported hazard reproduces the C's own per-individual mort_prob to 1.6e-15 over all 9 951 tree-patch-years, why mort_npp needed the two v4 dump columns bm_delta/leafarea_real (post-allocation, and turnover_ind is NOT reconstructable from the pools), and the trap that follows — the rendezvous carries LAST year's growth outcome, which keeps the ordering (Spearman 0.900) but INVERTS the sign of the wood-density selection differential, and the culprit is bm_inc_counter, not the growth lag. Carries the traps: READ A KILL SET FROM THE `mort` PHASE, NEVER FROM `post`, because `isdead` has more than one author and fire_tree_ind sets it AFTER the hook point while drawing erand48 only for trees not already dead — replaying fire's victims as demographic kills both claims a death the interface does not own and moves the per-cell random stream; a null control validates the TRANSPORT, not the payload, which is why MODE=none stayed green through that; the kill key is (pft_id, treeidx) not treeidx because tree->index is a PER-PFT counter; a recruit has SEVEN sampled trait axes and only four are substituted; `sapwood_old` is a DEAD FIELD, `cell->treelen_old` is uninitialised because its writer sits behind the dead config->isequal branch and mergesapling() has no caller, and the mort_* columns are uninitialised for any tree not yet through mortality_tree_ind INCLUDING every recruit at its own post — so a consistency check between two readers of one buffer cannot detect uninitialised memory, only two independent runs can; a local named `v` will not compile because discharge.h does #define v; and piping a `module load` runs it in a subshell so the build loses its compiler.
 ---
 
 # lpjmlfit-cbinary — run the LPJmL-FIT oracle
@@ -137,9 +137,9 @@ byte-for-byte. Measured on the 2026-08-10 rebuild: 138 variables + `globalflux` 
 
 ## The rung-2 demography hook (opt-in; inert by default) — ADR 0061
 
-**Use `patches/lpjmlfit_rung2_hook_v3.patch`** — it carries BOTH halves (observation + substitution) and
-supersedes `..._v2.patch` and `patches/lpjmlfit_rung2_demography_hook.patch`, which are kept only for the
-provenance of the binaries ADR 0120 / ADR 0061 gated. The observation half adds `include/rung2hook.h` +
+**Use `patches/lpjmlfit_rung2_hook_v4.patch`** — it carries BOTH halves (observation + substitution) and
+supersedes `..._v3.patch`, `..._v2.patch` and `patches/lpjmlfit_rung2_demography_hook.patch`, which are kept
+only for the provenance of the binaries ADR 0121 / 0120 / 0061 gated. The observation half adds `include/rung2hook.h` +
 `src/lpj/rung2_hook.c` and three call sites in `annual_natural.c`. **Activated only by
 `export LPJ_RUNG2_DIR=<dir>`**; unset, every entry point returns immediately (this is what makes the
 shipped `bin/lpjml` still the oracle). It writes `<dir>/roster_rank%04d.txt` with three self-describing
@@ -153,13 +153,58 @@ record kinds (`#H` header lines in the file):
   `sb_id` = checksums of the seedbank `cell->treelist` contents. Score two runs on these with
   `scripts/diagnose_rung2_cellstate_equality.py` — it prints the onset patch-year in full, which is what
   turns "same state, different answer" from a claim into a measurement.
-* `T` — one line per tree, 49 fields, at **THREE** phases: **`pre`** = before turnover/allocation/mortality,
+* `T` — one line per tree, **51** fields (v4 added `bm_delta`/`leafarea_real`), at **THREE** phases: **`pre`** = before turnover/allocation/mortality,
   **`mort`** = after the demographic hazards and **BEFORE FIRE** (added by ADR 0121 — read the kill set
   here, see the fire trap below), **`post`** = the C's own answer after establishment
 * `G` — one line per grass PFT
 
 It carries what `ind` cannot: `water_stress`, `temp_stress`, `bm_inc_counter` (the accumulators three of
-the four death rates read), `bm_inc`, `nind`, all seven carbon pools, `crownarea`, `boleht`, `fapar`.
+the four death rates read), `bm_inc`, `nind`, all seven carbon pools, `crownarea`, `boleht`, `fapar`, and
+since v4 **`bm_delta` + `leafarea_real`** — the two post-allocation inputs of `mort_npp`.
+
+### The θ=1 identity gate — run it before quoting ANY rung-2 mortality result (ADR 0122)
+
+```bash
+julia --project=. scripts/diagnose_rung2_hazard_identity.jl [--dump DIR] [--csv PATH] [--fixture PATH]
+```
+Scores line S's ported hazard (`src/trait_mortality.jl`) against the C's OWN per-individual `mort_prob` from
+a recorded dump — no LPJmL run needed. **Result: an identity, max relative Δ 1.6e-15 over all 9 951
+tree-patch-years**, all four hazards, the capped total and both hard kills, PFT ids 1–6. Locked into CI by
+`test/testitems/m_rung2_hazard_identity_tests.jl` + a 333-record fixture, so the port cannot regress silently.
+
+⚠ **`mort_npp` NEEDED A SCHEMA CHANGE, and the reason generalises: an interface's inputs are DATED.** The
+rendezvous is the `pre` phase at the TOP of the annual block, but the C's hazard runs AFTER `turnover_tree`
+and `allocation_tree`. So `mort_age`/`mort_water`/`mort_temp` have every input present unchanged at the
+rendezvous (`water_stress`/`temp_stress` differ in **0 of 9 951** records between the `pre` and `mort`
+phases), while `mort_npp` needs `bm_delta = bm_inc.carbon/nind − turnover_ind.carbon` and
+`leafarea_real = ind.leaf.carbon·sla`, both post-allocation. **Do not try to reconstruct `bm_delta`** — only
+the two sapwood turnover terms are recoverable (they equal Δ`heartwood_c` between the phases, which also
+pins `turnover.sapwood = 0.04`); `turn.leaf`/`turn.root` are daily accumulators, `isphen` is not dumped, and
+`turnover_tree` **mutates** `bm_inc.carbon` (reproduction cost, `cmass_excess`, debt payback) before
+allocation mutates it again. Dump the two doubles instead.
+**The cheap tell for any question of this shape: diff the same field between two dump phases of the same
+tree-year.** `water_stress`/`temp_stress` 0 of 9 951 · `bm_inc_counter` 2 169 · `leaf_c`/`bm_inc_c` all.
+
+⚠ **THE RENDEZVOUS IS ONE YEAR STALE, AND FOR THE TRAIT QUESTION THAT INVERTS THE ANSWER (ADR 0122 §4).**
+Live, the `pre` roster carries LAST year's `bm_delta`/`leafarea_real`/`bm_inc_counter`. Per-tree ORDERING
+survives it (per-patch-year Spearman ρ vs the C's own hazard: median **0.900**), but the one-year
+wood-density selection differential does not — the C **+17 729** gC/m³ vs the lagged basis **−14 528**,
+**ratio −0.819, opposite sign**. Attributed one term at a time: hard kills suppressed −0.819 (not them),
+only `bm_delta`/`leafarea` lagged **+1.001** (harmless), only `bm_inc_counter` lagged **−0.562** ⇒ **it is
+the counter**, because it MULTIPLIES `mort_npp` and `mort_water` by `(1+counter)` (`mortality_tree_ind.c:71-81`
+updates it from THIS year's `bm_delta` sign, so the rendezvous has the previous value in 21.8 % of records).
+⇒ **an emulator arm is scorable on counts and ordering, NOT on the trait response, until the rendezvous moves
+behind the growth loop.** This is the harness's rendezvous point, not a defect in the ported operator and not
+a property of the standalone emulator (there the fast core grows the trees before the demography runs).
+
+⚠ **A NEW DUMP COLUMN THAT THE EXTERNAL DEMOGRAPHY WILL READ MUST BE INITIALISED ON BOTH TREE-CREATION
+PATHS** — `new_tree.c` (establishment) **and** `fread_tree.c` (restart). The `mort_*` columns get away with
+being uninitialised because only the dump reads them; a column the harness feeds to an operator would hand a
+recruit a random hazard. Adding a field to `Pfttree` does **not** break the restart file, because
+`fwrite_tree`/`fread_tree` serialize field by field — just leave it out of their lists. Before the
+initialisers were added, `diagnose_rung2_dump_equality.py` returned a **false FAIL** ("DIFFERENT model
+state", 695–705 `pre` + 259–317 `post` records) on an arm whose roster was identical in every year and whose
+cell state agreed in all 1 500 patch-years.
 
 Gotchas, each paid for once:
 
@@ -236,7 +281,7 @@ the jcf, starts the harness in the background of the same job, and runs lpjml. S
 
 **`MODE=record` re-records the baseline dump with no substitution at all, and a REBUILD makes that
 mandatory:** the recorded dump is the reference basis every arm is scored against, so a rebuild that adds
-or removes a dump column leaves the two sides on different schemas. Re-record first, then re-run the arm.
+or removes a dump column leaves the two sides on different schemas. Re-record first, then re-run the arm. Current baseline: `/p/tmp/jamirp/M_rung2/M_rung2rec_v4b_dump`.
 
 **The replay floor, and it is one cell** (42490, 25 patches, 2000–2019, terminal stems replay ÷ recorded;
 ADR 0121 supersedes ADR 0120's numbers): `none` **1.000** · `kills` **1.000, exact — identical in every

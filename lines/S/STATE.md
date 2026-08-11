@@ -583,6 +583,53 @@ source model runs constant CO2 **on purpose** (no nitrogen limitation ⇒ unboun
 emulator with no CO2 response **matches the reference**. Never raise a CO2 feature, varying-CO2 training rows,
 or a new model run for CO2, and never list it as a defect.
 
+### 📥 INBOUND FROM LINE M, 2026-08-11 (ADR 0122) — **your ported hazard reproduces the C EXACTLY (the free
+### identity gate you offered is run and green). One correction to ADR 0117 item 3, and arm C is not yet
+### scorable on the trait question — the reason is M's harness, not your operator.**
+
+> Reply to ADR 0117. Nothing is asked of line S. Full record: `docs/decisions/0122-*.md`.
+
+**1. `src/trait_mortality.jl` is verified against the C binary, as an IDENTITY.** ADR 0117 item 4 offered
+θ = 1 as a free gate; M ran it against the C's own `mortality_tree_ind` on **all 9 951 tree-patch-years** of
+the recorded rung-2 dump (cell 42490, 25 patches, 2000–2019, PFT ids 1/2/3/4/5/6 = 631/275/7 370/1 231/401/43).
+Max relative error: `mort_age` 5.0e-16 · `mort_temp` 1.7e-16 · `mort_water` 2.2e-16 · `mort_npp` 1.6e-15 ·
+**`mortality_hazard.total` 1.6e-15, zero exceedances** — plus both hard kills classified correctly (175
+growth-failure, 195 ghost-tree, 3.7 % of records). So **ADR 0049 item 2's "θ = 1 recovers FIT exactly" is now
+measured rather than asserted**, and the operator is safe to build on. It is also locked into CI
+(`test/testitems/m_rung2_hazard_identity_tests.jl` + a 333-record C-truth fixture), so a future edit to your
+file cannot regress against the C silently. **ADR 0049 item 4 is retired inside the harness** — both stress
+integrals are exact there, so the complete four-hazard operator ran for the first time.
+
+**2. ⚠ ONE CORRECTION — ADR 0117 item 3 is wrong on the fourth hazard, and it was worth two rebuilds to
+find.** Item 3 states that the `pre` record carrying `water_stress`, `temp_stress`, `bm_inc_counter` and
+`bm_inc` means *"inside the harness all four hazards are computable faithfully"*. Three of four: yes,
+exactly (`water_stress`/`temp_stress` are byte-identical between the `pre` and `mort` phases in **0 of
+9 951** records). But `mort_npp` consumes `bm_delta = bm_inc.carbon/nind − turnover_ind.carbon` with
+`bm_inc` taken **post-turnover and post-allocation**, whereas the `pre` record's `bm_inc` is the year's
+**gross** NPP — and `turnover_ind` is not reconstructable from the dumped pools (only its two sapwood terms
+are; `turn.leaf`/`turn.root` are daily accumulators and `turnover_tree` mutates `bm_inc.carbon` itself). M
+therefore added `bm_delta`/`leafarea_real` as dump columns (`patches/lpjmlfit_rung2_hook_v4.patch`), which
+is what made item 1 possible. **Nothing about the interface or the wire format changes.**
+
+**3. ARM C IS NOT YET SCORABLE ON THE TRAIT QUESTION — pre-registered, so it cannot be reinterpreted after
+a run.** The rendezvous where the C asks for `f_i` sits at the *top* of the annual block, so live it carries
+**last year's** `bm_delta`/`leafarea_real`/`bm_inc_counter`. Per-tree **ordering** survives that
+(per-patch-year Spearman ρ against the C's own `mort_prob`: median **0.900**). The trait statistic does not:
+the one-year wood-density selection differential is the C's **+17 729** gC/m³ against the lagged basis's
+**−14 528** — **ratio −0.819, opposite sign**. Attributed one term at a time: hard kills suppressed −0.819
+(not them), only `bm_delta`/`leafarea` lagged **+1.001** (the growth lag is harmless), only
+`bm_inc_counter` lagged **−0.562** ⇒ **the culprit is the consecutive-growth-failure counter**, which
+multiplies `mort_npp` and `mort_water` by `(1+counter)` and whose update needs *this* year's `bm_delta`
+sign (`pre` holds the previous value in 21.8 % of records).
+
+**This is M's rendezvous POINT, not your operator and not the emulator** — standalone, the fast core grows
+the trees before the demography runs, so the counter is current. M's next C change moves the rendezvous
+behind the growth loop, which removes the lag entirely. **Until then a rung-2 arm is readable on counts and
+ordering only** — so if you were planning to read a `C1 − C0` wood-density result (and ADR 0118 §3's two
+pre-registered conditions are written on exactly that axis), it is worth knowing that the arm cannot carry
+it yet. ADR 0118 §3's other condition stands unchanged and is the right one to keep: test the per-PFT
+**gradient shape** against `references/S_age_wooddens_gradient.csv`, including the non-monotone ids 0 and 3.
+
 ### 📥 INBOUND FROM LINE M, 2026-08-10 (ADR 0061) — **rung 2's observation half is built; the entry point's
 ### SHAPE is yours, and here is a concrete proposal so you can accept or amend rather than design.**
 

@@ -1,0 +1,942 @@
+diff --git a/include/rung2apply.h b/include/rung2apply.h
+new file mode 100644
+index 0000000..dcf12c2
+--- /dev/null
++++ b/include/rung2apply.h
+@@ -0,0 +1,77 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**              r  u  n  g  2  a  p  p  l  y  .  h                                \n**/
++/**                                                                                \n**/
++/**     Opt-in demography SUBSTITUTION hook — the read-back half of the            \n**/
++/**     LPJmL-FIT emulator's rung-2 experiment (the observation half is            \n**/
++/**     include/rung2hook.h).  Narrow interface by design: it replaces only        \n**/
++/**     WHO DIES and WHO ESTABLISHES.  Turnover, allocation and growth stay        \n**/
++/**     with the C, which is what keeps the per-tree accumulators the death        \n**/
++/**     rates read (water_stress, temp_stress, bm_inc_counter) intact.             \n**/
++/**                                                                                \n**/
++/**     NOT part of stock LPJmL-FIT.  Activated only when the environment          \n**/
++/**     variable LPJ_RUNG2_APPLY_DIR is set; with it unset every entry point       \n**/
++/**     below returns immediately and the model is byte-identical to stock.        \n**/
++/**                                                                                \n**/
++/**     Protocol (one rendezvous per patch-year, files + spin-wait):               \n**/
++/**       C   writes <dir>/req_r<rank>_y<year>_p<patch>.txt   (the `pre` roster)   \n**/
++/**           then renames a marker to  ...req_...ready                            \n**/
++/**       C   blocks until                ...rsp_...ready     appears              \n**/
++/**       C   reads  <dir>/rsp_r<rank>_y<year>_p<patch>.txt:                       \n**/
++/**             K <pft_id> <treeidx>                one tree to kill               \n**/
++/**             R <pft_id> <sla> <wooddens> <D95max> <minwscal>   one recruit      \n**/
++/**             END                                                               \n**/
++/**           Any tree of the `pre` roster NOT named by a K line is intended to    \n**/
++/**           live; the R lines are the COMPLETE tree recruit set for the          \n**/
++/**           patch-year (none = no establishment).  '#' starts a comment.         \n**/
++/**                                                                                \n**/
++/**     What the substitution does NOT control, and why the arm must say so:       \n**/
++/**       - a kill the C's own state cannot un-make (negative or exhausted         \n**/
++/**         carbon pools, the logging cut year, bioclimatic limits exceeded)       \n**/
++/**         is honoured over a "live" verdict, and counted in the audit file;      \n**/
++/**       - a recruit carries SEVEN sampled trait axes in this model               \n**/
++/**         (sla, wooddens, D95max, minwscal, emax, k_root, beta_2) plus a         \n**/
++/**         leaf longevity derived from sla.  Only the four named on the R line    \n**/
++/**         are substituted; emax, k_root and beta_2 keep the C's own uniform      \n**/
++/**         draw.  beta_root and longevity are RE-derived from the substituted     \n**/
++/**         D95max and sla, because the C derives them that way in new_tree.       \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#ifndef RUNG2APPLY_H
++#define RUNG2APPLY_H
++
++/* TRUE when LPJ_RUNG2_APPLY_DIR is set (resolved once, cached). */
++extern Bool rung2_apply_enabled(void);
++
++/* Open the rendezvous for one patch-year: write the `pre` roster as a request,
++   block until the external demography answers, and cache the answer for the
++   queries below.  Call at the top of the demography block, on the same state
++   the "pre" dump sees.  A no-op unless rung2_apply_enabled(). */
++extern void rung2_apply_begin_patch(const Stand *stand, const Patch *patch,
++                                    int np, int npft, int year,
++                                    const Config *config);
++
++/* Verdict for one tree.  `c_isdead` is the C's own answer; `hard` says the C
++   cannot represent this tree as alive, in which case the C wins and the
++   override is counted.  Returns the verdict to apply. */
++extern Bool rung2_apply_isdead(const Pft *pft, Bool c_isdead, Bool hard);
++
++/* Number of tree recruits the external demography asked for in this
++   patch-year (0 if it asked for none). */
++extern int rung2_apply_nrecruit(void);
++
++/* Traits of the i-th recruit.  Returns FALSE if i is out of range. */
++extern Bool rung2_apply_recruit(int i, int *pft_id, Real *sla, Real *wooddens,
++                                Real *D95max, Real *minwscal);
++
++/* Stamp the substituted traits onto a freshly addpft()'ed recruit and re-derive
++   what the C derives from them (beta_root from D95max, leaf longevity from
++   sla).  Values outside the PFT's own interval are clamped and counted. */
++extern void rung2_apply_set_traits(Pft *pft, Real sla, Real wooddens,
++                                   Real D95max, Real minwscal);
++
++/* Close the rendezvous and append this patch-year's audit line. */
++extern void rung2_apply_end_patch(void);
++
++#endif
+diff --git a/include/rung2hook.h b/include/rung2hook.h
+new file mode 100644
+index 0000000..986ab55
+--- /dev/null
++++ b/include/rung2hook.h
+@@ -0,0 +1,47 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**                r  u  n  g  2  h  o  o  k  .  h                                 \n**/
++/**                                                                                \n**/
++/**     Opt-in demography observation hook for the LPJmL-FIT emulator's            \n**/
++/**     error-attribution ladder (rung 2: replace only who dies and who            \n**/
++/**     establishes, leave turnover/allocation/growth to the C).                   \n**/
++/**                                                                                \n**/
++/**     NOT part of stock LPJmL-FIT. Activated only when the environment           \n**/
++/**     variable LPJ_RUNG2_DIR is set; with it unset every entry point below       \n**/
++/**     returns immediately and the model is byte-identical to the stock build.    \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#ifndef RUNG2HOOK_H
++#define RUNG2HOOK_H
++
++/* TRUE when LPJ_RUNG2_DIR is set (resolved once, cached). */
++extern Bool rung2_enabled(void);
++
++/* Dump one patch's tree roster.  `phase` is "pre" (top of the demography
++   block, before turnover/allocation/mortality) or "post" (after
++   establishment, i.e. the C's own answer for that year).  A no-op unless
++   rung2_enabled(). */
++extern void rung2_dump_patch(const Stand *stand, const Patch *patch, int np,
++                             int year, const char *phase, const Config *config);
++
++/* The two writers rung2_dump_patch is built from, exposed so the substitution
++   half (include/rung2apply.h) puts the IDENTICAL roster format into its
++   per-patch-year request file instead of carrying a second copy of the schema.
++   Both write to an already-open stream and ignore the env var. */
++extern void rung2_write_header(FILE *f);
++extern void rung2_write_patch(FILE *f, const Stand *stand, const Patch *patch,
++                              int np, int year, const char *phase,
++                              const Config *config);
++
++/* Parity of gasdev()'s PROCESS-GLOBAL spare-deviate cache (src/numeric/gasdev.c).
++   gasdev() generates normal deviates in pairs and returns the second from a
++   file-local static on the next call, so the cache parity is cell-independent
++   hidden state that no per-tree or per-cell record can carry: two runs whose
++   model state agrees exactly still draw different normals if an odd number of
++   gasdev() calls separates them.  Read-only; defined in gasdev.c so the static
++   stays file-local.  Declared here rather than in numeric.h to keep the stock
++   headers untouched by this hook. */
++extern int gasdev_iset(void);
++
++#endif
+diff --git a/include/tree.h b/include/tree.h
+index 7abefd7..9cf879b 100644
+--- a/include/tree.h
++++ b/include/tree.h
+@@ -132,6 +132,16 @@ typedef struct
+   Real mort_npp;                    /**< npp dependent mortality > */
+   Real mort_water;                  /**< water dependent mortality > */
+   Real mort_temp;                   /**< temperature dependent mortality > */
++  /* rung-2 demography interface (line M, ADR 0122): the two inputs of mort_npp that no
++     other dumped column carries.  WRITE-ONLY as far as LPJmL's own physics is concerned —
++     set in mortality_tree_ind() and read only by the rung-2 observation hook, so the
++     stock binary is unaffected.  Deliberately absent from fwrite_tree/fread_tree, which
++     serialize field-by-field, so the existing restart files stay readable.  Like their
++     mort_* siblings they are NOT initialised by new_tree, hence garbage for any tree that
++     has not yet been through mortality_tree_ind (i.e. at the first `pre` after a restart
++     and at a recruit's own establishment year) — only the `mort` phase is meaningful. */
++  Real bm_delta;                    /**< bm_inc.carbon/nind - turnover_ind.carbon (gC/ind) > */
++  Real leafarea_real;               /**< ind.leaf.carbon*sla, the realized leaf area (m2) > */
+ } Pfttree;
+ 
+ struct sapling
+diff --git a/src/lpj/Makefile b/src/lpj/Makefile
+index 6f4267c..34b9bd3 100644
+--- a/src/lpj/Makefile
++++ b/src/lpj/Makefile
+@@ -52,7 +52,8 @@ OBJS    = update_daily.$O update_annual.$O init_annual.$O\
+           npp_contr_biol_n_fixation.$O fprintoutputjson.$O fscancorridor.$O\
+           isindividual_output.$O establishmentpft_ind.$O\
+           fwriteoutput_ind.$O getsapling.$O mergesapling.$O getmaxagb.$O\
+-          getmaxpft.$O fwritesaplings.$O freadsaplings.$O fprintsaplings.$O
++          getmaxpft.$O fwritesaplings.$O freadsaplings.$O fprintsaplings.$O\
++          rung2_hook.$O rung2_apply.$O
+ 
+ INC     = ../../include
+ LIBDIR  = ../../lib
+diff --git a/src/lpj/annual_natural.c b/src/lpj/annual_natural.c
+index bffc246..fdb5b80 100644
+--- a/src/lpj/annual_natural.c
++++ b/src/lpj/annual_natural.c
+@@ -20,6 +20,8 @@
+ #include "grass.h"
+ #include "tree.h"
+ #include "landuse.h"
++#include "rung2hook.h"
++#include "rung2apply.h"
+ 
+ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+                     int npft,             /**< number of natural pfts */
+@@ -54,6 +56,12 @@ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+   frac=stand->frac/stand->npatch;
+   foreachpatch(patch,np,stand)
+   {
++  /* rung-2 demography hook: state BEFORE turnover/allocation/mortality/establishment.
++     No-op unless LPJ_RUNG2_DIR is set (include/rung2hook.h). */
++  rung2_dump_patch(stand,patch,np,year,"pre",config);
++  /* rung-2 substitution: hand the same roster to the external demography and
++     block for its answer.  No-op unless LPJ_RUNG2_APPLY_DIR is set. */
++  rung2_apply_begin_patch(stand,patch,np,npft,year,config);
+   pft_len=getnpft(&patch->pftlist); /* get number of established PFTs */
+   if(pft_len>0)
+   {
+@@ -118,8 +126,18 @@ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+       light(patch,fpc_inc,config);
+     free(fpc_inc);
+   }
++  /* rung-2 demography hook: state AFTER the demographic hazards (annual_tree ->
++     mortality_tree_ind, the allocation kill, the bioclimatic !survive) and
++     BEFORE fire.  This phase exists because the rung-2 interface owns the
++     demographic hazards ONLY, while fire is a disturbance the C keeps: a kill
++     set derived from the `post` roster silently includes fire's victims, and
++     replaying those as demographic kills both double-counts them and shifts the
++     random stream, because fire_tree_ind() draws erand48 only for trees that are
++     not already dead (src/tree/fire_tree_ind.c:25, short-circuit &&).
++     No-op unless LPJ_RUNG2_DIR is set. */
++  rung2_dump_patch(stand,patch,np,year,"mort",config);
+   if(config->fire==FIRE)
+-  {  
++  {
+     fire_frac=fire_prob(&patch->soil.litter,patch->fire_sum);
+     getoutput(&stand->cell->output,FIREF,config)+=1.0/fire_frac/stand->npatch;
+     flux=firepft(patch,fire_frac,config);
+@@ -229,8 +247,12 @@ Bool annual_natural(Stand *stand,         /**< Pointer to stand */
+       //        pft->fpc,pft->par->name,sprintcoord(line,&stand->cell->coord));
+ #endif
+   } /* of foreachpft */
++  /* rung-2 demography hook: the C's OWN answer — state AFTER mortality and
++     establishment, with the four hazard components that produced it. */
++  rung2_apply_end_patch();
++  rung2_dump_patch(stand,patch,np,year,"post",config);
+   } /* of foreachpatch */
+-  
++
+   free(mort_tree);
+   free(ntree);
+   
+diff --git a/src/lpj/establishmentpft_ind.c b/src/lpj/establishmentpft_ind.c
+index 7594063..266482a 100644
+--- a/src/lpj/establishmentpft_ind.c
++++ b/src/lpj/establishmentpft_ind.c
+@@ -20,6 +20,7 @@
+ #include "lpj.h"
+ #include "tree.h"
+ #include "grass.h"
++#include "rung2apply.h"
+ 
+ static Real f_sap(Real fpar,Real alpha_r)
+ {
+@@ -53,10 +54,13 @@ Stocks establishmentpft_ind(Patch *patch,        /**< Patch pointer  */
+   Stocks flux_est={0,0},stocks;
+   Real fpc_total,*fpc_type,pft_est;
+   int *n_est;
+-  Bool *present,tree_found;
++  Bool *present,tree_found,r2;
+   int i,p,t,k_est;
+   Pfttreepar *treepar;
+   Pft *pft;
++  /* rung-2: the external demography owns tree recruitment, unless it deferred
++     this patch-year back to the C (nrecruit < 0) */
++  r2=rung2_apply_enabled() && rung2_apply_nrecruit()>=0;
+   present=newvec(Bool,npft);
+   check(present);
+   fpc_type=newvec(Real,config->ntypes);
+@@ -90,7 +94,7 @@ Stocks establishmentpft_ind(Patch *patch,        /**< Patch pointer  */
+     {
+       if(config->pftpar[p].type==TREE)
+       {
+-        if(!config->prescribe_estab)
++        if(!config->prescribe_estab && !r2)
+         {
+           treepar=config->pftpar[p].data;
+           if(year>=config->tree_year|| year<config->cut_year)
+@@ -119,7 +123,7 @@ Stocks establishmentpft_ind(Patch *patch,        /**< Patch pointer  */
+     }
+   }
+ 
+-  if(!config->prescribe_estab && config->inheritance && year>=config->firstyear-config->nspinup+config->inherit_startyear && patch->stand->cell->treelen>0) /* inheritance */
++  if(!r2 && !config->prescribe_estab && config->inheritance && year>=config->firstyear-config->nspinup+config->inherit_startyear && patch->stand->cell->treelen>0) /* inheritance */
+   {
+     k_est=poidev(param.k_est_inherit*param.patcharea*f_sap(patch->fpar_leafon_grass,param.alpha_r),patch->stand->cell->seed);
+     for(i=0;i<k_est;i++)
+@@ -135,7 +139,7 @@ Stocks establishmentpft_ind(Patch *patch,        /**< Patch pointer  */
+     }
+   }
+   
+-  if(config->prescribe_estab && tree_found)
++  if(!r2 && config->prescribe_estab && tree_found)
+   {
+     k_est=poidev(param.k_est_inherit*param.patcharea*f_sap(patch->fpar_leafon_grass,param.alpha_r),patch->stand->cell->seed);
+     for(i=0;i<k_est;i++)
+@@ -151,6 +155,30 @@ Stocks establishmentpft_ind(Patch *patch,        /**< Patch pointer  */
+     }
+   }
+ 
++  /* rung-2 substitution: the external demography supplies the COMPLETE tree
++     recruit set for this patch-year.  The four substituted axes are stamped on
++     after addpft() so that establishment_tree_ind() builds the carbon pools
++     from them; emax/k_root/beta_2 keep the C's own uniform draw. */
++  if(r2)
++  {
++    int nrec,pft_id;
++    Real r_sla,r_wooddens,r_D95max,r_minwscal;
++    nrec=rung2_apply_nrecruit();
++    for(i=0;i<nrec;i++)
++    {
++      if(!rung2_apply_recruit(i,&pft_id,&r_sla,&r_wooddens,&r_D95max,&r_minwscal))
++        continue;
++      pft=addpft(patch,config->pftpar+pft_id,year,FALSE,config);
++      if(pft==NULL)
++        continue;
++      rung2_apply_set_traits(pft,r_sla,r_wooddens,r_D95max,r_minwscal);
++      stocks=establishment_tree_ind(pft);
++      flux_est.carbon+=stocks.carbon;
++      flux_est.nitrogen+=stocks.nitrogen;
++      n_est[pft->par->type]++;
++    }
++  }
++
+   fpc_total=fpc_sum(fpc_type,config->ntypes,&patch->pftlist);
+   foreachpft(pft,p,&patch->pftlist)
+   {
+diff --git a/src/lpj/rung2_apply.c b/src/lpj/rung2_apply.c
+new file mode 100644
+index 0000000..0b76c17
+--- /dev/null
++++ b/src/lpj/rung2_apply.c
+@@ -0,0 +1,333 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**            r  u  n  g  2  _  a  p  p  l  y  .  c                               \n**/
++/**                                                                                \n**/
++/**     Opt-in demography SUBSTITUTION hook — see include/rung2apply.h.            \n**/
++/**                                                                                \n**/
++/**     Byte-identity: every entry point returns immediately when the environment  \n**/
++/**     variable LPJ_RUNG2_APPLY_DIR is unset, and nothing here writes to model    \n**/
++/**     state on that path.                                                        \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#include <time.h>
++#include <unistd.h>
++#include "lpj.h"
++#include "tree.h"
++#include "grass.h"
++#include "rung2hook.h"
++#include "rung2apply.h"
++
++#define R2A "%.17g"
++#define POLL_NS 2000000L        /* 2 ms between polls of the response marker */
++
++typedef struct
++{
++  int pft_id;
++  int treeidx;
++} Killkey;
++
++typedef struct
++{
++  int pft_id;
++  Real sla, wooddens, D95max, minwscal;
++} Recruit;
++
++static int enabled = -1;        /* -1 = not yet resolved, 0 = off, 1 = on */
++static const char *dir = NULL;
++static int timeout_s = 600;
++static FILE *audit = NULL;
++
++/* state of the current rendezvous */
++static Bool open_patch = FALSE;
++static int cur_year, cur_patch;
++static Killkey *kills = NULL;
++static int nkill = 0, killsize = 0;
++static Recruit *recruits = NULL;
++static int nrecruit = 0, recruitsize = 0;
++/* per-patch-year opt-outs, so one half of the interface can be substituted while
++   the other is left to the C — the only way an arm's effect is attributable */
++static Bool defer_mort = FALSE, defer_estab = FALSE;
++static int seen_pft[1024], seen_idx[1024];
++static int nseen = 0;
++/* audit counters, reset per patch-year */
++static int n_pre, n_kill_c, n_kill_applied, n_forced_dead, n_spared_certain, n_clamped;
++
++Bool rung2_apply_enabled(void)
++{
++  const char *s;
++  if(enabled < 0)
++  {
++    dir = getenv("LPJ_RUNG2_APPLY_DIR");
++    enabled = (dir != NULL && dir[0] != '\0') ? 1 : 0;
++    s = getenv("LPJ_RUNG2_APPLY_TIMEOUT");
++    if(s != NULL && s[0] != '\0')
++      timeout_s = atoi(s);
++  }
++  return (enabled == 1) ? TRUE : FALSE;
++} /* of 'rung2_apply_enabled' */
++
++static void keypath(char *buf, size_t n, const char *kind, const char *ext,
++                    int rank, int year, int patch)
++{
++  snprintf(buf, n, "%s/%s_r%04d_y%05d_p%03d.%s", dir, kind, rank, year, patch, ext);
++} /* of 'keypath' */
++
++static void touch(const char *path)
++{
++  FILE *f;
++  f = fopen(path, "w");
++  if(f == NULL)
++    fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: cannot create marker '%s'", path);
++  fclose(f);
++} /* of 'touch' */
++
++void rung2_apply_begin_patch(const Stand *stand, const Patch *patch, int np,
++                             int npft, int year, const Config *config)
++{
++  char req[1024], reqok[1024], rsp[1024], rspok[1024], line[2048], path[1024];
++  FILE *f;
++  const Pft *pft;
++  const Pfttree *tree;
++  int p, i, waited_ns;
++  struct timespec ts;
++  Killkey k;
++  Recruit r;
++  if(!rung2_apply_enabled())
++    return;
++  if(audit == NULL)
++  {
++    snprintf(path, sizeof(path), "%s/audit_r%04d.txt", dir, config->rank);
++    audit = fopen(path, "w");
++    if(audit == NULL)
++      fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: cannot open '%s'", path);
++    fprintf(audit, "#H A year patch n_pre n_kill_c n_kill_applied n_forced_dead "
++                   "n_spared_certain n_recruit n_clamped sub_mort sub_estab\n");
++  }
++  cur_year = year;
++  cur_patch = np;
++  nkill = nrecruit = nseen = 0;
++  defer_mort = defer_estab = FALSE;
++  n_pre = n_kill_c = n_kill_applied = n_forced_dead = n_spared_certain = n_clamped = 0;
++
++  keypath(req, sizeof(req), "req", "txt", config->rank, year, np);
++  keypath(reqok, sizeof(reqok), "req", "ready", config->rank, year, np);
++  keypath(rsp, sizeof(rsp), "rsp", "txt", config->rank, year, np);
++  keypath(rspok, sizeof(rspok), "rsp", "ready", config->rank, year, np);
++  /* a leftover answer from an earlier run would be read as this run's */
++  unlink(rsp);
++  unlink(rspok);
++
++  /* --- the request: the same roster records the observation hook writes --- */
++  f = fopen(req, "w");
++  if(f == NULL)
++    fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: cannot open '%s'", req);
++  rung2_write_header(f);
++  rung2_write_patch(f, stand, patch, np, year, "pre", config);
++  fprintf(f, "#END\n");
++  fclose(f);
++
++  /* the roster key must be unique, or a K line is ambiguous.  `index` is a
++     per-PFT counter (new_tree.c), so the key is (pft_id, treeidx). */
++  foreachpft(pft, p, &patch->pftlist)
++    if(istree(pft))
++    {
++      tree = pft->data;
++      for(i = 0; i < nseen; i++)
++        if(seen_pft[i] == pft->par->id && seen_idx[i] == tree->index)
++          fail(OPEN_COUPLER_ERR, FALSE,
++               "rung2 apply: duplicate roster key (pft %d, tree %d) in year %d patch %d",
++               pft->par->id, tree->index, year, np);
++      if(nseen < (int)(sizeof(seen_pft) / sizeof(seen_pft[0])))
++      {
++        seen_pft[nseen] = pft->par->id;
++        seen_idx[nseen] = tree->index;
++        nseen++;
++      }
++      n_pre++;
++    }
++  touch(reqok);
++
++  /* --- block until the external demography answers --- */
++  waited_ns = 0;
++  while(access(rspok, F_OK) != 0)
++  {
++    ts.tv_sec = 0;
++    ts.tv_nsec = POLL_NS;
++    nanosleep(&ts, NULL);
++    waited_ns++;
++    if(timeout_s > 0 && (double)waited_ns * POLL_NS / 1e9 > (double)timeout_s)
++      fail(OPEN_COUPLER_ERR, FALSE,
++           "rung2 apply: no answer for year %d patch %d after %d s ('%s')",
++           year, np, timeout_s, rspok);
++  }
++  f = fopen(rsp, "r");
++  if(f == NULL)
++    fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: cannot read '%s'", rsp);
++  while(fgets(line, sizeof(line), f) != NULL)
++  {
++    if(line[0] == '#' || line[0] == '\n')
++      continue;
++    if(line[0] == 'K')
++    {
++      if(sscanf(line + 1, "%d %d", &k.pft_id, &k.treeidx) != 2)
++        fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: bad K line in '%s': %s", rsp, line);
++      for(i = 0; i < nseen; i++)
++        if(seen_pft[i] == k.pft_id && seen_idx[i] == k.treeidx)
++          break;
++      if(i == nseen)
++        fail(OPEN_COUPLER_ERR, FALSE,
++             "rung2 apply: K names (pft %d, tree %d), not in the year %d patch %d roster",
++             k.pft_id, k.treeidx, year, np);
++      if(nkill == killsize)
++      {
++        killsize = (killsize == 0) ? 64 : killsize * 2;
++        kills = (Killkey *)realloc(kills, sizeof(Killkey) * killsize);
++        check(kills);
++      }
++      kills[nkill++] = k;
++    }
++    else if(line[0] == 'R')
++    {
++      if(sscanf(line + 1, "%d %lg %lg %lg %lg", &r.pft_id, &r.sla, &r.wooddens,
++                &r.D95max, &r.minwscal) != 5)
++        fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: bad R line in '%s': %s", rsp, line);
++      if(r.pft_id < 0 || r.pft_id >= getnnat(npft, config) ||
++         config->pftpar[r.pft_id].type != TREE)
++        fail(OPEN_COUPLER_ERR, FALSE,
++             "rung2 apply: R names pft %d, which is not a tree", r.pft_id);
++      if(nrecruit == recruitsize)
++      {
++        recruitsize = (recruitsize == 0) ? 64 : recruitsize * 2;
++        recruits = (Recruit *)realloc(recruits, sizeof(Recruit) * recruitsize);
++        check(recruits);
++      }
++      recruits[nrecruit++] = r;
++    }
++    else if(!strncmp(line, "MORT_C", 6))
++      defer_mort = TRUE;     /* leave WHO DIES to the C this patch-year */
++    else if(!strncmp(line, "ESTAB_C", 7))
++      defer_estab = TRUE;    /* leave WHO ESTABLISHES to the C this patch-year */
++    else if(line[0] == 'E')
++      break;
++    else
++      fail(OPEN_COUPLER_ERR, FALSE, "rung2 apply: unknown record in '%s': %s", rsp, line);
++  }
++  fclose(f);
++  unlink(req);
++  unlink(reqok);
++  unlink(rsp);
++  unlink(rspok);
++  open_patch = TRUE;
++} /* of 'rung2_apply_begin_patch' */
++
++Bool rung2_apply_isdead(const Pft *pft, Bool c_isdead, Bool hard)
++{
++  const Pfttree *tree;
++  Bool ext_dead;
++  int i;
++  if(!rung2_apply_enabled() || !open_patch || defer_mort)
++    return c_isdead;
++  tree = pft->data;
++  ext_dead = FALSE;
++  for(i = 0; i < nkill; i++)
++    if(kills[i].pft_id == pft->par->id && kills[i].treeidx == tree->index)
++    {
++      ext_dead = TRUE;
++      break;
++    }
++  if(c_isdead)
++    n_kill_c++;
++  if(ext_dead)
++  {
++    n_kill_applied++;
++    return TRUE;
++  }
++  if(hard)                      /* the C cannot carry this tree forward alive */
++  {
++    n_forced_dead++;
++    return TRUE;
++  }
++  /* the external demography spares a tree the C was certain of: allowed, but it
++     is the clearest measure of how far the substitution departs from the C */
++  if(c_isdead && tree->mort_prob >= 1.0)
++    n_spared_certain++;
++  return FALSE;
++} /* of 'rung2_apply_isdead' */
++
++int rung2_apply_nrecruit(void)
++{
++  if(!rung2_apply_enabled() || !open_patch)
++    return 0;
++  if(defer_estab)
++    return -1;   /* the caller runs the C's own establishment instead */
++  return nrecruit;
++} /* of 'rung2_apply_nrecruit' */
++
++Bool rung2_apply_recruit(int i, int *pft_id, Real *sla, Real *wooddens,
++                         Real *D95max, Real *minwscal)
++{
++  if(!rung2_apply_enabled() || !open_patch || i < 0 || i >= nrecruit)
++    return FALSE;
++  *pft_id = recruits[i].pft_id;
++  *sla = recruits[i].sla;
++  *wooddens = recruits[i].wooddens;
++  *D95max = recruits[i].D95max;
++  *minwscal = recruits[i].minwscal;
++  return TRUE;
++} /* of 'rung2_apply_recruit' */
++
++/* NB: do NOT name a local `v` in this tree — include/discharge.h does
++   `#define v 86400.0`, so the compiler sees a numeric literal. */
++static Real clamp_trait(Real val, Real lo, Real hi, int *counter)
++{
++  if(lo > hi)                   /* no interval given */
++    return val;
++  if(val < lo)
++  {
++    (*counter)++;
++    return lo;
++  }
++  if(val > hi)
++  {
++    (*counter)++;
++    return hi;
++  }
++  return val;
++} /* of 'clamp_trait' */
++
++void rung2_apply_set_traits(Pft *pft, Real sla, Real wooddens, Real D95max,
++                            Real minwscal)
++{
++  Pfttree *tree;
++  const Pfttreepar *treepar;
++  if(!rung2_apply_enabled())
++    return;
++  tree = pft->data;
++  treepar = pft->par->data;
++  pft->sla = clamp_trait(sla, pft->par->sla.low, pft->par->sla.high, &n_clamped);
++  pft->minwscal = clamp_trait(minwscal, pft->par->minwscal.low,
++                              pft->par->minwscal.high, &n_clamped);
++  tree->wooddens = clamp_trait(wooddens, treepar->wooddens.low,
++                               treepar->wooddens.high, &n_clamped);
++  tree->D95max = clamp_trait(D95max, treepar->D95max.low, treepar->D95max.high,
++                             &n_clamped);
++  /* what new_tree.c derives from the two traits we just replaced */
++  pft->beta_root = getbetaroot(layerbound[BOTTOMLAYER - 1] * 0.1, tree->D95max);
++  pft->longevity = corr_corridor(pft->sla, pft->par->longevity.interc,
++                                 pft->par->longevity.slope,
++                                 pft->par->longevity.sigma,
++                                 pft->patch->stand->cell->seed);
++} /* of 'rung2_apply_set_traits' */
++
++void rung2_apply_end_patch(void)
++{
++  if(!rung2_apply_enabled() || !open_patch)
++    return;
++  fprintf(audit, "A %d %d %d %d %d %d %d %d %d %d %d\n", cur_year, cur_patch,
++          n_pre, n_kill_c, n_kill_applied, n_forced_dead, n_spared_certain,
++          defer_estab ? -1 : nrecruit, n_clamped,
++          defer_mort ? 0 : 1, defer_estab ? 0 : 1);
++  fflush(audit);
++  open_patch = FALSE;
++} /* of 'rung2_apply_end_patch' */
+diff --git a/src/lpj/rung2_hook.c b/src/lpj/rung2_hook.c
+new file mode 100644
+index 0000000..9238402
+--- /dev/null
++++ b/src/lpj/rung2_hook.c
+@@ -0,0 +1,185 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**                r  u  n  g  2  _  h  o  o  k  .  c                              \n**/
++/**                                                                                \n**/
++/**     Opt-in demography observation hook — see include/rung2hook.h.              \n**/
++/**                                                                                \n**/
++/**     Purpose: expose, at the exact point LPJmL-FIT decides who dies and who     \n**/
++/**     establishes, the complete per-tree state and the accumulators the four     \n**/
++/**     death rates read, so an external demography can be scored against — and    \n**/
++/**     later substituted for — the C's own answer.                                \n**/
++/**                                                                                \n**/
++/**     Byte-identity: every entry point returns immediately when the environment  \n**/
++/**     variable LPJ_RUNG2_DIR is unset, and nothing here writes to model state.   \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#include "lpj.h"
++#include "tree.h"
++#include "grass.h"
++#include "rung2hook.h"
++
++#define R2 "%.17g"
++
++static int enabled = -1;   /* -1 = not yet resolved, 0 = off, 1 = on */
++static const char *dir = NULL;
++static FILE *out = NULL;
++
++Bool rung2_enabled(void)
++{
++  if(enabled < 0)
++  {
++    dir = getenv("LPJ_RUNG2_DIR");
++    enabled = (dir != NULL && dir[0] != '\0') ? 1 : 0;
++  }
++  return (enabled == 1) ? TRUE : FALSE;
++} /* of 'rung2_enabled' */
++
++void rung2_write_header(FILE *out)
++{
++  /* Column headers, one per record kind.  Written once per file so a reader
++     never has to carry a hard-coded schema. */
++  fprintf(out,
++          "#H P phase lon lat year patch npatch patcharea fpar_leafon_grass "
++          "treelen ntree_alive aprec "
++          "seed gasdev_iset sb_agb sb_trait sb_year sb_id\n");
++  fprintf(out,
++          "#H T phase lon lat year patch treeidx pft_id age "
++          "sla wooddens D95max minwscal k_root emax beta_root beta_2 leaf_longevity "
++          "height crownarea boleht nind fpc fapar afpar "
++          "leaf_c sapwood_c heartwood_c root_c sapwood_bg_c heartwood_bg_c debt_c "
++          "bm_inc_c anpp agpp atransp wscal_mean water_stress temp_stress "
++          "bm_inc_counter gddtw aphen_raingreen sapwood_old leaf_old "
++          "isdead mort_prob mort_npp mort_age mort_water mort_temp "
++          "bm_delta leafarea_real\n");
++  fprintf(out,
++          "#H G phase lon lat year patch pft_id fpc nind bm_inc_c anpp agpp\n");
++} /* of 'rung2_write_header' */
++
++static FILE *rung2_file(const Config *config)
++{
++  char path[1024];
++  if(out != NULL)
++    return out;
++  snprintf(path, sizeof(path), "%s/roster_rank%04d.txt", dir, config->rank);
++  out = fopen(path, "w");
++  if(out == NULL)
++    fail(OPEN_COUPLER_ERR, FALSE, "rung2: cannot open '%s' for writing", path);
++  rung2_write_header(out);
++  return out;
++} /* of 'rung2_file' */
++
++void rung2_write_patch(FILE *f, const Stand *stand, const Patch *patch, int np,
++                       int year, const char *phase, const Config *config)
++{
++  const Pft *pft;
++  const Pfttree *tree;
++  const Sapling *sap;
++  int p, i, ntree_alive, sb_year, sb_id;
++  Real lon, lat, sb_agb, sb_trait;
++  char seedstr[64], *s;
++  lon = stand->cell->coord.lon;
++  lat = stand->cell->coord.lat;
++
++  ntree_alive = 0;
++  foreachpft(pft, p, &patch->pftlist)
++    if(istree(pft))
++    {
++      tree = pft->data;
++      if(!tree->isdead)
++        ntree_alive++;
++    }
++
++  /* CELL-LEVEL state the per-tree records cannot carry, and the reason this is
++     here: two runs can agree in every dumped tree column and still take a
++     different demographic decision the next year, because the decision also
++     reads (a) the per-cell RAND48 stream, (b) gasdev()'s process-global pair
++     cache, and (c) the rolling top-AGB seedbank cell->treelist, which
++     inheritance draws recruits from (new_tree.c:130) and which is rebuilt
++     yearly.  Only `treelen` was previously dumped, so a seedbank whose LENGTH
++     matched but whose CONTENTS had moved was indistinguishable from agreement.
++     sb_* are order-independent checksums, not the list itself: enough to prove
++     a difference, cheap enough to write every patch-year.
++
++     Deliberately NOT dumped: cell->treelen_old / treelist_old.  Their only
++     writer is getsapling.c:57-58, behind `if(config->isequal)`, and isequalcoord
++     returns TRUE only when every cell in the run shares identical coordinates
++     (and is hardwired FALSE for nall==1) — so the branch is dead in every real
++     run, mergesapling() has no caller anywhere in src/, and the field is
++     uninitialised memory.  Dumping it would ship a third garbage column of
++     exactly the kind ADR 0120 had to withdraw. */
++  s = seedstr;
++  for(i = 0; i < NSEED; i++)
++    s += snprintf(s, sizeof(seedstr) - (size_t)(s - seedstr),
++                  (i == 0) ? "%04x" : ":%04x", (unsigned)stand->cell->seed[i]);
++
++  sb_agb = sb_trait = 0.0;
++  sb_year = sb_id = 0;
++  for(i = 0; i < stand->cell->treelen; i++)
++  {
++    sap = stand->cell->treelist + i;
++    sb_agb += sap->agb;
++    sb_trait += sap->sla + sap->wooddens + sap->D95max + sap->minwscal
++                + sap->emax + sap->k_root + sap->beta_root + sap->beta_2
++                + sap->fpc;
++    sb_year += sap->year;
++    sb_id += sap->id;
++  }
++
++  fprintf(f, "P %s " R2 " " R2 " %d %d %d " R2 " " R2 " %d %d " R2 " "
++             "%s %d " R2 " " R2 " %d %d\n",
++          phase, lon, lat, year, np, stand->npatch, param.patcharea,
++          patch->fpar_leafon_grass, stand->cell->treelen, ntree_alive,
++          stand->cell->balance.aprec,
++          seedstr, gasdev_iset(),
++          sb_agb, sb_trait, sb_year, sb_id);
++
++  foreachpft(pft, p, &patch->pftlist)
++  {
++    if(istree(pft))
++    {
++      tree = pft->data;
++      fprintf(f,
++              "T %s " R2 " " R2 " %d %d %d %d %d "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 " " R2 " " R2 " " R2 " " R2 " %d "
++              "%d " R2 " " R2 " " R2 " " R2 " "
++              "%d " R2 " " R2 " " R2 " " R2 " " R2 " "
++              R2 " " R2 "\n",
++              phase, lon, lat, year, np, tree->index, pft->par->id, tree->age,
++              pft->sla, tree->wooddens, tree->D95max, pft->minwscal,
++              tree->k_root, pft->emax, pft->beta_root, pft->beta_2,
++              pft->longevity,
++              tree->height, tree->crownarea, tree->boleht, pft->nind, pft->fpc,
++              pft->fapar, pft->afpar,
++              tree->ind.leaf.carbon, tree->ind.sapwood.carbon,
++              tree->ind.heartwood.carbon, tree->ind.root.carbon,
++              tree->ind.sapwood_bg.carbon, tree->ind.heartwood_bg.carbon,
++              tree->ind.debt.carbon,
++              pft->bm_inc.carbon, pft->anpp, pft->agpp, pft->atransp,
++              pft->wscal_mean, tree->water_stress, tree->temp_stress,
++              tree->bm_inc_counter, tree->gddtw, tree->aphen_raingreen,
++              tree->sapwood_old, tree->leaf_old,
++              (int)tree->isdead, tree->mort_prob, tree->mort_npp,
++              tree->mort_age, tree->mort_water, tree->mort_temp,
++              tree->bm_delta, tree->leafarea_real);
++    }
++    else
++      fprintf(f, "G %s " R2 " " R2 " %d %d %d " R2 " " R2 " " R2 " " R2 " " R2 "\n",
++              phase, lon, lat, year, np, pft->par->id, pft->fpc, pft->nind,
++              pft->bm_inc.carbon, pft->anpp, pft->agpp);
++  }
++} /* of 'rung2_write_patch' */
++
++void rung2_dump_patch(const Stand *stand, const Patch *patch, int np, int year,
++                      const char *phase, const Config *config)
++{
++  FILE *f;
++  if(!rung2_enabled())
++    return;
++  f = rung2_file(config);
++  rung2_write_patch(f, stand, patch, np, year, phase, config);
++  fflush(f);
++} /* of 'rung2_dump_patch' */
+diff --git a/src/numeric/gasdev.c b/src/numeric/gasdev.c
+index 7469912..1310f4b 100644
+--- a/src/numeric/gasdev.c
++++ b/src/numeric/gasdev.c
+@@ -19,10 +19,25 @@
+ #include "numeric.h"
+ #include <math.h>
+ 
++/* Hoisted out of gasdev() unchanged (same initialisers, same file-local
++   linkage) so the opt-in rung-2 demography hook can READ the pair-cache parity;
++   see gasdev_iset() below.  No behavioural difference: a function-scope static
++   and a file-scope static have identical lifetime and initialisation. */
++static int iset=0;
++static Real gset;
++
++/* Read-only accessor for gasdev()'s spare-deviate cache parity, for the opt-in
++   rung-2 demography hook (include/rung2hook.h).  The cache is process-global
++   state invisible to every model-state record, so a diagnostic asking "same
++   state, different random answer?" cannot be answered without it.  Pure
++   getter — changes no behaviour, and nothing in LPJmL calls it. */
++int gasdev_iset(void)
++{
++  return iset;
++} /* of 'gasdev_iset' */
++
+ Real gasdev(Seed seed)
+ {
+-  static int iset=0;
+-  static Real gset;
+   Real fac,r,v1,v2;
+   
+   if  (iset == 0) 
+diff --git a/src/tree/annual_tree.c b/src/tree/annual_tree.c
+index 8a30af1..b9fca05 100644
+--- a/src/tree/annual_tree.c
++++ b/src/tree/annual_tree.c
+@@ -14,6 +14,7 @@
+ 
+ #include "lpj.h"
+ #include "tree.h"
++#include "rung2apply.h"
+ 
+ Bool annual_tree(Patch *patch,       /**< pointer to patch */
+                  Pft *pft,           /**< pointer to PFT */
+@@ -25,13 +26,14 @@ Bool annual_tree(Patch *patch,       /**< pointer to patch */
+ {
+   Pfttree *tree;
+   Stocks turnover_ind;
+-  Bool isdead;
++  Bool isdead,hard;
+   turnover_ind=turnover_tree(&patch->soil.litter,pft,config);
+   isdead=allocation_tree(&patch->soil.litter,pft,fpc_inc,config);
++  hard=isdead;   /* rung-2: allocation kill = negative pools, not a demographic choice */
+   if(config->individual)
+   {
+       if(year==config->cut_year)
+-        isdead=TRUE;
++        isdead=hard=TRUE;
+       else if(mortality_tree_ind(pft,turnover_ind.carbon,
+                                  patch->stand->cell->climbuf.temp_max,isdaily))
+        isdead=TRUE;
+@@ -41,7 +43,16 @@ Bool annual_tree(Patch *patch,       /**< pointer to patch */
+                           patch->stand->cell->climbuf.temp_max,isdaily,config);
+   if (!(pft->patch->stand->prescribe_landcover==LANDCOVERFPC && pft->patch->stand->type->landusetype==NATURAL) &&
+       !isdead)  /* still not dead? */
++  {
+       isdead=!survive(pft->par,&patch->stand->cell->climbuf);
++      if(isdead)
++        hard=TRUE;   /* rung-2: bioclimatic limits, not a demographic choice */
++  }
++  /* rung-2 substitution: the external demography owns WHO DIES, except where
++     the C's own state cannot carry the tree forward alive (`hard`, plus
++     exhausted/negative pools).  No-op unless LPJ_RUNG2_APPLY_DIR is set. */
++  if(rung2_apply_enabled())
++    isdead=rung2_apply_isdead(pft,isdead,hard || isneg_tree(pft));
+   tree=pft->data;
+   tree->age++;
+   tree->isdead=isdead;
+diff --git a/src/tree/mortality_tree_ind.c b/src/tree/mortality_tree_ind.c
+index a4705e7..b178d02 100644
+--- a/src/tree/mortality_tree_ind.c
++++ b/src/tree/mortality_tree_ind.c
+@@ -80,6 +80,13 @@ Bool mortality_tree_ind(Pft *pft,          /**< Pointer to pft
+     tree->bm_inc_counter = 0;
+   }
+ 
++  /* rung-2 demography interface (line M, ADR 0122): publish the two inputs of mort_npp.
++     These are locals here and are the ONLY part of the hazard the interface's rendezvous
++     (annual_natural.c, the `pre` phase) cannot see, because both are post-allocation and
++     turnover_ind is not reconstructable from the dumped pools.  Write-only for LPJmL. */
++  tree->bm_delta=bm_delta;
++  tree->leafarea_real=leafarea_real;
++
+   /* for biomass trees */
+   if (pft->par->cultivation_type==BIOMASS)
+     mort_max=0.005;
