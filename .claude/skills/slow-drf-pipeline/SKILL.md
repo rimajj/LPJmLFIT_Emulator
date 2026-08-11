@@ -1423,3 +1423,52 @@ And the interpretation rule that came out of it: **a bounded, saturating drift c
 it is the size of the signal and depends on lead — which it does whenever the two scenarios' chains have
 different lengths. Check `sd(pred)/sd(truth)` before blaming the predictor's output form: at 0.90 after 80 years
 the distribution is intact and a variance-preserving predictor fixes nothing.
+
+### Diagnosing WHY a recursed arm loses the response — resolve the drift by the variable you are differencing (ADR 0115)
+
+Trap 1 above says *score a control on the identical rows*; the script now does that per band, and the answer is
+that the control is **flat** (temperate 1.07 → 0.95, GLOBAL +0.90 → +0.83 as the horizon goes 1 → 80) while the
+arm decays under it. So the decay is real. The follow-up question — *why* — has a cheap, decisive answer that
+took two panels and no refit, and the shape of it generalises:
+
+**A drift only costs you a response if it does NOT cancel in the difference you are scoring.** The headline
+statistic here is a *difference between two scenarios*, so bias `b(lead)` that is identical in both is free. So
+resolve the arm's bias **by scenario at exactly lead s**, and print the control's on the same rows:
+
+| lead | 1 | 5 | 12 | 18 |
+|---|---|---|---|---|
+| A1 bias, historic | −0.014 | −0.070 | −0.009 | +0.024 |
+| A1 bias, ssp370 | −0.013 | +0.001 | +0.080 | **+0.150** |
+| difference (the part that does NOT cancel) | +0.002 | +0.071 | +0.089 | **+0.126** |
+
+against LPJmL-FIT's own global count response of **≈ −0.14 stems/patch** — i.e. the recursion manufactures 90 %
+of the signal with the wrong sign. **That number, not the total drift, is the thing to fix.**
+
+The companion panel is **matched lead depth**: build each cell's two scenario means lead by lead, keeping only
+the leads present in BOTH scenarios with equal weight, so a lead-dependent drift cancels by construction. If the
+inversion survives (it does: GLOBAL −1.52 vs a control's +0.52), the unequal chain lengths were not the cause.
+⚠ It saturates at the SHORTER scenario's chain length (19 yr here), so k = 20/40/80 return identical rows — say
+so rather than printing three copies as if they were three horizons.
+
+### Before changing what a model PREDICTS to fix a recursion, ask what bounds it today (ADR 0115)
+
+The natural fix for "a self-fed level predictor drifts" is to predict the year-on-year **ratio** instead, so the
+level cancels in the target. Measured, it is worse on every axis: one-step R² 0.9742 vs 0.9824, and recursed
+**R² 0.678 vs 0.918**, drift **+0.408 vs +0.155** stems/patch at lead 20, RMSE **3.86 vs 1.72** at lead 80,
+aggregate response **−1.099 vs −0.226**, and a top prediction of **799.5 stems in a patch whose observed maximum
+anywhere is 42**. The reason is structural and worth carrying to any AR-target proposal: **a forest that predicts
+the level has leaf values inside the training range, so a self-fed level prediction cannot leave it — the level
+target IS the anchor.** A multiplier has no such bound and 80 slightly-biased ones compound. Recursing a ratio
+therefore needs its own clamp, which is the anchor you just deleted.
+
+Build the pair (`OUT_R0` teacher-forced, `OUT_R1` recursed) in one script and gate on
+`max |R1 − R0| = 0` over the first-year rows — the two paths must agree where the recursion is handed the
+truth, so it is a free end-to-end check on the marching loop, and it caught nothing only because it passed.
+
+### The quiet units trap: a ratio-only diagnostic hides a wrong scale indefinitely (ADR 0115 §5)
+
+`rung1_response_decay.py` divided `n_living` — already a per-patch stem count, mean 8.28 — by the ensemble size
+a *second* time. Every ratio it produced was right (the factor cancels top and bottom), which is exactly why it
+survived a full ADR: the only wrong numbers were the level panels, 25× too small for the "stems/patch" label
+they carried, and nothing in a ratio-based review looks at those. **When a script prints both ratios and levels,
+check the level against a known mean before quoting it** — here, against `mean(y) = 8.28`.

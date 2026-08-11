@@ -1597,3 +1597,49 @@ yardstick's basis. Every sign and ordering agrees, the magnitudes differ up to 2
 be quoted against the yardstick's number. And the control column is undetermined at k = 5–20 and its per-band
 values are not printed at all, so the per-band decay curve is arm-only — the contrast the control actually
 establishes is k ≤ 3 versus k ≥ 40. Fixing that print is item 4 of the decision.
+
+## 2026-08-11 — the drift is scenario-asymmetric; the ratio target is refuted; matched depth refutes the chain-length story (ADR 0115)
+
+Ran both experiments ADR 0114 pre-registered, plus the print it left open. Four jobs, about ten minutes of
+compute, all on artefacts already on disk: 1753653 (the ratio arms), 1753655 (five arms through one yardstick
+process), 1753666/1753667 (the extended decay diagnostic on A1 and R1).
+
+The ratio target went in as the more promising of the two. The idea is clean — if the drift comes from
+predicting a level from a lagged level, cancel the level in the target and recurse `n̂_t = r̂_t · n̂_{t-1}`. I
+built it as two arms so the target change separates from the recursion, with the free gate that R1 must equal
+R0 exactly on the first-year rows, where the recursion is handed the truth. The gate passed at exactly zero
+over 2 669 860 rows. Everything else failed: one-step R² 0.9742 against the production 0.9824, recursed 0.678
+against A1's 0.918, drift 0.408 against 0.155 stems/patch at lead 20, aggregate response −1.099 against
+−0.226, and a top prediction of 799.5 stems in a patch whose observed maximum anywhere in the table is 42.
+Nothing was clamped, deliberately, because a clamp would have hidden precisely the failure the arm existed to
+find. The explanation is the useful part: a forest that predicts the level has leaf values inside the training
+range, so a self-fed level prediction cannot leave `[1, 42]` — the level target was quietly doing the job of
+the anchor ADR 0102/0103 went looking for, and the ratio target deletes it. That is worth remembering as a
+general rule about autoregressive reformulations.
+
+The matched-lead-depth arm was supposed to be the bookkeeping control and turned into a correction. ADR 0114
+§2 had attributed the scenario-dependent drift to the ssp370 chains running 80 years against the historic 19.
+Building each cell's two scenario means lead by lead over only the leads present in both, with equal weight,
+removes that difference by construction — and the inversion survives: −1.52 globally, against a one-step
+control's +0.52 on identical rows. So the explanation that felt structural was wrong, and I would not have
+known without building the arm in which the bookkeeping difference is gone.
+
+What replaced it is better than either hypothesis. Resolving the arm's bias by scenario at a fixed lead shows
+the drift is not symmetric: in the historic chains it dips to −0.070 and comes back to +0.024 by lead 18,
+while in ssp370 it climbs monotonically to +0.150. The part that does not cancel reaches +0.126 against a
+one-step control's +0.051 on the same rows. LPJmL-FIT's own global count response is about −0.14 stems/patch,
+so at lead 18 the recursion is manufacturing ninety per cent of the true signal's magnitude with the opposite
+sign. The failure is not that the self-fed count is inaccurate — its level bias stays under two per cent and
+it keeps ninety per cent of its spread — it is that its error depends on the climate it is run under, which is
+exactly the difference the acceptance criterion is about. That reframing is what the next experiment should
+target: which conditioning feature carries the scenario signal into the error.
+
+Two smaller things. The control's per-band columns are now printed at every horizon, which closes ADR 0114
+§5.4 and confirms its per-band decay curve — the control is flat (temperate 1.07 → 0.95, global +0.90 → +0.83)
+while the arm decays under it, so the curve is the recursion's and not the row subset's; and at lead 1 the arm
+and the control agree band for band, which independently confirms the arm scripts' refit reproduces the
+production forest. And I found that the decay script divided the already-per-patch stem count by the ensemble
+size a second time. Every ratio it has ever produced is unaffected because the factor cancels top and bottom,
+which is exactly why it survived a whole ADR unnoticed; only the level panels carried a label 25× too large. I
+fixed the script and flagged ADR 0114's mean row as being on the old scaling rather than silently re-scaling
+an immutable record.

@@ -936,3 +936,27 @@ evidence they are the same quantity — it is the reason the bug survives to the
 Correcting this one moved the persistence null from "0.536 vs the model's 0.691" to "**0.685 vs 0.707**" — i.e.
 the null matches the production model on the aggregate response too, so the finding got sharper, not softer.
 Re-read what the corrected number does to the conclusion; do not assume a correction only ever costs you.
+
+## A DRIFT ONLY MATTERS IF IT DOES NOT CANCEL — RESOLVE IT BY THE VARIABLE YOU ARE DIFFERENCING (line S, 2026-08-11, ADR 0115)
+
+When the headline statistic is a **difference** (two scenarios, two treatments, before/after), a bias that is the
+same on both sides costs nothing. So the useful question about a drifting recursion is never "how big is the
+drift?" but "**how much of it fails to cancel?**" — and the two have completely different sizes here: the count
+recursion's total drift saturates at a harmless < 2 % of the mean, while the part that differs between the two
+climate scenarios reaches **90 % of the reference model's entire warming response, with the opposite sign**.
+Resolving the bias by scenario at fixed lead was two lines of extra grouping and it converted "the response
+inverts, we don't know why" into a quantified mechanism.
+
+The corollary is a warning about explanations that feel structural: the previous ADR had attributed the
+asymmetry to the two scenarios' chains having different lengths (19 vs 80 years). That is a real difference and a
+plausible mechanism — and it was **wrong**. The test is a **matched-depth** re-score (keep only the lead values
+present on both sides, weight them equally, so the lead mix is identical by construction). The inversion
+survived it. **Before accepting a bookkeeping explanation for a scientific result, build the arm in which the
+bookkeeping difference is removed** — it is usually cheap, and here it saved the next experiment from being
+aimed at the wrong thing.
+
+**And check what currently bounds the quantity before you change its form.** "Predict the increment/ratio so the
+level cancels" is the standard fix for a drifting autoregressive model; measured, it made every statistic worse,
+because a forest predicting a LEVEL has leaf values inside the training range and therefore cannot run away —
+the level target was silently doing the job of the anchor an earlier ADR had gone looking for. Ask what keeps
+today's predictor in range, and assume any reformulation deletes it.
