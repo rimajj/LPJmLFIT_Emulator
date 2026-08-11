@@ -56,7 +56,7 @@ REQ_RE = re.compile(r"req_r(\d+)_y(\d+)_p(\d+)\.ready$")
 
 
 def parse_dump(path: str):
-    """Read a roster dump into {(year, patch): {"pre": [...], "post": [...]}}.
+    """Read a roster dump into {(year, patch): {phase: [...]}} for all three phases.
 
     The dump is self-describing: the '#H T ...' line carries the column names, so
     nothing here hard-codes the 49-field schema.
@@ -77,25 +77,45 @@ def parse_dump(path: str):
                 sys.exit(f"FATAL: {path}: T record has {len(f)} fields, header says {len(cols)}")
             rec = dict(zip(cols, f))
             key = (int(rec["year"]), int(rec["patch"]))
-            out.setdefault(key, {"pre": [], "post": []})[rec["phase"]].append(rec)
+            out.setdefault(key, {"pre": [], "mort": [], "post": []})[rec["phase"]].append(rec)
     return out
 
 
 def derive_decisions(dump: dict):
-    """Kill set and recruit set per patch-year, from the C's own `post` roster.
+    """Kill set and recruit set per patch-year, from the C's own rosters.
 
-    Dead trees are deleted at the end of iterateyear (after outputs), so a `post`
-    row with isdead==1 is a death of THAT year; a `post` row with age==0 is a
-    recruit of that year (annual_tree increments age for everything that was
-    already there).
+    Dead trees are deleted at the end of iterateyear (after outputs), so a row
+    with isdead==1 is a death of THAT year; a `post` row with age==0 is a recruit
+    of that year (annual_tree increments age for everything that was already
+    there).
+
+    KILLS COME FROM THE `mort` PHASE, NOT `post` — this is load-bearing (ADR 0120
+    §5's open question, resolved).  The interface owns the demographic hazards
+    (mortality_tree_ind, the allocation kill, the bioclimatic !survive), all of
+    which are settled by the time `mort` is dumped.  FIRE runs after that and is
+    a disturbance the C keeps, but it also sets isdead, so a kill set read off
+    `post` silently contains fire's victims.  Replaying those as demographic
+    kills is wrong twice over: the interface claims a death it does not own, and
+    because fire_tree_ind() draws erand48 ONLY for trees that are not already
+    dead (short-circuit &&), pre-killing fire's victim changes how many draws
+    fire consumes and moves the whole per-cell random stream.  Measured on the
+    `post` basis: the first patch-year with kills (2002, patch 2) diverged from a
+    provably identical state, and the arm ended 1.37x denser at 20 years.
     """
     decisions = {}
     for key, phases in sorted(dump.items()):
-        pre, post = phases["pre"], phases["post"]
+        pre, mort, post = phases["pre"], phases["mort"], phases["post"]
+        if not mort:
+            sys.exit(
+                f"FATAL: year {key[0]} patch {key[1]}: no `mort` phase in the dump. "
+                "This dump predates the pre-fire phase; re-record it with the current "
+                "binary (MODE=record bash scripts/run_rung2_replay_arm.sh)."
+            )
         kills, recruits = [], []
-        for r in post:
+        for r in mort:
             if int(r["isdead"]):
                 kills.append((int(r["pft_id"]), int(r["treeidx"])))
+        for r in post:
             if int(r["age"]) == 0:
                 recruits.append(
                     (
@@ -115,6 +135,13 @@ def derive_decisions(dump: dict):
             sys.exit(
                 f"FATAL: year {key[0]} patch {key[1]}: post-minus-recruits "
                 f"({len(post_keys - rec_keys)}) is not the pre roster ({len(pre_keys)})"
+            )
+        # every kill must name a tree of the pre roster, or the phase pairing is wrong
+        stray = set(kills) - pre_keys
+        if stray:
+            sys.exit(
+                f"FATAL: year {key[0]} patch {key[1]}: {len(stray)} `mort`-phase kill(s) "
+                "name trees absent from the pre roster"
             )
         decisions[key] = {"kills": kills, "recruits": recruits, "n_pre": len(pre_keys)}
     return decisions

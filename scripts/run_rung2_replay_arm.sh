@@ -9,9 +9,16 @@
 #   MODE=kills     the recorded kill set is applied; establishment stays with the C
 #   MODE=recruits  the recorded recruit set is applied; mortality stays with the C
 #   MODE=both      both halves substituted
+#   MODE=none      rendezvous active, both halves deferred — the NULL CONTROL, run it first
+#   MODE=record    no substitution at all: just re-record the baseline roster dump
+#
+# MODE=record exists because the recorded dump is the reference basis every replay arm is
+# scored against, so a REBUILD invalidates it: a dump made by the previous binary lacks any
+# column the rebuild added, and comparing across the two then silently compares different
+# schemas.  After any rebuild of the hook, re-record before re-running an arm.
 #
 # Env knobs (all optional except where noted):
-#   MODE      kills | recruits | both            (default: both)
+#   MODE      kills | recruits | both | none | record   (default: both)
 #   DUMP      LPJ_RUNG2_DIR of the RECORDED run  (default: the Hainich 42490 dump)
 #   SRC       run dir whose lpjml.js is reused   (default: the same run's)
 #   TAG       run tag                            (default: M_rung2replay_$MODE)
@@ -28,10 +35,11 @@ TAG="${TAG:-M_rung2replay_${MODE}}"
 SUBMIT="${SUBMIT:-yes}"
 
 case "$MODE" in
-  kills|recruits|both|none) ;;
-  *) echo "MODE must be kills, recruits, both or none (got '$MODE')" >&2; exit 2 ;;
+  kills|recruits|both|none|record) ;;
+  *) echo "MODE must be kills, recruits, both, none or record (got '$MODE')" >&2; exit 2 ;;
 esac
-[ -d "$DUMP" ] || { echo "no recorded dump at $DUMP" >&2; exit 2; }
+# record produces the reference dump, so it is the one mode that must not require one.
+[ "$MODE" = record ] || [ -d "$DUMP" ] || { echo "no recorded dump at $DUMP" >&2; exit 2; }
 [ -f "$SRC/scripts_for_running_the_model/lpjml.js" ] || { echo "no lpjml.js under $SRC" >&2; exit 2; }
 
 DST="/p/tmp/jamirp/esm_land_daily/daily_2000_2019_historic_${TAG}_c42490_seed1"
@@ -62,9 +70,24 @@ export LPJROOT=/home/jamirp/lpjml56fit
 export LPJOUTPATH=$DST
 export LPJRESTARTPATH=$DST
 export LPJ_RUNG2_DIR=$NEWDUMP
+ulimit -c unlimited
+JCF
+
+if [ "$MODE" = record ]; then
+  # Observation hook only: no rendezvous, no harness.  This is the baseline the
+  # arms are scored against, so it must exercise nothing the arms add.
+  cat >> "$DST/scripts_for_running_the_model/slurm.jcf" <<JCF
+
+mpirun /home/jamirp/lpjml56fit/bin/lpjml -DFROM_RESTART $DST/scripts_for_running_the_model/lpjml.js
+RC=\$?
+echo "=== lpjml rc=\$RC  mode=record  dump=$NEWDUMP ==="
+exit \$RC
+JCF
+  rmdir "$APPLY" 2>/dev/null || true
+else
+  cat >> "$DST/scripts_for_running_the_model/slurm.jcf" <<JCF
 export LPJ_RUNG2_APPLY_DIR=$APPLY
 export LPJ_RUNG2_APPLY_TIMEOUT=300
-ulimit -c unlimited
 
 python3 $REPO/scripts/rung2_replay_harness.py --mode $MODE \\
     --dump $DUMP --apply-dir $APPLY --max-idle 300 > $DST/harness.out 2>&1 &
@@ -79,6 +102,7 @@ wait \$HPID 2>/dev/null || true
 echo "=== lpjml rc=\$RC  mode=$MODE ==="
 exit \$RC
 JCF
+fi
 
 echo "mode=$MODE  run=$DST"
 echo "  recorded dump : $DUMP"

@@ -777,3 +777,50 @@ the end-2001 state is identical in every dumped column. Gate C excludes the rend
 suspect is the top-AGB seedbank (`cell->treelist`), which is in no roster record. The decisive
 experiment — put the cell RAND48 seed and `treelen` in the `P` record and re-run — is written into the
 handoff rather than attempted at the end of a session.
+
+---
+
+## Session 7 — 2026-08-11 — the open question answered, and it was the experiment that was wrong (ADR 0121)
+
+Ran the experiment the previous handoff wrote down: put the per-cell RAND48 seed, the seedbank contents
+and — added on the way, because it is process-global state nothing else could see — the parity of
+`gasdev()`'s spare-deviate cache into the `P` record, then re-run `MODE=kills`.
+
+It answered **neither** of the two branches the handoff offered. At the divergence onset (2002, patch 2)
+the `pre` phase is identical in *every* channel — stream position, seedbank checksums, cache parity, and
+the 25-tree roster — and the `post` phase of that same patch-year differs in the stream and has one fewer
+tree alive. So the divergence is *created inside* the patch-year: not an inherited stream offset, not a
+seedbank that had drifted. The C's own audit pinned it further: the hazards wanted 2 deaths, the recorded
+kill list held 3, and nothing was force-killed. From provably identical state the C cannot draw
+differently, so the third entry was never a death the hazards made.
+
+It was fire. `isdead` has more than one author, and `fire_tree_ind` sets it *after* the hook point, so the
+kill set — derived as "any `post` row with `isdead == 1`" — silently contained fire's victims. Replaying
+those is wrong twice: it claims a death the narrow interface does not own, and it moves the random stream,
+because fire draws `erand48` **only for trees that are not already dead**, so pre-killing its victim
+changes how many draws it consumes and fire then kills someone else. One short-circuited `&&` explains
+both symptoms.
+
+Fix: a third dump phase, `mort`, after the hazards and before fire; kills are read there. The `kills` arm
+then reproduces the recorded run **exactly** — 1.000 at 2019, 376 vs 376 stems, no differing year, and
+identical in every cell-state column across all 1 500 patch-year records. The 1.37× was entirely this
+defect. `recruits` is unchanged at 0.907 (its kill list is unused); `both` is 1.367, and that number is
+now fully attributable to the recruit half, because the kills half contributes nothing.
+
+The lesson worth keeping is about the control, not the fire: **`MODE=none` defers both halves, so it never
+serves the kill list.** A green null control proved the transport was inert and said nothing about whether
+the payload was specified correctly — and it was quoted as gate C, the thing "that makes D readable". It
+did make D readable; D was just measuring the wrong kill list.
+
+Two things found on the way that were not being looked for:
+
+- `cell->treelen_old` / `treelist_old` are **uninitialised in every real run** — sole writer behind
+  `if(config->isequal)`, and `isequalcoord` is TRUE only when every cell shares identical coordinates
+  (hardwired FALSE for one cell), so the branch is dead and `mergesapling()` has no caller anywhere in
+  `src/`. It was dumped in the first iteration and read 29 458 000 against a `treelen` of 19 650, which is
+  what prompted the check. Removed rather than documented — a third garbage column is exactly what ADR
+  0120 had to withdraw.
+- The report's own sort put `post` before `pre` alphabetically, i.e. chronologically backwards, which
+  would have mislocated the onset phase. Caught by the numbers not making sense, not by a test.
+
+Three rebuilds, each gated: 139 decoded quantities + `globalflux` identical, 0 differ, every time.
