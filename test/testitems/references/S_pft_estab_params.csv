@@ -1,0 +1,27 @@
+# S_pft_estab_params.csv — THE ONE per-PFT establishment-parameter table for the ported
+# LPJmL-FIT recruit rule (ADR 0119). GENERATED — do not hand-edit.
+#   regenerate: python3 scripts/build_estab_params_reference.py
+#   verify:     CHECK=1 python3 scripts/build_estab_params_reference.py
+# Source of record: $LPJROOT/par/pft_lpjmlfit.js + par/lpjparam_fit.js, expanded with the same
+# `cpp -P` LPJmL itself pipes them through (src/lpj/openconfig.c:28,467). `pft_id` IS the `ind`
+# output's `Type` column (0-based pftpar index; ids 0-6 are the complete tree set, ADR 0031).
+# The four trait intervals are what BOTH establishment channels draw on: uniformly in the
+# background channel (new_tree.c:196-203), and as the clamp/redraw bounds of the inheritance
+# diffusion `new = old*(1 + inherit_corridor*s)` (new_tree.c:38-61, s a +-5-clamped normal).
+# `temp_low`/`temp_high` are the ESTABLISHMENT gate "temp" read on the 20-yr running mean of
+# the year's coldest monthly mean (establish.c:29-33) — NOT "temp_stressed" (that is the
+# mortality table's column, S_pft_mortality_params.csv). Note temp_high = 0 for the boreal
+# ids 4/5/6 and 1000 (unbounded) for 0-3, and that establish() ALSO requires the 20-yr mean
+# warmest month above 10 C for any tree.
+# The trailing six columns are run GLOBALS from par/lpjparam_fit.js, repeated on every row so
+# neither consumer can drift on them silently. k_est_inherit / k_est_inherit_bg = 4 exactly,
+# and both channels carry the same alpha_r, which is what makes the inherited share of recruits
+# the closed form 4/(4 + n_elig) (ADR 0045) rather than a fitted number.
+pft_id,name,sla_low,sla_high,wooddens_low,wooddens_high,d95max_low,d95max_high,minwscal_low,minwscal_high,inherit_corridor,alpha_r,temp_low,temp_high,gdd5min,aprec_min,k_est_inherit,k_est_inherit_bg,param_alpha_r,patcharea,max_age,n_max
+0,tropical broadleaved evergreen tree,0.005,0.07,70000.0,650000.0,51.0,1800.0,0.05,0.75,0.1,2.0,2.5,1000.0,0.0,100.0,0.02,0.005,2.0,225.0,50,7
+1,temperate needleleaved evergreen tree,0.005,0.0187,117000.0,418500.0,51.0,1000.0,0.025,0.2,0.1,2.0,-30.0,1000.0,900.0,100.0,0.02,0.005,2.0,225.0,50,7
+2,temperate broadleaved evergreen tree,0.005,0.0242,145600.0,637000.0,51.0,1000.0,0.025,0.2,0.1,2.0,-15.0,1000.0,1200.0,100.0,0.02,0.005,2.0,225.0,50,7
+3,temperate broadleaved summergreen tree,0.0242,0.0547,147870.0,637000.0,51.0,500.0,0.1,0.15,0.1,2.0,-30.0,1000.0,1200.0,100.0,0.02,0.005,2.0,225.0,50,7
+4,boreal needleleaved evergreen tree,0.005,0.0187,117000.0,418500.0,51.0,500.0,0.05,0.3,0.1,2.0,-80.0,0.0,350.0,100.0,0.02,0.005,2.0,225.0,50,7
+5,boreal broadleaved summergreen tree,0.0242,0.0547,147870.0,418500.0,51.0,500.0,0.1,0.15,0.1,2.0,-80.0,0.0,350.0,100.0,0.02,0.005,2.0,225.0,50,7
+6,boreal needleleaved summergreen tree,0.005,0.07,117000.0,418500.0,51.0,300.0,0.05,0.15,0.1,2.0,-80.0,0.0,350.0,100.0,0.02,0.005,2.0,225.0,50,7

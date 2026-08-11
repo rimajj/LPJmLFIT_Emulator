@@ -131,6 +131,37 @@ where the roster returns from the C each year, is the cleanest place to measure 
 > rung-2 by-product that costs no new model run. It would change the S→M contract (a new artifact version,
 > not a patch) … S owns the retrain; you own whether the dump keeps what it needs.
 
+**4b. ⬆ UPDATE, later the same day (2026-08-11, ADR 0119): the ported rule is BUILT, and its flip criterion
+is an ACTION FOR YOUR HARNESS.** Item 4's corrected fix above is no longer a plan — `src/establishment.jl`
+(`module Establishment`) plus an opt-in
+`FluxDrivenSlowEmulator(...; recruit_establishment = RecruitEstablishment(...))` hook are on `main`, default
+off, byte-identical when unset, and **mutually exclusive with `recruit_copula`** (the constructor errors —
+both set the recruit marginal, from bases differing by ADR 0118's measured +12.18 % on `Wooddens`). Nothing
+is asked of your `pre`/`post` dump; the seedbank is fed by the emulator's own roster.
+
+**What you would run, when rung 2 has a roster.** Two recruit channels under an otherwise identical
+configuration, both with the trait-mortality arm **C1** on (the double count only bites when selection is
+active): **R0** = today's pinned `.rcop` copula · **R1** = the ported rule with the cell's eligible PFT set,
+`set_pft_id = false`. The pass/kill conditions are pre-registered in ADR 0119 §6 — read them there rather
+than re-deriving; the two that will shape your harness are:
+
+* **check the channel mix FIRST** — `establishment_diag(s)` must show `sb_weight > 0` and an inherited
+  fraction within ±0.05 of `4/(4 + n_elig)` in ≥90 % of recruiting years, else the arm measured the uniform
+  background channel only and says nothing about inheritance (an operator that never fired produces a null,
+  not a verdict — the ADR-0048 lesson);
+* **the KILL condition** — if the recruit channel makes the error climate-dependent the way the count
+  recursion did (ADR 0112–0116: level within 2 %, but ~90 % of FIT's global response manufactured with the
+  wrong sign), the flip is REFUSED and that becomes the result.
+
+**One thing S needs from you eventually, raised now rather than at the arm: a PER-PFT CANOPY TEMPLATE
+REGISTRY.** The ported rule draws a recruit's **PFT identity** as well as its traits, but writing that id
+into the roster is currently unsafe — `fc.tmpls` still carries the donor cohort's per-PFT physiology
+(`alphaa`, `emax`, `intc`, albedos, `photo`, `tstress`), and `_commit_membership!` refuses any id absent from
+`fc.pft_slot`. So identity ships behind a second flag (`set_pft_id`, default `false`) and the drawn id is
+recorded in the diagnostics only. You build `fc.tmpls`; a `pft_id -> FDiff.Individual` template map from your
+per-cell provisioning would let the recruit channel carry composition as well as traits. **Not urgent, not a
+blocker for R0-vs-R1** — noted so it is scoped before an arm needs it.
+
 **5. Arm D, if it comes up: it inherits all of the above unchanged**, and separately its motivating number
 should not be relied on yet. ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on per-cell KS" has **no
 committed reproducer** in this repo, and its "two-moment fit, no fitting procedure" wording indicates the

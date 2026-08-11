@@ -43,6 +43,14 @@ using .FDiff
 # run natively (ADR 0021), and it is deliberately hand-rolled rather than the EvoTrees package (ADR 0022).
 include("drf.jl")
 using .DRF
+# ── line S: the PORTED LPJmL-FIT establishment rule (ADR 0119) ───────────────
+# Where a recruit's traits come from, computed from the C's parameter files instead of learned from the C's
+# output (which holds survivors only, so a learned marginal double-counts the mortality operator's
+# selection — ADR 0118 §1). It sits HERE, not in the per-line region at the bottom, because
+# `components/slow.jl` names `Establishment.Seedbank` in a STRUCT FIELD TYPE (`RecruitEstablishment`), so
+# the module must exist when slow.jl is loaded. Depends only on `DRF` (its RNG), hence directly after it.
+include("establishment.jl")
+using .Establishment: Establishment
 # ── Component abstract types + concrete cores ───────────────────────────────
 # NB: `slow.jl` is included AFTER `fast.jl` because the concrete `DemographicSlowEmulator` (P1) applies its
 # demography to an `FDiffFastCore`'s population (ADR 0018 growth-ownership split). fast/energy do not
@@ -281,6 +289,11 @@ export build_fdiff_nn, neural_vm_hook, neural_lambda_hook, fdiff_gpp_loss, train
 # (Phase 3A Stage 2, ADR 0049). The operator itself has no exported entry point: it is reached by
 # constructing a `FluxDrivenSlowEmulator` with `trait_mortality = true`, so the default stays inert.
 export TraitMortDiag, trait_mortality_diag
+# Ported FIT establishment — the opt-in recruit-trait rule computed from the C's parameter files instead of
+# learned from its output (ADR 0119). Reached by constructing a `FluxDrivenSlowEmulator` with
+# `recruit_establishment = RecruitEstablishment(...)`, so the default stays inert; the `Establishment`
+# submodule itself is reached as `LPJmLFITEmulator.Establishment` (like `DRF`/`TraitMortality`).
+export RecruitEstablishment, EstabDiag, establishment_diag
 # ── line M ──
 # ── line E ──
 # ── line O ──

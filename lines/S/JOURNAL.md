@@ -1811,3 +1811,60 @@ Recorded as a correction in `lines/S/STATE.md`, the M inbound (item 4 withdrawn,
 beneath it so the change is visible) and the `slow-drf-pipeline` skill. **ADR 0118 itself was NOT edited** —
 guardrail 1, immutable once accepted. ADR block still has exactly one number left (0119); deliberately not
 spent on this correction.
+
+---
+
+## 2026-08-11 (later) — the ported establishment rule is BUILT, and reading the C corrected three things we thought we knew
+
+The owner's steer from earlier today is implemented rather than planned. ADR 0119 (the last number in line
+S's tier-2 block, spent deliberately on the thing the owner asked for): a `module Establishment` in
+`src/establishment.jl` that computes FIT's recruit marginal from the C's parameter files, plus an opt-in
+`recruit_establishment` hook on the flux-driven emulator, plus a generated per-PFT parameter reference on the
+same one-artifact-two-consumers discipline as the ported mortality hazard.
+
+**Reading the C rather than the summary of it changed three statements, one of which was this line's own.**
+
+1. **The inheritance jitter does NOT reflect at the interval edges.** `new_tree.c:55-59` redraws *uniformly
+   between the parent and the bound that was crossed* — inward, biased toward the parent, with a point mass
+   exactly ON the bound when the parent sits there. ADR 0045 and the `slow-drf-pipeline` skill both said
+   "reflected", and this session's own journal entry above repeats it. A reflection puts mass on the far side
+   of the parent, which is a different stationary shape precisely at the narrow boreal intervals
+   (`minwscal` `[0.05, 0.15]`, id 6 `d95max` `[51, 300]`). Corrected in the skill (in place, with the error
+   named) and pinned by a test that separates the two rules by their point mass — not by their mean, which
+   is nearly the same.
+2. **The seedbank is an accumulation of individual-YEARS, not a set of distinct trees.** `getsapling.c`
+   appends every qualifying tree every year with no de-duplication, so 30 years of dominance is 30 draws.
+   That makes inheritance a stronger selection channel than "sample the current top trees" would be, and it
+   is now what the ported `Seedbank` does.
+3. **`getsapling` runs before the year's mortality**, so a recruit can inherit from a parent that dies later
+   the same year. The hook keeps that order — the seedbank refresh sits at the top of
+   `reconcile_demography!`, ahead of ρ.
+
+Two invariants FIT gets for free had to be enforced explicitly, and finding them was the useful part of
+writing the tests. `draw_new_trait`'s inward redraw keeps a child inside `[low, high]` **only if the parent
+is inside it** — true in FIT by construction, false in the emulator, where a roster rebuilt from the `ind`
+output carries `d95max`/`minwscal` at the ADR-0110 UNSET sentinel 0. Diffusing from 0 would have put every
+inherited rooting depth *below* its own PFT's floor, silently and in range-looking numbers. So an UNSET axis
+now falls back to the uniform channel for that one axis, and a finite out-of-range parent is clamped on
+insertion with a comment saying the clamp is a guard and not physics.
+
+The other thing the tests caught: a `set_pft_id` contrast written the obvious way proves nothing. With the
+channel mix live, the Hainich arm drew beech five times out of five at one seed — because beech dominates
+its own seedbank — so "the drawn id reached the roster" and "the drawn id equals the donor's id" were
+indistinguishable. Made deterministic by switching the inheritance channel off entirely
+(`Seedbank(; n_top = 0)` ⇒ the bank never fills ⇒ background channel only), which also exercises that path
+end to end. Recorded in the skill, because the same trap applies to any channel-mixture arm.
+
+Also learned that the drawn PFT identity cannot simply be written into the roster: `_commit_membership!`
+refuses an id absent from `fc.pft_slot`, and the recruit's canopy template would still carry the donor
+cohort's physiology. So identity ships behind a second flag, default off, with an up-front constructor check
+instead of a mid-run failure — and the per-PFT template registry is named as the line-M integration point.
+
+**No science number is claimed.** The flip criterion is pre-registered in ADR 0119 §6 with an explicit kill
+condition — if the recruit channel makes the error climate-dependent the way the count recursion did
+(ADR 0112–0116), the flip is refused and *that* becomes the result. The arm runs on M's roster harness,
+which is where the criterion is written as an action.
+
+Captured on the way: the fast single-test-item loop (a 10-line shim that runs one `@testitem` file in ~10 s
+instead of the 6-minute suite) is now in the shared `julia-test` skill. It is the difference between four
+iterations and one, and every future test-writing session needs it.
