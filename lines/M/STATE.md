@@ -359,7 +359,100 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-11 (session 9) — THE RENDEZVOUS MOVED BEHIND THE GROWTH LOOP; THE LAG IS
+### 0-NEWEST. ✅ DONE 2026-08-11 (session 10) — **ARM C IS RUN.** SELECTION CARRIES **71 %** OF FIT's
+### WOOD-DENSITY DIFFERENTIAL, THE SHIPPED UNIFORM-THINNING NULL **RESTRUCTURES THE STAND**, AND THE
+### OPTION-(c) INTERFACE REACHES ITS CEILING EXACTLY (ADR 0124)
+
+**Start here. The single pre-registered next step of the previous handoff is DONE.** 16 runs, 14 s each
+(jobs 1759477–1759492, all `rc=0` with the mandatory `lpjml successfully terminated, 1 grid cells processed.`).
+New tooling: **`scripts/rung2_armc_harness.jl`** (the Julia rendezvous server — it calls the *shipped*
+`TraitMortality.mortality_hazard` and `LPJmLFITEmulator._hazard_tilt`, never a copy of either),
+**`scripts/run_rung2_armc.sh`**, **`scripts/diagnose_rung2_armc.py`**. Report:
+`/p/tmp/jamirp/M_rung2/armc_report/{armc_score.txt,armc_gradient.csv}`.
+
+**1. THE INTERFACE IS EXACT, LIVE — and the port holds outside the states it was gated on.** ADR 0122's gate
+ran offline on the recorded trajectory only. Three new results: ρ from the port vs ρ from the C's own
+`mort_prob` **max |Δ| 4.4e-16 over 5 000 patch-years**; **θ = 1 to 4.5e-14 over 2 500**; and the identity gate
+re-run on the *null* arm's dump (a stand the recording never had — **7× the ghost-tree rate**) still gives
+**0 exceedances / max rel Δ 1.7e-15 over 10 600 records**, 105 `bm_inc_counter` + 769 ghost-tree hard kills
+classified. The C's own audit: `n_kill_applied/n_kill_c` **0.980–1.014**, `n_spared_certain` **= 0**.
+⇒ **RULE: an identity gate is only as wide as the state distribution it ran on. Re-run it on every new arm's
+dump — one command.**
+
+**2. THE RESULT** (C truth 365 terminal stems, selection differential **+35 376 gC/m³**; 5 seeds/arm):
+
+| statistic | **C1** (the tilt) | **C0** (`f_i = ρ`, the SHIPPED default) |
+|---|---|---|
+| terminal stems | **383.2 ± 18.7 = 1.050×** | 441.2 ± 21.8 = **1.209×** |
+| wood-density selection differential | **+33 684 ± 2 841 = 0.952×** | +8 541 ± 2 455 = **0.241×** |
+| per-PFT gradient Spearman ρ vs **this cell's own recording**, ids 1–5 | **1.000/1.000/0.943/1.000/1.000** | 0.800/0.500/0.943/0.600/**−0.500 (id 5 BACKWARDS)** |
+
+⇒ **`C1 − C0` = +25 142 = 71.1 % of the differential is differential survival.** ADR 0117's argument for
+option (c) over a count-only interface is now a measurement.
+
+**3. ⚠ THE BIGGEST DEPARTURE IS INVISIBLE TO EVERY COUNT STATISTIC — the age structure.** Terminal stems
+`<20` / `20–40` / `≥40` yr: the C **118/120/127**; **C1 117–147 / 111–145 / 103–126**;
+**C0 336–404 / 25–47 / 26–47** — the null converts a mature stand into a young one (**80 % under 20 yr**) and
+keeps only **10–16 %** of the C's own `≥40` yr individuals *by identity* against C1's **50–63 %**.
+**Report the three bins and the identity overlap with any arm.** (20 yr is exactly the run length, so `<20` is
+what the arm built and `≥40` came from the shared restart — but it is not pure inheritance: C1 has already
+turned over 37–50 % of it, C0 84–90 %.)
+
+**4. ⚠ A COUNT TARGET IS NOT A COUNT.** Both arms get **identical per-patch-year targets in expectation** and
+both draws are unbiased (579 vs 581.6 expected; 1 096 vs 1 105.9) — and still end 1.05× vs 1.21×. The null
+spares trees FIT condemns (**669–817** `n_spared_certain`), their hazard stays high, so next year's ρ falls: it
+kills **twice as many trees in total** and ends **denser**. Who dies feeds back into how many ⇒ **a
+density-only report cannot tell a right answer from two cancelling wrong ones.**
+
+**5. THE COUNT TARGET'S OWN FAILURE MODE** (`RHO=recorded` — a target from outside the live state, the honest
+proxy for a learned ρ): θ is **BIMODAL**, median 0 / p95 12–14, θ > 0.5 in 207–215 of 500. The median of 0 is
+**not** a collapsing tilt — **the C kills nobody in 198 of 500 patch-years (39.6 %)** at this cell (558 deaths
+in 9 951 tree-years), so a realized-count target is 1.0 and selection has nothing to do. In **25–27 % of
+patch-years no θ reaches the target at all** (`shortfall > 0`; the hard kills alone overshoot). `C0/recorded`
+applies only **38–48 %** of the kills the C wanted and ends **1.536×**.
+
+**6. ⚠ A MEASUREMENT RULE, CORRECTED — do not score a per-cell arm against the GLOBAL gradient fixture.**
+`references/S_age_wooddens_gradient.csv` is all 54 020 cells; **the C's own recording at cell 42490 scores
+Spearman ρ −0.500 / −0.314 / +0.400 / −0.500 / +0.800 against it** (ids 2/3/4/5/1). A naive reading of
+ADR 0118 §3 as "match the fixture" **would have failed FIT itself**. Use the cell's own recording per-cell,
+the fixture only globally; `diagnose_rung2_armc.py` prints the C's own row so this is measured, not asserted.
+
+**7. ⚠ WHAT ARM C DOES *NOT* SHOW — read before quoting item 2.** C1's count target came from the operator's
+own hazard, which pins **θ = 1 analytically**, so C1 **is** FIT's mortality with an independent Bernoulli
+stream: a **CEILING** and an end-to-end identity, **not** evidence about any learned count model. And the
+hazard ran on the C's **own** `water_stress`/`temp_stress`/`bm_delta`/`bm_inc_counter` through the rendezvous,
+so **ADR 0049 item 4 still bites in the standalone emulator** and item 2 does **not** license flipping
+`trait_mortality` there. Scope that rides with every number: **one cell of 54 020**, one scenario, **no
+climate-change response measured**, **4 of 7 trait axes** substituted, establishment deferred to the C in both
+arms, and ADR 0123's **0.05 %** deferred-kill disclosure (shared by both arms *by construction*).
+
+**8. RAISED TO LINE S** — an INBOUND block in `lines/S/STATE.md` carries items 1–6 plus the **pre-registered
+conditional flip criterion** for `trait_mortality` (guardrail 4's corollary): arm = the coupled
+`FluxDrivenSlowEmulator` at 42490, 25 patches, 2000–2019, 5 seeds, default `false` → `true`; pass = the
+three-bin age structure of item 3 within the C's seed spread on all three bins AND gradient ρ ≥ 0.9 on ids 1–5
+against *this cell's recording*; blocked by ADR 0049 item 4, which only S can close.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **RUNG 3 — F's decadal canopy drift. This is now the head of the queue** (item 0-NEW below, item 4(d)
+   further down). Rung 2's mortality half is finished: the interface is exact (item 1), its ceiling is
+   measured (item 2), and its remaining gap is line S's to close (item 8). Nothing on rung 2 is owed by M.
+2. **Optional, cheap, and it would strengthen ADR 0124 from one cell to five:** the arm-C harness is
+   cell-agnostic — `run_rung2_armc.sh` takes `SRC`/`DUMP`, so a second biome needs only a `MODE=record`
+   baseline at that cell (`scripts/run_rung2_replay_arm.sh`) and then 2 arms × 5 seeds at 14 s each. The
+   *only* claim it would upgrade is generality; it changes no mechanism above. Do it if rung 3 stalls, not
+   before it starts.
+3. **Do NOT re-run arm C with the learned count model in the loop as "the production arm" without first
+   reading item 5.** At this cell FIT kills nobody in 40 % of patch-years, so a null `C1 − C0` under a
+   learned ρ is the expected outcome and is not a result about selection. If it is run, report the θ
+   distribution and the shortfall rate beside it, exactly as `diagnose_rung2_armc.py` does.
+
+**CI/merge:** the diff is `scripts/**` + `docs/decisions/**` + `changelog.d/**` + STATE/JOURNAL — **no gate
+runs** (ADR 0090: `scripts/*.py` is NOT linted by CI, no `src/`/`test/`/`.jl`-in-tree change, no `python/`,
+no `docs/src/**`). `scripts/rung2_armc_harness.jl` **is** a `.jl` file, so **`format` (Runic) DOES run** —
+that is the one gate to expect. Mergeable as soon as `format` is green.
+
+### 0-PREV4. ✅ DONE 2026-08-11 (session 9) — THE RENDEZVOUS MOVED BEHIND THE GROWTH LOOP; THE LAG IS
 ### GONE **EXACTLY** AND ARM C IS NOW SCORABLE ON TRAITS (ADR 0123)
 
 **Start here. The single pre-registered next step of the previous handoff is DONE, and it worked.**
