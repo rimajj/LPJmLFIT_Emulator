@@ -58,6 +58,14 @@ makedocs(;
         # race), so the failure only appears on `main` unless you build locally first:
         #   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
         LPJmLFITEmulator.TraitMortality,
+        # The ported FIT establishment rule (ADR 0119). Third instance of the same situation, and the
+        # NOTE above is what it cost: `docs` went red on `main` because this list was not extended in the
+        # same commit as the submodule. Its 14 docstrings cross-reference each other with fully-qualified
+        # `@ref`s and are documented in source + REPL `?`; rendering them needs a per-submodule
+        # `CurrentModule` page, which is the same docs-infra follow-up DRF and TraitMortality are waiting
+        # on. ⇒ WHENEVER YOU ADD A SUBMODULE, add it here in the SAME commit and build locally first:
+        #   DOCS_LINKCHECK=false julia --project=docs docs/make.jl
+        LPJmLFITEmulator.Establishment,
     ],
     doctest = true,         # execute all jldoctest blocks; fail on output mismatch
     # every external link must resolve (ENGINEERING_STANDARDS §4/§9). Guarded so a local build on the

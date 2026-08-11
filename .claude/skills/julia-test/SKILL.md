@@ -268,6 +268,21 @@ first fails earlier still, with `expected package LPJmLFITEmulator [e4cfba23] to
 local path dep, exactly as `.github/workflows/docs.yml` does it).
 (`docs/Manifest.toml` is gitignored, so that `Pkg.develop` is safe to run in any worktree.)
 
+⚠ **ADDING A `module` UNDER `src/` REDS `docs` ON `main`, AND ONLY ON `main` (hit 2026-08-11, line S; the
+third time).** `docs/make.jl` sets `checkdocs = :exports`, which discovers **every module nested in
+`LPJmLFITEmulator`** — so a new submodule that exports anything documented fails the strict build with
+`N docstrings not included in the manual`, terminating it before rendering. And `docs` deliberately does not
+run on branches (the gh-pages deploy race), so a fully green branch merges and *then* reds `main`. Two rules:
+
+1. **Add the submodule to `checkdocs_ignored_modules` in `docs/make.jl` in the SAME commit** (the list
+   already holds `SmoothOps`, `Allometry`, `FDiff`, `DRF`, `TraitMortality`, `Establishment` — rendering
+   their cross-referencing docstrings properly needs a per-submodule `CurrentModule` page, an open
+   docs-infra follow-up). Consequence worth knowing: an ignored submodule's `@ref` links are never rendered,
+   so fully-qualified `@ref`s inside it are cosmetic — cross-reference in prose instead if you want it read.
+2. **Build the docs LOCALLY before pushing** whenever you touched `src/**` structurally:
+   `DOCS_LINKCHECK=false julia --project=docs docs/make.jl` (exit 0, ~3 min). It is the only pre-merge check
+   for the one gate that never runs on your branch.
+
 **Trap in the diagram alarm (hit 2026-07-28):** `gen_diagrams.jl` does `using LPJmLFITEmulator`, so without
 **`--project=.`** it dies with `ArgumentError: Package LPJmLFITEmulator not found in current path` — which
 reads like a broken checkout, not a missing flag.
