@@ -1472,3 +1472,42 @@ a *second* time. Every ratio it produced was right (the factor cancels top and b
 survived a full ADR: the only wrong numbers were the level panels, 25× too small for the "stems/patch" label
 they carried, and nothing in a ratio-based review looks at those. **When a script prints both ratios and levels,
 check the level against a known mean before quoting it** — here, against `mean(y) = 8.28`.
+
+### Attributing a drift to a CONDITIONING CHANNEL — and the panel that regression cannot give you (ADR 0116)
+
+`scripts/rung1_drift_attribution.py` is the no-refit diagnostic for "which feature carries the scenario signal
+into a recursed arm's error". Per cell at a fixed lead it builds the **excess drift** — the arm's
+`bias(ssp370) − bias(historic)` minus the *one-step control's on the same rows* — and regresses it on the
+cell's ssp370-minus-historic change in each conditioning feature. Reuse it (`ARM`, `REF`, `KEYS`, `FIT_LEADS`)
+rather than writing a sibling; it imports `lead_index` and the area weights from `rung1_response_decay.py`, so
+its panels stay comparable to the decay/drift tables by construction instead of by intention.
+
+Four things in it are load-bearing, and three of them were mistakes waiting to happen:
+
+1. **Open with a RECONCILIATION panel against the ADR you are extending.** Recomputing ADR 0115 §3's
+   row-level bias took ten lines and reproduced the arm row exactly (+0.0705/+0.0887/+0.1255 vs
+   +0.071/+0.089/+0.126) — which is what made it safe to trust everything downstream, *and* it caught a
+   one-row transcription slip in that ADR's control row (lead 5 printed +0.024; its own producing CSV says
+   +0.031, which is lead 4's value, in a table whose columns skip lead 4). A cross-check against the source
+   CSV, not against the rendered table, is what finds these.
+2. **A regression on weighted-CENTRED, z-scored columns explains a SPREAD and is blind to the MEAN.** The
+   pre-registered form reached R² 0.14–0.25 and could say nothing about the mean drift — which was the entire
+   quantity that inverts the response. If the number you care about is a mean, the regression is a supporting
+   panel, not the answer; add a **binned table** (here: mean drift by decile of the truth's own response) or an
+   intercept decomposition beside it. Budget for this in the design, not after the first run.
+3. **Binning a drift on the truth's own response is mechanically confounded** — `drift = Δpred − Δtruth`
+   contains `−Δtruth`, so noise in the truth alone produces a negative slope. The **excess** column is immune
+   by construction (`drift_arm − drift_ref` cancels the truth term exactly, leaving `Δpred_arm − Δpred_ref`),
+   so make the claim on it and quote the raw drift only alongside.
+4. **Kill the obvious alternative reading inside the same script.** "The cells that decline are just the dense
+   ones" costs one column (the cell's own stem count) and one division; it turned a suggestive asymmetry into a
+   result — the extreme deciles differ only 1.3× in density while the drift differs 3.7×, and 3.0× after
+   normalising. Also print a **VIF** next to every multiple-regression coefficient: `hmean` +0.91 / `hmax`
+   −0.88 looked like a finding and is a collinear pair at VIF 16.5/15.3, which is why the honest reading is the
+   greedy **forward-selection path**, not the betas.
+
+The result worth carrying forward: the self-feeding count arm's error is **one-sided**. It reproduces ~87 % of
+a large stem decline but ~96 % of a large increase, so where LPJmL-FIT thins a stand the emulator does not
+follow it down — and because FIT's global count response is a net loss, that rectified error *is* the spurious
+positive drift. **Score any proposed fix on the loss side** (decile-1 excess must fall without decile 10's
+magnitude rising); an aggregate response ratio cannot tell a real fix from a compensating positive bias.

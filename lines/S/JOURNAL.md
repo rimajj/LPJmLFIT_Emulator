@@ -1643,3 +1643,47 @@ size a second time. Every ratio it has ever produced is unaffected because the f
 which is exactly why it survived a whole ADR unnoticed; only the level panels carried a label 25× too large. I
 fixed the script and flagged ADR 0114's mean row as being on the old scaling rather than silently re-scaling
 an immutable record.
+
+## 2026-08-11 — the drift has a mechanism now: the recursion follows gains and not losses (ADR 0116)
+
+The one experiment ADR 0115 pre-registered was cheap and it worked, but not in the way it was specified, and
+the gap is worth recording because it is a design lesson rather than a bug.
+
+As specified: at a fixed lead, take each cell's excess drift — the self-feeding arm's historic-to-ssp370 bias
+difference minus the one-step control's on the same rows — and regress it on that cell's scenario change in
+each of the fifteen conditioning features. Run at leads 5, 12 and 18 over all 121 495 658 rows, the answer is
+unambiguous and it is not the answer I expected. The channel is the **stand state**, not the climate. The
+previous year's stem count correlates −0.34 with the excess drift and the mean cohort age +0.33, while every
+climate and flux feature — growing degree days, cold-month temperature, water stress, soil moisture, growth
+efficiency — sits at 0.084 or below. Greedy forward selection picks the previous count first and mean age
+second at both deep leads. The control is what turns this from a description of the rows into a finding: on
+identical cells the one-step predictor's own scenario asymmetry is far weaker (R² 0.096 against 0.250), it
+selects a *flux* first, and its correlation with the previous count is essentially zero. So the one-step error
+runs through the fluxes and the recursion's extra error runs through the stand state. The pattern is also
+uniform across all four latitude bands, which says the wrong-signed tropics are not a separate problem needing
+a separate fix.
+
+Then the gap. The regression explains a quarter of the drift's spatial spread — and, because it is fitted on
+centred columns, *nothing at all* about its mean. The mean is the whole reason the aggregate response inverts.
+The diagnostic as pre-registered could name a channel and could not touch the quantity it was built to explain.
+I added the panel that can: bin cells by LPJmL-FIT's own count response and read the drift in each bin.
+
+That panel is the real result. The error is one-sided. Where FIT loses the most trees the arm drifts +0.575
+stems/patch; where it gains the most, at the same magnitude of response, only −0.157. Read as the fraction of
+FIT's own response reproduced, the arm follows 86.7 % of a large decline but 96.2 % of a large increase. Since
+FIT's global count response is a net loss, the rectified error lands almost entirely on the loss side and comes
+out as a spurious *positive* drift — which is exactly the wrong-signed aggregate response measured two ADRs
+ago, now with a mechanism instead of a description.
+
+I made myself refute the two ways this could be an artefact before writing it down. The drift contains minus
+the truth's response by construction, so binning on the truth's response correlates mechanically; the excess
+column cancels that term exactly, and the asymmetry is 2.6× on it. And "the declining cells are simply the
+dense ones" dies on its own numbers: the extreme deciles differ by 1.3× in stem count while the drift differs
+by 3.7×, and normalising by density still leaves 3.0×.
+
+Two process notes. Reconciling against ADR 0115 §3 before doing anything else took ten lines, reproduced its
+arm row exactly, and caught a transcription slip in its control row at lead 5 — the value printed is lead 4's,
+copied one row off from a CSV whose intermediate rows the table skips. Nothing depends on it, and it is
+recorded rather than edited. And the height and crown-cover coefficients came out as a beautiful ±0.9 pair
+that means nothing at all: variance inflation 16.5 and 15.3, an artefact of four collinear canopy columns. The
+forward-selection path is the reading that survives.
