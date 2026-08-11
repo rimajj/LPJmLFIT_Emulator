@@ -960,3 +960,23 @@ level cancels" is the standard fix for a drifting autoregressive model; measured
 because a forest predicting a LEVEL has leaf values inside the training range and therefore cannot run away —
 the level target was silently doing the job of the anchor an earlier ADR had gone looking for. Ask what keeps
 today's predictor in range, and assume any reformulation deletes it.
+
+## Before reading ANY correlation or attribution panel: check the variable actually VARIES (ADR 0117)
+
+A column with no variance and a genuinely uncorrelated column produce the **same** degenerate output, and
+they have **opposite** implications — "this input cannot matter, drop the question" versus "this input is
+independent, which is itself a finding". Distinguishing them costs one line and skipping it nearly published
+a wrong conclusion.
+
+The tell is a panel that is *too clean*: correlations of exactly `±0.0000` against every other axis, `nan`
+where a spread should be, or — the giveaway — an **arithmetically impossible** standardised statistic. A
+selection differential of **−284 standard deviations** is not a strong effect; it is a near-zero denominator.
+Any |z| beyond ~10 in a panel built on millions of rows is a broken denominator until proven otherwise.
+
+So: **make the variability audit the FIRST panel, not a footnote** — per stratum, print each column's
+distinct-value count, min and max — and have downstream panels print `const` rather than a ratio when a
+column is degenerate. Then confirm the cause at its source rather than inferring it from the data: here the
+trait was a **scalar in the live parameter file**, with the sampled-interval form commented out, so the
+"uncoupled trait" reading was never on the table.
+
+Worked example, reusable as-is on any axis: `scripts/diagnose_recruit_trait_axis_coupling.py`.

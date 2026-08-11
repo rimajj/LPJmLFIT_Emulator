@@ -438,6 +438,16 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   closed-form **`w_inherit = 4/(4 + n_elig)`** ⇒ **≈44 % inherited at Hainich (~5 eligible PFTs), ≈80 % in
   low-diversity cells (Amazon/Sahel, 1 eligible)**. So the establishment marginal is a **functional of the live
   community** — FIT's establishment *is* the feedback loop ADR 0025 §4 excluded on principle.
+- **`k_root` is a SCALAR 0.02 in this configuration, NOT a sampled recruit trait (`[VERIFIED 2026-08-11]`,
+  ADR 0117).** `new_tree` samples seven trait axes, but in the live `par/pft_lpjmlfit.js` all seven tree PFTs
+  declare `"k_root": 0.02` with the interval form `{"low":0.02,"median":0.04,"high":0.06}` **commented out at
+  every one** (`:134, 264, 394, 524, 654, 784, 914`) — and the emitted column carries **exactly one distinct
+  value over all 206 561 574 tree rows, 0 differing**. So a component that predicts `SLA`/`Wooddens`/`D95max`/
+  `minwscal` and leaves `k_root` to the C is an **identity**, not an approximation. `emax` and `beta_2` are
+  emitted nowhere, so their coupling to the four is **not measurable from `ind`** — say that, don't assume it.
+  ⚠ The general trap this came from: **a degenerate correlation is the signature of a constant column, not of
+  an uncoupled variable** (skill `residual-diagnosis`), and the same "is it actually sampled?" check applies to
+  any `.js` trait — read the live file, the commented-out interval is the live form's neighbour.
 - **The measured warming shift is WITHIN-PFT, WITHIN-AGE-CLASS selection (ADR 0046).** FIT's per-cell mean
   wood-density shift historic→ssp370 decomposes **22.2 % composition / 51.3 % within-PFT / 26.6 % interaction**
   (closure 4.6e-13), and the within-PFT part is **+112 % within-age-class** with the age-structure term at
