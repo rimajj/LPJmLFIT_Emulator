@@ -1115,7 +1115,11 @@ patch** while the roster carries stems **per m²**. 225 m² (15×15) is `param.p
 `par/lpjparam_fit.js`, the value the training runs used, and `new_tree.c:209` gives every individual
 `nind = 1/patcharea`. **It is a property of the artifact's training run** — if a future artifact is built
 from a run with a different `patcharea`, pass it here, or the anchor will pull the stand to the wrong level.
-It is unused when `anchor == 0`.
+It is unused when `anchor == 0` **and** `recruit_establishment === nothing`. ⚠ ADR 0119 gave it a second
+consumer: the ported establishment rule needs each cohort's INDIVIDUAL COUNT to rank the seedbank and to
+weight inheritance, and that is `nind·patch_area`. So with the ported rule on, a wrong `patch_area` scales
+the seedbank's admitted weight (its yearly width `n_top` is set independently, from `param.n_max`), and it
+is no longer a field only the anchor reads.
 """
 function FluxDrivenSlowEmulator(
         fc::FDiffFastCore{T}, forest::DRF.Forest; boundary::AbstractVector{<:Real} = Float64[],
