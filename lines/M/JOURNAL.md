@@ -896,3 +896,61 @@ Also worth noting for its own sake: the gate is now **CI**, not a session result
 (`test/testitems/m_rung2_hazard_identity_tests.jl` + a 333-record C-truth fixture). `trait_mortality.jl` is
 S's file and is about to become load-bearing for the trait question; locking it against the C binary rather
 than against a re-typed formula is the difference between a port and a verified port.
+
+---
+
+## Session 9 — 2026-08-11 — the rendezvous moves behind the growth loop (ADR 0123)
+
+Last session's handoff pre-registered exactly one next step and it turned out to be the right one: the
+rendezvous was in the wrong place in the C's control flow, and moving it removes the defect rather than
+working around it.
+
+**What I did.** `annual_tree` still runs turnover, allocation and `mortality_tree_ind` — including its
+`erand48` draw — completely unchanged, but under either rung-2 hook it now reports every tree ALIVE and
+hands its verdict (plus a `hard` flag for the kills the C's own state cannot un-make) to a new
+`rung2_apply_note`. After the `foreachpft` loop the C dumps a new **`grow`** phase, opens the rendezvous on
+that roster, and a **kill pass** applies the final verdicts with their `litter_update` and `mort_tree`
+counter. Patch `patches/lpjmlfit_rung2_hook_v5.patch`.
+
+**The result, which is unusually clean.** The diagnostic now prints both rendezvous bases from the same
+dump. Old (`pre`): 9 009 of 9 951 records usable, Spearman ρ median 0.900, wood-density selection
+differential ratio **−0.825, opposite sign**. New (`grow`): **9 951 of 9 951 records, ρ = 1.000 at p05,
+median AND minimum, differential ratio +1.000.** The 942-record skip vanishing is a second win I had not
+expected: a tree in its first year has no previous `mortality_tree_ind` call, so on the lagged basis the
+youngest cohort — where selection is strongest — was simply dropped.
+
+**The design decision that took the longest to get right, and it is the interesting part.** The kill has to
+move with the rendezvous, because a tree the external demography spares must not already be in the litter.
+That reorders `litter_update` out of the growth loop, and my first instinct was that this had to be proven
+bit-inert or abandoned. It is *mathematically* inert — the litter pools are sums, `avg_fbd` is an exact
+incremental carbon-weighted mean, nothing between the loop and the kill pass reads either, and
+`litter_update_tree` touches only the dying tree's own pools — but floating-point addition is not
+associative, so it cannot be bit-inert. I could not find any formulation that both lets the external side
+spare a tree and preserves the exact accumulation order; I convinced myself that is a genuine impossibility,
+not a failure of imagination.
+
+So the fix is to make **both** hooks share the deferral. Then the recorded baseline and every replayed arm
+sit on the same code path and the null control is exact **by construction** rather than by luck — which is
+the direct descendant of last session's lesson that a null control validates the transport, not the payload.
+Verified: `MODE=none` identical in every initialised column over 40 161 tree records, no divergence in all
+2 000 patch-years of cell state; and with both env vars unset the stock model is untouched (139 decoded
+quantities identical, 0 differ).
+
+**What that costs, measured rather than argued.** Deferred path vs stock path, same config, same cell, same
+task count: bit-identical through 2002; the first difference is 1.1e-7 on a daily NPP of −0.081; the
+demography first differs in 2004 by one stem; 3 of 20 years differ, always by exactly one stem; the 2019
+stem count is identical (229 = 229); total stem-years 5 963 vs 5 966, **0.05 %**. That is two orders of
+magnitude below the smallest noise floor this model has (11.3 % bootstrap CV on `vegc` at `npatch=25`). It
+is shared by baseline and arms alike, so it cannot bias an arm comparison — but it *is* a departure from
+stock LPJmL-FIT and it belongs beside every rung-2 number, not in a footnote.
+
+**The lesson.** An interface's value is set by **where it sits in the host's control flow**, not by what it
+carries. This is the third instance in this same interface: ADR 0121 found a kill list that named the wrong
+authors' deaths, ADR 0122 found a roster published at the wrong instant, and both passed every schema check
+and every null control. The check that catches the class is not "are the fields present and finite" — it is
+**recompute the host's own answer from what the interface publishes and require ρ = 1.** That check is now
+in the diagnostic and prints on every run.
+
+**One incidental fix.** The roster key table was a fixed 1024-entry array that silently stopped recording
+past the cap, so in a dense cell a duplicate key — which makes a kill instruction ambiguous — would not have
+been detected. It grows now.

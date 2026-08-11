@@ -10,11 +10,12 @@
 # script is it.  It needs no LPJmL run: the recorded rung-2 dump (ADR 0121, `MODE=record`) already
 # carries the C's own four hazard components per tree per patch-year.
 #
-# WHAT IS AND IS NOT GATED, and this is the finding the script exists to make unmissable.  The
-# rendezvous where S is asked for `f_i` is `rung2_apply_begin_patch`, at the TOP of the annual
-# demography block (`src/lpj/annual_natural.c:64`), i.e. the `pre` dump phase.  The C computes its own
-# hazard later, inside `annual_tree` → `mortality_tree_ind`, AFTER `turnover_tree` and
-# `allocation_tree`.  Measured against the recorded dump, that ordering splits the four hazards in two:
+# WHAT IS AND IS NOT GATED.  The gate itself scores the ported hazard against the C's own per-tree
+# `mort_*` columns and is basis-independent.  What the two rendezvous probes at the end measure is
+# different: what the interface can compute AT THE MOMENT IT IS ASKED.  That used to be the `pre` dump
+# phase, at the TOP of the annual demography block, while the C computes its own hazard later inside
+# `annual_tree` → `mortality_tree_ind`, AFTER `turnover_tree` and `allocation_tree` — which split the
+# four hazards in two:
 #
 #   * `mort_age`, `mort_water`, `mort_temp` — every input is present, unchanged, in the `pre` roster
 #     (`water_stress`/`temp_stress` are byte-identical between the `pre` and `mort` phases in all
@@ -34,14 +35,19 @@
 #     `mort_npp/(1+counter) < mort_max(wooddens)` plus the implied-`greff` distribution, which is NOT
 #     an identity; it says so in the output.
 #
-# `bm_inc_counter` is the third asymmetry and it is deliberate: `mortality_tree_ind.c:71-81` UPDATES the
-# counter from the sign of `bm_delta` and then uses the updated value, so the `pre` roster carries the
-# PREVIOUS one (they differ in 2 169 of 9 951 records).  This script scores `mort_water` on BOTH bases —
-# the `mort`-phase counter tests the ported FORMULA against the C, the `pre`-phase counter tests what the
-# rendezvous can actually achieve — because conflating them would hide a port error behind a basis error,
-# or the reverse.  The rendezvous probe at the end measures what that costs, and the answer is the reason
-# arm C is not yet runnable on the trait question: the counter lag INVERTS the sign of the wood-density
-# selection differential while the growth-efficiency lag does not (ADR 0122 §4).
+# `bm_inc_counter` is the third asymmetry: `mortality_tree_ind.c:71-81` UPDATES the counter from the sign
+# of `bm_delta` and then uses the updated value, so the `pre` roster carries the PREVIOUS one (they differ
+# in 2 171 of 9 951 records).  This script scores `mort_water` on BOTH bases — the `mort`-phase counter
+# tests the ported FORMULA against the C, the `pre`-phase counter tests what the OLD rendezvous could
+# achieve — because conflating them would hide a port error behind a basis error, or the reverse.
+#
+# THAT LAG IS NOW FIXED, AND BOTH PROBES ARE PRINTED SO THE FIX IS VISIBLE (ADR 0123).  Measured on the
+# `pre` basis the counter lag INVERTS the sign of the one-year wood-density selection differential
+# (ratio -0.825; the growth-efficiency lag alone is harmless at +1.001) — which is why arm C could not be
+# scored on the trait question (ADR 0122 §4).  The rendezvous has since moved BEHIND the growth loop and
+# publishes the new `grow` dump phase, on which the same probe returns Spearman ρ = 1.000 at every
+# percentile and a differential ratio of +1.000: the interface now sees exactly what the C's own hazard
+# saw.  A dump recorded before that move has no `grow` phase and the second probe says so.
 #
 # USAGE
 #     julia --project=. scripts/diagnose_rung2_hazard_identity.jl [--dump DIR] [--csv PATH] [--tol 1e-13]
@@ -64,7 +70,7 @@ using .TraitMortality
 # ── argument parsing (no deps; ADR 0014 keeps the runtime [deps] empty) ───────────────────────────────
 function parse_args(argv)
     opts = Dict{String, String}(
-        "dump" => "/p/tmp/jamirp/M_rung2/M_rung2rec_v4b_dump",
+        "dump" => "/p/tmp/jamirp/M_rung2/M_rung2rec_v5_dump",
         "csv" => "",
         "tol" => "1e-13",
         "fixture" => "",
@@ -192,27 +198,34 @@ function spearman(x::Vector{Float64}, y::Vector{Float64})
     return den == 0 ? NaN : num / den
 end
 
-function rendezvous_probe(r::Roster, pre, mrt, keys_common)
-    # per patch-year: the C's hazard, the lagged rendezvous hazard, nind and wooddens
+function rendezvous_probe(r::Roster, rdv, mrt, keys_common; lagged::Bool = true)
+    # per patch-year: the C's hazard, the rendezvous hazard, nind and wooddens
     groups = Dict{Tuple{Int, Int}, NTuple{7, Vector{Float64}}}()
     n_no_prev = 0
     for k in keys_common
         (year, patch, pft_id, treeidx) = k
-        prow, mrow = pre[k], mrt[k]
-        # the `pre` roster's bm_delta/leafarea/counter are last year's -> require the tree to have been
-        # through mortality_tree_ind at least once, or the columns are uninitialised memory (ADR 0120).
-        prev = (year - 1, patch, pft_id, treeidx)
-        if !haskey(mrt, prev)
-            n_no_prev += 1
-            continue
+        prow, mrow = rdv[k], mrt[k]
+        if lagged
+            # the `pre` roster's bm_delta/leafarea/counter are last year's -> require the tree to have
+            # been through mortality_tree_ind at least once, or the columns are uninitialised memory
+            # (ADR 0120).
+            prev = (year - 1, patch, pft_id, treeidx)
+            if !haskey(mrt, prev)
+                n_no_prev += 1
+                continue
+            end
         end
         p = pft_mort_params(pft_id)
         bmd = gf(r, prow, "bm_delta")
         larea = gf(r, prow, "leafarea_real")
         (isfinite(bmd) && isfinite(larea) && larea > 0) || (n_no_prev += 1; continue)
+        # `pre` carries the PRE-increment age (annual_tree has not run); `grow` is dumped after it, so
+        # its age is post-increment and the hazard's basis is age-1.  Getting this wrong is the ADR-0035
+        # age off-by-one in a new place.
+        age_rdv = gi(r, prow, "age") - (lagged ? 0 : 1)
         h = mortality_hazard(
             p; wooddens = gf(r, prow, "wooddens"), sla = gf(r, prow, "sla"),
-            age = gi(r, prow, "age"), bm_delta = bmd, leafarea = larea,
+            age = age_rdv, bm_delta = bmd, leafarea = larea,
             leaf_c = gf(r, prow, "leaf_c"), water_stress = gf(r, prow, "water_stress"),
             temp_stress = gf(r, prow, "temp_stress"), bm_inc_counter = gi(r, prow, "bm_inc_counter")
         )
@@ -221,28 +234,28 @@ function rendezvous_probe(r::Roster, pre, mrt, keys_common)
         #   soft  — the lagged hazard with the two HARD kills suppressed (they carry weight 1, and the
         #           lagged counter/leaf_c reclassify some of them, which could dominate on its own)
         #   npplag— everything current EXCEPT bm_delta/leafarea, i.e. the greff lag in isolation
-        h_soft = min(
-            1.0,
-            mort_npp(p, gf(r, prow, "wooddens"), bmd, larea; bm_inc_counter = gi(r, prow, "bm_inc_counter")) +
-                mort_age(p, gi(r, prow, "age")) +
+        h_soft = !lagged ? h.total : min(
+                1.0,
+                mort_npp(p, gf(r, prow, "wooddens"), bmd, larea; bm_inc_counter = gi(r, prow, "bm_inc_counter")) +
+                mort_age(p, age_rdv) +
                 mort_water(p, gf(r, prow, "water_stress"); bm_inc_counter = gi(r, prow, "bm_inc_counter")) +
                 mort_temp(p, gf(r, prow, "temp_stress"))
-        )
-        h_npplag = mortality_hazard(
-            p; wooddens = gf(r, mrow, "wooddens"), sla = gf(r, mrow, "sla"),
-            age = gi(r, prow, "age"), bm_delta = bmd, leafarea = larea,
-            leaf_c = gf(r, mrow, "leaf_c"), water_stress = gf(r, mrow, "water_stress"),
-            temp_stress = gf(r, mrow, "temp_stress"), bm_inc_counter = gi(r, mrow, "bm_inc_counter")
-        ).total
+            )
+        h_npplag = !lagged ? h.total : mortality_hazard(
+                p; wooddens = gf(r, mrow, "wooddens"), sla = gf(r, mrow, "sla"),
+                age = age_rdv, bm_delta = bmd, leafarea = larea,
+                leaf_c = gf(r, mrow, "leaf_c"), water_stress = gf(r, mrow, "water_stress"),
+                temp_stress = gf(r, mrow, "temp_stress"), bm_inc_counter = gi(r, mrow, "bm_inc_counter")
+            ).total
         #   ctrlag — everything CURRENT except bm_inc_counter, which is the one piece of per-tree state
         #            whose update rule (mortality_tree_ind.c:71-81) needs THIS year's growth SIGN
-        h_ctrlag = mortality_hazard(
-            p; wooddens = gf(r, mrow, "wooddens"), sla = gf(r, mrow, "sla"),
-            age = gi(r, prow, "age"), bm_delta = gf(r, mrow, "bm_delta"),
-            leafarea = gf(r, mrow, "leafarea_real"), leaf_c = gf(r, mrow, "leaf_c"),
-            water_stress = gf(r, mrow, "water_stress"), temp_stress = gf(r, mrow, "temp_stress"),
-            bm_inc_counter = gi(r, prow, "bm_inc_counter")
-        ).total
+        h_ctrlag = !lagged ? h.total : mortality_hazard(
+                p; wooddens = gf(r, mrow, "wooddens"), sla = gf(r, mrow, "sla"),
+                age = age_rdv, bm_delta = gf(r, mrow, "bm_delta"),
+                leafarea = gf(r, mrow, "leafarea_real"), leaf_c = gf(r, mrow, "leaf_c"),
+                water_stress = gf(r, mrow, "water_stress"), temp_stress = gf(r, mrow, "temp_stress"),
+                bm_inc_counter = gi(r, prow, "bm_inc_counter")
+            ).total
         g = get!(groups, (year, patch), ntuple(_ -> Float64[], 7))
         push!(g[1], gf(r, mrow, "mort_prob"))
         push!(g[2], h.total)
@@ -273,29 +286,41 @@ function rendezvous_probe(r::Roster, pre, mrt, keys_common)
         end
     end
     println()
-    println("RENDEZVOUS-BASIS PROBE — NOT A GATE. What arm C can compute when the C asks it:")
-    println("  exact at the rendezvous : traits, pre-increment age, water_stress, temp_stress")
-    println("  ONE YEAR LAGGED         : bm_delta, leafarea_real, bm_inc_counter (last year's values)")
-    @printf("  records usable / skipped for want of a previous year: %d / %d\n", ntree, n_no_prev)
+    if lagged
+        println("RENDEZVOUS-BASIS PROBE (`pre`, the OLD rendezvous) — NOT A GATE:")
+        println("  exact at the rendezvous : traits, pre-increment age, water_stress, temp_stress")
+        println("  ONE YEAR LAGGED         : bm_delta, leafarea_real, bm_inc_counter (last year's values)")
+    else
+        println("RENDEZVOUS-BASIS PROBE (`grow`, the LIVE rendezvous since ADR 0123) — NOT A GATE:")
+        println("  the rendezvous is behind the growth loop, so every input is the current year's;")
+        println("  a ratio of 1.000 below is the point of the move, not a coincidence.")
+    end
+    @printf("  records usable / skipped: %d / %d\n", ntree, n_no_prev)
     if !isempty(rhos)
         s = sort(rhos)
         q(f) = s[clamp(1 + round(Int, f * (length(s) - 1)), 1, length(s))]
-        @printf("  Spearman ρ (lagged vs the C's own mort_prob), per patch-year over %d groups:\n", length(s))
+        @printf("  Spearman ρ (rendezvous vs the C's own mort_prob), per patch-year over %d groups:\n", length(s))
         @printf("      p05 %.3f   median %.3f   p95 %.3f   min %.3f\n", q(0.05), q(0.5), q(0.95), s[1])
     end
     if wbar_den > 0 && all(den .> 0)
         wbar = wbar_num / wbar_den
         s = num ./ den .- wbar
-        labels = (
-            "the C itself                    ",
-            "lagged rendezvous (arm C as-is) ",
-            "  ... hard kills suppressed     ",
-            "  ... ONLY bm_delta/leafarea lagged",
-            "  ... ONLY bm_inc_counter lagged  ",
-        )
+        labels = lagged ?
+            (
+                "the C itself                    ",
+                "lagged rendezvous (arm C as-was)",
+                "  ... hard kills suppressed     ",
+                "  ... ONLY bm_delta/leafarea lagged",
+                "  ... ONLY bm_inc_counter lagged  ",
+            ) :
+            (
+                "the C itself                    ",
+                "the live rendezvous (arm C)     ",
+                "", "", "",
+            )
         @printf("  one-year wood-density selection differential (gC/m3, hazard-weighted minus stand mean;\n")
         @printf("  positive = denser wood dies more, i.e. ADR 0046's |live differential with sign flipped):\n")
-        for j in 1:5
+        for j in 1:(lagged ? 5 : 2)
             @printf("      %s %+9.1f", labels[j], s[j])
             j > 1 && @printf("   ratio %+.3f%s", s[j] / s[1], sign(s[j]) == sign(s[1]) ? "" : "   ⚠ OPPOSITE SIGN")
             println()
@@ -361,11 +386,13 @@ function main(argv)
     r = read_dump(dump)
     # key = (year, patch, pft_id, treeidx); phase-split
     pre = Dict{NTuple{4, Int}, Vector{String}}()
+    grw = Dict{NTuple{4, Int}, Vector{String}}()
     mrt = Dict{NTuple{4, Int}, Vector{String}}()
     for row in r.rows
         k = (gi(r, row, "year"), gi(r, row, "patch"), gi(r, row, "pft_id"), gi(r, row, "treeidx"))
         ph = g(r, row, "phase")
         ph == "pre" && (pre[k] = row)
+        ph == "grow" && (grw[k] = row)
         ph == "mort" && (mrt[k] = row)
     end
     keys_common = sort(collect(intersect(keys(pre), keys(mrt))))
@@ -519,7 +546,19 @@ function main(argv)
     println()
     println("DUMP SELF-CONSISTENCY — the C's own mort_prob vs its own four components:")
     report("min(1,Σ components)", a_sum)
-    has_bm && rendezvous_probe(r, pre, mrt, keys_common)
+    if has_bm
+        rendezvous_probe(r, pre, mrt, keys_common; lagged = true)
+        # `grow` = the roster the rendezvous publishes since it moved behind the growth loop
+        # (ADR 0123).  Absent from any dump recorded before that, in which case only the lagged
+        # basis above can be reported.
+        if isempty(grw)
+            println()
+            println("  (no `grow` phase in this dump: it predates the rendezvous move, so the LIVE")
+            println("   rendezvous basis cannot be scored here — re-record with the current binary.)")
+        else
+            rendezvous_probe(r, grw, mrt, sort(collect(intersect(keys(grw), keys(mrt)))); lagged = false)
+        end
+    end
 
     if !isempty(opts["fixture"])
         has_bm || (@error "a fixture needs a v4+ dump (bm_delta/leafarea_real)"; exit(2))

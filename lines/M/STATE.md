@@ -359,8 +359,89 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-11 (session 8) — S's PORTED HAZARD REPRODUCES THE C **EXACTLY**, AND THE
+### 0-NEWEST. ✅ DONE 2026-08-11 (session 9) — THE RENDEZVOUS MOVED BEHIND THE GROWTH LOOP; THE LAG IS
+### GONE **EXACTLY** AND ARM C IS NOW SCORABLE ON TRAITS (ADR 0123)
+
+**Start here. The single pre-registered next step of the previous handoff is DONE, and it worked.**
+ADR 0122 §4's ban on scoring arm C's trait question is **LIFTED** — by fixing the rendezvous, not by
+reinterpreting it.
+
+**1. WHAT CHANGED.** `annual_tree` still runs turnover, allocation and `mortality_tree_ind` — including its
+`erand48` draw — unchanged, but under either rung-2 hook it reports every tree **alive** and hands its
+verdict (plus a `hard` flag) to the new `rung2_apply_note`. After the `foreachpft` loop the C dumps a new
+**`grow`** phase (the complete current-year roster, before anyone is removed), opens the rendezvous on
+**that**, and a **kill pass** applies the final verdicts with their `litter_update` and `mort_tree` counter.
+The kill *has* to move with the rendezvous — a tree the external demography spares must not already be in
+the litter. Patch **`patches/lpjmlfit_rung2_hook_v5.patch`** (supersedes v4; v2/v3/v4 kept for the
+provenance of the binaries ADR 0120/0121/0122 gated).
+
+**2. THE RESULT — both bases now print from one dump, so the fix is visible, not asserted.**
+
+| rendezvous basis | records usable / skipped | Spearman ρ vs the C's `mort_prob` (p05 / median / min) | wood-density selection differential | ratio to the C |
+|---|---|---|---|---|
+| `pre` — the OLD rendezvous | 9 009 / 942 | 0.467 / 0.900 / −0.200 | −14 591 | **−0.825 ⚠ opposite sign** |
+| **`grow` — the LIVE rendezvous** | **9 951 / 0** | **1.000 / 1.000 / 1.000** | **+34 045** | **+1.000** |
+
+The 942-record skip disappearing is a second win: a first-year tree had no previous `mortality_tree_ind`
+call, so on the lagged basis the **youngest cohort — where selection is strongest — was invisible**. The
+θ=1 identity gate still passes exactly on the re-recorded dump (9 951 records, 0 exceedances, max rel Δ
+1.7e-15, 175 + 195 hard kills); the CI fixture `references/M_rung2_hazard_identity.csv` was regenerated on
+the new basis (82 of 333 records moved, header unchanged).
+
+**3. ⚠ THE COST, MEASURED — quote this beside every rung-2 number.** The deferral is shared by **both**
+hooks (`rung2_defer_mortality()`), because if only the substitution hook deferred, the recorded baseline and
+every arm would sit on different code paths and the difference would be charged to the arm. Sharing it makes
+the null control exact **by construction**. The reorder is *mathematically* inert (litter pools are sums;
+`avg_fbd` is an exact incremental carbon-weighted mean; nothing between the loop and the kill pass reads
+either; `litter_update_tree` mutates only the dying tree's own pools) but **not bit-identical** — FP
+addition is not associative. Deferred vs stock path, same config/cell/`--ntasks`: bit-identical through
+**2002**; first difference 1.1e-7 on a daily NPP of −0.081; demography first differs 2004 by **one stem**;
+**3 of 20 years** differ, always by one stem; **2019 stem count identical (229 = 229)**; total stem-years
+5 963 vs 5 966 = **0.05 %** — two orders of magnitude below the smallest noise floor this model has (11.3 %
+bootstrap CV on `vegc` at `npatch=25`). It cannot bias an arm comparison, but it **is** a departure from
+stock LPJmL-FIT and belongs in the open, not in a footnote.
+
+**4. GATES, all green.** Rebuild equality with **both env vars unset** vs the previous build's matched
+single-cell run: **139 decoded quantities identical, 0 differ**, `globalflux` + `ind` byte-for-byte ⇒ the
+stock model is untouched. `MODE=none` vs the re-recorded baseline: **identical in every initialised column
+over 40 161 tree records**, and `diagnose_rung2_cellstate_equality.py` reports **no divergence in all 2 000
+patch-years** (stream, seedbank checksums, live count). New baseline dump:
+**`/p/tmp/jamirp/M_rung2/M_rung2rec_v5_dump`** — ⚠ **any dump recorded earlier has no `grow` phase and is
+unusable as a replay basis; the harness now fails loudly on one.**
+
+▶ **WHAT TO DO NEXT ON RUNG 2 — in order.**
+
+1. ✅ **Done in the same session — the replay floors are UNCHANGED by the move.** All four arms re-run on
+   the v5 basis: `none` **1.000**, `kills` **1.000 exact** (identical in every initialised column AND in all
+   2 000 cell-state patch-years, no year differs), `recruits` **0.907**, `both` **1.367** — the same numbers
+   ADR 0121 measured on the old rendezvous, to three decimals. So the floors are a property of what the wire
+   format substitutes (4 of 7 trait axes; the C's Poisson + inheritance draws skipped), not of where the
+   rendezvous sits. **These are the floors to quote.**
+2. **Run arm C** — this is the actual next piece of work. with line S's two arms in one wire format: **C0** `f_i = ρ` for every tree (the
+   shipped uniform thinning = the no-selection null) and **C1** the tilted `f_i = (1−mort_i)^θ`.
+   **Print θ beside the result** (S's ADR 0117 item 6.i: at Hainich θ median was 8.5e-12 with θ > 0.5 in
+   only 18 of 132 thinning years, so a null `C1 − C0` may mean the count model gave the selection no room).
+   And per ADR 0118 §3, test the per-PFT **gradient SHAPE** against
+   `references/S_age_wooddens_gradient.csv` — including the non-monotone ids 0 and 3 — not just the level.
+   Nothing is owed from S: the interface, the wire format and the operator are all in place, and the θ=1
+   identity is a CI gate.
+3. **Quote the floors and the scope beside any arm**: the floors in step 1, the 0.05 %
+   deferred-path disclosure from item 3 above, **one cell of 54 020**, and **4 of 7 trait axes
+   substituted**.
+4. **Rung 3 (F's decadal canopy drift) is still untouched** — item 0-NEW below and item 4(d) further down.
+
+**CI/merge:** the diff touches `test/**` (the regenerated fixture) and `.jl`, so **`CI` (4 Julia jobs) and
+`format` DO run**. `python`/`docs` do not (no `python/`, no `docs/src/**`).
+
+### 0-PREV3. ✅ DONE 2026-08-11 (session 8) — S's PORTED HAZARD REPRODUCES THE C **EXACTLY**, AND THE
 ### RENDEZVOUS'S ONE-YEAR LAG INVERTS THE TRAIT SELECTION ⇒ ARM C IS NOT YET SCORABLE ON TRAITS (ADR 0122)
+
+> ⚠ **PARTLY SUPERSEDED BY ADR 0123 (session 9, the block above).** Item 3's pre-registration — *"arm C
+> must not be scored on the trait question from the current rendezvous"* — is **LIFTED**: the rendezvous
+> moved behind the growth loop and the lag is gone (ρ = 1.000, differential ratio +1.000). Its step 1
+> ("move the rendezvous behind the growth loop") is **done**. Everything else here stands: the θ=1 identity
+> is still exact and still a CI gate, and the mechanism in item 3 is why the move was necessary. The
+> baseline dump named in item 4 (`M_rung2rec_v4b_dump`) is **superseded by `M_rung2rec_v5_dump`**.
 
 **Start here. S has replied (the INBOUND blocks at the top of this file: ADR 0117 + the 0118 amendment +
 the owner steer). Step 1 of the previous handoff — "check whether line S has replied" — is done, and its

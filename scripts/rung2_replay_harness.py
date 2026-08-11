@@ -55,11 +55,20 @@ import time
 REQ_RE = re.compile(r"req_r(\d+)_y(\d+)_p(\d+)\.ready$")
 
 
+PHASES = ("pre", "grow", "mort", "post")
+
+
 def parse_dump(path: str):
-    """Read a roster dump into {(year, patch): {phase: [...]}} for all three phases.
+    """Read a roster dump into {(year, patch): {phase: [...]}} for every phase.
 
     The dump is self-describing: the '#H T ...' line carries the column names, so
     nothing here hard-codes the 49-field schema.
+
+    `grow` is the post-growth, pre-kill roster — the state the rendezvous
+    publishes since the rendezvous moved behind the growth loop (ADR 0123).  It
+    is the only phase whose bm_delta / leafarea_real / bm_inc_counter are the
+    current year's, so it is the basis for anything that recomputes the hazard;
+    `pre` is kept as the start-of-year record.
     """
     cols = None
     out: dict[tuple[int, int], dict[str, list[dict]]] = {}
@@ -77,7 +86,9 @@ def parse_dump(path: str):
                 sys.exit(f"FATAL: {path}: T record has {len(f)} fields, header says {len(cols)}")
             rec = dict(zip(cols, f))
             key = (int(rec["year"]), int(rec["patch"]))
-            out.setdefault(key, {"pre": [], "mort": [], "post": []})[rec["phase"]].append(rec)
+            if rec["phase"] not in PHASES:
+                sys.exit(f"FATAL: {path}: unknown dump phase '{rec['phase']}'")
+            out.setdefault(key, {p: [] for p in PHASES})[rec["phase"]].append(rec)
     return out
 
 
@@ -104,7 +115,15 @@ def derive_decisions(dump: dict):
     """
     decisions = {}
     for key, phases in sorted(dump.items()):
-        pre, mort, post = phases["pre"], phases["mort"], phases["post"]
+        pre, grow, mort, post = phases["pre"], phases["grow"], phases["mort"], phases["post"]
+        if pre and not grow:
+            sys.exit(
+                f"FATAL: year {key[0]} patch {key[1]}: no `grow` phase in the dump. "
+                "This dump predates the rendezvous moving behind the growth loop; the "
+                "roster it holds is a year stale in bm_inc_counter and must not be "
+                "replayed against the current binary (ADR 0123). Re-record it: "
+                "MODE=record bash scripts/run_rung2_replay_arm.sh"
+            )
         if not mort:
             sys.exit(
                 f"FATAL: year {key[0]} patch {key[1]}: no `mort` phase in the dump. "
@@ -127,7 +146,16 @@ def derive_decisions(dump: dict):
                     )
                 )
         pre_keys = {(int(r["pft_id"]), int(r["treeidx"])) for r in pre}
+        grow_keys = {(int(r["pft_id"]), int(r["treeidx"])) for r in grow}
         post_keys = {(int(r["pft_id"]), int(r["treeidx"])) for r in post}
+        # growth adds and removes nobody, so the roster the rendezvous publishes is
+        # the same tree set as `pre` — only its state is a year newer.  If that ever
+        # stops holding, a K line keyed on one roster is ambiguous in the other.
+        if grow_keys != pre_keys:
+            sys.exit(
+                f"FATAL: year {key[0]} patch {key[1]}: the `grow` roster "
+                f"({len(grow_keys)}) is not the `pre` roster ({len(pre_keys)})"
+            )
         rec_keys = {(int(r["pft_id"]), int(r["treeidx"])) for r in post if int(r["age"]) == 0}
         # the accounting the observation gate already proved; assert it here too so
         # a malformed dump cannot quietly become a wrong replay
