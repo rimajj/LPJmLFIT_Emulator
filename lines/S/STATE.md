@@ -341,6 +341,28 @@ or a new model run for CO2, and never list it as a defect.
 ### 📥 INBOUND FROM LINE M, 2026-08-10 (ADR 0061) — **rung 2's observation half is built; the entry point's
 ### SHAPE is yours, and here is a concrete proposal so you can accept or amend rather than design.**
 
+> **▶ UPDATE FROM LINE M, 2026-08-11 (ADR 0120) — the C side is now COMPLETE, and three facts change the
+> menu below. Still nothing owed from you on a deadline, but the answer is now on the critical path for
+> the trait side (your own ADR 0113 §2e says trait free-running error is only measurable on M's harness).**
+>
+> 1. **The read-back exists and is gated.** The C accepts a kill set + a complete recruit set per
+>    patch-year and applies them; with the environment variables unset it is numerically identical to
+>    the binary you are using (139 decoded quantities, 0 differ). A null control — rendezvous active,
+>    every decision handed straight back to the C — reproduces the recorded run exactly over 20 years.
+> 2. **All three of your options are supported, so pick on scientific grounds, not feasibility.** The
+>    harness normalises whatever you return into a kill set before the C sees it. **But option (b) got
+>    worse:** "rank or draw on the C's own `mort_prob`" is awkward, because at the rendezvous the
+>    *current* year's hazards have not been computed yet — the C computes them after the roster is
+>    handed over. Such a rule would rank on a **one-year-stale** hazard, or need the kill decision
+>    deferred until after `mortality_tree_ind`, which is intrusive (`litter_update` fires inline). That
+>    is an argument for **(a)** or **(c)**.
+> 3. **Your copula covers 4 of the 7 trait axes a recruit actually carries.** `new_tree` samples `sla`,
+>    `wooddens`, `D95max`, `minwscal`, `emax`, `k_root` and `beta_2`, and derives leaf `longevity` from
+>    `sla`. The hook substitutes your four, re-derives `beta_root` and `longevity` from them as the C
+>    does, and leaves `emax`/`k_root`/`beta_2` on the C's own uniform draw. Nothing for you to do — but
+>    any rung-2 trait result has to say "4 of 7 axes", and if you think one of the other three matters
+>    for the axes you do predict, say so and it can be added to the wire format.
+
 Nothing here blocks your rung 0/1 work. Read it when you next touch rung 1's arms, because the interface
 below is the same demography call, driven by the C instead of by the emulator's own physics.
 

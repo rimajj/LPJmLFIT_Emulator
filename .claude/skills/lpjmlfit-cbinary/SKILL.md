@@ -1,6 +1,6 @@
 ---
 name: lpjmlfit-cbinary
-description: Build/run the LPJmL-FIT C binary (the numerical-regression oracle + daily data generator) on the PIK cluster — exact module set (json-c 0.13.1 not 0.17), restart-from-spinup subset runs, config-only daily output, lpjcheck pre-flight, SLURM templates, and the individual=true dead-code check. Use whenever running the C oracle, generating daily data, or reasoning about what the FIT config actually executes. ALSO how to REBUILD the binary (target is `make main` not `lpjml`; a new source file needs three edits incl. src/lpj/Makefile; `-Werror`; the json_object_iterator.h shim on CPATH) and the gate you MUST run afterwards — a rebuild changes the reference basis every F-vs-C number is measured against, two builds are never byte-identical (getbuild.c stamps a date), and `cmp` on a NetCDF calls 20 of 21 outputs different for identical physics because LPJmL writes a timestamp into `history`; use scripts/diagnose_cbinary_rebuild_equality.py on DECODED variables with a matched cell set and --ntasks. ALSO the opt-in rung-2 demography hook (LPJ_RUNG2_DIR, patches/lpjmlfit_rung2_demography_hook.patch, ADR 0061): what the pre/post roster dump carries that the `ind` output cannot (water_stress, temp_stress, bm_inc_counter, bm_inc, nind, the carbon pools), that mort_* are valid only at `post`, that recruits enter at age 0, and that neither run wrapper emits `ind` or exports the variable.
+description: Build/run the LPJmL-FIT C binary (the numerical-regression oracle + daily data generator) on the PIK cluster — exact module set (json-c 0.13.1 not 0.17), restart-from-spinup subset runs, config-only daily output, lpjcheck pre-flight, SLURM templates, and the individual=true dead-code check. Use whenever running the C oracle, generating daily data, or reasoning about what the FIT config actually executes. ALSO how to REBUILD the binary (target is `make main` not `lpjml`; a new source file needs three edits incl. src/lpj/Makefile; `-Werror`; the json_object_iterator.h shim on CPATH) and the gate you MUST run afterwards — a rebuild changes the reference basis every F-vs-C number is measured against, two builds are never byte-identical (getbuild.c stamps a date), and `cmp` on a NetCDF calls 20 of 21 outputs different for identical physics because LPJmL writes a timestamp into `history`; use scripts/diagnose_cbinary_rebuild_equality.py on DECODED variables with a matched cell set and --ntasks. ALSO the opt-in rung-2 demography hooks (patches/lpjmlfit_rung2_hook_v2.patch, ADR 0061 + 0120) — BOTH the OBSERVATION half (LPJ_RUNG2_DIR: what the pre/post roster dump carries that the `ind` output cannot — water_stress, temp_stress, bm_inc_counter, bm_inc, nind, the carbon pools; that recruits enter at age 0; that neither run wrapper emits `ind` or exports the variable) and the SUBSTITUTION half (LPJ_RUNG2_APPLY_DIR: the K/R/MORT_C/ESTAB_C wire protocol, run an arm with scripts/run_rung2_replay_arm.sh, ALWAYS run MODE=none as the null control first). Carries the traps: the kill key is (pft_id, treeidx) not treeidx because tree->index is a PER-PFT counter; a recruit has SEVEN sampled trait axes and only four are substituted; `sapwood_old` is a DEAD FIELD and the mort_* columns are uninitialised for any tree not yet through mortality_tree_ind INCLUDING every recruit at its own post — so a consistency check between two readers of one buffer cannot detect uninitialised memory, only two independent runs can; a local named `v` will not compile because discharge.h does #define v; and piping a `module load` runs it in a subshell so the build loses its compiler.
 ---
 
 # lpjmlfit-cbinary — run the LPJmL-FIT oracle
@@ -137,7 +137,9 @@ byte-for-byte. Measured on the 2026-08-10 rebuild: 138 variables + `globalflux` 
 
 ## The rung-2 demography hook (opt-in; inert by default) — ADR 0061
 
-`patches/lpjmlfit_rung2_demography_hook.patch` adds `include/rung2hook.h` + `src/lpj/rung2_hook.c` and two
+**Use `patches/lpjmlfit_rung2_hook_v2.patch`** — it carries BOTH halves (observation + substitution) and
+supersedes `patches/lpjmlfit_rung2_demography_hook.patch`, which is kept only for the provenance of the
+binary ADR 0061 gated. The observation half adds `include/rung2hook.h` + `src/lpj/rung2_hook.c` and two
 call sites in `annual_natural.c`. **Activated only by `export LPJ_RUNG2_DIR=<dir>`**; unset, every entry
 point returns immediately (this is what makes the shipped `bin/lpjml` still the oracle). It writes
 `<dir>/roster_rank%04d.txt` with three self-describing record kinds (`#H` header lines in the file):
@@ -152,8 +154,22 @@ the four death rates read), `bm_inc`, `nind`, all seven carbon pools, `crownarea
 
 Gotchas, each paid for once:
 
-* **`mort_*` are meaningful only at `post`.** They are written by `mortality_tree_ind`, which runs after the
-  `pre` dump; in the first year after a restart they hold uninitialised memory (a `6.9e-310` denormal).
+* ⚠ **TWO columns of the dump are UNINITIALISED MEMORY. Never read them** (ADR 0120, which corrects the
+  narrower ADR-0061 version of this):
+  * **`sapwood_old` is a DEAD FIELD** — `Pfttree.sapwood_old` is declared in `include/tree.h` and is
+    **never written or read anywhere in LPJmL-FIT**, and `new_tree` does not zero it. Garbage at BOTH
+    phases, in EVERY year.
+  * **`mort_prob`/`mort_npp`/`mort_age`/`mort_water`/`mort_temp` are garbage for any tree that has not
+    yet been through `mortality_tree_ind`** — every tree at the first `pre` after a restart (a
+    `6.9e-310` denormal), **and every RECRUIT at the `post` of its own establishment year**, because
+    `establishmentpft_ind` runs after mortality and `new_tree` does not zero them. So "valid at `post`"
+    holds only for trees that were already alive that year.
+  * **Why ADR 0061's gate could not find either:** it compared the dump against the run's own `ind`
+    table, and both readers read the SAME struct memory, so they agree on the garbage too. **A
+    consistency check between two readers of one buffer cannot detect uninitialised memory — only a
+    comparison of two independent RUNS can.** Use `scripts/diagnose_rung2_dump_equality.py`, which
+    separates the uninitialised columns from real state and is the right check after any rebuild or
+    any change to the writer.
 * **Recruits appear at `post` with `age == 0`** — `annual_tree` does the `age++`, so they first read as age
   1 the following year. Dead trees stay in the patch list with `isdead = 1` and are gone by the next `pre`.
   Accounting closes exactly: `post`-alive of year *N* == `pre` of year *N+1*.
@@ -165,3 +181,55 @@ Gotchas, each paid for once:
 * Verify the dump with `scripts/diagnose_rung2_roster_vs_ind.py` (post + stems >5 m must reproduce the
   run's own `ind` table: identical tree sets, all 21 shared columns to ≤5e-6 — `ind`'s `%g` gives only six
   significant digits, so a tolerance below ~1e-5 is meaningless).
+
+## The rung-2 SUBSTITUTION hook (the read-back half) — ADR 0120
+
+`export LPJ_RUNG2_APPLY_DIR=<dir>` (independent of `LPJ_RUNG2_DIR`; both unset ⇒ stock binary). Per
+patch-year the C writes `req_r<rank>_y<year>_p<patch>.txt` (+ a `.ready` marker) holding the `pre`
+roster in the SAME format as the dump, spin-waits for `rsp_....ready`, then reads:
+
+```
+K <pft_id> <treeidx>                              kill this tree
+R <pft_id> <sla> <wooddens> <D95max> <minwscal>   one recruit
+MORT_C | ESTAB_C                                  defer that half back to the C
+END
+```
+
+Any roster tree not named by a `K` lives; the `R` lines are the COMPLETE tree recruit set. The C writes
+`audit_r<rank>.txt` recording what it actually did. `LPJ_RUNG2_APPLY_TIMEOUT` (default 600 s) makes a
+hung harness fail loudly instead of hanging the job.
+
+Run an arm with `scripts/run_rung2_replay_arm.sh` (`MODE=kills|recruits|both|none`), which generates the
+jcf, starts the harness in the background of the same job, and runs lpjml. Score with
+`scripts/diagnose_rung2_replay_identity.py`.
+
+Five things that will bite:
+
+* **The kill key is `(pft_id, treeidx)`, NOT `treeidx` alone.** `tree->index` is a **per-PFT** counter
+  (`new_tree.c`: `tree->index = treepar->index++`, `treepar = pft->par->data`), so two trees of different
+  PFTs in one patch can collide. The hook asserts uniqueness per patch-year and dies rather than
+  mis-attributing a kill.
+* **A recruit has SEVEN sampled trait axes, not four.** `new_tree` draws `sla`, `wooddens`, `D95max`,
+  `minwscal`, `emax`, `k_root`, `beta_2` and derives leaf `longevity` from `sla`. The hook substitutes
+  the four the Component-S copula supplies, re-derives `beta_root` from the new `D95max` and `longevity`
+  from the new `sla` (as `new_tree` does), and leaves `emax`/`k_root`/`beta_2` on the C's own draw. **Say
+  "4 of 7 axes" in any result.**
+* **A kill the C's own state cannot un-make wins over a "live" verdict** — the `allocation_tree` kill,
+  the cut year, `!survive`, `isneg_tree` — and is counted (`n_forced_dead`). Reviving such a tree would
+  break carbon, because `litter_update` is called inline the moment `annualpft` returns TRUE.
+* **ALWAYS run `MODE=none` first as the null control.** Rendezvous active, both halves deferred: it must
+  reproduce the recorded run in every initialised column. That is what separates "the harness perturbs
+  the run" from a real result.
+* **Naive ID replay is upward-biased by construction.** Once trajectories part, some recorded kills name
+  trees that no longer exist and cannot be applied while the recruit list replays in full, so the stand
+  gets denser. Measured: `kills` 1.37×, `both` 1.30×, `recruits` 0.91× at 20 yr, one cell. Never read
+  those as a property of the interface.
+
+⚠ **A single-letter local named `v` will not compile anywhere in this tree** — `include/discharge.h`
+does `#define v 86400.0`, so the compiler sees a numeric literal and reports a baffling
+`too many arguments to function call, expected 1`. The same applies to any other short name that
+collides with a macro in the transitively included headers.
+
+⚠ **`module load ... | tail` runs the shell FUNCTION in a subshell, so the environment never reaches
+`make`** — the build then fails with `mpiicx: No such file or directory`. Never pipe or redirect a
+`module` command in a build script.
