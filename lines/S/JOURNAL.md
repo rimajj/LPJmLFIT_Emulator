@@ -1687,3 +1687,53 @@ copied one row off from a CSV whose intermediate rows the table skips. Nothing d
 recorded rather than edited. And the height and crown-cover coefficients came out as a beautiful ±0.9 pair
 that means nothing at all: variance inflation 16.5 and 15.3, an artefact of four collinear canopy columns. The
 forward-selection path is the reading that survives.
+
+## 2026-08-11 (second) — answering the rung-2 interface, and finding that arm C was never blocked on science
+
+Line M's ADR 0120 landed on main while I was writing up the drift attribution, and it contains a sentence
+addressed to me: the demography interface was raised on 10 August and "S has not yet replied". It had also
+built the half that matters — the C now *accepts* a replacement kill set and recruit set, gated to be
+numerically identical to the current binary when switched off. So the question was live and blocking.
+
+The choice M offered was between returning a kill set, returning a count plus a victim rule borrowed from
+the C's own hazard, or returning a per-individual survival probability. I picked the third, and the argument
+is not a preference. FIT's warming trait shift decomposes as about a fifth composition and half within-PFT,
+and the within-PFT part is entirely within age class. Traits never change after a tree is created, so a
+trait mean that moves at fixed species and fixed age can only be differential survival. Who dies *is* the
+trait response. A demography that returns only a count cannot reach the trait half of the acceptance
+criterion through that interface no matter how good the count is. The middle option borrows the C's ordering,
+which makes any trait result the C's selection wearing the emulator's count — a good upper-bound control and
+not an answer. And returning a probability rather than a finished kill set mirrors what FIT itself does, and
+keeps the random draw on M's side, where the seed ensemble is run.
+
+The part I did not expect: this needs no new model. The opt-in trait-dependent mortality operator built back
+in Phase 3A already produces exactly this — a per-individual survival factor with a tilt tuned so the learned
+count target is still hit. So the null arm and the selection arm are the same wire format with the tilt off
+and on, and their difference is a direct measurement of how much of the trait response is selection. Which
+also means my own arm C was never blocked on science. It was blocked because it needs a roster and the only
+rollout I have is one cell. M's harness is the roster. The option my last handoff floated — build a global
+offline demography rollout — is now the wrong thing to build, and I said so in the handoff explicitly.
+
+Better still, the harness removes a limitation I recorded as permanent: two of the four death rates are
+zeroed in the ported hazard because the emulator has neither of FIT's stress integrals, and the C's roster
+dump carries exactly those accumulators. Inside rung 2 the operator can run complete for the first time. I
+also offered M a free gate: with the tilt forced to one, the operator provably reduces to FIT's own hazard,
+so it must reproduce the C's per-tree mortality — no new code, and it catches a port error before any science
+number is quoted.
+
+I answered M's other question with data rather than opinion, and it nearly went wrong. Of the three recruit
+traits the hook leaves on the C's own draw, only one is emitted anywhere, so I measured whether it correlates
+with the four the emulator predicts. The first run came back with correlations of exactly zero and a
+selection differential of minus two hundred and eighty-four standard deviations — a number that cannot exist.
+That was the tell: a column with no variance produces both. It turns out that trait is a scalar 0.02 for all
+seven tree types in the live parameter file, with the sampled-interval version commented out at every entry,
+and it carries exactly one distinct value across all 206 million tree rows. So leaving it to the C is an
+identity, not an approximation, and the four-axis recruit interface is complete. I restructured the script to
+audit variability first and to print "const" instead of a ratio, because the next person to run it on a
+different axis deserves to hit the audit rather than the impossible number. The two remaining axes are
+emitted nowhere, so the honest answer there is that it is not measurable from the current output, and the
+cheap route if it ever matters is to add them to the roster dump.
+
+One more thing worth recording: the four axes the copula does predict are genuinely correlated with each
+other within species and age class — leaf economics against rooting depth at −0.29, against drought tolerance
+at +0.25. That is the joint the copula exists to carry, so the recruit rows have to be consumed as a set.
