@@ -1737,3 +1737,44 @@ cheap route if it ever matters is to add them to the roster dump.
 One more thing worth recording: the four axes the copula does predict are genuinely correlated with each
 other within species and age class — leaf economics against rooting depth at −0.29, against drought tolerance
 at +0.25. That is the joint the copula exists to carry, so the recruit rows have to be consumed as a set.
+
+## 2026-08-11 — arm C's target was invalidated by the ADR that created it (ADR 0118)
+
+Session opened with the handoff's instruction: agree the arm-C run with M, and meanwhile scope arm D.
+Scoping arm D meant reading ADR 0025 (the recruit copula) properly, and §3 turned out to contain its own
+expiry condition in the decision text — *"Trait-dependent mortality is a much larger, separate change; if
+ever added, this training target must change."* Arm C is exactly that change. `grep -rln 0025
+docs/decisions/` returned nothing from the 0047→0049→0117 chain, including last session's own reply to M.
+So the condition had been sitting unevaluated for two weeks with the arm one session from running.
+
+Rather than argue the point, sized it: `scripts/diagnose_copula_selection_confound.py`, 197.7 M historic +
+828.8 M ssp370 surviving stems, both seeds, both scenarios, all four live axes, no refit and no new model
+run. Two jobs of ~7 min on the `priority` partition (1754705; 1754709 after adding the young-mean column
+the per-cell panel was printing as `nan`). Pre-registered the hypothesis and the two decision numbers in
+the script docstring before submitting, per the residual-diagnosis discipline.
+
+The composition control earned its place. Pooled, D95max (−49.6 %) and minwscal (−35.9 %) looked
+catastrophic; within (Cell, Type) they collapse to −2.4 % / +0.4 %. Had only the pooled panel been run this
+would have been written up as a four-axis crisis of which exactly one is real. And the control is not a
+"pooled overstates" rule — Wooddens moved the other way, +5.4 % → +12.2 %, i.e. composition had been masking
+the one displacement that matters. Wooddens is the axis ADR 0049's flip criterion is written on.
+
+Also had to be careful not to blend the two panels: the per-cell floor (`n_young ≥ 30`) selects a
+young-stem-rich subsample whose own Wooddens response is −3698 against the pooled +1848 — opposite in sign.
+One ratio definition per panel (ADR 0111 §5b), stated in the script's own docstring so a future reader
+cannot mix them by accident.
+
+Seed agreement was ≲ 2 % on every entry, which is unusual for this line and worth noting: the variability
+audit passed cleanly for once, so nothing here needs a multi-seed caveat.
+
+Written up as ADR 0118, amended into `lines/M/STATE.md` (M runs the arm, so they needed it before starting),
+and captured as two skill sections — the composition-control trap and the "check whether the ADR you are
+extending wrote its own expiry condition" check, both in `residual-diagnosis`, plus a survivor-marginal
+section in `slow-drf-pipeline`.
+
+Arm D was scoped in the same pass and came back with its own problem: ADR 0093 §5.3's motivating 2–3× KS
+win has no committed reproducer anywhere in the repo, and its "two-moment fit, no fitting procedure"
+phrasing reads as oracle moments against the copula's out-of-sample number. Not resolved here — handed to
+the next session as the one cheap offline task remaining.
+
+⚠ ADR block 0100–0119 is now down to **0119**, the last number. Raised (again) as an integration point.

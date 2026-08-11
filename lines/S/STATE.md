@@ -7,6 +7,61 @@
 
 ## NEXT — start here
 
+> ## ✅ ARM C IS SCOPED, AND IT TURNS OUT TO REST ON AN INVALIDATED TRAINING TARGET (2026-08-11, ADR 0118)
+>
+> **Read ADR 0118 first.** No new model run, no refit, ~14 min in 2 jobs (1754705, 1754709). It changes what
+> arm C is allowed to claim, and it is already written into `lines/M/STATE.md` as an amendment to the ADR-0117
+> inbound (M runs the arm, so they had to have it before they start).
+>
+> **1. THE FINDING — the recruit copula is trained on FIT's SURVIVORS, so it already carries the selection
+> arm C proposes to add.** ADR 0025 §3 chose that target and wrote its own expiry condition into the decision
+> text: *"if trait-dependent mortality is ever added, this training target must change."* Arm C **is** that
+> change, and **no ADR in the 0047→0049→0117 chain cites ADR 0025** — including this line's own reply to M
+> last session. The asymmetry is what makes it bite: **C0 (uniform thinning) is unaffected**, because that is
+> exactly the trait-blind design the survivor marginal was matched to, so the bias lands on the arm and not on
+> its null — i.e. straight onto the headline `C1 − C0`.
+>
+> **2. Sized: +12.18 % on Wooddens within a cell-PFT group, and 0.56 of it does NOT cancel in a response.**
+> 197.7 M historic + 828.8 M ssp370 surviving stems, both seeds (agreement ≲ 2 % everywhere — an unusually
+> clean variability audit for this line). Other axes: SLA +0.80 %, D95max −2.35 %, minwscal +0.44 %.
+> **Wooddens is precisely the axis ADR 0049's flip criterion is written on** and the one ADR 0046
+> fingerprinted as within-PFT selection. ⚠ **All four are LOWER BOUNDS** — the `ind` writer drops stems below
+> 5 m, so selection before that height is invisible.
+>
+> **3. ⚠ THE COMPOSITION CONTROL IS WHAT MAKES THE PANEL READABLE — do not quote the pooled numbers.** Pooled,
+> D95max (**−49.6 %**) and minwscal (**−35.9 %**) look catastrophic; formed *within* (Cell, Type) they collapse
+> to −2.4 % / +0.4 %, so ~95 % of that was *where young stems live*, which the per-cell conditioning already
+> handles. The pooled panel alone would have reported a four-axis crisis of which exactly one is real. And it
+> is not a "pooled overstates" rule — Wooddens went the OTHER way, +5.4 % → +12.2 % under the control.
+> **Never blend the two panels' ratios:** the per-cell panel's `n_young ≥ 30` floor makes it a biased
+> subsample (34 256 of 54 020 cells) whose own Wooddens response is **−3698**, opposite in sign to the pooled
+> **+1848**.
+>
+> **4. What arm C may now claim, pre-registered so it cannot be reinterpreted afterwards.** `C1 − C0` is
+> **not** "how much of the trait response is selection". ADR 0049's flip criterion is not re-scoped but gains
+> two conditions: **read θ first** (the confound and the arm's power scale together — near-zero θ means the
+> operator never fired, ADR 0117 §6.i), and **discriminate on the per-PFT gradient SHAPE**
+> (`S_age_wooddens_gradient.csv`, non-monotone ids 0 and 3), which a roughly uniform double count cannot fake.
+>
+> **5. The clean fix is NOT a re-fit, and it is not S's to start alone.** A recruit-marginal target cannot be
+> built from the `ind` parquet **at all** — it never emits a recruit (nothing below 5 m). M's rung-2
+> `pre`/`post` dump *does* see recruits at `age == 0`, so the retrain is a rung-2 by-product with no new model
+> run, but it bumps the S→M artifact version ⇒ integration point, not a patch. **Raised with M as item 4 of
+> the amendment; S owns the retrain, M owns whether the dump keeps what it needs.**
+>
+> **6. ARM D IS SCOPED, AND ITS MOTIVATING NUMBER IS NOT CURRENTLY DEFENSIBLE.** Arm D inherits the double
+> count unchanged (it is "C + Beta"). Separately: ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on
+> per-cell KS (0.042–0.073 vs 0.129–0.173)" has **no committed reproducer in this repo** — no script, no
+> fixture — and its phrase *"two-moment fit, no fitting procedure"* indicates the Beta used each cell's
+> **observed** moments while the copula's figure is **K-fold-by-cell out-of-sample**
+> (`score_slow_copula_ks.py`). If so it compares oracle-conditioned against out-of-sample and the 2–3× is an
+> **upper bound**, not a realizable gain — a deployed Beta still needs a learned map from features to
+> (mean, variance), the cost the copula's forests already pay. **Re-establish that like-for-like before arm D
+> runs**, or it repeats ADR 0112's lesson in a new place. This is the cheapest remaining offline S task.
+>
+> **7. ⚠ ADR BLOCK NEARLY EXHAUSTED — 0119 IS THE LAST NUMBER LINE S HAS.** Raised again below; the block map
+> is CLAUDE.md §9, integrator-owned. Allocate the next block BEFORE it is needed mid-session.
+
 > ## ✅ RUNG 1 IS OPEN, AND ITS FIRST TWO FINDINGS CHANGE HOW YOU READ EVERY S NUMBER (2026-08-10, ADR 0112 + 0113)
 >
 > **Read ADR 0112 and 0113 before anything else in this file — several statements further down are superseded
@@ -202,10 +257,18 @@
 > than assuming either way. The four axes ARE mutually correlated within (PFT, age bin) — `SLA~D95max`
 > −0.292, `SLA~minwscal` +0.251 — so they must be consumed as a **set**.
 
-> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": the offline count-recursion diagnosis is FINISHED (ADR 0112–0116)
-> and the S→M interface is answered (ADR 0117). Arm C is unblocked but runs on M's harness, not here — so
-> the next S action is to AGREE THE ARM-C RUN WITH M (who runs it, on which cells, with how many seeds),
-> and meanwhile scope arm D. Nothing cheap and offline remains on the count side.**
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?" (refreshed 2026-08-11 after ADR 0118): arms C and D are now BOTH
+> scoped, and each came back with a defect that had to be fixed before the arm could mean anything —
+> C rests on a training target its own ADR had already invalidated (0118 §1–4, amended into M's STATE), and
+> D's motivating number has no reproducer (0118 §5). So the next S action is the ONE cheap offline task left:
+> RE-ESTABLISH ARM D's BOUNDED-BETA COMPARISON LIKE-FOR-LIKE — a bounded Beta fitted per cell and scored
+> K-fold-by-cell out-of-sample against `score_slow_copula_ks.py`'s own basis, not against oracle moments.
+> That is a scriptable offline job on tables that already exist, and it decides whether arm D is worth
+> running at all. Everything else on the count side is finished; arm C itself belongs to M's harness.**
+>
+> Two things NOT to do, both now on the record: do not start a global offline demography rollout (ADR 0117 §2
+> — M's harness is the roster), and do not "fix" the copula by re-fitting it to young stems (ADR 0118 §5 —
+> the `ind` parquet contains no recruits at all; the target only exists inside M's rung-2 dump).
 >
 > **(i) Arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
 > `trait_mortality` selects *which individuals* die by trait, and the bounded-Beta family replaces the recruit

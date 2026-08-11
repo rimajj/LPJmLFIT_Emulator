@@ -980,3 +980,54 @@ trait was a **scalar in the live parameter file**, with the sampled-interval for
 "uncoupled trait" reading was never on the table.
 
 Worked example, reusable as-is on any axis: `scripts/diagnose_recruit_trait_axis_coupling.py`.
+
+## A POOLED difference can be almost entirely COMPOSITION — run the within-group control in the SAME script (line S, 2026-08-11, ADR 0118)
+
+**The trap.** You compare two sub-populations pooled over the globe (young stems vs all stems, one scenario
+vs another, cells inside a band vs outside) and read the difference as the mechanism you were looking for.
+But the two sub-populations may simply LIVE IN DIFFERENT PLACES, and then the pooled difference is a
+weighted-average artefact — Simpson's paradox with a physical label on it.
+
+**Measured cost of not doing it.** ADR 0118 compared FIT's standing trait marginal against its youngest-stem
+marginal to size how much selection the recruit copula's training target already carries. Pooled, two of the
+four axes looked catastrophic — rooting depth **−49.6 %**, drought threshold **−35.9 %** of the mean. Formed
+*within* each (Cell, PFT) group and then averaged, the same two collapse to **−2.4 %** and **+0.4 %**: about
+95 % of the apparent displacement was *where young stems live*, which the per-cell conditioning already
+handles. **The pooled panel alone would have reported a four-axis crisis, of which exactly one was real.**
+
+**And the control can point the other way, which is the reason to run it rather than to argue about it.**
+On the axis that mattered (wood density) the displacement got **bigger** under the control, +5.4 % → **+12.2 %**
+— composition had been *masking* it. So this is not a "pooled overstates things" rule; it is that pooled and
+within-group are different quantities and you cannot predict the sign of the difference.
+
+**Do this.** Emit both panels from one script, side by side, on one row universe — never as a follow-up run.
+Then: (a) state which one answers your question (here: within-group, because the model being judged is
+conditioned per cell); (b) **do not blend their ratios**. A within-group panel usually needs a coverage floor
+(`n >= 30`), which makes it a BIASED SUBSAMPLE with its own denominator — in ADR 0118 the subsample's own
+warming response was **−3698** against the pooled **+1848**, *opposite in sign*, so a ratio built from one
+panel's numerator and the other's denominator is meaningless. One ratio definition per panel (ADR 0111 §5b),
+and say which panel each quoted number is on.
+
+Worked example: `scripts/diagnose_copula_selection_confound.py` (`pooled_panel` / `percell_panel`).
+
+## CHECK WHETHER THE DECISION YOU ARE EXTENDING WROTE ITS OWN EXPIRY CONDITION (line S, 2026-08-11, ADR 0118)
+
+**A good ADR often names the future change that would invalidate it — and nothing in this repo enforces
+that the change, when it arrives, goes back and reads it.** ADR 0025 §3 picked the recruit copula's training
+target (FIT's *survivors*) and wrote the condition into the decision text: *"Trait-dependent mortality is a
+much larger, separate change; **if ever added, this training target must change**."* Trait-dependent
+mortality was then built (ADR 0047), wired (ADR 0049) and adopted as a cross-line interface (ADR 0117) —
+**three decision records over two weeks, none of which cited ADR 0025** — and the arm was one session from
+running on an invalidated target.
+
+**The 60-second check, before starting any arm that changes a model's behaviour:**
+
+```bash
+grep -rn "must change\|no longer\|ceases to\|if ever\|expiry\|only valid\|premise" docs/decisions/00NN-*.md
+grep -rln "0025" docs/decisions/            # who has cited the ADR you depend on? (often: nobody)
+```
+
+Read the ADR that OWNS the artifact you are about to feed (its training target, its basis, its default), not
+only the ADRs in your own chain. The failure mode is silent by construction: the invalidated ADR is
+`accepted`, its artifact still loads, every gate stays green, and the number you produce is simply
+answering a different question than the one you will report.

@@ -56,6 +56,60 @@ gave the selection no room. (ii) **ADR 0116's offline count drift does not trans
 the roster returns from the C each year, so the count is read off the *true* roster instead of being
 self-fed. Rung 2 is where that can be tested; don't assume it in either direction.
 
+### ▶ AMENDMENT FROM LINE S, 2026-08-11 (ADR 0118) — **read this BEFORE running arm C: its headline claim is narrower than the block above says, and the reason is measured**
+
+> Same integration point, one day later. **Nothing about the interface or the wire format changes** —
+> option (c), the four recruit axes, and the θ=1 identity gate all stand exactly as written above. What
+> changes is **what `C1 − C0` is allowed to claim**. Full record: `docs/decisions/0118-*.md`.
+
+**1. The copula's recruit marginals are trained on FIT's SURVIVORS, so they already carry the selection
+arm C adds on top.** ADR 0025 §3 chose that target and wrote its own expiry condition into the decision —
+*"Trait-dependent mortality is a much larger, separate change; **if ever added, this training target must
+change**."* Arm C is that change, and no decision record in the 0047→0049→0117 chain (including S's own
+reply above) had cited it. **The asymmetry is the problem: C0 is unaffected** — uniform thinning is exactly
+the trait-blind design the survivor marginal was matched to — so the bias lands entirely on the arm and not
+on its null, i.e. straight onto the headline difference.
+
+**2. Measured, so you can price it rather than argue about it** (197.7 M historic + 828.8 M ssp370 surviving
+stems, both ground-truth members, no refit, ~7 min; `scripts/diagnose_copula_selection_confound.py`). Within
+a cell-PFT group, FIT's standing marginal sits this far above its own youngest-stem marginal:
+
+| axis | displacement | of it, the part that does NOT cancel in a warming response |
+|---|---|---|
+| **Wooddens** | **+12.18 %** | **0.56 of FIT's own response** |
+| SLA | +0.80 % | 0.06 |
+| D95max | −2.35 % | 0.31 |
+| minwscal | +0.44 % | 0.12 |
+
+Seed agreement ≲ 2 % on every entry. **Wooddens is the one that matters** — it is the axis ADR 0049's flip
+criterion is written on, and the axis ADR 0046 fingerprinted as within-PFT selection. ⚠ All four are
+**LOWER BOUNDS**: the `ind` writer drops stems below 5 m, so selection before that height is invisible.
+
+**3. What this changes for your arms — two conditions, pre-registered so they cannot be reinterpreted after
+the run.** A Wooddens improvement in `C1 − C0` is **no longer sufficient evidence on its own**, because a
+double count pushes the same way:
+* **read θ first** (already your item 6.i): the confound and the arm's power **scale together**. Near-zero θ
+  ⇒ `C1 ≈ C0` and the arm measured nothing; large θ ⇒ the double count is live. Neither reading is available
+  without θ printed beside the result.
+* **test the per-PFT gradient SHAPE**, not just the level: a genuine selection channel must reproduce
+  `test/testitems/references/S_age_wooddens_gradient.csv` including the **non-monotone** ids 0 and 3,
+  whereas a double count inflates the level roughly uniformly. That is the ID-free discriminator; the slope
+  alone cannot separate them.
+
+**4. Something that could be fixed cheaply, and only your harness can do it.** The clean repair is to train
+the marginals on **entering** individuals instead of survivors — and that is **impossible from the `ind`
+parquet**, which never emits a recruit (nothing below 5 m). Your `pre`/`post` roster dump **does** see
+recruits at `age == 0`. So a recruit-marginal copula is a rung-2 by-product that costs no new model run. It
+would change the S→M contract (a new artifact version, not a patch), so treat it as a scoped integration
+point rather than something to slip into an arm — but it is the only route that removes the bias instead of
+bounding it. **S owns the retrain; you own whether the dump keeps what it needs.**
+
+**5. Arm D, if it comes up: it inherits all of the above unchanged**, and separately its motivating number
+should not be relied on yet. ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on per-cell KS" has **no
+committed reproducer** in this repo, and its "two-moment fit, no fitting procedure" wording indicates the
+Beta was matched to each cell's **observed** moments while the copula's number is **out-of-sample** — if so
+it is an upper bound, not a realizable gain. S owns re-establishing that like-for-like before arm D runs.
+
 ## ✅ RESOLVED — the JET 0.12.0 blocker (pinned on `main` in `47c6407a`, 2026-07-28)
 
 JET **0.12.0** removed the `target_defined_modules` configuration that `test/jet_tests.jl:6` passes, so
