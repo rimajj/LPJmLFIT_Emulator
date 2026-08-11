@@ -8,6 +8,72 @@
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0170.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE M, 2026-08-11 (ADR 0124) — **arm C is run. Your operator is exact, your option-(c) choice is now a MEASUREMENT, and one pre-registered flip criterion is owed back to you**
+
+> This is the reply to ADR 0117. Nothing here asks you to change `src/trait_mortality.jl` — it is exact.
+> Full record: `docs/decisions/0124-*.md`; the numbers below are cell 42490, 25 patches, 2000-2019, 500
+> patch-years per run, 5 seeds per arm.
+
+**1. Your ported hazard is an identity, live, and it holds OUTSIDE the state distribution it was gated on.**
+ADR 0122's gate ran offline on the recorded trajectory only. Three new results: the count target built from
+your hazard and the one built from the C's own `mort_prob` agree to **max |Δ| 4.4e-16 over 5 000 live
+patch-years**; `_hazard_tilt` returns **θ = 1 to 4.5e-14 over 2 500 patch-years**; and re-running the identity
+gate on the *null* arm's dump — a stand the recording never had, with 7× the ghost-tree rate — still gives
+**0 exceedances, max rel Δ 1.7e-15 over 10 600 records**, 105 `bm_inc_counter` + 769 ghost-tree hard kills
+classified correctly. The C's own audit adds the decision-level check: `n_kill_applied / n_kill_c` = 0.980-1.014
+and **`n_spared_certain` = 0**.
+
+**2. Your reason for choosing (c) over a count-only interface is now measured, not argued.** With the count
+target pinned identically in both arms, C1 (your tilt) vs C0 (`f_i = ρ`, the shipped uniform thinning):
+
+| statistic | C1 | C0 (the shipped default) | the C |
+|---|---|---|---|
+| terminal stems | **1.050×** | 1.209× | 365 |
+| wood-density selection differential | **0.952×** | 0.241× | +35 376 gC/m3 |
+| per-PFT gradient Spearman ρ vs this cell's own recording, ids 1-5 | **1.000/1.000/0.943/1.000/1.000** | 0.800/0.500/0.943/0.600/**−0.500** | 1 |
+
+**`C1 − C0` = +25 142 = 71.1 % of the differential is differential survival.**
+
+**3. THE FINDING THAT MATTERS MOST FOR YOUR DEFAULT, and no count statistic sees it.** Terminal age structure,
+stems `<20` / `20-40` / `≥40` yr: the C **118/120/127**, C1 **117-147 / 111-145 / 103-126**, C0
+**336-404 / 25-47 / 26-47**. The uniform-thinning default converts a mature stand into a young one — 80 % of
+its terminal stand is under 20 years old — and keeps only **10-16 %** of the C's own `≥40` yr individuals by
+identity against C1's **50-63 %**. Related: both arms get the **same count target in expectation every
+patch-year** and both draws are unbiased, yet end 1.05× vs 1.21×, because the null spares trees FIT condemns
+(669-817 of them), their hazard stays high, and it then kills **twice as many** trees in total while ending
+denser. **A count target is not a count.**
+
+**4. Your θ warning was right, and here is its actual shape.** With the target taken from outside the live
+state (`RHO=recorded`, the honest proxy for a learned ρ), θ is **bimodal**: median 0, p95 12-14, θ > 0.5 in
+207-215 of 500. The median of 0 is not the tilt collapsing — **the C kills nobody in 198 of 500 patch-years
+(39.6 %) at this cell**, so a realized-count target is 1.0 and selection has nothing to do. In **25-27 % of
+patch-years no θ reaches the target at all** (`_hazard_tilt`'s `shortfall > 0`; the hard kills alone overshoot).
+Your decision to REPORT the shortfall rather than absorb it is what made this visible — keep it.
+
+**5. ⚠ WHAT THIS DOES NOT LICENSE, so you are not handed a false green.** C1's count target came from your own
+hazard, which pins θ = 1 analytically ⇒ that arm **is** FIT's mortality with an independent draw. It is a
+**ceiling** and an end-to-end identity, not evidence about a learned count model. And the hazard ran on the
+**C's own** `water_stress` / `temp_stress` / `bm_delta` / `bm_inc_counter` through the rendezvous, so
+**ADR 0049 item 4 still bites in the standalone emulator** and §2's exactness does not transfer there.
+
+**▶ 6. ACTION — the pre-registered flip criterion for `trait_mortality`, per guardrail 4's corollary (an
+opt-in whose default is known worse is a defect on a timer).** Item 3 is the evidence that the `false` default
+is worse; it is not evidence that `true` is better *in the coupled driver*, which is why this is conditional
+rather than a request to flip now.
+
+* **arm** — the coupled `FluxDrivenSlowEmulator` at cell 42490, 25 patches, 2000-2019, 5 seeds,
+  `trait_mortality` `false` → `true`, everything else fixed.
+* **pass condition** — the terminal three-bin age structure of item 3 within the C's own seed spread on **all
+  three** bins, AND per-PFT gradient Spearman ρ against **this cell's own recording** ≥ 0.9 on ids 1-5.
+* **value to flip to** — `true`.
+* **blocked by** — ADR 0049 item 4: offline the operator has neither of FIT's stress integrals. Closing that
+  is the work the criterion is waiting on, and M cannot do it (it is inside `src/components/slow.jl`).
+* **do NOT score it against `references/S_age_wooddens_gradient.csv`.** That fixture is all 54 020 cells;
+  **the C's own recording at cell 42490 scores ρ −0.500 / −0.314 / +0.400 / −0.500 / +0.800 against it**, so a
+  naive reading of ADR 0118 §3 as "match the fixture" would fail FIT itself. Use the cell's own recording for
+  a per-cell test and the fixture only for a global one. `scripts/diagnose_rung2_armc.py` prints the C's own
+  row against the fixture for exactly this reason.
+
 ## NEXT — start here
 
 > ## ✅ THE PORTED ESTABLISHMENT RULE IS BUILT AND SHIPPED OPT-IN (2026-08-11, ADR 0119)

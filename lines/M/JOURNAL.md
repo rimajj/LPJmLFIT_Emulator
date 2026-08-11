@@ -954,3 +954,73 @@ in the diagnostic and prints on every run.
 **One incidental fix.** The roster key table was a fixed 1024-entry array that silently stopped recording
 past the cap, so in a dense cell a duplicate key — which makes a kill instruction ambiguous — would not have
 been detected. It grows now.
+
+---
+
+## Session 10 — 2026-08-11 — arm C: the substituted mortality interface, and what the shipped default does to a stand
+
+The single pre-registered next step was "run arm C", and it ran. Sixteen model runs, fourteen seconds each
+— the whole experiment cost less compute than one test suite.
+
+**What arm C is.** Line S chose, for the demography interface, to hand back a per-tree survival *chance*
+rather than a headcount, and to let this side flip the coins. Two versions were run against each other. One
+gives every tree the same chance — that is what the emulator ships today, an even thinning that removes the
+right *number* of trees without caring which. The other tilts each tree's chance by the death risk the
+original model's own formula assigns it, scaled so the total still comes out the same. Because the totals
+match by construction, the difference between the two is purely *who* died.
+
+**The interface itself is exact.** Three checks, all new, because the earlier check had only ever been run on
+one trajectory: the survival fractions computed on our side and inside the original model agree to fifteen
+decimal places across five thousand patch-years; the scaling factor comes out at exactly one to fourteen
+decimals; and re-running the old check against the *null* arm's very different stand — one carrying seven
+times as many trees the original model would have condemned — it still holds exactly. The original model's
+own bookkeeping agrees at the level of individual decisions too: our arm killed between 98 % and 101 % of
+the trees the original model's own formula wanted, and never once kept alive a tree the original model was
+certain of.
+
+**The result.** Against the original model's 365 surviving trees and its own wood-density death bias:
+
+* the tilted arm ends with 5 % too many trees and reproduces 95 % of the density bias, and it gets the
+  age-versus-density pattern right in all five tree types present at this site;
+* the even-thinning arm — today's default — ends 21 % too dense, reproduces only 24 % of the density bias,
+  and gets one tree type's pattern *backwards*.
+
+So **71 % of the original model's wood-density signal is which trees die**, not how many. A count-only
+interface could not have reached it. That was S's argument for the design; it is now a number.
+
+**The thing I did not expect, and it is the biggest one.** No count statistic can see it. Sorting the
+surviving trees by age at the end — under 20 years, 20 to 40, over 40 — the original model has 118 / 120 /
+127, an evenly spread mature stand. The tilted arm reproduces all three. The even-thinning default gives
+336–404 / 25–47 / 26–47: four fifths of its final stand is saplings. It kills old trees at the same rate as
+young ones, opens the canopy, and the original model's own seedling routine floods the gap. Checking tree
+identities rather than counts: the tilted arm still holds half to two thirds of the original model's actual
+old trees; the default holds one in eight. **The default does not merely mis-rank traits — it replaces the
+forest with a younger one.**
+
+**And a count target is not a count.** Both arms were handed the same expected number of deaths in every
+single patch-year, and both flipped their coins fairly (579 deaths against 581.6 expected; 1 096 against
+1 105.9). They still ended 5 % and 21 % too dense. The mechanism: the even thinning spares trees the
+original model condemns, those trees stay in a bad state, so next year's death quota rises — the default
+ends up killing *twice as many trees in total* and still finishing denser. Who dies feeds back into how
+many, which means a report that quotes only a density ratio cannot distinguish a right answer from two
+wrong ones cancelling.
+
+**Two measurement rules I got wrong first and corrected.** (1) There is a committed table of the original
+model's age-versus-density pattern built from all 54 020 cells, and the obvious thing is to score an arm
+against it. Doing that at one site fails the *original model itself* — its own run at this site scores
+between −0.5 and +0.8 against the global table, because one cell is a different population. The right
+reference at one site is that site's own recording; the diagnostic now prints the original model's own row
+against the global table so nobody repeats this. (2) An exactness check is only as wide as the states it was
+run on. The earlier check had seen one trajectory; the null arm visits a region it never had. It held — but
+that was luck until it was measured, and re-running it per arm is one command.
+
+**What I am careful not to claim.** The tilted arm's count target came from its own risk formula, which
+forces the scaling factor to exactly one — so that arm *is* the original model's mortality with a different
+set of coin flips. It is a **ceiling**, and an end-to-end proof that the plumbing is exact; it says nothing
+about whether the learned count model reproduces the original. And the risk formula was fed the original
+model's own internal stress accumulators through the handshake, so this does not license switching the
+default on in the standalone emulator, where those accumulators do not exist. That is written up as a
+conditional criterion and handed to line S, with the one thing that blocks it named.
+
+One cell of 54 020, one scenario, no warming response measured, four of seven trait axes carried. Written up
+as decision record 0124.

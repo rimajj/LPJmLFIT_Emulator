@@ -352,3 +352,63 @@ collides with a macro in the transitively included headers.
 ⚠ **`module load ... | tail` runs the shell FUNCTION in a subshell, so the environment never reaches
 `make`** — the build then fails with `mpiicx: No such file or directory`. Never pipe or redirect a
 `module` command in a build script.
+
+## Running ARM C — a COMPUTED demography through the substitution hook (line M, ADR 0124)
+
+Everything above serves the C its **own recorded** decision back (the transport measurement). Arm C serves a
+**computed** one: the ported FIT hazard decides who dies. That is the shape every later emulator arm has, so
+reuse this, don't re-derive it.
+
+```bash
+ARM=C1 RHO=expected SEED=1 bash scripts/run_rung2_armc.sh   # 14 s per run — run 5 seeds, not 1
+ARM=C0 RHO=expected SEED=1 bash scripts/run_rung2_armc.sh   # the no-selection null; run it EVERY time
+python3 scripts/diagnose_rung2_armc.py --csv <out.csv>      # scores every M_r2armc_*_dump present
+```
+
+* **`ARM=C0`** hands every tree `f_i = ρ` (the shipped uniform ρ-thinning = the **no-selection null**);
+  **`ARM=C1`** hands it `(1 − mort_i)^θ` with θ bisected to the same count target. `C1 − C0` is the
+  measurement. **Never run C1 without C0** — the null is what turns a plausible number into an attribution.
+* **`RHO=expected`** takes the count target from the operator's own hazard ⇒ **θ = 1 analytically**, so the arm
+  is a live end-to-end identity check AND the **ceiling** for the interface. **`RHO=recorded`** takes it from
+  the recorded baseline's realized thinning ⇒ θ is genuinely solved, which is the honest proxy for a learned
+  count model. Say which one an arm ran on; they answer different questions.
+* **The harness (`scripts/rung2_armc_harness.jl`) calls the SHIPPED operator** —
+  `TraitMortality.mortality_hazard` and `LPJmLFITEmulator._hazard_tilt`, reached as private names off the
+  package. Do **not** copy either into a harness: the arm would then measure the harness, not the operator
+  (the ADR-0023 train/inference-shift trap). `_hazard_tilt` reads only `is_grass` and `nind` off its
+  `FDiff.TreePools`, so feeding it a cheap 11-arg `TreePools` per tree is exact and costs nothing.
+* **The request is the `grow` phase, so the hazard's age basis is `age − 1`** (the roster is dumped after
+  `annual_tree`'s `tree->age++`). The harness *refuses* a non-`grow` request rather than silently computing on
+  a stale basis — on the old `pre` rendezvous the one-year-lagged `bm_inc_counter` **inverted** the sign of the
+  trait selection differential (ADR 0122/0123).
+* **Seed the draw per patch-year, not per run:** `Xoshiro(hash((seed, year, patch)))` after sorting the roster
+  by `(pft_id, treeidx)`. Order-independent (so the C's write order cannot change the answer) and it gives
+  C0/C1 **common random numbers**, which is free variance reduction on the `C1 − C0` difference. A seed
+  ensemble is then a re-run of the harness alone.
+* **Always answer `ESTAB_C`** in a mortality arm. The recruits half has a structural 0.907 replay floor
+  (ADR 0121); substituting it spends the exactness that makes a mortality difference attributable.
+* **Read the C's own `audit_r0000.txt` (in the APPLY dir, not the dump dir).** `n_kill_c` is what the C's own
+  `mortality_tree_ind` chose on the *same* roster, so `n_kill_applied / n_kill_c` is a free live check;
+  `n_forced_dead` is the C's non-negotiable kills (negative pools, `isneg_tree`, bioclimatic `survive()`,
+  `cut_year`) which the interface does **not** own; `n_spared_certain` counts trees the arm kept that the C was
+  certain of — **817 of them is how the null's failure first showed up.**
+
+### Four scoring rules this cost a session to learn — apply them to any demography arm
+
+1. **Report the terminal AGE STRUCTURE in three bins, plus the identity overlap with the C's own survivors.**
+   The null arm honoured its count target in every one of 500 patch-years and still turned a mature stand into
+   a young one (`<20`/`20–40`/`≥40` stems 336–404/25–47/26–47 against the C's 118/120/127), keeping 10–16 % of
+   the C's `≥40` yr individuals against the good arm's 50–63 %. **No count or trait statistic sees this.**
+   Bin against the RUN LENGTH (20 yr here), so one bin is what the arm built and one came from the restart.
+2. **A count target is not a count.** Two arms with identical per-patch-year targets *in expectation*, both
+   drawing unbiased, ended 1.05× and 1.21× — because sparing condemned trees raises next year's target, so the
+   null killed twice as many trees in total and still finished denser. **A density-only report cannot separate
+   a right answer from two cancelling wrong ones.**
+3. **Do not score a per-cell arm against a GLOBAL fixture.** `references/S_age_wooddens_gradient.csv` is all
+   54 020 cells; **the C's own recording at cell 42490 scores Spearman ρ −0.500 … +0.800 against it**, so that
+   test fails FIT itself. Use the cell's own `MODE=record` baseline per-cell. `diagnose_rung2_armc.py` prints
+   the C's own row against the fixture so the inapplicability is measured, not argued.
+4. **Re-run the port's identity gate on EACH new arm's dump.** ADR 0122's gate had only ever seen the recorded
+   trajectory; the null arm visits a state region with 7× the ghost-tree rate. It held (0 exceedances, max rel
+   Δ 1.7e-15 over 10 600 records) — but that was luck until measured:
+   `julia --project=. scripts/diagnose_rung2_hazard_identity.jl --dump=<arm dump>`.

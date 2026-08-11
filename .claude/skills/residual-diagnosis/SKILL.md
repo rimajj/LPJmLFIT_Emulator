@@ -1031,3 +1031,44 @@ Read the ADR that OWNS the artifact you are about to feed (its training target, 
 only the ADRs in your own chain. The failure mode is silent by construction: the invalidated ADR is
 `accepted`, its artifact still loads, every gate stays green, and the number you produce is simply
 answering a different question than the one you will report.
+
+## AN EXACTNESS GATE IS ONLY AS WIDE AS THE STATE DISTRIBUTION IT RAN ON (line M, 2026-08-11, ADR 0124)
+
+A port that reproduces the reference **exactly** — 0 exceedances, max relative Δ 1.7e-15 — was gated on
+**one trajectory**: the recorded run's own states. The moment an arm was run whose whole point was to behave
+differently, it visited a state region with **7× the rate of one hard-kill branch** that the gate had barely
+sampled. The port held there, but that was luck until it was measured, and the check is one command.
+
+So: **an identity/exactness gate is a statement about the states it saw, not about the function.** When you
+introduce an arm, a flag flip, or any change whose purpose is a different trajectory, **re-run the gate on
+that arm's own output** before crediting the arm with anything. Cheap, and it separates "the operator is
+exact" from "the operator is exact where we happened to look". The same reasoning applies to a fixture: a
+committed reference sampled from one regime does not gate a second regime.
+
+## A GLOBAL REFERENCE IS NOT A PER-CELL ACCEPTANCE TARGET — SCORE THE TRUTH AGAINST IT FIRST (ADR 0124)
+
+A committed fixture held FIT's per-PFT age–trait gradient over **all 54 020 cells**, and a prior ADR said to
+test a new operator's gradient SHAPE against it. Done at one cell, that test **fails FIT itself**: the C's own
+recording at cell 42490 scores Spearman ρ of −0.500 / −0.314 / +0.400 / −0.500 / +0.800 against the global
+fixture, because one cell is a different population (its own PFT set, its own age structure, ~10⁴ stems not
+10⁷). An arm scored that way would have been rejected for reproducing the truth.
+
+**The check that costs nothing and settles it: put the TRUTH's own row through your scorer.** If the reference
+you are scoring against cannot recognise the reference implementation, it is the wrong reference for that
+scope — and printing the truth's row makes that a measurement in the output rather than an argument in a
+review. Then pick the like-for-like basis (here: that cell's own recorded run) and keep the global fixture for
+the global claim.
+
+## MATCHING A CONSTRAINT EVERY STEP DOES NOT MEAN REPRODUCING THE QUANTITY IT CONSTRAINS (ADR 0124)
+
+Two arms were handed **identical count targets, in expectation, in every one of 500 steps**, and both drew
+unbiased (579 vs 581.6 expected; 1 096 vs 1 105.9). They ended **1.05× and 1.21×** on that very count.
+The constraint was state-dependent: the arm that satisfied it *badly* (sparing the individuals the reference
+condemned) raised its own future target, so it removed **twice as many** individuals in total and still
+finished denser.
+
+Generalisable: **when a target is computed from the state the operator is changing, honouring it pointwise is
+not a conservation law.** Before reading a ratio as "the constraint held", check whether the constraint's own
+inputs are downstream of the operator — and report the constrained quantity's *composition* (here the age
+structure, and the identity overlap with the truth's own individuals), because a scalar ratio hides two
+compensating errors as easily as it shows one.
