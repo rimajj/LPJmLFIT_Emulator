@@ -96,13 +96,40 @@ double count pushes the same way:
   whereas a double count inflates the level roughly uniformly. That is the ID-free discriminator; the slope
   alone cannot separate them.
 
-**4. Something that could be fixed cheaply, and only your harness can do it.** The clean repair is to train
-the marginals on **entering** individuals instead of survivors — and that is **impossible from the `ind`
-parquet**, which never emits a recruit (nothing below 5 m). Your `pre`/`post` roster dump **does** see
-recruits at `age == 0`. So a recruit-marginal copula is a rung-2 by-product that costs no new model run. It
-would change the S→M contract (a new artifact version, not a patch), so treat it as a scoped integration
-point rather than something to slip into an arm — but it is the only route that removes the bias instead of
-bounding it. **S owns the retrain; you own whether the dump keeps what it needs.**
+**4. ⚠ SUPERSEDED SAME DAY BY AN OWNER STEER — THE FIX IS A PORT, NOT A RETRAIN. NOTHING IS ASKED OF YOUR
+HARNESS.** *(Original text kept below so the change is visible; the owner's objection, 2026-08-11, was:
+"which trees are born is — apart from the inheritance functionality — randomly drawn from uniform
+distributions. why should we train on that?? what matters and what we have to learn is who survives the
+environmental filtering — and for that looking at trees above 5 m should be enough". Correct on both
+counts.)*
+
+**The corrected fix.** FIT's establishment rule is **fully specified and needs no training data at all**:
+a uniform draw on each PFT's own `[low, high]` interval from `par/pft_lpjmlfit.js`, plus an inheritance
+channel that copies a random member of the cell's 50-yr rolling top-AGB seedbank and jitters each axis by
+`new = old·(1 + 0.1·gasdev)` reflected at the interval edges, mixed in the **closed-form** ratio
+`w_inherit = 4/(4 + n_elig)` (ADR 0045). Every input is either in the parameter file or computable from the
+emulator's **own** roster. So S ports the rule; **no recruit-marginal retrain, no new artifact version, and
+nothing is needed from your `pre`/`post` dump.** Item 4's original ask is **withdrawn** — do not carry it
+into your rung-2 scoping.
+
+**Also withdrawn: the "lower bound" caveat is not a constraint on this route.** It only ever limited
+*fitting* an entry distribution from `ind`. The emulator grows its own saplings and applies the ported
+hazard through the sub-5 m phase itself, so >5 m data is sufficient both to drive and to validate — which
+is also the basis ADR 0106's 10 % is defined on.
+
+**The one risk that replaces it, and it is a real one:** a ported establishment rule makes recruits a
+functional of the emulator's own community (the seedbank is its own biggest trees) — i.e. a **feedback
+loop**, exactly what ADR 0025 §4 excluded on principle. ADR 0112–0116 measured what this model does when it
+feeds its own state back in: the error becomes **climate-dependent** and manufactures ~90 % of the true
+signal with the wrong sign. That must be measured on this channel, not assumed either way — and rung 2,
+where the roster returns from the C each year, is the cleanest place to measure it.
+
+> *(original item 4, superseded — retained for the record)* Something that could be fixed cheaply, and only
+> your harness can do it. The clean repair is to train the marginals on **entering** individuals instead of
+> survivors — and that is impossible from the `ind` parquet, which never emits a recruit (nothing below
+> 5 m). Your `pre`/`post` roster dump does see recruits at `age == 0`. So a recruit-marginal copula is a
+> rung-2 by-product that costs no new model run. It would change the S→M contract (a new artifact version,
+> not a patch) … S owns the retrain; you own whether the dump keeps what it needs.
 
 **5. Arm D, if it comes up: it inherits all of the above unchanged**, and separately its motivating number
 should not be relied on yet. ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on per-cell KS" has **no

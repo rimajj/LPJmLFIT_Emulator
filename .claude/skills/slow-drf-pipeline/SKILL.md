@@ -1541,10 +1541,27 @@ D95max −2.35 %, minwscal +0.44 %. All four are **lower bounds** — the `ind` 
 * discriminate on the per-PFT **gradient shape** (`S_age_wooddens_gradient.csv`, non-monotone ids 0 and 3),
   which a roughly uniform double count cannot fake, not on the level alone.
 
-**The clean fix is NOT a re-fit of existing data.** A recruit-marginal target cannot be built from the `ind`
-parquet at all — it never emits a recruit. Line M's rung-2 `pre`/`post` roster dump *does* see recruits at
-`age == 0` (ADR 0061/0120), so the retrain is a rung-2 by-product with no new model run — but it bumps the
-S→M artifact version, so it is an integration point, not a patch.
+**THE FIX IS A PORT, NOT A RETRAIN (owner steer, 2026-08-11 — supersedes ADR 0118 decision 4).** The
+instinct to retrain the marginals on entering individuals is wrong, and the owner's objection is the right
+one: *"which trees are born is — apart from the inheritance functionality — randomly drawn from uniform
+distributions. why should we train on that?? what matters and what we have to learn is who survives the
+environmental filtering."* **FIT's establishment rule needs no training data** — a uniform draw on each
+PFT's own `[low, high]` from `par/pft_lpjmlfit.js`, plus inheritance from the cell's 50-yr rolling top-AGB
+seedbank with `new = old·(1 + 0.1·gasdev)` reflected at the interval edges, mixed at the closed-form
+`w_inherit = 4/(4 + n_elig)` (ADR 0045). Every input is in the parameter file or computable from the
+emulator's own roster ⇒ **implement it; do not fit it, and do not ask line M's roster dump for recruits.**
+
+Two design facts that follow, and one risk:
+* **inheritance is the MAJORITY channel** — 44 % of recruits in a mixed cell, ~80 % in a low-diversity one
+  — so a pure-uniform recruit model is wrong, and the seedbank makes the recruit marginal move as the
+  forest moves;
+* **>5 m data IS sufficient**, both to drive and to validate: the emulator grows its own saplings and
+  applies the ported hazard through the sub-5 m phase itself, and >5 m is the basis ADR 0106's 10 % is
+  defined on. The "lower bound" caveat above constrains only the *displacement table*, not this route;
+* ⚠ **the port creates a feedback loop** — recruits become a functional of the emulator's own community,
+  which ADR 0025 §4 excluded on principle. ADR 0112–0116 measured what this model does when it feeds its
+  own state back: the error goes **climate-dependent** and manufactures ~90 % of the true signal with the
+  wrong sign. Measure it on this channel; do not assume it either way.
 
 **Arm D note.** ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on per-cell KS (0.042–0.073 vs
 0.129–0.173)" has **no committed reproducer in this repo** — no script, no fixture — and its "two-moment
