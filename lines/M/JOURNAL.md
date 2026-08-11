@@ -824,3 +824,75 @@ Two things found on the way that were not being looked for:
   would have mislocated the onset phase. Caught by the numbers not making sense, not by a test.
 
 Three rebuilds, each gated: 139 decoded quantities + `globalflux` identical, 0 differ, every time.
+
+---
+
+## Session 8 — 2026-08-11 — the ported hazard is an identity; the rendezvous is a year stale (ADR 0122)
+
+S had replied while session 7 was writing its handoff (ADR 0117 + the 0118 amendment + the owner steer), so
+the first action of the previous handoff resolved itself: option (c), and the free identity gate S offered
+in item 4 was the obvious next thing, because it costs no C run and it protects every later arm-C number.
+
+**What I set out to do vs what the data forced.** I expected the gate to be a formality over three of the
+four hazards and to hit a wall on `mort_npp`. The wall was real but shallower than it looked, and the
+interesting result was somewhere else entirely.
+
+Order of work, and each step was decided by a measurement rather than planned up front:
+
+1. **Basis check before writing a scorer** (`residual-diagnosis`, and it paid immediately). Diffing the
+   same field between the `pre` and `mort` phases of the same tree-year: `water_stress`/`temp_stress`
+   differ in **0 of 9 951** records, `bm_inc_counter` in **2 169**, `age`/`leaf_c`/`bm_inc_c` in all of
+   them. That one table decided the whole session's structure — it says which hazards the rendezvous can
+   reach, and it is what later attributed the trait sign flip.
+2. **The partial gate first.** `mort_age`/`mort_temp`/`mort_water` reproduced the C at 5e-16/1.7e-16/2.2e-16
+   on 9 951 records, PFT ids 1–6. That is when it became worth spending a rebuild on the fourth, because
+   the port was evidently not broken and `mort_max(wooddens)` — the entire trait channel — lives only in
+   `mort_npp`.
+3. **Tried to avoid the rebuild and failed, which is the useful part.** `turnover_ind` looked
+   reconstructable: Δ`heartwood_c` between the phases matched `pre.sapwood_c × 0.04` to the last digit
+   (and so pinned `turnover.sapwood = 0.04`). But that recovers only the two sapwood terms;
+   `turn.leaf`/`turn.root` are daily accumulators, `isphen` is not dumped, and `turnover_tree` **mutates**
+   `bm_inc.carbon` (reproduction cost, `cmass_excess`, debt payback) before `allocation_tree` mutates it
+   again. Reconstructing it means porting turnover **and** allocation — i.e. abandoning the narrow
+   interface rung 2 exists to keep. Two dumped doubles is the cheap exact answer.
+4. **Checked the restart risk before touching `Pfttree`.** `fwrite_tree`/`fread_tree` serialize field by
+   field, so a new field costs nothing as long as it stays out of their lists — `restart_1999.lpj` stays
+   readable. That check is why the rebuild was a 1-minute decision instead of a gamble.
+5. **Rebuilt, gated, re-recorded, re-ran the gate.** 110 decoded quantities identical, 0 differ (`ind` and
+   `globalflux` byte-for-byte). Then: `mort_npp` 1.6e-15, `mortality_hazard.total` 1.6e-15, 0 exceedances,
+   both hard kills classified right (175 + 195). The port is an **identity**.
+6. **Then the dump-equality gate failed — on an arm that was exact.** `bm_delta`/`leafarea_real` differed
+   in 695–705 `pre` and 259–317 `post` records while the roster was identical in every year and cell state
+   agreed in all 1 500 patch-years. Uninitialised memory, the ADR-0120 class, in columns I had just added.
+   I could have added them to the script's known-garbage list; I initialised them in `new_tree.c` **and**
+   `fread_tree.c` instead, because unlike the `mort_*` siblings **these are read by the external
+   demography** — a recruit handed garbage gets a random hazard. Second rebuild, gated the same way, and
+   both arms then read "identical in every initialised column".
+7. **The rendezvous probe, which is the actual finding.** Because the two fields persist, the `pre` roster
+   now carries last year's values — so I could measure what arm C would really compute. Spearman ρ against
+   the C's own hazard is a comfortable **0.900 median**, and I nearly stopped there. The trait statistic
+   said otherwise: the one-year wood-density selection differential goes **+17 729 → −14 528**, ratio
+   **−0.819, opposite sign**. Attributing it one term at a time was cheap and decisive — hard kills
+   suppressed changes nothing, lagging only `bm_delta`/`leafarea` gives **+1.001**, lagging only
+   `bm_inc_counter` gives **−0.562**. The counter multiplies two of the four hazards by `(1+counter)`, so
+   misdating it re-weights exactly the trees the differential is about.
+
+**What I got wrong on the way.** I guessed the hard kills would be the culprit (they carry weight 1, and
+the lagged basis reclassifies some of them) and wrote that variant first. It came out bit-identical to the
+full lagged basis — zero contribution. Then I inferred the counter by elimination and only afterwards added
+the explicit counter-only variant, which is the version that belongs in the record; an inferred attribution
+and a measured one are not the same claim.
+
+**The lesson worth carrying.** An interface's inputs are **dated**, and the date is part of the contract.
+Three ADRs (0061/0117/0120) described the per-tree record as carrying "the accumulators three of the four
+death rates read" and nobody asked *as of when*; ADR 0117 item 3 states the stronger version — all four
+hazards computable from the `pre` record — and it is wrong on the fourth, because `bm_inc` at `pre` is the
+year's gross NPP while the hazard wants the post-turnover, post-allocation residual minus turnover. The
+detection cost minutes and needed no run: diff the same field between two phases. A single-phase dump could
+not have shown it — the three-phase dump ADR 0121 added for the fire trap is what made the interface's own
+timing auditable, which is a nice argument for keeping observation richer than the immediate need.
+
+Also worth noting for its own sake: the gate is now **CI**, not a session result
+(`test/testitems/m_rung2_hazard_identity_tests.jl` + a 333-record C-truth fixture). `trait_mortality.jl` is
+S's file and is about to become load-bearing for the trait question; locking it against the C binary rather
+than against a re-typed formula is the difference between a port and a verified port.

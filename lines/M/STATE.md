@@ -328,7 +328,102 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-11 (session 7) — ADR 0120's OPEN QUESTION IS CLOSED, AND THE ANSWER RETIRES
+### 0-NEWEST. ✅ DONE 2026-08-11 (session 8) — S's PORTED HAZARD REPRODUCES THE C **EXACTLY**, AND THE
+### RENDEZVOUS'S ONE-YEAR LAG INVERTS THE TRAIT SELECTION ⇒ ARM C IS NOT YET SCORABLE ON TRAITS (ADR 0122)
+
+**Start here. S has replied (the INBOUND blocks at the top of this file: ADR 0117 + the 0118 amendment +
+the owner steer). Step 1 of the previous handoff — "check whether line S has replied" — is done, and its
+free identity gate has been run.**
+
+**1. THE PORT IS AN IDENTITY, NOT AN AGREEMENT — this was the one thing owed before any arm-C number.**
+`src/trait_mortality.jl` has **no call site anywhere** (guardrail 4 ships it inert) and had never been
+scored against the C on real per-individual state; the existing S test gates its *parameter table*, not
+its arithmetic. New `scripts/diagnose_rung2_hazard_identity.jl` scores it against the C's own
+`mortality_tree_ind` on **all 9 951 tree-patch-years** of the recorded dump (cell 42490, 25 patches,
+2000–2019, PFT ids 1/2/3/4/5/6 = 631/275/7 370/1 231/401/43):
+
+| gated | records | exceedances | max rel Δ |
+|---|---|---|---|
+| `mort_age` | 9 951 | 0 | 5.0e-16 |
+| `mort_temp` | 9 951 | 0 | 1.7e-16 |
+| `mort_water` | 9 951 | 0 | 2.2e-16 |
+| `mort_npp` | 9 951 | 0 | 1.6e-15 |
+| **`mortality_hazard.total`** | **9 951** | **0** | **1.6e-15** |
+
+Both hard kills classified correctly (175 `bm_inc_counter ≥ 5`, 195 ghost-tree = 3.7 %). ⇒ **ADR 0049's
+θ = 1 claim is measured, not asserted**, and **ADR 0049 item 4 is retired** — inside the harness both
+stress integrals are exact, so the operator ran complete for the first time. **Now a CI gate:**
+`test/testitems/m_rung2_hazard_identity_tests.jl` + `references/M_rung2_hazard_identity.csv` (333 records,
+61 hard kills, 6 PFT ids), so the port cannot regress against C truth without a red check.
+
+**2. It needed a schema change, and the reason is the generalisable bit.** `patches/lpjmlfit_rung2_hook_v4.patch`
+(supersedes v3) publishes two write-only `Pfttree` fields, `bm_delta` + `leafarea_real`. The rendezvous is
+the `pre` phase at the **top** of the annual block, but the C's hazard runs **after** `turnover_tree` and
+`allocation_tree` — which splits the four: `mort_age`/`mort_water`/`mort_temp` have every input present
+unchanged at the rendezvous (`water_stress`/`temp_stress` differ in **0 of 9 951** records `pre` vs `mort`),
+while `mort_npp` needs post-allocation `bm_delta`/`leafarea_real`. **Do not try to reconstruct `bm_delta`:**
+only the two sapwood turnover terms are recoverable (= Δ`heartwood_c`, exact, which also pins
+`turnover.sapwood = 0.04`); `turn.leaf`/`turn.root` are daily accumulators, `isphen` is not dumped, and
+`turnover_tree` *mutates* `bm_inc.carbon` before allocation mutates it again. **`mort_npp` is not an
+arbitrary fourth — `mort_max(wooddens)` enters ONLY through it, so it is the entire trait channel.**
+Both fields are initialised in `new_tree.c` **and** `fread_tree.c` (unlike the `mort_*` siblings) because
+the external demography **reads** them; the restart format is unchanged (field-by-field serialization).
+
+**3. ⚠ THE FINDING THAT DECIDES ARM C — the rendezvous is one year stale, and for the trait question that
+inverts the answer.** Live, the `pre` roster carries **last year's** `bm_delta`/`leafarea_real`/
+`bm_inc_counter`. Per-tree **ordering** survives it (per-patch-year Spearman ρ vs the C's own `mort_prob`:
+median **0.900**, p05 0.467). The trait statistic does not — one-year wood-density selection differential
+(hazard-weighted mean minus the stand mean; positive = denser wood dies more, sign agrees with ADR 0046 §3):
+
+| hazard basis | differential | ratio to the C |
+|---|---|---|
+| the C itself | **+17 729** | 1.000 |
+| **the lagged rendezvous = arm C as it would run today** | **−14 528** | **−0.819 ⚠ OPPOSITE SIGN** |
+| … hard kills suppressed | −14 528 | −0.819 ⚠ (not the hard kills) |
+| … **only** `bm_delta`/`leafarea` lagged | **+17 750** | **+1.001 (harmless)** |
+| … **only** `bm_inc_counter` lagged | −9 967 | −0.562 ⚠ **← the culprit** |
+
+Mechanism: the counter **multiplies** `mort_npp` and `mort_water` by `(1+counter)`
+(`mortality_tree_ind.c:71-81` updates it from **this** year's `bm_delta` sign, so `pre` holds the previous
+value in **21.8 %** of records), so misdating it re-weights exactly the trees the differential measures.
+**This is the harness's rendezvous POINT — not S's operator, and not the emulator** (standalone, the fast
+core grows the trees before the demography runs, so the counter is current).
+⇒ **PRE-REGISTERED: arm C must not be scored on the trait question from the current rendezvous.** Counts
+and ordering remain readable.
+
+**4. Gates run, all green.** Rebuild equality after **each of two** rebuilds against the v3 build's matched
+single-cell run (cell 42490, `--ntasks=1`, same config ⇒ the ADR-0041 control holds): **110 decoded
+quantities identical, 0 differ**, `ind` + `globalflux` byte-for-byte. Baseline re-recorded (mandatory on a
+schema change) → **`/p/tmp/jamirp/M_rung2/M_rung2rec_v4b_dump`**. **ADR 0121's replay floor survives:**
+`none` **1.000**, `kills` **1.000 exact, no year differs**, both arms *identical in every initialised
+column* and agreeing in all 1 500 cell-state patch-years. ⚠ Before the initialisers of item 2 were added,
+`diagnose_rung2_dump_equality.py` returned a **false FAIL** on those exact arms (695–705 `pre` + 259–317
+`post` records of "DIFFERENT model state") — a new dump column the harness feeds to an operator must be
+initialised on both creation paths.
+
+▶ **WHAT TO DO NEXT ON RUNG 2 — in order.**
+
+1. **Move the rendezvous behind the growth loop.** This is the scoped C change that removes the lag and
+   makes item 1's identity the *live* basis instead of an offline one. In `annual_tree`, with the apply
+   hook on, return "alive" for every non-forced tree and record its current-year state; after the
+   `foreachpft` loop and **before** the `mort` dump, do the rendezvous with the complete current-year
+   roster and apply the kill set there — `litter_update` and the `mort_tree` counter move with it. Gate it
+   behind the apply hook so the stock binary is untouched, and **prove it with `MODE=none` still
+   reproducing exactly**. Re-record afterwards (schema/timing change ⇒ new reference basis).
+2. **Then run arm C** with S's two arms in one wire format: **C0** `f_i = ρ` for every tree (the shipped
+   uniform thinning = the no-selection null) and **C1** the tilted `f_i = (1−mort_i)^θ`. **Print θ beside
+   the result** — S's item 6.i: at Hainich θ median was 8.5e-12 with θ > 0.5 in only 18 of 132 thinning
+   years, so a null C1 − C0 may mean the count model gave the selection no room. And per ADR 0118 §3,
+   test the per-PFT **gradient SHAPE** against `references/S_age_wooddens_gradient.csv` (including the
+   non-monotone ids 0 and 3), not just the level.
+3. **Quote the floor beside any arm**: `kills` 1.000, `recruits` 0.907, `both` 1.367 — **one cell of
+   54 020**, **4 of 7 trait axes substituted**.
+4. **Rung 3 (F's decadal canopy drift) is still untouched** — item 0-NEW below and item 4(d) further down.
+
+**CI/merge:** the diff touches `test/**` and `.jl`, so **`CI` (4 Julia jobs) and `format` DO run** — unlike
+the last three sessions' prose-only commits. `python`/`docs` do not (no `python/`, no `docs/src/**`).
+
+### 0-PREV2. ✅ DONE 2026-08-11 (session 7) — ADR 0120's OPEN QUESTION IS CLOSED, AND THE ANSWER RETIRES
 ### THE REPLAY FLOOR: THE MORTALITY HALF OF THE INTERFACE NOW REPLAYS **EXACTLY** (ADR 0121)
 
 **Start here. Read this before quoting ANY rung-2 replay number — ADR 0120 §5's `kills` 1.37× and `both`
