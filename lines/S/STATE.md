@@ -800,7 +800,15 @@ pre-existing value byte-identical.
 
 ### ✅ MERGED AND GREEN — nothing about this line's work is outstanding
 
-**LATEST (ADR 0110, the per-tree rooting + drought work):** merged to `main` as **`f5c614db`**, and
+**LATEST (ADR 0170, the recruit-arm kill-condition pre-test + the per-cell eligibility gate):** branch sha
+**`d130ff46`** green on `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `format` ✅; merged to `main`,
+and **`main`'s own post-merge run is green** — `docs` ✅ (the whole-package gate that never runs on a
+branch) `format` ✅ `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ `changelog` ✅ (the fragment was
+collated inside the merge `flock`, `3b7e5cdf`). `test (pre)` ❌ = the documented `ScopedValues`
+prerelease `MethodError` at load time, confirmed from the job log, `continue-on-error`, not ours.
+Local CI-faithful suite before the merge: **274 546 pass / 0 fail** over 129 items (job 1759461).
+
+**Earlier (ADR 0110, the per-tree rooting + drought work):** merged to `main` as **`f5c614db`**, and
 **`main`'s OWN post-merge run is green** — `test (lts)` ✅ `test (1)` ✅ `test (macOS, lts)` ✅ **`docs` ✅**
 (the whole-package gate that never runs on a branch) `format` ✅.
 ⚠ **It came back RED first, on `test (lts)` AND `docs`, and it was a GITHUB OUTAGE, not the merge:** both jobs
