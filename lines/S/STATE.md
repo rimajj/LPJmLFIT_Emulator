@@ -43,11 +43,30 @@
 > operator never fired, ADR 0117 §6.i), and **discriminate on the per-PFT gradient SHAPE**
 > (`S_age_wooddens_gradient.csv`, non-monotone ids 0 and 3), which a roughly uniform double count cannot fake.
 >
-> **5. The clean fix is NOT a re-fit, and it is not S's to start alone.** A recruit-marginal target cannot be
-> built from the `ind` parquet **at all** — it never emits a recruit (nothing below 5 m). M's rung-2
-> `pre`/`post` dump *does* see recruits at `age == 0`, so the retrain is a rung-2 by-product with no new model
-> run, but it bumps the S→M artifact version ⇒ integration point, not a patch. **Raised with M as item 4 of
-> the amendment; S owns the retrain, M owns whether the dump keeps what it needs.**
+> **5. ⚠ THE FIX IS A PORT, NOT A RETRAIN — ADR 0118 decision 4 IS SUPERSEDED BY AN OWNER STEER (2026-08-11,
+> same day; correction recorded here, the ADR is not edited).** ADR 0118 §4 proposed retraining the marginals
+> on entering individuals from M's rung-2 roster dump. **Withdraw that.** The owner's objection: *"which trees
+> are born is — apart from the inheritance functionality — randomly drawn from uniform distributions. why
+> should we train on that?? what matters and what we have to learn is who survives the environmental
+> filtering — and for that looking at trees above 5 m should be enough."* Correct on both counts.
+> * **FIT's establishment rule needs no training data.** Uniform on each PFT's `[low, high]` from
+>   `par/pft_lpjmlfit.js`, plus inheritance from the cell's 50-yr rolling top-AGB seedbank with
+>   `new = old·(1 + 0.1·gasdev)` reflected at the edges, mixed at the closed-form `w_inherit = 4/(4 + n_elig)`
+>   (ADR 0045). Every input is in the parameter file or computable from the emulator's OWN roster ⇒ **port it.
+>   No new artifact version, no dependency on M's dump.** Item 4 of the M inbound is withdrawn there too.
+> * **>5 m IS enough, and item 2's "lower bound" caveat does not constrain this route.** It only ever limited
+>   *fitting* an entry distribution from `ind`. The emulator grows its own saplings and applies the ported
+>   hazard through the sub-5 m phase itself, so >5 m suffices to drive AND to validate — which is also the
+>   basis ADR 0106's 10 % is defined on. (The caveat still applies to any number in ADR 0118's own table.)
+> * ⚠ **Two things the owner's framing understates, and they change the port's design, not its verdict:**
+>   inheritance is **44 % of recruits in a mixed cell and ~80 % in a low-diversity one** (ADR 0045), so it is
+>   the MAJORITY channel, not a side feature — a pure-uniform recruit model is wrong; and the seedbank is the
+>   cell's own biggest trees, so the recruit marginal **moves as the forest moves**.
+> * **THE RISK THAT REPLACES THE OLD ONE, and it must be measured rather than assumed:** the port makes
+>   recruits a functional of the emulator's own community — the **feedback loop** ADR 0025 §4 excluded on
+>   principle. ADR 0112–0116 measured what this model does when it feeds its own state back in: the error
+>   becomes **climate-dependent** and manufactures ~90 % of the true signal with the WRONG SIGN. Rung 2 (where
+>   the roster returns from the C each year) is the cleanest place to measure it on this channel.
 >
 > **6. ARM D IS SCOPED, AND ITS MOTIVATING NUMBER IS NOT CURRENTLY DEFENSIBLE.** Arm D inherits the double
 > count unchanged (it is "C + Beta"). Separately: ADR 0093 §5.3's "bounded Beta beats the copula 2–3× on
@@ -260,11 +279,23 @@
 > **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?" (refreshed 2026-08-11 after ADR 0118): arms C and D are now BOTH
 > scoped, and each came back with a defect that had to be fixed before the arm could mean anything —
 > C rests on a training target its own ADR had already invalidated (0118 §1–4, amended into M's STATE), and
-> D's motivating number has no reproducer (0118 §5). So the next S action is the ONE cheap offline task left:
-> RE-ESTABLISH ARM D's BOUNDED-BETA COMPARISON LIKE-FOR-LIKE — a bounded Beta fitted per cell and scored
-> K-fold-by-cell out-of-sample against `score_slow_copula_ks.py`'s own basis, not against oracle moments.
-> That is a scriptable offline job on tables that already exist, and it decides whether arm D is worth
-> running at all. Everything else on the count side is finished; arm C itself belongs to M's harness.**
+> D's motivating number has no reproducer (0118 §5). **The OWNER then steered the fix (item 5 above): port
+> FIT's establishment rule instead of learning a recruit marginal.** So, in order:
+>
+> 1. **PORT FIT's ESTABLISHMENT RULE into the recruit channel** (owner steer, item 5). Uniform on each PFT's
+>    own interval + the top-AGB seedbank inheritance channel + the closed-form mix `4/(4 + n_elig)`. No
+>    training data, no new artifact version, nothing needed from M. **Ship it opt-in and default-off**
+>    (guardrail 4) and **pre-register the flip criterion in the same ADR** (guardrail-4 corollary — three
+>    flags have already rotted in the off position). The measurement that decides it is the feedback-loop
+>    risk: does the recruit channel, once fed by the emulator's own community, go climate-dependent the way
+>    the count recursion did (ADR 0112–0116)?
+> 2. **RE-ESTABLISH ARM D's BOUNDED-BETA COMPARISON LIKE-FOR-LIKE** — a bounded Beta fitted per cell and
+>    scored K-fold-by-cell out-of-sample on `score_slow_copula_ks.py`'s own basis, not against oracle
+>    moments. Cheap, offline, on tables that already exist, and it decides whether arm D is worth running.
+>    ⚠ Note (1) may make (2) moot: if establishment is ported rather than learned, the marginal family
+>    question changes shape. **Do (1) first.**
+>
+> Everything else on the count side is finished; arm C itself belongs to M's harness.**
 >
 > Two things NOT to do, both now on the record: do not start a global offline demography rollout (ADR 0117 §2
 > — M's harness is the roster), and do not "fix" the copula by re-fitting it to young stems (ADR 0118 §5 —

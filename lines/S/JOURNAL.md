@@ -1778,3 +1778,36 @@ phrasing reads as oracle moments against the copula's out-of-sample number. Not 
 the next session as the one cheap offline task remaining.
 
 ⚠ ADR block 0100–0119 is now down to **0119**, the last number. Raised (again) as an integration point.
+
+### Same day — the owner overturned the fix, and was right
+
+Presented ADR 0118 and the owner objected to decision 4 immediately: *"which trees are born is — apart from
+the inheritance functionality — randomly drawn from uniform distributions. why should we train on that??
+what matters and what we have to learn is who survives the environmental filtering — and for that looking at
+trees above 5 m should be enough."*
+
+Correct on both counts, and it is a better answer than the one in the ADR. FIT's establishment rule is fully
+specified — a uniform draw on each PFT's own interval from the parameter file, plus the top-AGB seedbank
+inheritance channel with its 10 % Gaussian jitter, mixed at the closed-form `4/(4 + n_elig)` — and every
+input is either in `par/pft_lpjmlfit.js` or computable from the emulator's own roster. So it is a PORT, not
+a learning problem: no recruit-marginal retrain, no new artifact version, and nothing needed from line M's
+rung-2 dump, which is what decision 4 had asked for. And >5 m is sufficient, because the emulator grows its
+own saplings and applies the ported hazard through the sub-5 m phase itself — the "lower bound" caveat only
+ever constrained *fitting* an entry distribution, which is exactly what we are no longer doing.
+
+Two things the owner's framing understates, both design-relevant rather than verdict-relevant, and both
+recorded rather than argued: inheritance is the MAJORITY channel (44 % mixed / ~80 % low-diversity,
+ADR 0045), so a pure-uniform recruit model would be wrong; and the seedbank is the cell's own biggest trees,
+so the recruit marginal moves as the forest moves. That second one is the real cost of the port — it makes
+recruits a functional of the emulator's own community, i.e. the feedback loop ADR 0025 §4 excluded on
+principle, and ADR 0112–0116 already measured what this model does when it feeds its own state back in.
+That risk replaces the one decision 4 was worried about; it must be measured, not assumed.
+
+What survives ADR 0118 unchanged: the double count itself and its size (+12.18 % on wood density within a
+cell-PFT group, 0.56 of it not cancelling), the asymmetry that puts the bias on the arm and not its null,
+the two added conditions on ADR 0049's flip criterion, and the composition-control lesson.
+
+Recorded as a correction in `lines/S/STATE.md`, the M inbound (item 4 withdrawn, original text retained
+beneath it so the change is visible) and the `slow-drf-pipeline` skill. **ADR 0118 itself was NOT edited** —
+guardrail 1, immutable once accepted. ADR block still has exactly one number left (0119); deliberately not
+spent on this correction.
