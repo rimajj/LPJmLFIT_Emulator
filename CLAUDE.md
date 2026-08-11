@@ -107,8 +107,9 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   ```
   Poll from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` · the log's last line is
   `=== JOB DONE tag=<tag> exit=<code> ===` (grep it) with the ReTestItems summary just above. Full suite
-  ≈ **107.1k pass / 0 fail / 4 broken** over 87 test items (`[VERIFIED 2026-07-28]`, job 1622741; the older
-  "48.1k" figure predates the parallel lines' P1–P4 growth), ~6 min after a warm precompile.
+  ≈ **272.0k pass / 0 fail** over **127 test items** (`[VERIFIED 2026-08-11]`, job 1758701, 7m19s; it was
+  107.1k over 87 items on 2026-07-28 and 48.1k before the parallel lines' P1–P4 growth — the number keeps
+  moving, so treat it as an order-of-magnitude sanity check, not a pin), ~7 min after a warm precompile.
 - **Any OTHER long Julia job** (benchmarks, probes, decadal coupled runs, training) → the same durable path:
   `scripts/sbatch_julia.sh <tag> --project=. <script.jl>` (or `-e '<expr>'`). **Standing rule: anything that
   takes more than a few seconds goes to SLURM, never a login-node foreground / `nohup` / background shell.**
@@ -769,7 +770,7 @@ rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (i
 | Narrative / what happened | `lines/<X>/JOURNAL.md` (append) |
 | Durable line state + the **NEXT handoff** | `lines/<X>/STATE.md` |
 | Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line**; whoever merges to `main` folds it in with `scripts/collate_changelog.py` (ADR 0095) |
-| A decision | an ADR from **your block** — TIER 1: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · integrator/cross-cutting 0090–0099 · **TIER 2** (use when your tier-1 block is exhausted): **S 0100–0119** · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0160–0169. `0001–0029` and **S's `0030–0049`** are EXHAUSTED (ADR 0049 was the last; ADR 0100 opened S's tier 2). Add the row to your line's subsection of `docs/decisions/README.md` |
+| A decision | an ADR from **your block** — TIER 1: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · integrator/cross-cutting 0090–0099 · **TIER 2**: S 0100–0119 · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0160–0169 · **TIER 3** (use when your tier-2 block is exhausted): **S 0170–0189** · M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239. `0001–0029`, **S's `0030–0049`** and now **S's `0100–0119`** are EXHAUSTED (ADR 0049 closed tier 1, ADR 0100 opened tier 2, **ADR 0119 closed it** ⇒ line S is on 0170). Tier 3 was allocated for ALL lines at once (2026-08-11, by line S while holding the integration lock — §9's rule that the lock-holder is the integrator), at tier-2 widths, precisely so the next line to exhaust its block does not have to convene anything either. Add the row to your line's subsection of `docs/decisions/README.md` |
 | Cross-cutting `[VERIFIED]` fact | `MEMORY.md` (shared, additive) |
 | A procedure / gotcha | a skill / this file (§8 routing unchanged) |
 
