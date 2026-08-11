@@ -53,13 +53,19 @@
 >
 > **⏩ WHAT TO DO NEXT, in order:**
 >
-> 1. **PRE-TEST THE KILL CONDITION AT HAINICH, OFFLINE, BEFORE M's HARNESS EXISTS.** S already has a
->    single-cell rollout (`scripts/trait_mortality_arm_probe.jl`) and the hook is a two-line change to it:
->    run R0 (pinned copula) vs R1 (ported rule) under the same count model and the same mortality arm, with
->    ADR 0101's seed ensemble (**one run is not a measurement** — quote mean ± SEM over ~8 seeds), and read
->    whether the community trait mean's bias diverges between two forcings. Cheap, and it either finds the
->    feedback problem early or buys confidence before M spends harness time. ⚠ **Label it "1 of 54 020"**
->    (guardrail 6) — it is a smoke test of the kill condition, never fidelity evidence.
+> 1. **PRE-TEST THE KILL CONDITION AT HAINICH, OFFLINE, BEFORE M's HARNESS EXISTS.** Two facts make this
+>    cheap, both already checked: `scripts/trait_mortality_arm_probe.jl` **already has a `MODE=response` 2×2**
+>    ({operator on, off} × {historic, ssp370}, all arms advanced in ONE process at matched year indices, the
+>    double difference read as the response) — which is structurally the design the kill condition needs — and
+>    the R0 side needs no new artifact, because `test/testitems/references/recruit_copula_hainich.rcop` is
+>    committed next to `drf_forest_hainich.drf`. So the change is a third dimension on that probe: recruit
+>    channel R0 (pinned copula) vs R1 (`recruit_establishment`), both under the same count model and the same
+>    mortality arm, with ADR 0101's seed ensemble (**one run is not a measurement** — mean ± SEM over ~8
+>    seeds), reading whether the community trait mean's bias DIVERGES between the two forcings. It either
+>    finds the feedback problem early or buys confidence before M spends harness time. ⚠ **Label it
+>    "1 of 54 020"** (guardrail 6) — a smoke test of the kill condition, never fidelity evidence. And keep
+>    ADR 0048's protocol: difference against a matched control re-run in the SAME process, read past year 52
+>    (the constant-forcing drift settles there), and report the merge count and θ before reading any Δ.
 > 2. **DERIVE THE PER-CELL ELIGIBLE-PFT SET** — the concrete blocker to running the port anywhere but a
 >    hand-configured cell. `Establishment.eligible_pfts` needs `temp_min20`, `temp_max20` (20-yr running
 >    means of the year's coldest/warmest MONTHLY mean, `climbuf.c:134-137,153-154`) and `gdd5`; the monthly
