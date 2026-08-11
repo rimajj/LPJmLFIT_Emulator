@@ -394,6 +394,16 @@ is the offline S.
   and treat an exact zero on a *float* comparison of two independently written representations as an
   aliasing bug: the honest signature of agreement is the writers' format floor (here ~5e-6, `%g`'s six
   significant digits), not zero.
+- **⚠ A NULL CONTROL VALIDATES THE TRANSPORT, NOT THE PAYLOAD (`[VERIFIED 2026-08-11]`, ADR 0121).** A
+  substitution experiment's null control — machinery active, every decision handed straight back to the
+  model — reproduced a 20-year run exactly, and was rightly cited as what made the experiment's numbers
+  readable. It was also blind to the defect that made those numbers wrong, because the null path **never
+  serves the payload**: the kill list being fed in claimed deaths the interface did not own (a downstream
+  process also wrote the `isdead` flag the list was derived from), which inflated the result 1.37× until
+  the payload was re-derived from the right point in the model's own sequence. **Generalisable: green null
+  control + diverging arm ⇒ suspect what you are FEEDING the interface before you suspect the interface**,
+  and when a quantity is read out of shared state, find every writer of that state and check whether any of
+  them runs after your read point.
 
 ---
 
