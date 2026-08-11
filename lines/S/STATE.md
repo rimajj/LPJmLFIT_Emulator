@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0114 ⇒ next free is 0115, and only FIVE remain in this block.**
+> **0030–0049 is EXHAUSTED**; use the **tier-2 block 0100–0119** (opened by ADR 0100). **Latest used: 0116 ⇒ next free is 0117, and only THREE remain in this block — raise the next-block allocation with the integrator BEFORE you need it (the block map is CLAUDE.md §9, integrator-owned).**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## NEXT — start here
@@ -118,22 +118,51 @@
 > cancels), so ADR 0114's ratios/sd-ratios/correlations stand; only its **level** panels were 25× too small for
 > their label. ADR 0114 §1's mean row is on the old scaling and is flagged there rather than re-scaled.
 
-> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": the count-recursion diagnosis is finished — arms A0, A0-null, A1,
-> R0, R1 plus the decay, scenario-drift and matched-lead panels (ADR 0112–0115). NEXT: ONE cheap no-refit
-> diagnostic that names the conditioning channel making the drift climate-dependent; then scope arms C and D,
-> which need a ROSTER and are not offline-table arms.** In order:
+> ## ✅ THE CHANNEL IS NAMED, AND THE DRIFT HAS A MECHANISM (2026-08-11, ADR 0116)
 >
-> **(i) Name the channel (ADR 0115 §6.3) — no refit, one 24-cpu job on existing artefacts.** At a fixed lead
-> (use 18, the deepest both scenarios reach), compute per cell the arm's **excess drift** — its own
-> `bias(ssp370) − bias(historic)` minus the one-step control's on the same rows — and regress it on that
-> cell's **ssp370-minus-historic change in each of the 15 conditioning features** (`X.f64` is right there, and
-> `rung1_keys_t8` gives the year/patch). Report standardised coefficients and the univariate correlations,
-> **with the control's own decomposition beside it**; the answer is which feature carries the scenario signal
-> into the error, and it is the prerequisite for any arm that claims to fix it. Extend
-> `scripts/rung1_response_decay.py` or write a sibling — but keep the SAME lead/chain definition
-> (`lead_index`), or the panel is not comparable to ADR 0115 §3.
+> ADR 0115 §6.3's diagnostic is run — `scripts/rung1_drift_attribution.py`, no refit, 3 jobs of ~4 min
+> (1753852, 1753855, **1753886**), all 121 495 658 rows, 49 282–52 613 cells at leads 5/12/18, area-weighted.
 >
-> **(ii) Then arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
+> **1. The channel is the STAND STATE, not the climate.** Univariate r with the excess drift at lead 18:
+> `n_prev` **−0.336**, `age_mean` **+0.330**, `hmean` +0.269 — and **every climate and flux feature at
+> |r| ≤ 0.084** (`gdd_5` −0.084, `tas_cold_month` −0.043, `water_stress` −0.042, `growth_eff` +0.001).
+> Forward selection picks `n_prev` → `age_mean` first at both deep leads. **The control discriminates:** on
+> identical cells the one-step predictor's own asymmetry is R² **0.096** vs **0.250**, selects `growth_eff`
+> first, and its `n_prev` correlation is ≈ 0 ⇒ the one-step error runs through the FLUXES, the recursion's
+> extra error through the STAND STATE. **Uniform in all four latitude bands** ⇒ the wrong-signed tropics are
+> not a separate defect needing a separate fix.
+> ⇒ **DO NOT propose adding or re-weighting a climate/flux conditioning feature to fix the drift** without
+> refuting ADR 0116 §2 first.
+>
+> **2. THE FINDING — the recursion's error is ONE-SIDED: it follows FIT's stem GAINS but not its LOSSES.**
+> At lead 18, where FIT loses most (−4.32 stems/patch) the arm drifts **+0.575**; where it gains most (+4.17)
+> only **−0.157**. As the fraction of FIT's own response reproduced: **86.7 % of a large decline vs 96.2 % of a
+> large increase** (89.9/98.1 at lead 5; 87.1/94.6 at 12). FIT's global response is a net LOSS, so the
+> rectified error lands on the loss side as a spurious POSITIVE drift — **ADR 0113's wrong-signed aggregate
+> response, explained.** Confound-controlled twice: the **excess** column cancels the `−Δtruth` term by
+> construction (2.6× asymmetry on it), and it is **not density** — the extreme deciles differ only **1.3×** in
+> stem count while the drift differs 3.7×, and 3.0× survives normalising by it.
+>
+> **3. Pre-registered criterion for the NEXT count arm: score it ON THE LOSS SIDE.** A fix works if
+> decile-1 excess drift falls from **+0.377** (lead 18) **without decile 10's magnitude rising** — the
+> aggregate response ratio alone cannot separate a real fix from a compensating positive bias. Regenerate the
+> table with `scripts/rung1_drift_attribution.py` (same `FIT_LEADS`, same imported `lead_index`).
+>
+> **4. Two method rules this bought** (both in the `slow-drf-pipeline` skill): a regression on
+> weighted-**centred** columns explains a SPREAD and is **blind to the MEAN**, so any drift attribution needs a
+> mean-bearing panel (a binned table) beside it — the pre-registered form reached R² 0.14–0.25 and could say
+> nothing about the mean that inverts the response; and **open every extension with a reconciliation panel**
+> against the ADR it extends (ten lines here, reproduced ADR 0115 §3's arm row exactly).
+>
+> **5. ⚠ Correction recorded, not edited: ADR 0115 §3's control row at lead 5 reads +0.024; it should read
+> +0.031** (its own CSV's lead-4 value, copied one row off). No conclusion of ADR 0115 changes.
+
+> **⏩ ONE-LINE ANSWER TO "WHAT DO I DO?": the offline count-recursion diagnosis is FINISHED — arms A0,
+> A0-null, A1, R0, R1, the decay/scenario-drift/matched-lead panels, and now the channel attribution
+> (ADR 0112–0116). Everything cheap and offline has been done; what remains needs a ROSTER. NEXT: scope arms
+> C and D deliberately, and raise the rung-2 interface with line M.**
+>
+> **(i) Arms C and D, with their scope stated honestly.** ⚠ **Neither is an offline-table arm.**
 > `trait_mortality` selects *which individuals* die by trait, and the bounded-Beta family replaces the recruit
 > marginals — both need a ROSTER, so both are demography-rollout arms. Today the only rollout harness is
 > single-cell Hainich (`scripts/trait_mortality_arm_probe.jl`, and ADR 0101: **one run of it is not a
@@ -154,10 +183,12 @@
 > axes' free-running error is only measurable on M's harness, so the rung-2 interface is now on the critical
 > path for the trait side of the acceptance criterion, not just for counts.
 >
-> **Three integration points raised, all on the integrator-owned `EXECUTION_PLAN.md`:** rung 0's superseded
+> **Four integration points raised.** Three on the integrator-owned `EXECUTION_PLAN.md`: rung 0's superseded
 > numbers (replacement text = ADR 0111 §3/§4/§7); rung 1's arm list, whose A/B collapse into one already-done
 > arm (replacement ladder = ADR 0112 §4b); and rung 1's exit criterion, which should now name the
-> **scenario-asymmetric drift** rather than the response ratio alone (ADR 0115 §6).
+> **one-sided loss drift** it has a mechanism for (ADR 0116 §5.1) rather than the response ratio alone.
+> Fourth, on CLAUDE.md §9: **line S's ADR block 0100–0119 has three numbers left** — the next block needs
+> allocating before it runs out mid-session.
 
 
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
