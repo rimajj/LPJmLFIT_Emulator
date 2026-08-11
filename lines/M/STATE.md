@@ -328,7 +328,94 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-11 (session 6) — RUNG 2's SUBSTITUTION HALF IS BUILT AND GATED (ADR 0120)
+### 0-NEWEST. ✅ DONE 2026-08-11 (session 7) — ADR 0120's OPEN QUESTION IS CLOSED, AND THE ANSWER RETIRES
+### THE REPLAY FLOOR: THE MORTALITY HALF OF THE INTERFACE NOW REPLAYS **EXACTLY** (ADR 0121)
+
+**Start here. Read this before quoting ANY rung-2 replay number — ADR 0120 §5's `kills` 1.37× and `both`
+1.30× are superseded and must not be quoted.** Everything else in ADR 0120 (the four gates, the interface
+design, the uninitialised-memory findings) stands.
+
+**The experiment the previous handoff pre-registered was run, and it refuted BOTH branches it offered.**
+The `P` record now dumps the three channels of cell-level state no per-tree record can carry — the per-cell
+RAND48 `seed`, `gasdev_iset` (the parity of `gasdev()`'s **process-global** spare-deviate cache; normals
+are drawn in pairs and the spare comes from a file-local static, so this is not even per-cell), and
+seedbank content checksums `sb_*`. At the divergence onset (**2002, patch 2**) the `pre` phase is
+**identical in every one of them plus the 25-tree roster**, and the `post` phase of that same patch-year
+differs in the stream and has one fewer tree alive. ⇒ **the divergence is created INSIDE the patch-year:
+not an inherited stream offset, not a drifted seedbank.** The C's audit localised it: `n_kill_c = 2` (the
+hazards wanted two deaths) vs `n_kill_applied = 3` (the list held three), `n_forced_dead = 0`.
+
+▶ **THE CAUSE — `isdead` has more than one author, and one of them is DOWNSTREAM of the hook.** The
+harness derived kills as *"any `post` row with `isdead == 1`"*, but `fire_tree_ind.c:33` also sets it, from
+`firepft` at `annual_natural.c:129-135`, **after** the decision point. Replaying fire's victims is wrong
+twice over: it claims a death the narrow interface does not own, **and it moves the per-cell random
+stream**, because `if(!tree->isdead && erand48(cell->seed) < ...)` draws **only for trees not already
+dead** — pre-killing fire's victim changes how many draws fire consumes, and fire then kills a different
+tree. One short-circuited `&&` produces both symptoms.
+
+▶ **THE FIX — a third dump phase, `mort`**, written after the demographic hazards and **before fire**;
+kills are read there, recruits still from `post`. **Corrected replay floor** (cell 42490, 25 patches,
+2000–2019, terminal stems replay ÷ recorded):
+
+| arm | ADR 0120 (kills off `post`) | **corrected (kills off `mort`)** | first differing year |
+|---|---|---|---|
+| `none` (null control) | 1.000 | **1.000** | none |
+| `kills` | 1.37 | **1.000 — 376 vs 376, EXACT** | **none** |
+| `recruits` | 0.91 | **0.907** | 2000 |
+| `both` | 1.30 | **1.367** | 2000 |
+
+The `kills` arm is identical to the recorded run in every initialised per-tree column **and** every
+cell-state column across all 1 500 patch-year records (20 yr × 25 patches × 3 phases). **So a substituted
+mortality operator can now be credited with any difference it makes — the transport contributes none.** A
+substituted establishment operator still cannot be credited below **0.907**, and that floor is structural,
+not a defect (the C's Poisson + inheritance draws are skipped, 4 of 7 trait axes substituted).
+
+⚠ **ADR 0120's "naive ID replay is upward-biased by construction" is much NARROWER than stated.** It bites
+only once the *other* half has already parted the trajectory: `recruits` alone is 0.907, and adding the
+exactly-faithful kills half gives 1.367, because recorded kill IDs stop matching live trees and go
+unserved, so the stand under-thins. With only kills substituted the replay is exact.
+
+⚠ **THE TRANSFERABLE LESSON, and it is about the control: a NULL CONTROL VALIDATES THE TRANSPORT, NOT THE
+PAYLOAD.** `MODE=none` defers both halves, so it never serves the kill list — it stayed green throughout
+and was cited as the thing "that makes the replay numbers readable". It did make them readable; they were
+just measuring the wrong kill list. **Green null control + diverging arm ⇒ suspect what you are FEEDING
+the interface before you suspect the interface.**
+
+⚠ **A THIRD uninitialised field found: `cell->treelen_old` / `treelist_old`.** Sole writer is
+`getsapling.c:57-58` behind `if(config->isequal)`, and `isequalcoord` is TRUE only when every cell in the
+run shares identical coordinates (hardwired FALSE for `nall == 1`) ⇒ dead branch, **`mergesapling()` has no
+caller anywhere in `src/`**, field is garbage (read 29 458 000 against a `treelen` of 19 650). Deliberately
+NOT dumped. Generalisable: before dumping any C field, find its writer and confirm the writer's guard is
+live under `individual=true`.
+
+**Mechanics, all three rebuilds gated** (139 decoded quantities + `globalflux` identical, 0 differ, every
+time): patch **`patches/lpjmlfit_rung2_hook_v3.patch`** (supersedes v2, kept for provenance); new scorer
+`scripts/diagnose_rung2_cellstate_equality.py`; **`MODE=record`** added to
+`scripts/run_rung2_replay_arm.sh` — **a rebuild that changes the dump schema invalidates the recorded
+baseline every arm is scored against, so re-record before re-running an arm.** Baseline dump now
+`/p/tmp/jamirp/M_rung2/M_rung2rec_v3_dump`. Full record: ADR 0121. Skill `lpjmlfit-cbinary` carries the
+fire trap, the three phases and the corrected floor.
+
+▶ **WHAT TO DO NEXT ON RUNG 2 — in order.**
+
+1. **Check whether line S has replied** (`lines/S/STATE.md`, the ▶ INBOUND block from 2026-08-10 with the
+   2026-08-11 update). **Still unanswered as of this session.** Nothing is owed from M — the C side is
+   complete and accepts all three shapes, because the harness normalises whatever S returns into a kill
+   set before the C sees it. One thing to carry back when next touching that block: **the mortality half
+   of the interface is now exact**, so whatever S returns for "who dies" will be measured with zero
+   transport error, which makes option (a) (S returns the kill set) or (c) (S returns per-individual
+   survival probabilities, M draws) cleanly scorable. Option (b) remains awkward for the reason already
+   recorded (the current year's hazards do not exist at the rendezvous).
+2. **When an emulator arm does run, quote the floor beside it** — kills 1.000, recruits 0.907, both 1.367,
+   **one cell of 54 020** — and say "4 of 7 trait axes substituted".
+3. **The `recruits` floor of 0.907 is worth one bounded look, but only if the recruit half is on the
+   critical path.** It is structural (skipped Poisson + inheritance draws), so it cannot be removed the way
+   the kills defect was; it could only be *reduced* by widening the wire format to carry the three
+   unsubstituted axes. Do not start this before S answers, because S's answer decides whether it matters.
+4. **Rung 3 (F's decadal canopy drift) is untouched by this session** and remains the other open M item —
+   item 0-NEW below and item 4(d) further down.
+
+### 0-PREV. ✅ DONE 2026-08-11 (session 6) — RUNG 2's SUBSTITUTION HALF IS BUILT AND GATED (ADR 0120)
 
 **Start here. The C now ACCEPTS a replacement demography, and the harness has been measured against the
 C's own answer. Both steps of the previous handoff's "what to do next on rung 2" are done: step 1 (raise
@@ -356,8 +443,10 @@ provenance).
   `MODE=none` first.**
 - **D — replay identity** (below). Cost of the whole rendezvous: 10 s vs 7 s.
 
-▶ **THE RESULT, and it is one cell of 54 020 (guardrail 6).** Replaying the C's own recorded decisions
-(`scripts/run_rung2_replay_arm.sh`, `MODE=kills|recruits|both|none`):
+▶ **THE RESULT — ⚠ SUPERSEDED BY ADR 0121, DO NOT QUOTE THE RATIOS BELOW.** The kill set fed to these arms
+included fire's victims, which both mis-attributed deaths to the interface and moved the random stream; on
+the corrected `mort`-phase basis `kills` is **exact (1.000)**, `recruits` 0.907, `both` 1.367. The table is
+kept for the record of what was measured. One cell of 54 020 either way (guardrail 6):
 
 | arm | 2000 roster | first differing year | 2019 stems, replay ÷ recorded |
 |---|---|---|---|
@@ -386,7 +475,9 @@ only two independent **runs** can. Use `scripts/diagnose_rung2_dump_equality.py`
 
 ▶ **WHAT TO DO NEXT ON RUNG 2 — in order.**
 
-1. **Close the one open question before building on any replay number.** In the `kills` arm the state at
+1. ✅ **CLOSED 2026-08-11 by ADR 0121 — see item 0-NEWEST at the top. It was neither of the two suspects
+   named below: the kill set was including fire's victims.** Original text kept for the record.
+   In the `kills` arm the state at
    the end of 2001 is identical to the recorded run in every dumped column, yet in 2002 the C's own
    hazard draw wants **33** kills where the record has **29**. Gate C rules out the rendezvous, so
    either the per-cell RAND48 stream or cell-level state *outside* the dump — most likely the top-AGB
