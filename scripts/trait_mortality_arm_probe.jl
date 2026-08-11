@@ -61,10 +61,41 @@
 # Holding SEED common across the four corners does NOT pair them (the rosters diverge after yr 1), so
 # replication is the only variance lever. ~8 seeds resolve a 1x-FIT effect; ~115 the 0.26x measured.
 #
+# ARM=recruit — THE RECRUIT-CHANNEL ARM (ADR 0119 §6's kill condition, pre-tested offline). Everything
+# above contrasts {trait_mortality on, off}. `ARM=recruit` swaps the CONTRAST AXIS to the recruit channel
+# and leaves every other part of the harness — the same count DRF, the same forcing pair, the same seed,
+# the same year indices, the same `trait_mortality` setting on BOTH sides (`TRAIT_MORT`) — untouched:
+#
+#     control (R0) = the pinned recruit COPULA (`recruit_copula`, the shipped configuration)
+#     arm     (R1) = the ported FIT establishment rule (`recruit_establishment`, ADR 0119)
+#
+# WHY IT IS THE SAME 2x2. ADR 0119 ships the ported rule opt-in with a pre-registered flip criterion whose
+# KILL CONDITION is: if feeding the recruit marginal from the emulator's OWN community makes the error
+# CLIMATE-DEPENDENT the way the count recursion did (ADR 0112-0116 — the recursion manufactures ~90 % of
+# FIT's true signal with the WRONG SIGN), the flip is refused and that is the result. "Climate-dependent"
+# is exactly a DOUBLE DIFFERENCE — the arm's effect under ssp370 minus its effect under historic — which is
+# what the 2x2 already computes. So the kill condition needs no new harness, only this third dimension.
+#
+# ⚠ WHAT THIS CAN AND CANNOT SAY. It is ONE cell (Hainich, 1 of 54 020 — guardrail 6) and there is no
+# per-year FIT truth trajectory to difference against here, so this is a SMOKE TEST of the kill condition,
+# NEVER fidelity evidence and never the flip test itself (that is rung 2, on line M's roster harness). It
+# answers one question early and cheaply: does the ported rule's contribution to the warming response
+# DIVERGE between the two forcings, and in which direction relative to FIT's own +2432.9 shift?
+# ⚠ AND IT INHERITS ADR 0101 IN FULL: one run is one draw. Quote mean ± SEM over a seed ensemble.
+#   ARM=recruit scripts/run_response_seed_ensemble.sh S-recresp 12
+#
 # Usage (SLURM — the guard blocks login-node probes, CLAUDE.md §2):
 #   scripts/sbatch_julia.sh S-tmort --project=. scripts/trait_mortality_arm_probe.jl
 #   MODE=response scripts/sbatch_julia.sh S-tmresp --project=. scripts/trait_mortality_arm_probe.jl
-# ENV: MODE (stage2 | response; default stage2 ⇒ byte-identical to the ADR-0049 measurement),
+#   ARM=recruit MODE=response scripts/sbatch_julia.sh S-recresp --project=. scripts/trait_mortality_arm_probe.jl
+# ENV: ARM (trait_mortality | recruit; default trait_mortality ⇒ byte-identical to ADR 0049/0100/0101),
+#      TRAIT_MORT (ARM=recruit only: 0|1, the mortality setting held COMMON across R0 and R1; default 0 =
+#      the shipped configuration, so R0 is the emulator as it ships. ⚠ ADR 0119 §6 writes the rung-2 arm
+#      under the C1 mortality arm; offline `mort_water`/`mort_temp` are zeroed (ADR 0049 item 4) and θ is
+#      throttled to ~0 at this cell (ADR 0049 item 5), so run both and say which),
+#      ELIG (ARM=recruit only: comma-separated eligible PFT ids for the ported rule's background channel;
+#      default = the ids the FIXTURE's own roster carries, which is this cell's FIT-observed set),
+#      MODE (stage2 | response; default stage2 ⇒ byte-identical to the ADR-0049 measurement),
 #      YEARS (default 150 in stage2; in response mode it is CLAMPED to the fixture's year count),
 #      REPORT_AT (default "1,5,10,20,50,100,150"), COPULA (default 1 — the production configuration; set 0
 #      for the fixed-sapling arm), FORCING_DIR (response mode; default
@@ -91,6 +122,15 @@ const REPORT_AT = parse.(
     split(get(ENV, "REPORT_AT", MODE == "response" ? "1,5,10,20,40,60,81" : "1,5,10,20,50,100,150"), ',')
 )
 const COPULA = get(ENV, "COPULA", "1") != "0"
+# `ARM` — WHICH AXIS THE `arm` vs `ctl` CONTRAST IS ON. `trait_mortality` (default) reproduces ADR
+# 0049/0100/0101 exactly; `recruit` contrasts the pinned copula (R0, control) against the ported FIT
+# establishment rule (R1, arm) with everything else held common (see the header block).
+const ARM = get(ENV, "ARM", "trait_mortality")
+ARM in ("trait_mortality", "recruit") || error("ARM must be trait_mortality or recruit (got $ARM)")
+const RECRUIT_ARM = ARM == "recruit"
+# The mortality setting held COMMON across both corners of the recruit arm — it must be identical on both
+# sides or the contrast is not the recruit channel. Ignored when ARM=trait_mortality (there it IS the arm).
+const TRAIT_MORT_FIXED = get(ENV, "TRAIT_MORT", "0") != "0"
 const FIT_SHIFT = 2432.9       # ADR 0046 §1 — FIT's per-cell MEDIAN wooddens shift historic → ssp370
 const FORCING_DIR = get(ENV, "FORCING_DIR", "/p/tmp/jamirp/emulator_global/S_response_forcing")
 # `K_CAP` — the roster cap. UNSET means the production default (`max(2K, 40)` = 40 here), which ADR 0048
@@ -171,6 +211,63 @@ const YEAR_FORC = [
 # rather than defaulting, but only for an id OUTSIDE 0-6 — a wrong-but-valid id 3 would pass silently.
 # So the ids come from the fixture's own `type` column, here, explicitly.
 const PFT_IDS = [nt(r) for r in ROWS]
+# ── the ported rule's BIOCLIMATIC ELIGIBLE SET (ARM=recruit only) ────────────────────────────────────────
+# `Establishment.eligible_pfts` derives this from 20-yr running temperature means and gdd5, which this
+# single-cell harness does not carry as a per-year series. The honest stand-in for ONE cell whose eligible
+# set is climatologically stable is the set FIT itself established here — the fixture roster's own ids
+# (Hainich: 1-5; the Sahel/Amazon would be {0,7}). It is a FIXED set, so `w_inherit = 4/(4+n_elig)` is
+# constant through the run, which also means this probe CANNOT see a warming cell's gate open or close —
+# that needs the per-cell(-year) eligibility table, and it is the next task, not this one. Say so.
+"""
+    eligibility_series() -> Union{Nothing, Dict{String, Vector{Vector{Int}}}}
+
+Per-scenario, per-year eligible PFT sets from the committed `S_hainich_estab_eligibility.csv`
+(`scripts/build_estab_eligibility.py`), in the file's year order. `nothing` if the fixture is absent.
+
+THIS IS WHY THE TABLE WAS BUILT. FIT's gate is `establish.c:29-33` on the 20-year running mean of each
+year's coldest monthly mean, and at this cell that mean CROSSES 0 °C under ssp370 — the boreal ids 4/5/6
+have `temp_high = 0`, so the eligible set goes {1,2,3,4,5,6} → {1,2,3} partway through the scenario. That
+changes `w_inherit = 4/(4 + n_elig)` from 0.400 to 0.571, i.e. the warming closes the background channel
+down and hands MORE of the recruit population to the cell's own seedbank. A fixed set cannot represent it,
+and it is exactly the feedback the kill condition is about, so the response arm must not use one.
+"""
+function eligibility_series()
+    path = joinpath(REFDIR, "S_hainich_estab_eligibility.csv")
+    isfile(path) || return nothing
+    d = readcsv(path)
+    out = Dict{String, Vector{Vector{Int}}}()
+    for i in eachindex(d["scenario"])
+        ids = [p for p in 0:6 if d["elig_$p"][i] == "1"]
+        push!(get!(out, String(d["scenario"][i]), Vector{Int}[]), ids)
+    end
+    return out
+end
+const ELIG_SERIES = eligibility_series()
+# `ELIG` — the FALLBACK fixed set, used when the per-year fixture is absent, in stage2 (constant forcing
+# ⇒ a constant gate), or when the env knob is given explicitly. Default = the fixture's first historic
+# year, which is the cell's own FIT-derived set; the fixture roster's ids are a poor stand-in (this
+# patch carries only {2,3}, while FIT's gate at this cell admits six PFTs).
+const ELIG = if haskey(ENV, "ELIG")
+    parse.(Int, split(ENV["ELIG"], ','))
+elseif ELIG_SERIES !== nothing && haskey(ELIG_SERIES, "historic")
+    ELIG_SERIES["historic"][1]
+else
+    sort(unique(PFT_IDS))
+end
+const W_INHERIT = 4 / (4 + length(ELIG))       # ADR 0045's closed form, = Establishment.w_inherit(n_elig)
+# Use the per-year series only in response mode, only when the fixture covers the scenario, and only if
+# the fixed set was not pinned by hand — so `ELIG=...` remains an exact override for a sensitivity run.
+const ELIG_PERYEAR = RECRUIT_ARM && MODE == "response" && !haskey(ENV, "ELIG") && ELIG_SERIES !== nothing
+
+"The eligibility policy passed to `RecruitEstablishment` for `scen`: a per-year callable, or the fixed set."
+function elig_policy(scen)
+    (ELIG_PERYEAR && haskey(ELIG_SERIES, scen)) || return ELIG
+    ser = ELIG_SERIES[scen]
+    # `s.year` counts COMPLETED years, and `reconcile_demography!` reads the policy before incrementing
+    # it — the same 1-based `clamp(s.year + 1, ...)` indexing the transient boundary uses, so the gate
+    # and the boundary always describe the same simulation year.
+    return s -> ser[clamp(s.year + 1, 1, length(ser))]
+end
 mkcore() = FDiffFastCore([mkp(r) for r in ROWS], [mkt(r) for r in ROWS], SOIL, 51.25; pft_ids = PFT_IDS)
 mkclo(t0 = _mean(TAIR_K)) = SEBEnergyClosure(; t_soil0 = t0)
 mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
@@ -313,14 +410,21 @@ function community_mean(pools, getter)
 end
 
 """
-    rollout(; trait_mortality, years, forcing = nothing, boundary_series = nothing, t_soil0 = _mean(TAIR_K))
+    rollout(; arm_on, years, forcing = nothing, boundary_series = nothing, t_soil0 = _mean(TAIR_K))
         -> NamedTuple
 
 Advance the Hainich coupled harness `years` years, ONE year per `run_coupled_cell` call (equivalent to one
 long call: the driver re-derives `bc_f = stand_structure_tof(fc)` at both the start of a call and each year
-end). ARM and CONTROL differ in EXACTLY the `trait_mortality` flag — same fixtures, same cohorts, same
-forcing, same seed, same year count, same default `k_cap` — so the difference is the operator and nothing
-else. `n_merge` is exact (the roster grows by at most one appended recruit per year).
+end). ARM and CONTROL differ in EXACTLY ONE configuration flag — same fixtures, same cohorts, same forcing,
+same seed, same year count, same default `k_cap` — so the difference is that flag and nothing else.
+`n_merge` is exact (the roster grows by at most one appended recruit per year).
+
+Which flag depends on `ARM`:
+  * `ARM=trait_mortality` (default) — `arm_on` IS `trait_mortality`; the recruit channel is the copula on
+    both sides (`COPULA`). Byte-identical to the ADR-0049/0100/0101 measurement.
+  * `ARM=recruit` — `arm_on` swaps the recruit channel: `false` = the pinned copula (R0), `true` = the
+    ported FIT establishment rule (R1, a FRESH `RecruitEstablishment` per rollout so its seedbank and
+    diagnostics never leak between corners). `trait_mortality` is then `TRAIT_MORT_FIXED` on BOTH sides.
 
 `forcing = nothing` repeats the committed 2010 year (the ADR-0048/0049 constant-forcing case); a
 `Vector{Vector{AtmForcing}}` advances one entry per simulation year (MODE=response). `boundary_series` is
@@ -329,19 +433,27 @@ passed straight through to the emulator (ADR 0026 — `nothing` keeps `s.boundar
 is the forcing itself and not also a soil-temperature initial condition.
 """
 function rollout(;
-        trait_mortality::Bool, years::Int, forcing = nothing, boundary_series = nothing,
-        t_soil0::Float64 = _mean(TAIR_K)
+        arm_on::Bool, years::Int, forcing = nothing, boundary_series = nothing,
+        t_soil0::Float64 = _mean(TAIR_K), scen::String = "historic"
     )
     core = mkcore()
-    rc = COPULA ?
+    use_estab = RECRUIT_ARM && arm_on
+    tmort = RECRUIT_ARM ? TRAIT_MORT_FIXED : arm_on
+    # the two recruit channels are MUTUALLY EXCLUSIVE in the constructor (ADR 0119) — exactly one is set
+    rc = (COPULA && !use_estab) ?
         RecruitCopula{Float64}(cop, af, xcop, make_recruit_to_pools(ax_names), live_flux_cond) : nothing
+    re = use_estab ? RecruitEstablishment{Float64}(; eligible = elig_policy(scen)) : nothing
     s = FluxDrivenSlowEmulator(
         core, forest; boundary = BOUNDARY, n_init = N_INIT, age0 = AGE0, seed = SEED,
-        recruit_copula = rc, trait_mortality = trait_mortality, boundary_series = boundary_series,
-        k_cap = K_CAP
+        recruit_copula = rc, recruit_establishment = re, trait_mortality = tmort,
+        boundary_series = boundary_series, k_cap = K_CAP
     )
     clo = mkclo(t_soil0); state = mkstate()
     wd = Float64[]; sla = Float64[]; ktraj = Int[]; nmerge = Int[]; ntree = Float64[]; agb = Float64[]
+    # the two ADR-0110 axes are recorded too: the recruit channel sets all FOUR trait axes, so an arm that
+    # only ever reports `wooddens` would miss three quarters of what it changed. They are 0 on any cohort
+    # rebuilt from the `ind` fixture (the UNSET sentinel), so read them as RECRUIT-cohort diagnostics.
+    d95 = Float64[]; mws = Float64[]
     cum_merge = 0
     for y in 1:years
         kprev = length(core.pools)
@@ -352,6 +464,8 @@ function rollout(;
         cum_merge += max(kprev + appended - length(core.pools), 0)
         push!(wd, community_mean(core.pools, p -> p.wooddens))
         push!(sla, community_mean(core.pools, p -> p.sla))
+        push!(d95, community_mean(core.pools, p -> p.d95max))
+        push!(mws, community_mean(core.pools, p -> p.minwscal))
         push!(ktraj, length(core.pools)); push!(nmerge, cum_merge)
         push!(ntree, sum(p.nind for p in core.pools if !p.is_grass; init = 0.0))
         push!(
@@ -361,7 +475,7 @@ function rollout(;
             )
         )
     end
-    return (; s, core, wd, sla, ktraj, nmerge, ntree, agb)
+    return (; s, core, wd, sla, d95, mws, ktraj, nmerge, ntree, agb)
 end
 
 const RESPONSE = MODE == "response"
@@ -371,13 +485,52 @@ const RESPONSE = MODE == "response"
 const BASE_LABEL = RESPONSE ? "historic-forcing" : "constant-forcing"
 const T_SOIL0 = RESPONSE ? _mean([f.tair for f in RESP_FORC["historic"][1]]) : _mean(TAIR_K)
 
+# The three row labels of the response panel. Kept as constants, not inlined: the summarizer parses
+# `R_ctl (...) = ` and `R_arm (...) = `, so the two must stay one printed token apart from their numbers.
+const CTL_LABEL = RECRUIT_ARM ? "R0 — the shipped copula recruit channel" :
+    "pre-0049 emulator's own warming response"
+const ARM_LABEL = RECRUIT_ARM ? "R1 — the ported FIT establishment rule" :
+    "with the trait hazard wired in"
+const DIFF_LABEL = RECRUIT_ARM ? "R1 − R0, THE RECRUIT CHANNEL'S CONTRIBUTION" :
+    "THE OPERATOR'S CONTRIBUTION TO THE RESPONSE"
+const AXIS_LABEL = RECRUIT_ARM ?
+    "recruit channel {R0 = pinned copula, R1 = ported FIT establishment}" :
+    "{trait_mortality on, off}"
 println("="^108)
 println(
     RESPONSE ?
-        "PHASE 3A STAGE 3 — the RESPONSE arm: {trait_mortality on,off} x {historic, ssp370} — Hainich (42490), $YEARS yr" :
-        "PHASE 3A STAGE 2 — trait-dependent mortality ARM vs MATCHED CONTROL — Hainich (42490), $YEARS yr"
+        "THE RESPONSE 2×2: $AXIS_LABEL × {historic, ssp370} — Hainich (42490), $YEARS yr" :
+        "ARM vs MATCHED CONTROL on $AXIS_LABEL — Hainich (42490), $YEARS yr"
 )
 println("="^108)
+println("ARM=", ARM, RECRUIT_ARM ? "   (ADR 0119 §6's kill condition, pre-tested offline — 1 of 54 020)" : "")
+if RECRUIT_ARM
+    println(
+        "  control (R0) = recruit_copula ", COPULA ? "ON" : "OFF (fixed sapling — NOT the shipped R0)",
+        "   arm (R1) = recruit_establishment",
+        "\n  trait_mortality held COMMON on both sides = ", TRAIT_MORT_FIXED
+    )
+    if ELIG_PERYEAR
+        for s in ("historic", "ssp370")
+            haskey(ELIG_SERIES, s) || continue
+            ser = ELIG_SERIES[s]
+            uq = unique(ser)
+            println(
+                "  eligible set, $s: PER-YEAR from S_hainich_estab_eligibility.csv, $(length(ser)) yr, ",
+                length(uq), " distinct set(s) ",
+                join(["{" * join(u, ",") * "}×" * string(count(==(u), ser)) for u in uq], " "),
+                "  ⇒ w_inherit ", join(sort(unique([round(4 / (4 + length(u)), digits = 4) for u in uq])), " → ")
+            )
+        end
+    else
+        println(
+            "  eligible set: FIXED ", ELIG, " (w_inherit = 4/(4+", length(ELIG), ") = ",
+            round(W_INHERIT, digits = 4), ")",
+            haskey(ENV, "ELIG") ? "  [pinned by ELIG]" :
+                "  ⚠ no per-year fixture ⇒ this run cannot see the gate open or close under warming"
+        )
+    end
+end
 println("copula: ", COPULA ? "ON (production)" : "OFF (fixed sapling)")
 println(
     "artifacts: drf=", basename(DRF_ART), " (scenario ", get(drf_meta, "scenario", "?"), ", ",
@@ -407,12 +560,12 @@ if RESPONSE
     println("  shared soil-temperature init t_soil0 = ", round(T_SOIL0, digits = 3), " K (both scenarios)")
 end
 
-_roll(tm, scen) = RESPONSE ?
+_roll(on, scen) = RESPONSE ?
     rollout(;
-        trait_mortality = tm, years = YEARS, forcing = RESP_FORC[scen],
-        boundary_series = RESP_BND[scen], t_soil0 = T_SOIL0
+        arm_on = on, years = YEARS, forcing = RESP_FORC[scen],
+        boundary_series = RESP_BND[scen], t_soil0 = T_SOIL0, scen = scen
     ) :
-    rollout(; trait_mortality = tm, years = YEARS)
+    rollout(; arm_on = on, years = YEARS)
 
 ctl = _roll(false, "historic")
 arm = _roll(true, "historic")
@@ -422,11 +575,43 @@ println("\n", "-"^108)
 println("0. DID THE OPERATOR FIRE?  (a Δ from an operator that never ran bounds NOTHING)")
 println("-"^108)
 dg = trait_mortality_diag(arm.s)
-println("  control diagnostics recorded: ", length(trait_mortality_diag(ctl.s)), " (MUST be 0 — the flag is off)")
-println("  arm diagnostics recorded:     ", length(dg), " of $YEARS yr")
-const FIRED = !isempty(dg) && any(d -> d.thinned, dg)
+# ── ARM=recruit: the ported rule's OWN fire check (ADR 0119's `EstabDiag` — read `sb_weight` and the
+#    inherited share FIRST). An establishment rule that only ever drew from the uniform background channel
+#    measured half the rule: inheritance is 44 % of recruits in a mixed cell (ADR 0045) and it is the ONLY
+#    channel that can feed the community back into the recruit marginal — i.e. the only channel the kill
+#    condition is about. A run with an empty seedbank bounds NOTHING about the feedback risk. ──
+const ED_ARM = RECRUIT_ARM ? establishment_diag(arm.s) : EstabDiag[]
+const ED_CTL = RECRUIT_ARM ? establishment_diag(ctl.s) : EstabDiag[]
+if RECRUIT_ARM
+    ninh = count(d -> d.inherited, ED_ARM)
+    println("  control (R0) establishment draws: ", length(ED_CTL), " (MUST be 0 — R0 is the copula)")
+    println(
+        "  arm (R1) establishment draws:     ", length(ED_ARM), " of $YEARS yr",
+        isempty(ED_ARM) ? "" :
+            "\n  inherited / background:           $ninh / $(length(ED_ARM)) = " *
+            string(round(100 * ninh / length(ED_ARM), digits = 1)) * " %  (expected " *
+            string(round(100 * _mean([d.w_inherit for d in ED_ARM]), digits = 1)) *
+            " % = the mean of the years' own 4/(4+n_elig); a LARGE shortfall means the seedbank was " *
+            "still filling)" *
+            "\n  n_elig over the drawn years:      " *
+            join(["$(k):$(count(d -> d.n_elig == k, ED_ARM))" for k in sort(unique(d.n_elig for d in ED_ARM))], " ") *
+            "\n  seedbank at the final draw:       " * string(ED_ARM[end].sb_entries) *
+            " entries, " * string(round(ED_ARM[end].sb_weight, sigdigits = 6)) *
+            " individual-years  ⇒ the feedback channel " *
+            (ED_ARM[end].sb_weight > 0 ? "IS live" : "NEVER filled — this run bounds nothing") *
+            "\n  drawn PFT ids (count):            " *
+            join(["$id:$(count(d -> d.pft_id == id, ED_ARM))" for id in sort(unique(d.pft_id for d in ED_ARM))], " ")
+    )
+end
+if !RECRUIT_ARM
+    println("  control diagnostics recorded: ", length(trait_mortality_diag(ctl.s)), " (MUST be 0 — the flag is off)")
+    println("  arm diagnostics recorded:     ", length(dg), " of $YEARS yr")
+end
+const FIRED = RECRUIT_ARM ? any(d -> d.drew, ED_ARM) : (!isempty(dg) && any(d -> d.thinned, dg))
 if isempty(dg)
-    println("  ⚠ THE OPERATOR NEVER RAN — every Δ below is a NON-MEASUREMENT.")
+    RECRUIT_ARM || println("  ⚠ THE OPERATOR NEVER RAN — every Δ below is a NON-MEASUREMENT.")
+    RECRUIT_ARM && !FIRED &&
+        println("  ⚠ THE PORTED RULE NEVER DREW A RECRUIT — every Δ below is a NON-MEASUREMENT.")
 else
     nthin = count(d -> d.thinned, dg)
     θs = [d.theta for d in dg if d.thinned && isfinite(d.theta)]
@@ -495,6 +680,9 @@ end
 println("\n", "-"^108)
 println("1. COMMUNITY WOOD DENSITY — arm vs matched $BASE_LABEL control")
 println("-"^108)
+RECRUIT_ARM && println(
+    "  (R0 = pinned copula is the `ctl` column, R1 = ported FIT establishment is the `arm` column.)"
+)
 println(
     "  ", rpad("yr", 5), rpad("K_arm", 7), rpad("K_ctl", 7), rpad("wd_arm", 12), rpad("wd_ctl", 12),
     rpad("Δwd", 11), rpad("|Δ|/2432.9", 12), rpad("Δsla", 12), "Σnind arm/ctl"
@@ -509,6 +697,26 @@ for y in REPORT_AT
         rpad(round(arm.sla[y] - ctl.sla[y], sigdigits = 4), 12),
         round(arm.ntree[y] / ctl.ntree[y], sigdigits = 8)
     )
+end
+if RECRUIT_ARM
+    # THE OTHER THREE AXES. The recruit channel draws all four, and `wooddens` alone is the mortality
+    # arm's axis, not this one's. `d95max`/`minwscal` are 0 on every cohort rebuilt from the `ind` fixture
+    # (the ADR-0110 UNSET sentinel), so their community mean rises from 0 purely as recruits accumulate —
+    # a LEVEL that is not comparable to FIT's, but a DIFFERENCE between R0 and R1 that is.
+    println("\n  ALL FOUR RECRUIT AXES (community nind-weighted means; d95max/minwscal start at the UNSET 0)")
+    println(
+        "  ", rpad("yr", 5), rpad("sla_arm", 12), rpad("sla_ctl", 12), rpad("d95_arm", 11),
+        rpad("d95_ctl", 11), rpad("mws_arm", 11), rpad("mws_ctl", 11)
+    )
+    for y in REPORT_AT
+        y <= YEARS || continue
+        println(
+            "  ", rpad(y, 5), rpad(round(arm.sla[y], sigdigits = 5), 12),
+            rpad(round(ctl.sla[y], sigdigits = 5), 12), rpad(round(arm.d95[y], digits = 3), 11),
+            rpad(round(ctl.d95[y], digits = 3), 11), rpad(round(arm.mws[y], digits = 5), 11),
+            rpad(round(ctl.mws[y], digits = 5), 11)
+        )
+    end
 end
 const DMAX = argmax(abs.(arm.wd .- ctl.wd))
 println(
@@ -586,11 +794,18 @@ println(
         "  rollout cannot reproduce its MAGNITUDE (FIT accumulated it over a full spin-up on a 25-patch\n" *
         "  ensemble), and ids 0/3 are non-monotone by construction. Judge sign and monotonicity."
 )
+RECRUIT_ARM && println(
+    "  ⚠ ON THE RECRUIT ARM THIS PANEL IS DESCRIPTIVE, NOT THE ACCEPTANCE TARGET. ADR 0046 §3's gradient is\n" *
+        "  a SELECTION fingerprint, and the contrast here changes what recruits are BORN with, not who dies.\n" *
+        "  A Δ across bins here is the two samplers' marginals differing (that is the point of ADR 0118 §1),\n" *
+        "  and only the youngest bins can differ at all — the older bins hold the same inherited fixture\n" *
+        "  cohorts in both arms."
+)
 
 # ── 3. MODE=response — THE 2x2 AND ITS DOUBLE DIFFERENCE (ADR 0100) ─────────────────────────────────────
 if RESPONSE
     println("\n", "-"^108)
-    println("3. THE RESPONSE ARM — {trait_mortality on, off} × {historic, ssp370}, all four in this process")
+    println("3. THE RESPONSE ARM — $AXIS_LABEL × {historic, ssp370}, all four in this process")
     println("-"^108)
     ctl_s = _roll(false, "ssp370")
     arm_s = _roll(true, "ssp370")
@@ -601,8 +816,8 @@ if RESPONSE
     #     should be EXACTLY inert. That is measured here rather than asserted, because if it were NOT inert
     #     the response below would be partly an out-of-band extrapolation (the ADR-0034 trap).
     ctl_s_static = rollout(;
-        trait_mortality = false, years = YEARS, forcing = RESP_FORC["ssp370"],
-        boundary_series = nothing, t_soil0 = T_SOIL0
+        arm_on = false, years = YEARS, forcing = RESP_FORC["ssp370"],
+        boundary_series = nothing, t_soil0 = T_SOIL0, scen = "ssp370"
     )
     bnd_live = maximum(abs, ctl_s.wd .- ctl_s_static.wd)
     # ⚠ "not inert" is NOT the same as "extrapolating", and conflating them mis-reports a GOOD artifact as a
@@ -641,7 +856,10 @@ if RESPONSE
         "\n  (b) THE 2×2 — community nind-weighted wooddens (gC/m³), MEAN over yr $(first(WIN))-$(last(WIN))" *
             " (SCORE_WINDOW=$SCORE_WINDOW)"
     )
-    println("      ", rpad("", 14), rpad("ctl (off)", 14), rpad("arm (on)", 14), "Δ = arm − ctl")
+    println(
+        "      ", rpad("", 14), rpad(RECRUIT_ARM ? "ctl (R0 cop)" : "ctl (off)", 14),
+        rpad(RECRUIT_ARM ? "arm (R1 port)" : "arm (on)", 14), "Δ = arm − ctl"
+    )
     for (lbl, c, a) in (("historic", ctl, arm), ("ssp370", ctl_s, arm_s))
         println(
             "      ", rpad(lbl, 14), rpad(round(wmean(c), digits = 2), 14),
@@ -663,10 +881,10 @@ if RESPONSE
     )
     println(
         "\n      as a share of FIT's +$FIT_SHIFT per-cell warming shift (ADR 0046 §1):\n" *
-            "        R_ctl (pre-0049 emulator's own warming response) = ", round(R_ctl / FIT_SHIFT, digits = 4), "×\n" *
-            "        R_arm (with the hazard wired in)                 = ", round(R_arm / FIT_SHIFT, digits = 4), "×\n" *
+            "        R_ctl (", rpad(CTL_LABEL, 42), ") = ", round(R_ctl / FIT_SHIFT, digits = 4), "×\n" *
+            "        R_arm (", rpad(ARM_LABEL, 42), ") = ", round(R_arm / FIT_SHIFT, digits = 4), "×\n" *
             "        INTERACTION R_arm − R_ctl = Δ_ssp − Δ_hist       = ", round((R_arm - R_ctl) / FIT_SHIFT, digits = 4),
-        "×   ⇐ the operator's contribution TO THE RESPONSE"
+        "×   ⇐ the ", RECRUIT_ARM ? "recruit channel's" : "operator's", " contribution TO THE RESPONSE"
     )
     println(
         "      identity check (must be ~0): (R_arm−R_ctl) − (Δ_ssp−Δ_hist) = ",
@@ -694,25 +912,77 @@ if RESPONSE
     # (d) did the operator's DUTY CYCLE change under warming? ADR 0049 §5's throttle is the count channel, so
     #     the honest question is whether a warming climate makes the DRF demand more net death (higher θ) or
     #     not — that is what decides whether the response can be larger than the level effect.
-    println("\n  (d) THE OPERATOR'S DUTY CYCLE, historic vs ssp370 (ADR 0049 §5's throttle)")
     q(v, p) = isempty(v) ? NaN : sort(v)[clamp(1 + round(Int, p * (length(v) - 1)), 1, length(v))]
-    println(
-        "      ", rpad("arm", 12), rpad("thin yr", 10), rpad("hazard %/yr", 14), rpad("|ρ−1| %/yr", 14),
-        rpad("θ median", 12), rpad("θ mean", 12), "θ>0.5"
-    )
-    for (lbl, a) in (("historic", arm), ("ssp370", arm_s))
-        dd = trait_mortality_diag(a.s)
-        θ = [d.theta for d in dd if d.thinned && isfinite(d.theta)]
-        # distinct names from section 0's globals: `th = ...` in this soft scope would otherwise warn
-        th_a = a.s.target_history
-        rel_a = [abs(th_a[t] / th_a[t - 1] - 1) for t in 2:length(th_a)]
+    if !RECRUIT_ARM || TRAIT_MORT_FIXED
+        println("\n  (d) THE OPERATOR'S DUTY CYCLE, historic vs ssp370 (ADR 0049 §5's throttle)")
         println(
-            "      ", rpad(lbl, 12), rpad(count(d -> d.thinned, dd), 10),
-            rpad(round(100 * _mean([d.hazard_mean for d in dd]), digits = 3), 14),
-            rpad(round(100 * _mean(rel_a), digits = 4), 14),
-            rpad(round(q(θ, 0.5), sigdigits = 4), 12), rpad(round(_mean(θ), sigdigits = 4), 12),
-            string(count(>(0.5), θ), " / ", length(θ), " = ", round(100 * count(>(0.5), θ) / max(length(θ), 1), digits = 1), " %")
+            "      ", rpad("arm", 12), rpad("thin yr", 10), rpad("hazard %/yr", 14), rpad("|ρ−1| %/yr", 14),
+            rpad("θ median", 12), rpad("θ mean", 12), "θ>0.5"
         )
+        for (lbl, a) in (("historic", arm), ("ssp370", arm_s))
+            dd = trait_mortality_diag(a.s)
+            θ = [d.theta for d in dd if d.thinned && isfinite(d.theta)]
+            # distinct names from section 0's globals: `th = ...` in this soft scope would otherwise warn
+            th_a = a.s.target_history
+            rel_a = [abs(th_a[t] / th_a[t - 1] - 1) for t in 2:length(th_a)]
+            println(
+                "      ", rpad(lbl, 12), rpad(count(d -> d.thinned, dd), 10),
+                rpad(round(100 * _mean([d.hazard_mean for d in dd]), digits = 3), 14),
+                rpad(round(100 * _mean(rel_a), digits = 4), 14),
+                rpad(round(q(θ, 0.5), sigdigits = 4), 12), rpad(round(_mean(θ), sigdigits = 4), 12),
+                string(count(>(0.5), θ), " / ", length(θ), " = ", round(100 * count(>(0.5), θ) / max(length(θ), 1), digits = 1), " %")
+            )
+        end
+    else
+        println(
+            "\n  (d) the trait-mortality duty cycle is not printed: the operator is OFF on both sides of this\n" *
+                "      contrast (TRAIT_MORT=0). ADR 0119 §6 writes the rung-2 arm under the C1 mortality arm, so\n" *
+                "      run TRAIT_MORT=1 as well and say which configuration a number came from."
+        )
+    end
+    # (d2) THE RECRUIT CHANNEL'S OWN MECHANISM PANEL — the kill condition's actual subject.
+    #      The ported rule's marginal is a FUNCTIONAL OF THE EMULATOR'S OWN COMMUNITY through the seedbank,
+    #      so the question "did the error become climate-dependent" is, mechanically: does the DRAWN
+    #      marginal move DIFFERENTLY under the two forcings? That is a double difference on the sampler
+    #      itself, upstream of growth and mortality, so it separates the sampler's drift from the stand's.
+    #      ⚠ Read `inherited %` first — with an empty or thin seedbank the two scenarios draw from the SAME
+    #      static uniform intervals and the panel is inert BY CONSTRUCTION, not by measurement.
+    if RECRUIT_ARM
+        println("\n  (d2) THE DRAWN RECRUIT MARGINAL (arm only; R0's copula draws are not recorded per year)")
+        println(
+            "      ", rpad("scenario", 12), rpad("draws", 8), rpad("inherit %", 11), rpad("sb_weight", 12),
+            rpad("wooddens", 12), rpad("sla", 11), rpad("d95max", 11), "minwscal"
+        )
+        eds = Dict{String, Vector{EstabDiag}}()
+        for (lbl, a) in (("historic", arm), ("ssp370", arm_s))
+            dd = establishment_diag(a.s)
+            eds[lbl] = dd
+            println(
+                "      ", rpad(lbl, 12), rpad(length(dd), 8),
+                rpad(isempty(dd) ? "-" : round(100 * count(d -> d.inherited, dd) / length(dd), digits = 1), 11),
+                rpad(isempty(dd) ? "-" : round(dd[end].sb_weight, sigdigits = 6), 12),
+                rpad(isempty(dd) ? "-" : round(_mean([d.wooddens for d in dd]), digits = 1), 12),
+                rpad(isempty(dd) ? "-" : round(_mean([d.sla for d in dd]), sigdigits = 5), 11),
+                rpad(isempty(dd) ? "-" : round(_mean([d.d95max for d in dd]), digits = 2), 11),
+                isempty(dd) ? "-" : round(_mean([d.minwscal for d in dd]), digits = 5)
+            )
+        end
+        if !isempty(eds["historic"]) && !isempty(eds["ssp370"])
+            dwd = _mean([d.wooddens for d in eds["ssp370"]]) - _mean([d.wooddens for d in eds["historic"]])
+            inh_h = 100 * count(d -> d.inherited, eds["historic"]) / length(eds["historic"])
+            inh_s = 100 * count(d -> d.inherited, eds["ssp370"]) / length(eds["ssp370"])
+            println(
+                "      Δ(mean drawn wooddens), ssp370 − historic = ", round(dwd, digits = 1),
+                " gC/m³ = ", round(dwd / FIT_SHIFT, digits = 4), "× FIT\n" *
+                    "      Δ(inherited share) = ", round(inh_s - inh_h, digits = 1), " pp",
+                "\n      ⇒ the SAMPLER's own scenario response. It can be non-zero ONLY through the seedbank" *
+                    "\n        (the uniform channel's intervals are static parameters), so a non-zero value here IS" *
+                    "\n        the feedback loop, measured. Zero with a live seedbank means the community moved but" *
+                    "\n        the recruit marginal did not follow — read it against the (b) table's Δ, not alone." *
+                    "\n      ⚠ It is also a MIXTURE difference: a shift in the inherited share moves the mean even" *
+                    "\n        with both channels' own marginals unchanged. Both columns are printed for that reason."
+            )
+        end
     end
     println(
         "\n      carbon residual (guardrail 2): ",
@@ -796,7 +1066,11 @@ println("\n", "="^108)
 println("VERDICT")
 println("="^108)
 if !FIRED
-    println("  NON-MEASUREMENT — the operator did not thin in any year. Fix that before reading anything above.")
+    println(
+        RECRUIT_ARM ?
+            "  NON-MEASUREMENT — the ported rule never drew a recruit. Fix that before reading anything above." :
+            "  NON-MEASUREMENT — the operator did not thin in any year. Fix that before reading anything above."
+    )
 else
     d = arm.wd[YSCORE] - ctl.wd[YSCORE]
     println(
@@ -810,13 +1084,23 @@ else
     )
     if RESPONSE
         println(
-            "\n  RESPONSE (the Stage-3 headline, Hainich only):\n" *
-                "    the pre-0049 emulator's own warming response  R_ctl = ", round(R_ctl, digits = 2),
+            "\n  RESPONSE (the headline, Hainich only):\n" *
+                "    ", rpad(CTL_LABEL, 44), " R_ctl = ", round(R_ctl, digits = 2),
             " gC/m³ = ", round(R_ctl / FIT_SHIFT, digits = 4), "× FIT\n" *
-                "    with the trait hazard wired in                R_arm = ", round(R_arm, digits = 2),
+                "    ", rpad(ARM_LABEL, 44), " R_arm = ", round(R_arm, digits = 2),
             " gC/m³ = ", round(R_arm / FIT_SHIFT, digits = 4), "× FIT\n" *
-                "    THE OPERATOR'S CONTRIBUTION TO THE RESPONSE         = ", round(R_arm - R_ctl, digits = 2),
+                "    ", rpad(DIFF_LABEL, 44), "       = ", round(R_arm - R_ctl, digits = 2),
             " gC/m³ = ", round((R_arm - R_ctl) / FIT_SHIFT, digits = 4), "× FIT"
+        )
+        RECRUIT_ARM && println(
+            "\n  ⚠ HOW THIS MAY AND MAY NOT BE READ (ADR 0119 §6, pre-registered before the run):\n" *
+                "    * it is ONE cell, 1 of 54 020, and ONE seed — quote the seed ensemble, never this line;\n" *
+                "    * it is NOT the flip test. The flip is decided on line M's rung-2 roster harness, where the\n" *
+                "      roster comes back from the C each year. This is a cheap early read of the KILL condition;\n" *
+                "    * the kill condition fires on a recruit channel whose error becomes CLIMATE-DEPENDENT — i.e.\n" *
+                "      a large |R1 − R0| that moves the response AWAY from FIT's own +$FIT_SHIFT, or a (d2) sampler\n" *
+                "      response that is large and wrong-signed. A small interaction is NOT a pass on its own: read\n" *
+                "      (d2)'s inherited share first, because an unfilled seedbank makes the whole panel inert."
         )
         println(
             "  Forcing contrast behind it (build_hainich_response_forcing.py prints the full table): the two\n" *

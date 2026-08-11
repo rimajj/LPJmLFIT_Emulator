@@ -10,77 +10,71 @@
 
 ## NEXT — start here
 
-> ## ✅ THE PORTED ESTABLISHMENT RULE IS BUILT AND SHIPPED OPT-IN (2026-08-11, ADR 0119)
+> ## ✅ THE RECRUIT PORT'S KILL CONDITION IS PRE-TESTED, AND THE PER-CELL ELIGIBILITY TABLE IS BUILT (2026-08-11, ADR 0170)
 >
-> The owner's steer of the same day is **implemented**, not planned. `src/establishment.jl`
-> (`module Establishment`, pure Base) computes FIT's recruit marginal from the C's parameter files; the
-> opt-in hook is `FluxDrivenSlowEmulator(...; recruit_establishment = RecruitEstablishment(...))`, default
-> `nothing` ⇒ every committed baseline, the AD gate and every pinned artifact byte-identical. Parameters live
-> in one generated artifact (`test/testitems/references/S_pft_estab_params.csv` via
-> `scripts/build_estab_params_reference.py`), gated row-by-row by `test/testitems/slow_establishment_tests.jl`
-> (160 186 + 69 assertions, both items green). Full suite: job 1758701.
+> Both items 1 and 2 of the previous handoff are DONE. ADR 0170 has the full record; the four things that
+> change what the next session does are below. **`recruit_establishment` stays OFF by default** — the
+> pre-registered flip criterion is unmet and this run added two conditions to it.
 >
-> **1. Reading the C corrected three things this repo thought it knew** — details in ADR 0119 §1 and the
-> `slow-drf-pipeline` skill, but the first one matters for any future edit of the sampler:
-> * the inheritance jitter **does not reflect at the interval edges**; it redraws *uniformly between the
->   parent and the crossed bound* (inward, with a point mass ON the bound). ADR 0045, the skill and this
->   line's own last journal entry all said "reflected". A reflection is a different stationary shape exactly
->   at the narrow boreal intervals.
-> * the seedbank accumulates **individual-YEARS with no de-duplication** — 30 years of dominance is 30 draws
->   — so inheritance favours *persistently* dominant genotypes.
-> * `getsapling` runs **before** the year's mortality, so a recruit can inherit from a parent that dies the
->   same year. The hook keeps that order.
+> **1. THE KILL CONDITION DOES NOT FIRE — but the arm does not clear either, and the LEVEL is why.**
+> `ARM=recruit` on `scripts/trait_mortality_arm_probe.jl` runs the same 2×2 with the contrast axis switched
+> to the recruit channel (R0 = pinned copula, R1 = the ported rule), everything else held common. Two
+> 40-seed ensembles, Hainich only (**1 of 54 020**):
+> * the port does the OPPOSITE of the count recursion — **R0's own warming response is significantly
+>   WRONG-SIGNED (−0.75 ± 0.24 ×FIT against FIT's +1)** and R1 turns it positive (+2.66 ± 1.01). So it does
+>   not manufacture a wrong-signed climate dependence; it removes one.
+> * **but it overshoots**: |error| 1.66 vs R0's 1.75 (a dead heat), and 2.67 vs 1.27 with the mortality
+>   operator on. The target is 1.0, not as-high-as-possible.
+> * **and the level moves +8.5 %** (+19 701 ± 1 281 gC/m³, t = 15 — 8.1× FIT's entire warming shift, as a
+>   static offset). That alone blocks the flip on ADR 0106 grounds.
+> * **the mortality arm does NOT absorb it** — the level effect is LARGER with the operator on (+24 186),
+>   because at this cell the count channel throttles it to θ ≈ 0 (ADR 0049 item 5). The hypothesis that the
+>   port must be flipped TOGETHER with a selection operator survives, but only where that operator has room
+>   to act — **which is rung 2, on M's harness, and nowhere offline.**
 >
-> **2. Two invariants FIT gets for free had to be enforced explicitly, and one of them would have failed
-> silently.** `draw_new_trait`'s inward redraw keeps a child in range **only if the parent is in range**. A
-> roster rebuilt from the `ind` output carries `d95max`/`minwscal` at the ADR-0110 UNSET sentinel 0, so
-> diffusing from it would have put every inherited rooting depth *below* its own PFT's floor — in
-> range-looking numbers. An UNSET axis now falls back to the uniform channel **for that one axis**; a finite
-> out-of-range parent is clamped on insertion (a guard, not physics — if it ever fires on `sla`/`wooddens`,
-> investigate upstream).
+> **2. ⚠ ADR 0101's SEED GUIDANCE DOES NOT TRANSFER TO THIS ARM.** Its double difference has a seed sd of
+> **6.4–7.8 ×FIT** against the `trait_mortality` arm's 0.67–1.74. Twelve seeds left every response CI
+> straddling zero; forty resolved it. Size an ensemble from the arm's own spread, and never read a first
+> n.s. batch as "inert" without looking at the sd.
 >
-> **3. What is deliberately NOT wired: the drawn PFT IDENTITY.** `set_pft_id` defaults to `false` because
-> `fc.tmpls` still carries the donor cohort's physiology, and because `_commit_membership!` refuses an id
-> absent from `fc.pft_slot`. The constructor now checks a fixed eligible set up front instead of failing in
-> whichever later year the background channel first draws the missing id. **A per-PFT template registry is
-> the line-M integration point** (M builds `fc.tmpls`) — raise it when the arm needs identity.
->
-> **4. NO SCIENCE NUMBER IS CLAIMED, and the flip criterion is pre-registered (ADR 0119 §6)** with an
-> explicit **kill condition**: if the recruit channel makes the error climate-dependent the way the count
-> recursion did (ADR 0112–0116), the flip is REFUSED and that becomes the result. The arm is rung 2 on M's
-> roster harness (R0 = pinned copula vs R1 = ported rule, both under the C1 mortality arm); it is written as
-> an ACTION in `lines/M/STATE.md`.
+> **3. THE PER-CELL(-YEAR) ELIGIBLE-PFT TABLE EXISTS** — `scripts/build_estab_eligibility.py`, all 67 420
+> cells × 20 historic years (+ the ssp370 build), gated against FIT's own `ind` at a **0.076 %** residual.
+> Two C facts came out of building it, both in the `slow-drf-pipeline` skill:
+> * ⚠ **`n_elig == 0` does NOT mean "nothing establishes here"** — FIT's inheritance channel
+>   (`establishmentpft_ind.c:125`) has **no bioclimatic gate and no precipitation gate**, so a cell whose
+>   gate has closed keeps recruiting its resident genotypes; 22.1 % of cell-years are in that state. The
+>   ported sampler was already right (`4/(4+n_elig) = 1` at `n_elig = 0`); only the description was wrong.
+> * ⚠ **the gate's `temp_min20` is NOT the boundary table's `tas_cold_month`** — `mean_y(min_m T)` vs
+>   `min_m(mean_y T)`, **0.73 °C apart on average**, and the three boreal ids have `temp_high = 0.0`, so the
+>   wrong basis silently deletes them (at Hainich: {1,2,3} instead of the correct {1,2,3,4,5,6}).
+> * the gate MOVES: **16 709 of 67 420 cells** change their eligible set within 2000–2019, and at Hainich
+>   under ssp370 it closes to {1,2,3} for 48 of 81 years ⇒ the inherited share rises 0.400 → 0.571.
+>   **Warming hands more of the recruit population to the cell's own seedbank.**
 >
 > **⏩ WHAT TO DO NEXT, in order:**
 >
-> 1. **PRE-TEST THE KILL CONDITION AT HAINICH, OFFLINE, BEFORE M's HARNESS EXISTS.** Two facts make this
->    cheap, both already checked: `scripts/trait_mortality_arm_probe.jl` **already has a `MODE=response` 2×2**
->    ({operator on, off} × {historic, ssp370}, all arms advanced in ONE process at matched year indices, the
->    double difference read as the response) — which is structurally the design the kill condition needs — and
->    the R0 side needs no new artifact, because `test/testitems/references/recruit_copula_hainich.rcop` is
->    committed next to `drf_forest_hainich.drf`. So the change is a third dimension on that probe: recruit
->    channel R0 (pinned copula) vs R1 (`recruit_establishment`), both under the same count model and the same
->    mortality arm, with ADR 0101's seed ensemble (**one run is not a measurement** — mean ± SEM over ~8
->    seeds), reading whether the community trait mean's bias DIVERGES between the two forcings. It either
->    finds the feedback problem early or buys confidence before M spends harness time. ⚠ **Label it
->    "1 of 54 020"** (guardrail 6) — a smoke test of the kill condition, never fidelity evidence. And keep
->    ADR 0048's protocol: difference against a matched control re-run in the SAME process, read past year 52
->    (the constant-forcing drift settles there), and report the merge count and θ before reading any Δ.
-> 2. **DERIVE THE PER-CELL ELIGIBLE-PFT SET** — the concrete blocker to running the port anywhere but a
->    hand-configured cell. `Establishment.eligible_pfts` needs `temp_min20`, `temp_max20` (20-yr running
->    means of the year's coldest/warmest MONTHLY mean, `climbuf.c:134-137,153-154`) and `gdd5`; the monthly
->    inputs already exist in the transient-boundary builder's pipeline. Emit it as a per-cell(-year) table so
->    a warming cell's gate can open and close during a run, and gate it against a cell whose FIT-observed PFT
->    set is known (Hainich has ids 1–5, the Sahel/Amazon 0 and 7).
-> 3. **Arm D is DESCOPED, not pending.** ADR 0119's consequence: if establishment is ported rather than
->    learned, the marginal-family question (bounded Beta vs empirical copula) applies only to whatever
->    remains learned, so re-establishing ADR 0093 §5.3's 2–3× KS claim like-for-like is no longer a
->    prerequisite for anything on the recruit side. Do it only if the learned path needs it.
+> 1. **RAISE THE RUNG-2 ARM WITH LINE M, with the two added conditions.** M owns the roster harness; the
+>    arm is R0 vs R1 under BOTH mortality settings (not only C1 — they differ here in the level effect, in
+>    the sampler's own scenario response, and in whether hard kills fire at all: 4 of 40 vs 0 of 40). The
+>    conditions to write into the raise: **read θ first** (a throttled operator cannot remove the
+>    over-dense recruits, which is the whole story at Hainich) and **read the LEVEL, not only the
+>    response**. ⚠ Note M's own ADR 0122: the rung-2 rendezvous still carries a one-year-stale
+>    `bm_inc_counter`, so a wood-density result is not yet readable there — the arm is readable on counts
+>    and ordering until M moves the rendezvous behind the growth loop.
+> 2. **RE-ESTABLISH ARM D's BOUNDED-BETA COMPARISON LIKE-FOR-LIKE** (ADR 0118 §6) — still the cheapest
+>    remaining offline S task, and still undone. A bounded Beta fitted per cell and scored K-fold-by-cell
+>    out-of-sample on `score_slow_copula_ks.py`'s own basis, not against oracle moments. ⚠ Note ADR 0119
+>    descoped it for the recruit side; do it only if the LEARNED path is still on the table, which after
+>    ADR 0170 it partly is (the port is not flippable offline).
+> 3. **If a further offline recruit measurement is wanted, do it at MORE CELLS, not more seeds.** The
+>    per-cell eligibility table now makes that possible — the blocker was never the seed count, it was that
+>    the rule could only run at a hand-configured cell. Hainich has six eligible PFTs and a throttled
+>    hazard; a low-diversity cell (Amazon/Sahel, `n_elig` 1, `w_inherit` 0.8) is a genuinely different
+>    regime and the one where the inheritance channel dominates.
 >
-> **Two things NOT to do:** do not build a global offline demography rollout (ADR 0117 §2 — M's harness is
-> the roster), and do not flip `recruit_establishment` on by default on anything other than ADR 0119 §6's
-> criterion (three flags have already rotted in the off position; this one has a named arm, line, pass
-> condition and kill condition).
+> **Do NOT:** build a global offline demography rollout (ADR 0117 §2 — M's harness is the roster); flip
+> `recruit_establishment` on anything other than ADR 0119 §6 + ADR 0170 §3's criteria; or quote any number
+> above as fidelity evidence (Hainich only, and the response ones are single-cell smoke tests).
 
 > ## ✅ ARM C IS SCOPED, AND IT TURNS OUT TO REST ON AN INVALIDATED TRAINING TARGET (2026-08-11, ADR 0118)
 >

@@ -1642,3 +1642,66 @@ both under the C1 mortality arm; primary condition = the per-PFT age–`Wooddens
 condition** = the recruit channel making the error climate-dependent the way the count recursion did). Do
 not flip the default on anything else — and note the criterion is an ACTION in `lines/M/STATE.md`, because M
 owns the roster harness and the artifact pin.
+
+### THE ELIGIBLE-PFT GATE — a per-cell(-year) table, and the C fact that changes what it means (ADR 0170)
+
+`Establishment.eligible_pfts` needs four inputs the emulator does not carry. Build them, do not guess them:
+
+```bash
+export SCENARIO=historic                     # or ssp370
+scripts/sbatch_python.sh S-elighist scripts/build_estab_eligibility.py
+#   -> /p/tmp/jamirp/emulator_global/tables/estab_eligibility_<scen>_w20.parquet  (all 67 420 cells)
+# single cell + a committable fixture (the probe reads this one):
+SCENARIO=historic CELLS=42490 Y0=1939 Y1=2019 GATE=0 \
+  CSV_OUT=test/testitems/references/S_hainich_estab_eligibility.csv \
+  python3 scripts/build_estab_eligibility.py            # append the ssp370 rows with a second call
+# re-run only the falsifiable check on an already built table (the build is a ~12 GB read):
+GATE_ONLY=<parquet> TOL=1 scripts/sbatch_python.sh S-eliggate scripts/build_estab_eligibility.py
+```
+
+* ⚠ **`n_elig == 0` DOES NOT MEAN "nothing establishes here" — the INHERITANCE channel is NOT
+  bioclimatically gated.** `establishmentpft_ind.c:91` wraps the BACKGROUND per-PFT loop in
+  `aprec >= aprec_min && establish(...)`; the inheritance block at `:125` sits OUTSIDE it and tests only
+  `config->inheritance && cell->treelen > 0`. A cell whose gate has closed keeps recruiting its own
+  resident genotypes forever, and **22.1 % of historic cell-years are in that state**. The closed form
+  already encodes it (`4/(4+n_elig) = 1` at `n_elig = 0`) and `draw_recruit!` implements it. Read the
+  table as *which PFTs the background channel may INTRODUCE*, never as *which PFTs may exist*.
+* ⚠ **The gate's temperature input is NOT the boundary table's `tas_cold_month`.** FIT's `temp_min20` is
+  `mean_y (min_m T_{y,m})` (`climbuf.c:134-137,153-154`); the boundary column is `min_m (mean_y T_{y,m})`,
+  larger by Jensen — measured **+0.73 °C mean, +4.14 max**. The three boreal ids have `temp_high = 0.0`, so
+  the wrong basis silently deletes them: at Hainich it gives {1,2,3} where the C's own basis gives
+  {1,2,3,4,5,6}, which is the set FIT actually has there. Same for `gdd5`: the gate reads the CURRENT
+  year's DAILY accumulation (`updategdd.c:31`), not the windowed Thom monthly GDD. Both bases are emitted
+  side by side so neither can be quoted by accident.
+* **`aprec` is the year's own daily total** (`update_daily.c:68`, zeroed by `init_annual.c:30`) — NOT
+  `climbuf->aprec`, which is a 20-yr mean that exists but is not what the establishment call receives.
+* **The gate MOVES**: 16 709 of 67 420 cells change their eligible set within 2000–2019, and at Hainich
+  under ssp370 it closes {1,2,3,4,5,6} → {1,2,3} for 48 of 81 years, raising the inherited share 0.400 →
+  0.571. Warming hands MORE of the recruit population to the cell's own seedbank. Pass the per-year
+  series as a callable (`eligible = s -> ids[clamp(s.year + 1, 1, n)]`), not a fixed set.
+* **Gating an eligibility table against `ind` needs two exemptions or it reports physics as a bug**: an
+  establishment-year tolerance (±1 yr — the emitted `Age` is post-increment and `aprec`/`gdd5` are
+  single-year values that swing across the threshold), and the ungated-inheritance exemption above (a PFT
+  already resident in the cell). Without them the residual is 2.75 %; with them it is **0.076 %**, 94 % of
+  it the `aprec` clause in hyper-arid cells whose parents live below `ind`'s 5 m emission threshold.
+
+### RUNNING THE RECRUIT-CHANNEL ARM (R0 copula vs R1 ported rule) — and its own seed budget (ADR 0170)
+
+```bash
+export ARM=recruit MODE=response K_CAP=400 PARTITION=priority QOS=priority
+TRAIT_MORT=0 scripts/run_response_seed_ensemble.sh S-recA 40     # the shipped configuration
+TRAIT_MORT=1 scripts/run_response_seed_ensemble.sh S-recB 40     # ADR 0119 §6's C1 arm — run BOTH
+scripts/summarize_response_seed_ensemble.py 'logs/S-recA*.out' 'logs/S-recB*.out'
+```
+
+* ⚠ **ADR 0101's "~8 seeds" DOES NOT TRANSFER.** The recruit arm's double difference has a seed sd of
+  **6.4–7.8 ×FIT** against the `trait_mortality` arm's 0.67–1.74 — 4–10× wider. 12 seeds left every
+  response CI straddling zero; 40 resolved it (SEM ≈ 1.0 ×FIT). **Size the ensemble from the arm's own
+  spread**, and if a first batch comes back n.s., check the sd before concluding "inert".
+* **Read the LEVEL beside the response.** The recruit channel moved the community wood density by
+  **+8.5 %** at t = 15 while its response contribution needed 40 seeds to reach t = 3.4. An arm whose
+  level effect is 8× the response quantity cannot be judged on the response alone.
+* **The preconditions differ by arm** and the summarizer enforces them: for `ARM=recruit` the rule must
+  have DRAWN and the seedbank must have FILLED (an empty bank ⇒ only the static uniform channel ran ⇒ the
+  panel is inert by construction, not by measurement). Hard kills fired in 4 of 40 runs with the mortality
+  operator ON and 0 of 40 with it off — that combination is what wakes them.

@@ -1868,3 +1868,72 @@ which is where the criterion is written as an action.
 Captured on the way: the fast single-test-item loop (a 10-line shim that runs one `@testitem` file in ~10 s
 instead of the 6-minute suite) is now in the shared `julia-test` skill. It is the difference between four
 iterations and one, and every future test-writing session needs it.
+
+---
+
+## 2026-08-11 (session 2) — the recruit port's kill condition, pre-tested at one cell, and the eligibility table that unblocks running it anywhere
+
+Both items the last handoff left were the work: pre-test ADR 0119 §6's kill condition offline before line M
+spends harness time on it, and derive the per-cell eligible-PFT set that the ported rule needs to run
+outside a hand-configured cell. They turned out to be the same task — the probe cannot be honest without
+the table, because the eligible set is what sets the inherited share, and at Hainich the *fixture roster*
+carries only two PFT ids while FIT's own gate admits six. Configuring the arm from the roster would have
+run it at `w_inherit = 0.667` instead of 0.400 and called that the ported rule.
+
+The probe change is a third dimension rather than a new script: `ARM=recruit` swaps the contrast axis of
+the existing response 2×2 from `trait_mortality` to the recruit channel, holding the count model, forcing
+pair, seed, year indices, `k_cap` and the mortality setting identical on both sides. That reuse is the
+whole reason the run was cheap — the four-corner protocol, the merge/hard-kill preconditions, the
+trained-band excursion panel and the seed-ensemble summarizer all came for free, and the one genuinely new
+panel is the drawn recruit marginal per scenario, which needed four fields added to `EstabDiag`.
+
+**The result is a two-sided answer and it is worth stating in that shape.** The kill condition as written
+is about a specific failure — the count recursion made the error climate-dependent and manufactured ~90 %
+of the true signal with the wrong sign. The recruit port does the *opposite*: the shipped copula channel's
+own warming response at this cell is significantly wrong-signed (−0.75 ± 0.24 ×FIT), and the port turns it
+positive. So the condition does not fire. But it does not clear either, and what blocks it is not the
+response at all — it is the **level**: the community wood density moves +8.5 % (t = 15) while the response
+contribution needed forty seeds to reach t = 3.4. An arm whose level effect is eight times its response
+quantity cannot be judged on the response, and I nearly did exactly that, because the harness was built
+for a response question and prints the response first.
+
+The natural rescue — pair the port with the selection operator, since ADR 0118 showed the copula's
+marginals already carry survivor selection — was measured and **fails at this cell**: with
+`trait_mortality` on, the level effect is *larger*, not smaller. The reason was already on the record
+(ADR 0049 item 5: the count channel throttles the hazard to θ ≈ 0 here), which is what makes it a
+prediction for rung 2 rather than a refutation: the operator has nothing to redistribute offline. Two
+conditions went into the flip criterion as a result, pre-registered before M runs anything.
+
+A method finding I did not expect: **ADR 0101's seed guidance does not transfer between arms.** Twelve
+seeds — the number that resolves the `trait_mortality` arm — left every response CI straddling zero here,
+because this arm's double-difference sd is 6.4–7.8 ×FIT against that arm's 0.67–1.74. The first ensemble
+therefore looked like "indistinguishable from inert", which would have been a wrong conclusion reported in
+the right format. Forty seeds resolved it. The rule now in the skill: size the ensemble from the arm's own
+spread, and check the sd before reading a null.
+
+**The eligibility table cost more thought than the probe, and the gate is where the thinking went.** The
+first version failed at 2.75 % of (cell, PFT, establishment-year) triples and told me the derivation was
+wrong. It was not — the *gate* was. Two things had to be modelled: the emitted `Age` is post-increment and
+the two per-year inputs (`gdd5`, `aprec`) swing across their thresholds year to year, so the establishment
+year is only known to ±1; and, far more important, reading `establishmentpft_ind.c` properly shows the
+**inheritance channel is not bioclimatically gated at all** — it sits outside the per-PFT loop and tests
+only that the cell has trees. A cell whose gate has closed keeps recruiting its own residents forever, and
+22 % of cell-years are in that state. With both modelled the residual is 0.076 %, and it is arid-skewed on
+exactly the clause the exemption cannot reach (a desert population living below `ind`'s 5 m threshold).
+
+That finding is a correction to how the table must be *read*, not to the port: `w_inherit = 4/(4+n_elig)`
+is 1 at `n_elig = 0`, and `draw_recruit!` already forces inheritance on an empty eligible set. I checked
+that before writing it down, because the alternative reading — "the port is wrong in 22 % of cells" —
+would have been a much more exciting and completely false journal entry.
+
+The other basis correction is the kind this repo keeps having to make: FIT's gate reads
+`mean_y(min_m T)` and the boundary table carries `min_m(mean_y T)`. They differ by 0.73 °C on average, the
+three boreal PFTs have `temp_high` exactly 0.0, and at Hainich the wrong basis deletes all three. Both
+columns are emitted side by side now, which is ADR 0060's lesson applied before rather than after.
+
+Next session: the arm belongs to M's rung-2 harness (with the two added conditions, and noting M's own
+ADR 0122 — the rendezvous lag makes a wood-density result unreadable there until M moves it behind the
+growth loop). Arm D's bounded-Beta comparison is still the cheapest undone offline task. And if more
+offline recruit measurement is wanted, it should buy **more cells**, not more seeds: the eligibility table
+is exactly what makes a low-diversity cell (`n_elig` 1, `w_inherit` 0.8, inheritance dominant) runnable,
+and that is a different regime from Hainich's throttled six-PFT one.
