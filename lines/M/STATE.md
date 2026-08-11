@@ -195,10 +195,87 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
+### 0-NEWEST. ✅ DONE 2026-08-11 (session 6) — RUNG 2's SUBSTITUTION HALF IS BUILT AND GATED (ADR 0120)
+
+**Start here. The C now ACCEPTS a replacement demography, and the harness has been measured against the
+C's own answer. Both steps of the previous handoff's "what to do next on rung 2" are done: step 1 (raise
+the entry point with line S) was done last session and S has NOT yet replied; step 2 (write the C
+read-back) is this session's work and did not need S's answer.**
+
+`export LPJ_RUNG2_APPLY_DIR=<dir>` turns on a second opt-in hook (`include/rung2apply.h` +
+`src/lpj/rung2_apply.c`, call sites in `annual_natural.c` / `annual_tree.c` / `establishmentpft_ind.c`).
+Per patch-year the C writes the `pre` roster as a request, blocks, and reads back
+`K <pft_id> <treeidx>` kills plus `R <pft_id> <sla> <wooddens> <D95max> <minwscal>` recruits, with
+`MORT_C` / `ESTAB_C` to defer either half. Full mechanics + the five traps: the **`lpjmlfit-cbinary`**
+skill. Patch: **`patches/lpjmlfit_rung2_hook_v2.patch`** (supersedes the ADR-0061 one, which is kept for
+provenance).
+
+**Four gates, all passed** (cell 42490, 25 patches, 2000–2019, `--ntasks=1`):
+
+- **A — the rebuild did not move the physics.** Both env vars unset ⇒ **139 decoded quantities +
+  `globalflux` identical, 0 differ**, against the ADR-0061 binary. Run after **each** of the two
+  rebuilds this session made. `bin/lpjml` was rebuilt again; `bin/lpjml_rung2` is the ADR-0061 build.
+- **B — the observation dump is unchanged** by the shared-writer refactor: identical in every
+  initialised column over 20 259 records, from **two independent runs**.
+- **C — the null control.** Rendezvous active for all 500 patch-years with both halves deferred:
+  **identical in every initialised column over 20 years.** This is what proves the machinery itself
+  perturbs nothing, and it is why the replay numbers below can be read at all. **Always run
+  `MODE=none` first.**
+- **D — replay identity** (below). Cost of the whole rendezvous: 10 s vs 7 s.
+
+▶ **THE RESULT, and it is one cell of 54 020 (guardrail 6).** Replaying the C's own recorded decisions
+(`scripts/run_rung2_replay_arm.sh`, `MODE=kills|recruits|both|none`):
+
+| arm | 2000 roster | first differing year | 2019 stems, replay ÷ recorded |
+|---|---|---|---|
+| `none` | identical | — | **1.000** |
+| `kills` | **identical** (583 = 583, all 31 + all 20 recorded kills applied) | 2002 | **1.37** |
+| `recruits` | differs (583 vs 586) | 2000 | **0.91** |
+| `both` | 583 = 583, keys differ (benign, see ADR) | 2000 | **1.30** |
+
+**Do NOT read 1.30–1.37 as a property of the interface** — naive replay of *identifiers* is
+upward-biased by construction: once trajectories part, some recorded kills name trees that no longer
+exist and cannot be applied, while the recruit list replays in full. No real emulator arm replays IDs.
+
+⚠ **TWO THINGS ANY RUNG-2 RESULT MUST SAY.** (1) A recruit has **seven** sampled trait axes
+(`sla`, `wooddens`, `D95max`, `minwscal`, `emax`, `k_root`, `beta_2`, plus leaf `longevity` derived from
+`sla`); Component S supplies four, so the arm substitutes **4 of 7** and `emax`/`k_root`/`beta_2` stay on
+the C's own draw. (2) Quote the replay floor beside any fidelity number.
+
+⚠ **TWO COLUMNS OF THE ROSTER DUMP ARE UNINITIALISED MEMORY — this corrects ADR 0061.** `sapwood_old` is
+a **dead field** (declared in `include/tree.h`, never written or read anywhere in LPJmL-FIT, not zeroed
+by `new_tree`) — garbage at both phases in every year. And `mort_*` are garbage for any tree not yet
+through `mortality_tree_ind`, **including every recruit at the `post` of its own establishment year** —
+so ADR 0061's "valid only at `post`" holds only for trees already alive that year. **Neither was
+findable by ADR 0061's gate**, because the dump and `ind` read the *same struct memory* and agree on the
+garbage too: a consistency check between two readers of one buffer cannot detect uninitialised memory,
+only two independent **runs** can. Use `scripts/diagnose_rung2_dump_equality.py`.
+
+▶ **WHAT TO DO NEXT ON RUNG 2 — in order.**
+
+1. **Close the one open question before building on any replay number.** In the `kills` arm the state at
+   the end of 2001 is identical to the recorded run in every dumped column, yet in 2002 the C's own
+   hazard draw wants **33** kills where the record has **29**. Gate C rules out the rendezvous, so
+   either the per-cell RAND48 stream or cell-level state *outside* the dump — most likely the top-AGB
+   **seedbank** (`cell->treelist`), which is rebuilt yearly and appears in no roster record — has moved.
+   **Decisive and cheap: add the cell's RAND48 seed and `treelen` to the `P` record and re-run
+   `MODE=kills`.** If the seeds agree at the 2002 `pre` and the answer still differs, it is state, not
+   randomness; if they disagree, walk back to the first year they do. ADR 0120 §5. Do not guess.
+2. **Then check whether line S has replied** (`lines/S/STATE.md`; the ▶ INBOUND block from 2026-08-10 is
+   still there, unanswered as of this session). One thing this session learned changes the menu and is
+   being carried back to S: **option (b) — "rank or draw on the C's own `mort_prob`" — is now known to
+   be awkward**, because at the rendezvous the *current* year's hazards have not been computed yet, so
+   such a rule would rank on a one-year-stale hazard, or need the kill decision deferred until after
+   `mortality_tree_ind`, which `litter_update`'s inline call makes intrusive. That is an argument for
+   option (a) or (c). **Nothing is owed from M until S replies** — the C side is complete and accepts
+   all three shapes, because the harness normalises whatever S returns into a kill set before the C
+   ever sees it.
+3. **Rung 3 (F's decadal canopy drift) is untouched by this session** and remains the other open M item
+   — the narrowed version is item 0-NEW below and item 4(d) further down.
+
 ### 0-NEW. ✅ DONE 2026-08-10 (session 5) — RUNG 2's OBSERVATION HALF IS BUILT AND GATED (ADR 0061)
 
-**Start here, then go to the assignment block below — rung 2's first half is done, its second half is the
-next thing to do, and one number in the assignment block is now measured rather than assumed.**
+**Rung 2's first half. Its second half is now done too — see the block immediately above.**
 
 An **opt-in demography hook** now exists in the C, activated by the environment variable
 `LPJ_RUNG2_DIR`. It dumps each patch's tree roster at the **top** of the annual demography block (`pre`)

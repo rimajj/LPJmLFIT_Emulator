@@ -732,3 +732,48 @@ useful sign the coupled configuration was the one I thought it was.
 - **Decisions:** ADR 0061. Jobs 1743335 (rebuild gate), 1743342 (hook smoke), 1743390 (hook + `ind`).
 - **Skills:** `lpjmlfit-cbinary` gains the rebuild recipe, the mandatory post-rebuild gate, and the hook's
   five gotchas (neither run wrapper emits `ind` or exports the variable; `mort_*` are `post`-only).
+
+## 2026-08-11 — session 6: rung 2's substitution half (ADR 0120)
+
+Picked up the previous handoff's step 2 ("write the C read-back while waiting"), which did not depend on
+line S's answer. S has still not replied to the 2026-08-10 inbound.
+
+Built the second opt-in hook (`LPJ_RUNG2_APPLY_DIR`): the C hands each patch's `pre` roster to an
+external process, blocks on a file rendezvous, and applies a kill set + a complete recruit set, with
+`MORT_C`/`ESTAB_C` to defer either half back to the C. Substituted recruit traits are stamped on after
+`addpft` so `establishment_tree_ind` builds the pools from them, with `beta_root` and leaf `longevity`
+re-derived exactly as `new_tree` derives them.
+
+Design points that came out of reading the C rather than from the plan:
+
+- The kill override must land **inside `annual_tree`**, before it returns, because `annual_natural`
+  calls `litter_update` inline the moment `annualpft` returns TRUE — reviving a tree after that would
+  double-count carbon.
+- The kill key has to be `(pft_id, treeidx)`: `tree->index` is a per-PFT counter, so ADR 0061's gate
+  keyed on `treeidx` alone and only passed because Hainich's per-PFT counters happen to be far apart.
+- A recruit has **seven** sampled trait axes, not the four Component S supplies.
+- `mortality_tree_ind` consumes exactly one `erand48` per tree whatever it decides, so overriding its
+  verdict leaves the RNG stream alone; the recruit path cannot preserve it, and does not pretend to.
+
+Four gates. A (rebuild equality, both env vars unset) ran after each of the two rebuilds: 139 decoded
+quantities identical, 0 differ. B: the observation dump is unchanged by the shared-writer refactor. C,
+the null control — rendezvous active, both halves deferred — reproduces the recorded run in every
+initialised column over 20 years, which is what makes D readable. D: the `kills` arm replays the
+recorded roster exactly for 2000–2001 and then drifts to 1.37× by 2019.
+
+Two things found on the way that were not being looked for:
+
+- `sapwood_old` is a **dead struct field** — declared in `include/tree.h`, never written or read
+  anywhere in LPJmL-FIT — so its dump column is uninitialised memory always; and the `mort_*` columns
+  are garbage for every recruit at the `post` of its own establishment year, not just at the first `pre`
+  after a restart. ADR 0061's gate could not have caught either, because it compared two readers of the
+  *same* struct memory. Only two independent runs can.
+- A local named `v` will not compile anywhere in this source tree: `include/discharge.h` does
+  `#define v 86400.0`. And piping a `module load` runs the shell function in a subshell, so the build
+  silently loses its compiler.
+
+Left open, deliberately unguessed: why the `kills` arm's 2002 hazard draw disagrees with the record when
+the end-2001 state is identical in every dumped column. Gate C excludes the rendezvous; the named
+suspect is the top-AGB seedbank (`cell->treelist`), which is in no roster record. The decisive
+experiment — put the cell RAND48 seed and `treelen` in the `P` record and re-run — is written into the
+handoff rather than attempted at the end of a session.
