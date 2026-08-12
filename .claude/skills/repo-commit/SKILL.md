@@ -871,3 +871,26 @@ git -C "$INT" reset --hard origin/main                            # drop the hal
 ```
 A fragment-only follow-up commit triggers **no branch gate at all** (ADR 0090: the `changelog` gate is
 `main`-only), so the fix costs one push and no CI wait.
+
+---
+
+## ⚠ A PATH-SCOPED `git add` LEAVES JOB-WRITTEN FIXTURES BEHIND — and the ADR then cites a file that is not in the repo (line S, 2026-08-12)
+
+Many scripts here are run on SLURM and write their fixture **into the working tree**
+(`test/testitems/references/…`), often minutes or hours after you last looked at `git status`. If you then
+commit with a path-scoped add — `git add scripts/ docs/decisions/ changelog.d/`, which is the natural thing to
+do when you are keeping one logical change per commit — the fixture stays untracked and **the ADR you just
+committed cites a reproducer that does not exist on `main`**. That is exactly the "no committed reproducer"
+defect ADR 0118 recorded against ADR 0093 §5.3, reintroduced by the ADR written to fix it (caught before the
+push, but only by a final `git status`).
+
+**The check, every time, before the merge ritual:**
+
+```bash
+git status --porcelain          # MUST be empty, or every leftover is deliberate and you can say why
+```
+
+Two habits that prevent it: after any SLURM job that writes a committed fixture, `git status` **before**
+writing the commit; and when an ADR names a `test/testitems/references/…` path, `git ls-files --error-unmatch`
+that path before pushing. Untracked is the dangerous state — a *modified* tracked fixture at least shows up in
+a bare `git diff`.
