@@ -359,7 +359,104 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-11 (session 10) — **ARM C IS RUN.** SELECTION CARRIES **71 %** OF FIT's
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 11) — **RUNG 3 IS MEASURED.** F's GROWTH ERROR IS **PER-YEAR
+### AND BIMODAL BY BIOME** (1.6–4.0× TOO FAST COLD, **NEGATIVE CARBON BALANCE** HOT), AND ONE **PER-PFT
+### RESPIRATION COEFFICIENT** CARRIES THE WHOLE TROPICAL HALF (ADR 0125)
+
+**Start here.** The previous handoff's step 1 ("RUNG 3 — F's decadal canopy drift, head of the queue") is
+DONE. New tooling: **`scripts/build_biome_stem_growth_reference.py`**, **`scripts/biome_canopy_growth_probe.jl`**,
+**`scripts/diagnose_oracle_run_divergence.py`**. Log of record `logs/M-rung3d.1761700.out` (4 jobs, all exit 0,
+~2.5 min each). Nothing in `src/` changed.
+
+**1. THE FACT THAT MADE IT POSSIBLE, and it was sitting unused in a 29-column table: `(Cell, Patch, ID)` is a
+STABLE CROSS-YEAR INDIVIDUAL IDENTITY** in the annual `ind` output. Over 13 152 tree stem-years at the five
+cells: `Age` increments by **exactly 1** on all 10 323 pairs, `SLA`/`Wooddens` are **bit-identical** (the
+independent check — traits are immutable after `new_tree`, so a shuffled identity would break it), no
+`isdead == 1` stem ever returns, and only **8 stem-years vanish**, all within **0.4 m** of the writer's 5 m
+emission cut (threshold flicker; one is emitted again two years later). ⇒ **F can be restarted from the C's
+own stand every year and every stem scored against ITS OWN next-year row.** Every previous F-vs-C structural
+number in this repo was a decadal aggregate.
+
+**2. THE RESULT — the per-year growth error, same sign in all ten years, OPPOSITE signs across biomes.**
+Σ per-stem annual above-ground biomass increment, F over C: **1.62** boreal · **1.86** Hainich · **4.00**
+mediterranean · **0.038** Sahel · **−0.071** Amazon (F's stems *lose* biomass where the C's gain).
+
+**3. WHERE IT ENTERS — one table, no new run, because the C emits each stem's own annual NPP.**
+`bmi` = assimilate handed to allocation (gC/m²/yr); `keep` = ΣΔAGB / that assimilate:
+
+| cell | bmi_F | bmi_C | F/C | keep_F | keep_C | keep F/C |
+|---|---|---|---|---|---|---|
+| boreal | 198.0 | 188.8 | **1.05** | 0.465 | 0.251 | **1.85** |
+| Hainich | 606.0 | 489.0 | **1.24** | 0.549 | 0.368 | **1.49** |
+| mediterranean | 644.2 | 236.2 | **2.73** | 0.602 | 0.269 | **2.24** |
+| Sahel | **−83.8** | 183.2 | **−0.46** | 0.350 | 0.493 | 0.71 |
+| Amazon | **−223.2** | 1072.5 | **−0.21** | 0.143 | 0.347 | 0.41 |
+
+**F's annual carbon balance is NEGATIVE at the two hot cells while its GPP is within a few % of the C's** —
+so the tropical failure is respiration, not photosynthesis.
+
+**4. THE CAUSE, TESTED AS AN ARM (no code change).** `respcoeff` is **per-PFT** in the live
+`par/pft_lpjmlfit.js`: **0.2** for the tropical broadleaved evergreen tree (id 0), **1.2** for all six
+temperate/boreal trees — a **6× spread**. F holds ONE scalar for every tree in every cell — **1.2**, beech's,
+from `tebs_params` (`fdiff.jl:1287`). Sahel and Amazon are **100 % id 0 by sapwood**. Substituting the cell's
+own value and nothing else: **Amazon −223 → +1206 against a truth of +1073**, paired growth ratio **−0.07 →
+1.02**; Sahel −0.46 → **0.40** (sign fixed, 2.5× shortfall left = ADR 0052's dry-cell root zone, a second
+independent defect in that cell); the other three **unmoved by construction** (1.2 → 1.2), which is the arm's
+own control that it changes exactly one thing.
+
+**5. ⚠ THE DECADAL DRIFT UNDERSTATES THE RATE ERROR BY ~10× — THE CANOPY SATURATES.** Compounding F's
+*per-year* crown growth gives **20.4×** at boreal against the free-running arm's **1.67×** (the free arm
+reproduces the published +67/+29/−13 %, which is the harness's basis check). Crown area is capped, cover is
+bounded, the stand closes. **RULE: a bounded stock's drift is a LOWER BOUND on the rate error driving it —
+score the rate, never the accumulated stock.**
+
+**6. ⚠ TWO REFERENCE-BASIS CORRECTIONS, both measured rather than argued.**
+* **The kernel probe's year alignment is off by one.** The `ind` row for year y is written at the END of
+  year y, so `biome_fdiff_oracle_probe.jl` drives the end-of-2010 stand with **2010** weather. The correct
+  pairing (roster(y−1) + forcing(y) → roster(y)) wins the paired per-stem test at every cell where the test
+  has power. Ratios over the window mostly survive; **levels do not** (ADR 0060's ratio-vs-level rule).
+* **The committed structural oracle is a DIFFERENT RUN from the one F is initialised from.**
+  `M_fdiff_oracle_biomes_annual.csv` comes from the single-cell re-runs; F's canopy comes from the GLOBAL
+  run's `ind`. Daily GPP over 2010–2019: four cells agree to <1.2 % (r ≥ 0.9989), **tropical_amazon differs
+  by 6.7 % with r = 0.970** ⇒ an Amazon level miss against `a_fpc` is not an F error. Also `a_fpc` contains
+  sub-5 m stems F cannot have, and that fraction is **time-varying** (boreal 0.712 → 0.806), so it
+  contaminates the DRIFT and not just the level. Score against `references/M_stem_growth_reference.csv`'s
+  `fpc_live`/`fpc_all`, formed from the very stems F is handed.
+
+**7. A LATENT REGISTRY-EATING BUG, found and fixed on the way.** `extract_cell_individuals.py` rewrote
+`M_cells.csv` from its own ten-column header and dropped every row whose field count differed — so a re-run
+would have **silently deleted the six columns `extract_cell_slow_init.py` appends** (the pinned Component-S
+per-cell seed: `n_init`, `age0`, the four-column boundary). Now preserves columns and comment lines it does
+not own; a re-run over the live registry is byte-identical.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **WIRE PER-COHORT PFT PARAMETERS THROUGH `FDiffFastCore` (item 3 / M5 below). This is now the head of the
+   F-side queue** and it is no longer a tidy-up: `fast.jl:147` gives every tree beech's parameters, which is a
+   **6× respiration error at every tropical cell** — 100 % of the stems at two of the five biome cells and the
+   whole tropical belt globally. The `type` column is already in `references/M_individuals_<name>_2010.csv`
+   (and the per-year rosters under `/p/tmp/jamirp/M_canopy_drift/individuals/`), so no new extraction is
+   needed. **Line S also requires this before `trait_mortality` can be flipped** (ADR 0049) — one change
+   serves both. **PRE-REGISTERED PASS CRITERION (ADR 0125 §7.3, do not re-read it after the fact):** with
+   per-cohort `pft_ids` wired, `bmi_F/C` lands in **[0.8, 1.25]** at all five cells and the paired Σ`dagb`
+   F/C moves toward 1 at all five, with **no** committed baseline moving while the feature is off.
+2. **Then the `keep` gap — a NEW, named F-side item.** At boreal/Hainich the assimilate input is right
+   (1.05 / 1.24) while F retains **1.85 / 1.49×** as much of it as standing above-ground biomass. That is
+   allocation/turnover, it is untouched by the respiration fix, and it is what is left of the temperate
+   over-growth. Per-PFT `turnover` is also in `par/pft_lpjmlfit.js` (leaf 1.0–4.0 yr, sapwood 25–30 yr) and
+   F carries one set — check that first, it may be the same fix as step 1.
+3. **Re-run the probe after step 1 and re-score item 4(d).** The Sahel is now known to be **two** defects,
+   only one of which the parameters fix; measure the remainder rather than assuming ADR 0052 covers it.
+4. **Cheap and worth it if the above stalls:** the same paired-per-stem harness answers "does F's growth
+   error depend on climate?" by running it on the ssp370 forcing — which is the one thing rung 3 has NOT
+   measured and the acceptance criterion's binding clause (ADR 0106).
+
+**CI/merge:** the diff is `scripts/**` + `docs/decisions/**` + `changelog.d/**` + STATE/JOURNAL **plus
+`test/testitems/references/**`** (the `id`/`age` columns and the new `M_stem_growth_reference.csv`).
+`references/` is under `test/**`, so this triggers **all four Julia jobs AND `format`** (a new `.jl` script) —
+not a no-gate commit. Wait for `test (lts)` and `test (1)` before merging.
+
+### 0-PREV5. ✅ DONE 2026-08-11 (session 10) — **ARM C IS RUN.** SELECTION CARRIES **71 %** OF FIT's
 ### WOOD-DENSITY DIFFERENTIAL, THE SHIPPED UNIFORM-THINNING NULL **RESTRUCTURES THE STAND**, AND THE
 ### OPTION-(c) INTERFACE REACHES ITS CEILING EXACTLY (ADR 0124)
 

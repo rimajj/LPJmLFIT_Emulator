@@ -424,6 +424,27 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   statistics incomparable (id 0's minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated
   tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which is why every single-cell
   gate stayed green.
+- **`(Cell, Patch, ID)` IS A STABLE CROSS-YEAR INDIVIDUAL IDENTITY in the annual `ind` output
+  (`[VERIFIED 2026-08-12]`, ADR 0125).** The `ID` column follows ONE tree through time, so a per-stem,
+  year-paired comparison is possible and does not need a simulation. Over 13 152 tree stem-years at the five
+  biome cells: `Age` increments by **exactly 1** on all 10 323 pairs; `SLA`/`Wooddens` are **bit-identical**
+  across each pair (the independent check — traits are immutable after `new_tree`, so a shuffled identity
+  would break it); no stem emitted with `isdead == 1` is ever seen again; and **no living stem disappears**
+  except **8 stem-years of 13 152**, all within **0.4 m** of the writer's 5 m emission cut (threshold
+  flicker — one is emitted again two years later). ⇒ the year-y roster is exactly {year-(y−1) survivors,
+  grown} + the stems that newly crossed 5 m. **Gate the identity on the vanished stems' HEIGHT, not their
+  count** (`scripts/build_biome_stem_growth_reference.py`). ⚠ **Mortality is applied AFTER allocation**
+  (`annual_natural.c`: the hazard loop at :73 precedes the FPC output accumulation at :256), so a stem
+  flagged `isdead == 1` in year y still GREW through year y — drop it from a growth comparison and you bias
+  the C's mean growth upward, because mortality selects on low growth efficiency.
+- ⚠ **`respcoeff` IS PER-PFT AND SPANS 6× — the tropical tree is 0.2, every temperate/boreal tree is 1.2
+  (`[VERIFIED 2026-08-12]`, ADR 0125).** F_diff carries ONE scalar for every tree in every cell
+  (`RespParams.respcoeff` defaults to 1.0; the ACTIVE calibrated set `tebs_params`, `fdiff.jl:1287`, sets
+  **1.2** = beech's), and `FDiffFastCore` gives every tree the same parameters (`fast.jl:147`). Measured
+  cost: at a 100 %-tropical cell F's annual carbon balance goes **NEGATIVE** (−223 gC/m²/yr against a true
+  +1073) while its GPP is within a few per cent — the stand loses biomass. `turnover` is per-PFT too (leaf
+  1.0–4.0 yr, sapwood 25–30 yr). **Before attributing an F-vs-C flux or growth gap to physics, check whether
+  the parameter is per-PFT in `par/pft_lpjmlfit.js` and F is using beech's.**
 - ⚠ **RECRUIT TRAITS ARE *INHERITED*, NOT UNIFORM DRAWS — and a per-cell trait statistic is NOT a
   composition statistic (`[VERIFIED 2026-08-04]`, ADR 0045/0046; this REPLACES the earlier "traits are drawn
   uniformly from per-PFT `[low,high]` intervals ⇒ composition statistic" claim, and ADR 0042 §9's narrower

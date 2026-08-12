@@ -1072,3 +1072,30 @@ not a conservation law.** Before reading a ratio as "the constraint held", check
 inputs are downstream of the operator — and report the constrained quantity's *composition* (here the age
 structure, and the identity overlap with the truth's own individuals), because a scalar ratio hides two
 compensating errors as easily as it shows one.
+
+## A BOUNDED STOCK'S DRIFT IS A LOWER BOUND ON THE RATE ERROR DRIVING IT (line M, 2026-08-12, ADR 0125)
+
+A decade of "the canopy drifts +27 %" was being read as the size of the fast core's growth problem.
+Measured at the level the model actually computes — one stem, one year, restarted from the reference's own
+forest each year — the per-year growth error compounds to **20.4×** at the cell whose free-running drift is
+**1.67×**. The free-running number is smaller because the quantity **saturates**: crown area is capped,
+cover is bounded by 1, and light competition closes the stand. Nothing about it is closer to correct.
+
+- **Score the RATE, not the accumulated stock, whenever the stock has a ceiling** (cover fractions, LAI,
+  anything normalised, anything with a `min`/`clamp` on its path, any state with a negative feedback).
+  Ask: *can this quantity express the error I am attributing to it?* — the sibling of §3e's "ask whether
+  that assertion CAN fail".
+- **The fix is usually a restart arm, and it is cheap.** Re-initialise the model from the reference's own
+  state every step and score the one-step increment. That also splits a per-step bias (it reappears every
+  step) from something the free-running loop manufactures out of its own accumulated state (it does not).
+- **A stable per-step error with OPPOSITE SIGNS across cells is a parameter, not a physics gap.** Here the
+  per-step error was 1.6–4.0× too fast at three cells and *negative* at two — and a single per-PFT constant
+  the emulator holds as one scalar (`respcoeff`, 0.2 tropical vs 1.2 temperate/boreal in the C) explained
+  the whole tropical half. **Before attributing a per-cell flux/growth gap to physics, check whether the
+  parameter is per-PFT in the reference and your code is using one value for all of them** — and test it as
+  an ARM. The arm's own control is the cells where the substitution is a no-op by construction: if they
+  move, the arm is doing more than one thing.
+- **Decompose "flux in" from "flux kept" before choosing a lever.** The reference emits per-stem annual NPP,
+  so `input_F/input_C` and `kept = Δstock / input` separate photosynthesis+respiration from
+  allocation+turnover in one table with no new run. Here they were *different defects in different cells*:
+  input right and `kept` 1.85× at boreal, input negative at the tropics.

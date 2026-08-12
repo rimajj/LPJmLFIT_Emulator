@@ -1024,3 +1024,45 @@ conditional criterion and handed to line S, with the one thing that blocks it na
 
 One cell of 54 020, one scenario, no warming response measured, four of seven trait axes carried. Written up
 as decision record 0124.
+
+## Session 11 — 2026-08-12 — rung 3: the fast core's growth, one tree at a time
+
+The task was the next rung of the error ladder: how well does the fast daily physics grow trees, given the
+original model's own forest? Every previous answer was a ten-year average, which cannot tell a small yearly
+error that piles up apart from something the free-running model invents about itself.
+
+It turned out the original model's tree table quietly numbers its individuals, and the numbers are stable
+from one year to the next — over 13 000 tree-years, ages advance by exactly one, the immutable traits are
+bit-for-bit the same, and no dead tree ever comes back. So each tree can be followed. That let me hand the
+fast core the original model's forest at the start of every year, run one year of real weather, and compare
+each tree against its own next-year row.
+
+The result is much sharper than the decade-average ever was, and it points in two directions at once. In
+the cold, temperate and Mediterranean cells the fast core grows trees 1.6 to 4 times too fast, every year.
+In the two hot cells it doesn't grow them at all — at the Amazon its trees *lose* weight while the original
+model's gain, even though the two agree on photosynthesis to within a few per cent. So carbon arrives and
+then disappears.
+
+It disappears into respiration, and the reason is one number. The original model gives tropical evergreen
+trees a maintenance-respiration coefficient of 0.2 and every temperate and boreal tree 1.2 — six times
+apart. Our fast core uses a single value, 1.2 (beech's), for every tree everywhere, and both hot cells are
+100 % tropical evergreen. Putting the right number in and changing nothing else takes the Amazon's annual
+carbon balance from −223 to +1206 against a true +1073, and its per-tree growth from wrong-signed to within
+2 %. It fixes the sign at the Sahel too but leaves a real shortfall there, which is a second, separate
+problem in that cell. At the other three cells it changes nothing at all, by construction — which is how I
+know the arm did only one thing.
+
+Two things about how we have been measuring also had to be corrected, and both were measured rather than
+argued. The older probe was driving each year's forest with the previous year's weather (an off-by-one),
+and the reference the fast core is scored against comes from a *different run* of the original model than
+the forest it is started from — harmless at four cells, but a 6.7 % difference at the Amazon, so a miss
+there is not our error.
+
+The most useful general lesson: the ten-year canopy drift understates the yearly growth error by about ten
+times, because the canopy runs into its own ceiling. A quantity that cannot exceed a limit hides how fast
+it was pushed.
+
+Nothing in the model changed. The fix — per-species parameters instead of beech's for everything — is now
+the top of the queue, with a pass criterion written down in advance, and line S needs the same change for a
+separate reason. Five cells of 54 020, one scenario, no warming response measured. Written up as decision
+record 0125.
