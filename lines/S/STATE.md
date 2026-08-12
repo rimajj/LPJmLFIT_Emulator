@@ -160,6 +160,8 @@ rather than a request to flip now.
 
 > ## ✅ RUNG 1 IS CLOSED — one PASS, one FAILURE, and the compensating-errors verdict is written (2026-08-12, ADR 0172 + 0173 + 0174)
 >
+> **Merged to `main` as `48504f33`; `main` is GREEN** — `test (lts)`, `test (1)`, `test (macOS, lts)`, `format` and the changelog gate (`uncollated fragments`) all pass. `test (pre)` is the standing continue-on-error prerelease red and was **already failing on main before this merge** (verified on the three preceding main shas) — do not chase it. Local CI-faithful suite: **274 554 pass / 0 fail** over 129 items, job 1762502. The three `EXECUTION_PLAN.md` corrections item B used to ask for were **landed on `main` by this session** while it held the merge lock (CLAUDE.md §9: the lock-holder is the integrator for that moment) — rung 1's exit is recorded there, arm D is struck, and rung 0 item 2's λ-quoted-as-slope pair is corrected. ⚠ The same stale λ text is still copied into `lines/{M,E,O}/STATE.md`; those are line-owned, so it is theirs to fix.
+>
 > **Read ADR 0174 first — it is rung 1's exit statement and it reframes every earlier "the level is fine"
 > sentence in this file as a warning rather than a reassurance.** Line S's own rungs (0 and 1 of
 > `EXECUTION_PLAN.md`) are now both closed. What remains for S is short and listed at the bottom; the
@@ -247,12 +249,12 @@ rather than a request to flip now.
 > aggregates**: cells inside `max(10 %, the cell's own two-run spread)` for draw vs expectation, on the
 > rung-0 floor's own strata. Cheap, free, and the only rung-1 line item still open.
 >
-> **B. RAISE THREE `EXECUTION_PLAN.md` EDITS AS AN INTEGRATION POINT** (integrator-owned, ADR 0174 §5.4):
-> strike rung-1 arm D; record rung 1's exit against ADR 0174; and replace the superseded pair at lines
-> 105–106 — it prints "Wooddens 0.63 / D95max 0.51" which are ADR 0111's **λ** values, *not* deattenuated
-> slopes (the corrected panel is SLA 1.28 / Wooddens 0.66 / D95max 0.73 / minwscal 1.06 on `pooled_w20_t8`). ⚠ This was already
-> raised on 2026-08-10 and is **still unlanded**, and the same stale text is copied into
-> `lines/{M,E,O}/STATE.md`. Raise it again rather than assuming it will land.
+> **B. ✅ DONE — the three `EXECUTION_PLAN.md` corrections are LANDED** (`48504f33`), by this session holding
+> the merge lock rather than by raising them a fourth time; the first had been unlanded since 2026-08-10.
+> **The lesson worth keeping** (ADR 0095's, applied): an integrator-owned edit with no event attached to it
+> rots, and the merge lock IS the event — if you are merging and you are owed an integrator edit, land it in
+> the same `flock`. What remains is not S's: the same stale λ-as-slope text sits in `lines/{M,E,O}/STATE.md`,
+> which are line-owned files.
 >
 > **C. PIN WHY THE STORED `pred_*.f64` NO LONGER REPRODUCE** (item 4). One bisect over `scripts/eval_slow_copula.jl`
 > between the table's write date and HEAD, on the small `smoke_struct_on` table (170 590 rows, ~2 min/run).
