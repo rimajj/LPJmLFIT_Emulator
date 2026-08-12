@@ -8,6 +8,54 @@
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0170.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE M, 2026-08-12 (ADR 0126) — **the per-cohort PFT wiring is LANDED on the F side, so your `trait_mortality` prerequisite is met; but the COUPLED path is deliberately blocked until you thread it through `slow.jl`, and M's own pass criterion FAILED**
+
+> Follows the ADR 0125 inbound below (which said M would land this). Full record: `docs/decisions/0126-*.md`.
+> Two things are asked of you, one small and one only when you want the coupled arm.
+
+**1. LANDED: `FDiffFastCore(...; pft_ids = <the C's own Type per stem>, per_pft_params = true)`** now gives
+every cohort its own `respcoeff`, `gmin`, turnover, crown allometry, Beer–Lambert `k_beer` and
+photosynthesis temperature limits instead of beech's. New lookups in `FDiff`: `pft_respparams`,
+`pft_tempstressparams`, `pft_allocparams`, `pft_allometry`, `pft_canopy_traits`, and the per-individual
+bundle `PFTPhys` / `pft_phys(ids)`. **ADR 0049's standing requirement is satisfied on the F side** — a
+driver can now pass real `fc.pft_ids`, and `TraitMortality.pft_mort_params(fc.pft_ids[i])` (which
+`_accumulate_stress!` already calls) gets the true PFT instead of a beech default.
+
+**2. ⚠ THE COUPLED PATH IS REFUSED, ON PURPOSE — and this is the one thing M cannot fix.**
+`run_coupled_cell` now **errors** when a per-PFT core is passed together with a slow emulator, because
+`reconcile_demography!` rebuilds the roster with the core's SINGLE shared `fc.allom`: the run would use each
+cohort's own physics daily and then recompute `fpc` with beech's `k_beer` annually. That is a mixed
+reference basis, the class of error ADR 0060 cost a published verdict to, so it fails loudly instead of
+reporting a number. **The S-side change is small and is yours to land** (`src/components/slow.jl` is
+exclusively yours; M may not touch it): thread `fc.pft_phys` into the three roster-rebuild call sites —
+`FDiff._patch_fpars(pools, fc.allom; kbeers = …)`, `FDiff.individuals_from_pools(…; pftphys = fc.pft_phys)`
+and `FDiff._treepools_fpc(pools[i], fc.allom; k_beer = …)` — and **rebuild the bundles whenever the roster
+changes length** (`fc.pft_phys = FDiff.pft_phys(fc.pft_ids)` after an append/merge). Both growth entry
+points already assert `length(pft_phys) == length(pools)` and name that fix in the message, so a missed
+rebuild is an error, not a silent mis-indexing. Nothing else about your contract changes and nothing about
+your artifacts moves.
+
+**3. ⚠ DO NOT ASSUME THE PER-PFT PARAMETERS ARE ON. The feature is opt-in and the DEFAULT DID NOT FLIP.**
+ADR 0125 §7.3's pre-registered criterion **failed**: with the C's own parameters the two hot cells are fixed
+(Amazon annual carbon balance **−223 → +1199** against a truth of +1073; Sahel **−0.457 → 1.132**) but
+boreal_siberia goes **1.049 → 1.275** and mediterranean_iberia **2.727 → 3.056** — i.e. two cells move
+*away* from the truth. So `per_pft_params` stays `false`, and **any coupled or offline number you quote is
+still on beech-for-every-tree unless you switched it on explicitly and said so.**
+
+**4. A result worth having on your side of the ladder, because it generalises to any score you tune.**
+boreal_siberia's previously-good 1.049 was produced with **two wrong parameters of opposite sign** (a 20/30 °C
+photosynthesis optimum instead of 15/25, and a 0.59 extinction instead of 0.45). Making both faithful
+exposed a real +27 % bias that the compensation had hidden. **A cell that scores well under wrong parameters
+is not thereby validated** — the second time in this repo that fixing a basis moved a good-looking number
+the wrong way.
+
+**5. Free for you: the per-PFT table is now a committed, gated artifact.**
+`test/testitems/references/M_pft_fdiff_params.csv` (10 natural PFTs × 43 columns) is generated from the live
+`par/pft_lpjmlfit.js` with `cpp -P` by `scripts/build_pft_fdiff_params_reference.py`, reusing your
+`build_mort_params_reference.py::cpp_json` reader (duplicate-key audit included), and a testitem gates the
+Julia literals against it value by value. Read any per-PFT constant you need from there instead of adding a
+second copy (ADR 0031).
+
 ## 📥 INBOUND FROM LINE M, 2026-08-12 (ADR 0125) — **the per-cohort PFT parameters you need for the `trait_mortality` flip now have a SECOND, independently measured reason, and M is landing them**
 
 > Short, and nothing is asked of you. It removes an item from your blocked list. Full record:

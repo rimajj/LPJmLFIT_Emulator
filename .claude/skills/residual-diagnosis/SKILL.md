@@ -1131,3 +1131,32 @@ cover is bounded by 1, and light competition closes the stand. Nothing about it 
   so `input_F/input_C` and `kept = Δstock / input` separate photosynthesis+respiration from
   allocation+turnover in one table with no new run. Here they were *different defects in different cells*:
   input right and `kept` 1.85× at boreal, input negative at the tropics.
+
+## A "ONE-VARIABLE" ARM THAT SILENTLY CARRIES A SECOND CHANGE IS WORSE THAN NO ARM (line M, 2026-08-12, ADR 0126 §5)
+
+**What happened.** Arm P (per-cohort PFT parameters, nine at once) made two of five cells worse, so it was
+decomposed into one-field arms — the right move. Every one-field arm was built by constructing the core with
+the real per-stem PFT ids **plus** one field's per-PFT value. But `pft_ids` also selects each PFT's own GSI
+**phenology**, which the baseline arm (no `pft_ids` at all) did not have. So every column of the first
+attribution table carried the phenology change as well, and the table credited it to whichever parameter
+happened to be in that column: `respcoeff`, `alloc`, `allom` and `traits` all read *the same* 1.026 at the
+boreal cell against a baseline of 1.049, and the Sahel read 0.557 in four columns whose fields are beech's
+there. Every one of those numbers is a phenology effect wearing another parameter's name.
+
+**The tell, and it is cheap to look for.** *Several arms that should be exact no-ops return the same value,
+and it is not the baseline's.* A one-field arm at a cell where that field already equals the default MUST
+reproduce the baseline exactly. If a batch of them agrees with each other instead, the common difference is
+the confound — look at what the arm's construction turns on besides the field.
+
+**The rule.** For a decomposition arm, name the switch you flip and then ask what ELSE that switch controls:
+a constructor argument, an id vector, a `!== nothing` branch that has more than one consumer. Then add the
+**switch-only baseline arm** (all fields at the default, the switch on) and difference every column against
+*that*, not against the untouched control. Two arms, one extra run, and the attribution becomes real.
+`scripts/biome_canopy_growth_probe.jl`'s `:phen` subset is that baseline; its header says in so many words
+that the columns are read against it and not against arm `A`.
+
+**Second finding from the same check, worth generalising:** the confound was a REAL PRE-EXISTING GAP, not
+just noise. Beech phenology for the larch and the tropical evergreen moved the Sahel's assimilate ratio by
++1.01 and the Mediterranean's by +0.38 — larger than most of the parameters under test — and it had been in
+every five-cell F number for months because the probe never passed an argument that already existed. **When
+a decomposition uncovers a confound, measure it and report it as a result; do not just subtract it out.**

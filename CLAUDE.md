@@ -437,6 +437,31 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   (`annual_natural.c`: the hazard loop at :73 precedes the FPC output accumulation at :256), so a stem
   flagged `isdead == 1` in year y still GREW through year y — drop it from a growth comparison and you bias
   the C's mean growth upward, because mortality selects on low growth efficiency.
+- - **THE PER-PFT PARAMETERS F CONSUMES NOW LIVE IN ONE COMMITTED, GATED TABLE — read it, never re-transcribe
+  (`[VERIFIED 2026-08-12]`, ADR 0126).** `test/testitems/references/M_pft_fdiff_params.csv` (10 natural PFTs
+  × 43 columns) is generated from the live `par/pft_lpjmlfit.js` by
+  **`scripts/build_pft_fdiff_params_reference.py`** with `cpp -P` (reusing `build_mort_params_reference.py::cpp_json`,
+  duplicate-key audit included; `CHECK=1` verifies instead of writing), and a testitem gates the Julia
+  literals against it value by value. Julia side: `FDiff.pft_respparams` / `pft_tempstressparams` /
+  `pft_allocparams` / `pft_allometry` / `pft_canopy_traits`, bundled per individual as `FDiff.PFTPhys` /
+  `pft_phys(ids)` and switched on with `FDiffFastCore(...; pft_ids = <the C's Type per stem>,
+  per_pft_params = true)` — **opt-in, default byte-identical, and `pft_*(3)` IS F's shipped beech set exactly**
+  (`pft_allocparams(8) == grass_allocparams()` likewise). ⚠ `run_coupled_cell` **errors** on a per-PFT core
+  plus a slow emulator until `slow.jl` is wired (a mixed `k_beer` basis; integration point on line S).
+  Nine parameters differ materially: `respcoeff` (below), `lightextcoeff` **0.45 needleleaved / 0.59
+  broadleaved**, `temp_photos` **15/25 °C for the three boreal trees vs 20/30**, `temp_co2` (2/55 for id 0),
+  `gmin` **0.3–1.6**, leaf/root residence **1, 2 or 4 yr**, sapwood **25 or 30 yr**, the angiosperm vs
+  gymnosperm crown coefficients, and `intc` **0.02 vs 0.06**. **The parameters do NOT all improve fidelity:**
+  they fix the tropical cells (Amazon carbon balance −223 → +1199 vs a truth of +1073) and make boreal
+  (1.049 → 1.275) and mediterranean (2.727 → 3.056) WORSE, because boreal's earlier agreement came from two
+  wrong parameters of opposite sign. Quote them as an opt-in arm, never as "the fix".
+- ⚠ **`FDiffFastCore` RUNS BEECH'S GSI PHENOLOGY FOR EVERY TREE UNLESS YOU PASS `pft_ids` — and that has
+  been true of every five-cell F number in this repo (`[VERIFIED 2026-08-12]`, ADR 0126 §5).** The kwarg has
+  existed since the per-PFT phenology landed; the probes never passed it, so larch and the tropical evergreen
+  ran `pft_phenparams(3)`. Passing real ids ALONE (no other change) moves `semiarid_sahel`'s annual-assimilate
+  ratio by **+1.01** (−0.457 → 0.557) and `mediterranean_iberia`'s by **+0.38** — bigger than most per-PFT
+  parameters. **Always pass `pft_ids`; treat any pre-0126 five-cell F number as beech-phenology.** It also
+  narrows ADR 0125's Sahel reading (about a third of that shortfall was phenology, not ADR 0052's root zone).
 - ⚠ **`respcoeff` IS PER-PFT AND SPANS 6× — the tropical tree is 0.2, every temperate/boreal tree is 1.2
   (`[VERIFIED 2026-08-12]`, ADR 0125).** F_diff carries ONE scalar for every tree in every cell
   (`RespParams.respcoeff` defaults to 1.0; the ACTIVE calibrated set `tebs_params`, `fdiff.jl:1287`, sets

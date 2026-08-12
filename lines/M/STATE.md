@@ -359,7 +359,96 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 11) — **RUNG 3 IS MEASURED.** F's GROWTH ERROR IS **PER-YEAR
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 12) — **PER-COHORT PFT PARAMETERS ARE WIRED AND MEASURED.
+### THE TROPICAL HALF IS FIXED, BOREAL + MEDITERRANEAN GET WORSE, ADR 0125 §7.3's PRE-REGISTERED
+### CRITERION **FAILS**, AND EVERY PAST FIVE-CELL F NUMBER RAN BEECH'S PHENOLOGY (ADR 0126)**
+
+**Start here.** The previous handoff's step 1 (wire per-cohort PFT parameters through `FDiffFastCore`) is
+DONE and scored. New: `scripts/build_pft_fdiff_params_reference.py` +
+`test/testitems/references/M_pft_fdiff_params.csv` (generated, gated), `test/testitems/per_pft_params_tests.jl`,
+arm P + eight single-variable arms in `scripts/biome_canopy_growth_probe.jl`. Logs of record
+**`logs/M-rung3h.1762579.out`** (13 arms) and **`logs/M-perpft2.1762535.out`** (suite: 274 934 pass / 0 fail,
+133 items). `src/fdiff.jl`, `src/components/fast.jl`, `src/run.jl` changed.
+
+**1. WHAT IS AVAILABLE NOW.** `FDiffFastCore(...; pft_ids = <the C's own Type per stem>, per_pft_params = true)`
+gives every cohort its own `respcoeff`, `gmin`, turnover, crown allometry, `k_beer` and photosynthesis
+temperature limits. Lookups: `FDiff.pft_respparams` / `pft_tempstressparams` / `pft_allocparams` /
+`pft_allometry` / `pft_canopy_traits`, bundle `PFTPhys` / `pft_phys(ids)`. `per_pft_params` also accepts an
+explicit `Vector{PFTPhys}` — that is how a single-parameter arm is built. **OFF by default; a beech-only
+stand is byte-identical with it on** (asserted over a full simulated year), and no committed baseline moved.
+
+**2. THE RESULT, AND THE CRITERION FAILED — do not report this as "rung 3 fixed".**
+`bmi_F/C` (annual assimilate, arm A = the shipped beech set → arm P = per-cohort):
+boreal **1.049 → 1.275** · Hainich 1.239 → 1.241 (99.4 % beech ⇒ the control) · mediterranean
+**2.727 → 3.056** · Sahel **−0.457 → 1.132** · Amazon **−0.208 → 1.118**. Paired Σ`dagb`: 1.62→2.26 /
+1.86→1.87 / 4.00→5.10 / 0.04→1.48 / −0.07→1.45. In band at **3 of 5**, moved toward 1 at **2 of 5** ⇒
+**FAIL** on both measured clauses. Nothing was tuned and the criterion was not rewritten.
+
+**3. WHY THAT IS NOT AN ARGUMENT TO REVERT, and the general rule.** These ARE the C's own parameters
+(`cpp -P`); beech-in-the-tropics was not a defensible alternative (the stands were LOSING biomass). The
+criterion required one change to also close two defects ADR 0125 had already attributed elsewhere (the
+1.49–1.85× `keep`/allocation gap; mediterranean's independent 1.3–1.5× GPP bias). And **boreal's good-looking
+1.049 came from two wrong parameters of opposite sign** (20/30 °C optimum instead of 15/25, extinction 0.59
+instead of 0.45) — making both faithful exposed a real +27 % bias. ⇒ **a cell that scores well under wrong
+parameters is not thereby validated** (second occurrence in this repo after ADR 0060).
+
+**4. ⚠ A FINDING THAT IS NOT ABOUT THIS FEATURE AND CHANGES HOW TO READ EVERY PAST F NUMBER: arm A — the
+published rung-3 arm and every earlier five-cell F number — RAN BEECH'S GSI PHENOLOGY FOR EVERY TREE.**
+`pft_ids` has always existed and the probe never passed it. Passing it alone (`subset = :phen`) moves the
+Sahel's `bmi_F/C` by **+1.01** (−0.457 → 0.557) and mediterranean's by **+0.38**. It is free to close.
+**Pass real `pft_ids` in every future arm regardless of `per_pft_params`,** and treat any pre-0126
+five-cell F number as beech-phenology. This also narrows ADR 0125's Sahel reading: ~a third of that
+shortfall was phenology, NOT ADR 0052's dry-cell root zone.
+
+**5. THE ATTRIBUTION (eight one-field arms; read every column against `phen`, never against `A`).**
+`respcoeff` alone IS the tropical fix (Amazon −0.208 → **1.128**; nothing else moves that cell).
+Boreal is pushed by `temp_photos` (1.026 → 1.124) and `gmin` (→ 1.191) while the correct needleleaf
+`k_beer` alone gives **1.004**, the best single number in the table. Mediterranean is **phenology and
+nothing else**. ⚠ The arms do not sum to P (nonlinear canopy; `alloc`/`allom` act through next year's
+pools). The first attribution run (job 1762534) was CONFOUNDED by exactly this phenology effect — a
+one-variable arm that silently carries a second change is worse than no arm.
+
+**6. TWO GUARDS SHIP WITH IT.** `run_coupled_cell` **ERRORS** on a per-PFT core + a slow emulator (S's
+demography rebuilds the roster with the shared allometry ⇒ per-cohort physics daily, beech's `k_beer`
+annually = a mixed basis, ADR 0060's failure class), and both growth entry points assert
+`length(pft_phys) == length(pools)`. **The S-side wiring is raised as an INBOUND in `lines/S/STATE.md`**
+(three call sites + rebuild the bundles on a roster-length change); until S lands it there is no coupled
+per-PFT arm.
+
+**7. PRE-REGISTERED FLIP CRITERION for the default** (ADR 0126 §6.2, written before the next arm): flip
+`per_pft_params` to `true` when arm P reaches **both** `bmi_P/C` and Σ`dagb` P/C **∈ [0.8, 1.25] at all
+five cells** on this probe, with the beech-only byte-identity item still green.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **THE `keep` / ALLOCATION-TURNOVER GAP — now the binding F-side item** (ADR 0125 §7 named it; ADR 0126
+   §6.4 confirms it). Σ`dagb` F/C overshoots **1.45–1.48 even at the two cells whose assimilate is now
+   right**, and 1.87–5.10 at the other three, so at three of five cells the remaining error is allocation,
+   not carbon input. Per-PFT `turnover` is already wired (the `:alloc` arm moves Σ`dagb` while barely moving
+   `bmi` — the expected signature) and it is NOT enough. Next suspects, in order: the summergreen full-leaf
+   recycle (`AllocParams.is_deciduous`/`deciduous_leaf_div` = 1.05 for every tree — check against
+   `turnover_tree.c` for the evergreen-named PFTs, which this par file still calls `summergreen`), the
+   `reprod_cost` 0.1 path, and whether F's `agb` reconstruction and the C's `agb` column are the same pool
+   set (the `keep` statistic divides one by the other).
+2. **Boreal's `temp_photos` + `gmin` pair** (§5). Two faithful parameters that each make the assimilate
+   worse, at a cell whose `k_beer`-only arm is 1.004. Cheap, and it is the clearest single-cell attribution
+   on the board: drive the same paired harness with the three arms and check whether the residual is a
+   temperature-response shape error (`temp_stress`'s `k1/k2/k3` from `temp_stress.c:38-40`) rather than the
+   limits themselves.
+3. **Mediterranean is a phenology + GPP cell, not a parameter cell** (§5 + ADR 0125 §5). Its `bmi` is 3.1×
+   and no per-PFT parameter touches it. Start from the GSI filters of ids 1/2 (`pft_phenparams`) against the
+   C's own leaf-display, then its 1.3–1.5× GPP.
+4. **Then re-run the probe and re-score the flip criterion of §7.** Do not flip on a partial improvement.
+5. **Cheap and still unmeasured (unchanged from the last handoff):** the same paired-per-stem harness on the
+   ssp370 forcing — "does F's growth error depend on climate?" is the acceptance criterion's binding clause
+   (ADR 0106) and rung 3 has never measured it.
+
+**CI/merge:** the diff is `src/**` + `test/**` + `scripts/**` + `docs/decisions/**` + `changelog.d/**` +
+STATE/JOURNAL, so it triggers **all four Julia jobs AND `format`** — plus `docs` on `main` (it touches
+`src/**`). Wait for `test (lts)` and `test (1)`; the suite is already green on this exact tree
+(job 1762535).
+
+### 0-PREV1. ✅ DONE 2026-08-12 (session 11) — **RUNG 3 IS MEASURED.** F's GROWTH ERROR IS **PER-YEAR
 ### AND BIMODAL BY BIOME** (1.6–4.0× TOO FAST COLD, **NEGATIVE CARBON BALANCE** HOT), AND ONE **PER-PFT
 ### RESPIRATION COEFFICIENT** CARRIES THE WHOLE TROPICAL HALF (ADR 0125)
 
@@ -429,7 +518,8 @@ would have **silently deleted the six columns `extract_cell_slow_init.py` append
 per-cell seed: `n_init`, `age0`, the four-column boundary). Now preserves columns and comment lines it does
 not own; a re-run over the live registry is byte-identical.
 
-▶ **WHAT TO DO NEXT — in order.**
+▶ **WHAT TO DO NEXT — ⛔ SUPERSEDED by the 0-NEWEST block above (ADR 0126). Step 1 is DONE and scored;
+steps 2-4 are re-pointed there. Kept for the audit trail.**
 
 1. **WIRE PER-COHORT PFT PARAMETERS THROUGH `FDiffFastCore` (item 3 / M5 below). This is now the head of the
    F-side queue** — and it is **raised to line S as an integration point** (an INBOUND block in
@@ -1294,6 +1384,13 @@ b. **When (and only when) the default flips, regenerate ADR 0055's resilience/ro
    ~zero and the effect on H/G real; measure, do not assume.
 
 ### 3. M5 — biome-calibrated PFT params + spin-up (the next MILESTONE proper)
+
+**✅ THE PARAMETER HALF IS DONE (ADR 0126, session 12) — see the 0-NEWEST block.** `FDiffFastCore` now takes
+per-cohort PFT parameters (`per_pft_params=true` + real `pft_ids`), opt-in and default byte-identical, and
+line S's `trait_mortality` prerequisite is satisfied on the F side. What remains under M5 is the **spin-up**
+half, plus the two cells ADR 0126 §5 leaves open (boreal's `temp_photos`/`gmin`, mediterranean's phenology).
+The paragraph below is the original statement of the problem, kept because its C-side facts are still the
+reference.
 
 Today every biome runs **beech ANGIO params** from `par/pft_lpjmlfit.js`. Two things now make this both
 more urgent and better-specified:
