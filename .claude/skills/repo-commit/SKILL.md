@@ -920,3 +920,45 @@ failure) and dry-run it — you are holding a lock that blocks three other lines
 
 What you still do NOT touch: another line's `lines/<X>/STATE.md` beyond the sanctioned inbound block. When the
 same stale text lives in three lines' STATE files, note it and leave it — those are line-owned.
+
+---
+
+---
+
+## ⚠ IF YOUR DIFF TOUCHES `src/**`, BUILD THE DOCS LOCALLY BEFORE MERGING — `docs` NEVER RAN ON YOUR BRANCH (`[VERIFIED 2026-08-12]`, line M, ADR 0126 merge)
+
+**The gap, and it is structural rather than a mistake anyone made.** The pre-push checklist tells you to
+decide which gates your diff triggers (ADR 0090's path table) and to build the docs locally *"when you
+changed `docs/src/**`"*. But the `docs` workflow also watches **`src/**`** — Documenter splices the main
+module's docstrings into `docs/src/reference/api.md` — and `docs` is deliberately **not run on line
+branches** (gh-pages deploy race). So a `src/**`-only diff gets four green Julia jobs plus `format` on the
+branch, merges cleanly, and **then** turns `main` red at a stage no branch gate can reach. That is exactly
+what ADR 0126 did: five green branch checks, then `main` failed at `CrossReferences`.
+
+**So the rule is by PATH, not by intent:** `git diff --name-only origin/main...HEAD` hits `src/**`
+(or `docs/src/**`, `docs/make.jl`, `docs/Project.toml`, `Project.toml`) ⇒ run
+
+```bash
+ALLOW_LOGIN_HEAVY=1 julia --project=docs docs/make.jl        # DOCS_LINKCHECK=false if egress bites
+grep -c 'class="mermaid"' docs/build/diagrams.html           # > 0; a green build is NOT this check (ADR 0091)
+```
+
+A clean run ends at `RenderDocument` / `HTMLWriter` with only the benign "could not auto-detect the building
+environment. Skipping deployment." warning. `docs/build/` is git-ignored, so this leaves the tree clean.
+
+**The specific error it catches, because it is a standing convention and not a typo.** `api.md` renders
+`@autodocs Modules = [LPJmLFITEmulator]` **only** — the `FDiff` / `Allometry` / `SmoothOps` submodule APIs
+are deliberately not rendered (per-submodule `CurrentModule` pages are a deferred docs-infra item; see the
+note at the bottom of `api.md`, ADR 0014/0015). Therefore **a main-module docstring may NOT `@ref` a
+submodule symbol**: there is no rendered docstring for the binding to link to, and the build dies with
+
+```
+Cannot resolve @ref for md"[`FDiff.PFTPhys`](@ref)" in docs/src/reference/api.md.
+- No docstring found in doc for binding `LPJmLFITEmulator.FDiff.PFTPhys`.
+```
+
+Write submodule symbols as **plain backticks** in `src/components/*.jl`, `src/run.jl`, `src/interface.jl` —
+which is what every pre-existing `FDiff.*` mention in those files already does. `@ref` is fine *between*
+main-module symbols (`[`FToS`](@ref)`, `[`annual_step!`](@ref)`) and fine *inside* `src/fdiff.jl`, whose
+docstrings are never rendered and so never checked. Grep your diff for `` [`FDiff. `` / `` [`Allometry. ``
+/ `` [`SmoothOps. `` before pushing; it is a one-line check.
