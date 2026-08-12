@@ -359,7 +359,105 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 14) — **THE HEAD-OF-QUEUE ASSIMILATE ERROR IS *BOTH*
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 15) — **THE BRACKET IS CLOSED: ≈43-47 % PHOTOSYNTHESIS /
+### ≈57-53 % RESPIRATION. AND THE REASON IT WAS OPEN WAS NOT THE HEIGHT CUT — LPJmL-FIT EMITS NO
+### PER-INDIVIDUAL GPP AT ALL (ADR 0130)**
+
+**Start here.** The previous handoff's step 1 — *"CLOSE THE BRACKET C-SIDE ... remove the `ind` writer's
+`height > height_min` cut, rebuild, re-run one cell"* — is **done, but it needed a second change the
+handoff did not know about, and that change was the load-bearing one.**
+
+**1. THE UNRECORDED CAUSE.** `daily_natural.c:193` does `pft->agpp += npp;`, and `fwriteoutput_ind.c`
+writes `agpp` into the column named **`gpp`**. So **the `ind` table's `gpp` column is a bit-identical copy
+of its `npp` column** — a per-stem `npp/gpp` is **exactly 1.0000 in all 11 967 tree rows** at the five
+biome cells — and **LPJmL-FIT has no per-individual GPP output anywhere.** ⇒ removing the height cut alone
+would have closed nothing: there was no GPP to put on the common population. (It was noted in one script
+comment, `extract_fdiff_individuals.py:26`, and in no decision record or runbook. Now in `CLAUDE.md` §3.)
+**No published number is affected** — every consumer reads `npp`.
+
+**2. WHAT WAS BUILT** (`patches/lpjmlfit_ind_true_gpp.patch`): two **independent, opt-in, inert-unless-set**
+switches — `LPJ_IND_ALL_HEIGHTS` (emit every tree) and `LPJ_IND_TRUE_GPP` (a NEW `Pft.agpp_gross`
+accumulating the same `gpp` that feeds `D_GPP`, gross before `rd`). `agpp` itself, `printind` and the frozen
+29-column schema are untouched; neither field is in `fwritepft`/`freadpft`, so **`restart_1999.lpj` still
+loads**. Rebuild gate on a matched A/B against the preserved previous binary (`bin/lpjml.pre_indgpp.bak`):
+**139 decoded quantities + `globalflux` identical, 0 differ.** Driver
+`scripts/run_ind_true_gpp_cells.sh` (~10 s/cell), scorer `scripts/diagnose_ind_true_gpp.py`, fixture
+`test/testitems/references/M_ind_true_gpp_reference.csv`, log `logs/M-gppclose.1767354.out`.
+
+**3. ITS GATE IS ALSO A COMPLETENESS PROOF.** `Σ` per-individual `gpp` over ALL PFT rows reproduces the
+run's own annual `d_gpp` to **4.4e-07 worst over 100 cell-years** — two different code paths over the same
+daily variable, and a tree missing from the roster would show up as a shortfall.
+
+**4. WHAT THE 5 m CUT ACTUALLY HID.** At Hainich the sub-5 m trees are **47 % of the stems but only 1.9 %
+of tree GPP** (share **0.9812**); `CUE` barely differs between the two populations (0.4436 vs 0.4439), so
+the mismatch acted almost entirely through **GPP**. Independent confirmation: ADR 0129's `CUE_C` 0.435 ÷
+the measured share = 0.4433 against **0.4436 measured directly** from a different run — 0.07 % apart.
+⚠ `boreal_siberia` **0.797** and `semiarid_sahel` **0.788** — a fifth of their tree GPP is below the cut,
+so their split is now defined but their stand LEVEL still is not like-for-like.
+
+**5. THE ANSWER, and read the range not a point.** PART 5d of `biome_sapwood_bg_probe.jl` recomputes it
+in-process: Hainich arm A **43 %** photosynthesis (GPP +10.1 %, CUE +13.4 %), arm Pbg **52 %**; a hand
+re-scaling of ADR 0129's panel gives 47 %. ⇒ **≈43-47 % photosynthesis, ≈57-53 % respiration.**
+**ADR 0129 §6's upper end is REFUTED — the GSI phenology is NOT the single cause** (the measured GPP excess
+is +10.1 %, not +18 %), so do not open a phenology investigation on that basis.
+
+**6. ⚠ THE INVARIANCE CHECK IS NOT EXACT, AND IT IS TELLING YOU SOMETHING.** `ln(NPP)` should be untouched
+by the correction and moves **0.2116 → 0.2215** (implied `NPP_C` **0.99 % lower**), **identically on both
+arms** — so it is a property of the C reference, not of an arm: PART 5d takes `CUE_C` from the new
+single-cell runs while PART 5b took `npp_C` from the **GLOBAL** run's `ind`, which is exactly basis fact 3's
+documented **<1.2 %** run-to-run gap. PART 5d is the **first version of this panel with all three C
+quantities on one run**. Keep printing both columns.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **AIM AT THE RESPIRATION CHANNEL FIRST, but expect roughly half the error each way.** It is the larger
+   half at the prototype cell on arm A (57 %) and the smaller on arm Pbg (48 %) — that arm-dependence is
+   itself the useful clue, since arm Pbg differs only by per-PFT parameters + `sapwood_bg`. **The `rd` gate
+   is the cheapest respiration lead** and it is now correctly priced: CUE is worth **+13.4 %** at Hainich,
+   not ADR 0129's ~2-7 % (that estimate came off the un-closed bracket's lower end).
+2. **THE `sapwood_bg` PORT** (ADR 0127 §5/§6) — unchanged in priority and still justified by `t_nosink`
+   (46 / 20 / 4 % of the surplus at boreal / Hainich / mediterranean), NOT by CUE. Two struct fields on the
+   Enzyme path, opt-in, its own session. ⚠ Adding a heap-allocated field to a struct Enzyme differentiates
+   through aborts the suite with SIGABRT and no stacktrace (ADR 0110) — pass such data as an argument.
+3. **RETIRE THE `gt5m` CAVEAT WHERE IT STILL BITES, now that it costs ~10 s a cell.** Any new
+   `ind`-derived stand aggregate can be built on the full stand with `LPJ_IND_ALL_HEIGHTS=1`. The two cells
+   at share ~0.79 are where this matters most; ADR 0060/0125/0127's existing numbers stay on their own
+   basis and are NOT retroactively fixed.
+4. **CLOSE THE SOIL-COLUMN APPROXIMATION FOR THE SSP WINDOW** (carried forward, unchanged): both windows
+   use the HISTORIC per-cell `M_soilcolumn_<name>.txt` while the C's `whc_nat` evolves with soil carbon
+   (ADR 0050). It cannot create a between-ARM difference but it can bias the between-WINDOW one, and the
+   Sahel — where ADR 0128 found the sign error — is where water holding capacity matters most.
+   `scripts/extract_cell_soilcolumn.py` + skill `provision-coupled-cell`.
+5. **`boreal_siberia` IS STILL THE ONE CELL WHERE ALLOCATION GENUINELY BINDS** (ADR 0127: `t_loss` 33 % of
+   a surplus 1.89× the C's own increment; the below-ground port is NOT its answer, `dD/bel_C` = 0.11).
+   Suspects: the summergreen full-leaf recycle for the evergreen-named PFTs (`AllocParams.is_deciduous` is
+   `true` for every tree in F while the C gates the `leaf/1.05` full drop on `tree->isphen`,
+   `turnover_tree.c:100`), and the `reprod_cost` path. ⚠ Its warming response is unresolved at two seeds —
+   score it on the LEVEL. ⚠ Its GPP/CUE split IS now readable (share 0.847), unlike before.
+6. **AN SSP370 GPP/CUE SPLIT IS NOW CHEAP AND WAS NOT BEFORE.** ADR 0129 §7 said only the historic window
+   can carry the split because the C's daily GPP exists for 2000-2019 only. That is no longer the binding
+   constraint: per-stem GPP now comes from the `ind` table itself, so an ssp370 single-cell re-run with the
+   two switches yields both columns. **This is the cleanest remaining test of ADR 0106's climate-change
+   clause on the F side** — ADR 0128 measured the climate dependence on `bmi` (the product) and could not
+   say which channel carries it.
+7. **RAISED TO THE INTEGRATOR (unchanged):** the two extra reference seeds `EXECUTION_PLAN.md` rung 0 asks
+   for — 2 of 5 cells' warming response cannot be scored at two seeds (ADR 0128).
+8. **📥 INTEGRATION POINT FROM LINE S (ADR 0170), still open and untouched** — the recruit half of rung 2
+   (R0 = the pinned recruit copula vs R1 = the ported FIT establishment rule, both mortality settings,
+   ~40 seeds). It needs the arm-C harness's establishment path, which today always answers `ESTAB_C`
+   (`scripts/rung2_armc_harness.jl:318`). Conditions + what S supplies: item 4 of the 0-PREV5 block.
+
+**⚠ THE SHARED C TREE.** `/home/jamirp/lpjml56fit` is shared by all four lines with no lock, and line S
+rebuilds it too (their v6 dump-column patch, ADR 0175). I rebuilt with their queue empty, preserved their
+binary as `bin/lpjml.pre_indgpp.bak`, gated the equality, and posted an inbound note in `lines/S/STATE.md`.
+Do the same. The rule is now in the `lpjmlfit-cbinary` skill.
+
+**CI/merge:** the diff is `scripts/**` · `patches/**` · `test/testitems/references/**` · `docs/**` ·
+`CLAUDE.md` · `.claude/skills/**` · `changelog.d/**` · STATE/JOURNAL. `references/` is under `test/**` ⇒
+**all four Julia jobs + `format`** (no `.jl` in `src/`, but `scripts/*.jl` is still Runic-gated).
+`src/**` untouched ⇒ `docs` runs nowhere.
+
+### 0-PREV0000. ✅ DONE 2026-08-12 (session 14) — **THE HEAD-OF-QUEUE ASSIMILATE ERROR IS *BOTH*
 ### PHOTOSYNTHESIS AND RESPIRATION — AND THE 5 m WRITER CUT MAKES THE SPLIT A **BRACKET (38–78 %
 ### PHOTOSYNTHESIS)**, NOT A NUMBER (ADR 0129)
 
@@ -413,7 +511,12 @@ end, **the phenology is where to look first.**
 scenario run PART 5's C columns print `nan` by design. ADR 0128's climate-dependence result is unaffected
 (it is on `bmi`, which the population mismatch does not touch).
 
-▶ **WHAT TO DO NEXT — in order.**
+▶ **WHAT TO DO NEXT — ⛔ SUPERSEDED by the 0-NEWEST block above (ADR 0130). Item 1 (close the bracket
+C-side) is DONE — and it needed a second change this block did not know about: there is no
+per-individual GPP in the C at all, so the height cut was only half of it. Item 2 (aim at the channel
+the bracket names) is now actionable and is item 1 up there. Item 5's re-pricing of `sapwood_bg` was
+read off the un-closed bracket's LOWER end — CUE is worth +13.4 % at Hainich, not ~2-7 %. Items 3, 4,
+6 and 7 carry forward unchanged. Kept below for the record.**
 
 1. **CLOSE THE BRACKET C-SIDE — it is the cheapest decisive thing on the board, and no emulator arm can
    ever do it.** Remove the `ind` writer's `height > height_min` cut (`fwriteoutput_ind.c:84`) behind an
