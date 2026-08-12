@@ -2265,6 +2265,14 @@ struct TreePools{T <: Real}
     # demand (`allocation_tree.c:163-209`). 0 by default (the pre-sapwood_bg
     # 10-arg constructor ⇒ byte-identical); seed at init via
     # [`reconstruct_sapwood_bg`](@ref) — see docs/notes/sapwood_bg_design.md §4.1/§8.
+    heartwood_bg_c::T             # below-ground HEARTwood pool (gC/individual; the C's `Treephys2.heartwood_bg`).
+    # The sink half of the below-ground wood pair: `turnover_tree.c:124-130` moves
+    # `sapwood_bg·turnover.sapwood` into it every year and it NEVER respires and
+    # never leaves the plant. It exists because the pair is a producer/consumer —
+    # without it the annual below-ground turnover either destroys carbon or is
+    # charged maintenance the C does not charge (ADR 0127 §6). 0 by default (the
+    # pre-`heartwood_bg` 13-arg constructor ⇒ byte-identical); grown only by
+    # [`grow_individual`](@ref) with `bg_growth = true`.
     height::T
     crownarea::T
     nind::T
@@ -2284,14 +2292,27 @@ struct TreePools{T <: Real}
 end
 _wt(::TreePools{T}) where {T} = T
 
+# Backward-compatible constructor (pre-`heartwood_bg_c`, ADR 0132): fills the below-ground HEARTwood pool
+# with 0, so every existing 13-arg call site is byte-identical. ⚠ It is also the silent-drop hazard: a call
+# site that REBUILDS a tree with this arity (a demography merge, an S-side recruit mix) discards a grown
+# `heartwood_bg_c`. Every such site inside F carries the pool explicitly; `src/components/slow.jl` does not
+# yet (line-S integration point, ADR 0132 §7) — which is safe only while `bg_growth` is off there.
+TreePools{T}(
+    leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, height, crownarea, nind, sla, wooddens,
+    d95max, minwscal, is_grass::Bool,
+) where {T <: Real} = TreePools{T}(
+    leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, zero(T), height, crownarea, nind, sla, wooddens,
+    d95max, minwscal, is_grass,
+)
+
 # Backward-compatible constructor (pre-`d95max`/`minwscal`, ADR 0110): leaves both traits UNSET (0), so the
 # individual keeps the shared cell root profile and carries no drought threshold — every existing 11-arg
-# call site is byte-identical. Pass them explicitly with the 13-arg constructor.
+# call site is byte-identical. Pass them explicitly with the 14-arg constructor.
 TreePools{T}(
     leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, height, crownarea, nind, sla, wooddens,
     is_grass::Bool,
 ) where {T <: Real} = TreePools{T}(
-    leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, height, crownarea, nind, sla, wooddens,
+    leaf_c, sapwood_c, heartwood_c, root_c, sapwood_bg_c, zero(T), height, crownarea, nind, sla, wooddens,
     zero(T), zero(T), is_grass,
 )
 
@@ -2299,27 +2320,31 @@ TreePools{T}(
 # existing 10-arg call site is byte-identical. Seed the pool with the explicit 11-arg constructor.
 TreePools{T}(
     leaf_c, sapwood_c, heartwood_c, root_c, height, crownarea, nind, sla, wooddens, is_grass::Bool,
-) where {T <: Real} =
-    TreePools{T}(leaf_c, sapwood_c, heartwood_c, root_c, zero(T), height, crownarea, nind, sla, wooddens, is_grass)
+) where {T <: Real} = TreePools{T}(
+    leaf_c, sapwood_c, heartwood_c, root_c, zero(T), zero(T), height, crownarea, nind, sla, wooddens,
+    zero(T), zero(T), is_grass,
+)
 
 "aboveground biomass of one individual (gC): leaf + sapwood + heartwood (`agb_tree_sum`, `tree.h:249`)."
 agb_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c
-# NB: `sapwood_bg_c` is NOT yet in `vegc_ind` — the seed is static (its growth from `bm_inc` is the deferred
-# design-§5.4 step), so adding it would break carbon conservation of a seeded multi-year run. Add it together
-# with the C_LATERAL growth/debt. (bg heartwood also neglected, v1.)
-"total vegetation carbon of one individual (gC): + fine root (bg sapwood/heartwood neglected, v1)."
+# NB: the two below-ground wood pools are deliberately NOT in `vegc_ind` — that is what `vegc_full_ind` is
+# for, and every conservation consumer in `src/` already routes on it (`conservation.jl`, `components/*.jl`).
+# Keeping `vegc_ind` at the historic 4-pool sum means a seeded/grown pool cannot move a committed baseline
+# that reads it; the C-faithful pool set is `vegc_full_ind` (ADR 0132 §4).
+"total vegetation carbon of one individual (gC): + fine root (bg sapwood/heartwood excluded — `vegc_full_ind`)."
 vegc_ind(t::TreePools) = t.leaf_c + t.sapwood_c + t.heartwood_c + t.root_c
 
 """
     vegc_full_ind(t::TreePools) -> Real
 
-Total vegetation carbon of one individual INCLUDING the below-ground root-sapwood pool `sapwood_bg_c`
-(gC/individual). Use this — **not** [`vegc_ind`](@ref) — wherever carbon must CONSERVE across the S↔F
-demographic handoff (mortality routing, the flux-then-integrate ledger): `vegc_ind` omits `sapwood_bg_c`
-(a v1 simplification, see its note), so routing mortality carbon on `vegc_ind` would silently leak a
-seeded `sapwood_bg` pool. (bg heartwood is still neglected — the pool is carried but not grown, v1.)
+Total vegetation carbon of one individual INCLUDING **both** below-ground wood pools `sapwood_bg_c` and
+`heartwood_bg_c` (gC/individual) — i.e. the C's own `vegc` pool set (`veg_sum_tree.c:25`, `tree.h:257`),
+less the debt/excess/fruit terms F does not carry. Use this — **not** [`vegc_ind`](@ref) — wherever carbon
+must CONSERVE across the S↔F demographic handoff (mortality routing, the flux-then-integrate ledger):
+`vegc_ind` omits both (a v1 simplification, see its note), so routing mortality carbon on `vegc_ind`
+would silently leak a seeded or grown below-ground pool.
 """
-vegc_full_ind(t::TreePools) = vegc_ind(t) + t.sapwood_bg_c
+vegc_full_ind(t::TreePools) = vegc_ind(t) + t.sapwood_bg_c + t.heartwood_bg_c
 
 """
     reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist, soildepth) -> Real
@@ -2350,6 +2375,33 @@ function reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist::AbstractV
     end
     return rsl
 end
+
+"""
+    sapwood_bg_seed(alloc::AllocParams, sapwood_c, height, wooddens, rootdist, soildepth) -> Real
+
+The below-ground root-sapwood pool a stem in the C is actually **holding** at the start of a year, given
+its emitted state — i.e. what to initialise `TreePools.sapwood_bg_c` with. It is
+`(1 − turnover_sapwood) ×` [`reconstruct_sapwood_bg`](@ref), and that 4 % is not cosmetic (ADR 0132 §5).
+
+The C pins the pool to the demand computed at the **post-turnover** sapwood (`allocation_tree.c:163`
+runs after `turnover_tree`), and then `turnover_tree.c:126` takes `turnover_sapwood` off it again at the
+start of the next year. So a stem entering year `y` holds `(1−r)·D`, not `D`. Seeding it at the bare `D`
+makes the pool and the demand shrink in lockstep — post-turnover pool `(1−r)·D` versus a demand
+`(1−r)·D` recomputed on the same shrunken sapwood — so the top-up `allocation_tree.c:191-193` computes is
+**exactly zero**, and the below-ground sink silently disappears from any single-year or year-re-seeded
+comparison. With this seed the same stem charges the honest steady-state `r·D` instead.
+
+The underlying identity (verified in `test/testitems/sapwood_bg_growth_tests.jl`): for any
+pipe-model-consistent stem the demand is **proportional to leaf carbon**,
+`D = c · leaf_c · sla · wooddens / k_latosa` with `c = Σ_l dz_l·(root_sum_l + rootdist_l·2π/C_LATERAL²)`
+a pure soil-geometry constant — so the annual top-up is
+`(c·sla·wooddens/k_latosa)·(leaf_y − (1−r)·leaf_{y−1})`, i.e. **the sink is paid on the growth of the
+leaf pool**, and a harness that re-initialises each year from the same year's state has already
+discarded the quantity it is trying to measure.
+"""
+sapwood_bg_seed(alloc::AllocParams, sapwood_c, height, wooddens, rootdist::AbstractVector, soildepth::AbstractVector) =
+    (one(alloc.turnover_sapwood) - alloc.turnover_sapwood) *
+    reconstruct_sapwood_bg(sapwood_c, height, wooddens, rootdist, soildepth)
 
 # ── the allocation residual f(leaf_inc)=0 (allocation_tree.c:120-125) ─────────────────────────────
 # f(x) = k1·(b − x·lm_coef + ind_heart) − ((b − x·lm_coef)/(ind_leaf + x)·k3)^(1 + 2/allom3)
@@ -2400,8 +2452,14 @@ function _solve_leaf_inc(x1::T, x2::T, b, lm_coef, k1, k3, ind_leaf, ind_heart, 
     return x
 end
 
+# Sentinel default for the below-ground soil geometry: a concretely-typed EMPTY vector, not `nothing` — a
+# `Union{Nothing,AbstractVector}` kwarg would need field-narrowing at every read (the JET trap in CLAUDE.md
+# §2) and buys nothing here, since "no geometry supplied" and "empty column" are the same instruction.
+const _NO_BG_GEOM = Float64[]
+
 """
-    grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tree::TreePools, bm_inc_ind, wscal_mean) -> TreePools
+    grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tree::TreePools, bm_inc_ind, wscal_mean;
+                    bg_growth=false, bg_rootdist=Float64[], bg_soildepth=Float64[]) -> TreePools
 
 Advance one tree individual's carbon pools + geometry by one year (the LPJmL-FIT annual sequence
 `turnover_tree` → `allocation_tree` → `allometry_tree`, `annual_tree.c:29-30`), given the accumulated
@@ -2410,8 +2468,29 @@ stand water scalar `wscal_mean ∈ [0,1]` (drives `lmtorm`). Returns the grown [
 and differentiable (the pipe-model allocation solve is [`_solve_leaf_inc`](@ref); the height cap
 sapwood→heartwood transfer is a smooth-a.e. `min`). Grasses are returned unchanged (v1). See the section
 header for the v1 simplifications.
+
+**Below-ground wood (`bg_growth = true`, opt-in, ADR 0132).** Runs the two below-ground pools the C
+carries and F did not grow: (1) the below-ground half of `turnover_tree.c:124-130` — `sapwood_bg` sheds
+`turnover_sapwood` of itself into `heartwood_bg`, which never respires and never leaves the plant; and
+(2) the C_LATERAL demand of `allocation_tree.c:163-209 / :268-277` — the pool is topped back up to
+[`reconstruct_sapwood_bg`](@ref) at this year's POST-turnover sapwood and last year's height, and that
+top-up is **deducted from the assimilate before** the leaf/root/sapwood split, exactly as the C deducts
+it. `bg_rootdist` is this individual's own per-layer root fraction (the C calls `getrootdist` per tree)
+and `bg_soildepth` the per-layer thickness in mm; both must be non-empty for the block to run.
+
+Three properties this is built to have. **It conserves**: the deduction from the assimilate equals the
+increase in `sapwood_bg_c + heartwood_bg_c` exactly, which is why the sink pool cannot be dropped
+(a one-field port either destroys `turnover_sapwood·sapwood_bg` per year or charges maintenance on
+carbon the C does not charge — ADR 0127 §6). **It is default-inert twice over**: `bg_growth = false`
+returns byte-identical results, and even with it on the C's own gate `allocation_tree.c:206` grows
+nothing while the pool is 0, so an unseeded roster is unchanged. **It does not model the carbon debt**
+(`allocation_tree.c:288-297`) — F carries no `debt` pool, so a carbon-starved tree takes no loan here;
+in F that tree hits the stagnation guard below instead.
 """
-function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tree::TreePools{T0}, bm_inc_ind, wscal_mean) where {T0}
+function grow_individual(
+        alloc::AllocParams, allom::Allometry.TreeAllometry, tree::TreePools{T0}, bm_inc_ind, wscal_mean;
+        bg_growth::Bool = false, bg_rootdist::AbstractVector = _NO_BG_GEOM, bg_soildepth::AbstractVector = _NO_BG_GEOM,
+    ) where {T0}
     tree.is_grass && return tree
     # promote to the working (AD) type so differentiating w.r.t. bm_inc/wscal makes T a Dual while the
     # Float64 pool state widens into it (the daily-step pattern).
@@ -2432,6 +2511,17 @@ function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tre
     turn_sap = convert(T, tree.sapwood_c) * convert(T, alloc.turnover_sapwood)
     sm = convert(T, tree.sapwood_c) - turn_sap
     hm = convert(T, tree.heartwood_c) + turn_sap
+    # BELOW-GROUND half of the same turnover (`turnover_tree.c:126,131,135`): `sapwood_bg` sheds the SAME
+    # rate into `heartwood_bg`. Internal to the below-ground bucket ⇒ carbon-neutral by construction; the
+    # point of it is that only the sapwood half respires, so this is what makes the pool's maintenance
+    # charge decay between the annual top-ups. Inert with `bg_growth = false` (pools carried through).
+    sbg = convert(T, tree.sapwood_bg_c)
+    hbg = convert(T, tree.heartwood_bg_c)
+    if bg_growth
+        turn_sbg = sbg * convert(T, alloc.turnover_sapwood)
+        sbg -= turn_sbg
+        hbg += turn_sbg
+    end
     lm = alloc.is_deciduous ? convert(T, tree.leaf_c) - convert(T, tree.leaf_c) / convert(T, alloc.deciduous_leaf_div) :
         convert(T, tree.leaf_c) * (one(T) - convert(T, alloc.turnover_leaf))
     rm = convert(T, tree.root_c) * (one(T) - convert(T, alloc.turnover_root))
@@ -2444,6 +2534,25 @@ function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tre
     # minimum leaf/root to maintain current sapwood (eq 27)
     leaf_min = k_latosa * sm / (wd * H * sla) - lm
     root_min = k_latosa * sm / (wd * H * sla * lmtorm) - rm
+    # ── below-ground root-sapwood demand (allocation_tree.c:191-209, :268-280) ──────────────────────────
+    # The C tops `sapwood_bg` back up to the C_LATERAL demand at THIS year's post-turnover sapwood cross
+    # section (`:163` reads `tree->ind.sapwood` after `turnover_tree` ran) and last year's height, and pays
+    # for it out of the assimilate BEFORE the leaf/root/sapwood split. Two faithful details: the top-up
+    # happens only when the pool is already `> 0` (`:206` — the reason the pool must be seeded at init,
+    # design §4.1), and when the assimilate cannot cover `leaf_min + root_min + demand` the C takes only
+    # the surplus above `leaf_min + root_min` (`:275-278`), leaving the above-ground minimum intact.
+    if bg_growth && !isempty(bg_rootdist) && !isempty(bg_soildepth)
+        dmd = convert(T, reconstruct_sapwood_bg(sm, H, wd, bg_rootdist, bg_soildepth))
+        tinc_bg = (dmd > sbg && sbg > zero(T) && dmd > zero(T)) ? dmd - sbg : zero(T)
+        floor_lr = leaf_min + root_min
+        if bm_net >= floor_lr + tinc_bg
+            bm_net -= tinc_bg
+            sbg += tinc_bg
+        elseif bm_net > floor_lr
+            sbg += bm_net - floor_lr
+            bm_net = floor_lr
+        end
+    end
     normal = (root_min >= 0 && leaf_min >= 0 && (root_min + leaf_min <= bm_net))
     if normal
         b = sm + bm_net - lm / lmtorm + rm
@@ -2486,14 +2595,14 @@ function grow_individual(alloc::AllocParams, allom::Allometry.TreeAllometry, tre
         height_new = convert(T, allom.height_max)
     end
     crownarea_new = height_new > 0 ? min(allom.allom1 * (height_new / allom2)^(allom.kpr / allom3), convert(T, allom.crownarea_max)) : zero(T)
-    # carry the below-ground root-sapwood pool through growth unchanged (its prognostic C_LATERAL growth +
-    # carbon-debt is the deferred design-§5.4 step; static-seed carry is byte-identical when the pool is 0).
+    # `sbg`/`hbg` are the below-ground wood pair — carried through unchanged with `bg_growth = false` (the
+    # static-seed behaviour), advanced by the turnover + C_LATERAL top-up above when it is on.
     # ADR 0110: carry the rooting-depth and drought-tolerance traits through growth. They are IMMUTABLE
     # after establishment in the C (`new_tree.c` sets them once), so growth must not touch them — but it
     # must not DROP them either: the 11-arg constructor would silently reset both to the unset 0 and
     # delete the per-tree rooting channel one year after establishment.
     return TreePools{T}(
-        lm, sm, hm, rm, tree.sapwood_bg_c, height_new, crownarea_new, convert(T, tree.nind), sla, wd,
+        lm, sm, hm, rm, sbg, hbg, height_new, crownarea_new, convert(T, tree.nind), sla, wd,
         tree.d95max, tree.minwscal, tree.is_grass,
     )
 end
@@ -3088,7 +3197,7 @@ function rollout_canopy_years(
         yearly_forcings; phen_params = nothing, nlayers::Int = 60, n_top1m::Int = 3, bm_inc_ext = nothing,
         galloc::AllocParams = grass_allocparams(T), hooks::FluxHooks = _NO_HOOKS, pft_ids = nothing,
         grass_estab = grass_estabparams(T), grass_demand_gate::Bool = true,
-        grass_lf_mode::Symbol = :linear, phen_params_by_pft = nothing
+        grass_lf_mode::Symbol = :linear, phen_params_by_pft = nothing, bg_growth::Bool = false
     ) where {T}
     # §26.3 — the coupled multi-year rollout DEFAULTS to the validated-faithful grass config: the §26.2
     # photosynthesis demand-gate (`grass_demand_gate=true`, reconstructing `p` at the C's sharp step) and
@@ -3113,6 +3222,10 @@ function rollout_canopy_years(
     # id-3 trees' leaf display is BYTE-IDENTICAL to the previous patch-wide-beech behaviour (per-PFT and
     # scalar make the same call for id 3) — only the grass changes. Pass explicit `pft_ids` for other PFTs.
     pids = pft_ids === nothing ? Int[t.is_grass ? 8 : 3 for t in tmpls] : pft_ids
+    # ADR 0132 below-ground wood geometry, hoisted once: same-eltype EMPTY vectors are the "off" sentinel,
+    # so the `grow_individual` kwargs stay concretely typed on both branches.
+    bg_none = similar(soil.rootdist, 0)
+    bg_sd = bg_growth ? soil.soildepth : similar(soil.soildepth, 0)
     pools_by_year = Vector{Vector{TreePools{T}}}()
     annual = NamedTuple[]
     for (yr, forc) in enumerate(yearly_forcings)
@@ -3141,8 +3254,15 @@ function rollout_canopy_years(
         for i in 1:n
             tr = trees[i]
             bm_ind = bm_year[i] / (tr.nind + T(1.0e-12))
+            # ADR 0132: with `bg_growth` on, each tree tops its below-ground root-sapwood pool up to the
+            # C_LATERAL demand computed on ITS OWN root profile when one exists (`rdists`, ADR 0110 — the
+            # C calls `getrootdist` per individual, `allocation_tree.c:159`), else the shared cell profile.
+            bg_rd = !bg_growth ? bg_none : (rdists === nothing ? soil.rootdist : rdists[i])
             newtrees[i] = tr.is_grass ? grow_grass_individual(galloc, tr, bm_ind, wscal_mean) :
-                grow_individual(alloc, allom, tr, bm_ind, wscal_mean)
+                grow_individual(
+                    alloc, allom, tr, bm_ind, wscal_mean;
+                    bg_growth = bg_growth, bg_rootdist = bg_rd, bg_soildepth = bg_sd,
+                )
         end
         # GRASS ESTABLISHMENT / re-seeding (establishment_grass.c, individual mode): if the total patch FPC
         # is below 1, each grass PFT gains sapling biomass `sapl·(1−fpc_total)/n_est` — the mechanism that

@@ -539,6 +539,22 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   retained fraction with a *faithful* allocation. Measured: F's absolute litter + reproduction flux at
   Hainich is right to **1.8 %** while its `keep` ratio is **49 %** high. Score the exact additive identity
   `Δagb_F − Δagb_C = (bmi_F−bmi_C) + (loss_C−loss_F) + (bel_C−bel_F)` instead (skill `fdiff-validate`).
+- ⚠ **THE C's BELOW-GROUND WOOD DEMAND IS PROPORTIONAL TO LEAF CARBON, AND A 4 % SEEDING CONVENTION MAKES
+  IT COMPUTE AS EXACTLY ZERO (`[VERIFIED 2026-08-13]`, ADR 0132).** `allocation_tree.c:163-189` builds
+  `sapwood_bg`'s demand as `c·sapwood/height` with `c = Σ_l dz_l·(root_sum_l + rootdist_l·2π/C_LATERAL²)` a
+  pure soil-geometry constant (3.314 for Hainich) — and the pipe model gives `sapwood/height =
+  leaf·sla·wooddens/k_latosa`, so **`D = c·leaf_c·sla·wooddens/k_latosa`** and the annual sink is
+  `∝ (leaf_y − (1−r)·leaf_{y−1})`: it is **paid on the growth of the LEAF pool**, not on stem growth.
+  The C pins the pool to the demand at the **post-turnover** sapwood and `turnover_tree.c:126` takes `r`
+  off it again the next year, so a stem entering a year holds **`(1−r)·D`**. Seed it at the bare `D` and
+  the post-turnover pool and the recomputed demand are *equal* ⇒ the top-up at `:191-193` is **identically
+  0** — measured, it fires on **0 of 272** committed Hainich stems with the `D` seed and **205 of 272**
+  with `(1−r)·D` (`FDiff.sapwood_bg_seed`). ⚠ The general trap: **a harness that re-initialises the model
+  from truth every year has already discarded any quantity defined as a year-over-year difference of
+  state** — check what the state variable equals at the START of the step before scoring such a mechanism
+  (skill `residual-diagnosis`). Also: the C carries **two** below-ground wood pools and they are a
+  producer/consumer pair, so a one-field port leaks carbon (ADR 0127 §6) — F's are `TreePools.sapwood_bg_c`
+  + `heartwood_bg_c`, both inside `FDiff.vegc_full_ind` and neither inside `vegc_ind`.
 - **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
   writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
   **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age

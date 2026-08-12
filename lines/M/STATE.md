@@ -359,7 +359,95 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 16) — **THE C GATES *EVERY TREE'S* PHOTOSYNTHESIS ON ITS OWN
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 17) — **THE BELOW-GROUND WOOD SINK IS PROGNOSTIC. IT PASSES
+### THE PRE-REGISTERED BAR AT HAINICH AND FAILS AT BOREAL — AND A 4 % SEEDING CONVENTION WAS MAKING THE
+### WHOLE MECHANISM COMPUTE AS EXACTLY ZERO (ADR 0132)**
+
+**Start here.** The previous handoff's step 2 — *"THE `sapwood_bg` PORT (ADR 0127 §5/§6), now the head of
+the queue and the gate on item 1"* — is **done, measured on all five cells, and scored against the bar
+that was pre-registered before it existed.**
+
+**1. WHAT WAS BUILT.** `TreePools` gains `heartwood_bg_c` beside `sapwood_bg_c` (13→14 fields,
+backward-compatible 13-arg constructor ⇒ ~35 existing sites byte-identical); `vegc_full_ind` takes both,
+so it is now the C's own `vegc` pool set (`veg_sum_tree.c:25`) while `vegc_ind` stays the historic
+four-pool sum. `grow_individual` gains `bg_growth` / `bg_rootdist` / `bg_soildepth` and runs, in the C's
+order, the below-ground `sapwood_bg → heartwood_bg` turnover (`turnover_tree.c:124-130`) and the C_LATERAL
+top-up (`allocation_tree.c:163-209`) **deducted from the assimilate before the leaf/root/sapwood split**,
+on each stem's own root profile. `FDiffFastCore` and `rollout_canopy_years` carry the switch. The carbon
+**debt** loan is NOT ported. Gate `test/testitems/sapwood_bg_growth_tests.jl` (569 assertions); full suite
+**275 597 pass / 0 fail** (`logs/M-bgsuite.1769029.out`), no baseline moved.
+
+**2. THE CONSERVATION PROPERTY IS THE REASON THE SECOND POOL IS NOT OPTIONAL.** The port is a pure
+REDISTRIBUTION: `vegc_full_ind(on) == vegc_full_ind(off)` exactly on all 272 committed Hainich stems,
+while `agb_ind` falls by exactly the carbon the below-ground bucket gained. A one-field port cannot
+satisfy that (ADR 0127 §6).
+
+**3. ⚠ THE FINDING, AND IT IS THE REUSABLE PART.** The demand is linear in sapwood at fixed height and the
+pipe model fixes `sapwood/height = leaf·sla·wooddens/k_latosa`, so **`D = c·leaf_c·sla·wooddens/k_latosa`**
+with `c` a pure soil-geometry constant ⇒ the annual sink is `∝ (leaf_y − (1−r)·leaf_{y−1})` — **paid on the
+growth of the LEAF pool.** The C holds `(1−r)·D`, not `D`; seeded at the bare `D` (the
+`sapwood_bg_design.md` §8.1 convention) the pool and the demand shrink in lockstep and the top-up is
+**identically zero**. Measured: it fires on **0 of 272** Hainich stems with the old seed and **205 of 272**
+with the new `FDiff.sapwood_bg_seed`. **A year-paired harness that re-initialises from truth each year
+cannot see a mechanism defined as a difference of state unless its seed comes from one year earlier** —
+the probe's growth arms now do exactly that (`prev_year_seed`; `bg_miss = 1` of 10 years, the 2008 fixture
+does not exist). Method lesson in the `residual-diagnosis` skill §8.
+
+**4. THE RESULT (paired surplus `Δagb_F − Δagb_C`, gC/m²/yr, arms `Abgg`/`Pbgg`/`Pgbgg`, PART 7 of the
+probe, log `logs/M-bggrow.1769028.out`).** Hainich **154.0 → 102.6, drop 51.3** against a bar of **30.9**
+⇒ **PASS** (32.3 against the seeded-static arm, still a pass). Boreal **75.9 → 56.7, drop 19.2** against
+**19.9** ⇒ **FAIL** (97 % of it; 18.5 on arm A, 14.5 against the seeded-static arm). Tree CUE stays inside
+`[0.42, 0.56]` at both. What the mechanism itself absorbs: **34.9 / 16.5 / 41.5 / 16.6 / 101.3** gC/m²/yr
+at Hainich / boreal / mediterranean / Sahel / Amazon on arm P.
+
+**5. THE BOREAL FAILURE WAS PREDICTED BY THE ADR THAT SET THE BAR.** ADR 0127 §5 measured `dD/bel_C` =
+**0.11** there and §8 item 4 said *"the port is not the boreal answer"*, so §6's criterion required a
+mechanism to close a channel its own measurement said was 89 % something else. It is retired as a gate at
+that cell and kept at Hainich. ⚠ **Cross-check a pre-registered criterion against every number already in
+the same document** — that is the second method lesson.
+
+**6. WHAT IT DOES NOT FIX.** At Hainich F still over-grows by **57 %** (102.6 surplus against a C
+increment of 181.1). ADR 0127 §4 said why: **77 % of the surplus is the ASSIMILATE error**, which this
+port does not touch — GPP is byte-identical between an arm and its growth arm. **The F-side queue does not
+move off the assimilate.**
+
+**7. RAISED TO LINE S (mirrored into `lines/S/STATE.md`).** Four sites in `src/components/slow.jl` rebuild
+a `TreePools` with the pre-`heartwood_bg` 13-arg arity and would silently drop a grown `heartwood_bg_c`:
+the recruit mix (`:161`), `_with_nind` (`:249` — every density change), the recruit build (`:479`), the
+K-cap merge (`:670`). Same shape as the ADR 0110 trait-drop those sites were fixed for. Nothing is broken
+today (`bg_growth` defaults off), but the two features are incompatible until S carries the field.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **🎯 ACTION, PRE-REGISTERED (ADR 0131 §8) — EVALUATE THE `tree_demand_gate` DEFAULT FLIP.** Its blocking
+   condition (a) *"the `sapwood_bg` growth port has landed"* is now **satisfied**. Conditions (b) and (c)
+   remain: (b) on the growth arms, mean `|bmi_F/bmi_C − 1|` over the four readable cells must not increase
+   — score `Pgbgg` against `Pbgg` in the committed
+   `test/testitems/references/M_growth_channel_decomposition.csv`, which now carries both; (c) run the
+   full suite with the default flipped and enumerate every moved assertion (`julia-test` skill's
+   default-flip procedure). **This is line M's own action.** The shipped default is KNOWN UNFAITHFUL.
+2. **DECIDE THE `bg_growth` DEFAULT TOO — and pre-register it here rather than leaving it a note**
+   (guardrail 4's corollary: three opt-ins with known-wrong defaults have already sat for weeks). The port
+   is C-faithful and conserving, it passes at Hainich, and it is byte-identical off. What blocks the flip
+   is item 7 above: with a slow emulator in the loop the pool would be dropped at every demography event.
+   **Flip criterion: `bg_growth = true` by default once line S carries `heartwood_bg_c` through
+   `slow.jl`'s four rebuild sites AND the full suite's failure list is enumerated.** Until then
+   `FDiffFastCore`'s docstring carries the incompatibility.
+3. **THE ASSIMILATE IS STILL THE HEAD OF THE F QUEUE** (ADR 0127 §8 item 3, unmoved by this port): at
+   Hainich +24 % with every parameter faithful and 99.4 % beech. ADR 0130 split it ≈43-47 %
+   photosynthesis / ≈57-53 % respiration; the demand-gate took 17.5 % off it and is the only respiration
+   lead priced so far.
+4. **THE ENZYME/DECADAL TRAINER HAS NOT BEEN RE-VERIFIED WITH THE SINK ON.** `rollout_canopy_years_gpp`
+   builds its pools from the SoA arrays with the pre-`sapwood_bg` arity, so the differentiated path
+   carries no below-ground pool at all and is untouched by this change. If the sink is ever wanted on the
+   trained path that is the work: a `sapbgcs` + `heartbgcs` plain `Vector{T}` threaded like `sapcs`,
+   **never** a `Vector{TreePools}` scatter (ADR 0110's SIGABRT).
+5. **`boreal_siberia` REMAINS THE ONE CELL WHERE ALLOCATION GENUINELY BINDS** and this port is confirmed
+   not to be its answer. Suspects unchanged: the summergreen full-leaf recycle for the evergreen-named
+   PFTs (`AllocParams.is_deciduous` is `true` for every tree in F while the C gates the `leaf/1.05` drop
+   on `tree->isphen`, `turnover_tree.c:100`), and the `reprod_cost` path.
+
+### 0-PREV. ✅ DONE 2026-08-12 (session 16) — **THE C GATES *EVERY TREE'S* PHOTOSYNTHESIS ON ITS OWN
 ### DEMAND AND F NEVER DID. IT RESCUES THE SAHEL'S NEGATIVE CARBON BALANCE ON ITS OWN, TAKES 17.5 % OFF
 ### THE ASSIMILATE ERROR AT THE FOUR READABLE CELLS — AND MY PRE-REGISTERED PREDICTION WAS WRONG (ADR 0131)**
 

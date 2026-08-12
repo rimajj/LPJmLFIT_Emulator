@@ -138,6 +138,10 @@ mutable struct FDiffFastCore{T <: AbstractFloat} <: AbstractFastCore
     # (`FDiff.patch_albedo`). The coupled driver reads it so Component E's net radiation uses the SAME
     # albedo as F's water balance (consistency). Does not feed back into F ⇒ byte-identical.
     last_albedo::T
+    # ADR 0132: run the C's below-ground wood pair in the annual growth — `sapwood_bg` topped back up to
+    # the C_LATERAL demand out of the assimilate, `heartwood_bg` fed by its turnover. `false` (default) ⇒
+    # byte-identical; and even on, the C's own gate grows nothing until the pool is seeded.
+    bg_growth::Bool
 end
 
 """
@@ -169,13 +173,23 @@ otherwise-beech bundle, which is the only way to say which parameter moved a res
 far: `run_coupled_cell` REFUSES a per-PFT core together with a slow emulator, because S's demography
 rebuilds the roster with the shared allometry (a mixed `k_beer` basis); that wiring is an integration
 point on line S.
+
+**`bg_growth` (ADR 0132, default `false` ⇒ byte-identical).** With `true` the annual growth runs the C's
+below-ground wood pair — `sapwood_bg` topped back up to the C_LATERAL demand out of the assimilate
+(`allocation_tree.c:163-209`) and `heartwood_bg` fed by its turnover (`turnover_tree.c:124-130`) — on
+each individual's own root profile when `per_tree_roots` built one. Only the tree path is touched; grass
+has no woody sapwood. Seed the pool at init with `FDiff.reconstruct_sapwood_bg`, or the C's own gate
+(`:206`, growth only once the pool is `> 0`) leaves an unseeded roster unchanged. ⚠ Not yet safe
+together with a slow emulator: `src/components/slow.jl` rebuilds pools with the pre-`heartwood_bg`
+constructor arity, so a demography merge/recruit/density change would drop that pool — a line-S
+integration point (ADR 0132 §7).
 """
 function FDiffFastCore(
         pools::Vector{FDiff.TreePools{T}}, tmpls::Vector{FDiff.Individual{T}}, soil::FDiff.SoilColumn{T},
         lat::Real; params = FDiff.tebs_params(T), alloc = FDiff.tebs_allocparams(T),
         galloc = FDiff.grass_allocparams(T), allom = TreeAllometry{T}(), grass_demand_gate::Bool = true,
         grass_estab = FDiff.grass_estabparams(T), pft_ids = nothing, grass_lf_mode::Symbol = :linear,
-        per_pft_params::Union{Bool, AbstractVector{FDiff.PFTPhys{T}}} = false
+        per_pft_params::Union{Bool, AbstractVector{FDiff.PFTPhys{T}}} = false, bg_growth::Bool = false
     ) where {T <: AbstractFloat}
     p = FDiff._with_grass_gate(params, grass_demand_gate)
     pids = pft_ids === nothing ? Int[t.is_grass ? 8 : 3 for t in tmpls] : collect(Int, pft_ids)
@@ -210,8 +224,19 @@ function FDiffFastCore(
         zero(T), zero(T), zero(T), zero(T), 0,
         T(NaN),                       # soiltemp_skin: NaN ⇒ use air-temp proxy (byte-identical default)
         T(0.15),                      # last_albedo: reasonable default until the first step! records it
+        bg_growth,                    # ADR 0132: below-ground wood growth (opt-in, default off)
     )
 end
+
+# ADR 0132: the below-ground soil geometry this individual's C_LATERAL demand is computed on — its OWN
+# root profile when `per_tree_roots` built one (the C calls `getrootdist` per tree,
+# `allocation_tree.c:159`), else the shared cell profile. Same-eltype EMPTY vectors are the "off"
+# sentinel so the `grow_individual` kwargs stay concretely typed on both branches.
+@inline _bg_rootdist(fc::FDiffFastCore{T}, i::Int) where {T} =
+    !fc.bg_growth ? similar(fc.soil.rootdist, 0) :
+    (fc.rootdists === nothing ? fc.soil.rootdist : fc.rootdists[i])
+@inline _bg_soildepth(fc::FDiffFastCore{T}) where {T} =
+    fc.bg_growth ? fc.soil.soildepth : similar(fc.soil.soildepth, 0)
 
 # ADR 0126: the per-individual Beer–Lambert vector the layered-light recompute takes (`nothing` off).
 _kbeers(pphys::Nothing) = nothing
@@ -379,7 +404,10 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
         # ADR 0126: this cohort's OWN turnover + crown allometry when the per-PFT channel is on
         newpools[i] = tr.is_grass ?
             FDiff.grow_grass_individual(_ind_alloc(fc, i), tr, bm_ind, wscal_mean) :
-            FDiff.grow_individual(_ind_alloc(fc, i), _ind_allom(fc, i), tr, bm_ind, wscal_mean)
+            FDiff.grow_individual(
+                _ind_alloc(fc, i), _ind_allom(fc, i), tr, bm_ind, wscal_mean;
+                bg_growth = fc.bg_growth, bg_rootdist = _bg_rootdist(fc, i), bg_soildepth = _bg_soildepth(fc),
+            )
     end
     # GRASS ESTABLISHMENT (establishment_grass.c, individual mode): if the total patch FPC is below 1, each
     # grass PFT gains sapling biomass `sapl·(1−fpc_total)/n_est` (mirrors rollout_canopy_years §26.3). Off
@@ -478,7 +506,10 @@ function grow_annual_accounted!(fc::FDiffFastCore{T}) where {T}
         al = _ind_alloc(fc, i)                       # ADR 0126: this cohort's own turnover/allocation
         grown = tr.is_grass ?
             FDiff.grow_grass_individual(al, tr, bm_ind, wscal_mean) :
-            FDiff.grow_individual(al, _ind_allom(fc, i), tr, bm_ind, wscal_mean)
+            FDiff.grow_individual(
+                al, _ind_allom(fc, i), tr, bm_ind, wscal_mean;
+                bg_growth = fc.bg_growth, bg_rootdist = _bg_rootdist(fc, i), bg_soildepth = _bg_soildepth(fc),
+            )
         newpools[i] = grown
         # stagnation guard (mirrors grow_individual): a deficit / zero-height TREE is frozen ⇒ nothing applied.
         # Read `reprod_cost` from the cohort's OWN set (it was a single hoisted `fc.alloc.reprod_cost`)

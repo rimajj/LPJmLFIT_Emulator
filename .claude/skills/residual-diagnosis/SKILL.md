@@ -1311,3 +1311,43 @@ defect has one cause. Here an earlier record grouped two cells under a per-param
 flips one of them on its own and leaves the other untouched, so that cell had **two independent sufficient
 causes and the record stated one of them as the one**. Test each candidate cause against each cell
 separately before grouping them in a sentence.
+
+---
+
+## §8 — CHECK THE INITIAL CONDITION, NOT ONLY THE REFERENCE DATASET (ADR 0132, 2026-08-13)
+
+The "confirm the comparison basis" rule (§3) is usually applied to the *reference* side — which C output,
+which population, which units. It applies just as hard to the **state the model starts the step from**,
+and that failure mode is quieter because nothing looks wrong: the arm runs, the harness gates pass, and
+the new mechanism simply reports **exactly zero effect**.
+
+**The case.** F's below-ground wood pool is pinned by the C to a demand `D` computed on the *post*-turnover
+sapwood, and the following year's turnover takes `r = turnover_sapwood` off it again — so a stem entering
+a year holds `(1−r)·D`. The design note seeded it at the bare `D`. With that seed the post-turnover pool
+and the recomputed demand are **equal**, so the annual top-up computes as identically 0: the port was
+inert, and the probe would have measured its own seeding convention. The seed was wrong by **4 %** and that
+4 % *was* the entire mechanism. Fixing it took the top-up from **0 of 272** stems to **205 of 272**.
+
+**The generalisation, worth checking before any mechanism arm is scored.**
+
+1. **A quantity defined as a year-over-year DIFFERENCE OF STATE cannot be measured by a harness that
+   re-initialises from truth every year** — unless the initialisation is built from the *previous* step's
+   truth. Year-paired probes (this repo's rung-3 alignment A) are exactly that kind of harness. Ask: *what
+   does this state variable equal at the start of the step, in the C, expressed in quantities my fixture
+   actually carries?* If the answer references a different year's fixture, read that fixture.
+2. **Derive the closed form before running the arm.** Here two lines of algebra — the demand is linear in
+   sapwood at fixed height, and the pipe model fixes `sapwood/height` in terms of leaf carbon — give
+   `D = c·leaf·sla·wooddens/k_latosa` and hence "the sink is paid on the growth of the LEAF pool". That
+   single sentence predicts the zero, explains it, and tells you what the seed must be. A closed form is
+   cheaper than a 15-minute SLURM arm and it makes a null result interpretable instead of ambiguous.
+3. **An exactly-zero effect is a red flag, never a result.** Physical mechanisms give small numbers, not
+   `0.0` on every one of 272 stems. If an arm reports exact zero, suspect an identity in the setup before
+   concluding the mechanism is negligible.
+4. **The seed is part of the OPERATOR, not part of the setup.** Two arms that differ in a seeding
+   convention are different physics, so never compare a statistic across a seed change without saying so —
+   and keep the old convention available on the old arms so the published numbers stay reproducible.
+
+**Corollary for pre-registration.** A pre-registered pass criterion can be internally inconsistent with the
+document that sets it: ADR 0127 §6 required this mechanism to close a channel its own §5 had already
+measured it explains 11 % of, at that cell. When writing a criterion, cross-check it against every number
+already in the same document — otherwise the arm is graded against a bar its author's own data refutes.

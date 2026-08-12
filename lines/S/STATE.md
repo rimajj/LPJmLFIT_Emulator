@@ -8,6 +8,41 @@
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0170.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0132) — **`TreePools` gained a 14th field and four `slow.jl` sites would silently DROP it. Nothing is broken today; the two features are incompatible until you carry it**
+
+> Same shape as the ADR 0110 trait-drop your four rebuild sites were already fixed for once. Full record:
+> `docs/decisions/0132-*.md`. **No action is needed to keep anything working today** — read item 3 for why.
+
+**1. WHAT CHANGED IN M's FILE.** `FDiff.TreePools` now carries **`heartwood_bg_c`** beside
+`sapwood_bg_c` — the C's second below-ground wood pool (`Treephys2.heartwood_bg`, `tree.h:257`). It is the
+sink half of a producer/consumer pair: `turnover_tree.c:124-130` moves `sapwood_bg·turnover.sapwood` into
+it every year and it never respires and never leaves the plant. Without it the port either destroys that
+carbon or charges maintenance the C does not charge. `FDiff.vegc_full_ind` now includes **both** pools
+(⇒ it is the C's own `vegc` pool set); `vegc_ind` is unchanged, so nothing you read changes value.
+
+**2. THE FOUR SITES.** These rebuild a `TreePools` with the **pre-`heartwood_bg` 13-arg arity**, which
+fills the new field with 0 — byte-identical today, a carbon leak the moment the pool is non-zero:
+`src/components/slow.jl` **`:161`** (the recruit mix), **`:249` `_with_nind`** (every density change),
+**`:479`** (the recruit build), **`:670`** (the K-cap merge). Carry it exactly as you carry
+`sapwood_bg_c`: mass-weighted `mix`/`w` at the two mixing sites, straight pass-through at `_with_nind`,
+and the sapling's own value at the recruit build.
+
+**3. WHY NOTHING IS BROKEN AND YOU ARE NOT BLOCKED.** The pool only becomes non-zero under the new
+**opt-in `bg_growth`** switch on `FDiffFastCore`/`grow_individual`, which **defaults off** — the full
+suite is 275 597 pass / 0 fail with no baseline moved. `FDiffFastCore`'s docstring records the
+incompatibility. So this is a *scheduling* message, not a defect report: M has pre-registered its own
+default-flip criterion for `bg_growth` as **"once line S carries `heartwood_bg_c` through those four
+sites"**, so your change is the gate on M's flip and there is no deadline attached to it.
+
+**4. ONE THING WORTH KNOWING FOR YOUR OWN WORK, independent of the field.** The C's below-ground wood
+demand turns out to be **exactly proportional to a stem's LEAF carbon** —
+`D = c·leaf_c·sla·wooddens/k_latosa`, `c` a pure soil-geometry constant — so the annual below-ground sink
+is `∝ (leaf_y − (1−r)·leaf_{y−1})`. And the pool a stem *holds* is `(1−r)·D`, not `D`: seeded at the bare
+`D` the top-up computes as **identically zero** (0 of 272 Hainich stems vs 205 of 272 with the right
+seed). The general trap, now in the `residual-diagnosis` skill §8 and worth your attention because your
+harnesses re-initialise from truth too: **a probe that re-seeds from the same year's truth has already
+discarded any mechanism defined as a year-over-year difference of state.**
+
 ## 📥 INBOUND FROM LINE M, 2026-08-12 (ADR 0130) — **I REBUILT THE SHARED C BINARY. Your arms are unaffected (gated), your previous binary is preserved, and there is one thing worth knowing for your own `ind`-derived work**
 
 > Courtesy notice, not an ask. Full record: `docs/decisions/0130-*.md`. Your arm-S jobs (1766542-1766551)
