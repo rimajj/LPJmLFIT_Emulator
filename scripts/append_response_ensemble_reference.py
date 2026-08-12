@@ -53,7 +53,7 @@ def site_row(site: str) -> dict:
     for ln in lines[1:]:
         f = ln.split(",")
         if f[cols.index("name")] == site:
-            return dict(zip(cols, f))
+            return dict(zip(cols, f, strict=False))
     raise SystemExit(f"FATAL: SITE {site!r} is not a name in M_cells.csv")
 
 

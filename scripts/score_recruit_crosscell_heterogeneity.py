@@ -42,9 +42,27 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REFDIR = os.path.join(REPO, "test", "testitems", "references")
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+# The ONE incomplete beta in this repo's script tree (arm D part 1), reused rather than re-derived so the
+# t-distribution tail here and the Beta quantiles there cannot drift apart (ADR 0031).
+from score_beta_vs_copula_likeforlike import _betacf, _lgamma  # noqa: E402
+
 REF = os.environ.get("REF", os.path.join(REFDIR, "S_recruit_multicell_seed_ensembles.csv"))
 FIT = float(os.environ.get("FIT_SHIFT", "2432.9"))
 OUT = os.environ.get("OUT", "")
+
+
+def betacdf_scalar(x: float, a: float, b: float) -> float:
+    """Regularized incomplete beta I_x(a,b) for one x — the vectorized sibling takes an array."""
+    x = min(max(float(x), 0.0), 1.0)
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lb = _lgamma(a) + _lgamma(b) - _lgamma(a + b)
+    if x < (a + 1.0) / (a + b + 2.0):
+        return math.exp(a * math.log(x) + b * math.log1p(-x) - lb) * _betacf(a, b, x) / a
+    return 1.0 - math.exp(b * math.log1p(-x) + a * math.log(x) - lb) * _betacf(b, a, 1.0 - x) / b
 
 
 def read_ref() -> tuple[list[str], list[list[str]]]:
@@ -93,8 +111,8 @@ def cochran_q(means: list[float], sems: list[float]) -> tuple[float, int, float]
     what the within-cell seed noise can produce — which is exactly the question "do the cells disagree?".
     """
     w = [1.0 / s**2 for s in sems]
-    tb = sum(wi * mi for wi, mi in zip(w, means)) / sum(w)
-    q = sum(wi * (mi - tb) ** 2 for wi, mi in zip(w, means))
+    tb = sum(wi * mi for wi, mi in zip(w, means, strict=True)) / sum(w)
+    q = sum(wi * (mi - tb) ** 2 for wi, mi in zip(w, means, strict=True))
     return q, len(means) - 1, tb
 
 
@@ -140,14 +158,23 @@ def chi2_sf(x: float, df: int) -> float:
     return max(0.0, min(1.0, math.exp(-xx + a * math.log(xx) - math.lgamma(a)) * h))
 
 
-def welch(m1, s1, n1, m2, s2, n2) -> tuple[float, float]:
+def welch(m1, s1, n1, m2, s2, n2) -> tuple[float, float, float]:
+    """Welch's two-sample t on two ensembles' (mean, SEM, n), with the EXACT two-sided Student-t p.
+
+    The p is `I_{df/(df+t²)}(df/2, 1/2)` through the same incomplete beta the arm-D scorer uses (imported,
+    not re-derived — ADR 0031). A normal approximation was the first version and it moved every p by
+    0.001-0.003 here (0.0232 → 0.0263, 0.0079 → 0.0096) without changing a verdict; it is replaced anyway
+    because these p-values are quoted in an ADR and "close enough at n = 40" is the kind of shortcut that
+    stops being true the moment someone runs this at n = 8.
+    """
     se = math.sqrt(s1**2 + s2**2)
     t = (m1 - m2) / se if se > 0 else float("nan")
-    # Welch-Satterthwaite df, then a normal approximation for the two-sided p (n ~ 40 per arm here)
     v1, v2 = s1**2, s2**2
     df = (v1 + v2) ** 2 / (v1**2 / (n1 - 1) + v2**2 / (n2 - 1)) if (v1 + v2) > 0 else float("nan")
-    p = 2.0 * (1.0 - 0.5 * (1.0 + math.erf(abs(t) / math.sqrt(2.0))))
-    return t, p
+    if not (math.isfinite(t) and math.isfinite(df) and df > 0):
+        return t, float("nan"), df
+    x = df / (df + t * t)
+    return t, float(betacdf_scalar(x, df / 2.0, 0.5)), df
 
 
 def main() -> int:
@@ -161,9 +188,10 @@ def main() -> int:
     print(f"== {REF}\n== {len(body)} seed rows over {len(tags)} ensembles; FIT shift = {FIT} gC/m3")
     print("\n-- PER-CELL, on the PINNED pooled_w20_t8 artifact only (the demo-pair arms are shown but "
           "excluded from every cross-cell statistic — ADR 0171 §3: the artifact can flip a sign)")
-    hdr_line = (f"{'tag':11s} {'site':22s} {'cell':>6s} {'art':14s} {'n':>3s} {'n_elig':>6s} "
-                f"{'level_hist':>11s} {'level_%':>8s} {'R_ctl xFIT':>16s} {'contrib xFIT':>16s} {'CI½':>6s}")
-    print(hdr_line)
+    print(
+        f"{'tag':11s} {'site':22s} {'cell':>6s} {'art':14s} {'n':>3s} {'n_elig':>6s} "
+        f"{'level_hist':>11s} {'level_%':>8s} {'R_ctl xFIT':>16s} {'contrib xFIT':>16s} {'CI½':>6s}"
+    )
     recs = []
     for tag in tags:
         rs = [r for r in body if r[0] == tag]
@@ -173,9 +201,16 @@ def main() -> int:
         if not rs:
             continue
         site, cell, art = rs[0][ix["site"]], rs[0][ix["cell"]], rs[0][ix["artifact"]]
-        col = lambda c: [float(r[ix[c]]) for r in rs]  # noqa: E731
+        # An explicit def with `rows` BOUND as a default, not a lambda closing over the loop variable:
+        # ruff B023 is right that the closure form is fragile even where it is used inside the same
+        # iteration, and this table is exactly the place a silent wrong-ensemble read would not be noticed.
+        def col(c, rows=rs):
+            return [float(r[ix[c]]) for r in rows]
+
         lvl, sem_l, _, n = stats(col("d_hist"))
-        pct = 100 * sum(a / b for a, b in zip(col("d_hist"), col("wd_ctl_hist"))) / n
+        # strict=True: d_hist and wd_ctl_hist are the SAME seeds; a length mismatch means a parse fault,
+        # and zip's default would silently truncate the pairing instead of failing.
+        pct = 100 * sum(a / b for a, b in zip(col("d_hist"), col("wd_ctl_hist"), strict=True)) / n
         mrc, src, _, _ = stats([v / FIT for v in col("R_ctl")])
         mi, si, ti, _ = stats([v / FIT for v in col("interaction")])
         ne = elig_of(site)
@@ -217,9 +252,11 @@ def main() -> int:
         for i in range(len(same)):
             for j in range(i + 1, len(same)):
                 a, b = same[i], same[j]
-                t, p = welch(a["contrib"], a["contrib_sem"], a["n"], b["contrib"], b["contrib_sem"], b["n"])
+                t, p, df = welch(a["contrib"], a["contrib_sem"], a["n"],
+                                 b["contrib"], b["contrib_sem"], b["n"])
                 print(f"   {a['site']:22s} vs {b['site']:22s} Δ={a['contrib'] - b['contrib']:+7.3f}  "
-                      f"t={t:+6.2f}  p={p:.4f}  {'DIFFER' if p < 0.05 else 'not resolved'}")
+                      f"t={t:+6.2f}  df={df:5.1f}  p={p:.4f}  "
+                      f"{'DIFFER' if p < 0.05 else 'not resolved'}")
 
     print("\n-- POWER, per cell: |effect| vs its own 95 % half-width (an unresolved cell is NOT a zero)")
     for r in cells:

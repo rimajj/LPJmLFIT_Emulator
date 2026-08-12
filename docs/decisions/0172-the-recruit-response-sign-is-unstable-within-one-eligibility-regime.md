@@ -88,8 +88,9 @@ agree. They do not:
 
 * **Cochran's Q on the contribution, within `n_elig = 4` only: Q = 8.03, df 2, p = 0.018, I² = 75.1 %.** The
   between-cell spread is larger than 40 seeds of within-cell noise can produce.
-* Pairwise (Welch): Amazon vs Sahel **differ** (Δ = +3.65 ×FIT, p = 0.023); Sahel vs Iberia **differ**
-  (Δ = −5.23, p = 0.008); Amazon vs Iberia not resolved (p = 0.36).
+* Pairwise (Welch's t with the exact Student-t tail): Amazon vs Sahel **differ** (Δ = +3.65 ×FIT, t = +2.27,
+  df 70.3, **p = 0.026**); Sahel vs Iberia **differ** (Δ = −5.23, t = −2.66, df 77.0, **p = 0.010**); Amazon
+  vs Iberia not resolved (p = 0.37).
 * Across all five cells: contribution Q = 22.58, df 4, **p = 1.5e-04**, I² = 82.3 %.
 
 **⇒ ADR 0171 §5's third condition — "one cell per eligibility regime, artifact fixed and named, sign must

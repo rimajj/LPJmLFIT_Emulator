@@ -10,7 +10,7 @@
   **RESPONSE** contribution does not: −0.89 / +1.98 / −1.91 / −1.67 / +3.56 ×FIT, and the three cells that
   share the *same* eligibility regime (`n_elig = 4`, the modal 49 % of tree-bearing cells) **disagree beyond
   seed noise** — Cochran's Q = 8.03, df 2, **p = 0.018**, I² = 75 %, with two of three pairs separating on a
-  Welch test. Meanwhile the *shipped* channel's own response shows **no** heterogeneity across those same
+  Welch t (p = 0.026 and 0.010). Meanwhile the *shipped* channel's own response shows **no** heterogeneity across those same
   three cells (Q = 0.51, p = 0.77, I² = 0 %). ⇒ ADR 0171 §5's pre-registered "one cell per eligibility
   regime, sign must agree" condition is retired: it groups on a variable that does not organise the effect.
   Its replacement requires ≥ 12 named cells, a weighted mean in [0.9, 1.1] ×FIT **and** a non-significant Q,
