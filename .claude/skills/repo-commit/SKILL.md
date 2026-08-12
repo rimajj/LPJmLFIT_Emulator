@@ -760,6 +760,25 @@ Mechanics that make it survivable:
   line — the head of a `## NEXT` block is precisely what the owning line replaces each session.
 * **On a conflict, the resolution is always "keep BOTH".** Take their side verbatim, then re-insert your
   block at the anchor. Never resolve an inbound conflict with `--ours`/`--theirs`.
+* **The same "keep BOTH" rule governs every SHARED APPEND-ONLY file** — `CLAUDE.md`, `MEMORY.md` and the
+  shared skills (`julia-test`, `repo-commit`, `residual-diagnosis`, `skill-creator`,
+  `consolidate-memory`). Two lines appending a new `## ` section at the end of the same skill on the same
+  day is a *certainty*, not bad luck: the §8 capture gate pushes every session to edit one. Git presents
+  their section against yours as one block, and either `--ours` or `--theirs` silently deletes a whole
+  captured lesson. Resolve it as `their section` + separator + `your section` (order does not matter;
+  their side first is tidier because it is already on `main`).
+* **PROVE the resolution lost nothing — it is two commands and it is the only check that catches a
+  half-taken side** (`[VERIFIED 2026-08-12]`, line M, ADR 0126 merge, where this fired twice in one
+  session on `repo-commit/SKILL.md`):
+
+  ```bash
+  git show origin/main:<path> > /tmp/theirs.md
+  diff /tmp/theirs.md <path> | grep -c '^<'     # MUST be 0 — any '<' line is content you dropped
+  diff /tmp/theirs.md <path> | grep -c '^>'     # = the lines you are adding, sanity-check the count
+  ```
+
+  A `0` on the first command is a proof, not an impression — unlike reading the merged file, which looks
+  fine either way.
 * **Check whether your PREVIOUS inbound is still there** before adding a new one — `grep '📥 INBOUND FROM
   LINE <you>' lines/<them>/STATE.md` and, if it is missing, `git log --oneline -S'INBOUND FROM LINE <you>'
   -- lines/<them>/STATE.md`. A block that never reached `main` is invisible to them and to you.
