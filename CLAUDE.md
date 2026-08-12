@@ -570,6 +570,28 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `has_header=False` makes every column a string; and **pin the dtypes**, because the `mort_*` columns are
   uninitialised garbage that often prints as whole numbers at the top of a restarted run, so inference calls
   them integer and then dies on the first real value.
+- ⚠ **THE C GATES *EACH TREE'S* PHOTOSYNTHESIS ON ITS OWN CANOPY DEMAND, AND THE GATE ZEROES LEAF
+  RESPIRATION TOO — F_diff RAN THE TREE PATH UNGATED (`[VERIFIED 2026-08-12]`, ADR 0131).**
+  `water_stressed.c:196` runs photosynthesis only `if(gpd>1e-5 && isphoto(data.tstress))`; `:83` has already
+  done `gpd=agd=*rd=…=0.0` and the `else` at `:260` sets `agd=0`, so on a gated day the PFT contributes
+  **neither gross assimilation nor leaf respiration**. **The gate is per-`Pft`, and this config runs
+  `individual:true` ⇒ every tree is its own `Pft` entry, so it is a PER-TREE gate**, not the grass-only
+  mechanism docs §26 recorded. F's `WaterParams.grass_demand_gate` is `ind.is_grass`-gated; the tree half is
+  the new opt-in `tree_demand_gate`. Two traps in it: **(1) it fires on DROUGHT days, not leaf-off days** —
+  the demand `gpd = hour2sec(dl)·(gc·fpc − gmin·fpar)` collapses when supply ≪ demand, whereas a leaf-off day
+  already takes `vm`, hence `rd = b·vm`, to ~0 smoothly (F needs no `isphoto` branch because `tstress`
+  multiplies `c1`/`c1o` linearly). So "rare water-stress-collapse days" is a claim about the CELL: at
+  `semiarid_sahel` those days carried the whole SIGN of F's annual tree carbon balance (−83.8 → +34.6
+  gC/m²/yr under the gate alone, beech parameters everywhere) while `tropical_amazon` is unmoved (0.07 %) —
+  ⇒ **ADR 0125's grouping of those two cells under the per-PFT `respcoeff` defect was one of two sufficient
+  causes stated as the one.** **(2) The NPP effect is NOT SIGNED.** With `A ≡ gpp − rd` and
+  `npp = A − rmaint − rgrowth(A − rmaint)`, gating scales `A` by `g ∈ (0,1]`, so a gated day raises `npp`
+  **only where its ungated `A` was negative**: carbon-POSITIVE at Hainich (NPP −1.84 %), negative at
+  `mediterranean_iberia` (+1.15 %). Two design notes predicted the wrong sign from the unstated assumption
+  that every gated day is pathological. ⚠ `βgpd_gate` is SHARED with the grass gate and `_with_grass_gate`
+  pins it to the C's hard `1e8` whenever the grass gate goes on (which `FDiffFastCore` does by default) — so
+  **record which sharpness an arm ran at**; measured, the soft AD-usable `2e4` reproduces the hard step to
+  the printed digit at three of five cells and within 1.6 pp at the worst.
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative

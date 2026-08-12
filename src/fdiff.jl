@@ -220,6 +220,33 @@ Base.@kwdef struct WaterParams{T <: Real}
     grass_demand_gate::Bool = false
     βgpd_gate::T = 2.0e4     # sigmoid sharpness of the demand gate (in `gpd` units, ≈ 1/threshold)
     gpd_gate::T = 1.0e-5     # C demand threshold (`water_stressed.c:196` `gpd>1e-5`)
+    # ── THE SAME GATE FOR TREES (ADR 0131; default off ⇒ byte-identical) ─────────────────────────
+    # `water_stressed.c:196`'s gate is NOT grass-specific: it is per-`Pft`, and in this configuration
+    # (`individual:true`) every TREE is its own `Pft` entry, so the C applies it per individual tree too.
+    # `water_stressed.c:83` zeroes `*rd` on entry and the `else` branch at `:260` sets `agd=0`, so on a
+    # gated day the C's tree contributes NEITHER gross assimilation NOR leaf respiration. F_diff has
+    # always run the tree path ungated (the `grass_demand_gate` above is `ind.is_grass`-gated), which is
+    # the "`rd` is not conductance-gated on rare water-stress-collapse days" v1 simplification recorded in
+    # `docs/notes/phase3_fdiff_cbinary_validation.md` §13 and `sapwood_bg_design.md` §1/§6. The gate closes
+    # when the canopy's own demand `gpd = hour2sec(dl)·(gc·fpc − gmin·fpar)` collapses — i.e. when supply
+    # falls far below demand (`canopy_conductance` drives `gc→0`) — so it fires on DROUGHT days, not on
+    # leaf-off days (where `apar→0` already takes `vm`, and hence `rd = b·vm`, to ~0 smoothly; F has no
+    # `isphoto(tstress)` branch because `tstress` multiplies `c1`/`c1o` linearly, so that HALF of the C's
+    # gate is already emulated). The other half is not, and F pays `rd` with a collapsed `agd` on those
+    # days ⇒ it biases tree NPP DOWN and tree GPP UP (the `βflux` softplus floor).
+    # ⚠ SIGN: switching this ON therefore RAISES F's CUE (already high) and LOWERS F's GPP (already high) —
+    # it is a faithfulness fix that moves the two channels of ADR 0129/0130's split in OPPOSITE directions.
+    # Measured per cell in ADR 0131; do not assume it helps.
+    # ⚠ SCOPE: like `grass_demand_gate`, this flag is honoured ONLY on the multi-individual canopy path
+    # [`daily_step_canopy`](@ref) — which is the one `FDiffFastCore` and the coupled driver run. The
+    # single-individual `daily_step` / `daily_step_ml` kernels (`fdiff.jl:774`/`:1217`) apply neither gate
+    # and are byte-identical with either flag set.
+    # ⚠ `βgpd_gate` is SHARED with the grass gate, and `_with_grass_gate` pins it to the C's hard-step
+    # `1e8` whenever the grass gate is switched on (which `FDiffFastCore` does by default) — so in the
+    # coupled core this gate runs at the sharp step, and standalone with `grass_demand_gate=false` it runs
+    # at the soft `2e4`. Keep it OFF on the Enzyme/`rollout_canopy_years_gpp` path: a 1e8 sigmoid is
+    # gradient-hostile, and that path reads `p.water` directly with no reconstruction.
+    tree_demand_gate::Bool = false
     # ── C-FAITHFUL LEAF-ON WATER SCALAR (ADR 0051; default off ⇒ byte-identical) ────────────────
     # `wscal` is NOT the realized supply/demand ratio in the C — it is a *potential*, phenology-INDEPENDENT
     # soil-water-supply index (`water_stressed.c:130-138`):
@@ -1911,12 +1938,14 @@ function daily_step_canopy(
         # F_diff keeps the shared soft `βflux` on the λ-solve input (bounded-positive `fac` ⇒ finite
         # agd/rd, NO degenerate solve) and instead multiplies the grass GPP + `rd` OUTPUTS by a smooth
         # sigmoid of the pre-floor demand `gpd_raw`. Default off (`grass_demand_gate=false` ⇒ gate ≡ 1,
-        # byte-identical); the tree path is always ungated. Replaces the REFUTED §25 hard-floor lever
-        # (which drove deep-shade grass NPP negative via the degenerate low-`fac` solve) — see `WaterParams`.
+        # byte-identical). Replaces the REFUTED §25 hard-floor lever (which drove deep-shade grass NPP
+        # negative via the degenerate low-`fac` solve) — see `WaterParams`.
+        # ADR 0131: the C's gate is per-`Pft` and therefore per TREE too in this `individual:true` config,
+        # so `tree_demand_gate` (also default off ⇒ byte-identical) applies the SAME sigmoid to trees.
         gmin_i = pftphys === nothing ? w.gmin : convert(T, pftphys[ii].gmin)      # ADR 0126, per-PFT
         gpd_raw = hour2sec(dl) * (gc * fpc_i - gmin_i * fpar_i)
-        gate = (ind.is_grass && w.grass_demand_gate) ?
-            stable_sigmoid(w.βgpd_gate * (gpd_raw - w.gpd_gate)) : one(T)
+        gated = ind.is_grass ? w.grass_demand_gate : w.tree_demand_gate
+        gate = gated ? stable_sigmoid(w.βgpd_gate * (gpd_raw - w.gpd_gate)) : one(T)
         gpd = softplus(gpd_raw, w.βflux)
         fac = gpd / 1.6 * ppm2bar(f.co2)
         # POSITIONAL constructor (field order: photo, tstress, water, resp, allom, nlambda, ω) — NOT the
@@ -3034,8 +3063,11 @@ end
 # reads `p.water` directly and is UNCHANGED (stays gate-off + gradient-stable). Reconstruction is
 # fieldnames-driven (robust to future `WaterParams` fields) and returns `p` UNCHANGED when already in the
 # requested state — so a gate-off request on a gate-off `p` is byte-identical. The gate is grass-gated in
-# [`daily_step_canopy`](@ref) (`ind.is_grass && w.grass_demand_gate`), so a TREE-ONLY rollout is
-# byte-identical regardless of this toggle.
+# [`daily_step_canopy`](@ref) (`ind.is_grass ? w.grass_demand_gate : w.tree_demand_gate`), so a TREE-ONLY
+# rollout is byte-identical regardless of this toggle — UNLESS `tree_demand_gate` is also on (ADR 0131),
+# in which case turning the grass gate ON re-pins the SHARED `βgpd_gate` to `1e8` and thereby sharpens the
+# tree gate too. That is the intended coupled-core behaviour (the C's step is hard), but it means a
+# `tree_demand_gate` arm must record which `βgpd_gate` it ran at.
 const _GRASS_GATE_βSHARP = 1.0e8
 function _with_grass_gate(p::FDiffParams{T}, on::Bool) where {T}
     w0 = p.water

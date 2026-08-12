@@ -232,10 +232,13 @@ which this harness discards by rebuilding the core from the C's roster next year
 (`fdiff.jl:1966/1997`) ⇒ it must equal `ftos.bm_inc` to rounding; PART 5 asserts that rather than
 assuming it, because the equality is what makes `cue = bm_inc/gpp` the same object on both sides.
 """
-function run_one_year!(state, clo, pools, tmpls, soil, lat, forc; per_pft::Bool = false, types = nothing)
+function run_one_year!(
+        state, clo, pools, tmpls, soil, lat, forc; per_pft::Bool = false, types = nothing,
+        params = PARAMS, grass_gate::Bool = true
+    )
     core = per_pft ?
-        FDiffFastCore(pools, tmpls, soil, lat; params = PARAMS, pft_ids = types, per_pft_params = true) :
-        FDiffFastCore(pools, tmpls, soil, lat; params = PARAMS)
+        FDiffFastCore(pools, tmpls, soil, lat; params = params, pft_ids = types, per_pft_params = true, grass_demand_gate = grass_gate) :
+        FDiffFastCore(pools, tmpls, soil, lat; params = params, grass_demand_gate = grass_gate)
     bc_f = LPJmLFITEmulator.stand_structure_tof(core)
     for f in forc
         LPJmLFITEmulator.couple_day!(core, clo, state, bc_f, f; feedback = true)
@@ -269,7 +272,7 @@ One arm at one cell: the paired per-stem rows plus the per-year ensemble `bm_inc
 own PFT parameters and phenology. The demand `d0`/`d1` is ALWAYS computed, in every arm, so a `keep`
 prediction and the arm that would realise it are read off the same run.
 """
-function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false)
+function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false, params = PARAMS, grass_gate::Bool = true)
     name = NAMES[k]
     forc, tair0 = forcings_by_year(name, CELLIDS[k])
     soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
@@ -287,7 +290,10 @@ function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false)
             pools, tmpls, ids, types = patches[p]
             st = get!(states, p, SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER)))
             cl = get!(clos, p, SEBEnergyClosure(; t_soil0 = tair0))
-            grown, b, g, n = run_one_year!(st, cl, pools, tmpls, soil, LATS[k], forc[y]; per_pft = per_pft, types = types)
+            grown, b, g, n = run_one_year!(
+                st, cl, pools, tmpls, soil, LATS[k], forc[y];
+                per_pft = per_pft, types = types, params = params, grass_gate = grass_gate
+            )
             acc += b; accg += g; accn += n
             for i in eachindex(ids)
                 k1 = (name, y, p, ids[i]); k0 = (name, y - 1, p, ids[i])
@@ -378,10 +384,37 @@ armP = [arm(k; per_pft = true) for k in eachindex(NAMES)]
 armPbg = [arm(k; per_pft = true, seed_bg = true) for k in eachindex(NAMES)]
 @printf("arm Pbg (P + the seed) done\n\n"); flush(stdout)
 
+# ── ADR 0131: the TREE photosynthesis demand-gate arms ────────────────────────────────────────────────
+# `PARAMS_TG` differs from `PARAMS` in exactly ONE field, `water.tree_demand_gate`. Two sharpnesses,
+# because `βgpd_gate` is SHARED with the grass gate and `FDiffFastCore(grass_demand_gate=true)` — the
+# default every other arm here runs under — re-pins it to the C's hard step `1e8`:
+#   Ag   grass_gate=true  ⇒ βgpd_gate pinned to 1e8 = the C's hard branch. THE FAITHFUL ARM.
+#   Ags  grass_gate=false ⇒ βgpd_gate stays at the soft `2e4` default = the AD-usable sharpness.
+# Passing `grass_demand_gate=false` is behaviourally free HERE and only here: this harness's roster is
+# `type <= 6` (`readcanopy_patches`), so no grass individual ever enters the daily loop, and the year-end
+# grass re-seed in `annual_step!` is discarded when the roster is rebuilt from the C next year. `Ags − Ag`
+# therefore isolates the SHARPNESS, not the grass.
+const PARAMS_TG = let
+    w = PARAMS.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    w2 = typeof(w)(; merge(nt, (; tree_demand_gate = true))...)
+    FDiffParams{Float64}(PARAMS.photo, PARAMS.tstress, w2, PARAMS.resp, PARAMS.allom, PARAMS.nlambda, PARAMS.ω)
+end
+armAg = [arm(k; params = PARAMS_TG) for k in eachindex(NAMES)]
+@printf("arm Ag  (A + the C's tree demand-gate, HARD step beta=1e8) done\n"); flush(stdout)
+armAgs = [arm(k; params = PARAMS_TG, grass_gate = false) for k in eachindex(NAMES)]
+@printf("arm Ags (A + the tree demand-gate at the soft AD-usable beta=2e4) done\n"); flush(stdout)
+armPg = [arm(k; per_pft = true, params = PARAMS_TG) for k in eachindex(NAMES)]
+@printf("arm Pg  (P + the tree demand-gate, hard step) done\n\n"); flush(stdout)
+
 pA = [panel(a) for a in armA]
 pAbg = [panel(a) for a in armAbg]
 pP = [panel(a) for a in armP]
 pPbg = [panel(a) for a in armPbg]
+pAg = [panel(a) for a in armAg]
+pAgs = [panel(a) for a in armAgs]
+pPg = [panel(a) for a in armPg]
 
 # ── PART 1 — THE BASIS GATE ──────────────────────────────────────────────────────────────────────────
 # This probe reads the same fixtures as `biome_canopy_growth_probe.jl` through its OWN readers, so before
@@ -831,6 +864,62 @@ end
 @printf("error. SE(dt) >~ 1 ⇒ that null CANNOT separate slope 0 from slope 1 and says nothing either way:\n")
 @printf("report the BRACKET from PART 5b, not a point estimate, for such a cell.\n")
 
+# ── PART 6 — THE TREE PHOTOSYNTHESIS DEMAND-GATE (ADR 0131) ──────────────────────────────────────────
+# WHY: ADR 0130 closed the split at ≈43-47 % photosynthesis / ≈57-53 % respiration and put the RESPIRATION
+# channel at the head of the queue. The cheapest respiration lead on record is the one v1 simplification
+# that is a pure faithfulness defect with no missing state behind it: `water_stressed.c:196` skips
+# photosynthesis when the canopy's own demand `gpd <= 1e-5`, and `:83` has already zeroed `*rd`, so on a
+# gated day the C's tree makes NEITHER gross assimilation NOR leaf respiration. F has always run the tree
+# path ungated, so on those days it pays `rd = b·vm` (set from `apar`, hence NOT collapsed with the
+# demand) against a collapsed `agd` plus the `βflux` softplus GPP floor.
+#
+# ⚠ PRE-REGISTERED PREDICTION, written before the arm ran (so the sign cannot be read after the fact):
+#   (i)  the gate LOWERS F's GPP (removes the floor) and RAISES F's NPP (removes the `rd` charge)
+#        ⇒ it moves the PHOTOSYNTHESIS channel TOWARD the C and the RESPIRATION channel AWAY from it;
+#   (ii) the net effect on `bmi` (the product, i.e. every published number of ADR 0125/0127) is therefore
+#        WORSE, not better — F's `bmi` is already 1.20-1.28× the C's;
+#   (iii) it fires on DROUGHT-collapse days, not leaf-off days, so it is ~nil at `temperate_hainich` and
+#        largest at `semiarid_sahel` / `mediterranean_iberia`.
+# A refutation of (ii) — the gate moving `bmi_F/bmi_C` toward 1 at any cell — makes it a live lever and is
+# the outcome worth having. Either way the arm PRICES a known defect instead of leaving it on a list.
+@printf("\n--- PART 6: THE C's TREE DEMAND-GATE (`gpd <= 1e-5` => no agd AND no rd), ADR 0131 ---\n")
+@printf(
+    "%-22s %8s %8s %7s %8s %8s %7s %7s %7s %8s %8s\n",
+    "cell", "GPP off", "GPP on", "d%", "NPP off", "NPP on", "d%", "CUE off", "CUE on", "bmi F/C", "-> on"
+)
+for (tag, off_p, off_a, on_p, on_a) in (
+        ("A -> Ag  (hard step, C-faithful)", pA, armA, pAg, armAg),
+        ("A -> Ags (soft beta=2e4)", pA, armA, pAgs, armAgs),
+        ("P -> Pg  (hard step)", pP, armP, pPg, armPg),
+    )
+    @printf("%s\n", tag)
+    for k in eachindex(NAMES)
+        c0 = off_p[k]; c1 = on_p[k]
+        q0 = cue_panel(off_a[k], c0); q1 = cue_panel(on_a[k], c1)
+        cue0 = c0.gf > 0 ? c0.bf / c0.gf : NaN
+        cue1 = c1.gf > 0 ? c1.bf / c1.gf : NaN
+        # `bmi_F/bmi_C` is the published assimilate-error statistic; the C side is arm-independent, so the
+        # two columns differ ONLY by the gate. `bc` is the C's own per-stem NPP sum (same object as PART 2).
+        r0 = c0.bc != 0 ? c0.bf / c0.bc : NaN
+        r1 = c1.bc != 0 ? c1.bf / c1.bc : NaN
+        @printf(
+            "%-22s %8.1f %8.1f %7.2f %8.1f %8.1f %7.2f %7.3f %7.3f %8.3f %8.3f\n", NAMES[k],
+            c0.gf, c1.gf, 100 * (c1.gf / c0.gf - 1), c0.bf, c1.bf, 100 * (c1.bf / c0.bf - 1),
+            cue0, cue1, r0, r1
+        )
+        (q0 === nothing || q1 === nothing) && continue
+    end
+end
+@printf("\nHOW TO READ IT. `GPP`/`NPP` are F's OWN tree-only annual ensemble means (gC/m2/yr), so the d%%\n")
+@printf("columns are the gate's effect with nothing else moving — the C side is identical in both arms.\n")
+@printf("`bmi F/C` is the SAME statistic ADR 0125/0127 published; moving it AWAY from 1.0 means this\n")
+@printf("faithful gate makes the head-of-queue error worse, which is a result about where the error is NOT.\n")
+@printf("`Ag` vs `Ags` is the SHARPNESS control: if they agree, the sigmoid width is not doing the work and\n")
+@printf("the gate is usable on the differentiable path at beta=2e4; if they disagree, only the hard step is\n")
+@printf("the C and the AD-usable version is a different operator.\n")
+@printf("⚠ NOT MEASURED HERE: the number of gated tree-days. The effect is reported, its incidence is not\n")
+@printf("(counting it needs an accumulator inside `daily_step_canopy`, i.e. a struct on the Enzyme path).\n")
+
 # ── the COMMITTED table (the result, not the log) ────────────────────────────────────────────────────
 # ADR 0127's numbers live here rather than only in a `logs/` file, so a later session can re-score an arm
 # against them without re-deriving the basis. Regenerate by re-running this probe; the basis gate above
@@ -851,6 +940,9 @@ open(OUTCSV, "w") do io
     println(io, "#       Abg = A + the below-ground pool seeded (its maintenance respiration runs)")
     println(io, "#       P   = per-cohort PFT parameters + the C's own pft_ids (ADR 0126)")
     println(io, "#       Pbg = P + the seed  (the most faithful configuration that exists today)")
+    println(io, "#       Ag  = A + the C's TREE photosynthesis demand-gate at the hard step beta=1e8 (ADR 0131)")
+    println(io, "#       Ags = A + the same gate at the soft, AD-usable beta=2e4 (the sharpness control)")
+    println(io, "#       Pg  = P + the gate at the hard step")
     println(io, "# keepF_pub/keepC_pub reproduce ADR 0125 PART 7's published mean-of-per-year-ratios form;")
     println(io, "# keepF_abs/keepC_abs are the ratio-of-means. They are DIFFERENT statistics - see ADR 0127.")
     println(io, "# The last six columns (ADR 0129) split the assimilate error `bmi_F/bmi_C` EXACTLY into a")
@@ -867,7 +959,10 @@ open(OUTCSV, "w") do io
             "t_input,t_loss,t_nosink,demand_pool0,demand_incr,keepF_pub,keepC_pub,keepF_abs,keepC_abs," *
             "gpp_F,gpp_C,npp_C_all,cue_F,cue_C,gt5m_frac"
     )
-    for (tag, ps, as) in (("A", pA, armA), ("Abg", pAbg, armAbg), ("P", pP, armP), ("Pbg", pPbg, armPbg))
+    for (tag, ps, as) in (
+            ("A", pA, armA), ("Abg", pAbg, armAbg), ("P", pP, armP), ("Pbg", pPbg, armPbg),
+            ("Ag", pAg, armAg), ("Ags", pAgs, armAgs), ("Pg", pPg, armPg),
+        )
         for k in eachindex(NAMES)
             c = ps[k]
             q = cue_panel(as[k], c)
