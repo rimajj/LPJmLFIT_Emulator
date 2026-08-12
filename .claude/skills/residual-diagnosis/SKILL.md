@@ -1072,3 +1072,36 @@ not a conservation law.** Before reading a ratio as "the constraint held", check
 inputs are downstream of the operator — and report the constrained quantity's *composition* (here the age
 structure, and the identity overlap with the truth's own individuals), because a scalar ratio hides two
 compensating errors as easily as it shows one.
+
+## A COMMENT SAYING AN OMISSION IS DELIBERATE IS A CLAIM, NOT EVIDENCE — AND CHECK **BOTH** SCENARIOS' BASIS (line S, 2026-08-12, ADR 0171)
+
+Three generalizable moves, each of which changed a conclusion.
+
+**1. The reference-basis audit must cover every scenario, not the one with a committed fixture.** A single-cell
+builder gated its **historic** conditioning boundary against a committed fixture and passed for weeks; its
+**ssp370** boundary was never gated against anything, and was a different quantity from the trained table for
+**19 of 81 years** (up to +10.7 % and +1.94 °C). The asymmetry survived because the gated half is the half a
+fixture existed for. ⇒ enumerate the *bases*, not the *fixtures*: one gate per (scenario × conditioning axis),
+and if a global table exists, gate against **the table the model was fitted on** rather than a derived fixture.
+
+**2. A code comment that explains why something is deliberately absent is exactly where to look.** The
+offending line read *"X accepts the short window … so replicating it is what keeps this fixture consistent with
+the basis the artifacts were TRAINED against."* It named a checkable claim about another script — and reading
+that script showed it did the opposite (it averaged over the whole file from its own first year). Rule: **a
+comment asserting consistency with a reference is a test you have not run.** Grep the reference, don't trust
+the prose; a confident justification for an omission is a stronger signal than no comment at all.
+
+**3. Before attributing (or panicking about) a defect's impact, find the model's own CHANNEL-LIVENESS
+diagnostic.** The arm prints `max |Δ output|` between a transient and a static conditioning input under
+identical forcing. It read **exactly 0.0** on the artifact every published number used — that artifact's
+boundary axes are constant in training, so no split exists on them and the channel cannot carry anything — and
+**2022–2406** on the production artifact. That one line converted "how much did every past number move?" into
+"provably zero, and here is the 40-seed reproduction to the digit", and localised where the defect *would*
+have bitten. ⇒ when a conditioning input turns out wrong, the first question is not *how wrong* but **whether
+the consumer can see that input at all**; a learned model trained on a constant is blind to it by construction.
+
+**And the corollary for impact statements:** where the channel *was* live, the same fix moved the arm by
+**0.03 ×FIT against a 0.32 ×FIT SEM** — an order of magnitude below the ensemble's own precision. Quote a
+defect's size against the measurement's own noise, and keep the off-basis arm as a **named control** rather than
+deleting it (`BND_FIXTURE=` + an `ALLOW_…=1` escape hatch that prints which basis it wrote), or the before/after
+comparison becomes unrunnable the moment you fix the bug.

@@ -100,6 +100,12 @@
 #      REPORT_AT (default "1,5,10,20,50,100,150"), COPULA (default 1 — the production configuration; set 0
 #      for the fixed-sapling arm), FORCING_DIR (response mode; default
 #      /p/tmp/jamirp/emulator_global/S_response_forcing — build it with build_hainich_response_forcing.py),
+#      SITE (a name in M_cells.csv — which CELL to run at; unset = Hainich 42490 and byte-identical to every
+#      earlier run. A non-default site takes its individuals/soil/forcing from the committed M_* fixtures,
+#      its transient boundary from S_response_boundary_<site>.csv, its eligible sets from
+#      S_estab_eligibility_<site>.csv, and its n_init/age0/static-boundary from M_cells.csv — NOT from the
+#      artifact meta, which is Hainich's. Build the two per-cell fixtures with
+#      `SITE=<name> scripts/build_hainich_response_forcing.py` and `scripts/build_estab_eligibility.py`),
 #      SEED (1 = ADR 0100's value, reproduces its primary to the digit), K_CAP, SCORE_WINDOW,
 #      DRF_ART/RCOP_ART + N_INIT/AGE0/BOUNDARY (swap in another artifact pair — see the block below).
 # THE ARTIFACT PAIR IS PART OF THE MEASUREMENT (ADR 0101 §3): the committed single-cell DEMO pair and the
@@ -108,7 +114,7 @@
 # stage2 reads only committed fixtures and writes nothing; response mode additionally reads the (uncommitted,
 # 1.7 MB/scenario) daily forcing from FORCING_DIR — its per-year means are committed in
 # `S_hainich_response_boundary.csv` so a later session can verify a rebuild without shipping the daily file.
-# Hainich (cell 42490) only ⇒ say "Hainich only" (guardrail 6).
+# ONE CELL per run ⇒ always name it and say "1 of 54 020" (guardrail 6). `SITE` unset = Hainich (42490).
 
 using LPJmLFITEmulator
 using LPJmLFITEmulator.FDiff
@@ -160,16 +166,67 @@ function readcsv(path)
     return Dict(String(hdr[j]) => [r[j] for r in rows] for j in eachindex(hdr))
 end
 
-# ── the shared Hainich harness, byte-for-byte `kcap_merge_confound_probe.jl`'s construction ─────────────
-ind = readcsv(joinpath(REFDIR, "hainich_individuals_2010.csv"))
-fcsv = readcsv(joinpath(REFDIR, "hainich_forcing_2010.csv"))
+# ── `SITE` — WHICH CELL THE HARNESS RUNS AT (added 2026-08-12, ADR 0171) ─────────────────────────────────
+# Everything above and below was Hainich-only, and ADR 0170's own handoff named "run it at MORE CELLS, not
+# more seeds" as the next step: the acceptance criterion (ADR 0106) is all 54 020 cells, and a one-cell
+# result cannot distinguish a property of the operator from a property of Hainich. The per-cell fixtures
+# line M already committed for the coupled driver (`M_individuals_*`, `M_soilcolumn_*`, `biome_forcing_*`,
+# `M_cells.csv`) make a second cell a configuration change rather than a provisioning project.
+#
+# ⚠ THE DEFAULT IS BYTE-IDENTICAL AND MUST STAY SO (guardrail 4). `SITE` unset resolves to EXACTLY the file
+# names, lat and fixtures every ADR-0049/0100/0101/0170 run used — the Hainich pair, not the `M_*` twin of
+# it — so this refactor cannot move a published number. A `SITE=<name>` run reads the `M_*` fixtures for that
+# cell and its own `S_response_boundary_<name>.csv` / `S_estab_eligibility_<name>.csv`.
+const SITE = get(ENV, "SITE", "")
+const DEFAULT_SITE = isempty(SITE)
+"`(cell, lat)` and the per-site fixture paths; the default branch is the historical Hainich configuration."
+function site_config()
+    DEFAULT_SITE && return (
+        cell = 42490, lat = 51.25, name = "temperate_hainich",
+        ind = "hainich_individuals_2010.csv", forc = "hainich_forcing_2010.csv",
+        soil = "hainich_soilcolumn.txt", bnd = "S_hainich_response_boundary.csv",
+        elig = "S_hainich_estab_eligibility.csv",
+    )
+    d = readcsv(joinpath(REFDIR, "M_cells.csv"))
+    i = findfirst(==(SITE), String.(d["name"]))
+    i === nothing && error("SITE=$SITE is not a name in M_cells.csv ($(join(unique(d["name"]), ", ")))")
+    return (
+        cell = parse(Int, d["cell"][i]), lat = parse(Float64, d["lat"][i]), name = SITE,
+        ind = "M_individuals_$(SITE)_2010.csv", forc = "biome_forcing_$SITE.csv",
+        soil = "M_soilcolumn_$SITE.txt", bnd = "S_response_boundary_$SITE.csv",
+        elig = "S_estab_eligibility_$SITE.csv",
+    )
+end
+const SC = site_config()
+const CELL = SC.cell
+# The per-cell count/age seeds a GLOBAL artifact keeps in its `cell_meta.parquet` sidecar are committed for
+# the five biome cells in `M_cells.csv` (line M's `extract_cell_slow_init.py`), so a non-default site does
+# not need `N_INIT`/`AGE0` passed by hand. ⚠ At a non-default site the ARTIFACT META is NOT consulted for
+# them: the committed demo meta carries HAINICH's values, and silently initialising another cell's forest on
+# Hainich's stem count is exactly the "someone else's forest" error the artifact block below warns about.
+function mcells_init(key)
+    d = readcsv(joinpath(REFDIR, "M_cells.csv"))
+    i = findfirst(==(SC.name), String.(d["name"]))
+    return i === nothing ? nothing : parse(Float64, d[key][i])
+end
+
+# ── the shared single-cell harness, byte-for-byte `kcap_merge_confound_probe.jl`'s construction ─────────
+ind = readcsv(joinpath(REFDIR, SC.ind))
+fcsv = readcsv(joinpath(REFDIR, SC.forc))
+# The Hainich fixture is ONE year with no `year` column; the per-biome fixtures carry 2010-2019, so the
+# stage-2 constant-forcing year is selected explicitly. Both are the same columns and units.
+if haskey(fcsv, "year")
+    rows2010 = [j for j in eachindex(fcsv["year"]) if fcsv["year"][j] == "2010"]
+    length(rows2010) == 365 || error("$(SC.forc) has $(length(rows2010)) rows for 2010, expected 365")
+    fcsv = Dict(k => v[rows2010] for (k, v) in fcsv)
+end
 fc_(k) = parse.(Float64, fcsv[k])
 v(k, r) = parse(Float64, ind[k][r])
 nt(r) = parse(Int, ind["type"][r])
 const NDAY = length(fc_("doy"))
 
 sd = Float64[]; whcs = Float64[]; rdist = Float64[]
-for ln in eachline(joinpath(REFDIR, "hainich_soilcolumn.txt"))
+for ln in eachline(joinpath(REFDIR, SC.soil))
     s = strip(ln); (isempty(s) || startswith(s, "#")) && continue
     x = parse.(Float64, split(s)); push!(sd, x[2]); push!(whcs, x[3]); push!(rdist, x[4])
 end
@@ -221,7 +278,7 @@ const PFT_IDS = [nt(r) for r in ROWS]
 """
     eligibility_series() -> Union{Nothing, Dict{String, Vector{Vector{Int}}}}
 
-Per-scenario, per-year eligible PFT sets from the committed `S_hainich_estab_eligibility.csv`
+Per-scenario, per-year eligible PFT sets from the committed per-site eligibility fixture (`SC.elig`)
 (`scripts/build_estab_eligibility.py`), in the file's year order. `nothing` if the fixture is absent.
 
 THIS IS WHY THE TABLE WAS BUILT. FIT's gate is `establish.c:29-33` on the 20-year running mean of each
@@ -232,11 +289,17 @@ down and hands MORE of the recruit population to the cell's own seedbank. A fixe
 and it is exactly the feedback the kill condition is about, so the response arm must not use one.
 """
 function eligibility_series()
-    path = joinpath(REFDIR, "S_hainich_estab_eligibility.csv")
+    path = joinpath(REFDIR, SC.elig)
     isfile(path) || return nothing
     d = readcsv(path)
     out = Dict{String, Vector{Vector{Int}}}()
     for i in eachindex(d["scenario"])
+        # FILTER ON THE CELL, even though each fixture is written per site. `build_estab_eligibility.py`'s
+        # `CSV_OUT` APPENDS every selected cell to one file, so a multi-cell selection (which is how these
+        # were built — one 12 GB .clm read serving two sites) yields a file whose rows interleave cells. A
+        # reader that only groups by scenario would then build a year series of twice the length in cell
+        # order and silently mis-align every year of the run against the gate.
+        parse(Int, d["cell"][i]) == CELL || continue
         ids = [p for p in 0:6 if d["elig_$p"][i] == "1"]
         push!(get!(out, String(d["scenario"][i]), Vector{Int}[]), ids)
     end
@@ -268,7 +331,7 @@ function elig_policy(scen)
     # and the boundary always describe the same simulation year.
     return s -> ser[clamp(s.year + 1, 1, length(ser))]
 end
-mkcore() = FDiffFastCore([mkp(r) for r in ROWS], [mkt(r) for r in ROWS], SOIL, 51.25; pft_ids = PFT_IDS)
+mkcore() = FDiffFastCore([mkp(r) for r in ROWS], [mkt(r) for r in ROWS], SOIL, SC.lat; pft_ids = PFT_IDS)
 mkclo(t0 = _mean(TAIR_K)) = SEBEnergyClosure(; t_soil0 = t0)
 mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
 
@@ -276,18 +339,18 @@ mkstate() = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
 """
     load_scenario(scen) -> Vector{Vector{AtmForcing}}
 
-Per-year day vectors for `scen` ∈ {"historic", "ssp370"} from `FORCING_DIR/<scen>_42490_daily.csv`
+Per-year day vectors for `scen` ∈ {"historic", "ssp370"} from `FORCING_DIR/<scen>_<CELL>_daily.csv`
 (`scripts/build_hainich_response_forcing.py`, itself gated against the committed 2010 forcing fixture). Years
 are returned in file order; every year must carry exactly `NDAY` days so the two scenarios are differenced at
 matched year indices.
 """
 function load_scenario(scen)
-    path = joinpath(FORCING_DIR, "$(scen)_42490_daily.csv")
+    path = joinpath(FORCING_DIR, "$(scen)_$(CELL)_daily.csv")
     isfile(path) || error(
         "MODE=response needs $path — build it first:\n" *
             "    python3 scripts/build_hainich_response_forcing.py\n" *
             "(the daily forcing is deliberately NOT committed; its per-year means are, in " *
-            "S_hainich_response_boundary.csv)"
+            "$(SC.bnd))"
     )
     d = readcsv(path)
     yrs = parse.(Int, d["year"])
@@ -332,20 +395,61 @@ const RCOP_ART = get(ENV, "RCOP_ART", joinpath(REFDIR, "recruit_copula_hainich.r
 drf_meta = read_meta(replace(DRF_ART, r"\.drf$" => "_meta.txt"))
 forest = DRF.load_forest(DRF_ART)
 cop, af, xcop, ax_names, cond_cols_art = DRF.load_copula(RCOP_ART)
-"Per-cell scalar from ENV if given, else from the artifact meta (which only a per-cell artifact carries)."
+"""
+Per-cell scalar: ENV first, then — at a NON-DEFAULT `SITE` — that site's committed `M_cells.csv` row, then
+the artifact meta (which only a per-cell artifact carries).
+
+⚠ THE PRECEDENCE IS DELIBERATE AND ORDER-SENSITIVE. At the default site the order is the historical one
+(ENV → meta), so the committed demo pair keeps initialising the run exactly as it always did. At any other
+site the meta is consulted only AFTER `M_cells.csv`, because the committed demo meta carries **Hainich's**
+`n_init`/`age0` and would silently start another cell's forest on Hainich's stem count — the failure the
+error message below has warned about since ADR 0101 without being able to prevent it.
+"""
 function cellinit(key, envkey)
     haskey(ENV, envkey) && return parse(Float64, ENV[envkey])
+    if !DEFAULT_SITE
+        v = mcells_init(key == "n_init" ? "n_init" : "age0")
+        v === nothing || return v
+    end
     haskey(drf_meta, key) || error(
         "$(basename(DRF_ART))'s meta has no `$key` (a GLOBAL artifact keeps it in cell_meta.parquet) — " *
             "pass $envkey for THIS cell, or the run starts on the wrong forest"
     )
     return parse(Float64, drf_meta[key])
 end
-const BOUNDARY = haskey(ENV, "BOUNDARY") ? nums(ENV["BOUNDARY"]) :
-    (
-        haskey(drf_meta, "boundary") ? nums(drf_meta["boundary"]) :
-        error("$(basename(DRF_ART)) has no `boundary` in its meta — pass BOUNDARY=\"gdd5 tcm soil_depth co2\"")
-    )
+# The 4-column static boundary tail. At a non-default site the artifact meta's `boundary` is Hainich's, so —
+# same reasoning as `cellinit` — the site's own committed `M_cells.csv` row supplies it, in the frozen
+# `flux_feature_vector` tail order (gdd5, tas_cold_month, soil_depth, co2). In response mode rows 1:2 are
+# then overwritten per year from the transient fixture, so only rows 3:4 (soil_depth, co2) survive into the
+# run; they are per-cell and per-artifact respectively, which is exactly why they must not be Hainich's.
+function mcells_boundary()
+    d = readcsv(joinpath(REFDIR, "M_cells.csv"))
+    i = findfirst(==(SC.name), String.(d["name"]))
+    i === nothing && return nothing
+    return [parse(Float64, d[k][i]) for k in ("eco_diag_gdd_5", "tas_cold_month", "soil_depth", "co2")]
+end
+function site_boundary()
+    haskey(ENV, "BOUNDARY") && return nums(ENV["BOUNDARY"])
+    if !DEFAULT_SITE
+        v = mcells_boundary()
+        v === nothing || return v
+    end
+    # At the default site the artifact meta keeps its historical precedence, so a demo-pair run is unchanged;
+    # `M_cells.csv` is the LAST resort rather than an error, which is what lets the GLOBAL pooled pair run at
+    # Hainich without a hand-passed BOUNDARY. It is the same cell's own committed row either way, and the
+    # value used is echoed in the artifact line below, so the substitution is never silent.
+    if !haskey(drf_meta, "boundary")
+        v = mcells_boundary()
+        v === nothing && error(
+            "$(basename(DRF_ART)) has no `boundary` in its meta and $(SC.name) is not in M_cells.csv — " *
+                "pass BOUNDARY=\"gdd5 tcm soil_depth co2\""
+        )
+        println("   NOTE: $(basename(DRF_ART)) has no `boundary` in its meta ⇒ taking it from M_cells.csv")
+        return v
+    end
+    return nums(drf_meta["boundary"])
+end
+const BOUNDARY = site_boundary()
 const N_INIT = cellinit("n_init", "N_INIT")
 const AGE0 = cellinit("age0", "AGE0")
 
@@ -353,11 +457,17 @@ const AGE0 = cellinit("age0", "AGE0")
 # Only the two TIME-VARYING axes move (`gdd5`, `tas_cold_month`); `soil_depth` and the boundary tail's `co2`
 # stay at the artifact's own values, because the artifact was TRAINED on those (ADR 0004 pins the co2 tail at
 # 369 — it is a conditioning feature, NOT the forcing co2 the daily file carries, which does vary).
-"Per-year `boundary_series` rows for `scen`, from the committed `S_hainich_response_boundary.csv`."
+"Per-year `boundary_series` rows for `scen`, from the committed per-site boundary fixture (`SC.bnd`)."
 function scenario_boundary(scen)
-    d = readcsv(joinpath(REFDIR, "S_hainich_response_boundary.csv"))
+    # `BND_FIXTURE` — read the transient boundary from another file (an absolute path, or a name under
+    # `references/`). It exists to make a BASIS comparison runnable: ADR 0171 corrected the ssp370 lead-in in
+    # this fixture, and the only honest way to state what that changed is to run the same arm on both files.
+    # It is also the knob to use for any future sensitivity on the conditioning basis — do NOT hand-edit the
+    # committed fixture to run one.
+    bndfile = get(ENV, "BND_FIXTURE", SC.bnd)
+    d = readcsv(isabspath(bndfile) ? bndfile : joinpath(REFDIR, bndfile))
     rows = [i for i in eachindex(d["scenario"]) if d["scenario"][i] == scen]
-    isempty(rows) && error("S_hainich_response_boundary.csv has no scenario=$scen rows")
+    isempty(rows) && error("$bndfile has no scenario=$scen rows")
     return [
         vcat(
                 [parse(Float64, d["gdd5"][i]), parse(Float64, d["tas_cold_month"][i])],
@@ -499,8 +609,8 @@ const AXIS_LABEL = RECRUIT_ARM ?
 println("="^108)
 println(
     RESPONSE ?
-        "THE RESPONSE 2×2: $AXIS_LABEL × {historic, ssp370} — Hainich (42490), $YEARS yr" :
-        "ARM vs MATCHED CONTROL on $AXIS_LABEL — Hainich (42490), $YEARS yr"
+        "THE RESPONSE 2×2: $AXIS_LABEL × {historic, ssp370} — $(SC.name) ($CELL), $YEARS yr" :
+        "ARM vs MATCHED CONTROL on $AXIS_LABEL — $(SC.name) ($CELL), $YEARS yr"
 )
 println("="^108)
 println("ARM=", ARM, RECRUIT_ARM ? "   (ADR 0119 §6's kill condition, pre-tested offline — 1 of 54 020)" : "")
@@ -516,7 +626,7 @@ if RECRUIT_ARM
             ser = ELIG_SERIES[s]
             uq = unique(ser)
             println(
-                "  eligible set, $s: PER-YEAR from S_hainich_estab_eligibility.csv, $(length(ser)) yr, ",
+                "  eligible set, $s: PER-YEAR from $(SC.elig), $(length(ser)) yr, ",
                 length(uq), " distinct set(s) ",
                 join(["{" * join(u, ",") * "}×" * string(count(==(u), ser)) for u in uq], " "),
                 "  ⇒ w_inherit ", join(sort(unique([round(4 / (4 + length(u)), digits = 4) for u in uq])), " → ")
@@ -1078,13 +1188,14 @@ else
         round(d / FIT_SHIFT, digits = 4), "× the FIT warming shift (same sign as FIT: ", d > 0, ")"
     )
     println(
-        "  This is a MECHANISM check on ONE cell (Hainich, guardrail 6), NOT the ADR-0044 response gate.\n" *
+        "  This is a MECHANISM check on ONE cell ($(SC.name)/$CELL, 1 of 54 020 — guardrail 6), NOT the " *
+            "ADR-0044 response gate.\n" *
             "  The P1 threshold is ΔRr ≥ +0.036 on the global gate and is measured elsewhere; nothing here\n" *
             "  may be quoted as 'reducing the damping' (ADR 0044 — the residual is PLACEMENT, not shrinkage)."
     )
     if RESPONSE
         println(
-            "\n  RESPONSE (the headline, Hainich only):\n" *
+            "\n  RESPONSE (the headline, $(SC.name)/$CELL only — 1 of 54 020):\n" *
                 "    ", rpad(CTL_LABEL, 44), " R_ctl = ", round(R_ctl, digits = 2),
             " gC/m³ = ", round(R_ctl / FIT_SHIFT, digits = 4), "× FIT\n" *
                 "    ", rpad(ARM_LABEL, 44), " R_arm = ", round(R_arm, digits = 2),
