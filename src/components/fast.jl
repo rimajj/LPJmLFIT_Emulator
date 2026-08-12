@@ -71,7 +71,7 @@ per-individual structure (`pools`, `FDiff.TreePools`) with the daily-canopy temp
 `FDiff.Individual`), the shared 23-layer `soil` column, the cell latitude `lat`, the grass
 establishment params (`grass_estab`), the PER-PFT GSI phenology state (one filter set per DISTINCT PFT,
 plus the lag-1 forest-floor light `grass_lf`), the optional PER-INDIVIDUAL parameter bundles `pft_phys`
-([`FDiff.PFTPhys`](@ref); ADR 0126 — `nothing` ⇒ every cohort runs the single shared set, i.e. beech's),
+(`FDiff.PFTPhys`; ADR 0126 — `nothing` ⇒ every cohort runs the single shared set, i.e. beech's),
 and the mutable within-year state (day-of-year,
 previous-day water scalar, and the annual `bm_inc`/flux accumulators). Mirrors the validated-faithful
 grass config of `FDiff.rollout_canopy_years` (§26.3): the §26 demand-gate is on (grass-gated in
@@ -102,7 +102,7 @@ mutable struct FDiffFastCore{T <: AbstractFloat} <: AbstractFastCore
     # turnover/allocation set, crown allometry and `k_beer`/`gmin`, indexed like `pools`. `nothing` ⇒
     # every individual runs the core's single shared `params`/`alloc`/`allom` (i.e. beech's, the
     # pre-0126 behaviour) ⇒ byte-identical. Built from `pft_ids` by the constructor's
-    # `per_pft_params=true`. Held here, NOT inside `Individual` — see the [`FDiff.PFTPhys`](@ref) docs.
+    # `per_pft_params=true`. Held here, NOT inside `Individual` — see the `FDiff.PFTPhys` docstring.
     pft_phys::Union{Nothing, Vector{FDiff.PFTPhys{T}}}
     grass_lf_mode::Symbol
     grass_lf::T
@@ -157,7 +157,7 @@ the pre-§26.4 gate-off, no-establishment behaviour. The daily `FDiff.Individual
 `pools` + the recomputed layered `fpar`.
 
 **`per_pft_params` (ADR 0126, default `false` ⇒ byte-identical).** With `true` the core builds one
-[`FDiff.PFTPhys`](@ref) bundle per individual from `pft_ids`, so each cohort runs its OWN
+`FDiff.PFTPhys` bundle per individual from `pft_ids`, so each cohort runs its OWN
 maintenance-respiration coefficient (`respcoeff` 0.2 tropical / 1.2 temperate+boreal), minimum canopy
 conductance (`gmin` 0.3–1.6), turnover (leaf/root residence 1, 2 or 4 yr; sapwood 25 or 30 yr), crown
 allometry (angiosperm vs gymnosperm) and Beer–Lambert `k_beer` (0.45 needleleaved / 0.59 broadleaved /
