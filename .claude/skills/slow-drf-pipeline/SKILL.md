@@ -1805,3 +1805,47 @@ deliberate *and consistent with the trained table*; it was measurably false.
 **historic** `.clm` (mirroring the C's ClimBuf across the restart), while the trained boundary table does not.
 The gate and the DRF's boundary are therefore on different early-window conventions — each correct for its own
 consumer. Do not "fix" one to match the other without deciding which consumer you are serving.
+
+---
+
+## BUILDING A LIKE-FOR-LIKE ARM AGAINST THE SHIPPED COPULA — three gates, and emit into a SHADOW DIR (line S, 2026-08-12, ADR 0173)
+
+`scripts/eval_slow_beta_arm.jl` is the template for "would replacing part of the copula with X be better?".
+Two design choices make its answer unarguable, and both are reusable:
+
+**1. Derive BOTH arms in ONE run, from ONE fitted forest.** It re-runs `eval_slow_copula.jl`'s own loop — the
+same `fold = Int[mod(hash(c), kfolds) for c in cells]`, the same `fit_forest(...; seed = a)` where `a` is the
+axis's **production** index, the same `u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a))` — and reads the
+competing predictions off the **same pooled leaf values**. Then the arms differ in the one thing under test
+and in nothing else, *by construction* rather than by matching hyperparameters.
+
+**⚠ Do NOT take a stored `pred_<axis>.f64` as one arm and compute the other today.** Measured: on
+`…/smoke_struct_on` the **stock** `eval_slow_copula.jl` no longer reproduces that table's committed
+predictions (all four axes, worst |Δ| ≈ 3.0e5 gC/m³) at its own `KFOLDS=2`, while `src/drf.jl`'s default
+`qrf = false` numerics are unchanged. The **production** `slow_copula_pooled_w20_t8` IS reproduced
+bit-identically — so the risk is table-specific, which is exactly why it must be *checked* rather than
+assumed either way.
+
+**2. Emit into a SHADOW DIR and reuse the existing scorer.** Write `pred_<axis>.f64` into a new dir and
+**symlink** the source table's `cells.i64`, `Y_<axis>.f64` and `manifest_copula.txt` beside it; then
+`SHADOW=<dir> scripts/score_slow_copula_ks.py` scores it with **no new scorer and no second KS definition**
+(ADR 0031). Cheap, and it makes the arm's numbers directly comparable to the published `metrics_traits.txt`.
+
+**The three gates, with deliberately different severities:**
+
+| gate | severity | what it checks | why |
+|---|---|---|---|
+| **A** | **FATAL** | the arm's pooled reading == `DRF.predict_quantile` on sampled rows of every fold and axis | the invariant the whole comparison rests on; makes it sound independently of anything outside the run |
+| **B** | reported (`GATE_FATAL=1` to harden) | this run's re-derived copula column == the table's **stored** `pred_*.f64` | anchors the arm to the published artifact — and surfaces a stale stored column instead of letting it sit inside the comparison |
+| **C** | **FATAL** | every emitted dir is complete: all `pred_<axis>.f64`, each exactly `8·n` bytes, no filename containing a literal `$` | it caught a real defect — an escaped interpolation wrote all four axes into one file named `pred_$(ax).f64`; it surfaced *downstream* as the scorer erroring on a missing `Y_` symlink, and with the symlink right the corrupt file would have **scored happily** |
+
+**The control is what makes it publishable.** Emit the re-derived copula column as its own arm and score it:
+on `pooled_w20_t8` it reproduced the published panel **to the digit** (median per-cell KS 0.1725 / 0.1287 /
+0.1575 / 0.1487; pooled 0.0039 / 0.0065 / 0.0020 / 0.0040). Without that, "my arm scored X" is on a basis
+nobody can check against the shipped figures.
+
+**And size the robustness variant before believing it disagreed — or agreed.** `BETA_INTERVAL=empirical` was
+added so "the parameter interval was too wide" could not explain a null result. At global scale it is
+**degenerate**: 42.2 M stems saturate the parameter interval, so the two variants are byte-identical on three
+axes and 3.3e-05 of the interval width apart on the fourth. A variant that reproduces its baseline exactly is
+answering the objection by identity — say that, rather than reporting "no difference" as if it were a test.
