@@ -894,3 +894,29 @@ Two habits that prevent it: after any SLURM job that writes a committed fixture,
 writing the commit; and when an ADR names a `test/testitems/references/…` path, `git ls-files --error-unmatch`
 that path before pushing. Untracked is the dangerous state — a *modified* tracked fixture at least shows up in
 a bare `git diff`.
+
+## ⇒ THE COROLLARY: IF YOU ARE MERGING AND YOU ARE OWED AN INTEGRATOR-OWNED EDIT, LAND IT IN THE SAME `flock` (line S, 2026-08-12)
+
+The section above says an integrator chore needs a triggering EVENT. **Your own merge is that event, for any
+integrator-owned edit your line has already raised.** Measured cost of not using it: line S raised three
+`EXECUTION_PLAN.md` corrections on 2026-08-10 — one of them a factually wrong number (λ values printed as
+deattenuated response slopes) that four other files had copied — and they sat unlanded through three
+subsequent merges, because "raise it in both STATE files" has no actor attached to it. Raising the same thing a
+fourth time would have produced the same result.
+
+So, inside the merge `flock`, after collating the changelog:
+
+```bash
+# you already hold the lock, so you ARE the integrator for this moment (§9)
+( cd "$INT" && python3 <your prepared patch script> EXECUTION_PLAN.md )
+git -C "$INT" add EXECUTION_PLAN.md && git -C "$INT" commit -m "docs(plan): ..."
+```
+
+Two things keep this in bounds rather than a land-grab: **(a)** it happens **on `main`, in the integration
+worktree**, never on your line branch — the same distinction that makes collating `CHANGELOG.md` legitimate;
+and **(b)** it lands only what was already **raised and recorded** in your STATE, and the commit message says
+so. Prepare the edit as a *script* beforehand (assert your target text is present, so a moved anchor is a loud
+failure) and dry-run it — you are holding a lock that blocks three other lines while you work.
+
+What you still do NOT touch: another line's `lines/<X>/STATE.md` beyond the sanctioned inbound block. When the
+same stale text lives in three lines' STATE files, note it and leave it — those are line-owned.
