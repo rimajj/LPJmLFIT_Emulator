@@ -87,10 +87,23 @@ function readsoil(path)
     return hainich_soilcolumn(; whcs = whcs, rootdist = rdist, soildepth = sd)
 end
 
-"One patch's (pools, tmpls, ids) from already-parsed roster rows — same reconstruction as every other M
- probe (`biome_fdiff_oracle_probe.jl::build_patch`), plus the C's own per-stem identity."
-function build_patch(ind, rows)
+"""
+One patch's `(pools, tmpls, ids, types, kbeers)` from already-parsed roster rows — same reconstruction as
+every other M probe (`biome_fdiff_oracle_probe.jl::build_patch`), plus the C's own per-stem identity
+(`ids`), the C's own PFT id per stem (`types`, the `Type` column) and its own Beer–Lambert extinction
+(`kbeers`, the roster's `k_beer` column = `lightextcoeff`).
+
+`tmpl_pft = true` builds each template with THAT stem's PFT constants (`FDiff.pft_canopy_traits` /
+`pft_tempstressparams`) instead of beech's four hard-coded values (`intc` 0.02, `albedo_stem` 0.04,
+`albedo_litter` 0.1, `snowcanopyfrac` 0.4) and beech's 20/30 °C photosynthesis optimum. It governs ONLY
+those template constants — the rest of the per-PFT physiology travels in the `PFTPhys` bundle — which is
+what lets a single-variable arm hold them at beech's while changing one bundle field.
+`alphaa`, `albedo_leaf`, `emax` and `sla` are read PER STEM from the C's own output in both modes —
+they are the individual's own values, not a PFT default.
+"""
+function build_patch(ind, rows; tmpl_pft::Bool = false)
     v(k, r) = parse(Float64, ind[k][r])
+    ty(r) = parse(Int, ind["type"][r])
     pools = [
         TreePools{Float64}(
                 v("leaf_c", r), v("sapwood_c", r),
@@ -98,20 +111,26 @@ function build_patch(ind, rows)
                 v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r), false
             ) for r in rows
     ]
-    tmpls = [
-        Individual{Float64}(
-                v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
-                v("sapwood_c", r), v("root_c", r), 0.0, 0.02, 0.04, 0.1, 0.4, v("nind", r),
-                PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)),
-                TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0), false
-            ) for r in rows
-    ]
+    function mktmpl(r)
+        tr = tmpl_pft ? FDiff.pft_canopy_traits(ty(r)) :
+            (; intc = 0.02, albedo_stem = 0.04, albedo_litter = 0.1, snowcanopyfrac = 0.4)
+        ts = tmpl_pft ? FDiff.pft_tempstressparams(ty(r)) :
+            TempStressParams{Float64}(; temp_photos_low = 20.0, temp_photos_high = 30.0)
+        return Individual{Float64}(
+            v("fpar_leafon", r), 0.0, v("alphaa", r), v("albedo_leaf", r), v("emax", r),
+            v("sapwood_c", r), v("root_c", r), 0.0, tr.intc, tr.albedo_stem, tr.albedo_litter,
+            tr.snowcanopyfrac, v("nind", r),
+            PhotoParams{Float64}(; path = :c3, issla = true, sla = v("sla", r)), ts, false
+        )
+    end
     ids = [parse(Int, ind["id"][r]) for r in rows]
-    return pools, tmpls, ids
+    types = [ty(r) for r in rows]
+    kbeers = [v("k_beer", r) for r in rows]
+    return pools, [mktmpl(r) for r in rows], ids, types, kbeers
 end
 
 "All patches of one roster file, keyed by the C's own patch number (ONE ENSEMBLE MEMBER PER PATCH)."
-function readcanopy_patches(path)
+function readcanopy_patches(path; tmpl_pft::Bool = false)
     ind = readcsv(path)
     v(k, r) = parse(Float64, ind[k][r])
     nt(r) = parse(Int, ind["type"][r])
@@ -120,7 +139,7 @@ function readcanopy_patches(path)
         (nt(r) <= 6 && v("height", r) > 0) && push!(get!(prows, parse(Int, ind["patch"][r]), Int[]), r)
     end
     pk = sort(collect(keys(prows)))
-    return Dict(p => build_patch(ind, prows[p]) for p in pk), pk
+    return Dict(p => build_patch(ind, prows[p]; tmpl_pft = tmpl_pft) for p in pk), pk
 end
 
 "Daily `AtmForcing` for one cell, split by year: `forc[y]` is that calendar year's 365 days."
@@ -237,6 +256,67 @@ function cell_respcoeff(name, year)
 end
 
 patch_fpc(pools) = sum(FDiff._treepools_fpc(p, ALLOM) for p in pools if !p.is_grass; init = 0.0)
+# ADR 0126: the same sum with each stem's OWN Beer–Lambert extinction (the C's `k_beer` column), which is
+# the basis the C's own `fpc_ind` is on. Used by arm P only; the existing arms keep the shared 0.59 so
+# their published numbers reproduce (ADR 0060: emit both, never substitute silently).
+patch_fpc_k(pools, kb) = sum(
+    FDiff._treepools_fpc(pools[i], ALLOM; k_beer = kb[i]) for i in eachindex(pools) if !pools[i].is_grass;
+    init = 0.0
+)
+
+"""
+ONE per-PFT field mixed into an otherwise-BEECH bundle, per stem — the single-variable attribution arms.
+
+Arm P changes nine parameters at once, so it cannot say WHICH one moved a cell. Each subset takes exactly
+one field from the stem's own PFT and beech's (id 3) for all the rest, so the arms are independent and
+their effects are attributable:
+  `:resp`     — the maintenance-respiration coefficient (0.2 tropical / 1.2 temperate+boreal)
+  `:tstress`  — the photosynthesis temperature limits (`temp_photos` 15/25 boreal vs 20/30; `temp_co2`)
+  `:kbeer`    — the Beer–Lambert extinction (0.45 needleleaved / 0.59 broadleaved)
+  `:gmin`     — the minimum canopy conductance (0.3–1.6)
+  `:alloc`    — turnover (leaf/root residence 1/2/4 yr, sapwood 25/30 yr)
+  `:allom`    — the crown/height coefficients (angiosperm vs gymnosperm), `k_beer` held at beech's
+  `:traits`   — the four TEMPLATE constants (`intc` 0.02 vs 0.06, `albedo_stem`, `albedo_litter`,
+                `snowcanopyfrac`); the bundle stays pure beech, the caller passes `tmpl_pft = true`
+  `:phen`     — NOTHING from the bundle, so the ONLY difference from arm A is that real `pft_ids` are
+                passed: the per-PFT GSI **phenology**. ⚠ THIS IS THE ATTRIBUTION BASELINE, not a null arm.
+                `pft_ids` already existed before ADR 0126 and arm A does not pass it (its trees all run
+                beech's GSI filters), so EVERY per-PFT arm carries the phenology change too and each
+                column below must be read against `:phen`, not against `A`.
+⚠ These do NOT add up: the daily canopy is nonlinear, and `:allom`/`:alloc` act through the next year's
+pools. Read them as attributions, not as a decomposition.
+"""
+function pft_phys_subset(types, which::Symbol)
+    which in (:resp, :tstress, :kbeer, :gmin, :alloc, :allom, :traits, :phen) ||
+        error("pft_phys_subset: unknown subset $which")
+    b = FDiff.pft_phys(3)                    # beech — F's shipped configuration
+    return [one_field_bundle(b, FDiff.pft_phys(t), which) for t in types]
+end
+
+"`b` (beech) with exactly one field taken from `q` (this stem's own PFT)."
+function one_field_bundle(b, q, which::Symbol)
+    P = FDiff.PFTPhys{Float64}
+    # `:phen` and `:traits` take nothing from `q`: for `:phen` the templates are beech's too, so the only
+    # difference from arm A is the per-PFT GSI phenology that real `pft_ids` switch on; `:traits` adds the
+    # four per-PFT template constants on top of that (its caller passes `tmpl_pft = true`).
+    which in (:traits, :phen) && return b
+    which === :resp && return P(q.resp, b.alloc, b.allom, b.tstress, b.gmin)
+    which === :tstress && return P(b.resp, b.alloc, b.allom, q.tstress, b.gmin)
+    which === :gmin && return P(b.resp, b.alloc, b.allom, b.tstress, q.gmin)
+    which === :alloc && return P(b.resp, q.alloc, b.allom, b.tstress, b.gmin)
+    # `k_beer` and the crown/height coefficients share one struct in F (and in the C's `pftpar`), so the
+    # two arms are separated by field-swapping inside it: `:kbeer` takes only the extinction, `:allom`
+    # takes everything BUT the extinction.
+    which === :kbeer && return P(b.resp, b.alloc, with_kbeer(b.allom, q.allom.k_beer), b.tstress, b.gmin)
+    return P(b.resp, b.alloc, with_kbeer(q.allom, b.allom.k_beer), b.tstress, b.gmin)   # :allom
+end
+
+"A `TreeAllometry` equal to `base` with `k_beer` replaced."
+function with_kbeer(base, kb)
+    fns = fieldnames(typeof(base))
+    nt = NamedTuple{fns}(map(f -> getfield(base, f), fns))
+    return typeof(base)(; merge(nt, (; k_beer = kb))...)
+end
 
 """
 Run ONE year of F on one patch. Returns the grown pools and the year's mean tree GPP.
@@ -244,9 +324,22 @@ Run ONE year of F on one patch. Returns the grown pools and the year's mean tree
 `state`/`clo` are passed in and mutated, so a caller can carry F's own soil water and energy state across
 a year boundary while replacing the canopy — which is what makes the REINIT arm a canopy experiment
 rather than a full re-initialisation experiment.
+
+`per_pft`/`types` (ADR 0126): with `per_pft = true` the core runs each cohort's own `respcoeff`, `gmin`,
+turnover, crown allometry, `k_beer` and photosynthesis temperature limits instead of beech's for every
+tree. `types` must be the C's own per-stem `Type` column — passing the default ids would make every tree
+a beech again and the arm a no-op.
 """
-function run_one_year!(state, clo, pools, tmpls, soil, lat, forc; params = PARAMS)
-    core = FDiffFastCore(pools, tmpls, soil, lat; params = params)
+function run_one_year!(
+        state, clo, pools, tmpls, soil, lat, forc; params = PARAMS, per_pft::Bool = false, types = nothing,
+        subset::Symbol = :all
+    )
+    core = per_pft ?
+        FDiffFastCore(
+            pools, tmpls, soil, lat; params = params, pft_ids = types,
+            per_pft_params = subset === :all ? true : pft_phys_subset(types, subset)
+        ) :
+        FDiffFastCore(pools, tmpls, soil, lat; params = params)
     bc_f = LPJmLFITEmulator.stand_structure_tof(core)
     fpc0 = bc_f.fpc
     gpp = 0.0; npp = 0.0
@@ -291,7 +384,7 @@ REINIT for one cell under one alignment.
 target roster(y).  `shift = 1` (alignment B, the existing kernel probe's convention): year y starts from
 roster(y) and runs year y's forcing, target roster(y+1).
 """
-function reinit_cell(k::Int; shift::Int = 0, params = PARAMS)
+function reinit_cell(k::Int; shift::Int = 0, params = PARAMS, per_pft::Bool = false, subset::Symbol = :all)
     name = names[k]
     forc, tair0 = forcings_by_year(name)
     soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
@@ -305,15 +398,23 @@ function reinit_cell(k::Int; shift::Int = 0, params = PARAMS)
         src = joinpath(INDDIR, "M_individuals_$(name)_$(ysrc).csv")
         (isfile(src) && haskey(forc, y)) || continue
         (ytgt <= Y1) || continue
-        patches, pk = readcanopy_patches(src)
+        patches, pk = readcanopy_patches(src; tmpl_pft = per_pft && subset in (:all, :traits))
         accF = 0.0; accF0 = 0.0; accG = 0.0; accN = 0.0; accB = 0.0
         for p in pk
-            pools, tmpls, ids = patches[p]
+            pools, tmpls, ids, types, kbeers = patches[p]
             st = get!(states, p, SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER)))
             cl = get!(clos, p, SEBEnergyClosure(; t_soil0 = tair0))
-            grown, fpc0, gpp, npp, bmi =
-                run_one_year!(st, cl, pools, tmpls, soil, lats[k], forc[y]; params = params)
-            accF += patch_fpc(grown); accF0 += fpc0; accG += gpp; accN += npp; accB += bmi
+            grown, fpc0, gpp, npp, bmi = run_one_year!(
+                st, cl, pools, tmpls, soil, lats[k], forc[y];
+                params = params, per_pft = per_pft, types = types, subset = subset
+            )
+            # arm P scores crown cover on each stem's OWN `k_beer` (the C's own basis); the other arms
+            # keep the shared 0.59 so their published numbers reproduce unchanged. A SUBSET arm scores on
+            # whichever basis IT ran on, so its crown cover is never on a different basis from its physics.
+            kb_on = per_pft && subset in (:all, :kbeer)
+            fpc_of(pp) = kb_on ? patch_fpc_k(pp, kbeers) : patch_fpc(pp)
+            kb_i(i) = kb_on ? kbeers[i] : ALLOM.k_beer
+            accF += fpc_of(grown); accF0 += fpc0; accG += gpp; accN += npp; accB += bmi
             for i in eachindex(ids)
                 tk = (name, ytgt, p, ids[i])
                 haskey(targets, tk) || continue    # 5 m threshold flicker only (gated in the builder)
@@ -323,8 +424,9 @@ function reinit_cell(k::Int; shift::Int = 0, params = PARAMS)
                     pairs, PairRow(
                         name, y, p, ids[i], g.height, ch,
                         FDiff.agb_ind(g), cagb / s0.nind,
-                        FDiff._treepools_fpc(g, ALLOM), cfpc,
-                        s0.height, FDiff.agb_ind(s0), FDiff._treepools_fpc(s0, ALLOM),
+                        FDiff._treepools_fpc(g, ALLOM; k_beer = kb_i(i)), cfpc,
+                        s0.height, FDiff.agb_ind(s0),
+                        FDiff._treepools_fpc(s0, ALLOM; k_beer = kb_i(i)),
                         s0.nind, cnpp, dead == 1.0
                     )
                 )
@@ -345,7 +447,7 @@ function free_cell(k::Int)
     patches, pk = readcanopy_patches(joinpath(INDDIR, "M_individuals_$(name)_2009.csv"))
     fpc = fill(0.0, NYEAR); gpp = fill(0.0, NYEAR); bmi = fill(0.0, NYEAR)
     for p in pk
-        pools, tmpls, _ = patches[p]
+        pools, tmpls, _, _, _ = patches[p]
         st = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
         cl = SEBEnergyClosure(; t_soil0 = tair0)
         for (yi, y) in enumerate(Y0:Y1)
@@ -364,6 +466,19 @@ reinitB = [reinit_cell(k; shift = 1) for k in eachindex(names)]
 const RESPC = [cell_respcoeff(names[k], 2009) for k in eachindex(names)]
 reinitR2 = [reinit_cell(k; shift = 0, params = mkparams(; respcoeff = RESPC[k][1])) for k in eachindex(names)]
 @printf("REINIT arm R2 (C's own respcoeff) done\n"); flush(stdout)
+# arm P — the CODE CHANGE R2 was the diagnostic for: every cohort runs its own PFT's parameters
+# (`per_pft_params=true` + the C's own `Type` per stem). ADR 0126; scored against its pre-registered
+# criterion in PART 9.
+reinitP = [reinit_cell(k; shift = 0, per_pft = true) for k in eachindex(names)]
+@printf("REINIT arm P (per-cohort PFT parameters) done\n"); flush(stdout)
+# the SINGLE-VARIABLE attribution arms: arm P changes nine parameters at once, so on its own it cannot say
+# which one moved a cell. Each of these takes exactly ONE per-PFT field and beech's for everything else.
+const SUBSETS = (:phen, :resp, :tstress, :kbeer, :gmin, :alloc, :allom, :traits)
+reinitS = Dict{Symbol, Vector{Any}}()
+for sub in SUBSETS
+    reinitS[sub] = [reinit_cell(k; shift = 0, per_pft = true, subset = sub) for k in eachindex(names)]
+    @printf("REINIT subset arm %-8s done\n", sub); flush(stdout)
+end
 freearm = [free_cell(k) for k in eachindex(names)]
 @printf("FREE arm done\n\n"); flush(stdout)
 
@@ -605,6 +720,123 @@ for k in eachindex(names)
 end
 @printf("\n⚠ R2 is a DIAGNOSTIC ARM, not a proposed default: one scalar cannot represent a mixed-PFT cell,\n")
 @printf("and the real fix is per-cohort PFT parameters in `FDiffFastCore` (which needs `fc.pft_ids` —\n")
-@printf("already the standing requirement for `trait_mortality`, STATE item 3 / M5).\n")
+@printf("already the standing requirement for `trait_mortality`, STATE item 3 / M5). That fix is arm P.\n")
 
-@printf("\nDONE — the verdict is PART 4 + PART 7 + PART 8, read with PART 2's alignment and PART 1's gate.\n")
+# ── PART 9 — ARM P: THE CODE CHANGE, SCORED AGAINST ITS PRE-REGISTERED CRITERION ─────────────────────
+# ADR 0126 wires per-cohort PFT parameters through `FDiffFastCore` (`per_pft_params=true` + the C's own
+# `Type` per stem): each cohort runs its own `respcoeff` (0.2 tropical / 1.2 temperate+boreal), `gmin`
+# (0.3-1.6), turnover (leaf/root residence 1/2/4 yr, sapwood 25/30 yr), crown allometry (angiosperm vs
+# gymnosperm) and Beer-Lambert `k_beer` (0.45 needleleaved / 0.59 broadleaved), and its own photosynthesis
+# temperature optimum (15/25 °C boreal vs 20/30). Beech is unchanged BY CONSTRUCTION, so Hainich — 99.4 %
+# id 3 by sapwood — is this arm's own control that it changes only what it should.
+#
+# THE CRITERION, written into ADR 0125 §7.3 BEFORE this arm was run and quoted here verbatim so it cannot
+# be re-read after the fact:
+#     pass = `bmi_F/C` lands in [0.8, 1.25] at all five cells AND the paired Σ`dagb` F/C moves toward 1
+#            at all five, with NO committed baseline moving while the feature is off.
+# The third clause is checked by the test suite, not here (the feature is off by default and a beech-only
+# stand is byte-identical — `test/testitems/per_pft_params_tests.jl`).
+@printf("\n--- PART 9: ARM P — per-cohort PFT parameters (ADR 0126), vs the PRE-REGISTERED criterion ---\n")
+@printf(
+    "%-22s %9s %9s %9s %8s %8s %10s %10s %8s\n",
+    "cell", "bmi_A", "bmi_P", "bmi_C", "A/C", "P/C", "dagb_A/C", "dagb_P/C", "verdict"
+)
+function dagb_ratio(arm)
+    return median(
+        [
+            (
+                    py = [p for p in arm.pairs if p.year == y];
+                    isempty(py) ? NaN : sum(p.fa - p.a0 for p in py) / sum(p.ca - p.a0 for p in py)
+                ) for y in Y0:Y1
+        ]
+    )
+end
+pass_bmi = true; pass_dagb = true
+for k in eachindex(names)
+    cA = carbon_panel(reinitA[k], k)
+    cP = carbon_panel(reinitP[k], k)
+    rA = cA.bf / cA.bc; rP = cP.bf / cA.bc
+    dA = dagb_ratio(reinitA[k]); dP = dagb_ratio(reinitP[k])
+    ok_b = 0.8 <= rP <= 1.25
+    ok_d = abs(dP - 1) <= abs(dA - 1) + 1.0e-12
+    global pass_bmi &= ok_b
+    global pass_dagb &= ok_d
+    @printf(
+        "%-22s %9.1f %9.1f %9.1f %8.3f %8.3f %10.3f %10.3f %8s\n", names[k],
+        cA.bf, cP.bf, cA.bc, rA, rP, dA, dP, (ok_b ? "" : "bmi!") * (ok_d ? "" : "dagb!")
+    )
+end
+@printf(
+    "\nPRE-REGISTERED VERDICT: bmi_P/C in [0.8,1.25] at all five = %s;  Σdagb moved toward 1 at all five = %s\n",
+    pass_bmi ? "PASS" : "FAIL", pass_dagb ? "PASS" : "FAIL"
+)
+@printf("=> ADR 0125 §7.3 criterion: %s\n", (pass_bmi && pass_dagb) ? "PASS" : "FAIL")
+@printf("A = the shipped single beech set (the published rung-3 arm); P = per-cohort PFT parameters.\n")
+@printf("`bmi_C` is the C's own Σ per-stem NPP over the SAME stems and is identical in both arms.\n")
+@printf("⚠ Hainich is 99.4 %% beech by sapwood, so P ≡ A there by construction — an unmoved Hainich row is\n")
+@printf("this arm's control, NOT evidence that the change does nothing.\n")
+
+# Per-cell PFT composition + which of the two arms' crown covers is on which Beer-Lambert basis, so a
+# mixed cell is never read as if it had one parameter set (the R2 arm's lesson, PART 8).
+@printf("\n--- PART 9b: what P actually changed at each cell (sapwood-weighted over ids 0..6) ---\n")
+@printf("%-22s %8s %8s %8s %8s %8s\n", "cell", "respc", "k_beer", "gmin", "t_phot_hi", "turn_root")
+for k in eachindex(names)
+    w = RESPC[k][2]                                   # sapwood shares over ids 0..6
+    wm(f) = sum(w[i] * f(i - 1) for i in 1:7)
+    @printf(
+        "%-22s %8.3f %8.3f %8.3f %8.1f %8.3f\n", names[k],
+        wm(i -> FDiff.pft_respparams(i).respcoeff), wm(i -> FDiff.pft_allometry(i).k_beer),
+        wm(i -> FDiff.pft_canopy_traits(i).gmin),
+        wm(i -> FDiff.pft_tempstressparams(i).temp_photos_high),
+        wm(i -> FDiff.pft_allocparams(i).turnover_root)
+    )
+end
+@printf("F's single shipped set, for comparison: respc 1.200  k_beer 0.590  gmin 1.000  t_phot_hi 30.0  turn_root 1.000\n")
+@printf("⚠ arm P's crown cover is computed with each stem's OWN `k_beer` (the C's own basis, the roster's\n")
+@printf("`k_beer` column); arms A/B/R2 keep the shared 0.590 so their published numbers reproduce.\n")
+
+# ── PART 9c — WHICH PARAMETER DID IT? The single-variable attribution arms ────────────────────────────
+# Arm P moves nine parameters at once. Where it improves a cell that is fine; where it makes one WORSE the
+# only useful question is which parameter, and a nine-variable arm cannot answer it. Each arm below takes
+# exactly ONE per-PFT field from the stem's own PFT and beech's for all the rest. ⚠ They do NOT sum to P:
+# the daily canopy is nonlinear and `:alloc`/`:allom` act through the next year's pools. Read them as
+# attributions of SIGN and rough size, never as a decomposition.
+@printf("\n--- PART 9c: SINGLE-VARIABLE ATTRIBUTION — bmi_F/C per arm (A = the shipped beech set) ---\n")
+@printf("%-22s %7s", "cell", "A")
+for sub in SUBSETS
+    @printf(" %8s", sub)
+end
+@printf(" %8s\n", "P(all)")
+for k in eachindex(names)
+    cA = carbon_panel(reinitA[k], k)
+    @printf("%-22s %7.3f", names[k], cA.bf / cA.bc)
+    for sub in SUBSETS
+        @printf(" %8.3f", carbon_panel(reinitS[sub][k], k).bf / cA.bc)
+    end
+    @printf(" %8.3f\n", carbon_panel(reinitP[k], k).bf / cA.bc)
+end
+@printf("\n--- and the same arms on the paired per-stem growth, Σdagb F/C (year-median) ---\n")
+@printf("%-22s %7s", "cell", "A")
+for sub in SUBSETS
+    @printf(" %8s", sub)
+end
+@printf(" %8s\n", "P(all)")
+for k in eachindex(names)
+    @printf("%-22s %7.3f", names[k], dagb_ratio(reinitA[k]))
+    for sub in SUBSETS
+        @printf(" %8.3f", dagb_ratio(reinitS[sub][k]))
+    end
+    @printf(" %8.3f\n", dagb_ratio(reinitP[k]))
+end
+@printf("\n⚠ READ EVERY COLUMN AGAINST `phen`, NOT AGAINST `A`. Arm A does not pass `pft_ids` at all, so all of\n")
+@printf("its trees run BEECH's GSI phenology; every per-PFT arm passes the real ids and therefore carries the\n")
+@printf("per-PFT phenology as well. `phen` is that change ALONE (bundle and templates all beech), i.e. the\n")
+@printf("baseline each one-field arm should be differenced against. `pft_ids` predates ADR 0126 — the\n")
+@printf("phenology column is a gap arm A had, not something the per-PFT parameters introduced.\n")
+@printf("A column EQUAL to `phen` means that parameter is beech's at that cell already (the arm's own\n")
+@printf("control). 1.000 is the target. `resp` = respcoeff · `tstress` = temp_photos/temp_co2 · `kbeer` =\n")
+@printf("the Beer-Lambert extinction · `gmin` = min canopy conductance · `alloc` = turnover · `allom` = the\n")
+@printf("crown/height coefficients · `traits` = intc/albedo_stem/albedo_litter/snowcanopyfrac.\n")
+
+@printf("\nDONE — the verdict is PART 9 + 9c (the change and which parameter did what), read with PART 7/8\n")
+@printf("(why), PART 2's alignment and PART 1's gate.\n")

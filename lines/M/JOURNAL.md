@@ -1066,3 +1066,63 @@ Nothing in the model changed. The fix — per-species parameters instead of beec
 the top of the queue, with a pass criterion written down in advance, and line S needs the same change for a
 separate reason. Five cells of 54 020, one scenario, no warming response measured. Written up as decision
 record 0125.
+
+## Session 12 — 2026-08-12 — each tree species gets its own physiology, and the answer splits by climate
+
+The last session found that our fast daily forest code gives *every* tree in *every* grid cell the
+parameters of one species — European beech — and measured what that costs: at the two hot sites, whose trees
+are all tropical evergreens, the code was burning six times too much carbon in maintenance and its trees
+*lost* weight where the original model's gained. This session wired the real per-species parameters in and
+scored them against the pass condition that was written down in advance.
+
+Nine parameters genuinely differ between the seven tree types: how much carbon maintenance costs, how much
+light a leaf layer absorbs, the temperature at which photosynthesis is best, the leaf and root lifespans,
+the minimum leaf pore conductance, the crown-shape coefficients, and rainfall interception. They are now
+read out of the original model's own parameter file by the same preprocessor the model itself uses, written
+into one committed table, and checked against the code value by value, so a future edit to the model's
+parameters shows up as a failed test instead of a silent disagreement. The new behaviour ships switched
+off; with it on, a pure-beech stand comes out bit-for-bit identical to before, which is what lets it ship
+at all. The whole test suite is green and no stored reference result moved.
+
+**The result splits cleanly by climate, and the pass condition failed.** The two hot sites are fixed: at the
+Amazon site the year's carbon balance goes from −223 to +1199 grams per square metre against a true +1073,
+and per-tree growth from wrong-signed to 1.45× (still too fast, but the right sign and the right size). But
+the boreal site goes from 1.05 to 1.28 times too much carbon and the Mediterranean site from 2.7 to 3.1 —
+both *away* from the truth. Three of five sites land inside the ±25 % band the condition asked for, not
+five. I did not tune anything to make it pass; the failure is the result.
+
+The failure is not a reason to put beech back. These are the original model's own numbers, and "beech in
+the tropics" was not a defensible alternative — it was losing biomass. What the failure actually says is
+that the condition was written too ambitiously: it required this one change to also close two problems the
+previous session had already attributed elsewhere (the code keeps 1.5–1.9× too much of each year's carbon as
+wood, and the Mediterranean site has its own photosynthesis bias of 1.3–1.5×). And there is a sharper lesson
+in the boreal site: its previously respectable 1.05 was produced by *two* wrong parameters pulling opposite
+ways. Making both right revealed a real +27 % bias the compensation had hidden. A site that scores well with
+the wrong parameters has not been validated — the second time that has bitten this project.
+
+Because changing nine things at once cannot say which one did what, I ran eight further runs that each
+change exactly one. That decomposition immediately caught an error in my own first attempt: switching on
+per-species parameters also switches on per-species *leaf phenology* (when leaves come out and drop), and
+the first table credited the phenology's effect to whichever parameter was in the column. With a
+phenology-only baseline run added, the attribution is clean: the maintenance-respiration coefficient is the
+entire tropical fix on its own; the boreal site is pushed by the photosynthesis temperature optimum and the
+minimum conductance; the Mediterranean site is pushed by the phenology and by nothing else.
+
+That last point is a finding in its own right, and it is not about this change at all: **every five-site
+number this project has published for the fast code was computed with beech's leaf phenology for the larch,
+the tropical evergreen and everything else.** The capability to pass the real species was always there; the
+probe just never used it. Switching it on moves the Sahel site's carbon input by a full unit of ratio and
+the Mediterranean's by 0.38 — so about a third of what the previous session attributed to that site's dry
+root zone was in fact this.
+
+Two safety measures ride along, because a half-applied version of this change is worse than none. A coupled
+run that combines the per-species parameters with the learned demography component now **refuses to start**:
+the demography rebuilds the tree list using the single shared light-absorption coefficient, so such a run
+would use each species' own physics daily and then quietly revert to beech's annually — exactly the kind of
+mixed comparison that has cost this project a published conclusion before. And because the per-species data
+is indexed by position in the tree list, both growth entry points now check that the two lengths still agree
+and say what to do if they don't. Closing the coupled case needs a small change in the demography component,
+which belongs to another work line; it has been written up and handed to them.
+
+Five sites of 54 020, one scenario, one random seed, no warming response measured. Written up as decision
+record 0126.
