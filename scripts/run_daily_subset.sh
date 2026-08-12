@@ -78,13 +78,22 @@ EOF
     # MPI-ESM1-2-HR ssp370 forcings (relative to GLOBAL/); CONSTANT 409.63 ppm CO2 (2019 value,
     # held flat 2020-2100 -> the with_nitrogen="no" constant-CO2 regime, DEVELOPMENT_PLAN §3).
     # EXACT match to the annual run: .../ssp370/ground_truth/.../transient_2020_2100_npatch25_random_seed1.
+    #
+    # ⚠ The CO2 path was REPOINTED 2026-08-12 (line S). It used to name a loose copy under
+    # ~/scripts/clustering/climclusterpy_package/, which was cleaned out when that directory was
+    # reorganised into a packaged repo on 2026-07-27/28 — so this whole branch could not generate a
+    # runnable config for anyone (`ERROR100: Cannot open file ... in checkfile()`). It now names the
+    # recovered copy recorded in CLAUDE.md §1, verified: md5 ed5699b9c92d4d25857889f644b153db, 5212 B,
+    # 1700-2100, 409.63 ppm flat from 2020.
+    # ⚠ Do NOT put a `#` comment INSIDE the heredoc below: LPJmL pipes its config through `cpp`
+    # (src/lpj/openconfig.c:28), which reads `#` as a preprocessor directive and errors on every line.
     read -r -d '' FORCING_BLOCK <<EOF || true
   "temp" :      { "fmt" : "clm", "name" : "ssp370/tas_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
   "prec" :      { "fmt" : "clm", "name" : "ssp370/pr_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
   "lwnet" :     { "fmt" : "clm", "name" : "ssp370/lwnet_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
   "swdown" :    { "fmt" : "clm", "name" : "ssp370/rsds_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
   "humid" :     { "fmt" : "clm", "name" : "ssp370/huss_mpi-esm1-2-hr_ssp370_2015-2100_orderA.clm"},
-  "co2" :       { "fmt" : "txt", "name" : "/home/jamirp/scripts/clustering/climclusterpy_package/global_co2_ann_1700_2019_const_2100.txt"},
+  "co2" :       { "fmt" : "txt", "name" : "${GLOBAL}/global_co2_ann_1700_2019_const_2100.txt"},
 EOF
     ;;
   *) echo "FATAL: SCENARIO must be 'historic' or 'ssp370' (got '${SCENARIO}')"; exit 1 ;;

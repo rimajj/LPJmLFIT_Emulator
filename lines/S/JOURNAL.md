@@ -2110,3 +2110,35 @@ read it first.
 **Not done, and it is still the deliverable:** the warming response. Everything here is historic-only and a
 LEVEL statistic; ADR 0174's rung-1 response verdict is untouched. The scenario-pair run at ≥ 12 cells is
 item 1 of the handoff.
+
+## 2026-08-12 — rung 2 over the scenario pair: the warming response, measured at 12 cells (ADR 0177)
+
+Built and ran the scenario-pair experiment the standing steer asks for. 510 runs: 15 pre-registered cells
+(gdd5 519–9043), both legs, per-cell **and per-scenario** `REC` baselines, arms `NP`/`S0`/`S0h`/`S1` × 5 seeds.
+
+**Result is negative and clean.** FIT's own response is not one-signed (thins at 7 of 12 cells, gains at 5).
+Every arm thins almost everywhere ⇒ sign correct 7/7 where FIT thins, 1/5 where FIT gains — and the
+persistence null reproduces that pattern exactly (8/12 for NP, S0, S0h alike). So on DIRECTION the count
+model buys nothing. It buys magnitude (slope 1.33–1.48 vs the null's 2.56), but I² = 93–99 % kills the
+pooled slope as a summary.
+
+**Three defects fixed on the way in, two of them fatal to the measurement.** (1) The harness read its
+bioclimatic tail ONCE from the 5-cell registry, whose value is the 2000–2019 climatology — an ssp370 leg saw
+present-day climate for all 81 years, so any response was ~0 by construction. The shipped runtime never had
+this (ADR 0026) and the forest was trained per-(Cell,Year), so it was also a train/inference split.
+(2) `run_daily_subset.sh` could not generate a runnable ssp370 config at all (dead CO2 path).
+(3) The baseline and the arms had drifted onto different binaries after M's ADR-0130 rebuild.
+
+**Caveat I could not close this session:** the legs differ in length (20 vs 81 yr), so the raw pair mixes the
+climate response with 61 years of drift. The frozen-climate control that separates them is written and
+tested (`BOUNDARY=frozen`) — it is the next action.
+
+**Discovered two limits of the C hook** (M's `rung2_apply.c`): the `duplicate roster key` guard killed 82 of
+510 runs, fires in the observation path too, is cell-specific, and cost 3 cells their baseline — mechanism
+still open, `fread_tree.c:64-66` rules out the two obvious explanations. And cell 22732's ssp370 `S0h`/`S1`
+arms hang at the rendezvous reproducibly.
+
+**Process mistakes worth not repeating:** edited a bash script while a 510-job submission loop was reading it
+(bash resumes mid-token → `syntax error near unexpected token '('`); ran the campaign on `priority`, whose QOS
+caps a user at 10 concurrent jobs; and `pkill -f` on a pattern that also matched my own waiter loops. All
+captured in the `lpjmlfit-cbinary` skill.
