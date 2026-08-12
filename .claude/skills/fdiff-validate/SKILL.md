@@ -464,3 +464,34 @@ reported as a refutation. Cells with `gt5m` far from 1 (boreal 0.76, Sahel 0.78)
 gate act on the CUE channel only, so they are worth ~2–7 % of the assimilate error at Hainich, not the
 ~11 % the CUE gap alone implied. They remain justified by their own allocation criterion (`t_nosink`) —
 the two cases are different channels and must not be added together.
+
+---
+
+## Scoring a mechanism whose effect is a YEAR-OVER-YEAR DIFFERENCE OF STATE (ADR 0132, 2026-08-13)
+
+The rung-3 harness (`scripts/biome_sapwood_bg_probe.jl`, alignment A) **re-initialises F from the C's own
+roster every year**. That is what makes it a clean paired comparison, and it is a trap for any mechanism
+whose annual flux is `state_y − f(state_{y−1})`: the seed built from *this* year's fixture has already
+thrown that difference away, and the arm reports exactly zero with every gate green.
+
+**Do this before running such an arm.**
+
+1. **Write down what the state variable equals at the START of the step, in the C, in fixture quantities.**
+   If the answer references a different year's roster, read that roster. `prev_year_seed(path, soil)` in
+   the probe is the pattern: build a `(patch, id) → value` map from `M_individuals_<cell>_<y-2>.csv` and
+   fall back per-stem for rows it lacks (a stem that was below the writer's 5 m cut). Print the fallback
+   count (`bg_miss`) — the earliest window year has no `y−2` fixture, so 1 of 10 always falls back.
+2. **Derive the closed form first.** For the below-ground wood pool two lines of algebra gave
+   `D = c·leaf_c·sla·wooddens/k_latosa` and therefore "the sink is paid on the growth of the leaf pool" —
+   which predicted the zero, explained it, and specified the correct seed, at no compute cost.
+3. **Treat an exact 0.0 as an identity in the setup, not a small effect.** Real mechanisms give small
+   numbers on some stems and different small numbers on others.
+4. **Add the arm, never change the existing one.** Keep the old seeding convention on the published arms
+   (`Abg`, `Pbg`) so ADR 0127's numbers stay reproducible, and put the corrected convention on the new
+   arms (`Abgg`, `Pbgg`, `Pgbgg`) — the committed
+   `test/testitems/references/M_growth_channel_decomposition.csv` then carries both, and its pre-existing
+   rows stay byte-identical (verify that with a keyed row-by-row diff before committing the regenerated
+   file, not with `diff`).
+5. **`OUT_CSV` DOES reach the job** through `scripts/sbatch_julia.sh` (SLURM `--export=ALL`) — the
+   fixed-forward-list caveat in CLAUDE.md §9 is about `sbatch_python.sh` building a command *prefix*. Use
+   it to write a scratch copy first and diff against the committed fixture before overwriting it.
