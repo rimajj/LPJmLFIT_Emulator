@@ -158,6 +158,126 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
+> ## ✅ RUNG 1 IS CLOSED — one PASS, one FAILURE, and the compensating-errors verdict is written (2026-08-12, ADR 0172 + 0173 + 0174)
+>
+> **Read ADR 0174 first — it is rung 1's exit statement and it reframes every earlier "the level is fine"
+> sentence in this file as a warning rather than a reassurance.** Line S's own rungs (0 and 1 of
+> `EXECUTION_PLAN.md`) are now both closed. What remains for S is short and listed at the bottom; the
+> emulator is **not** finished and rung 1 closing does not claim it is (ADR 0174 §6).
+>
+> **1. RUNG 1's TWO-PART SCORE, against the rung-0 floor as its gate requires (ADR 0174 §2).**
+> * **LEVEL — PASSES, by a margin.** Free-running count level bias never exceeds **+0.16 stems/patch on a
+>   mean of 8.28 (< 2 %)**, flat after year 20, against the C's own two-run floor of **6.77 %** (all cells) /
+>   **16.63 %** (`<2 stems/patch`). Deattenuated trait slopes SLA 1.28 / Wooddens 0.66 / D95max 0.73 /
+>   minwscal 1.06.
+> * **RESPONSE — FAILS, on SIGN not magnitude.** Area-weighted count response ratio **+0.707 one-step**,
+>   **−0.226 free-running**. Validity horizon **~3 years**.
+> * ⇒ **every rung-1 number must now carry TWO labels: *level or response*, and *one-step or free-running*.**
+>   Three of those four combinations have been quoted interchangeably in this line's own history.
+>
+> **2. THE COMPENSATING-ERRORS VERDICT — YES, three named and sized channels (ADR 0174 §3).** The gate asked
+> for this and no document had stated it. The one to remember:
+> **the recursion follows 86.7 % of a large decline but 96.2 % of a large increase, FIT's global response is a
+> net LOSS, so the one-sided error RECTIFIES into +0.155 stems/patch — the same size as FIT's entire global
+> count response. The component passes its level gate BECAUSE OF the error that fails its response gate.**
+> The other two: teacher forcing (a null copying FIT's own previous-year count matches or beats the production
+> model on *every* response statistic) and a survivor-trained recruit marginal that already contains the
+> selection an added mortality operator would supply (+12.18 % on Wooddens).
+> **Standing reading rule from this:** before believing any future S arm — name its null, check the null does
+> not score the same, and check whether the arm's advantage duplicates something its training target already
+> contains.
+>
+> **3. ARM D IS DESCOPED, ITS MOTIVATING NUMBER REFUTED (ADR 0173).** The "bounded Beta beats the copula
+> 2–3×" was three confounds. The reproducer was found uncommitted on scratch
+> (`/p/tmp/jamirp/npatch_analysis/attack/betaks.py`) and its Beta side is a **one-sample** KS against a Beta
+> fitted to that same sample's own moments, per (Cell, PFT), on the **top-400 densest cells per PFT** ("to
+> give the Beta its best case", its own comment) — against the copula's **two-sample**, PFT-**mixed**,
+> out-of-sample number. Estimator = 1.7–2.4×; grouping = a further 1.2–1.5×; and the published Beta figure
+> sits **at its own statistic's noise floor** (0.0437–0.0476 vs a simulated 0.0434–0.0475 at n = 150).
+> Like for like, the **oracle-moment** Beta ties the **out-of-sample** copula on two axes and is **7–12 %
+> WORSE** on the other two. `test/testitems/references/S_beta_vs_copula_likeforlike.csv` is the reproducer,
+> gated on the published range. **Do not re-propose a bounded-Beta marginal without refuting ADR 0173 §2d.**
+>
+> **4. ⚠ A STORED `pred_<axis>.f64` ON THE SCRATCH COPULA TABLES CAN BE STALE (ADR 0173 §3a).** The **stock,
+> unmodified** `eval_slow_copula.jl` no longer reproduces the committed predictions in
+> `…/smoke_struct_on` (all four axes, worst |Δ| ≈ 3.0e5 gC/m³) at that table's own `KFOLDS=2`, while
+> `src/drf.jl`'s default `qrf = false` numerics are unchanged. **Never take a stored pred column as one arm
+> and compute the other today** — the difference would carry a code change as well as the effect. Cause not
+> yet pinned; that is a live loose end (item C below).
+>
+> **5. THE RECRUIT ARM IS A FIVE-CELL RESULT AND THE SIGN QUESTION IS SETTLED IN THE UNCOMFORTABLE
+> DIRECTION (ADR 0172).** Level effect positive and significant at **all five** cells (+2.21 / +5.02 / +5.09 /
+> +7.14 / +8.28 %, t 6.1–7.9 = a static **2.1–9.6× FIT** offset) ⇒ **`recruit_establishment` stays OFF**, now
+> on five cells. But the three cells inside the **same** eligibility regime (`n_elig = 4`, the modal 49 %)
+> **disagree beyond seed noise** (Cochran's Q = 8.03, df 2, p = 0.018, I² = 75 %; pairwise p = 0.026 and
+> 0.010) while the **shipped** channel over those same cells is homogeneous (Q = 0.51, p = 0.77, I² = 0 %).
+> ⇒ **ADR 0171 §5's third flip condition is RETIRED** — it grouped on a variable that does not organise the
+> effect — and replaced by: **≥ 12 named cells, weighted mean in [0.9, 1.1] ×FIT, AND a non-significant Q**
+> (so disagreeing cells cannot pool to the right answer by cancellation). The mechanism pointer that follows:
+> not the gate, the **seedbank** (the emulator's own state — ADR 0025 §4's excluded feedback loop).
+> ⚠ The Sahel is **UNRESOLVED** at 40 seeds (±2.57 ×FIT, ≈ 194 needed) and must not be read as a zero.
+>
+> **6. ADR 0171 §4's REGIME TABLE MEANS SOMETHING OTHER THAN WHAT IT SAYS (ADR 0172 §4).** Its `n_elig` is
+> the **20-year MINIMUM**, not the 2010 snapshot its header names. Same cell universe to the unit (52 451):
+> min-over-window gives the published **5 882 / 11.21 % / 29 median stems**, the snapshot gives
+> **1 931 / 3.68 %**, and only **739 cells (1.4 %)** are closed in all 20 years — at a **median of ONE stem
+> per patch**, inside ADR 0093 §3c's `<2 stems/patch` stratum (C two-run spread 31.6 % on counts).
+> ⇒ **the `n_elig = 0` offline arm is formally DESCOPED** (it would be measuring dice), with the counts that
+> make that checkable. `test/testitems/references/S_estab_regime_table.csv` carries both classifications and
+> both cell bases; **name the classification whenever the 11.2 % is quoted.**
+>
+> **⏩ WHAT TO DO NEXT, in order. Line S's rungs are closed, so these are loose ends and hand-offs, not a
+> programme.**
+>
+> **A. THE ONE GENUINELY UNMEASURED RUNG-1 DELIVERABLE: the determinism dividend's BAND-METRIC half**
+> (ADR 0173 §4; `EXECUTION_PLAN.md` §3's first "cheap win"). ADR 0093 §5's `[FREE]` claim is **+2.9 to
+> +14.4 percentage points of cells inside the 10 % band** from predicting the ensemble *expectation* instead
+> of drawing a realisation. `eval_slow_beta_arm.jl` now emits the expectation arm (`<SHADOW>_expect`), but
+> scored it on the copula's **per-cell KS** — a *distributional* metric, where a point mass has no dispersion,
+> so that number cannot confirm or refute the claim. What is needed is the **band metric on per-cell
+> aggregates**: cells inside `max(10 %, the cell's own two-run spread)` for draw vs expectation, on the
+> rung-0 floor's own strata. Cheap, free, and the only rung-1 line item still open.
+>
+> **B. RAISE THREE `EXECUTION_PLAN.md` EDITS AS AN INTEGRATION POINT** (integrator-owned, ADR 0174 §5.4):
+> strike rung-1 arm D; record rung 1's exit against ADR 0174; and replace the superseded pair at lines
+> 105–106 — it prints "Wooddens 0.63 / D95max 0.51" which are ADR 0111's **λ** values, *not* deattenuated
+> slopes (the corrected panel is SLA 1.28 / Wooddens 0.66 / D95max 0.73 / minwscal 1.06). ⚠ This was already
+> raised on 2026-08-10 and is **still unlanded**, and the same stale text is copied into
+> `lines/{M,E,O}/STATE.md`. Raise it again rather than assuming it will land.
+>
+> **C. PIN WHY THE STORED `pred_*.f64` NO LONGER REPRODUCE** (item 4). One bisect over `scripts/eval_slow_copula.jl`
+> between the table's write date and HEAD, on the small `smoke_struct_on` table (170 590 rows, ~2 min/run).
+> It matters beyond arm D: every published per-cell KS in `figures/emulator_validation/**` was computed from
+> those columns, so if the evaluator moved, the *figures* are on a basis today's code does not reproduce. That
+> is a provenance question, not necessarily a defect — but it is unanswered, and ADR 0060's rule says find out
+> before quoting.
+>
+> **D. `boundary_series` IS AN UNREGISTERED ROTTED FLAG.** ADR 0027 adopted the transient boundary as "the
+> production config" on physical-correctness grounds, yet `src/components/slow.jl`'s default is `nothing` and
+> grep shows it is passed only by testitems and S's own probes — **never by `scripts/run_coupled_biomes.jl`**.
+> That is guardrail 4's corollary with no pre-registered flip criterion at all (the shape that cost
+> `wscal_leafon` weeks). Either register a criterion or state why the default is right.
+>
+> **E. `qrf` HAS NEVER BEEN ISOLATED AT `ncond = 8`.** `qrf = false` is the equal-weight estimator ADR
+> 0037/0038 measured is *not* the quantile-regression forest (leaf-size CV 2.01; one leaf taking 11–19 % of a
+> prediction against QRF's 1.7 %), and the shipped `.rcop` pin is format v1 with no `qrf` line. ADR 0173
+> deliberately refuses `QRF=1` (it would confound the family comparison), so this is its own arm with its own
+> criterion — unwritten.
+>
+> **Do NOT:** build a level anchor for the global count recursion (ADR 0113 §2d + ADR 0105 — refute the
+> lead-time table first); build a variance-preserving or distribution-sampling count predictor (ADR 0114 §1 —
+> at lead 80 it still carries sd-ratio 0.904 and corr 0.940, so it is *not* regressing to a mean); re-run arm
+> D or the offline `n_elig = 0` arm (both descoped, §3 and §6); flip `recruit_establishment` on anything but
+> ADR 0119 §6 + ADR 0170 §3 + **ADR 0172 §5**'s replacement condition; quote any recruit number as fidelity
+> evidence (**five cells of 54 020**, `trait_mortality` off in every arm, level measured against the
+> emulator's own control); or quote a response number without naming the artifact pair.
+>
+> **What S owes line M: nothing.** The rung-2 recruit arm raised in ADR 0170/0171 (item R below) is still M's,
+> and ADR 0172 §3 is a further reason an offline re-run cannot substitute for it. M's ADR 0125 inbound
+> (per-cohort PFT parameters) asks nothing of S.
+
+> <details><summary>Superseded handoff — ADR 0171 as it left the line (its items 1-3 are now DONE: the cross-cell table is five cells (ADR 0172), arm D is descoped (ADR 0173), and the n_elig=0 arm is descoped on stem counts (ADR 0172 §4); kept for the audit trail)</summary>
+>
 > ## ✅ THE RECRUIT ARM IS A THREE-CELL RESULT NOW, AND ONE OF ADR 0170's TWO HEADLINES DID NOT SURVIVE (2026-08-12, ADR 0171)
 >
 > ADR 0170's handoff said *"do it at MORE CELLS, not more seeds."* Done — five 40-seed ensembles, jobs
@@ -246,6 +366,8 @@ rather than a request to flip now.
 > any number above as fidelity evidence (**three cells of 54 020**, `trait_mortality` off in every arm, and
 > the level effect is measured against the emulator's own control, not against FIT's per-cell level); or
 > quote a response number without naming the artifact pair.
+
+> </details>
 
 > ### R. RAISED WITH LINE M, 2026-08-12 (ADR 0170 + 0171) — the rung-2 RECRUIT arm. **S's own standing record of the ask.**
 >
