@@ -52,7 +52,7 @@ SRC="${SRC:-/p/tmp/jamirp/esm_land_daily/daily_2000_2019_historic_S_rung2rec_v6_
 TAG="${TAG:-S_r2s_${ARM}_${NPREV}_s${SEED}}"
 SUBMIT="${SUBMIT:-yes}"
 
-case "$ARM" in S0|S1|NP) ;; *) echo "ARM must be S0, S1 or NP (got '$ARM')" >&2; exit 2 ;; esac
+case "$ARM" in S0|S0h|S1|NP) ;; *) echo "ARM must be S0, S0h, S1 or NP (got '$ARM')" >&2; exit 2 ;; esac
 case "$NPREV" in roster|predict) ;; *)
   echo "NPREV must be roster or predict (got '$NPREV')" >&2; exit 2 ;; esac
 [ -f "$DRF" ] || { echo "no count forest at $DRF" >&2; exit 2; }

@@ -68,7 +68,15 @@ def COARSE_BIN(age: float) -> int:
 COARSE_LABEL = ("<20 (built by the arm)", "20-40 (carried through)", ">=40 (from the restart)")
 
 REC_DEFAULT = "/p/tmp/jamirp/M_rung2/M_rung2rec_v5_dump"
-ARM_GLOB = "/p/tmp/jamirp/M_rung2/M_r2armc_*_dump"
+#: The dump-naming conventions this scorer can group into arm+variant/seed on its own.  Arm C (line M,
+#: ADR 0124) and the line-S arm (ADR 0175) write the same roster-dump schema from different harnesses,
+#: so the SCORING is shared and only the discovery differs.  ⚠ Each arm family has its own recorded
+#: baseline and they are NOT interchangeable — arm C's is a v5 dump, the S arm's is v6 — so pass
+#: `--glob` plus the matching `--recorded` rather than scoring both families in one table.
+ARM_GLOBS = (
+    ("/p/tmp/jamirp/M_rung2/M_r2armc_*_dump", r"M_r2armc_(C[01])_([a-z]+)_s(\d+)_dump$"),
+    ("/p/tmp/jamirp/S_rung2/S_r2s_*_dump", r"S_r2s_(S0h|S0|S1|NP)_([a-z]+)_s(\d+)_dump$"),
+)
 GLOBAL_FIXTURE = "test/testitems/references/S_age_wooddens_gradient.csv"
 
 
@@ -163,25 +171,49 @@ def read_harness_log(dump_dir: str):
     tilt to solve), which is why it is reported as "n/a" rather than 0.
     """
     apply_dir = dump_dir[: -len("_dump")] + "_apply"
-    path = os.path.join(apply_dir, "armc_log.txt")
-    if not os.path.exists(path):
+    path = next(
+        (
+            p
+            for p in (
+                os.path.join(apply_dir, n) for n in ("armc_log.txt", "s_arm_log.txt")
+            )
+            if os.path.exists(p)
+        ),
+        None,
+    )
+    if path is None:
         return None
     thetas, rhos, sf, dr = [], [], [], []
     n_kill = n_tree = 0
+    col = None
     for line in open(path):
+        if line.startswith("#H L "):
+            # PARSE THE HEADER, never the position.  The two harnesses that write this file do NOT
+            # share a column order — arm C's row 4 is `rho` while the S arm's row 4 is `n_emit` — so a
+            # positional reader silently scores one arm on another's columns.  That is the same class
+            # of basis bug as the three the S arm's first run exposed (ADR 0175); the `#H L` line is
+            # written by both harnesses precisely so it never has to be guessed.  The data rows lead
+            # with the literal "L", so a name's field index is its header position + 1.
+            col = {n: i + 1 for i, n in enumerate(line.split()[2:])}
+            continue
         if not line.startswith("L "):
             continue
+        if col is None:
+            sys.exit(f"FATAL: {path}: an L record before its '#H L' header")
         f = line.split()
-        rhos.append(float(f[4]))
-        th = float(f[7])
+        rhos.append(float(f[col["rho"]]))
+        th = float(f[col["theta"]])
         if not math.isnan(th):
             thetas.append(th)
-        sf.append(float(f[8]))
-        n_kill += int(f[9])
-        n_tree += int(f[3])
-        d = float(f[14])
-        if not math.isnan(d):
-            dr.append(d)
+        sf.append(float(f[col["shortfall"]]))
+        n_kill += int(f[col["n_kill"]])
+        n_tree += int(f[col["n_tree"]])
+        # `sel_diff` is arm C's own per-patch-year drawn selection differential; the S arm's log does
+        # not carry it (its differential is recomputed from the dump instead), so it stays empty.
+        if "sel_diff" in col:
+            d = float(f[col["sel_diff"]])
+            if not math.isnan(d):
+                dr.append(d)
     return {"theta": thetas, "rho": rhos, "shortfall": sf, "n_kill": n_kill, "sel_drawn": dr}
 
 
@@ -291,6 +323,10 @@ def main() -> int:
     )
     ap.add_argument("--recorded", default=REC_DEFAULT, help="the RECORDED baseline dump (C truth, same cell)")
     ap.add_argument("--arm", action="append", default=[], help="TAG=DUMPDIR (repeatable); default: glob")
+    ap.add_argument(
+        "--glob", action="append", default=[],
+        help="substring selecting which arm FAMILY to auto-discover (e.g. S_rung2); default: all",
+    )
     ap.add_argument("--csv", default="", help="write the per-arm gradient table here")
     args = ap.parse_args()
 
@@ -317,13 +353,17 @@ def main() -> int:
             tag, _, d = spec.partition("=")
             arms[tag][0] = d
     else:
-        for d in sorted(glob.glob(ARM_GLOB)):
-            m = re.search(r"M_r2armc_(C[01])_([a-z]+)_s(\d+)_dump$", os.path.basename(d))
-            if m is None:
-                continue
-            arms[f"{m.group(1)}/{m.group(2)}"][int(m.group(3))] = d
+        families = [
+            (g, rx) for g, rx in ARM_GLOBS if not args.glob or any(s in g for s in args.glob)
+        ]
+        for g, rx in families:
+            for d in sorted(glob.glob(g)):
+                m = re.search(rx, os.path.basename(d))
+                if m is None:
+                    continue
+                arms[f"{m.group(1)}/{m.group(2)}"][int(m.group(3))] = d
     if not arms:
-        sys.exit(f"FATAL: no arm dumps matched {ARM_GLOB}")
+        sys.exit(f"FATAL: no arm dumps matched {[g for g, _ in ARM_GLOBS]}")
 
     results: dict[str, dict] = {}
     for tag in sorted(arms):
