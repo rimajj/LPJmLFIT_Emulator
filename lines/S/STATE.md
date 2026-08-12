@@ -83,6 +83,11 @@ rather than a request to flip now.
 > `references/S_recruit_multicell_seed_ensembles.csv`. **`recruit_establishment` stays OFF**, and the reason
 > is now three cells instead of one.
 >
+> **Merged to `main` as `9a69e2bc` (2026-08-12); `main` is green** — `test (lts)`, `test (1)`,
+> `test (macOS, lts)`, `format` and the changelog gate all pass (`test (pre)` is the standing
+> continue-on-error prerelease red — do not chase it). Local CI-faithful suite: **274 554 pass / 0 fail**
+> over 129 items, job 1761708.
+>
 > **1. THE HARNESS IS PER-CELL.** `SITE=<name from M_cells.csv>` moves
 > `scripts/trait_mortality_arm_probe.jl` to any of the five provisioned biome cells (trees, soil, forcing,
 > latitude, stem/age seeds and static boundary from the committed per-cell fixtures — **never** from the
