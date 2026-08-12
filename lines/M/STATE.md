@@ -432,7 +432,10 @@ not own; a re-run over the live registry is byte-identical.
 ▶ **WHAT TO DO NEXT — in order.**
 
 1. **WIRE PER-COHORT PFT PARAMETERS THROUGH `FDiffFastCore` (item 3 / M5 below). This is now the head of the
-   F-side queue** and it is no longer a tidy-up: `fast.jl:147` gives every tree beech's parameters, which is a
+   F-side queue** — and it is **raised to line S as an integration point** (an INBOUND block in
+   `lines/S/STATE.md`, 2026-08-12): the same wiring unblocks their pre-registered `trait_mortality` flip,
+   which has been waiting on `fc.pft_ids` since ADR 0049. M owns `fast.jl` and lands it; S needs to do
+   nothing until it is there. and it is no longer a tidy-up: `fast.jl:147` gives every tree beech's parameters, which is a
    **6× respiration error at every tropical cell** — 100 % of the stems at two of the five biome cells and the
    whole tropical belt globally. The `type` column is already in `references/M_individuals_<name>_2010.csv`
    (and the per-year rosters under `/p/tmp/jamirp/M_canopy_drift/individuals/`), so no new extraction is
