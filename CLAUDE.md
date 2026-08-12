@@ -579,6 +579,20 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 - **The `eval`-filename gotcha:** the agent's auto-mode classifier **refuses to read files whose name
   contains `eval`** (e.g. a sibling `eval_presentday_critical.py`) — it's a classifier heuristic, not an
   owner hook. Rename such a file (or copy to a non-`eval` name) before working on it.
+- ⚠ **`scripts/*.py` is NOT linted by CI (§5's path table), so lint it yourself — and two of the rules
+  catch real defects rather than style (`[VERIFIED 2026-08-12]`).** The repo's configured rule set lives in
+  `python/pyproject.toml` (`select = ["E","F","I","UP","B"]`, `line-length = 100`) and the bare default
+  `ruff check` reports many more rules than CI ever would, so run it with the real set or the signal drowns:
+  ```bash
+  ruff check --select E,F,I,UP,B --line-length 100 scripts/<yours>.py     # 0 findings is achievable
+  ```
+  The two that matter for this repo's failure modes: **`B905`** — a `zip()` without `strict=` **silently
+  truncates** to the shorter argument, so a paired computation over two arrays that must be the same rows
+  (seeds, cells, stems) quietly drops the tail instead of failing, which is the same class of silent
+  mis-pairing as the orderA-vs-`grid.bin` trap in §1; and **`B023`** — a closure over a loop variable, which
+  is fine only as long as it is called inside the same iteration and breaks silently the day it isn't. Bind
+  the value as a default (`def col(c, rows=rs):`) instead. Existing `scripts/*.py` carry ~11 default-rule
+  findings, so "the repo does it too" is not a reason to skip this on a NEW file.
 - Baseline S = **LightGBM + Gaussian copula** ("DirectEmulator"); no NN in the baseline. torch/lightning/
   sdv are intentionally out of the core deps until the metric panel escalates.
 
