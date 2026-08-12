@@ -1351,3 +1351,42 @@ inert, and the probe would have measured its own seeding convention. The seed wa
 document that sets it: ADR 0127 §6 required this mechanism to close a channel its own §5 had already
 measured it explains 11 % of, at that cell. When writing a criterion, cross-check it against every number
 already in the same document — otherwise the arm is graded against a bar its author's own data refutes.
+
+---
+
+## A "RESPONSE" MEASURED ACROSS TWO LEGS OF DIFFERENT LENGTH IS DRIFT UNTIL PROVEN OTHERWISE (ADR 0177 → 0178)
+
+The shape: you compare a model against truth in regime A and regime B and report the CHANGE, `B − A`, as
+the model's sensitivity to whatever distinguishes them. **If leg B also runs longer than leg A, `B − A` is
+the sensitivity PLUS the extra free-running drift**, and a model with *zero* sensitivity still posts a large
+number. Measured cost of not catching this: an emulator's warming response was first reported as
+through-origin slopes of 1.33–1.48 (i.e. "over-responds by ~40 %") across 12 cells; with the drift removed
+the drift share turned out to be **94–100 %** and the real sensitivity slope was **−0.03 to +0.04** — not a
+too-strong response but **no response at all**. The two readings imply completely different next work.
+
+**The fix is a THIRD arm, not a correction term.** Rerun leg B with the *driver under test* frozen at its
+leg-A value, everything else identical — same initial state, same seeds, same length. Then
+
+```
+sensitivity = B(driver live) − B(driver FROZEN)      drift = B(driver FROZEN) − A
+```
+
+and the two are separated by construction rather than by an assumption about how drift accumulates.
+
+Three rules that made this work, all cheap:
+
+* **Pick a null whose sensitivity term is zero BY CONSTRUCTION, and check it first.** Here the persistence
+  null never consults the learned model, so freezing the model's input cannot change its answer — and it
+  returned **exactly 0.000 at every one of 12 cells**. That is what licenses reading a small non-zero
+  elsewhere as real instead of as harness noise. A control you cannot predict the answer to is not a
+  control. (Same discipline as this skill's "build the null that is handed the same thing and learns
+  nothing" rule — here the null validates the *instrument*, not the claim.)
+* **Report the drift SHARE, not just the decomposed terms.** `|drift| / (|drift| + |sensitivity|)` is the
+  one number that says whether the original headline was measuring anything.
+* **Do not read per-cell ratios once the numerator collapses.** With a sensitivity of ~0.1 stems over
+  denominators of ~0.2, individual `sensitivity/truth` ratios reached ±2.5 on pure noise while the pooled
+  slope was ~0. Quote the across-cell slope and the share; list the per-cell ratios as diagnostics only.
+
+**Generalisation:** the same trap fires whenever the two arms of a comparison differ in ANY dimension that
+accumulates — leg length, spin-up, number of update steps, sequence length. Before reporting a difference
+as a sensitivity, ask *what else grows between the two arms*, and freeze the driver to find out.

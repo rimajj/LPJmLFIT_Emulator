@@ -43,7 +43,7 @@ import sys
 from collections import defaultdict
 
 # S_r2s_<scenario>_c<cell>_<arm>_<nprev>_s<seed>_dump
-DUMP_RE = re.compile(r"^S_r2s_(historic|ssp370)_c(\d+)_(REC|NP|S0h|S0|S1)_([a-z]+)_s(\d+)_dump$")
+DUMP_RE = re.compile(r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(REC|NP|S0h|S0|S1)_([a-z]+)_s(\d+)_dump$")
 
 STATS = ("n_living", "wooddens", "age_mean")
 
@@ -53,7 +53,7 @@ STATS = ("n_living", "wooddens", "age_mean")
 # century-end answer, silently and plausibly. Same shape as the "never judge a C run from SLURM
 # state" rule in CLAUDE.md §3 (those jobs always exit 0), so the run's OWN completion line is
 # checked too.
-TERMINAL_YEAR = {"historic": 2019, "ssp370": 2100}
+TERMINAL_YEAR = {"historic": 2019, "ssp370": 2100, "ssp370frz": 2100}
 RUNROOT = "/p/tmp/jamirp/esm_land_daily"
 
 
@@ -65,9 +65,12 @@ def run_completed(scen: str, cell: int, arm: str, npv: str, seed: int) -> bool:
     files exit 0 regardless, so a mid-run death leaves a plausible truncated dump behind a green
     job.
     """
-    y0, y1 = (2020, 2100) if scen == "ssp370" else (2000, 2019)
+    y0, y1 = (2000, 2019) if scen == "historic" else (2020, 2100)
     tag = f"S_r2s_{scen}_c{cell}_{arm}_{npv}_s{seed}"
-    d = os.path.join(RUNROOT, f"daily_{y0}_{y1}_{scen}_{tag}_c{cell}_seed1")
+    # The frozen control runs SCENARIO=ssp370 with a `frz` TAG, so the run directory carries the real
+    # scenario token while the tag carries the variant.
+    dir_scen = "ssp370" if scen == "ssp370frz" else scen
+    d = os.path.join(RUNROOT, f"daily_{y0}_{y1}_{dir_scen}_{tag}_c{cell}_seed1")
     logs = [p for p in glob.glob(os.path.join(d, "lpjml.*.out")) if os.path.getsize(p) > 0]
     for p in logs:
         with open(p, errors="replace") as fh:
@@ -294,6 +297,62 @@ def main() -> int:
         if len(data) - len(resolved):
             print(f"          ({len(data) - len(resolved)} cell(s) unresolved: |truth| below "
                   f"{a.min_truth} seed SD — listed above, excluded from the ratio only)")
+
+    # ── THE DRIFT DECOMPOSITION — the actual climate-response measurement ────────────────────────────
+    # The two scenario legs differ in LENGTH (20 vs 81 yr), so `ssp370 - historic` is the climate response
+    # PLUS 61 years of free-running drift, and an arm with no climate sensitivity still scores large on it
+    # (the persistence null is the proof: it kills nobody and posts the biggest number). The frozen-climate
+    # control removes that term by construction — same 81 years, same restart, same seeds, only the climate
+    # channel held at present day — so, per cell and SEED-PAIRED:
+    #
+    #     climate response = terminal(arm, ssp370 transient) - terminal(arm, ssp370 FROZEN)
+    #     drift            = terminal(arm, ssp370 FROZEN)    - terminal(arm, historic)
+    #
+    # There is no FIT-side counterpart to `frozen` (the C always sees the real forcing), so this is scored
+    # as the arm's OWN sensitivity and compared against FIT's total change, not against a frozen truth.
+    have_frz = any(k[2] == "ssp370frz" for k in got)
+    if have_frz:
+        print("\n== CLIMATE RESPONSE vs DRIFT (frozen-climate control; seed-paired within each cell)")
+        print("   climate = ssp370(transient) - ssp370(FROZEN)   |   drift = ssp370(FROZEN) - historic")
+        print(f"\n{'cell':>7} {'arm':>4} {'climate':>9} {'drift':>9} {'total':>9} {'truth':>9} "
+              f"{'clim/truth':>10} {'seeds':>5}")
+        summary: dict[str, list[tuple[float, float, float]]] = defaultdict(list)
+        for cell in cells:
+            rec_h = got.get((cell, "REC", "historic"), [])
+            rec_s = got.get((cell, "REC", "ssp370"), [])
+            if not rec_h or not rec_s:
+                continue
+            truth = rec_s[0][a.stat] - rec_h[0][a.stat]
+            for arm in arms:
+                hs = {x["seed"]: x[a.stat] for x in got.get((cell, arm, "historic"), [])}
+                ts = {x["seed"]: x[a.stat] for x in got.get((cell, arm, "ssp370"), [])}
+                fs = {x["seed"]: x[a.stat] for x in got.get((cell, arm, "ssp370frz"), [])}
+                common = sorted(set(ts) & set(fs))
+                if not common:
+                    continue
+                clim, _ = mean_sd([ts[s] - fs[s] for s in common])
+                dpair = sorted(set(fs) & set(hs))
+                drift, _ = mean_sd([fs[s] - hs[s] for s in dpair]) if dpair else (float("nan"), 0.0)
+                total = clim + drift
+                ratio = clim / truth if truth != 0 else float("nan")
+                print(f"{cell:>7} {arm:>4} {clim:9.3f} {drift:9.3f} {total:9.3f} {truth:9.3f} "
+                      f"{ratio:10.3f} {len(common):5d}")
+                summary[arm].append((clim, drift, truth))
+        print("\n   per-arm: how much of the apparent response was DRIFT, and does the climate part track FIT?")
+        for arm in arms:
+            d = summary.get(arm, [])
+            if not d:
+                continue
+            mc, _ = mean_sd([x[0] for x in d])
+            md, _ = mean_sd([x[1] for x in d])
+            share = abs(md) / (abs(mc) + abs(md)) * 100 if (abs(mc) + abs(md)) > 0 else float("nan")
+            den = sum(t * t for _, _, t in d)
+            slope = (sum(t * c for c, _, t in d) / den) if den > 0 else float("nan")
+            agree = sum(1 for c, _, t in d if c * t > 0)
+            print(f"   {arm:>4}  mean climate {mc:8.3f}   mean drift {md:8.3f}   drift is {share:5.1f} % of "
+                  f"the magnitude   climate-vs-truth slope {slope:7.3f}   sign agrees {agree}/{len(d)}")
+        print("   ⇒ a large drift share means the scenario-pair number in the table above was mostly drift,")
+        print("     and only the `climate` column is a sensitivity.")
 
     if a.csv:
         with open(a.csv, "w") as f:

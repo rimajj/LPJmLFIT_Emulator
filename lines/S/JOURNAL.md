@@ -2142,3 +2142,21 @@ arms hang at the rendezvous reproducibly.
 (bash resumes mid-token → `syntax error near unexpected token '('`); ran the campaign on `priority`, whose QOS
 caps a user at 10 concurrent jobs; and `pkill -f` on a pattern that also matched my own waiter loops. All
 captured in the `lpjmlfit-cbinary` skill.
+
+## 2026-08-13 — the frozen-climate control: there is no climate response (ADR 0178)
+
+Ran the control ADR 0177 §5 pre-registered (240 runs, 187 complete). It validates itself — the persistence
+null's climate term is exactly 0.000 at all 12 cells, as it must be, since ρ=1 never consults the model.
+
+Against that: drift is 94.4 / 97.2 / 99.8 % of the magnitude for S0 / S0h / S1, and the surviving climate
+term's slope against FIT's own change is −0.031 / +0.044 / +0.003. **Essentially the entire apparent
+response in ADR 0177 was drift.** The count model does not respond to climate in a measurable way when it
+runs free inside FIT's physics. That also gives ADR 0177's "matches the null on direction" its mechanism:
+on the climate channel the arms ARE the null.
+
+Resolves ADR 0175's roster_n_prev falsifier negatively — n_prev is the stand's own count throughout and the
+response is still ~0, so that defect is not the mechanism.
+
+Next is cheap and needs no LPJmL run: a partial-dependence sweep of the trained forest over its two
+transient climate features, to separate "never learned a climate dependence" from "learned one the loop
+cannot express".
