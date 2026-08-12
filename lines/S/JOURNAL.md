@@ -2067,3 +2067,46 @@ science: identical forests across arms is a stronger claim than matched hyperpar
 What line S still owes after this is small and named in STATE. What the *project* still owes is not small, and
 rung 1 closing does not touch it: the response clause of the acceptance criterion is failed, offline, with a
 measured horizon of about three years, and everything that could fix it is upward on the ladder.
+
+## 2026-08-12 — rung 2 arm S RUN and SCORED: the trait operator's advantage is 85 % interface (ADR 0176)
+
+Picked up the handoff's item D1 (run `S0`/`S1`, score against `NP` and the record baseline) and finished the
+housekeeping it left open.
+
+**Housekeeping first, since branch CI is ~10 min of wall clock and the arms are 12 s.** Rebased, pushed
+`cf872a36`, launched the arms while `CI`/`format` ran, then merged `line/S` → `main` at `91581373` with the
+changelog collated inside the lock. Required gates green (`test (pre)` red as always). Recorded rung-2
+ownership in `EXECUTION_PLAN.md` itself at `aa5b2dc1` — the owner steer was the trigger, and the plan file is
+where a line looks up what it owns; the S → M integration point is marked dormant rather than deleted.
+
+**The pre-registered check passed, which is the only reason anything below counts.** `NP` (persistence null)
+does NOT tie the learned arms: 1.803× the C's terminal stems with *zero* seed spread, against `S0` 1.490 /
+`S1` 1.028. Offline (ADR 0112) the same null matched the production model on every response statistic — so
+the harness has power the offline basis did not.
+
+**Then the thing I nearly published wrong.** The naive reading of `S1` 1.028 vs `S0` 1.490 is "trait
+selection works". But `S1` differs from `S0` in *two* ways at once — `f_i = (1−mort)^θ` is zero wherever
+FIT's hazard is already certain, *and* it orders survivors by trait — and the C's own audit showed `S0`
+sparing **1 952 trees the C was certain of** against `S1`'s 358. So I added `ARM=S0h` (uniform among the
+non-certain, same count target, 12 s × 5 seeds) to price the two separately. The interface removes **87 %**
+of the count error and **84 %** of the selection error; trait ordering 13 % / 16 %, and contributes nothing
+measurable to the age–wooddens gradient (`S0h` and `S1` have *identical* per-PFT Spearman). `S0h → S1` is
+not even resolved at 5 seeds on counts (t = 1.69).
+
+That re-attribution is the ADR's point, and it changes the `trait_mortality` flip argument rather than
+settling it: the part that demonstrably helps rests on **FIT's own** `mort ≥ 1` set, and the coupled
+emulator uses the **ported** hazard, which lacks FIT's stress integrals (ADR 0174 §4). So ADR 0049's
+unmeetable offline criterion is retired and replaced with a narrow, run-free one (certain-set recall and
+precision ≥ 0.8 on ≥ 12 cells).
+
+**Two process notes.** (1) The arm-C scorer's harness-log reader was *positional*, and the two harnesses do
+not share a column order (field 4 is `rho` in one, `n_emit` in the other) — it would have scored the S arm
+on arm C's columns without a word. Made it header-driven. (2) I hand-rolled a column-by-column dump
+comparison to test `NP`'s seed-independence, then found `scripts/diagnose_rung2_dump_equality.py` already
+does exactly that, excludes the known-uninitialised `sapwood_old`/`pre`-phase `mort_*` columns, and returns
+a clean *"identical in every initialised column"*. Threw mine away. The skill was right and I should have
+read it first.
+
+**Not done, and it is still the deliverable:** the warming response. Everything here is historic-only and a
+LEVEL statistic; ADR 0174's rung-1 response verdict is untouched. The scenario-pair run at ≥ 12 cells is
+item 1 of the handoff.

@@ -158,6 +158,100 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
+> ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
+>
+> Owner, verbatim: *"why the fuck don't you finally fix the warming response?? why do you switch important
+> mechanisms off?? This has nothing to do with other lines... using the original code for fast physics for the
+> emulator has to work in line S!!!!!! if that does not work we don't have to do the other lines!!"*
+>
+> **Three standing consequences. Do not re-litigate them and do not hand any of them to another line.**
+> 1. **Rung 2 is line S's work.** ✅ Now recorded in `EXECUTION_PLAN.md` itself (commit `aa5b2dc1` on `main`);
+>    the S → M integration point is marked dormant, not deleted.
+> 2. **Attribution is no longer an acceptable deliverable for the response.**
+> 3. **"It is opt-in" is not a sufficient answer** for a mechanism believed to be better. Guardrail 4 still
+>    governs how a default flips (measure first), but a flag whose criterion cannot be met in the setting it
+>    is tested in is being parked, not measured.
+>
+> ### A. WHAT LANDED THIS SESSION — rung 2 arm S is RUN and SCORED (ADR 0176, merged)
+>
+> All 17 runs `rc=0`, 1 task, ~12 s each, Hainich historic 2000–2019, 5 seeds per arm.
+>
+> * **The pre-registered check PASSES: the persistence null does NOT tie the arms.** `NP` = **1.803×** the C's
+>   terminal stems with **zero** seed spread (verified identical in every initialised column by
+>   `diagnose_rung2_dump_equality.py`), against `S0` 1.490 / `S0h` 1.089 / `S1` 1.028. ⇒ **this harness has
+>   power the offline basis of ADR 0112 did not**, so its numbers are measurements, not restatements.
+> * **The shipped uniform thinning is the worst non-null arm on every statistic** — terminal stems 1.490×,
+>   selection differential 0.390×, stand skewed young (224/166/154 vs the C's 118/120/127). The C's own audit
+>   says why: it **spares 1 952 trees the C was certain of** (`f_i = ρ ≈ 0.9` on a condemned tree).
+> * ⚠ **THE FINDING THAT MATTERS — I added `ARM=S0h` and it re-attributed the result.** `S1` differs from
+>   `S0` in TWO ways (zeroes survival at `mort ≥ 1`, *and* orders by trait). `S0h` takes only the first, same
+>   count target. Split: the **interface removes 87 % of the count error and 84 % of the selection error**;
+>   trait ordering 13 % / 16 %. The per-PFT age–wooddens Spearman is **identical** between `S0h` and `S1`.
+>   `S0h → S1` is **t = 1.69 on counts (NOT resolved at 5 seeds)**, t = 3.54 on selection (resolved, favours
+>   `S1`). ⇒ *"the trait operator fixed the stand"* is 85 % *"stop overriding deaths the C had settled"*.
+>
+> ### B. THE NEXT ACTIONS, in order. Item 1 is the whole point and has never been run.
+>
+> 1. **THE RESPONSE — the actual deliverable, and now unblocked.** Arm S over the scenario PAIR: historic
+>    2000–2019 (`restart_1999.lpj`) and ssp370 2020–2100 (`restart_2019.lpj`), with a **`MODE=record`
+>    baseline for EACH cell and EACH scenario** (ADR 0041 forbids scoring a single-cell re-run against the
+>    global truth). The response is `[arm_ssp − arm_hist]` against `[record_ssp − record_hist]` — same
+>    physics both arms, only the demography swapped. **Run `S0`, `S0h` and `S1`**, not just two: this session
+>    showed the two-arm reading mis-attributes. Scale to **≥ 12 cells** (ADR 0172 §5's bar) and report
+>    **Cochran's Q**, not a pooled mean — pooling heterogeneous cells cancels (ADR 0174 §3d). Note the ssp370
+>    leg is 81 years, not 20, so budget more than 12 s/run and re-check the apply timeout.
+> 2. **THE `trait_mortality` FLIP — criterion pre-registered in ADR 0176 §4, and it needs NO new run.**
+>    The blocker is now narrow and specific: 85 % of the arm's measured advantage rests on **FIT's own**
+>    `mort ≥ 1` set, while the coupled emulator uses the **ported** hazard, which ADR 0174 §4 records as
+>    lacking FIT's stress integrals. **Pass condition: on ≥ 12 named cells, the ported hazard's certain set
+>    vs FIT's own on the SAME rosters, recall ≥ 0.8 AND precision ≥ 0.8.** The harness already sees both —
+>    this is one comparison pass over dumps you have. Pass ⇒ flip (see the `julia-test` skill's default-flip
+>    procedure). Fail ⇒ the finding is that the port needs the stress integrals before its ordering is worth
+>    anything, which is rung-2 work, not a flag decision. **ADR 0049's offline criterion is retired.**
+> 3. **Wire `fc.pft_phys` through `slow.jl`'s three roster-rebuild call sites** (ADR 0126 inbound item 2).
+>    Owed, small, and it unblocks the coupled `trait_mortality` arm. Rebuild the bundles whenever the roster
+>    changes length or the assertion fires.
+> 4. **The determinism dividend's band-metric half** — still the one genuinely unmeasured rung-1 deliverable
+>    (ADR 0174 §5 item 5): free, worth +2.9 to +14.4 pp of cells inside the 10 % band on ADR 0093's own
+>    claim, and it needs a BAND metric on per-cell aggregates, not the per-cell KS the arm D reproducer emitted.
+>
+> ### C. FLAG STATE — read before proposing to flip anything
+>
+> | flag | state | what actually blocks it |
+> |---|---|---|
+> | `wscal_leafon` | **ON** | — |
+> | `roster_n_prev` | **off, and NO fidelity number is measured with it on** | ADR 0175 §3's falsifier is still open: if the free-running response ratio does not move materially toward the one-step +0.707, the defect is real but is not the mechanism of the sign failure, and the attribution table is withdrawn. **Item 1 is what tests this.** |
+> | `trait_mortality` | off | **ADR 0176 §4's certain-set criterion** (item 2). ADR 0049's offline criterion is retired. |
+> | `recruit_establishment` | off | off for a GOOD measured reason — a +2–8 % standing wood-density LEVEL offset at 5 cells, 2–10× the whole warming signal (ADR 0172). ADR 0172 §5's replacement condition (≥ 12 cells, weighted mean in [0.9, 1.1] ×FIT, non-significant Q) stands. **Do not flip it to satisfy the steer.** |
+> | `per_pft_params` (M's) | off | M's call, not S's. |
+>
+> ### D. GOTCHAS THIS SESSION PAID FOR — all captured in the `lpjmlfit-cbinary` skill
+>
+> * **Score an S arm with `diagnose_rung2_armc.py --glob S_rung2 --recorded <the v6 record dump>`.** Its
+>   harness-log reader is **header-driven** now — it was positional, and arm C's log and the S arm's do NOT
+>   share a column order (field 4 is `rho` in one, `n_emit` in the other). It would have scored one arm on
+>   the other's columns silently.
+> * **Do NOT hand-roll a dump comparison.** `sapwood_old` and the `pre`-phase `mort_*` are known
+>   uninitialised memory; a bare column diff reports them as differences and looks like a real divergence.
+>   `scripts/diagnose_rung2_dump_equality.py` excludes them and says *"identical in every initialised
+>   column"*. I hand-rolled it before checking the skill and threw the result away — the skill was right.
+> * **Read `theta` and `shortfall` beside any ordering result.** `S1`'s median θ is 0.19–0.35 with
+>   `shortfall > 0` in **132–148 of 500 patch-years** — in ~28 % the certain kills alone overshoot the
+>   learned target and the ordering had no room (ADR 0117 item 6.i).
+> * **Whenever two arms differ in more than one way, add the arm that changes only one.** It cost 12 s and
+>   it inverted the headline attribution.
+>
+> ### E. HOUSEKEEPING — clean as of this session
+>
+> Everything is pushed and merged: `line/S` → `main` at `91581373` (required gates green on `cf872a36`;
+> `test (pre)` is the known allowed-to-fail), changelog fragments collated inside the lock, and
+> `EXECUTION_PLAN.md`'s rung-2 ownership recorded at `aa5b2dc1`. ADR 0176 is `accepted`; when arm S produces
+> a RESPONSE number that is a new ADR (0177), not an edit to 0176.
+
+
+## Superseded NEXT — rung 2 arm S before it was RUN (ADR 0176 replaced it); audit trail
+
+
 > ## 🔴 THE OWNER OVERRODE THE PLAN: FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, AND DO RUNG 2 IN LINE S (2026-08-12, ADR 0175)
 >
 > Owner, verbatim: *"why the fuck don't you finally fix the warming response?? why do you switch important
