@@ -412,3 +412,46 @@ python3 scripts/diagnose_rung2_armc.py --csv <out.csv>      # scores every M_r2a
    trajectory; the null arm visits a state region with 7× the ghost-tree rate. It held (0 exceedances, max rel
    Δ 1.7e-15 over 10 600 records) — but that was luck until measured:
    `julia --project=. scripts/diagnose_rung2_hazard_identity.jl --dump=<arm dump>`.
+
+## Turning a block of `par/*.js` into a COMMITTED, GATED parameter table (ADR 0047 → ADR 0126; do not re-derive)
+
+Two of these now exist and a third is likely, so the procedure is fixed rather than re-invented. The point
+is that no physical constant is ever transcribed by hand into Julia or Python (ADR 0031: a stale second copy
+of `TREE_TYPES` silently dropped 32.5 % of tree stems for months).
+
+**The two existing tables — read one before writing another; the one you need may already be there.**
+
+| table | built by | carries |
+|---|---|---|
+| `test/testitems/references/S_pft_mortality_params.csv` | `scripts/build_mort_params_reference.py` | the ported FIT hazard: `wdmort_1/2`, `mort_water_*`, `mort_temp_factor`, `longevity` (= the JSON key `"age"`), `temp_stressed`, `aphen_min`, the sapling/allometry terms, + the `k_mort`/`KMORT_2`/… globals |
+| `test/testitems/references/M_pft_fdiff_params.csv` | `scripts/build_pft_fdiff_params_reference.py` | everything F_diff applies per individual: `respcoeff`, C:N, `gmin`/`emax`/`intc`/`alphaa`/albedos/`snowcanopyfrac`/`lightextcoeff`, `temp_photos`/`temp_co2`, turnover (both as the C's residence time AND as F's rate), `lmro_*`, `reprod_cost`, and the tree allometry (`allom1/2/3`, `kpr`, `k_latosa`, `crownarea_max`, `crownlength`, `height_max`, `wood_sapl`) |
+
+**The recipe.**
+
+1. **Import the reader, do not copy it:** `sys.path.insert(0, <scripts dir>)` then
+   `from build_mort_params_reference import cpp_json`. It runs `cpp -P` — the same preprocessor LPJmL pipes
+   its own parameter files through (`src/lpj/openconfig.c:28`) — strips the trailing commas LPJmL's lenient
+   parser tolerates, and parses with an `object_pairs_hook` that RECORDS duplicated keys. **Assert the
+   duplicate set is exactly what you expect** (`{aphen_min, aphen_max}` today, from larch's deliberate
+   10/200 override): json-c takes the LAST occurrence, so a new duplicate silently overrides a parameter and
+   is invisible in the file.
+2. **Row per PFT id, in `pftpar` scan order** — that order IS the `ind` output's `Type` column. Ids 0–6 are
+   trees, 7–9 grasses, 10+ crops (never simulated). **Grass entries lack every tree-allometry key AND
+   `cn_ratio.sapwood` and `turnover.sapwood`** — emit those as empty fields, don't `KeyError`.
+3. **Emit BOTH unit conventions when they differ.** The C stores turnover as a residence time in years, F as
+   a rate per year; `M_pft_fdiff_params.csv` carries `turnover_*_yr` and `turnover_*_rate` and the builder
+   asserts `rate == 1/yr`, so the consuming gate compares like with like and the inversion is recorded once.
+4. **Self-check inside the builder** against facts recorded elsewhere — the 0.2/1.2 `respcoeff` split, the
+   0.45/0.59 needleleaved/broadleaved extinction, that every tree PFT is still `summergreen` (else F's
+   `is_deciduous` becomes per-PFT), and **that the row for the PFT whose values the Julia code ships as its
+   defaults still matches those defaults** (id 3, beech). That last one is what makes an opt-in per-PFT
+   feature byte-identical, so it must fail loudly if the C moves.
+5. **`CHECK=1` regenerates and diffs instead of writing** (exit 1 on drift), and a Julia testitem compares
+   the code's literals to the CSV **value by value** (`test/testitems/per_pft_params_tests.jl` is the model:
+   ~356 assertions over the 10 rows). Both halves are needed — the CSV proves the code matches the table, the
+   `CHECK` run proves the table still matches the C.
+
+⚠ **A parameter that is a `{"low","median","high"}` interval in the file is NOT necessarily sampled.** All
+seven tree PFTs declare `k_root` as a scalar 0.02 with the interval form commented out (ADR 0117), and the
+`"median"` of an interval is a GLOBAL default that lies outside `[low, high]` for four PFTs. Read the live
+file, and check whether the emitted column actually varies before treating a parameter as a trait.
