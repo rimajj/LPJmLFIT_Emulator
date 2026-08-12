@@ -1216,3 +1216,40 @@ Rung 1's exit verdict makes this a standing rule rather than a per-case observat
 And when quoting: **label every number *level or response* and *one-step or free-running*.** Those four
 combinations have different verdicts, and three of the four have been quoted interchangeably in this repo's
 own history.
+
+## A RATIO WHOSE DENOMINATOR IS ALSO WRONG RE-EXPRESSES THE NUMERATOR'S ERROR — SCORE THE ABSOLUTE IDENTITY (line M, 2026-08-12, ADR 0127)
+
+§2c says decompose a residual algebraically before sweeping anything. This is the sharpest instance found
+here, and it cost two ADRs pointing at the wrong subsystem.
+
+**The shape.** You split an error into "how much comes in" and "what fraction of it is retained"
+(`keep = Δstock / flux_in`), find the input right at some cells and the *fraction* wrong, and conclude the
+retention machinery is broken. That inference is only valid if the LOSSES scale with the input. Here they
+do not: a summergreen sheds its whole leaf pool and its fine-root pool every year regardless of that year's
+NPP, so the losses are **stock-driven** while the input is not — and a too-large input mechanically raises
+the retained *fraction* with a perfectly faithful allocation. Measured: F's absolute litter + reproduction
+flux was right to **1.8 %** (262.1 vs 266.8 gC/m²/yr) at the cell whose `keep` ratio was **49 % high**.
+
+**The fix, and it needs no new run.** Write the conservation identity of the quantity and difference the
+two sides term by term:
+
+    Δstock = flux_in − loss − Δ(other stocks)
+    ⇒ Δstock_model − Δstock_truth = (in_m − in_t) − (loss_m − loss_t) − (other_m − other_t)
+
+Three named, **exactly additive** channels in absolute units. At the prototype cell they came out 77 % /
+3 % / 20 %, i.e. the item two decision records had named "the binding gap" was 3 % of it. Report the
+channels; keep the ratio only as a derived column.
+
+**Two guards that go with it.**
+- **A mean of per-year ratios is not a retained fraction when the denominator changes sign.** The published
+  panel used `mean_y(Δ/flux)`; at the cell whose annual assimilate crosses zero that read **+0.350** where
+  the ratio-of-means is **−0.059**. Both definitions now print side by side (ADR 0060) and the sign-changing
+  one is reported as undefined, not as a number.
+- **When you add a second reader of the same fixtures, gate it on reproducing every published number first.**
+  It failed on the first attempt — and the failure *was* the finding above, because the only two things that
+  differed were the ratio definition and the reference used for the start state.
+
+**And check whether the "other stocks" term is even the same object on both sides.** Here it was not: the
+reference's below-ground bucket holds fine roots **plus two woody pools the model does not have**, which is
+why that channel was non-zero at all. Read the accumulation expression in the source for both sides
+(§3f) before differencing — a term that exists on one side only is a finding, not a bug in the comparison.

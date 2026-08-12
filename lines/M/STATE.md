@@ -359,7 +359,119 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 12) — **PER-COHORT PFT PARAMETERS ARE WIRED AND MEASURED.
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 13) — **THE `keep` GAP IS NOT AN ALLOCATION DEFECT.**
+### F's SURPLUS ABOVE-GROUND GROWTH DECOMPOSES EXACTLY INTO THREE CHANNELS, AND AT THE PROTOTYPE CELL
+### **77 % OF IT IS THE ASSIMILATE ERROR AND 3 % IS ALLOCATION** (ADR 0127)
+
+**Start here.** The previous handoff's step 1 — *"THE `keep` / ALLOCATION-TURNOVER GAP — now the binding
+F-side item"* — is **answered, and the answer retires it as an independent defect at 4 of 5 cells**. New:
+**`scripts/biome_sapwood_bg_probe.jl`** + the committed fixture
+**`test/testitems/references/M_growth_channel_decomposition.csv`**. Log of record
+**`logs/M-sapbg3.1765720.out`**. **Nothing in `src/` changed.**
+
+**1. THE BASIS ERROR THAT WAS DRIVING THE ITEM.** `keep = ΣΔagb / bmi` is a ratio whose DENOMINATOR is
+itself wrong (F's assimilate is 1.05–2.73× the C's). F's losses are **pool-driven** — a summergreen sheds
+its whole leaf pool and its whole fine-root pool every year regardless of that year's NPP — while its
+assimilate is not, so a too-large `bmi` mechanically raises the retained FRACTION even with a perfectly
+faithful allocation. Measured: at Hainich F's **absolute** litter + reproduction flux is **262.1 against
+the C's 266.8 gC/m²/yr — right to 1.8 %** — while its `keep` ratio is 49 % high.
+
+**2. THE REPLACEMENT STATISTIC — an exact carbon identity, no model in it.**
+`Δagb = assimilate − loss − Δbelow` on both sides ⇒
+`Δagb_F − Δagb_C = (bmi_F−bmi_C) + (loss_C−loss_F) + (bel_C−bel_F)` = `t_input + t_loss + t_nosink`.
+Arm A (the ADR 0125/0126 basis), gC/m²/yr, 2010–2019 means:
+
+| cell | `dagb_C` | **surplus** | `t_input` | `t_loss` | `t_nosink` |
+|---|---|---|---|---|---|
+| boreal_siberia | 49.0 | **+43.5** | +9.2 (21 %) | +14.4 (33 %) | **+19.9 (46 %)** |
+| temperate_hainich | 181.1 | **+152.7** | **+117.0 (77 %)** | +4.7 (3 %) | +30.9 (20 %) |
+| mediterranean_iberia | 79.2 | **+320.5** | **+408.0 (127 %)** | −100.7 (−31 %) | +13.2 (4 %) |
+| semiarid_sahel | 90.6 | −85.6 | −267.0 | +159.9 | +21.5 |
+| tropical_amazon | 372.0 | −402.4 | −1295.8 | +755.9 | +137.5 |
+
+(The two hot cells' arm-A columns are dominated by the ADR 0125 `respcoeff` defect — their assimilate is
+negative — and are reported, not read.) **Report these three columns; do not quote `keep_F/keep_C`.**
+
+**3. ⚠ A PUBLISHED NUMBER IS WITHDRAWN.** ADR 0125 §PART 7's `keep_F = 0.350` at `semiarid_sahel` is a
+**mean of per-year ratios whose denominator changes sign between years**; the ratio-of-means is **−0.059**
+and the honest statement is *undefined*. Both definitions are now printed side by side and both are in the
+fixture (ADR 0060's never-substitute rule). This is ADR 0111 §9's denominator guard in its exact
+predicted form.
+
+**4. THE ONE GENUINELY NEW CHANNEL, AND IT IS PARTIAL.** `t_nosink` is the C's below-ground WOOD: the C
+carries `sapwood_bg` + `heartwood_bg` (`tree.h:257`) and `allocation_tree.c:206-209/:268-277` deducts a
+C_LATERAL demand from `bm_inc_ind` **before** the leaf/root/sapwood split, while F's `sap_inc` is a
+residual — so the whole undeducted demand lands ABOVE ground. Reconstructing the demand with the
+already-ported `FDiff.reconstruct_sapwood_bg`: it reproduces the C's own measured sink at **Hainich to
+1.20×** but at **boreal to 0.11×** (that cell's sink is mostly fine-root growth, so the port is NOT the
+boreal answer). Seeding the pool — which needs **no `src/` change**, `individual_from_pools` already
+carries it — costs **2.4–6.3 %** of the assimilate and removes **9–12 %** of the surplus.
+
+**5. ⚠ A DESIGN CORRECTION THAT STOPS A WRONG PORT (`docs/notes/sapwood_bg_design.md` §9, new).** §5.4 said
+"grow the pool". It cannot be done in one field: `sapwood_bg` is **pinned to the demand** every year and
+`turnover_tree.c:124-130` moves its turnover into a SECOND pool, `heartwood_bg`, which only accumulates and
+never respires. A one-field port either **destroys ≈22 gC/m²/yr** at Hainich (a carbon leak; guardrail 2
+makes conservation a CI gate) or charges maintenance respiration on below-ground heartwood, which the C does
+not. `TreePools` needs `heartwood_bg_c` beside `sapwood_bg_c`, and `vegc_ind` must then take both.
+
+**6. PRE-REGISTERED PASS CRITERION for that port** (ADR 0127 §6, written before the arm exists): with
+`sapwood_bg` seeded **and** prognostic, the paired surplus must fall by **at least `t_nosink`** at
+`boreal_siberia` (≥19.9) and `temperate_hainich` (≥30.9 gC/m²/yr), **no committed baseline moving while the
+feature is off**, and tree CUE staying inside `[0.42, 0.56]`. Score those two cells only — the mediterranean
+demand is contaminated by that cell's own 2.7× growth error and the two hot cells' arm-A assimilate is
+negative.
+
+**7. THE METHOD LESSON, captured in `residual-diagnosis`.** The probe is a deliberately SECOND, independent
+reader of the rung-3 fixtures and it is **gated on reproducing all 20 of ADR 0125 §PART 7's published
+numbers**. It FAILED that gate on the first run at 4 of 5 cells — and the failure *was* the finding, because
+the only two things that differed were the ratio definition and the start state the C's increment is formed
+against. Fixed, it passes all 20 to the printed digit with the reconstruction residual `recon` = 0.00
+everywhere. **Never interpret a second reader before it reproduces the first.**
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **THE ASSIMILATE ERROR AT HAINICH IS NOW THE HEAD OF THE F QUEUE.** `bmi_F/C` = **1.24** at a cell that
+   is **99.4 % beech** with **every per-PFT parameter already faithful** (ADR 0126's arm P moves it by
+   +0.7 gC/m²/yr, its own control) — i.e. a pure F-physics defect at the prototype cell with no parameter
+   excuse left, and it is **77 % of the growth error there**. Two measured leads, in order:
+   (a) **the CUE gap** — `docs/notes/sapwood_bg_design.md` §13/§8 has F's tree CUE at **0.512** against the
+   C's **0.46**; seeding the below-ground pool moves it to ~0.497 (measured here as −3.6 % of assimilate at
+   Hainich) and the note's §6 says the **ungated rare-day `rd`** pushes the other way and partially cancels
+   — land the seed first, then the `rd` gate, confirming CUE stays inside `[0.42, 0.56]`;
+   (b) **GPP vs respiration**: CUE 0.512/0.46 = 1.11 but `bmi_F/C` = 1.24, so ~12 % must be GPP as well.
+   Score F's daily GPP against `d_grass_gpp`-corrected C daily GPP at Hainich (skill `fdiff-validate`'s
+   four basis checks) before assuming it is all respiration.
+2. **`boreal_siberia` IS NOW THE ONE CELL WHERE ALLOCATION GENUINELY BINDS** (`t_loss` = 33 % of a surplus
+   that is 1.89× the C's own increment, with the assimilate only +4.9 % off) — **and the below-ground port
+   is NOT its answer** (`dD/bel_C` = 0.11). That makes it the right cell for the next allocation probe and
+   the wrong one for the port. Suspects unchanged from ADR 0126 §6.4 minus the one now excluded: the
+   summergreen full-leaf recycle for the evergreen-named PFTs (`AllocParams.is_deciduous` is `true` for
+   every tree in F while the C gates the `leaf/1.05` full drop on `tree->isphen`, `turnover_tree.c:100`),
+   and the `reprod_cost` path.
+3. **THE `sapwood_bg` PORT** (§5/§6 above) — worth 46 / 20 / 4 % of the surplus at boreal / Hainich /
+   mediterranean, two struct fields on the Enzyme path, opt-in, and the design note budgets it at its own
+   session. Do it after item 1, not before: at Hainich it is a fifth of what item 1 is.
+4. **STILL UNMEASURED AND IT IS THE ACCEPTANCE CRITERION'S BINDING CLAUSE (unchanged from the last two
+   handoffs):** the same paired-per-stem harness on the **ssp370** forcing — *"does F's growth error depend
+   on climate?"* (ADR 0106). The inputs exist: `ind_ssp370_seed1_all.parquet` is on `/p/tmp`, and
+   `SITE=<name> python3 scripts/build_hainich_response_forcing.py` already emits per-cell ssp370 daily
+   forcing gated against the committed historic fixture. The two blockers are one-line each:
+   `IND_PARQUET` is a hard-coded constant in **both** `scripts/build_biome_stem_growth_reference.py` and
+   `scripts/extract_cell_individuals.py` — make it an env knob, and run the roster extractor with
+   `OUT=/p/tmp/...` because it **rewrites `M_cells.csv` into its output directory**.
+5. **📥 INTEGRATION POINT FROM LINE S (ADR 0170), still open and unchanged** — the recruit half of rung 2
+   (R0 = the pinned recruit copula vs R1 = the ported FIT establishment rule, both mortality settings,
+   ~40 seeds). See item 4 of the 0-PREV5 block below for the four pre-registered conditions and what S
+   supplies. It needs the arm-C harness's establishment path, which today always answers `ESTAB_C`
+   (`scripts/rung2_armc_harness.jl:318`).
+
+**CI/merge:** the diff is `scripts/**` (a new `.jl`) + `test/testitems/references/**` + `docs/**` +
+`changelog.d/**` + `.claude/skills/**` + STATE/JOURNAL. `references/` is under `test/**`, so **all four
+Julia jobs run, plus `format`** — expect `test (lts)`, `test (1)`, `test (macOS, lts)`, `format`
+(`test (pre)` is the documented prerelease churn, `continue-on-error`). **`src/**` is untouched ⇒ `docs`
+runs on neither the branch nor `main`.** The new script was Runic-formatted before commit.
+
+### 0-PREV0. ✅ DONE 2026-08-12 (session 12) — **PER-COHORT PFT PARAMETERS ARE WIRED AND MEASURED.
 ### THE TROPICAL HALF IS FIXED, BOREAL + MEDITERRANEAN GET WORSE, ADR 0125 §7.3's PRE-REGISTERED
 ### CRITERION **FAILS**, AND EVERY PAST FIVE-CELL F NUMBER RAN BEECH'S PHENOLOGY (ADR 0126)**
 
@@ -419,7 +531,8 @@ per-PFT arm.
 `per_pft_params` to `true` when arm P reaches **both** `bmi_P/C` and Σ`dagb` P/C **∈ [0.8, 1.25] at all
 five cells** on this probe, with the beech-only byte-identity item still green.
 
-▶ **WHAT TO DO NEXT — in order.**
+▶ **WHAT TO DO NEXT — ⛔ ITEM 1 IS ANSWERED AND RETIRED by the 0-NEWEST block above (ADR 0127); items
+2-5 stand and are re-pointed there. Kept for the audit trail.**
 
 1. **THE `keep` / ALLOCATION-TURNOVER GAP — now the binding F-side item** (ADR 0125 §7 named it; ADR 0126
    §6.4 confirms it). Σ`dagb` F/C overshoots **1.45–1.48 even at the two cells whose assimilate is now

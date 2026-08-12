@@ -220,3 +220,34 @@ Enzyme SoA `sapbgcs` array thread (§5.5), needed only once the pool grows on th
 step — a static seed is not drawn from `bm_inc`, so it is not carbon-conservative yet); (4) flipping the
 seed on by DEFAULT (regenerating the `multi_individual` CUE gate to ~0.497 + the coupled/decadal
 NPP-derived baselines, which drift per §4.3). Only after (4) does the emulator's default behaviour change.
+
+## 9. ⚠ AMENDMENT TO §5.4 (2026-08-12, ADR 0127): the growth step needs TWO pools, and the sink is now PRICED
+
+Two things measured after §8.1 landed, both of which change what step (1) above actually is.
+
+**9.1 §5.4's "grow the pool" is not implementable in one field.** The C carries `sapwood_bg` **and**
+`heartwood_bg` (`tree.h:257` `Treephys2`), and they are a producer/consumer pair:
+
+* `allocation_tree.c:206-209 / :268-277` pins `sapwood_bg` to the C_LATERAL demand every year
+  (`tinc = demand − sapwood_bg_after_turnover`, deducted from `bm_inc_ind` **before** the leaf/root/sapwood
+  split), so `sapwood_bg` is a *state variable pinned to a function of state*, not a free stock;
+* `turnover_tree.c:124-130` moves `sapwood_bg·turnover.sapwood` into `heartwood_bg`, which only ever
+  accumulates and never respires.
+
+So a single-field port must either **destroy** `r·sapwood_bg` per year (≈22 gC/m²/yr at Hainich — a carbon
+leak, and guardrail 2 makes conservation a CI gate) or charge the pool's maintenance respiration on the
+below-ground **heartwood** too, which the C does not. `TreePools` therefore needs `heartwood_bg_c` beside
+`sapwood_bg_c`, and step (3) above (`vegc_ind`) must take **both**. Budget the struct churn accordingly —
+this is why the pool cannot simply "start growing".
+
+**9.2 The sink is now measured against the C, not just reconstructed.** ADR 0127 decomposes F's surplus
+above-ground growth into three exact carbon channels at the five biome cells. The channel this pool would
+close (`t_nosink` = the C's below-ground bucket minus F's fine roots) is **+19.9 / +30.9 / +13.2 gC/m²/yr**
+at boreal / Hainich / mediterranean = **46 % / 20 % / 4 %** of F's surplus there, and the reconstructed
+demand increment reproduces the C's own measured sink at Hainich to **1.20×** but at boreal to only
+**0.11×** (that cell's below-ground sink is mostly fine-root growth, not wood). The seed alone — i.e. what
+§8.1 already ships — costs 2.4–6.3 % of the assimilate and removes 9–12 % of the surplus.
+
+⇒ **the port is worth doing and it is NOT the dominant channel.** At Hainich 77 % of the surplus is the
+assimilate error. ADR 0127 §6 carries the pre-registered pass criterion for the growth step; score it at
+`boreal_siberia` and `temperate_hainich` only.
