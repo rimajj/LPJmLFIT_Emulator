@@ -157,7 +157,14 @@ arm C improves the **deattenuated Wooddens response slope** by ≥+0.10 over arm
 than 1.0 pp of cells inside the 10 % band on any of the four trait axes or on counts. Decide from arm C
 against arm B only — not from a later arm, and not re-read after the fact (the ADR-0104 error).
 
-### Rung 2 — S + the real C fast part · line M · the harness
+### Rung 2 — S + the real C fast part · **line S** · the harness
+
+> ⚠ **OWNERSHIP CHANGED 2026-08-12 — this rung moved from line M to line S by owner steer**, recorded here
+> rather than left to an ADR, because this file is where a line looks up what it owns. The steer: *"using the
+> original code for fast physics for the emulator has to work in line S!!!!!! if that does not work we don't
+> have to do the other lines!!"* Line S has since built and run the harness
+> (`scripts/rung2_s_demography_harness.jl` + `run_rung2_s_arm.sh`; ADR 0175/0176), so the **S → M** integration
+> point below is **dormant, not deleted** — it revives only if the harness is handed back to M.
 
 **Narrow interface first — this is the recommendation the owner asked for.** Replace **only who dies and who
 establishes.** Leave turnover, allocation and growth to the C. Reasons, in order of weight:
@@ -268,7 +275,8 @@ Unchanged from CLAUDE.md §9 — restated because this program spans all four li
 
 **Cross-line integration points this program creates, all of which must be recorded in BOTH lines' STATE.md:**
 
-* **S → M (rung 2):** the demography entry point the C hook calls. S owns its shape; M owns the harness.
+* **S → M (rung 2): DORMANT since 2026-08-12** — line S owns both halves now (see the rung-2 heading); it
+  revives only if the harness is handed back to M.
 * **M → O (rung 5a):** the hand-over of `src/fdiff.jl` for performance work, after rung 4.
 * **M → E (rung 5b):** the shared soil column touches E's ground-heat column.
 * **any line → integrator:** the extra seeds, the timing gate becoming a CI gate, `Project.toml`,
