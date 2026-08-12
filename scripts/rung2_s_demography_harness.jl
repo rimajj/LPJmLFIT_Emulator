@@ -21,6 +21,9 @@
 #
 # THE ARMS.  Report all of them; each is one substitution more than the last.
 #   S0  learned count target + UNIFORM thinning + establishment left to the C   (the shipped default)
+#   S0h S0, except deaths FIT's own hazard had already settled (`mort >= 1`) are not overridden — the
+#       DECOMPOSITION CONTROL (ADR 0176).  S1 differs from S0 in two ways at once, and this arm splits
+#       them: `S0h - S0` is worth the interface behaviour alone, `S1 - S0h` is worth trait ordering.
 #   S1  learned count target + the trait hazard's ORDERING + establishment left to the C
 #   S2  S1 + recruit traits from the production copula — NOT WIRED HERE YET; establishment stays with the
 #       C in every arm below, so `nrec` is 0 by construction and no S number here is a recruit result.
@@ -93,8 +96,8 @@ function parse_args(argv)
         haskey(opts, key) || error("unknown option --$(m.captures[1])")
         opts[key] = m.captures[2]
     end
-    opts["arm"] in ("S0", "S1", "NP") ||
-        error("--arm must be S0, S1 or NP (got '$(opts["arm"])')")
+    opts["arm"] in ("S0", "S0h", "S1", "NP") ||
+        error("--arm must be S0, S0h, S1 or NP (got '$(opts["arm"])')")
     opts["n_prev"] in ("roster", "predict") ||
         error("--n-prev must be roster or predict (got '$(opts["n_prev"])')")
     isempty(opts["apply_dir"]) && error("--apply-dir is required")
@@ -428,6 +431,23 @@ function main(argv)
                 f = Vector{Float64}(undef, length(trees))
                 if arm == "S0" || arm == "NP"
                     fill!(f, ρ)                                   # the shipped uniform thinning
+                elseif arm == "S0h"
+                    # THE DECOMPOSITION CONTROL (ADR 0176).  S1 beats S0 for two reasons at once and the
+                    # audit cannot separate them: `f = (1-haz)^θ` is zero wherever FIT's own hazard is
+                    # CERTAIN (`mort >= 1`), so S1 stops overriding deaths the C had already settled — and
+                    # only on top of that does it order the survivors by trait.  S0 spares ~1 950 certain
+                    # trees per run, S1 ~358.  This arm honours the certain deaths and then thins the REST
+                    # uniformly, hitting the SAME count target, so `S0h - S0` is the interface effect and
+                    # `S1 - S0h` is what trait ordering is actually worth.
+                    certain = [t.mort >= 1.0 for t in trees]
+                    n_cert = sum(nind[i] for i in eachindex(trees) if certain[i]; init = 0.0)
+                    # the survivors the target still has room for, spread over the non-certain stems
+                    n_free = n_now - n_cert
+                    c = n_free <= 0.0 ? 0.0 : clamp(ρ * n_now / n_free, 0.0, 1.0)
+                    shortfall = ρ * n_now < n_now - n_free ? (n_now - n_free - ρ * n_now) / n_now : 0.0
+                    for i in eachindex(trees)
+                        f[i] = certain[i] ? 0.0 : c
+                    end
                 else
                     haz = [t.mort for t in trees]
                     tp = [

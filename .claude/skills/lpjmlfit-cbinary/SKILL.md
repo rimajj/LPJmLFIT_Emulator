@@ -497,6 +497,32 @@ exists to test). Arms `S0` (uniform thinning = the shipped default), `S1` (the t
   aggregates — that gap is another candidate train/inference shift, so emit both columns rather than picking
   one. The DRF is fed the RUNTIME row, because that is what deployment does.
 
+### Scoring the arms — the control that turns a two-way difference into an attribution (ADR 0176)
+
+* ⚠ **`S1` differs from `S0` in TWO ways, and the obvious reading credits the wrong one.** `f_i =
+  (1−mort_i)^θ` is zero wherever FIT's own hazard is already **certain** (`mort ≥ 1`) *and* it orders the
+  rest by trait. Uniform `f_i = ρ ≈ 0.9` instead gives a condemned tree a 90 % survival chance — over 500
+  patch-years `S0` **spares 1 952 trees the C was certain of**, `S1` 358. Run **`ARM=S0h`** (uniform among
+  the non-certain, same count target) and the split is: of the terminal-count error the interface removes
+  **87 %** and trait ordering 13 %; of the selection-differential error **84 % / 16 %**; and the per-PFT
+  age–wooddens Spearman is **identical** between `S0h` and `S1`. So *"the trait operator fixed the stand"*
+  is 85 % *"stop overriding deaths the C had already settled"*. **Whenever two arms differ in more than one
+  way, add the arm that changes only one — it is 12 s here.**
+* **Read `theta` and `shortfall` before believing an ordering result.** `S1`'s median θ is 0.19–0.35 with
+  `shortfall > 0` in **132–148 of 500 patch-years** — in ~28 % the certain kills alone overshoot the learned
+  target, so the ordering had no room to act (ADR 0117 item 6.i).
+* **Check the null FIRST and expect it to be seed-independent.** `NP` (ρ = 1) never reaches `rand`, so its
+  seeds must agree exactly — prove it with `scripts/diagnose_rung2_dump_equality.py --ref … --new …`, which
+  reports **"identical in every initialised column"** and correctly excludes `sapwood_old` + the `pre`-phase
+  `mort_*` garbage. **Do not hand-roll this comparison** (a session did, and threw it away): a bare column
+  diff over two dumps reports those known-uninitialised columns as differences and looks like a real
+  divergence.
+* **Score an S arm with `scripts/diagnose_rung2_armc.py --glob S_rung2 --recorded <the v6 record dump>`.**
+  It discovers the `S_r2s_*_dump` family and groups arm/seed on its own. Its harness-log reader is
+  **header-driven** since ADR 0176 — it must be, because arm C's log and the S arm's do **not** share a
+  column order (field 4 is `rho` in one and `n_emit` in the other), so the older positional reader would
+  have scored one arm on the other's columns without a word.
+
 ## Turning a block of `par/*.js` into a COMMITTED, GATED parameter table (ADR 0047 → ADR 0126; do not re-derive)
 
 Two of these now exist and a third is likely, so the procedure is fixed rather than re-invented. The point
