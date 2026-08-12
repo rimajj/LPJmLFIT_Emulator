@@ -76,6 +76,30 @@
     @test sum(tmp_s) / length(tmp_s) > sum(tmp_h) / length(tmp_h) + 1.0      # ≥1 K warmer, measured +2.45 K
     @test all(t -> -30.0 < t < 40.0, vcat(tmp_h, tmp_s))                     # °C, not K
 
+    # ── (c2) NO TRUNCATED-WINDOW STEP at the start of either scenario (added 2026-08-12, ADR 0171) ──────────
+    # THE DEFECT THIS CATCHES, and why it needs a shape test rather than a value test. The builder gives each
+    # scenario a W-1 year monthly LEAD-IN so year 1's trailing window is a real climatology; the ssp370 side
+    # was missing it, so its first years were averaged over 1, 2, 3 … years instead of 20. That made 19 of the
+    # 81 conditioning years a different quantity from the one the DRF/copula were TRAINED on — up to +210 gdd5
+    # (+10.7 %) and +1.94 °C. The builder now gates this directly against the global trailing-W table, but that
+    # table lives on `/p/tmp` and CI cannot read it, so the committed fixture needs a self-contained tell.
+    # A truncated first window shows up as a STEP: a 20-year climatology moves by ~10 gdd5/yr, while dropping
+    # the 1-year window for a 2-year one moved 2020→2021 by 158. Measured ratios of the largest year-on-year
+    # jump to the series' own median jump: **13.1 (gdd5) / 17.6 (tcm) before the fix, 4.0 / 5.8 after** — so 8
+    # separates them with margin on both sides. The test is on ALL years, not just the first, because the same
+    # step appears wherever a window starts short.
+    for (nm, v) in (
+            ("historic gdd5", gdd_h), ("historic tas_cold_month", tcm_h),
+            ("ssp370 gdd5", gdd_s), ("ssp370 tas_cold_month", tcm_s),
+        )
+        @testset "$nm: no truncated-window step" begin
+            jumps = abs.(diff(v))
+            med = sort(jumps)[cld(length(jumps), 2)]
+            @test med > 0                               # a constant series is not a transient boundary
+            @test maximum(jumps) <= 8.0 * med           # no truncated-window step — see the block above
+        end
+    end
+
     # ── (d) ADR 0004: the ssp370 forcing co2 is FLAT 409.63 ────────────────────────────────────────────────
     @test all(≈(409.63), parse.(Float64, d["co2"][is]))
     @test parse(Float64, d["co2"][ih][1]) < parse(Float64, d["co2"][ih][end])   # historic co2 rises

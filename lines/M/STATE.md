@@ -446,6 +446,45 @@ against *this cell's recording*; blocked by ADR 0049 item 4, which only S can cl
    reading item 5.** At this cell FIT kills nobody in 40 % of patch-years, so a null `C1 − C0` under a
    learned ρ is the expected outcome and is not a result about selection. If it is run, report the θ
    distribution and the shortfall rate beside it, exactly as `diagnose_rung2_armc.py` does.
+4. **📥 INTEGRATION POINT RAISED BY LINE S, 2026-08-12 (ADR 0170) — the RECRUIT half of rung 2 is
+   pre-tested, pre-registered and ready to run on your harness; it is UNREADABLE offline, and the reason is
+   your own item 5.** This is the arm ADR 0119 §6 registered (R0 = the pinned recruit copula vs R1 = the
+   ported FIT establishment rule, both under a held-common mortality setting). It asks for **no change to the
+   hook and none to `src/`** — it is the same contrast with the axis moved to the recruit channel.
+   * **Why it cannot be settled offline.** S ran the identical 2×2 on the standalone harness at 42490, two
+     40-seed ensembles (ADR 0170). The kill condition — does the recruit channel make the error
+     climate-dependent the way the count recursion did — **does not fire**: R0's own warming response is
+     significantly **wrong-signed** (−0.75 ± 0.24 ×FIT against FIT's +1) and the port turns it **+2.66 ±
+     1.01**. But the arm does not clear either: |error| 1.66 vs R0's 1.75 is a dead heat, and the **level
+     moves +8.5 %** (+19 701 ± 1 281 gC/m³, t = 15 — 8.1× FIT's whole warming shift, as a static offset),
+     which blocks a flip on ADR 0106 grounds by itself. The natural fix — pair the port with the selection
+     operator — **failed offline**: the level effect is *larger* with `trait_mortality` on (+24 186), because
+     at this cell θ is throttled to ≈ 0 (your item 5; ADR 0049 item 5) so the operator has nothing to
+     redistribute. **Rung 2 is the first place it has room, because there the roster returns from the C each
+     year.**
+   * **Four conditions, pre-registered in ADR 0170 §3 so they cannot be reinterpreted after the run:**
+     (i) run **both** mortality settings, not only C1 — offline they differ in the level (+19 701 vs
+     +24 186), in the sampler's own scenario response (n.s. vs +4.73 ×FIT) and in whether hard kills fire at
+     all (0/40 vs 4/40 seeds); (ii) **read θ first**; (iii) **read the LEVEL, not only the response**;
+     (iv) **size the ensemble from THIS arm's own spread** — the double difference's seed sd is
+     **6.4–7.8 ×FIT** against the mortality arm's 0.67–1.74, so ADR 0101's 8–12 seeds resolve nothing here
+     (12 left every CI straddling zero; 40 resolved it).
+   * **What S supplies so you build nothing:** `scripts/build_estab_eligibility.py` emits the per-cell(-year)
+     eligible-PFT set + `n_elig`/`w_inherit` for **all 67 420 cells × 20 yr**, both scenarios
+     (`/p/tmp/jamirp/emulator_global/tables/estab_eligibility_{historic,ssp370}_w20.parquet`; `CSV_OUT=` for a
+     committable per-cell fixture), gated against FIT's own `ind` at **0.076 %**. Two C facts you need if you
+     gate recruits per cell: **`n_elig == 0` does NOT mean nothing establishes there** (the inheritance block
+     at `establishmentpft_ind.c:125` sits outside the `aprec`/`establish()` loop — 22.1 % of cell-years are in
+     that state), and the gate's `temp_min20` is **not** the boundary table's `tas_cold_month`
+     (`mean_y(min_m T)` vs `min_m(mean_y T)`, +0.73 °C apart on average; ids 4/5/6 have `temp_high = 0.0`, so
+     the wrong basis silently deletes them — {1,2,3} instead of the correct {1,2,3,4,5,6} at Hainich).
+   * **NOT claimed:** the offline run is **1 cell of 54 020**, a smoke test of the kill condition, and neither
+     fidelity evidence nor the flip test. S is **not** asking you to flip anything —
+     `recruit_establishment` stays OFF by default. And S's earlier caveat that a wood-density result is
+     unreadable in rung 2 is **retired by your own ADR 0123**: the lag is gone, so this arm is scorable on
+     traits as well as counts.
+   * **Cost, on your item-2 estimate:** 2 recruit arms × 2 mortality settings × N seeds at ~14 s each on an
+     existing `MODE=record` baseline at 42490 — the ensemble is the whole cost, not the harness.
 
 **CI/merge:** the diff is `scripts/**` + `docs/decisions/**` + `changelog.d/**` + STATE/JOURNAL — **no gate
 runs** (ADR 0090: `scripts/*.py` is NOT linted by CI, no `src/`/`test/`/`.jl`-in-tree change, no `python/`,

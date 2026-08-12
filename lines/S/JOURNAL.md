@@ -1937,3 +1937,59 @@ growth loop). Arm D's bounded-Beta comparison is still the cheapest undone offli
 offline recruit measurement is wanted, it should buy **more cells**, not more seeds: the eligibility table
 is exactly what makes a low-diversity cell (`n_elig` 1, `w_inherit` 0.8, inheritance dominant) runnable,
 and that is a different regime from Hainich's throttled six-PFT one.
+
+---
+
+## Session 2026-08-12 — the recruit arm at three cells; and the ssp370 conditioning basis was not the trained basis (ADR 0171)
+
+Started with the previous handoff's three items in order. Item 1 (raise the rung-2 recruit arm with M) was
+written into `lines/M/STATE.md` first, since it was owed and cheap; the raise carries ADR 0170's numbers, the
+four pre-registered conditions, and the eligibility table M can consume as-is, and it retires my own stale
+caveat about the rendezvous lag — M's ADR 0123 had already removed it, which the previous handoff did not know.
+
+Then item 3, "more cells, not more seeds." Two things happened that I did not plan.
+
+**The `n_elig = 1` regime the handoff sent me to look for does not exist where it said.** The Amazon and Sahel
+admit four tree types, not one, `w_inherit` 0.5 rather than 0.8. The belief traced to a comment in my own probe
+that conflated the ids FIT *established* at those cells with the ids the gate *admits*. Checking the table
+properly: `n_elig = 1` is 124 of 52 451 tree-bearing cells (0.24 %), the modal cell admits four (49 %), and the
+regime where inheritance genuinely dominates is `n_elig = 0` — 11.2 %, and a median of 29 stems, so it is also
+where the C's own noise is worst. That regime is still untested and is now the next handoff's item 2. Lesson I
+should have applied without prompting: the handoff asserted a number I could have checked in one query before
+building anything on it.
+
+**The second thing was a defect, and I found it by writing a gate rather than by looking for it.** Making the
+forcing builder per-cell meant replacing its two Hainich-fixture gates with per-cell equivalents, and the
+natural reference for the boundary gate is the global trailing-W table the artifacts were actually trained on.
+Gating against it exposed that the **ssp370** side had never had a monthly lead-in while the historic side
+always had: 19 of 81 conditioning years were a different quantity from the training basis, by up to +210 gdd5
+and +1.94 °C. A comment in the file asserted that omission was deliberate *and* consistent with the trained
+table. Reading the global builder took two minutes and showed the opposite — it averages from the `.clm`'s own
+first year. That comment is the most useful thing in the file: a confident justification for an absence is a
+test nobody ran.
+
+What kept the fallout small was instrumentation that was already there. The probe prints a boundary-channel
+liveness line, and on the committed demo artifact it reads exactly 0.0 — that artifact's boundary axes are
+constant in training, so it cannot express a boundary-mediated response at all. Every number in ADR
+0100/0101/0170 was measured on that pair, so the defect provably could not have reached them, and the 40-seed
+reproduction confirmed it to every digit. On the production pooled artifact the same line reads 2022–2406, so
+the defect was caught exactly one step before the first measurement it could have corrupted — the cross-cell
+arms, which all use that pair. I kept the off-basis arm runnable (`BND_FIXTURE=`, `SSP_LEAD=2020`,
+`ALLOW_UNTRAINED_SSP_BASIS=1`) and ran it as a 40-seed control: where the channel is live the fix is worth
+0.03 ×FIT against a 0.32 ×FIT SEM. Real, correct, an order of magnitude below the noise — which is the honest
+way to state a defect's size, and impossible to state at all if you delete the old basis when you fix it.
+
+The science: the level effect survived the move to three cells (+2.20 / +4.93 / +5.00 %, t ≥ 5.1) and is now
+the three-cell reason the flip stays refused. The response-sign headline did not survive — the contribution is
+−0.89, +1.98, −1.91 ×FIT at the three cells, and it also reverses at a *fixed* cell when the artifact pair is
+swapped (+3.41 → −0.89). So ADR 0170 §2 needed narrowing, and the pre-registered flip criterion needed a third
+condition: one cell per gate regime, artifact fixed and named, sign must agree. The finding I did not expect
+was R0's own behaviour: at Siberia the *shipped* configuration already overshoots FIT's warming shift by 94 %,
+and the port removes that response instead of adding one. A contribution's sign is meaningless without its
+baseline printed next to it.
+
+One process note for whoever reads this next. I reformatted the probe (Runic) while some ensemble jobs were
+still pending, so a few runs read a file whose indentation differed from the earlier ones. The change was
+indentation of one continuation line inside a printed string, so no output moved — but the general shape is a
+real hazard: editing a script that queued jobs will later read is a silent way to make an ensemble
+inhomogeneous. Either submit after the last edit, or copy the script to a run-specific path.

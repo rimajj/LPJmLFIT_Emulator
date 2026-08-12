@@ -1705,3 +1705,73 @@ scripts/summarize_response_seed_ensemble.py 'logs/S-recA*.out' 'logs/S-recB*.out
   have DRAWN and the seedbank must have FILLED (an empty bank ⇒ only the static uniform channel ran ⇒ the
   panel is inert by construction, not by measurement). Hard kills fired in 4 of 40 runs with the mortality
   operator ON and 0 of 40 with it off — that combination is what wakes them.
+
+## RUNNING THE RESPONSE ARM AT ANOTHER CELL — `SITE`, and the two fixtures you must build first (line S, 2026-08-12, ADR 0171)
+
+`scripts/trait_mortality_arm_probe.jl` is no longer Hainich-only. `SITE=<name from M_cells.csv>` moves the
+whole harness to one of the five provisioned biome cells; `SITE` unset stays byte-identical to every
+ADR-0049/0100/0101/0170 run, so a published number cannot move by accident.
+
+```bash
+SITE=tropical_amazon python3 scripts/build_hainich_response_forcing.py      # (1) forcing + transient boundary
+export CELLS=12045,52059 GATE=0                                            # (2) the eligible-PFT series
+export SCENARIO=historic Y0=1939 Y1=2019 CSV_OUT=/p/tmp/.../elig_hist.csv OUT=/p/tmp/.../elig_hist.parquet
+TIME=00:40:00 PARTITION=priority QOS=priority scripts/sbatch_python.sh S-elig-h scripts/build_estab_eligibility.py
+#   ... repeat with SCENARIO=ssp370 Y0=2020 Y1=2100, then SPLIT per cell into
+#   references/S_estab_eligibility_<site>.csv (historic rows first, then ssp370)
+export ARM=recruit MODE=response K_CAP=400 TRAIT_MORT=0 SCORE_WINDOW=20
+export DRF_ART=/p/tmp/jamirp/emulator_global/drf_forest_global_pooled_w20_t8.drf
+export RCOP_ART=/p/tmp/jamirp/emulator_global/recruit_copula_global_pooled_w20_t8.rcop
+SITE=tropical_amazon scripts/run_response_seed_ensemble.sh S-rbAMZ 40       # (3) the ensemble
+```
+
+Seven things that are load-bearing, all of them measured:
+
+1. **The eligible-set series must cover the FULL 81-year window, not the `ind` table's 20 years.** The probe
+   indexes it as `ser[clamp(s.year + 1, …)]`, so a 20-row series pins the first 20 years and then holds the
+   last one — a silent mis-alignment of the gate against every later simulation year. Hence `Y0=1939` for
+   historic; the running window reaches back into the `.clm` before `Y0` and costs nothing.
+2. **`CSV_OUT` APPENDS every selected cell into ONE file.** Building two sites in one 12 GB `.clm` read is the
+   right economy, but the output then interleaves cells and must be split per site. The probe's reader now
+   filters on the `cell` column for exactly this reason — do not remove that filter.
+3. **A non-default `SITE` must NOT take `n_init`/`age0`/`boundary` from the artifact meta.** The committed
+   demo meta is Hainich's; `M_cells.csv` carries the per-cell values (line M's `extract_cell_slow_init.py`).
+   The probe encodes this precedence; if you write another harness, copy it.
+4. **Read the BOUNDARY-CHANNEL LIVENESS line before interpreting anything about the conditioning.** The probe
+   prints `max |Δwd|` between the transient and static boundary under identical forcing. The committed **demo**
+   artifact reads **exactly 0.0** — both boundary axes are constant in its training data, so it cannot express
+   a boundary-mediated response at all — while `pooled_w20_t8` reads **2022–2406 gC/m³**. This single line
+   decides whether a conditioning-basis question is even askable on your artifact, and it is what proved
+   ADR 0171's defect could not have reached ADR 0100/0101/0170's numbers.
+5. **The artifact pair is part of the measurement, and it can flip a SIGN.** At the *same* cell the recruit
+   arm's contribution moved **+3.41 ± 1.01 → −0.89 ± 0.32 ×FIT** on swapping demo → `pooled_w20_t8`. Always
+   name the pair with the number (ADR 0101 §3 measured the same for baselines).
+6. **Size the ensemble from the arm's own seed spread.** The recruit arm's double-difference sd is
+   6.4–7.8 ×FIT at Hainich (0.67–1.74 for the `trait_mortality` arm) ⇒ 40 seeds, not ADR 0101's 8–12.
+7. **`BND_FIXTURE=<path>`** points the arm at another transient-boundary file — use it for any
+   conditioning-basis sensitivity instead of hand-editing the committed fixture.
+
+### ⚠ The ssp370 transient boundary needs a LEAD-IN, and the gate that now proves it (ADR 0171 §2)
+
+`build_hainich_response_forcing.py` gave only the **historic** scenario a `W−1` year monthly lead-in. The
+global `build_transient_boundary.py` averages `mby` over the **whole `.clm` from its own first year (2015)**
+and then takes `lo = max(0, iY − W + 1)`, so its 2020 window is 2015–2020 — while the single-cell script's was
+**2020 alone**. Result: **19 of 81 ssp370 conditioning years were a different quantity from the trained basis**
+(up to **+210 gdd5 = +10.7 %** and **+1.94 °C**, exact from 2039). A code comment asserted the omission was
+deliberate *and consistent with the trained table*; it was measurably false.
+
+* both scenarios now take the lead-in, clamped to the `.clm`'s coverage;
+* **GATE 1b** compares the ssp boundary to `cell_year_boundary_ssp370_w20.parquet` **for the run's own cell**
+  and dies on a mismatch (now **0, exactly**, at all three cells built);
+* **GATE 1** at a non-Hainich site references that same global table instead of the ClimBuf fixture — verified
+  equivalent at Hainich (4.88e-06 gdd5 / 4.91e-10 °C, float32 print noise);
+* `SSP_LEAD=2020 ALLOW_UNTRAINED_SSP_BASIS=1` reproduces the pre-fix fixture bit-for-bit (that is how the
+  fix's own control arm exists) and prints a warning naming the basis;
+* CI cannot read `/p/tmp`, so the committed fixture carries a **self-contained tell** instead: a truncated
+  first window is a STEP, and largest-jump / median-jump was **13.1 (gdd5) / 17.6 (tcm) before the fix vs
+  4.0 / 5.8 after** — `slow_response_boundary_tests.jl` allows 8.
+
+⚠ **Known and NOT resolved:** `build_estab_eligibility.py` backfills its ssp370 running means from the
+**historic** `.clm` (mirroring the C's ClimBuf across the restart), while the trained boundary table does not.
+The gate and the DRF's boundary are therefore on different early-window conventions — each correct for its own
+consumer. Do not "fix" one to match the other without deciding which consumer you are serving.
