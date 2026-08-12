@@ -259,6 +259,23 @@ rather than a request to flip now.
 >    51 fields. Wall time is I/O-bound on ~40 GB, and it buffers, so a 0-byte log is normal, not a hang.
 >    ⚠ **Never pool the per-cell ratios without Q** — heterogeneous cells cancel.
 >
+> ### B3. HOUSEKEEPING — ⚠ THE MERGE MAY STILL BE OPEN, CHECK FIRST
+>
+> `line/S` is committed and pushed at **`66ed4115`** (ADR 0177 + the scenario-pair machinery). `format` is
+> **green**; the four Julia jobs were still `in_progress` when the session ended. **A `scripts/*.jl` change
+> DOES trigger the full `CI` matrix** (contrary to the ADR-0090 path table's `src/**`-only reading — worth
+> re-checking the workflow's filter), and `test (lts)` / `test (1)` are REQUIRED.
+>
+> **First action of the next session: check `66ed4115`'s required checks and merge if green.**
+> ```
+> TOKEN=$(python3 -c "import yaml;print(yaml.safe_load(open('/home/jamirp/.config/gh/hosts.yml'))['github.com']['oauth_token'])")
+> curl -s -H "Authorization: token $TOKEN" \
+>   https://api.github.com/repos/rimajj/LPJmLFIT_Emulator/commits/66ed4115/check-runs
+> ```
+> then the usual `flock` merge of `origin/line/S` (the `repo-commit` skill has it, and collate
+> `changelog.d/` inside the lock — there is a fragment `S-rung2-warming-response.md` waiting).
+> `test (pre)` is allowed-to-fail. Nothing in the diff touches `src/**`, so a green branch should carry.
+>
 > ### C. TWO INTERFACE LIMITS DISCOVERED — both are in the C hook (line M's `rung2_apply.c`), not in S's code
 >
 > * **`ERROR043: rung2 apply: duplicate roster key (pft P, tree N)` killed 82 of 510 runs.** The guard is
