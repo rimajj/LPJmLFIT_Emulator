@@ -359,7 +359,99 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 13, part 2) — **RUNG 3 IS NOW SCORED UNDER CLIMATE CHANGE.**
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 14) — **THE HEAD-OF-QUEUE ASSIMILATE ERROR IS *BOTH*
+### PHOTOSYNTHESIS AND RESPIRATION — AND THE 5 m WRITER CUT MAKES THE SPLIT A **BRACKET (38–78 %
+### PHOTOSYNTHESIS)**, NOT A NUMBER (ADR 0129)
+
+**Start here.** The previous handoff's step 1 — *"THE HAINICH ASSIMILATE ERROR REMAINS THE HEAD OF THE F
+QUEUE … two measured leads: (a) the CUE gap, (b) F's daily GPP"* — is **measured**, and the answer is that
+**neither lead can be credited with the whole error and neither can be dismissed**. New:
+`scripts/biome_sapwood_bg_probe.jl` PARTs 5 / 5b / 5c + six columns appended to
+`test/testitems/references/M_growth_channel_decomposition.csv`. Log of record
+**`logs/M-gppcue7.<jobid>.out`** (see below). **Nothing in `src/` changed; no committed baseline moved.**
+
+**1. THE SPLIT IS AN EXACT IDENTITY, no model in it:** `bmi = GPP · CUE` ⇒
+`ln(bmi_F/bmi_C) = ln(GPP_F/GPP_C) + ln(CUE_F/CUE_C)`. F's annual tree GPP is the canopy's own `gpp_acc`
+read **before `annual_step!`** (which zeroes it); the harness asserts `npp_acc == bm_inc` on every
+cell-year (0 violations) so `cue` is the same object on both sides. Same rung-3 basis as ADR 0127 — the
+C's own roster restarted every year, 25-patch ensemble, year-matched — and PART 1's gate against
+ADR 0125's published panel still **PASSes**.
+
+**2. THE RESULT AT THE PROTOTYPE CELL (arm A, historic 2010–2019).** GPP_F/GPP_C = **1.084**,
+CUE_F 0.496 vs CUE_C 0.435 = **1.140**, product **1.236** against the published `bmi` ratio 1.239 (they
+agree to 0.2 %; the residual is mean-of-ratios vs ratio-of-means, ADR 0127's own distinction — do not
+quote the split as an exact factorisation). ⇒ **38 %
+photosynthesis / 62 % respiration** as measured (arm Pbg: 46 / 54). **Both channels are live.**
+
+**3. ⚠ BUT THE TWO C QUANTITIES ARE ON DIFFERENT POPULATIONS, AND THAT STRADDLES THE VERDICT.** The `ind`
+writer emits only stems > 5 m (`fwriteoutput_ind.c:84`), so the C's daily GPP contains sub-5 m trees that
+**both** F's roster and the C's per-stem NPP lack. `GPP_F/GPP_C` is biased DOWN and `CUE_F/CUE_C` UP by
+the same factor ⇒ **the PRODUCT (every published `bmi` number) is untouched and the SPLIT is
+undetermined**: 38 % photosynthesis if the short stems carry no flux, **78 %** (GPP 1.180 / CUE 1.048) if
+they carry their crown share. **Quote the bracket; never one end of it.**
+
+**4. THE DISCRIMINATOR RAN AND HAS NO POWER — and measuring that is the reusable part.** Regressing
+`ln(GPP_F/GPP_C)` on `ln(gt5m)` across years looks decisive at Hainich (slope **0.83**, r **0.890**;
+dividing `gt5m` out removes **98.5 %** of the decadal drift). But both series are near-monotone in time,
+and **detrended it collapses to slope 0.22 / r 0.166** — which is NOT a refutation: the detrended test's
+own **SE(slope) is 3.63** (boreal 41.8, mediterranean 5.3), so it cannot separate 0 from 1. The two cells
+with real power (Amazon 0.19, Sahel 0.83) are unreadable for other reasons. **PART 5c now prints
+`sd lnx`, `sd lny` and `SE(dt)` in the same row as every fit**, so this cannot be misread again.
+
+**5. WHAT IT CHANGES FOR THE QUEUE.** The `sapwood_bg` port and the `rd` gate act on the **CUE channel
+only**, which is worth between **+4.9 % and +14.0 %** — so `sapwood_bg_design.md` §7's ~40–50 % closure is
+**~2–7 % of the assimilate error**, materially weaker than the queue implied. They stay justified by their
+own ALLOCATION criterion (`t_nosink`, ADR 0127 §6) — **different channel, do not add the two cases
+together.**
+
+**6. ONE SUGGESTIVE CORROBORATION, reported as such.** The upper end of the bracket (GPP **+18.0 %**) is
+within a point of the independently documented **+17 % GSI-phenology GPP level**
+(`docs/notes/phase3_fdiff_cbinary_validation.md` §11). If the writer-cut change below confirms the upper
+end, **the phenology is where to look first.**
+
+**7. ONLY THE HISTORIC WINDOW CAN CARRY THIS.** The C's daily GPP exists for 2000–2019 only, so on a
+scenario run PART 5's C columns print `nan` by design. ADR 0128's climate-dependence result is unaffected
+(it is on `bmi`, which the population mismatch does not touch).
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **CLOSE THE BRACKET C-SIDE — it is the cheapest decisive thing on the board, and no emulator arm can
+   ever do it.** Remove the `ind` writer's `height > height_min` cut (`fwriteoutput_ind.c:84`) behind an
+   env gate, rebuild, re-run one cell (~9 s). That hands F the C's **full** stand *and* per-stem NPP for
+   the short trees, making `GPP_F/GPP_C` and `CUE_C` like-for-like in one step — and it collaterally
+   retires the `gt5m` caveat from every FPC/growth number in ADR 0060/0125/0127. Pattern:
+   `patches/lpjmlfit_rung2_hook_v5.patch` (opt-in, inert unless the env var is set). Gate:
+   `scripts/diagnose_cbinary_rebuild_equality.py` on DECODED variables — **`cmp` on a NetCDF is the wrong
+   test** (CLAUDE.md §3). Skill: `lpjmlfit-cbinary`.
+2. **THEN aim at whichever channel the closed bracket names**, and score BOTH columns of PART 5 every
+   time — a fix that moves the total for the wrong reason will otherwise look like progress. If it lands
+   at the upper end, item 6 above says start at the GSI phenology.
+3. **CLOSE THE SOIL-COLUMN APPROXIMATION FOR THE SSP WINDOW** (carried forward, unchanged): both windows
+   use the HISTORIC per-cell `M_soilcolumn_<name>.txt` while the C's `whc_nat` evolves with soil carbon
+   (ADR 0050). It cannot create a between-ARM difference but it can bias the between-WINDOW one, and the
+   Sahel — where ADR 0128 found the sign error — is where water holding capacity matters most.
+   `scripts/extract_cell_soilcolumn.py` + skill `provision-coupled-cell`.
+4. **`boreal_siberia` IS STILL THE ONE CELL WHERE ALLOCATION GENUINELY BINDS** (ADR 0127: `t_loss` 33 % of
+   a surplus 1.89× the C's own increment; the below-ground port is NOT its answer, `dD/bel_C` = 0.11).
+   Suspects: the summergreen full-leaf recycle for the evergreen-named PFTs (`AllocParams.is_deciduous` is
+   `true` for every tree in F while the C gates the `leaf/1.05` full drop on `tree->isphen`,
+   `turnover_tree.c:100`), and the `reprod_cost` path. ⚠ Its warming response is unresolved at two seeds —
+   score it on the LEVEL. ⚠ And its `gt5m` is 0.76, so **do not read its GPP/CUE split at all**.
+5. **THE `sapwood_bg` PORT** (ADR 0127 §5/§6) — re-priced by item 5 above: keep it, but justified by
+   `t_nosink` (46 / 20 / 4 % of the surplus at boreal / Hainich / mediterranean), not by CUE. Two struct
+   fields on the Enzyme path, opt-in, its own session.
+6. **RAISED TO THE INTEGRATOR (unchanged):** the two extra reference seeds `EXECUTION_PLAN.md` rung 0 asks
+   for — 2 of 5 cells' warming response cannot be scored at two seeds (ADR 0128).
+7. **📥 INTEGRATION POINT FROM LINE S (ADR 0170), still open and untouched** — the recruit half of rung 2
+   (R0 = the pinned recruit copula vs R1 = the ported FIT establishment rule, both mortality settings,
+   ~40 seeds). It needs the arm-C harness's establishment path, which today always answers `ESTAB_C`
+   (`scripts/rung2_armc_harness.jl:318`). Conditions + what S supplies: item 4 of the 0-PREV5 block.
+
+**CI/merge:** the diff is `scripts/**` (one `.jl`) + `test/testitems/references/**` + `docs/**` +
+`.claude/skills/**` + `changelog.d/**` + STATE/JOURNAL. `references/` is under `test/**` ⇒ **all four
+Julia jobs + `format`** (Runic 1.7.0 run and clean). `src/**` untouched ⇒ `docs` runs nowhere.
+
+### 0-PREV000. ✅ DONE 2026-08-12 (session 13, part 2) — **RUNG 3 IS NOW SCORED UNDER CLIMATE CHANGE.**
 ### F's GROWTH ERROR **IS** CLIMATE-DEPENDENT: THE FAST CORE REPRODUCES **8 %** OF THE C's WARMING
 ### DECLINE AT THE TEMPERATE PROTOTYPE AND MOVES THE **WRONG WAY** IN THE SAHEL (ADR 0128)
 

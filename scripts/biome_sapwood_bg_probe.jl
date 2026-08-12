@@ -222,6 +222,16 @@ function read_targets()
     return t
 end
 
+"""
+One paired year for one patch. Returns `(grown pools, bm_inc, gpp, npp)`, all gC/m²(/yr).
+
+⚠ `gpp_acc`/`npp_acc` MUST be read BEFORE `annual_step!` — that call zeroes them (`fast.jl:437`). They
+are the canopy's OWN annual sums of `fl.gpp` / `fl.npp` (`fast.jl:346`), i.e. TREE-ONLY here: the roster
+is `type <= 6` (`readcanopy_patches`) and the only grass branch is the year-END re-seed in `annual_step!`,
+which this harness discards by rebuilding the core from the C's roster next year. `npp_acc == Σ npp_ind`
+(`fdiff.jl:1966/1997`) ⇒ it must equal `ftos.bm_inc` to rounding; PART 5 asserts that rather than
+assuming it, because the equality is what makes `cue = bm_inc/gpp` the same object on both sides.
+"""
 function run_one_year!(state, clo, pools, tmpls, soil, lat, forc; per_pft::Bool = false, types = nothing)
     core = per_pft ?
         FDiffFastCore(pools, tmpls, soil, lat; params = PARAMS, pft_ids = types, per_pft_params = true) :
@@ -230,8 +240,9 @@ function run_one_year!(state, clo, pools, tmpls, soil, lat, forc; per_pft::Bool 
     for f in forc
         LPJmLFITEmulator.couple_day!(core, clo, state, bc_f, f; feedback = true)
     end
+    (gpp_yr, npp_yr) = (Float64(core.gpp_acc), Float64(core.npp_acc))
     ftos = LPJmLFITEmulator.annual_step!(core, state)
-    return core.pools, Float64(ftos.bm_inc)
+    return core.pools, Float64(ftos.bm_inc), gpp_yr, npp_yr
 end
 
 # ── one paired stem-year ─────────────────────────────────────────────────────────────────────────────
@@ -264,19 +275,20 @@ function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false)
     soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
     rows = Pair2[]
     bmi = fill(NaN, NYEAR); npatch = zeros(Int, NYEAR)
+    gppy = fill(NaN, NYEAR); nppy = fill(NaN, NYEAR)      # F's tree GPP / NPP, ensemble mean, gC/m²/yr
     states = Dict{Int, Any}(); clos = Dict{Int, Any}()
     dem(t) = FDiff.reconstruct_sapwood_bg(t.sapwood_c, t.height, t.wooddens, soil.rootdist, soil.soildepth)
     for (yi, y) in enumerate(Y0:Y1)
         src = joinpath(INDDIR, "M_individuals_$(name)_$(y - 1).csv")
         (isfile(src) && haskey(forc, y)) || continue
         patches, pk = readcanopy_patches(src, soil; tmpl_pft = per_pft, seed_bg = seed_bg)
-        acc = 0.0
+        acc = 0.0; accg = 0.0; accn = 0.0
         for p in pk
             pools, tmpls, ids, types = patches[p]
             st = get!(states, p, SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER)))
             cl = get!(clos, p, SEBEnergyClosure(; t_soil0 = tair0))
-            grown, b = run_one_year!(st, cl, pools, tmpls, soil, LATS[k], forc[y]; per_pft = per_pft, types = types)
-            acc += b
+            grown, b, g, n = run_one_year!(st, cl, pools, tmpls, soil, LATS[k], forc[y]; per_pft = per_pft, types = types)
+            acc += b; accg += g; accn += n
             for i in eachindex(ids)
                 k1 = (name, y, p, ids[i]); k0 = (name, y - 1, p, ids[i])
                 (haskey(TARGETS, k1) && haskey(TARGETS, k0)) || continue
@@ -293,8 +305,9 @@ function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false)
             end
         end
         bmi[yi] = acc / length(pk); npatch[yi] = length(pk)
+        gppy[yi] = accg / length(pk); nppy[yi] = accn / length(pk)
     end
-    return (; rows, bmi, npatch, name)
+    return (; rows, bmi, gppy, nppy, npatch, name)
 end
 
 """
@@ -316,7 +329,7 @@ The two differ for two reasons, and PART 1 separates them:
 """
 function panel(a)
     yy = Int[]
-    bf = Float64[]; bc = Float64[]
+    bf = Float64[]; bc = Float64[]; gf = Float64[]; nf = Float64[]
     dagbF = Float64[]; dagbC = Float64[]; dagbC_pub = Float64[]; recon = Float64[]
     dbelF = Float64[]; dbelC = Float64[]
     dD = Float64[]; pool0 = Float64[]
@@ -326,7 +339,7 @@ function panel(a)
         isempty(py) && continue
         np = a.npatch[yi]
         push!(yy, y)
-        push!(bf, a.bmi[yi])
+        push!(bf, a.bmi[yi]); push!(gf, a.gppy[yi]); push!(nf, a.nppy[yi])
         push!(bc, sum(p.cnpp for p in py) / np)
         push!(dagbF, sum((p.fa1 - p.fa0) * p.nind for p in py) / np)
         push!(dagbC, sum(p.ca1 - p.ca0 for p in py) / np)
@@ -339,7 +352,8 @@ function panel(a)
     end
     m(v) = isempty(v) ? NaN : mean(v)
     return (;
-        n = length(yy),
+        n = length(yy), years = yy, gppF_y = gf, bmiF_y = bf,
+        gf = m(gf), nf = m(nf),
         bf = m(bf), bc = m(bc), dagbF = m(dagbF), dagbC = m(dagbC), recon = m(recon),
         dbelF = m(dbelF), dbelC = m(dbelC), dD = m(dD), pool0 = m(pool0),
         # the PUBLISHED definition: mean of the per-year ratios, C side against F's reconstructed start
@@ -521,6 +535,220 @@ end
 @printf("without moving the destination of what is left. It therefore closes the `=input` channel a little\n")
 @printf("and the `+nosink` channel not at all — the growth deduction is the half PART 3 prices.\n")
 
+# ── PART 5 — SPLITTING THE ASSIMILATE ERROR INTO PHOTOSYNTHESIS vs RESPIRATION (ADR 0129) ────────────
+# WHY: PART 2 shows the assimilate error `bmi_F − bmi_C` is 77 % of F's surplus growth at the prototype
+# cell, which makes it the head of the F queue — but `bmi` is a NET flux and two very different defects
+# produce the same number. The split is an exact identity with no model in it:
+#
+#     bmi = GPP · CUE,      CUE ≡ NPP/GPP = 1 − Ra/GPP
+#     ⇒  ln(bmi_F/bmi_C) = ln(GPP_F/GPP_C) + ln(CUE_F/CUE_C)      (exactly additive)
+#
+# The two leads on record predict opposite columns: `docs/notes/sapwood_bg_design.md` §13 has F's tree
+# CUE at 0.512 vs the C's 0.46 (a ratio of 1.11, i.e. RESPIRATION), while
+# `docs/notes/phase3_fdiff_cbinary_validation.md` §11 attributes the standalone overshoot to a +17 % GSI
+# PHENOLOGY level in GPP. Both were measured on the pre-ADR-0125 basis (one year, standalone canopy, no
+# per-stem pairing). This is the same split on the rung-3 basis: the C's own roster restarted every year,
+# the 25-patch ensemble, year-matched.
+#
+# ⚠ THE FOUR BASIS FACTS, all of which change how a column is read (skill `fdiff-validate`):
+#  1. GRASS. F's roster is `type <= 6` and grass is only re-seeded at the year END (discarded here), so
+#     F's `gpp_acc` is TREE-only. The C side is `gpp_tree = d_gpp − d_grass_gpp` (the committed fixture's
+#     own basis), NOT an FPC-share correction — grass under a closed canopy is light-limited and the FPC
+#     share over-states its flux share 1.31–2.98× (ADR 0053).
+#  2. THE >5 m CUT, and it is the one that decides which cells can be read. The `ind` writer emits only
+#     stems above 5 m, so F's stand is missing the sub-5 m trees the C's daily GPP includes, while the
+#     C's NPP (from `ind`) is missing them too. ⇒ `GPP_F/GPP_C` is biased DOWN and `CUE_F/CUE_C` UP by
+#     nearly the same factor, and their PRODUCT — the `bmi` ratio — is unaffected. `gt5m` below is the
+#     crown-cover form of that fraction: ~0.95–1.02 at Hainich (a ≤5 % effect) but ~0.71 at boreal and
+#     Sahel, where neither column is separately readable.
+#  3. TWO DIFFERENT C RUNS. `gpp_tree` comes from the single-cell re-runs; the per-stem `npp` comes from
+#     the GLOBAL run's `ind`. `scripts/diagnose_oracle_run_divergence.py` scores them on the variable both
+#     emit: four cells agree to <1.2 % (r >= 0.9989), `tropical_amazon` differs by 6.7 %.
+#  4. YEAR-MATCHED. The ratio is formed per year and averaged, and the first/last years are printed, so a
+#     drift is visible instead of being hidden in a 10-yr mean (ADR 0053 basis check 3).
+#
+# ⚠ SCENARIO: the C's daily GPP exists only for the HISTORIC window (the single-cell re-runs, and the
+# global daily dataset is 2000-2019). On an ssp370 run the C columns are `nan` and only F's own GPP/CUE
+# are reported — closing that needs an ssp370 single-cell re-run carrying `d_grass_gpp`.
+@printf("\n--- PART 5: IS THE ASSIMILATE ERROR PHOTOSYNTHESIS OR RESPIRATION? ---\n")
+
+const CGPP = let
+    p = joinpath(REFDIR, "M_fdiff_oracle_biomes_annual.csv")
+    d = readcsv(p)
+    Dict(
+        (String(d["name"][r]), parse(Int, d["year"][r])) => 365.0 * parse(Float64, d["gpp_tree"][r])
+            for r in eachindex(d["name"])
+    )
+end
+const CSTEM = let
+    d = readcsv(joinpath(REFDIR, "M_stem_growth_reference.csv"))
+    Dict(
+        (String(d["name"][r]), parse(Int, d["year"][r])) =>
+            (parse(Float64, d["npp_all"][r]), parse(Float64, d["gt5m_frac"][r]))
+            for r in eachindex(d["name"])
+    )
+end
+
+"""
+Year-matched GPP / NPP / CUE for one arm at one cell. `nothing` for a C column the window has no oracle
+for (any non-historic scenario). Returns means over the years BOTH sides cover, plus the first/last F-vs-C
+GPP ratio so a drift is visible (basis check 3).
+"""
+function cue_panel(a, c)
+    gfy = Float64[]; gcy = Float64[]; nfy = Float64[]; ncy = Float64[]; g5 = Float64[]; yy = Int[]
+    for (i, y) in enumerate(c.years)
+        haskey(CGPP, (a.name, y)) || continue
+        haskey(CSTEM, (a.name, y)) || continue
+        (npp_c, gt5) = CSTEM[(a.name, y)]
+        push!(yy, y); push!(gfy, c.gppF_y[i]); push!(gcy, CGPP[(a.name, y)])
+        push!(nfy, c.bmiF_y[i]); push!(ncy, npp_c); push!(g5, gt5)
+    end
+    isempty(yy) && return nothing
+    r = gfy ./ gcy
+    return (;
+        n = length(yy), years = yy, gfy = gfy, gcy = gcy, r = r, g5y = g5,
+        gppF = mean(gfy), gppC = mean(gcy), nppF = mean(nfy), nppC = mean(ncy),
+        cueF = mean(nfy ./ gfy), cueC = mean(ncy ./ gcy),
+        rgpp = mean(r), rgpp_first = r[1], rgpp_last = r[end], gt5 = mean(filter(!isnan, g5)),
+    )
+end
+
+"OLS slope + Pearson r of `y` on `x` (both already logged where PART 5c wants them)."
+function olsfit(x, y)
+    n = length(x)
+    n < 3 && return (NaN, NaN)
+    mx = mean(x); my = mean(y)
+    sxy = sum((x .- mx) .* (y .- my)); sxx = sum((x .- mx) .^ 2); syy = sum((y .- my) .^ 2)
+    return (sxx <= 0 ? NaN : sxy / sxx, (sxx <= 0 || syy <= 0) ? NaN : sxy / sqrt(sxx * syy))
+end
+
+# the self-consistency assertion that makes `cue = bm_inc/gpp` the same object on both sides
+let bad = 0
+    for a in armA, yi in eachindex(a.bmi)
+        isnan(a.bmi[yi]) && continue
+        abs(a.nppy[yi] - a.bmi[yi]) > 1.0e-6 * max(abs(a.bmi[yi]), 1.0) && (bad += 1)
+    end
+    @printf("npp_acc == bm_inc (Sum npp_ind) on every arm-A cell-year: %s (%d violations)\n", bad == 0 ? "ok" : "FAIL", bad)
+end
+
+@printf(
+    "\n%-22s %8s %8s %7s %8s %8s %7s %7s %7s %7s %6s\n",
+    "cell", "GPP_F", "GPP_C", "F/C", "NPP_F", "NPP_C", "F/C", "CUE_F", "CUE_C", "F/C", "gt5m"
+)
+for (tag, ps, as) in (("A", pA, armA), ("Pbg", pPbg, armPbg))
+    @printf("arm %s\n", tag)
+    for k in eachindex(NAMES)
+        q = cue_panel(as[k], ps[k])
+        if q === nothing
+            @printf("%-22s %8s %8s %7s %8.1f %8s %7s %7s %7s %7s %6s\n", NAMES[k], "-", "nan", "nan", ps[k].bf, "nan", "nan", "nan", "nan", "nan", "nan")
+            continue
+        end
+        @printf(
+            "%-22s %8.1f %8.1f %7.3f %8.1f %8.1f %7.3f %7.3f %7.3f %7.3f %6.2f\n", NAMES[k],
+            q.gppF, q.gppC, q.gppF / q.gppC, q.nppF, q.nppC, q.nppF / q.nppC,
+            q.cueF, q.cueC, q.cueF / q.cueC, q.gt5
+        )
+    end
+end
+
+@printf("\n--- PART 5b: THE ADDITIVE SPLIT, ln-space (the two columns sum to the NPP error) ---\n")
+@printf("%-22s %9s %9s %9s %9s %9s %9s\n", "cell", "ln(NPP)", "=ln(GPP)", "+ln(CUE)", "GPP share", "GPP r y0", "GPP r y9")
+for (tag, ps, as) in (("A", pA, armA), ("Pbg", pPbg, armPbg))
+    @printf("arm %s\n", tag)
+    for k in eachindex(NAMES)
+        q = cue_panel(as[k], ps[k])
+        q === nothing && continue
+        # ⚠ the split is a LOG identity, so it is UNDEFINED wherever a ratio is non-positive — which is arm A
+        # at the two hot cells, whose annual assimilate is NEGATIVE (the ADR 0125 `respcoeff` defect). Print
+        # `undef` rather than a number (ADR 0127's sign-changing-denominator guard, same failure mode).
+        if !(q.cueF > 0 && q.cueC > 0 && q.gppF > 0 && q.gppC > 0)
+            @printf(
+                "%-22s %9s %9s %9s %9s %9.3f %9.3f   (NPP_F <= 0: the split is undefined)\n", NAMES[k],
+                "undef", "undef", "undef", "undef", q.rgpp_first, q.rgpp_last
+            )
+            continue
+        end
+        lg = log(q.gppF / q.gppC); lc = log(q.cueF / q.cueC); ln = lg + lc
+        @printf(
+            "%-22s %9.4f %9.4f %9.4f %8.0f %% %9.3f %9.3f\n", NAMES[k],
+            ln, lg, lc, 100 * lg / ln, q.rgpp_first, q.rgpp_last
+        )
+    end
+end
+@printf("\nGPP share = ln(GPP_F/GPP_C) / ln(NPP_F/NPP_C) — the fraction of the assimilate error that is\n")
+@printf("PHOTOSYNTHESIS rather than respiration. It is meaningful only where `gt5m` is near 1 (basis fact\n")
+@printf("2 above) and where the C's own two runs agree (basis fact 3, i.e. not `tropical_amazon`), and it\n")
+@printf("is undefined where ln(NPP) is near 0 or the assimilate changes sign.\n")
+@printf("GPP r y0/y9 = the first and last year's GPP ratio — a drift means a structural cause, a flat\n")
+@printf("offset means a flux-level one (ADR 0053 basis check 3).\n")
+
+# ── PART 5c — HOW MUCH OF THE SPLIT IS THE SUB-5 m POPULATION? (the dominant uncertainty, measured) ───
+# PART 5's basis fact 2 says the sub-5 m stems bias `GPP_F/GPP_C` down and `CUE_F/CUE_C` up by the same
+# factor. That is not a footnote at Hainich: over the decade its `gt5m` falls 0.963 -> 0.892, and pushing
+# the whole 8 % through moves the GPP share of the assimilate error from 38 % to 77 %. So the bracket
+# straddles the verdict, and it has to be measured rather than assumed.
+#
+# THE DISCRIMINATOR, and it needs no new run: `gt5m` MOVES from year to year while F's population is
+# fixed by construction (the C's own >5 m roster, restarted every year). Write `s` for the sub-5 m stems'
+# share of the C's tree GPP. Then
+#     GPP_C(all) = GPP_C(>5 m)/(1 − s)   ⇒   ln(GPP_F/GPP_C) = ln(true ratio) + ln(1 − s).
+# If the sub-5 m stems photosynthesise in proportion to their CROWN cover, `1 − s = gt5m` and regressing
+# ln(GPP_F/GPP_C) on ln(gt5m) across years must give SLOPE ~ +1 (the upper bound of the bracket is the
+# right one). If they are so light-suppressed that they carry no flux, `s ~ 0`, the measured ratio does
+# not track `gt5m` at all and the slope is ~0 (the lower bound is right).
+# ⚠ The slope is only identified where `gt5m` actually varies and where nothing else moves with it — so
+# read `r` too, and treat a cell whose slope is far outside [0, 1] as evidence that a THIRD thing (F's own
+# year-to-year flux error) dominates there, not as an estimate of `s`.
+@printf("\n--- PART 5c: DOES THE GPP RATIO TRACK THE SUB-5 m SHARE? (arm A; slope ~1 = yes, ~0 = no) ---\n")
+@printf(
+    "%-22s %8s %8s %8s %9s %8s %9s %13s %8s %8s %8s %8s %8s\n",
+    "cell", "gt5m y0", "gt5m y9", "slope", "r", "raw drft", "corr drft", "|corr|<|raw|", "dt slope", "dt r",
+    "sd lnx", "sd lny", "SE(dt)"
+)
+for k in eachindex(NAMES)
+    q = cue_panel(armA[k], pA[k])
+    q === nothing && continue
+    ok = [i for i in eachindex(q.r) if !isnan(q.g5y[i]) && q.g5y[i] > 0 && q.r[i] > 0]
+    length(ok) < 3 && continue
+    (sl, rr) = olsfit(log.(q.g5y[ok]), log.(q.r[ok]))
+    # ⚠ BOTH series are near-monotone in time, so the fit above cannot separate "tracks gt5m" from
+    # "tracks anything else that drifts over the decade". Re-fit on the LINEARLY DETRENDED series: only
+    # the year-to-year wiggle is left, which nothing but a genuine common driver reproduces.
+    tt = Float64.(q.years[ok])
+    detr(v) = (b = olsfit(tt, v)[1]; v .- b .* (tt .- mean(tt)))
+    (sl_d, rr_d) = olsfit(detr(log.(q.g5y[ok])), detr(log.(q.r[ok])))
+    # ⚠ AND THE POWER OF THAT NULL, because a collapsed detrended slope has TWO readings (ADR 0174 §5.3:
+    # check the statistic's own noise floor). `gt5m` is a smooth near-monotone series, so detrending
+    # leaves it almost no wiggle, while the GPP ratio's residual carries every weather-year flux error.
+    # SE(slope) ~ sd(resid_y)/(sd(resid_x)·sqrt(n−2)): if that is >~1 the test CANNOT tell slope 0 from
+    # slope 1 and the null is uninformative, not evidence against the mechanism.
+    rx = detr(log.(q.g5y[ok])); ry = detr(log.(q.r[ok]))
+    sdx = std(rx); sdy = std(ry)
+    se_d = sdx <= 0 ? NaN : sqrt(max(sum((ry .- sl_d .* rx) .^ 2), 0.0) / max(length(ok) - 2, 1)) /
+        (sdx * sqrt(length(ok) - 1))
+    # the two drifts the slope is arbitrating between: the raw ratio, and the ratio with the sub-5 m
+    # population divided out (`1 − s = gt5m`). Whichever is FLATTER is the basis the level should be on.
+    raw = log(q.r[ok[end]] / q.r[ok[1]])
+    cor = log((q.r[ok[end]] / q.g5y[ok[end]]) / (q.r[ok[1]] / q.g5y[ok[1]]))
+    @printf(
+        "%-22s %8.3f %8.3f %8.2f %9.3f %8.4f %9.4f %13s %8.2f %8.3f %8.4f %8.4f %8.2f\n", NAMES[k],
+        q.g5y[ok[1]], q.g5y[ok[end]], sl, rr, raw, cor, abs(cor) < abs(raw) ? "yes" : "no", sl_d, rr_d,
+        sdx, sdy, se_d
+    )
+end
+@printf("\nslope = OLS of ln(GPP_F/GPP_C) on ln(gt5m) over the window's years. `corr drft` is the decadal\n")
+@printf("drift of GPP_F/(GPP_C·gt5m), i.e. of the ratio the sub-5 m stems have been divided out of.\n")
+@printf("A slope near +1 WITH a corrected drift smaller than the raw one is the signature that the sub-5 m\n")
+@printf("population really does carry its crown share of the flux — in which case PART 5b's GPP share is\n")
+@printf("an UNDER-estimate and the upper end of the bracket is the right reading for that cell.\n")
+@printf("`dt slope`/`dt r` are the same fit on the LINEARLY DETRENDED series and are the check that the\n")
+@printf("raw fit is not just two monotone decadal trends meeting: a slope that survives detrending is a\n")
+@printf("year-to-year coupling, one that collapses to ~0 means the raw fit was shared trend and the\n")
+@printf("correction is NOT identified at that cell.\n")
+@printf("sd lnx/lny = the detrended residual spreads the `dt` fit is formed from, and SE(dt) its standard\n")
+@printf("error. SE(dt) >~ 1 ⇒ that null CANNOT separate slope 0 from slope 1 and says nothing either way:\n")
+@printf("report the BRACKET from PART 5b, not a point estimate, for such a cell.\n")
+
 # ── the COMMITTED table (the result, not the log) ────────────────────────────────────────────────────
 # ADR 0127's numbers live here rather than only in a `logs/` file, so a later session can re-score an arm
 # against them without re-deriving the basis. Regenerate by re-running this probe; the basis gate above
@@ -543,20 +771,33 @@ open(OUTCSV, "w") do io
     println(io, "#       Pbg = P + the seed  (the most faithful configuration that exists today)")
     println(io, "# keepF_pub/keepC_pub reproduce ADR 0125 PART 7's published mean-of-per-year-ratios form;")
     println(io, "# keepF_abs/keepC_abs are the ratio-of-means. They are DIFFERENT statistics - see ADR 0127.")
+    println(io, "# The last six columns (ADR 0129) split the assimilate error `bmi_F/bmi_C` EXACTLY into a")
+    println(io, "# photosynthesis and a respiration channel: bmi = GPP*CUE, so ln(bmi_F/bmi_C) =")
+    println(io, "# ln(gpp_F/gpp_C) + ln(cue_F/cue_C). gpp_C = 365*gpp_tree from M_fdiff_oracle_biomes_annual")
+    println(io, "# (d_gpp - d_grass_gpp, ALL trees); npp_C_all = M_stem_growth_reference npp_all (>5 m stems")
+    println(io, "# only). ⇒ gpp_F/gpp_C is biased DOWN and cue_F/cue_C UP by the sub-5 m share; gt5m_frac is")
+    println(io, "# the crown-cover form of it. `nan` where the window has no C daily-GPP oracle (any")
+    println(io, "# non-historic scenario) - closing that needs an ssp370 single-cell re-run with d_grass_gpp.")
     println(io, "# scripts/biome_sapwood_bg_probe.jl")
     println(
         io,
         "arm,cell,nyear,bmi_F,bmi_C,loss_F,loss_C,bel_F,bel_C,dagb_F,dagb_C,surplus," *
-            "t_input,t_loss,t_nosink,demand_pool0,demand_incr,keepF_pub,keepC_pub,keepF_abs,keepC_abs"
+            "t_input,t_loss,t_nosink,demand_pool0,demand_incr,keepF_pub,keepC_pub,keepF_abs,keepC_abs," *
+            "gpp_F,gpp_C,npp_C_all,cue_F,cue_C,gt5m_frac"
     )
-    for (tag, ps) in (("A", pA), ("Abg", pAbg), ("P", pP), ("Pbg", pPbg))
+    for (tag, ps, as) in (("A", pA, armA), ("Abg", pAbg, armAbg), ("P", pP, armP), ("Pbg", pPbg, armPbg))
         for k in eachindex(NAMES)
             c = ps[k]
+            q = cue_panel(as[k], c)
+            (gF, gC, nC, cF, cC, g5) = q === nothing ?
+                (c.gf, NaN, NaN, c.gf > 0 ? c.bf / c.gf : NaN, NaN, NaN) :
+                (q.gppF, q.gppC, q.nppC, q.cueF, q.cueC, q.gt5)
             @printf(
-                io, "%s,%s,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f\n",
+                io, "%s,%s,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f\n",
                 tag, NAMES[k], c.n, c.bf, c.bc, c.lossF, c.lossC, c.dbelF, c.dbelC, c.dagbF, c.dagbC,
                 c.dagbF - c.dagbC, c.bf - c.bc, c.lossC - c.lossF, c.dbelC - c.dbelF,
-                c.pool0, c.dD, c.keepF_pub, c.keepC_pub, c.keepF_abs, c.keepC_abs
+                c.pool0, c.dD, c.keepF_pub, c.keepC_pub, c.keepF_abs, c.keepC_abs,
+                gF, gC, nC, cF, cC, g5
             )
         end
     end

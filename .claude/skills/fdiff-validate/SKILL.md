@@ -422,3 +422,45 @@ decode, the mixed v2/v3 `.clm` scalar branch and the units; it passed at ≤1.8e
 
 **And always run the historic CONTROL in the same session** — the scenario knobs must leave the historic
 arm byte-identical, and its basis gate against ADR 0125's published panel must still pass. It did.
+
+## SPLITTING AN ASSIMILATE (`bm_inc`) ERROR INTO PHOTOSYNTHESIS vs RESPIRATION — and the 5 m trap that makes it a BRACKET (ADR 0129, 2026-08-12)
+
+`bm_inc` is a **net** flux, so a `bmi_F/C` ratio is two defects in one number. The split is an exact
+identity and needs no new run — it is `scripts/biome_sapwood_bg_probe.jl` PART 5:
+
+    bmi = GPP · CUE,   CUE ≡ NPP/GPP     ⇒     ln(bmi_F/bmi_C) = ln(GPP_F/GPP_C) + ln(CUE_F/CUE_C)
+
+**F side:** `core.gpp_acc` / `core.npp_acc`, read **BEFORE `annual_step!`** — that call zeroes them
+(`fast.jl:437`). They are TREE-only in the paired arm (the roster is `type <= 6` and the only grass branch
+is the year-end re-seed, which the harness discards). Assert `npp_acc == bm_inc` per cell-year rather than
+assuming it; that equality is what makes `cue` the same object on both sides.
+**C side:** `gpp_C = 365 × gpp_tree` from `references/M_fdiff_oracle_biomes_annual.csv` (already
+`d_gpp − d_grass_gpp`, basis check 1) and `npp_C = npp_all` from `references/M_stem_growth_reference.csv`.
+
+⚠ **THE TRAP, and it straddles the verdict: the two C quantities are on DIFFERENT POPULATIONS.** The `ind`
+writer emits only stems > 5 m (`fwriteoutput_ind.c:84`), so the C's daily GPP contains sub-5 m trees that
+both F's roster and the C's per-stem NPP lack. Writing `s` for their share of tree GPP, `GPP_F/GPP_C` is
+biased **down** by `(1 − s)` and `CUE_F/CUE_C` **up** by exactly the same factor.
+⇒ **the PRODUCT — every published `bmi` ratio — is untouched, and the SPLIT is undetermined.** At Hainich
+(`gt5m` ≈ 0.92) that spans **38 % photosynthesis at `s = 0` to 78 % at `s` = their crown share**. The
+generalisable rule: **before decomposing a validated ratio, check whether the FACTORS are on the same
+population even when the product is.**
+
+**The discriminator, and why you must also price it.** `gt5m` moves year to year while F's population is
+fixed by construction, so regressing `ln(GPP_F/GPP_C)` on `ln(gt5m)` gives slope ≈ +1 if the sub-5 m stems
+carry their crown share and ≈ 0 if they carry nothing (PART 5c). Raw it looked decisive at Hainich (slope
+0.83, r 0.890; dividing `gt5m` out removed **98.5 %** of the decadal drift) — but **both series are
+near-monotone in time**, and detrended it collapses to 0.22 / 0.166. **That collapse is not evidence
+against the mechanism: the detrended test's own SE(slope) is 3.63** (boreal 41.8, mediterranean 5.3), so
+it cannot separate 0 from 1. **Any 10-year regression here needs the detrended companion printed beside
+it, and the detrended companion needs its SE printed beside IT** — otherwise an underpowered null gets
+reported as a refutation. Cells with `gt5m` far from 1 (boreal 0.76, Sahel 0.78) cannot be read at all.
+
+**Closing the bracket is a C-side change, not another emulator arm:** an env-gated removal of the writer's
+`height > height_min` cut gives F the full stand *and* per-stem NPP for the short trees in one step
+(pattern: `patches/lpjmlfit_rung2_hook_v5.patch`; gate: `scripts/diagnose_cbinary_rebuild_equality.py`).
+
+**And re-price any queued CUE-side fix against the bracket first.** The `sapwood_bg` port and the `rd`
+gate act on the CUE channel only, so they are worth ~2–7 % of the assimilate error at Hainich, not the
+~11 % the CUE gap alone implied. They remain justified by their own allocation criterion (`t_nosink`) —
+the two cases are different channels and must not be added together.
