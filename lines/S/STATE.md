@@ -276,23 +276,44 @@ rather than a request to flip now.
 > 1.441 ± 0.050. **But I² is 93–99 % for every arm** (per-cell ratios −7.5 … +15.5), so there is no common
 > effect and **the pooled slope may NOT be quoted as "1.4× too strong"**. The per-cell table is the result.
 >
-> ### B2. ⚠ IT IS NOT YET A CLEAN CLIMATE RESPONSE — item 1 fixes that, and the code is written
+> ### B2. THE CAVEAT IS CLOSED — and the answer is that there is NO climate response (ADR 0178)
 >
-> **The two legs have different LENGTHS (20 vs 81 years).** So the raw pair is the climate response **plus 61
-> extra years of free-running drift**, and `NP` is the direct evidence: it kills nobody yet posts the largest
-> slope of all. **No number above is a climate sensitivity.**
+> The frozen-climate control RAN. Same ssp370 leg, same restart, same seeds, same 81 years, with only the
+> bioclimatic tail the count model conditions on held at present day — so `transient − frozen` is the
+> climate response with drift differenced out, and `frozen − historic` is the drift.
 >
-> 1. **RUN THE FROZEN-CLIMATE CONTROL. Written, tested, one command.**
->    `BOUNDARY=frozen SCEN=ssp370 bash scripts/run_rung2_response_matrix.sh` (240 jobs, ~15 min) reruns the
->    ssp370 leg with the climate held at present day — same restart, same seeds, same leg length, only the
->    climate channel frozen. Then **`transient − frozen` is the climate response with drift differenced out**
->    and `frozen − historic` is the drift. `build_rung2_boundary_series.py --freeze` builds it;
->    `frozen_series()` documents why. **This is the number the owner actually asked for.**
-> 2. **Score with `scripts/diagnose_rung2_response.py`** (per-cell response, through-origin slope, Cochran's
->    Q + I²; `--stat wooddens|age_mean` for the other two). It now runs in **~40 s of CPU** — it was 40+ min
->    until the reader was changed to reject non-terminal-year lines with a substring test before splitting
->    51 fields. Wall time is I/O-bound on ~40 GB, and it buffers, so a 0-byte log is normal, not a hang.
->    ⚠ **Never pool the per-cell ratios without Q** — heterogeneous cells cancel.
+> **The control validates itself: `NP`'s climate term is EXACTLY 0.000 at all 12 cells.** It never consults
+> the model, so freezing the input must change nothing — that by-construction zero is what licenses reading
+> a non-zero elsewhere.
+>
+> | arm | mean climate | mean drift | drift share | climate-vs-truth slope |
+> |---|---|---|---|---|
+> | `NP` | 0.000 | −3.947 | 100.0 % | 0.000 |
+> | `S0` | +0.175 | −2.961 | **94.4 %** | **−0.031** |
+> | `S0h` | +0.134 | −4.693 | **97.2 %** | **+0.044** |
+> | `S1` | −0.008 | −4.286 | **99.8 %** | **+0.003** |
+>
+> ⇒ **Essentially the whole apparent response in ADR 0177 was drift.** The shipped count model does not
+> respond to climate in any measurable way when it runs free inside FIT's own physics — not wrong in
+> magnitude, not wrong in sign, simply flat. That also explains ADR 0177's "the arms match the persistence
+> null on direction": on the climate channel they ARE the null.
+>
+> **This resolves ADR 0175's `roster_n_prev` falsifier NEGATIVELY.** `n_prev` is the stand's own count
+> throughout this experiment and the response is still ~0, so that defect is real but is NOT the mechanism
+> of the response failure. Withdraw the ADR-0175 §3 attribution on that point.
+>
+> ### B2a. THE NEXT ACTION — and it needs NO LPJmL run
+>
+> 1. **Partial-dependence sweep of the trained forest over its two transient climate features**
+>    (`eco_diag_gdd_5`, `tas_cold_month` — the only climate channel in the 15-column row; the other 13 are
+>    read off the live roster and were free to move in this experiment). Sweep each over its training range
+>    with the rest of the row held at realistic per-cell values, using `DRF.predict` on
+>    `drf_forest_global_pooled_w20_t8.drf`. **This separates the two remaining hypotheses:** the model
+>    never learned a climate dependence, versus it learned one the free-running loop cannot express. It is
+>    minutes of work and it decides where retraining effort goes. **Do it before any retraining.**
+> 2. If the sweep shows a real learned dependence, the defect is in how the loop feeds/uses it; if it shows
+>    a flat surface, the training target/feature set is the defect and ADR 0112's teacher-forcing critique
+>    is the place to restart.
 >
 > ### B3. HOUSEKEEPING — MERGED AND CLEAN
 >
