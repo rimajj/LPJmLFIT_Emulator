@@ -259,27 +259,22 @@ rather than a request to flip now.
 >    51 fields. Wall time is I/O-bound on ~40 GB, and it buffers, so a 0-byte log is normal, not a hang.
 >    ⚠ **Never pool the per-cell ratios without Q** — heterogeneous cells cancel.
 >
-> ### B3. HOUSEKEEPING — ⚠ THE MERGE MAY STILL BE OPEN, CHECK FIRST
+> ### B3. HOUSEKEEPING — MERGED AND CLEAN
 >
-> `line/S` is committed and pushed. **Two shas matter and they are different:**
-> * **`66ed4115`** carries the CODE (ADR 0177 + the scenario-pair machinery) and therefore the CI verdict.
->   `format` is **green**; the four Julia jobs were still `in_progress` ~50 min in when the session ended.
-> * **`4cff6f57`** is the branch TIP and adds only this STATE block. It has **no check-runs at all**, which
->   is correct (ADR 0090: a docs-only diff triggers no gate) — do not wait for a verdict on it.
+> `line/S` → `main` at **`ccb0eec0`** (merge) + **`dbb77f3b`** (changelog collated inside the lock; the
+> `uncollated fragments` gate on `main` is green). The code sha `66ed4115` went green on `format` and on
+> both required Julia jobs before the merge. `main`'s own re-run was still in flight at hand-off —
+> **worth one glance**, though the diff touches no `src/**` (only `scripts/`, `docs/`, `lines/`, and one
+> new `test/testitems/references/*.csv` fixture, which is what makes `CI` run at all).
 >
-> So: read the verdict off `66ed4115`, and merge `origin/line/S` (the tip) once it is green. **A `scripts/*.jl` change
-> DOES trigger the full `CI` matrix** (contrary to the ADR-0090 path table's `src/**`-only reading — worth
-> re-checking the workflow's filter), and `test (lts)` / `test (1)` are REQUIRED.
->
-> **First action of the next session: check `66ed4115`'s required checks and merge if green.**
-> ```
-> TOKEN=$(python3 -c "import yaml;print(yaml.safe_load(open('/home/jamirp/.config/gh/hosts.yml'))['github.com']['oauth_token'])")
-> curl -s -H "Authorization: token $TOKEN" \
->   https://api.github.com/repos/rimajj/LPJmLFIT_Emulator/commits/66ed4115/check-runs
-> ```
-> then the usual `flock` merge of `origin/line/S` (the `repo-commit` skill has it, and collate
-> `changelog.d/` inside the lock — there is a fragment `S-rung2-warming-response.md` waiting).
-> `test (pre)` is allowed-to-fail. Nothing in the diff touches `src/**`, so a green branch should carry.
+> **Note on CI timing, because I got this wrong mid-session and nearly wrote the wrong lesson down.** The
+> branch run took **12 minutes end to end** (`run_attempt = 1`, 21:32:40 → 21:44:39 UTC) and was **never
+> restarted**. The two STATE-only pushes I made while it was in flight created **no runs at all**
+> (`total_count = 0` on both shas) and therefore could not displace the pending one — exactly what the
+> `repo-commit` skill already records as measured. My impression that the clock had restarted, and that
+> the jobs had been "in progress for ~50 minutes", was a miscount of my own polling, not a real effect.
+> **`scripts/*.jl` DOES trigger the full `CI` matrix** — that part is real and worth knowing when budgeting
+> a push, but a docs-only follow-up remains safe.
 >
 > ### C. TWO INTERFACE LIMITS DISCOVERED — both are in the C hook (line M's `rung2_apply.c`), not in S's code
 >
