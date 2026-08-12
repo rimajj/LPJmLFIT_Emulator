@@ -40,16 +40,26 @@
 #     — regardless of anything outside this run.
 #
 #   GATE B (REPORTED, not fatal by default; `GATE_FATAL=1` to harden). The re-derived `copula` column vs the
-#     table's stored `pred_<axis>.f64`. This SHOULD be bit-identical, and where it is, the arm is anchored to
-#     the published artifact as well as internally consistent. ⚠ IT IS NOT ALWAYS: measured 2026-08-12, the
-#     STOCK `eval_slow_copula.jl` no longer reproduces the `pred_<axis>.f64` committed in
-#     `/p/tmp/jamirp/emulator_global/smoke_struct_on` (all four axes differ, worst |Δ| up to 3.0e5 gC/m3 on
-#     Wooddens) even at that table's own KFOLDS=2 — while `src/drf.jl`'s default `qrf=false` numerics are
-#     unchanged (the 2026-07-30/31 commits added `_check_nfeat`, the opt-in QRF estimator and `.rcop` v2, none
-#     of which touch the pooled path). So a stored `pred_*.f64` on the scratch tables can be STALE with
-#     respect to today's evaluator. That is exactly why arm D must not take a stored column as one arm and
-#     compute the other today: the difference would carry a code change as well as the marginal family. This
-#     gate exists to make that visible instead of silent, which is why it reports rather than dies.
+#     table's stored `pred_<axis>.f64`. Where it is bit-identical the arm is anchored to the published artifact
+#     as well as internally consistent. **On the production `slow_copula_pooled_w20_t8` it PASSES — exact on
+#     all four axes over 402 163 checked rows**, which is the basis arm D's numbers should be read on.
+#     ⚠ BUT IT IS TABLE-SPECIFIC: on the old `/p/tmp/jamirp/emulator_global/smoke_struct_on` table it FAILS on
+#     all four axes (worst |Δ| up to 3.0e5 gC/m3 on Wooddens), and so does the STOCK, unmodified
+#     `eval_slow_copula.jl` re-run on a copy of that table at its own KFOLDS=2 — while `src/drf.jl`'s default
+#     `qrf=false` numerics are unchanged (the 2026-07-30/31 commits added `_check_nfeat`, which only throws,
+#     the opt-in QRF estimator, and `.rcop` v2, none of which touch the pooled path). So a stored
+#     `pred_*.f64` CAN be stale with respect to today's evaluator; the production one is not; the smoke
+#     table's cause is unpinned. That is why arm D must not take a stored column as one arm and compute the
+#     other today — on a table where the divergence exists, the difference would carry a code change as well
+#     as the marginal family, and nothing else would catch it. This gate makes the situation visible either
+#     way, which is why it reports rather than dies; GATE A is what makes the comparison sound regardless.
+#
+#   GATE C (FATAL). Every emitted shadow dir is COMPLETE: all `pred_<axis>.f64` present, each exactly 8*n
+#     bytes, no filename holding a literal `$`. Added after the first three-arm production run wrote all four
+#     axes into ONE file literally named `pred_$(ax).f64` in two of the three dirs (an interpolation escaped
+#     away in an editing pass). The failure surfaced DOWNSTREAM as the scorer erroring on a missing `Y_`
+#     symlink — one step from the cause — and with the symlink right, the corrupt single-axis file would have
+#     scored happily. Assert completeness where the dir is produced, not where it is consumed.
 #
 # THE INTERVAL IS PFT-BLIND, DELIBERATELY, AND THAT IS NOT A HANDICAP THIS SCRIPT INVENTED. The copula's
 # conditioning (`COPULA_COND_COLS` in `build_slow_runtime_table.py`) carries NO `Type` column, so the shipped
@@ -450,7 +460,7 @@ function main()
         d = SHADOW * tag
         mkpath(d)
         for ax in axes
-            open(joinpath(d, "pred_\$(ax).f64"), "w") do io
+            open(joinpath(d, "pred_$(ax).f64"), "w") do io
                 write(io, preds[ax])
             end
         end
@@ -460,9 +470,9 @@ function main()
             symlink(joinpath(SRC, f), dst)
         end
         for ax in axes
-            dst = joinpath(d, "Y_\$(ax).f64")
+            dst = joinpath(d, "Y_$(ax).f64")
             (isfile(dst) || islink(dst)) && rm(dst)
-            symlink(joinpath(SRC, "Y_\$(ax).f64"), dst)
+            symlink(joinpath(SRC, "Y_$(ax).f64"), dst)
         end
         println("== wrote arm $(tag[2:end]) to $d  ($(length(axes)) axes, $n rows each)")
     end
@@ -498,6 +508,40 @@ function main()
         symlink(joinpath(SRC, "Y_$(ax).f64"), dst)
     end
     println("== symlinked cells.i64 / manifest_copula.txt / Y_<axis>.f64 from the source table")
+
+    # ── GATE C (FATAL) — every emitted dir is COMPLETE and correctly named ────────────────────────────
+    # This exists because it caught a real defect: a `\$(ax)` that survived an editing pass wrote all four
+    # axes into ONE file literally named `pred_$(ax).f64` (last axis wins) in two of the three dirs, and
+    # nothing noticed until the downstream scorer failed on a MISSING `Y_` file — i.e. the failure surfaced
+    # as a missing input, one step away from the cause, and the corrupt `pred_` file it did write would have
+    # scored happily if the symlink had been right. A shadow dir is only meaningful if it is complete.
+    for d in (SHADOW, SHADOW * "_expect", SHADOW * "_copula")
+        want = vcat(
+            ["cells.i64", "manifest_copula.txt"],
+            ["pred_$(ax).f64" for ax in axes], ["Y_$(ax).f64" for ax in axes]
+        )
+        got = readdir(d)
+        missing_files = setdiff(want, got)
+        isempty(missing_files) ||
+            error(
+            "GATE C FAIL: $d is missing $(missing_files). The downstream scorer would fail one step " *
+                "away from the cause, or worse, score a file whose name absorbed several axes."
+        )
+        stray = filter(f -> occursin('$', f), got)
+        isempty(stray) ||
+            error(
+            "GATE C FAIL: $d holds $(stray) — a literal `\$` in a filename means an interpolation " *
+                "was escaped away and several axes were written into ONE file."
+        )
+        for ax in axes
+            sz = filesize(joinpath(d, "pred_$(ax).f64"))
+            sz == 8 * n || error("GATE C FAIL: $d/pred_$(ax).f64 is $sz B, expected $(8 * n) B for $n rows.")
+        end
+    end
+    println(
+        "== GATE C PASS — all three shadow dirs are complete ($(2 + 2 * length(axes)) entries each, "
+            * "every pred_<axis>.f64 exactly $(8 * n) B)"
+    )
     println(
         "\nNEXT — score all THREE arms with the existing scorer, AXES=\"$(join(String.(axes), ' '))\":\n"
             * "   SHADOW=$SHADOW          scripts/sbatch_python.sh S-ks-beta   scripts/score_slow_copula_ks.py\n"

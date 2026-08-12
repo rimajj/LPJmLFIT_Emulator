@@ -196,15 +196,23 @@ rather than a request to flip now.
 > out-of-sample number. Estimator = 1.7–2.4×; grouping = a further 1.2–1.5×; and the published Beta figure
 > sits **at its own statistic's noise floor** (0.0437–0.0476 vs a simulated 0.0434–0.0475 at n = 150).
 > Like for like, the **oracle-moment** Beta ties the **out-of-sample** copula on two axes and is **7–12 %
-> WORSE** on the other two. `test/testitems/references/S_beta_vs_copula_likeforlike.csv` is the reproducer,
-> gated on the published range. **Do not re-propose a bounded-Beta marginal without refuting ADR 0173 §2d.**
+> WORSE** on the other two. And the **deployable** arm settles it from the other side: a Beta carrying the
+> *same learned two moments*, off the same forests / leaf pool / uniform as the copula, is worse on **all four
+> axes** — median per-cell KS **+36 / +9 / +13 / +28 %**, pooled KS **6.5–16.6× worse**, every axis failing the
+> `≤ 0.02` criterion the copula passes. The run's own control **reproduces the published panel to the digit**
+> (0.1725 / 0.1287 / 0.1575 / 0.1487 per-cell; 0.0039 / 0.0065 / 0.0020 / 0.0040 pooled), so both arms are on
+> exactly the published basis, and GATE B is **bit-identical** against the production table's stored column.
+> `test/testitems/references/S_beta_vs_copula_likeforlike.csv` is the part-1 reproducer, gated on the published
+> range. **Do not re-propose a bounded-Beta marginal without refuting ADR 0173 §2d AND §3c.**
 >
-> **4. ⚠ A STORED `pred_<axis>.f64` ON THE SCRATCH COPULA TABLES CAN BE STALE (ADR 0173 §3a).** The **stock,
-> unmodified** `eval_slow_copula.jl` no longer reproduces the committed predictions in
-> `…/smoke_struct_on` (all four axes, worst |Δ| ≈ 3.0e5 gC/m³) at that table's own `KFOLDS=2`, while
-> `src/drf.jl`'s default `qrf = false` numerics are unchanged. **Never take a stored pred column as one arm
-> and compute the other today** — the difference would carry a code change as well as the effect. Cause not
-> yet pinned; that is a live loose end (item C below).
+> **4. ⚠ A STORED `pred_<axis>.f64` CAN BE STALE — BUT NOT THE PRODUCTION ONE (ADR 0173 §3a).** On
+> `slow_copula_pooled_w20_t8` the re-derived copula column is **bit-identical** to the stored one (402 163 rows,
+> all four axes), so the production artifact is sound and arm D is anchored to it. On the old
+> `…/smoke_struct_on` table the **stock, unmodified** `eval_slow_copula.jl` does **not** reproduce its
+> committed predictions (all four axes, worst |Δ| ≈ 3.0e5 gC/m³) at that table's own `KFOLDS=2`, while
+> `src/drf.jl`'s default `qrf = false` numerics are unchanged. **Never take a stored pred column as one arm and
+> compute the other today without checking that table** — on one where the divergence exists the difference
+> would carry a code change as well as the effect. The smoke table's cause is unpinned (item C below).
 >
 > **5. THE RECRUIT ARM IS A FIVE-CELL RESULT AND THE SIGN QUESTION IS SETTLED IN THE UNCOMFORTABLE
 > DIRECTION (ADR 0172).** Level effect positive and significant at **all five** cells (+2.21 / +5.02 / +5.09 /
@@ -248,10 +256,10 @@ rather than a request to flip now.
 >
 > **C. PIN WHY THE STORED `pred_*.f64` NO LONGER REPRODUCE** (item 4). One bisect over `scripts/eval_slow_copula.jl`
 > between the table's write date and HEAD, on the small `smoke_struct_on` table (170 590 rows, ~2 min/run).
-> It matters beyond arm D: every published per-cell KS in `figures/emulator_validation/**` was computed from
-> those columns, so if the evaluator moved, the *figures* are on a basis today's code does not reproduce. That
-> is a provenance question, not necessarily a defect — but it is unanswered, and ADR 0060's rule says find out
-> before quoting.
+> ⚠ **Scope it correctly before starting: the PRODUCTION table is fine** — ADR 0173 §3c's control reproduces
+> `figures/emulator_validation/pooled_t8/metrics_traits.txt` to the digit, so the published figures are NOT on
+> a lost basis. What is unexplained is the July smoke table. Worth one bisect for hygiene; **not** a
+> figure-provenance emergency.
 >
 > **D. `boundary_series` IS AN UNREGISTERED ROTTED FLAG.** ADR 0027 adopted the transient boundary as "the
 > production config" on physical-correctness grounds, yet `src/components/slow.jl`'s default is `nothing` and

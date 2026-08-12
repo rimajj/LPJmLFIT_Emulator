@@ -14,9 +14,11 @@
     `test/testitems/references/S_beta_vs_copula_likeforlike.csv` (33 rows).
   * part 2 (the deployable arm, ~30 min × 2): `OUT=…/slow_copula_pooled_w20_t8
     SHADOW=…/armd_pooled_t8_param BETA_INTERVAL=param NCPUS=64 PARTITION=priority QOS=priority
-    scripts/sbatch_julia.sh S-armdP2 --project=. scripts/eval_slow_beta_arm.jl` (job 1762462) and
+    scripts/sbatch_julia.sh S-armdP3 --project=. scripts/eval_slow_beta_arm.jl` (job **1762720**, the run all
+    of §3c's numbers are from; 1762462 was the same computation before GATE C was added) and
     `BETA_INTERVAL=empirical … S-armdE2` (job 1762463), then `SHADOW=<dir> scripts/sbatch_python.sh
-    S-ks-<arm> scripts/score_slow_copula_ks.py` on each of the three emitted arms.
+    S-ks-<arm> scripts/score_slow_copula_ks.py` on each of the three emitted arms (jobs 1762694, 1762733,
+    1762950, 1762951).
   * the previously-uncommitted original: `/p/tmp/jamirp/npatch_analysis/attack/betaks.py` (mtime
     2026-08-07), found while writing part 1 and quoted below.
 
@@ -157,26 +159,83 @@ one fitted forest and one leaf pool**:
   variance, at the **same** `u`;
 * `expect` — the pool's **mean**, i.e. predict the conditional expectation instead of drawing (§4).
 
+### 3c. THE RESULT: the deployable Beta is WORSE on all four axes, and the control reproduces the published panel to the digit
+
+All three arms come off the same forests in one run (job 1762720), scored by the **existing**
+`score_slow_copula_ks.py` with no new scorer:
+
+| arm | statistic | SLA | Wooddens | D95max | minwscal |
+|---|---|---|---|---|---|
+| **`copula`** — this run's own re-derived column (the CONTROL) | median per-cell KS | **0.1725** | **0.1287** | **0.1575** | **0.1487** |
+| | pooled KS | **0.0039** | **0.0065** | **0.0020** | **0.0040** |
+| **`beta`** — learned-moment bounded Beta, same forest/pool/`u` | median per-cell KS | 0.2350 | 0.1400 | 0.1775 | 0.1900 |
+| | pooled KS | 0.0553 | 0.0421 | 0.0330 | 0.0663 |
+| **`expect`** — the conditional expectation (§4) | median per-cell KS | 0.5212 | 0.4963 | 0.5312 | 0.5075 |
+| | pooled KS | 0.2930 | 0.3190 | 0.3158 | 0.1909 |
+
+**The control's eight numbers are the published panel exactly** — `figures/emulator_validation/pooled_t8/metrics_traits.txt`
+reads median per-cell KS 0.1725 / 0.1287 / 0.1575 / 0.1487 and pooled KS 0.0039 / 0.0065 / 0.0020 / 0.0040.
+So this harness reproduces the shipped artifact's own scores to the digit, and the other two arms are on
+precisely the published basis rather than a re-derived approximation of it.
+
+**Verdict on the deployable question: replacing the copula's learned empirical marginal with a bounded Beta
+carrying the SAME learned two moments is WORSE on every axis, on both statistics.**
+
+* median per-cell KS: **+36.2 % / +8.8 % / +12.7 % / +27.8 %**;
+* pooled KS: **14.2× / 6.5× / 16.5× / 16.6×** worse, and every axis fails ADR 0030 §4's criterion 3
+  (`pooled KS ≤ 0.02`) which the copula passes on all four.
+
+Combined with §2d — where the Beta given each test cell's **own observed** moments only ties or loses — arm D
+is refuted from both directions: the Beta family is not better with learned moments, and it is not better with
+oracle moments either.
+
+### 3d. The "the interval was too wide" objection is answered by DEGENERACY, not by a score
+
+`BETA_INTERVAL=empirical` (the training fold's own [min, max] instead of the parameter interval) was included
+so that objection could not stand. At global scale it turns out to be **the same arm**: with 42 227 077 stems
+the empirical support saturates the parameter interval — byte-identical `pred_*.f64` on Wooddens, D95max and
+minwscal, and on SLA a maximum difference of **2.17e-06, i.e. 3.3e-05 of the interval width**, which moves no
+printed KS digit (job 1762463, identical scores to four decimals). So the parameter interval is not what is
+costing the Beta anything; the family is.
+
 ⇒ `beta` and `copula` differ in the marginal **family** and in nothing else. That is enforced by **GATE A
 (fatal)**: the pooled reading must equal `DRF.predict_quantile` on sampled rows of every fold and axis
 (smoke: 173 908 rows, exact). All three arms are emitted as `pred_<axis>.f64` into shadow dirs with the
 source table's `cells.i64`/`Y_*.f64`/manifest symlinked, so the **existing** `score_slow_copula_ks.py`
 scores them with no new scorer and no second KS definition.
 
-### 3a. ⚠ A finding that arm D would have been silently wrong without: a stored `pred_*.f64` can be STALE
+### 3a. GATE B's outcome, and the ⚠ that is NOT a general claim
 
-**GATE B** compares this run's re-derived copula column against the table's stored one. On
-`/p/tmp/jamirp/emulator_global/smoke_struct_on` it **fails on all four axes** (worst |Δ| up to 3.0e5 gC/m³ on
-Wooddens) — and so does the **stock, unmodified** `eval_slow_copula.jl` re-run on a copy of that table at its
-own `KFOLDS=2` (job 1762346: all four `pred_*.f64` differ). Meanwhile `src/drf.jl`'s default `qrf = false`
-numerics are unchanged: the 2026-07-30/31 commits added `_check_nfeat` (which only throws), the **opt-in** QRF
-estimator, and `.rcop` format v2. So the stored OOS predictions on the scratch tables no longer correspond to
-today's evaluator, cause not yet pinned.
+**On the production table `slow_copula_pooled_w20_t8`, GATE B PASSES — bit-identical on all four axes over
+402 163 checked rows.** So this arm is anchored to the published artifact as well as internally consistent: the
+copula column it compares the Beta against *is* the shipped one, and the folds, forests and uniforms are
+provably those of the run that produced the pinned artifact. That is the strongest form the like-for-like claim
+can take, and it is the basis §2d's comparison should be read on.
 
-**The consequence for method, which is the part that generalises:** the obvious way to build arm D — take the
-stored `pred_*.f64` as the copula arm and compute the Beta arm today — would have put a **code change inside
-the family comparison** and no check would have caught it. GATE B is reported rather than fatal precisely so
-this is visible; GATE A is what makes the comparison sound regardless.
+⚠ **But it is table-specific, and the counter-example is instructive.** On the old
+`/p/tmp/jamirp/emulator_global/smoke_struct_on` table, GATE B **fails on all four axes** (worst |Δ| up to
+3.0e5 gC/m³ on Wooddens) — and so does the **stock, unmodified** `eval_slow_copula.jl` re-run on a copy of that
+table at its own `KFOLDS=2` (job 1762346), while `src/drf.jl`'s default `qrf = false` numerics are unchanged
+(the 2026-07-30/31 commits added `_check_nfeat`, which only throws, the **opt-in** QRF estimator, and `.rcop`
+format v2). So **a stored `pred_*.f64` on a scratch table can be stale with respect to today's evaluator**, the
+production one is not, and the cause of the smoke table's divergence is unpinned. Do not generalise either way
+without checking the table you are using.
+
+**The consequence for method, which is the part that generalises regardless:** the obvious way to build arm D —
+take a stored `pred_*.f64` as the copula arm and compute the Beta arm today — would have put a **code change
+inside the family comparison** on any table where that divergence exists, and no check would have caught it.
+GATE B is reported rather than fatal so the situation is visible either way; GATE A is what makes the
+comparison sound independently of it.
+
+### 3b. A third gate, added because the first version of this script shipped a defect the pipeline hid
+
+`GATE C` asserts every emitted shadow dir is complete: all `pred_<axis>.f64` present, each exactly `8·n` bytes,
+no filename containing a literal `$`. It exists because the first production run of the three-arm version wrote
+**all four axes into one file literally named `pred_$(ax).f64`** in two of the three dirs — an interpolation
+escaped away during an editing pass. The failure then surfaced *downstream*, as the scorer erroring on a
+missing `Y_` symlink, one step away from the cause; and had the symlink been right, the corrupt single-axis
+file would have **scored happily**. A shadow dir is only meaningful if it is complete, so completeness is now
+asserted where it is produced rather than discovered where it is consumed.
 
 ---
 
@@ -194,8 +253,13 @@ mean the Beta's moments already need.
 copula's **per-cell KS**, a *distributional* metric — and a point mass has no dispersion at all, so a large
 per-cell KS for the expectation arm is the **expected** result and is **not** evidence against the band-metric
 claim. What this arm settles is narrower and was genuinely open: whether the dividend can be read as a free
-win for the trait-**distribution** target, which is what ADR 0025 set the copula up to reproduce. The numbers
-are in the fixture; the band-metric half of the claim remains unmeasured and is named as such in the handoff.
+win for the trait-**distribution** target, which is what ADR 0025 set the copula up to reproduce. Measured (§3c): the expectation arm's median per-cell KS is **0.4963–0.5312**, i.e. **3.0–3.9× the copula's**,
+and its pooled KS is **0.19–0.32**, 48–158× the copula's. That is the expected consequence of predicting a
+point mass against a distributional target and it is reported as such — **it is NOT evidence against the
+band-metric claim**, which remains unmeasured and is named as the one open rung-1 deliverable in the handoff.
+What it does settle, and what was genuinely open: the dividend **cannot** be read as a free win for the
+trait-DISTRIBUTION target that ADR 0025 set the copula up to reproduce. If it is taken, it is a deliberate
+trade of distributional fidelity for band accuracy, and both sides must be quoted.
 
 ---
 

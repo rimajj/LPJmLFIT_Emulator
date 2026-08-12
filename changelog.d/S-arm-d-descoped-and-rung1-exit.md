@@ -32,7 +32,12 @@
   floor** (0.0437–0.0476 against a simulated 0.0434–0.0475 at n = 150). Like for like, the Beta given each
   test cell's **own observed** moments ties the **out-of-sample** copula on two axes and is **7–12 % worse**
   on the other two. Both sit only 1.1–1.5× above the split-half floor of their grouping, so neither family is
-  the binding constraint on that score.
+  the binding constraint on that score. And the **deployable** arm settles it from the other direction: a Beta
+  carrying the *same learned two moments*, off the same forests, leaf pool and uniform as the copula, is worse
+  on **all four axes** — median per-cell KS +36 % / +9 % / +13 % / +28 %, pooled KS **6.5–16.6× worse**, every
+  axis failing the `≤ 0.02` criterion the copula passes. The run's own control reproduces the published panel
+  **to the digit** (median per-cell KS 0.1725 / 0.1287 / 0.1575 / 0.1487, pooled 0.0039 / 0.0065 / 0.0020 /
+  0.0040), so both arms sit on exactly the published basis.
 
 ### Added
 
@@ -50,12 +55,20 @@
   as a by-product of the Beta's moments. ⚠ Its published +2.9 to +14.4 percentage-point figure is on a
   **mean-based band metric**; the arm here is scored on a **distributional** per-cell KS, where a point mass
   has no dispersion, so the two framings are reported separately and the band-metric half remains open.
+  Measured: the expectation arm's median per-cell KS is 3.0–3.9× the copula's (0.496–0.531) and its pooled KS
+  48–158× (0.19–0.32). That is the *expected* consequence of a point mass against a distributional target, and
+  what it settles is narrow but was genuinely open — the dividend cannot be read as a free win for the
+  trait-distribution target; taking it would be a deliberate trade of distributional fidelity for band
+  accuracy, and both sides must then be quoted.
 
 ### Fixed
 
-- **A stored out-of-sample prediction column on the scratch copula tables can be STALE with respect to
-  today's evaluator, and nothing flagged it.** The stock, unmodified `scripts/eval_slow_copula.jl` no longer
-  reproduces the `pred_<axis>.f64` committed in a scratch table (all four axes differ, worst |Δ| ≈ 3.0e5
-  gC/m³ on wood density) even at that table's own fold count, while `src/drf.jl`'s default numerics are
-  unchanged. Building arm D the obvious way — stored column as one arm, fresh column as the other — would
-  therefore have put a code change *inside* the family comparison with no check able to catch it.
+- **A stored out-of-sample prediction column on a scratch copula table can be STALE with respect to today's
+  evaluator, and nothing flagged it.** The stock, unmodified `scripts/eval_slow_copula.jl` no longer reproduces
+  the `pred_<axis>.f64` committed in an old smoke table (all four axes differ, worst |Δ| ≈ 3.0e5 gC/m³ on wood
+  density) even at that table's own fold count, while `src/drf.jl`'s default numerics are unchanged. ⚠ The
+  **production** table is unaffected — the new arm's re-derived copula column is **bit-identical** to
+  `slow_copula_pooled_w20_t8`'s stored one over 402 163 checked rows, which is what anchors the arm-D
+  comparison to the published artifact. But building arm D the obvious way — stored column as one arm, fresh
+  column as the other — would have put a code change *inside* the family comparison on any table where the
+  divergence exists, with no check able to catch it.
