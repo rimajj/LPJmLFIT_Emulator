@@ -294,3 +294,51 @@ Same cluster-measures / CI-gates split as the two oracles above. What is NOT obv
   covers *validating* F_diff on a cell whose inputs already exist.
 
 Full history of the C-validation work: `docs/notes/phase3_fdiff_cbinary_validation.md`.
+
+## THE PAIRED PER-STEM ARM — score F's growth ONE STEM, ONE YEAR (line M, 2026-08-12, ADR 0125)
+
+The strongest F-vs-C structural arm available, and it needs no new C run. Use it instead of a decadal
+aggregate whenever the question is *"is F's growth right?"* rather than *"is F's flux right?"*.
+
+**Why it works: `(Cell, Patch, ID)` is a STABLE CROSS-YEAR individual identity** in the annual `ind`
+output (CLAUDE.md §3 for the gate). So F can be handed the C's own stand at the end of year y−1, run
+year y's forcing, and every stem scored against ITS OWN year-y row.
+
+**Run it:**
+```bash
+# 1. the C's per-stem targets (incl. this year's dead — they grew before dying) + the committed accounting
+/home/jamirp/.conda/envs/py311_new/bin/python scripts/build_biome_stem_growth_reference.py
+# 2. the per-year rosters F restarts from
+for y in $(seq 2009 2019); do YEAR=$y OUT=/p/tmp/jamirp/M_canopy_drift/individuals \
+  /home/jamirp/.conda/envs/py311_new/bin/python scripts/extract_cell_individuals.py; done
+# 3. the probe (~2.5 min on SLURM)
+TIME=02:00:00 scripts/sbatch_julia.sh M-rung3 --project=. scripts/biome_canopy_growth_probe.jl
+```
+
+**Five things it fixed that any F-vs-C comparison here can repeat:**
+
+1. **THE YEAR ALIGNMENT WAS OFF BY ONE and `biome_fdiff_oracle_probe.jl` still carries it.** The `ind`
+   row for year y is written at the END of year y, so the stand entering year y is the year-(y−1) file.
+   The old probe drives the year-2010 file with 2010 weather. The probe above runs BOTH alignments and
+   lets the paired per-stem error pick — measure it, don't argue it. Ratios over the window mostly
+   survive the off-by-one; LEVELS do not.
+2. **THE COMMITTED STRUCTURAL ORACLE IS A DIFFERENT RUN FROM THE ONE F IS INITIALISED FROM.**
+   `M_fdiff_oracle_biomes_annual.csv` comes from the SINGLE-CELL re-runs; F's canopy and S's counts come
+   from the GLOBAL run's `ind`. `scripts/diagnose_oracle_run_divergence.py` compares them on daily GPP
+   (the variable both runs emit) with the shared restart year as the control: four cells agree to <1.2 %
+   (r ≥ 0.9989), **tropical_amazon differs by 6.7 % with r = 0.970**. Run it before quoting an Amazon
+   level.
+3. **`a_fpc` CONTAINS SUB-5 m STEMS F CANNOT HAVE, AND THAT FRACTION MOVES** (boreal 0.712 → 0.806 over
+   the decade), so it contaminates the DRIFT as well as the level. Score against `fpc_live` / `fpc_all`
+   in `references/M_stem_growth_reference.csv` — formed from the very stems F is handed — and keep
+   `a_fpc` printed beside them (ADR 0060's never-substitute-silently rule).
+4. **THE C's GROWTH-ONLY TARGET INCLUDES THIS YEAR'S DEAD.** Mortality is applied AFTER allocation
+   (`annual_natural.c`), so an `isdead == 1` stem still grew that year; dropping it biases the C's mean
+   growth upward (mortality selects on low growth efficiency) and flatters F. 5 m crossers are a separate
+   channel (`fpc_new`) and are never folded into a growth ratio.
+5. **SPLIT "ASSIMILATE IN" FROM "BIOMASS KEPT" — it is one table and it named the defect.** The C emits
+   per-stem annual NPP, so `bmi_F/C` (F's `FToS.bm_inc` vs Σ `ind.npp` over the same stems) isolates
+   photosynthesis+respiration and `keep = ΔAGB / assimilate` isolates allocation+turnover. They were
+   *different defects in different cells*. And before blaming physics, **check whether the parameter is
+   per-PFT in `par/pft_lpjmlfit.js` while F uses beech's for everything** — `respcoeff` (0.2 vs 1.2) put
+   F's annual carbon balance NEGATIVE at both tropical cells.
