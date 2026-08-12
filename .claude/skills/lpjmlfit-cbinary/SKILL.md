@@ -583,6 +583,50 @@ exists to test). Arms `S0` (uniform thinning = the shipped default), `S1` (the t
   column order (field 4 is `rho` in one and `n_emit` in the other), so the older positional reader would
   have scored one arm on the other's columns without a word.
 
+### Running the SCENARIO PAIR — the warming-response arm (line S, ADR 0177)
+
+`ARM=REC|NP|S0|S0h|S1 SCENARIO=historic|ssp370 CELL=<n> bash scripts/run_rung2_s_arm.sh`, all cells at once
+via `scripts/run_rung2_response_matrix.sh`, scored by `scripts/diagnose_rung2_response.py`. Five things are
+load-bearing and four of them were defects found on the way in:
+
+* ⚠ **THE HARNESS CONDITIONED EVERY YEAR ON A FROZEN PRESENT-DAY CLIMATE, WHICH MAKES A WARMING RESPONSE
+  ZERO BY CONSTRUCTION.** It read its four-column boundary tail ONCE from `M_cells.csv`, whose value is the
+  per-cell **2000–2019 climatology** (it coincides with the trailing-20-yr window's 2019 row; Hainich gdd5
+  1863.695 in both, `soil_depth` bit-identical, `tas_cold_month` 4 float32 ulps apart — the CLAUDE.md §4
+  `group_by().mean()` Float32 trap, not a different quantity). Under ssp370 that cell's gdd5 actually runs
+  1967.7 → 2573.0. So both legs would have seen present-day climate and differed only through the roster.
+  **Always pass `--boundary-csv`** (`scripts/build_rung2_boundary_series.py`, which calls
+  `build_slow_runtime_table._boundary_source` under the forced `BOUNDARY_WINDOW=20` the pooled artifact was
+  trained under). Unset, the static tail is kept so ADR 0176's arms still reproduce byte-for-byte.
+* ⚠ **THE TWO LEGS HAVE DIFFERENT LENGTHS (20 vs 81 yr), SO `terminal(ssp) − terminal(hist)` IS NOT A
+  CLIMATE RESPONSE** — it is the climate response PLUS 61 extra years of free-running drift, and an arm with
+  zero climate sensitivity posts a large "response" on it. Run the **frozen-climate control**
+  (`BOUNDARY=frozen`: the ssp370 years at present-day climate, same restart, same seeds, same leg length),
+  then `transient − frozen` is the climate channel with drift differenced out and `frozen − historic` is the
+  drift. The control is 240 jobs and ~15 min; without it the headline number is uninterpretable.
+* **Use the POOLED two-scenario forest** (`drf_forest_global_pooled_w20_t8.drf`, 58 588 cells, colnames in
+  `flux_feature_vector` order). A per-scenario artifact would make part of the measured "response" a model
+  swap. Its `_meta.txt` carries `golden` rows — cheap proof the load is right.
+* ⚠ **`bin/lpjml` IS NO LONGER THE ARMS' BINARY.** `run_rung2_replay_arm.sh`'s `MODE=record` hardcodes
+  `bin/lpjml`, which line M rebuilt on 2026-08-12 21:12 for the ADR-0130 `ind` switches, while the S arms run
+  `bin/lpjml_rung2_v6`. Recording a baseline with one build and running arms with another splits the
+  reference basis across two executables. `ARM=REC` now lives in `run_rung2_s_arm.sh` so both are pinned to
+  the same `$BIN`. **Check `md5sum` across the binaries before any arm campaign** — the C tree is shared by
+  four lines and has no lock.
+* **`scripts/run_daily_subset.sh`'s ssp370 branch was dead** — its CO2 path named a loose file cleaned out
+  when `climclusterpy_package/` was reorganised, so pre-flight failed with `ERROR100: Cannot open file`.
+  Repointed to the recovered copy (md5 `ed5699b9c92d4d25857889f644b153db`). ⚠ **Never put a `#` comment
+  inside the generated config heredocs** — LPJmL pipes its config through `cpp`, which reads `#` as a
+  preprocessor directive and errors on every line.
+* **Gate every dump on the run's OWN completion line AND on its expected terminal year** before scoring.
+  `max(year)` in a dump from a crashed or still-writing job looks exactly like a finished one, and the
+  scorer would report an early year's stand as the century-end answer, silently and plausibly.
+
+⚠ **NEVER EDIT A BASH SCRIPT WHILE IT IS RUNNING.** bash reads a script incrementally from a byte offset, so
+rewriting the file under a live submission loop makes it resume mid-token — it died with
+`syntax error near unexpected token '('` two thirds of the way through a 510-job campaign. Copy the script,
+edit the copy, or wait. (The same applies to a script a SLURM job will read later.)
+
 ## Turning a block of `par/*.js` into a COMMITTED, GATED parameter table (ADR 0047 → ADR 0126; do not re-derive)
 
 Two of these now exist and a third is likely, so the procedure is fixed rather than re-invented. The point

@@ -82,6 +82,9 @@ function parse_args(argv)
         "drf" => joinpath(REPO, "test/testitems/references/drf_forest_hainich.drf"),
         "rcop" => joinpath(REPO, "test/testitems/references/recruit_copula_hainich.rcop"),
         "cells_csv" => joinpath(REPO, "test/testitems/references/M_cells.csv"),
+        # Per-YEAR boundary tail (scripts/build_rung2_boundary_series.py). REQUIRED for a scenario-pair
+        # response arm; empty keeps the static registry tail so ADR 0176's arms reproduce byte-for-byte.
+        "boundary_csv" => "",
         "n_prev" => "roster",
         "seed" => "1",
         "log" => "",
@@ -131,6 +134,52 @@ function cell_boundary(csv::AbstractString, cell::Int)
         ]
     end
     return error("cell $cell not found in $csv")
+end
+
+# ── the TRANSIENT per-year boundary series (ADR 0026), keyed by YEAR ───────────────────────────────────
+"""
+    boundary_series(csv) -> Dict{Int, Vector{Float64}}
+
+Per-simulated-year slow boundary tails, read from a CSV built by
+`scripts/build_rung2_boundary_series.py` (`Year,eco_diag_gdd_5,tas_cold_month,soil_depth,co2`).
+
+WHY THIS IS REQUIRED FOR A SCENARIO-PAIR (RESPONSE) ARM, AND OPTIONAL OTHERWISE.  `cell_boundary` above
+returns the committed registry's tail, which is the per-cell 2000-2019 CLIMATOLOGY — one frozen vector.
+Feeding that to every year of an ssp370 leg shows the count model PRESENT-DAY climate for all 81 future
+years, so the historic and future legs differ only through the roster and the measured warming response is
+driven to ~0 BY CONSTRUCTION.  That is an unfalsifiable experiment, not a null result.
+
+The shipped runtime does not have the defect: `FluxDrivenSlowEmulator.boundary_series` +
+`reconcile_demography!` advance `s.boundary` to the year's row before the feature row is built (ADR 0026),
+and the pooled production forest was TRAINED on exactly that per-(Cell,Year) treatment
+(`BOUNDARY_WINDOW=20`).  Using it here is what keeps train and inference on one basis (ADR 0023).
+
+KEYED BY YEAR, NOT BY ROW POSITION: the C's first simulated year is a property of the restart file, so a
+positional series would silently offset the whole climate channel by however many years the two disagree.
+Unset (`--boundary-csv=`) the harness keeps the static registry tail, so every ADR-0176 arm reproduces
+byte-for-byte (guardrail 4).
+"""
+function boundary_series(csv::AbstractString)
+    series = Dict{Int, Vector{Float64}}()
+    hdr = String[]
+    want = ("eco_diag_gdd_5", "tas_cold_month", "soil_depth", "co2")
+    for line in eachline(csv)
+        (isempty(strip(line)) || startswith(line, "#")) && continue
+        if isempty(hdr)
+            hdr = String.(split(strip(line), ','))
+            for c in ("Year", want...)
+                c in hdr || error("boundary series $csv has no '$c' column (found $(hdr))")
+            end
+            continue
+        end
+        f = String.(split(strip(line), ','))
+        idx(n) = findfirst(==(n), hdr)
+        year = parse(Int, f[idx("Year")])
+        haskey(series, year) && error("duplicate Year $year in boundary series $csv")
+        series[year] = Float64[parse(Float64, f[idx(c)]) for c in want]
+    end
+    isempty(series) && error("boundary series $csv has no data rows")
+    return series
 end
 
 # ── the roster reader ─────────────────────────────────────────────────────────────────────────────────
@@ -338,13 +387,40 @@ function main(argv)
     log_path = isempty(opts["log"]) ? joinpath(apply_dir, "s_arm_log.txt") : opts["log"]
 
     forest = DRF.load_forest(opts["drf"])
-    boundary = cell_boundary(opts["cells_csv"], cell)
+    bseries = isempty(opts["boundary_csv"]) ? nothing : boundary_series(opts["boundary_csv"])
+    # The STATIC registry tail is read ONLY when there is no per-year series.
+    #
+    # ⚠ It MUST NOT be read unconditionally: `M_cells.csv` is the five-cell coupled-driver registry, so
+    # `cell_boundary` ERRORS on any other cell — which killed every arm at the 10 non-canonical cells of the
+    # response set the instant the harness started, before the C's first rendezvous ("FATAL: harness died
+    # before becoming ready"). The series already carries the tail for every cell and every year, so when
+    # one is given the registry is not needed at all, and the width check below uses the series itself.
+    boundary = bseries === nothing ? cell_boundary(opts["cells_csv"], cell) :
+        bseries[minimum(keys(bseries))]
     allom = EM.TreeAllometry{Float64}()   # the shipped default; the roster's own crown areas are the C's
 
     println("rung-2 LINE-S demography harness, arm $arm")
     println("  count model : ", opts["drf"], "  (", forest.nfeat, " features)")
     println("  recruits    : left to the C (ESTAB_C) in every arm here")
-    println("  boundary    : cell $cell -> ", boundary)
+    if bseries === nothing
+        println("  boundary    : STATIC (present-day climatology) cell $cell -> ", boundary)
+        println("                ⚠ a scenario-pair RESPONSE arm must pass --boundary-csv, or the future")
+        println("                  leg sees present-day climate and the response is ~0 by construction.")
+    else
+        yrs = sort(collect(keys(bseries)))
+        println(
+            "  boundary    : TRANSIENT (ADR 0026) ", opts["boundary_csv"],
+            "  years $(first(yrs))-$(last(yrs)) (", length(yrs), ")"
+        )
+        println("                first ", bseries[first(yrs)], "\n                last  ", bseries[last(yrs)])
+        # Every year must carry the SAME tail width, or one year would silently build a shorter feature
+        # row than the forest expects. (The width itself is checked against the artifact below.)
+        let w = length(bseries[first(yrs)])
+            all(length(bseries[y]) == w for y in yrs) || error(
+                "the boundary series has a ragged tail width across years — every row must have $w columns"
+            )
+        end
+    end
     println(
         "  n_prev      : ", opts["n_prev"], opts["n_prev"] == "roster" ?
             "  (the stand's own previous count — ADR 0175)" : "  (the model's own previous prediction)"
@@ -375,6 +451,7 @@ function main(argv)
     n_prev = Dict{Int, Float64}()
 
     served = Set{String}()
+    clamped_warned = Set{Int}()          # years reported as outside the boundary series (report once each)
     last_seen = time()
     nserved = 0
     while time() - last_seen < max_idle
@@ -415,7 +492,27 @@ function main(argv)
             )
             grow = (bm_inc_cell = bm_inc, growth_eff = ge, water_stress = ws)
             ages = Float64[t.age - 1 for t in emitted]
-            feats = EM.flux_feature_vector(boundary, ages, npv, grow, pools_emit, state, allom, soil)
+            # THIS year's bioclimate. Mirrors `reconcile_demography!`'s ADR-0026 treatment, including its
+            # clamp: a year outside the series reuses the nearest end row rather than failing a live run,
+            # but it is reported once because the usual cause is a series built for the other scenario.
+            byear = if bseries === nothing
+                boundary
+            elseif haskey(bseries, year)
+                bseries[year]
+            else
+                yrs = sort(collect(keys(bseries)))
+                yc = clamp(year, first(yrs), last(yrs))
+                if !(year in clamped_warned)
+                    push!(clamped_warned, year)
+                    println(
+                        "  ⚠ year $year is outside the boundary series $(first(yrs))-$(last(yrs)); " *
+                            "clamped to $yc (ADR 0026 semantics)"
+                    )
+                    flush(stdout)
+                end
+                bseries[yc]
+            end
+            feats = EM.flux_feature_vector(byear, ages, npv, grow, pools_emit, state, allom, soil)
             target = DRF.predict(forest, feats)
 
             ρ = arm == "NP" ? 1.0 : clamp(target / (npv + 1.0e-12), 0.7, 1.3)
