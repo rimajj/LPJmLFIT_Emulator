@@ -1,8 +1,9 @@
 # M_stem_growth_reference.csv — per-(cell,year) accounting of LPJmL-FIT's own tree stems at the
-# five biome cells (seed1 historic), built for rung 3. `(Cell,Patch,ID)` is a stable
-# cross-year individual identity: essentially every living stem of year y-1 is present in
-# year y, so year y's roster = {y-1 survivors, grown} + n_new stems that newly crossed the
-# writer's 5 m emission threshold. The only exception is THRESHOLD FLICKER:
+# five biome cells (seed1 historic), built for rung 3. `(Cell,Patch,ID)` is a
+# stable cross-year individual identity: essentially every living stem of year y-1 is
+# present in year y, so year y's roster = {y-1 survivors, grown} + n_new stems that
+# newly crossed the writer's 5 m emission threshold. The only exception is
+# THRESHOLD FLICKER:
 # n_vanished stems dropped back under 5 m and stopped being emitted (all under 5.4 m, 8
 # stem-years in 13 152 — one of them is emitted again two years later).
 # fpc_* are patch means (sum of `fpc_ind` / 25 configured patches) of the CROWN-cover form

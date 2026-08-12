@@ -1,6 +1,7 @@
 # F_diff's SURPLUS above-ground growth vs the LPJmL-FIT C oracle, decomposed EXACTLY into
 # three carbon channels (ADR 0127). Paired per stem by (Cell, Patch, ID), alignment A
-# (roster(y-1) + year-y forcing -> roster(y)), 25-patch ensemble, slow=nothing, 2010-2019
+# (roster(y-1) + year-y forcing -> roster(y)), 25-patch ensemble, slow=nothing; scenario
+# historic, years 2010-2019;
 # means of the per-year per-m2 ensemble sums. All fluxes gC/m2/yr.
 #   surplus = dagb_F - dagb_C = (bmi_F - bmi_C) + (loss_C - loss_F) + (bel_C - bel_F)
 #             = t_input        + t_loss          + t_nosink   (exact; a carbon identity)

@@ -64,7 +64,19 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REFDIR = os.path.join(REPO, "test", "testitems", "references")
 RUN_ROOT = "/p/tmp/jamirp/esm_land_daily"
 GRID = f"{RUN_ROOT}/daily_2000_2019_global_c0_67419_seed1/output/grid.nc"
-IND_PARQUET = "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet"
+# The scenario's `ind` table. DEFAULT = the historic seed1 run, the basis every committed
+# roster and the `M_cells.csv` registry were built from, so a bare re-run stays byte-identical.
+# `SCENARIO=ssp370` (or an explicit `IND_PARQUET`) builds the same rosters on the warmed run —
+# needed for the ADR 0106 clause "does F's growth error depend on climate?".
+# ⚠ WITH A NON-DEFAULT TABLE ALWAYS SET `OUT=/p/tmp/...`. main() rewrites `<OUT>/M_cells.csv`,
+# and the committed registry's `n_ind`/`fapar_recon` are historic-2010 quantities that other
+# consumers (biome_coupled_tests.jl, run_coupled_biomes.jl, the Component-S seed) read.
+_SCEN = {
+    "historic": "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet",
+    "ssp370": "/p/tmp/jamirp/emulator_global/ind_ssp370_seed1_all.parquet",
+}
+SCENARIO = os.environ.get("SCENARIO", "historic")
+IND_PARQUET = os.environ.get("IND_PARQUET", _SCEN.get(SCENARIO, _SCEN["historic"]))
 NDAYYEAR = 365
 FIRSTYEAR = 2000          # the daily re-runs start at the 1999 restart
 PEAK_DAYS = 30            # leaf-on comparison basis: mean of the N highest days

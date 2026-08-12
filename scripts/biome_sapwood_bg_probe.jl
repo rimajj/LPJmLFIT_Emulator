@@ -64,7 +64,23 @@ const REFDIR = joinpath(@__DIR__, "..", "test", "testitems", "references")
 const WORK = get(ENV, "M_CANOPY_DIR", "/p/tmp/jamirp/M_canopy_drift")
 const INDDIR = joinpath(WORK, "individuals")
 const σ = 5.670374419e-8
-const Y0, Y1 = 2010, 2019
+# ── SCENARIO (ADR 0106's binding clause: "does F's growth error depend on climate?") ─────────────────
+# Defaults reproduce the historic arm exactly, which is what PART 1's gate tests. To run the SAME paired
+# decomposition on the warmed run (no code change, four env vars):
+#   SCENARIO=ssp370 Y0=2090 Y1=2099 M_CANOPY_DIR=/p/tmp/jamirp/M_canopy_drift_ssp370 \
+#   FORCING_DIR=/p/tmp/jamirp/M_canopy_drift_ssp370/forcing  scripts/sbatch_julia.sh M-sapbgssp ...
+# Build those inputs with, per cell: `SCENARIO=ssp370 Y0=.. Y1=.. OUT=<dir>
+# scripts/build_biome_stem_growth_reference.py`, `SCENARIO=ssp370 YEAR=<y> OUT=<dir>/individuals
+# scripts/extract_cell_individuals.py` (one call per year), and `SITE=<name> OUT_DIR=<dir>/forcing
+# scripts/build_hainich_response_forcing.py`. ⚠ Do NOT narrow that last script's SSP_Y0/SSP_Y1 — its
+# COMMITTED `S_*_response_boundary` fixtures follow the window and a narrow one truncates line S's files.
+const SCEN = get(ENV, "SCENARIO", "historic")
+const Y0 = parse(Int, get(ENV, "Y0", "2010"))
+const Y1 = parse(Int, get(ENV, "Y1", "2019"))
+# "" ⇒ the committed per-cell historic fixture `references/biome_forcing_<name>.csv`; otherwise
+# `<FORCING_DIR>/<SCENARIO>_<cell>_daily.csv` from `build_hainich_response_forcing.py`.
+const FORCING_DIR = get(ENV, "FORCING_DIR", "")
+const GATE_ON = (SCEN == "historic" && Y0 == 2010 && Y1 == 2019)
 const NYEAR = Y1 - Y0 + 1
 
 # The ACTIVE calibrated set with `wscal_leafon` explicit (ADR 0051/0059) — never a bare `FDiffParams()`.
@@ -159,9 +175,18 @@ function readcanopy_patches(path, soil; tmpl_pft::Bool = false, seed_bg::Bool = 
         ), pk
 end
 
-function forcings_by_year(name)
-    f = readcsv(joinpath(REFDIR, "biome_forcing_$(name).csv"))
+"""
+Daily `AtmForcing` for one cell, split by year. `FORCING_DIR = ""` reads the committed historic fixture;
+otherwise the scenario's per-cell daily file, whose columns are a superset minus `daylength` (which the
+coupled harness does not consume). `tair0` (the record mean) seeds the energy closure's soil temperature,
+so it is taken over the WINDOW actually run, not over the file.
+"""
+function forcings_by_year(name, cell)
+    f = isempty(FORCING_DIR) ? readcsv(joinpath(REFDIR, "biome_forcing_$(name).csv")) :
+        readcsv(joinpath(FORCING_DIR, "$(SCEN)_$(cell)_daily.csv"))
     yr = parse.(Int, f["year"])
+    keep = findall(y -> Y0 <= y <= Y1, yr)
+    isempty(keep) && error("forcings_by_year: no rows in $Y0-$Y1 for $name (cell $cell)")
     tairK = fcol(f, "temp") .+ 273.15
     swd = fcol(f, "swdown"); lwn = fcol(f, "lwnet"); prec = fcol(f, "precip")
     huss = fcol(f, "huss"); co2 = fcol(f, "co2")
@@ -175,7 +200,7 @@ function forcings_by_year(name)
                 ) for i in idx
         ]
     end
-    return out, mean(tairK)
+    return out, mean(tairK[keep])
 end
 
 """
@@ -223,6 +248,7 @@ end
 const CELLS = readcsv(joinpath(REFDIR, "M_cells.csv"))
 const NAMES = String.(CELLS["name"])
 const LATS = fcol(CELLS, "lat")
+const CELLIDS = parse.(Int, CELLS["cell"])
 const TARGETS = read_targets()
 
 """
@@ -234,7 +260,7 @@ prediction and the arm that would realise it are read off the same run.
 """
 function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false)
     name = NAMES[k]
-    forc, tair0 = forcings_by_year(name)
+    forc, tair0 = forcings_by_year(name, CELLIDS[k])
     soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
     rows = Pair2[]
     bmi = fill(NaN, NYEAR); npatch = zeros(Int, NYEAR)
@@ -362,7 +388,13 @@ const PUB = Dict(          # ADR 0125 §PART 7, arm A: (bmi_F, bmi_C, keep_F, ke
     "cell", "bmi_F", "pub", "bmi_C", "pub", "keepF_pub", "pub", "keepC_pub", "pub", "recon", "gate"
 )
 gate_ok = true
+if !GATE_ON
+    println("SKIPPED — this run is SCENARIO=$SCEN $Y0-$Y1, not the historic 2010-2019 basis the")
+    println("published panel is on. The gate is a basis check on THIS reader and it was run and")
+    println("PASSED on the default configuration; re-run with no env overrides to re-arm it.")
+end
 for k in eachindex(NAMES)
+    GATE_ON || break
     c = pA[k]
     (pbf, pbc, pkf, pkc) = PUB[NAMES[k]]
     ok = all(
@@ -375,7 +407,7 @@ for k in eachindex(NAMES)
         NAMES[k], c.bf, pbf, c.bc, pbc, c.keepF_pub, pkf, c.keepC_pub, pkc, c.recon, ok ? "ok" : "FAIL"
     )
 end
-@printf("GATE: %s   (0.5 %% relative, or 0.2 absolute on bmi / 0.0002 on keep)\n", gate_ok ? "PASS" : "FAIL")
+@printf("GATE: %s   (0.5 %% relative, or 0.2 absolute on bmi / 0.0002 on keep)\n", !GATE_ON ? "N/A" : (gate_ok ? "PASS" : "FAIL"))
 @printf("recon = the mean per-year gap between the C's OWN start `agb` and F's RECONSTRUCTED start,\n")
 @printf("        gC/m². Non-zero ⇒ the `max(agb/nind − leaf − sapwood, 0)` heartwood clamp binds and the\n")
 @printf("        published `keep_C` is not a pure C-side quantity.\n")
@@ -493,11 +525,15 @@ end
 # ADR 0127's numbers live here rather than only in a `logs/` file, so a later session can re-score an arm
 # against them without re-deriving the basis. Regenerate by re-running this probe; the basis gate above
 # is what licenses the file.
-const OUTCSV = get(ENV, "OUT_CSV", joinpath(REFDIR, "M_growth_channel_decomposition.csv"))
+const OUTCSV = get(
+    ENV, "OUT_CSV",
+    joinpath(REFDIR, GATE_ON ? "M_growth_channel_decomposition.csv" : "M_growth_channel_decomposition_$(SCEN).csv")
+)
 open(OUTCSV, "w") do io
     println(io, "# F_diff's SURPLUS above-ground growth vs the LPJmL-FIT C oracle, decomposed EXACTLY into")
     println(io, "# three carbon channels (ADR 0127). Paired per stem by (Cell, Patch, ID), alignment A")
-    println(io, "# (roster(y-1) + year-y forcing -> roster(y)), 25-patch ensemble, slow=nothing, 2010-2019")
+    println(io, "# (roster(y-1) + year-y forcing -> roster(y)), 25-patch ensemble, slow=nothing; scenario")
+    println(io, "# $(SCEN), years $(Y0)-$(Y1);")
     println(io, "# means of the per-year per-m2 ensemble sums. All fluxes gC/m2/yr.")
     println(io, "#   surplus = dagb_F - dagb_C = (bmi_F - bmi_C) + (loss_C - loss_F) + (bel_C - bel_F)")
     println(io, "#             = t_input        + t_loss          + t_nosink   (exact; a carbon identity)")
@@ -529,6 +565,6 @@ end
 
 @printf(
     "\n=== VERDICT INPUTS: gate %s · the decomposition is PART 2 · the sink is priced in PART 3 ===\n",
-    gate_ok ? "PASS" : "FAIL"
+    !GATE_ON ? "N/A (non-default window)" : (gate_ok ? "PASS" : "FAIL")
 )
 flush(stdout)
