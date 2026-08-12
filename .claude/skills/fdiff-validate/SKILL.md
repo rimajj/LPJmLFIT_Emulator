@@ -375,3 +375,50 @@ with `loss ≡ bmi − Δvegc` and `bel ≡ Δ(vegc − agb)`. Harness: `scripts
 **And a `keep`-style mean of per-year ratios is undefined where the annual assimilate changes SIGN** — arm A
 at `semiarid_sahel` reads +0.350 that way and −0.059 as a ratio of means. Print both (ADR 0060) and report
 the sign-changing one as undefined.
+
+## RUNNING ANY F-vs-C ARM ON THE **ssp370** WINDOW — the recipe, and the two traps (ADR 0128, 2026-08-12)
+
+ADR 0106's acceptance criterion is binding on climate change, and until 2026-08-12 every F-vs-C growth
+number here was on the historic 2010–2019 window. It is now four environment variables, no code change:
+
+```bash
+SCENARIO=ssp370 Y0=2090 Y1=2099 \
+M_CANOPY_DIR=/p/tmp/jamirp/M_canopy_drift_ssp370 \
+FORCING_DIR=/p/tmp/jamirp/M_canopy_drift_ssp370/forcing \
+  TIME=02:00:00 PARTITION=priority QOS=priority scripts/sbatch_julia.sh M-ssp \
+  --project=. scripts/biome_sapwood_bg_probe.jl
+```
+
+**Building the inputs** (all three already accept the scenario; ~2 min total, login node):
+
+| what | command |
+|---|---|
+| per-stem targets + the `(Cell,Patch,ID)` identity gate | `SCENARIO=ssp370 Y0=2089 Y1=2099 OUT=<dir> python3 scripts/build_biome_stem_growth_reference.py` |
+| the per-year rosters (**one call per year**) | `SCENARIO=ssp370 YEAR=<y> OUT=<dir>/individuals python3 scripts/extract_cell_individuals.py` |
+| the per-cell daily forcing | `SITE=<name> OUT_DIR=<dir>/forcing python3 scripts/build_hainich_response_forcing.py` |
+
+**Trap 1 — `extract_cell_individuals.py` rewrites `M_cells.csv` into its `OUT` directory.** Always give a
+`/p/tmp` `OUT` for a scenario run, or the committed registry's `n_ind`/`fapar_recon` (historic-2010
+quantities that `biome_coupled_tests.jl`, `run_coupled_biomes.jl` and the Component-S per-cell seed read)
+get replaced with the warmed run's.
+
+**Trap 2 — do NOT narrow `SSP_Y0`/`SSP_Y1` on `build_hainich_response_forcing.py`.** Its COMMITTED
+`S_hainich_response_boundary.csv` / `S_response_boundary_<name>.csv` fixtures follow that window, so a
+narrow one silently TRUNCATES five of **line S's** files. Take the full default window (the daily file is
+1.7 MB) and slice with the probe's own `Y0`/`Y1`. That script's GATE 2 — the historic 2010 daily block
+against each cell's committed `biome_forcing_<name>.csv` — is what proves the cell index, the YEARCELL
+decode, the mixed v2/v3 `.clm` scalar branch and the units; it passed at ≤1.8e-5 at all five cells.
+
+**Two scoring rules the first run established:**
+* **Quote the target's own noise floor on the CHANGE, not on the level.** A level spread does not bound a
+  response claim; the floor is the two seeds' spread of the *between-window difference*
+  (`scripts/diagnose_c_assimilate_noise.py`, `SCENARIO_B`/`Y0B`/`Y1B`). Measured on annual tree assimilate
+  it is S/N 24.2 / 8.2 / 6.7 at Hainich / Amazon / Sahel but only **1.8 and 2.8** at the boreal and
+  mediterranean cells — those two cannot be scored on a response at two seeds at all.
+* **Score the LEVEL and the RESPONSE separately and report both.** They fail independently: F's Hainich
+  assimilate level error is +20 % in *both* windows while its warming response is 0.08, and the set of
+  cells inside `[0.8, 1.25]` is not the same in the two windows. **A configuration validated on the
+  historic decade is not thereby validated under climate change.**
+
+**And always run the historic CONTROL in the same session** — the scenario knobs must leave the historic
+arm byte-identical, and its basis gate against ADR 0125's published panel must still pass. It did.

@@ -359,7 +359,111 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 13) — **THE `keep` GAP IS NOT AN ALLOCATION DEFECT.**
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 13, part 2) — **RUNG 3 IS NOW SCORED UNDER CLIMATE CHANGE.**
+### F's GROWTH ERROR **IS** CLIMATE-DEPENDENT: THE FAST CORE REPRODUCES **8 %** OF THE C's WARMING
+### DECLINE AT THE TEMPERATE PROTOTYPE AND MOVES THE **WRONG WAY** IN THE SAHEL (ADR 0128)
+
+**Start here.** The item three successive handoffs called *"cheap and still unmeasured … the acceptance
+criterion's binding clause"* (ADR 0106) is **closed**. New: `scripts/growth_channel_climate_response.py`,
+`scripts/diagnose_c_assimilate_noise.py`, fixtures
+`test/testitems/references/M_growth_channel_decomposition_ssp370.csv` and
+`M_growth_channel_climate_response.csv`. Logs `logs/M-sapbgssp2.1765952.out` (ssp370) and
+`logs/M-sapbgctl2.1765953.out` (the historic CONTROL). **Nothing in `src/` changed.**
+
+**1. THE YARDSTICK FIRST — it did not exist, and it decides which cells can be read at all.** The C's own
+two-seed spread on the scored quantity (per-cell annual tree assimilate) is **1.0–12.6 %** on the LEVEL;
+on the **warming CHANGE** it is boreal **+36.7 ± 20.5** · Hainich **−33.9 ± 1.4** · mediterranean
+**−121.4 ± 43.4** · Sahel **+77.6 ± 11.6** · Amazon **−248.6 ± 30.4**, i.e. S/N **1.8 / 24.2 / 2.8 / 6.7 /
+8.2**. ⇒ **boreal and mediterranean are UNRESOLVED at two seeds** (ADR 0111 §9's ≥3 bar) and must be
+reported that way, not as passes. Regenerate with one command:
+`SCENARIO=historic Y0=2010 Y1=2019 SCENARIO_B=ssp370 Y0B=2090 Y1B=2099 python3
+scripts/diagnose_c_assimilate_noise.py`.
+
+**2. THE RESULT** (arm Pbg = per-cohort PFT parameters + the seeded below-ground pool, the most faithful
+configuration that exists today; `response` = F's between-window change over the C's own, with the SAME
+stands and the SAME forcing on both sides in both windows):
+
+| cell | `bmi_F/C` hist | ssp370 | **response** | verdict |
+|---|---|---|---|---|
+| boreal_siberia | 1.251 | 1.204 | 1.02 | unresolved (truth S/N 1.8) |
+| temperate_hainich | 1.196 | 1.277 | **0.08** | **FAIL** — 8 % of a decline determined to 4 % |
+| mediterranean_iberia | 2.864 | 3.338 | 2.25 | unresolved (truth S/N 2.8) |
+| semiarid_sahel | 1.119 | **0.657** | **−0.34** | **FAIL on SIGN** |
+| tropical_amazon | 1.066 | 1.063 | 1.08 | **PASS** |
+
+**3. ⚠ THE LEVEL AND THE RESPONSE FAIL INDEPENDENTLY — do not treat one as evidence for the other.**
+Hainich's level error is **+20 % in BOTH windows** while its response is 8 %. And arm Pbg sits inside
+`[0.8, 1.25]` at three cells in each window — **but not the same three**: the Sahel leaves the band under
+warming and Hainich drifts out. **A configuration validated on the historic decade is not thereby
+validated under climate change**, which is the general statement rung 3 needed and did not have.
+
+**4. THE CONTROL, and it is what licenses all of the above.** The same probe re-run on the historic window
+after the scenario refactor reproduces its own committed table **byte-identically** and still passes ADR
+0125's 20-number basis gate. The ssp370 daily forcing passed `build_hainich_response_forcing.py`'s own gate
+against each cell's committed historic fixture at **≤1.8e-5**, which is what proves the cell index, the
+YEARCELL decode, the mixed v2/v3 `.clm` scalar branch and the units.
+
+**5. HOW TO RE-RUN IT (four env vars, no code change).**
+```
+SCENARIO=ssp370 Y0=2090 Y1=2099 M_CANOPY_DIR=/p/tmp/jamirp/M_canopy_drift_ssp370 \
+FORCING_DIR=/p/tmp/jamirp/M_canopy_drift_ssp370/forcing \
+  TIME=02:00:00 PARTITION=priority QOS=priority scripts/sbatch_julia.sh M-sapbgssp \
+  --project=. scripts/biome_sapwood_bg_probe.jl
+```
+The inputs are already on `/p/tmp/jamirp/M_canopy_drift_ssp370/`. To rebuild them: the two extractors take
+`SCENARIO=ssp370` (`extract_cell_individuals.py` is one call per year and **must** get `OUT=/p/tmp/...`,
+because it rewrites `M_cells.csv` into its output directory), and the forcing comes from
+`SITE=<name> OUT_DIR=<dir>/forcing python3 scripts/build_hainich_response_forcing.py`.
+
+**6. ⚠ TWO TRAPS THIS COST, both now in the code.** (i) **Do NOT narrow `SSP_Y0`/`SSP_Y1` on
+`build_hainich_response_forcing.py`** — its COMMITTED `S_*_response_boundary.csv` fixtures follow that
+window, so a narrow one silently TRUNCATES five of line S's files (it did; restored with `git checkout`
+and rebuilt on the default window). (ii) Julia's `@printf` needs a **literal** format string; a `*`-joined
+one throws at parse time and cost a job cycle.
+
+**7. THE ONE APPROXIMATION THAT COULD MANUFACTURE THE SAHEL RESULT.** Both windows use the **historic**
+per-cell soil column (`M_soilcolumn_<name>.txt`), and `whc_nat` evolves with soil carbon in the C
+(ADR 0050). It is the same approximation in every arm, so it cannot create a between-ARM difference, but it
+can bias the between-WINDOW one — and the Sahel is where water holding capacity matters most. **Close that
+before treating the Sahel sign error as physics.**
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **THE HAINICH ASSIMILATE ERROR REMAINS THE HEAD OF THE F QUEUE, and it is now known to be a RESPONSE
+   failure as well as a level one.** `bmi_F/C` = 1.20–1.28 (a +20 % level error, against a 5–6 % two-seed
+   floor) *and* a warming response of 0.08. **A fix that improves the historic level and leaves the response
+   at 0.08 has not fixed rung 3** — score both, in both windows, every time. The two measured leads are
+   unchanged: (a) the CUE gap (F's tree CUE 0.512 vs the C's 0.46; the seed takes it to ~0.497 and
+   `docs/notes/sapwood_bg_design.md` §6 says the ungated rare-day `rd` pushes the other way), and (b) F's
+   daily GPP against `d_grass_gpp`-corrected C daily GPP at Hainich (skill `fdiff-validate`'s basis checks)
+   — CUE alone is 1.11 against a `bmi` ratio of 1.24, so ~12 % must be GPP.
+2. **CLOSE THE SOIL-COLUMN APPROXIMATION FOR THE SSP WINDOW** (§7) before any Sahel conclusion.
+   `scripts/extract_cell_soilcolumn.py` + skill `provision-coupled-cell`; the C's `whc_nat` output is
+   monthly and time-varying, so the ssp-window column is extractable the same way the historic one was.
+3. **`boreal_siberia` IS STILL THE ONE CELL WHERE ALLOCATION GENUINELY BINDS** (ADR 0127: `t_loss` 33 % of
+   a surplus that is 1.89× the C's own increment) — and the below-ground port is NOT its answer
+   (`dD/bel_C` = 0.11). Suspects: the summergreen full-leaf recycle for the evergreen-named PFTs
+   (`AllocParams.is_deciduous` is `true` for every tree in F while the C gates the `leaf/1.05` full drop on
+   `tree->isphen`, `turnover_tree.c:100`), and the `reprod_cost` path. ⚠ Its warming response is
+   **unresolved at two seeds**, so score it on the LEVEL until more seeds exist.
+4. **THE `sapwood_bg` PORT** (ADR 0127 §5/§6 + `docs/notes/sapwood_bg_design.md` §9) — worth 46 / 20 / 4 %
+   of the surplus at boreal / Hainich / mediterranean, needs **two** struct fields on the Enzyme path,
+   opt-in, its own session. Pre-registered pass criterion in ADR 0127 §6, scored at boreal + Hainich only.
+5. **RAISED TO THE INTEGRATOR:** the two extra reference seeds `EXECUTION_PLAN.md` rung 0 already asks for
+   are now justified for this quantity too — 2 of 5 cells' warming response cannot be scored at two seeds.
+6. **📥 INTEGRATION POINT FROM LINE S (ADR 0170), still open and untouched** — the recruit half of rung 2
+   (R0 = the pinned recruit copula vs R1 = the ported FIT establishment rule, both mortality settings,
+   ~40 seeds). Four pre-registered conditions and what S supplies are in item 4 of the 0-PREV5 block below.
+   It needs the arm-C harness's establishment path, which today always answers `ESTAB_C`
+   (`scripts/rung2_armc_harness.jl:318`).
+
+**CI/merge:** the diff is `scripts/**` (one `.jl`, three `.py`) + `test/testitems/references/**` +
+`docs/**` + `changelog.d/**` + STATE/JOURNAL. `references/` is under `test/**` ⇒ **all four Julia jobs +
+`format`**; `src/**` untouched ⇒ `docs` runs nowhere. The new/edited Python is lint-clean under the repo's
+own rule set (`ruff check --select E,F,I,UP,B --line-length 100`), which CI does **not** run for
+`scripts/*.py` — so it was run by hand (CLAUDE.md §4).
+
+### 0-PREV00. ✅ DONE 2026-08-12 (session 13, part 1) — **THE `keep` GAP IS NOT AN ALLOCATION DEFECT.**
 ### F's SURPLUS ABOVE-GROUND GROWTH DECOMPOSES EXACTLY INTO THREE CHANNELS, AND AT THE PROTOTYPE CELL
 ### **77 % OF IT IS THE ASSIMILATE ERROR AND 3 % IS ALLOCATION** (ADR 0127)
 
@@ -428,7 +532,8 @@ the only two things that differed were the ratio definition and the start state 
 against. Fixed, it passes all 20 to the printed digit with the reconstruction residual `recon` = 0.00
 everywhere. **Never interpret a second reader before it reproduces the first.**
 
-▶ **WHAT TO DO NEXT — in order.**
+▶ **WHAT TO DO NEXT — see the 0-NEWEST block above; item 4 below is DONE (ADR 0128) and items 1-3
+are carried forward there. Kept for the audit trail.**
 
 1. **THE ASSIMILATE ERROR AT HAINICH IS NOW THE HEAD OF THE F QUEUE.** `bmi_F/C` = **1.24** at a cell that
    is **99.4 % beech** with **every per-PFT parameter already faithful** (ADR 0126's arm P moves it by

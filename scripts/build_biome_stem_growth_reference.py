@@ -66,7 +66,18 @@ from extract_biome_forcing import cells_from_env  # noqa: E402  (THE canonical c
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REFDIR = os.path.join(REPO, "test", "testitems", "references")
-IND_PARQUET = "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet"
+# The scenario's `ind` table. DEFAULT = the historic seed1 run, the basis every committed
+# fixture here was built from, so a bare re-run stays byte-identical. `SCENARIO=ssp370` (or an
+# explicit `IND_PARQUET`) builds the same paired target set on the warmed run — which is what
+# answers ADR 0106's binding clause "does F's growth error depend on climate?".
+# ⚠ With a non-default table also redirect `OUT`; the committed summary below takes a scenario
+# suffix so a warmed run cannot overwrite the historic reference.
+_SCEN = {
+    "historic": "/p/tmp/jamirp/emulator_global/ind_hist_seed1_all.parquet",
+    "ssp370": "/p/tmp/jamirp/emulator_global/ind_ssp370_seed1_all.parquet",
+}
+SCENARIO = os.environ.get("SCENARIO", "historic")
+IND_PARQUET = os.environ.get("IND_PARQUET", _SCEN.get(SCENARIO, _SCEN["historic"]))
 NPATCH = 25                       # the CONFIGURED patch count (ADR 0111 §4: never the OCCUPIED one)
 
 COLS = ["Cell", "Patch", "Year", "ID", "Type", "Age", "Height", "LAI", "SLA", "Wooddens",
@@ -173,13 +184,19 @@ def main():
           f"(threshold flicker at the writer's 5 m cut) — PASS")
 
     hdr = list(summ[0].keys())
-    path = os.path.join(REFDIR, "M_stem_growth_reference.csv")
+    # The committed summary is the HISTORIC reference. A scenario run writes its own file
+    # rather than overwriting it: a fixture silently rebuilt on a different forcing is the
+    # ADR 0032 stale-fixture trap in its worst form, because nothing in the file would say
+    # which climate it is on.
+    suffix = "" if SCENARIO == "historic" else f"_{SCENARIO}"
+    path = os.path.join(REFDIR, f"M_stem_growth_reference{suffix}.csv")
     with open(path, "w") as f:
         f.write("# M_stem_growth_reference.csv — per-(cell,year) accounting of LPJmL-FIT's own tree stems at the\n")
-        f.write("# five biome cells (seed1 historic), built for rung 3. `(Cell,Patch,ID)` is a stable\n")
-        f.write("# cross-year individual identity: essentially every living stem of year y-1 is present in\n")
-        f.write("# year y, so year y's roster = {y-1 survivors, grown} + n_new stems that newly crossed the\n")
-        f.write("# writer's 5 m emission threshold. The only exception is THRESHOLD FLICKER:\n")
+        f.write(f"# five biome cells (seed1 {SCENARIO}), built for rung 3. `(Cell,Patch,ID)` is a\n")
+        f.write("# stable cross-year individual identity: essentially every living stem of year y-1 is\n")
+        f.write("# present in year y, so year y's roster = {y-1 survivors, grown} + n_new stems that\n")
+        f.write("# newly crossed the writer's 5 m emission threshold. The only exception is\n")
+        f.write("# THRESHOLD FLICKER:\n")
         f.write("# n_vanished stems dropped back under 5 m and stopped being emitted (all under 5.4 m, 8\n")
         f.write("# stem-years in 13 152 — one of them is emitted again two years later).\n")
         f.write("# fpc_* are patch means (sum of `fpc_ind` / 25 configured patches) of the CROWN-cover form\n")

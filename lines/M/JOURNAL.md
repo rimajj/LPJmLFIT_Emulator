@@ -1176,3 +1176,40 @@ record 0126.
 - **Next:** the F-side queue re-points to the ASSIMILATE error (`bmi_F/C` = +24 % at Hainich with every
   parameter faithful and 99.4 % beech — a pure F-physics defect at the prototype cell), and
   `boreal_siberia` becomes the one cell where allocation genuinely binds. Mirrored into STATE.md's NEXT.
+
+## 2026-08-12 — rung 3 under climate change: F's growth error IS climate-dependent  [rung 3]
+- **Goal:** close the item three successive handoffs listed as *"cheap and still unmeasured … the
+  acceptance criterion's binding clause"* (ADR 0106): does F's per-year growth error depend on climate?
+- **Did:**
+  - made the two `ind` extractors scenario-aware (`SCENARIO`/`IND_PARQUET`) and the ADR 0127 probe
+    window-aware (`SCENARIO`/`Y0`/`Y1`/`FORCING_DIR`), all defaults preserved;
+  - built the ssp370 2090–2099 inputs: per-stem targets (identity gate PASS — 5 vanished stem-years of
+    11 466, tallest 5.210 m), 11 roster years × 5 cells, and the per-cell daily forcing via the existing
+    `build_hainich_response_forcing.py` (its own GATE 2 against each cell's committed historic fixture
+    passed at ≤1.8e-5 everywhere);
+  - ran the four arms on ssp370 (job 1765952) **and a historic CONTROL** (job 1765953);
+  - measured the C's own two-seed noise floor on the scored quantity, in both scenarios and on the
+    between-window change (`scripts/diagnose_c_assimilate_noise.py`) — it did not exist.
+- **Result / evidence:**
+  - **CONTROL PASSES:** the historic arm after the refactor reproduces its committed table BYTE-IDENTICALLY
+    and still passes ADR 0125's 20-number basis gate.
+  - **The yardstick changes what can be read.** The C's own warming change in assimilate: boreal
+    +36.7 ± 20.5 · Hainich **−33.9 ± 1.4** · mediterranean −121.4 ± 43.4 · Sahel +77.6 ± 11.6 · Amazon
+    −248.6 ± 30.4 ⇒ S/N 1.8 / 24.2 / 2.8 / 6.7 / 8.2. **Two cells are UNRESOLVED at two seeds.**
+  - **The result (arm Pbg):** Hainich response **0.08** (FAIL — 8 % of a decline determined to 4 %),
+    Sahel **−0.34 WRONG SIGN** with the level falling out of band 1.119 → 0.657 (FAIL), Amazon **1.08**
+    (PASS), boreal 1.02 and mediterranean 2.25 unresolved.
+  - **The level and the response fail independently:** Hainich's level error is +20 % in BOTH windows while
+    its response is 8 %; arm Pbg is inside [0.8, 1.25] at three cells in each window but **not the same
+    three**. A configuration validated on the historic decade is not thereby validated under warming.
+  - The ADR 0127 three-channel ranking is unchanged in the warmed window (Hainich arm A:
+    +193.4 = 149.5 input + 18.7 loss + 25.1 sink).
+- **Dead end worth recording:** narrowing `SSP_Y0/SSP_Y1` on `build_hainich_response_forcing.py` silently
+  TRUNCATED five committed line-S `S_*_response_boundary.csv` fixtures — that script's committed output
+  follows the window. Restored with `git checkout` and rebuilt on the default window; the warning is now
+  in the probe header. Also lost one job cycle to `@printf` requiring a literal format string (a `*`-joined
+  one throws at parse of the enclosing expression).
+- **Decisions:** ADR 0128.
+- **Next:** unchanged head of queue — the Hainich assimilate error, now known to be a response failure as
+  well as a level one. Before treating the Sahel sign error as physics, close the historic-soil-column
+  approximation (ADR 0050) in the ssp window. Mirrored into STATE.md's NEXT.
