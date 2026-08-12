@@ -88,6 +88,23 @@ patch):
 > **139 decoded quantities + `globalflux` identical, 0 differ** — with both switches unset.
 > `scripts/diagnose_cbinary_rebuild_equality.py` (decoded variables, never `cmp` on a NetCDF — ADR 0043).
 
+## 5b. The additivity check — the switches are proven output-only, not merely intended to be
+
+§4 claim 2 ("diagnostic only, cannot change a trajectory") is now measured rather than argued. Two runs
+of the same config, cell, seed and binary differing **only** in the two env switches
+(`STOCK_RUNTAG=M_indstock` mode of `scripts/diagnose_ind_true_gpp.py`):
+
+> stock **5 965** rows; the all-heights table's stock-population subset **5 965**, the same stem set, and
+> **all 28 columns bit-identical** — the sole exception being `gpp`, the one column `LPJ_IND_TRUE_GPP`
+> redefines by design. **PASS.**
+
+It also confirms §3 live and independently of the parquet: in the stock run, `gpp` **equals** `npp`
+column-for-column.
+
+⚠ **The stock population is "trees above 5 m **OR any grass**", not "`Height > 5`".** Grass rows are
+emitted unconditionally with `Height = 0`, so a height-only filter drops exactly `npatch × nyear` = 500
+rows here and reads as a roster change. That is a trap for any `ind` consumer, not just this check.
+
 ## 6. The result — the bracket is closed, and it lands near the middle
 
 Five biome cells, historic 2000–2019, `npatch=25`, both switches on

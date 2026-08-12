@@ -180,6 +180,13 @@ Five things the driver/scorer encode so they are not re-derived:
   String and then panics inside the aggregation, far from the mistake). **Pin the dtypes**: the `mort_*`
   columns are uninitialised garbage that often prints as whole numbers early in a restarted run, so
   inference calls them `i64` and dies on the first real value.
+* **Prove the switches are ADDITIVE, do not assert it:** `STOCK_RUNTAG=<tag>` compares against a run of
+  the same config/cell/seed/binary with the switches stripped. Measured: identical stem set, **all 28
+  columns bit-identical** except `gpp` (which `TRUE_GPP` redefines), and the stock run's `gpp` **equals**
+  its `npp` — a live confirmation of the duplicate, independent of the parquet.
+  ⚠ **The stock population is "trees above 5 m OR ANY GRASS", not `Height > 5`** — grass is emitted
+  unconditionally with `Height = 0`, so a height-only filter silently drops `npatch × nyear` rows and
+  reads as a roster change. This bites any `ind` consumer, not just this check.
 * ⚠ **Single-cell basis (ADR 0041)** — read the WITHIN-run ratios; never pair a stem here with a
   global-parquet stem. Measured: the sub-5 m trees are **47 % of stems but 1.9 % of tree GPP** at Hainich,
   **~0.79** share at boreal/Sahel (whose stand LEVELS therefore stay un-comparable).

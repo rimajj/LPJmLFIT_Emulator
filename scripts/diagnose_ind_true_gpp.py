@@ -136,6 +136,47 @@ def read_ind(rd):
     return df
 
 
+def additivity(cells):
+    """Is `LPJ_IND_ALL_HEIGHTS` purely ADDITIVE, or did it perturb the run?
+
+    Set `STOCK_RUNTAG` to a run of the SAME config/cell/seed/binary with the switches
+    stripped. The switches touch only the writer, so the stock `ind` table must equal the
+    all-heights table's stock-population subset EXACTLY — except `gpp`, the one column
+    `LPJ_IND_TRUE_GPP` redefines. A difference anywhere else means the fixture is invalid.
+
+    ⚠ THE STOCK POPULATION IS "trees above 5 m OR any grass", not "Height > 5". Grass is
+    emitted unconditionally with `Height = 0`, so a height-only filter silently drops
+    exactly npatch x nyear rows and reads as a roster change.
+    """
+    stock_tag = os.environ.get("STOCK_RUNTAG")
+    if not stock_tag:
+        return True
+    global RUNTAG
+    ok = True
+    print("\n=== ADDITIVITY: is LPJ_IND_ALL_HEIGHTS output-only? ===")
+    for name, cell in cells:
+        keep, RUNTAG = RUNTAG, stock_tag
+        sd = run_dir(name, cell)
+        RUNTAG = keep
+        if not os.path.isdir(sd):
+            continue
+        allh, stock = read_ind(run_dir(name, cell)), read_ind(sd)
+        key = ["Year", "Patch", "Type", "ID"]
+        istock = ((pl.col("Height") > HEIGHT_MIN) | ~pl.col("Type").is_in(list(TREE_TYPES)))
+        sub = allh.filter(istock).sort(key)
+        st = stock.sort(key)
+        same_set = sub.height == st.height and sub.select(key).equals(st.select(key))
+        bad = ([c for c in IND_COLUMNS if c != "gpp" and not sub[c].equals(st[c])]
+               if same_set else ["<set>"])
+        dup = st["gpp"].equals(st["npp"])
+        print(f"{name:22s} stock {st.height:6d} rows | subset {sub.height:6d} | "
+              f"set {'ok' if same_set else 'DIFFERS'} | cols differing outside gpp: "
+              f"{bad if bad else 'NONE'} | stock gpp==npp: {dup}")
+        ok = ok and same_set and not bad and dup
+    print("ADDITIVITY:", "PASS — output-only, and the stock `gpp` IS `npp`" if ok else "FAIL")
+    return ok
+
+
 def main():
     cells = cells_from_env()
     rows = []
@@ -244,7 +285,8 @@ def main():
                 fh.write(",".join(f"{r[k]:.6g}" if isinstance(r[k], float) else str(r[k])
                                   for k in keys) + "\n")
         print(f"\nwrote {out}")
-    return 0 if gate else 1
+    add_ok = additivity(cells)
+    return 0 if (gate and add_ok) else 1
 
 
 if __name__ == "__main__":
