@@ -261,8 +261,13 @@ rather than a request to flip now.
 >
 > ### B3. HOUSEKEEPING — ⚠ THE MERGE MAY STILL BE OPEN, CHECK FIRST
 >
-> `line/S` is committed and pushed at **`66ed4115`** (ADR 0177 + the scenario-pair machinery). `format` is
-> **green**; the four Julia jobs were still `in_progress` when the session ended. **A `scripts/*.jl` change
+> `line/S` is committed and pushed. **Two shas matter and they are different:**
+> * **`66ed4115`** carries the CODE (ADR 0177 + the scenario-pair machinery) and therefore the CI verdict.
+>   `format` is **green**; the four Julia jobs were still `in_progress` ~50 min in when the session ended.
+> * **`4cff6f57`** is the branch TIP and adds only this STATE block. It has **no check-runs at all**, which
+>   is correct (ADR 0090: a docs-only diff triggers no gate) — do not wait for a verdict on it.
+>
+> So: read the verdict off `66ed4115`, and merge `origin/line/S` (the tip) once it is green. **A `scripts/*.jl` change
 > DOES trigger the full `CI` matrix** (contrary to the ADR-0090 path table's `src/**`-only reading — worth
 > re-checking the workflow's filter), and `test (lts)` / `test (1)` are REQUIRED.
 >
