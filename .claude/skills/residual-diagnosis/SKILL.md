@@ -1253,3 +1253,31 @@ channels; keep the ratio only as a derived column.
 reference's below-ground bucket holds fine roots **plus two woody pools the model does not have**, which is
 why that channel was non-zero at all. Read the accumulation expression in the source for both sides
 (§3f) before differencing — a term that exists on one side only is a finding, not a bug in the comparison.
+
+## A NULL FROM AN UNDERPOWERED TEST IS NOT A NULL — PRICE THE TEST BEFORE READING IT (line M, 2026-08-12, ADR 0129)
+
+ADR 0174 §5.3 says check a statistic's own noise floor. This is the cheapest possible instance, and it
+sat one sentence away from a published wrong conclusion.
+
+**The shape.** You have a mechanism that predicts a regression slope of exactly +1 (or exactly 0). You fit
+it, it looks decisive, you suspect the fit is really two shared decadal trends, you refit on the
+**detrended** series — the honest move — and the slope collapses to ~0. The reflex reading is *"refuted"*.
+
+**It usually is not, and the check is four lines.** Detrending is not free: it removes most of the
+regressor's variance, and whether anything is left depends on how smooth the regressor is. Here the
+regressor (a slowly-drifting population share) had a detrended residual spread of **0.0102** in log while
+the response carried **0.0134** of weather-year flux noise ⇒ **SE(slope) = 3.63**. A test with a standard
+error of 3.6 cannot distinguish a slope of 0 from a slope of 1 — its point estimate of 0.22 carries no
+information at all, in either direction. Two of the other four cells were at SE 41.8 and 5.3.
+
+    SE(slope) ≈ sd(resid_y) / (sd(resid_x) · sqrt(n − 2))
+
+- **Print `sd(resid_x)`, `sd(resid_y)` and `SE(slope)` in the same row as every detrended fit.** Without
+  them a collapsed slope is unreadable, and it will be read as a refutation because that is the shorter
+  sentence.
+- **State the answer as the BRACKET the underpowered test failed to narrow**, with both endpoints and
+  what each assumes. A bracket that straddles the verdict is a result; a point estimate picked from one
+  end of it is not.
+- **Then name the measurement that would close it** — and prefer one that changes the *reference* over
+  one that adds another arm to the model. Here no emulator experiment can ever separate the two channels,
+  because the ambiguity lives in what the reference model writes out.

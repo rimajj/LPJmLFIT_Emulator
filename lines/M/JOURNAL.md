@@ -1213,3 +1213,47 @@ record 0126.
 - **Next:** unchanged head of queue — the Hainich assimilate error, now known to be a response failure as
   well as a level one. Before treating the Sahel sign error as physics, close the historic-soil-column
   approximation (ADR 0050) in the ssp window. Mirrored into STATE.md's NEXT.
+
+---
+
+## Session 14 (2026-08-12) — line M — the head-of-queue assimilate error, split (ADR 0129)
+
+**Handoff item taken:** the previous session's step 1, *"THE HAINICH ASSIMILATE ERROR REMAINS THE HEAD OF
+THE F QUEUE … two measured leads: (a) the CUE gap, (b) F's daily GPP against `d_grass_gpp`-corrected C
+daily GPP"*.
+
+**Diagnosis, written before any probe (`residual-diagnosis` §1/§2):**
+- *Reference basis:* the rung-3 paired per-stem arm (`biome_sapwood_bg_probe.jl`) — the C's own roster
+  restarted every year, 25-patch ensemble, year-matched, `slow = nothing`, historic 2010–2019. C-side GPP
+  = `365 × gpp_tree` from `M_fdiff_oracle_biomes_annual.csv` (already `d_gpp − d_grass_gpp`); C-side NPP =
+  `npp_all` from `M_stem_growth_reference.csv`. Known basis facts carried into the write-up: grass,
+  ensemble, year-matching, the lying `units` attribute, the two different C runs (<1.2 % at four cells,
+  6.7 % Amazon), and the >5 m emission cut.
+- *Hypothesis (falsifiable):* `ln(bmi_F/bmi_C) = ln(GPP_F/GPP_C) + ln(CUE_F/CUE_C)` is exact; H1 says the
+  GPP term dominates (the §11 phenology lead), H0 says the CUE term does (the §13 CUE lead). One table
+  kills one.
+- *Time-box:* one session, ≤3 probe runs.
+
+**What was done.** Extended the rung-3 probe additively — `run_one_year!` now also returns the canopy's
+own `gpp_acc`/`npp_acc` (read **before** `annual_step!` zeroes them), and PARTs 5/5b/5c do the split, the
+ln-space attribution and the sub-5 m identification test. Six columns appended to the committed fixture;
+its 21 pre-existing columns verified **byte-identical** on all 20 rows, and PART 1's gate against
+ADR 0125's published panel still PASSes.
+
+**Result.** Both channels are live at Hainich: GPP 1.084, CUE 1.140 (product 1.237 = the published `bmi`
+ratio) ⇒ 38 % photosynthesis / 62 % respiration *as measured*. But the C's GPP is over ALL trees while its
+per-stem NPP is over the >5 m stems only, which biases the two factors in opposite directions by the same
+amount — the product is untouched, the split is not. Bracket: **38–77 % photosynthesis**.
+
+**The part worth remembering.** The test that would close it (regress `ln(GPP_F/GPP_C)` on `ln(gt5m)`)
+looked like a textbook confirmation raw — slope 0.83, r 0.890, 98.5 % of the decadal drift removed — and
+collapsed to 0.22 / 0.166 detrended. I nearly wrote that up as a refutation of the sub-5 m mechanism.
+Computing the detrended fit's own **SE(slope) = 3.63** took four lines and one 4-minute job and showed the
+test cannot separate 0 from 1 either way. Captured in `residual-diagnosis` and `fdiff-validate`.
+
+**Cost.** Four probe runs on `priority` (two lost to my own bugs: `log()` of a negative ratio at the two
+hot cells, and a header format string with 10 specifiers for 13 args). ~25 min wall clock total.
+
+**Not done, and why.** The ssp370 window cannot carry this split — the C's daily GPP exists for 2000–2019
+only. The bracket cannot be closed from the emulator side at all; it needs the C's `ind` writer to stop
+dropping sub-5 m stems, which is item 1 of the new handoff.
