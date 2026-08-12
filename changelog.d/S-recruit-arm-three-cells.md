@@ -38,7 +38,7 @@
   year-on-year jump against the series' own median jump — 13.1 before the fix, 4.0 after; the gate allows 8),
   because the trained reference table lives on scratch and CI cannot read it.
 
-### Scientific findings (ADR 0171)
+### Measured (ADR 0171 — the recruit arm at three cells)
 
 - **The ported establishment rule raises the standing community's mean wood density at all three cells
   measured** — +2.20 % (temperate), +4.93 % (tropical), +5.00 % (boreal), each at t ≥ 5.1, i.e. 2.1–4.4× the
