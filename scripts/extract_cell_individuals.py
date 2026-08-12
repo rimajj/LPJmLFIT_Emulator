@@ -73,6 +73,14 @@ COLS = [
     "patch", "type", "height", "lai", "sla", "wooddens", "fpc_ind", "crownarea", "nind",
     "leaf_c", "sapwood_c", "root_c", "boleht", "fpar_leafon", "alphaa", "albedo_leaf",
     "k_beer", "emax", "beta_root", "d95", "agb", "vegc", "gpp_ind", "transp_ind", "npp_ind",
+    # APPENDED 2026-08-12 (line M, rung 3) — the C's own per-individual identity and age.
+    # `(Cell, Patch, ID)` is a STABLE identity ACROSS YEARS in the `ind` output: matched over
+    # 2010-2019 at all five biome cells, `Age` increments by exactly 1 on every one of 10 323
+    # pairs, `SLA`/`Wooddens` are bit-identical (traits are immutable after `new_tree`), and no
+    # stem emitted with `isdead == 1` ever reappears. That is what makes a PAIRED per-stem
+    # F-vs-C growth comparison possible (ADR 0125). Appended LAST so every pre-existing value in
+    # the committed 2010 fixtures stays byte-identical (guardrail 4).
+    "id", "age",
 ]
 
 
@@ -115,22 +123,41 @@ def c_fapar(cell, year):
 def merge_rows(path, hdr, rows):
     """`rows` updated into the existing CSV's rows (keyed by `name`), order preserved:
     previously-registered cells first, new ones appended. Keeps a subset `CELLS=` run
-    from truncating the shared registry."""
+    from truncating the shared registry.
+
+    Returns `(header, rows)` — the header is the file's OWN header extended with any
+    column this script produces that the file did not have.
+
+    ⚠ WHY IT RETURNS A HEADER (line M, 2026-08-12). `M_cells.csv` is written by TWO
+    scripts: this one owns the first ten columns, and `extract_cell_slow_init.py`
+    APPENDS six more (`n_init`, `age0`, and the four-column slow boundary — the pinned
+    Component-S per-cell seed). The previous version dropped every row whose field
+    count differed from its own `hdr`, so re-running this script over the live registry
+    silently discarded all six of those columns and with them the artifact pin. The
+    merge now preserves any column it does not own.
+    """
     if not os.path.exists(path):
-        return rows
+        return hdr, rows
     new = {r["name"]: r for r in rows}
-    out, seen = [], set()
+    file_hdr, out, seen = None, [], set()
     for ln in open(path):
         s = ln.strip()
-        if not s or s.startswith("#") or s.startswith(hdr[0] + ","):
+        if not s or s.startswith("#"):
             continue
         f = s.split(",")
-        if len(f) != len(hdr):
+        if file_hdr is None:                       # the first non-comment line IS the header
+            file_hdr = f
             continue
-        name = f[0]
+        if len(f) != len(file_hdr):
+            continue
+        old = dict(zip(file_hdr, f))
+        name = old["name"]
         seen.add(name)
-        out.append(new.get(name, dict(zip(hdr, f))))
-    return out + [r for r in rows if r["name"] not in seen]
+        out.append({**old, **new[name]} if name in new else old)
+    if file_hdr is None:
+        return hdr, rows
+    hdr_out = file_hdr + [c for c in hdr if c not in file_hdr]
+    return hdr_out, out + [r for r in rows if r["name"] not in seen]
 
 
 def merge_rows_json(path, cells):
@@ -160,7 +187,7 @@ def reconstruct(pdf_rows):
             fpc_ind=fpc, alphaa=alphaa, albedo_leaf=albedo, k_beer=a["k_beer"], emax=emax,
             beta_root=float(r["beta_root"]), d95=float(r["D95"]), agb=float(r["agb"]),
             vegc=float(r["vegc"]), gpp_ind=float(r["gpp"]), transp_ind=float(r["transp"]),
-            npp_ind=float(r["npp"]),
+            npp_ind=float(r["npp"]), id=int(r["ID"]), age=int(r["Age"]),
         )
         if pid <= 6 and H > 0:                                   # tree
             ca = crown_area(pid, H)
@@ -207,7 +234,7 @@ def main():
         pl.scan_parquet(IND_PARQUET)
         .filter((pl.col("Cell").is_in(ids)) & (pl.col("Year") == year) & (pl.col("isdead") == 0))
         .select(["Cell", "Type", "Patch", "Height", "LAI", "SLA", "Wooddens", "agb", "vegc",
-                 "fpc_ind", "beta_root", "D95", "gpp", "transp", "npp"])
+                 "fpc_ind", "beta_root", "D95", "gpp", "transp", "npp", "ID", "Age"])
         .collect()
     )
     print(f"== ind parquet: {df.height} living individuals over {len(ids)} cells, year {year}")
@@ -254,16 +281,26 @@ def main():
     # M_cells.csv is what biome_coupled_tests.jl and run_coupled_biomes.jl enumerate.
     mcells = os.path.join(out_dir, "M_cells.csv")
     hdr = ["name", "cell", "lat", "lon", "npatch", "n_ind", "n_trees", "n_grass", "fapar_recon", "fapar_C_peak"]
-    rows = merge_rows(mcells, hdr, rows)
+    own_comments = ("# Per-cell metadata", "# 0-based index", "# fapar_recon =", "# scripts/extract_cell_individuals.py")
+    foreign_comments = [
+        ln.rstrip("\n") for ln in (open(mcells) if os.path.exists(mcells) else [])
+        if ln.startswith("#") and not ln.startswith(own_comments)
+    ]
+    hdr, rows = merge_rows(mcells, hdr, rows)
     meta = merge_rows_json(os.path.join(out_dir, "M_individuals_meta.json"), meta)
     with open(mcells, "w") as f:
         f.write("# Per-cell metadata for the multi-cell coupled S+F+E driver (line M, M1). Cell = global orderA\n")
         f.write("# 0-based index; lat/lon from the global run's grid.nc `cellid`. Ordered cold->hot.\n")
         f.write("# fapar_recon = reconstructed leaf-on cell FAPAR; fapar_C_peak = the C's own top-30-day mean.\n")
         f.write("# scripts/extract_cell_individuals.py\n")
+        for c in foreign_comments:                 # another script's provenance lines, kept verbatim
+            f.write(c + "\n")
         f.write(",".join(hdr) + "\n")
         for r in rows:
-            f.write(",".join(f"{r[k]:.6g}" if isinstance(r[k], float) else str(r[k]) for k in hdr) + "\n")
+            # a cell registered for the first time has no value for a column another script owns
+            f.write(",".join(
+                f"{r[k]:.6g}" if isinstance(r.get(k), float) else str(r.get(k, "")) for k in hdr
+            ) + "\n")
     with open(os.path.join(out_dir, "M_individuals_meta.json"), "w") as f:
         json.dump(dict(year=year, ind_parquet=IND_PARQUET, peak_days=PEAK_DAYS, cells=meta), f, indent=2)
     print(f"\nwrote {mcells} + M_individuals_meta.json")

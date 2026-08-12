@@ -197,3 +197,20 @@ cell coverage out of `cell_meta.parquet` rather than trusting a stated cell coun
   `biome_coupled_tests.jl` asserts each committed column carries a PASS. Apply the same pattern to any new
   extractor here: emit the verdict INTO the artifact, then assert it in a test. Regenerating for the stamp
   is safe — the data rows came out byte-identical, only the header line is new.
+- **⚠ `M_cells.csv` HAS TWO WRITERS, AND ONE OF THEM USED TO EAT THE OTHER'S COLUMNS (line M, 2026-08-12,
+  ADR 0125).** `extract_cell_individuals.py` owns the first ten columns; `extract_cell_slow_init.py`
+  APPENDS six more (`n_init`, `age0` + the four-column slow boundary — the pinned Component-S per-cell
+  seed). The individuals extractor rewrote the file from its OWN header and dropped every row whose field
+  count differed from it, so any re-run — e.g. to add a year or a cell — silently deleted the artifact pin,
+  with no error and no diff to look at until the coupled driver came up wrong. **Fixed:** its merge now
+  reads the file's own header, preserves columns and comment lines it does not own, and a re-run over the
+  live registry is byte-identical. **The rule for any new extractor that writes a shared registry: read the
+  existing header, union it with yours, and never key a row parse off your own column count.** Verify with
+  a round-trip (`cp` the live file to a scratch `OUT=`, re-run, `diff`) before committing.
+- **Per-year rosters are a one-line loop, and they unlock a per-STEM comparison.** `YEAR=<y>
+  OUT=/p/tmp/jamirp/M_canopy_drift/individuals` gives the C's stand at the end of any year (~10 s each,
+  50 KB each — keep them on `/p/tmp`, do NOT commit). Since 2026-08-12 the emitted rows also carry `id`
+  and `age`, and `(Cell, Patch, ID)` is a stable cross-year identity (CLAUDE.md §3), so year y's roster can
+  be scored stem-by-stem against year y+1's. **The `ind` row for year y is written at the END of year y**,
+  so the stand entering year y is the year-(y−1) file — driving the year-y file with year-y forcing is an
+  off-by-one, and it was in `biome_fdiff_oracle_probe.jl` for a month.
