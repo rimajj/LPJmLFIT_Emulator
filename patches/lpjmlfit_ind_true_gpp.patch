@@ -1,0 +1,180 @@
+diff --git a/include/pft.h b/include/pft.h
+index a2a74b3..5b32bbf 100644
+--- a/include/pft.h
++++ b/include/pft.h
+@@ -243,7 +243,18 @@ typedef struct Pft
+   Real afpar;
+   Real atransp;          /**< annual transpiration (mm/yr) */
+   Real anpp;             /**< annual NPP (gC/yr) */
+-  Real agpp;             /**< annual NPP (gC/yr) */
++  Real agpp;             /**< annual NPP (gC/yr) -- NOT GPP. daily_natural.c accumulates `npp`
++                              into this field, so the `ind` output's `gpp` column is a second
++                              copy of `npp` (the upstream comment here says NPP too). Left
++                              exactly as-is: committed reference bases are measured against it. */
++  Real agpp_gross;       /**< annual GROSS GPP (gC/yr) -- the `gpp` daily_natural.c passes to
++                              npp() and adds to the D_GPP output, i.e. the per-individual
++                              counterpart of the stand GPP output that LPJmL-FIT otherwise has
++                              nowhere. Diagnostic only; no physics reads it. Reaches the `ind`
++                              output's `gpp` column only when LPJ_IND_TRUE_GPP is set
++                              (fwriteoutput_ind.c), so a run with that variable unset is
++                              byte-identical. Not in fwritepft/freadpft -- like anpp/agpp it is
++                              an annual accumulator, zeroed by init_annual -> init_tree/grass. */
+ #ifdef DAILY_ESTABLISHMENT
+   Bool established;
+ #endif
+diff --git a/src/grass/init_grass.c b/src/grass/init_grass.c
+index d401989..908fd66 100644
+--- a/src/grass/init_grass.c
++++ b/src/grass/init_grass.c
+@@ -25,6 +25,7 @@ void init_grass(Pft *pft /**< pointer to grass PFT */
+   pft->atransp=0;
+   pft->anpp=0;
+   pft->agpp=0;
++  pft->agpp_gross=0;
+   pft->bm_inc.carbon=pft->wscal_mean=pft->vscal=pft->nlimit=0;
+ #ifdef DAILY_ESTABLISHMENT
+   pft->established=FALSE;
+diff --git a/src/lpj/daily_natural.c b/src/lpj/daily_natural.c
+index 91bc578..e6b188f 100644
+--- a/src/lpj/daily_natural.c
++++ b/src/lpj/daily_natural.c
+@@ -191,6 +191,13 @@ Real daily_natural(Patch *patch,                /**< [inout] patch pointer */
+     //printf("NPP(%s)=%g\n",pft->par->name,npp);
+     pft->anpp+=npp;
+     pft->agpp+=npp;
++    /* The line above adds NPP, not GPP — so `agpp` (and the `ind` output's `gpp` column) is a
++       second copy of NPP. Left untouched. `agpp_gross` accumulates the real thing: the SAME
++       `gpp` that is passed to npp() above and added to the D_GPP/GPP outputs below, so a
++       per-individual sum of it is on exactly the stand GPP output's basis (gross, before the
++       leaf maintenance term `rd`). Diagnostic only — nothing in the physics reads it, and it
++       reaches an output file only behind LPJ_IND_TRUE_GPP. */
++    pft->agpp_gross+=gpp;
+     pft->npp_bnf=0.0;
+     if(isdailyoutput_stand(config,patch))
+     {
+@@ -216,6 +223,14 @@ Real daily_natural(Patch *patch,                /**< [inout] patch pointer */
+     stand->cell->balance.agpp+=gpp*frac;
+     getoutput(output,NPP,config)+=npp*frac;
+     getoutput(output,GPP,config)+=gpp*frac;
++    /* grass-only daily GPP/NPP (F_diff grass-level validation) — accumulated UNCONDITIONALLY like the
++       GPP/NPP outputs above (cell-mean, *frac), so a daily-timestep request yields the cell-mean daily
++       grass flux directly comparable to the (GPP,daily) output. Grass = natural PFT type GRASS. */
++    if(getpftpar(pft,type)==GRASS)
++    {
++      getoutput(output,D_GRASS_NPP,config)+=npp*frac;
++      getoutput(output,D_GRASS_GPP,config)+=gpp*frac;
++    }
+     getoutput(output,FAPAR,config) += pft->fapar * frac * (1.0/(1-stand->cell->lakefrac-stand->cell->ml.reservoirfrac));
+     if (stand->type->landusetype == SETASIDE_RF || stand->type->landusetype == SETASIDE_IR)
+       getoutput(output,NPP_AGR,config) += npp*frac / agrfrac;
+diff --git a/src/lpj/fwriteoutput_ind.c b/src/lpj/fwriteoutput_ind.c
+index 775c11c..4851f8e 100644
+--- a/src/lpj/fwriteoutput_ind.c
++++ b/src/lpj/fwriteoutput_ind.c
+@@ -20,6 +20,44 @@
+ 
+ #define MSGTAG 2005
+ 
++/* ── TWO OPT-IN DIAGNOSTIC SWITCHES FOR THE `ind` TABLE (both OFF unless the env var is set,
++   so an unset run is byte-identical to stock LPJmL-FIT; same pattern as the rung-2 hooks) ──
++
++   LPJ_IND_ALL_HEIGHTS  emit EVERY tree, not only those above param.height_min (5 m).
++     The cut (`fwriteoutput_ind.c`, below) is why every stand aggregate built from `ind` is
++     missing the short trees the stand-level outputs contain — the ">5 m fraction" caveat that
++     has to be carried with every crown-cover and growth number. `Height` is column 4 of the
++     table, so a consumer can reproduce the cut exactly and the two populations stay separable.
++
++   LPJ_IND_TRUE_GPP     put pft->agpp_gross (real gross GPP) in the `gpp` column instead of
++     pft->agpp (which holds NPP — see daily_natural.c). Without this there is no per-individual
++     GPP anywhere in LPJmL-FIT's outputs, so a per-stem carbon-use-efficiency NPP/GPP is not
++     computable and comes out as exactly 1.
++
++   Both are read once and cached: this is called for every tree of every patch of every year. */
++static int ind_opt(const char *name)
++{
++  const char *env;
++  env=getenv(name);
++  return (env!=NULL && *env!='\0' && strcmp(env,"0")!=0);
++} /* of 'ind_opt' */
++
++static Bool ind_all_heights(void)
++{
++  static int cached=-1;
++  if(cached<0)
++    cached=ind_opt("LPJ_IND_ALL_HEIGHTS");
++  return cached ? TRUE : FALSE;
++} /* of 'ind_all_heights' */
++
++static Bool ind_true_gpp(void)
++{
++  static int cached=-1;
++  if(cached<0)
++    cached=ind_opt("LPJ_IND_TRUE_GPP");
++  return cached ? TRUE : FALSE;
++} /* of 'ind_true_gpp' */
++
+ static void printind(FILE *file,const Output_ind *output,int fmt)
+ {
+   switch(fmt)
+@@ -81,7 +119,7 @@ static Bool getind(Output_ind *output,const Pft *pft,int year,int cell,int np)
+   {
+     tree=pft->data;
+     treepar=pft->par->data;
+-    if(tree->height>param.height_min)
++    if(tree->height>param.height_min || ind_all_heights())
+     {
+         output->year=year;
+         output->id=pft->par->id;
+@@ -90,7 +128,7 @@ static Bool getind(Output_ind *output,const Pft *pft,int year,int cell,int np)
+         output->sla=pft->sla;
+         output->transp=pft->atransp;
+         output->npp=pft->anpp;
+-        output->gpp=pft->agpp;
++        output->gpp=ind_true_gpp() ? pft->agpp_gross : pft->agpp;
+         output->isdead=tree->isdead;
+         output->wooddens=tree->wooddens;
+         output->k_root=tree->k_root;
+@@ -145,7 +183,7 @@ static Bool getind(Output_ind *output,const Pft *pft,int year,int cell,int np)
+     output->sla=pft->sla;
+     output->transp=pft->atransp;
+     output->npp=pft->anpp;
+-    output->gpp=pft->agpp;
++    output->gpp=ind_true_gpp() ? pft->agpp_gross : pft->agpp;
+     output->isdead=FALSE;
+     output->wooddens=0;
+     output->k_root=0;
+@@ -243,7 +281,9 @@ void fwriteoutput_ind(Outputfile *output,  /**< output file array */
+                 if(pft->par->type==TREE)
+                 {
+                   tree=pft->data;
+-                  if(tree->height>param.height_min)
++                  /* MUST use the same condition as getind() above — this pass only SIZES the
++                     buffer the next one fills, so a mismatch overflows it. */
++                  if(tree->height>param.height_min || ind_all_heights())
+                     num++;
+                 }
+                 else if(pft->par->type==GRASS)
+diff --git a/src/lpj/newpft.c b/src/lpj/newpft.c
+index 0850b3f..3fcc647 100644
+--- a/src/lpj/newpft.c
++++ b/src/lpj/newpft.c
+@@ -47,6 +47,7 @@ void newpft(Pft *pft,            /**< PFT variables */
+  pft->atransp=0;
+  pft->anpp=0;
+  pft->agpp=0;
++ pft->agpp_gross=0;
+  pft->fpar_leafon=0;
+ #ifdef DAILY_ESTABLISHMENT
+   pft->established=FALSE;
+diff --git a/src/tree/init_tree.c b/src/tree/init_tree.c
+index 23788b7..7a10ab6 100644
+--- a/src/tree/init_tree.c
++++ b/src/tree/init_tree.c
+@@ -27,6 +27,7 @@ void init_tree(Pft *pft /**< pointer to tree PFT */
+   pft->atransp=0;
+   pft->anpp=0;
+   pft->agpp=0;
++  pft->agpp_gross=0;
+   pft->bm_inc.carbon=pft->wscal_mean=pft->vscal=pft->nlimit=0;
+ #ifdef DAILY_ESTABLISHMENT
+   pft->established=FALSE;

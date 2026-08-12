@@ -588,6 +588,32 @@ const CSTEM = let
             for r in eachindex(d["name"])
     )
 end
+# ── THE BRACKET-CLOSING BASIS (ADR 0130) ────────────────────────────────────────────────────────
+# Basis fact 2 above left the split undetermined because the C's GPP was on ALL trees while its
+# per-stem NPP was on the >5 m stems only. Both are now measured on ONE population by a rebuilt C
+# with `LPJ_IND_ALL_HEIGHTS=1 LPJ_IND_TRUE_GPP=1` (opt-in, inert unless set; the rebuild gated at
+# 139 decoded quantities identical, 0 differ). Two columns matter here:
+#   `gpp_tree_gt5/gpp_tree_all` — the >5 m share of TREE GPP, i.e. the factor that puts the C's GPP
+#      on F's own roster. The bracket's ends assumed 1.0 (short stems carry no flux) and the
+#      crown-cover `gt5m` (they carry their full crown share); this is the measured value.
+#   `npp_tree_gt5/gpp_tree_gt5` — the C's CUE on exactly F's population, with no correction left.
+# Its own gate: the per-individual GPP sum reproduces the run's `d_gpp` to 4.4e-7 over 100
+# cell-years, which also proves the emitted roster is complete.
+# ⚠ Single-cell basis (ADR 0041) — as `gpp_tree` already is, so the pairing is unchanged.
+const CTRUE = let
+    p = joinpath(REFDIR, "M_ind_true_gpp_reference.csv")
+    if isfile(p)
+        d = readcsv(p)
+        Dict(
+            (String(d["name"][r]), parse(Int, d["year"][r])) => (
+                    parse(Float64, d["gpp_tree_gt5"][r]) / parse(Float64, d["gpp_tree_all"][r]),
+                    parse(Float64, d["npp_tree_gt5"][r]) / parse(Float64, d["gpp_tree_gt5"][r]),
+                ) for r in eachindex(d["name"])
+        )
+    else
+        Dict{Tuple{String, Int}, Tuple{Float64, Float64}}()
+    end
+end
 
 """
 Year-matched GPP / NPP / CUE for one arm at one cell. `nothing` for a C column the window has no oracle
@@ -605,11 +631,24 @@ function cue_panel(a, c)
     end
     isempty(yy) && return nothing
     r = gfy ./ gcy
+    # The corrected (bracket-closing) C basis, year-matched the same way: `sh` puts the C's GPP on
+    # F's >5 m roster and `cc5` is the C's CUE on that same roster. NaN where the fixture has no
+    # row for the cell-year, so the old columns stay readable on their own.
+    sh = Float64[]; cc5 = Float64[]
+    for y in yy
+        if haskey(CTRUE, (a.name, y))
+            (s, c5) = CTRUE[(a.name, y)]
+            push!(sh, s); push!(cc5, c5)
+        end
+    end
     return (;
         n = length(yy), years = yy, gfy = gfy, gcy = gcy, r = r, g5y = g5,
         gppF = mean(gfy), gppC = mean(gcy), nppF = mean(nfy), nppC = mean(ncy),
         cueF = mean(nfy ./ gfy), cueC = mean(ncy ./ gcy),
         rgpp = mean(r), rgpp_first = r[1], rgpp_last = r[end], gt5 = mean(filter(!isnan, g5)),
+        gpp_share = isempty(sh) ? NaN : mean(sh),
+        gppC5 = isempty(sh) ? NaN : mean(gcy) * mean(sh),
+        cueC5 = isempty(cc5) ? NaN : mean(cc5),
     )
 end
 
@@ -681,6 +720,49 @@ end
 @printf("is undefined where ln(NPP) is near 0 or the assimilate changes sign.\n")
 @printf("GPP r y0/y9 = the first and last year's GPP ratio — a drift means a structural cause, a flat\n")
 @printf("offset means a flux-level one (ADR 0053 basis check 3).\n")
+
+# ── PART 5d — THE SPLIT WITH THE POPULATION MISMATCH REMOVED (ADR 0130 closes ADR 0129's bracket) ──
+# PART 5b's split is undetermined because its two C columns are on different populations. The C now
+# emits per-stem GROSS GPP for EVERY tree, so both sides can be put on F's own >5 m roster:
+#     GPP_C(>5 m) = GPP_C(all trees) x gpp_share       CUE_C(>5 m) read directly
+# The product ln(NPP) is INVARIANT to this by construction (the two corrections are the same factor
+# with opposite signs) — so the `ln(NPP)` column must be unchanged from PART 5b, and that is printed
+# as a check rather than asserted away. Only the SPLIT between the columns moves.
+@printf("\n--- PART 5d: THE CLOSED SPLIT — both C columns on F's OWN >5 m population ---\n")
+@printf(
+    "%-22s %7s %8s %8s %8s %8s %9s %9s %9s\n",
+    "cell", "share", "GPP F/C", "CUE_C", "CUE F/C", "ln(NPP)", "=ln(GPP)", "+ln(CUE)", "GPP share"
+)
+for (tag, ps, as) in (("A", pA, armA), ("Pbg", pPbg, armPbg))
+    @printf("arm %s\n", tag)
+    for k in eachindex(NAMES)
+        q = cue_panel(as[k], ps[k])
+        q === nothing && continue
+        if isnan(q.gpp_share)
+            @printf("%-22s %7s   (no full-stand C run for this cell/window)\n", NAMES[k], "nan")
+            continue
+        end
+        if !(q.cueF > 0 && q.cueC5 > 0 && q.gppF > 0 && q.gppC5 > 0)
+            @printf(
+                "%-22s %7.4f %8s %8.4f %8s %9s %9s %9s %9s   (NPP_F <= 0: undefined)\n",
+                NAMES[k], q.gpp_share, "undef", q.cueC5, "undef", "undef", "undef", "undef", "undef"
+            )
+            continue
+        end
+        lg = log(q.gppF / q.gppC5); lc = log(q.cueF / q.cueC5); ln = lg + lc
+        @printf(
+            "%-22s %7.4f %8.3f %8.4f %8.3f %9.4f %9.4f %9.4f %8.0f %%\n", NAMES[k],
+            q.gpp_share, q.gppF / q.gppC5, q.cueC5, q.cueF / q.cueC5, ln, lg, lc, 100 * lg / ln
+        )
+    end
+end
+@printf("\n`share` = the >5 m fraction of the C's TREE GPP, measured (not assumed). ADR 0129's bracket\n")
+@printf("spanned share = 1.0 (short stems carry no flux) to share = the crown-cover `gt5m`; this row is\n")
+@printf("the measurement that replaces both ends. `ln(NPP)` MUST match PART 5b's — if it does not, the\n")
+@printf("two fixtures are on different C runs and the whole panel is void, so check that first.\n")
+@printf("⚠ A cell whose `share` is far from 1 has most of its stand below the writer's cut, so its F\n")
+@printf("roster is missing that flux too — the split is now defined there, but the LEVEL is still not\n")
+@printf("a like-for-like stand comparison. Read `share` beside every number in this block.\n")
 
 # ── PART 5c — HOW MUCH OF THE SPLIT IS THE SUB-5 m POPULATION? (the dominant uncertainty, measured) ───
 # PART 5's basis fact 2 says the sub-5 m stems bias `GPP_F/GPP_C` down and `CUE_F/CUE_C` up by the same

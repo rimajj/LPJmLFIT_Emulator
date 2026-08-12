@@ -1257,3 +1257,63 @@ hot cells, and a header format string with 10 specifiers for 13 args). ~25 min w
 **Not done, and why.** The ssp370 window cannot carry this split — the C's daily GPP exists for 2000–2019
 only. The bracket cannot be closed from the emulator side at all; it needs the C's `ind` writer to stop
 dropping sub-5 m stems, which is item 1 of the new handoff.
+
+---
+
+## Session 15 — 2026-08-12 — the bracket closes, and the writer's height cut was only half the reason
+
+**What I set out to do.** Handoff step 1: remove the `ind` writer's 5 m emission cut behind an env gate,
+rebuild, re-run one cell, close ADR 0129's 38–78 % photosynthesis/respiration bracket.
+
+**What actually blocked it.** Before touching the cut I checked whether the bracket could be closed from
+data already on disk — the `ind` table has a `gpp` column, so summing it over the >5 m stems should have
+given the C's GPP on F's own population for free. It did not: **carbon-use efficiency came out as exactly
+1.0000 in all 11 967 tree rows.** `daily_natural.c:193` does `pft->agpp += npp;`, so the column named `gpp`
+holds NPP, and **LPJmL-FIT emits no per-individual GPP anywhere.** The real `gpp` is a local that reaches
+only the stand-level outputs. So removing the height cut alone would have produced a full stand with still
+nothing to compare — the change had to be *two* switches, and the second was the load-bearing one.
+
+It was not an unknown: `extract_fdiff_individuals.py:26` records it in a comment, and
+`biome_canopy_growth_probe.jl:642` mentions it. It was in no decision record and not in the runbook, which
+is why the previous handoff scoped a one-line fix. That is the reusable lesson — a fact living only in a
+script comment is a fact the next session will re-derive or trip over.
+
+**Built.** `patches/lpjmlfit_ind_true_gpp.patch`: `LPJ_IND_ALL_HEIGHTS` + `LPJ_IND_TRUE_GPP`, both inert
+unless set, with a new `Pft.agpp_gross` accumulating the same `gpp` that feeds `D_GPP`. Checked before
+writing it that `fwritepft`/`freadpft` serialize **field by field** — a wholesale struct write would have
+invalidated `restart_1999.lpj` and there would have been no cheap way back. Rebuild gated as a **matched
+A/B against the preserved previous binary** rather than against the July reference run (whose output set
+predates the daily-grass patch): 139 decoded quantities identical, 0 differ.
+
+**Result.** The gate that matters is an identity: `Σ` per-individual `gpp` over all PFTs reproduces the
+run's own annual `d_gpp` to **4.4e-07 over 100 cell-years**, which simultaneously proves the full-stand
+roster is complete. At Hainich the sub-5 m trees turn out to be **47 % of the stems and 1.9 % of tree GPP**.
+The split closes at **≈43–47 % photosynthesis / ≈57–53 % respiration** — refuting ADR 0129 §6's upper end,
+so the GSI phenology is not the single cause and I did not open that investigation.
+
+**The bit I nearly got wrong.** My hand re-scaling of ADR 0129's panel gave 47 %; the probe's in-process
+PART 5d gives 43 %. The built-in invariance check caught why: `ln(NPP)` moves 0.2116 → 0.2215, i.e. implied
+`NPP_C` 0.99 % lower — **identically on both arms**, so it is the C reference and not an arm. PART 5d takes
+`CUE_C` from the new single-cell runs while PART 5b took `npp_C` from the global run, which is exactly basis
+fact 3's documented <1.2 % gap. I report the range rather than the single tidier number, and PART 5d is now
+the first version of the panel with all three C quantities on one run.
+
+**Three costs, all mine.** (i) An f-string built the injected JSON entry and `}}` collapsed to `}` —
+`lpjcheck` caught it, reported against the *following* line; the driver now re-validates after patching,
+which the integrator-owned wrapper cannot. (ii) Read the `ind` TXT with `has_header=False` + `new_columns`,
+which made every column a String and made polars panic inside the aggregation rather than at the mistake —
+the file has a header, and it matches `IND_COLUMNS` exactly, so that is now an assertion. (iii) Type
+inference then called `mort_temp` an integer, because those columns are uninitialised garbage that prints
+as whole numbers early in a restarted run; dtypes are pinned.
+
+**Coordination.** The C tree is shared and has no lock, and line S rebuilt it earlier the same day for
+their own dump column. I waited for their queue to empty, kept their binary at `bin/lpjml.pre_indgpp.bak`,
+and left them an inbound note — including that the rung-2 dump's `agpp` field is NPP too, which nothing of
+theirs reads as GPP yet.
+
+**Newly cheap, and worth someone's next session.** An ssp370 GPP/CUE split. ADR 0129 §7 ruled it out
+because the C's daily GPP is historic-only; per-stem GPP now comes from the `ind` table, so a single-cell
+warmed re-run yields both columns. ADR 0128 measured the climate dependence on the product and could not
+say which channel carries it.
+
+**Cost.** One rebuild, seven single-cell C runs (~10 s each), one probe job. ~35 min wall clock.
