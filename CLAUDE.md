@@ -521,6 +521,24 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `mort = min(1, mort_npp + mort_age + mort_water + mort_temp)`, then a per-individual `erand48` Bernoulli
   draw, with hard kills at `bm_inc_counter ≥ 5` and `leaf_c < leaf_carbon_sapl(sla)` (`:120-146`). The
   `pft->par->mort_max` read at `:87` is **dead** — overwritten at `:92`.
+- **THE `ind` COLUMNS `agb` AND `vegc` ARE DIFFERENT POOL SETS FROM THE EMULATOR'S — the C carries TWO
+  BELOW-GROUND WOOD POOLS F DOES NOT (`[VERIFIED 2026-08-12]`, ADR 0127).**
+  `agb_tree.c:25` + `tree.h:259`: `agb = (leaf + heartwood + sapwood − debt + excess)·nind −
+  turn_litt.leaf`. `veg_sum_tree.c:25` + `tree.h:257`: `vegc = (leaf + root + heartwood + sapwood +
+  **sapwood_bg** + **heartwood_bg** − debt + excess)·nind − turn_litt.leaf − turn_litt.root + fruit`. So
+  `vegc − agb` is **root + below-ground sapwood + below-ground heartwood** on the C side and **root only**
+  in `FDiff.vegc_ind`. `allocation_tree.c:163-209` builds a C_LATERAL root-sapwood demand from each stem's
+  own sapwood cross-section and root profile and `:268-277` **deducts it from `bm_inc_ind` before** the
+  leaf/root/sapwood split; `turnover_tree.c:124-130` then moves `sapwood_bg·turnover.sapwood` into
+  `heartwood_bg`, so the pair is a producer/consumer and **a one-field port of it leaks carbon**
+  (`docs/notes/sapwood_bg_design.md` §9). Measured cost of the missing sink: **20–46 %** of F's surplus
+  above-ground growth at the biome cells.
+  ⚠ **AND DO NOT SCORE THE RETAINED FRACTION `keep = ΣΔagb / bm_inc`.** Its denominator is the error under
+  test, and F's losses are **stock-driven** (a summergreen sheds its whole leaf and fine-root pool every
+  year regardless of that year's NPP) while its assimilate is not — so a too-large `bm_inc` raises the
+  retained fraction with a *faithful* allocation. Measured: F's absolute litter + reproduction flux at
+  Hainich is right to **1.8 %** while its `keep` ratio is **49 %** high. Score the exact additive identity
+  `Δagb_F − Δagb_C = (bmi_F−bmi_C) + (loss_C−loss_F) + (bel_C−bel_F)` instead (skill `fdiff-validate`).
 - **Annual `ind` output gotchas (`[VERIFIED]`; load-bearing for Component-S training).** The TXT `ind`
   writer emits **29 columns** (`printind`); `stemdiam/crownarea/leafarea/fpc/bm_inc_counter/pools` are
   **commented out** (RAW-only). **AGE OFF-BY-ONE:** the emitted `Age` is the *post-increment* year-end age
