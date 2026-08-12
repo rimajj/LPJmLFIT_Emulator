@@ -1281,3 +1281,33 @@ information at all, in either direction. Two of the other four cells were at SE 
 - **Then name the measurement that would close it** — and prefer one that changes the *reference* over
   one that adds another arm to the model. Here no emulator experiment can ever separate the two channels,
   because the ambiguity lives in what the reference model writes out.
+
+## WRITE THE PREDICTION INTO THE HARNESS BEFORE THE ARM RUNS — AND CHECK WHETHER A "SIGNED" EFFECT IS ACTUALLY CONDITIONAL (line M, 2026-08-12, ADR 0131)
+
+**The trap.** A defect had been on the queue for weeks with its direction stated as settled — two
+independent design notes said *"fixing it ALONE would push CUE further from the C"*, and a third note
+inherited the sentence. Both were reasoning from the mechanism, not from a measurement, and **both had the
+sign wrong**, because the effect is not signed at all: it is *conditional on a state variable neither note
+named*. The gate scales net daytime assimilation `A = gpp − rd` by a factor in `(0,1]`, and
+`npp = A − rmaint − rgrowth(A − rmaint)`, so gating **raises** `npp` exactly where the ungated `A` was
+NEGATIVE and lowers it otherwise. The notes had silently assumed every affected day is one of the
+pathological ones. Measured, the affected days were carbon-POSITIVE at one cell and negative at another —
+the fix helps at three of five cells and hurts at one, and no single sign statement is true.
+
+**The two habits that turn this from an embarrassment into a result.**
+
+1. **Write the prediction, with its reasoning, into the probe script's own comment block before the arm
+   runs** — not into the ADR afterwards. Then the failure is dated and attributable, and the ADR can report
+   *which* clause failed and *why*, which localises the error to one unstated assumption. A prediction
+   recorded after the numbers exist can only ever confirm.
+2. **Before believing any "this fix pushes X in direction D" claim, write the effect as an expression and
+   ask what it depends on.** If the sign depends on the sign of an intermediate quantity, the claim is a
+   claim about the *distribution of that quantity*, i.e. about the cells — so it needs a per-cell
+   measurement, and a word like "rare" in the original note is a statement about the CELL, not about the
+   model. At a semiarid cell the "rare" days carried the entire sign of the annual carbon balance.
+
+**Corollary for attribution records.** When one arm fixes a defect at two cells, do not write that the
+defect has one cause. Here an earlier record grouped two cells under a per-parameter defect; the new gate
+flips one of them on its own and leaves the other untouched, so that cell had **two independent sufficient
+causes and the record stated one of them as the one**. Test each candidate cause against each cell
+separately before grouping them in a sentence.

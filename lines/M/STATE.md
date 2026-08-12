@@ -359,7 +359,113 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-12 (session 15) — **THE BRACKET IS CLOSED: ≈43-47 % PHOTOSYNTHESIS /
+### 0-NEWEST. ✅ DONE 2026-08-12 (session 16) — **THE C GATES *EVERY TREE'S* PHOTOSYNTHESIS ON ITS OWN
+### DEMAND AND F NEVER DID. IT RESCUES THE SAHEL'S NEGATIVE CARBON BALANCE ON ITS OWN, TAKES 17.5 % OFF
+### THE ASSIMILATE ERROR AT THE FOUR READABLE CELLS — AND MY PRE-REGISTERED PREDICTION WAS WRONG (ADR 0131)**
+
+**Start here.** The previous handoff's step 1 — *"AIM AT THE RESPIRATION CHANNEL FIRST ... the `rd` gate is
+the cheapest respiration lead"* — is **done and measured on all five cells**, and the answer is better than
+the queue expected, for a reason two design notes had backwards.
+
+**1. WHAT THE C ACTUALLY DOES.** `water_stressed.c:196` runs photosynthesis only
+`if(gpd>1e-5 && isphoto(data.tstress))`; `:83` has already zeroed `*rd` and the `else` at `:260` sets
+`agd=0` ⇒ **on a gated day the C's PFT makes neither gross assimilation nor leaf respiration.** The gate is
+per-`Pft`, and this config runs `individual:true`, so **every tree is its own `Pft` entry and the C gates
+each tree**. F_diff's pre-existing `grass_demand_gate` is `ind.is_grass`-gated ⇒ **the tree path has run
+ungated since it was written.** Only ONE half was missing: `tstress` multiplies `c1`/`c1o` linearly in F, so
+`rd = b·vm` already vanishes smoothly with it and F needs no `isphoto` branch.
+
+**2. WHAT WAS BUILT.** `WaterParams.tree_demand_gate` (opt-in, default off ⇒ byte-identical) + one
+expression in `daily_step_canopy`; new gate `test/testitems/tree_demand_gate_tests.jl`; probe arms
+**Ag / Ags / Pg** + PART 6 in `scripts/biome_sapwood_bg_probe.jl`. Log of record
+**`logs/M-treegate.1767691.out`** (PART 1 basis gate **PASS**).
+
+**3. THE RESULT (`bmi_F/bmi_C`, the published ADR 0125/0127 statistic).** Arm A → Ag: boreal 1.049→0.951 ·
+Hainich 1.239→**1.217** · mediterranean 2.727→2.758 · **Sahel −0.457→+0.189** · Amazon −0.208→−0.208. On the
+shipping per-PFT arm P → Pg: boreal 1.275→**1.200**, Hainich 1.241→**1.219**, Sahel 1.132→**1.095**, Amazon
+unchanged, mediterranean worse ⇒ mean `|bmi_F/bmi_C − 1|` over the **four readable cells** (mediterranean
+excluded, its own error is 2.7–3.1×) **0.1915 → 0.1580, −17.5 %**, from one C-faithful expression and no new
+parameter.
+
+**4. THE HEADLINE, AND IT NARROWS AN EARLIER ATTRIBUTION.** At `semiarid_sahel` the gate **alone** flips F's
+annual tree carbon balance **−83.8 → +34.6 gC/m²/yr** — with beech parameters everywhere and GPP moving
+0.35 %. ADR 0125 §PART 7 grouped the Sahel with the Amazon as cells whose negative assimilate is the per-PFT
+`respcoeff` defect; the Amazon is **unmoved** by the gate (0.07 %) and is that defect, while the Sahel had
+**two independent sufficient causes and the record named one of them as the one.** ⚠ A sign change is not a
+level claim — F still makes **19 %** of the C's assimilate at the Sahel after the gate.
+
+**5. MY PRE-REGISTERED PREDICTION WAS REFUTED, AND THAT IS THE REUSABLE PART.** PART 6's comment block
+predicted (before the arm ran) that the gate would make `bmi` **worse** at every cell, following
+`sapwood_bg_design.md` §6 and `phase3_fdiff_cbinary_validation.md` §13. **The effect is not signed at all:**
+with `A ≡ gpp − rd` and `npp = A − rmaint − rgrowth(A − rmaint)`, gating scales `A` by `g ∈ (0,1]`, so a
+gated day raises `npp` **only where its ungated `A` was NEGATIVE**. Both notes assumed every gated day is
+pathological. Measured: carbon-POSITIVE at Hainich (NPP −1.84 %), negative at the mediterranean (+1.15 %).
+Both notes are **amended in place**; the method lesson is in the `residual-diagnosis` skill.
+
+**6. THE SHARPNESS CONTROL SAYS IT IS AD-USABLE.** `βgpd_gate` is SHARED with the grass gate and
+`_with_grass_gate` pins it to the C's hard `1e8` whenever the grass gate goes on (which `FDiffFastCore` does
+by default). Arm **Ags** runs the same gate at the soft `2e4`: three cells identical to the printed digit,
+Hainich 0.15 pp apart, boreal (the largest effect) 1.6 pp ⇒ **usable under Enzyme without becoming a
+different operator** — unlike the REFUTED §25 grass hard-floor lever. **Record which sharpness any arm ran at.**
+
+**7. WHAT IT IS NOT.** Not the photosynthesis channel (GPP effect ≤ 4.3 %, ≤ 1.1 % at four of five) — ADR
+0130's +10.1 % GPP excess at Hainich is untouched. **Incidence is NOT measured**, only the effect: counting
+gated tree-days needs an accumulator inside `daily_step_canopy`, i.e. a struct on the Enzyme path (ADR 0110
+SIGABRT risk). The probe prints that omission rather than leaving it implicit. Five cells, historic window.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **🎯 ACTION, PRE-REGISTERED (ADR 0131 §8) — FLIP `tree_demand_gate` TO `true` (with `βgpd_gate` left at
+   `2e4`) once all three hold:** (a) the `sapwood_bg` **growth** port has landed — the two act on the SAME
+   carbon-use-efficiency channel and partially cancel, so flipping either default first silently re-prices
+   the other's pass criterion; (b) on arm Pg, mean `|bmi_F/bmi_C − 1|` over the four readable cells does not
+   increase against the then-current arm P; (c) the full suite's failure list is enumerated and every moved
+   assertion is a deliberate baseline move (`julia-test` skill's default-flip procedure). **This is line M's
+   own action — do not leave it as a note.** The default as it ships today is KNOWN UNFAITHFUL.
+2. **THE `sapwood_bg` PORT** (ADR 0127 §5/§6) — now the head of the queue, and it is the gate on item 1.
+   Justified by `t_nosink` (46 / 20 / 4 % of the surplus at boreal / Hainich / mediterranean), NOT by CUE.
+   Two struct fields (`sapwood_bg_c` + `heartwood_bg_c`, ADR 0127 §5 — a one-field port leaks ≈22 gC/m²/yr)
+   on the Enzyme path, opt-in, its own session. ⚠ A heap-allocated field on a struct Enzyme differentiates
+   through aborts the suite with SIGABRT and no stacktrace (ADR 0110) — pass such data as an argument.
+3. **THE `rd` GATE'S REMAINING HALF IS NOW THE MEDITERRANEAN.** It is the one cell the gate makes worse, and
+   the mechanism says why: its gated days are carbon-NEGATIVE, so removing the `rd` charge raises an already
+   2.7× too-high assimilate. That is a *different* defect (why is `A` negative there at all?) and the cell
+   ADR 0127 §6 already excludes from arm scoring. Do not tune the gate to fix it.
+4. **AN SSP370 GPP/CUE SPLIT IS CHEAP AND STILL UNRUN** (carried forward from session 15, unchanged): ADR
+   0129 §7's "historic window only" is no longer binding because per-stem GPP now comes from the `ind` table
+   (ADR 0130's `LPJ_IND_TRUE_GPP`), so an ssp370 single-cell re-run yields both columns. **The cleanest
+   remaining test of ADR 0106's climate-change clause on the F side** — ADR 0128 measured the climate
+   dependence on the product and could not say which channel carries it. The gate arms should be re-run in
+   that window too: item 3's mechanism is drought-driven, so the gate's effect is expected to GROW under
+   warming, and that is a falsifiable prediction worth writing into the harness before it runs.
+5. **CLOSE THE SOIL-COLUMN APPROXIMATION FOR THE SSP WINDOW** (carried forward, unchanged): both windows use
+   the HISTORIC per-cell `M_soilcolumn_<name>.txt` while the C's `whc_nat` evolves with soil carbon (ADR
+   0050). It cannot create a between-ARM difference but it can bias the between-WINDOW one, and the Sahel —
+   now doubly implicated — is where water holding capacity matters most.
+   `scripts/extract_cell_soilcolumn.py` + skill `provision-coupled-cell`.
+6. **`boreal_siberia` IS STILL THE ONE CELL WHERE ALLOCATION GENUINELY BINDS** (ADR 0127: `t_loss` 33 % of a
+   surplus 1.89× the C's own increment; the below-ground port is NOT its answer, `dD/bel_C` = 0.11).
+   Suspects: the summergreen full-leaf recycle for the evergreen-named PFTs (`AllocParams.is_deciduous` is
+   `true` for every tree in F while the C gates the `leaf/1.05` full drop on `tree->isphen`,
+   `turnover_tree.c:100`), and the `reprod_cost` path. ⚠ Its warming response is unresolved at two seeds —
+   score it on the LEVEL. Note the gate is largest here (NPP −9.3 %), so re-read `t_loss` on arm Pg.
+7. **RETIRE THE `gt5m` CAVEAT WHERE IT STILL BITES** (carried forward): any new `ind`-derived stand aggregate
+   can be built on the full stand with `LPJ_IND_ALL_HEIGHTS=1` (~10 s/cell). The two cells at share ~0.79
+   are where it matters most; ADR 0060/0125/0127's existing numbers stay on their own basis.
+8. **RAISED TO THE INTEGRATOR (unchanged):** the two extra reference seeds `EXECUTION_PLAN.md` rung 0 asks
+   for — 2 of 5 cells' warming response cannot be scored at two seeds (ADR 0128).
+9. **📥 INTEGRATION POINT FROM LINE S (ADR 0170), still open and untouched** — the recruit half of rung 2
+   (R0 = the pinned recruit copula vs R1 = the ported FIT establishment rule, both mortality settings,
+   ~40 seeds). It needs the arm-C harness's establishment path, which today always answers `ESTAB_C`
+   (`scripts/rung2_armc_harness.jl:318`). Conditions + what S supplies: item 4 of the 0-PREV5 block.
+
+**CI/merge:** the diff touches `src/fdiff.jl` + `test/testitems/**` + `scripts/**` + `docs/**` + `CLAUDE.md`
++ `.claude/skills/**` + `changelog.d/**` + STATE/JOURNAL. ⇒ **all four Julia jobs + `format`** on the branch,
+and because `src/**` changed, **`docs` runs on `main` having never run on the branch** — build it locally
+first (`DOCS_LINKCHECK=false julia --project=docs docs/make.jl`), which is exactly the trap that redded
+`main` at the ADR 0126 merge (CLAUDE.md §2).
+
+### 0-PREV00000. ✅ DONE 2026-08-12 (session 15) — **THE BRACKET IS CLOSED: ≈43-47 % PHOTOSYNTHESIS /
 ### ≈57-53 % RESPIRATION. AND THE REASON IT WAS OPEN WAS NOT THE HEIGHT CUT — LPJmL-FIT EMITS NO
 ### PER-INDIVIDUAL GPP AT ALL (ADR 0130)**
 

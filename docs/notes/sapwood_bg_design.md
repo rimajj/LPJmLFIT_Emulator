@@ -135,6 +135,17 @@ the rare-day leaf respiration `rd` is not conductance-gated in F_diff (the C zer
 - **Interaction with the ungated `rd` (§13):** fixing `rd` ALONE pushes CUE further from the C; adding
   `sapwood_bg` alone lowers CUE toward 0.46. They partially cancel today — so land `sapwood_bg` FIRST and
   keep the `rd` gate deferred, confirming CUE stays inside `[0.42, 0.56]`.
+  ⚠ **AMENDED 2026-08-12 (ADR 0131): the SIGN of the `rd` half above is wrong in general, and the ORDER
+  advice survives for a different reason.** The `rd` gate is now built (`WaterParams.tree_demand_gate`,
+  opt-in) and measured on all five biome cells. Its effect on NPP is **conditional, not signed**: with
+  `A ≡ gpp − rd` and `npp = A − rmaint − rgrowth(A − rmaint)`, gating scales `A` by `g ∈ (0,1]`, so a gated
+  day raises `npp` **only where its ungated `A` was negative**. §6/§13 assumed every gated day is one of
+  those; measured, the gated days are carbon-POSITIVE at `temperate_hainich` (NPP **−1.84 %**, i.e. CUE moves
+  TOWARD the C) and carbon-NEGATIVE at `mediterranean_iberia` (**+1.15 %**). At `semiarid_sahel` the gate
+  alone flips the annual tree carbon balance **−83.8 → +34.6 gC/m²/yr**. "Land `sapwood_bg` first" still
+  holds — the two act on the same CUE channel and must be co-priced — but not because the `rd` gate pushes
+  the wrong way; it is because flipping either default first silently re-prices the other's pass criterion.
+  The flip criterion for `tree_demand_gate` is pre-registered in ADR 0131 §8.
 - **Effort:** ~150–250 lines in `src/fdiff.jl` (3 structs/signatures + 2 rollout callers + the SoA path) +
   baseline regeneration + ~4 test-gate updates. 2–3 focused sessions: (1) quantify+seed + struct plumbing +
   maintenance term (get the suite compiling); (2) the C_LATERAL demand + debt + soil-geometry threading +

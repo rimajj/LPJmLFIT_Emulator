@@ -1317,3 +1317,61 @@ warmed re-run yields both columns. ADR 0128 measured the climate dependence on t
 say which channel carries it.
 
 **Cost.** One rebuild, seven single-cell C runs (~10 s each), one probe job. ~35 min wall clock.
+
+---
+
+## Session 16 — 2026-08-12 — the C gates every tree's photosynthesis on its own demand, F never did, and my written-down prediction about it was wrong (ADR 0131)
+
+**What the handoff asked for.** Session 15 closed the photosynthesis-vs-respiration bracket and put the
+respiration channel at the head of the F queue, naming the `rd` gate as its cheapest lead. This session
+built and priced it.
+
+**What the C does, exactly.** `water_stressed.c:196` runs photosynthesis only
+`if(gpd>1e-5 && isphoto(data.tstress))`. Line 83 has already done `gpd=agd=*rd=…=0.0`, and the `else` at
+:260 sets `agd=0` — so on a gated day the PFT contributes **neither gross assimilation nor leaf
+respiration**. Two readings in the existing notes were wrong about this and both mattered:
+
+* **It is not a grass mechanism.** The gate is per-`Pft`; this configuration runs `individual:true`, so
+  every tree is its own `Pft` entry and the C gates each tree separately. F_diff's `grass_demand_gate` (docs
+  §26) is `ind.is_grass`-gated, so the tree path has been ungated since it was written.
+* **Only one half was missing.** F has no `isphoto(tstress)` branch and does not need one: `tstress`
+  multiplies `c1`/`c1o` linearly, so `vm`, and hence `rd = b·vm`, already vanishes smoothly with it. The
+  `gpd > 1e-5` half has no surrogate — and it fires on **drought** days, not leaf-off days, which is the
+  opposite of where "rare water-stress-collapse days" points a reader.
+
+**The prediction, written into the probe before the arm ran.** PART 6's comment block predicted the gate
+would make `bmi_F/bmi_C` **worse at every cell**, following `sapwood_bg_design.md` §6 and
+`phase3_fdiff_cbinary_validation.md` §13, both of which say fixing `rd` alone pushes carbon-use efficiency
+further from the C. **Refuted at three of five cells.** The mechanism the notes were missing is exact: with
+`A ≡ gpp − rd` and `npp = A − rmaint − rgrowth(A − rmaint)`, gating scales `A` by `g ∈ (0,1]`, so a gated day
+raises `npp` **only where its ungated `A` was negative**. Both notes had silently assumed every gated day is
+one of those. It is not — at Hainich the gated days are carbon-positive (NPP falls 1.84 %), at the
+mediterranean carbon-negative (rises 1.15 %). Writing the prediction down first is what turned this into a
+localisable error rather than a shrug; that is now in the `residual-diagnosis` skill.
+
+**The numbers.** On the shipping per-PFT arm the gate takes mean `|bmi_F/bmi_C − 1|` over the four readable
+cells from 0.1915 to 0.1580 (−17.5 %), from one C-faithful expression and no new parameter. The headline is
+`semiarid_sahel`: the gate **alone** flips F's annual tree carbon balance from −83.8 to +34.6 gC/m²/yr with
+beech parameters everywhere and GPP moving 0.35 %. That narrows ADR 0125 §PART 7, which grouped the Sahel
+with the Amazon under the per-PFT `respcoeff` defect — the Amazon is unmoved by the gate (0.07 %) and is
+that defect; the Sahel had two independent sufficient causes and the record named one of them as the one.
+A sign change is not a level claim: F still makes 19 % of the C's assimilate there.
+
+**One result I did not expect to be useful.** The sharpness control (arm Ags, the soft `βgpd_gate=2e4`
+instead of the C's hard `1e8` step) reproduces the hard step to the printed digit at three cells and within
+1.6 pp at the worst. So this hard-branch port is usable under Enzyme at a gradient-friendly sharpness
+without becoming a different operator — which is *not* true of the refuted §25 grass hard-floor lever, and
+is worth knowing before the next hard branch gets ported.
+
+**Guardrail 4, twice over.** The suite with the flag defaulting off: 274 934 pass / 0 fail, 133 items. The
+regenerated `M_growth_channel_decomposition.csv` differs from its predecessor in exactly three **comment**
+lines (the new arms' legend) — every pre-existing data row byte-identical, checked by diff. And the default
+is now known unfaithful, so per guardrail 4's corollary the flip criterion is pre-registered in ADR 0131 §8
+and carried as an ACTION in this line's `## NEXT`, gated behind the `sapwood_bg` growth port because the two
+act on the same efficiency channel and partially cancel.
+
+**What I deliberately did not do.** Count the gated tree-days. It needs an accumulator inside
+`daily_step_canopy` — a struct on the Enzyme path, which ADR 0110 makes a SIGABRT risk — so the probe
+reports the effect and prints the omission rather than leaving it implicit. And I did not tune the gate to
+rescue `mediterranean_iberia`, the one cell it makes worse: that cell's gated days being carbon-negative is
+a *different* defect, and it is the cell ADR 0127 §6 already excludes from arm scoring.

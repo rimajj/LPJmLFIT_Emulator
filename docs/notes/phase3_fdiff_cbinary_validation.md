@@ -538,6 +538,19 @@ rare water-stress-collapse days (the C zeroes it when `gpd ≤ 1e-5`, `water_str
 on those days). Both stay on the item-7c list — fixing the `rd` gate *alone* would push CUE further from
 the C, and `sapwood_bg` needs a below-ground pool.
 
+⚠ **AMENDED 2026-08-12 (ADR 0131) — two claims in the sentence above are wrong, and one of them was
+load-bearing for months.** The `rd` gate is now built as the opt-in `WaterParams.tree_demand_gate` and
+measured on all five biome cells. (a) **"rare water-stress-collapse days" is a statement about the CELL, not
+about the model.** The gate fires when the canopy's own demand `gpd = hour2sec(dl)·(gc·fpc − gmin·fpar)`
+collapses — i.e. on **drought** days — and at `semiarid_sahel` those days carried the *entire* sign of F's
+annual tree carbon balance (**−83.8 → +34.6 gC/m²/yr** under the gate alone). (b) **"would push CUE further
+from the C" is not signed.** With `A ≡ gpp − rd` and `npp = A − rmaint − rgrowth(A − rmaint)`, gating scales
+`A` by `g ∈ (0,1]`, so a gated day raises `npp` only where its ungated `A` was NEGATIVE — measured
+carbon-POSITIVE at `temperate_hainich` (NPP −1.84 %, CUE toward the C) and negative at
+`mediterranean_iberia` (+1.15 %). On the shipping per-PFT arm the gate reduces mean `|bmi_F/bmi_C − 1|` over
+the four readable cells by **17.5 %**. The 0.5 % total-Ra match reported just above is unaffected: it is a
+kernel-isolation number on the C's own FAPAR/PET drives, and the gate's GPP effect is ≤ 4.3 % everywhere.
+
 **The crutch is removed.** `rollout_canopy_years` now defaults to fully self-driven (`bm_inc_ext=nothing`
 uses `Σ npp_ind`); `FDiffFastCore` always self-accumulated `fl.npp_ind` (never the crutch), so the adapter
 was self-driven the moment the flux went positive. The self-driven coupled loop (2009 start + 2010
