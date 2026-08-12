@@ -213,8 +213,20 @@ rather than a request to flip now.
 >   `scripts/diagnose_rung2_rootzone_column.py` → **max rel diff 5.29e-08 over 20 years** (= the float32
 >   precision of the NetCDF output), capacity 176.6–177.3 mm, `w` 0.789–1.000, both independently matching
 >   ADR 0035's recorded Hainich values.
-> * **`scripts/rung2_s_demography_harness.jl`** — arms `S0` (uniform thinning = the shipped default), `S1`
->   (trait-hazard ordering), `NP` (persistence, ρ = 1). It PARSES and is Runic-clean; **it has never been RUN.**
+> * **`scripts/rung2_s_demography_harness.jl` + `scripts/run_rung2_s_arm.sh`** — arms `S0` (uniform thinning =
+>   the shipped default), `S1` (trait-hazard ordering), `NP` (persistence, ρ = 1). **IT RUNS**: `ARM=NP`
+>   completes end to end at Hainich, 500 patch-years, `lpjml rc=0`, **12 s** on 1 task
+>   (`/p/tmp/jamirp/S_rung2/S_r2s_NP_roster_s1_apply/s_arm_log.txt`). The count model predicts sensibly off a
+>   real stand: **6.268 stems/patch against an actual 6.0 at 2019** in patch 0.
+> * ⚠ **THREE BASIS BUGS WERE FIXED BETWEEN THE FIRST RUN AND THAT NUMBER, and all three were caught only by
+>   the side-by-side logging.** They are in the skill now; the two that matter for anyone extending this:
+>   the dump's `wscal_mean` is the **raw daily accumulator** (divide by 365, or `water_stress` comes out
+>   **−364**), and the feature row must be built on the **emitted >5 m subset**, because including saplings
+>   **halves `age_mean`** (31.9 vs 74.5) while barely moving `agb`. On the emitted subset all six state
+>   columns now match the C's own aggregates **exactly** — that identity is the thing to re-check first if a
+>   later arm looks wrong. The third was a false alarm: `agb_tree` already multiplies by `nind`, so an
+>   `agb` reconstruction that omits it is out by 224× and reads exactly like a real shift against
+>   `patcharea` = 225.
 >
 > ### C. WHY THE MECHANISMS ARE OFF — and why that answer has expired
 >
@@ -227,11 +239,14 @@ rather than a request to flip now.
 >
 > ### D. THE NEXT ACTIONS, in order. Item 1 is the whole point.
 >
-> 1. **RUN ARM S AT HAINICH, HISTORIC, AND RUN ITS TWO NULLS FIRST.** `MODE=none` (transport) and `NP`
->    (persistence) before `S0`/`S1`. ADR 0112's null matched the production model on every response statistic
->    offline; **if `NP` also ties `S0`/`S1` here, this harness has no more power than the offline basis did and
->    no S number from it means anything.** Check that before reading anything else. A runner in the shape of
->    `scripts/run_rung2_armc.sh` is still to be written (`scripts/run_rung2_s_arm.sh`) — 1 task, ~14 s a run.
+> 1. **RUN `S0` AND `S1` AT HAINICH, HISTORIC, AND SCORE THEM AGAINST `NP` AND THE RECORD BASELINE.** `NP`
+>    is done. `MODE=none` (the transport null) still needs re-running on the v6 basis. Then: **if `NP` ties
+>    `S0`/`S1`, this harness has no more power than the offline basis did and no S number from it means
+>    anything** (ADR 0112) — check that before reading anything else. Score with the arm-C machinery:
+>    `diagnose_rung2_replay_identity.py` for terminal ratio, and ADR 0124's four rules, above all **the
+>    terminal AGE STRUCTURE in three bins plus identity overlap with the C's own survivors** — the null arm
+>    there honoured its count target in all 500 patch-years and still turned a mature stand into a young one,
+>    and **no count or trait statistic saw it**. Each run is 1 task, ~12 s; run 5 seeds, not 1.
 > 2. **THEN THE RESPONSE, which is the actual deliverable.** Arm S over the scenario PAIR — historic
 >    2000–2019 (`restart_1999.lpj`) and ssp370 2020–2100 (`restart_2019.lpj`) — with a `MODE=record` baseline
 >    for EACH cell and EACH scenario, because ADR 0041 forbids scoring a single-cell re-run against the global
