@@ -1,0 +1,54 @@
+# ESTABLISHMENT-ELIGIBILITY REGIME TABLE — GENERATED, do not hand-edit.
+#   regenerate: scripts/sbatch_python.sh S-regime scripts/build_estab_regime_table.py   (YEAR=2010)
+# The reproducer ADR 0171 §4 did not have. TWO classifications x TWO cell bases, side by side.
+# ⚠ THE CLASSIFICATION IS THE THING ADR 0171 §4 GETS READ WRONG. Its header says '(2010, Type<=6)'
+#   but its n_elig is the MIN over the 20 historic years (`regime_minwin`) — so its `n_elig = 0`
+#   class means 'the gate is closed in AT LEAST ONE of 20 years', not 'this cell is in the
+#   pure-inheritance regime'. `regime_snapshot` is the single-year reading; the `persistence`
+#   section below is what actually separates the two. Quote the classification with the share.
+# The two cell bases:
+#   basis `ind_treebearing` = cells with a Type<=6 stem in the snapshot year of FIT's own `ind`
+#                             output — ADR 0171 §4's basis, and the one its numbers are gated on;
+#   basis `t8_runnable`     = cells the PINNED pooled_w20_t8 artifact pair has a trained row for in
+#                             BOTH scenarios (cell_meta.parquet) — the only cells an arm can run at.
+# They disagree on how prevalent the untested n_elig=0 regime is, because that class is concentrated
+# in sparse cells the training table's row filters thin out. Quote the basis with the share.
+# `median_stems_per_cell` on basis t8_runnable is n_init x 25 patches (n_init is PER PATCH).
+# The `persistence` section is on basis t8_runnable: n_elig MOVES (ADR 0170 §3), so a snapshot
+# conflates 'this cell is in the pure-inheritance regime' with 'it dipped into it once'. A response
+# arm runs 81 years, so the regime it samples is the persistent one.
+# `w_inherit` = 4/(4+n_elig) (ADR 0045); in the persistence section the column instead reports how
+# many of those cells have their gate OPEN in at least one ssp370 year.
+section,basis,key,cells,share_pct,median_stems_per_cell,median_stems_per_patch,w_inherit
+regime_minwin,ind_treebearing,n_elig=0,5882,11.21,29.0,1.16,1.0
+regime_minwin,ind_treebearing,n_elig=1,124,0.24,254.0,10.16,0.8
+regime_minwin,ind_treebearing,n_elig=2,69,0.13,311.0,12.44,0.6667
+regime_minwin,ind_treebearing,n_elig=3,11012,20.99,264.0,10.56,0.5714
+regime_minwin,ind_treebearing,n_elig=4,25708,49.01,167.0,6.68,0.5
+regime_minwin,ind_treebearing,n_elig=5,3223,6.14,218.0,8.72,0.4444
+regime_minwin,ind_treebearing,n_elig=6,6433,12.26,224.0,8.96,0.4
+regime_minwin,t8_runnable,n_elig=0,6805,12.69,25.0,1.0,1.0
+regime_minwin,t8_runnable,n_elig=1,125,0.23,225.0,9.0,0.8
+regime_minwin,t8_runnable,n_elig=2,69,0.13,300.0,12.0,0.6667
+regime_minwin,t8_runnable,n_elig=3,11045,20.6,250.0,10.0,0.5714
+regime_minwin,t8_runnable,n_elig=4,25748,48.03,150.0,6.0,0.5
+regime_minwin,t8_runnable,n_elig=5,3300,6.16,200.0,8.0,0.4444
+regime_minwin,t8_runnable,n_elig=6,6515,12.15,200.0,8.0,0.4
+regime_snapshot,ind_treebearing,n_elig=0,1931,3.68,24.0,0.96,1.0
+regime_snapshot,ind_treebearing,n_elig=1,98,0.19,217.0,8.68,0.8
+regime_snapshot,ind_treebearing,n_elig=2,33,0.06,356.0,14.24,0.6667
+regime_snapshot,ind_treebearing,n_elig=3,10301,19.64,251.0,10.04,0.5714
+regime_snapshot,ind_treebearing,n_elig=4,28172,53.71,162.0,6.48,0.5
+regime_snapshot,ind_treebearing,n_elig=5,4339,8.27,232.0,9.28,0.4444
+regime_snapshot,ind_treebearing,n_elig=6,7577,14.45,226.0,9.04,0.4
+regime_snapshot,t8_runnable,n_elig=0,2433,4.54,25.0,1.0,1.0
+regime_snapshot,t8_runnable,n_elig=1,99,0.18,200.0,8.0,0.8
+regime_snapshot,t8_runnable,n_elig=2,33,0.06,350.0,14.0,0.6667
+regime_snapshot,t8_runnable,n_elig=3,10483,19.56,225.0,9.0,0.5714
+regime_snapshot,t8_runnable,n_elig=4,28372,52.93,150.0,6.0,0.5
+regime_snapshot,t8_runnable,n_elig=5,4447,8.3,225.0,9.0,0.4444
+regime_snapshot,t8_runnable,n_elig=6,7740,14.44,200.0,8.0,0.4
+persistence,t8_runnable,closed all 20 yr,739,1.38,25.0,1.0,opens_under_ssp370=635
+persistence,t8_runnable,closed 10-19 yr,1587,2.96,37.5,1.5,opens_under_ssp370=1584
+persistence,t8_runnable,closed 1-9 yr,4479,8.36,25.0,1.0,opens_under_ssp370=4479
+persistence,t8_runnable,never closed,46802,87.31,175.0,7.0,opens_under_ssp370=46802

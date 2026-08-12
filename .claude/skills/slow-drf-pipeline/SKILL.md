@@ -1717,15 +1717,22 @@ SITE=tropical_amazon python3 scripts/build_hainich_response_forcing.py      # (1
 export CELLS=12045,52059 GATE=0                                            # (2) the eligible-PFT series
 export SCENARIO=historic Y0=1939 Y1=2019 CSV_OUT=/p/tmp/.../elig_hist.csv OUT=/p/tmp/.../elig_hist.parquet
 TIME=00:40:00 PARTITION=priority QOS=priority scripts/sbatch_python.sh S-elig-h scripts/build_estab_eligibility.py
-#   ... repeat with SCENARIO=ssp370 Y0=2020 Y1=2100, then SPLIT per cell into
-#   references/S_estab_eligibility_<site>.csv (historic rows first, then ssp370)
+#   ... repeat with SCENARIO=ssp370 Y0=2020 Y1=2100, then split per cell (do NOT do this by hand — the
+#   header, the row order and the cell filter are all load-bearing; see item 2 below):
+HIST=/p/tmp/.../elig_hist.csv SSP=/p/tmp/.../elig_ssp.csv SITES=semiarid_sahel,mediterranean_iberia \
+  PROV="split out of a two-cell build (jobs A/B)." python3 scripts/split_estab_eligibility_percell.py
 export ARM=recruit MODE=response K_CAP=400 TRAIT_MORT=0 SCORE_WINDOW=20
 export DRF_ART=/p/tmp/jamirp/emulator_global/drf_forest_global_pooled_w20_t8.drf
 export RCOP_ART=/p/tmp/jamirp/emulator_global/recruit_copula_global_pooled_w20_t8.rcop
 SITE=tropical_amazon scripts/run_response_seed_ensemble.sh S-rbAMZ 40       # (3) the ensemble
+# (4) COLLECT — append the seed rows with their identity, then read the CROSS-CELL statistics:
+GLOB='logs/S-rbAMZ*.out' TAG=rbAMZ SITE=tropical_amazon ARTIFACT=global_pooled_w20_t8 SSP_BASIS=trained \
+  python3 scripts/append_response_ensemble_reference.py       # refuses a duplicate tag; cross-checks
+                                                             # n_init/age0/artifact against M_cells.csv
+python3 scripts/score_recruit_crosscell_heterogeneity.py      # per-cell means, Cochran's Q, power
 ```
 
-Seven things that are load-bearing, all of them measured:
+Eight things that are load-bearing, all of them measured:
 
 1. **The eligible-set series must cover the FULL 81-year window, not the `ind` table's 20 years.** The probe
    indexes it as `ser[clamp(s.year + 1, …)]`, so a 20-row series pins the first 20 years and then holds the
@@ -1750,6 +1757,29 @@ Seven things that are load-bearing, all of them measured:
    6.4–7.8 ×FIT at Hainich (0.67–1.74 for the `trait_mortality` arm) ⇒ 40 seeds, not ADR 0101's 8–12.
 7. **`BND_FIXTURE=<path>`** points the arm at another transient-boundary file — use it for any
    conditioning-basis sensitivity instead of hand-editing the committed fixture.
+8. ⚠ **READ THE SIGNS AS A DISTRIBUTION, NOT ONE CELL AT A TIME, AND TEST THE GROUPING YOU CONDITION ON
+   (2026-08-12, ADR 0172).** With five cells the eye can tell two incompatible stories from the same table —
+   "the sign is cell-idiosyncratic" and "the sign is set by the eligibility regime" — and picking one by
+   inspection is how a flip condition gets written on the wrong variable. `score_recruit_crosscell_heterogeneity.py`
+   settles it with **Cochran's Q** (is the between-cell spread bigger than the within-cell seed noise?) plus
+   pairwise Welch and an explicit power line. Measured: within the modal `n_elig = 4` regime the three cells
+   **disagree** on the ported rule's contribution (Q = 8.03, df 2, p = 0.018, I² = 75 %) while showing **no**
+   heterogeneity on the shipped channel's own response (Q = 0.51, p = 0.77, I² = 0 %) — so ADR 0171 §5's
+   per-regime condition was retired. Two rules that follow: **never quote an inverse-variance pooled mean
+   without its I²** (five cells spanning −1.9 to +3.6 ×FIT pool to −0.805 and would read as a clean answer),
+   and **report an unresolved cell as unresolved** — the Sahel's ±2.57 ×FIT half-width needs ~194 seeds, and
+   reading it as a zero would have manufactured agreement.
+
+### ⚠ The `n_elig` regime table is classified by a 20-YEAR MINIMUM, not by its header's snapshot (ADR 0172 §4)
+
+`scripts/build_estab_regime_table.py` is the reproducer, and it emits both classifications and both cell bases
+side by side because they disagree by ~3×. ADR 0171 §4's `n_elig = 0` class (**5 882 cells / 11.21 % / 29
+median stems**, gated) means *"the gate is closed in at least one of 20 years"*; the 2010 snapshot gives
+**1 931 / 3.68 %**, and only **739 cells / 1.4 %** are closed in all 20 years — at a **median of one stem per
+patch**, inside ADR 0093 §3c's `<2 stems/patch` stratum (the C's own two-run spread there is 31.6 % on
+counts). That is why the pure-inheritance arm is descoped rather than deferred: it would be measuring dice.
+Also note the two cell bases — the `ind` tree-bearing set vs the cells the **pinned artifact** has a trained
+row for in *both* scenarios — because only the latter can actually be run at.
 
 ### ⚠ The ssp370 transient boundary needs a LEAD-IN, and the gate that now proves it (ADR 0171 §2)
 
@@ -1775,3 +1805,47 @@ deliberate *and consistent with the trained table*; it was measurably false.
 **historic** `.clm` (mirroring the C's ClimBuf across the restart), while the trained boundary table does not.
 The gate and the DRF's boundary are therefore on different early-window conventions — each correct for its own
 consumer. Do not "fix" one to match the other without deciding which consumer you are serving.
+
+---
+
+## BUILDING A LIKE-FOR-LIKE ARM AGAINST THE SHIPPED COPULA — three gates, and emit into a SHADOW DIR (line S, 2026-08-12, ADR 0173)
+
+`scripts/eval_slow_beta_arm.jl` is the template for "would replacing part of the copula with X be better?".
+Two design choices make its answer unarguable, and both are reusable:
+
+**1. Derive BOTH arms in ONE run, from ONE fitted forest.** It re-runs `eval_slow_copula.jl`'s own loop — the
+same `fold = Int[mod(hash(c), kfolds) for c in cells]`, the same `fit_forest(...; seed = a)` where `a` is the
+axis's **production** index, the same `u = DRF.rand01!(DRF.Xoshiro256pp(i * 131 + a))` — and reads the
+competing predictions off the **same pooled leaf values**. Then the arms differ in the one thing under test
+and in nothing else, *by construction* rather than by matching hyperparameters.
+
+**⚠ Do NOT take a stored `pred_<axis>.f64` as one arm and compute the other today.** Measured: on
+`…/smoke_struct_on` the **stock** `eval_slow_copula.jl` no longer reproduces that table's committed
+predictions (all four axes, worst |Δ| ≈ 3.0e5 gC/m³) at its own `KFOLDS=2`, while `src/drf.jl`'s default
+`qrf = false` numerics are unchanged. The **production** `slow_copula_pooled_w20_t8` IS reproduced
+bit-identically — so the risk is table-specific, which is exactly why it must be *checked* rather than
+assumed either way.
+
+**2. Emit into a SHADOW DIR and reuse the existing scorer.** Write `pred_<axis>.f64` into a new dir and
+**symlink** the source table's `cells.i64`, `Y_<axis>.f64` and `manifest_copula.txt` beside it; then
+`SHADOW=<dir> scripts/score_slow_copula_ks.py` scores it with **no new scorer and no second KS definition**
+(ADR 0031). Cheap, and it makes the arm's numbers directly comparable to the published `metrics_traits.txt`.
+
+**The three gates, with deliberately different severities:**
+
+| gate | severity | what it checks | why |
+|---|---|---|---|
+| **A** | **FATAL** | the arm's pooled reading == `DRF.predict_quantile` on sampled rows of every fold and axis | the invariant the whole comparison rests on; makes it sound independently of anything outside the run |
+| **B** | reported (`GATE_FATAL=1` to harden) | this run's re-derived copula column == the table's **stored** `pred_*.f64` | anchors the arm to the published artifact — and surfaces a stale stored column instead of letting it sit inside the comparison |
+| **C** | **FATAL** | every emitted dir is complete: all `pred_<axis>.f64`, each exactly `8·n` bytes, no filename containing a literal `$` | it caught a real defect — an escaped interpolation wrote all four axes into one file named `pred_$(ax).f64`; it surfaced *downstream* as the scorer erroring on a missing `Y_` symlink, and with the symlink right the corrupt file would have **scored happily** |
+
+**The control is what makes it publishable.** Emit the re-derived copula column as its own arm and score it:
+on `pooled_w20_t8` it reproduced the published panel **to the digit** (median per-cell KS 0.1725 / 0.1287 /
+0.1575 / 0.1487; pooled 0.0039 / 0.0065 / 0.0020 / 0.0040). Without that, "my arm scored X" is on a basis
+nobody can check against the shipped figures.
+
+**And size the robustness variant before believing it disagreed — or agreed.** `BETA_INTERVAL=empirical` was
+added so "the parameter interval was too wide" could not explain a null result. At global scale it is
+**degenerate**: 42.2 M stems saturate the parameter interval, so the two variants are byte-identical on three
+axes and 3.3e-05 of the interval width apart on the fourth. A variant that reproduces its baseline exactly is
+answering the objection by identity — say that, rather than reporting "no difference" as if it were a test.

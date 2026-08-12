@@ -1160,3 +1160,59 @@ just noise. Beech phenology for the larch and the tropical evergreen moved the S
 +1.01 and the Mediterranean's by +0.38 — larger than most of the parameters under test — and it had been in
 every five-cell F number for months because the probe never passed an argument that already existed. **When
 a decomposition uncovers a confound, measure it and report it as a result; do not just subtract it out.**
+---
+
+## A ONE-SIDED ERROR AGAINST A NET-SIGNED TRUTH RECTIFIES — so a LEVEL gate can pass BECAUSE OF the error that fails the RESPONSE gate (line S, 2026-08-12, ADR 0174 §3b)
+
+The most consequential compensating error found in this project is not a cancellation between two terms. It is
+a **rectification**, and it is invisible to every symmetric diagnostic:
+
+* the count recursion follows **86.7 %** of a large FIT decline but **96.2 %** of a large increase (ADR 0116);
+* FIT's global count response is a **net loss**, so the asymmetry does not average out over cells — it
+  rectifies into a **systematic positive drift of +0.155 stems/patch, saturating** (ADR 0114);
+* that drift is **the same size as FIT's entire global count response** (≈ −0.14 stems/patch);
+* and it is **small enough to sit inside the level tolerance** (bias < 2 % of the mean against a 6.8–16.6 %
+  two-run floor) **while consuming the whole response signal**, flipping the area-weighted ratio
+  +0.707 → −0.226.
+
+**The reusable shape.** Whenever a model is scored on both a level and a response, and its per-case error is
+**asymmetric in the direction of change**, check the *sign structure of the truth* before concluding anything
+from the level. If the truth's aggregate response has a net sign, an asymmetric error becomes a bias in the
+response with no corresponding failure in the level — so the level result is not independent evidence, it is
+partly a *consequence* of the response defect. Two operational rules follow:
+
+1. **Resolve the error by the direction of change, not just by magnitude.** Bin cases into "truth went up" and
+   "truth went down" and report the follow-through fraction in each. A single RMSE, R², or aggregate ratio
+   cannot see this. (`scripts/rung1_drift_attribution.py` does the decile version.)
+2. **A proposed fix must show the deficient side improving WITHOUT the other side's magnitude rising**
+   (ADR 0116 §5's pre-registered form). An aggregate ratio alone cannot distinguish a real fix from a new
+   compensating bias on the other side — it will happily reward one.
+
+## AN ARM'S ADVANTAGE MAY BE A DUPLICATION OF SOMETHING ITS TRAINING TARGET ALREADY CONTAINS (line S, ADR 0118 → 0174 §3c)
+
+Before believing that adding a mechanism improved a learned component, ask **what the training target was
+fitted on**. The recruit copula's marginals are fitted on FIT's *survivors*, so they already carry the
+trait-dependent selection that switching on a mortality operator proposes to add — **+12.18 % on Wooddens
+within a cell-PFT group**, of which 0.56 does not cancel in a response.
+
+The trap has a specific shape that makes it worse than a plain bias: **it lands on the arm and not on its
+null.** A trait-*blind* null (uniform thinning) is unaffected, because that is precisely the design the
+survivor marginal was matched to — so the duplication goes straight onto the headline `arm − null` difference.
+A symmetric-looking A/B comparison is therefore not protection. Check the target's fitting population, and
+check whether the ADR that chose it wrote an expiry condition (ADR 0025 §3 did; four later ADRs missed it).
+
+## THE THREE-QUESTION CHECK BEFORE BELIEVING ANY LEARNED-COMPONENT ARM (line S, 2026-08-12, ADR 0174 §5.3)
+
+Rung 1's exit verdict makes this a standing rule rather than a per-case observation. For any new arm:
+
+1. **Name its null** and score the null in the same process (ADR 0112). A metric the null also passes has no
+   power — measured: three arms spanning R² 0.982 → 0.918 and a response ratio spanning +0.707 → **−0.226**
+   all score the per-cell deattenuated count slope between 0.976 and 1.029.
+2. **Check the statistic's own noise floor**, by simulating data that genuinely satisfies the model being
+   tested. ADR 0093 §5.3's published Beta figure (0.0437–0.0476) sat *at* its own one-sample statistic's floor
+   (0.0434–0.0475 at n = 150) and so could not have detected the misfit it was quoted as measuring (ADR 0173).
+3. **Check for duplication** of what the training target already contains (previous section).
+
+And when quoting: **label every number *level or response* and *one-step or free-running*.** Those four
+combinations have different verdicts, and three of the four have been quoted interchangeably in this repo's
+own history.

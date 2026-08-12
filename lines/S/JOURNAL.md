@@ -1993,3 +1993,77 @@ still pending, so a few runs read a file whose indentation differed from the ear
 indentation of one continuation line inside a printed string, so no output moved — but the general shape is a
 real hazard: editing a script that queued jobs will later read is a silent way to make an ensemble
 inhomogeneous. Either submit after the last edit, or copy the script to a run-specific path.
+
+---
+
+## Session 2026-08-12 (b) — closing out line S's own rungs: five cells, arm D refuted, and the exit verdict nobody had written
+
+The instruction was "finish line S". That is not the same as finishing the emulator, and the first useful
+thing was to work out which of the two was on the table. Line S owns rungs 0 and 1 of the attribution ladder;
+rung 0 was closed by ADR 0111; rung 1 had four arms, three of which were done, and an exit gate with two
+clauses of which only the first had ever been answered. So "finish line S" = run the last arm, close the gate,
+and hand the rest up. That is what this session did, and the honest headline is that **rung 1 closes with one
+pass and one failure, not with a pass.**
+
+**The cross-cell table (handoff item 1) went exactly as scoped and then said something better than expected.**
+Two more cells, two commands each, 80 jobs, all 80 usable. The level effect held at all five cells — that part
+was predicted. What was not predicted is that the three cells sharing the *same* eligibility regime disagree on
+the response contribution beyond seed noise (Q = 8.03, p = 0.018, I² = 75 %) while the *shipped* channel's own
+response over those same three cells is homogeneous (Q = 0.51, p = 0.77, I² = 0 %). I nearly did not compute
+that. My first draft of the changelog fragment asserted "the three cells split +1.98 / −1.67 / +3.56", which
+reads as two established signs — but one of those three is not significant, and with the point estimates alone
+you can tell two opposite stories ("the sign is cell-idiosyncratic" and "the sign is set by the regime") and
+both look supported. The regime story was actually the *better*-looking one on a glance: the two significant
+negatives sit at n_elig 6 and 3, both significant positives at n_elig 4. Only Cochran's Q separates them.
+Lesson I want the next session to inherit: with five cells the eye is not a statistic, and a flip condition
+written from the eye gets grouped on the wrong variable — which is what happened to ADR 0171 §5, by me,
+yesterday.
+
+**Arm D was the one I expected to be a modelling task and it turned out to be an archaeology task.** ADR 0118
+suspected the "bounded Beta beats the copula 2–3×" number compared an oracle-moment Beta against an
+out-of-sample copula. It does — and worse. The reproducer existed, uncommitted, on scratch, and reading it
+showed the two sides of the ratio are not the same statistic at all: one-sample KS with parameters estimated
+from the very sample being tested, per (Cell, PFT), on the top-400 densest cells per PFT, with the script's own
+comment saying "to give the Beta its best case". Three confounds in one number. I priced each, and the thing
+I am gladdest about is the arm that was not asked for: simulating data that genuinely *is* Beta and
+re-estimating its moments gives a median KS of 0.043–0.048 at n = 150, and two of the four published Beta
+numbers are 0.0437 and 0.0476. The number was at its own noise floor. It never had the power to measure what
+it was quoted as measuring. Then the like-for-like: with each test cell's own observed moments, the Beta ties
+the out-of-sample copula on two axes and is 7–12 % worse on the other two. There is no advantage to recover,
+so arm D is descoped rather than run — and ADR 0093 §5.3's `[MEASURED]` tag comes off.
+
+**Two gates I wrote caught real things, and in both cases the gate mattered more than the measurement.**
+(1) I built the regime-table reproducer to gate against ADR 0171 §4's published numbers, expecting to confirm
+them. It failed by a factor of three, and the cause was that the ADR's table is classified by a 20-year
+*minimum* while its header says "(2010)". Same cell universe to the unit (52 451), different partition. The
+"11.2 % pure-inheritance regime" the handoff sent me to measure is really "dips into it at least once"; the
+persistent class is 1.4 %, at one stem per patch, which is inside the stratum where the C's own two runs differ
+by 31.6 %. So that arm is descoped too, on arithmetic rather than on preference. (2) The arm-D part-2 gate
+comparing my re-derived copula column against the table's *stored* one failed — and so did the **stock,
+unmodified** evaluator re-run on a copy of the same table. The stored OOS predictions on the scratch tables no
+longer correspond to today's code, while `drf.jl`'s default numerics are unchanged. That is the exact trap the
+obvious arm-D implementation walks into: stored column as one arm, fresh column as the other, and a code change
+sitting silently inside the family comparison. I restructured it as two gates with different severities — fatal
+on the invariant the comparison rests on, reported on the anchor to the stored artifact — because a rotting
+artifact discovered *inside* a comparison is indistinguishable from a scientific result.
+
+**The exit verdict was the most valuable thing here and cost no compute at all.** Rung 1's gate asks for the
+compensating-errors verdict; no document stated one. Ten ADRs each had a piece. Written out, the verdict is
+yes, with three named channels, and the middle one is the sentence I would keep if I could keep only one: the
+recursion follows 86.7 % of a large decline but 96.2 % of a large increase, FIT's global response is a net
+loss, so the one-sided error *rectifies* into +0.155 stems/patch — which is the same size as FIT's entire
+global count response. **The component passes its level gate because of the error that fails its response
+gate.** That reframes every "the level is fine" statement in this line's history as a warning rather than a
+reassurance.
+
+One process note. I reformatted the arm script (Runic) after submitting two jobs that would read it. The
+changes were provably semantics-preserving (`1e-300` → `1.0e-300` and line reflow), but I cancelled and
+resubmitted both anyway, because last session's journal entry flagged exactly this hazard and "provably
+harmless this time" is not a habit worth building. It cost ten minutes of compute and bought a clean
+provenance claim. Then I did it *again* — cancelled two more running jobs to fold the determinism-dividend arm
+into the same pass, so all three arms come off one set of forests instead of two. That one was worth it on the
+science: identical forests across arms is a stronger claim than matched hyperparameters.
+
+What line S still owes after this is small and named in STATE. What the *project* still owes is not small, and
+rung 1 closing does not touch it: the response clause of the acceptance criterion is failed, offline, with a
+measured horizon of about three years, and everything that could fix it is upward on the ladder.

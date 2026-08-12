@@ -1,0 +1,50 @@
+# ARM D part 1 — the bounded Beta and the shipped copula on ONE statistic. GENERATED.
+#   regenerate: scripts/sbatch_python.sh S-armd1 scripts/score_beta_vs_copula_likeforlike.py
+# The reproducer ADR 0093 §5.3 never had (ADR 0118 decision 5). Read the arms as a LADDER; each
+# neighbouring pair prices exactly one of the three confounds folded into the published '2-3x':
+#   1 vs 2  the ESTIMATOR — a one-sample KS against a Beta fitted to the SAME sample's moments
+#           (optimistically biased with estimated parameters) vs the two-sample KS the copula
+#           number actually is. Arm 6 is that one-sample statistic's own noise floor.
+#   2 vs 4  the GROUPING — per (Cell,PFT) on the densest cells vs per Cell with the PFTs MIXED,
+#           which is what the published copula median_percell_KS groups on. A mixture over
+#           partly-DISJOINT per-PFT intervals is a harder target for any single distribution.
+#   3, 5    the two-sample FLOOR on each grouping: ks2(half A, half B) of the truth against
+#           itself. A two-sample KS is uninterpretable without it.
+#   4 vs 7  the INFORMATION — a Beta given the test cell's OWN observed moments vs the shipped
+#           copula, which has never seen the cell. Arm 7 is read from the published metrics file.
+# EVERY Beta arm here is ORACLE-moment. The deployable question needs a LEARNED moment map on the
+# same folds — that is part 2, scripts/eval_slow_beta_arm.jl, scored by score_slow_copula_ks.py.
+arm,statistic,grouping,axis,value,n_groups
+1_beta_1samp_oracle_perpft,KS_1samp_est_params,cell_x_pft,SLA,0.0645,2800
+2_beta_2samp_oracle_perpft,KS_2samp,cell_x_pft,SLA,0.112,2800
+3_splithalf_floor_perpft,KS_2samp,cell_x_pft,SLA,0.0889,2800
+1_beta_1samp_oracle_perpft,KS_1samp_est_params,cell_x_pft,Wooddens,0.0476,2800
+2_beta_2samp_oracle_perpft,KS_2samp,cell_x_pft,Wooddens,0.1026,2800
+3_splithalf_floor_perpft,KS_2samp,cell_x_pft,Wooddens,0.0897,2800
+1_beta_1samp_oracle_perpft,KS_1samp_est_params,cell_x_pft,D95max,0.0695,2800
+2_beta_2samp_oracle_perpft,KS_2samp,cell_x_pft,D95max,0.1267,2800
+3_splithalf_floor_perpft,KS_2samp,cell_x_pft,D95max,0.0887,2800
+1_beta_1samp_oracle_perpft,KS_1samp_est_params,cell_x_pft,minwscal,0.0437,2800
+2_beta_2samp_oracle_perpft,KS_2samp,cell_x_pft,minwscal,0.105,2800
+3_splithalf_floor_perpft,KS_2samp,cell_x_pft,minwscal,0.0886,2800
+4_beta_2samp_oracle_percell,KS_2samp,cell_only_pft_mixed,SLA,0.1724,4000
+5_splithalf_floor_percell,KS_2samp,cell_only_pft_mixed,SLA,0.1163,4000
+4_beta_2samp_oracle_percell,KS_2samp,cell_only_pft_mixed,Wooddens,0.1379,4000
+5_splithalf_floor_percell,KS_2samp,cell_only_pft_mixed,Wooddens,0.1173,4000
+4_beta_2samp_oracle_percell,KS_2samp,cell_only_pft_mixed,D95max,0.1573,4000
+5_splithalf_floor_percell,KS_2samp,cell_only_pft_mixed,D95max,0.1165,4000
+4_beta_2samp_oracle_percell,KS_2samp,cell_only_pft_mixed,minwscal,0.1667,4000
+5_splithalf_floor_percell,KS_2samp,cell_only_pft_mixed,minwscal,0.1166,4000
+6_null_1samp_beta,KS_1samp_est_params,n=150_symmetric,-,0.0456,2000
+6_null_1samp_beta,KS_1samp_est_params,n=150_skewed,-,0.0475,2000
+6_null_1samp_beta,KS_1samp_est_params,n=150_U-ish,-,0.0434,2000
+6_null_1samp_beta,KS_1samp_est_params,n=400_symmetric,-,0.0284,2000
+6_null_1samp_beta,KS_1samp_est_params,n=400_skewed,-,0.029,2000
+6_null_1samp_beta,KS_1samp_est_params,n=400_U-ish,-,0.0268,2000
+6_null_1samp_beta,KS_1samp_est_params,n=1000_symmetric,-,0.0181,2000
+6_null_1samp_beta,KS_1samp_est_params,n=1000_skewed,-,0.0185,2000
+6_null_1samp_beta,KS_1samp_est_params,n=1000_U-ish,-,0.0171,2000
+7_copula_published,KS_2samp,cell_only_pft_mixed,SLA,0.1725,0
+7_copula_published,KS_2samp,cell_only_pft_mixed,Wooddens,0.1287,0
+7_copula_published,KS_2samp,cell_only_pft_mixed,D95max,0.1575,0
+7_copula_published,KS_2samp,cell_only_pft_mixed,minwscal,0.1487,0
