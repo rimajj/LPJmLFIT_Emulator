@@ -1069,6 +1069,8 @@ mutable struct FluxDrivenSlowEmulator{T <: AbstractFloat} <: AbstractSlowEmulato
     patch_area::T
     # ── PORTED FIT ESTABLISHMENT (ADR 0119); `nothing` ⇒ pre-0119 behaviour byte-for-byte ──
     recruit_establishment::Union{Nothing, RecruitEstablishment{T}}
+    # ── ROSTER-ANCHORED `n_prev` (ADR 0175); `false` ⇒ pre-0175 behaviour byte-for-byte ──
+    roster_n_prev::Bool
 end
 
 """
@@ -1133,6 +1135,24 @@ consumer: the ported establishment rule needs each cohort's INDIVIDUAL COUNT to 
 weight inheritance, and that is `nind·patch_area`. So with the ported rule on, a wrong `patch_area` scales
 the seedbank's admitted weight (its yearly width `n_top` is set independently, from `param.n_max`), and it
 is no longer a field only the anchor reads.
+
+`roster_n_prev` (default `false`; ADR 0175) makes the count model's `n_prev` feature and the denominator of
+the demographic ratio ρ read the **live roster's own stem count** (`Σ nind · patch_area`) instead of the
+emulator's previous PREDICTION. Why it exists: the count DRF was trained with `n_prev` = FIT's own
+previous-year stem count for that patch (ADR 0112), but at runtime the shipped path sets
+`s.n_prev = target` at the end of every year, so the feature row is fed a scalar that no longer describes
+the stand the other ten features describe. The two bases diverge without limit — nothing re-synchronises
+them — which is the mechanism ADR 0113–0116 measured as "free-running destroys the response and leaves the
+level alone", and the one-sided under-following of large declines that rectifies into a spurious positive
+count drift (ADR 0116 §4).
+
+This is **not** ADR 0103's level anchor and ADR 0174 §4's prohibition does not cover it: the anchor pulls
+the STAND toward the model's absolute prediction (measured harmful, ADR 0105), whereas this feeds the
+PREDICTION from the stand. The stand's own count is the physical state and is always available at runtime —
+in the coupled loop from the roster, and in a rung-2 substitution arm from the C's own roster — so reading
+it is what makes the runtime feature equal the training column rather than a proxy for it.
+
+`false` leaves every code path, committed baseline and AD gate byte-identical.
 """
 function FluxDrivenSlowEmulator(
         fc::FDiffFastCore{T}, forest::DRF.Forest; boundary::AbstractVector{<:Real} = Float64[],
@@ -1143,6 +1163,7 @@ function FluxDrivenSlowEmulator(
         boundary_series::Union{Nothing, AbstractVector} = nothing,
         trait_mortality::Bool = false, anchor = zero(T), patch_area = T(225.0),
         recruit_establishment::Union{Nothing, RecruitEstablishment{T}} = nothing,
+        roster_n_prev::Bool = false,
     ) where {T <: AbstractFloat}
     zero(T) <= anchor <= one(T) || error("anchor must be in [0, 1] (got $anchor)")
     # The two recruit samplers answer the SAME question from opposite bases (learned-from-survivors vs
@@ -1231,7 +1252,7 @@ function FluxDrivenSlowEmulator(
         sap, ridx, CarbonLedger{T}(), age_init, zero(T), T[], T[], T[], Vector{Float64}[], 0,
         DRF.Xoshiro256pp(seed), kcap, recruit_copula, bser,
         trait_mortality, zeros(Int, length(fc.pools)), TraitMortDiag[],
-        T(anchor), T(patch_area), recruit_establishment,
+        T(anchor), T(patch_area), recruit_establishment, roster_n_prev,
     )
 end
 
@@ -1253,9 +1274,18 @@ Everything here is a YEAR-END STATE except the three annual integrals F delivers
 (`bm_inc_cell`, `growth_eff`, `water_stress`) — that split is deliberate and is why `soilmoist` is read as
 an instantaneous state rather than accumulated over the year (ADR 0035 §4).
 """
+flux_feature_vector(s::FluxDrivenSlowEmulator{T}, grow, pools, state, allom, soil) where {T} =
+    flux_feature_vector(s.boundary, s.age, s.n_prev, grow, pools, state, allom, soil)
+
+# The same assembly, reached without a `FluxDrivenSlowEmulator` (ADR 0175): the body reads exactly three
+# things off `s` -- the boundary tail, the per-cohort ages and `n_prev` -- so a caller that HAS a real stand
+# but no emulator struct (the rung-2 substitution harness, whose stand belongs to the C) can build the row
+# through this one implementation instead of copying it. Splitting it is what keeps the runtime row and the
+# arm's row the same code, which is the ADR-0023 rule.
 function flux_feature_vector(
-        s::FluxDrivenSlowEmulator{T}, grow, pools, state, allom, soil
-    ) where {T <: AbstractFloat}
+        boundary::AbstractVector{<:Real}, ages, n_prev, grow, pools, state, allom, soil
+    )
+    T = typeof(float(n_prev))
     fpc = zero(T); hw = zero(T); lai = zero(T); agb = zero(T)
     for p in pools
         p.is_grass && continue
@@ -1270,14 +1300,14 @@ function flux_feature_vector(
     for p in pools
         (!p.is_grass && convert(T, p.height) > hmax) && (hmax = convert(T, p.height))
     end
-    age_mean = _mean_age_weighted(s.age, pools)   # nind-weighted tree-only demographic mean age (ADR 0024)
+    age_mean = _mean_age_weighted(ages, pools)    # nind-weighted tree-only demographic mean age (ADR 0024)
     # ADR 0035 — root-zone, whcs-weighted (NOT the pre-0035 unweighted 23-layer mean)
     soilmoist = root_zone_soilmoist(state, soil)
     head = Float64[
         grow.bm_inc_cell, grow.growth_eff, grow.water_stress, soilmoist,
-        hmean, hmax, agb, lai, min(fpc, one(T)), age_mean, s.n_prev,
+        hmean, hmax, agb, lai, min(fpc, one(T)), age_mean, n_prev,
     ]
-    return length(s.boundary) == 0 ? head : vcat(head, s.boundary)
+    return length(boundary) == 0 ? head : vcat(head, boundary)
 end
 
 function reconcile_demography!(
@@ -1338,12 +1368,23 @@ function reconcile_demography!(
         Establishment.seedbank_update!(re.seedbank, s.year, agb_ind, wts, pft_ids, trs)
     end
 
+    # ── ROSTER-ANCHORED `n_prev` (ADR 0175), opt-in. Re-synchronise the count-space AR state to the stand
+    #    the other ten feature columns describe, BEFORE the row is built, so `n_prev` is the quantity the
+    #    forest was trained on (FIT's own previous-year stem count for this patch) rather than the
+    #    emulator's own previous prediction. The shipped path lets those two diverge without limit — see the
+    #    constructor docstring for why that, and not a regression to the mean, is what ADR 0113-0116
+    #    measured. `false` skips this entirely ⇒ every committed baseline byte-identical. ──
+    dtree_pre = sum(
+        convert(T, pools[i].nind) for i in eachindex(pools) if !pools[i].is_grass; init = zero(T)
+    )
+    s.roster_n_prev && (s.n_prev = dtree_pre * s.patch_area)
+
     # ── DRF TARGET → demographic-change ratio ρ (unit-free; count↔density cancels) ──
     feats = flux_feature_vector(s, grow, pools, state, fc.allom, fc.soil)
     push!(s.feature_history, feats)                # diagnostic-only record of the row the forest was fed
     target = DRF.predict(s.forest, feats)
 
-    dtree = sum(convert(T, pools[i].nind) for i in eachindex(pools) if !pools[i].is_grass; init = zero(T))
+    dtree = dtree_pre                              # the same Σ nind the AR re-sync above already formed
 
     ρ = if s.year == 0
         one(T)                                     # year 0: no change (seed the recursive AR state)
