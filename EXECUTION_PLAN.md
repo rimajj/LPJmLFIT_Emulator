@@ -71,7 +71,7 @@ directly, which makes it the highest-value single result available.
 | rung | what runs | isolates | line | gate to climb |
 |---|---|---|---|---|
 | **0** | re-score existing artefacts on a corrected yardstick | the **target** | **S** (+ integrator for the seeds) | a noise floor + a deattenuated response slope exist for all four trait axes and counts |
-| **1** | S alone, fed the C's own per-tree fluxes | **S's demography** | **S** | rung-1 score reported *against the rung-0 noise floor*, with the compensating-errors verdict stated |
+| **1** | S alone, fed the C's own per-tree fluxes | **S's demography** | **S** | ✅ **CLOSED 2026-08-12, ADR 0174** — score against the rung-0 floor: **LEVEL passes** (free-running count bias < 2 % of the mean vs a 6.8–16.6 % two-run floor), **RESPONSE fails on SIGN** (+0.707 one-step → −0.226 free-running; validity horizon ~3 yr). Compensating-errors verdict: **YES, three named channels** — teacher forcing, a **rectified** loss-side error (+0.155 stems/patch = the size of FIT's whole global count response, so the level gate passes *because of* the error that fails the response gate), and a survivor-trained recruit marginal that already contains the selection arm C would add |
 | **2** | S + the **real C** fast part, closed annual loop | **the feedback**, physics exact | **M** (S = contract counterpart) | the loop runs 20 yr on ≥5 cells and its score is reported next to rung 1's |
 | **3** | F alone, fed the C's own canopy | **F's physics** | **M** | the decadal canopy drift is quantified and either fixed or bounded |
 | **4** | S + F coupled | the residual | **M** | residual = rung1 ⊕ rung3 ⊕ loop, attributed |
@@ -102,9 +102,14 @@ dice are louder than the signal. Deliver:
    trait medians, **stratified by stem density** (the <2 stems/patch stratum is 7 964 cells at 31.6 % on
    counts / 42.7 % on carbon — it cannot share a tolerance with dense forest).
 2. **The deattenuated response slope.** `λ = Var(true)/(Var(true)+Var(noise))` from the two seeds in both
-   scenarios; report the raw slope **and** `slope/λ`. Already measured once: SLA `0.851→1.08`,
-   minwscal `0.689→0.99` — **already correct**; only **Wooddens (0.63)** and **D95max (0.51)** are broken.
-   Reproduce it properly, then **retire "four broken axes" from every document that says it.**
+   scenarios; report the raw slope **and** `slope/λ`.
+   ✅ **DONE (ADR 0111), and the numbers this item used to quote were wrong — they were the λ values, not the
+   deattenuated slopes.** The measured 2-seed panel is **SLA 1.28 · Wooddens 0.66 · D95max 0.73 ·
+   minwscal 1.06** on the production `pooled_w20_t8` pin (λ: 0.784 / 0.676 / 0.330 / 0.780) — name the
+   artifact with the panel; the fixture also carries a `t9envT` variant at 1.14 / 0.64 / 0.77 / 1.07.
+   So it is **two** axes that fall short, not four, and D95max's λ of 0.33 (0.198 on one seed) means ~4/5 of
+   its single-seed between-cell variance is noise — a raw slope on that axis is uninterpretable. Evidence:
+   `test/testitems/references/S_truth_yardstick_summary.csv`. **"Four broken axes" is retired.**
 3. **A response score that is not per-cell single-seed.** The two seeds disagree on the *sign* in 33–37 % of
    cells while the area-mean carbon response has signal-to-noise ≈ 200. Define and publish an aggregate
    response metric (area-mean and/or biome-mean) as the primary, with per-cell as a reported secondary.
@@ -124,7 +129,17 @@ Run it as a **stated set of arms**, and report all of them:
 * **A** — free-running (today's behaviour), the control.
 * **B** — fed the C's own per-tree fluxes each year.
 * **C** — B **plus** `trait_mortality` ON. This is the pre-registered flip test for that flag.
-* **D** — C **plus** the bounded-Beta trait family replacing the copula marginals.
+* ~~**D** — C **plus** the bounded-Beta trait family replacing the copula marginals.~~ ❌ **DESCOPED
+  (ADR 0173).** Its motivating claim (ADR 0093 §5.3's "a bounded Beta beats the copula 2–3× on per-cell KS")
+  was three confounds, not a distribution family: a **one-sample** KS against a Beta fitted to that same
+  sample's own two moments, grouped per (Cell, PFT) on the top-400 densest cells per PFT, versus the copula's
+  **two-sample**, PFT-**mixed**, out-of-sample number. The estimator alone accounts for 1.7–2.4×, the grouping
+  a further 1.2–1.5×, and the published Beta figure sits **at its own statistic's noise floor**. Scored like
+  for like, an **oracle-moment** Beta ties the **out-of-sample** copula on two axes and is **7–12 % worse** on
+  the other two — and the **deployable** arm (a Beta carrying the *same learned moments*, off the same forests,
+  leaf pool and uniform) is worse on **all four**: median per-cell KS +36 / +9 / +13 / +28 %, pooled KS
+  6.5–16.6×, every axis failing the `≤ 0.02` criterion the copula passes. Reproducers:
+  `test/testitems/references/S_beta_vs_copula_likeforlike.csv` and `scripts/eval_slow_beta_arm.jl`.
 
 Cheap wins to fold in and measure separately, all from ADR 0093 §5:
 
