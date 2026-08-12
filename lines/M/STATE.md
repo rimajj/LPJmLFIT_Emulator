@@ -384,6 +384,15 @@ loads**. Rebuild gate on a matched A/B against the preserved previous binary (`b
 `scripts/run_ind_true_gpp_cells.sh` (~10 s/cell), scorer `scripts/diagnose_ind_true_gpp.py`, fixture
 `test/testitems/references/M_ind_true_gpp_reference.csv`, log `logs/M-gppclose.1767354.out`.
 
+**2b. AND THE SWITCHES ARE PROVEN OUTPUT-ONLY, not merely intended to be.** Two runs of the same
+config/cell/seed/binary differing only in the env switches (`STOCK_RUNTAG=M_indstock` mode of the scorer):
+stock **5 965** rows, the all-heights table's stock-population subset **5 965**, same stem set, **all 28
+columns bit-identical** except `gpp` (the one column `TRUE_GPP` redefines). It also confirms the headline
+finding live and independently of the parquet — in the stock run `gpp` **equals** `npp` column-for-column.
+⚠ **The stock population is "trees above 5 m OR ANY GRASS", not `Height > 5`** — grass is emitted with
+`Height = 0`, so a height-only filter drops exactly `npatch × nyear` rows and reads as a roster change.
+That bites any `ind` consumer; it is why this check "failed" on its first run.
+
 **3. ITS GATE IS ALSO A COMPLETENESS PROOF.** `Σ` per-individual `gpp` over ALL PFT rows reproduces the
 run's own annual `d_gpp` to **4.4e-07 worst over 100 cell-years** — two different code paths over the same
 daily variable, and a tree missing from the roster would show up as a shortfall.
