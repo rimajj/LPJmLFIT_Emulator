@@ -443,10 +443,17 @@ five cells** on this probe, with the beech-only byte-identity item still green.
    ssp370 forcing — "does F's growth error depend on climate?" is the acceptance criterion's binding clause
    (ADR 0106) and rung 3 has never measured it.
 
-**CI/merge:** the diff is `src/**` + `test/**` + `scripts/**` + `docs/decisions/**` + `changelog.d/**` +
-STATE/JOURNAL, so it triggers **all four Julia jobs AND `format`** — plus `docs` on `main` (it touches
-`src/**`). Wait for `test (lts)` and `test (1)`; the suite is already green on this exact tree
-(job 1762535).
+**CI/merge: ✅ MERGED to `main` (ca717bf7) — but read this, it cost a red `main`.** Branch CI was green on
+all five expected checks (`test (lts)`, `test (1)`, `test (macOS, lts)`, `format`; `test (pre)` is the
+documented prerelease `ScopedValue` churn, `continue-on-error`) and the merge collated the changelog
+fragment. **`main` then failed `docs`** — the one gate that never runs on a line branch — because
+`docs` **also watches `src/**`** (Documenter splices main-module docstrings into
+`docs/src/reference/api.md`) and three new `[`FDiff.PFTPhys`](@ref)` links cannot resolve: `api.md`
+renders `@autodocs Modules = [LPJmLFITEmulator]` only, so the `FDiff` submodule API is deliberately
+unrendered. Fixed in `fd0cef0d` (plain backticks, the convention every pre-existing `FDiff.*` mention in
+`fast.jl` already follows), verified by running the real build to `RenderDocument` plus the mermaid HTML
+check. **STANDING RULE, now in CLAUDE.md §2 and the `repo-commit` skill: if your diff touches `src/**`,
+build the docs locally before merging — a `src`-only diff has NO branch-side coverage for that gate.**
 
 ### 0-PREV1. ✅ DONE 2026-08-12 (session 11) — **RUNG 3 IS MEASURED.** F's GROWTH ERROR IS **PER-YEAR
 ### AND BIMODAL BY BIOME** (1.6–4.0× TOO FAST COLD, **NEGATIVE CARBON BALANCE** HOT), AND ONE **PER-PFT

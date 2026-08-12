@@ -194,6 +194,16 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   deps — don't add to `[deps]` until a runtime feature truly needs it.
 - **Format gate (Runic):** CI installs **Runic 1.7.0**. Check locally by adding Runic v1 to a temp env
   and `Runic.main(["--check", <files>])`. Reformat all tracked `.jl` with that version.
+- ⚠ **BUILD THE DOCS LOCALLY WHENEVER YOUR DIFF TOUCHES `src/**`, NOT ONLY `docs/src/**`
+  (`[VERIFIED 2026-08-12]`, ADR 0126 merge).** The `docs` gate watches `src/**` too (Documenter splices the
+  MAIN module's docstrings into `docs/src/reference/api.md`) and **never runs on a line branch**, so a
+  `src/**`-only diff can pass four Julia jobs + `format` on the branch and then red `main` at a stage no
+  branch gate reaches — which is exactly what happened. **The convention it catches:** `api.md` renders
+  `@autodocs Modules = [LPJmLFITEmulator]` only, so the `FDiff`/`Allometry`/`SmoothOps` submodule APIs are
+  deliberately unrendered ⇒ **a main-module docstring may NOT `@ref` a submodule symbol**
+  (`Cannot resolve @ref for md"[`FDiff.PFTPhys`](@ref)"`). Write those as plain backticks in
+  `src/components/*.jl` / `src/run.jl` / `src/interface.jl` — every pre-existing `FDiff.*` mention there
+  already does; `@ref` inside `src/fdiff.jl` is never checked. Skill: `repo-commit`.
 - **Docs build locally:** `DOCS_LINKCHECK=false julia --project=docs docs/make.jl` (CI keeps linkcheck
   ON; the HPC's restricted egress needs it OFF). Diagram alarm: `julia --project=. scripts/gen_diagrams.jl
   --check` (**needs `--project=.`**). Since ADR 0091 this is a REAL gate, not just a local command:
