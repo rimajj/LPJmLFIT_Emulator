@@ -273,8 +273,11 @@ rather than a request to flip now.
 > (`total_count = 0` on both shas) and therefore could not displace the pending one — exactly what the
 > `repo-commit` skill already records as measured. My impression that the clock had restarted, and that
 > the jobs had been "in progress for ~50 minutes", was a miscount of my own polling, not a real effect.
-> **`scripts/*.jl` DOES trigger the full `CI` matrix** — that part is real and worth knowing when budgeting
-> a push, but a docs-only follow-up remains safe.
+> **What actually triggered `CI` was the new `test/testitems/references/S_rung2_response_cells.csv`** — the
+> `test/**` path in `.github/workflows/CI.yml`. `scripts/**` is NOT in that filter, so the ADR-0090 path
+> table in CLAUDE.md §5 is correct as written and needs no revision. (I briefly believed the harness
+> `.jl` had triggered it; it had not. **Committing a new fixture under `test/` buys you the full 4-job
+> Julia matrix** — budget ~12 min for it.)
 >
 > ### C. TWO INTERFACE LIMITS DISCOVERED — both are in the C hook (line M's `rung2_apply.c`), not in S's code
 >
