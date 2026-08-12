@@ -548,6 +548,28 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   emitted `npp` (`= pft->anpp`, runtime-consistent with `FToS.bm_inc`), NOT `pft->bm_inc.carbon` (the
   post-allocation residual, 0 for grass at output time). The flux-conditioning table builder is
   `scripts/build_slow_flux_table.py` (tier-1, parameterized by `CELLS`; §7-validated).
+- ⚠ **THE `ind` TABLE'S `gpp` COLUMN IS NOT GPP — IT IS A SECOND COPY OF `npp`, AND LPJmL-FIT HAS NO
+  PER-INDIVIDUAL GPP OUTPUT AT ALL (`[VERIFIED 2026-08-12]`, ADR 0130).** `daily_natural.c:193` does
+  `pft->agpp += npp;` (the field's own docstring in `include/pft.h` says "annual NPP" too), and
+  `fwriteoutput_ind.c` writes `agpp` into the `gpp` column ⇒ a per-stem `npp/gpp` is **exactly 1.0000 in
+  all 11 967 tree rows** at the five biome cells. The real per-individual `gpp` exists only as a local in
+  `daily_natural.c`, reaching the stand `GPP`/`D_GPP` outputs and cell `balance.agpp`. **Never read that
+  column as GPP, and never derive a per-stem carbon-use efficiency from `ind` alone.** Two **opt-in,
+  inert-unless-set** switches on the rebuilt binary fix it (`patches/lpjmlfit_ind_true_gpp.patch`):
+  **`LPJ_IND_TRUE_GPP`** swaps in a new `Pft.agpp_gross` accumulating the same `gpp` that feeds `D_GPP`
+  (gross, before `rd`), and **`LPJ_IND_ALL_HEIGHTS`** drops the writer's `height > param.height_min` = 5 m
+  emission cut so the table carries the whole stand. `agpp` itself, `printind` and the 29-column schema are
+  untouched, and neither field is in `fwritepft`/`freadpft`, so `restart_1999.lpj` still loads. Rebuild gate:
+  139 decoded quantities identical, 0 differ (switches unset). Driver `scripts/run_ind_true_gpp_cells.sh`
+  (~10 s/cell; it inserts the `ind` entry + the exports the integrator-owned wrappers do not forward, and
+  **re-runs `lpjcheck` after patching** — the wrapper validated the config *before* the insert). Scorer
+  `scripts/diagnose_ind_true_gpp.py`, whose gate is also a completeness proof: `Σ` per-individual `gpp` over
+  all PFTs reproduces the run's own annual `d_gpp` to **4.4e-07 over 100 cell-years**. Measured: the sub-5 m
+  trees are **47 % of the stems but 1.9 % of tree GPP** at Hainich (0.79 share at boreal/Sahel).
+  ⚠ **Reading the `ind` TXT file: it HAS a header line** (`fopenoutput.c:204`) — parsing it with
+  `has_header=False` makes every column a string; and **pin the dtypes**, because the `mort_*` columns are
+  uninitialised garbage that often prints as whole numbers at the top of a restarted run, so inference calls
+  them integer and then dies on the first real value.
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative

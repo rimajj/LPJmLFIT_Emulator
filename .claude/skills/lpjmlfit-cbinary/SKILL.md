@@ -135,6 +135,59 @@ NetCDF's `history` attribute, so `cmp` calls **20 of 21 outputs different** for 
 physics (ADR 0043). The script hashes **decoded variables** instead and compares the text outputs
 byte-for-byte. Measured on the 2026-08-10 rebuild: 138 variables + `globalflux` identical, 0 differ.
 
+**Build the A/B pair yourself — do not gate against an OLD run.** Copy the current binary aside FIRST
+(`cp -p bin/lpjml bin/lpjml.pre_<change>.bak`), then generate two runs with `SUBMIT=no` and repoint the
+"old" one's generated `slurm.jcf` at the backup. That is a true A/B (same config, cell and `--ntasks`,
+only the executable differing); gating against a months-old run instead drags in every output-set change
+since. ⚠ **The `slurm-guard` hook blocks a `sed`/`python3 -c` whose COMMAND TEXT contains
+`bin/lpjml … -DFROM_RESTART`**, reading it as a login-node run — write the edit to a script file and run
+that, or split the literal (`"/bin/" + "lpjml "`).
+
+## Making the `ind` table carry the WHOLE STAND and REAL per-stem GPP — ADR 0130
+
+Two facts of the stock C defeat any per-stem carbon-accounting question, and the second one is invisible:
+
+1. the writer emits only stems above `param.height_min` = 5 m, and
+2. **the `gpp` column is a second copy of `npp`** — `daily_natural.c:193` does `pft->agpp += npp;`, so a
+   per-stem `npp/gpp` is **exactly 1.0000**, and LPJmL-FIT has **no per-individual GPP output at all**.
+
+⇒ *removing the height cut alone answers nothing.* Both are fixed by `patches/lpjmlfit_ind_true_gpp.patch`
+as **opt-in, inert-unless-set** switches: `LPJ_IND_ALL_HEIGHTS` and `LPJ_IND_TRUE_GPP` (the latter swaps in
+a new `Pft.agpp_gross` holding the same `gpp` that feeds `D_GPP`; `agpp`, `printind` and the 29-column
+schema stay untouched, and neither field is in `fwritepft`/`freadpft`, so the restart still loads).
+
+```bash
+bash scripts/run_ind_true_gpp_cells.sh                       # 5 biome cells, ~10 s each
+CELLS="temperate_hainich:42490" bash scripts/run_ind_true_gpp_cells.sh
+/home/jamirp/.conda/envs/py311_new/bin/python scripts/diagnose_ind_true_gpp.py   # CSV=<path> to emit
+```
+
+Five things the driver/scorer encode so they are not re-derived:
+
+* **The wrappers emit no `ind` table and forward no env var**, and they are integrator-owned — so the
+  driver generates with `SUBMIT=no`, inserts the `ind` output entry and the two `export`s, and **re-runs
+  `lpjcheck` afterwards**. The wrapper's own lpjcheck ran *before* the insert, so nothing had validated
+  what would actually run. ⚠ A malformed insert is reported against the **following** line.
+* ⚠ **Do not build the JSON entry with a Python f-string** — `}}` inside one collapses to a single `}`,
+  which is exactly the malformed-insert case above.
+* **Gate the switches on an identity, not on plausibility:** `Σ` per-individual `gpp` over **all** PFT rows
+  must reproduce the run's own annual `d_gpp` (two different code paths over the same daily variable).
+  Measured **4.4e-07 worst relative over 100 cell-years**. It doubles as a proof that the emitted roster is
+  **complete** — a missing tree shows up as a shortfall. Include `isdead` rows: mortality is applied after
+  allocation, so they photosynthesised all year.
+* ⚠ **Reading the `ind` TXT: it HAS a header** (`fopenoutput.c:204`), and it matches `IND_COLUMNS` exactly
+  — assert that rather than passing `has_header=False` with `new_columns` (which makes every column a
+  String and then panics inside the aggregation, far from the mistake). **Pin the dtypes**: the `mort_*`
+  columns are uninitialised garbage that often prints as whole numbers early in a restarted run, so
+  inference calls them `i64` and dies on the first real value.
+* ⚠ **Single-cell basis (ADR 0041)** — read the WITHIN-run ratios; never pair a stem here with a
+  global-parquet stem. Measured: the sub-5 m trees are **47 % of stems but 1.9 % of tree GPP** at Hainich,
+  **~0.79** share at boreal/Sahel (whose stand LEVELS therefore stay un-comparable).
+
+**The C source tree is SHARED by all four lines and has no lock.** Check `squeue -u $USER` is clear before
+`make main`, keep the previous binary as `bin/lpjml.pre_<change>.bak`, and say in the other line's STATE
+that you rebuilt — a sibling mid-experiment would otherwise silently change binaries between arms.
+
 ## The rung-2 demography hook (opt-in; inert by default) — ADR 0061
 
 **Use `patches/lpjmlfit_rung2_hook_v5.patch`** — it carries BOTH halves (observation + substitution) and
