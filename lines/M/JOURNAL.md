@@ -1126,3 +1126,53 @@ which belongs to another work line; it has been written up and handed to them.
 
 Five sites of 54 020, one scenario, one random seed, no warming response measured. Written up as decision
 record 0126.
+
+## 2026-08-12 — the `keep` gap is not an allocation defect: F's surplus growth, decomposed exactly  [rung 3]
+- **Goal:** close or bound the item ADR 0125 §7 / ADR 0126 §6.4 left as *"the binding F-side item"* — F
+  retains 1.45–1.85× as much of its annual assimilate as standing above-ground biomass as the C does. Rung 3
+  cannot exit until it is fixed or bounded.
+- **Did (residual-diagnosis, all four steps, written before any probe):**
+  1. **Reference basis, read off the C source not the column names.** `agb_tree.c:25` + `tree.h:259` vs
+     `veg_sum_tree.c:25` + `tree.h:257`: the C's `vegc − agb` bucket is root + **sapwood_bg** +
+     **heartwood_bg**; F's `vegc_ind − agb_ind` is root only. `allocation_tree.c:163-209` computes a
+     C_LATERAL below-ground wood demand from each stem's own sapwood cross-section and root profile and
+     `:268-277` deducts it from `bm_inc_ind` **before** the leaf/root/sapwood split; F's `grow_individual`
+     carries `sapwood_bg_c` through unchanged (`fdiff.jl:2460-2467`) and its `sap_inc` is a residual.
+  2. **Hypothesis + three killable predictions** (P1 total-vs-split retention, P2 the below-ground channel,
+     P3 the demand's magnitude), stated in the probe header before the run.
+  3. **New probe `scripts/biome_sapwood_bg_probe.jl`** — a deliberately SECOND, independent reader of the
+     rung-3 fixtures, gated on reproducing all 20 of ADR 0125 §PART 7's published numbers. Four arms:
+     A (the published basis), Abg (A + the below-ground pool seeded ⇒ its maintenance respiration runs, no
+     `src/` change), P (per-cohort PFT parameters, ADR 0126), Pbg.
+- **Result / evidence** (jobs 1765191 → 1765650 → 1765720, `priority` partition, ~9 min each; log of record
+  `logs/M-sapbg3.1765720.out`; fixture `test/testitems/references/M_growth_channel_decomposition.csv`):
+  - **The first run FAILED its own basis gate at 4 of 5 cells, and the failure was the finding.** The only
+    two things that differed from the published harness were the `keep` definition (mean of per-year ratios
+    vs ratio of means) and which start state the C's own increment is formed against. Fixing the probe to
+    compute BOTH made the gate **PASS on all 20 numbers**, with the reconstruction residual `recon` = 0.00
+    everywhere (so the published `keep_C` was a clean C-side quantity).
+  - **Two definitions of `keep` disagree materially at two cells.** `semiarid_sahel`: published **+0.350**
+    vs ratio-of-means **−0.059** — arm A's annual assimilate changes SIGN between years, so the published
+    number is not a retained fraction of anything and is withdrawn as undefined. `mediterranean_iberia`
+    keep_C 0.269 vs 0.335.
+  - **The exact decomposition** `Δagb_F − Δagb_C = (bmi_F−bmi_C) + (loss_C−loss_F) + (bel_C−bel_F)`,
+    gC/m²/yr: boreal **+43.5 = 9.2 + 14.4 + 19.9** · Hainich **+152.7 = 117.0 + 4.7 + 30.9** ·
+    mediterranean **+320.5 = 408.0 − 100.7 + 13.2**. ⇒ **at Hainich 77 % of the surplus is the ASSIMILATE
+    error and 3 % is allocation**; F's absolute litter + reproduction flux is right to **1.8 %** (262.1 vs
+    266.8) while its `keep` ratio is 49 % high — because F's losses are pool-driven (a summergreen sheds its
+    whole leaf and fine-root pool every year) and its assimilate is not.
+  - **P1/P2 confirmed, P3 confirmed at one cell and refuted at another.** The reconstructed C_LATERAL demand
+    reproduces the C's own measured below-ground sink at Hainich to **1.20×** but at boreal to **0.11×**
+    (that cell's sink is mostly fine-root growth). Seeding the pool costs 2.4–6.3 % of the assimilate and
+    removes 9–12 % of the surplus. The most faithful configuration today (Pbg) leaves the surplus at
+    +71.9 / +134.9 / +378.3 / +42.3 / +127.9 against C increments 49.0 / 181.1 / 79.2 / 90.6 / 372.0.
+  - **A design correction that stops a wrong port.** `docs/notes/sapwood_bg_design.md` §5.4 said "grow the
+    pool"; the C has TWO below-ground pools (`sapwood_bg` pinned to the demand, `turnover_tree.c:124-130`
+    moving its turnover into `heartwood_bg`), so a one-field port either destroys ≈22 gC/m²/yr at Hainich or
+    charges maintenance respiration on below-ground heartwood. Amended as §9 with a pre-registered pass
+    criterion, scored at boreal + Hainich only.
+- **Decisions:** ADR 0127. Skill capture: `residual-diagnosis` gains the "a ratio whose denominator is also
+  wrong re-expresses the numerator's error — score the absolute identity" section.
+- **Next:** the F-side queue re-points to the ASSIMILATE error (`bmi_F/C` = +24 % at Hainich with every
+  parameter faithful and 99.4 % beech — a pure F-physics defect at the prototype cell), and
+  `boreal_siberia` becomes the one cell where allocation genuinely binds. Mirrored into STATE.md's NEXT.

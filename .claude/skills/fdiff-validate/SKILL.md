@@ -342,3 +342,36 @@ TIME=02:00:00 scripts/sbatch_julia.sh M-rung3 --project=. scripts/biome_canopy_g
    *different defects in different cells*. And before blaming physics, **check whether the parameter is
    per-PFT in `par/pft_lpjmlfit.js` while F uses beech's for everything** — `respcoeff` (0.2 vs 1.2) put
    F's annual carbon balance NEGATIVE at both tropical cells.
+
+## A FIFTH BASIS CHECK: `agb`/`vegc` ARE DIFFERENT POOL SETS ON THE TWO SIDES, AND `keep` IS A TRAP (ADR 0127, 2026-08-12)
+
+Before scoring any F-vs-C **carbon** quantity at the stem or stand level:
+
+| | expression | source |
+|---|---|---|
+| C `agb` | `(leaf + heartwood + sapwood − debt + excess)·nind − turn_litt.leaf` | `agb_tree.c:25`, `tree.h:259` |
+| C `vegc` | `(leaf + root + heartwood + sapwood + `**`sapwood_bg`**` + `**`heartwood_bg`**` − debt + excess)·nind − turn_litt.leaf − turn_litt.root + fruit` | `veg_sum_tree.c:25`, `tree.h:257` |
+| F `agb_ind` | `leaf_c + sapwood_c + heartwood_c` | `fdiff.jl` |
+| F `vegc_ind` | `leaf_c + sapwood_c + heartwood_c + root_c` | `fdiff.jl` |
+
+So `vegc − agb` is **root + two below-ground WOOD pools** on the C side and **root only** on F's. The C
+deducts those pools' C_LATERAL demand from `bm_inc_ind` *before* the leaf/root/sapwood split
+(`allocation_tree.c:206-209 / :268-277`) and F does not, while F's `sap_inc` is a residual — so the whole
+undeducted demand lands in F's ABOVE-ground sapwood. Any `agb`-based growth comparison inherits that.
+
+**⚠ DO NOT score the retained fraction `keep = ΣΔagb / bmi`.** Its denominator is itself the error under
+test (F's assimilate is 1.05–2.73× the C's) and F's losses are **stock-driven** (a summergreen sheds its
+whole leaf and fine-root pool every year regardless of that year's NPP), so a too-large `bm_inc` raises the
+retained fraction with a *faithful* allocation. Measured: F's absolute litter + reproduction flux at
+Hainich is right to **1.8 %** while its `keep` ratio is **49 %** high. Score the absolute identity instead —
+it is exactly additive and needs no new run:
+
+    Δagb_F − Δagb_C = (bmi_F − bmi_C) + (loss_C − loss_F) + (bel_C − bel_F)
+
+with `loss ≡ bmi − Δvegc` and `bel ≡ Δ(vegc − agb)`. Harness: `scripts/biome_sapwood_bg_probe.jl`
+(4 arms, gated on reproducing ADR 0125 §PART 7's published panel); fixture
+`test/testitems/references/M_growth_channel_decomposition.csv`.
+
+**And a `keep`-style mean of per-year ratios is undefined where the annual assimilate changes SIGN** — arm A
+at `semiarid_sahel` reads +0.350 that way and −0.059 as a ratio of means. Print both (ADR 0060) and report
+the sign-changing one as undefined.
