@@ -56,7 +56,9 @@ panel exists.
 ### 2a. LEVEL — inside the floor, on every axis that has one
 
 The published global panel (ADR 0108/0111 basis, corrected in ADR 0111 §5): deattenuated per-cell response
-slopes **SLA 1.28 · Wooddens 0.66 · D95max 0.73 · minwscal 1.06** (2-seed), and the count level's free-running
+slopes **SLA 1.28 · Wooddens 0.66 · D95max 0.73 · minwscal 1.06** (2-seed, **artifact
+`slow_copula_pooled_w20_t8` — the production pin**; the fixture also carries a `t9envT` variant at
+1.14 / 0.64 / 0.77 / 1.07, so the artifact must be named with the panel, ADR 0101 §3), and the count level's free-running
 bias never exceeds **+0.16 stems/patch on a mean of 8.28 (< 2 %)**, flat after year 20, over 80 years
 (ADR 0113 §2). Against a count floor of 6.77 % (ALL) / 16.63 % (`<2`), a < 2 % level bias is **comfortably
 inside the C's own noise** — including in the worst stratum.
@@ -195,8 +197,8 @@ mechanism explicitly looks like an improvement while being partly a duplication.
 4. **`EXECUTION_PLAN.md` needs three integration-point edits** (integrator-owned; raised in this line's STATE):
    strike rung-1 arm D (§ADR 0173); replace the superseded λ/slope pair at lines 105–106 (it prints
    Wooddens 0.63 / D95max 0.51, which are ADR 0111's **λ** values, not the deattenuated slopes — the corrected
-   panel is SLA 1.28 / Wooddens 0.66 / D95max 0.73 / minwscal 1.06, and the same stale text is copied into
-   three other lines' STATE files); and record rung 1's exit against this ADR.
+   panel is SLA 1.28 / Wooddens 0.66 / D95max 0.73 / minwscal 1.06 on the `pooled_w20_t8` pin, and the same
+   stale text is copied into three other lines' STATE files); and record rung 1's exit against this ADR.
 5. **The determinism dividend's band-metric half stays OPEN and is the one genuinely unmeasured rung-1
    deliverable** (ADR 0173 §4). It is free, it is worth +2.9 to +14.4 pp of cells inside the 10 % band on
    ADR 0093's own claim, and it needs a *band* metric on per-cell aggregates rather than the per-cell KS the

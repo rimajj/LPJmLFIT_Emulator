@@ -169,7 +169,8 @@ rather than a request to flip now.
 > * **LEVEL — PASSES, by a margin.** Free-running count level bias never exceeds **+0.16 stems/patch on a
 >   mean of 8.28 (< 2 %)**, flat after year 20, against the C's own two-run floor of **6.77 %** (all cells) /
 >   **16.63 %** (`<2 stems/patch`). Deattenuated trait slopes SLA 1.28 / Wooddens 0.66 / D95max 0.73 /
->   minwscal 1.06.
+>   minwscal 1.06 **on the `pooled_w20_t8` pin** (the fixture also holds a `t9envT` variant — name the
+>   artifact, ADR 0101 §3).
 > * **RESPONSE — FAILS, on SIGN not magnitude.** Area-weighted count response ratio **+0.707 one-step**,
 >   **−0.226 free-running**. Validity horizon **~3 years**.
 > * ⇒ **every rung-1 number must now carry TWO labels: *level or response*, and *one-step or free-running*.**
@@ -241,7 +242,7 @@ rather than a request to flip now.
 > **B. RAISE THREE `EXECUTION_PLAN.md` EDITS AS AN INTEGRATION POINT** (integrator-owned, ADR 0174 §5.4):
 > strike rung-1 arm D; record rung 1's exit against ADR 0174; and replace the superseded pair at lines
 > 105–106 — it prints "Wooddens 0.63 / D95max 0.51" which are ADR 0111's **λ** values, *not* deattenuated
-> slopes (the corrected panel is SLA 1.28 / Wooddens 0.66 / D95max 0.73 / minwscal 1.06). ⚠ This was already
+> slopes (the corrected panel is SLA 1.28 / Wooddens 0.66 / D95max 0.73 / minwscal 1.06 on `pooled_w20_t8`). ⚠ This was already
 > raised on 2026-08-10 and is **still unlanded**, and the same stale text is copied into
 > `lines/{M,E,O}/STATE.md`. Raise it again rather than assuming it will land.
 >
