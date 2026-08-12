@@ -76,6 +76,112 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
+> ## ✅ THE RECRUIT ARM IS A THREE-CELL RESULT NOW, AND ONE OF ADR 0170's TWO HEADLINES DID NOT SURVIVE (2026-08-12, ADR 0171)
+>
+> ADR 0170's handoff said *"do it at MORE CELLS, not more seeds."* Done — five 40-seed ensembles, jobs
+> 1761398–1761657, all landed, nothing to collect. Full record: ADR 0171; per-seed rows:
+> `references/S_recruit_multicell_seed_ensembles.csv`. **`recruit_establishment` stays OFF**, and the reason
+> is now three cells instead of one.
+>
+> **1. THE HARNESS IS PER-CELL.** `SITE=<name from M_cells.csv>` moves
+> `scripts/trait_mortality_arm_probe.jl` to any of the five provisioned biome cells (trees, soil, forcing,
+> latitude, stem/age seeds and static boundary from the committed per-cell fixtures — **never** from the
+> Hainich-trained artifact meta). `SITE` unset is byte-identical, verified twice: a matched-seed pre/post
+> pair differing only in the scope label, and a 40-seed ensemble reproducing **ADR 0170 arm A to every
+> digit** (+19 700.802 ± 1 280.900; R0 −0.747; R1 +2.660; contribution +3.407). Recipe for a new cell: the
+> `slow-drf-pipeline` skill, "RUNNING THE RESPONSE ARM AT ANOTHER CELL".
+>
+> **2. WHAT SURVIVED — the LEVEL, and it is why the flip stays refused.** With the artifact held at
+> `pooled_w20_t8`, the ported rule raises the standing community's mean wood density at **all three** cells:
+> **+2.20 % / +4.93 % / +5.00 %** (temperate / tropical / boreal), t 5.1–5.9, i.e. **2.1–4.4× FIT's entire
+> warming shift as a static offset**. ADR 0170's +8.5 % was the same conclusion on the demo artifact.
+>
+> **3. WHAT DID NOT SURVIVE — the response sign. It is not stable across cells OR across artifacts.**
+> Contribution to the warming response: **−0.894 ± 0.323** (Hainich) · **+1.979 ± 0.930** (Amazon) ·
+> **−1.905 ± 0.532** (Siberia) ×FIT — and **+3.407 → −0.894 at the SAME cell** on swapping demo →
+> `pooled_w20_t8`. ⇒ **ADR 0170 §2's "the port removes a wrong-signed response" is a Hainich-plus-demo
+> statement; do not quote it without both labels.** A THIRD flip condition is pre-registered in ADR 0171 §5:
+> one cell per eligibility regime, artifact fixed and named, sign must agree.
+> Also: **R0 — the SHIPPED channel — is itself cell-dependent** (+0.27 / +0.30 / **+1.94** ×FIT). At Siberia
+> the shipped configuration already overshoots FIT by 94 % and the port *removes* that response
+> (R1 = +0.035, n.s.). **Never read a contribution's sign without its baseline beside it.**
+>
+> **4. ⚠ A TRAIN/INFERENCE DEFECT WAS FOUND AND FIXED — and no published number moves.** The response arm's
+> **ssp370** transient boundary had no monthly lead-in while the historic side did, so **19 of 81
+> conditioning years were a different quantity from the trained basis** (up to +210 gdd5 = +10.7 % and
+> +1.94 °C; exact from 2039). The comment claiming the omission was deliberate *and* consistent with the
+> trained table was measurably false. Fixed; **gated on both scenarios** now (exact at all three cells); a
+> CI-safe truncated-window tell added to the testitem. It could not have reached ADR 0100/0101/0170 because
+> the demo artifact's boundary-channel liveness is **exactly 0.0** (its boundary axes are constant in
+> training) — and where the channel *is* live the fix is worth **0.03 ×FIT against a 0.32 ×FIT SEM**.
+> `SSP_LEAD=2020 ALLOW_UNTRAINED_SSP_BASIS=1` reproduces the old basis bit-for-bit; `BND_FIXTURE=` runs an
+> arm against any boundary file.
+>
+> **5. TWO CORRECTIONS TO ADR 0170's OWN TEXT.** (a) The Amazon/Sahel are **not** `n_elig = 1, w_inherit 0.8`
+> — they admit **four** tree types (`w_inherit` 0.5). Only **124 of 52 451** tree-bearing cells admit exactly
+> one; the modal cell admits four (49 %); **11.2 % admit NONE** (pure inheritance, `w_inherit` = 1, median
+> **29** stems) and Hainich's six is a 12 % tail. (b) The gate does **not** always hand recruits to the
+> seedbank with warming: at Hainich it CLOSES (boreal ids expelled once the 20-yr cold-month mean passes
+> 0 °C, inherited share 0.400 → 0.571), at Siberia it **OPENS** ({4,5,6} → {1,3,4,5,6}, 0.571 → 0.444).
+> Direction-of-travel is per cell, never global.
+>
+> **6. RAISED WITH LINE M this session (mirrored below, item R).** The rung-2 recruit arm — evidence, the four
+> pre-registered conditions, the eligibility table M can consume as-is, and an explicit statement of what is
+> not claimed — is in `lines/M/STATE.md`'s NEXT list as item 4. **Nothing on it is owed by S** until M
+> replies; do **not** re-run that arm offline (ADR 0171 §3 is why: offline the sign is artifact-dependent).
+>
+> **⏩ WHAT TO DO NEXT, in order:**
+>
+> 1. **FINISH THE CROSS-CELL TABLE — two commands, and it is the cheapest thing on this list.**
+>    `semiarid_sahel` and `mediterranean_iberia` are already provisioned; each needs
+>    `SITE=<name> python3 scripts/build_hainich_response_forcing.py`, one eligibility build
+>    (`CELLS=18371,33335`, both scenarios, then the per-cell split), and one 40-seed ensemble. It buys the
+>    one thing item 3 above most needs: whether the sign instability is a 3-cell accident or systematic. Both
+>    sit in the modal `n_elig = 4` regime, so it also gives that regime a **replicate** rather than a single
+>    cell.
+> 2. **THEN THE REGIME THAT IS ACTUALLY UNTESTED: `n_elig = 0`** — 11.2 % of tree-bearing cells, pure
+>    inheritance, and the class the ported rule's mixture weight treats most differently. It needs a cell
+>    provisioned from scratch (`extract_cell_individuals.py` + `extract_cell_soilcolumn.py`, the
+>    `provision-coupled-cell` skill), and its **noise floor must be quoted with it** — median 29 stems puts
+>    it in ADR 0093's <2 stems/patch stratum, where the C's own two-run spread is 31.6 % on counts.
+> 3. **ARM D's BOUNDED-BETA COMPARISON, LIKE-FOR-LIKE** (ADR 0118 §6) — still undone, still the cheapest
+>    remaining *offline modelling* task: a bounded Beta fitted per cell and scored K-fold-by-cell
+>    out-of-sample on `score_slow_copula_ks.py`'s own basis, not against oracle moments. ⚠ ADR 0119 descoped
+>    it for the recruit side; ADR 0171 §3 makes the learned path *more* relevant again, not less, because the
+>    ported rule is now known not to be flippable on the response at any cell tested.
+> 4. **KNOWN AND DELIBERATELY UNCHASED** (ADR 0171 §2, last paragraph): `build_estab_eligibility.py`
+>    backfills its ssp370 running means from the **historic** `.clm` (mirroring the C's ClimBuf across the
+>    restart) while the trained boundary table does not. Two different early-window conventions, each correct
+>    for its own consumer. Do not "align" them without first deciding which consumer is being served.
+>
+> **Do NOT:** build a global offline demography rollout (ADR 0117 §2 — M's harness is the roster); flip
+> `recruit_establishment` on anything other than ADR 0119 §6 + ADR 0170 §3 + ADR 0171 §5's criteria; quote
+> any number above as fidelity evidence (**three cells of 54 020**, `trait_mortality` off in every arm, and
+> the level effect is measured against the emulator's own control, not against FIT's per-cell level); or
+> quote a response number without naming the artifact pair.
+
+> ### R. RAISED WITH LINE M, 2026-08-12 (ADR 0170 + 0171) — the rung-2 RECRUIT arm. **S's own standing record of the ask.**
+>
+> Written into `lines/M/STATE.md`'s NEXT list as item 4 (the sanctioned cross-line edit; it WILL rebase-conflict
+> — keep BOTH sides, never resolve with `--theirs`). What was raised: the arm is R0 = pinned copula vs R1 = the
+> ported rule with the mortality setting held common, on M's roster harness, because offline the count channel
+> throttles θ to ≈ 0 at Hainich so the operator has no room to remove the over-dense recruits. Four conditions
+> travelled with it: run **both** mortality settings; **read θ first**; **read the LEVEL, not only the
+> response**; **size the ensemble from this arm's own 6.4–7.8 ×FIT seed spread**, not ADR 0101's 8–12 seeds.
+> S supplies the per-cell(-year) eligibility table (all 67 420 cells, both scenarios, gated at 0.076 %) plus
+> the two C facts M needs to read it (`n_elig == 0` ≠ "nothing establishes"; the gate's `temp_min20` is not
+> the boundary table's `tas_cold_month`). Explicitly **not** claimed: the offline pre-test is 1 cell of
+> 54 020, a smoke test, and no flip is requested. Also retired in the raise: S's earlier caveat that a
+> wood-density result is unreadable in rung 2 — **M's ADR 0123 removed the rendezvous lag**, so the arm is
+> scorable on traits.
+>
+> **What S owes on it: nothing until M replies.** ⚠ And per ADR 0171 §3, do **not** substitute an offline
+> re-run for it — offline the contribution's sign depends on the artifact pair, so an offline answer cannot
+> settle the question M's harness is for.
+
+> <details><summary>Superseded handoff — ADR 0170 as it left the line (its response-sign headline is
+> narrowed by ADR 0171 §3; kept for the audit trail)</summary>
+>
 > ## ✅ THE RECRUIT PORT'S KILL CONDITION IS PRE-TESTED, AND THE PER-CELL ELIGIBILITY TABLE IS BUILT (2026-08-11, ADR 0170)
 >
 > Both items 1 and 2 of the previous handoff are DONE. ADR 0170 has the full record; the four things that
@@ -141,6 +247,8 @@ rather than a request to flip now.
 > **Do NOT:** build a global offline demography rollout (ADR 0117 §2 — M's harness is the roster); flip
 > `recruit_establishment` on anything other than ADR 0119 §6 + ADR 0170 §3's criteria; or quote any number
 > above as fidelity evidence (Hainich only, and the response ones are single-cell smoke tests).
+>
+> </details>
 
 > ## ✅ ARM C IS SCOPED, AND IT TURNS OUT TO REST ON AN INVALIDATED TRAINING TARGET (2026-08-11, ADR 0118)
 >
