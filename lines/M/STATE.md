@@ -363,6 +363,9 @@ without daily physics.
 ### THE PRE-REGISTERED BAR AT HAINICH AND FAILS AT BOREAL — AND A 4 % SEEDING CONVENTION WAS MAKING THE
 ### WHOLE MECHANISM COMPUTE AS EXACTLY ZERO (ADR 0132)**
 
+**MERGED to `main`** as `fe3e9e7d` (branch sha `4f78ecb2`; `test (lts)`, `test (1)`, `format`, `docs`,
+`changelog` all green on `main` — `test (pre)` is the known `continue-on-error` prerelease job).
+
 **Start here.** The previous handoff's step 2 — *"THE `sapwood_bg` PORT (ADR 0127 §5/§6), now the head of
 the queue and the gate on item 1"* — is **done, measured on all five cells, and scored against the bar
 that was pre-registered before it existed.**
