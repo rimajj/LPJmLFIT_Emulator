@@ -128,15 +128,35 @@ switches the pool's maintenance respiration on: `individual_from_pools` carries 
 `Individual.c_sapwood_bg` and `autotrophic_respiration` adds the phen-gated `sapwood_bg/cn_sapwood` term.
 With `seed_bg = false` the 10-argument constructor leaves it 0 ⇒ byte-identical to the published arm.
 """
-function build_patch(ind, rows, soil; tmpl_pft::Bool = false, seed_bg::Bool = false)
+function build_patch(
+        ind, rows, soil; tmpl_pft::Bool = false, seed_bg::Bool = false, seed_hold::Bool = false,
+        prev_seed = nothing,
+    )
     v(k, r) = parse(Float64, ind[k][r])
     ty(r) = parse(Int, ind["type"][r])
+    # ADR 0132: this cohort's own sapwood turnover rate, so the "what the stem HOLDS" seed and the growth
+    # step that consumes it are on the SAME rate (beech's 0.04 in arm A, the PFT's own in arm P).
+    rsap(r) = tmpl_pft ? FDiff.pft_allocparams(ty(r)).turnover_sapwood : FDiff.tebs_allocparams().turnover_sapwood
     function mkpool(r)
         heart = max(v("agb", r) / v("nind", r) - v("leaf_c", r) - v("sapwood_c", r), 0.0)
-        sbg = seed_bg ?
-            FDiff.reconstruct_sapwood_bg(
-                v("sapwood_c", r), v("height", r), v("wooddens", r), soil.rootdist, soil.soildepth
-            ) : 0.0
+        # THREE seeding conventions, and the difference between them is the whole below-ground sink
+        # (ADR 0132 §5). `prev_seed` is the C-FAITHFUL one: the pool a stem carries into year y was pinned
+        # by year y−1's allocation, i.e. `(1−r)·D` evaluated at the state the stem had at the START of
+        # year y−1 — a DIFFERENT fixture, keyed by (patch, id). Falling back to `(1−r)·D(this year)` is
+        # the steady-state approximation of the same thing (it drops the stem's own growth over that
+        # year). The bare `D(this year)` — what §8.1 shipped — makes the pool and the demand shrink in
+        # lockstep and the annual top-up is EXACTLY zero.
+        dmd = FDiff.reconstruct_sapwood_bg(
+            v("sapwood_c", r), v("height", r), v("wooddens", r), soil.rootdist, soil.soildepth
+        )
+        sbg = if !seed_bg
+            0.0
+        elseif !seed_hold
+            dmd                                   # ⚠ the §8.1 convention — kept so arms Abg/Pbg reproduce ADR 0127
+        else
+            hold = (1 - rsap(r)) * dmd
+            prev_seed === nothing ? hold : get(prev_seed, (parse(Int, ind["patch"][r]), parse(Int, ind["id"][r])), hold)
+        end
         return TreePools{Float64}(
             v("leaf_c", r), v("sapwood_c", r), heart, v("root_c", r), sbg,
             v("height", r), v("crownarea", r), v("nind", r), v("sla", r), v("wooddens", r),
@@ -161,7 +181,9 @@ function build_patch(ind, rows, soil; tmpl_pft::Bool = false, seed_bg::Bool = fa
     )
 end
 
-function readcanopy_patches(path, soil; tmpl_pft::Bool = false, seed_bg::Bool = false)
+function readcanopy_patches(
+        path, soil; tmpl_pft::Bool = false, seed_bg::Bool = false, seed_hold::Bool = false, prev_seed = nothing,
+    )
     ind = readcsv(path)
     v(k, r) = parse(Float64, ind[k][r])
     prows = Dict{Int, Vector{Int}}()
@@ -171,8 +193,37 @@ function readcanopy_patches(path, soil; tmpl_pft::Bool = false, seed_bg::Bool = 
     end
     pk = sort(collect(keys(prows)))
     return Dict(
-            p => build_patch(ind, prows[p], soil; tmpl_pft = tmpl_pft, seed_bg = seed_bg) for p in pk
+            p => build_patch(
+                ind, prows[p], soil; tmpl_pft = tmpl_pft, seed_bg = seed_bg, seed_hold = seed_hold,
+                prev_seed = prev_seed,
+            ) for p in pk
         ), pk
+end
+
+"""
+ADR 0132 — the C-FAITHFUL below-ground pool each stem in `path` carries INTO the following year:
+`(1−turnover_sapwood) ×` the C_LATERAL demand at that stem's state, keyed by `(patch, id)`.
+
+`allocation_tree.c:191-209` pins `sapwood_bg` to the demand computed on the POST-turnover sapwood, so a
+stem entering year `y` holds the value year `y−1`'s allocation set — a function of the state it had at
+the START of year `y−1`, which is a DIFFERENT fixture from the one F starts year `y` from. Seeding from
+the same year's fixture drops exactly the stem's growth over that year, which is the sink itself.
+"""
+function prev_year_seed(path, soil; tmpl_pft::Bool = false)
+    isfile(path) || return nothing
+    ind = readcsv(path)
+    v(k, r) = parse(Float64, ind[k][r])
+    ty(r) = parse(Int, ind["type"][r])
+    out = Dict{Tuple{Int, Int}, Float64}()
+    for r in eachindex(ind["type"])
+        (ty(r) <= 6 && v("height", r) > 0) || continue
+        rs = tmpl_pft ? FDiff.pft_allocparams(ty(r)).turnover_sapwood : FDiff.tebs_allocparams().turnover_sapwood
+        out[(parse(Int, ind["patch"][r]), parse(Int, ind["id"][r]))] = (1 - rs) *
+            FDiff.reconstruct_sapwood_bg(
+            v("sapwood_c", r), v("height", r), v("wooddens", r), soil.rootdist, soil.soildepth
+        )
+    end
+    return out
 end
 
 """
@@ -234,11 +285,11 @@ assuming it, because the equality is what makes `cue = bm_inc/gpp` the same obje
 """
 function run_one_year!(
         state, clo, pools, tmpls, soil, lat, forc; per_pft::Bool = false, types = nothing,
-        params = PARAMS, grass_gate::Bool = true
+        params = PARAMS, grass_gate::Bool = true, bg_growth::Bool = false
     )
     core = per_pft ?
-        FDiffFastCore(pools, tmpls, soil, lat; params = params, pft_ids = types, per_pft_params = true, grass_demand_gate = grass_gate) :
-        FDiffFastCore(pools, tmpls, soil, lat; params = params, grass_demand_gate = grass_gate)
+        FDiffFastCore(pools, tmpls, soil, lat; params = params, pft_ids = types, per_pft_params = true, grass_demand_gate = grass_gate, bg_growth = bg_growth) :
+        FDiffFastCore(pools, tmpls, soil, lat; params = params, grass_demand_gate = grass_gate, bg_growth = bg_growth)
     bc_f = LPJmLFITEmulator.stand_structure_tof(core)
     for f in forc
         LPJmLFITEmulator.couple_day!(core, clo, state, bc_f, f; feedback = true)
@@ -253,6 +304,10 @@ struct Pair2
     name::String; year::Int; nind::Float64
     fa0::Float64; fa1::Float64          # F's agb_ind, start and end        (gC/individual)
     fv0::Float64; fv1::Float64          # F's vegc_ind (incl root), s/e     (gC/individual)
+    fw0::Float64; fw1::Float64          # F's vegc_FULL_ind (+ the two below-ground WOOD pools), s/e
+    # (ADR 0132). Identical to fv on every arm whose pool is 0 or static, so
+    # every published column is untouched; on a `bg_growth` arm it is the only
+    # place F's below-ground bucket carries the C_LATERAL sink.
     ca0::Float64; ca1::Float64          # the C's own agb, start and end    (gC/m²)
     cv0::Float64; cv1::Float64          # the C's own vegc, start and end   (gC/m²)
     cnpp::Float64                       # the C's own annual NPP of this stem (gC/m²/yr)
@@ -272,19 +327,31 @@ One arm at one cell: the paired per-stem rows plus the per-year ensemble `bm_inc
 own PFT parameters and phenology. The demand `d0`/`d1` is ALWAYS computed, in every arm, so a `keep`
 prediction and the arm that would realise it are read off the same run.
 """
-function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false, params = PARAMS, grass_gate::Bool = true)
+function arm(
+        k::Int; per_pft::Bool = false, seed_bg::Bool = false, params = PARAMS, grass_gate::Bool = true,
+        bg_growth::Bool = false,
+    )
     name = NAMES[k]
     forc, tair0 = forcings_by_year(name, CELLIDS[k])
     soil = readsoil(joinpath(REFDIR, "M_soilcolumn_$(name).txt"))
     rows = Pair2[]
-    bmi = fill(NaN, NYEAR); npatch = zeros(Int, NYEAR)
+    bmi = fill(NaN, NYEAR); npatch = zeros(Int, NYEAR); bgmiss = zeros(Int, NYEAR)
     gppy = fill(NaN, NYEAR); nppy = fill(NaN, NYEAR)      # F's tree GPP / NPP, ensemble mean, gC/m²/yr
     states = Dict{Int, Any}(); clos = Dict{Int, Any}()
     dem(t) = FDiff.reconstruct_sapwood_bg(t.sapwood_c, t.height, t.wooddens, soil.rootdist, soil.soildepth)
     for (yi, y) in enumerate(Y0:Y1)
         src = joinpath(INDDIR, "M_individuals_$(name)_$(y - 1).csv")
         (isfile(src) && haskey(forc, y)) || continue
-        patches, pk = readcanopy_patches(src, soil; tmpl_pft = per_pft, seed_bg = seed_bg)
+        # ADR 0132: with the pool PROGNOSTIC, seed it with what the C's own stem carries into this year —
+        # `(1−r)·D` at the state it had one fixture earlier. Missing rows (a stem that was below the
+        # writer's 5 m cut last year) fall back to the steady-state form; `bgmiss` counts them.
+        prev = bg_growth ?
+            prev_year_seed(joinpath(INDDIR, "M_individuals_$(name)_$(y - 2).csv"), soil; tmpl_pft = per_pft) :
+            nothing
+        patches, pk = readcanopy_patches(
+            src, soil; tmpl_pft = per_pft, seed_bg = seed_bg, seed_hold = bg_growth, prev_seed = prev,
+        )
+        bg_growth && prev === nothing && (bgmiss[yi] = 1)
         acc = 0.0; accg = 0.0; accn = 0.0
         for p in pk
             pools, tmpls, ids, types = patches[p]
@@ -292,7 +359,8 @@ function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false, params = PARA
             cl = get!(clos, p, SEBEnergyClosure(; t_soil0 = tair0))
             grown, b, g, n = run_one_year!(
                 st, cl, pools, tmpls, soil, LATS[k], forc[y];
-                per_pft = per_pft, types = types, params = params, grass_gate = grass_gate
+                per_pft = per_pft, types = types, params = params, grass_gate = grass_gate,
+                bg_growth = bg_growth,
             )
             acc += b; accg += g; accn += n
             for i in eachindex(ids)
@@ -305,6 +373,7 @@ function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false, params = PARA
                     rows, Pair2(
                         name, y, s0.nind,
                         FDiff.agb_ind(s0), FDiff.agb_ind(g), FDiff.vegc_ind(s0), FDiff.vegc_ind(g),
+                        FDiff.vegc_full_ind(s0), FDiff.vegc_full_ind(g),
                         ca0, ca1, cv0, cv1, cnpp, dem(s0), dem(g)
                     )
                 )
@@ -313,7 +382,7 @@ function arm(k::Int; per_pft::Bool = false, seed_bg::Bool = false, params = PARA
         bmi[yi] = acc / length(pk); npatch[yi] = length(pk)
         gppy[yi] = accg / length(pk); nppy[yi] = accn / length(pk)
     end
-    return (; rows, bmi, gppy, nppy, npatch, name)
+    return (; rows, bmi, gppy, nppy, npatch, bgmiss, name)
 end
 
 """
@@ -337,7 +406,7 @@ function panel(a)
     yy = Int[]
     bf = Float64[]; bc = Float64[]; gf = Float64[]; nf = Float64[]
     dagbF = Float64[]; dagbC = Float64[]; dagbC_pub = Float64[]; recon = Float64[]
-    dbelF = Float64[]; dbelC = Float64[]
+    dbelF = Float64[]; dbelFw = Float64[]; dbelC = Float64[]
     dD = Float64[]; pool0 = Float64[]
     for (yi, y) in enumerate(Y0:Y1)
         isnan(a.bmi[yi]) && continue
@@ -352,6 +421,7 @@ function panel(a)
         push!(dagbC_pub, sum(p.ca1 - p.fa0 * p.nind for p in py) / np)
         push!(recon, sum(p.ca0 - p.fa0 * p.nind for p in py) / np)
         push!(dbelF, sum(((p.fv1 - p.fa1) - (p.fv0 - p.fa0)) * p.nind for p in py) / np)
+        push!(dbelFw, sum(((p.fw1 - p.fa1) - (p.fw0 - p.fa0)) * p.nind for p in py) / np)
         push!(dbelC, sum((p.cv1 - p.ca1) - (p.cv0 - p.ca0) for p in py) / np)
         push!(dD, sum((p.d1 - p.d0) * p.nind for p in py) / np)
         push!(pool0, sum(p.d0 * p.nind for p in py) / np)
@@ -361,7 +431,7 @@ function panel(a)
         n = length(yy), years = yy, gppF_y = gf, bmiF_y = bf,
         gf = m(gf), nf = m(nf),
         bf = m(bf), bc = m(bc), dagbF = m(dagbF), dagbC = m(dagbC), recon = m(recon),
-        dbelF = m(dbelF), dbelC = m(dbelC), dD = m(dD), pool0 = m(pool0),
+        dbelF = m(dbelF), dbelFw = m(dbelFw), dbelC = m(dbelC), dD = m(dD), pool0 = m(pool0),
         # the PUBLISHED definition: mean of the per-year ratios, C side against F's reconstructed start
         keepF_pub = m(dagbF ./ bf), keepC_pub = m(dagbC_pub ./ bc),
         # the ABSOLUTE definition: ratio of the year means, C side against the C's own two rows
@@ -408,6 +478,19 @@ armAgs = [arm(k; params = PARAMS_TG, grass_gate = false) for k in eachindex(NAME
 armPg = [arm(k; per_pft = true, params = PARAMS_TG) for k in eachindex(NAMES)]
 @printf("arm Pg  (P + the tree demand-gate, hard step) done\n\n"); flush(stdout)
 
+# ── ADR 0132: the PROGNOSTIC below-ground wood arms (the deferred design §5.4 step) ───────────────────
+# `bg_growth=true` runs the C's below-ground pair — the C_LATERAL top-up deducted from the assimilate
+# BEFORE the leaf/root/sapwood split, and the `sapwood_bg → heartwood_bg` turnover. It also switches the
+# pool's SEED from `D` to what a stem in the C actually holds, `(1−r)·D` at the state it had one fixture
+# earlier. That seed change is not cosmetic: with the `D` seed the pool and the demand shrink in lockstep
+# and the top-up is identically zero (ADR 0132 §5), i.e. the arm would have measured its own convention.
+armAbgg = [arm(k; seed_bg = true, bg_growth = true) for k in eachindex(NAMES)]
+@printf("arm Abgg (A + the pool seeded AND PROGNOSTIC) done\n"); flush(stdout)
+armPbgg = [arm(k; per_pft = true, seed_bg = true, bg_growth = true) for k in eachindex(NAMES)]
+@printf("arm Pbgg (P + the pool seeded AND PROGNOSTIC) done\n"); flush(stdout)
+armPgbgg = [arm(k; per_pft = true, seed_bg = true, bg_growth = true, params = PARAMS_TG) for k in eachindex(NAMES)]
+@printf("arm Pgbgg (P + the tree demand-gate + the prognostic pool — the most faithful arm) done\n\n"); flush(stdout)
+
 pA = [panel(a) for a in armA]
 pAbg = [panel(a) for a in armAbg]
 pP = [panel(a) for a in armP]
@@ -415,6 +498,9 @@ pPbg = [panel(a) for a in armPbg]
 pAg = [panel(a) for a in armAg]
 pAgs = [panel(a) for a in armAgs]
 pPg = [panel(a) for a in armPg]
+pAbgg = [panel(a) for a in armAbgg]
+pPbgg = [panel(a) for a in armPbgg]
+pPgbgg = [panel(a) for a in armPgbgg]
 
 # ── PART 1 — THE BASIS GATE ──────────────────────────────────────────────────────────────────────────
 # This probe reads the same fixtures as `biome_canopy_growth_probe.jl` through its OWN readers, so before
@@ -920,6 +1006,51 @@ end
 @printf("⚠ NOT MEASURED HERE: the number of gated tree-days. The effect is reported, its incidence is not\n")
 @printf("(counting it needs an accumulator inside `daily_step_canopy`, i.e. a struct on the Enzyme path).\n")
 
+# ── PART 7 — THE PROGNOSTIC BELOW-GROUND WOOD SINK, against ADR 0127 §6's PRE-REGISTERED CRITERION ───
+# ADR 0127 §6, written before this arm existed: "with `sapwood_bg` seeded *and* prognostic, the paired
+# surplus `Δagb_F − Δagb_C` must fall by at least `t_nosink` at `boreal_siberia` and `temperate_hainich`
+# (i.e. ≥19.9 and ≥30.9 gC/m²/yr) without any committed baseline moving while the feature is off, and the
+# tree CUE must stay inside [0.42, 0.56]." Those two cells only — the mediterranean demand is contaminated
+# by that cell's own 2.7× growth error and the two hot cells' arm-A assimilate is negative.
+#
+# ⚠ READ THE SEED ROW FIRST. `sink` is what the port actually diverts from above-ground growth, and it is
+# a property of the SEED as much as of the mechanism: this harness re-initialises F from the C's own
+# roster every year, so a pool seeded from the SAME year's state has already thrown away the growth the
+# sink is paid on, and the top-up computes as exactly zero (ADR 0132 §5). `bg_miss` is the number of years
+# whose one-fixture-earlier seed file was absent (⇒ that year fell back to the steady-state seed).
+@printf("\n--- PART 7: PROGNOSTIC below-ground wood vs ADR 0127 §6's pre-registered criterion (ADR 0132) ---\n")
+@printf(
+    "%-22s %7s %9s %9s %9s %9s %8s %8s %7s\n",
+    "cell", "arm", "surplus", "t_nosink", "belF_wood", "drop", "target", "verdict", "bg_miss"
+)
+const PREREG = Dict("boreal_siberia" => 19.9, "temperate_hainich" => 30.9)
+for (tag, refp, newp, newa) in (
+        ("A->Abgg", pA, pAbgg, armAbgg),
+        ("P->Pbgg", pP, pPbgg, armPbgg),
+        ("Pg->Pgbgg", pPg, pPgbgg, armPgbgg),
+    )
+    @printf("%s\n", tag)
+    for k in eachindex(NAMES)
+        r0 = refp[k]; r1 = newp[k]
+        s0 = r0.dagbF - r0.dagbC
+        s1 = r1.dagbF - r1.dagbC
+        tgt = get(PREREG, NAMES[k], NaN)
+        drop = s0 - s1
+        verdict = isnan(tgt) ? "n/a" : (drop >= tgt ? "PASS" : "FAIL")
+        @printf(
+            "%-22s %7s %9.1f %9.1f %9.2f %9.2f %8.1f %8s %7d\n", NAMES[k], "",
+            s1, r1.dbelC - r1.dbelF, r1.dbelFw - r1.dbelF, drop, tgt, verdict, sum(newa[k].bgmiss)
+        )
+    end
+end
+@printf("\nHOW TO READ IT. `surplus` = F's paired above-ground growth minus the C's own, gC/m²/yr, on the\n")
+@printf("NEW arm. `t_nosink` is the same arm's remaining below-ground channel (the C's below-ground bucket\n")
+@printf("minus F's). `belF_wood` is what the two below-ground WOOD pools actually absorbed this year —\n")
+@printf("i.e. the mechanism's own size, independent of whether it closed the target. `drop` is how much\n")
+@printf("the surplus fell against the reference arm, and `target` is ADR 0127 §6's pre-registered bar.\n")
+@printf("A `drop` far below `target` with a NON-ZERO `belF_wood` means the sink is real but small; a\n")
+@printf("`belF_wood` of ~0 means the SEED, not the mechanism, is what is being measured.\n")
+
 # ── the COMMITTED table (the result, not the log) ────────────────────────────────────────────────────
 # ADR 0127's numbers live here rather than only in a `logs/` file, so a later session can re-score an arm
 # against them without re-deriving the basis. Regenerate by re-running this probe; the basis gate above
@@ -943,6 +1074,11 @@ open(OUTCSV, "w") do io
     println(io, "#       Ag  = A + the C's TREE photosynthesis demand-gate at the hard step beta=1e8 (ADR 0131)")
     println(io, "#       Ags = A + the same gate at the soft, AD-usable beta=2e4 (the sharpness control)")
     println(io, "#       Pg  = P + the gate at the hard step")
+    println(io, "#       Abgg/Pbgg/Pgbgg = A/P/Pg + the below-ground pool seeded AND PROGNOSTIC (ADR 0132):")
+    println(io, "#         the C_LATERAL top-up deducted from the assimilate before the leaf/root/sapwood")
+    println(io, "#         split + the sapwood_bg->heartwood_bg turnover. These arms ALSO change the pool's")
+    println(io, "#         SEED from D to the (1-turnover_sapwood)*D a stem in the C actually holds, taken")
+    println(io, "#         one fixture earlier - with the D seed the top-up is identically zero.")
     println(io, "# keepF_pub/keepC_pub reproduce ADR 0125 PART 7's published mean-of-per-year-ratios form;")
     println(io, "# keepF_abs/keepC_abs are the ratio-of-means. They are DIFFERENT statistics - see ADR 0127.")
     println(io, "# The last six columns (ADR 0129) split the assimilate error `bmi_F/bmi_C` EXACTLY into a")
@@ -962,6 +1098,7 @@ open(OUTCSV, "w") do io
     for (tag, ps, as) in (
             ("A", pA, armA), ("Abg", pAbg, armAbg), ("P", pP, armP), ("Pbg", pPbg, armPbg),
             ("Ag", pAg, armAg), ("Ags", pAgs, armAgs), ("Pg", pPg, armPg),
+            ("Abgg", pAbgg, armAbgg), ("Pbgg", pPbgg, armPbgg), ("Pgbgg", pPgbgg, armPgbgg),
         )
         for k in eachindex(NAMES)
             c = ps[k]

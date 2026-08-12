@@ -262,3 +262,29 @@ demand increment reproduces the C's own measured sink at Hainich to **1.20×** b
 ⇒ **the port is worth doing and it is NOT the dominant channel.** At Hainich 77 % of the surplus is the
 assimilate error. ADR 0127 §6 carries the pre-registered pass criterion for the growth step; score it at
 `boreal_siberia` and `temperate_hainich` only.
+
+## 10. ✅ IMPLEMENTED 2026-08-13 (ADR 0132) — the growth step is landed, and §8.1's SEED is amended
+
+**§5.4 + §5.5 + §9 are done.** `TreePools` carries `heartwood_bg_c` beside `sapwood_bg_c` (13→14 fields,
+backward-compatible 13-arg constructor ⇒ every existing site byte-identical), `vegc_full_ind` takes both,
+and `grow_individual` runs the below-ground turnover + the C_LATERAL top-up under `bg_growth = true`
+(also on `FDiffFastCore` and `rollout_canopy_years`). Opt-in, default byte-identical; full suite
+275 597 pass / 0 fail with no baseline moved. Gate: `test/testitems/sapwood_bg_growth_tests.jl`.
+
+**⚠ §8.1's SEED IS WRONG BY `turnover_sapwood` AND THAT 4 % WAS THE WHOLE MECHANISM.** The C pins
+`sapwood_bg` to the demand at the POST-turnover sapwood and then takes `r` off it again the next year, so
+a stem entering a year holds **`(1−r)·D`**, not `D`. Seeded at the bare `D`, the post-turnover pool and
+the recomputed demand are *equal* and the top-up `allocation_tree.c:191-193` is **identically zero** — the
+top-up fired on **0 of 272** committed Hainich stems with the `D` seed and on **205 of 272** with
+`(1−r)·D`. Use **`FDiff.sapwood_bg_seed`**. The closed form behind it: for a pipe-consistent stem
+`D = c·leaf_c·sla·wooddens/k_latosa` with `c` a pure soil-geometry constant, so the annual sink is
+`∝ (leaf_y − (1−r)·leaf_{y−1})` — **it is paid on the growth of the LEAF pool**, which is why a harness
+that re-initialises from truth each year sees nothing unless its seed comes from one year earlier.
+
+**§6's ordering advice is discharged.** `sapwood_bg` has landed first; ADR 0131 §8's flip criterion for
+`tree_demand_gate` now has its blocking condition (a) satisfied.
+
+**Result against §9.2 / ADR 0127 §6's pre-registered bar:** the sink absorbs **34.9 / 16.5** gC/m²/yr at
+`temperate_hainich` / `boreal_siberia` and drops the paired surplus by **51.3 / 19.2** against bars of
+**30.9 / 19.9** ⇒ **PASS at Hainich, FAIL at boreal** — the outcome §9.2's own `dD/bel_C = 0.11` had
+predicted for that cell. Full record: `docs/decisions/0132-*.md`.

@@ -1375,3 +1375,43 @@ act on the same efficiency channel and partially cancel.
 reports the effect and prints the omission rather than leaving it implicit. And I did not tune the gate to
 rescue `mediterranean_iberia`, the one cell it makes worse: that cell's gated days being carbon-negative is
 a *different* defect, and it is the cell ADR 0127 §6 already excludes from arm scoring.
+
+## Session 17 — 2026-08-13 — the below-ground wood sink is prognostic, and its seed was hiding it (ADR 0132)
+
+Took the head of the queue: the `sapwood_bg` growth port that ADR 0127 §5/§6 priced and that gates ADR
+0131's `tree_demand_gate` default flip.
+
+**Built.** `TreePools` 13→14 fields (`heartwood_bg_c`), `vegc_full_ind` takes both below-ground wood pools,
+`grow_individual`/`FDiffFastCore`/`rollout_canopy_years` gain `bg_growth`. The port runs the C's
+below-ground turnover and the C_LATERAL top-up deducted from the assimilate before the leaf/root/sapwood
+split, on each stem's own root profile. Carbon debt not ported. Opt-in, default byte-identical; full suite
+275 597 pass / 0 fail (`logs/M-bgsuite.1769029.out`).
+
+**The hour that mattered.** The first roster-level check said the top-up fired on **0 of 272** stems and
+the sink was exactly 0.0 gC/m²/yr. An exact zero from a physical mechanism is an identity in the setup, not
+a small effect — so instead of instrumenting the code I wrote the demand out algebraically. It is linear in
+sapwood at fixed height, and the pipe model fixes `sapwood/height` in terms of leaf carbon, giving
+`D = c·leaf_c·sla·wooddens/k_latosa` with `c` a pure soil-geometry constant (verified to 1e-12). From that
+the C's own update reads `tinc ∝ leaf_y − (1−r)·leaf_{y−1}`: **the sink is paid on the growth of the leaf
+pool**. The design note's seed used the bare demand `D`, but the C holds `(1−r)·D` — so pool and demand
+shrank in lockstep and the top-up was identically zero by construction. Two lines of algebra, no probe.
+Fixed with `FDiff.sapwood_bg_seed`, and the probe's growth arms go further and seed from the stem's state
+one fixture earlier, which is the only form that carries the growth the sink is paid on.
+
+**Measured (PART 7, `logs/M-bggrow.1769028.out`).** Paired surplus at Hainich 154.0 → 102.6, drop **51.3**
+against a pre-registered bar of 30.9 ⇒ PASS. Boreal 75.9 → 56.7, drop **19.2** against 19.9 ⇒ FAIL, at
+97 % of the bar. The boreal failure is not a surprise: ADR 0127 §5 had already measured `dD/bel_C` = 0.11
+there and §8 said the port is not that cell's answer — so §6's two-cell criterion contradicted its own §5.
+Retired as a gate at boreal, kept at Hainich. Committed decomposition table gained 15 rows with all 35
+pre-existing rows byte-identical.
+
+**What it does not fix.** Hainich still over-grows by 57 %; 77 % of that surplus is the assimilate error,
+untouched (GPP byte-identical between an arm and its growth arm). The F queue stays on the assimilate.
+
+**Raised to line S:** four `slow.jl` rebuild sites would silently drop the new pool — same shape as the
+ADR 0110 trait-drop. Nothing broken today (default off), and it is now the pre-registered gate on M's own
+`bg_growth` default flip rather than an open-ended note.
+
+**Captured:** `residual-diagnosis` §8 (check the initial condition, not only the reference dataset; derive
+the closed form before running the arm; an exact zero is a red flag; a pre-registered bar can contradict
+its own document), CLAUDE.md §3 (the demand ∝ leaf carbon, and the 4 % seed).
