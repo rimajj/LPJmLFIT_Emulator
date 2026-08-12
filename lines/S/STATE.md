@@ -158,6 +158,110 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
+> ## 🔴 THE OWNER OVERRODE THE PLAN: FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, AND DO RUNG 2 IN LINE S (2026-08-12, ADR 0175)
+>
+> Owner, verbatim: *"why the fuck don't you finally fix the warming response?? why do you switch important
+> mechanisms off?? This has nothing to do with other lines... using the original code for fast physics for the
+> emulator has to work in line S!!!!!! if that does not work we don't have to do the other lines!!"*
+>
+> **Three standing consequences. Do not re-litigate them and do not hand any of them to another line.**
+> 1. **Rung 2 is line S's work now**, notwithstanding `EXECUTION_PLAN.md` §2's "line M" column. The plan file
+>    is integrator-owned; the owner steer is the trigger for the edit, and it has NOT been landed yet — see
+>    item E below.
+> 2. **Attribution is no longer an acceptable deliverable for the response.** ADR 0174 closed rung 1 by
+>    locating the failure. That was the assignment then; it is not now.
+> 3. **"It is opt-in" has stopped being a sufficient answer** for a mechanism believed to be better. Guardrail
+>    4 still governs how a default flips (measure first), but a flag whose criterion cannot be met in the
+>    setting it is being tested in is not being measured — it is being parked. See item C.
+>
+> ### A. WHAT ADR 0175 FOUND — a real defect, in the shipped coupled emulator, with a mechanism (LANDED, `11804334`)
+>
+> `reconcile_demography!` ends every year with `s.n_prev = target` and begins the next by feeding that scalar
+> into **feature 11 of 15** and into the **denominator of `ρ = target/n_prev`** — while the other ten feature
+> columns are read off the live roster. The count DRF was **trained** with `n_prev` = FIT's own previous-year
+> stem count (ADR 0112). So the runtime feature is the model's own previous output, the training column was a
+> measurement of the stand, and **nothing re-synchronises them** — even though the roster's own count `dtree`
+> is formed four lines below, in the same units up to the exact constant `patch_area`. That is the ADR-0023
+> train/inference-shift class, and it explains ADR 0113–0116 without new computation: the response lives in a
+> ratio whose denominator drifts while the level is set by the roster (⇒ response destroyed, level intact);
+> a drifting *offset* preserves `sd` 0.904 and `corr` 0.940 at lead 80 (⇒ not a conditional-mean collapse);
+> the base error is one-sided (⇒ declines under-followed 86.7 % vs increases 96.2 %); and the memoryless null
+> tied the model because **the null was handed the truth's `n_prev` and the model its own — two bases, not two
+> mappings.**
+>
+> ⚠ **This is NOT the ADR-0103 level anchor that ADR 0174 §4 forbids, and the distinction is the whole
+> argument:** the anchor moves the **STAND** toward the model's absolute prediction (measured harmful, ADR
+> 0105); this moves the model's **INPUT** to the stand's measured count. Opposite directions. Do not let a
+> future session collapse them.
+>
+> ⚠ **NO FIDELITY NUMBER IS MEASURED WITH THE FLAG ON.** `roster_n_prev` defaults `false`; the suite is
+> **274 934 pass / 0 fail** over 133 items (job 1766421) which proves byte-identity and nothing else. The
+> falsifier is pre-registered in ADR 0175 §3: **if the free-running response ratio does not move materially
+> toward the one-step +0.707, the defect is real but is not the mechanism of the sign failure, and the
+> attribution table is withdrawn.** Honour that.
+>
+> ### B. THE ENABLER IS BUILT AND GATED — rung 2 can run at a cell today (LANDED, `11804334` + `02e9cff5`)
+>
+> * **`patches/lpjmlfit_rung2_hook_v6.patch`** = v5 + `rootzone_w`/`rootzone_whcs` on the `P` record. It exists
+>   because `soilmoist` was the ONE feature the roster could not supply, and proxying it is the ADR-0035 trap.
+>   Binary **`bin/lpjml_rung2_v6`** (`bin/lpjml` is the same build; `bin/lpjml.pre_v6.bak` is the previous).
+> * **Rebuild-equality gate PASSED**: 110 decoded quantities identical, `ind` byte-for-byte, cell 42490,
+>   `--ntasks 1`. New reference dump: `/p/tmp/jamirp/M_rung2/S_rung2rec_v6_dump` (run dir
+>   `.../daily_2000_2019_historic_S_rung2rec_v6_c42490_seed1`). **v5 dumps are now the wrong schema — re-record
+>   before scoring any arm.**
+> * **The column IS the training quantity, proven against an independent reader**:
+>   `scripts/diagnose_rung2_rootzone_column.py` → **max rel diff 5.29e-08 over 20 years** (= the float32
+>   precision of the NetCDF output), capacity 176.6–177.3 mm, `w` 0.789–1.000, both independently matching
+>   ADR 0035's recorded Hainich values.
+> * **`scripts/rung2_s_demography_harness.jl`** — arms `S0` (uniform thinning = the shipped default), `S1`
+>   (trait-hazard ordering), `NP` (persistence, ρ = 1). It PARSES and is Runic-clean; **it has never been RUN.**
+>
+> ### C. WHY THE MECHANISMS ARE OFF — and why that answer has expired
+>
+> | flag | state | why it is off | what actually blocks it |
+> |---|---|---|---|
+> | `wscal_leafon` | **ON** (default flipped) | — | — |
+> | `trait_mortality` | off | ADR 0049's flip criterion is an OFFLINE improvement | ⚠ **offline the operator has neither of FIT's stress integrals (ADR 0174 §4 item 3), so the criterion cannot be met in the setting it is tested in.** Meanwhile arm C measured it inside the REAL physics at terminal stems **1.050×** vs the shipped uniform thinning's 1.209×, wood-density selection differential **0.952×** vs 0.241×, per-PFT gradient Spearman **1.000** vs down to −0.500 (ADR 0124). **That is a mechanism that works where it is deployed, held off by a test it cannot pass.** Arm `S1` vs `S0` is the same comparison with the LEARNED count target — run it, then flip on the evidence. |
+> | `recruit_establishment` | off | a 5-cell LEVEL effect: +2–8 % standing wood density as a permanent offset, 2–10× the whole warming signal (ADR 0172) | this one is off for a GOOD measured reason. ADR 0172 §5's replacement condition (≥ 12 cells, weighted mean in [0.9, 1.1] ×FIT, **non-significant Cochran's Q**) stands. Do not flip it to satisfy the steer. |
+> | `per_pft_params` (M's) | off | M's own criterion FAILED — fixes tropics, worsens boreal + mediterranean (ADR 0126) | M's call, not S's. But `trait_mortality` needs `fc.pft_ids` threaded through `slow.jl` — **that S-side wiring is still owed** (ADR 0126 inbound item 2). |
+>
+> ### D. THE NEXT ACTIONS, in order. Item 1 is the whole point.
+>
+> 1. **RUN ARM S AT HAINICH, HISTORIC, AND RUN ITS TWO NULLS FIRST.** `MODE=none` (transport) and `NP`
+>    (persistence) before `S0`/`S1`. ADR 0112's null matched the production model on every response statistic
+>    offline; **if `NP` also ties `S0`/`S1` here, this harness has no more power than the offline basis did and
+>    no S number from it means anything.** Check that before reading anything else. A runner in the shape of
+>    `scripts/run_rung2_armc.sh` is still to be written (`scripts/run_rung2_s_arm.sh`) — 1 task, ~14 s a run.
+> 2. **THEN THE RESPONSE, which is the actual deliverable.** Arm S over the scenario PAIR — historic
+>    2000–2019 (`restart_1999.lpj`) and ssp370 2020–2100 (`restart_2019.lpj`) — with a `MODE=record` baseline
+>    for EACH cell and EACH scenario, because ADR 0041 forbids scoring a single-cell re-run against the global
+>    truth. The response is then `[arm_ssp − arm_hist]` against `[record_ssp − record_hist]`: the same physics
+>    in both arms, only the demography swapped. **This is the measurement the owner asked for and it is the
+>    first time it becomes available.** Scale to ≥ 12 cells (ADR 0172 §5's bar) and report Cochran's Q, not
+>    just a pooled mean — pooling heterogeneous cells is a cancellation machine (ADR 0174 §3d).
+> 3. **Wire `fc.pft_phys` through `slow.jl`'s three roster-rebuild call sites** (ADR 0126 inbound item 2).
+>    Owed, small, and it unblocks the coupled `trait_mortality` arm. Rebuild the bundles whenever the roster
+>    changes length or the assertion fires.
+> 4. **The determinism dividend's band-metric half** — still the one genuinely unmeasured rung-1 deliverable
+>    (ADR 0174 §5 item 5): free, worth +2.9 to +14.4 pp of cells inside the 10 % band on ADR 0093's own claim,
+>    and it needs a BAND metric on per-cell aggregates, not the per-cell KS the arm D reproducer emitted.
+>
+> ### E. HOUSEKEEPING THIS SESSION DID NOT FINISH — do these early
+>
+> * **Nothing is pushed or merged.** Two commits on `line/S` (`11804334`, `02e9cff5`) are local only. The diff
+>   touches `src/**` and `**/*.jl`, so `CI` + `format` WILL run (ADR 0090) — push, wait for those two, then
+>   merge with the `flock` ritual and collate `changelog.d/` inside the lock.
+> * **`EXECUTION_PLAN.md` needs the rung-2 ownership change recorded** (integrator-owned; the owner steer is
+>   the trigger). Do it while holding the merge lock, as the previous session did for rung 1's exit.
+> * **ADR 0175 is `accepted` and its claims are code-level and gate-level only.** When arm S produces a
+>   number, that is a NEW ADR (0176), not an edit to 0175.
+> * ⚠ **The one commit hygiene slip to know about:** `11804334` bundles the `slow.jl` change, the v6 patch,
+>   the gate script, the harness and the changelog fragment into ONE commit (a `git add -A` while the shell
+>   tooling was flaky). One logical change per commit is the rule; this one is four.
+
+## Superseded NEXT — rung 1 as ADR 0174 left it (ADR 0175 reopened the response as a DEFECT, not a property); audit trail
+
+
 > ## ✅ RUNG 1 IS CLOSED — one PASS, one FAILURE, and the compensating-errors verdict is written (2026-08-12, ADR 0172 + 0173 + 0174)
 >
 > **Merged to `main` as `48504f33`; `main` is GREEN** — `test (lts)`, `test (1)`, `test (macOS, lts)`, `format` and the changelog gate (`uncollated fragments`) all pass. `test (pre)` is the standing continue-on-error prerelease red and was **already failing on main before this merge** (verified on the three preceding main shas) — do not chase it. Local CI-faithful suite: **274 554 pass / 0 fail** over 129 items, job 1762502. The three `EXECUTION_PLAN.md` corrections item B used to ask for were **landed on `main` by this session** while it held the merge lock (CLAUDE.md §9: the lock-holder is the integrator for that moment) — rung 1's exit is recorded there, arm D is struck, and rung 0 item 2's λ-quoted-as-slope pair is corrected. ⚠ The same stale λ text is still copied into `lines/{M,E,O}/STATE.md`; those are line-owned, so it is theirs to fix.
