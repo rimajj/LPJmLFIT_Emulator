@@ -845,3 +845,29 @@ committed yet and the fragments were still in `HEAD`.
 * **Commit — or `git stash push -- <path>` — before planting anything you intend to throw away.**
 * **Verify AFTER reverting, not only after changing.** This was caught solely because the next check printed
   an empty diff where 1832 insertions were expected. A revert is a change and deserves the same check.
+
+## ⚠ VALIDATE THE CHANGELOG FRAGMENT **BEFORE** YOU TAKE THE LOCK (line S, 2026-08-12)
+
+`scripts/collate_changelog.py` enforces a **category whitelist** — `Added · Changed · Fixed · Deprecated ·
+Removed · Security · Documentation · Validation · Verified · Measured · Verdict · Gates · Notes` (a
+parenthetical qualifier after the name is fine, e.g. `### Measured (ADR 0171 — …)`). An invented heading is a
+hard error by design.
+
+That error lands in the **worst possible place**: the collation runs *inside* the merge `flock`, in a
+`bash -eu -c`, **after** `git merge` has already created the merge commit. So an unknown category leaves the
+integration worktree holding an **unpushed local merge** and `origin/main` untouched — the merge looks like it
+failed when in fact it half-happened. Observed for real with `### Scientific findings (ADR 0171)`.
+
+**Prevent it** (one command, before you push, let alone merge):
+```bash
+grep -h '^### ' changelog.d/*.md | sort -u        # every heading must be in the whitelist above
+```
+**Recover from it** (safe, because nothing was pushed):
+```bash
+INT=/p/projects/open/Jamir/esm_land_emulator
+git -C "$INT" rev-list --left-right --count origin/main...HEAD   # confirm: 0 behind, N ahead = local-only
+git -C "$INT" reset --hard origin/main                            # drop the half-done merge
+# fix the fragment on YOUR branch, commit, push, then re-run the flock'd ritual
+```
+A fragment-only follow-up commit triggers **no branch gate at all** (ADR 0090: the `changelog` gate is
+`main`-only), so the fix costs one push and no CI wait.
