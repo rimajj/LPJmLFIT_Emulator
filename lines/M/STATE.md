@@ -443,7 +443,8 @@ five cells** on this probe, with the beech-only byte-identity item still green.
    ssp370 forcing — "does F's growth error depend on climate?" is the acceptance criterion's binding clause
    (ADR 0106) and rung 3 has never measured it.
 
-**CI/merge: ✅ MERGED to `main` (ca717bf7) — but read this, it cost a red `main`.** Branch CI was green on
+**CI/merge: ✅ MERGED to `main` (the feature at `ca717bf7`, the follow-up fix at `847acdd2`), `docs`
+GREEN again on `847acdd2` — but read this, it cost a red `main` and three CI cycles.** Branch CI was green on
 all five expected checks (`test (lts)`, `test (1)`, `test (macOS, lts)`, `format`; `test (pre)` is the
 documented prerelease `ScopedValue` churn, `continue-on-error`) and the merge collated the changelog
 fragment. **`main` then failed `docs`** — the one gate that never runs on a line branch — because
@@ -454,6 +455,14 @@ unrendered. Fixed in `fd0cef0d` (plain backticks, the convention every pre-exist
 `fast.jl` already follows), verified by running the real build to `RenderDocument` plus the mermaid HTML
 check. **STANDING RULE, now in CLAUDE.md §2 and the `repo-commit` skill: if your diff touches `src/**`,
 build the docs locally before merging — a `src`-only diff has NO branch-side coverage for that gate.**
+Two further mechanical lessons from the same merge, both captured in `repo-commit`: (i) `main` moved
+TWICE during the ~15-minute branch-CI waits, and each rebase re-conflicted
+`.claude/skills/repo-commit/SKILL.md` because line S was appending to it the same day — the resolution is
+always **keep BOTH sections**, and it is now provable rather than eyeballed
+(`diff <main's version> <yours> | grep -c '^<'` must be 0; it was, twice); (ii) the merge ritual's
+`pull --ff-only origin main` does **not** refresh `origin/line/<X>` in `$INT`, so `fetch origin main
+line/<X>` first and guard the merge on the exact sha CI verified — the flock'd block in this session's
+log does both.
 
 ### 0-PREV1. ✅ DONE 2026-08-12 (session 11) — **RUNG 3 IS MEASURED.** F's GROWTH ERROR IS **PER-YEAR
 ### AND BIMODAL BY BIOME** (1.6–4.0× TOO FAST COLD, **NEGATIVE CARBON BALANCE** HOT), AND ONE **PER-PFT
