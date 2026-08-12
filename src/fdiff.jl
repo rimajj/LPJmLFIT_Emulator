@@ -39,6 +39,8 @@ export FDiffParams, FDiffState, Structure, DailyForcing,
     rollout_canopy_years_gpp,
     betaroot_from_d95max, jackson_rootdist, per_tree_rootdists, individuals_from_pools, # ADR 0110
     grass_allocparams, grass_treepools, grow_grass_individual,
+    pft_respparams, pft_tempstressparams, pft_allocparams, pft_allometry, # ADR 0126
+    pft_canopy_traits, PFTPhys, pft_phys,
     GrassEstabParams, grass_estabparams,
     agb_ind, vegc_ind,
     FluxHooks
@@ -1733,11 +1735,17 @@ daily fluxes `(gpp, npp, transp, evap, interc, eeq, runoff, rootmoist, fapar, fp
 the per-individual daily NPP vector, whose annual sum is each individual's `bm_inc` for
 [`grow_individual`](@ref)). Water closes exactly:
 `precip = transp + evap + interc + runoff + Δ(Σw + snow)`.
+
+`pftphys` (ADR 0126) is an optional per-individual `Vector{`[`PFTPhys`](@ref)`}` supplying each
+individual's OWN maintenance-respiration coefficient (`resp.respcoeff`) and minimum canopy conductance
+(`gmin`) — both per-PFT in the C and both single-valued in `p`. `nothing` (the default) uses `p.resp`
+and `p.water.gmin` for every individual ⇒ BYTE-IDENTICAL to the pre-ADR-0126 step, which is also what
+keeps the Enzyme trainer and every committed baseline unchanged.
 """
 function daily_step_canopy(
         p::FDiffParams, inds::AbstractVector{<:Individual}, soil::SoilColumn, st::FDiffStateML,
         f::DailyForcing; phen = 1.0, n_top1m::Int = 3, eeq_ext = nothing, hooks::FluxHooks = _NO_HOOKS,
-        rootdists = nothing,
+        rootdists = nothing, pftphys = nothing,
     )
     T = promote_type(_wt(p), _wt(st), _wt(soil), _wt(f), isempty(inds) ? Float64 : _wt(first(inds)))
     # `phen` is EITHER a single patch-wide scalar (every committed baseline + the Enzyme trainer pass one
@@ -1846,8 +1854,11 @@ function daily_step_canopy(
         apar_gp = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_i
         tsi = temp_stress(ind.tstress, f.temp, dl)
         vms = vm_scales === nothing ? one(T) : vm_scales[ii]
+        # ADR 0126: `gmin` is PER-PFT in the C (`gp_sum.c` reads `pft->par->gmin`; 0.3–1.6 across the
+        # seven trees). `pftphys === nothing` ⇒ the single `w.gmin` for every individual (byte-identical).
+        gmin_i = pftphys === nothing ? w.gmin : convert(T, pftphys[ii].gmin)
         (_, _, _, adtmm_gp) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_gp, dl; comp_vm = true, vm_scale = vms)
-        gp_i = 1.6 * adtmm_gp / condfac + w.gmin * fpc_i
+        gp_i = 1.6 * adtmm_gp / condfac + gmin_i * fpc_i
         gp_stand_acc += gp_i
         fpc_tot += fpc_i
         if w.wscal_leafon
@@ -1856,7 +1867,7 @@ function daily_step_canopy(
             fpc_lo = convert(T, ind.fpc)
             apar_lo = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_lo
             (_, _, _, adtmm_lo) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_lo, dl; comp_vm = true, vm_scale = vms)
-            gp_lo_i = 1.6 * adtmm_lo / condfac + w.gmin * fpc_lo
+            gp_lo_i = 1.6 * adtmm_lo / condfac + gmin_i * fpc_lo
             gp_leafon_acc += gp_lo_i
             gp_stand_c_acc += gp_lo_i * phi
             fpc_plain += fpc_lo
@@ -1902,7 +1913,8 @@ function daily_step_canopy(
         # sigmoid of the pre-floor demand `gpd_raw`. Default off (`grass_demand_gate=false` ⇒ gate ≡ 1,
         # byte-identical); the tree path is always ungated. Replaces the REFUTED §25 hard-floor lever
         # (which drove deep-shade grass NPP negative via the degenerate low-`fac` solve) — see `WaterParams`.
-        gpd_raw = hour2sec(dl) * (gc * fpc_i - w.gmin * fpar_i)
+        gmin_i = pftphys === nothing ? w.gmin : convert(T, pftphys[ii].gmin)      # ADR 0126, per-PFT
+        gpd_raw = hour2sec(dl) * (gc * fpc_i - gmin_i * fpar_i)
         gate = (ind.is_grass && w.grass_demand_gate) ?
             stable_sigmoid(w.βgpd_gate * (gpd_raw - w.gpd_gate)) : one(T)
         gpd = softplus(gpd_raw, w.βflux)
@@ -1951,7 +1963,10 @@ function daily_step_canopy(
         nind_i = convert(T, ind.nind)
         c_sap = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood) * nind_i
         c_sapbg = ind.is_grass ? zero(T) : convert(T, ind.c_sapwood_bg) * nind_i   # bg root-sapwood (per-m²), trees only
-        (npp_i, _) = autotrophic_respiration(p.resp, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = phi, c_sapwood_bg = c_sapbg)
+        # ADR 0126: `respcoeff` is PER-PFT (0.2 tropical / 1.2 temperate+boreal — a 6× spread that put F's
+        # annual carbon balance NEGATIVE at both hot biome cells). `nothing` ⇒ the single `p.resp`.
+        resp_i = pftphys === nothing ? p.resp : pftphys[ii].resp
+        (npp_i, _) = autotrophic_respiration(resp_i, f.temp, gpp_i, rd, c_sap, convert(T, ind.c_root) * nind_i; phen = phi, c_sapwood_bg = c_sapbg)
         npp_tot += npp_i
         npp_inds[ii] = npp_i
     end
@@ -2466,6 +2481,211 @@ by [`grow_grass_individual`](@ref) (grass has no sapwood/heartwood/allometry sol
 grass_allocparams(::Type{T} = Float64) where {T <: Real} =
     AllocParams{T}(; lmro_ratio = 0.8, lmro_offset = 0.5, turnover_leaf = 1.0, turnover_root = 0.5, reprod_cost = 0.1)
 
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# PER-PFT parameter sets (ADR 0126) — the physiology F applies PER INDIVIDUAL
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Everything above ships ONE parameter set per core, and `FDiffFastCore` handed every tree beech's
+# (`fast.jl`'s `pft_ids` default `t.is_grass ? 8 : 3`). ADR 0125 measured what that costs: `respcoeff`
+# is 0.2 for the tropical broadleaved evergreen tree (id 0) and 1.2 for all six temperate/boreal trees,
+# so at the two hot biome cells — 100 % id 0 by sapwood — F over-respired every stem 6× and its annual
+# carbon balance went NEGATIVE (−223 gC/m²/yr against a truth of +1073). Four more differ materially:
+# the Beer–Lambert `lightextcoeff` (0.45 needleleaved / 0.59 broadleaved), the photosynthesis optimum
+# `temp_photos` (15/25 °C for the three boreal trees, 20/30 for the other four), the CO₂-assimilation
+# limits `temp_co2`, and leaf/root residence (1, 2 or 4 yr). The mortality half of the same table is
+# `TraitMortality.pft_mort_params` (ADR 0047).
+#
+# THE NUMBERS LIVE ONCE. The literals in `_pft_fdiff_row` are gated value-by-value against the
+# committed `test/testitems/references/M_pft_fdiff_params.csv`, generated from the live
+# `par/pft_lpjmlfit.js` by `scripts/build_pft_fdiff_params_reference.py` with `cpp -P` — the same
+# preprocessor LPJmL pipes its own parameter files through (CLAUDE.md §3: never read a `.js` value by
+# eye). A drifting C parameter reds the gate instead of silently disagreeing (ADR 0031).
+#
+# `id == 3` (beech) RETURNS TODAY'S SHIPPED DEFAULTS EXACTLY — `pft_respparams(3) == tebs_params().resp`,
+# `pft_tempstressparams(3) == tebs_params().tstress`, `pft_allocparams(3) == tebs_allocparams()`,
+# `pft_allometry(3) == TreeAllometry()` — and `pft_allocparams(8) == grass_allocparams()`. That is what
+# makes a beech-only (or Hainich) run byte-identical whether or not the per-PFT sets are wired in.
+
+# One row of the per-PFT table, in the fixed order the accessors below unpack. `turn_sap_yr` is `NaN`
+# for grass (no woody pool). Grass tree-allometry fields are the leaftype default and unused by
+# `grow_grass_individual`; grass `k_beer` is NOT unused — `_patch_fpars_soa`'s forest-floor branch and
+# `_treepools_fpc` both read it.
+function _pft_fdiff_row(id::Integer)
+    #    respcoeff, gmin, emax, intc, alphaa, albedo_leaf, albedo_stem, albedo_litter, snowcanopyfrac,
+    #    k_beer, tphot_lo, tphot_hi, tco2_lo, tco2_hi, turn_leaf_yr, turn_sap_yr, turn_root_yr,
+    #    lmro_ratio, lmro_offset, reprod_cost, needleleaved, c4
+    return if id == 0            # tropical broadleaved evergreen tree
+        (0.2, 1.6, 10.0, 0.02, 0.6, 0.13, 0.1, 0.1, 0.4, 0.59, 20.0, 30.0, 2.0, 55.0, 2.0, 30.0, 2.0, 1.0, 0.5, 0.1, false, false)
+    elseif id == 1               # temperate needleleaved evergreen tree
+        (1.2, 1.0, 12.9, 0.02, 0.575, 0.137, 0.04, 0.1, 0.1, 0.45, 20.0, 30.0, -4.0, 42.0, 4.0, 25.0, 4.0, 1.0, 0.5, 0.1, true, false)
+    elseif id == 2               # temperate broadleaved evergreen tree
+        (1.2, 1.5, 10.0, 0.02, 0.575, 0.15, 0.04, 0.1, 0.4, 0.59, 20.0, 30.0, -4.0, 42.0, 1.0, 25.0, 1.0, 1.0, 0.5, 0.1, false, false)
+    elseif id == 3               # temperate broadleaved summergreen tree (beech) — F's shipped defaults
+        (1.2, 1.0, 10.0, 0.02, 0.55, 0.15, 0.04, 0.1, 0.4, 0.59, 20.0, 30.0, -4.0, 38.0, 1.0, 25.0, 1.0, 1.0, 0.5, 0.1, false, false)
+    elseif id == 4               # boreal needleleaved evergreen tree
+        (1.2, 0.8, 12.9, 0.06, 0.45, 0.18, 0.1, 0.1, 0.15, 0.45, 15.0, 25.0, -4.0, 38.0, 4.0, 25.0, 4.0, 1.0, 0.5, 0.1, true, false)
+    elseif id == 5               # boreal broadleaved summergreen tree
+        (1.2, 0.8, 10.0, 0.06, 0.4, 0.18, 0.1, 0.1, 0.15, 0.59, 15.0, 25.0, -4.0, 38.0, 1.0, 25.0, 1.0, 1.0, 0.5, 0.1, false, false)
+    elseif id == 6               # boreal needleleaved summergreen tree (larch)
+        (1.2, 0.3, 12.9, 0.06, 0.45, 0.12, 0.05, 0.01, 0.15, 0.45, 15.0, 25.0, -4.0, 38.0, 1.0, 25.0, 1.0, 1.0, 0.5, 0.1, true, false)
+    elseif id == 7               # tropical C4 grass
+        (0.2, 1.5, 10.0, 0.01, 0.5, 0.21, 0.15, 0.1, 0.4, 0.4, 20.0, 45.0, 6.0, 55.0, 1.0, NaN, 2.0, 0.6, 0.5, 0.1, false, true)
+    elseif id == 8               # temperate C3 grass — F's shipped `grass_allocparams`
+        (1.2, 0.8, 10.0, 0.01, 0.5, 0.23, 0.15, 0.1, 0.4, 0.5, 10.0, 30.0, -4.0, 45.0, 1.0, NaN, 2.0, 0.8, 0.5, 0.1, false, false)
+    elseif id == 9               # polar C3 grass
+        (1.2, 0.8, 10.0, 0.01, 0.4, 0.23, 0.1, 0.1, 0.4, 0.5, 10.0, 25.0, -4.0, 38.0, 1.0, NaN, 2.0, 0.6, 0.5, 0.1, false, false)
+    else
+        throw(ArgumentError("per-PFT F_diff parameters: unsupported natural PFT id $id (supported 0–9; crops out of scope)"))
+    end
+end
+
+"""
+    pft_respparams(id::Integer, ::Type{T}=Float64) -> RespParams{T}
+
+Autotrophic-respiration parameters for LPJmL-FIT natural PFT `id` (the 0-based `par/pft_lpjmlfit.js`
+scan order that IS the `ind` output's `Type` column). The only per-PFT field is **`respcoeff`**: 0.2 for
+the tropical broadleaved evergreen tree (id 0) and the tropical C4 grass (id 7), 1.2 for every other
+natural PFT — a 6× spread that ADR 0125 measured as the whole tropical half of F's growth error. The
+tissue C:N ratios are the same for all natural PFTs (`cn_ratio` leaf/sapwood/root = 30/330/30), so
+`cn_sapwood`/`cn_root` are set from the C for every id and the remaining kernel constants keep their
+[`RespParams`](@ref) defaults. `pft_respparams(3) == tebs_params().resp`.
+"""
+function pft_respparams(id::Integer, ::Type{T} = Float64) where {T <: Real}
+    r = _pft_fdiff_row(id)
+    return RespParams{T}(; respcoeff = T(r[1]), cn_sapwood = T(330.0), cn_root = T(30.0))
+end
+
+"""
+    pft_tempstressparams(id::Integer, ::Type{T}=Float64) -> TempStressParams{T}
+
+Photosynthesis temperature limits for natural PFT `id` — the `temp_photos` optimum interval and the
+`temp_co2` assimilation limits that between them set the `temp_stress.c:38-40` shape constants. Both are
+per-PFT: the three boreal trees (ids 4–6) optimise at **15/25 °C** against 20/30 for the other four, the
+tropical tree's `temp_co2` runs to **2/55 °C** against beech's −4/38, and the three grasses differ again.
+⚠ These are NOT the `temp_stressed` MORTALITY interval (that is `TraitMortality.pft_mort_params`) and not
+the `temp` establishment gate — three confusable keys (CLAUDE.md §3). `tmax`/`βgate` keep their
+[`TempStressParams`](@ref) defaults. `pft_tempstressparams(3) == tebs_params().tstress`.
+"""
+function pft_tempstressparams(id::Integer, ::Type{T} = Float64) where {T <: Real}
+    r = _pft_fdiff_row(id)
+    return TempStressParams{T}(;
+        temp_photos_low = T(r[11]), temp_photos_high = T(r[12]),
+        temp_co2_low = T(r[13]), temp_co2_high = T(r[14]),
+    )
+end
+
+"""
+    pft_allocparams(id::Integer, ::Type{T}=Float64) -> AllocParams{T}
+
+Annual allocation/turnover parameters for natural PFT `id`. The C stores turnover as a **residence time
+in years** and F as a **rate per year**, so the rates here are `1/turnover.{leaf,sapwood,root}`: leaf/root
+residence is 1 yr (ids 2, 3, 5, 6 and every grass leaf), **2 yr** (id 0), or **4 yr** (ids 1, 4), and
+sapwood residence is 25 yr for every tree except the tropical evergreen's **30**. Every tree PFT in this
+configuration is `summergreen` under `new_phenology`, so `is_deciduous` stays `true` for all (the builder
+asserts it) and `turnover_leaf` is consumed only on the grass path. Grass has no woody pool, so its
+`turnover_sapwood` keeps the default. `pft_allocparams(3) == tebs_allocparams()` and
+`pft_allocparams(8) == grass_allocparams()`.
+"""
+function pft_allocparams(id::Integer, ::Type{T} = Float64) where {T <: Real}
+    r = _pft_fdiff_row(id)
+    sap = isnan(r[16]) ? AllocParams{T}().turnover_sapwood : T(1.0 / r[16])
+    return AllocParams{T}(;
+        lmro_ratio = T(r[18]), lmro_offset = T(r[19]), reprod_cost = T(r[20]),
+        turnover_leaf = T(1.0 / r[15]), turnover_sapwood = sap, turnover_root = T(1.0 / r[17]),
+    )
+end
+
+"""
+    pft_allometry(id::Integer, ::Type{T}=Float64) -> Allometry.TreeAllometry{T}
+
+Tree allometry constants for natural PFT `id`: the needleleaved trees (ids 1, 4, 6) get the gymnosperm
+set (`allom1` 101.34, `allom2` 31.4093, `allom3` 0.665, `kpr` 1.4163) and the broadleaved ones the
+angiosperm default, with each PFT's own Beer–Lambert `k_beer` (`lightextcoeff`) written in — including
+the grasses' (0.4 for tropical C4, 0.5 for the two C3), which is read by `_patch_fpars_soa`'s
+forest-floor branch and by [`individual_from_pools`](@ref)'s `fpc`. `sla`/`wooddens` keep their defaults:
+both are per-INDIVIDUAL traits carried by [`TreePools`](@ref) and [`grow_individual`](@ref) reads them
+from the tree, never from here. `pft_allometry(3) == Allometry.TreeAllometry{T}()`.
+"""
+function pft_allometry(id::Integer, ::Type{T} = Float64) where {T <: Real}
+    r = _pft_fdiff_row(id)
+    base = r[21] ? Allometry.gymnosperm(Allometry.TreeAllometry{T}) : Allometry.TreeAllometry{T}()
+    fns = fieldnames(Allometry.TreeAllometry{T})
+    nt = NamedTuple{fns}(map(f -> getfield(base, f), fns))
+    return Allometry.TreeAllometry{T}(; merge(nt, (; k_beer = T(r[10])))...)
+end
+
+"""
+    pft_canopy_traits(id::Integer, ::Type{T}=Float64) -> NamedTuple
+
+The per-PFT constants a caller needs to build one [`Individual`](@ref) template (plus `gmin`, which
+lives in [`WaterParams`](@ref) rather than on the individual): `(; gmin, emax, intc, alphaa,
+albedo_leaf, albedo_stem, albedo_litter, snowcanopyfrac, k_beer, path)`. `path` is `:c3` for every tree
+and for the two C3 grasses, `:c4` for the tropical C4 grass (id 7).
+
+Use this instead of hard-coding beech's values when reconstructing a stand: `alphaa`, `albedo_leaf` and
+`emax` are also emitted PER STEM by the C's `ind` output (prefer those when you have them — they are the
+individual's own), but `intc`, `albedo_stem`, `albedo_litter`, `snowcanopyfrac` and `gmin` are not, and
+they are genuinely per-PFT (`intc` 0.02 vs 0.06 between temperate and boreal trees, `gmin` 0.3–1.6).
+"""
+function pft_canopy_traits(id::Integer, ::Type{T} = Float64) where {T <: Real}
+    r = _pft_fdiff_row(id)
+    return (;
+        gmin = T(r[2]), emax = T(r[3]), intc = T(r[4]), alphaa = T(r[5]), albedo_leaf = T(r[6]),
+        albedo_stem = T(r[7]), albedo_litter = T(r[8]), snowcanopyfrac = T(r[9]), k_beer = T(r[10]),
+        path = r[22] ? :c4 : :c3,
+    )
+end
+
+"""
+    PFTPhys{T}
+
+The per-PFT parameter bundle F applies to ONE individual: `resp` ([`RespParams`](@ref), i.e.
+`respcoeff`), `alloc` ([`AllocParams`](@ref), i.e. turnover), `allom`
+([`Allometry.TreeAllometry`](@ref), i.e. the crown/height coefficients and `k_beer`), `tstress`
+([`TempStressParams`](@ref), i.e. the `temp_photos`/`temp_co2` limits) and the minimum canopy
+conductance `gmin` (a [`WaterParams`](@ref) field, read per-PFT by `gp_sum.c`).
+
+`tstress` is the one field that IS already carried per-`Individual`: it is in the bundle so that
+enabling the channel applies **every** per-PFT parameter F knows about rather than a subset —
+[`individuals_from_pools`](@ref) writes it into each rebuilt individual, overriding the template's.
+Partial application is the failure mode this design exists to prevent (a stand running its own
+`respcoeff` while still optimising photosynthesis at beech's 20/30 °C would be a mixed basis, and
+ADR 0060 is the record of what a mixed basis costs). `photo` deliberately stays the caller's: its `sla`
+is a per-INDIVIDUAL trait from the roster and its C3/C4 `path` is a caller decision
+([`pft_canopy_traits`](@ref) exposes the C's value).
+
+Built per individual by [`pft_phys`](@ref) and travelling as a plain `Vector{PFTPhys{T}}` ALONGSIDE the
+roster — deliberately not a field of `Individual`, for the same two reasons `rootdists` is not
+(ADR 0110): a heap-allocated field on a struct the Enzyme reverse pass differentiates through aborts the
+test process, and an extra `Individual` field would need a back-compatible constructor whose default
+CANNOT be byte-identical (the shipped `p.resp.respcoeff` is 1.2 from `tebs_params`, while
+`RespParams()`'s own default is 1.0). Passing it as `nothing` therefore means "use the core's single
+shared set", which is exactly the pre-ADR-0126 behaviour. `PFTPhys` is isbits, so Enzyme sees the vector
+as constant data.
+"""
+struct PFTPhys{T <: Real}
+    resp::RespParams{T}
+    alloc::AllocParams{T}
+    allom::Allometry.TreeAllometry{T}
+    tstress::TempStressParams{T}
+    gmin::T
+end
+_wt(::PFTPhys{T}) where {T} = T
+
+"""
+    pft_phys(id::Integer, ::Type{T}=Float64) -> PFTPhys{T}
+    pft_phys(ids::AbstractVector, ::Type{T}=Float64) -> Vector{PFTPhys{T}}
+
+The [`PFTPhys`](@ref) bundle for natural PFT `id`, or one per entry of `ids` (the per-individual form the
+canopy consumes). `pft_phys(3)` is exactly F's shipped beech configuration, so a beech-only stand is
+byte-identical with or without the bundle.
+"""
+pft_phys(id::Integer, ::Type{T} = Float64) where {T <: Real} = PFTPhys{T}(
+    pft_respparams(id, T), pft_allocparams(id, T), pft_allometry(id, T),
+    pft_tempstressparams(id, T), T(_pft_fdiff_row(id)[2]),
+)
+pft_phys(ids::AbstractVector, ::Type{T} = Float64) where {T <: Real} =
+    PFTPhys{T}[pft_phys(Int(id), T) for id in ids]
+
 """
     GrassEstabParams{T}
 
@@ -2650,7 +2870,7 @@ structure-feedback path (see the `_patch_fpars` ENZYME NOTE); the arithmetic is 
 function _patch_fpars_soa(
         heights::AbstractVector{T}, leafcs::AbstractVector, slas::AbstractVector, ninds::AbstractVector,
         crownareas::AbstractVector, isgrass::AbstractVector{Bool}, allom::Allometry.TreeAllometry;
-        nlayers::Int = 60, vstep = 2.0, k_lambert = 0.5
+        nlayers::Int = 60, vstep = 2.0, k_lambert = 0.5, kbeers = nothing
     ) where {T}
     vs = T(vstep); kl = T(k_lambert)
     n = length(heights)
@@ -2689,37 +2909,50 @@ function _patch_fpars_soa(
             end
         end
     end
-    # grasses: transmitted forest-floor light × their own Beer–Lambert absorption
+    # grasses: transmitted forest-floor light × their own Beer–Lambert absorption. ADR 0126: `kbeers`
+    # (per-individual, from the PFT's own `lightextcoeff`) overrides the shared `allom.k_beer`; `nothing`
+    # ⇒ byte-identical. Only the grass branch reads it — the TREE canopy above attenuates with the
+    # patch-level `k_lambert` (`light_ind.c`), which is not a PFT parameter.
     for i in 1:n
         if isgrass[i] && leafcs[i] > 0
             lai_g = crownareas[i] > 0 ? leafcs[i] * slas[i] / crownareas[i] : zero(T)
-            fpars[i] = fpar_bottom * (one(T) - exp(-convert(T, allom.k_beer) * lai_g))
+            kb = kbeers === nothing ? allom.k_beer : kbeers[i]
+            fpars[i] = fpar_bottom * (one(T) - exp(-convert(T, kb) * lai_g))
         end
     end
     return fpars
 end
 
 """
-    individual_from_pools(tmpl::Individual, tree::TreePools, allom, fpar) -> Individual
+    individual_from_pools(tmpl::Individual, tree::TreePools, allom, fpar; k_beer=allom.k_beer) -> Individual
 
 Build the daily-canopy [`Individual`](@ref) from prognostic [`TreePools`](@ref): recompute `lai =
 leaf_c·sla/crownarea` (`lai_tree.c`) and `fpc = crownarea·nind·(1−e^{−k·lai})` (`fpc_tree.c`), carry the
 pools into `c_sapwood`/`c_root`, and reuse the PFT constants from the template individual `tmpl`. `fpar`
 is the (recomputed) layered absorbed-PAR fraction from [`_patch_fpars`](@ref).
+
+`k_beer` overrides the Beer–Lambert extinction used for THIS individual's `fpc` (ADR 0126): it is per-PFT
+in the C (`lightextcoeff` 0.45 needleleaved / 0.59 broadleaved / 0.4–0.5 grass, i.e. the `K_LAMBERT_BEER_*`
+macros), while `allom` carries one value. `tstress` likewise replaces the template's photosynthesis
+temperature limits with this individual's PFT set (`temp_photos` 15/25 °C for the three boreal trees vs
+20/30 for the other four). Both defaults reproduce the shared/template behaviour exactly.
 """
-function individual_from_pools(tmpl::Individual{T}, tree::TreePools{T}, allom::Allometry.TreeAllometry, fpar::T) where {T}
+function individual_from_pools(
+        tmpl::Individual{T}, tree::TreePools{T}, allom::Allometry.TreeAllometry, fpar::T;
+        k_beer = allom.k_beer, tstress = tmpl.tstress,
+    ) where {T}
     ca = tree.crownarea
     laival = (tree.leaf_c > 0 && ca > 0) ? tree.leaf_c * tree.sla / ca : zero(T)
-    fpc_i = ca > 0 ? ca * tree.nind * (one(T) - exp(-convert(T, allom.k_beer) * laival)) : zero(T)
+    fpc_i = ca > 0 ? ca * tree.nind * (one(T) - exp(-convert(T, k_beer) * laival)) : zero(T)
     return Individual{T}(
         fpar, fpc_i, tmpl.alphaa, tmpl.albedo_leaf, tmpl.emax, tree.sapwood_c, tree.root_c, tree.sapwood_bg_c,
         laival, tmpl.intc, tmpl.albedo_stem, tmpl.albedo_litter, tmpl.snowcanopyfrac, tree.nind,
-        tmpl.photo, tmpl.tstress, tree.is_grass,
+        tmpl.photo, tstress, tree.is_grass,
     )
 end
 
 """
-    individuals_from_pools(tmpls, pools, allom, fpars, soil; per_tree=false) -> Vector{Individual}
+    individuals_from_pools(tmpls, pools, allom, fpars, soil; per_tree=false, pftphys=nothing) -> Vector{Individual}
 
 Rebuild the whole per-individual roster for a year, returning `(inds, rootdists)`. The ONE place the
 per-tree root profiles ([`per_tree_rootdists`](@ref)) are built, so every annual-rebuild call site behaves
@@ -2732,12 +2965,23 @@ pre-ADR-0110 call site gets) returns `rootdists === nothing` ⇒ byte-identical.
 
 Called once a year, so the profile construction — including the `betaroot_from_d95max` bisection — is
 outside the daily loop and off the Enzyme reverse path.
+
+`pftphys` (a per-individual `Vector{`[`PFTPhys`](@ref)`}`, ADR 0126) gives each individual its OWN
+Beer–Lambert `k_beer` for the `fpc` recompute and its own photosynthesis temperature limits `tstress`
+(overriding the template's); `nothing` keeps the shared `allom.k_beer` and each template's own `tstress`
+⇒ byte-identical.
 """
 function individuals_from_pools(
         tmpls, pools::AbstractVector, allom::Allometry.TreeAllometry, fpars, soil::SoilColumn{T};
-        per_tree::Bool = false,
+        per_tree::Bool = false, pftphys = nothing,
     ) where {T}
-    inds = Individual{T}[individual_from_pools(tmpls[i], pools[i], allom, fpars[i]) for i in eachindex(pools)]
+    inds = Individual{T}[
+        individual_from_pools(
+                tmpls[i], pools[i], allom, fpars[i];
+                k_beer = pftphys === nothing ? allom.k_beer : pftphys[i].allom.k_beer,        # ADR 0126
+                tstress = pftphys === nothing ? tmpls[i].tstress : pftphys[i].tstress,        # ADR 0126
+            ) for i in eachindex(pools)
+    ]
     return (inds, per_tree ? per_tree_rootdists(pools, soil) : nothing)
 end
 
@@ -2774,11 +3018,11 @@ for the pre-§26.3 gate-off reference.
 # foliar projective cover of a `TreePools` (fpc_tree.c / per-area grass), the formula
 # `individual_from_pools` uses (`crownarea·nind·(1−e^{−k_beer·lai})`, `lai = leaf_c·sla/crownarea`) —
 # reused for the grass-establishment `fpc_total` gate without rebuilding the daily `Individual`.
-function _treepools_fpc(tree::TreePools{T}, allom::Allometry.TreeAllometry) where {T}
+function _treepools_fpc(tree::TreePools{T}, allom::Allometry.TreeAllometry; k_beer = allom.k_beer) where {T}
     ca = tree.crownarea
     (tree.leaf_c <= zero(T) || ca <= zero(T)) && return zero(T)
     lai = tree.leaf_c * tree.sla / ca
-    return ca * tree.nind * (one(T) - exp(-convert(T, allom.k_beer) * lai))
+    return ca * tree.nind * (one(T) - exp(-convert(T, k_beer) * lai))
 end
 
 # §26.3 — the VALIDATED-faithful grass photosynthesis DEMAND-GATE (`water_stressed.c:196` `gpd>1e-5`;

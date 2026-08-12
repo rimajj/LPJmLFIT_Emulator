@@ -70,7 +70,9 @@ allocation/turnover parameters (`alloc`/`galloc`) + shared allometry (`allom`), 
 per-individual structure (`pools`, `FDiff.TreePools`) with the daily-canopy templates (`tmpls`,
 `FDiff.Individual`), the shared 23-layer `soil` column, the cell latitude `lat`, the grass
 establishment params (`grass_estab`), the PER-PFT GSI phenology state (one filter set per DISTINCT PFT,
-plus the lag-1 forest-floor light `grass_lf`), and the mutable within-year state (day-of-year,
+plus the lag-1 forest-floor light `grass_lf`), the optional PER-INDIVIDUAL parameter bundles `pft_phys`
+([`FDiff.PFTPhys`](@ref); ADR 0126 — `nothing` ⇒ every cohort runs the single shared set, i.e. beech's),
+and the mutable within-year state (day-of-year,
 previous-day water scalar, and the annual `bm_inc`/flux accumulators). Mirrors the validated-faithful
 grass config of `FDiff.rollout_canopy_years` (§26.3): the §26 demand-gate is on (grass-gated in
 `params`), grass grows with the grass allocation, grass phenology is per-PFT with the tree-attenuated
@@ -96,6 +98,12 @@ mutable struct FDiffFastCore{T <: AbstractFloat} <: AbstractFastCore
     pft_params::Vector{FDiff.PhenParams{T}}
     pft_states::Vector{FDiff.PhenState{T}}
     pft_isg::Vector{Bool}
+    # ADR 0126: PER-INDIVIDUAL physiology — each cohort's own maintenance-respiration coefficient,
+    # turnover/allocation set, crown allometry and `k_beer`/`gmin`, indexed like `pools`. `nothing` ⇒
+    # every individual runs the core's single shared `params`/`alloc`/`allom` (i.e. beech's, the
+    # pre-0126 behaviour) ⇒ byte-identical. Built from `pft_ids` by the constructor's
+    # `per_pft_params=true`. Held here, NOT inside `Individual` — see the [`FDiff.PFTPhys`](@ref) docs.
+    pft_phys::Union{Nothing, Vector{FDiff.PFTPhys{T}}}
     grass_lf_mode::Symbol
     grass_lf::T
     doy::Int
@@ -134,7 +142,7 @@ end
 
 """
     FDiffFastCore(pools, tmpls, soil, lat; params, alloc, galloc, allom, grass_demand_gate,
-                  grass_estab, pft_ids, grass_lf_mode) -> FDiffFastCore
+                  grass_estab, pft_ids, grass_lf_mode, per_pft_params) -> FDiffFastCore
 
 Construct an [`FDiffFastCore`](@ref) from the prognostic per-individual structure `pools`
 (`FDiff.TreePools`), the daily-canopy templates `tmpls`, the shared `soil` column, and the cell
@@ -147,19 +155,48 @@ trees are byte-identical to the old single-beech GSI); `grass_lf_mode` (`:linear
 selects the forest-floor light transmission. Pass `grass_demand_gate=false` / `grass_estab=nothing` for
 the pre-§26.4 gate-off, no-establishment behaviour. The daily `FDiff.Individual`s are (re)built from
 `pools` + the recomputed layered `fpar`.
+
+**`per_pft_params` (ADR 0126, default `false` ⇒ byte-identical).** With `true` the core builds one
+[`FDiff.PFTPhys`](@ref) bundle per individual from `pft_ids`, so each cohort runs its OWN
+maintenance-respiration coefficient (`respcoeff` 0.2 tropical / 1.2 temperate+boreal), minimum canopy
+conductance (`gmin` 0.3–1.6), turnover (leaf/root residence 1, 2 or 4 yr; sapwood 25 or 30 yr), crown
+allometry (angiosperm vs gymnosperm) and Beer–Lambert `k_beer` (0.45 needleleaved / 0.59 broadleaved /
+0.4–0.5 grass) instead of the single `params`/`alloc`/`galloc`/`allom` set. **Pass real per-cohort
+`pft_ids`** — the default `t.is_grass ? 8 : 3` makes every tree a beech and the bundles are then just
+beech's values again. Passing a `Vector{FDiff.PFTPhys}` instead of `true` uses those bundles verbatim (one
+per individual, in roster order) — how a single-parameter attribution arm mixes ONE per-PFT field into an
+otherwise-beech bundle, which is the only way to say which parameter moved a result. ⚠ F-side only so
+far: `run_coupled_cell` REFUSES a per-PFT core together with a slow emulator, because S's demography
+rebuilds the roster with the shared allometry (a mixed `k_beer` basis); that wiring is an integration
+point on line S.
 """
 function FDiffFastCore(
         pools::Vector{FDiff.TreePools{T}}, tmpls::Vector{FDiff.Individual{T}}, soil::FDiff.SoilColumn{T},
         lat::Real; params = FDiff.tebs_params(T), alloc = FDiff.tebs_allocparams(T),
         galloc = FDiff.grass_allocparams(T), allom = TreeAllometry{T}(), grass_demand_gate::Bool = true,
-        grass_estab = FDiff.grass_estabparams(T), pft_ids = nothing, grass_lf_mode::Symbol = :linear
+        grass_estab = FDiff.grass_estabparams(T), pft_ids = nothing, grass_lf_mode::Symbol = :linear,
+        per_pft_params::Union{Bool, AbstractVector{FDiff.PFTPhys{T}}} = false
     ) where {T <: AbstractFloat}
-    fpars = FDiff._patch_fpars(pools, allom)
-    (inds, rdists) = FDiff.individuals_from_pools(
-        tmpls, pools, allom, fpars, soil; per_tree = params.water.per_tree_roots,
-    )   # ADR 0110
     p = FDiff._with_grass_gate(params, grass_demand_gate)
     pids = pft_ids === nothing ? Int[t.is_grass ? 8 : 3 for t in tmpls] : collect(Int, pft_ids)
+    # ADR 0126: the per-individual parameter bundles (`false` ⇒ the single shared set ⇒ byte-identical;
+    # an explicit vector is a caller-built set — one PER INDIVIDUAL, in roster order — which is how a
+    # single-parameter attribution arm mixes one PFT field into an otherwise-beech bundle).
+    pphys = if per_pft_params isa Bool
+        per_pft_params ? FDiff.pft_phys(pids, T) : nothing
+    else
+        length(per_pft_params) == length(pools) || throw(
+            ArgumentError(
+                "FDiffFastCore: `per_pft_params` has $(length(per_pft_params)) bundles for " *
+                    "$(length(pools)) individuals — it must be one PFTPhys per individual, in roster order."
+            )
+        )
+        collect(per_pft_params)
+    end
+    fpars = FDiff._patch_fpars(pools, allom; kbeers = _kbeers(pphys))
+    (inds, rdists) = FDiff.individuals_from_pools(
+        tmpls, pools, allom, fpars, soil; per_tree = params.water.per_tree_roots, pftphys = pphys,
+    )   # ADR 0110 / 0126
     uids = unique(pids)
     slot = Dict{Int, Int}(id => k for (k, id) in enumerate(uids))
     pparams = FDiff.PhenParams{T}[FDiff.pft_phenparams(id, T) for id in uids]
@@ -167,12 +204,37 @@ function FDiffFastCore(
     pisg = Bool[FDiff._pft_is_grass(id) for id in uids]
     return FDiffFastCore{T}(
         p, alloc, galloc, allom, tmpls, pools, inds, soil, T(lat), grass_estab,
-        pids, slot, pparams, pstates, pisg, grass_lf_mode, one(T),
+        pids, slot, pparams, pstates, pisg, pphys, grass_lf_mode, one(T),
         0, one(T), zero(T), zeros(T, length(pools)),
         zeros(T, length(pools)), zeros(T, length(pools)), zeros(T, length(pools)), rdists,   # ADR 0110
         zero(T), zero(T), zero(T), zero(T), 0,
         T(NaN),                       # soiltemp_skin: NaN ⇒ use air-temp proxy (byte-identical default)
         T(0.15),                      # last_albedo: reasonable default until the first step! records it
+    )
+end
+
+# ADR 0126: the per-individual Beer–Lambert vector the layered-light recompute takes (`nothing` off).
+_kbeers(pphys::Nothing) = nothing
+_kbeers(pphys::Vector{FDiff.PFTPhys{T}}) where {T} = T[q.allom.k_beer for q in pphys]
+
+# ADR 0126: this individual's own parameter set, or the core's single shared one when the per-PFT
+# channel is off. Three one-line accessors so no call site re-implements the `nothing` fallback.
+@inline _ind_alloc(fc::FDiffFastCore, i::Int) =
+    fc.pft_phys === nothing ? (fc.pools[i].is_grass ? fc.galloc : fc.alloc) : fc.pft_phys[i].alloc
+@inline _ind_allom(fc::FDiffFastCore, i::Int) =
+    fc.pft_phys === nothing ? fc.allom : fc.pft_phys[i].allom
+@inline _ind_kbeer(fc::FDiffFastCore, i::Int) =
+    fc.pft_phys === nothing ? fc.allom.k_beer : fc.pft_phys[i].allom.k_beer
+
+# ADR 0126: the bundles are indexed by ROSTER POSITION. A demography that appends/merges cohorts without
+# rebuilding them would hand cohort `i` another PFT's parameters — silently, and only at the cells where
+# the roster moved. Checked once a year at each growth entry point, so it costs nothing and cannot rot.
+function _check_pft_phys(fc::FDiffFastCore, n::Int)
+    q = fc.pft_phys
+    (q === nothing || length(q) == n) && return nothing
+    return error(
+        "FDiffFastCore: `pft_phys` has $(length(q)) per-PFT bundles for $n individuals — the roster " *
+            "changed size without rebuilding them (ADR 0126). Rebuild with `FDiff.pft_phys(fc.pft_ids)`."
     )
 end
 
@@ -246,6 +308,7 @@ function step!(fc::FDiffFastCore{T}, state::SharedState, bc::SToF, forcing::AtmF
     fc.last_albedo = FDiff.patch_albedo(fc.inds, phen_vec, st.snowpack)
     (st′, fl) = FDiff.daily_step_canopy(
         fc.params, fc.inds, fc.soil, st, f; phen = phen_vec, rootdists = fc.rootdists,   # ADR 0110
+        pftphys = fc.pft_phys,                                                           # ADR 0126
     )
     # write soil water back into the authoritative shared state (fraction of WHC), in place
     @inbounds for l in 1:nlay
@@ -260,7 +323,7 @@ function step!(fc::FDiffFastCore{T}, state::SharedState, bc::SToF, forcing::AtmF
             ind.is_grass && continue
             lai_i = convert(T, ind.lai)
             lai_i <= zero(T) && continue
-            denom = one(T) - exp(-convert(T, fc.allom.k_beer) * lai_i)
+            denom = one(T) - exp(-convert(T, _ind_kbeer(fc, ii)) * lai_i)      # ADR 0126, per-PFT
             plai_i = denom > T(1.0e-12) ? lai_i * convert(T, ind.fpc) / denom : zero(T)
             plai_phen += plai_i * FDiff._phen_at(phen_vec, ii)
         end
@@ -306,13 +369,17 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
     wscal_mean = fc.nday > 0 ? fc.wscal_acc / fc.nday : one(T)
     bm_inc_cell = sum(fc.bm_inc_acc)                      # per-m² annual NPP delivered (the conserved handoff)
     n = length(fc.pools)
+    # ADR 0126: the per-PFT bundles are indexed by ROSTER POSITION, so a demography that changed the
+    # roster size without rebuilding them would read the wrong cohort's parameters. Fail loudly.
+    _check_pft_phys(fc, n)
     newpools = Vector{FDiff.TreePools{T}}(undef, n)
     @inbounds for i in 1:n
         tr = fc.pools[i]
         bm_ind = fc.bm_inc_acc[i] / (tr.nind + T(1.0e-12))
+        # ADR 0126: this cohort's OWN turnover + crown allometry when the per-PFT channel is on
         newpools[i] = tr.is_grass ?
-            FDiff.grow_grass_individual(fc.galloc, tr, bm_ind, wscal_mean) :
-            FDiff.grow_individual(fc.alloc, fc.allom, tr, bm_ind, wscal_mean)
+            FDiff.grow_grass_individual(_ind_alloc(fc, i), tr, bm_ind, wscal_mean) :
+            FDiff.grow_individual(_ind_alloc(fc, i), _ind_allom(fc, i), tr, bm_ind, wscal_mean)
     end
     # GRASS ESTABLISHMENT (establishment_grass.c, individual mode): if the total patch FPC is below 1, each
     # grass PFT gains sapling biomass `sapl·(1−fpc_total)/n_est` (mirrors rollout_canopy_years §26.3). Off
@@ -325,7 +392,7 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
         if n_est > 0
             fpc_total = zero(T)
             for i in 1:n
-                fpc_total += FDiff._treepools_fpc(newpools[i], fc.allom)
+                fpc_total += FDiff._treepools_fpc(newpools[i], fc.allom; k_beer = _ind_kbeer(fc, i))
             end
             est_pft = max(zero(T), one(T) - fpc_total) / n_est
             if est_pft > zero(T)
@@ -342,10 +409,11 @@ function annual_step!(fc::FDiffFastCore{T}, state::SharedState) where {T}
         end
     end
     fc.pools = newpools
-    fpars = FDiff._patch_fpars(newpools, fc.allom)
+    fpars = FDiff._patch_fpars(newpools, fc.allom; kbeers = _kbeers(fc.pft_phys))
     (fc.inds, fc.rootdists) = FDiff.individuals_from_pools(
         fc.tmpls, newpools, fc.allom, fpars, fc.soil; per_tree = fc.params.water.per_tree_roots,
-    )   # ADR 0110
+        pftphys = fc.pft_phys,
+    )   # ADR 0110 / 0126
     # growth efficiency ≈ bm_inc per unit leaf area (a mortality driver S conditions on)
     leaf_area = sum(FDiff.agb_ind(newpools[i]) > 0 ? newpools[i].leaf_c * newpools[i].sla * newpools[i].nind : zero(T) for i in 1:n)
     growth_eff = leaf_area > 0 ? bm_inc_cell / leaf_area : zero(T)
@@ -396,8 +464,10 @@ function grow_annual_accounted!(fc::FDiffFastCore{T}) where {T}
     wscal_mean = fc.nday > 0 ? fc.wscal_acc / fc.nday : one(T)
     bm_inc_cell = sum(fc.bm_inc_acc)
     n = length(fc.pools)
+    # ADR 0126: the per-PFT bundles are indexed by ROSTER POSITION, so a demography that changed the
+    # roster size without rebuilding them would read the wrong cohort's parameters. Fail loudly.
+    _check_pft_phys(fc, n)
     newpools = Vector{FDiff.TreePools{T}}(undef, n)
-    reprod = convert(T, fc.alloc.reprod_cost)
     applied_cell = zero(T)
     unapplied_cell = zero(T)
     litter_cell = zero(T)
@@ -405,11 +475,17 @@ function grow_annual_accounted!(fc::FDiffFastCore{T}) where {T}
         tr = fc.pools[i]
         bm_acc = fc.bm_inc_acc[i]
         bm_ind = bm_acc / (convert(T, tr.nind) + T(1.0e-12))
+        al = _ind_alloc(fc, i)                       # ADR 0126: this cohort's own turnover/allocation
         grown = tr.is_grass ?
-            FDiff.grow_grass_individual(fc.galloc, tr, bm_ind, wscal_mean) :
-            FDiff.grow_individual(fc.alloc, fc.allom, tr, bm_ind, wscal_mean)
+            FDiff.grow_grass_individual(al, tr, bm_ind, wscal_mean) :
+            FDiff.grow_individual(al, _ind_allom(fc, i), tr, bm_ind, wscal_mean)
         newpools[i] = grown
         # stagnation guard (mirrors grow_individual): a deficit / zero-height TREE is frozen ⇒ nothing applied.
+        # Read `reprod_cost` from the cohort's OWN set (it was a single hoisted `fc.alloc.reprod_cost`)
+        # so the guard can never disagree with the `grow_individual` it mirrors. Byte-identical with the
+        # channel off: `_ind_alloc` returns `fc.alloc` for every tree, and `bm_net` feeds ONLY the
+        # `!is_grass` stagnation test, so a grass row's value is never read.
+        reprod = convert(T, al.reprod_cost)
         bm_net = bm_ind >= zero(T) ? bm_ind * (one(T) - reprod) : bm_ind
         stagnated = !tr.is_grass && (convert(T, tr.height) <= zero(T) || bm_net <= zero(T))
         if stagnated

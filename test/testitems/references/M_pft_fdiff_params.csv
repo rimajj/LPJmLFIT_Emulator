@@ -1,0 +1,18 @@
+# M_pft_fdiff_params.csv — the per-PFT parameters F_diff applies PER INDIVIDUAL, read from the
+# live par/pft_lpjmlfit.js with `cpp -P` (the same preprocessor LPJmL pipes its own parameter
+# files through). Rows are the ten natural PFTs in the 0-based `pftpar` scan order that IS the
+# `ind` output's `Type` column; ids 0-6 are trees, 7-9 grasses (tree allometry columns blank).
+# `turnover_*_yr` is the C's residence time; `turnover_*_rate` = 1/yr is what F's AllocParams
+# stores. GENERATED — do not edit by hand: scripts/build_pft_fdiff_params_reference.py
+# (CHECK=1 to verify against the C). ADR 0126; the mortality half is S_pft_mortality_params.csv.
+pft_id,name,type,path,leaftype,phenology,respcoeff,cn_leaf,cn_sapwood,cn_root,gmin,emax,intc,alphaa,albedo_leaf,albedo_stem,albedo_litter,snowcanopyfrac,lightextcoeff,temp_photos_low,temp_photos_high,temp_co2_low,temp_co2_high,b,turnover_leaf_yr,turnover_sapwood_yr,turnover_root_yr,turnover_leaf_rate,turnover_sapwood_rate,turnover_root_rate,lmro_ratio,lmro_offset,reprod_cost,allom1,allom2,allom3,allom4,kpr,k_latosa,crownarea_max,crownlength,height_max,wood_sapl
+0,tropical broadleaved evergreen tree,tree,C3,broadleaved,summergreen,0.2,30.0,330.0,30.0,1.6,10.0,0.02,0.6,0.13,0.1,0.1,0.4,0.59,20.0,30.0,2.0,55.0,0.015,2.0,30.0,2.0,0.5,0.03333333333333333,0.5,1.0,0.5,0.1,117.44,28.749,0.5633,0.3,1.2922,4000.0,225.0,0.3334,100.0,1.2
+1,temperate needleleaved evergreen tree,tree,C3,needleleaved,summergreen,1.2,30.0,330.0,30.0,1.0,12.9,0.02,0.575,0.137,0.04,0.1,0.1,0.45,20.0,30.0,-4.0,42.0,0.015,4.0,25.0,4.0,0.25,0.04,0.25,1.0,0.5,0.1,101.34,31.4093,0.665,0.3,1.4163,4000.0,225.0,0.3334,100.0,1.2
+2,temperate broadleaved evergreen tree,tree,C3,broadleaved,summergreen,1.2,30.0,330.0,30.0,1.5,10.0,0.02,0.575,0.15,0.04,0.1,0.4,0.59,20.0,30.0,-4.0,42.0,0.015,1.0,25.0,1.0,1.0,0.04,1.0,1.0,0.5,0.1,117.44,28.749,0.5633,0.3,1.2922,4000.0,225.0,0.3334,100.0,1.2
+3,temperate broadleaved summergreen tree,tree,C3,broadleaved,summergreen,1.2,30.0,330.0,30.0,1.0,10.0,0.02,0.55,0.15,0.04,0.1,0.4,0.59,20.0,30.0,-4.0,38.0,0.015,1.0,25.0,1.0,1.0,0.04,1.0,1.0,0.5,0.1,117.44,28.749,0.5633,0.3,1.2922,4000.0,225.0,0.3334,100.0,1.2
+4,boreal needleleaved evergreen tree,tree,C3,needleleaved,summergreen,1.2,30.0,330.0,30.0,0.8,12.9,0.06,0.45,0.18,0.1,0.1,0.15,0.45,15.0,25.0,-4.0,38.0,0.015,4.0,25.0,4.0,0.25,0.04,0.25,1.0,0.5,0.1,101.34,31.4093,0.665,0.3,1.4163,4000.0,225.0,0.3334,100.0,1.2
+5,boreal broadleaved summergreen tree,tree,C3,broadleaved,summergreen,1.2,30.0,330.0,30.0,0.8,10.0,0.06,0.4,0.18,0.1,0.1,0.15,0.59,15.0,25.0,-4.0,38.0,0.015,1.0,25.0,1.0,1.0,0.04,1.0,1.0,0.5,0.1,117.44,28.749,0.5633,0.3,1.2922,4000.0,225.0,0.3334,100.0,1.2
+6,boreal needleleaved summergreen tree,tree,C3,needleleaved,summergreen,1.2,30.0,330.0,30.0,0.3,12.9,0.06,0.45,0.12,0.05,0.01,0.15,0.45,15.0,25.0,-4.0,38.0,0.015,1.0,25.0,1.0,1.0,0.04,1.0,1.0,0.5,0.1,101.34,31.4093,0.665,0.3,1.4163,4000.0,225.0,0.3334,100.0,1.2
+7,Tropical C4 grass,grass,C4,,any,0.2,30.0,,30.0,1.5,10.0,0.01,0.5,0.21,0.15,0.1,0.4,0.4,20.0,45.0,6.0,55.0,0.035,1.0,,2.0,1.0,,0.5,0.6,0.5,0.1,,,,,,,,,,
+8,Temperate C3 grass,grass,C3,,any,1.2,30.0,,30.0,0.8,10.0,0.01,0.5,0.23,0.15,0.1,0.4,0.5,10.0,30.0,-4.0,45.0,0.015,1.0,,2.0,1.0,,0.5,0.8,0.5,0.1,,,,,,,,,,
+9,Polar C3 grass,grass,C3,,any,1.2,30.0,,30.0,0.8,10.0,0.01,0.4,0.23,0.1,0.1,0.4,0.5,10.0,25.0,-4.0,38.0,0.015,1.0,,2.0,1.0,,0.5,0.6,0.5,0.1,,,,,,,,,,

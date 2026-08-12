@@ -154,6 +154,21 @@ function run_coupled_cell(
         days_per_year == 365 ||
             error("run_coupled_cell: the online Climbuf assumes a 365-day noleap year (got days_per_year=$days_per_year)")
     end
+    # ── ADR 0126 pre-flight: the per-PFT parameter channel is F-side ONLY so far. S's demography path
+    #    (`reconcile_demography!`) rebuilds the roster with the core's SINGLE shared `fc.allom`, so with
+    #    `per_pft_params=true` AND S in the loop the daily physics would run each cohort's own
+    #    respcoeff/gmin while the annual `fpc` recompute silently reverted to beech's `k_beer` — a MIXED
+    #    basis, which is precisely the class of error ADR 0060 cost a published verdict to. Refuse it
+    #    rather than report it: wiring the per-cohort sets through `src/components/slow.jl` is an
+    #    integration point raised to line S (`lines/S/STATE.md`, 2026-08-12), not something M may land. ──
+    if fc.pft_phys !== nothing && slow !== nothing
+        error(
+            "run_coupled_cell: `per_pft_params=true` (per-PFT F parameters, ADR 0126) is not yet " *
+                "supported with a slow emulator attached — S's demography path rebuilds the roster with " *
+                "the single shared allometry, which would mix two `k_beer` bases in one run. Run the " *
+                "per-PFT arm with `slow = nothing`, or wait for the S-side wiring (integration point)."
+        )
+    end
     t_skin = Vector{T}(undef, n); le = Vector{T}(undef, n); h = Vector{T}(undef, n)
     g = Vector{T}(undef, n); rn = Vector{T}(undef, n); nbp = Vector{T}(undef, n)
     z0 = Vector{T}(undef, n); albedo = Vector{T}(undef, n); gpp = Vector{T}(undef, n)
