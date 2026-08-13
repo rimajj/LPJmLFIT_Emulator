@@ -5,7 +5,7 @@
 > **0030–0049 is EXHAUSTED** and so is the **tier-2 block 0100–0119** (ADR 0119 spent the last number). Line
 > S's **TIER-3 block is 0170–0189** — allocated in CLAUDE.md §9 at ADR 0119's merge under §9's rule that
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
-> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0184.**
+> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0188.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
@@ -352,9 +352,31 @@ rather than a request to flip now.
 > | 0183 | the ported hazard IS `mortality_tree_ind` (recall = precision = 1.0000, mean \|Δhazard\| 5e-18) ⇒ `trait_mortality` FLIPPED ON. |
 > | 0184 | the rung-2 count model's target is TETHERED to the live stand count ⇒ the response question was unanswerable as run; NO VERDICT. Its §10.4 pre-registered the fix. |
 > | 0185 | the fix was run. Given real authority the map STOPS asking for FIT's gains ⇒ the limit is the STAND it is conditioned on, not the substitution operator. **NARROWED by 0186 (§7.2/§7.5 only; the verdict stands).** |
-> | **0186** | **the count is ALREADY on target — the excess is PER-STEM MASS ⇒ the level anchor has no lever, its criterion is unreachable, and the question is now WHICH trees die.** |
+> | 0186 | the count is ALREADY on target — the excess is PER-STEM MASS ⇒ the level anchor has no lever, its criterion is unreachable, and the question is now WHICH trees die. **NARROWED by 0187.** |
+> | **0187** | **the kill set is NOT size-biased — the emulator picks the right KINDS of trees. The shortfall is the mortality RATE: 3.5–4.2× too few discretionary deaths, 58 % of FIT's annual mass flux, compounding to 2.90× ⇒ MORE than enough to explain the +90 % biomass.** |
 >
-> ### 0186 IN ONE PARAGRAPH (this is the current state of the question)
+> ### 0187 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
+>
+> 0186's promoted next action was run and **its hypothesis is REFUTED**: the emulator is not sparing big
+> trees. Mass selectivity `LAMBDA = kill_frac_m/kill_frac_n`, formed inside each arm's OWN stand (the
+> stands have diverged, so a killed-size histogram is not like-for-like), ssp370, FIT-gain median: **FIT
+> 0.900 · `S0h` 0.996 · `S1` 0.926** — both operator arms inside the pre-registered refute band, sign
+> OPPOSITE to the hypothesis. Two independent corroborations: selection differentials are near zero for
+> everybody (**FIT itself is only weakly size-selecting**, −0.066 height / −0.080 age — which narrows a
+> natural over-reading of 0046's steep age–wooddens gradient: that gradient is built over centuries from a
+> weak per-year differential), and the size-conditional rate profile P(die | height quintile of FIT's own
+> stand) has **FIT's SHAPE at 2.9–4.6× lower LEVEL in every bin** — a selectivity defect TILTS the
+> profile, this one SHIFTS it. **What is actually wrong is the RATE.** Discretionary kill rate FIT
+> **2.1 %/yr** vs `S1` **0.6 %**, `S0h` **0.5 %**; total annual mass removal FIT **0.0306** vs `S1`
+> **0.0178** ⇒ the emulator's mortality removes **58 % of the biomass FIT's removes**, uniformly across
+> sizes, compounding over 81 yr to **2.90× / 2.83×** — which **EXCEEDS** the observed 1.90×, so the
+> reachability clause passes and no second mechanism is needed to explain the biomass level. **It
+> reconciles with 0186's "count on target"**: FIT's kills are dominated by CERTAIN deaths (`mort_prob ≥ 1`,
+> starving suppressed stems) which the arms honour by construction and which carry almost no mass, so the
+> stem count takes care of itself while the biomass-bearing discretionary channel runs 3.5–4× short. ⇒
+> **the operative sentence is now: right number, right kinds, far too few of the ones carrying biomass.**
+>
+> ### 0186 IN ONE PARAGRAPH (its numbers all stand; only its "wrong trees" framing is narrowed by 0187)
 >
 > Before wiring the level anchor, two things 0185 had not stated were derived: **what the anchor reduces to
 > in this harness**, and **whether the departure it acts on is a count departure at all**. Both are
@@ -387,7 +409,7 @@ rather than a request to flip now.
 > departure, now the *operative* limit: at ssp370 the arms sit at **+89 % to +312 % agb** and **+54 % to
 > +160 % `age_mean`** vs FIT, so the map is evaluated where FIT's stands never go.
 >
-> **Nine things are now settled. Do not re-investigate them.**
+> **Eleven things are now settled. Do not re-investigate them.**
 >
 > 1. **The training TARGET is not where the response is lost — do NOT start a target redesign** (0181 §4/§5).
 > 2. **The count is an allometric consequence of the stand, not a learned climate response** (0181).
@@ -401,47 +423,56 @@ rather than a request to flip now.
 > 8. **NEW (0186): the COUNT CHANNEL IS CLOSED. Do not propose another count-side instrument** (the level
 >    anchor, a retrained count target, a different `n_prev` basis) **without first measuring the count
 >    departure** — it is −2.9 % to −13.6 % for the trait arms while agb is +89…+91 %, for all 81 years.
+> 10. **NEW (0187): THE SIZE/MASS-SELECTIVITY HYPOTHESIS IS REFUTED AND CLOSED.** The emulator does NOT
+>     spare large or old stems — measured at 12 cells, both legs, on three independent statistics, with the
+>     scorer validated by a derived-a-priori self-test at **0.14 σ**. Do not re-open "the emulator spares
+>     big trees", and do not propose a trait/size-ordering instrument on the strength of 0186's framing.
+> 11. **NEW (0187): FIT's OWN one-year mortality is only WEAKLY size-selecting** (−0.066 in sd units). So
+>     "reproduce FIT's strong preference for killing big trees" is not a target — there is no such
+>     preference to reproduce. 0046's steep age–wooddens gradient is a century-scale accumulation of a weak
+>     per-year differential, not a strong annual one.
 > 9. **NEW (0186): the level anchor is NOT wired into rung 2 and should not be.** This says nothing against
 >    ADR 0103 in the COUPLED path, where the departure genuinely is a count-level one (1.409× over-density).
 >    Do not read 0186 as retiring the anchor; its own flip criterion (0103 §6, line M's arm) is untouched.
 >
-> ### B. THE NEXT ACTION — the size-resolved "who dies" comparison
+> ### B. THE NEXT ACTION — the DISCRETIONARY MORTALITY RATE, starting with ρ's population mismatch
 >
-> **0186 promotes this from secondary to primary, on measurement rather than preference.** The emulator hits
-> the right stem COUNT and holds the wrong stand: −2.9 % stems, +90.6 % biomass, +57 % mean age. Whatever is
-> wrong is in **which individual trees die**, and a count statistic provably cannot see it — 0186 §3 is that
-> proof, since the count statistic is *satisfied* while the stand is wrong.
+> **0187 promotes this on measurement, and it retires the previous next action (which is now answered and
+> refuted).** The emulator picks the right kinds of trees; it kills far too few of the biomass-bearing ones.
+> The shortfall is **uniform across size** (2.9–4.6× at every height quintile), so this is a question about
+> the **magnitude the operator is asked for**, not about its ordering. And 0183 established the hazard is
+> exact as a FUNCTION ⇒ the live suspects are **its inputs and the conversion from a count target to a kill
+> quota.**
 >
-> **The question:** for each arm, the distribution of the trees it kills over **size (height, agb) and age**,
-> against FIT's own kills at the same cell and year. The hypothesis the numbers point at is that the arm
-> spares large/old stems FIT would have killed, which then compound for decades — but **state it as
-> falsifiable and confirm the comparison basis first** (`residual-diagnosis` skill), because the arm's stand
-> and FIT's have diverged, so a raw killed-size histogram is not like-for-like. The defensible statistic on
-> diverged stands is a **size-conditional mortality rate** — P(die | height bin), P(die | age bin) — per arm
-> vs `REC`, not a comparison of who was killed.
+> **THE FIRST HYPOTHESIS, and it is nearly free to test.** ρ is
+> `clamp(target/(n_prev + 1e-12), 0.7, 1.3)` (`rung2_s_demography_harness.jl:518`), and `target`/`n_prev`
+> live on the **>5 m EMITTED** population (`pools_of`) while the thinning `rand(rng) > f[i]` is applied to
+> **every tree in the roster** (the harness says so at its own line 298). **This is the same
+> emitted-vs-whole population mismatch ADR 0186 §2 found in the anchor's algebra** — and there it was
+> load-bearing enough to make `patch_area` cancel. If the roster is materially larger than the emitted
+> population, a ρ derived from emitted counts under-kills the whole roster by exactly that ratio. Line M's
+> ADR 0130 measured the sub-5 m trees at **47 % of the stems** at Hainich (0.79 share at boreal/Sahel) —
+> which is the right order of magnitude to matter, and possibly the whole 3.5×.
 >
-> **The data is already on disk and needs no model run.** The arm's kill list is written verbatim to
-> `<apply>/rsp_r*_y*_p*.txt` (`K <pft_id> <treeidx>` lines) and the `grow`-phase dump carries every stem's
-> height/age/agb/`mort_*`/`isdead` — join on `(pft_id, treeidx)` per year and patch. FIT's own side is the
-> `REC` dump's `isdead`. ⚠ Check the `rsp_*.txt` files still exist before planning around them, and read the
-> **`rung2-dump-analysis`** skill first: the `#H`-header-to-field offset, the `grow`-phase choice, the
-> coverage gate, and trap 5 (**the C grows the stand, so a stand statistic is inherited by every arm
-> including the null — score `NP` on the same statistic and print its number in the same table**).
-> ⚠ Mortality is applied AFTER allocation, so a stem flagged `isdead` still GREW that year (CLAUDE.md §3).
+> **Measure that ratio BEFORE building anything** (0186 §8's clause, which is what retired the 264-job
+> matrix for 7 s of compute): per patch-year, `n_roster / n_emit` from the dumps against `n_emit` in the arm
+> log, and then whether `ρ` applied to the roster removes the mass FIT removes. **State the mechanism's
+> current size first.** ⚠ And derive the blessed statistic's **sampling SE before choosing its tolerance** —
+> 0187's self-test tolerance was set without that and a 2 σ noise excursion read as a defect (skill trap 5f).
 >
-> **Pre-register before running** — and 0186 §8 adds a clause to the usual discipline: *state the mechanism
-> by which the proposed change moves the blessed statistic, and measure that mechanism's current size
-> first.* That one check is what retired the 264-job anchor matrix for 7 s of compute.
+> **Also cheap and worth doing in the same pass:** the clamp. `ρ ≥ 0.7` caps the kill rate at 30 %/yr of the
+> roster, which is far above the 2.1 % FIT needs, so the clamp is probably NOT binding — but that is an
+> assumption, and `s_arm_log.txt` records `rho` per patch-year, so its incidence is one grep. If the clamp
+> is not binding and the population ratio does not close the 3.5×, the remaining candidate is the count
+> target itself being right about the EMITTED count while implying too little total mortality — at which
+> point re-read 0186 §8.8 carefully, because that is close to (but not the same as) the closed count channel.
 >
-> **Three gaps, none blocking:**
-> * **The `ssp370frz` frozen-boundary control was never run in `predict` mode**, so the direct-vs-total
->   boundary share is unmeasured on the free-running axis (the scorer prints that panel empty).
-> * **The 6 timed-out legs** (`c12045 S1 s2/s3`, `c12235 S0h s1`, `c22732 S0h s1/s2`, `c52059 S1 s2`) are the
->   harness `--max-idle=300` exiting under the C's own 600 s wait. Raise `--max-idle` in
->   `scripts/run_rung2_s_arm.sh` (S-owned) above 600 s if you need them; the coverage gate drops them.
-> * **`S0`/`NP` DO open a +26…+39 % mid-leg count gap** (0186 §3's trajectory) — they are the arms without
->   the trait operator. If a count-side question ever reopens, it is about those two, not `S0h`/`S1`.
->
+> **The data is on disk for all of this**; the `predict` matrix and the arm logs need no model run. Read the
+> **`rung2-dump-analysis`** skill first — traps **5d** (the `isdead` set is contaminated 8→100 % by the C's
+> own forced kills; restrict to `mort_prob < 1` and check `NP` returns ~0), **5e** (stratify a
+> ratio-of-fractions by patch-year or its null is not 1), **5f** (derive the SE), plus the `#H` header
+> offset, the coverage gate and trap 5 (the C grows the stand, so score `NP` in the same table).
+
 > ### C. FLAG STATE
 >
 > | flag | state | what blocks it |
@@ -468,6 +499,25 @@ rather than a request to flip now.
 >
 > ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
 >
+> * ⚠ **NEW (0187) — A DERIVED-A-PRIORI SELF-TEST IS THE CHEAPEST REAL GATE ON A NEW SCORER, AND IT CAUGHT
+>   TWO BASIS ERRORS HERE.** `S0` is uniform thinning (`f[i] = ρ`, size-independent draw) ⇒ its mass
+>   selectivity MUST be 1.00. That one derivable number found (a) that the `mort`-phase `isdead` set is the
+>   arm's nomination UNION the C's own non-negotiable kills, contaminating it **8 % → 100 % arm-dependently**
+>   (NP 100.0, S0 45.8, S0h 7.9, S1 8.7) so it cannot rank arms — fix: restrict to `mort_prob < 1`, and the
+>   check is free because `NP` nominates nothing (its discretionary count came out 14 of 12 393); and (b)
+>   that a POOLED ratio-of-fractions is **not** 1.00 for a uniform operator, being
+>   `<(1−ρ)>_mass/<(1−ρ)>_count` over patch-years while the hardest-thinned patches are the heaviest — fix:
+>   stratify by patch-year, the level at which the operator draws once. **Build a derivable arm into every
+>   new scorer.** Now skill traps 5d/5e.
+> * ⚠ **NEW (0187) — DERIVE THE BLESSED STATISTIC'S SAMPLING SE *BEFORE* CHOOSING ITS TOLERANCE.** The self-test
+>   tolerance (0.15) was pre-registered without it; the statistic's SE is ≈0.09 at one cell (most strata hold
+>   ONE kill and per-stem mass is strongly right-skewed) ⇒ the gate was ~1.7 σ and a single-cell 1.19 read as
+>   a defect when it was ~2 σ of noise. Pooled over 15 legs, SE 0.045 and the test lands at 0.14 σ. Print the
+>   SE and σ-departure beside the pass/fail; **do not move the tolerance afterwards.** Skill trap 5f.
+> * ⚠ **NEW (0187) — A "SHAPE vs LEVEL" READ IS WHAT SEPARATED THESE TWO HYPOTHESES.** The size-conditional
+>   mortality profile has FIT's SHAPE at 2.9–4.6× lower LEVEL: a *selectivity* defect TILTS such a profile, a
+>   *rate* defect SHIFTS it. Plot/print the whole profile, not a single summary — the summary statistic alone
+>   (LAMBDA) said "no selectivity defect" but could not have said what WAS wrong.
 > * ⚠ **NEW (0186) — A CRITERION IS WRITTEN AGAINST A DEFINITION, SO IMPORT THAT DEFINITION.** The first
 >   version of the reachability panel re-implemented the departure basis: a 20-yr window, a mean over cells,
 >   a mean of per-patch RATIOS. Each is defensible alone; together they put `S1`'s ssp370 count departure at
