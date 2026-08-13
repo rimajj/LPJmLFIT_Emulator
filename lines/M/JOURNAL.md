@@ -1464,3 +1464,81 @@ earlier physics changes that the 1e-3 alarm never fired on. Left in place and re
 **Captured:** `julia-test` skill (the default-flip procedure gained the two traps this flip hit — a probe
 that derives its treatment arm FROM its control arm collapses both when the default moves, and an
 equality-based guardrail-4 assertion can survive a flip for fixture reasons and must be re-pointed).
+
+---
+
+## Session 19 — 2026-08-13 — the leaf-recycle suspect dies on an algebraic identity in the C, and moves two cells
+
+**Picked up the handoff's step 1** — *"`boreal_siberia`'s ALLOCATION, the one cell where it genuinely
+binds — and the concrete suspect is a per-PFT flag F does not have: `AllocParams.is_deciduous` is `true`
+for every tree in F, while the C gates the summergreen full-leaf recycle (`leaf/1.05`) on `tree->isphen`
+(`turnover_tree.c:100`)"*. It had been on the queue since session 17 and was framed as cheap and
+well-localised, the same shape as the landed per-PFT parameter work.
+
+**It is refuted, and the target cell is the one place it is provably impossible.** Guardrail 5 first:
+`lpjmlfit.js:53` sets `"new_phenology": true`, so `daily_natural.c:123` dispatches to `phenology_gsi`
+and the whole SUMMERGREEN/RAINGREEN/EVERGREEN switch in `phenology_tree.c` — the *only* place the
+`phenology` PFT key selects a leaf-turnover behaviour — never runs. Then the parameter file: all seven
+tree PFTs declare `"phenology": "summergreen"`, id 0 the *tropical broadleaved evergreen* included (its
+`//"raingreen"` is commented out), so even a live key could not have discriminated. The evergreen-ness
+is in the PFT *names*, not in the parameters. The live gate is the runtime latch `tree->isphen` in
+`turnover_daily_tree.c:42-76`, which branches on `config->individual` first and is phenology-type-blind
+by its own source comment — *"now every PFT can shed leaves (due to dryness, heat, cold etc.)"*.
+
+**The finding is an identity, not a measurement, which is why the item cannot come back.** The
+non-latched branch drips at `turnover_leaf = 1/max(pft->longevity, 1.05)` (`:38`). The `max` clamps that
+rate to 0.9524/yr — *exactly* the latched branch's `leaf_c/1.05`. So for any stem whose leaf longevity is
+at or below 1.05 yr the two branches evaluate to the same number and F's unconditional recycle is exactly
+right, however often the latch fires. Measured per stem off the C's own `ind` table (ADR 0110's route: a
+parquet scan, seconds, no simulation), as the stem-weighted leaf fraction F over-sheds:
+
+| cell | dominant PFTs | frac. stems `Longevity > 1.05` | excess shed | verdict |
+|---|---|---|---|---|
+| `boreal_siberia` | id 6 larch 82 %, id 5 18 % | **0.000 / 0.000** | **0.0031** | CANNOT BIND |
+| `semiarid_sahel` | id 0, 100 % | 0.008 | 0.0018 | CANNOT BIND |
+| `temperate_hainich` | id 3 beech 96 % | 0.013 | 0.0142 | marginal |
+| `tropical_amazon` | id 0, 100 % | 0.671 | **0.1240** | CAN BIND |
+| `mediterranean_iberia` | id 1 45 %, id 2 53 % | 0.905 / 0.853 | **0.2475** | CAN BIND |
+
+0.3 % at the cell two handoffs pointed at — and 0.3 % rather than 0 only because of 42 stem-years of
+id 4 out of 5 342. **It relocates to the two cells with the worst F errors**: the Amazon (still-negative
+tree carbon balance) and the mediterranean (2.7–3.1× assimilate ratio, excluded from ADR 0131/0133's
+headline mean for that reason). Deliberately published with **no recommended default and no parameter**
+(ADR 0105's rule): those two numbers are what F over-sheds *in a year the latch does not fire*, and the
+latch's incidence there is **not measured**. The measurement that would close it is named in the ADR —
+`per_pft_phenology(pft_ids, forcings; water_avails = <the rollout's own lag-1 wscal>)` reproduces the
+leaf-display trajectory F already runs, so the latch is a pure post-process on it.
+
+**A new durable fact fell out, and it is the reusable half.** Leaf longevity is a **per-individual trait
+drawn from the stem's own SLA** — `new_tree.c:215` `corr_corridor(pft->sla, longevity.{interc,slope,
+sigma})`, which is why the par file declares `longevity` as `{mean, interc, slope, sigma}` and not a
+scalar — and it is emitted per stem as the `ind` column `Longevity`. Genuinely sampled: 116–668 distinct
+values per (cell, PFT), 1.12–6.80× spreads, `r(SLA, Longevity)` −0.66 to −0.98 within (cell, PFT) at 12
+of 13 groups. Two traps in it: `longevity.mean` is **not** the realized central value (par file 2.0 yr;
+realized boreal median 0.286, 7× lower — the same shape as ADR 0047's interval-`median`-outside-the-
+interval finding), and F's `AllocParams.turnover_leaf` is a **different quantity** the C never consults
+for trees in individual mode. No active defect there — F's tree path never reads it — but wiring it into
+a drip branch would retain 0.75 of the leaf pool where the truth is 0.4389. Recorded before it is
+stepped in, and flagged to line S as a fifth measurable recruit-trait axis.
+
+**Two claims corrected in place, both right conclusion / wrong reason.** The `pft_allocparams` docstring
+justified the uniform default by the `summergreen` declaration; the load-bearing reason is the clamp. And
+`build_pft_fdiff_params_reference.py` asserted `phenology == "summergreen"` for ids 0–6 with the message
+*"a tree PFT is no longer summergreen ⇒ `is_deciduous` becomes per-PFT"* — an assertion on an **inert**
+key, so it could only fail on an edit that changes nothing while staying green through the edit that
+matters (`residual-diagnosis` §3e turned on our own gate). Replaced with assertions on the `1.05` clamp
+and on `longevity` still being the corridor form positioned above it. The committed 43-column
+`M_pft_fdiff_params.csv` is untouched and still reproduces byte-for-byte under `CHECK=1`.
+
+**Gates.** Docs built clean on a compute node (exit 0, all five mermaid fences rendering,
+`logs/M-docs0134b.1773032.out`) — required because the diff touches `src/**` and `docs` never runs on a
+line branch. Runic clean on `src/fdiff.jl`. New Python diagnostic at 0 findings under the repo's real
+rule set (`E,F,I,UP,B`, line-length 100). No behaviour change anywhere: the only `src/` edit is a
+docstring.
+
+**Method lesson, worth generalising.** A suspect can be killed by an **algebraic identity in the
+reference** rather than by measuring the model: two branches that differ in the source can coincide
+over most of the reference's *realized* input range because of a clamp. Before building an operator to
+reproduce a reference's branch, evaluate **both** of the reference's branches on its own realized
+inputs and check they actually differ. One parquet scan retired an item that had survived two handoffs
+and would otherwise have bought a state machine, a per-stem field and an incidence probe.

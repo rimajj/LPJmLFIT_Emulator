@@ -1517,3 +1517,53 @@ trait row** from it (66 deletions, 24 insertions). Regenerating a shared baselin
 not a side effect. **Before running any analysis script, grep it for the repo-relative paths it writes**
 (`grep -n "OUT_\|write_csv\|to_csv\|to_parquet" <script>`) and redirect them to `/p/tmp`; then `git status`
 after the job and treat any modified tracked file you did not intend as a finding, not as noise.
+## §9 — BEFORE PORTING A REFERENCE'S *BRANCH*, EVALUATE **BOTH** OF ITS BRANCHES ON THE REFERENCE'S OWN REALISED INPUTS (line M, 2026-08-13, ADR 0134)
+
+§8 says derive the closed form before running the arm. This is its cheaper sibling, for the very common
+task *"the C has a conditional and F only implements one side of it"*. The reflex is to port the missing
+branch and measure what it buys. **Do the two-line check first: compute what each of the reference's
+branches would return, over the reference's own realised per-stem inputs, and see whether they differ
+at all.** A clamp, a `min`/`max`, a saturation or a threshold can make two textually different branches
+**evaluate to the same number** over most of the parameter range the reference actually visits — in
+which case the "missing" branch was never distinguishable and there is nothing to port.
+
+**Measured cost of not doing it.** An item sat on line M's queue through **two handoffs**, framed as
+cheap and well-localised: the C gates a full-leaf recycle (`leaf/1.05`) on a runtime latch and F applies
+it unconditionally, so F "runs a summergreen recycle for the evergreen PFTs". The non-latched branch
+drips at `1/max(pft->longevity, 1.05)` — and the `max` **clamps it to 0.9524/yr, exactly the latched
+branch's rate**. Since 100.0 % of the stems at the target cell have leaf longevity below the clamp, the
+two branches are the same number there and F was already exactly right. Stem-weighted, F over-shed
+**0.3 %** of the leaf pool at the cell the work was aimed at. One parquet scan over the reference's own
+per-stem output settled it and retired a planned state machine, a new per-stem field and an incidence
+probe.
+
+- **Score the branches in the units the CONSUMER sees, not the rate.** Here that is the leaf fraction
+  *retained into allocation* (`1 − 1/max(L, 1.05)` vs `1 − 1/1.05`), because that is what enters the
+  allocation solve. A rate difference can look large while the quantity downstream of it is clamped.
+- **Report a per-cell (or per-stratum) `CANNOT BIND` / `CAN BIND` verdict, computed by the script.** A
+  mean over the whole population hides exactly the heterogeneity that decides where to work: the same
+  audit that gave 0.3 % at the target cell gave **24.8 %** and **12.4 %** at two others, which is the
+  actual finding. Have the script print the verdict (ADR 0104's "have the SCRIPT compute the headline
+  statistic").
+- **Then check the incidence question is still live before promising it.** Which branch *fires* is a
+  separate measurement from whether the branches *differ*. Where they do not differ, incidence is
+  irrelevant and the item is dead **mechanically** — say so, so the next session does not re-open it
+  with a probe. Where they do differ, the branch-difference is an **UPPER BOUND** and publishing a
+  default or a parameter off it is the ADR-0105 error.
+- **The dead-path check (CLAUDE.md §3 / guardrail 5) runs FIRST and is separate from this.** In the same
+  case the conditional that was believed to select the branch (`phenology_tree.c`'s
+  SUMMERGREEN/RAINGREEN/EVERGREEN switch) is **dead code** in the live configuration, *and* the parameter
+  it keys on is uniform across all seven PFTs anyway. Three independent refutations, all readable from
+  the source in under an hour: is the branch reachable · does its key actually vary · do the branches
+  differ numerically.
+- **While you are in the reference's per-stem output, check whether the parameter is per-INDIVIDUAL.**
+  The same read established that leaf longevity is drawn per stem from the stem's own SLA
+  (`new_tree.c:215` `corr_corridor`) and emitted as a column, *not* the per-PFT residence time the
+  emulator stores — so a naive port of the branch would have used the wrong quantity (retaining 0.75
+  where the truth is 0.44). ⚠ And a par-file `{mean, ...}` field is **not** the realised centre: the file
+  said 2.0 yr where the realised median was **0.286**. Same shape as ADR 0047's interval-`"median"`-
+  outside-`[low, high]`.
+
+Worked example: `scripts/diagnose_leaf_turnover_regime.py` (variability audit first per ADR 0117, then
+the retained-fraction panel with the decisive "fraction of stems past the clamp" column and the per-cell
+verdict, then the trait-corridor check).

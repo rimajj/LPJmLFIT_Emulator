@@ -472,6 +472,43 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   ratio by **+1.01** (−0.457 → 0.557) and `mediterranean_iberia`'s by **+0.38** — bigger than most per-PFT
   parameters. **Always pass `pft_ids`; treat any pre-0126 five-cell F number as beech-phenology.** It also
   narrows ADR 0125's Sahel reading (about a third of that shortfall was phenology, not ADR 0052's root zone).
+- ⚠ **THE C's LEAF RECYCLE IS GATED ON A RUNTIME LATCH, NOT ON PFT PHENOLOGY — AND ITS TWO BRANCHES ARE
+  THE SAME NUMBER FOR MOST STEMS, WHICH IS WHY F's UNIFORM `is_deciduous` IS FAITHFUL
+  (`[VERIFIED 2026-08-13]`, ADR 0134).** Three facts, each of which independently kills the "F runs a
+  summergreen recycle for the evergreen PFTs" reading that survived two handoffs. **(1)** `lpjmlfit.js:53`
+  sets `"new_phenology": true`, so `daily_natural.c:123` calls `phenology_gsi` and the
+  SUMMERGREEN/RAINGREEN/EVERGREEN switch in **`src/tree/phenology_tree.c` is DEAD CODE** — the only place
+  the `phenology` key selects a leaf-turnover behaviour. **(2)** All seven tree PFTs declare
+  `"phenology": "summergreen"` anyway (`par/pft_lpjmlfit.js:190,320,450,580,710,840,970`), id 0 the
+  *tropical broadleaved evergreen* included — its `//"raingreen"` is commented out. The PFT **names** are
+  evergreen; the parameter is not. **(3)** The live path is `turnover_daily_tree.c:42-76`, which branches on
+  `config->individual` FIRST and is phenology-type-blind by its own comment (*"now every PFT can shed
+  leaves"*): the latch `tree->isphen` goes TRUE on `phen<0.25 && aphen>aphen_min` (`:47`), un-latches on
+  `phen>0.25` (`:44`), resets on the coldest day (`phenology_gsi.c:88`, day 14 N / 195 S), and **while
+  latched NO daily drip accumulates at all**. `turnover_tree.c:100` then picks `leaf_c/1.05` if latched at
+  the annual call, else the accumulated drip. ⚠ **The drip rate is
+  `turnover_leaf = 1/max(pft->longevity, 1.05)` (`:38`) — the `max` CLAMPS it to 0.9524/yr, exactly the
+  latched branch's rate**, so the two branches coincide for any stem with leaf longevity ≤ 1.05 yr. Measured
+  as the leaf fraction retained into allocation (23 375 tree stem-years, 5 cells,
+  `scripts/diagnose_leaf_turnover_regime.py`): stem-weighted excess shed **0.0031 boreal_siberia** (0.000 of
+  larch/BoBS stems exceed the clamp) · **0.0018 semiarid_sahel** · 0.0142 Hainich · **0.1240
+  tropical_amazon** · **0.2475 mediterranean_iberia**. ⇒ **`is_deciduous = true` is exactly right at the
+  two cells it was suspected at and can only bind at the two evergreen ones** — and the boreal item is dead
+  *mechanically*, so don't re-open it with an incidence probe.
+- ⚠ **LEAF LONGEVITY IS A PER-INDIVIDUAL TRAIT DRAWN FROM THE STEM'S OWN SLA, NOT A PER-PFT RESIDENCE
+  TIME (`[VERIFIED 2026-08-13]`, ADR 0134).** `new_tree.c:215` (individual branch) does
+  `pft->longevity = corr_corridor(pft->sla, longevity.{interc,slope,sigma}, seed)` — which is why
+  `par/pft_lpjmlfit.js` declares `longevity` as `{mean, interc, slope, sigma}` and not a scalar — and it is
+  emitted per stem as the `ind` column **`Longevity`**. Genuinely sampled: 116–668 distinct values per
+  (cell, PFT), 1.12–6.80× spreads, `r(SLA, Longevity)` **−0.66 to −0.98** within (cell, PFT) at 12 of 13
+  groups. **Two traps.** (a) **`longevity.mean` is NOT the realized central value** — the par file says
+  2.0 yr for all six non-tropical trees while the realized median at `boreal_siberia` is **0.286** (id 6)
+  and **0.305** (id 5), 7× lower, because the corridor maps the realized SLA distribution; same shape as
+  ADR 0047's interval-`"median"`-outside-`[low,high]` finding. (b) **F's `AllocParams.turnover_leaf` is a
+  DIFFERENT quantity** — the per-PFT `turnover.leaf` residence (1/2/4 yr, ADR 0126), which the C **does not
+  consult for trees in individual mode**. No active defect (F's tree path never reads it, because
+  `is_deciduous` is always true), but wiring it into a non-latched branch would retain 0.75 of the leaf pool
+  where the truth is 0.4389. `Longevity` is also a fifth *measurable* recruit-trait axis for line S.
 - ⚠ **`respcoeff` IS PER-PFT AND SPANS 6× — the tropical tree is 0.2, every temperate/boreal tree is 1.2
   (`[VERIFIED 2026-08-12]`, ADR 0125).** F_diff carries ONE scalar for every tree in every cell
   (`RespParams.respcoeff` defaults to 1.0; the ACTIVE calibrated set `tebs_params`, `fdiff.jl:1287`, sets
