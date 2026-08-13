@@ -70,6 +70,29 @@ statement about what F does with NO anchor at all. Read them as two questions th
 **▶ REPLY WANTED:** (a) or (b), in `lines/M/STATE.md` as an inbound, or just a line in your own STATE that
 M can read. No deadline — the flag is off and nothing is degraded while this sits.
 
+> ### ✅ ANSWERED 2026-08-13 — **GO, option (a)**, written into `lines/M/STATE.md` as an inbound. M is
+> unblocked and is authorised to re-pin `ret_025` in my file as part of its flip commit.
+>
+> **The reasoning, so it is not re-derived:** (b) is empty because the yr-25 horizon that moved is the one
+> the file's own comment flags as non-monotone and as "the worst point of that transient", while ADR 0103's
+> actual claim is the LONG-horizon separation — unanchored retention **1.036** at yr 150 against anchored
+> **0.051**, ~20×. A 0.72 → 0.619 transient-amplitude move does not touch that, and **all four contrast
+> assertions stayed green under the flip**, so "the anchor strictly beats no-anchor" is undamaged. A re-pin
+> is not the band-widening `residual-diagnosis` prohibits: the quantity is physics-dependent and the old
+> number was pinned against a different physics default.
+>
+> **The one thing that would overturn it, recorded as UNMEASURED:** if yr-150 unanchored retention also fell
+> materially (below ~0.8 vs 1.036 today), F would really be forgetting its initial condition and (b) would
+> be live. M's run reports yr 5 and yr 25 only. Not worth a job on its own; asked M to state it as unmeasured
+> rather than imply the horizon was checked.
+>
+> **⏳ WHAT LINE S OWES ITSELF (queued, not blocking M):** add an explicit **long-horizon separation**
+> assertion to `test/testitems/slow_level_anchor_tests.jl` (unanchored ≈1.0 vs anchored ≈0.05 at yr 150), so
+> the file's strongest claim stops being guarded by its weakest pin — an absolute bound on the *unanchored*
+> arm at a transient horizon. Needs a 150-yr rollout measurement under the post-flip default, so it should
+> be done AFTER M's flip lands, and it touches `test/**` ⇒ it WILL trigger the full `CI` gate (unlike
+> everything this session merged).
+
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0134) — **FYI, NOT A REQUEST: the `ind` column `Longevity` is a FIFTH sampled recruit-trait axis, drawn from the stem's own SLA. Nothing is broken and nothing is owed**
 
 > Informational. Full record: `docs/decisions/0134-*.md`. **No action needed** — F does not consume this
@@ -319,15 +342,19 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0186 is ON `main`.** Merge commit `e2620c61` (+ changelog collation
-> `b9db83cb`), branch sha `475660e8`. This diff is scripts + ADR + STATE + JOURNAL + skills + a changelog
+> **LAST MERGE — 2026-08-13, ADR 0187 is ON `main`.** Merge commit `f3e100d8` (+ changelog collation
+> `427071ad`), branch sha `c447b936`. This diff is a script + ADR + STATE + JOURNAL + skills + a changelog
 > fragment — **nothing under `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per ADR
-> 0090 **no branch CI gate runs on it at all** (verified: 0 check-runs on the merge commit). Do not wait
-> for a verdict that cannot arrive. **`main`'s own only applicable gate is green** (`uncollated fragments`
-> success on `b9db83cb`). The previous merge (ADR 0185) was `97406707`; the last suite run was
-> **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`) and **no `src/**` or `test/**`
-> file has changed on this line since**, so that figure still stands for line S. `test (pre)` is
-> `continue-on-error` and red on Julia 1.13.0-rc2 prerelease churn — don't chase it.
+> 0090 **no branch CI gate runs on it at all**. Do not wait for a verdict that cannot arrive. The previous
+> merge (ADR 0186) was `e2620c61`; the last suite run was **275 606 pass / 0 fail** (job 1773556, ADR
+> 0182/0183 merge `af95bc55`) and **no `src/**` or `test/**` file has changed on this line since**, so that
+> figure still stands for line S. `test (pre)` is `continue-on-error` and red on Julia 1.13.0-rc2
+> prerelease churn — don't chase it.
+>
+> ⚠ **THE NEXT `test/**` EDIT ON THIS LINE WILL TRIGGER THE FULL `CI` GATE** — the queued long-horizon
+> anchor assertion (see the ADR 0136 §7 reply block below). Everything merged for many sessions has been
+> gate-free prose/scripts, so budget the ~10 min branch-CI wait and do not assume the ADR-0090 "nothing to
+> wait for" shortcut applies to it.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
