@@ -35,11 +35,18 @@
 #   * phase `grow` and only `grow` — the rendezvous point, after this year's turnover/allocation and
 #     before anyone is removed. `pre` carries uninitialised `mort_*`/`bm_delta`; `mort`/`post` are the
 #     wrong state (rung2-dump-analysis skill, ADR 0123).
-#   * `n_prev` = `n_emit`, the live stand's own count — i.e. `--n-prev=roster`, which is what every arm in
-#     `/p/tmp/jamirp/S_rung2` actually ran with (`_arm_run1.sh:78`, and it is in the dump names).
-#     ⚠ That is a REAL stand count handed to the model, so this whole probe sits on ADR 0181's **CTRL**
-#     (leaked, 0.707) axis, NOT its ABL (de-leaked, 0.292) axis. Do not compare a number from here
-#     against 0.292.
+#   * `n_prev`, in whichever of the two modes the arms being compared against ran — set `NPREV`
+#     (default `roster`, so every published number here reproduces unchanged):
+#       - `roster`: `n_prev` = `n_emit`, the live stand's own count (`_arm_run1.sh:78`; it is in the
+#         dump names). ⚠ That is a REAL stand count handed to the model, so a number from this mode
+#         sits on ADR 0181's **CTRL** (leaked, 0.707) axis, NOT its ABL (de-leaked, 0.292) axis, and
+#         per ADR 0184 the target is then pinned to the live count to ±2.3 % — REC's sign agreement in
+#         this mode is the PERSISTENCE NULL's value by construction and is not skill.
+#       - `predict`: `n_prev[patch]` = the model's OWN previous target, seeded at a patch's first year
+#         with `n_emit` (there is no previous prediction to recurse on). This is the shipped coupled
+#         recursion and mirrors `rung2_s_demography_harness.jl:479-482, 601` line for line.
+#     ⚠ THE MODE MUST MATCH THE ARM DUMPS IT WILL BE READ BESIDE. A `roster` REC column placed next to
+#     `predict` arms puts the reference on a tethered axis and the arms on a free one.
 #   * the transient per-year boundary tail (ADR 0026), from the same
 #     `boundary/boundary_<scen>_c<cell>.csv` the emulator arms were given. `REC` itself ran with NO
 #     boundary series (`_arm_run1.sh:116` skips it for `REC`, since no harness starts), so this is a
@@ -64,7 +71,9 @@ const DRFPATH = get(
 )
 const BDIR = get(ENV, "BOUNDARY_DIR", joinpath(DUMPS, "boundary"))
 const PATCH_AREA = 225.0
-const REC_RE = r"^S_r2s_(historic|ssp370)_c(\d+)_REC_roster_s(\d+)_dump$"
+const NPREV = get(ENV, "NPREV", "roster")
+NPREV in ("roster", "predict") || error("NPREV must be roster or predict (got '$NPREV')")
+const REC_RE = Regex("^S_r2s_(historic|ssp370)_c(\\d+)_REC_" * NPREV * "_s(\\d+)_dump\$")
 
 """
     grow_blocks(path) -> channel-like iteration via a callback
@@ -165,13 +174,18 @@ Every `grow` patch-year of one dump put through the shipped feature assembly and
 function score_dump(forest, allom, path::AbstractString, bseries)
     out = Vector{Any}()
     byears = sort(collect(keys(bseries)))
+    # `n_prev` per patch, carried across years — the state of the shipped recursion. Unused in
+    # `roster` mode, where the live stand overwrites it every year (harness lines 448-451).
+    n_prev = Dict{Int, Float64}()
     grow_blocks(path) do year, patch, trees, rzw
         emitted = [t for t in trees if t.height > HEIGHT_MIN]
         pools_emit = pools_of(emitted)
         n_emit = n_emitted(trees, PATCH_AREA)
         bm_inc, ge, ws = flux_drivers(trees)
-        # roster mode — the live stand's own count, exactly as every arm ran (see the header warning)
-        npv = n_emit
+        # `roster`: the live stand's own count. `predict`: the model's own previous target, seeded at
+        # a patch's first year with `n_emit` because there is no previous prediction to recurse on —
+        # which is the one year in which `predict` mode is NOT the recursion (harness lines 475-482).
+        npv = NPREV == "roster" ? n_emit : get(n_prev, patch, n_emit)
         state = EM.SharedState{Float64}(w = fill(rzw, EM.NSOILLAYER))
         soil = FD.SoilColumn{Float64}(
             fill(1.0, 3), fill(1 / 3, 3), fill(1 / 3, 3), 0.0, fill(1000.0, 3)
@@ -183,6 +197,7 @@ function score_dump(forest, allom, path::AbstractString, bseries)
         byear = bseries[clamp(year, first(byears), last(byears))]
         feats = EM.flux_feature_vector(byear, ages, npv, grow, pools_emit, state, allom, soil)
         target = DRF.predict(forest, feats)
+        n_prev[patch] = target
         push!(
             out,
             (
@@ -205,12 +220,22 @@ function score_all(argv)
     println("  forest   : $DRFPATH  (nfeat=$(forest.nfeat))")
     println("  boundary : $BDIR")
     println("  out      : $OUTCSV")
+    println(
+        "  n_prev   : $NPREV", NPREV == "roster" ?
+            "  (the live stand count — TETHERED, ADR 0184)" :
+            "  (the model's own previous target — the shipped recursion)"
+    )
     flush(stdout)
 
     open(OUTCSV, "w") do io
         println(io, "# map-on-REC-stand: the learned count model over LPJmL-FIT's OWN rung-2 roster.")
         println(io, "# built by scripts/diagnose_rung2_map_on_rec_stand.jl from the `grow` phase")
-        println(io, "# n_prev basis = roster (leaked) => ADR 0181 CTRL axis, NOT its de-leaked 0.292.")
+        println(
+            io,
+            NPREV == "roster" ?
+                "# n_prev basis = roster (leaked) => ADR 0181 CTRL axis, NOT its de-leaked 0.292." :
+                "# n_prev basis = predict (the shipped recursion; free-running, ADR 0184)."
+        )
         println(io, "# forest=$DRFPATH")
         println(
             io,

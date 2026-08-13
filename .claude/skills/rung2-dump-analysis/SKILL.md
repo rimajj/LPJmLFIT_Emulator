@@ -1,6 +1,6 @@
 ---
 name: rung2-dump-analysis
-description: Read and score the rung-2 roster dumps — the per-tree state LPJmL-FIT writes at the demography rendezvous when the emulator substitutes its mortality (line S, ADR 0175). Use whenever a question about the rung-2 arms can be answered from state already on disk instead of a new LPJmL run: an arm's own stand features (hmean/hmax/agb/lai/fpc/age_mean), its per-stem hazards or certain-kill set, its trait/age distributions, a historic-vs-ssp370 leg comparison, or FIT's own values as the like-for-like reference. Names the dump layout `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_<arm>_roster_s<seed>_dump/roster_rank0000.txt`, the arms REC/NP/S0/S0h/S1, the four phases pre/grow/mort/post and why `grow` is almost always the right one, the `#H`-header-to-field OFFSET that silently mis-reads two same-typed columns, the coverage gate that 92 of 510 legs fail, and the existing scorers scripts/diagnose_rung2_stand_warming.py, scripts/diagnose_rung2_ported_certain_set.jl, scripts/diagnose_rung2_response.py, scripts/diagnose_rung2_armc.py. ALSO the rule that in a rung-2 arm the C GROWS THE STAND, so any stand-derived statistic is inherited by every arm including the do-nothing null and cannot rank arms. ALSO — CHECK `<apply>/s_arm_log.txt` FIRST: beside every arm's dump the harness logged its own count `target`, `rho`, `n_kill`, the four flux drivers and BOTH stand feature bases per patch-year in ~170 kB, so most stand questions need no dump scan at all (only REC lacks one; supply it with scripts/diagnose_rung2_map_on_rec_stand.jl). ALSO the `--n-prev` mode check that decides whether a response statistic exists: all 767 dumps are `roster`, where the model is handed the LIVE stem count and returns one within ±5 % of it in ~85 % of patch-years, so `target` and the stand's own count are the SAME quantity, any ASK-vs-GOT comparison is degenerate, and a persistence null passes a sign-agreement basis check at 12/12 cells by construction (ADR 0184) — test it with median |target/n_emit − 1| > 0.10, never with |rho − 1|, which is near 1 in both modes.
+description: Read and score the rung-2 roster dumps — the per-tree state LPJmL-FIT writes at the demography rendezvous when the emulator substitutes its mortality (line S, ADR 0175). Use whenever a question about the rung-2 arms can be answered from state already on disk instead of a new LPJmL run: an arm's own stand features (hmean/hmax/agb/lai/fpc/age_mean), its per-stem hazards or certain-kill set, its trait/age distributions, a historic-vs-ssp370 leg comparison, or FIT's own values as the like-for-like reference. Names the dump layout `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_<arm>_roster_s<seed>_dump/roster_rank0000.txt`, the arms REC/NP/S0/S0h/S1, the four phases pre/grow/mort/post and why `grow` is almost always the right one, the `#H`-header-to-field OFFSET that silently mis-reads two same-typed columns, the coverage gate that 92 of 510 legs fail, and the existing scorers scripts/diagnose_rung2_stand_warming.py, scripts/diagnose_rung2_ported_certain_set.jl, scripts/diagnose_rung2_response.py, scripts/diagnose_rung2_armc.py. ALSO the rule that in a rung-2 arm the C GROWS THE STAND, so any stand-derived statistic is inherited by every arm including the do-nothing null and cannot rank arms. ALSO — CHECK `<apply>/s_arm_log.txt` FIRST: beside every arm's dump the harness logged its own count `target`, `rho`, `n_kill`, the four flux drivers and BOTH stand feature bases per patch-year in ~170 kB, so most stand questions need no dump scan at all (only REC lacks one; supply it with scripts/diagnose_rung2_map_on_rec_stand.jl). ALSO the `--n-prev` mode check that decides whether a response statistic exists: all 767 dumps are `roster`, where the model is handed the LIVE stem count and returns one within ±5 % of it in ~85 % of patch-years, so `target` and the stand's own count are the SAME quantity, any ASK-vs-GOT comparison is degenerate, and a persistence null passes a sign-agreement basis check at 12/12 cells by construction (ADR 0184) — test it with median |target/n_emit − 1| > 0.10, never with |rho − 1|, which is near 1 in both modes. ALSO the `predict` matrix now on disk (264 jobs, 258 done, tags `_predict_s<seed>`, ADR 0185) and the three rules it paid for: the mode knob must reach the OFFLINE REC replay too or the reference sits on a tethered axis while the arms run free; gate an added recursion on the first year it cannot change (600/600 rows bit-identical) rather than on an aggregate; and run the python scorers with the conda py311 interpreter, because /usr/bin/python3 dies on zip(strict=True) two thirds down the output and a partial run looks complete.
 ---
 
 # rung2-dump-analysis — answer a rung-2 question from the dumps instead of a new run
@@ -48,7 +48,7 @@ for stand features this file already had. **Only `REC` has no log** (pure observ
 supply it offline with `scripts/diagnose_rung2_map_on_rec_stand.jl`.
 
 ⚠ **AND CHECK WHICH `--n-prev` MODE THE RUNS USED — it decides whether your statistic exists at all.**
-All 767 dumps are `roster`, where `n_prev` is the LIVE stand count; measured, `target` then lies within
+All 767 dumps written before 2026-08-13 are `roster`, where `n_prev` is the LIVE stand count; measured, `target` then lies within
 ±5 % of it in 84–87 % of patch-years and `target/n_emit` = 1.00 ± 2.3 % (ADR 0184). So in `roster` mode
 **the map's target and the stand's own count are the same quantity**, any comparison between them is
 degenerate, and a persistence null (`target = n_prev`) reproduces FIT's count direction at 12/12 cells *by
@@ -56,6 +56,32 @@ construction* — it will pass a sign-agreement basis check that looks like skil
 coupled path, `n_prev[patch] = target`) decouples them to ±24 %. **Do not use |ρ−1| to test for this**: ρ is
 a year-on-year ratio of two smooth tree-ensemble outputs and sits near 1 in *both* modes. Use
 median |`target`/`n_emit` − 1|, and require > 0.10 before reading any response statistic.
+
+**Both scorers now take `NPREV` (default `roster`) and there is a `predict` matrix on disk** — 264 jobs,
+258 completed, tags `S_r2s_<scen>_c<cell>_<arm>_predict_s<seed>` (ADR 0185). Measured separability on the
+ssp370 leg: `REC` 0.132 · `NP` 0.347 · `S0` 0.244 · `S0h`/`S1` 0.18, against 0.018–0.031 for every `roster`
+arm and leg. Three things to carry over:
+
+* ⚠ **THE MODE KNOB MUST REACH EVERY SCRIPT IN THE CHAIN, INCLUDING THE REFERENCE ARM'S.** `REC` has no
+  runtime log, so its `target` column is replayed offline by `diagnose_rung2_map_on_rec_stand.jl`. Leaving
+  that replay in `roster` while the arms are in `predict` puts **the reference on a tethered axis and the
+  arms on a free one** — invisible in every output, and it would have inflated `REC`'s score back toward
+  the null's. Set `NPREV` on both, and check each script names its mode in its own header line.
+* **Gate an added recursion on the year it CANNOT change, not on an aggregate.** In `predict` mode a
+  patch's first year seeds `n_prev` from `n_emit`, so it must reproduce the `roster` replay bit-for-bit
+  while later years must not: measured **600/600 first-year rows identical, 78.3 % of 29 700 later rows
+  differing**. One aggregate agreement number cannot tell "wired in" from "the seed moved too".
+* ⚠ **A gate met on one leg and missed on another is a DERIVATION problem.** The `predict` historic leg
+  reaches only 0.079–0.099. Keying on ssp370 is defensible because the blessed statistic is a *difference
+  of leg means*, so a tethered BASELINE leg deletes the term `ASK_hist − GOT_hist` from the ASK-vs-GOT
+  contrast rather than collapsing it (degeneracy needs BOTH legs tethered) — but that reading was chosen
+  after seeing the numbers, so the scorer prints the strict per-leg alternative (NO VERDICT) every run.
+  Do the algebra of what your statistic needs from each leg *before* picking.
+
+⚠ **RUN THE PYTHON SCORERS WITH `/home/jamirp/.conda/envs/py311_new/bin/python`, NOT `/usr/bin/python3`.**
+The system python is too old for `zip(..., strict=True)` and dies `TypeError: zip() takes no keyword
+arguments` **two thirds of the way down the output** — after the separability gate and the per-cell table
+have already printed convincingly. A partial run that dies below the fold looks like a complete one.
 
 ## The four phases, and which one you want
 
@@ -114,7 +140,7 @@ median |`target`/`n_emit` − 1|, and require > 0.10 before reading any response
 | `scripts/diagnose_rung2_ported_certain_set.jl` | per-stem ported hazard vs FIT's own `mort_prob`, certain-set recall/precision, and a zeroed-stress arm that evaluates the hazard as the COUPLED loop runs it |
 | `scripts/diagnose_rung2_response.py` | the per-cell count response by arm/scenario/seed |
 | `scripts/diagnose_rung2_map_on_rec_stand.jl` | the count model run over **FIT's OWN** roster, i.e. the `target` column `REC` has no log for. `include`s the harness for `Tree`/`pools_of`/`flux_drivers` so the row reaches the SHIPPED `flux_feature_vector` + `DRF.predict` (ADR 0023); ~15 s for all 30 REC dumps. **Its gate is the pattern to copy: at year 2000 no arm has killed anything yet, so its row must equal the live `s_arm_log.txt` to the last digit — verified bit-identical.** |
-| `scripts/diagnose_rung2_map_target_response.py` | ASK (the count the map asked for) vs GOT (the count the stand reached) vs FIT, per cell and arm, off the arm logs; the ρ/tether panel, the stand-LEVEL departure table, the drift and frozen-boundary controls (ADR 0184). |
+| `scripts/diagnose_rung2_map_target_response.py` | ASK (the count the map asked for) vs GOT (the count the stand reached) vs FIT, per cell and arm, off the arm logs; the ρ/tether panel, the stand-LEVEL departure table, the drift and frozen-boundary controls (ADR 0184). Takes `NPREV`; prints the pre-registered SEPARABILITY GATE before any response statistic and suppresses the verdict for a tethered arm (ADR 0185). |
 | `scripts/diagnose_rung2_armc.py` | age–wooddens gradients and selection differentials (shared with line M's arm C; **each arm family has its own recorded baseline and they are NOT interchangeable**) |
 | `scripts/rung2_s_demography_harness.jl` | **the row assembly.** It reaches `flux_feature_vector` and `DRF.predict` as private names off the package rather than copying them — do the same, or the copy becomes the thing being measured (ADR 0023). |
 

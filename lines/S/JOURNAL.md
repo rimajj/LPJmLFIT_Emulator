@@ -2375,3 +2375,39 @@ decoupling, `target/n_emit`, which goes from ±2.3 % to ±24 % (±28 % late cent
 answerable there, and the full 264-job matrix is submitted with its reading pre-registered on the corrected
 metric. Next session scores it; ρ first, then the gain-cell signs, and `REC`'s 12/12 labelled as the null's
 every time it appears.
+
+## 2026-08-13 — the `predict` matrix is scored: the limit is the stand, not the operator (ADR 0185)
+
+Executed ADR 0184 §10.4's pre-registered reading on the 264-job `--n-prev=predict` matrix (258 completed,
+6 lost to the known `--max-idle` harness timeout). No new model run, no flag flipped, no artifact
+regenerated.
+
+Two S-owned scorers gained an `NPREV` knob, default `roster` so every published number reproduces:
+`diagnose_rung2_map_target_response.py` (regex + completion gate) and `diagnose_rung2_map_on_rec_stand.jl`,
+which also gained the shipped `n_prev[patch] = target` recursion mirroring the harness. The second one
+mattered more than it looks: `REC` has no runtime log, so its column is replayed offline, and had it been
+left in `roster` the reference would have sat on a tethered axis while the arms ran free — invisible.
+Gated it on the year the recursion cannot touch: 600/600 first-year rows bit-identical to the `roster`
+replay, 78.3 % of 29 700 later rows differing.
+
+Added the pre-registered separability gate to the scorer, printed before any response statistic. It
+refuses the `roster` matrix (0.018–0.031, NO VERDICT — reproducing 0184) and admits `predict` (ssp370 leg
+0.13–0.35). The awkward part, recorded rather than buried: the `predict` *historic* leg reaches only
+0.079–0.099, and keying the verdict on ssp370 was decided after seeing that. It is defended by algebra —
+the blessed statistic is a difference of leg means, so a tethered baseline leg deletes a term from the
+ASK-vs-GOT contrast instead of collapsing it — and the scorer now prints the strict per-leg alternative
+(NO VERDICT) on every run.
+
+Result: `ASK_gain(REC)` = 4/5 with the do-nothing null at 1/5, learned arms 1–2/5 ⇒ CONDITIONING-LIMITED.
+The derivation that makes it readable, and the thing 0184 was voided for missing: in `roster` mode `REC`
+and the null are both 5/5 *by construction*; in `predict` mode they separate, and since `REC` and the arms
+run the same map with the same free-running recursion and differ only in the stand they read, the gap is
+attributable to the stand. Mechanism is 0184 §7's departure, now operative: +89–312 % agb, +54–160 %
+`age_mean` vs FIT.
+
+Explicitly NOT concluded: the operator is not refuted, only untested — with the map not asking for the
+gain it never got the chance to fail. Said so in the ADR and in settled item 7 of the handoff, because
+"the operator is fine" is the reading this result invites and does not support.
+
+Next action handed on: wire ADR 0103's `anchor` into the rung-2 path (a harness change — the harness never
+builds a `FluxDrivenSlowEmulator`), with the conjunction criterion pre-registered in 0185 §7.5.
