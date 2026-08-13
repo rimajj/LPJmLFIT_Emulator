@@ -344,14 +344,16 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — pending at the time of writing; the shas go here when the merge lands.** The previous
-> merge was ADR 0189: `df45bd4f` (+ changelog collation `f5217508`, branch sha `7d907b62`). ADR 0188 merged
-> as `7db91f5b`, 0187 as `f3e100d8`, 0186 as `e2620c61`.
+> **LAST MERGE — 2026-08-13, ADR 0240 is ON `main`.** Merge commit `221c726a` (+ changelog collation
+> `c6289ee6`, branch sha `512f4a03`); **both gates the diff triggers are green on `c6289ee6` —
+> `format` and `uncollated fragments`.** The previous merge was ADR 0189: `df45bd4f` (collation `f5217508`,
+> branch sha `7d907b62`); ADR 0188 `7db91f5b`, 0187 `f3e100d8`, 0186 `e2620c61`.
 >
-> ⚠ **THE ADR-0240 DIFF TOUCHES `scripts/**` ONLY — no `src/**`, no `test/**`, no `python/**`, no
-> `docs/src/**` — BUT IT DOES TOUCH `*.jl`** (`scripts/rung2_s_demography_harness.jl`), so per ADR 0090 the
-> **`format` gate (Runic) DOES run on this branch** while `CI`, `python` and `docs` do not. Runic was checked
-> locally and is clean; expect exactly one gate, not none and not four. The last full suite run was
+> ⚠ **A REMINDER THE 0240 MERGE PAID FOR: a `scripts/**`-only diff is NOT automatically gate-free.** It
+> touched no `src/**`, `test/**`, `python/**` or `docs/src/**` — but it touched a `*.jl` file
+> (`scripts/rung2_s_demography_harness.jl`), and the `format` gate (Runic) watches **any** `**/*.jl`, so it
+> ran on the branch AND on `main`. Expect exactly one gate for that shape of diff, not none and not four.
+> The last full suite run was
 > **275 606 pass / 0 fail** (job 1773556) and no `src/**` or `test/**` file has changed on this line since,
 > so that figure still stands.
 >
