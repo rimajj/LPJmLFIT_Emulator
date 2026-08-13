@@ -257,8 +257,9 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0185 is ON `main`.** Merge commit `PENDING_MERGE`, branch sha
-> `PENDING_BRANCH`. This diff is scripts + ADR + STATE + skill + a changelog fragment — nothing under
+> **LAST MERGE — 2026-08-13, ADR 0185 is ON `main`.** Merge commit `97406707` (+ changelog collation
+> `e2da6e87`), branch sha `b87f335e`. Branch gate `format` green; **`main`'s own gates green**
+> (`format`, `uncollated fragments`). This diff is scripts + ADR + STATE + skill + a changelog fragment — nothing under
 > `src/**`, `test/**`, `python/**` or `docs/src/**` — so per ADR 0090 **no CI gate runs on it at all**.
 > Do not wait for a verdict that cannot arrive. The previous merge (ADR 0184) was `706ff4fc`; the last
 > suite run was **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`). `test (pre)` is
