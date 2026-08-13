@@ -342,8 +342,9 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0189 is ON `main`** (merge sha recorded in the JOURNAL entry for this
-> session). ADR 0188 merged as `7db91f5b` (+ changelog collation `a2d11a09`, branch sha `4fce8a4a`);
+> **LAST MERGE — 2026-08-13, ADR 0189 is ON `main`.** Merge commit `df45bd4f` (+ changelog collation
+> `f5217508`, branch sha `7d907b62`); `main`'s only triggered gate, `changelog`, is **green** on
+> `f5217508`. ADR 0188 merged as `7db91f5b` (+ changelog collation `a2d11a09`, branch sha `4fce8a4a`);
 > ADR 0187 as `f3e100d8` (collation `427071ad`, branch sha `c447b936`); ADR 0186 as `e2620c61`. The
 > 0189 diff is two scripts + ADR + README row + STATE + JOURNAL + skill + CLAUDE.md §9 + a changelog
 > fragment — **nothing under `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per
