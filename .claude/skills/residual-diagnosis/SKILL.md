@@ -1857,3 +1857,41 @@ size-conditional mortality profile turned out to have the reference's **shape** 
 level**. A *selectivity* defect TILTS such a profile; a *rate* defect SHIFTS it. The single summary
 statistic could say "not a selectivity defect" but could never have said what the defect *was* — printing
 the whole profile beside it is what turned a refutation into a diagnosis and a next action.
+
+---
+
+## §16 — SANITY-CHECK A *LEVEL* AGAINST WHAT THE SYSTEM MUST DO OVER ITS OWN HORIZON: THAT IS THE TELL A *RATIO* CANNOT GIVE YOU (line S, 2026-08-13, ADR 0188 §8)
+
+§13–§15 are about the statistic you blessed. This one is about the quantity feeding it, and it is the
+cheapest check in this file.
+
+A recruit-count identity was written as `R = n_post − (n_grow − K)` — the obvious form, which assumes the
+killed individuals are gone from the later roster. They were not (the model **defers** its kills, so a
+flagged-dead individual is still a record at the later phase), and the error inflated `R` by exactly `K`.
+
+**Every arm-to-arm ratio computed from it looked perfectly sane.** What exposed it was reading the *level*
+against the system's own horizon: the number implied a population growing **+4.6 to +6.5 % per year,
+sustained for 81 years** — which would multiply the population by orders of magnitude, and the model is
+known to be near-stationary. One sentence of arithmetic, no probe.
+
+So, before believing any derived quantity: **integrate it over the run length and ask whether the result is
+a thing the system could be.** Rates, fluxes, turnover and per-year differences are where this bites,
+because a plausible-looking per-year number can be wildly wrong and its *ratios between arms* stay clean —
+the shared error cancels. This is the mirror of ADR 0184's "report the LEVEL beside every SHIFT": there the
+level was the context a z-score had discarded, here it is the falsifier a ratio had hidden.
+
+**And do not make the gate stricter than the identity it is gating.** The identity above needs only *no
+individual removed between the two phases* — true at **30 300 of 30 300** patch-years. A first version also
+required the flagged-dead COUNT to be unchanged, and duly reported a **13.2 % "violation" rate that was not
+a violation at all**: a second process (fire) flags further individuals dead between the phases,
+one-directional, +14.1 % on top, and outside the mechanism under test. An over-strict gate does not fail
+safe — it manufactures doubt about a correct number and costs a session re-establishing trust in it.
+**Write the identity down, gate exactly it, and report anything else as information beside the verdict.**
+
+**A derivable refutation beats a measurement, and reading the code path is what makes one available.** The
+hypothesis this ADR was convened to test — a quota formed on a smaller sub-population "under-killing the
+whole population by exactly that ratio" — died on one read of the implementation: the quantity is applied as
+a scale-free *fraction* against the whole population, never as a count quota carried over. The
+sub-population disparity was real (2.08–2.92×) and simply could not have the consequence attributed to it.
+**Read the code path before designing the probe for it**; a real disparity is not evidence of the mechanism
+someone attached to it.
