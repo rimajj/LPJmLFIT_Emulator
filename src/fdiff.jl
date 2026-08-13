@@ -246,7 +246,7 @@ Base.@kwdef struct WaterParams{T <: Real}
     # coupled core this gate runs at the sharp step, and standalone with `grass_demand_gate=false` it runs
     # at the soft `2e4`. Keep it OFF on the Enzyme/`rollout_canopy_years_gpp` path: a 1e8 sigmoid is
     # gradient-hostile, and that path reads `p.water` directly with no reconstruction.
-    tree_demand_gate::Bool = false
+    tree_demand_gate::Bool = true
     # ── C-FAITHFUL LEAF-ON WATER SCALAR (ADR 0051; default off ⇒ byte-identical) ────────────────
     # `wscal` is NOT the realized supply/demand ratio in the C — it is a *potential*, phenology-INDEPENDENT
     # soil-water-supply index (`water_stressed.c:130-138`):

@@ -1415,3 +1415,52 @@ ADR 0110 trait-drop. Nothing broken today (default off), and it is now the pre-r
 **Captured:** `residual-diagnosis` §8 (check the initial condition, not only the reference dataset; derive
 the closed form before running the arm; an exact zero is a red flag; a pre-registered bar can contradict
 its own document), CLAUDE.md §3 (the demand ∝ leaf carbon, and the 4 % seed).
+
+---
+
+## Session 18 — 2026-08-13 — the tree demand-gate default flip (ADR 0133)
+
+**What I did.** Discharged the flip criterion ADR 0131 §8 pre-registered before the gate existed. Condition
+(a) was satisfied by last session's below-ground growth port. Condition (b): mean `|bmi_F/bmi_C − 1|` over
+the four readable cells falls **0.1914 → 0.1581** on the pre-registered arm pair `P→Pg` and **0.1599 →
+0.1266** on the growth arms `Pbgg→Pgbgg` — the same −0.0333 in both, which says the gate's assimilate effect
+is additively separable from the below-ground port's at these cells, i.e. the cancellation condition (a)
+existed to protect against does not show up in this channel. Condition (c): flipped the default **alone**,
+no baseline touched, ran the CI-faithful suite — **4 failures of 275 597**, two of them the "default is off"
+assertions themselves. Third flip in a row whose measured blast radius is 3–4 assertions.
+
+**The two baseline moves, both with a control arm in the same run.** Added `TREE_GATE=0|1` to
+`biome_ensemble_pin_probe.jl` (same convention as its `TWO_LAYER`) and made
+`regen_fdiff_baselines.jl`'s canopy block run two arms with ratios. The opt-out arm reproduced all ten
+committed coupled pins **to every printed digit**, and the canopy regen moved **only** `gpp_annual`
+(1250.124 → 1237.437) with the four water rows at ratio exactly 1.0 — which is the mechanism's prediction,
+so it functioned as a check rather than a re-record.
+
+**The cost, stated with the gain.** Photosynthesis gets worse (`|gpp_F/gpp_C − 1|` 0.0570 → 0.0611), all of
+it at `semiarid_sahel` (0.906 → 0.855); boreal 1.027 → 1.002 and Hainich 1.085 → 1.074 improve; respiration
+improves. Coupled stand cover −3.1 % boreal, −1.0 % Hainich. Flipped anyway: the criterion was
+pre-registered on the assimilate channel and the gate is what the C does.
+
+**What surprised me, and it is worth keeping.** `semiarid_sahel`'s 2-yr coupled GPP goes **UP** 1.6 % under
+an operator that can only lower GPP within a day — because the gate stops F paying leaf respiration against
+a collapsed assimilation on drought days, so the carbon balance improves and the canopy grows instead of
+shrinking. A within-day monotonicity and a multi-year mean are different claims about the same operator, and
+I nearly wrote the pin delta up as an error.
+
+**Two process findings about this line's own recent work.** (i) Four probes had control arms the flip would
+have silently relabelled — worst case, `biome_sapwood_bg_probe.jl` builds its gated arm by copying its
+ungated one and setting the flag, so `Ag ≡ A` and `Pg ≡ P` would have collapsed and 30 committed rows would
+have carried false labels. Fixed in all four. (ii) A guardrail-4 assertion I wrote one week earlier had
+become a green test proving nothing: at the soft default sharpness the sigmoid saturates to exactly 1.0 on
+every day of that fixture's forcing, so "the default reproduces the opt-out bit-for-bit" kept passing for a
+reason unrelated to the flag. Kept it, relabelled as a fixture property, and pointed the wiring proof at the
+hard-step arm where the gate actually fires.
+
+**An honest limit I chose not to hide.** The canopy control arm reproduces the committed fixture to 1.3e-4,
+not to its printed digits: the four water rows carry ≤ 1.6e-4 of accumulated sub-tolerance drift from
+earlier physics changes that the 1e-3 alarm never fired on. Left in place and recorded in the fixture header
+— absorbing it into this re-record would have buried a pre-existing fact inside an unrelated change.
+
+**Captured:** `julia-test` skill (the default-flip procedure gained the two traps this flip hit — a probe
+that derives its treatment arm FROM its control arm collapses both when the default moves, and an
+equality-based guardrail-4 assertion can survive a flip for fixture reasons and must be re-pointed).

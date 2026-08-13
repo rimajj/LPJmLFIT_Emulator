@@ -210,7 +210,11 @@ function mkparams(; respcoeff = nothing)
     w = p.water
     fns = fieldnames(typeof(w))
     nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
-    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true))...)
+    # ⚠ `tree_demand_gate = false` explicitly: the package default flipped to `true` (ADR 0133) and this
+    # probe's PUBLISHED panel is on the gate-OFF basis. Taking it by omission would silently rebase every
+    # number this probe prints under a label that no longer describes it. Re-measuring on the new default
+    # is a deliberate new arm, not a silent substitution.
+    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true, tree_demand_gate = false))...)
     r = p.resp
     if respcoeff !== nothing
         rf = fieldnames(typeof(r))

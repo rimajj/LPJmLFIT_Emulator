@@ -388,7 +388,28 @@ then the flag rots. Three have landed this way (`wscal_leafon` ADR 0059, `enable
    moves, and prints numbers under a label that is now false (line E lost a sub-daily `T_skin` verdict to
    exactly this, ADR 0075 §4). Take the package default by *omission*; pass a flag only when the arm means
    that specific value.
-6. **Quote the cost in the same sentence as the gain.** The `wscal_leafon` flip moved the Sahel's GPP from
+6. **⚠ A PROBE THAT DERIVES ITS TREATMENT ARM *FROM* ITS CONTROL ARM COLLAPSES BOTH WHEN THE DEFAULT
+   MOVES — and silently (line M, ADR 0133).** Step 5's audit is usually described as "a control arm that
+   hardcoded the old default is no longer a control". There is a worse version: `biome_sapwood_bg_probe.jl`
+   built its gated arm by COPYING the default bundle and setting one field, so flipping the default made
+   `PARAMS_TG` field-for-field equal to `PARAMS` ⇒ **`Ag ≡ A` and `Pg ≡ P`**, and 30 committed rows of its
+   fixture would still have been produced, still have been green, and still have carried arm labels that no
+   longer described them. Grep for every construction of the parameter bundle (`grep -n 'wscal_leafon = true'
+   scripts/*.jl` found four siblings here), and make the flag EXPLICIT in every arm that MEANS a value.
+   Only an arm that means "whatever ships" takes the default by omission — and for that arm, add an
+   **opt-out env knob** (`TREE_GATE=0`, following the existing `TWO_LAYER=0`) rather than an explicit value,
+   because its job is to run the shipped default. That knob is also what makes step 3 checkable: the run
+   producing the NEW numbers reproduced all ten previously committed pins to every printed digit.
+7. **⚠ RE-POINT THE GUARDRAIL-4 EQUALITY ASSERTION — it can survive the flip for a reason that has nothing
+   to do with your flag (line M, ADR 0133).** The pattern "the DEFAULT reproduces the explicit-OFF arm
+   bit-for-bit" is the standard guardrail-4 proof while the default is off. After a flip it should fail —
+   and if it *passes*, do not take the pass. Here it passed because at the soft default sharpness the gate's
+   sigmoid saturates to exactly `1.0` on every day of that fixture's forcing, so the flag was inert **on
+   that fixture only**, while the same flag demonstrably fires in a sibling arm at the sharp step. A green
+   assertion carrying a comment that is now false is worse than a red one. Re-point it at the new default
+   (`default == explicit-ON`, bit-for-bit), keep the old equality but relabel it as a property of the
+   FIXTURE, and state where the wiring is actually proven.
+8. **Quote the cost in the same sentence as the gain.** The `wscal_leafon` flip moved the Sahel's GPP from
    0.26× to 0.90× of the C's *and* its ET from 1.19× to 1.26×. Reporting only the first half is the
    failure mode this repo's guardrails exist to prevent.
 

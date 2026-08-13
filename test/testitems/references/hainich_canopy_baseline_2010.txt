@@ -13,8 +13,18 @@
 # the C binary this baseline validates against: GPP annual ratio 1.17→1.13 (closer to the C), transp
 # 1.08→1.05; daily GPP r stays ≈0.99. Values are the 25-patch cell mean with the beech-patch-wide
 # self-phen default (per-PFT phenology, when enabled via pft_ids, is validated separately — §19).
+# Regenerated AGAIN 2026-08-13 (ADR 0133) for the TREE photosynthesis DEMAND-GATE default flip
+# (`WaterParams.tree_demand_gate` false -> true): the C runs each tree's photosynthesis only when that
+# tree's own canopy demand clears `gpd > 1e-5` (`water_stressed.c:196`), and F ran the tree path ungated.
+# ONLY `gpp_annual` moves: 1250.123813 -> 1237.437115 (-1.02 %). The water rows are byte-identical at
+# ratio exactly 1.000000 (the gate multiplies tree GPP and tree `rd`, both formed AFTER `gp_stand`,
+# transpiration and the per-layer withdrawal), measured as two arms in the same run by
+# scripts/regen_fdiff_baselines.jl (job 1771763), whose gate-OFF control arm reproduces this file to
+# 1.3e-4 -- NOT to the printed digits, because the four water rows carry <=1.6e-4 of accumulated
+# sub-tolerance drift from earlier physics changes that predates this flip and is left in place rather
+# than silently absorbed into a re-record.
 # key             value (gC/m2/yr, mm/yr, or mm)
-gpp_annual        1250.123813
+gpp_annual        1237.437115
 transp_annual     250.611716
 evap_annual       264.536033
 interc_annual     19.591628
