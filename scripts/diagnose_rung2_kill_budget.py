@@ -161,6 +161,11 @@ class ArmLeg:
         self.budget_empty = 0      # patch-years with b <= 0: the account's own gate
         self.acct_pos = 0          # patch-years leaving a POSITIVE account (unspent budget carried)
         self.acct_neg = 0          # ... and a negative one (an overspend being repaid)
+        #: patch-years whose roster is EMPTY (`n_tree == 0`). Not a rate diagnostic but a hard fact
+        #: about the stand: FIT's own patches do not empty, and a patch the operator has emptied can
+        #: only refill by establishment, which the C owns. It is also what surfaced the ADR-0240 §6
+        #: harness deadlock, so it is worth a column of its own.
+        self.empty_stand = 0
         #: n_kill histogram over patch-years — the LUMPINESS check ADR 0189 §7 asks for: FIT spreads
         #: ~6 %/yr fairly evenly, and an account that delivers the same leg mean in fewer, bigger
         #: years is a different mortality regime. Keyed by integer kill count; a few dozen keys.
@@ -194,6 +199,8 @@ class ArmLeg:
         if shortfall > 0.0:
             self.shortfall += 1
         self.kill_hist[int(round(n_kill))] += 1
+        if n_tree <= 0:
+            self.empty_stand += 1
         if patch not in self.first or year < self.first[patch][0]:
             self.first[patch] = (year, n_tree)
         if patch not in self.last or year > self.last[patch][0]:
@@ -696,7 +703,8 @@ def panel_f(legs, fit):
         return
 
     print(f"    {'arm':<5} {'leg':<9} {'nominated':>10} {'empty':>7} {'zero-kill':>10}"
-          f" {'top-decile':>11} {'roster':>8} {'spend':>7} {'R_hat':>7} {'cells':>6}")
+          f" {'top-decile':>11} {'roster':>8} {'nostandX':>9} {'spend':>7} {'R_hat':>7}"
+          f" {'cells':>6}")
     for arm in [a for a in ARMS if a in ("S0", "S0h", "S1") or a in GROSS_ARMS]:
         for scen in SCENS:
             ks = [k for k in legs if k[1] == arm and k[2] == scen]
@@ -718,13 +726,24 @@ def panel_f(legs, fit):
                 legs, arm, scen,
                 lambda g: (g.n_kill / g.budget if g.has_g and g.budget > 0 else float("nan")),
             )
-            rht = per_cell(legs, arm, scen, ratio("n_age1", "n_tree"))
+            # ⚠ NaN, not 0, when the leg's log predates the `n_age1` column: the `S*` arms were run
+            #   before ADR 0240 added it, and `sum(n_age1)/sum(n_tree)` would print their recruit
+            #   rate as 0.00 % — a MISSING measurement dressed as a measured zero. Their own stands
+            #   do recruit; it is simply not in their logs (their dumps would give it).
+            rht = per_cell(
+                legs, arm, scen,
+                lambda g: (g.n_age1 / g.n_tree if g.has_g and g.n_tree > 0 else float("nan")),
+            )
+            nst = per_cell(
+                legs, arm, scen, lambda g: g.empty_stand / g.rows if g.rows else float("nan")
+            )
             cs = sorted(nom)
             print(f"    {arm:<5} {scen:<9} {100 * median(list(nom.values())):>9.3f}%"
                   f" {median(list(emp.values())):>7.3f}"
                   f" {median(list(zer.values())):>10.3f}"
                   f" {median(list(top.values())):>11.3f}"
                   f" {median(list(ros.values())):>7.3f}x"
+                  f" {max(list(nst.values())):>9.3f}"
                   f" {median(list(spd.values())):>7.3f}"
                   f" {100 * median(list(rht.values())):>6.2f}%"
                   f" {len(cs):>6}")
@@ -737,10 +756,16 @@ def panel_f(legs, fit):
     print("    LUMPINESS caveat against the accounting form: FIT spreads ~6 %/yr fairly evenly.")
     print("    `roster` = measured last-year/first-year stems. Read it as a GATE, not a")
     print("    diagnostic: a rate that clears 1.5 %/yr at roster 0.1x is a FAIL (ADR 0189 §7a).")
+    print("    `nostandX` = the WORST cell's share of patch-years with an EMPTY roster: a MAXIMUM,")
+    print("    not the median every other column uses, because emptying a patch is rare and fatal:")
+    print("    a median hides it at 0.000, and one empty patch-year used to deadlock the whole run")
+    print("    (ADR 0240 §6). A patch the operator empties can only refill by establishment, which")
+    print("    the C owns; FIT's own patches do not empty.")
     print("    `spend` = nominations / budget; > 1 means certain deaths overshot and the account")
     print("    is repaying. `R_hat` = the `age == 1` recruit count the budget is built on, %/yr —")
-    print("    EXACT, not modelled (ADR 0189 §2), and printed for the `S*` arms too, where it is")
-    print("    the budget term they do NOT have.")
+    print("    EXACT, not modelled (ADR 0189 §2). It reads `nan` for a leg whose log predates the")
+    print("    column (every `S*` leg): their stands DO recruit, it is just not logged — a missing")
+    print("    measurement, never a measured zero.")
     if fit:
         print("\n    FIT's own rates are panel E's (gross K, K_cert, K_disc, R, net) — an arm's")
         print("    `nominated` is not comparable to FIT's gross K without it (skill trap 5d).")

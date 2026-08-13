@@ -5,7 +5,9 @@
 > **0030–0049 is EXHAUSTED** and so is the **tier-2 block 0100–0119** (ADR 0119 spent the last number). Line
 > S's **TIER-3 block is 0170–0189** — allocated in CLAUDE.md §9 at ADR 0119's merge under §9's rule that
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
-> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0188.**
+> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239) — and it is now **EXHAUSTED (ADR 0189
+> was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240.
+> **Next free number: 0241.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
@@ -342,26 +344,32 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0189 is ON `main`.** Merge commit `df45bd4f` (+ changelog collation
-> `f5217508`, branch sha `7d907b62`); `main`'s only triggered gate, `changelog`, is **green** on
-> `f5217508`. ADR 0188 merged as `7db91f5b` (+ changelog collation `a2d11a09`, branch sha `4fce8a4a`);
-> ADR 0187 as `f3e100d8` (collation `427071ad`, branch sha `c447b936`); ADR 0186 as `e2620c61`. The
-> 0189 diff is two scripts + ADR + README row + STATE + JOURNAL + skill + CLAUDE.md §9 + a changelog
-> fragment — **nothing under `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per
-> ADR 0090 **no branch CI gate runs on it at all**. Do not wait for a verdict that cannot arrive. The last
-> suite run was **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`) and **no `src/**` or
-> `test/**` file has changed on this line since**, so that figure still stands for line S. `test (pre)` is
-> `continue-on-error` and red on Julia 1.13.0-rc2 prerelease churn — don't chase it.
+> **LAST MERGE — pending at the time of writing; the shas go here when the merge lands.** The previous
+> merge was ADR 0189: `df45bd4f` (+ changelog collation `f5217508`, branch sha `7d907b62`). ADR 0188 merged
+> as `7db91f5b`, 0187 as `f3e100d8`, 0186 as `e2620c61`.
 >
-> ⚠ **THE NEXT `test/**` EDIT ON THIS LINE WILL TRIGGER THE FULL `CI` GATE** — the queued long-horizon
-> anchor assertion (see the ADR 0136 §7 reply block below), and now also the rung-2 accounting arm if it
-> lands a testitem. Everything merged for many sessions has been gate-free prose/scripts, so budget the
-> ~10 min branch-CI wait and do not assume the ADR-0090 "nothing to wait for" shortcut applies to it.
+> ⚠ **THE ADR-0240 DIFF TOUCHES `scripts/**` ONLY — no `src/**`, no `test/**`, no `python/**`, no
+> `docs/src/**` — BUT IT DOES TOUCH `*.jl`** (`scripts/rung2_s_demography_harness.jl`), so per ADR 0090 the
+> **`format` gate (Runic) DOES run on this branch** while `CI`, `python` and `docs` do not. Runic was checked
+> locally and is clean; expect exactly one gate, not none and not four. The last full suite run was
+> **275 606 pass / 0 fail** (job 1773556) and no `src/**` or `test/**` file has changed on this line since,
+> so that figure still stands.
 >
-> ⚠ **ADR NUMBERS: line S's tier-3 block 0170–0189 is now EXHAUSTED — 0189 was the last one.** Tier 4 was
-> allocated for ALL lines at once while holding the integration lock (CLAUDE.md §9, same precedent as the
-> tier-3 allocation): **S 0240–0259 · M 0260–0279 · E 0280–0289 · O 0290–0299 · integrator 0300–0309.**
-> **Your next ADR is 0240.** Nothing needs convening.
+> ⚠ **THE NEXT `test/**` EDIT ON THIS LINE WILL TRIGGER THE FULL `CI` GATE** — the queued long-horizon anchor
+> assertion (see the ADR 0136 §7 reply block above). Budget the ~10 min branch-CI wait; the ADR-0090
+> "nothing to wait for" shortcut does not apply to it. `test (pre)` is `continue-on-error` and red on Julia
+> 1.13.0-rc2 prerelease churn — don't chase it.
+>
+> ⚠ **ADR NUMBERS: line S's tier-3 block 0170–0189 is EXHAUSTED and the TIER-4 block 0240–0259 is now OPEN**
+> (ADR 0240 spent the first number; tier 4 was allocated for all lines at once — S 0240–0259 · M 0260–0279 ·
+> E 0280–0289 · O 0290–0299 · integrator 0300–0309). **Your next ADR is 0241.**
+>
+> ⚠ **THE CAMPAIGN ON DISK NOW INCLUDES THE `G*` ARMS.** 360 legs at
+> `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_{G0,G0h,G1}_predict_s<seed>_{dump,apply}`, **357 complete**;
+> the 3 losses are the OPEN C-side `duplicate roster key` fault (`c52059` `G0` s2/s5, `c44048` `G0h` s5) and
+> are still to be raised with line M — see §D, which is unchanged and is still the binding constraint on
+> enlarging the cell set. Check coverage before scoring anything:
+> `/home/jamirp/.conda/envs/py311_new/bin/python scripts/check_rung2_campaign_coverage.py`.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
@@ -389,9 +397,35 @@ rather than a request to flip now.
 > | 0186 | the count is ALREADY on target — the excess is PER-STEM MASS ⇒ the level anchor has no lever, its criterion is unreachable, and the question is now WHICH trees die. **NARROWED by 0187.** |
 > | 0187 | the kill set is NOT size-biased — the emulator picks the right KINDS of trees. The shortfall is the mortality RATE: 3.5–4.2× too few discretionary deaths, 58 % of FIT's annual mass flux, compounding to 2.90× ⇒ MORE than enough to explain the +90 % biomass. **Its §B first hypothesis REFUTED by 0188.** |
 > | 0188 | WHY the rate is short: the budget is the NET count change, not the GROSS flux. FIT turns over ~6 %/yr while staying near-stationary in count (kills 5.65–5.96, recruits 4.62–6.46 %/yr), so a next-year count target hands the operator only 0.78–1.02 %/yr — 6.4–7.6× short — and FIT's non-negotiable deaths ALONE overdraw that 4.1–5.3×. Plus: `if ρ < 1.0` leaves 42–46 % of patch-years with an EMPTY kill list. **Its §7 instrument AMENDED by 0189.** |
+> | **0240** | **the arm was BUILT and it over-kills 12×: the recruit term is ENDOGENOUS.** By the letter the criterion is met (discretionary rate 26.2 %/yr vs ≥1.5, mass removal 0.03203 vs ≥0.025, agb +2.9 % vs <+40 %); in substance it fails, because the count departs **−72.1 %** ⇒ per-stem mass **+269 %**, WORSE than `S1`'s +96 %. `R̂` on the arms' own stands is 27.6–70.6 %/yr against FIT's 6.456. |
 > | **0189** | **the required feasibility derivation: the LAG IS NOT THE OBSTACLE — last year's recruits are countable at the rendezvous EXACTLY (`age == 1`, 29 700/29 700), the lagged budget buys 3.525 %/yr of discretionary capacity against a 1.5 % criterion, and FIT's own recruitment RISES +39.8 % between the legs. But rectifying the budget per patch-year is CONVEX ⇒ it OVER-kills (+17 % on FIT's stand, +66 % on the arm's own; roster to 0.62×/0.11× over the leg). Spending from a running ACCOUNT fixes the horizon (5.817 vs 5.961 %/yr, roster 1.70×) at 2.702 %/yr capacity — but only 1.493 ± 0.180 on the arm's own stand, AT the criterion.** |
 >
-> ### 0189 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
+> ### 0240 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
+>
+> The arm 0189 §7 pre-registered was built verbatim — `G0`/`G0h`/`G1` are `S0`/`S0h`/`S1` handed a GROSS
+> budget out of a per-patch running account (`acct += (1−ρ)·n_tree + #{age == 1}`, spend
+> `clamp(acct, 0, n_tree)`, charge the realized `n_kill`) — and run over 360 legs in `predict` mode, 357
+> complete. **Both gates pass exactly first:** guardrail 4 (`S1` byte-identical over all 27 pre-existing
+> arm-log columns, dump identical in every initialised column over 40 569 records) and the derivable account
+> identity (**451 161 patch-years, max |logged − derived| 0.000e+00**; the uniform arm's spend ratio
+> 0.9998/0.9995 against a derived 1.000) ⇒ nothing below is an implementation artifact. **BY THE LETTER THE
+> CRITERION IS MET AND IN SUBSTANCE IT FAILS.** ssp370, FIT-gain cells: discretionary kill rate **26.2 %/yr**
+> (clause ≥1.5; FIT 2.1, `S1` 0.6), annual mass removal **0.03203** (clause ≥0.025; FIT 0.03063, `S1`
+> 0.01781), agb departure **+2.9 %** (clause <+40 %; `S1` +90.6 %), roster **0.612×** — nowhere near clause
+> (a)'s 0.1× FAIL. **But the count departure is −72.1 %** (`S1` −2.9 %), which forces per-stem mass to
+> **+269 %** — *worse* than `S1`'s +96 %. The biomass lands on FIT's by CANCELLING two large errors: a
+> quarter of FIT's >5 m trees, each 3.7× too heavy. ⇒ **the exact mirror of 0186 — the status quo has the
+> right count and far too much mass in it; the gross-budget arm has the right total mass and far too few
+> trees — and both are the SAME per-stem-mass defect read through a different constraint.** **WHY it
+> over-spends:** with ρ ≈ 0.99 the budget IS `R̂`, which is the gross identity working as designed, but the
+> arms' OWN recruitment is **27.6 / 32.7 / 70.6 %/yr against FIT's 6.456** — establishment is the C's
+> (`ESTAB_C`) and is light-driven, so killing opens space, the C fills it, and next year's budget grows with
+> the killing that caused it. Self-limiting (it settles at `R̂` ≈ `n_kill`, roster ~0.6×) but at a young,
+> thin, churning equilibrium. **That is why 0189 §7's 1.493 %/yr capacity was 18× low**: it measured `R̂` on
+> stands where the operator was not spending gross. A FOURTH clause was ADDED to 0188 §7's criterion rather
+> than moving its three — **both |dN| and |dAGB| under 40 %, with per-stem mass printed beside them.**
+>
+> ### 0189 IN ONE PARAGRAPH (its numbers stand; §7's capacity estimate is amended by 0240)
 >
 > 0188 §7's one required derivation was run and **the lag is not the obstacle — but the instrument as
 > pre-registered is.** Three things settle the lag. **(1) The recruit term is EXACTLY observable at the
@@ -550,45 +584,60 @@ rather than a request to flip now.
 >     1.5 % criterion, not above it.** This is written down BEFORE the arm runs. If the arm lands just under,
 >     that is the pre-registered expectation and the next lever is the count model's per-patch-year error —
 >     **not** a re-derivation of the budget, and **not** a new count-side instrument (item 8 still holds).
+> 18. **NEW (0240): THE GROSS-BUDGET IDEA IS NOT A MAGNITUDE-CALIBRATION PROBLEM.** Its mean is right
+>     (0189 §3) and the account spends it EXACTLY (451 161 patch-years, max |diff| 0). **Do not propose a
+>     coefficient on `R̂`, a tuned account, or a smoothed budget** — the failure is that `R̂` on the arm's own
+>     stand is a RESPONSE to the arm's own killing, not that the arithmetic is off.
+> 19. **NEW (0240): `G0` IS DEAD AS A CANDIDATE AND ALIVE AS THE SELF-TEST.** Uniform thinning at a gross
+>     budget removes 44 % of stand mass per year and annihilates the >5 m population (−100 % count AND agb,
+>     14× FIT's mass removal). Keep it as the derivable arm (its spend ratio must be 1.000); never quote it
+>     as a contender.
+> 20. **NEW (0240): A COUNTERFACTUAL CAPACITY PANEL CANNOT BOUND A QUANTITY THAT RESPONDS TO THE CHANGE
+>     BEING COSTED.** 0189 §7's 1.493 %/yr came out 18× below the realized 27.6 %/yr for exactly this
+>     reason. The a-priori tell: `R̂` is a STAND statistic, and skill trap 5 already says the C grows the
+>     stand in every arm — so a stand statistic used as an operator INPUT closes a feedback loop. Apply this
+>     to any future pre-registration, not only to budgets.
+> 21. **NEW (0240): THE CRITERION IS NOW A PAIR, AND ITS THREE ORIGINAL CLAUSES WERE NOT MOVED.** `G1` meets
+>     all three (rate 26.2 %/yr, mass removal 0.03203, agb +2.9 %) while holding a quarter of FIT's trees.
+>     A candidate needs **both |dN| and |dAGB| under 40 %**, with per-stem mass printed beside them.
 > 9. **NEW (0186): the level anchor is NOT wired into rung 2 and should not be.** This says nothing against
 >    ADR 0103 in the COUPLED path, where the departure genuinely is a count-level one (1.409× over-density).
 >    Do not read 0186 as retiring the anchor; its own flip criterion (0103 §6, line M's arm) is untouched.
 >
-> ### B. THE NEXT ACTION — BUILD THE ACCOUNTING GROSS-BUDGET ARM (ADR 0189 §7, pre-registered)
+> ### B. THE NEXT ACTION — WHY ARE THE SURVIVING TREES TOO HEAVY? (ADR 0240 §8, pre-registered)
 >
-> **0189 answers 0188 §7's required derivation and AMENDS its instrument.** The budget
-> `(n_now − target) + R̂` is right in its MEAN and wrong in the WAY IT IS SPENT. Build the accounting form.
+> **Both formulations now put the same error in a different place, so the binding constraint is neither the
+> budget nor the selection: it is PER-STEM MASS.** `S1` = right count (−2.9 %), +96 % per-stem mass;
+> `G1` = right total mass (+2.9 % agb), −72.1 % count, +269 % per-stem mass. A mortality-only operator
+> cannot fix that — it decides who dies, and the survivors are too heavy whether there are many or few.
 >
-> **THE ARM, precisely.** Per patch, keep a running account. Each rendezvous: `acct += (n_now − target) + R̂`
-> with **`R̂ = #{stems with age == 1}`** (exact, 0189 §2 — no interface change, no line-M dependency); spend
-> `b = max(0, min(acct, n_tree))`; charge what is actually removed back against the account, so a forced
-> overshoot (the certain deaths exceeding `b`) SUPPRESSES later kills and a year the count model says "grow"
-> REPAYS an earlier overspend instead of being clipped to zero. The rest of the arm does not change: 0183 says
-> the hazard is exact as a function and 0187 says its ordering is right, so this touches only the MAGNITUDE
-> it is asked for. Reference implementation of the arithmetic: `capacity()`'s `_acct` branch in
-> `scripts/diagnose_rung2_gross_budget_lag.py` — copy it rather than re-deriving it.
+> **⚠ AND NOTE WHAT THIS CANNOT BE.** In a rung-2 arm **the C does the growing** (skill trap 5), so a
+> per-stem mass excess is NOT a growth-code error and it is NOT F's — F never runs here. It is LPJmL-FIT's
+> own physics responding correctly to the stand the emulator produced: fewer trees ⇒ less competition ⇒
+> bigger trees. ⇒ **the per-stem mass error is DOWNSTREAM of the stand-structure error, not independent of
+> it**, and that is what makes the next step a structure question rather than an allometry one.
 >
-> **THE CRITERION (0188 §7's, unchanged, plus three clauses 0189 adds — do not move any of them).**
-> ssp370 leg, FIT-gain cells: discretionary kill rate **≥ 1.5 %/yr** (FIT 2.05, current 0.6) AND annual mass
-> removal **≥ 0.025** (FIT 0.0306, current 0.0178) AND agb departure **< +40 %**. Added:
-> **(a)** the ROSTER-HORIZON check is part of the gate, not a diagnostic — report implied net and the
-> compounded roster factor beside every rate, and read a roster running to 0.1× as a FAIL however good the
-> rate looks; **(b)** capacity is NECESSARY, NOT SUFFICIENT — 0189 measures what the operator could afford,
-> not what it realizes (the draw is stochastic and `_hazard_tilt` can still return θ = 0), so say "capacity"
-> for 0189's numbers and "rate" only for the arm's; **(c)** expect the criterion to be MARGINAL (item 17).
-> `S0` stays the derivable self-test arm (uniform ⇒ `E[n_kill] = (1−ρ)·n_tree` exactly).
+> **STEP 1 — a dumps-only decomposition, no model run.** Is the >5 m cohort's per-stem mass excess present
+> **at matched age and matched height**, or is it entirely a composition effect (the arm's >5 m population
+> being the few survivors of a thinned stand)? The machinery exists: `(Cell, Patch, ID)` is a stable
+> cross-year identity (ADR 0125) and the `grow`-phase dumps carry every pool, so this is a scan, not a run.
+> **Pre-registered reading:** if the matched-age per-stem mass excess is **< 25 %** of the unmatched +269 %,
+> the excess is a STRUCTURE consequence and step 2 is the right lever; if it is **> 60 %**, the arms' own
+> individual trees really are heavier at the same age and the question moves to what the C's growth is doing
+> on a thinned stand — which is a disclosure about the substitution, not a defect to fix in the operator.
+> Report the whole profile by height quintile, not a summary (0187's shape-vs-level rule).
 >
-> **ALSO MEASURE, because the account trades one problem for another:** the empty-budget share RISES under
-> the account (**40–61 %** of patch-years vs 21.8 % for the naive lagged form), i.e. mortality becomes
-> LUMPIER than FIT's, which spreads ~6 %/yr fairly evenly. That is the honest caveat against the accounting
-> form and it is unmeasured on biomass. Report the distribution of kills over time, not only the leg mean.
+> **STEP 2, conditional on step 1 — the operator must own ESTABLISHMENT (`S2`).** As long as establishment
+> is deferred to the C, the budget's own input is a feedback of the operator's killing (§7), and no
+> mortality-only budget can hold the count and the mass at once: FIT turns over 5.96 %/yr of ITS roster while
+> the arm's stand offers 27.6 %/yr of recruits to kill. `S2` (learned count + trait hazard + recruit traits
+> from the production copula) is listed as unwired in the harness header and is a real build; the recruit
+> half also carries a structural replay floor of 0.907 (ADR 0121), which must be stated with any number.
+> **Do not start step 2 before step 1 reads** — step 1 is hours and can retire it.
 >
-> **What this needs.** An S-owned change to the harness's decision block
-> (`scripts/rung2_s_demography_harness.jl` :521-560) plus a rerun of the arm matrix in `predict` mode. The
-> harness is line S's; nothing under `src/**` has to move for the probe arm. Read the
-> **`rung2-dump-analysis`** skill first — traps **5j** (the `age == 1` observable), **5k** (derive a convex
-> statistic's anchor by removing the noise), **5l** (model the ρ≥1 gate; validate against the status quo),
-> plus 5d/5e/5f/5g/5h/5i and the `#H` header offset and coverage gate.
+> **What NOT to do.** No count-side instrument (item 8 still holds, and the count is now the thing the gross
+> budget BREAKS). No budget re-derivation (item 18). No `G0` variant (item 19). And do not read `G1`'s
+> +2.9 % agb as progress in any summary — item 21.
 >
 > ### C. FLAG STATE
 >
@@ -616,6 +665,37 @@ rather than a request to flip now.
 >
 > ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
 >
+> * ⚠ **NEW (0240) — AN EMPTY PATCH DEADLOCKED THE HARNESS, AND A FILENAME BUILT FROM PARSED INPUT IS WHY.**
+>   `read_request` took `(year, patch)` from the tree rows; a patch with no living trees emits no `T` record
+>   (the dump skill has said so since 0175 — about the dumps), so the answer went to `rsp_…_y-0001_p-01`
+>   while the C waited for the real name and died 600 s later on `ERROR043: no answer`. **53 of 360 legs**,
+>   latent for the whole investigation because no `S*` arm ever empties a patch and the `G*` arms do (0.1 %
+>   of patch-years in the worst cell). Fixed at the `P`-record source + a refuse-on-sentinel guard;
+>   `--max-idle` raised 300 → **900 s** (it must exceed the C's own 600 s wait, and never did). ⇒ **the "no
+>   answer after 600 s" variant of `ERROR043` is NOT necessarily a slow harness**, so 0185's 6 late-ssp370
+>   losses may be this bug; and **whenever a filename is derived from parsed input, a sentinel parse is a
+>   silent hang, not an error — assert the identity before you build the name.** Skill trap 7 (extended).
+> * ⚠ **NEW (0240) — A BYTE DIFF OF TWO ROSTER DUMPS IS NEVER THE GUARDRAIL-4 GATE.** `cmp` called 28 322
+>   lines different for byte-identical decisions: `sapwood_old` is a dead struct field, uninitialised in
+>   every phase. Use `scripts/diagnose_rung2_dump_equality.py` (it knows the `UNINIT` set) plus a
+>   `cut`-then-`cmp` of the arm log's pre-existing columns — the log proves the decisions, the dump proves
+>   the trajectory. Skill trap 5m.
+> * ⚠ **NEW (0240) — A MISSING MEASUREMENT MUST NOT PRINT AS A MEASURED ZERO.** `R̂` came out as 0.00 %/yr
+>   for every `S*` leg because their logs predate the column — inside the very table that argues `R̂` is the
+>   problem. It now prints `nan`. Same shape as 0184's "report the level beside every shift": the defect is
+>   not the number, it is that nothing distinguished absent from zero.
+> * ⚠ **NEW (0240) — FOR A RARE-BUT-FATAL EVENT, PRINT THE MAXIMUM, NOT THE MEDIAN.** The empty-roster share
+>   is 0.000 as a per-cell median and 0.001 as a maximum — and 0.001 killed 53 legs. Every other column in
+>   that panel is a median for good reason; this one cannot be.
+> * **NEW (0240) — a campaign's failures are silent in every obvious place**, and the harness's own
+>   `harness: served <N> patch-years` line is written by the FAILURE path (the job file kills a healthy
+>   harness before it prints), so reading its absence as failure INVERTS the test.
+>   `scripts/check_rung2_campaign_coverage.py` gates on the C's completion line plus the arm log's
+>   patch-year count and prints the re-run lines.
+> * **NEW (0240) — a widened arm set must not widen a pre-registered verdict.** One exported `ARMS` (comma
+>   or space) now drives four scorers; `LEARNED` (0185) and `OPERATOR_ARMS` (0187) deliberately do NOT
+>   follow it, and `kill_selectivity` forces `REC` back in (it is both the reference and the height-quintile
+>   basis).
 > * ⚠ **NEW (0189) — WHEN A STATISTIC IS CONVEX, DERIVE ITS ANCHOR BY REMOVING THE NOISE, NOT BY PUSHING
 >   MEANS THROUGH THE IDENTITY.** A pre-registered band for the oracle arm ([1.5, 2.6] %/yr) came from
 >   `mean(b) − mean(n_cert)` while the statistic contains `max(0, b − n_cert)` — so it "failed" at 4.509 for a

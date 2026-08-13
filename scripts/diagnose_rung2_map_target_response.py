@@ -197,8 +197,13 @@ APPLY_RE = re.compile(
 #: for the gross-budget campaign with e.g. `export ARMS="NP S0 S0h S1 G0 G0h G1"` (ADR 0240).
 ARMS = tuple(_split_arms(os.environ.get("ARMS", "NP S0 S0h S1")))
 for _a in ARMS:
-    if _a not in ALL_ARMS:
-        raise SystemExit(f"ARMS: '{_a}' is not one of {ALL_ARMS}")
+    if _a not in (*ALL_ARMS, "REC"):
+        raise SystemExit(f"ARMS: '{_a}' is not one of {(*ALL_ARMS, 'REC')}")
+#: `REC` is ACCEPTED in the env value and then DROPPED here: it has no `_apply` directory (it runs
+#: no harness), so this scorer reads it from `RECCSV` and adds it unconditionally. One exported
+#: `ARMS` is shared with `kill_selectivity`, where REC is MANDATORY — rejecting it would make the
+#: two knobs incompatible, and keeping it would look for apply dirs that cannot exist.
+ARMS = tuple(a for a in ARMS if a != "REC")
 #: ⚠ the BLESSED statistic's arm set stays PINNED to ADR 0185's pre-registered triple even when
 #: `ARMS` is widened. A verdict taken over arms that did not exist when the threshold was written is
 #: not the pre-registered verdict ("a pre-registered threshold is not a pre-registered verdict"), so
