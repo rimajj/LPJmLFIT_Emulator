@@ -257,7 +257,9 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0184 is ON `main`.** See the commit for the sha and gates. Nothing in this
+> **LAST MERGE — 2026-08-13, ADR 0184 is ON `main`.** Merge commit `706ff4fc` (+ changelog collation
+> `c91f65f8`), branch sha `a1a528f5`. Branch gates green: `test (lts)`, `test (1)`, `format`,
+> `test (macOS, lts)`; **`main`'s own gates green** (`format`, `uncollated fragments`). Nothing in this
 > diff touches `src/**`, `test/**`, `python/**` or `docs/src/**`, so per ADR 0090 **no CI gate runs on it at
 > all** — it is scripts + ADR + STATE + skill + a changelog fragment. Do not wait for a verdict that cannot
 > arrive. The previous merge (ADR 0182 + 0183) was `af95bc55`, suite **275 606 pass / 0 fail** (job 1773556);
