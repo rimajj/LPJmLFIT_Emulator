@@ -12,7 +12,7 @@
     tree count in place (not dropped, so the fit's internals are unchanged) and retrains the control in
     the same process, to price a retrain before buying it.
 
-### Findings
+### Measured
 
 - **The count model's climate input is wired up and carries almost nothing.** The forest splits on the two
   climate inputs 77 440 times (10.2 % of all splits, thresholds spanning the whole global range), so it is
