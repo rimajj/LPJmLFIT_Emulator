@@ -1667,3 +1667,45 @@ Nothing coupled either; every number is rung 3.
 Both flags ship opt-in and default off, suite 275 621 pass / 0 fail with no committed baseline moved. The
 conductance basis's default flip is pre-registered with conditions 1–2 already met and only the
 blast-radius enumeration open — that is the next action, with its own ADR.
+
+## Session 22 — 2026-08-13 — the revert reaches `main`, every control arm states the flag, the flip goes to line S
+
+Three things, none of which changes any physics.
+
+**The repair.** The trial default flip had reached `main` inside `df02ec9f`, a commit whose subject reads
+`docs(state): line M — record the ADR 0136 merge sha and the green gates` and whose diff is that STATE file
+**plus the one-line flip in `src/fdiff.jl`**. It merged as `8ee72123` and turned three Julia jobs red.
+Session 21 reverted it on the branch (`c9d78360`) and enumerated the blast radius (`7121af9a`) — and merged
+neither, so the fix sat one merge away while `main` stayed broken for about two hours. Two habits out of it:
+check `git show --stat` against the commit's own type prefix before pushing (nothing in the capture gate
+asks whether a subject matches its diff), and treat a revert as unfinished until it is on `main`.
+
+Diagnosing that cost more than it should have, for a reason worth recording: `git fetch` was failing with
+`Permission denied (publickey)`, which reads exactly like a revoked deploy key. It is intermittent — 2 of 3
+consecutive `ssh -T` calls authenticated seconds apart, and the key was still registered `rw` with a
+`last_used` from that morning. The second-order trap is the expensive half: **while the fetch is the call
+that fails, every remote-tracking ref answers from the last successful fetch**, so `git log origin/main..HEAD`
+reported "nothing to merge" for a branch that was two commits ahead. Both are now in `CLAUDE.md` §5, with
+the confirm-three-things-then-retry recipe. Same shape as the `/p` EIO transient: prove permanence first.
+
+**The hardening.** ADR 0133 §6 already said a *probe* arm that hardcodes the old default stops being a
+control. The trial flip showed the trap fires on a **test**, and one commit after the flag was written:
+`gpsum_basis_tests.jl` — the file whose entire job is gating this flag — built its base arm as
+`with_water(p0, (;))`, the package default. At the flip that becomes a second copy of the treatment arm, so
+both exact-boundary identities, the fires-off-the-boundary pair and the signed-direction loop stop comparing
+anything. **10 of the 23 failures were that one file going vacuous rather than wrong**, which is the worse
+outcome: a green version of it would have proved nothing. Nothing about the line looked incorrect when
+written — taking the default by omission is the right idiom for an arm meaning "whatever ships"; this arm
+meant "the old basis". So: every arm that means a specific value now states it — the testitem's four arms
+(both flags each), `biome_sapwood_bg_probe.jl::mkparams` and its three siblings — and the opt-out knobs
+(`GPSTAND=0`, `canopy_arm(; gps = false)`) are wired **now**, while they are still bitwise the default arm,
+because that equality is the only chance to prove they point at the field they name. All byte-identical.
+
+**The raise.** The flip is not landed and that is deliberate: the 23rd assertion is
+`slow_level_anchor_tests.jl:181` (`ret_025 > 0.7`, measured 0.619), which is line S's. That is the
+*unanchored control's* year-25 retention — S's premise that the 4× initial spread is essentially all
+retained — not the anchor's own behaviour; every anchored bound and both contrasts stayed green. ADR 0059 is
+the precedent (S gave an explicit GO before `wscal_leafon` flipped), so S is asked for (a) re-state the
+pinned number, or (b) hold while S measures whether a more faithful spring/autumn conductance is doing part
+of what the anchor was built for. A band is a measurement, not a tunable, so it does not get widened either
+way. Everything else is prepared, so on (a) the flip is a one-commit change.

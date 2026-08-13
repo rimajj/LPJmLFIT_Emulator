@@ -359,7 +359,89 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 21) — **BOTH REMAINING `gp_sum` BASIS DIFFERENCES MEASURED ONE
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 22) — **THE REVERT REACHED `main` (IT HAD NOT), EVERY CONTROL ARM
+### NOW STATES THE FLAG EXPLICITLY *BEFORE* THE FLIP, AND THE FLIP IS RAISED TO LINE S. NO PHYSICS CHANGE**
+
+**Start here.** The previous handoff's step 1 was *"LAND the `gp_stand_leafon_basis` default flip"*. It is
+**not landed and deliberately so** — the 23rd assertion is line-S-owned, so the flip is an integration
+point, now raised. What this session did instead is the part that was unblocked, plus one repair.
+
+**1. ⚠ THE REPAIR, AND THE PROCESS LESSON — `main` WAS RED FOR ~2 h AND NOTHING SAID SO.** The trial flip
+reached `main` as `df02ec9f`, a commit whose subject is `docs(state): line M — record the ADR 0136 merge
+sha and the green gates` and whose diff is `lines/M/STATE.md` **plus the one-line default flip in
+`src/fdiff.jl`**. It merged as `8ee72123` and turned `test (lts)` / `test (1)` / `test (macOS, lts)` red.
+Session 21 then correctly reverted it (`c9d78360`) and enumerated the blast radius (`7121af9a`) — **but
+merged neither**, so the fix sat on the branch while `main` stayed broken. Two rules out of it:
+* **A `docs(...)`-labelled commit that touches `src/` is the failure, not the red gate.** The capture gate
+  asks what a commit *contains*; nothing asks whether its subject matches its diff. Cheap habit:
+  `git show --stat HEAD` before pushing, and if the paths do not match the type prefix, split the commit.
+* **A revert is not done until it is MERGED.** Reverting on the line branch fixes the branch; `main` is
+  where the gate runs. Finish the ritual in the same session as the revert.
+
+**2. The blast-radius measurement STANDS and is unchanged** (`logs/M-flip0137.1775524.out`, 23 assertions
+of 275 621 across eight files). It is enumerated file-by-file in **§0-PREV-21 step 1** — start from that
+list, do not re-run the suite to rediscover it.
+
+**3. CONTROL-ARM HARDENING — the whole of it, landed, byte-identical.** Every arm that MEANS the
+pre-ADR-0136 basis now says so explicitly rather than inheriting the default: `gpsum_basis_tests.jl`'s four
+arms (each pinning **both** flags — and it now asserts `default == pbase`, so the *equality* is what breaks
+at a flip instead of the identities going silently inert), `biome_sapwood_bg_probe.jl::mkparams` (which
+`PARAMS_TG` and all six ADR-0136 arms derive from, hence all 30 committed decomposition rows), and
+`biome_canopy_growth_probe.jl` / `biome_resilience_probe.jl` / `biome_slow_oracle_probe.jl`. Plus the
+**pre-flip opt-outs, wired now while they can still be checked**: `GPSTAND=0` in
+`biome_ensemble_pin_probe.jl` and `canopy_arm(; gps = false)` in `regen_fdiff_baselines.jl`, both currently
+bitwise identical to the default arm — which is precisely the assertion that proves the knob points at the
+field it names. **An opt-out added after a flip cannot reproduce anything.**
+
+**4. THE GENERALISED LESSON (now in the `julia-test` skill).** ADR 0133 §6 said a *probe* arm that hardcodes
+the old default stops being a control. The trial flip showed the same trap fires on a **test**, and worse:
+`gpsum_basis_tests.jl` was written ONE COMMIT before the flip, *to gate this very flag*, with
+`pbase = with_water(p0, (;))`. Nothing about that looked wrong — taking the default by omission is the
+correct idiom for an arm meaning "whatever ships" — but this arm meant "the OLD basis", and at the flip it
+became a second copy of the treatment arm. **10 of the 23 failures were that one file's comparisons going
+vacuous, not wrong.** ⇒ *If an assertion's meaning depends on two arms differing, both arms must state
+their value.* Write it when you write the flag.
+
+**5. RAISED TO LINE S, awaiting reply** (`lines/S/STATE.md`, top). The only S-owned casualty is
+`slow_level_anchor_tests.jl:181` `@test ret_025 > 0.7` → measured **0.619** — the **unanchored control's**
+year-25 retention, i.e. S's "the 4× initial spread is essentially all retained" premise. Every anchored
+bound and both anchored-vs-unanchored contrasts stayed green, so the anchor still strictly wins. S is asked
+to choose: **(a)** re-state the pinned number with the flip named (M's reading — a band is a measurement,
+not a tunable, so it gets re-measured, never widened), or **(b)** treat it as a signal worth measuring
+first, that a more faithful spring/autumn conductance makes F's own dynamics forget the initial density
+faster — i.e. do part of what ADR 0103's anchor exists to do.
+
+**6. Also captured:** `CLAUDE.md` §5 now records that **GitHub SSH to this remote fails intermittently**
+(measured 2 of 3 consecutive `ssh -T` calls succeeding seconds apart) — `Permission denied (publickey)`
+reads exactly like a revoked deploy key and is not; and the second-order trap that cost the most time here,
+that **when the FETCH is what failed, every remote-tracking ref answers from the last successful fetch**, so
+a branch pushed hours ago can read as unpushed. Confirm-then-retry recipe is in the same bullet. The API
+token also moved to a fresh value in `~/.config/gh/hosts.yml` (outside every worktree ⇒ one rotation covers
+all four lines; never in the repo — secret scanning would revoke it).
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **★ THE FLIP IS BLOCKED ON LINE S — do not land it unilaterally, and do not re-run the blast radius.**
+   Check the top of `lines/S/STATE.md` for a reply, or `lines/M/STATE.md` for an inbound from S. On **(a)**,
+   the flip is now a one-commit change: flip the default in `src/fdiff.jl`, re-point `gpsum_basis_tests.jl`'s
+   four guardrail-4 assertions at the new default (the arms themselves need no edit any more — that is what
+   §3 bought), re-pin the moved baselines through `regen_fdiff_baselines.jl` and `biome_ensemble_pin_probe.jl`
+   **with their `gps = false` / `GPSTAND=0` arms reproducing the old numbers in the same run**, re-read
+   (never widen) the `decadal_validation_tests.jl` band and the `wscal_leafon` / `grass_structure` assertions,
+   and give it **ADR 0137**. The per-file enumeration is §0-PREV-21 step 1. On **(b)**, hold the flag off and
+   let S measure first.
+2. **THE COMPENSATING ERROR IS STILL THE HEAD OF THE PHOTOSYNTHESIS QUEUE** — unchanged, and independent of
+   the flip. Three faithful terms all move F's absorbed light or its λ DOWN while its GPP sits ABOVE the C's.
+   ADR 0135's shortlist keeps **(b) the `tstress < 1e-2` hard zeroing** (`photosynthesis.c:54-61`; F uses a
+   smooth linear factor and the THRESHOLD has never been scored) and **(c) the phenology trajectory**. Item
+   (a) is closed. ⚠ **Do not re-open** the layered-light model, the leaf-area density basis, `k_lambert`,
+   `par`, `alphaa`, `albedo_leaf` or the SLA Vcmax cap (ADR 0135 §4).
+3. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap
+   (only remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two evergreen
+   cells, `bg_growth`'s default still blocked on line S, and the differentiated path inheriting
+   `tree_demand_gate = true` at the soft sharpness. Read them there rather than restating them here.
+
+### 0-PREV-21. ✅ DONE 2026-08-13 (session 21) — **BOTH REMAINING `gp_sum` BASIS DIFFERENCES MEASURED ONE
 ### AT A TIME: ONE IS THE BIGGEST SINGLE FIDELITY WIN ON RECORD FOR THE PHOTOSYNTHESIS HALF, THE OTHER IS
 ### FAITHFUL AND MAKES AGREEMENT WORSE. BOTH OPT-IN, DEFAULT OFF (ADR 0136)**
 

@@ -845,6 +845,27 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   ```
   Useful endpoints: `/commits/<sha>/status`, `/actions/runs?head_sha=<sha>`, `/actions/runs/<id>/jobs`,
   `/actions/jobs/<id>/logs` (redirects to a downloadable log).
+  **The token lives ONLY in `~/.config/gh/hosts.yml`, outside every worktree — that is deliberate, and it
+  is why a rotation covers all four lines + the integrator at once with nothing to commit.** Never write it
+  into the repo: ADR 0013 forbids secrets in commits, and GitHub's secret scanning auto-revokes a pushed
+  token, so "helpfully" recording it in a STATE file breaks every line instead of informing them. Rotate by
+  editing that file (back it up first, keep it `chmod 600`), then re-run any `curl` above to confirm HTTP 200.
+- ⚠ **GITHUB SSH AUTH TO THIS REMOTE FAILS INTERMITTENTLY — RETRY BEFORE CONCLUDING THE DEPLOY KEY IS
+  REVOKED (`[VERIFIED 2026-08-13]`).** `git fetch`/`push` can die with
+  `Permission denied (publickey)` + *"Please make sure you have the correct access rights"*, which reads
+  exactly like a revoked key, and then succeed on the very next attempt: measured **2 of 3** consecutive
+  `ssh -T git@github-esm` calls authenticating fine seconds apart. Before escalating, confirm all three of
+  (a) `ssh-keygen -y -f ~/.ssh/esm_land_emulator_deploy` reproduces `…deploy.pub`, (b) the key is still
+  registered — `curl -H "Authorization: token $TOKEN" .../repos/rimajj/LPJmLFIT_Emulator/keys` shows it
+  `rw` with a recent `last_used`, and (c) **a retry loop**:
+  ```bash
+  for i in 1 2 3 4 5; do git fetch origin && break; sleep 5; done
+  ```
+  Same discipline as the `/p` EIO transient (MEMORY): **prove permanence before declaring an outage.**
+  ⚠ And a stale remote-tracking ref is the second-order trap — when the fetch is the call that failed,
+  `git rev-parse origin/<branch>` and `git log origin/main..HEAD` answer from the LAST successful fetch, so
+  a branch that was pushed hours ago can look unpushed (or vice versa). Re-fetch successfully *first*, then
+  read the refs.
 - **CI resolves deps fresh** (manifests git-ignored) → a too-wide `[compat]` silently absorbs upstream
   bumps. This is exactly how the Enzyme 0.13.189 regression turned CI red with no code change (§2).
 - Commits show **"Unverified"** on GitHub by design (locally `G`-signed; owner declined enforcement) —
