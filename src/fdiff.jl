@@ -301,7 +301,12 @@ Base.@kwdef struct WaterParams{T <: Real}
     # ⚠ SCOPE: like the two demand gates, both are honoured ONLY on the multi-individual canopy path
     # [`daily_step_canopy`](@ref) — the one `FDiffFastCore` and the coupled driver run. The
     # single-individual `daily_step` / `daily_step_ml` kernels are byte-identical with either flag set.
-    gp_stand_leafon_basis::Bool = false
+    # DEFAULT FLIPPED TO `true` 2026-08-13 (ADR 0137), on ADR 0136 §7's criterion, pre-registered before
+    # the deciding arm ran: on the shipping configuration this flag ALONE improves the kernel error at all
+    # five biome cells and on all four aggregates (4-cell mean `|GPP F/C − 1|` 0.0824 → 0.0328, 4-cell mean
+    # `|bmi F/C − 1|` 0.1266 → 0.0535). Guardrail 4 is now served by the OPT-OUT — `false` reproduces the
+    # pre-ADR-0136 expression exactly.
+    gp_stand_leafon_basis::Bool = true
     lambda_vm_gp::Bool = false
     # ── ADR 0110: PER-TREE ROOT PROFILES AND PER-TREE WATER STATUS ──────────────────────────────────
     # Off ⇒ every individual shares one cell-average root profile collapsed to one scalar `wr`, so two
