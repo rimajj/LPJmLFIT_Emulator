@@ -363,6 +363,10 @@ without daily physics.
 ### MEETS THE CRITERION THAT WAS WRITTEN DOWN BEFORE IT EXISTED, TAKES 21 % OFF THE ASSIMILATE ERROR —
 ### AND IS PAID FOR IN THE PHOTOSYNTHESIS CHANNEL AT ONE CELL (ADR 0133)**
 
+**MERGED to `main`** as `5049d228` (branch sha `a7bd8190`; `docs`, `format`, `test (lts)`, `test (1)`,
+`test (macOS, lts)` and `changelog` all green on `main` — `test (pre)` is the known `continue-on-error`
+prerelease job).
+
 **Start here.** The previous handoff's step 1 — *"🎯 ACTION, PRE-REGISTERED (ADR 0131 §8) — EVALUATE THE
 `tree_demand_gate` DEFAULT FLIP"* — is **done. The flip is landed, the suite is green, and the criterion's
 three conditions were each discharged on the record rather than by judgement.**
