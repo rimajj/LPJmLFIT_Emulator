@@ -1390,3 +1390,64 @@ Three rules that made this work, all cheap:
 **Generalisation:** the same trap fires whenever the two arms of a comparison differ in ANY dimension that
 accumulates — leg length, spin-up, number of update steps, sequence length. Before reporting a difference
 as a sensitivity, ask *what else grows between the two arms*, and freeze the driver to find out.
+
+## INTERROGATE THE FITTED FUNCTION BEFORE RETRAINING IT — liveness panel, scale anchor, secant (line S, 2026-08-13, ADR 0179/0180)
+
+When a learned component shows no response to a driver, the reflex is to retrain. Two short jobs on the
+**artifact you already shipped** can locate the defect first, and one of them nearly always changes the
+sentence you were about to write.
+
+**1. THE LIVENESS PANEL, FIRST, PRINTING EVERY FEATURE.** Count the ensemble's splits per input and print
+`NO SPLITS` explicitly for any zero (ADR 0171 §3). This is one pass over the trees. In ADR 0179 it did NOT
+end the investigation — it *prevented the wrong write-up*: "the model never learned climate" was about to be
+recorded as "there are no splits on it", and the forest splits on those two features **77 440 times, 10.20 %
+of all splits**, thresholds spanning the whole training range. The channel was wide open and empty, which is a
+different defect from a closed one and has a different fix. The feature that *did* read 0 splits was the one
+deliberately held constant — so the panel also proves a designed-out input is designed out (ADR 0107).
+
+**2. A FLAT RESULT IS UNREADABLE WITHOUT A LIVE-CHANNEL SCALE ANCHOR.** "0.057 stems" means nothing on its
+own. Move a feature *known to work* by its own observed shift, over the **same rows, through the same code
+path**, and report the ratio: 0.057 against 1.278 = 4.4 % is a finding; the bare number is not. Do the same
+against the reference's own response magnitude so the fraction is in the deliverable's units.
+
+**3. USE AN OBSERVED SECANT, AND CHECK IT CLEARS THE QUANTIZATION STEP.** A tree ensemble is piecewise
+constant, so an infinitesimal step returns 0 for almost every row (ADR 0105). A secant fixes that — but it can
+*still* return exactly 0 when the observed shift is smaller than the bin: two cells in ADR 0179 read
+`0.0000` because the split thresholds sit at half-integers (the target is an integer count) and their shifts
+stayed inside one bin. **An exact zero is a red flag, never a result** (ADR 0132 §3). Check which direction it
+biases the conclusion and say so — there it deflated the anchor, i.e. it flattered the channel under test.
+
+**4. SEPARATE THE POOLED (BETWEEN-GROUP) FROM THE OPERATIVE (WITHIN-GROUP) SWEEP — a pooled global fit will
+learn the driver as a GROUP IDENTIFIER.** This is ADR 0118's rule applied to partial dependence, and it is
+the hypothesis a naive full-range sweep gets wrong: a model fitted across 58 588 cells is certain to split on
+climate as a *location label*, so a full-range sweep can look steep while the within-cell response is zero —
+which reads as "the model has it, the loop is broken" and sends the work to the wrong place. Emit both panels
+from one script, plus a **local** full-range sweep on each group's own rows, which distinguishes "flat here"
+(a plateau between two splits) from "flat everywhere".
+
+**5. PRICE THE RETRAIN AS A ONE-VARIABLE ARM, AND NEUTRALISE IN PLACE RATHER THAN DROPPING.** To test whether
+feature *k* is starving the others, overwrite column *k* with a constant instead of removing it: the feature
+count, the column indices and `mtry` stay identical, so the only thing that changes is the information it
+carries (ADR 0126 §5 — name the switch, then ask what else the switch controls). Retrain the **control in the
+same process on the same rows and seed**; comparing against a shipped artifact confounds the row set with the
+ablation. Two basis checks before reading either arm: reproduce a published statistic of the table (the
+persistence null's R², here 0.9623 vs a published 0.9622) and reproduce the shipped artifact's own behaviour
+(split share 10.10 % vs 10.20 %, R² 0.9801 vs 0.9824).
+
+**6. READ THE ABLATED MODEL'S SKILL, NOT ONLY THE EFFECT YOU WERE TESTING FOR.** The most consequential
+number in ADR 0180 was incidental: with the suspect feature removed entirely, R² was **0.9620 against the
+persistence null's 0.9623** — i.e. the remaining features reconstructed the target as well as the lagged truth
+did, so removing the suspected leak did not de-leak the target at all. That reframed the defect from "one
+feature is hogging the signal" to "the target is nearly determined by the state description it is conditioned
+on", which is a different and more expensive problem. **Ask what the ablated model still knows and where it
+knows it from** — a *contemporaneous state* feature can be as much of a leak as an explicit lagged one, and
+whether it is a leak at RUNTIME depends on who computes it there (in this repo those features come from the
+fast core's own pools, so they are not).
+
+**And report a partial result as partial.** The measured factor was 2.85× on a channel that is 4.7 % of the
+target, with no improvement in SIGN (7/12 → 8/12) — real, paired at 13 of 15 cells, and not a licence to buy
+a global retrain (ADR 0105). Pre-register the threshold that separates "supported" from "partial" from
+"refuted" in the script, before the run, and let it print the verdict.
+
+Worked examples: `scripts/slow_climate_partial_dependence_probe.jl` (panels 0/A/B/C/D + verdict) and
+`scripts/slow_nprev_ablation_probe.jl` (the one-variable in-place ablation + its two basis checks).
