@@ -342,13 +342,13 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0187 is ON `main`.** Merge commit `f3e100d8` (+ changelog collation
-> `427071ad`), branch sha `c447b936`. This diff is a script + ADR + STATE + JOURNAL + skills + a changelog
-> fragment — **nothing under `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per ADR
-> 0090 **no branch CI gate runs on it at all**. Do not wait for a verdict that cannot arrive. The previous
-> merge (ADR 0186) was `e2620c61`; the last suite run was **275 606 pass / 0 fail** (job 1773556, ADR
-> 0182/0183 merge `af95bc55`) and **no `src/**` or `test/**` file has changed on this line since**, so that
-> figure still stands for line S. `test (pre)` is `continue-on-error` and red on Julia 1.13.0-rc2
+> **LAST MERGE — 2026-08-13, ADR 0188 is ON `main`.** See the SHAS line committed with this block. The
+> diff is a script + ADR + README row + STATE + JOURNAL + skill + a changelog fragment — **nothing under
+> `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per ADR 0090 **no branch CI gate
+> runs on it at all**. Do not wait for a verdict that cannot arrive. ADR 0187 merged as `f3e100d8`
+> (collation `427071ad`, branch sha `c447b936`); ADR 0186 as `e2620c61`. The last suite run was
+> **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`) and **no `src/**` or `test/**`
+> file has changed on this line since**, so that figure still stands for line S. `test (pre)` is `continue-on-error` and red on Julia 1.13.0-rc2
 > prerelease churn — don't chase it.
 >
 > ⚠ **THE NEXT `test/**` EDIT ON THIS LINE WILL TRIGGER THE FULL `CI` GATE** — the queued long-horizon
@@ -380,9 +380,37 @@ rather than a request to flip now.
 > | 0184 | the rung-2 count model's target is TETHERED to the live stand count ⇒ the response question was unanswerable as run; NO VERDICT. Its §10.4 pre-registered the fix. |
 > | 0185 | the fix was run. Given real authority the map STOPS asking for FIT's gains ⇒ the limit is the STAND it is conditioned on, not the substitution operator. **NARROWED by 0186 (§7.2/§7.5 only; the verdict stands).** |
 > | 0186 | the count is ALREADY on target — the excess is PER-STEM MASS ⇒ the level anchor has no lever, its criterion is unreachable, and the question is now WHICH trees die. **NARROWED by 0187.** |
-> | **0187** | **the kill set is NOT size-biased — the emulator picks the right KINDS of trees. The shortfall is the mortality RATE: 3.5–4.2× too few discretionary deaths, 58 % of FIT's annual mass flux, compounding to 2.90× ⇒ MORE than enough to explain the +90 % biomass.** |
+> | 0187 | the kill set is NOT size-biased — the emulator picks the right KINDS of trees. The shortfall is the mortality RATE: 3.5–4.2× too few discretionary deaths, 58 % of FIT's annual mass flux, compounding to 2.90× ⇒ MORE than enough to explain the +90 % biomass. **Its §B first hypothesis REFUTED by 0188.** |
+> | **0188** | **WHY the rate is short: the budget is the NET count change, not the GROSS flux. FIT turns over ~6 %/yr while staying near-stationary in count (kills 5.65–5.96, recruits 4.62–6.46 %/yr), so a next-year count target hands the operator only 0.78–1.02 %/yr — 6.4–7.6× short — and FIT's non-negotiable deaths ALONE overdraw that 4.1–5.3×. Plus: `if ρ < 1.0` leaves 42–46 % of patch-years with an EMPTY kill list.** |
 >
-> ### 0187 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
+> ### 0188 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
+>
+> 0187's promoted next action was run, and **its named first hypothesis is REFUTED derivably rather than
+> measured**: ρ is applied as a per-tree survival FRACTION against the whole-roster density `n_now =
+> sum(nind)` (harness :521-527), so the emitted-vs-roster ratio — genuinely large at **2.08–2.92**, above
+> line M's 1.9× at Hainich — cannot under-spend the quota, and the uniform arm spends it in full
+> (realized/implied **1.004 ± 0.009 = 0.51 σ** and **1.006 ± 0.007 = 0.84 σ**, against the 0.40–0.43 H1
+> requires). The ρ clamp is not binding either (**0.00–0.25 %** at the low bound) — one grep, and 0187 §B's
+> stated assumption is discharged. **What is wrong has two layers.** (1) The whole decision is gated
+> `if ρ < 1.0` (harness :521), so in **42–46 %** of patch-years the arm answers with an EMPTY kill list, and
+> in a further **27.9 %** of `S1`'s years `_hazard_tilt` returns **θ = 0** — its own reported give-up, the
+> certain kills having already reached the target ⇒ every non-condemned tree spared. ⚠ `S0h` reaches that
+> same starved state via `c = clamp(ρ*n_now/n_free,0,1)` → 1.0 but its `shortfall` column tests a DIFFERENT
+> condition and reports 0 %, so **its override is real and unlogged**. (2) The budget is the wrong quantity:
+> ρ ≈ `n_next/n_now` ⇒ `(1−ρ)·n_now` ≈ **K − R**, the NET count change, while the flux that moves biomass is
+> the GROSS **K**, and establishment is deferred to the C (`ESTAB_C`, `n_recruit ≡ 0` by construction) so R
+> arrives regardless. Measured on FIT's own roster, 12 cells: gross kills **5.651 / 5.961 %/yr** (certain
+> 3.523/3.976, discretionary **1.884/2.049** — independently reproducing 0187's 2.1 % by a count identity
+> instead of a selectivity statistic), recruits **4.619 / 6.456 %/yr**, net **−0.537 / +0.254 %/yr**.
+> Against the operator's spendable budget of **0.78–1.02 %/yr**: **gross/budget 6.4–7.6×**, and FIT's
+> certain deaths alone overdraw the whole budget **4.1–5.3×** ⇒ the discretionary channel is starved before
+> it is reached, which is what θ = 0 reports and why the rate lands at 0.5–0.6 % against 2.0 %. ⇒ **the
+> operative sentence is now: a mortality-only operator driven by a next-year COUNT target structurally
+> cannot express gross mortality flux** — recruitment is 78–108 % of mortality, so two stands with identical
+> counts and wildly different turnover are indistinguishable to it (same shape as 0132's trap: a quantity
+> defined as a year-over-year difference of state cannot carry a gross flux).
+>
+> ### 0187 IN ONE PARAGRAPH (its numbers all stand; only its §B next-action hypothesis is refuted by 0188)
 >
 > 0186's promoted next action was run and **its hypothesis is REFUTED**: the emulator is not sparing big
 > trees. Mass selectivity `LAMBDA = kill_frac_m/kill_frac_n`, formed inside each arm's OWN stand (the
@@ -458,48 +486,63 @@ rather than a request to flip now.
 >     "reproduce FIT's strong preference for killing big trees" is not a target — there is no such
 >     preference to reproduce. 0046's steep age–wooddens gradient is a century-scale accumulation of a weak
 >     per-year differential, not a strong annual one.
+> 12. **NEW (0188): THE EMITTED-vs-ROSTER POPULATION HYPOTHESIS IS REFUTED AND CLOSED.** ρ is a scale-free
+>     FRACTION applied to the whole roster, not a count quota carried over from `n_emit`; the uniform arm
+>     spends its quota in full at 0.51–0.84 σ. **Do not re-open "the quota is formed on the wrong
+>     population"** — and note this does NOT contradict 0186 §2, where `patch_area` cancelling in the
+>     ANCHOR's algebra was a different calculation about a different instrument.
+> 13. **NEW (0188): THE ρ CLAMP IS NOT BINDING** (0.00–0.25 % at the low bound, 0.00–0.81 % at the high).
+>     Do not propose widening it.
+> 14. **NEW (0188): A COUNT TARGET CANNOT CARRY A GROSS FLUX, AND THIS IS NOT A CLAIM THAT THE COUNT IS
+>     WRONG.** The count is right (0186: −2.9 %); a count is the wrong KIND of question to derive a
+>     mortality budget from, because recruitment is 78–108 % of mortality. So this neither re-opens 0186
+>     §8.8's closure of count-side instruments (none is proposed) nor 0181 §§4–5's "no target redesign"
+>     (that is about the response, and about the target predicting the wrong count). **The fix is a second
+>     number for the budget, not a retrained target.**
 > 9. **NEW (0186): the level anchor is NOT wired into rung 2 and should not be.** This says nothing against
 >    ADR 0103 in the COUPLED path, where the departure genuinely is a count-level one (1.409× over-density).
 >    Do not read 0186 as retiring the anchor; its own flip criterion (0103 §6, line M's arm) is untouched.
 >
-> ### B. THE NEXT ACTION — the DISCRETIONARY MORTALITY RATE, starting with ρ's population mismatch
+> ### B. THE NEXT ACTION — GIVE THE OPERATOR THE GROSS BUDGET (ADR 0188 §7, pre-registered)
 >
-> **0187 promotes this on measurement, and it retires the previous next action (which is now answered and
-> refuted).** The emulator picks the right kinds of trees; it kills far too few of the biomass-bearing ones.
-> The shortfall is **uniform across size** (2.9–4.6× at every height quintile), so this is a question about
-> the **magnitude the operator is asked for**, not about its ordering. And 0183 established the hazard is
-> exact as a FUNCTION ⇒ the live suspects are **its inputs and the conversion from a count target to a kill
-> quota.**
+> **0188 answers and retires the previous next action.** The rate shortfall's cause is identified: the
+> operator's budget is the NET count change (**0.78–1.02 %/yr**) while the mortality flux that moves biomass
+> is the GROSS (**5.65–5.96 %/yr**), because FIT replaces 4.6–6.5 %/yr of its roster by recruitment and
+> establishment is deferred to the C, so that recruitment is already netted out of any next-year count
+> target.
 >
-> **THE FIRST HYPOTHESIS, and it is nearly free to test.** ρ is
-> `clamp(target/(n_prev + 1e-12), 0.7, 1.3)` (`rung2_s_demography_harness.jl:518`), and `target`/`n_prev`
-> live on the **>5 m EMITTED** population (`pools_of`) while the thinning `rand(rng) > f[i]` is applied to
-> **every tree in the roster** (the harness says so at its own line 298). **This is the same
-> emitted-vs-whole population mismatch ADR 0186 §2 found in the anchor's algebra** — and there it was
-> load-bearing enough to make `patch_area` cancel. If the roster is materially larger than the emitted
-> population, a ρ derived from emitted counts under-kills the whole roster by exactly that ratio. Line M's
-> ADR 0130 measured the sub-5 m trees at **47 % of the stems** at Hainich (0.79 share at boreal/Sahel) —
-> which is the right order of magnitude to matter, and possibly the whole 3.5×.
+> **THE INSTRUMENT.** Make the budget `(n_now − target) + R̂` instead of `(n_now − target)`. **Its lever is
+> sized already** (0186's clause, discharged here): a 4.6–6.5 %/yr addition to a 0.78–1.02 %/yr budget ⇒ the
+> budget grows **5.5–8.3×**, the right order to close a 3.5–4.2× rate shortfall and a 58 % mass-flux
+> shortfall. Nothing else in the arm changes: 0183 says the hazard is exact as a function and 0187 says its
+> ordering is right, so this touches only the magnitude it is asked for.
 >
-> **Measure that ratio BEFORE building anything** (0186 §8's clause, which is what retired the 264-job
-> matrix for 7 s of compute): per patch-year, `n_roster / n_emit` from the dumps against `n_emit` in the arm
-> log, and then whether `ρ` applied to the roster removes the mass FIT removes. **State the mechanism's
-> current size first.** ⚠ And derive the blessed statistic's **sampling SE before choosing its tolerance** —
-> 0187's self-test tolerance was set without that and a 2 σ noise excursion read as a defect (skill trap 5f).
+> ⚠ **THE ONE DERIVATION TO DO FIRST, BECAUSE IT CAN KILL THE IDEA.** R̂ for the CURRENT year is **not
+> available at decision time** — the rendezvous is at the `grow` phase and establishment happens after
+> `post`. So the instrument must use a lagged or predicted R̂, and the pre-registration must state what
+> happens when that prediction is wrong. **Derive whether a lagged R̂ still moves the blessed statistic
+> before writing the arm** (recruitment is strongly year-to-year variable in a gap model; if a one-year lag
+> destroys the signal, the instrument needs the C to expose its own establishment count at the rendezvous,
+> which is an INTEGRATION POINT with line M's `rung2_apply.c`, not an S-only change).
 >
-> **Also cheap and worth doing in the same pass:** the clamp. `ρ ≥ 0.7` caps the kill rate at 30 %/yr of the
-> roster, which is far above the 2.1 % FIT needs, so the clamp is probably NOT binding — but that is an
-> assumption, and `s_arm_log.txt` records `rho` per patch-year, so its incidence is one grep. If the clamp
-> is not binding and the population ratio does not close the 3.5×, the remaining candidate is the count
-> target itself being right about the EMITTED count while implying too little total mortality — at which
-> point re-read 0186 §8.8 carefully, because that is close to (but not the same as) the closed count channel.
+> **PRE-REGISTERED CRITERION (read once; do not move these).** ssp370 leg, FIT-gain cells: discretionary
+> kill rate **≥ 1.5 %/yr** (FIT 2.05, current 0.6) AND annual mass removal **≥ 0.025** (FIT 0.0306, current
+> 0.0178) AND agb departure **< +40 %** (0185 §7.5's number, unchanged). A rate that rises while agb does
+> not fall **refutes 0188 §4's reachability reading** — say so rather than re-deriving the budget. `S0`
+> stays the derivable self-test arm (uniform ⇒ `E[n_kill] = (1−ρ)·n_tree` exactly).
 >
-> **The data is on disk for all of this**; the `predict` matrix and the arm logs need no model run. Read the
-> **`rung2-dump-analysis`** skill first — traps **5d** (the `isdead` set is contaminated 8→100 % by the C's
-> own forced kills; restrict to `mort_prob < 1` and check `NP` returns ~0), **5e** (stratify a
-> ratio-of-fractions by patch-year or its null is not 1), **5f** (derive the SE), plus the `#H` header
-> offset, the coverage gate and trap 5 (the C grows the stand, so score `NP` in the same table).
-
+> **ALSO CHEAP AND WORTH DOING IN THE SAME PASS:** the `if ρ < 1.0` gate. In **42–46 %** of patch-years the
+> arm nominates nobody at all, which no budget change fixes by itself — a stand can need thinning in a year
+> its count is predicted to rise. Whether the gross budget makes that branch reachable is a two-line check
+> on the same logs, and it should be measured, not assumed.
+>
+> **The data is on disk for all of this** — the `predict` matrix and the arm logs need no model run. Read
+> the **`rung2-dump-analysis`** skill first: traps **5g** (the recruit identity — the killed stems are
+> STILL in the `post` roster), **5h** (do not make a gate stricter than its own identity), **5i**
+> (`n_tree`/`n_emit` are both in the arm log; the clamp and the ρ≥1 gate are one grep each), plus **5d**
+> (`mort_prob < 1`), **5e** (stratify by patch-year), **5f** (derive the SE before the tolerance), the `#H`
+> header offset, the coverage gate, and trap 5 (the C grows the stand, so score `NP` in the same table).
+>
 > ### C. FLAG STATE
 >
 > | flag | state | what blocks it |
@@ -526,6 +569,32 @@ rather than a request to flip now.
 >
 > ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
 >
+> * ⚠ **NEW (0188) — IMPLAUSIBILITY OF A *LEVEL* IS THE TELL THAT CATCHES A BASIS ERROR EVERY *RATIO*
+>   HIDES.** The recruit identity `R = n_post − (n_grow − K)` assumes the killed stems are gone from the
+>   `post` roster; under 0123's deferred kills they are **still there**, so it inflates R by exactly
+>   `K_all`. Every arm-to-arm ratio looked perfectly sane — what exposed it was that the number implied
+>   **sustained +4.6 to +6.5 %/yr roster growth over an 81-year leg**, which would explode the roster by
+>   orders of magnitude. The correct identity is **`R = n_post − n_grow`** and it needs no index tracking
+>   (so `ERROR043` cannot corrupt it). **Sanity-check every level against what the system must do over its
+>   own horizon** — the mirror of 0184's "report the level beside every shift". Skill trap 5g.
+> * ⚠ **NEW (0188) — A GATE STRICTER THAN ITS OWN IDENTITY MANUFACTURES DOUBT ABOUT A SOUND NUMBER.** The
+>   identity above needs only *no stem removed* between `mort` and `post` — true at **30 300 of 30 300**
+>   patch-years. A first version ALSO demanded `dead@post == dead@mort` and duly reported a **13.2 %
+>   "violation" rate that was not a violation**: FIRE flags further stems dead between the phases (0121),
+>   one-directional (`dead@post ≥ dead@mort` at 8100 of 8100, never below) and **+14.1 %** on top of the
+>   demographic kills — and fire is not the demography interface's to own. **Write the identity down, gate
+>   exactly it, report anything else as information.** Skill trap 5h.
+> * ⚠ **NEW (0188) — A DERIVABLE REFUTATION BEATS A MEASUREMENT, AND IT COST ONE READ OF THE HARNESS.**
+>   0187 §B's leading hypothesis was killed by reading `rung2_s_demography_harness.jl:521-527` and noticing
+>   ρ is a *fraction* against the whole-roster `n_now`, not a count quota — then confirmed by the uniform
+>   arm's derivable identity at 0.51–0.84 σ. **Read the code path before designing the probe for it**; the
+>   population ratio (2.08–2.92) was real and still could not have the consequence attributed to it.
+> * **`n_tree` AND `n_emit` are both in `s_arm_log.txt`** — third time that file retired a planned dump
+>   scan (with 0184 and 0186). The clamp incidence and the ρ≥1 gate are one grep each. Skill trap 5i.
+> * ⚠ **NEW (0188) — `sbatch_python.sh` PRINTS AN EMPTY `env:` LINE EVEN WHEN THE KNOB DID PROPAGATE.**
+>   `NPREV` is not in the wrapper's forward list, but `export NPREV=predict` reaches the job via
+>   `--export=ALL`. Verify from the **scorer's own header line** (`mode NPREV=predict`), never from the
+>   wrapper's echo — which is why every scorer in this family prints its mode.
 > * ⚠ **NEW (0187) — A DERIVED-A-PRIORI SELF-TEST IS THE CHEAPEST REAL GATE ON A NEW SCORER, AND IT CAUGHT
 >   TWO BASIS ERRORS HERE.** `S0` is uniform thinning (`f[i] = ρ`, size-independent draw) ⇒ its mass
 >   selectivity MUST be 1.00. That one derivable number found (a) that the `mort`-phase `isdead` set is the

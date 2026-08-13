@@ -2516,3 +2516,69 @@ was noise — the scorer now prints the SE and σ-departure, and the tolerance w
 lessons went into the `rung2-dump-analysis` skill as traps 5d–5f.
 
 Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
+
+---
+
+## 2026-08-13 — ADR 0188: the mortality budget is the NET count change, not the GROSS flux
+
+Took ADR 0187 §B's promoted next action (the discretionary mortality RATE, starting from ρ's suspected
+emitted-vs-roster population mismatch). Answered it entirely from state already on disk — the arm logs
+(~170 kB/leg) plus a 1.9 GB scan of the 24 `REC` `predict` dumps, one SLURM job (1788038), no model run.
+New scorer `scripts/diagnose_rung2_kill_budget.py`, five panels, ADR 0185 §5's coverage gate imported
+rather than re-implemented.
+
+**Read the harness before measuring anything, and the leading hypothesis died there.** ADR 0187 §B's
+first suspect — a quota formed on the >5 m emitted population "under-killing the whole roster by exactly
+that ratio" — is wrong, and wrong *derivably*: ρ is applied as a per-tree survival FRACTION against the
+whole-roster density `n_now = sum(nind)` (harness :521-527), and a fraction is scale-free. The population
+ratio is genuinely large (**2.08–2.92**, above line M's 1.9× at Hainich), so the suspicion was aimed at a
+real disparity — it just cannot have that consequence. The derived a-priori gate settles it in one line:
+for the uniform arm `E[n_kill] = (1−ρ)·n_tree` exactly, so H1 needs realized/implied ≈ 0.40–0.43 where the
+measurement gives **1.004 ± 0.009 (0.51 σ)** and **1.006 ± 0.007 (0.84 σ)**. The free null (`NP` has ρ ≡ 1)
+returned its derived 100.0 % and 0.000 %. The ρ clamp is not binding either (0.00–0.25 % at the low bound)
+— ADR 0187 §B flagged that as an assumption and it cost one grep to discharge.
+
+**What is actually wrong, in two layers.** The whole decision is gated `if ρ < 1.0`, so in **42–46 %** of
+patch-years the arm's answer is an *empty* kill list, and in a further **27.9 %** of `S1`'s years
+`_hazard_tilt` returns **θ = 0** — its own reported give-up, the certain kills having already reached the
+target. Underneath that, the budget is the wrong quantity: ρ ≈ `n_next/n_now`, so `(1−ρ)·n_now` ≈ **K − R**,
+the NET count change, while the flux that moves biomass is the GROSS **K** — and establishment is deferred
+to the C (`ESTAB_C`, `n_recruit ≡ 0` by construction), so R arrives regardless.
+
+**FIT's own numbers close the arithmetic.** Gross kills **5.65 / 5.96 %/yr**, recruits **4.62 / 6.46 %/yr**,
+net **−0.54 / +0.25 %/yr**: near-stationary in count while turning over ~6 %/yr. Against the operator's
+spendable budget of **0.78–1.02 %/yr** that is **6.4–7.6×** short, and FIT's non-negotiable deaths ALONE
+overdraw the whole budget **4.1–5.3×** — so the discretionary channel is starved before it is reached,
+which is exactly what θ = 0 reports and why the rate lands at 0.5–0.6 % against 2.0 %. A useful
+corroboration fell out for free: the discretionary rate measured here by a count identity (1.88 / 2.05 %)
+independently reproduces ADR 0187's 2.1 %, which was a stratified selectivity statistic over different
+records.
+
+⇒ **a mortality-only operator driven by a next-year COUNT target structurally cannot express gross
+mortality flux**, because recruitment is 78–108 % of mortality: two stands with identical counts and wildly
+different turnover look the same to it. Same shape as ADR 0132's trap — a quantity defined as a
+year-over-year difference of state cannot carry a gross flux. Carefully NOT a re-opening of ADR 0186 §8.8
+(no count-side instrument proposed; this explains why the count can be right while the mass flux is 4×
+short) nor of ADR 0181 §§4–5 (that is the warming response, and it is about the target predicting the wrong
+count — here the count is right and a count is the wrong kind of question to derive a budget from).
+
+**Two basis errors again, both found inside the scorer before its numbers were published.** (1) The recruit
+identity: the killed stems are **still in the `post` roster** under ADR 0123's deferred kills, so
+`R = n_post − n_grow`, and the naive `n_post − (n_grow − K)` inflates R by exactly `K_all`. What caught it
+was not a ratio — every arm-to-arm ratio looked sane — but the **implausibility of a LEVEL**: it implied
+sustained +4.6 to +6.5 %/yr roster growth over an 81-year leg. Sanity-check a level against what the system
+must do over its own horizon. (2) My first gate was **stricter than its own identity** — it also demanded
+`dead@post == dead@mort` and duly reported a 13.2 % "violation" rate that was just **fire** (ADR 0121,
+one-directional at 8100 of 8100, +14.1 % on top of the demographic kills, and not the demography
+interface's to own). An over-strict gate manufactures doubt about a correct number. Both are now skill
+traps 5g/5h, with 5i recording that `n_tree`/`n_emit` are both in the arm log — the third time that file
+has retired a planned dump scan.
+
+Next action pre-registered in ADR 0188 §7 **with its lever's current size measured** (ADR 0186's clause):
+give the operator `(n_now − target) + R̂`, a 5.5–8.3× budget increase, against a criterion of discretionary
+rate ≥ 1.5 %/yr AND mass removal ≥ 0.025 AND agb departure < +40 %. The one derivation that could kill it
+is named first: R̂ for the current year is not available at the `grow` rendezvous, so it must be lagged or
+predicted, and whether a lagged R̂ still moves the blessed statistic has to be derived before the arm is
+written.
+
+Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
