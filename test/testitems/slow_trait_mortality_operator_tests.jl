@@ -177,7 +177,13 @@ end
     #    see the identical ρ. That makes the count claim an EXACT comparison, not a statistical one. ──
     forcings = repeat(year_forc, 2)
     ctl_core = mkcore()
-    ctl = FluxDrivenSlowEmulator(ctl_core, forest; boundary = boundary, n_init = 10.0, seed = 1)
+    # ⚠ `trait_mortality = false` is PASSED EXPLICITLY, and must stay that way: ADR 0183 flipped the
+    #   DEFAULT to `true`, so a control that relies on the default is no longer a control — it is a second
+    #   copy of the arm. That is exactly what this testitem caught at the flip (5 assertions moved: this
+    #   arm's inertness, the composition identity, and the three per-cohort contrasts).
+    ctl = FluxDrivenSlowEmulator(
+        ctl_core, forest; boundary = boundary, n_init = 10.0, seed = 1, trait_mortality = false
+    )
     arm_core = mkcore()
     arm = FluxDrivenSlowEmulator(
         arm_core, forest; boundary = boundary, n_init = 10.0, seed = 1, trait_mortality = true
@@ -186,10 +192,18 @@ end
     run_coupled_cell(ctl_core, mkclo(), mkstate(), forcings; slow = ctl, days_per_year = nday)
     run_coupled_cell(arm_core, mkclo(), mkstate(), forcings; slow = arm, days_per_year = nday)
 
-    # (1) THE DEFAULT IS INERT: the control never evaluated the hazard.
+    # (1) THE OPT-OUT IS INERT: with `trait_mortality = false` the control never evaluated the hazard.
+    #     This was "THE DEFAULT IS INERT" until ADR 0183 flipped the default to `true`; the opt-out is what
+    #     now serves guardrail 4, so it is the opt-out that has to be inert.
     @test isempty(trait_mortality_diag(ctl))
     @test isempty(ctl.mort_diag)
     @test all(==(0), ctl.bm_inc_counter)                 # never advanced
+
+    # (1b) AND THE NEW DEFAULT IS THE OPERATOR (ADR 0183). Asserted on the constructor rather than
+    #      inferred from a run, so a future silent flip back cannot pass this file.
+    @test FluxDrivenSlowEmulator(
+        mkcore(), forest; boundary = boundary, n_init = 10.0, seed = 1
+    ).trait_mortality
 
     # (2) THE OPERATOR FIRED — asserted before anything is inferred from a difference (ADR 0048's own
     #     correction: a null from an operator that never ran bounds nothing).

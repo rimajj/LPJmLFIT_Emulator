@@ -1567,3 +1567,69 @@ probe.
 Worked example: `scripts/diagnose_leaf_turnover_regime.py` (variability audit first per ADR 0117, then
 the retained-fraction panel with the decisive "fraction of stems past the clamp" column and the per-cell
 verdict, then the trait-corridor check).
+
+## A STATISTIC THAT THE DO-NOTHING NULL ALSO PASSES CANNOT CREDIT THE THING UNDER TEST (line S, 2026-08-13, ADR 0182)
+
+ADR 0182 asked whether each rung-2 arm's own stand warms like LPJmL-FIT's. All three real arms passed the
+pre-registered test — shift magnitude ≥ FIT's, direction agreement 0.76–0.91, and **0.97–0.99 in the cells
+where FIT's own stand moves substantially.** Then the persistence null `NP`, which learns nothing at all,
+scored **0.910** on the same direction test in the same cells.
+
+The reason is structural and was knowable in advance: in a rung-2 arm **the C grows the stand** and the
+emulator only decides who dies, so the stand's warming shift is *inherited*, and every arm inherits it. The
+test therefore has exactly one power — it can **clear or convict** the hypothesis "the state handed to the
+learned map does not move". It cannot rank the arms.
+
+**Do this:** when you build a test around a quantity that a shared upstream also produces, score the
+do-nothing null on the SAME statistic in the SAME cells, and write the null's number into the result table
+next to the arms'. If the null passes too, say so in the headline and state which of the two things the test
+can still decide. (Same shape as ADR 0112's deattenuated-slope trap, where all four arms scored 0.97–1.03,
+and it recurs whenever a statistic is dominated by a channel none of the arms own.)
+
+## A LEG-MEAN DIFFERENCE NEEDS A SAME-FORCING CONTROL, AND THE REFERENCE'S OWN DRIFT MAY BE THE LARGEST (ADR 0182 §4)
+
+The companion to the drift rule already recorded above (ADR 0177 → 0178). Compute the SAME leg-shift
+statistic **between two halves of one leg**, where the forcing does not change and there is no excursion to
+find, and express both as a per-decade RATE (the half-leg centroids are ~10 yr apart; two legs' centroids
+were ~50.5 yr apart, so the raw numbers are not comparable).
+
+Two things this caught that the headline table hid:
+
+* the arms' drift rate was 3.0–3.6× their warming rate — but **the reference's own was 5.39×**, the largest
+  of all five arms. Reading the control against 0 instead of against the reference would have published
+  FIT's own decadal variability as an arm defect.
+* on absolute magnitudes the arms' within-leg decadal mobility (1.04–1.34) stood in the same ~1.5×
+  proportion to FIT's (0.86) as their leg shift did ⇒ the arms' shift ratio of 1.6 was **mobility, not a
+  stronger response**. "The arms warm 1.6× more than FIT" was one table away from being written down.
+
+**Declare the control with the thresholds, before the run, and put the reference through it too.**
+
+## TWO STATISTICS THAT SOUND EQUIVALENT — MASS SHARE vs DECISION SHARE — DISAGREED BY 4–10× (line S, ADR 0183 §4)
+
+Pricing what a missing model input costs: LPJmL-FIT's drought and cold hazards carry **29–37 % of its graded
+per-individual hazard mass** and only **3–9 % of its certain kills** (the decisions that actually remove a
+tree). An input can dominate the continuous quantity and be nearly irrelevant to the discrete outcome the
+consumer depends on. **Score the statistic the consumer consumes**, and if you report a mass share, report
+the decision share beside it.
+
+## ASK WHETHER YOUR PERTURBATION CAN MOVE THE METRIC BOTH WAYS — PRECISION WAS 1.0 BY CONSTRUCTION (ADR 0183 §4)
+
+The same measurement reported recall 0.909–0.972 at precision **1.0000** for the zeroed-input arm, four times
+over, which looks like a suspiciously clean result and is in fact a tautology: the four hazards are
+non-negative and additive before a `min(1, ·)` cap, so zeroing two of them can only LOWER the total and a
+stem certain under the zeros is certain under the real values. Precision carried no information at all;
+recall was the whole measurement.
+
+**Before quoting a precision/recall (or specificity/sensitivity) pair, check the monotonicity of the
+perturbation.** If it can only move the metric one way, name the informative half and drop the other.
+
+## CHECK WHICH QUANTITY A HARNESS ACTUALLY FEEDS ITS OWN TEST BEFORE BUILDING A BLOCKER ON IT (ADR 0183 §2)
+
+ADR 0176 §4's entire pre-registered blocker for a flag flip rested on the rung-2 arms having used *FIT's own*
+hazard, so that the port was unproven. `rung2_s_demography_harness.jl:539` reads `Tree.mort`, and that
+field's own declaration comment (:206) says `TraitMortality.mortality_hazard` — **the port**. The harness
+never reads the dump's `mort_prob` column at all. Only a nearby inline comment (:533) called it "FIT's own
+hazard", and that comment is what got written into the ADR.
+
+**Trace the field, not the prose around it** — declaration, then assignment, then use. A blocker that names a
+specific input is worth ten minutes of grep before it becomes a milestone's gate.

@@ -1,6 +1,6 @@
 ---
 name: julia-test
-description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path). ALSO the procedure for LANDING A DEFAULT FLIP (an opt-in flag whose default is known wrong): flip only the default, run the full suite, and let the FAILURE LIST be the measured blast radius -- all three flips so far moved 3 assertions, not the whole tree -- then re-serve guardrail 4 through the opt-out, assert the new default, and audit every control arm that hardcoded the old one.
+description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path). ALSO the procedure for LANDING A DEFAULT FLIP (an opt-in flag whose default is known wrong): flip only the default, run the full suite, and let the FAILURE LIST be the measured blast radius -- the four flips so far moved 3-5 assertions, not the whole tree -- then re-serve guardrail 4 through the opt-out, assert the new default, and audit every control arm that hardcoded the old one.
 ---
 
 # julia-test — run the suite the way CI does
@@ -412,6 +412,18 @@ then the flag rots. Three have landed this way (`wscal_leafon` ADR 0059, `enable
 8. **Quote the cost in the same sentence as the gain.** The `wscal_leafon` flip moved the Sahel's GPP from
    0.26× to 0.90× of the C's *and* its ET from 1.19× to 1.26×. Reporting only the first half is the
    failure mode this repo's guardrails exist to prevent.
+
+**Fourth instance — `trait_mortality`, line S, ADR 0183 (2026-08-13).** Blast radius **5 assertions of
+275 605**, all in ONE testitem and all step 5's failure mode in its purest form: that file's control arm was
+constructed with no kwarg at all, i.e. it *meant* "the old default", so at the flip it became a second copy
+of the treatment arm. The five that moved were its inertness pair, its composition-invariance identity, and
+the two per-cohort contrasts that compare arm against control — i.e. **every assertion whose meaning depended
+on the two arms differing**. Nothing else moved: no conservation gate, no AD gate, no committed baseline.
+Two things worth copying: the fix pairs the explicit `trait_mortality = false` with a comment saying it must
+stay explicit, and a new assertion reads the flag off the CONSTRUCTOR
+(`@test FluxDrivenSlowEmulator(...).trait_mortality`) rather than inferring it from a run — so a silent flip
+back cannot pass the file. And the tell that this is step 5 rather than a physics regression: **all failures
+in one file, and the arm-side assertions all still green.**
 
 ## A `Vector` (or any heap-allocated) field on a struct the Enzyme path differentiates through ABORTS the whole suite (ADR 0110, line S, 2026-08-06)
 

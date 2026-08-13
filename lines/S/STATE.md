@@ -5,7 +5,7 @@
 > **0030–0049 is EXHAUSTED** and so is the **tier-2 block 0100–0119** (ADR 0119 spent the last number). Line
 > S's **TIER-3 block is 0170–0189** — allocated in CLAUDE.md §9 at ADR 0119's merge under §9's rule that
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
-> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0182.**
+> M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0184.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0134) — **FYI, NOT A REQUEST: the `ind` column `Longevity` is a FIFTH sampled recruit-trait axis, drawn from the stem's own SLA. Nothing is broken and nothing is owed**
@@ -267,74 +267,74 @@ rather than a request to flip now.
 > **attribution is not an acceptable deliverable for the response**; **"it is opt-in" is not a sufficient
 > answer** for a mechanism believed to be better.
 >
-> ### A. WHERE THE INVESTIGATION STANDS — the count model is a STAND DIAGNOSTIC, and one earlier reading was wrong
+> ### A. WHERE THE INVESTIGATION STANDS
 >
 > | ADR | what it established |
 > |---|---|
 > | 0177 | the arms match FIT's sign where FIT thins, get it wrong where FIT gains, indistinguishable from a do-nothing null on DIRECTION. |
-> | 0178 | 94–100 % of the apparent response was drift. ⚠ **but see the correction below — what it isolated is narrower than its summary sentence.** |
+> | 0178 | 94–100 % of the apparent response was drift — but what it isolated is the DIRECT boundary channel only (ADR 0181 §6). |
 > | 0179 | the climate channel is structurally WIDE OPEN (77 440 splits, 10.20 %) and carries almost nothing (4.4 % of a live channel over the operative excursion), at 12 cells. |
 > | 0180 | de-leaking `n_prev` buys 2.85× on that channel; and the count is near-determined by the contemporaneous STAND (R² 0.9620 without `n_prev` ≈ the persistence null's 0.9623). |
-> | **0181** | **the decisive table scan. Handed FIT's OWN stand, K-fold by cell over 51 767 of 54 020 cells, the de-leaked map delivers 0.292 of FIT's area-weighted response — and the STAND columns carry ALL of it (slope 0.994) while the direct climate channel gives 0.016 and the FLUX channel 0.037.** |
+> | 0181 | **the decisive table scan. Handed FIT's OWN stand, K-fold by cell over 51 767 of 54 020 cells, the de-leaked map delivers 0.292 of FIT's area-weighted response — and the STAND columns carry ALL of it (slope 0.994) while the direct climate channel gives 0.016 and the FLUX channel 0.037.** |
+> | **0182** | **the arms' OWN stand DOES warm** — `S0`/`S0h`/`S1` RATIO 1.43/1.65/1.63 against FIT's own at the same 12 cells, cosine 0.88/0.76/0.91, and **cosine 0.97–0.99 where FIT's own stand moves substantially**. The "the stand does not warm" branch is CLOSED. |
+> | **0183** | **the ported hazard IS `mortality_tree_ind`** — recall = precision = 1.0000, mean \|Δhazard\| 5e-18, over 1 568 744 stem-years at 15 cells; **recall 0.909–0.972 with the stress integrals zeroed** as the coupled loop feeds it ⇒ **`trait_mortality` FLIPPED ON**. |
 >
-> **Three things are now settled. Do not re-investigate them.**
+> **Five things are now settled. Do not re-investigate them.**
 >
-> 1. **The training TARGET is not where the response is lost, so DO NOT start the target redesign** the
->    previous handoff pre-registered. ADR 0181 §4 measures the de-leaked map at 0.292 of FIT's response given
->    a *perfect* stand — real skill, 2.4× short — and §5 shows the shortfall is not a target-construction
->    problem: the map's response tracks the stand at slope 0.994.
+> 1. **The training TARGET is not where the response is lost, so DO NOT start a target redesign.** ADR 0181 §4
+>    measures the de-leaked map at 0.292 of FIT's response given a *perfect* stand — real skill, 2.4× short —
+>    and §5 shows the map's response tracks the stand at slope 0.994.
 > 2. **The count is an allometric consequence of the stand, not a learned climate response.** Its climate and
 >    flux inputs together are ≤ 4 % of the per-cell response slope while holding ~14 % of the splits. No
->    reweighting of them can work. (ADR 0179's 12-cell result, now global and extended to the flux features.)
-> 3. **`roster_n_prev` must NOT be flipped opportunistically.** ADR 0180's "+2.85× on the climate channel" is
->    true and ADR 0181 prices the same change on the deliverable's own axis: aggregate response 0.707 → 0.292,
->    tropical band −0.47 → −2.48. ADR 0180's "flip it if a retrain touches the conditioning anyway" is
+>    reweighting of them can work.
+> 3. **`roster_n_prev` must NOT be flipped opportunistically.** ADR 0181 §7.4 prices the flip as NEGATIVE on
+>    the deliverable's axis (aggregate 0.707 → 0.292, tropical −0.47 → −2.48). ADR 0180's conditional is
 >    superseded.
+> 4. **The stand handed to the map DOES carry FIT's warming direction (ADR 0182).** Do not re-measure it — and
+>    do not quote it as evidence for any arm either: the persistence null `NP`, which learns nothing, tracks
+>    FIT's stand direction at 0.910 in the same cells, because **in a rung-2 arm the C grows the stand** and
+>    every arm inherits its shift. And the arms' RATIO > 1 is stand MOBILITY, not a stronger response — the
+>    declared drift control puts the arms at 3.0–3.6× and FIT itself at 5.39×.
+> 5. **The ported hazard needs no further validation as a function (ADR 0183).** It reproduces the C to
+>    floating-point noise when handed the C's inputs. Any remaining hazard question is about its INPUTS.
 >
-> ### ⚠ THE CORRECTION YOU MUST NOT RE-INHERIT (ADR 0181 §6)
+> ### B. THE NEXT ACTION — reconcile ADR 0181's 0.292 with ADR 0177's null, on the arms' OWN stand (NO NEW RUN)
 >
-> ADR 0180 and the previous handoff both say *"ADR 0178 measured the pathway through the stand as ~0."*
-> **It did not.** Its frozen arm freezes ONLY the 4 boundary columns — `build_rung2_boundary_series.py
-> --freeze` writes `Year,eco_diag_gdd_5,tas_cold_month,soil_depth,co2` and nothing else — while the other 11
-> features stay live on the C-grown roster and the C still runs under transient ssp370 forcing. So its
-> `climate` term is the **direct boundary channel** and any stand-mediated response sits inside its `drift`
-> bucket **by construction**. ADR 0178's numbers and its conclusion about the direct channel stand; the
-> broader sentence built on it does not. Check what a freeze actually freezes before quoting it.
+> Two measured numbers do not yet fit together, and the gap between them is where the response is actually
+> being lost:
 >
-> ### B. THE NEXT ACTION — does the EMULATOR'S OWN stand warm? (pre-registered in ADR 0181 §7.3; NO NEW RUN)
+> * ADR 0181: handed **FIT's own** stand, the map delivers **0.292** of FIT's area-weighted response, and it
+>   converts stand shift → count response at slope **0.994**.
+> * ADR 0177: the arms' **actual** count response is indistinguishable from a do-nothing null on direction.
+> * ADR 0182: the arms' own stand shift is **≥ FIT's in magnitude and aligned in direction** (cosine 0.97–0.99
+>   where FIT moves).
 >
-> The map needs a warming stand to produce a warming count. FIT's own stand shifts ~0.30 sd per cell between
-> the legs (ADR 0181 PANEL 1). **Whether each rung-2 arm's stand does the same is unmeasured, and it is the
-> one number that decides where the remaining work goes.**
+> If the map converts a warming stand faithfully and the arm's stand warms, the arm's count should carry
+> ~0.292, not nothing. **Close the loop: run the map on each arm's OWN stand and score the resulting count
+> response.** Everything needed is on disk — the dumps carry every one of the six stand features (that is what
+> ADR 0182's `scripts/diagnose_rung2_stand_warming.py` already extracts and caches as `.npz` under
+> `/p/tmp/jamirp/S_rung2_standwarm/cache/`), the four flux drivers are in the same `grow` records plus the
+> `P` record's `rootzone_w`, and `rung2_s_demography_harness.jl` already assembles the row through the
+> shipped `flux_feature_vector` (never copy it — ADR 0023).
 >
-> The dumps are already on disk — `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_<arm>_roster_s<seed>_dump/roster_rank0000.txt`
-> carries a `#H T` header with full per-tree state (`height crownarea nind fpc leaf_c sapwood_c heartwood_c
-> root_c age …`), one record per tree per patch per year, for every arm × cell × scenario × seed. So each
-> arm's own `hmean/hmax/agb/lai/fpc/age_mean` is reconstructable per year with a parser, no LPJmL run.
+> **Pre-registered reading, fixed before the run:**
+> * map-on-arm-stand response ≈ 0.292 (say within a factor 1.5) ⇒ the loss is the map's own ATTENUATION and
+>   the remaining work is calibration / the stand→count link, not the demography;
+> * map-on-arm-stand response ≪ 0.292 ⇒ the arm's extra stand MOBILITY (ADR 0182 §4) is diluting the signal
+>   and the demography operator is the work.
 >
-> 1. **Run the liveness panel FIRST** (ADR 0179): confirm each arm's six stand features actually vary before
->    reading any shift. An arm whose stand is constant would report "no warming" for the wrong reason.
-> 2. **Score each arm's historic→ssp370 stand shift against FIT's own on the SAME cells**, in the same units
->    (per-cell sd), so it is comparable to PANEL 1's ~0.30.
-> 3. **Pre-registered reading, fixed before the run:**
->    * arm shift ≈ FIT's ⇒ the stand warms and the map still loses the response ⇒ the defect is inside S, and
->      ADR 0181 §4's 0.292 is its size ⇒ then, and only then, is a retrain/target campaign justified;
->    * arm shift ≪ FIT's ⇒ the emulator's stand does not warm ⇒ the defect is upstream in the fast core and no
->      S-side retrain can recover it.
-> 4. Reuse `scripts/slow_stand_forced_response_probe.jl`'s PANEL 1 for the units and the sd basis; reuse
->    `scripts/diagnose_rung2_armc.py` for the dump parsing.
+> Blessed statistic: the area-weighted aggregate response ratio via `diagnose_truth_yardstick.py`, on the same
+> axis as ADR 0181's 0.707 / 0.292 / 0.685 — **and export `OUT_SUMMARY=` to /p/tmp first** (see §E).
 >
-> ⚠ **Score it against FIT's own stand at the SAME cells, not against PANEL 1's global median** — PANEL 1 is
-> 51 432 cells and rung 2 is 12 (ADR 0124: put the truth's own row through your scorer before believing it).
->
-> ### C. FLAG STATE — unchanged this session (nothing shipped moved; every job wrote only to /p/tmp)
+> ### C. FLAG STATE
 >
 > | flag | state | what blocks it |
 > |---|---|---|
 > | `wscal_leafon` | **ON** | — |
-> | `roster_n_prev` | off | **keep it off** — ADR 0181 §7.4 measures the flip as NEGATIVE on the deliverable's axis (aggregate 0.707 → 0.292, tropical −0.47 → −2.48). Supersedes ADR 0180's conditional. |
-> | `trait_mortality` | off | ADR 0176 §4's certain-set criterion (≥12 cells, recall AND precision ≥ 0.8 of the ported hazard's certain set vs FIT's own on the SAME rosters). **Needs no new run** — the dumps are on disk. ADR 0049's offline criterion is retired. |
+> | `trait_mortality` | **ON since ADR 0183** | — flipped on the pre-registered criterion. **Guardrail 4 is now served by the OPT-OUT** `trait_mortality = false`: any control arm that wants the pre-0183 composition-preserving thinning must pass it EXPLICITLY, or it is measuring the new operator. Measured blast radius: **5 assertions of 275 605**, all in `slow_trait_mortality_operator_tests.jl`, all from that file's control relying on the old default (now fixed, plus a constructor assertion on the new default). Suite green after the fix: **275 606 pass / 0 fail** (job 1773556). No conservation gate, AD gate or committed baseline moved. ⚠ **Six probe scripts take the default by omission** (`kcap_merge_confound`, `biome_slow_oracle`, `wscal_leafon`, `biome_resilience`, `measure_hainich_gate_bands`, `diagnose_count_recursion_anchor`) and were deliberately left alone — so **every number they have already published is a PRE-0183 uniform-thinning number**; do not compare a fresh run against an old printed value without accounting for the flip (ADR 0183 §6). |
+> | `roster_n_prev` | off | **keep it off** — measured NEGATIVE on the deliverable's axis (ADR 0181 §7.4). |
 > | `recruit_establishment` | off | off for a GOOD measured reason (ADR 0172): a +2–8 % standing wood-density LEVEL offset at 5 cells, 2–10× the whole warming signal. Do NOT flip it to satisfy the steer. |
+> | `trait_drought_mortality` (M's, in `fast.jl`) | off | **an integration point to RAISE, not a flag to flip** (ADR 0183 §5.3). It supplies the two stress integrals `slow.jl::_trait_hazards!` currently zeroes. Measured: they carry **29–37 % of FIT's graded hazard mass but only 3–9 % of its certain kills**, so the certain set does not need them. What is unmeasured is trait ORDERING among non-certain stems — criterion pre-registered in ADR 0183 §5.4 (Spearman rank ≥ 0.9 between zeroed and full hazard over non-certain stems, plus a same-sign wood-density selection differential). |
 > | `per_pft_params` (M's) | off | M's call |
 >
 > ### D. OPEN INTERFACE LIMITS — both in the C hook (line M's `rung2_apply.c`), not in S's code
@@ -343,21 +343,39 @@ rather than a request to flip now.
 >   on **either** env var (`rung2_apply.c:118`), so it fires in the pure OBSERVATION path too. Cells **23318
 >   and 33335 lose their baseline in both scenarios**, 46336 its ssp370 baseline. `fread_tree.c:64-66` rules
 >   out the naive explanations; mechanism OPEN. **Raise with M: the key `(pft_id, treeidx)` is not unique.**
+>   ADR 0182's coverage gate quantifies the cost: **92 of 510 legs unscoreable**, which is what caps rung 2 at
+>   12 cells instead of 15.
 > * **Cell 22732's `S0h`/`S1` ssp370 arms HANG at the rendezvous**, reproducibly, at low concurrency, and in
 >   the frozen variant too ⇒ cell-specific. Excluded, not scored early.
 >
-> ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION — all captured in skills
+> ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
 >
 > * ⚠ **A PRE-REGISTERED THRESHOLD IS NOT A PRE-REGISTERED VERDICT.** ADR 0181's probe defined both threshold
 >   pairs before the run, warned in its own header which statistic binds — and then branched on the *other*
 >   one, printing SUPPORTED for a PARTIAL arm. **Grep your verdict expression for the blessed statistic's
 >   variable name before submitting**; if the blessed number comes from a different job, print no verdict.
-> * ⚠ **`diagnose_truth_yardstick.py` writes to a COMMITTED shared fixture by default** and a `COUNT_DIR`-only
+> * ⚠ **A DIFFERENCE OF LEG MEANS IS NOT A RESPONSE UNTIL A DRIFT CONTROL SAYS SO** (ADR 0182). Declare the
+>   control with the thresholds, before the run, and **read the reference's own drift rate too** — FIT's was
+>   the largest of all five arms and would have been very easy to present as an arm defect.
+> * ⚠ **A PER-FEATURE RATIO EXPLODES WHEREVER THE REFERENCE SHIFT IS NEAR ZERO** (ADR 0182 §7 — `age_mean`
+>   read 26.5 at the first smoke cell). Report the arm's own signed shift beside the reference's; keep ratios
+>   for a vector norm, whose denominator is bounded away from 0.
+> * ⚠ **PRECISION CAN BE 1.0 BY CONSTRUCTION** (ADR 0183 §7). Before quoting a precision/recall pair, ask
+>   whether the perturbation under test can only move the statistic one way — zeroing two non-negative
+>   additive hazard terms cannot create a false certain kill, so precision carried no information at all.
+> * ⚠ **A HAZARD-MASS SHARE AND A DECISION-SET SHARE ARE DIFFERENT QUESTIONS** — they disagreed by 4–10× here.
+> * ⚠ **CHECK WHICH QUANTITY A HARNESS ACTUALLY FEEDS ITS TEST BEFORE BUILDING AN ADR ON IT** (ADR 0183 §2).
+>   ADR 0176 §4's whole blocker rested on the arms using FIT's own hazard; `Tree.mort` is the PORTED one and
+>   its own field comment says so. Read the field, not the surrounding prose.
+> * ⚠ **DUMP HEADER OFFSET:** the header is `#H T phase lon lat …` while the record is `T grow <lon> …`, so
+>   name *n* is field *n+1*. It fails loudly on a string column and SILENTLY between two float columns.
+> * **`diagnose_truth_yardstick.py` writes to a COMMITTED shared fixture by default** and a `COUNT_DIR`-only
 >   run DROPS every trait row from it. **Always `export OUT_SUMMARY=`** to /p/tmp, and read `git status` after
 >   any analysis job.
 > * **A tree-ensemble sensitivity read as a derivative returns 0 for almost every row** — piecewise constant
 >   (ADR 0105). Use an observed secant and check the shift clears the quantization step.
-> * **Run the liveness panel FIRST.** In ADR 0179 it prevented the wrong write-up.
+> * **Run the liveness panel FIRST.** In ADR 0179 it prevented the wrong write-up; in ADR 0182 it cleared all
+>   six features in every leg before any shift was read.
 > * **`priority` caps a USER at 10 concurrent jobs** (`sacctmgr show qos`, `MaxJobsPU`); `short` on `standard`
 >   has no per-user cap and identical hardware.
 > * ⚠ **NEVER EDIT A BASH SCRIPT WHILE IT IS RUNNING** — bash reads it incrementally from a byte offset.
