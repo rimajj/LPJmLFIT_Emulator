@@ -363,6 +363,17 @@ without daily physics.
 ### FAITHFUL, SO THE GPP EXCESS IS IN THE KERNEL — AND THE CANDIDATE THAT LOOKED DECISIVE WAS A
 ### COMMENTED-OUT C BRANCH. NO BEHAVIOUR CHANGE (ADR 0135)**
 
+**MERGED to `main`** as `e316e010` (merge commit `269b2036`; branch sha `a7f6b54b`). Green on `main`:
+`docs`, `format`, `test (lts)`, `test (1)`, `test (macOS, lts)` and `changelog` — `test (pre)` is the
+known `continue-on-error` prerelease job. `docs` mattered here because the diff touches `src/**` and that
+gate never runs on a line branch. CI-faithful suite **275 606 pass / 0 fail** post-rebase
+(`logs/M-suite0135b.1773735.out`); local docs build exit 0 with all five mermaid fences
+(`logs/M-docs0135.1773685.out`). ⚠ The merge hit a conflict in the shared append-only
+`residual-diagnosis` skill (line S appended four sections the same day) — resolved by **keeping both
+sides**, main's appends first, verified by grepping for both headings afterwards. The rebase also pulled
+in a line-S `src/components/slow.jl` change; the audit was re-run on the merged tree and reproduces
+every printed digit, and the suite was re-run rather than inherited from the pre-rebase job.
+
 **Start here.** The previous handoff's step 1 — *"the photosynthesis half of the assimilate is the head of
 the F queue and still unscoped"*, with ADR 0130's **+10.1 %** Hainich GPP excess as the target — is
 **scoped**. The scoping question was deliberately one bit: **is the excess in the light INPUT or in the
