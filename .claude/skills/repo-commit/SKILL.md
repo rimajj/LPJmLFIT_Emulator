@@ -1135,3 +1135,20 @@ before believing it.
 * **A revert is not done until it is MERGED.** Reverting on the line branch fixes the *branch*; `main` is
   where the gate runs and where every other line pulls from. Finish the `flock` ritual in the same session
   as the revert — a fix parked one merge away is indistinguishable, to everyone else, from no fix at all.
+
+### …and `collate_changelog.py --dry-run` exiting 0 does NOT mean your fragment's LINKS resolve (line M, 2026-08-13)
+
+The validator checks the Keep-a-Changelog **category heading**; it never opens a `docs/decisions/...`
+target. Nor does anything downstream — the `docs` gate builds the Documenter page tree and `CHANGELOG.md`
+is not in it, so a fragment citing an ADR under a slug that does not exist collates green and ships a dead
+link into the permanent changelog. ADR slugs are long and descriptive and are easy to reconstruct wrongly
+from memory (`0059-flip-wscal-leafon-default.md` vs the real
+`0059-the-c-faithful-water-stress-becomes-the-default.md`). One line, run it with the `--dry-run`:
+
+```bash
+grep -o 'docs/decisions/[0-9a-z-]*\.md' changelog.d/<LINE>-<slug>.md | sort -u | while read f; do
+  [ -f "$f" ] && echo "OK   $f" || echo "MISS $f"
+done
+```
+Same applies to an ADR body and to an inbound block in a sibling's `STATE.md`. Cheapest habit: cite by
+`ls docs/decisions/ | grep ^0059` rather than by recall.
