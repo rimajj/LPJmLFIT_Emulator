@@ -1941,7 +1941,7 @@ it in an ADR with the number, correct the source comment that asserted the struc
 it from the shortlist. Worked example: `scripts/diagnose_tstress_photo_gate.py` (sub-second, committed
 fixtures, no SLURM) + ADR 0138.
 
-## §17 — WHEN AN UPSTREAM DEFECT IS FIXED, RE-READ EVERY CLAIM ABOUT HOW BIG THE LOSING ARM'S ERROR WAS (line M, 2026-08-13, ADR 0137)
+## §18 — WHEN AN UPSTREAM DEFECT IS FIXED, RE-READ EVERY CLAIM ABOUT HOW BIG THE LOSING ARM'S ERROR WAS (line M, 2026-08-13, ADR 0137)
 
 §11 says a confounded *reference* mis-scores a fix. This is its mirror image, and it bites later: a
 **two-arm contrast measured under a shared upstream defect ranks the arms correctly and prices them

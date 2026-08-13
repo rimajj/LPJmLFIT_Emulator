@@ -476,7 +476,7 @@ queued the long-horizon assertion **in S's own file** — do not do it for them.
      (`fdiff.jl:2217`). Soil lags air, so the gate opens/closes on the wrong spring and autumn days — the
      exact regime ADR 0136 showed the GPP error concentrates in. (The C's own comment on that line says
      "below 5 degree" while the code tests `< 10`; trust the code.)
-   Price both with `residual-diagnosis` §16 — weight the affected days by the assimilation at stake, not
+   Price both with `residual-diagnosis` §17 — weight the affected days by the assimilation at stake, not
    by their count — **before** building either arm.
 2. **RE-MEASURING ANY PUBLISHED PROBE PANEL ON THE NEW DEFAULT IS A DELIBERATE NEW ARM.** The label shift
    is now live: `Pgbgg` is the **pre-flip** configuration and `Pgbggs` the shipping one, and the 30
@@ -576,7 +576,7 @@ of the five biome cells samples. Not an open item; a scope statement on ADR 0138
      GPP error concentrates in. ⚠ Also worth recording while you are there: **the C's own source comment on
      that line says "below 5 degree" while the code tests `< 10`** — comment/code mismatch, same family as
      the `/* test: */` trap in `CLAUDE.md` §3; trust the code.
-   Neither is measured. Price them with `residual-diagnosis` §16 (weight the affected days by the
+   Neither is measured. Price them with `residual-diagnosis` §17 (weight the affected days by the
    assimilation at stake, not by their count) before building either arm.
 3. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap (only
    remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two evergreen cells,
