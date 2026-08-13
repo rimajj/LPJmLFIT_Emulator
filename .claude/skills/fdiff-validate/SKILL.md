@@ -495,3 +495,43 @@ thrown that difference away, and the arm reports exactly zero with every gate gr
 5. **`OUT_CSV` DOES reach the job** through `scripts/sbatch_julia.sh` (SLURM `--export=ALL`) — the
    fixed-forward-list caveat in CLAUDE.md §9 is about `sbatch_python.sh` building a command *prefix*. Use
    it to write a scratch copy first and diff against the committed fixture before overwriting it.
+
+## The tree APAR chain is AUDITED and FAITHFUL — don't re-derive it, and don't grep the C for it (ADR 0135, 2026-08-13)
+
+Before attributing any F-vs-C **GPP** gap to the light input, read this. The whole chain was audited
+factor-by-factor against the LIVE C lines and every factor matches, so `GPP_F/GPP_C` on a matched roster
+**is the kernel error**:
+
+`apar = par·(1−albedo_leaf)·alphaa·fpar` (`water_stressed.c:204`), with — all confirmed —
+`par = dayseconds·swdown/2` (`petpar3.c:74`) · per-stem `alphaa`, `albedo_leaf` · the vertical layered
+Beer–Lambert model (`getfpar.c` → `_patch_fpars_soa`) · its density `min(leaf_c·sla/(h−bole), 40)·nind`
+**including the cap's ordering** · `k_lambert` = 0.5 (a GLOBAL, not a PFT parameter) · `VSTEP` = 2.0 ·
+`crownlength` = 0.3334 · the SLA Vcmax cap (`issla = config->individual` ⇒ **ON**, per stem's own `sla`).
+
+Two live differences remain, **both making F absorb LESS PAR** — so neither can explain an F GPP *excess*:
+F applies `phen` after the layered share where the C puts it inside the extinction (`getfpar.c:126,158`;
+per-day upper bound 15–47 % of F's own absorption at `phen≈0.45` — a BOUND, the annual weight of
+partial-leaf days is unmeasured), and F has no `(1−snowcover)` factor where `fpar_tree_ind` has one.
+
+Re-run the audit in **2.4 s, no simulation**: `scripts/diagnose_layered_light_basis.py`.
+
+**Two traps in this file that will bite any future reading of it:**
+
+- ⚠ **`getfpar.c:108-124` holds THREE expressions for the stem leaf-area density and two are inside
+  `/* test: ... */` blocks** — `grep -n` and a `sed` line range both land in them. The dead ones divide by
+  `crownarea` (per CROWN) and one drops `*nind`; scored against those, F looks **5–37×** too optically thin
+  and the C's canopy comes out fully opaque (absorbed 1.000 at all five cells vs F's 0.40–0.97). Read the
+  ENCLOSING lines verbatim (`awk 'NR>=108 && NR<=124'`), not the matching one. See `residual-diagnosis` §10.
+- ⚠ **`fpar(pft)` is a FUNCTION POINTER** (`pft.h:350`). Under `individual:true` it is registered as
+  **`fpar_tree_ind`** = `pft->fpar·(1−snowcover)` (the layered share); `fpar_tree` = `phen·fpc·(1−snowcover)`
+  is the non-individual-mode function and is **dead here**. Follow the registration in `fscanpft_*.c`, not
+  the name.
+
+**And the check that makes this a measurement rather than a source reading:** the layer loop telescopes, so
+the port's patch LAI has a closed form readable straight from the `ind` table —
+`crownarea·nind = fpc_ind/(1−exp(−k_pft·LAI))` (`fpc_tree.c:28`) — and can be scored against the run's own
+**`LAI_STAND`** output (0.878 / 0.869 / 0.981 / 0.907 at boreal / Hainich / mediterranean / Sahel; below 1 by
+exactly the `ind` writer's 5 m cut; `tropical_amazon` 0.574 is flagged `CHECK`, not treated as confirmation).
+⚠ **Do NOT score it against `FAPAR`/`d_fapar`** — `albedo_tree.c:75` builds that from `pft->fpc` + the
+albedos, i.e. ADR 0060's crown-cover family, a different quantity that cannot validate the layered `pft->fpar`
+in either direction.
