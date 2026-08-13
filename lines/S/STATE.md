@@ -257,12 +257,14 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0185 is ON `main`.** Merge commit `97406707` (+ changelog collation
-> `e2da6e87`), branch sha `b87f335e`. Branch gate `format` green; **`main`'s own gates green**
-> (`format`, `uncollated fragments`). This diff is scripts + ADR + STATE + skill + a changelog fragment — nothing under
-> `src/**`, `test/**`, `python/**` or `docs/src/**` — so per ADR 0090 **no CI gate runs on it at all**.
-> Do not wait for a verdict that cannot arrive. The previous merge (ADR 0184) was `706ff4fc`; the last
-> suite run was **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`). `test (pre)` is
+> **LAST MERGE — 2026-08-13, ADR 0186 is ON `main`.** Merge commit `e2620c61` (+ changelog collation
+> `b9db83cb`), branch sha `475660e8`. This diff is scripts + ADR + STATE + JOURNAL + skills + a changelog
+> fragment — **nothing under `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per ADR
+> 0090 **no branch CI gate runs on it at all** (verified: 0 check-runs on the merge commit). Do not wait
+> for a verdict that cannot arrive. **`main`'s own only applicable gate is green** (`uncollated fragments`
+> success on `b9db83cb`). The previous merge (ADR 0185) was `97406707`; the last suite run was
+> **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`) and **no `src/**` or `test/**`
+> file has changed on this line since**, so that figure still stands for line S. `test (pre)` is
 > `continue-on-error` and red on Julia 1.13.0-rc2 prerelease churn — don't chase it.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
