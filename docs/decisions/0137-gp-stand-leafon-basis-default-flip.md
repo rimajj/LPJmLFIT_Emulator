@@ -63,9 +63,11 @@ control arm reproducing the pre-flip numbers in the same run.**
 * `test/testitems/biome_coupled_tests.jl:330-336`, the five coupled biome signatures, re-measured by
   `scripts/biome_ensemble_pin_probe.jl`. The `GPSTAND=0` arm returned **all ten** committed numbers to
   every printed digit. GPP moves **−11.6 %** at `boreal_siberia`, −6.0 % Hainich, −2.8 % Iberia, −0.5 %
-  Sahel, −0.5 % Amazon; LE −0.7 % to −0.03 % on the same ordering. The ordering is the mechanism's: the
-  flag can only bind on partial-leaf days, so the most leaf-off cell moves most and the evergreen tropical
-  cell least — the same ranking ADR 0136 pre-registered and confirmed.
+  Sahel, −0.5 % Amazon; LE −1.05 % (Hainich) to −0.03 % (Sahel) — always down, but **not** in the GPP
+  ordering, because LE carries soil evaporation and interception as well as transpiration. The GPP
+  ordering is the mechanism's: the flag can only bind on partial-leaf days, so the most leaf-off cell
+  moves most and the evergreen tropical cell least — the same ranking ADR 0136 pre-registered and
+  confirmed.
 * `sapwood_bg_tests.jl:122/131`, the two carbon-use-efficiency pins: **0.5118 → 0.4843** unseeded and
   **0.497 → 0.4679** seeded. The seeding step still costs the same ~0.016 of CUE, and the seeded value
   moves **toward** the C's own 0.46, not away.

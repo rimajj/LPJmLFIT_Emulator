@@ -17,7 +17,8 @@
 - `test/testitems/biome_coupled_tests.jl` — the five coupled biome LE/GPP signatures re-measured; the
   `GPSTAND=0` control arm returned all ten pre-flip numbers to every printed digit. GPP moves −11.6 %
   (`boreal_siberia`), −6.0 %, −2.8 %, −0.5 %, −0.5 %, i.e. ordered by how much of the year each cell
-  spends below full leaf, which is the mechanism's own prediction.
+  spends below full leaf, which is the mechanism's own prediction. Latent heat also falls at every cell
+  (−1.05 % to −0.03 %) but not in that ordering, since it carries soil evaporation and interception too.
 - `test/testitems/decadal_validation_tests.jl` — the decadal GPP level band re-stated `[1.0, 1.12]` →
   `[0.92, 1.02]` at a measured 0.964132 (width unchanged). F now sits ~3.6 % below the C over the decade
   rather than ~4 % above.

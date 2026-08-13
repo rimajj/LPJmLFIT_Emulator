@@ -334,7 +334,8 @@ end
     # stand conductance on partial-leaf days, so it can only lower demand, GPP and transpiration): GPP
     # −11.6 % at `boreal_siberia` (0.968 → 0.856, the most leaf-off cell), −6.0 % at `temperate_hainich`,
     # −2.8 % at `mediterranean_iberia`, −0.5 % at `semiarid_sahel`, −0.5 % at `tropical_amazon` (nearest
-    # full leaf all year). LE moves −0.7 % to −0.03 % on the same ordering. Minimum pairwise separation is
+    # full leaf all year). LE also falls at every cell, −1.05 % (Hainich) to −0.03 % (Sahel), but NOT in
+    # the GPP ordering — it carries soil evaporation and interception too. Minimum pairwise separation is
     # 0.119 LE / 0.289 GPP, so the pins remain a fallback detector at the gate's own tolerances.
     sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble, package defaults
         "boreal_siberia" => (23.7788, 0.855969),
