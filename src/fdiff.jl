@@ -234,6 +234,15 @@ Base.@kwdef struct WaterParams{T <: Real}
     # `isphoto(tstress)` branch because `tstress` multiplies `c1`/`c1o` linearly, so that HALF of the C's
     # gate is already emulated). The other half is not, and F pays `rd` with a collapsed `agd` on those
     # days ⇒ it biases tree NPP DOWN and tree GPP UP (the `βflux` softplus floor).
+    # ⚠ The `isphoto` half above is no longer a structural argument — it is MEASURED and CLOSED
+    # (ADR 0138). `agd`/`rd`/`vm` are exactly proportional to `tstress` (verified against this kernel to
+    # 1.6e-9), so the C's `tstress<1e-2` branch discards at most 1 % of that day's full-suitability value;
+    # and `k3 = ln(99)/(temp_co2_high − temp_photos_high)` makes the threshold coincide with the
+    # `temp ≥ temp_co2_high` hard cutoff `gate_co2` already carries, so only the COLD end is live (below
+    # −6 °C for every tree but the tropical evergreen, which is +3 °C). Assimilation-weighted, that is
+    # 0.046 % of the annual total at `boreal_siberia` — where 47 % of DAYS are gated — and 0 at three of
+    # the five biome cells, whose temperature never reaches the threshold. Not portable, not a flag:
+    # 65× below the residual it was shortlisted to explain. Scorer: `diagnose_tstress_photo_gate.py`.
     # ⚠ SIGN: switching this ON therefore RAISES F's CUE (already high) and LOWERS F's GPP (already high) —
     # it is a faithfulness fix that moves the two channels of ADR 0129/0130's split in OPPOSITE directions.
     # Measured per cell in ADR 0131; do not assume it helps.
@@ -301,12 +310,15 @@ Base.@kwdef struct WaterParams{T <: Real}
     # ⚠ SCOPE: like the two demand gates, both are honoured ONLY on the multi-individual canopy path
     # [`daily_step_canopy`](@ref) — the one `FDiffFastCore` and the coupled driver run. The
     # single-individual `daily_step` / `daily_step_ml` kernels are byte-identical with either flag set.
-    # ⚠ THE DEFAULT FLIP TO `true` WAS ATTEMPTED AND REVERTED, 2026-08-13. ADR 0136 §7's criteria 1-2 are
-    # met, but criterion 3 — the measured blast radius — is **23 assertions of 275 621** across EIGHT test
-    # files, not the 3-5 of the previous four flips, and one of them (`slow_level_anchor_tests.jl:181`) is
-    # a line-S-owned gate, which makes the flip a cross-line integration point. The enumeration is in
-    # `lines/M/STATE.md`; do not re-flip without discharging it. See `logs/M-flip0137.1775524.out`.
-    gp_stand_leafon_basis::Bool = false
+    # ⚠ (1) IS NOW ON BY DEFAULT (ADR 0137, 2026-08-13) — this is the C-faithful basis, and on the
+    # shipping configuration it improves every biome cell and all four aggregates (4-cell mean
+    # `|GPP_F/GPP_C − 1|` 0.0824 → 0.0328). Guardrail 4 is served by the OPT-OUT:
+    # `gp_stand_leafon_basis = false` reproduces the pre-ADR-0136 expression exactly, and the arms that
+    # mean the old basis all say so explicitly. A first flip attempt was reverted on 2026-08-13 because
+    # its blast radius — **23 assertions of 275 621** across EIGHT test files, against 3-5 for each of the
+    # previous four flips — was not enumerated and one casualty (`slow_level_anchor_tests.jl:181`) is a
+    # line-S-owned gate; S gave an explicit GO before this landed. See `logs/M-flip0137.1775524.out`.
+    gp_stand_leafon_basis::Bool = true
     lambda_vm_gp::Bool = false
     # ── ADR 0110: PER-TREE ROOT PROFILES AND PER-TREE WATER STATUS ──────────────────────────────────
     # Off ⇒ every individual shares one cell-average root profile collapsed to one scalar `wr`, so two

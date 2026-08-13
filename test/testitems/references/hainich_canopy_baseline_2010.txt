@@ -23,9 +23,24 @@
 # 1.3e-4 -- NOT to the printed digits, because the four water rows carry <=1.6e-4 of accumulated
 # sub-tolerance drift from earlier physics changes that predates this flip and is left in place rather
 # than silently absorbed into a re-record.
+# Regenerated AGAIN 2026-08-13 (ADR 0137) for the `gp_stand_leafon_basis` DEFAULT FLIP
+# (`WaterParams.gp_stand_leafon_basis` false -> true): the C builds each PFT's potential conductance at
+# FULL leaf cover and normalizes the phen-weighted sum by the PLAIN `sum fpc` (`gp_sum.c:57-67`), while F
+# folded `phen` into the pass-1 `apar` and into `gmin` and divided by the phen-weighted `sum fpc*phen`,
+# biasing its stand conductance high by ~1/mean(phen) on every partial-leaf day. gpp_annual 1237.437115 ->
+# 1143.375187 (-7.60 %), transp_annual 250.611716 -> 239.634862 (-4.38 %), evap_annual 264.536033 ->
+# 266.984877 (+0.93 %, the compensating side of the same water balance), rootmoist_mean 160.029322 ->
+# 160.638648 (+0.38 %); interc_annual is unmoved. Measured as three arms in the same run by
+# scripts/regen_fdiff_baselines.jl (job 1788021), whose `gps = false` control arm reproduces this file's
+# PREVIOUS gpp_annual to every printed digit (1237.4371145997352) -- that exact reproduction is what makes
+# this a measured basis change and not a re-record. ⚠ The same control arm reproduces the four WATER rows
+# only to <= 5.1e-4 relative (interc worst, then evap 1.6e-4, transp 9.7e-5, rootmoist 4.2e-7). That drift
+# is PRE-EXISTING and provably not this flip: all three arms in the run agree on interc bitwise. It is the
+# same sub-tolerance accumulation the ADR-0133 note recorded at <= 1.6e-4 and left in place; this
+# regeneration absorbs it, so the next drift measurement starts from zero rather than from an unlabelled offset.
 # key             value (gC/m2/yr, mm/yr, or mm)
-gpp_annual        1237.437115
-transp_annual     250.611716
-evap_annual       264.536033
-interc_annual     19.591628
-rootmoist_mean    160.029322
+gpp_annual        1143.375187
+transp_annual     239.634862
+evap_annual       266.984877
+interc_annual     19.601594
+rootmoist_mean    160.638648

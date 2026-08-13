@@ -412,8 +412,191 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 22) — **THE REVERT REACHED `main` (IT HAD NOT), EVERY CONTROL ARM
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 24) — **THE `gp_stand_leafon_basis` DEFAULT FLIP IS LANDED
+### (ADR 0137). LINE S SAID GO; ALL 23 ASSERTIONS DISCHARGED; ONE OF THEM TURNED OUT TO BE A SCIENCE FINDING**
+
+**Start here.** Line S answered M's request with **GO, option (a)** (`lines/M/STATE.md` inbound of
+2026-08-13, and S's own STATE), so the flip that had been prepared, attempted, reverted and re-scoped over
+three sessions is now the package default. **This is a real physics change: F's tree GPP falls at every
+cell.** ADR 0137 has the full record; four things are worth carrying forward.
+
+**1. WHAT SHIPPED.** `WaterParams.gp_stand_leafon_basis = true` — F now builds each individual's potential
+conductance at FULL leaf cover and normalizes the phen-weighted sum by the **plain** `Σ fpc`, as
+`gp_sum.c:53-67` does. Guardrail 4 is served by the opt-out. Coupled biome GPP moves **−11.6 %**
+(`boreal_siberia`), −6.0 % (Hainich), −2.8 %, −0.5 %, −0.5 % — **ordered by how much of the year each cell
+spends below full leaf**, which is the mechanism's own prediction, and one-signed everywhere. The
+single-individual baselines reproduce **exactly**, which turns the flag's documented `daily_step_canopy`-only
+scope from a claim into a measurement. `lambda_vm_gp` is deliberately NOT flipped.
+
+**2. THE BLAST RADIUS IS DISCHARGED, AND ITS SHAPE IS THE REUSABLE PART.** Of the 23 assertions:
+**10 were VACUOUS rather than wrong** (the gate file's own control arm took the default by omission and
+became a second copy of the treatment arm); **6 were baselines/pins** re-recorded through their producing
+scripts, each with a control arm reproducing the pre-flip numbers **in the same run to every printed
+digit** (canopy `gpp_annual` 1237.437115 → 1143.375187; all ten coupled pins; the two CUE pins 0.5118 →
+0.4843 and 0.497 → 0.4679); **4 were fidelity bands** re-stated with their measurement; **3 were a coupling
+magnitude that genuinely grew**; **1 was line-S-owned**. ⇒ *a large failure count is not a large defect —
+classify before costing.*
+
+**3. ★ THE SCIENCE FINDING NOBODY WENT LOOKING FOR — `wscal_leafon_tests.jl:218`.** That gate asserted the
+pre-ADR-0051 realized-ratio water-stress feature misses the trained band by **more than five band widths**.
+On the C's own conductance basis it misses by **~0.30** (measured 0.0561 against a band top of 0.043155,
+C truth 0.0014). The old feature's stress is `1 − supply/demand`, `demand` scales with the stand
+conductance, and F's conductance was inflated by ≈`1/φ̄` — so **most of what ADR 0034/0051 measured as the
+old definition's error was F's own `gp_sum` basis, not the definition.** Which definition is faithful is
+unchanged. `CLAUDE.md` §3's `wscal` bullet now carries the correction. **The general shape: a two-arm
+contrast measured under a shared upstream defect prices the arms wrongly, even when it ranks them right.**
+
+**4. ⚠ AND READ THE DECADAL DIRECTION HONESTLY.** The 11-year Hainich GPP level band moved
+`[1.0, 1.12] → [0.92, 1.02]` at a measured **0.964132**: F now sits **~3.6 % BELOW** the C over the decade
+rather than ~4 % above. On that statistic the flip **crossed zero** rather than shrinking the error — which
+is what a still-present compensating error looks like, and is consistent with ADR 0135/0136's reading that
+`GPP_F/GPP_C` is a **lower bound** on F's tree-photosynthesis error. Do not quote the flip as "F now agrees".
+
+**5. UNMEASURED, recorded rather than implied (S asked for exactly this):** the **yr-150 unanchored
+retention** under the flip. The suite reports yr 5 and yr 25 only. If it had fallen below ~0.8 (against
+1.036) then F would be forgetting its own initial density and S's option (b) would have been live. S has
+queued the long-horizon assertion **in S's own file** — do not do it for them.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **THE COMPENSATING ERROR IS THE HEAD OF THE PHOTOSYNTHESIS QUEUE, and the shortlist is down to ONE item:
+   (c), the phenology trajectory.** Item (a) closed with ADR 0136, (b) with ADR 0138, and the flip has now
+   removed one of the terms that inflated F's GPP without closing the gap — it inverted its sign on the
+   decadal statistic. ⚠ **Do not re-open** the layered-light model, the leaf-area density basis,
+   `k_lambert`, `par`, `alphaa`, `albedo_leaf`, the SLA Vcmax cap (ADR 0135 §4), or the `tstress` gate
+   (ADR 0138). The two concrete sub-items, both already scoped and neither measured:
+   * **(c1) the water limiter's inflection is the PFT-MEDIAN `minwscal`, not each individual's own.** The
+     C uses `pft->minwscal·100` (`phenology_gsi.c:64-66`), a sampled per-stem trait; F's
+     `PhenParams.wscal_base` is a per-PFT constant. **The data is already in `FDiff.Individual.minwscal`**
+     — a wiring change, not a new input. Cheapest first step: read the spread of `minwscal` within
+     (cell, PFT) off the `ind` parquet and ask whether the FILTER OUTPUT separates over that range at all
+     before touching code; the sigmoid may saturate across it.
+   * **(c2) the soil-temperature gate is driven by AIR temperature.** The C forces the water filter fully
+     open while `soil->temp[0] < 10` (`phenology_gsi.c:67`); `rollout_daily_canopy` passes `f.temp`
+     (`fdiff.jl:2217`). Soil lags air, so the gate opens/closes on the wrong spring and autumn days — the
+     exact regime ADR 0136 showed the GPP error concentrates in. (The C's own comment on that line says
+     "below 5 degree" while the code tests `< 10`; trust the code.)
+   Price both with `residual-diagnosis` §17 — weight the affected days by the assimilation at stake, not
+   by their count — **before** building either arm.
+2. **RE-MEASURING ANY PUBLISHED PROBE PANEL ON THE NEW DEFAULT IS A DELIBERATE NEW ARM.** The label shift
+   is now live: `Pgbgg` is the **pre-flip** configuration and `Pgbggs` the shipping one, and the 30
+   committed decomposition rows plus the published panels of `biome_canopy_growth_probe.jl` /
+   `biome_resilience_probe.jl` / `biome_slow_oracle_probe.jl` are all on a basis the package no longer
+   runs. Their headers say so; say so too when quoting one.
+3. **The AD trainer inherits the flip** (`rollout_canopy_years_gpp` reads `p.water` with no
+   reconstruction), exactly as it inherited `tree_demand_gate = true` at the soft sharpness. Any trainer
+   arm that means "the pre-0137 path" must state it.
+4. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap
+   (only remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two
+   evergreen cells, `bg_growth`'s default still blocked on line S carrying `heartwood_bg_c`, and the
+   differentiated path inheriting `tree_demand_gate = true` at the soft sharpness. Read them there.
+
+### 0-PREV-23. ✅ DONE 2026-08-13 (session 23) — **THE PENDING MERGE FINALLY LANDED (IT WAS BLOCKING LINE S),
+### AND ADR 0135's SHORTLIST ITEM (b) IS CLOSED WITHOUT A PORT AND WITHOUT A FLAG (ADR 0138). NO PHYSICS CHANGE**
+
+**Start here.** Two things, one process and one science.
+
+**1. ⚠ THE PROCESS ONE, AND IT IS THE SAME FAILURE §0-PREV-22 WROTE UP ONE PARAGRAPH EARLIER.** Session 22
+wrote the request to line S — the `gp_stand_leafon_basis` flip moves one S-owned assertion, so the flip is
+an integration point — committed it, and **never pushed**. Four commits sat on the branch; `origin/line/M`
+was five behind local; **the message S was being asked to answer had never existed anywhere S could see it**,
+so "awaiting reply" was structurally unanswerable. §0-PREV-22 step 1 had just recorded *"a revert is not done
+until it is MERGED"* — the same rule, one turn later, on the raise instead of the revert. **The
+generalisation that covers both: the ritual is not finished when the commit is made, and a message to
+another line is not sent until it is on `main`.** Landed as **`307308cd`** (branch `test (lts)` / `test (1)` /
+`test (macOS, lts)` / `format` green; `test (pre)` red as always; local suite **275 623 pass / 0 fail**,
+`logs/M-armhard.1776993.out`). **The request to S is now live** — a reply is possible for the first time.
+
+**2. ADR 0138 — item (b) of the photosynthesis shortlist is CLOSED, and it took no simulation.** The C
+hard-zeroes `agd`, `rd` AND `vm` below a temperature-stress threshold, twice (`photosynthesis.c:54-61` and
+`isphoto()` at `water_stressed.c:196`), both live in this config; F has no such branch, and a comment at
+`fdiff.jl:234` asserted **from code structure** that F's linear `tstress` factor already emulates "that
+HALF" of it. Three findings, two of them closed-form and therefore cell-set-independent:
+* **`agd`, `rd`, `vm` are EXACTLY proportional to `tstress`** — verified against F's own kernel to **1.6e-9**,
+  not inferred — so the gate discards **at most 1 %** of an affected day. That is the ceiling on the whole
+  term before any data is opened.
+* **The hot end is redundant BY CONSTRUCTION**: `k3 = ln(99)/(temp_co2_high − temp_photos_high)` makes
+  `tstress(temp_co2_high) ≡ 1e-2`, so the gate fires exactly where the `temp ≥ temp_co2_high` hard cutoff
+  fires — which F already carries as `gate_co2`. **Only the cold end is live.**
+* **Cold-end threshold, closed form: +3.0 °C for the tropical evergreen (id 0), −6.0 °C for every other
+  tree.** Assimilation-weighted over the cells' own committed forcing: `boreal_siberia` **0.0460 %**,
+  `temperate_hainich` **0.0063 %**, and **structurally 0** at the other three (Iberia's coldest day in ten
+  years is −1.9 °C against −6.0; the two tropical cells are 100 % id 0 with minima +20.2 / +23.5 against
+  +3.0). Printed as a `CANNOT BIND` verdict beside `T_min` and `T*` — a zero has to explain itself.
+
+**⇒ 65× below the +3.0 % residual it was shortlisted to explain at the worst cell, 480× at Hainich. No port,
+and deliberately NO opt-in flag** — guardrail 4's corollary cuts *against* shipping a flag whose measured
+ceiling is 0.05 %. Harness `scripts/diagnose_tstress_photo_gate.py` (sub-second, committed fixtures, lints
+clean under the repo rule set); the `fdiff.jl` comment now cites the measurement instead of asserting it.
+
+**3. ★ THE METHOD FINDING, and it is the transferable half: `boreal_siberia` has 47 % of its days gated —
+the highest incidence available among the five — and the effect is still 0.046 %, because the gated days are
+also the darkest and coldest of the year. A DAY COUNT IS NOT A MAGNITUDE.** Scored on incidence this item
+would have read as the largest term on the shortlist and bought a flag, an arm and a suite cycle. Whenever a
+gate/branch/threshold is priced, weight its days by the quantity it acts on before quoting a frequency.
+
+**4. Validity envelope, recorded rather than left implicit.** The tropical evergreen's +3 °C threshold is 9 °C
+above every other tree's, so the gate WOULD be live at a cool cell dominated by PFT id 0 — a population none
+of the five biome cells samples. Not an open item; a scope statement on ADR 0138.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **★ THE FLIP IS STILL BLOCKED ON LINE S — but the request is now REACHABLE, which it was not before.**
+   Check the top of `lines/S/STATE.md` (on `main`, not only in your worktree) for a reply, or `lines/M/STATE.md`
+   for an inbound. On **(a)** the flip is a one-commit change and everything is prepared: flip the default in
+   `src/fdiff.jl`, re-point `gpsum_basis_tests.jl`'s four guardrail-4 assertions at the new default, re-pin the
+   moved baselines through `regen_fdiff_baselines.jl` and `biome_ensemble_pin_probe.jl` **with their
+   `gps = false` / `GPSTAND=0` arms reproducing the old numbers in the same run**, re-read (never widen) the
+   `decadal_validation_tests.jl` band and the `wscal_leafon` / `grass_structure` assertions, and give it
+   **ADR 0137** (reserved). The per-file enumeration is **§0-PREV-21 step 1** — start from that list, do not
+   re-run the suite to rediscover it. On **(b)**, hold the flag off and let S measure first.
+2. **THE COMPENSATING ERROR IS STILL THE HEAD OF THE PHOTOSYNTHESIS QUEUE, and the shortlist is now down to
+   ONE item: (c), the phenology trajectory.** Item (a) closed by ADR 0136, item (b) by ADR 0138. Four
+   independent faithful terms all move F's absorbed light or its λ DOWN while its GPP sits ABOVE the C's, so
+   **`GPP_F/GPP_C` is a LOWER BOUND on the kernel error** — quote it that way everywhere. ⚠ **Do not re-open**
+   the layered-light model, the leaf-area density basis, `k_lambert`, `par`, `alphaa`, `albedo_leaf`, the SLA
+   Vcmax cap (ADR 0135 §4), or the `tstress` gate (ADR 0138).
+   **▶ SCOPED THIS SESSION so item (c) does not start from the phrase "the phenology trajectory". F's
+   `phenology_gsi_step` (`fdiff.jl:1565`) is otherwise a faithful port of `phenology_gsi.c:50-84` — the four
+   filters, their `f += (target−f)·tau` form, the `<200` overflow branch (subsumed by `stable_sigmoid`) and
+   the `εfloor` all match. TWO documented v1 simplifications remain, both named in the docstrings, both
+   concrete:**
+   * **(c1) the water limiter's inflection is the PFT-MEDIAN `minwscal`, not each individual's own.** Under
+     `config->individual` the C uses `pft->minwscal·100` (`phenology_gsi.c:64-66`) — a *sampled per-stem
+     trait* — while `PhenParams.wscal_base` is a per-PFT constant (beech 20.96 = the median 0.2096 × 100),
+     and `per_pft_phenology` gives every individual of a PFT ONE shared trajectory. ⚠ **The data is already
+     there**: `FDiff.Individual.minwscal` (`fdiff.jl:2356`) carries the per-stem value for the mortality
+     path, so this is a wiring change, not a new input. Cheapest first step is §9/§13's: read the spread of
+     `minwscal` within (cell, PFT) off the `ind` parquet and ask whether the *filter output* separates over
+     that range at all before touching the code — the sigmoid may saturate across it.
+   * **(c2) the soil-temperature gate is driven by AIR temperature.** The C forces the water filter fully
+     open while `soil->temp[0] < 10` (`phenology_gsi.c:67`); `rollout_daily_canopy` passes `f.temp` for that
+     argument (`fdiff.jl:2217`). Soil temperature lags air substantially, so the gate opens and closes on
+     the wrong days in spring and autumn — which is exactly the partial-leaf-day regime ADR 0136 showed the
+     GPP error concentrates in. ⚠ Also worth recording while you are there: **the C's own source comment on
+     that line says "below 5 degree" while the code tests `< 10`** — comment/code mismatch, same family as
+     the `/* test: */` trap in `CLAUDE.md` §3; trust the code.
+   Neither is measured. Price them with `residual-diagnosis` §17 (weight the affected days by the
+   assimilation at stake, not by their count) before building either arm.
+3. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap (only
+   remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two evergreen cells,
+   `bg_growth`'s default still blocked on line S carrying `heartwood_bg_c`, and the differentiated path
+   inheriting `tree_demand_gate = true` at the soft sharpness. Read them there rather than restating them here.
+
+### 0-PREV-22. ✅ DONE 2026-08-13 (session 22) — **THE REVERT REACHED `main` (IT HAD NOT), EVERY CONTROL ARM
 ### NOW STATES THE FLAG EXPLICITLY *BEFORE* THE FLIP, AND THE FLIP IS RAISED TO LINE S. NO PHYSICS CHANGE**
+
+**MERGED to `main`** as `307308cd` (merge commit `0b12764d`; branch sha `e659e04a`). Green on `main`:
+`format`, `test (lts)`, `test (1)`, `test (macOS, lts)` and `changelog` — `test (pre)` is the known
+`continue-on-error` prerelease job. **`docs` did not run and did not need to**: this diff touches no
+`src/**` and no `docs/src/**` (ADR 0090's path filter), so the "build the docs locally before merging"
+rule does not apply here. CI-faithful suite **275 623 pass / 0 fail** (`logs/M-armhard.1776993.out`,
+job moved to `PARTITION=priority QOS=priority` after stalling on `QOSGrpCpuLimit`) — that is the
+previous 275 621 **plus exactly the two assertions this session added**, with no committed baseline
+moved, which is the evidence that the hardening is byte-identical rather than a claim about it.
+⚠ The rebase before merging pulled in line S's ADR 0186; verified it touches **no** `src/`, `test/`,
+`ext/` or `Project.toml` (`git diff --stat` empty on those paths), so the suite result carries over and
+nothing needed re-running.
 
 **Start here.** The previous handoff's step 1 was *"LAND the `gp_stand_leafon_basis` default flip"*. It is
 **not landed and deliberately so** — the 23rd assertion is line-S-owned, so the flip is an integration

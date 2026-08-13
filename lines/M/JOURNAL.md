@@ -1709,3 +1709,102 @@ the precedent (S gave an explicit GO before `wscal_leafon` flipped), so S is ask
 pinned number, or (b) hold while S measures whether a more faithful spring/autumn conductance is doing part
 of what the anchor was built for. A band is a measurement, not a tunable, so it does not get widened either
 way. Everything else is prepared, so on (a) the flip is a one-commit change.
+
+## Session 23 — 2026-08-13 — the pending merge finally lands, and item (b) dies on two lines of algebra (ADR 0138)
+
+**The merge first, because it was blocking another line.** Session 22 wrote the request to line S — the
+`gp_stand_leafon_basis` flip moves one S-owned assertion, so the flip is an integration point — committed
+it, and never pushed. Four commits sat on the branch, `origin/line/M` was five behind local, and the
+message S was being asked to answer had never existed anywhere S could see it. This is the *same* failure
+session 22 wrote up one paragraph earlier ("a revert is not done until it is MERGED"), one turn later, on
+the raise instead of the revert. The generalisation that actually covers both: **the ritual is not
+finished when the commit is made, and a message to another line is not sent until it is on `main`.**
+Landed as `307308cd`; branch `test (lts)` / `test (1)` / `test (macOS, lts)` / `format` all green,
+`test (pre)` red as always. Local suite before pushing: **275 623 pass / 0 fail**.
+
+**Then item (b), and it took no simulation at all.** ADR 0135's photosynthesis shortlist had two items
+left; (b) was the C's `tstress < 1e-2` hard zeroing of `agd`/`rd`/`vm`, which F_diff simply does not have.
+A comment at `fdiff.jl:234` had asserted from code structure that F's linear `tstress` factor already
+emulates "that HALF" of the gate — the exact shape ADR 0108 warns about, an argument from structure
+standing in for a measurement.
+
+Three findings, and two of them never touch a cell.
+
+**(1)** `c1 ∝ tstress`, `c2` free of it, the co-limitation solution homogeneous of degree 1, `rd = b·vm`
+⇒ `agd`, `rd` and `vm` are *exactly* proportional to `tstress`. Checked against F's own kernel rather than
+inferred: at `tstress = 1e-2` it returns exactly 1e-2 of its `tstress = 1` value on all three, to 1.6e-9.
+So the C's branch discards **at most 1 %** of an affected day — a ceiling on the whole term before any
+data is opened.
+
+**(2)** The hot end is redundant *by construction*. `k3 = ln(99)/(temp_co2_high − temp_photos_high)` makes
+`tstress(temp_co2_high) ≡ 1e-2`, so the gate fires exactly where the `temp ≥ temp_co2_high` hard cutoff
+fires — and F already carries that one as `gate_co2`. Only the cold end is live.
+
+**(3)** Cold-end threshold in closed form: **+3.0 °C** for the tropical evergreen, **−6.0 °C** for every
+other tree. Against the five cells' own committed forcing that is 0.0460 % of annual assimilation at
+`boreal_siberia`, 0.0063 % at Hainich, and structurally 0 at the other three — Iberia's coldest day in ten
+years is −1.9 °C against a −6.0 °C threshold, and the two tropical cells are 100 % PFT id 0 with minima of
++20.2 and +23.5 °C against +3.0. Those zeros are printed as `CANNOT BIND` beside `T_min` and `T*`, because
+an exactly-zero effect is a red flag and has to explain itself.
+
+**The one worth keeping is `boreal_siberia`: 47 % of its days are gated — the highest incidence available
+among the five — and the effect is still 0.046 %, because the gated days are also the darkest and coldest
+of the year. A day count is not a magnitude.** Scored on incidence this would have read as the largest
+term on the shortlist and bought a flag, an arm and a suite cycle.
+
+So: closed at 65× below the residual it was shortlisted to explain, **without a port and deliberately
+without an opt-in flag** — guardrail 4's corollary cuts against shipping a flag whose measured ceiling is
+0.05 %, since an opt-in default is only worth its maintenance if someone will ever want the other value.
+The `fdiff.jl` comment now cites the measurement instead of asserting the argument. ADR 0135's shortlist
+is down to item (c), the phenology trajectory; the compensating-error count stays at four, this is not a
+fifth.
+
+One validity-envelope note recorded rather than left implicit: the tropical evergreen's +3 °C threshold is
+9 °C above every other tree's, so the gate *would* be live at a cool cell dominated by PFT id 0 — a
+population none of the five biome cells samples.
+
+---
+
+## Session 24 — 2026-08-13 — the `gp_stand_leafon_basis` flip lands (ADR 0137), and one of its 23 casualties was a science finding
+
+Line S replied to the request session 22 raised and session 23 finally made reachable: **GO, option (a)**,
+with an explicit authorisation to re-pin the one S-owned assertion inside M's own commit so no second
+round-trip was needed. S's reasoning is worth keeping because it is the general shape of these arguments:
+the assertion that moved is at yr 25, the horizon the file's own comment flags in capitals as non-monotone
+and as *"the worst point of that transient"*, while the claim the file exists to protect is the yr-150
+separation (unanchored 1.036 vs anchored 0.051) — and all four anchored-vs-unanchored contrasts stayed
+green. A transient amplitude moving does not touch a 20× separation stated at a different horizon.
+
+So the flip is landed. F now forms its stand conductance the way `gp_sum.c` does — each individual's
+potential conductance at full leaf cover, the phen-weighted sum over the **plain** `Σ fpc` — instead of
+folding `phen` into the pass-1 `apar` and dividing by `Σ fpc·φ`, which inflated the conductance by ≈`1/φ̄`
+on every partial-leaf day and carried that into demand, `gc`, `gpd`, `fac`, the solved λ and GPP.
+
+**The 23 assertions, and why the count was misleading.** Ten were **vacuous, not wrong**: the gate file's
+own control arm took the package default by omission, so at the flip it became a second copy of the
+treatment arm and its comparisons went empty. Six were committed baselines and pins, and every one of them
+was re-recorded through its producing script with a control arm reproducing the pre-flip numbers **in the
+same run** — the canopy baseline's `gpp_annual` and all ten coupled biome pins came back to every printed
+digit. Four were fidelity bands, re-stated with their new measurement. Three were a coupling magnitude that
+genuinely grew. One was the S-owned gate. A large failure count is not a large defect; classify before
+costing, and the classification took one already-existing log rather than a new job.
+
+**The thing nobody went looking for.** `wscal_leafon_tests.jl:218` asserted that the pre-ADR-0051
+realized-ratio water-stress feature misses its trained band by **more than five band widths**. On the C's
+own conductance basis it misses by **~0.30** — 0.0561 against a band top of 0.043155. That feature's stress
+is `1 − supply/demand`, demand scales with the stand conductance, and F's conductance was the inflated one,
+so **most of what two earlier decision records measured as the old definition's error was F's own basis**.
+Which definition is faithful is unchanged; the size of the old one's error is not. The runbook's copy of
+the 0.305 figure now says so. The transferable form: a two-arm contrast measured under a shared upstream
+defect can rank the arms correctly and still price them wrongly.
+
+**And the direction that matters most.** The decadal Hainich GPP level went from about +4 % above the C to
+**3.6 % below** it. The flip did not shrink that error, it **crossed zero** — which is exactly what a
+still-present compensating error looks like, and is the fourth independent statement that `GPP_F/GPP_C` is
+a lower bound on F's tree-photosynthesis error rather than a measurement of it. The shortlist is down to
+item (c), the phenology trajectory, in its two concrete sub-items: the per-stem `minwscal` inflection (the
+data is already on `FDiff.Individual`) and the soil-temperature gate that F drives with air temperature.
+
+Recorded as unmeasured rather than implied, because S asked for it in as many words: the yr-150 unanchored
+retention under the flip. The suite reports yr 5 and yr 25 only, and the 150-year horizon needs its own
+job. S has queued the long-horizon assertion in S's own file.

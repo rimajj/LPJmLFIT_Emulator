@@ -326,12 +326,23 @@ end
     # day (ADR 0131 §1). Coupled stand cover falls at the two cells where GPP falls (`fpc` 0.3037 → 0.2942
     # boreal, 0.5689 → 0.5633 Hainich). Minimum pairwise separation stays 0.128 LE / 0.272 GPP, so the pins
     # remain a fallback detector at the gate's own tolerances.
+    # RE-MEASURED AGAIN 2026-08-13 (ADR 0137, jobs 1788023 = the `GPSTAND=0` control and 1788022 = the new
+    # default) for the `gp_stand_leafon_basis` DEFAULT FLIP. The control arm reproduced the five pins above
+    # to EVERY PRINTED DIGIT in the same harness — all ten numbers, not just the ones the gate's tolerances
+    # would have caught — which is what makes this a measured basis change and not a re-record. Deltas
+    # default vs opt-out, and the direction is one-signed as the mechanism requires (the C's basis lowers
+    # stand conductance on partial-leaf days, so it can only lower demand, GPP and transpiration): GPP
+    # −11.6 % at `boreal_siberia` (0.968 → 0.856, the most leaf-off cell), −6.0 % at `temperate_hainich`,
+    # −2.8 % at `mediterranean_iberia`, −0.5 % at `semiarid_sahel`, −0.5 % at `tropical_amazon` (nearest
+    # full leaf all year). LE also falls at every cell, −1.05 % (Hainich) to −0.03 % (Sahel), but NOT in
+    # the GPP ordering — it carries soil evaporation and interception too. Minimum pairwise separation is
+    # 0.119 LE / 0.289 GPP, so the pins remain a fallback detector at the gate's own tolerances.
     sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble, package defaults
-        "boreal_siberia" => (23.9437, 0.967978),
-        "temperate_hainich" => (40.4456, 3.40306),
-        "mediterranean_iberia" => (46.6246, 5.05285),
-        "semiarid_sahel" => (35.255, 1.38778),
-        "tropical_amazon" => (116.063, 6.94069),
+        "boreal_siberia" => (23.7788, 0.855969),
+        "temperate_hainich" => (40.0225, 3.19816),
+        "mediterranean_iberia" => (46.3715, 4.91384),
+        "semiarid_sahel" => (35.2445, 1.38144),
+        "tropical_amazon" => (115.858, 6.9094),
     )
     for (nm, (le_x, gpp_x)) in sig
         @test isapprox(ann[nm].le, le_x; rtol = 0.02)

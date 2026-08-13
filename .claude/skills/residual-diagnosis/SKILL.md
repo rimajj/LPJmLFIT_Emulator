@@ -1895,3 +1895,78 @@ a scale-free *fraction* against the whole population, never as a count quota car
 sub-population disparity was real (2.08–2.92×) and simply could not have the consequence attributed to it.
 **Read the code path before designing the probe for it**; a real disparity is not evidence of the mechanism
 someone attached to it.
+
+## §17 — A DAY COUNT IS NOT A MAGNITUDE: PRICE A GATE BY THE QUANTITY IT ACTS ON, NOT BY ITS INCIDENCE (line M, 2026-08-13, ADR 0138)
+
+§9 says: before porting a reference's branch, check whether its branches differ at all on the reference's
+own realised inputs. This is the step **after** that one, for the case where they *do* differ — and it is
+where a cheap item turns into an expensive one for no reason.
+
+**The shape.** The reference gates a quantity on a threshold; your port does not. You count how often the
+threshold is crossed, get a large number, and conclude the term is big. **Incidence and magnitude are
+different quantities, and for a threshold on a physically-driven variable they are usually
+ANTI-correlated** — the condition that trips the gate is often the same condition that makes the gated
+quantity small. Measured here: at `boreal_siberia` **47 % of days** are past the C's `tstress < 1e-2`
+photosynthesis gate — the highest incidence of the five cells — and the gate is worth **0.046 %** of annual
+assimilation, because those days are also the darkest and coldest of the year. Scored on incidence it would
+have read as the largest term on the shortlist and bought a flag, an arm and a suite cycle.
+
+**Do this, in order — the first two need no data at all and usually finish it.**
+
+1. **Establish the gated quantity's SCALING in the threshold variable, and verify it against the model's
+   own kernel rather than reading it off the source.** If the gated output is homogeneous of degree 1 in
+   the gated variable, the gate can discard at most `threshold ×` a full-suitability day — a ceiling on the
+   whole term before any cell is opened. One `julia -e` call comparing the kernel at the threshold against
+   the kernel at 1 settles it (here: exact to **1.6e-9** on all three outputs).
+2. **Check whether the threshold is REDUNDANT WITH ANOTHER CUTOFF BY CONSTRUCTION — read the parameter
+   algebra, not just the branch.** A shape constant defined so the function hits a fixed value at a cutoff
+   makes a threshold at that value coincide with the cutoff. Here `k3 = ln(99)/(temp_co2_high −
+   temp_photos_high)` forces `tstress(temp_co2_high) ≡ 1e-2`, so the whole hot half of the gate fires
+   exactly where a hard cutoff the port already carries fires. **Half the term evaporated on one line of
+   algebra**, and no probe would have separated it.
+3. **Only then count days — and weight each one by the quantity the gate acts on** (here `tstress · swdown`,
+   because assimilation is linear in absorbed light to first order). Report the weighted share, not the
+   count. State explicitly which way any simplification biases it: setting `phen = 1` everywhere inflates
+   the numerator relative to the denominator, so the printed share is an upper bound — say so, because an
+   unlabelled bound gets quoted as a measurement.
+4. **Give every cell a `CAN BIND` / `CANNOT BIND` verdict computed by the script, from the threshold and
+   that cell's own realised range** (here `T_min` vs `T*`). Three of five cells came out structurally zero —
+   their coldest day never reaches the threshold — and an exactly-zero effect is a red flag, never a result
+   (§8), so the zero must carry its reason in the output or the next session re-probes it.
+
+**And when the answer is "negligible", do not ship an opt-in flag as a consolation prize.** Guardrail 4's
+corollary (an opt-in default known wrong is a defect on a timer) cuts *against* a flag nobody will ever
+want to turn on: it is maintenance cost plus a control arm every future probe must remember to pin. Close
+it in an ADR with the number, correct the source comment that asserted the structural argument, and delete
+it from the shortlist. Worked example: `scripts/diagnose_tstress_photo_gate.py` (sub-second, committed
+fixtures, no SLURM) + ADR 0138.
+
+## §18 — WHEN AN UPSTREAM DEFECT IS FIXED, RE-READ EVERY CLAIM ABOUT HOW BIG THE LOSING ARM'S ERROR WAS (line M, 2026-08-13, ADR 0137)
+
+§11 says a confounded *reference* mis-scores a fix. This is its mirror image, and it bites later: a
+**two-arm contrast measured under a shared upstream defect ranks the arms correctly and prices them
+wrongly.** The winner is still the winner; the published *size* of the loser's error is not a property of
+the loser.
+
+**Worked instance.** A gate asserted that F's pre-fix water-stress feature missed its trained band by
+**more than five band widths** — the headline number in two decision records, quoted for weeks as the
+justification for the definition that replaced it. The losing arm's statistic is `1 − supply/demand`;
+`demand` is proportional to the stand conductance; and the conductance was independently inflated by
+≈`1/φ̄`. Fixing the conductance moved the loser from **>5 band widths out to ~0.30** (0.0561 against a
+band top of 0.043155). The *decision* it supported is untouched — the faithful arm is inside the band and
+this one is still outside — but every sentence about the magnitude had to be corrected, in the ADR, in the
+gate's comment and in the runbook.
+
+**So, on landing any fix to a shared upstream quantity:**
+
+1. **Enumerate the published statistics that are FUNCTIONS of the quantity you fixed**, not just the ones
+   your fix was aimed at. The tell is a statistic defined as a ratio or difference whose denominator,
+   demand term or normalisation flows through the fixed quantity.
+2. **Separate "which arm wins" from "by how much".** Ordering claims usually survive a common-mode fix
+   (both arms shift together); magnitude claims usually do not.
+3. **Correct the magnitude everywhere it was quoted, and say which basis each number is on.** A number in
+   a runbook or a skill outlives the ADR that produced it; leaving it uncorrected is how a stale
+   measurement becomes an assumption.
+4. **Expect this to arrive as a test failure you did not predict.** It shows up in the re-pinning pass of a
+   default flip, wearing the costume of a routine band re-statement — which is exactly why the flip's
+   failure list has to be *classified* rather than just fixed (`julia-test`, "Landing a DEFAULT FLIP").

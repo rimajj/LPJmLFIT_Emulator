@@ -90,7 +90,7 @@
     # legitimate (the C's `eeq` is albedo-dependent too), so the honest assertion is the CONTRAST —
     # halving leaf display barely moves the C's index and collapses the realized ratio (~62 %).
     @test sens_lo < 0.03
-    @test sens_df > 0.4
+    @test sens_df > 0.15
     @test sens_df > 10 * sens_lo
 
     # ── the no-demand branch, at phen EXACTLY 0 — the C gates on `Σ gp_leafon·phen < 1e-20`, which only
@@ -215,5 +215,15 @@ end
     # THE GATE: the C-faithful definition lands inside the C's own trained band for this cell...
     @test all(x -> lo - 1.0e-12 ≤ x ≤ hi, ws_lo)
     # ...and the realized-ratio default does NOT — it exceeds the band by MANY band widths (ADR 0034 §1).
-    @test all(>(hi + 5 * (hi - lo)), ws_df)
+    # ⚠ Asserted on the MINIMUM rather than as `all(>(…), ws_df)`, so a failure prints the number that
+    # moved instead of a bare `false` (the ADR-0137 basis flip cost a second job to learn by how much).
+    # ⚠ RE-STATED 2026-08-13 for the `gp_stand_leafon_basis` DEFAULT FLIP (ADR 0137), and this one is a
+    # SCIENCE finding, not a re-pin: the threshold falls from `hi + 5*(hi-lo)` = 0.2589 to plain `hi`.
+    # Measured `minimum(ws_df)` **0.0561** against a band top of 0.043155 (`lo` = 0.0) and a C truth of
+    # 0.0014 — so the pre-ADR-0051 realized-ratio feature is still OUT of the trained band, but by ~0.30
+    # band widths instead of the >5 that ADR 0034 §1 and ADR 0051 measured. Most of that excess was F's
+    # own inflated stand conductance (a larger `demand` ⇒ a smaller supply/demand ratio ⇒ more apparent
+    # stress), not the wscal DEFINITION. Which definition is faithful is unchanged — the C-faithful arm
+    # sits inside the band and this one does not — but do not re-quote "many band widths" on this basis.
+    @test minimum(ws_df) > hi
 end

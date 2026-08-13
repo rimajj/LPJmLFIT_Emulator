@@ -57,10 +57,15 @@
         w = WaterParams{Float64}(map(k -> haskey(kv, k) ? kv[k] : getfield(p.water, k), fieldnames(WaterParams))...)
         return FDiffParams{Float64}(p.photo, p.tstress, w, p.resp, p.allom, p.nlambda, p.ω)
     end
-    # ── guardrail 4: both ship OFF, and the shipped calibrated set takes the default ──
-    @test WaterParams{Float64}().gp_stand_leafon_basis == false
+    # ── guardrail 4, AFTER THE ADR-0137 DEFAULT FLIP: `gp_stand_leafon_basis` now ships ON (it is the
+    # C-faithful basis) and guardrail 4 is served by the OPT-OUT below — `pbase` reproduces the
+    # pre-ADR-0136 expression exactly, and the boundary identities are what prove the opt-out points at
+    # the field it names. `lambda_vm_gp` still ships OFF and is deliberately NOT a flip candidate: it is
+    # faithful and makes agreement WORSE at 5 of 5 cells, which is the compensating-error measurement
+    # (ADR 0136 §5). The shipped calibrated set takes both defaults. ──
+    @test WaterParams{Float64}().gp_stand_leafon_basis == true
     @test WaterParams{Float64}().lambda_vm_gp == false
-    @test p0.water.gp_stand_leafon_basis == false
+    @test p0.water.gp_stand_leafon_basis == true
     @test p0.water.lambda_vm_gp == false
 
     # ⚠ EVERY arm below states BOTH flags EXPLICITLY, including the base arm, and that is load-bearing
@@ -76,9 +81,12 @@
     pgs = with_water(p0, (; gp_stand_leafon_basis = true, lambda_vm_gp = false))
     pvm = with_water(p0, (; gp_stand_leafon_basis = false, lambda_vm_gp = true))
     pboth = with_water(p0, (; gp_stand_leafon_basis = true, lambda_vm_gp = true))
-    # …and while the defaults are still OFF, `pbase` IS the shipped set — pinned here so that this
-    # equality is what BREAKS at a future flip, instead of the identities above going quietly inert.
-    @test with_water(p0, (;)).water.gp_stand_leafon_basis == pbase.water.gp_stand_leafon_basis
+    # …and the shipped set is now `pgs` for the leaf-on basis and `pbase` for the λ basis. This pair is
+    # what BREAKS at any FURTHER default move, instead of the identities above going quietly inert — the
+    # mechanism that caught the ADR-0137 flip. Written against the arms, never against a literal, so the
+    # arm and the default can never drift apart silently.
+    @test with_water(p0, (;)).water.gp_stand_leafon_basis == pgs.water.gp_stand_leafon_basis
+    @test with_water(p0, (;)).water.gp_stand_leafon_basis != pbase.water.gp_stand_leafon_basis
     @test with_water(p0, (;)).water.lambda_vm_gp == pbase.water.lambda_vm_gp
 
     # WELL-WATERED, bright, mild: `gc = gp_stand` (not supply-limited), which is the regime in which

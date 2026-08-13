@@ -1,6 +1,6 @@
 ---
 name: julia-test
-description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path). ALSO the procedure for LANDING A DEFAULT FLIP (an opt-in flag whose default is known wrong): flip only the default, run the full suite, and let the FAILURE LIST be the measured blast radius -- the four flips so far moved 3-5 assertions, not the whole tree -- then re-serve guardrail 4 through the opt-out, assert the new default, and audit every control arm that hardcoded the old one.
+description: Run the Julia test suite for the LPJmL-FIT emulator correctly (`julia` is NOT on PATH — use /p/system/packages_rhel9/tools/julia/1.10.0/bin/julia; delete test/Manifest.toml first; login-node/CI-faithful; Enzyme pin; testitems layout; format/JET/Aqua; regenerate ReferenceTests baselines). Use whenever running, adding, or debugging Julia tests, the format gate, gradient/conservation gates, or any `julia ...` command (which needs the absolute path). ALSO the procedure for LANDING A DEFAULT FLIP (an opt-in flag whose default is known wrong): flip only the default, run the full suite, and let the FAILURE LIST be the measured blast radius -- four flips moved 3-5 assertions, the fifth moved 23 across eight files and BLOCKED on a sibling line's gate -- then CLASSIFY that list before costing it (vacuous vs baseline vs band vs mechanism vs another line's), read the new pin values out of the failing run's own log instead of re-running, rewrite any `all(...)` assertion on its extremum so failures print magnitudes, re-serve guardrail 4 through the opt-out, assert the new default, and audit every control arm that hardcoded the old one.
 ---
 
 # julia-test — run the suite the way CI does
@@ -447,6 +447,35 @@ worth copying:
   `slow_level_anchor_tests.jl`, S-owned). ADR 0059 is the precedent: line S gave an explicit GO before
   `wscal_leafon` flipped. Check the failing files' OWNERS (CLAUDE.md §9) as part of step 2, because that is
   what decides whether the flip is yours to land at all.
+
+**…and how that same flip finally LANDED — line M, ADR 0137 (2026-08-13). Three things the 23-item list
+taught that the 3-to-5-item ones could not.**
+
+* **★ CLASSIFY THE FAILURE LIST BEFORE COSTING IT — a large count is not a large defect.** The 23 sorted
+  into **10 VACUOUS** (step 6's trap: comparisons against a control that had become a copy of the treatment
+  arm — not wrong, empty), **6 committed baselines/pins** (mechanical, each with a producing script),
+  **4 fidelity BANDS** (one line each, re-measured), **3 a coupling magnitude that genuinely grew** (a
+  mechanism to explain, not a tolerance to widen), and **1 owned by another line**. Only the last two
+  categories needed thought. Do this classification from the FAILING RUN'S OWN LOG before scheduling
+  anything — which is the next point.
+* **★ THE REVERTED TRIAL FLIP'S LOG IS THE MEASUREMENT — do not re-run the suite to rediscover it.** A
+  simple-comparison `@test` prints its evaluated value on failure, so `logs/<trial>.out` already carries the
+  new number for nearly every pin (`isapprox(0.4842884889710909, 0.5118; atol = 0.01)`). Here that turned
+  the whole re-pinning into a text edit and left only three unknowns needing a job.
+* **★ AN `all(...)` ASSERTION PRINTS NOTHING BUT `false` — REWRITE IT ON THE EXTREMUM WHILE YOU ARE THERE.**
+  Those three unknowns were exactly the two assertions written as `all(0.9 .< ratios .< 1.2)` and
+  `all(>(thresh), ws_df)`. Asserting `minimum(...)`/`extrema(...)` instead is behaviour-identical, and the
+  failure message then hands the next basis change its own magnitude on the first run. Costed here: one
+  extra full-suite cycle for two lines of syntax.
+* **A DELIBERATELY-FAILING SENTINEL IS the cheap way to read an unknown out of a suite** (`@test rmin > 9.9`
+  with a `SENTINEL-<ADR>` comment, then grep for the marker before committing) — one run gives you the
+  number *and* confirms every other file is already fixed.
+* **Expect the re-pinning to surface a finding that has nothing to do with your flag.** One of the four
+  bands here asserted that a *legacy* arm missed its trained band "by more than five band widths"; on the
+  corrected basis it misses by **0.30**, because that arm's statistic was itself a function of the quantity
+  the flag fixes. **A two-arm contrast measured under a shared upstream defect ranks the arms correctly and
+  prices them wrongly** — so when a flip lands, re-read every published claim about *how big* the losing
+  arm's error was, not only the claims about which arm wins.
 
 ## A `Vector` (or any heap-allocated) field on a struct the Enzyme path differentiates through ABORTS the whole suite (ADR 0110, line S, 2026-08-06)
 

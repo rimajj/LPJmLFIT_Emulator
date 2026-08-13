@@ -178,7 +178,16 @@
     end
     ret_a5, ret_05 = retention(0.5, 6), retention(0.0, 6)         # dens[1] is yr 0 ⇒ dens[6] is yr 5
     ret_a25, ret_025 = retention(0.5, 26), retention(0.0, 26)
-    @test ret_025 > 0.7                   # unanchored: the 4× initial spread is essentially all retained
+    # ⚠ RE-PINNED 0.7 → 0.55 on 2026-08-13 for line M's `gp_stand_leafon_basis` DEFAULT FLIP (ADR 0137),
+    # with line S's explicit GO (S is this file's owner; the authorisation is in `lines/M/STATE.md`).
+    # Measured 0.618996 under the flip, against > 0.7 before it. This is a re-measure, not a widening: the
+    # quantity is physics-dependent and the old number was pinned against a different conductance basis.
+    # It is also the horizon the comment block above flags in capitals as non-monotone and as the worst
+    # point of the transient, whereas ADR 0103's actual claim is the yr-150 separation (unanchored 1.036
+    # vs anchored 0.051, ~20×) — and all four contrast assertions below stayed green under the flip, so
+    # "the anchor strictly beats no-anchor" is untouched. ⚠ THE yr-150 UNANCHORED RETENTION UNDER THE FLIP
+    # IS UNMEASURED (it needs its own 150-yr job); if it fell below ~0.8 the reading above would change.
+    @test ret_025 > 0.55                  # unanchored: the 4× initial spread is largely retained
     @test ret_a5 < 0.35                   # anchored, yr 5: the fast collapse (measured 0.154)
     @test ret_a25 < 0.7                   # anchored, yr 25: the transient peak (measured 0.486)
     @test ret_a5 < ret_05                 # strictly better than unanchored at BOTH horizons
