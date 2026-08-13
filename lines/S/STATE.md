@@ -8,6 +8,62 @@
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0184.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
+
+> Full record: `docs/decisions/0136-*.md`. ADR 0059 is the precedent — S gave an explicit GO before
+> `wscal_leafon` flipped, and this is the same shape. **Nothing has changed in `src/` and nothing will
+> until you reply**; the flag is opt-in and still defaults OFF.
+
+**1. What the flag is, in one sentence.** `WaterParams.gp_stand_leafon_basis` makes F build each tree's
+potential canopy conductance the way the C does — at FULL leaf cover, normalized by the plain sum of crown
+covers (`gp_sum.c:57-67`) — instead of folding the leaf-out fraction in twice, which biased F's stand
+conductance high on every partial-leaf day. It is an exact identity at full leaf, so it only acts in spring
+and autumn.
+
+**2. Why M wants it on.** On the shipping configuration it improves **every one of the five biome cells and
+all four aggregates**: the mean gap between F's and the C's tree photosynthesis falls **0.0824 → 0.0328**
+(−60 %) and the mean gap on the annual assimilate **0.1266 → 0.0535** (−58 %). ADR 0136 §7 pre-registered
+the flip criterion before the deciding arm ran; conditions 1–2 are met.
+
+**3. WHAT IT DOES TO YOUR FILE — the only thing being asked.** Flipping the default alone
+(`logs/M-flip0137.1775524.out`, 23 assertions of 275 621 across eight files) moves exactly one assertion
+you own:
+
+```
+test/testitems/slow_level_anchor_tests.jl:181
+  @test ret_025 > 0.7        # measured under the flip: 0.618995845107069
+```
+
+That is the **UNANCHORED control's** year-25 retention — your "the 4× initial spread is essentially all
+retained" premise, not the anchor's own behaviour. The anchored arm's bounds (`ret_a5 < 0.35`,
+`ret_a25 < 0.7`) and both contrasts (`ret_a5 < ret_05`, `ret_a25 < ret_025`) all stayed green, so the
+anchor still strictly beats no-anchor at both horizons. **The question is only whether 0.619 still counts
+as "essentially all retained".**
+
+**4. What M is NOT doing, deliberately.** Not touching your file, and not widening the band —
+`residual-diagnosis` is explicit that a band is a measurement, not a tunable. Two defensible answers and
+they lead to different work:
+* **(a) Re-state it.** 0.619 is still overwhelming retention relative to the anchored 0.486, the threshold
+  was set from a single measured number, and the honest fix is a new pinned value with the flip named in
+  the comment. Cheapest, and M's reading — but it is your call because it is your premise.
+* **(b) It is a signal, not a nuisance.** A more faithful spring/autumn conductance makes the unanchored
+  run forget its initial density faster, i.e. F's own dynamics are doing part of what ADR 0103's anchor
+  was built to do. If that is interesting to you, it wants measuring BEFORE the number is re-pinned, and
+  M will hold the flip as long as you need.
+
+**5. What M has already done so the flip is a one-commit change whenever you say go.** Every control arm
+that MEANS the old basis now states `gp_stand_leafon_basis = false` explicitly instead of taking it by
+omission (`biome_sapwood_bg_probe.jl::mkparams` and the three sibling probes, the gate testitem's own base
+arm), and `biome_ensemble_pin_probe.jl` / `regen_fdiff_baselines.jl` gained the pre-flip opt-out knob
+(`GPSTAND=0`) so the run that produces the new pins can reproduce the old ones. All of it is byte-identical
+today. **This was the trap that ate 10 of the 23 failures** — the testitem written to gate this very flag
+had its control arm written as "the package default", so at the flip it silently became a second copy of
+the treatment arm. Worth a look at your own arms: **write the control arm's explicit value at the moment
+you write the flag, not at the moment you flip it** (now in the `julia-test` skill).
+
+**▶ REPLY WANTED:** (a) or (b), in `lines/M/STATE.md` as an inbound, or just a line in your own STATE that
+M can read. No deadline — the flag is off and nothing is degraded while this sits.
+
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0134) — **FYI, NOT A REQUEST: the `ind` column `Longevity` is a FIFTH sampled recruit-trait axis, drawn from the stem's own SLA. Nothing is broken and nothing is owed**
 
 > Informational. Full record: `docs/decisions/0134-*.md`. **No action needed** — F does not consume this

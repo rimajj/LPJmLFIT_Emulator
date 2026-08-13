@@ -167,7 +167,10 @@ function leafon_params()
     # probe's PUBLISHED panel is on the gate-OFF basis. Taking it by omission would silently rebase every
     # number this probe prints under a label that no longer describes it. Re-measuring on the new default
     # is a deliberate new arm, not a silent substitution.
-    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true, tree_demand_gate = false))...)
+    # ⚠ `gp_stand_leafon_basis = false` is explicit for the SAME reason, written BEFORE that default
+    # moves rather than after (ADR 0136 §7 pre-registers the flip; it is blocked on line S). This
+    # probe's published panel is on the pre-ADR-0136 `gp_sum` basis too.
+    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true, tree_demand_gate = false, gp_stand_leafon_basis = false))...)
     return FDiffParams{Float64}(p.photo, p.tstress, w2, p.resp, p.allom, p.nlambda, p.ω)
 end
 

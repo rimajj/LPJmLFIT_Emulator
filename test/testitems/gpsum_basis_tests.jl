@@ -63,10 +63,23 @@
     @test p0.water.gp_stand_leafon_basis == false
     @test p0.water.lambda_vm_gp == false
 
-    pbase = with_water(p0, (;))
-    pgs = with_water(p0, (; gp_stand_leafon_basis = true))
-    pvm = with_water(p0, (; lambda_vm_gp = true))
+    # ⚠ EVERY arm below states BOTH flags EXPLICITLY, including the base arm, and that is load-bearing
+    # rather than decoration (ADR 0133 §6; `julia-test` skill, "landing a default flip", step 6).
+    # `pbase` means THE PRE-ADR-0136 BASIS — a specific value — not "whatever ships". Written as
+    # `with_water(p0, (;))` it took the PACKAGE DEFAULT instead, so the moment
+    # `gp_stand_leafon_basis`'s default is flipped it silently becomes a second copy of `pgs` and every
+    # comparison against it goes vacuous: the trial flip of 2026-08-13 turned exactly that into
+    # **10 of its 23 failures** in this one file — both boundary identities, the fires-off-the-boundary
+    # pair, and the whole signed-direction loop, none of which would have been *wrong*, merely empty.
+    # Take the default by omission ONLY in an arm that means "whatever ships". No arm here does.
+    pbase = with_water(p0, (; gp_stand_leafon_basis = false, lambda_vm_gp = false))
+    pgs = with_water(p0, (; gp_stand_leafon_basis = true, lambda_vm_gp = false))
+    pvm = with_water(p0, (; gp_stand_leafon_basis = false, lambda_vm_gp = true))
     pboth = with_water(p0, (; gp_stand_leafon_basis = true, lambda_vm_gp = true))
+    # …and while the defaults are still OFF, `pbase` IS the shipped set — pinned here so that this
+    # equality is what BREAKS at a future flip, instead of the identities above going quietly inert.
+    @test with_water(p0, (;)).water.gp_stand_leafon_basis == pbase.water.gp_stand_leafon_basis
+    @test with_water(p0, (;)).water.lambda_vm_gp == pbase.water.lambda_vm_gp
 
     # WELL-WATERED, bright, mild: `gc = gp_stand` (not supply-limited), which is the regime in which
     # `gp_stand_leafon_basis` can reach GPP at all — under water limitation `gc` is set by supply and the
