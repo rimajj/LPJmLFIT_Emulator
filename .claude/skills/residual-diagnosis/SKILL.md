@@ -2018,3 +2018,31 @@ answer); fixing it moved the row to **+0.594 %/yr / 1.62×** and the panel then 
 number. **Two clauses:** name the residual your model still does not capture (here the C's own hard kills on
 a gated year) rather than letting the agreement imply completeness — and remember that this check is only
 available if you *put* the status quo in the panel, which is a reason to always include it.
+
+## ⚠ A COUNTERFACTUAL PANEL CANNOT BOUND A QUANTITY THAT *RESPONDS* TO THE CHANGE BEING COSTED (line S, 2026-08-13, ADR 0240)
+
+The panel above sized a proposed mortality budget at **1.493 ± 0.180 %/yr** on the arm's own stand, and said
+plainly that every number in it was counterfactual on trajectories run *without* the change. When the arm was
+built it realized **27.6 %/yr — 18× the estimate.** The disclaimer was not enough, because it named the
+uncertainty without naming *which term carried it*.
+
+The budget was `(1 − ρ)·n_tree + R̂`, and `R̂` — last year's recruit count — is a **stand statistic**. In that
+model the C grows the stand and supplies establishment, which is light-driven: killing opens space, the C
+fills it, and next year's budget grows with the killing that caused it. `R̂` measured on a stand where the
+operator was *not* spending gross is simply a different quantity from `R̂` under the change (FIT's own 6.5 %/yr
+against the arms' realized 27.6–70.6 %/yr).
+
+**The check, and it is one question per input:** for every quantity your proposed operator will *consume*, ask
+whether the system's own response to the operator changes it. If yes, the counterfactual estimate is a lower
+bound at best, and you must say which term is endogenous and in which direction it moves — not merely that the
+panel is counterfactual. The a-priori tell here was available and unused: the same skill set already recorded
+that the C grows the stand in every arm, so *any* stand-derived statistic is a function of what the operator
+did. **Feeding one back in as an operator input closes a feedback loop.**
+
+**And the second half of the lesson is about the criterion, not the estimate.** The realized arm met all three
+pre-registered clauses (rate, mass removal, and the biomass departure it was built to fix — +90.6 % → +2.9 %)
+while holding **a quarter** of the reference's trees, each **3.7×** too heavy: two large errors cancelling in
+the one number the criterion looked at. A criterion written on a single aggregate is satisfiable by
+compensation. **Pre-register the pair** — here both the count and the mass departure, with the per-unit ratio
+printed beside them — and per the no-moving-thresholds rule, ADD the missing clause rather than editing the
+ones that were already written.
