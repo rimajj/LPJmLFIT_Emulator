@@ -12,7 +12,7 @@
   **both** flags), `scripts/biome_sapwood_bg_probe.jl::mkparams` — from which the `Ag`/`Pg`/`gpS`/`vmG`
   arms and all 30 committed `M_growth_channel_decomposition.csv` rows derive — and the three sibling
   probes `biome_canopy_growth_probe.jl` / `biome_resilience_probe.jl` / `biome_slow_oracle_probe.jl`.
-  Generalises [ADR 0133](docs/decisions/0133-the-c-gates-each-trees-photosynthesis-on-its-own-canopy-demand.md) §6
+  Generalises [ADR 0133](docs/decisions/0133-the-tree-demand-gate-default-flip-is-earned-on-the-carbon-budget-and-paid-for-in-gpp.md) §6
   from probes to tests: **if an assertion's meaning depends on two arms differing, both arms must state
   their value; take the default by omission only in an arm that means "whatever ships".**
 - **`scripts/biome_ensemble_pin_probe.jl` and `scripts/regen_fdiff_baselines.jl` gained the pre-flip
@@ -24,7 +24,7 @@
 - **The `gp_stand_leafon_basis` default flip itself is RAISED TO LINE S and parked, not landed.** The 23rd
   assertion is `test/testitems/slow_level_anchor_tests.jl:181` (`ret_025 > 0.7`, measured 0.619 under the
   flip) — the unanchored control's year-25 retention, which is S-owned. An F default that moves an S gate
-  is an integration point ([ADR 0059](docs/decisions/0059-flip-wscal-leafon-default.md) is the precedent:
+  is an integration point ([ADR 0059](docs/decisions/0059-the-c-faithful-water-stress-becomes-the-default.md) is the precedent:
   S gave an explicit GO before `wscal_leafon` flipped), so the request, both defensible readings and the
   full 23-assertion enumeration are written into `lines/S/STATE.md`. Nothing is degraded while it sits:
   the flag remains opt-in and off.
