@@ -342,7 +342,8 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0188 is ON `main`.** See the SHAS line committed with this block. The
+> **LAST MERGE — 2026-08-13, ADR 0188 is ON `main`.** Merge commit `7db91f5b` (+ changelog collation
+> `a2d11a09`), branch sha `4fce8a4a`. The
 > diff is a script + ADR + README row + STATE + JOURNAL + skill + a changelog fragment — **nothing under
 > `src/**`, `test/**`, `python/**`, `docs/src/**` or any `*.jl`** — so per ADR 0090 **no branch CI gate
 > runs on it at all**. Do not wait for a verdict that cannot arrive. ADR 0187 merged as `f3e100d8`
