@@ -1023,3 +1023,48 @@ The reset is safe *only* because nothing was pushed and `$INT` is a checkout wit
 both, in that order, rather than assuming. And note the fix commit touches `changelog.d/` only, which
 triggers **no branch gate at all** (ADR 0090), so it is mergeable as soon as it is pushed — do not wait for a
 verdict that cannot arrive.
+
+## ⚠ `cmd | tail -3` DISCARDS `cmd`'s EXIT STATUS — SO AN `&&` CHAIN RUNS ON AFTER A FAILED REBASE (line S, 2026-08-13)
+
+The ritual is habitually written as a one-liner for brevity:
+
+```bash
+git pull --rebase origin main 2>&1 | tail -3 && git push --force-with-lease origin line/<X> | tail -3
+```
+
+**That is broken, and it fails in the worst possible place.** A pipeline's exit status is the exit status of
+its LAST command, so `| tail -3` reports success no matter what `git pull --rebase` did. When the rebase
+stopped on a conflict, the `&&` was satisfied and **the push ran with the rebase still in progress.**
+
+What saved it is worth knowing, because it is not obvious: during a rebase `HEAD` is detached and the branch
+ref `line/<X>` still points at the PRE-rebase tip, so `git push origin line/<X>` pushed the old (unrebased,
+already-tested) commits rather than anything malformed. Nothing was corrupt — but the branch then carried a
+sha that was NOT the one the merge would use, and the mid-rebase working tree was one `git add -A` away from
+being committed into the wrong place.
+
+**Do this instead — never pipe a step whose failure must stop the chain:**
+
+```bash
+git pull --rebase origin main || { git status; echo "RESOLVE FIRST"; exit 1; }
+git status --short                       # must be clean, and no "rebase in progress"
+git push --force-with-lease origin line/<X>
+```
+
+Pipe the *output* of things you are only reading (`squeue`, a log, a check-runs query). Never pipe `git
+pull --rebase`, `git merge`, `git push`, `Pkg.test`, or a gate command — and if you want the output trimmed,
+capture it first (`out=$(cmd 2>&1); rc=$?; echo "$out" | tail -3; [ $rc -eq 0 ] || exit 1`). Note the
+`flock` merge block already gets this right via `bash -eu -c`; it is the interactive one-liners that don't.
+
+## ⚠ TWO LINES APPENDING TO THE SAME SHARED SKILL FILE CONFLICT — AND THE RESOLUTION IS *KEEP BOTH*, ALWAYS (line S, 2026-08-13)
+
+The §8 capture gate pushes **every** session to append to a shared append-only skill
+(`residual-diagnosis`, `julia-test`, `repo-commit`, `skill-creator`, `consolidate-memory`). Two lines that
+both do so before merging produce a `UU` conflict at the END of the file, where both sides are pure
+additions. This is the same shape as the INBOUND-block conflict already documented above, and it has the
+same trap: **resolving with `--ours`/`--theirs` silently deletes the other line's captured knowledge**, and
+nothing downstream will ever notice, because a skill file has no gate.
+
+Resolution is mechanical — take the HEAD side (already on `main`, i.e. the other line's), then your side,
+then drop the markers. Check afterwards that BOTH ADR references survive
+(`grep -c '^## ' <file>` and grep for your section heading *and* theirs). Cheap prevention: append under a
+heading that names your line and ADR, so the merged file reads as a sequence rather than an edit war.
