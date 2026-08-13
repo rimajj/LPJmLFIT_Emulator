@@ -257,6 +257,14 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
+> **LAST MERGE — 2026-08-13, ADR 0182 + 0183 are ON `main`.** Merge commit `af95bc55` (+ changelog
+> collation `83718446`). Branch gates green on `7a922716` (`test (lts)`, `test (1)`, `format`,
+> `test (macOS, lts)`); **`main`'s own gates green incl. `docs`** — which never runs on a branch, so it was
+> also built locally first. The only red anywhere is `test (pre)`, which is `continue-on-error` and dies on
+> **Julia 1.13.0-rc2** with `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool},
+> ::Bool)` — a prerelease API change in a dependency, unrelated to anything in this diff. Don't chase it.
+> The suite on the flip is **275 606 pass / 0 fail** (job 1773556).
+
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
 > Owner, verbatim: *"why the fuck don't you finally fix the warming response?? why do you switch important
