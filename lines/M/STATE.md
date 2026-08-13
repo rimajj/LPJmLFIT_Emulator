@@ -477,6 +477,28 @@ of the five biome cells samples. Not an open item; a scope statement on ADR 0138
    **`GPP_F/GPP_C` is a LOWER BOUND on the kernel error** — quote it that way everywhere. ⚠ **Do not re-open**
    the layered-light model, the leaf-area density basis, `k_lambert`, `par`, `alphaa`, `albedo_leaf`, the SLA
    Vcmax cap (ADR 0135 §4), or the `tstress` gate (ADR 0138).
+   **▶ SCOPED THIS SESSION so item (c) does not start from the phrase "the phenology trajectory". F's
+   `phenology_gsi_step` (`fdiff.jl:1565`) is otherwise a faithful port of `phenology_gsi.c:50-84` — the four
+   filters, their `f += (target−f)·tau` form, the `<200` overflow branch (subsumed by `stable_sigmoid`) and
+   the `εfloor` all match. TWO documented v1 simplifications remain, both named in the docstrings, both
+   concrete:**
+   * **(c1) the water limiter's inflection is the PFT-MEDIAN `minwscal`, not each individual's own.** Under
+     `config->individual` the C uses `pft->minwscal·100` (`phenology_gsi.c:64-66`) — a *sampled per-stem
+     trait* — while `PhenParams.wscal_base` is a per-PFT constant (beech 20.96 = the median 0.2096 × 100),
+     and `per_pft_phenology` gives every individual of a PFT ONE shared trajectory. ⚠ **The data is already
+     there**: `FDiff.Individual.minwscal` (`fdiff.jl:2356`) carries the per-stem value for the mortality
+     path, so this is a wiring change, not a new input. Cheapest first step is §9/§13's: read the spread of
+     `minwscal` within (cell, PFT) off the `ind` parquet and ask whether the *filter output* separates over
+     that range at all before touching the code — the sigmoid may saturate across it.
+   * **(c2) the soil-temperature gate is driven by AIR temperature.** The C forces the water filter fully
+     open while `soil->temp[0] < 10` (`phenology_gsi.c:67`); `rollout_daily_canopy` passes `f.temp` for that
+     argument (`fdiff.jl:2217`). Soil temperature lags air substantially, so the gate opens and closes on
+     the wrong days in spring and autumn — which is exactly the partial-leaf-day regime ADR 0136 showed the
+     GPP error concentrates in. ⚠ Also worth recording while you are there: **the C's own source comment on
+     that line says "below 5 degree" while the code tests `< 10`** — comment/code mismatch, same family as
+     the `/* test: */` trap in `CLAUDE.md` §3; trust the code.
+   Neither is measured. Price them with `residual-diagnosis` §13 (weight the affected days by the
+   assimilation at stake, not by their count) before building either arm.
 3. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap (only
    remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two evergreen cells,
    `bg_growth`'s default still blocked on line S carrying `heartwood_bg_c`, and the differentiated path
