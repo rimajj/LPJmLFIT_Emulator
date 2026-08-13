@@ -1940,3 +1940,33 @@ want to turn on: it is maintenance cost plus a control arm every future probe mu
 it in an ADR with the number, correct the source comment that asserted the structural argument, and delete
 it from the shortlist. Worked example: `scripts/diagnose_tstress_photo_gate.py` (sub-second, committed
 fixtures, no SLURM) + ADR 0138.
+
+## §17 — WHEN AN UPSTREAM DEFECT IS FIXED, RE-READ EVERY CLAIM ABOUT HOW BIG THE LOSING ARM'S ERROR WAS (line M, 2026-08-13, ADR 0137)
+
+§11 says a confounded *reference* mis-scores a fix. This is its mirror image, and it bites later: a
+**two-arm contrast measured under a shared upstream defect ranks the arms correctly and prices them
+wrongly.** The winner is still the winner; the published *size* of the loser's error is not a property of
+the loser.
+
+**Worked instance.** A gate asserted that F's pre-fix water-stress feature missed its trained band by
+**more than five band widths** — the headline number in two decision records, quoted for weeks as the
+justification for the definition that replaced it. The losing arm's statistic is `1 − supply/demand`;
+`demand` is proportional to the stand conductance; and the conductance was independently inflated by
+≈`1/φ̄`. Fixing the conductance moved the loser from **>5 band widths out to ~0.30** (0.0561 against a
+band top of 0.043155). The *decision* it supported is untouched — the faithful arm is inside the band and
+this one is still outside — but every sentence about the magnitude had to be corrected, in the ADR, in the
+gate's comment and in the runbook.
+
+**So, on landing any fix to a shared upstream quantity:**
+
+1. **Enumerate the published statistics that are FUNCTIONS of the quantity you fixed**, not just the ones
+   your fix was aimed at. The tell is a statistic defined as a ratio or difference whose denominator,
+   demand term or normalisation flows through the fixed quantity.
+2. **Separate "which arm wins" from "by how much".** Ordering claims usually survive a common-mode fix
+   (both arms shift together); magnitude claims usually do not.
+3. **Correct the magnitude everywhere it was quoted, and say which basis each number is on.** A number in
+   a runbook or a skill outlives the ADR that produced it; leaving it uncorrected is how a stale
+   measurement becomes an assumption.
+4. **Expect this to arrive as a test failure you did not predict.** It shows up in the re-pinning pass of a
+   default flip, wearing the costume of a routine band re-statement — which is exactly why the flip's
+   failure list has to be *classified* rather than just fixed (`julia-test`, "Landing a DEFAULT FLIP").
