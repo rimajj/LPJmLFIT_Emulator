@@ -2411,3 +2411,69 @@ gain it never got the chance to fail. Said so in the ADR and in settled item 7 o
 
 Next action handed on: wire ADR 0103's `anchor` into the rung-2 path (a harness change — the harness never
 builds a `FluxDrivenSlowEmulator`), with the conjunction criterion pre-registered in 0185 §7.5.
+
+---
+
+## 2026-08-13 — the anchor was never the lever: the count is on target, the mass is not (ADR 0186)
+
+Picked up the handed-on action — wire ADR 0103's level anchor into the rung-2 path and run the 12-cell
+`predict` matrix against 0185 §7.5's pre-registered conjunction. Did not run it. Two derivations that
+0185 had not done, both answerable from logs already on disk, said it could not pass.
+
+**First, what the anchor even is here.** It does not carry over from `slow.jl` unchanged. The coupled path
+feeds the whole roster to `flux_feature_vector` and anchors on the whole roster's density; this harness
+deliberately splits them (`pools_of`: feature row and count target on the >5 m emitted population, thinning
+on every tree). So the anchor's `D` must be the emitted density, and then `patch_area` **cancels**:
+`ρ_eff = (target/n_prev)^(1−a)·(target/n_emit)^a`. Two consequences fell straight out. It is **identically
+inert in `roster` mode**, because there `n_prev := n_emit` — verified, 916 484 rows bit-identical, max
+|diff| exactly 0, which also means no published `roster` number was ever at stake. And `a` moves only the ρ
+conversion, never the feature row, so `a = 1` is not a return to `roster` mode and 0184's tether stays off.
+Worth noting for its own sake: the anchor was *unmeasurable* in rung 2 until 0185 opened the `predict`
+axis. It sat unreachable for a mechanical reason, not because three sessions overlooked it.
+
+**Second, and the actual finding: the anchor's lever is the count, and the count is already right.** On the
+ssp370 leg at the FIT-gain cells `S1` holds **−2.9 %** the stems FIT holds and **+90.6 %** the biomass;
+`S0h` −13.6 % and +89.0 %. Per-stem mass +63…+246 %, corroborated in the same direction by `hmean`
++12…+38 %, `hmax` +14…+45 % and `age_mean` +53…+160 %, so the decomposition is physical rather than an
+artefact of dividing two medians. The stand is not over-numerous. It is over-massive.
+
+I went looking for the one alternative that would have rescued the anchor — that the count departure was
+large mid-leg and had merely closed by 2100, in which case an anchor acting throughout would have stopped
+the mass accumulating. It is not there: `S1`'s count sits within a few per cent of FIT's in **every decade
+of the 81-year leg** (+4/+1/−0/+0/−7/+5/−2/−3 %) while biomass climbs monotonically +18 → +91 %. `S0` and
+`NP` do open a +26…+39 % mid-leg gap, and they are exactly the two arms without the trait operator.
+
+So the criterion is unreachable, and generously so. Granting a perfect anchor and letting biomass follow
+the count proportionally — the anchor cannot touch per-stem mass at all, so this is the most favourable
+bound available — the surviving agb departure is +75.6 % (`S0h`), +117.2 % (`S1`), +194.5 % (`S0`),
++415.1 % (`NP`), against the +40 % that had been fixed in advance. For `S1` the bound is *worse* than doing
+nothing, because the target sits below FIT's count while the mass sits far above it. A second reason
+surfaced on its own: the anchor DOES clear +40 % on the historic leg, and an instrument that corrects the
+baseline leg but not the future leg manufactures a response, the blessed statistic being a difference of
+leg means. That is 0185's own gotcha arriving from the other side.
+
+**The basis error I made, because it is the instructive part.** My first reachability panel re-implemented
+the departure statistic — 20-year window, mean over cells, mean of per-patch ratios — and reported `S1`'s
+ssp370 count departure as **+37 %**. The criterion's own basis gives **−2.9 %**. A sign flip, on the same
+data, on the single quantity the decision turns on; per-patch counts are 4–11 stems, so patches where FIT
+holds one or two stems dominate an unweighted mean of ratios. Caught it by noticing my table disagreed with
+0185 §5's published one, rewrote the panel to `import` the scorer and reuse its `Leg`, readers, `median`
+and coverage gate, and it now reproduces that table exactly. Reproducing the published table is the gate,
+and it belongs before adding a column to it, not after.
+
+**What this does and does not settle.** 0185's conditioning-limited verdict stands and is sharpened — the
+limit is still the stand the map reads, and now we know the displaced coordinate is size and age rather
+than count. It is explicitly *not* a finding against ADR 0103 in the coupled path, where the measured
+departure genuinely is a count-level one (1.409× over-density with no restoring force) and the anchor is
+still the right instrument; that flip criterion is untouched and still unrun. And it is still not an
+operator verdict: hitting the right count while holding the wrong size distribution is consistent with a
+mis-ordered kill rule *and* with a kill rule never given enough deaths to allocate.
+
+Next action handed on: the size-resolved "who dies" comparison, promoted from secondary to primary on
+measurement rather than preference. The count statistic is *satisfied* while the stand is wrong — that is
+the proof a count statistic cannot see this failure. The kill lists are already on disk in the apply dirs
+and the `grow` dumps carry every stem's size and age, so it needs no model run either. The defensible
+statistic on diverged stands is a size-conditional mortality rate, not a comparison of who was killed.
+
+Cost of the whole session's measurement: about seven seconds of login-node compute, against the 264 jobs
+the plan called for.

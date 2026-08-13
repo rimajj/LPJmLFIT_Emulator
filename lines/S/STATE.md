@@ -287,9 +287,28 @@ rather than a request to flip now.
 > | 0182 | the arms' OWN stand DOES warm — cosine 0.97–0.99 where FIT's own stand moves substantially. **NARROWED by 0184.** |
 > | 0183 | the ported hazard IS `mortality_tree_ind` (recall = precision = 1.0000, mean \|Δhazard\| 5e-18) ⇒ `trait_mortality` FLIPPED ON. |
 > | 0184 | the rung-2 count model's target is TETHERED to the live stand count ⇒ the response question was unanswerable as run; NO VERDICT. Its §10.4 pre-registered the fix. |
-> | **0185** | **the fix was run. Given real authority the map STOPS asking for FIT's gains ⇒ the limit is the STAND it is conditioned on, not the substitution operator.** |
+> | 0185 | the fix was run. Given real authority the map STOPS asking for FIT's gains ⇒ the limit is the STAND it is conditioned on, not the substitution operator. **NARROWED by 0186 (§7.2/§7.5 only; the verdict stands).** |
+> | **0186** | **the count is ALREADY on target — the excess is PER-STEM MASS ⇒ the level anchor has no lever, its criterion is unreachable, and the question is now WHICH trees die.** |
 >
-> ### 0185 IN ONE PARAGRAPH (this is the current state of the question)
+> ### 0186 IN ONE PARAGRAPH (this is the current state of the question)
+>
+> Before wiring the level anchor, two things 0185 had not stated were derived: **what the anchor reduces to
+> in this harness**, and **whether the departure it acts on is a count departure at all**. Both are
+> answerable from the logs already on disk, in ~7 s. The anchor's `D` must be the >5 m EMITTED density
+> (`pools_of`), so `patch_area` **cancels** and `ρ_eff = (target/n_prev)^(1−a)·(target/n_emit)^a` — which is
+> **identically inert in `roster` mode** (916 484 rows, `n_prev` bit-identical to `n_emit`, max |diff| 0), so
+> no published `roster` number is at stake and the anchor was *unmeasurable* in rung 2 before 0185 opened the
+> `predict` axis. **The finding: the count is on FIT's number and the mass is not.** ssp370, FIT-gain cells,
+> on the criterion's own basis: `S1` **−2.9 %** stems vs **+90.6 %** agb; `S0h` **−13.6 %** vs **+89.0 %**;
+> per-stem mass **+63…+246 %**, corroborated by `hmean` +12…+38 % and `age_mean` +53…+160 %. The **per-year
+> trajectory kills the rescue hypothesis** — `S1`'s count sits within a few per cent of FIT's for **all 81
+> years** while its biomass climbs monotonically to +91 %, so an anchor acting throughout would have had
+> nothing to pull. ⇒ granted a PERFECT anchor and proportional biomass (the most generous bound available)
+> the surviving agb departure is **+75.6 % / +117.2 % / +194.5 % / +415.1 %** — every learned arm misses the
+> pre-registered **+40 %** by 2–5×, and `S1`'s bound is *worse* than unanchored. **The matrix was not
+> submitted.** The emulator kills the right NUMBER of trees and the WRONG trees.
+>
+> ### 0185 IN ONE PARAGRAPH (still the standing verdict; only its §7.2/§7.5 next-action is withdrawn)
 >
 > The 264-job `--n-prev=predict` matrix finished (**258 completed**) and ADR 0184 §10.4's reading was
 > executed with thresholds unmoved. **Separability passes**: median |`target`/`n_emit` − 1| on the ssp370
@@ -304,7 +323,7 @@ rather than a request to flip now.
 > departure, now the *operative* limit: at ssp370 the arms sit at **+89 % to +312 % agb** and **+54 % to
 > +160 % `age_mean`** vs FIT, so the map is evaluated where FIT's stands never go.
 >
-> **Seven things are now settled. Do not re-investigate them.**
+> **Nine things are now settled. Do not re-investigate them.**
 >
 > 1. **The training TARGET is not where the response is lost — do NOT start a target redesign** (0181 §4/§5).
 > 2. **The count is an allometric consequence of the stand, not a learned climate response** (0181).
@@ -315,44 +334,49 @@ rather than a request to flip now.
 > 7. **NEW (0185): the operator is NOT the measured bottleneck — and it is also NOT refuted.** With the map
 >    not asking for the gain, the thin-only operator was never given the chance to fail. `GOT_gain ≤ 2`
 >    everywhere is consistent with both stories. **Do not open operator work claiming 0185 motivates it.**
+> 8. **NEW (0186): the COUNT CHANNEL IS CLOSED. Do not propose another count-side instrument** (the level
+>    anchor, a retrained count target, a different `n_prev` basis) **without first measuring the count
+>    departure** — it is −2.9 % to −13.6 % for the trait arms while agb is +89…+91 %, for all 81 years.
+> 9. **NEW (0186): the level anchor is NOT wired into rung 2 and should not be.** This says nothing against
+>    ADR 0103 in the COUPLED path, where the departure genuinely is a count-level one (1.409× over-density).
+>    Do not read 0186 as retiring the anchor; its own flip criterion (0103 §6, line M's arm) is untouched.
 >
-> ### B. THE NEXT ACTION — wire ADR 0103's `anchor` into the rung-2 path
+> ### B. THE NEXT ACTION — the size-resolved "who dies" comparison
 >
-> 0185 §7.2 names this as the work, on measured grounds, and it is a **harness change, not a flag flip**:
-> the rung-2 harness calls `flux_feature_vector` directly and **never constructs a `FluxDrivenSlowEmulator`**,
-> so `anchor` is structurally unreachable from every arm. The absolute-LEVEL calibration it performs is
-> exactly what the +89–312 % agb departure asks for.
+> **0186 promotes this from secondary to primary, on measurement rather than preference.** The emulator hits
+> the right stem COUNT and holds the wrong stand: −2.9 % stems, +90.6 % biomass, +57 % mean age. Whatever is
+> wrong is in **which individual trees die**, and a count statistic provably cannot see it — 0186 §3 is that
+> proof, since the count statistic is *satisfied* while the stand is wrong.
 >
-> **The criterion is already pre-registered — ADR 0185 §7.5, do not re-derive it.** With `anchor` wired in,
-> the same 12-cell `predict` matrix must move **`ASK_gain` over the learned arms to ≥ 4** *while* the
-> stand-level departure in `agb` at the FIT-gain cells falls **below +40 %**. ⚠ **If `ASK_gain` rises without
-> the level departure falling, 0185's attribution is WRONG and that ADR must be revisited** — that
-> conjunction is the whole point of the criterion, so do not score the two halves separately.
+> **The question:** for each arm, the distribution of the trees it kills over **size (height, agb) and age**,
+> against FIT's own kills at the same cell and year. The hypothesis the numbers point at is that the arm
+> spares large/old stems FIT would have killed, which then compound for decades — but **state it as
+> falsifiable and confirm the comparison basis first** (`residual-diagnosis` skill), because the arm's stand
+> and FIT's have diverged, so a raw killed-size histogram is not like-for-like. The defensible statistic on
+> diverged stands is a **size-conditional mortality rate** — P(die | height bin), P(die | age bin) — per arm
+> vs `REC`, not a comparison of who was killed.
 >
-> Tooling needs no new code for the scoring half:
-> ```bash
-> export DUMPS=/p/tmp/jamirp/S_rung2 NPREV=predict \
->        OUT=/p/tmp/jamirp/S_rung2_maptarget/map_on_rec_stand_predict.csv
-> scripts/sbatch_julia.sh S-maprec-predict --project=. scripts/diagnose_rung2_map_on_rec_stand.jl
-> export ROOT=/p/tmp/jamirp/S_rung2 NPREV=predict \
->        RECCSV=/p/tmp/jamirp/S_rung2_maptarget/map_on_rec_stand_predict.csv
-> /home/jamirp/.conda/envs/py311_new/bin/python scripts/diagnose_rung2_map_target_response.py
-> ```
-> Read the **`rung2-dump-analysis`** skill first — it now carries the `NPREV` chain rule and the
-> python-version trap. **Set `NPREV` on BOTH scripts**: `REC` has no runtime log, so its column is replayed
-> offline, and leaving that replay in `roster` while the arms run `predict` puts the reference on a tethered
-> axis and the arms on a free one, invisibly.
+> **The data is already on disk and needs no model run.** The arm's kill list is written verbatim to
+> `<apply>/rsp_r*_y*_p*.txt` (`K <pft_id> <treeidx>` lines) and the `grow`-phase dump carries every stem's
+> height/age/agb/`mort_*`/`isdead` — join on `(pft_id, treeidx)` per year and patch. FIT's own side is the
+> `REC` dump's `isdead`. ⚠ Check the `rsp_*.txt` files still exist before planning around them, and read the
+> **`rung2-dump-analysis`** skill first: the `#H`-header-to-field offset, the `grow`-phase choice, the
+> coverage gate, and trap 5 (**the C grows the stand, so a stand statistic is inherited by every arm
+> including the null — score `NP` on the same statistic and print its number in the same table**).
+> ⚠ Mortality is applied AFTER allocation, so a stem flagged `isdead` still GREW that year (CLAUDE.md §3).
 >
-> **Two gaps left by 0185, both worth closing when convenient, neither blocking:**
+> **Pre-register before running** — and 0186 §8 adds a clause to the usual discipline: *state the mechanism
+> by which the proposed change moves the blessed statistic, and measure that mechanism's current size
+> first.* That one check is what retired the 264-job anchor matrix for 7 s of compute.
+>
+> **Three gaps, none blocking:**
 > * **The `ssp370frz` frozen-boundary control was never run in `predict` mode**, so the direct-vs-total
 >   boundary share is unmeasured on the free-running axis (the scorer prints that panel empty).
 > * **The 6 timed-out legs** (`c12045 S1 s2/s3`, `c12235 S0h s1`, `c22732 S0h s1/s2`, `c52059 S1 s2`) are the
 >   harness `--max-idle=300` exiting under the C's own 600 s wait. Raise `--max-idle` in
 >   `scripts/run_rung2_s_arm.sh` (S-owned) above 600 s if you need them; the coverage gate drops them.
->
-> **Secondary, and independent of all of the above** (settled item 6): the structural departure still wants a
-> **size-resolved** comparison of *who dies* — the arm's mortality size/age distribution against FIT's — not
-> another count score. That remains the first thing on this line a count statistic provably cannot see.
+> * **`S0`/`NP` DO open a +26…+39 % mid-leg count gap** (0186 §3's trajectory) — they are the arms without
+>   the trait operator. If a count-side question ever reopens, it is about those two, not `S0h`/`S1`.
 >
 > ### C. FLAG STATE
 >
@@ -362,7 +386,7 @@ rather than a request to flip now.
 > | `trait_mortality` | **ON since ADR 0183** | guardrail 4 is served by the OPT-OUT `trait_mortality = false`, which every control arm must now pass EXPLICITLY. Blast radius was 5 assertions of 275 605. ⚠ **Six probe scripts take the default by omission** (`kcap_merge_confound`, `biome_slow_oracle`, `wscal_leafon`, `biome_resilience`, `measure_hainich_gate_bands`, `diagnose_count_recursion_anchor`) — every number they have already published is a PRE-0183 uniform-thinning number. |
 > | `roster_n_prev` | off | **keep it off** — measured NEGATIVE on the deliverable's axis (0181 §7.4). Note this is the `slow.jl` flag; it is a *different* thing from the rung-2 harness's `--n-prev`, which is what 0184 is about. |
 > | `recruit_establishment` | off | off for a GOOD measured reason (0172): a +2–8 % standing wood-density LEVEL offset at 5 cells. Do NOT flip it to satisfy the steer. |
-> | `anchor` (ADR 0103) | off, **and structurally absent from rung 2** | **THIS IS NOW SECTION B'S NEXT ACTION**, promoted by 0185's conditioning-limited verdict from a candidate to the named work. Still reachable only through `FluxDrivenSlowEmulator`, which the rung-2 harness never constructs — so using it there is a HARNESS CHANGE, not a flag flip. Pass criterion pre-registered in 0185 §7.5 (`ASK_gain` ≥ 4 **and** agb departure < +40 %, scored together). |
+> | `anchor` (ADR 0103) | off, and **deliberately NOT wired into rung 2 (0186)** | ⛔ **0185 §7.2's promotion of this to the next action is WITHDRAWN on measured grounds** — do not re-open it. In this harness the anchor reduces to `ρ_eff = (target/n_prev)^(1−a)·(target/n_emit)^a` (`patch_area` cancels; **identically inert in `roster` mode**, proven over 916 484 rows), and its only lever is the COUNT — which is already on FIT's number (`S1` −2.9 %) while the mass is not (+90.6 %), for all 81 years. Best-case surviving agb departure **+75.6…+415.1 %** against a **+40 %** criterion ⇒ unreachable. **Still ON in the COUPLED path's to-do**: 0103's own flip criterion (§6, line M's five-cell biome arm, `anchor = 0.5`) is untouched by 0186 and still unrun — there the 1.409× over-density genuinely IS a count-level error. |
 > | `trait_drought_mortality` (M's, in `fast.jl`) | off | **an integration point to RAISE, not a flag to flip** (0183 §5.3). Criterion pre-registered in 0183 §5.4. |
 > | `per_pft_params` (M's) | off | M's call |
 >
@@ -380,6 +404,24 @@ rather than a request to flip now.
 >
 > ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
 >
+> * ⚠ **NEW (0186) — A CRITERION IS WRITTEN AGAINST A DEFINITION, SO IMPORT THAT DEFINITION.** The first
+>   version of the reachability panel re-implemented the departure basis: a 20-yr window, a mean over cells,
+>   a mean of per-patch RATIOS. Each is defensible alone; together they put `S1`'s ssp370 count departure at
+>   **+37 %** where 0185 §5's own basis (single terminal year, patch-mean, median over cells, its coverage
+>   gate) gives **−2.9 %** — a **sign flip**, on the same data, on the quantity the whole decision turned on.
+>   Per-patch counts are 4–11 stems, so patches where FIT holds one or two dominate an unweighted mean of
+>   ratios. **Reproducing the published table is the gate — do it before adding a column to it.** The fix was
+>   to `import` the scorer and reuse its `Leg`/readers/`median`, the same ADR-0023 rule that makes the
+>   harness call `flux_feature_vector` instead of copying it.
+> * ⚠ **NEW (0186) — DERIVE WHAT AN INSTRUMENT'S LEVER IS BEFORE BUILDING THE EXPERIMENT AROUND IT.** The
+>   pre-registration in 0185 §7.5 was sound and gated the *reading* — but nothing checked that the proposed
+>   change could **reach the gated quantity at all**. One free table (count vs mass departure) retired a
+>   264-job matrix. **Add this clause to every pre-registration: state the mechanism by which the change
+>   moves the blessed statistic, and measure that mechanism's current size first.**
+> * ⚠ **NEW (0186) — KILL THE RESCUE HYPOTHESIS IN TIME, NOT AT THE TERMINAL YEAR.** "The gap was large
+>   earlier and has since closed" would have inverted the verdict, and a terminal-year table cannot see it.
+>   The per-year trajectory is four lines of extra code and is the difference between a finding and an
+>   assumption.
 > * ⚠ **NEW (0185) — A MODE KNOB MUST REACH EVERY SCRIPT IN THE CHAIN, INCLUDING THE REFERENCE ARM'S.**
 >   `REC` has no runtime log, so its `target` column is replayed OFFLINE. Leaving that replay in `roster`
 >   while the arms run `predict` puts the reference on a tethered axis and the arms on a free one — a

@@ -124,6 +124,24 @@ have already printed convincingly. A partial run that dies below the fold looks 
    FIT's stand-shift direction at 0.910, as well as `S1`. Such a statistic can clear or convict a
    hypothesis; it cannot rank arms. Score `NP` on the same statistic and print its number in the same table.
    For the same reason a rung-2 result can never indict the Julia **fast core**, which never runs here.
+5b. **⚠ THE COUNT IS ON TARGET WHILE THE STAND IS WRONG — A COUNT STATISTIC CANNOT SEE THIS FAILURE
+   (ADR 0186).** On the ssp370 leg at the FIT-gain cells the trait arms hold **−2.9 % / −13.6 %** the stems
+   FIT holds and **+90.6 % / +89.0 %** the biomass, with per-stem mass +63…+246 %, `hmean` +12…+38 % and
+   `age_mean` +53…+160 %; `S1`'s count stays within a few per cent of FIT's for **all 81 years** while its
+   biomass climbs monotonically. So the emulator kills the right NUMBER of trees and the WRONG trees. Two
+   standing consequences: **never read "the count matches" as "the demography matches"**, and **a
+   count-side instrument (the level anchor, a retrained count target) has no lever on this** — check the
+   count departure BEFORE proposing one, it costs seconds
+   (`scripts/diagnose_rung2_anchor_preflight.py`).
+
+5c. **⚠ A CRITERION IS WRITTEN AGAINST A DEFINITION — IMPORT THAT DEFINITION, DO NOT RE-IMPLEMENT IT
+   (ADR 0186).** ADR 0185 §5's departure table is a patch-mean at the SINGLE terminal year, seeds averaged,
+   then the MEDIAN over cells, behind the scorer's coverage gate. A re-implementation using a 20-yr window,
+   a mean over cells and a **mean of per-patch ratios** put `S1`'s ssp370 count departure at **+37 %**
+   where the real basis gives **−2.9 %** — a sign flip, on the same data, on the quantity the decision
+   turned on. Per-patch counts are 4–11 stems, so patches where FIT holds one or two dominate an unweighted
+   mean of ratios. **Reproducing the published table is the gate: do it before adding a column to it.**
+
 6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
    not in a level.
@@ -141,6 +159,7 @@ have already printed convincingly. A partial run that dies below the fold looks 
 | `scripts/diagnose_rung2_response.py` | the per-cell count response by arm/scenario/seed |
 | `scripts/diagnose_rung2_map_on_rec_stand.jl` | the count model run over **FIT's OWN** roster, i.e. the `target` column `REC` has no log for. `include`s the harness for `Tree`/`pools_of`/`flux_drivers` so the row reaches the SHIPPED `flux_feature_vector` + `DRF.predict` (ADR 0023); ~15 s for all 30 REC dumps. **Its gate is the pattern to copy: at year 2000 no arm has killed anything yet, so its row must equal the live `s_arm_log.txt` to the last digit — verified bit-identical.** |
 | `scripts/diagnose_rung2_map_target_response.py` | ASK (the count the map asked for) vs GOT (the count the stand reached) vs FIT, per cell and arm, off the arm logs; the ρ/tether panel, the stand-LEVEL departure table, the drift and frozen-boundary controls (ADR 0184). Takes `NPREV`; prints the pre-registered SEPARABILITY GATE before any response statistic and suppresses the verdict for a tethered arm (ADR 0185). |
+| `scripts/diagnose_rung2_anchor_preflight.py` | **six panels, ~7 s, no model run** — what a proposed count-side change would do, off the arm logs alone (ADR 0186). Panel 1 the `roster`-mode inertness proof, 2 the `target/n_emit` level gap, 3 per-year push + clamp incidence + time constant, **4 the count-vs-mass departure decomposition, 5 its per-year trajectory, 6 the per-stem split** — 4–6 **import** `diagnose_rung2_map_target_response.py`'s `Leg`/readers/coverage gate, so they are on the criterion's own basis by construction. Copy this shape before proposing any rung-2 experiment. |
 | `scripts/diagnose_rung2_armc.py` | age–wooddens gradients and selection differentials (shared with line M's arm C; **each arm family has its own recorded baseline and they are NOT interchangeable**) |
 | `scripts/rung2_s_demography_harness.jl` | **the row assembly.** It reaches `flux_feature_vector` and `DRF.predict` as private names off the package rather than copying them — do the same, or the copy becomes the thing being measured (ADR 0023). |
 

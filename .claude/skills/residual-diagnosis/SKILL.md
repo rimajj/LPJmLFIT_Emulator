@@ -1754,3 +1754,65 @@ known faithfulness gain for a measured fidelity loss with no account of what pay
 say in the ADR that it exists as the **faithful control** for the compensating-error search. That is a
 different disposition from "deferred", and writing it down as such is what stops the next session either
 flipping it or deleting it.
+
+---
+
+## §13 — BEFORE PRE-REGISTERING A FIX, DERIVE WHICH QUANTITY IT CAN MOVE AND MEASURE THAT QUANTITY'S CURRENT SIZE (line S, 2026-08-13, ADR 0186)
+
+A pre-registration usually gates the **reading**: threshold, blessed statistic, the null's derived value.
+That is necessary and it is not sufficient. ADR 0185 §7.5 did all of it correctly and still pre-registered a
+264-job experiment that **could not** move its own gated quantity — because nothing checked that the
+proposed instrument had a lever on it.
+
+**The missing clause, and add it to every pre-registration:** *state the mechanism by which the change moves
+the blessed statistic, then measure that mechanism's CURRENT size before committing the jobs.*
+
+The worked case. The proposed fix was a level anchor whose only lever is the stem **count**; the gated
+quantity was the stand's **biomass** departure (< +40 %). One free table off logs already on disk:
+
+| arm | count departure | biomass departure | best-case surviving biomass departure |
+|---|---|---|---|
+| `S1`  | **−2.9 %**  | +90.6 % | **+117.2 %** |
+| `S0h` | **−13.6 %** | +89.0 % | **+75.6 %** |
+
+The count was already on the reference's number — and had been for all 81 years — so the instrument had
+nothing to pull, and the *most generous* bound available (perfect anchoring, biomass following count
+proportionally) still missed the criterion by 2–5×. For `S1` the bound is **worse than doing nothing**,
+because the lever pushed the count further below the reference while the mass sat far above it. Cost of the
+check: ~7 s. Cost of skipping it: 264 jobs and a verdict that could only fail on its second half.
+
+Three transferable pieces:
+
+* **Decompose the gated quantity into the factor your instrument owns and the factor it does not.** Here
+  `(1+dBiomass) = (1+dCount)·(1+dPerStem)`, and the instrument owns only the first. Print the second beside
+  it. Corroborate it with independent columns that must move the same way (height, age did) — if they do
+  not, the decomposition is arithmetic, not physics.
+* **Compute the instrument's BEST CASE, not its expected case.** Grant it perfect action and the most
+  favourable coupling you can defend. If the best case misses, no run is needed and the result is stronger
+  than any run would be. Say which assumption made it "best case".
+* **Kill the rescue hypothesis IN TIME, not at the terminal year.** *"The gap was large earlier and has
+  since closed, so acting throughout would have helped"* would have inverted this verdict, and a
+  terminal-year table cannot see it. The per-year trajectory settled it in four lines of code: the count sat
+  within a few per cent of the reference in every decade while the mass diverged monotonically.
+
+## §14 — A CRITERION IS WRITTEN AGAINST A *DEFINITION*: IMPORT IT, AND REPRODUCE THE PUBLISHED TABLE BEFORE ADDING A COLUMN TO IT (line S, 2026-08-13, ADR 0186 §8)
+
+When you extend an existing result with a new column, the new column is only meaningful on the **same basis**
+as the published ones — and a re-implementation that looks equivalent usually is not.
+
+Measured: a panel re-derived a departure statistic as a 20-year terminal window, a mean over cells, and a
+**mean of per-patch ratios**. Each choice is defensible alone. The published basis was a **single terminal
+year, a patch-mean, then a median over cells**, behind a coverage gate. Same data, same quantity:
+
+    re-implementation  +37 %          published basis  −2.9 %
+
+A **sign flip**, on the quantity the entire decision turned on. The dominant term was mean-of-ratios over
+small denominators — per-patch counts of 4–11 stems, so patches where the reference held one or two stems
+dominated an unweighted mean. (Same family as ADR 0127's `keep` ratio and ADR 0060's reference basis.)
+
+**The rule:** `import` the producing script and reuse its parsing, its aggregation class and its coverage
+gate rather than re-implementing them — the ADR-0023 rule that makes a harness call the shipped
+`flux_feature_vector` instead of copying it, applied to *scorers*. Then **reproduce the published table
+exactly** and show that you did; that reproduction is the gate on your new column, and it belongs before the
+column, not after. If the producing script is not importable, make it importable (a `if __name__ ==
+"__main__"` guard is usually the whole fix) — that is cheaper than the class of error it prevents.
