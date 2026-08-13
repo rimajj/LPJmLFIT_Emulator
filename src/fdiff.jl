@@ -2717,9 +2717,20 @@ end
 Annual allocation/turnover parameters for natural PFT `id`. The C stores turnover as a **residence time
 in years** and F as a **rate per year**, so the rates here are `1/turnover.{leaf,sapwood,root}`: leaf/root
 residence is 1 yr (ids 2, 3, 5, 6 and every grass leaf), **2 yr** (id 0), or **4 yr** (ids 1, 4), and
-sapwood residence is 25 yr for every tree except the tropical evergreen's **30**. Every tree PFT in this
-configuration is `summergreen` under `new_phenology`, so `is_deciduous` stays `true` for all (the builder
-asserts it) and `turnover_leaf` is consumed only on the grass path. Grass has no woody pool, so its
+sapwood residence is 25 yr for every tree except the tropical evergreen's **30**.
+
+`is_deciduous` stays `true` for all, and `turnover_leaf` is consumed only on the grass path. ⚠ The
+reason is NOT that the PFTs are declared `summergreen` (they are, all seven — but under
+`new_phenology:true` that key is never read: `daily_natural.c:123` dispatches to `phenology_gsi`, so
+`phenology_tree.c`'s phenology switch is dead code). The C's real gate is the runtime latch
+`tree->isphen`, and its non-latched branch drips at `1/max(pft->longevity, 1.05)`
+(`turnover_daily_tree.c:38`) — **clamped to the latched branch's own 0.9524/yr**. So the two branches
+coincide for any stem with leaf longevity ≤ 1.05 yr, which measured is 99.9 % of `boreal_siberia` and
+99.2 % of `semiarid_sahel` stems, but only 33 % of `tropical_amazon` and 12 % of
+`mediterranean_iberia` (ADR 0134). ⚠ And `pft->longevity` is a PER-INDIVIDUAL trait drawn from the
+stem's own SLA (`new_tree.c:215`, emitted as the `ind` column `Longevity`), **not** the
+`turnover_leaf` residence stored here — wiring this field into a non-latched branch would retain 0.75
+where the truth is 0.44. Grass has no woody pool, so its
 `turnover_sapwood` keeps the default. `pft_allocparams(3) == tebs_allocparams()` and
 `pft_allocparams(8) == grass_allocparams()`.
 """

@@ -8,6 +8,41 @@
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239). **Next free number: 0170.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0134) — **FYI, NOT A REQUEST: the `ind` column `Longevity` is a FIFTH sampled recruit-trait axis, drawn from the stem's own SLA. Nothing is broken and nothing is owed**
+
+> Informational. Full record: `docs/decisions/0134-*.md`. **No action needed** — F does not consume this
+> quantity today, so there is no interface change and no arm of yours is affected. Filed because ADR 0117 §5
+> recorded your recruit interface as complete on four axes, and this is a real fifth axis that the audit in
+> that ADR would have flagged had it been in scope.
+
+**1. What it is.** `new_tree.c:215`, inside the `config->individual` branch, sets
+`pft->longevity = corr_corridor(pft->sla, longevity.{interc,slope,sigma}, cell->seed)` — leaf longevity is
+**drawn from the individual's own SLA** through a noisy regression corridor (the leaf-economics spectrum),
+which is why `par/pft_lpjmlfit.js` declares `longevity` as `{mean, interc, slope, sigma}` rather than a
+scalar. It is emitted per stem as the `ind` column **`Longevity`**.
+
+**2. It passes your own ADR 0117 variability audit — it is sampled, not constant.** 116–668 distinct values
+per (cell, PFT) over the five coupled biome cells, spreads 1.12–6.80×, and the corridor is visible as
+`r(SLA, Longevity)` = **−0.66 to −0.98** formed WITHIN (cell, PFT) at 12 of 13 groups (the 13th is 42 stems).
+So it is the opposite of `k_root`: not a degenerate column, and therefore not an identity you can leave to
+the C for free *if it ever becomes consumed*.
+
+**3. Why it is nevertheless NOT on your plate today.** F's tree path never reads a leaf-turnover rate — its
+`AllocParams.is_deciduous` is uniformly `true`, and ADR 0134 establishes that this is FAITHFUL for most stems
+because the C's own non-latched branch is clamped at `1/max(longevity, 1.05)` = the latched rate. So
+`Longevity` currently affects nothing on either side of the S→M contract. **The only scenario in which it
+becomes yours** is if line M later builds the opt-in `isphen` latch that ADR 0134 leaves unbuilt (it can only
+matter at `tropical_amazon` and `mediterranean_iberia`, and its incidence there is unmeasured): the drip
+branch would need each stem's own `Longevity`, which for a *recruit* would have to come from the copula
+rather than from the C. **M will raise that as an integration point if and when it is built — do not
+pre-build it.**
+
+**4. One trap worth having in your head anyway, because it is the same shape as ADR 0047's.**
+`longevity.mean` is **not** the realized central value: the par file says 2.0 yr for all six non-tropical
+trees, while the realized median at `boreal_siberia` is **0.286** (id 6) and **0.305** (id 5) — 7× lower —
+because the corridor maps the realized SLA distribution, not the `mean` field. If you ever read a
+`{mean, ...}` par-file field as a distribution centre, check it against the emitted column first.
+
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0132) — **`TreePools` gained a 14th field and four `slow.jl` sites would silently DROP it. Nothing is broken today; the two features are incompatible until you carry it**
 
 > Same shape as the ADR 0110 trait-drop your four rebuild sites were already fixed for once. Full record:

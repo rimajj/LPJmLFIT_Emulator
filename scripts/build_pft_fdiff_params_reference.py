@@ -66,6 +66,13 @@ NATURAL_IDS = tuple(range(10))
 #: fails loudly rather than silently reading a newly-shadowed parameter.
 EXPECTED_DUPLICATE_KEYS = {"aphen_min", "aphen_max"}
 
+#: The C's individual-mode leaf-recycle divisor (`turnover_tree.c:102`,
+#: `turnover_daily_tree.c:52`) and F's `AllocParams.deciduous_leaf_div`. It is ALSO the clamp in the
+#: non-latched branch's rate `1/max(pft->longevity, 1.05)` (`turnover_daily_tree.c:38`), which is
+#: what makes F's uniform `is_deciduous = true` faithful for every stem whose leaf longevity is at
+#: or below it (ADR 0134).
+DECIDUOUS_LEAF_DIV = 1.05
+
 COLS = [
     "pft_id", "name", "type", "path", "leaftype", "phenology",
     # ── autotrophic respiration (npp_tree.c:51; F: RespParams) ──
@@ -161,11 +168,36 @@ def build_rows() -> list[dict]:
         ("allom2", 28.749), ("allom3", 0.5633), ("kpr", 1.2922), ("crownarea_max", 225.0),
     ):
         assert b[key] == val, f"beech (id 3) {key} = {b[key]!r}, F's shipped default assumes {val!r}"
-    # every tree PFT in this configuration is `summergreen` under `new_phenology` ⇒ F's
-    # `AllocParams.is_deciduous = true` is uniform and needs no per-PFT branch.
-    assert all(by_id[i]["phenology"] == "summergreen" for i in range(7)), (
-        "a tree PFT is no longer summergreen — `AllocParams.is_deciduous` becomes per-PFT"
-    )
+    # F's `AllocParams.is_deciduous = true` is uniform and needs no per-PFT branch. ⚠ The assertion
+    # that used to live here checked `phenology == "summergreen"` for ids 0-6. It was INERT (ADR
+    # 0134): under `new_phenology:true` the `phenology` key is never read for leaf turnover
+    # (`daily_natural.c:123` dispatches to `phenology_gsi`, so `phenology_tree.c`'s switch is dead
+    # code), and all seven trees declare `summergreen` anyway — so it could only fail on an edit
+    # that changes nothing, while staying green through the edit that matters.
+    #
+    # What actually makes the uniform default safe is the CLAMP in the C's own non-latched branch:
+    # `turnover_daily_tree.c:38` drips at `1/max(pft->longevity, 1.05)`, capped at the latched
+    # branch's own 0.9524/yr, so the two branches COINCIDE for any stem whose leaf longevity is at
+    # or below 1.05 yr. Assert the clamp constant and the per-PFT `longevity.mean` that positions
+    # the corridor, i.e. the quantities a real change would move. (`longevity` is per-INDIVIDUAL,
+    # drawn from the stem's own SLA at `new_tree.c:215`; the `mean` is only the corridor's centre.)
+    # Read straight off the parse; deliberately NOT added as a CSV column, because moving the
+    # committed 43-column reference is an integration point and this is a self-check, not a datum.
+    for i in range(7):
+        lg = pft[i]["longevity"]
+        assert isinstance(lg, dict) and {"mean", "interc", "slope", "sigma"} <= set(lg), (
+            f"tree PFT {i} `longevity` is {lg!r}, not the {{mean,interc,slope,sigma}} corridor "
+            "form — "
+            "if it became a scalar the C stopped sampling leaf longevity per individual "
+            "(new_tree.c:215) and ADR 0134's whole argument needs re-deriving"
+        )
+        lm = float(lg["mean"])
+        assert lm > DECIDUOUS_LEAF_DIV, (
+            f"tree PFT {i} `longevity.mean` = {lm!r} is at or below the "
+            f"{DECIDUOUS_LEAF_DIV} clamp; "
+            "the leaf-longevity corridor has moved and ADR 0134's per-cell CANNOT BIND / CAN BIND "
+            "verdicts must be re-measured (scripts/diagnose_leaf_turnover_regime.py)"
+        )
     return rows
 
 

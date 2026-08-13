@@ -359,7 +359,115 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 18) — **THE TREE DEMAND-GATE IS NOW THE SHIPPED DEFAULT. IT
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 19) — **THE LEAF-RECYCLE SUSPECT IS REFUTED AT `boreal_siberia`
+### — MECHANICALLY, NOT STATISTICALLY — AND RELOCATED TO THE TWO EVERGREEN CELLS. NO BEHAVIOUR CHANGE
+### (ADR 0134)**
+
+**Start here.** The previous handoff's step 1 — *"`boreal_siberia`'s ALLOCATION, the one cell where it
+genuinely binds — and the concrete suspect is a per-PFT flag F does not have (`AllocParams.is_deciduous`)"*
+— is **closed as REFUTED**. Do not re-open it, and do not spend a probe on its incidence: the reason it is
+dead is an identity, not a measurement.
+
+**1. THE PREMISE FAILED THREE WAYS.** It assumed the C's full-leaf recycle is gated on a PFT phenology
+TYPE. (a) `lpjmlfit.js:53` sets `"new_phenology": true` ⇒ `daily_natural.c:123` calls `phenology_gsi`, so
+the SUMMERGREEN/RAINGREEN/EVERGREEN switch in `phenology_tree.c` — the ONLY place that key selects a
+leaf-turnover behaviour — is **dead code** (guardrail 5, on a suspect already written into two handoffs).
+(b) All seven tree PFTs declare `"phenology": "summergreen"` anyway, id 0 the *tropical broadleaved
+evergreen* included (`//"raingreen"` commented out) ⇒ a per-PFT flag from that key would have been a
+uniform `true` = today's code. The evergreen-ness is in the PFT **names**, not the parameters. (c) The live
+gate is the runtime latch `tree->isphen` (`turnover_daily_tree.c:42-76`), phenology-type-BLIND by its own
+source comment — *"now every PFT can shed leaves (due to dryness, heat, cold etc.)"*.
+
+**2. THE FINDING — THE LATCH'S TWO BRANCHES ARE THE SAME NUMBER FOR MOST STEMS.** The non-latched branch
+drips at `turnover_leaf = 1/max(pft->longevity, 1.05)` (`:38`), and the `max` **clamps that rate to
+0.9524/yr — exactly the latched branch's `leaf_c/1.05`**. So for any stem with leaf longevity ≤ 1.05 yr the
+two coincide and F's unconditional recycle is exactly right *however often the latch fires*. Measured per
+stem off the C's own `ind` table (23 375 tree stem-years, 5 cells, seconds, no simulation —
+`scripts/diagnose_leaf_turnover_regime.py`), as the stem-weighted leaf fraction F over-sheds:
+
+| cell | frac. stems `Longevity > 1.05` | excess shed | verdict |
+|---|---|---|---|
+| `boreal_siberia` (82 % larch, 18 % id 5) | **0.000 / 0.000** | **0.0031** | **CANNOT BIND** |
+| `semiarid_sahel` (100 % id 0) | 0.008 | 0.0018 | **CANNOT BIND** |
+| `temperate_hainich` (96 % beech) | 0.013 | 0.0142 | marginal |
+| `tropical_amazon` (100 % id 0) | 0.671 | **0.1240** | CAN BIND |
+| `mediterranean_iberia` (45 % id 1, 53 % id 2) | 0.905 / 0.853 | **0.2475** | CAN BIND |
+
+0.3 % at the cell two handoffs pointed at — and 0.3 % rather than 0 only because of 42 stem-years of id 4
+out of 5 342.
+
+**3. RELOCATED to `mediterranean_iberia` (24.8 %) and `tropical_amazon` (12.4 %)** — the cell whose
+assimilate ratio is 2.7–3.1× (excluded from ADR 0131/0133's headline mean for exactly that reason) and the
+cell whose tree carbon balance F still gets **negative**. Both ~100 % evergreen-*named* PFTs with genuinely
+long leaves. Nothing on the F queue currently aims there.
+
+**4. ⚠ PUBLISHED WITH NO DEFAULT, NO PARAMETER, NO RECOMMENDATION — deliberately** (ADR 0105's rule). Those
+two numbers are what F over-sheds *in a year the latch does not fire*, and **the latch's incidence at those
+cells is NOT measured**. They are an UPPER BOUND; say so if you quote them.
+
+**5. NEW DURABLE FACT (in `CLAUDE.md` §3) — leaf longevity is a PER-INDIVIDUAL trait drawn from the stem's
+own SLA**, `new_tree.c:215` `corr_corridor(pft->sla, longevity.{interc,slope,sigma})`, emitted as the `ind`
+column **`Longevity`**. Genuinely sampled (116–668 distinct values per cell-PFT, 1.12–6.80× spreads,
+`r(SLA,Longevity)` −0.66 to −0.98 within cell-PFT at 12 of 13 groups). **Two traps:** `longevity.mean` is
+NOT the realized central value (par file 2.0 yr; realized boreal median **0.286**, 7× lower — ADR 0047's
+shape), and **F's `AllocParams.turnover_leaf` is a DIFFERENT quantity** the C never consults for trees in
+individual mode. No active defect (F's tree path never reads it), but wiring it into a drip branch would
+retain 0.75 of the leaf pool where the truth is **0.4389**.
+
+**6. TWO CLAIMS CORRECTED IN PLACE, both right conclusion / wrong reason.** The `pft_allocparams` docstring
+justified the uniform default by the `summergreen` declaration (the clamp is the real reason); and
+`build_pft_fdiff_params_reference.py` asserted `phenology == "summergreen"` for ids 0–6 — an assertion on an
+**inert** key, so it could only fail on an edit that changes nothing while staying green through the edit
+that matters (`residual-diagnosis` §3e on our own gate). Now asserts the `1.05` clamp and that `longevity`
+is still the corridor form above it. The committed 43-column `M_pft_fdiff_params.csv` is **untouched** and
+still reproduces byte-for-byte under `CHECK=1`.
+
+**7. GATES.** Only `src/` edit is a docstring ⇒ no behaviour change. Docs built clean on a compute node
+(exit 0, all five mermaid fences rendering, `logs/M-docs0134b.1773032.out`) — required because the diff
+touches `src/**` and `docs` never runs on a line branch. Runic clean on `src/fdiff.jl`. The new Python
+diagnostic is at 0 findings under the repo's real rule set.
+
+**8. METHOD LESSON (worth carrying).** A suspect can be killed by an **algebraic identity in the
+reference** rather than by measuring the model: two branches that differ in the source can coincide over
+most of the reference's *realized* input range because of a clamp. **Before building an operator to
+reproduce a reference's branch, evaluate BOTH of the reference's branches on its own realized inputs and
+check they actually differ.** One parquet scan retired an item that had survived two handoffs and would
+otherwise have bought a state machine, a new per-stem field and an incidence probe.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **THE PHOTOSYNTHESIS HALF OF THE ASSIMILATE IS THE HEAD OF THE F QUEUE AND STILL UNSCOPED** —
+   unchanged from the last handoff and now the only item on it. At Hainich F over-grows by 57 % with
+   77 % of that on the assimilate (ADR 0127 §4); ADR 0130 split the assimilate ≈43-47 % photosynthesis /
+   ≈57-53 % respiration. The respiration half has two priced leads landed (per-PFT `respcoeff`, and the
+   demand gate at 17.5 %); **nothing aims at the photosynthesis half.** ADR 0130's +10.1 % GPP excess at
+   Hainich is the concrete target. Scope it before opening anything else.
+2. **`boreal_siberia`'s allocation gap is still open and its ONLY remaining named suspect is the
+   `reprod_cost` path.** ADR 0132 §5 retired the below-ground wood port there (it closed 97 % of a bar its
+   own measurement said was 89 % something else); ADR 0134 retires the leaf recycle. **Do not re-propose
+   either at that cell.**
+3. **IF you want to close the relocated gap at the two evergreen cells, the measurement is named and
+   cheap:** a latch-incidence probe. `per_pft_phenology(pft_ids, forcings; water_avails = <the rollout's
+   own lag-1 `wscal`>)` reproduces exactly the daily leaf-display trajectory F already runs, so the latch
+   is a pure post-process on it — report the fraction of (patch, year) with `isphen` TRUE at day 365 per
+   cell × PFT, **with the activation count printed beside it** (`residual-diagnosis` trap 3: a zero count
+   bounds nothing). High incidence ⇒ the gap shrinks toward zero and the question closes. Low ⇒ the fix is
+   a **state machine, not a parameter**: an opt-in `isphen` latch on F's own `phen`, with the drip branch
+   reading each stem's **`Longevity`** (new per-stem field, from the `ind` column) and **NOT**
+   `AllocParams.turnover_leaf`. ⚠ Per-PFT `aphen_min` trap: larch (id 6) declares it **twice** in
+   `par/pft_lpjmlfit.js` (`:1001-1004`, macro default 60 then an override **10**) and json-c takes the
+   last ⇒ larch's effective threshold is 10 (ADR 0047).
+4. **`bg_growth`'s DEFAULT IS STILL BLOCKED ON LINE S** — unchanged, criterion already pre-registered:
+   flip once S carries `heartwood_bg_c` through `slow.jl`'s four `TreePools` rebuild sites (recruit mix
+   `:161`, `_with_nind` `:249`, recruit build `:479`, K-cap merge `:670`) **and** the full suite's failure
+   list is enumerated. Raised in `lines/S/STATE.md`; nothing is broken today because the flag is off.
+5. **THE DIFFERENTIATED PATH RUNS THE TREE DEMAND GATE BY DEFAULT at the SOFT sharpness** (verified in
+   session 18, unchanged): `rollout_canopy_years_gpp` reads `p.water` with no reconstruction, so the
+   trainer inherits `tree_demand_gate = true` at `βgpd_gate = 2e4`. Any trainer arm that means "the
+   pre-0133 path" must say so explicitly. The trainer still builds its pools with the pre-`sapwood_bg`
+   arity, so the below-ground sink is absent from the differentiated path.
+
+### 0-PREV-18. ✅ DONE 2026-08-13 (session 18) — **THE TREE DEMAND-GATE IS NOW THE SHIPPED DEFAULT. IT
 ### MEETS THE CRITERION THAT WAS WRITTEN DOWN BEFORE IT EXISTED, TAKES 21 % OFF THE ASSIMILATE ERROR —
 ### AND IS PAID FOR IN THE PHOTOSYNTHESIS CHANNEL AT ONE CELL (ADR 0133)**
 
