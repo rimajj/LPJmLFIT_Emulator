@@ -415,6 +415,18 @@ without daily physics.
 ### 0-NEWEST. ✅ DONE 2026-08-13 (session 24) — **THE `gp_stand_leafon_basis` DEFAULT FLIP IS LANDED
 ### (ADR 0137). LINE S SAID GO; ALL 23 ASSERTIONS DISCHARGED; ONE OF THEM TURNED OUT TO BE A SCIENCE FINDING**
 
+**MERGED to `main`** as `ba17f3e4` (merge commit `f1b4705e`; changelog collation `6894c629`). Green on
+`main`: `docs`, `format`, `test (lts)`, `test (1)`, `test (macOS, lts)` and `changelog` — `test (pre)` is
+the known `continue-on-error` prerelease job (it fails at LOAD time on a Julia-prerelease
+`ScopedValue`/`setindex!` API change; checked on this sha, nothing to do with this diff). **`docs` mattered
+here** because the diff touches `src/**` and that gate never runs on a line branch; it was built locally
+first (`logs/M-docs0137.1788060.out`, exit 0, 5 mermaid fences). CI-faithful suite **275 625 pass / 0 fail**
+(`logs/M-flip0137b.1788059.out`) — the previous 275 623 plus exactly the two assertions this session added.
+⚠ The rebase before merging pulled in line S's ADR 0188 work and conflicted in the shared append-only
+`residual-diagnosis` skill for the second session running: resolved by keeping BOTH sides and renumbering
+M's two sections to **§17 / §18**. Verified S's commits touch **no** `src/`, `test/`, `ext/` or
+`Project.toml`, so the suite result carries over and nothing needed re-running.
+
 **Start here.** Line S answered M's request with **GO, option (a)** (`lines/M/STATE.md` inbound of
 2026-08-13, and S's own STATE), so the flip that had been prepared, attempted, reverted and re-scoped over
 three sessions is now the package default. **This is a real physics change: F's tree GPP falls at every
