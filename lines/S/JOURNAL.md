@@ -2640,3 +2640,7 @@ O 0290–0299, integrator 0300–0309 — the same precedent as the tier-3 alloc
 anything when it runs out.
 
 Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
+
+Merged as `df45bd4f` (changelog collation `f5217508`, branch sha `7d907b62`). The diff touches no
+gate-watched path, so no branch CI ran (ADR 0090); on `main` the one gate the changelog fragment does
+trigger, `uncollated fragments`, is green on `f5217508`.
