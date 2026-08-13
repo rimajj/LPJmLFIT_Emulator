@@ -286,6 +286,18 @@ have already printed convincingly. A partial run that dies below the fold looks 
    not in a level. **And it is what makes trap 5j's recruit identity exact.**
 7. **Empty patches emit no `T` record** but are a real all-zero stand row at runtime — enumerate patch-years
    from the `P grow` records, not from the trees.
+   ⚠ **AND THE SAME OMISSION USED TO DEADLOCK THE HARNESS ITSELF (ADR 0240 §6).**
+   `rung2_s_demography_harness.jl::read_request` took `(year, patch)` from the tree rows and left them at
+   their sentinel **−1** when a patch had none, so it wrote its answer to `rsp_…_y-0001_p-01` while the C
+   waited for the real name, marked the request served, and never retried — the C then died 600 s later on
+   **`ERROR043: rung2 apply: no answer for year <Y> patch <P>`**. It cost **53 of 360 legs** of the
+   gross-budget campaign (44 ssp370, 9 historic) and it had been latent for the whole investigation because
+   **no `S*` arm ever empties a patch and the `G*` arms do**. Fixed by reading the identity off the
+   `P grow` record, cross-checking the tree rows against it, and refusing a request whose identity is still
+   negative — a loud failure instead of a 10-minute deadlock. **Two reusable lessons:** the "no answer after
+   600 s" variant of `ERROR043` is NOT necessarily a slow harness (raising `--max-idle` treats a symptom
+   the harness may not have), and **whenever a filename is derived from parsed input, a parse that yields a
+   sentinel is a silent hang, not an error — assert the identity before you build the name.**
 8. `leaf_c`/`sapwood_c`/`heartwood_c` are `tree->ind.*.carbon`, i.e. **per individual** — multiply by `nind`
    exactly where the runtime does.
 

@@ -271,6 +271,14 @@ function read_request(path::AbstractString)
                     "from the roster without it, and proxying it is the ADR-0035 trap. Refusing to serve."
             )
             rzw = parse(Float64, f[pcols["rootzone_w"]])
+            # ⚠ THE (year, patch) IDENTITY COMES FROM THE `P` RECORD, NOT FROM THE TREES — an EMPTY
+            #   patch emits no `T` record at all (skill trap 7) and used to leave both at their
+            #   sentinel −1, so the answer was written to `rsp_..._y-0001_p-01` while the C waited for
+            #   the real name and died 600 s later on ERROR043 `no answer for year <Y> patch <P>`.
+            #   A deadlock, from one absent line. It stayed latent because no `S*` arm ever emptied a
+            #   patch; the ADR-0240 gross-budget arms do (ADR 0240 §6).
+            year = parse(Int, f[pcols["year"]])
+            patch = parse(Int, f[pcols["patch"]])
             continue
         end
         line[1] == 'T' || continue
@@ -284,8 +292,12 @@ function read_request(path::AbstractString)
                 "rendezvous move behind the growth loop (ADR 0123); its roster is a year stale in " *
                 "bm_inc_counter, which INVERTS the trait selection differential. Refusing to serve it."
         )
-        year = gi("year")
-        patch = gi("patch")
+        # The trees carry the same (year, patch); disagreeing with the `P` record would mean two
+        # patch-years in one request file, so check rather than overwrite.
+        (gi("year"), gi("patch")) == (year, patch) || error(
+            "$path: a T record says (year $(gi("year")), patch $(gi("patch"))) but the P record says " *
+                "($year, $patch) — one request file must be exactly one patch-year."
+        )
         p = TM.pft_mort_params(gi("pft_id"))
         h = TM.mortality_hazard(
             p; wooddens = gf("wooddens"), sla = gf("sla"), age = gi("age") - 1,
@@ -305,6 +317,12 @@ function read_request(path::AbstractString)
         )
     end
     isnan(rzw) && error("$path: no `grow`-phase P record, so no rootzone_w")
+    # The response FILENAME is built from these two, so a sentinel value here is a silent deadlock
+    # rather than an error: the C would wait 600 s for a name that is never written. Fail loudly.
+    (year >= 0 && patch >= 0) || error(
+        "$path: parsed (year $year, patch $patch) — the request carries no `grow`-phase identity, and " *
+            "answering it would write the response under a name the C is not waiting for."
+    )
     sort!(trees, by = t -> (t.pft_id, t.treeidx))
     return year, patch, trees, rzw
 end
