@@ -296,6 +296,20 @@ It is not a problem — it is bookkeeping — but say which sha carries the verd
    to `tail`/`grep` — that masks the exit code).
 3. **docs** (only if `docs/src/**`, `docs/make.jl`, `docs/Project.toml`, `src/**` or `Project.toml` changed — NOT for the LaTeX report or `docs/report/figs/**`) — build it **locally**, since `docs` CI does not run on line branches:
    `DOCS_LINKCHECK=false julia --project=docs docs/make.jl`; `gen_diagrams.jl --check` clean. New exports need
+   ⚠ **VIA SLURM, `DOCS_LINKCHECK=false` MUST BE `export`ed — a bare `VAR=x` PREFIX ON THE WRAPPER IS
+   SILENTLY DROPPED** (`[VERIFIED 2026-08-13]`, line M). `scripts/sbatch_julia.sh` forwards only a fixed
+   list of variable names (the same trap CLAUDE.md §9 records for `sbatch_python.sh`), so
+   `DOCS_LINKCHECK=false scripts/sbatch_julia.sh <tag> --project=docs docs/make.jl` reaches the *wrapper*
+   and not the job — the build then runs with linkcheck **ON**, `curl` to an external host fails on the
+   HPC's restricted egress (`ProcessExited(7)`, e.g. `https://arxiv.org/...`), and Documenter aborts with
+   `makedocs encountered an error [:linkcheck] -- terminating build before rendering`. That reads exactly
+   like a real docs failure and is not one. Do:
+   ```bash
+   export DOCS_LINKCHECK=false
+   TIME=00:30:00 scripts/sbatch_julia.sh <line>-docs<NNNN> --project=docs docs/make.jl
+   ```
+   Then confirm the mermaid diagrams actually rendered — a green build is NOT evidence (CLAUDE.md §2):
+   `grep -c 'class="mermaid"' docs/build/diagrams.html` must be > 0 (currently 5).
    docstrings (`checkdocs=:exports`).
 4. **python** (only if `python/` changed) — inside `python/`: `uv run ruff check .` + `uv run ruff format
    --check .` + `uv run pytest`.
