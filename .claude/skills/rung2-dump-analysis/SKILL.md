@@ -80,17 +80,30 @@ median |`target`/`n_emit` − 1|, and require > 0.10 before reading any response
    truncated dump looks exactly like a short one. Require every year of the leg present with all 25 patches,
    **exclude and NAME the failures**, and expect ~12 scoreable cells, not 15. A statistic that needs only
    per-stem rows (a hazard comparison) can still use a truncated dump — say which kind yours is.
-3. **⚠ IN A RUNG-2 ARM THE C GROWS THE STAND.** The emulator only decides who dies. So any stand-derived
+3. **⚠ `ERROR043` IS TWO DIFFERENT FAULTS — READ THE MESSAGE, NOT THE CODE.**
+   * `rung2 apply: duplicate roster key (pft P, tree N)` — the C-side interface fault (line M's
+     `rung2_apply.c:118`, gated on *either* env var so it fires in the pure OBSERVATION path too). Killed 82
+     of 510 `roster` runs; cells 23318/33335 lose both baselines, 46336 its ssp370 one. Mechanism OPEN.
+   * `rung2 apply: no answer for year <Y> patch <P> after 600 s` — a **harness-side idle timeout**, not an
+     interface fault. The harness exits *cleanly* on its `--max-idle` (default 300 s) while the C is still
+     running — its log ends `harness: served <N> patch-years` with N short of the leg — and the C then waits
+     600 s and dies. Cost 6 of 264 `predict` runs, all late ssp370 (2071–2094). Fix by raising `--max-idle`
+     in `scripts/run_rung2_s_arm.sh` above the C's own 600 s wait.
+4. **⚠ THE RUN LOG GLOB IS `lpjml.*.out`, NOT `lpjml_*.out`.** The wrong one matches nothing, so a
+   completion-line count over a healthy matrix reports **0** and looks like total failure. Same family as
+   CLAUDE.md §3's "a 0-byte log is a provenance FATAL, never a physics verdict" — confirm the glob matches
+   *something* before reading a zero as a result.
+5. **⚠ IN A RUNG-2 ARM THE C GROWS THE STAND.** The emulator only decides who dies. So any stand-derived
    statistic is **inherited by every arm, including `NP`** — ADR 0182 measured the do-nothing null tracking
    FIT's stand-shift direction at 0.910, as well as `S1`. Such a statistic can clear or convict a
    hypothesis; it cannot rank arms. Score `NP` on the same statistic and print its number in the same table.
    For the same reason a rung-2 result can never indict the Julia **fast core**, which never runs here.
-4. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
+6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
    not in a level.
-5. **Empty patches emit no `T` record** but are a real all-zero stand row at runtime — enumerate patch-years
+7. **Empty patches emit no `T` record** but are a real all-zero stand row at runtime — enumerate patch-years
    from the `P grow` records, not from the trees.
-6. `leaf_c`/`sapwood_c`/`heartwood_c` are `tree->ind.*.carbon`, i.e. **per individual** — multiply by `nind`
+8. `leaf_c`/`sapwood_c`/`heartwood_c` are `tree->ind.*.carbon`, i.e. **per individual** — multiply by `nind`
    exactly where the runtime does.
 
 ## Existing scorers — extend one before writing a new one
