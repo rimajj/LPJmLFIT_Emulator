@@ -169,7 +169,7 @@ makes F's code MORE faithful and its agreement WORSE is evidence of a **compensa
 the kernel** — i.e. **F's true tree-photosynthesis error is LARGER than the measured `GPP F/C`**. This is
 now the third independent term to say so: ADR 0135 §3 found the same for the `phen`-inside-the-extinction
 placement and the missing `(1−snowcover)` factor, both of which make F absorb LESS PAR while its GPP is
-measured above the C's. Four terms, all pointing the same way, and each of them individually faithful.
+measured above the C's. Three terms, all pointing the same way, and each of them individually faithful.
 **Stop reading `GPP_F/GPP_C` as the size of the kernel error; read it as a lower bound.**
 
 **6. The two flags are NOT additive and must be read jointly.** Both act on the same λ solve. At Hainich
