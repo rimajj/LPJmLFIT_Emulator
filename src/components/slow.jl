@@ -1076,7 +1076,7 @@ end
 """
     FluxDrivenSlowEmulator(fc::FDiffFastCore{T}, forest::DRF.Forest; boundary=Float64[],
                            max_mort=0.3, max_estab=0.3, n_init=1.0, sapl=nothing, seed=1,
-                           age0=0, k_cap=nothing, recruit_copula=nothing, trait_mortality=false)
+                           age0=0, k_cap=nothing, recruit_copula=nothing, trait_mortality=true)
 
 Construct the Tier-1 flux-driven slow emulator for a fast core: the K cohorts are `fc.pools`;
 `recruit_idx` is the shortest living TREE cohort; `sapl` defaults to a small beech sapling (as Tier-0);
@@ -1098,13 +1098,21 @@ the climatological mean; refines ADR 0020's time-constant boundary). Default `no
 constant every year ⇒ byte-identical to the pre-0026 static boundary. If `boundary` is empty and a
 `boundary_series` is given, `boundary` is seeded from its first row. Deterministic given `seed`.
 
-`trait_mortality` (default `false`; ADR 0049) opts the **ρ-thinning** into the ported FIT per-individual
-hazard: instead of scaling every tree cohort's `nind` by one composition-preserving factor, each cohort's
-share of the year's deaths is set by its OWN `TraitMortality.mortality_hazard` (wood density, growth
-efficiency, age), tilted to land exactly on the DRF's count target. `false` leaves every code path,
-committed baseline and AD gate byte-identical — the hazard is not even evaluated. Requires real
-`fc.pft_ids` (`TraitMortality.pft_mort_params` errors rather than defaulting to beech). Read
-[`_trait_hazards!`](@ref) for what is and is NOT fed to the hazard before scoring an arm with it.
+`trait_mortality` (**default `true` since ADR 0183**; introduced opt-in by ADR 0049) puts the **ρ-thinning**
+on the ported FIT per-individual hazard: instead of scaling every tree cohort's `nind` by one
+composition-preserving factor, each cohort's share of the year's deaths is set by its OWN
+`TraitMortality.mortality_hazard` (wood density, growth efficiency, age), tilted to land exactly on the
+DRF's count target. Requires real `fc.pft_ids` (`TraitMortality.pft_mort_params` errors rather than
+defaulting to beech). Read [`_trait_hazards!`](@ref) for what is and is NOT fed to the hazard before
+scoring an arm with it.
+
+Pass `trait_mortality = false` for the pre-0183 composition-preserving thinning; that OPT-OUT is what now
+serves guardrail 4, and every control arm that wants the old operator must pass it EXPLICITLY rather than
+relying on the default. The flip is ADR 0183: the ported hazard reproduces FIT's own to 5e-18 over
+1 568 744 stem-years at 15 cells (recall = precision = 1.0000 on the certain-kill set), and it still
+reaches recall 0.909-0.972 at precision 1.0000 with `water_stress`/`temp_stress` ZEROED — which is exactly
+how this function runs it unless `FDiffFastCore`'s `trait_drought_mortality` is also on. That clears ADR
+0176 §4's pre-registered flip criterion (≥ 12 cells, recall AND precision ≥ 0.8).
 
 `anchor` (default `0`; ADR 0103) opts the demographic update into a **LEVEL ANCHOR**. With `anchor = 0` the
 stand is advanced by the pure AR ratio `target/n_prev`, so it evolves as `D_T = D_0·Πρ_t` and the DRF's
@@ -1161,7 +1169,7 @@ function FluxDrivenSlowEmulator(
         age0::Union{Real, AbstractVector} = 0, k_cap::Union{Nothing, Integer} = nothing,
         recruit_copula::Union{Nothing, RecruitCopula{T}} = nothing,
         boundary_series::Union{Nothing, AbstractVector} = nothing,
-        trait_mortality::Bool = false, anchor = zero(T), patch_area = T(225.0),
+        trait_mortality::Bool = true, anchor = zero(T), patch_area = T(225.0),
         recruit_establishment::Union{Nothing, RecruitEstablishment{T}} = nothing,
         roster_n_prev::Bool = false,
     ) where {T <: AbstractFloat}

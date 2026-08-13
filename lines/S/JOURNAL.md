@@ -2241,3 +2241,84 @@ Next action pre-registered in ADR 0181 §7.3 and the STATE handoff: reconstruct 
 `hmean/hmax/agb/lai/fpc/age_mean` from the dumps already on disk and compare its historic→ssp370 shift
 against FIT's ~0.30 sd. That decides whether the remaining defect is in S or upstream in the fast core.
 Liveness panel first.
+
+---
+
+## Session, 2026-08-13 — the arms' stand DOES warm; the ported hazard is exact; `trait_mortality` flipped ON
+
+Two measurements, both on dumps already on disk, no LPJmL run. Both were pre-registered by earlier
+sessions and both had a decisive answer waiting in data we already had.
+
+**1. Does the emulator's own stand warm? (ADR 0182, the action ADR 0181 §7.3 pre-registered.)** New
+scorer `scripts/diagnose_rung2_stand_warming.py` reconstructs the six `flux_feature_vector` stand
+features per (year, patch) from the `grow`-phase roster records of all 510 rung-2 dumps (~38 GB of text,
+16 workers, one `.npz` cache per dump) and scores each arm's historic→ssp370 leg shift in per-cell sd
+units against FIT's own at the SAME cells — the `REC` observation-path dumps, through the same parser,
+rather than ADR 0181 PANEL 1's 51 432-cell global median.
+
+Basis check first: `REC`'s median per-feature |z| is 0.21–0.37 (median ‖z‖ 0.809), reproducing PANEL 1's
+~0.30 on 12 cells. Liveness clean. 92 of 510 legs excluded and named — all the two known interface
+faults, nothing new.
+
+The pre-registered PASS branch fired for all three real arms: `S0` RATIO 1.426 / COSINE 0.876, `S0h`
+1.652 / 0.758, `S1` 1.634 / 0.907. **The "the stand does not warm" hypothesis is closed.** Splitting the
+cells by how much FIT's own stand moves sharpens it a lot: where FIT's shift is large the arms track its
+direction at **cosine 0.97–0.99**; where FIT barely moves they move anyway (RATIO 1.8–3.1) in unrelated
+directions.
+
+Two things stop this being a credit to the emulator, and I wrote both into the ADR rather than leading
+with the PASS. The persistence null `NP` — which learns nothing — tracks FIT's stand direction at 0.910
+in those same cells, because in a rung-2 arm the **C grows the stand** and every arm inherits its shift.
+And the declared drift control (the same statistic between the two halves of the historic leg, same
+forcing, no excursion) puts the arms at 3.0–3.6× and **`REC` itself at 5.39×**, with the arms' absolute
+decadal mobility in the same ~1.5× proportion as their leg shift ⇒ RATIO > 1 is stand MOBILITY, not a
+stronger warming response. I nearly had a table that read "the arms warm 1.6× more than FIT". They do
+not.
+
+Also corrected the handoff's branch B.3: a rung-2 arm cannot indict "the fast core", which never runs
+there.
+
+**2. Does the ported hazard reproduce FIT's own? (ADR 0183 — and the flip.)** While writing the first
+scorer I checked what `S0h`/`S1` actually feed their certain-kill test, because ADR 0176 §4 rests on it.
+`rung2_s_demography_harness.jl:539` reads `Tree.mort`, and that field's own comment (:206) says
+`TraitMortality.mortality_hazard`. **The arms were already using the port**; only an inline comment at
+:533 calls it "FIT's own hazard". So ADR 0176 §4's premise was wrong and its blocker was pointed at the
+wrong thing.
+
+Measured the criterion anyway with `scripts/diagnose_rung2_ported_certain_set.jl` (reaching the hazard as
+the shipped name — no second copy). Over **1 568 744 stem-years at 15 cells**, both scenarios, 0 stems
+dropped: recall = precision = **1.0000**, mean |Δhazard| = **5e-18**. Handed the C's own per-tree inputs
+the port simply *is* `mortality_tree_ind`.
+
+Then the number that actually decides the flip: the same hazard with `water_stress`/`temp_stress`
+**zeroed**, which is what `slow.jl::_trait_hazards!` feeds it unless M's `trait_drought_mortality` is on.
+Recall **0.9087–0.9718** at precision 1.0000 — passes ≥0.8/≥0.8 with the coupled loop's own degraded
+inputs. The structure is the interesting part: those two hazards carry **29–37 % of the graded hazard
+mass but only 3–9 % of the certain kills**. And precision is 1.0000 for structural reasons (zeroing two
+non-negative additive terms can only lower the total), so recall is the only informative half — worth
+noticing before quoting a precision/recall pair.
+
+⇒ **flipped `trait_mortality` default `false` → `true`**, per ADR 0176 §4's own pre-registration and the
+owner's standing steer that "it is opt-in" is not a sufficient answer. Guardrail 4 is re-served by the
+opt-out. Ran the full CI-faithful suite with only the default changed so the failure list is the measured
+blast radius. Did NOT flip `trait_drought_mortality` — line M's file, and the certain set does not need
+it; the unmeasured residual is trait ORDERING among non-certain stems, with its own criterion
+pre-registered in ADR 0183 §5.4.
+
+Blast radius came in at **5 assertions of 275 605**, all in one testitem and all one cause — that file's
+CONTROL arm was constructed with no kwarg, i.e. it *meant* "the old default", so at the flip it became a
+second copy of the arm. Every assertion whose meaning depended on the two arms differing moved; nothing
+else did (no conservation gate, no AD gate, no committed baseline). Fixed by passing `trait_mortality =
+false` explicitly with a comment saying it must stay explicit, plus a new assertion that reads the flag off
+the CONSTRUCTOR so a silent flip back cannot pass the file. Re-run green: **275 606 pass / 0 fail**.
+
+Also audited the other 75 construction sites (`julia-test` step 5/6). The test files are proven insensitive
+by the green suite; six PROBE scripts take the default by omission and I deliberately did NOT edit them —
+guessing which meant "whatever ships" versus "the uniform thinning" would be inventing intent. Recorded the
+labelling rule instead: every number those six have already published is a pre-0183 uniform-thinning number.
+
+One caveat I went looking for rather than waiting to be bitten by: `_trait_hazards!` looks up per-PFT
+mortality parameters from `fc.pft_ids`, which DEFAULTS to beech for every tree. Nothing errors, but an
+unwired coupled caller now runs the ported hazard on beech's mortality parameters — and those are strongly
+per-PFT. The measurement used the C's own ids, so it does not license the flip for an unwired caller; ADR
+0183 §5b says so.
