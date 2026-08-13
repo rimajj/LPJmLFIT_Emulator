@@ -86,12 +86,18 @@ const NYEAR = Y1 - Y0 + 1
 # The ACTIVE calibrated set with `wscal_leafon` explicit (ADR 0051/0059) — never a bare `FDiffParams()`.
 # Byte-for-byte the same construction as `biome_canopy_growth_probe.jl::mkparams`, which is what makes
 # PART 1's gate against that probe's published panel a real test rather than a coincidence.
+# ⚠ `tree_demand_gate = false` is ALSO explicit, and that is a control-arm fix, not decoration: arms
+# A/Abg/P/Pbg/Abgg/Pbgg are DEFINED as the gate-off ADR 0125/0126/0132 basis, and the package default
+# flipped to `true` (ADR 0133). Taking it by omission would silently make every one of those arms a gated
+# arm, collapse `PARAMS_TG` onto `PARAMS` (⇒ `Ag ≡ A`), and print six committed rows under labels that are
+# no longer true — the exact failure ADR 0075 §4 cost line E a verdict to. An arm that MEANS a specific
+# value passes that value; only an arm that means "whatever ships" takes the default by omission.
 function mkparams()
     p = FDiff.tebs_params(Float64)
     w = p.water
     fns = fieldnames(typeof(w))
     nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
-    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true))...)
+    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true, tree_demand_gate = false))...)
     return FDiffParams{Float64}(p.photo, p.tstress, w2, p.resp, p.allom, p.nlambda, p.ω)
 end
 

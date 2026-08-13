@@ -314,12 +314,24 @@ end
     # gC/m²/day, `M_fdiff_oracle_biomes.csv`) that cell goes from **0.26× to 0.90×**. The pins below are
     # the package DEFAULTS' values — which is the point of the flip: until now this gate pinned a
     # configuration no published F-vs-C comparison ever ran (they all passed `wscal_leafon = true`).
+    # RE-MEASURED AGAIN 2026-08-13 (ADR 0133, jobs 1771770 = the gate-OFF control and 1771772 = the new
+    # default) for the TREE photosynthesis DEMAND-GATE default flip. The control arm (`TREE_GATE=0`)
+    # reproduced the five pins ABOVE to every printed digit in the same harness, which is what makes this a
+    # measured basis change and not a re-record. Deltas default vs opt-out: LE moves ≤ 0.14 % at every cell;
+    # GPP moves −5.0 % at `boreal_siberia` (1.019 → 0.968), −1.3 % at `temperate_hainich`, −0.08 % at
+    # `mediterranean_iberia`, +0.005 % at `tropical_amazon` — and **+1.6 % at `semiarid_sahel`** (1.367 →
+    # 1.388), which is a sign flip worth reading: the gate stops F paying leaf respiration against a
+    # collapsed assimilation on drought days, so that cell's tree carbon balance improves, the canopy grows
+    # instead of shrinking, and the 2-yr mean GPP goes UP even though the gate can only lower GPP within a
+    # day (ADR 0131 §1). Coupled stand cover falls at the two cells where GPP falls (`fpc` 0.3037 → 0.2942
+    # boreal, 0.5689 → 0.5633 Hainich). Minimum pairwise separation stays 0.128 LE / 0.272 GPP, so the pins
+    # remain a fallback detector at the gate's own tolerances.
     sig = Dict(    # name => (mean LE W/m², mean GPP gC/m²/day) — 25-patch ensemble, package defaults
-        "boreal_siberia" => (23.9726, 1.01916),
-        "temperate_hainich" => (40.4677, 3.44906),
-        "mediterranean_iberia" => (46.6253, 5.05669),
-        "semiarid_sahel" => (35.2051, 1.36655),
-        "tropical_amazon" => (116.062, 6.94035),
+        "boreal_siberia" => (23.9437, 0.967978),
+        "temperate_hainich" => (40.4456, 3.40306),
+        "mediterranean_iberia" => (46.6246, 5.05285),
+        "semiarid_sahel" => (35.255, 1.38778),
+        "tropical_amazon" => (116.063, 6.94069),
     )
     for (nm, (le_x, gpp_x)) in sig
         @test isapprox(ann[nm].le, le_x; rtol = 0.02)

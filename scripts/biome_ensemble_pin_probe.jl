@@ -43,6 +43,21 @@ const YEARS = 2            # == the CI gate's horizon
 const TWO_LAYER = haskey(ENV, "TWO_LAYER") ? ENV["TWO_LAYER"] == "1" : nothing
 mkclo(t0) = TWO_LAYER === nothing ? SEBEnergyClosure(; t_soil0 = t0) :
     SEBEnergyClosure(; t_soil0 = t0, params = SEBParams{Float64}(; enable_two_layer = TWO_LAYER))
+# The C's per-tree photosynthesis DEMAND-GATE. Same convention as `TWO_LAYER` above: UNSET = the package
+# default, which since ADR 0133 is `true`, so this knob is now the OPT-OUT arm (`TREE_GATE=0` = the
+# pre-0133 ungated tree path). The point of having it is step 3 of the default-flip procedure: the run that
+# produces the NEW pins must also reproduce the OLD ones, or a "regeneration" is just a re-record of
+# whatever the new code prints. `TREE_GATE=0` must return the pins committed before this flip to every
+# printed digit.
+const TREE_GATE = haskey(ENV, "TREE_GATE") ? ENV["TREE_GATE"] == "1" : nothing
+mkfparams() = TREE_GATE === nothing ? FDiff.tebs_params(Float64) : let
+        p = FDiff.tebs_params(Float64)
+        w = p.water
+        fns = fieldnames(typeof(w))
+        nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+        w2 = typeof(w)(; merge(nt, (; tree_demand_gate = TREE_GATE))...)
+        FDiff.FDiffParams{Float64}(p.photo, p.tstress, w2, p.resp, p.allom, p.nlambda, p.ω)
+end
 
 function readcsv(path)
     lines = [l for l in readlines(path) if !isempty(strip(l)) && !startswith(strip(l), "#")]
@@ -114,7 +129,9 @@ end
 
 "One patch through the coupled loop, exactly as the CI gate drives it."
 function run_patch(pools, tmpls, soil, lat, forc, tairK)
-    core = FDiffFastCore(deepcopy(pools), deepcopy(tmpls), soil, lat)
+    # `params = mkfparams()` is EXACTLY `FDiffFastCore`'s own default when `TREE_GATE` is unset, so the
+    # default arm stays byte-identical to the CI gate's construction.
+    core = FDiffFastCore(deepcopy(pools), deepcopy(tmpls), soil, lat; params = mkfparams())
     clo = mkclo(mean(tairK))
     state = SharedState(; w = fill(0.7, LPJmLFITEmulator.NSOILLAYER))
     out = run_coupled_cell(core, clo, state, forc; days_per_year = 365)
@@ -131,8 +148,12 @@ names = String.(cells["name"]); lats = fcol(cells, "lat")
 @printf("=== PATCH-ENSEMBLE vs MODAL-PATCH coupled signatures — 5 biome cells, %d yr, DEFAULT params ===\n", YEARS)
 @printf("(slow=nothing; every physics flag at its PACKAGE DEFAULT, which is what the CI gate runs)\n")
 @printf(
-    "ground heat: %s\n\n", TWO_LAYER === nothing ? "PACKAGE DEFAULT (two-layer prognostic column since ADR 0075)" :
+    "ground heat: %s\n", TWO_LAYER === nothing ? "PACKAGE DEFAULT (two-layer prognostic column since ADR 0075)" :
         TWO_LAYER ? "two-layer prognostic column, forced ON" : "pre-E7 single conductance, forced ON (opt-out arm)"
+)
+@printf(
+    "tree demand-gate: %s\n\n", TREE_GATE === nothing ? "PACKAGE DEFAULT (ON since ADR 0133, at the core's sharp βgpd_gate=1e8)" :
+        TREE_GATE ? "forced ON" : "forced OFF (the pre-0133 opt-out arm — must reproduce the pre-flip pins)"
 )
 @printf(
     "%-22s %6s %10s %10s %7s %10s %10s %7s %9s %8s %8s\n",

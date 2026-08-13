@@ -46,9 +46,11 @@
     st0 = FDiffStateML{Float64}([0.25 * wc for wc in soil.whcs], 0.0)
 
     p0 = tebs_params()
-    # ── guardrail 4: the flag is OFF by default, and asking for OFF is the same object ──
-    @test WaterParams{Float64}().tree_demand_gate == false
-    @test p0.water.tree_demand_gate == false
+    # ── the DEFAULT IS ON since ADR 0133, pinned explicitly so the next flip cannot be silent ──
+    # (it shipped off through ADR 0131 while the flip criterion was measured; guardrail 4 is now re-served
+    # through the OPT-OUT below, not through the default.)
+    @test WaterParams{Float64}().tree_demand_gate == true
+    @test p0.water.tree_demand_gate == true
 
     "copy `p0.water` with one field replaced (fieldnames-driven, so a future field cannot silently shift)."
     function with_water(p, kv::NamedTuple)
@@ -98,14 +100,40 @@
         @test pools_on[end][i].leaf_c > 0 && isfinite(pools_on[end][i].leaf_c)
         @test pools_on[end][i].height > 0 && isfinite(pools_on[end][i].height)
     end
-    # and the DEFAULT (flag off) reproduces a bare `tebs_params()` rollout bit-for-bit — guardrail 4 on the
-    # path that actually ships, not just on the struct default.
+    # ── guardrail 4 RE-SERVED THROUGH THE OPT-OUT (ADR 0133 flipped the default to ON) ──
+    # What must now hold on the path that actually ships: a bare `tebs_params()` rollout reproduces the
+    # EXPLICIT `tree_demand_gate = true` arm bit-for-bit (⇒ the shipped default really runs the gate), and
+    # the opt-out is still reachable and still constructs a physical stand.
     (_, _, pools_base, _) = rollout_canopy_years(
         p0, alloc, allom, st0, trees0[1:2], tmpls[1:2], soil, yearly;
         grass_demand_gate = false, grass_estab = nothing
     )
+    pon_soft = with_water(p0, (; tree_demand_gate = true))     # default sharpness, gate explicit
+    poff_soft = with_water(p0, (; tree_demand_gate = false))   # the opt-out, default sharpness
+    (_, _, pools_on_soft, _) = rollout_canopy_years(
+        pon_soft, alloc, allom, st0, trees0[1:2], tmpls[1:2], soil, yearly;
+        grass_demand_gate = false, grass_estab = nothing
+    )
+    (_, _, pools_off_soft, _) = rollout_canopy_years(
+        poff_soft, alloc, allom, st0, trees0[1:2], tmpls[1:2], soil, yearly;
+        grass_demand_gate = false, grass_estab = nothing
+    )
     for i in 1:2
-        @test pools_off[end][i].leaf_c == pools_base[end][i].leaf_c
-        @test pools_off[end][i].height == pools_base[end][i].height
+        @test pools_base[end][i].leaf_c == pools_on_soft[end][i].leaf_c
+        @test pools_base[end][i].height == pools_on_soft[end][i].height
+        @test pools_off_soft[end][i].leaf_c > 0 && isfinite(pools_off_soft[end][i].leaf_c)
+    end
+    # ⚠ AND THE HONEST CAVEAT, asserted rather than assumed: at the SOFT default `βgpd_gate = 2e4` the
+    # sigmoid saturates to exactly 1.0 on every day of THIS fixture's forcing, so here the opt-out is
+    # byte-identical to the gated default. That is a property of the fixture, not of the flag — the wiring
+    # is proven above on the fixed-structure daily at the C's hard step `1e8`, where the gate does fire
+    # (`d_on != d_off` on the trees). Do not read this equality as evidence that the flag is inert.
+    for i in 1:2
+        @test pools_off_soft[end][i].leaf_c == pools_base[end][i].leaf_c
+        @test pools_off_soft[end][i].height == pools_base[end][i].height
+    end
+    # `pools_off` (the opt-out at the C's HARD step) is likewise a physical stand.
+    for i in 1:2
+        @test pools_off[end][i].leaf_c > 0 && isfinite(pools_off[end][i].leaf_c)
     end
 end
