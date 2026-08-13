@@ -1709,3 +1709,56 @@ the precedent (S gave an explicit GO before `wscal_leafon` flipped), so S is ask
 pinned number, or (b) hold while S measures whether a more faithful spring/autumn conductance is doing part
 of what the anchor was built for. A band is a measurement, not a tunable, so it does not get widened either
 way. Everything else is prepared, so on (a) the flip is a one-commit change.
+
+## Session 23 — 2026-08-13 — the pending merge finally lands, and item (b) dies on two lines of algebra (ADR 0138)
+
+**The merge first, because it was blocking another line.** Session 22 wrote the request to line S — the
+`gp_stand_leafon_basis` flip moves one S-owned assertion, so the flip is an integration point — committed
+it, and never pushed. Four commits sat on the branch, `origin/line/M` was five behind local, and the
+message S was being asked to answer had never existed anywhere S could see it. This is the *same* failure
+session 22 wrote up one paragraph earlier ("a revert is not done until it is MERGED"), one turn later, on
+the raise instead of the revert. The generalisation that actually covers both: **the ritual is not
+finished when the commit is made, and a message to another line is not sent until it is on `main`.**
+Landed as `307308cd`; branch `test (lts)` / `test (1)` / `test (macOS, lts)` / `format` all green,
+`test (pre)` red as always. Local suite before pushing: **275 623 pass / 0 fail**.
+
+**Then item (b), and it took no simulation at all.** ADR 0135's photosynthesis shortlist had two items
+left; (b) was the C's `tstress < 1e-2` hard zeroing of `agd`/`rd`/`vm`, which F_diff simply does not have.
+A comment at `fdiff.jl:234` had asserted from code structure that F's linear `tstress` factor already
+emulates "that HALF" of the gate — the exact shape ADR 0108 warns about, an argument from structure
+standing in for a measurement.
+
+Three findings, and two of them never touch a cell.
+
+**(1)** `c1 ∝ tstress`, `c2` free of it, the co-limitation solution homogeneous of degree 1, `rd = b·vm`
+⇒ `agd`, `rd` and `vm` are *exactly* proportional to `tstress`. Checked against F's own kernel rather than
+inferred: at `tstress = 1e-2` it returns exactly 1e-2 of its `tstress = 1` value on all three, to 1.6e-9.
+So the C's branch discards **at most 1 %** of an affected day — a ceiling on the whole term before any
+data is opened.
+
+**(2)** The hot end is redundant *by construction*. `k3 = ln(99)/(temp_co2_high − temp_photos_high)` makes
+`tstress(temp_co2_high) ≡ 1e-2`, so the gate fires exactly where the `temp ≥ temp_co2_high` hard cutoff
+fires — and F already carries that one as `gate_co2`. Only the cold end is live.
+
+**(3)** Cold-end threshold in closed form: **+3.0 °C** for the tropical evergreen, **−6.0 °C** for every
+other tree. Against the five cells' own committed forcing that is 0.0460 % of annual assimilation at
+`boreal_siberia`, 0.0063 % at Hainich, and structurally 0 at the other three — Iberia's coldest day in ten
+years is −1.9 °C against a −6.0 °C threshold, and the two tropical cells are 100 % PFT id 0 with minima of
++20.2 and +23.5 °C against +3.0. Those zeros are printed as `CANNOT BIND` beside `T_min` and `T*`, because
+an exactly-zero effect is a red flag and has to explain itself.
+
+**The one worth keeping is `boreal_siberia`: 47 % of its days are gated — the highest incidence available
+among the five — and the effect is still 0.046 %, because the gated days are also the darkest and coldest
+of the year. A day count is not a magnitude.** Scored on incidence this would have read as the largest
+term on the shortlist and bought a flag, an arm and a suite cycle.
+
+So: closed at 65× below the residual it was shortlisted to explain, **without a port and deliberately
+without an opt-in flag** — guardrail 4's corollary cuts against shipping a flag whose measured ceiling is
+0.05 %, since an opt-in default is only worth its maintenance if someone will ever want the other value.
+The `fdiff.jl` comment now cites the measurement instead of asserting the argument. ADR 0135's shortlist
+is down to item (c), the phenology trajectory; the compensating-error count stays at four, this is not a
+fifth.
+
+One validity-envelope note recorded rather than left implicit: the tropical evergreen's +3 °C threshold is
+9 °C above every other tree's, so the gate *would* be live at a cool cell dominated by PFT id 0 — a
+population none of the five biome cells samples.

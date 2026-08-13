@@ -412,7 +412,77 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 22) — **THE REVERT REACHED `main` (IT HAD NOT), EVERY CONTROL ARM
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 23) — **THE PENDING MERGE FINALLY LANDED (IT WAS BLOCKING LINE S),
+### AND ADR 0135's SHORTLIST ITEM (b) IS CLOSED WITHOUT A PORT AND WITHOUT A FLAG (ADR 0138). NO PHYSICS CHANGE**
+
+**Start here.** Two things, one process and one science.
+
+**1. ⚠ THE PROCESS ONE, AND IT IS THE SAME FAILURE §0-PREV-22 WROTE UP ONE PARAGRAPH EARLIER.** Session 22
+wrote the request to line S — the `gp_stand_leafon_basis` flip moves one S-owned assertion, so the flip is
+an integration point — committed it, and **never pushed**. Four commits sat on the branch; `origin/line/M`
+was five behind local; **the message S was being asked to answer had never existed anywhere S could see it**,
+so "awaiting reply" was structurally unanswerable. §0-PREV-22 step 1 had just recorded *"a revert is not done
+until it is MERGED"* — the same rule, one turn later, on the raise instead of the revert. **The
+generalisation that covers both: the ritual is not finished when the commit is made, and a message to
+another line is not sent until it is on `main`.** Landed as **`307308cd`** (branch `test (lts)` / `test (1)` /
+`test (macOS, lts)` / `format` green; `test (pre)` red as always; local suite **275 623 pass / 0 fail**,
+`logs/M-armhard.1776993.out`). **The request to S is now live** — a reply is possible for the first time.
+
+**2. ADR 0138 — item (b) of the photosynthesis shortlist is CLOSED, and it took no simulation.** The C
+hard-zeroes `agd`, `rd` AND `vm` below a temperature-stress threshold, twice (`photosynthesis.c:54-61` and
+`isphoto()` at `water_stressed.c:196`), both live in this config; F has no such branch, and a comment at
+`fdiff.jl:234` asserted **from code structure** that F's linear `tstress` factor already emulates "that
+HALF" of it. Three findings, two of them closed-form and therefore cell-set-independent:
+* **`agd`, `rd`, `vm` are EXACTLY proportional to `tstress`** — verified against F's own kernel to **1.6e-9**,
+  not inferred — so the gate discards **at most 1 %** of an affected day. That is the ceiling on the whole
+  term before any data is opened.
+* **The hot end is redundant BY CONSTRUCTION**: `k3 = ln(99)/(temp_co2_high − temp_photos_high)` makes
+  `tstress(temp_co2_high) ≡ 1e-2`, so the gate fires exactly where the `temp ≥ temp_co2_high` hard cutoff
+  fires — which F already carries as `gate_co2`. **Only the cold end is live.**
+* **Cold-end threshold, closed form: +3.0 °C for the tropical evergreen (id 0), −6.0 °C for every other
+  tree.** Assimilation-weighted over the cells' own committed forcing: `boreal_siberia` **0.0460 %**,
+  `temperate_hainich` **0.0063 %**, and **structurally 0** at the other three (Iberia's coldest day in ten
+  years is −1.9 °C against −6.0; the two tropical cells are 100 % id 0 with minima +20.2 / +23.5 against
+  +3.0). Printed as a `CANNOT BIND` verdict beside `T_min` and `T*` — a zero has to explain itself.
+
+**⇒ 65× below the +3.0 % residual it was shortlisted to explain at the worst cell, 480× at Hainich. No port,
+and deliberately NO opt-in flag** — guardrail 4's corollary cuts *against* shipping a flag whose measured
+ceiling is 0.05 %. Harness `scripts/diagnose_tstress_photo_gate.py` (sub-second, committed fixtures, lints
+clean under the repo rule set); the `fdiff.jl` comment now cites the measurement instead of asserting it.
+
+**3. ★ THE METHOD FINDING, and it is the transferable half: `boreal_siberia` has 47 % of its days gated —
+the highest incidence available among the five — and the effect is still 0.046 %, because the gated days are
+also the darkest and coldest of the year. A DAY COUNT IS NOT A MAGNITUDE.** Scored on incidence this item
+would have read as the largest term on the shortlist and bought a flag, an arm and a suite cycle. Whenever a
+gate/branch/threshold is priced, weight its days by the quantity it acts on before quoting a frequency.
+
+**4. Validity envelope, recorded rather than left implicit.** The tropical evergreen's +3 °C threshold is 9 °C
+above every other tree's, so the gate WOULD be live at a cool cell dominated by PFT id 0 — a population none
+of the five biome cells samples. Not an open item; a scope statement on ADR 0138.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **★ THE FLIP IS STILL BLOCKED ON LINE S — but the request is now REACHABLE, which it was not before.**
+   Check the top of `lines/S/STATE.md` (on `main`, not only in your worktree) for a reply, or `lines/M/STATE.md`
+   for an inbound. On **(a)** the flip is a one-commit change and everything is prepared: flip the default in
+   `src/fdiff.jl`, re-point `gpsum_basis_tests.jl`'s four guardrail-4 assertions at the new default, re-pin the
+   moved baselines through `regen_fdiff_baselines.jl` and `biome_ensemble_pin_probe.jl` **with their
+   `gps = false` / `GPSTAND=0` arms reproducing the old numbers in the same run**, re-read (never widen) the
+   `decadal_validation_tests.jl` band and the `wscal_leafon` / `grass_structure` assertions, and give it
+   **ADR 0137** (reserved). The per-file enumeration is **§0-PREV-21 step 1** — start from that list, do not
+   re-run the suite to rediscover it. On **(b)**, hold the flag off and let S measure first.
+2. **THE COMPENSATING ERROR IS STILL THE HEAD OF THE PHOTOSYNTHESIS QUEUE, and the shortlist is now down to
+   ONE item: (c), the phenology trajectory.** Item (a) closed by ADR 0136, item (b) by ADR 0138. Four
+   independent faithful terms all move F's absorbed light or its λ DOWN while its GPP sits ABOVE the C's, so
+   **`GPP_F/GPP_C` is a LOWER BOUND on the kernel error** — quote it that way everywhere. ⚠ **Do not re-open**
+   the layered-light model, the leaf-area density basis, `k_lambert`, `par`, `alphaa`, `albedo_leaf`, the SLA
+   Vcmax cap (ADR 0135 §4), or the `tstress` gate (ADR 0138).
+3. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap (only
+   remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two evergreen cells,
+   `bg_growth`'s default still blocked on line S carrying `heartwood_bg_c`, and the differentiated path
+   inheriting `tree_demand_gate = true` at the soft sharpness. Read them there rather than restating them here.
+
+### 0-PREV-22. ✅ DONE 2026-08-13 (session 22) — **THE REVERT REACHED `main` (IT HAD NOT), EVERY CONTROL ARM
 ### NOW STATES THE FLAG EXPLICITLY *BEFORE* THE FLIP, AND THE FLIP IS RAISED TO LINE S. NO PHYSICS CHANGE**
 
 **Start here.** The previous handoff's step 1 was *"LAND the `gp_stand_leafon_basis` default flip"*. It is
