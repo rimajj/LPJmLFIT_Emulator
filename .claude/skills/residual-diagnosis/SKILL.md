@@ -1451,3 +1451,69 @@ a global retrain (ADR 0105). Pre-register the threshold that separates "supporte
 
 Worked examples: `scripts/slow_climate_partial_dependence_probe.jl` (panels 0/A/B/C/D + verdict) and
 `scripts/slow_nprev_ablation_probe.jl` (the one-variable in-place ablation + its two basis checks).
+
+---
+
+## A PARTIAL FREEZE PUTS THE UNFROZEN CHANNEL INTO THE RESIDUAL BUCKET — READ THE FROZEN FILE'S COLUMNS (line S, 2026-08-13, ADR 0181 §6)
+
+The "third arm, not a correction term" rule (ADR 0177 → 0178, above) is right and it has a failure mode that
+looks exactly like success. `sensitivity = B(driver live) − B(driver FROZEN)` is only the sensitivity of the
+channel you actually froze. **If the driver reaches the model through more than one route and you froze one
+of them, the other route's contribution lands in `drift` by construction** — and `drift` is precisely the
+term nobody re-examines, because the whole point of the design was to discard it.
+
+Measured cost here: a frozen-climate control froze the **4 boundary columns** the count model conditions on
+(`--freeze` writes `Year,eco_diag_gdd_5,tas_cold_month,soil_depth,co2` and nothing else) while the other 11
+features stayed live on a stand the reference model was still growing under transient warming. Its result —
+"climate term ~0, drift share 94–100 %" — is a correct statement about the **direct** channel and was written
+up, cited and inherited as *"no warming response reaches the model"*. Measured on the stand channel it had
+folded into drift, that channel carries a through-origin slope of **0.994** against the reference's own
+per-cell response. The wrong sentence had reached two later decision records and the line's working handoff
+before anyone opened the freeze.
+
+**The check, and it is one command:** `head` the file the freeze actually wrote (or `grep` the writer for its
+column list) and compare it against the model's full input vector. Then, for every input NOT in that list,
+ask whether the driver under test can reach it. Write the answer into the arm's own header.
+
+Two corollaries:
+
+* **Name the arm after what it freezes, not after the driver.** "frozen-climate" invites the reading
+  "climate cannot reach the model"; "frozen-boundary-columns" does not, and would have prevented this.
+* **A decomposition into (sensitivity, drift) is only exhaustive if the freeze is total.** When it is not,
+  report a third named term — here `stand-mediated response` — even if you cannot measure it yet. An
+  unnamed channel inside a residual is indistinguishable from zero, and will be quoted as zero.
+
+## A PRE-REGISTERED THRESHOLD IS NOT A PRE-REGISTERED VERDICT — CHECK THAT THE EXPRESSION USES THE BLESSED STATISTIC (line S, 2026-08-13, ADR 0181 §4)
+
+ADR 0104 says a pre-registered criterion needs the same basis check as a residual. This is the narrower,
+dumber version of that failure, and it survived writing the thresholds down correctly.
+
+The probe's header named the area-weighted aggregate as the binding statistic, printed a warning that the
+per-cell slope is not it, and defined **both** pairs of thresholds as constants before the run. Its `verdict`
+expression then branched on the per-cell slope alone — the statistic ADR 0112 had already proved has **no
+power**, because the do-nothing persistence null scores 1.029 on it against the model's 1.006. It printed
+`H_map SUPPORTED` (slope 0.944) for an arm the blessed statistic scores at 0.292, i.e. PARTIAL.
+
+Nothing about the pre-registration was wrong. The *wiring* was. So:
+
+* **Grep your own verdict expression for the variable name of the blessed statistic before you submit.** If
+  it is not in there, the pre-registration is decorative.
+* **If the blessed statistic is computed by a DIFFERENT job, the probe must not print a verdict at all.**
+  Print the thresholds, print the diagnostic, print the command that produces the deciding number, and stop.
+  A script that can only see a powerless statistic will use it.
+* **Label a powerless diagnostic AT ITS PRINT SITE, not only in the header.** The header warning was there
+  and was read past — the verdict line four rows below it is where the reader is.
+
+## A SCRIPT'S DEFAULT OUTPUT PATH CAN BE A COMMITTED SHARED FIXTURE (line S, 2026-08-13, ADR 0181 §8)
+
+CLAUDE.md §9 item 6 covers a script that hard-codes the *integrator's* repo path. This is the sibling: a
+script whose default output is a **committed fixture inside your own worktree**, so running it looks clean —
+no permission error, no foreign path, nothing in the log — and shows up only as an unexplained `M` in
+`git status` that is easy to sweep into the commit.
+
+`diagnose_truth_yardstick.py` defaults `OUT_SUMMARY` to
+`test/testitems/references/S_truth_yardstick_summary.csv`, and a `COUNT_DIR`-only invocation **drops every
+trait row** from it (66 deletions, 24 insertions). Regenerating a shared baseline is an integration point,
+not a side effect. **Before running any analysis script, grep it for the repo-relative paths it writes**
+(`grep -n "OUT_\|write_csv\|to_csv\|to_parquet" <script>`) and redirect them to `/p/tmp`; then `git status`
+after the job and treat any modified tracked file you did not intend as a finding, not as noise.
