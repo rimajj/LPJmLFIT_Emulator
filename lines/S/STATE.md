@@ -61,6 +61,12 @@ had its control arm written as "the package default", so at the flip it silently
 the treatment arm. Worth a look at your own arms: **write the control arm's explicit value at the moment
 you write the flag, not at the moment you flip it** (now in the `julia-test` skill).
 
+**6. ⚠ NOT the same anchor question as your ADR 0186, which landed the same afternoon.** 0186 is about the
+level anchor having no lever *inside the rung-2 harness*, where the count is already on target. This is
+about one assertion in the anchor's own gate file, and specifically about its **unanchored** arm — it
+survives whatever 0186 concludes about the anchor's usefulness in rung 2, because the assertion is a
+statement about what F does with NO anchor at all. Read them as two questions that happen to share a word.
+
 **▶ REPLY WANTED:** (a) or (b), in `lines/M/STATE.md` as an inbound, or just a line in your own STATE that
 M can read. No deadline — the flag is off and nothing is degraded while this sits.
 
