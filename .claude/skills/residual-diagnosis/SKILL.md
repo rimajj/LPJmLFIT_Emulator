@@ -1816,3 +1816,44 @@ gate rather than re-implementing them — the ADR-0023 rule that makes a harness
 exactly** and show that you did; that reproduction is the gate on your new column, and it belongs before the
 column, not after. If the producing script is not importable, make it importable (a `if __name__ ==
 "__main__"` guard is usually the whole fix) — that is cheaper than the class of error it prevents.
+
+## §15 — BUILD AN ARM WHOSE ANSWER YOU CAN *DERIVE*, AND DERIVE ITS SAMPLING SE BEFORE CHOOSING A TOLERANCE (line S, 2026-08-13, ADR 0187)
+
+§13 says: before pre-registering a fix, derive which quantity it can move. This is the companion for the
+**instrument** rather than the fix — the cheapest real gate on a new scorer is an arm whose answer is
+derivable a priori, and it is worth *engineering the probe so that one exists*.
+
+**The mechanism.** ADR 0187's probe compared how mass-selective each arm's tree-killing is. One arm, `S0`,
+thins *uniformly* — `f[i] = ρ` for every tree, killed iff `rand() > f[i]`, a draw independent of size — so
+its mass selectivity **must** be 1.00. That single derivable number caught **two independent basis errors,
+both in the statistic and neither in any arm**, before either could reach an ADR:
+
+1. **The observable was not the quantity it was named after.** The `isdead` flag was the emulator's kill
+   nomination **union the C's own non-negotiable kills**, and that contamination was **8 % → 100 %
+   arm-dependent** across the arms being compared (NP 100.0, S0 45.8, S0h 7.9, S1 8.7). A statistic
+   contaminated *differentially* cannot rank arms at all — and nothing else in the output looked wrong.
+2. **The estimator was not its own null.** Pooled over a leg, a ratio-of-fractions
+   `kill_frac_m/kill_frac_n` equals `<(1−ρ)>_mass-weighted / <(1−ρ)>_count-weighted` over patch-years,
+   which is 1 **only** if the thinning ratio is uncorrelated with per-stem mass across strata — and it is
+   not, since the hardest-thinned patches are the heaviest. Fix: stratify at the level where the operator
+   actually draws once (here the patch-year). The between-stratum term moved one arm 0.93 → 1.08.
+
+**So:** when you design a probe, ask *which arm's answer can I write down in advance?* — a uniform/random
+arm, an identity arm, a do-nothing arm — and put it in the table. Distinguish it from a NULL: a null tells
+you whether the *result* has power (§8, ADR 0184); a derived arm tells you whether the *instrument works*.
+You want both, and they are different rows.
+
+⚠ **AND DERIVE ITS SAMPLING SE BEFORE PICKING THE TOLERANCE.** ADR 0187 pre-registered a 0.15 tolerance
+on that self-test without deriving the statistic's noise. The SE is ≈**0.09 at one cell** (most strata held
+ONE kill, and per-stem mass inside a patch is strongly right-skewed), so the gate was ~1.7 σ: a single-cell
+smoke test returning 1.19 read as a scorer defect when it was ~2 σ of sampling noise, and — the dangerous
+direction — a *real* defect of that size would have read as noise too. Pooled over 15 legs the SE is 0.045
+and the same test lands at 0.14 σ. **Print the SE and the σ-departure beside every pass/fail, and do not
+move the tolerance after the run** — report both instead (ADR 0185's rule about bases chosen after seeing
+numbers applies to tolerances as well).
+
+**One more reading habit from the same ADR: separate SHAPE from LEVEL before naming a cause.** The
+size-conditional mortality profile turned out to have the reference's **shape** at a **2.9–4.6× lower
+level**. A *selectivity* defect TILTS such a profile; a *rate* defect SHIFTS it. The single summary
+statistic could say "not a selectivity defect" but could never have said what the defect *was* — printing
+the whole profile beside it is what turned a refutation into a diagnosis and a next action.
