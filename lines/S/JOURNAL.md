@@ -2160,3 +2160,43 @@ response is still ~0, so that defect is not the mechanism.
 Next is cheap and needs no LPJmL run: a partial-dependence sweep of the trained forest over its two
 transient climate features, to separate "never learned a climate dependence" from "learned one the loop
 cannot express".
+
+## 2026-08-13 — the sweep: the climate channel is open and empty; de-leaking buys 2.8× (ADR 0179, 0180)
+
+Ran the pre-registered next action (job 1771609, 4 min, no LPJmL run). Added a third hypothesis before the
+run, which turned out to matter: a forest pooled over 58 588 cells is *certain* to split hard on gdd5 as a
+CELL IDENTIFIER, so a naive full-range sweep would have shown a big dependence and read as "the loop is the
+defect". Emitted the pooled and within-cell panels side by side (ADR 0118) plus a live-channel anchor.
+
+**The liveness panel is what stopped me writing the wrong thing.** The forest splits on the two climate
+features 77 440 times — 10.20 % of all splits, thresholds across the whole global range. So "it never
+learned climate" in the sense of "there are no splits" is flatly false, and that is the sentence I would
+have written. `co2` is the feature with 0 splits, exactly as designed.
+
+And yet: 0.227 / 0.066 / 0.281 stems of partial dependence over the ENTIRE global range; 0.0568 stems over
+the operative per-cell warming excursion = 4.4 % of the `n_prev` anchor, under 10 % of FIT's own response at
+9 of 12 cells, over 50 % at 0 of 12. The local full-range sweep per cell gives 0.345 — no steep surface
+anywhere, so H3 dies too. Verdict H1: the training target/feature set is the defect.
+
+Two cells returned exactly 0.0000 on the anchor. That is quantization, not a bug — `n_prev` splits sit at
+half-integers because per-patch counts are integers, and those cells' observed shifts stay inside one bin.
+It biases the anchor DOWN, i.e. conservative for the conclusion.
+
+Then priced the mechanism rather than asserting it (job 1771616). One-variable arm, `n_prev` neutralised in
+place so p/mtry/indices are identical. Two basis checks first: the sample reproduces ADR 0112's null R²
+(0.9623 vs 0.9622) and CTRL reproduces the shipped artifact (10.10 % vs 10.20 % climate splits, R² 0.9801 vs
+0.9824). Result: climate response ×2.85 (0.0836 → 0.2381 stems, 4.7 % → 13.5 % of FIT's), larger at 13 of 15
+cells (median 2.44), for 0.018 of R². Sign agreement 7/12 → 8/12 — magnitude, not direction. Verdict
+PARTIAL, and explicitly NOT a licence to buy the global retrain.
+
+**The finding I did not expect, and it is the important one.** With `n_prev` gone entirely, R² is 0.9620 —
+indistinguishable from the persistence null's 0.9623. The other 13 features reconstruct the count as well as
+FIT's own lagged answer, because six of them describe the SAME year's stand and a stand of given
+agb/cover/height/age holds a nearly determined number of stems above the 5 m cut. So dropping `n_prev` does
+not de-leak the target; the count is close to an allometric consequence of the stand. At runtime those six
+come from F's own pools (ADR 0023), so that is not a runtime leak — but it does mean the count model's
+climate inputs are a small correction on a stand-to-count map, and the coupled warming response has to
+arrive through F moving the stand. Which is the pathway ADR 0178 measured as ~0.
+
+Also worth noting the split share barely moved under the ablation (10.10 % → 9.87 %) while the effect nearly
+tripled: the climate splits were always there, `n_prev` was muting them, not crowding them out.
