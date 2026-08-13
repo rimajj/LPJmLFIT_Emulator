@@ -2477,3 +2477,42 @@ statistic on diverged stands is a size-conditional mortality rate, not a compari
 
 Cost of the whole session's measurement: about seven seconds of login-node compute, against the 264 jobs
 the plan called for.
+
+## 2026-08-13 — ADR 0187: the kill set is NOT size-biased; the shortfall is the mortality RATE
+
+Executed ADR 0186 §B's promoted primary action (the size-resolved "who dies" comparison) and it came
+back **negative on the hypothesis** — a clean refutation, not an inconclusive.
+
+**Data.** ADR 0186 §B planned to read the harness's `rsp_r*_y*_p*.txt` kill lists and flagged "check
+they still exist". They are **gone** (the `_apply` dirs hold only `audit_r0000.txt`, `s_arm_log.txt`,
+`harness.ready`). Not needed: under ADR 0123 the binary defers its kills, so the `mort`-phase roster
+carries every killed stem flagged `isdead` on a roster identical in length to `grow`. Gated the
+extraction against the harness's own audit log before using it — 2025/2025 patch-years, 940 = 940 on
+the development leg, then 234/234 audit-bearing legs in the full run.
+
+**Result** (`scripts/diagnose_rung2_kill_selectivity.py`, job 1779616, ~9 min, 24 GB, 12 cells × 2
+legs, no model run). Mass selectivity `LAMBDA = kill_frac_m/kill_frac_n`, ssp370, FIT-gain median:
+FIT **0.900**, `S0h` **0.996**, `S1` **0.926** — both inside the pre-registered refute band, sign
+opposite to the hypothesis. Corroborated by near-zero selection differentials (FIT itself is only
+weakly size-selecting: −0.066 height) and by the size-conditional rate profile having **FIT's shape at
+2.9–4.6× lower level in every quintile** — a selectivity defect tilts the profile; this shifts it.
+
+**What is actually wrong:** the discretionary kill rate (FIT 2.1 %/yr vs `S1` 0.6 %) and hence the
+annual mass flux (FIT 0.0306 vs `S1` 0.0178 ⇒ **58 % of FIT's**), which compounds to **2.90×** over 81
+years — more than the observed +90 % agb. It reconciles with ADR 0186's "count on target" because FIT's
+kills are dominated by CERTAIN deaths (starving suppressed stems) that the arms honour by construction
+and that carry almost no mass. So: right number, right kinds, **far too few of the ones carrying
+biomass**.
+
+**Two basis errors, both caught by the pre-registered derived-a-priori self-test on the uniform arm** —
+this is the part worth carrying forward. (1) `isdead` is the arm's nomination UNION the C's own
+non-negotiable kills, and that contamination is **8 %→100 % arm-dependent**, so it cannot rank arms ⇒
+restrict to `mort_prob < 1`, checked by `NP`'s discretionary count coming out 14 of 12 393. (2) The
+POOLED ratio-of-fractions is not 1.00 for a uniform operator (it is `<(1−ρ)>_mass/<(1−ρ)>_count` over
+patch-years, and the hardest-thinned patches are the heaviest) ⇒ stratify by patch-year. Self-test then
+lands at 0.994 = **0.14 σ**. Also learned: the tolerance had been pre-registered without deriving the
+statistic's SE (≈0.09 at one cell vs a 0.15 tolerance), so a single-cell 1.19 read as a defect when it
+was noise — the scorer now prints the SE and σ-departure, and the tolerance was **not** moved. All four
+lessons went into the `rung2-dump-analysis` skill as traps 5d–5f.
+
+Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.

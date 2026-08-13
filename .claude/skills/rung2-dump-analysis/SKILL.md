@@ -142,6 +142,39 @@ have already printed convincingly. A partial run that dies below the fold looks 
    turned on. Per-patch counts are 4–11 stems, so patches where FIT holds one or two dominate an unweighted
    mean of ratios. **Reproducing the published table is the gate: do it before adding a column to it.**
 
+5d. **⚠ `isdead` AT THE `mort` PHASE IS *NOT* THE ARM'S KILL SET — IT IS THE ARM'S NOMINATION UNION THE
+   C's OWN NON-NEGOTIABLE KILLS, AND THAT CONTAMINATION IS 8 % TO 100 % ARM-DEPENDENT (ADR 0187).** The C
+   always applies its own hard kills whatever the arm answers (negative pools / `isneg_tree`, bioclimatic
+   `survive()`, `cut_year`). Measured share of forced over total kills, 12 cells' ssp370 legs:
+   **NP 100.0 % · S0 45.8 % · S0h 7.9 % · S1 8.7 %.** Those stems are dying and carry almost no mass, so
+   any mass- or size-weighted statistic on the raw `isdead` set is dragged down by a different amount in
+   every arm — **it cannot rank arms.** Restrict to the stems the operator had discretion over,
+   **`mort_prob < 1`**, applied identically to every arm INCLUDING `REC`. The check that the restriction
+   works is free: **`NP` nominates nothing, so its discretionary kill count must be ~0** (measured 14 of
+   12 393). ⚠ Also: the kill set IS recoverable without the `rsp_r*_y*_p*.txt` files (**they are gone from
+   the `_apply` dirs**) — under ADR 0123 the binary defers its kills, so the `mort` roster carries every
+   killed stem flagged, on a roster identical in length to `grow`. And gate it: the flagged-dead count per
+   patch-year must equal `n_kill_applied + n_forced_dead` in `<apply>/audit_r0000.txt` (234 of 234
+   audit-bearing legs pass; `REC` has no audit log — say so rather than hiding the asymmetry).
+
+5e. **⚠ A RATIO-OF-FRACTIONS STATISTIC POOLED OVER A LEG IS NOT ITS OWN NULL — STRATIFY BY PATCH-YEAR
+   (ADR 0187).** The operator draws **once per patch-year**, so that is the only level at which a
+   uniform-draw null is exact. Pooled over a leg, `kill_frac_m / kill_frac_n` equals
+   `<(1−ρ)>_mass-weighted / <(1−ρ)>_count-weighted` over patch-years, which is 1 **only** if the thinning
+   ratio is uncorrelated with per-stem mass across patch-years — and it is not, because the patches
+   thinned hardest are the dense old heavy ones. Measured, the between-stratum term moved `S1` from 0.93
+   (stratified) to 1.08 (pooled) and put the uniform arm at 1.19 against a derived 1.00. Use the
+   kill-weighted mean of the per-patch-year ratio, and print the pooled value beside it.
+
+5f. **⚠ DERIVE THE BLESSED STATISTIC'S SAMPLING SE BEFORE CHOOSING ITS TOLERANCE (ADR 0187).** A
+   derived-a-priori self-test is the best gate available — the uniform-thinning arm `S0` MUST return mass
+   selectivity 1.00, and it caught BOTH basis errors above. But its tolerance was pre-registered without
+   deriving the SE, which is ≈ **0.09 at one cell** (most strata hold ONE kill and per-stem mass inside a
+   patch is strongly right-skewed) against a 0.15 tolerance ⇒ ~1.7 σ, too tight to be a clean gate, and a
+   single-cell 1.19 read as a defect when it was ~2 σ of noise. Pooled over 15 legs the SE is 0.045 and
+   the same test lands at 0.14 σ. **Print the SE and the σ-departure beside every pass/fail** — and do
+   not move the tolerance after the fact; report both.
+
 6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
    not in a level.
@@ -160,6 +193,7 @@ have already printed convincingly. A partial run that dies below the fold looks 
 | `scripts/diagnose_rung2_map_on_rec_stand.jl` | the count model run over **FIT's OWN** roster, i.e. the `target` column `REC` has no log for. `include`s the harness for `Tree`/`pools_of`/`flux_drivers` so the row reaches the SHIPPED `flux_feature_vector` + `DRF.predict` (ADR 0023); ~15 s for all 30 REC dumps. **Its gate is the pattern to copy: at year 2000 no arm has killed anything yet, so its row must equal the live `s_arm_log.txt` to the last digit — verified bit-identical.** |
 | `scripts/diagnose_rung2_map_target_response.py` | ASK (the count the map asked for) vs GOT (the count the stand reached) vs FIT, per cell and arm, off the arm logs; the ρ/tether panel, the stand-LEVEL departure table, the drift and frozen-boundary controls (ADR 0184). Takes `NPREV`; prints the pre-registered SEPARABILITY GATE before any response statistic and suppresses the verdict for a tethered arm (ADR 0185). |
 | `scripts/diagnose_rung2_anchor_preflight.py` | **six panels, ~7 s, no model run** — what a proposed count-side change would do, off the arm logs alone (ADR 0186). Panel 1 the `roster`-mode inertness proof, 2 the `target/n_emit` level gap, 3 per-year push + clamp incidence + time constant, **4 the count-vs-mass departure decomposition, 5 its per-year trajectory, 6 the per-stem split** — 4–6 **import** `diagnose_rung2_map_target_response.py`'s `Leg`/readers/coverage gate, so they are on the criterion's own basis by construction. Copy this shape before proposing any rung-2 experiment. |
+| `scripts/diagnose_rung2_kill_selectivity.py` | **WHICH trees each arm kills, vs FIT's own kills** (ADR 0187) — mass selectivity `kill_frac_m/kill_frac_n` on the discretionary population stratified by patch-year, the size-conditional rate profile P(die \| height quintile of the REFERENCE arm's stand), standardized selection differentials, the ADR-0186 §8 reachability clause, and a verdict gated by the derived-a-priori `S0` self-test. ~9 min for 12 cells × 2 legs (24 GB). **Copy its self-test shape**: a uniform arm with a derivable answer is the cheapest real gate on a new scorer, and it caught two independent basis errors here. |
 | `scripts/diagnose_rung2_armc.py` | age–wooddens gradients and selection differentials (shared with line M's arm C; **each arm family has its own recorded baseline and they are NOT interchangeable**) |
 | `scripts/rung2_s_demography_harness.jl` | **the row assembly.** It reaches `flux_feature_vector` and `DRF.predict` as private names off the package rather than copying them — do the same, or the copy becomes the thing being measured (ADR 0023). |
 
