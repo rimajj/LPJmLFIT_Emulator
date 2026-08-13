@@ -1,6 +1,6 @@
 ---
 name: residual-diagnosis
-description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. ALSO the FORCING-basis check every learned-component score needs before it is believed (ADR 0112): trace each conditioning feature back to who computed it, because K-fold BY CELL holds out space not time and a lagged-truth feature (`n_prev`, `*_init`, any AR state — grep the table builder for `shift(`) makes the score one-step teacher-forced; then build the NULL that is handed the same thing and learns nothing and score it in the SAME process — a metric the null also passes (here a deattenuated response slope of 1.03 vs the model's 1.01) has no power and cannot be quoted as evidence -- and running the null is NOT enough (ADR 0184): DERIVE what it must return for your blessed statistic and write that value beside the threshold before the run, because a probe that named this very trap still blessed a statistic the null passes 12/12 by construction, after the arms were run handing the model the live count it was asked to predict (target/n_emit = 1.00 +- 2.3 %); ask what PINS two quantities together before reading their agreement as a property of what sits between them, check which MODE a harness was actually run in, and prefer a ratio against the truth (authority) over a ratio of successive model outputs (smoothness). And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
+description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. ALSO the FORCING-basis check every learned-component score needs before it is believed (ADR 0112): trace each conditioning feature back to who computed it, because K-fold BY CELL holds out space not time and a lagged-truth feature (`n_prev`, `*_init`, any AR state — grep the table builder for `shift(`) makes the score one-step teacher-forced; then build the NULL that is handed the same thing and learns nothing and score it in the SAME process — a metric the null also passes (here a deattenuated response slope of 1.03 vs the model's 1.01) has no power and cannot be quoted as evidence -- and running the null is NOT enough (ADR 0184): DERIVE what it must return for your blessed statistic and write that value beside the threshold before the run, because a probe that named this very trap still blessed a statistic the null passes 12/12 by construction, after the arms were run handing the model the live count it was asked to predict (target/n_emit = 1.00 +- 2.3 %); ask what PINS two quantities together before reading their agreement as a property of what sits between them, check which MODE a harness was actually run in, and prefer a ratio against the truth (authority) over a ratio of successive model outputs (smoothness). ALSO the anchoring rule for a CONVEX blessed statistic (ADR 0189): if the statistic passes through a max/min/clamp, an anchor derived by pushing MEANS through an exact identity is only a lower bound and will 'fail' a correct panel -- anchor it with a PERFECT-INPUT arm so the rectification goes inert and the answer becomes an exact identity, keep the mis-derived band in the code and print it rather than moving it, and read the gap between the perfect-input and noisy arms as the measurement of the input's error; plus the rule that a counterfactual panel containing the STATUS QUO as one arm can be validated against what the status quo is already published to do, before any other row is read. And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
 ---
 
 # residual-diagnosis — don't chase a residual blind
@@ -1970,3 +1970,51 @@ gate's comment and in the runbook.
 4. **Expect this to arrive as a test failure you did not predict.** It shows up in the re-pinning pass of a
    default flip, wearing the costume of a routine band re-statement — which is exactly why the flip's
    failure list has to be *classified* rather than just fixed (`julia-test`, "Landing a DEFAULT FLIP").
+
+---
+
+## ⚠ WHEN THE BLESSED STATISTIC IS CONVEX, DERIVE ITS ANCHOR BY REMOVING THE NOISE — NOT BY PUSHING MEANS THROUGH THE IDENTITY (line S, 2026-08-13, ADR 0189)
+
+§8's rule is *derive what the null must return before the run*. This is its failure mode when the statistic
+contains a `max`, a `min`, a clamp, or any other rectification — which a great many operator/budget/flux
+statistics in this repo do.
+
+**What happened.** A rung-2 capacity statistic was
+`D = mean_over_patch-years max(0, max(0, budget) − n_cert)`. Its anchor was derived as
+`mean(budget) − mean(n_cert)` via a chain of exact identities, giving a pre-registered band of
+[1.5, 2.6] %/yr. The panel returned **4.509**. Every step of the derivation was individually right, the
+budget's own mean landed on its reference to **0.6 %** — and the anchor was still wrong, because
+`max(0, x)` is **convex**, so `E[max(0, X)] > max(0, E[X])` by a Jensen gap that grows with the input's
+variance. The "failure" was a real property of the instrument (an unbiased-but-noisy budget over-spends),
+not a defect of the panel, and reading it as a basis error would have cost a session.
+
+**The three rules.**
+
+1. **Check whether your statistic is linear in the quantity your anchor's algebra averages over.** If it
+   passes through a `max`/`min`/clamp/absolute value/threshold count, a mean-based derivation gives a
+   LOWER bound on the answer, not the answer.
+2. **Anchor it with a PERFECT-INPUT arm instead.** Feed the statistic the exact quantity it is trying to
+   estimate (here `budget = K_all`, the truth's own gross kills) so the noise is *removed* rather than
+   averaged. Then the rectification is inert and the answer collapses to an exact identity — measured
+   `|diff| = 0.0000` against the reference, which is a far stronger gate than any band. This is the same
+   move as §"a derived arm tells you whether the *instrument* works", specialised to a nonlinear statistic.
+3. **Do not move the band afterwards** (ADR 0187's clause). Keep it in the code under a name that says it is
+   wrong (`ANCHOR_ORACLE_MISDERIVED`), print it every run, add the identity arm beside it, and disclose the
+   correction in the ADR. A mis-*derivation* corrected before the verdict is read is honest; a threshold
+   relaxed after seeing the numbers is not, and only the paper trail distinguishes them.
+
+**And the by-product is usually a finding.** The gap between the perfect-input arm and the noisy one *is* the
+input's rectified error, measured — here 2.049 → 4.509 %/yr, which is how the over-kill was quantified at all.
+Instrument the gap rather than eliminating it.
+
+## ⚠ A COUNTERFACTUAL PANEL THAT CONTAINS THE STATUS QUO AS ONE ARM HAS A FREE VALIDATION IN IT (same ADR)
+
+If one arm of your comparison is "what the system does today", its answer is *already published* somewhere —
+so check that arm first, against that number, before reading any other row. In ADR 0189 the status-quo arm
+implied a roster falling to **0.45×** over the leg while ADR 0186 had measured that same configuration's stem
+count as **on target (−2.9 %)**. The contradiction located a modelling omission in one line (the operator
+spares even the non-negotiable deaths on a year it nominates nobody, because the kill list IS the whole
+answer); fixing it moved the row to **+0.594 %/yr / 1.62×** and the panel then agreed with the published
+number. **Two clauses:** name the residual your model still does not capture (here the C's own hard kills on
+a gated year) rather than letting the agreement imply completeness — and remember that this check is only
+available if you *put* the status quo in the panel, which is a reason to always include it.

@@ -238,7 +238,16 @@ REC_RE = re.compile(r"^S_r2s_(historic|ssp370)_c(\d+)_REC_" + NPREV + r"_s(\d+)_
 def scan_rec_dump(path: str):
     """FIT's gross kills and recruits per patch-year by a count identity, with its own gate.
 
-    Returns per_year[(year, patch)] = (n_grow, K_all, K_disc, R, retained_ok).
+    Returns per_year[(year, patch)] = (n_grow, K_all, K_disc, R, retained_ok, fire, n_cert, n_age1).
+    Indices 0-5 are the original ADR-0188 set and are NOT renumbered; 6-7 were appended for ADR
+    0189's feasibility derivation (`diagnose_rung2_gross_budget_lag.py`) and are read by name there:
+        n_cert = stems at `grow` with `mort_prob >= 1`, the non-negotiable deaths every arm honours
+                 (`t.mort >= 1.0`, harness :539; the port and FIT's own hazard agree to 5e-18 and
+                 pick the identical certain set at recall = precision = 1.0000, ADR 0183)
+        n_age1 = stems at `grow` with `age == 1`. `age` at `grow` is POST-increment (skill trap 6)
+                 and establishment sets age 0, so this is LAST year's recruit cohort, observable at
+                 the rendezvous itself with no interface change. ADR 0189 panel A gates it against
+                 `R(y-1)`.
     `K_disc` restricts to `mort_prob < 1`, the population the operator had discretion over — the
     raw `isdead` set is the arm's nomination UNION the C's forced kills and is contaminated 8-100 %
     arm-dependently (skill trap 5d). For `REC` the arm nominates nothing, so `K_all` IS FIT's own
@@ -271,6 +280,8 @@ def scan_rec_dump(path: str):
     k_all = defaultdict(int)
     k_disc = defaultdict(int)
     d_post = defaultdict(int)
+    n_cert = defaultdict(int)
+    n_age1 = defaultdict(int)
     tcols = None
     with open(path) as fh:
         for line in fh:
@@ -289,6 +300,10 @@ def scan_rec_dump(path: str):
             key = (int(f[tcols["year"]]), int(f[tcols["patch"]]))
             if phase == "grow":
                 n_grow[key] += 1
+                if float(f[tcols["mort_prob"]]) >= 1.0:
+                    n_cert[key] += 1
+                if int(float(f[tcols["age"]])) == 1:
+                    n_age1[key] += 1
             elif phase == "post":
                 n_post[key] += 1
                 if int(float(f[tcols["isdead"]])) == 1:
@@ -308,7 +323,10 @@ def scan_rec_dump(path: str):
         # (ADR 0121) and are counted separately, not treated as a violation.
         retained_ok = n_post[key] >= ng
         fire = max(0, d_post.get(key, 0) - ka)
-        per_year[key] = (ng, ka, k_disc.get(key, 0), n_post[key] - ng, retained_ok, fire)
+        per_year[key] = (
+            ng, ka, k_disc.get(key, 0), n_post[key] - ng, retained_ok, fire,
+            n_cert.get(key, 0), n_age1.get(key, 0),
+        )
     return per_year
 
 

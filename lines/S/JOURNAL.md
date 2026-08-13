@@ -2582,3 +2582,61 @@ predicted, and whether a lagged R̂ still moves the blessed statistic has to be 
 written.
 
 Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
+
+## 2026-08-13 — ADR 0189: the lag is not the obstacle; the rectified budget is
+
+ADR 0188 §7 pre-registered the gross-budget instrument and named the one derivation that could kill it: R̂
+for the current year does not exist at the `grow` rendezvous, so the budget must use a lagged or predicted
+recruit count. That derivation is done — `scripts/diagnose_rung2_gross_budget_lag.py`, SLURM job 1788149,
+no model run, 12 cells × 2 legs behind ADR 0185 §5's imported coverage gate, 30 300 patch-years with 0
+unmatched and 0 roster-count mismatches on the join.
+
+**The lag is a non-issue, on three independent grounds.** First, last year's recruit cohort is *sitting in
+the roster the harness already receives*: `age` at `grow` is post-increment and establishment sets age 0, so
+`#{age == 1}` **is** `R(y−1)` — exact at **29 700 of 29 700 patch-years**. No dump-format change, no index
+tracking (hence no `ERROR043` exposure), and **no integration point with line M** — 0188 §7's escalation
+branch does not fire. Second, the lag cannot run the count away: `n_next = target + (R − R̂)`, so the
+cumulative departure **telescopes** to `R_last − R_first`, measured 1.7 stems (6.4/7.8 % of roster, below its
+derived bound) against **131.6/667.0 %** for the current operator — and a running mean is *worse* on this
+axis, because only the one-year lag telescopes. Third, the capacity clears the criterion: **3.525 %/yr**
+against 1.5, 6.0× the current 0.590 %. And a bonus that matters for the standing steer: **FIT's own
+recruitment rises +39.8 % between the legs** (4.619 → 6.456 %/yr), so the recruit term hands the operator a
+budget that *grows under warming* — a response channel the net budget does not have at all.
+
+**But the derivation found a second, larger problem in the same instrument, and it is a convexity result.**
+`max(0, b − n_cert)` and `max(b, n_cert)` are convex, so a budget that is unbiased but noisy per patch-year
+over-spends: implied total mortality **6.999 %/yr against FIT's own 5.961** on FIT's stand and **8.292 vs
+5.001** on the arm's own, i.e. the roster would fall to **0.62×** and **0.11×** over the 81-year leg. The
+cause is not the gross-budget idea — with a perfect count target the same budget reproduces FIT's gross
+kills *and* FIT's own net exactly — it is the count model's per-patch-year error being rectified, and the
+`perfect`→`oracle` gap (2.049 → 4.509) is that error measured. Smoothing makes it worse. Spending from a
+**running account** — a "grow" year repays an earlier overspend instead of being clipped to zero — lands
+total mortality at 5.817 vs 5.961 %/yr, roster 1.70×, capacity 2.702 %/yr. So the arm to build is the
+accounting form, and I have written down in advance that its capacity on the arm's own stand is
+**1.493 ± 0.180 %/yr — AT the 1.5 % criterion, 0.04 σ below it**, so a near-miss is the expectation and not
+a new mystery. Its own cost is also stated: the empty-budget share rises to 40–61 %, i.e. mortality becomes
+lumpier than FIT's, which is unmeasured on biomass.
+
+**Two of my own errors, both caught inside the scorer before its numbers were published.** (1) I
+pre-registered a band for the oracle arm and **mis-derived it**: [1.5, 2.6] %/yr came from
+`mean(b) − mean(n_cert)`, a statement about means, while the statistic is convex — so a correct panel
+"failed" a correctly-motivated band, and the budget mean it came from was right to 0.6 %. Per ADR 0187's
+clause I did not move the tolerance: the band stays in the code as `ANCHOR_ORACLE_MISDERIVED`, is printed
+every run, and I replaced it — before reading any verdict — with an arm whose input is perfect and whose
+answer is therefore an exact identity (|diff| 0.0000). The general rule is now skill trap 5k: when the
+statistic is convex, derive its anchor by removing the noise, not by pushing means through the identity.
+(2) I modelled `total = max(b, n_cert)` unconditionally, i.e. assumed certain deaths are always honoured.
+They are not — on a gated patch-year the kill list is empty and *the kill list is the whole answer*, so the
+certain deaths are spared too. That single omission put the current operator's implied roster at 0.45× on the
+arm's own stand, flatly contradicting ADR 0186's measured on-target count; fixing it moved the same row to
++0.594 %/yr and 1.62×, agreeing with the published number. The lesson is trap 5l: a counterfactual panel that
+contains the status quo as one of its arms has a free validation in it — check that arm first. A third,
+smaller one: my pooled lag-1 autocorrelation was mostly cross-sectional (0.62 pooled, 0.23 demeaned by
+patch), and the tell was that *adding cells raised it* from 0.30 to 0.62.
+
+Also: this ADR exhausts line S's tier-3 number block (0170–0189), so while holding the integration lock I
+allocated tier 4 for every line at once at tier-3 widths — S 0240–0259, M 0260–0279, E 0280–0289,
+O 0290–0299, integrator 0300–0309 — the same precedent as the tier-3 allocation, so no line has to convene
+anything when it runs out.
+
+Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
