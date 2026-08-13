@@ -1083,6 +1083,27 @@ then drop the markers. Check afterwards that BOTH ADR references survive
 (`grep -c '^## ' <file>` and grep for your section heading *and* theirs). Cheap prevention: append under a
 heading that names your line and ADR, so the merged file reads as a sequence rather than an edit war.
 
+⚠ **KEEPING BOTH SIDES IS NOT ENOUGH WHEN THE SECTIONS ARE NUMBERED — YOU ALSO HAVE TO RENUMBER, AND FIX
+THE CROSS-REFERENCES (line M, 2026-08-13; hit on two consecutive merges).** `residual-diagnosis`'s sections
+are `## §N — …`, and both lines number from what they last saw on `main`, so a clean "keep both" resolution
+leaves the file with **two §16 and two §17**. Nothing catches it: there is no gate on a skill file, and the
+duplicates read fine in isolation.
+
+```bash
+grep -n '^## §' .claude/skills/residual-diagnosis/SKILL.md | tail -5   # look for a repeated number
+```
+
+Renumber **your** sections to follow the ones already on `main` (theirs merged first, so theirs keep their
+numbers), then **grep every file that points at them** — a `## NEXT` handoff, an ADR, another skill:
+
+```bash
+grep -rn 'residual-diagnosis. §1' lines/ docs/decisions/ .claude/skills/
+```
+
+A stale `§13` pointing at what is now `§17` sends the next session to the wrong procedure, which is worse
+than a missing pointer because it looks authoritative. Do the renumber and the reference fix in **one
+commit** with the resolution, so the two never diverge.
+
 ## ⚠ A FAILED `git fetch` MAKES THE RITUAL'S OWN DIAGNOSTICS LIE — and this remote fails INTERMITTENTLY (`[VERIFIED 2026-08-13]`, line M)
 
 **The transient.** `git fetch`/`push` against `git@github-esm` dies with
