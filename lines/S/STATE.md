@@ -326,16 +326,24 @@ rather than a request to flip now.
 > `roster`. **A 264-job full matrix was submitted** (12 scoreable cells × 2 legs × `REC`/`NP`/`S0`/`S0h`/`S1`,
 > `SEEDS=3`, tags `S_r2s_<scen>_c<cell>_<arm>_predict_s<seed>` so nothing overwrote the `roster` dumps).
 >
-> ⚠ **The submission loop ran under `nohup` on the login node and may not have finished all 264.** Check
-> `tail /p/tmp/jamirp/S_rung2/predict_matrix_submit.log` and
-> `ls -d /p/tmp/jamirp/S_rung2/*_predict_*_dump | wc -l` first. To submit only what is missing, re-run with
-> `CELLS=` restricted to the cells that have no `predict` dumps — re-running a cell that already finished
-> **overwrites its dumps**, so do not blanket-resubmit:
+> ✅ **ALL 264 WERE SUBMITTED AND HAVE FINISHED — 258 completed, 6 failed.** The queue is empty; do not
+> resubmit blanket (re-running a finished cell **overwrites its dumps**). Verify with:
 > ```bash
-> export NPREV=predict
-> CELLS=<only the missing ones> SEEDS=3 ARMS="REC NP S0 S0h S1" SCEN="historic ssp370" \
->   MAXQ=36 SUBMIT=yes bash scripts/run_rung2_response_matrix.sh
+> grep -l "successfully terminated" /p/tmp/jamirp/esm_land_daily/*predict*/lpjml.*.out | wc -l   # 258
 > ```
+> ⚠ **Note the log glob is `lpjml.*.out`, not `lpjml_*.out`** — the wrong one silently reports 0 completions
+> and looks like a total failure.
+>
+> **The 6 failures are a HARNESS IDLE TIMEOUT, not a physics or interface fault, and they are new to
+> `predict` mode.** `c12045 S1 s2/s3`, `c12235 S0h s1`, `c22732 S0h s1/s2`, `c52059 S1 s2` — all ssp370, all
+> late leg (years 2071–2094). The harness exits *cleanly* on its `--max-idle=300` while the C is still
+> running (`harness: served 1863 patch-years` of 2025), and the C then dies with
+> `ERROR043: rung2 apply: no answer for year <Y> patch <P> after 600 s`. **This is a DIFFERENT fault from the
+> `ERROR043 duplicate roster key` in §D** despite the shared error number — read the message text, not the
+> code. Fix if you need those legs: raise `--max-idle` in `scripts/run_rung2_s_arm.sh` (S-owned) above the C's
+> own 600 s wait. Otherwise ignore them: the coverage gate drops them automatically, and **2.3 % lost here vs
+> 18 % in the `roster` matrix**, so the `predict` matrix is the more scoreable of the two.
+> (Harmless startup noise you will also see: `⚠ year -1 is outside the boundary series ... clamped to 2020`.)
 >
 > **Then score it. The reading is pre-registered in ADR 0184 §10.4 — do not re-derive it:**
 > 1. **Report the separability metric FIRST**: median |`target`/`n_emit` − 1| per arm and leg. It must exceed
