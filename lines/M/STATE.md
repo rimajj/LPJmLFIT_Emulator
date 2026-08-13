@@ -507,6 +507,18 @@ of the five biome cells samples. Not an open item; a scope statement on ADR 0138
 ### 0-PREV-22. ✅ DONE 2026-08-13 (session 22) — **THE REVERT REACHED `main` (IT HAD NOT), EVERY CONTROL ARM
 ### NOW STATES THE FLAG EXPLICITLY *BEFORE* THE FLIP, AND THE FLIP IS RAISED TO LINE S. NO PHYSICS CHANGE**
 
+**MERGED to `main`** as `307308cd` (merge commit `0b12764d`; branch sha `e659e04a`). Green on `main`:
+`format`, `test (lts)`, `test (1)`, `test (macOS, lts)` and `changelog` — `test (pre)` is the known
+`continue-on-error` prerelease job. **`docs` did not run and did not need to**: this diff touches no
+`src/**` and no `docs/src/**` (ADR 0090's path filter), so the "build the docs locally before merging"
+rule does not apply here. CI-faithful suite **275 623 pass / 0 fail** (`logs/M-armhard.1776993.out`,
+job moved to `PARTITION=priority QOS=priority` after stalling on `QOSGrpCpuLimit`) — that is the
+previous 275 621 **plus exactly the two assertions this session added**, with no committed baseline
+moved, which is the evidence that the hardening is byte-identical rather than a claim about it.
+⚠ The rebase before merging pulled in line S's ADR 0186; verified it touches **no** `src/`, `test/`,
+`ext/` or `Project.toml` (`git diff --stat` empty on those paths), so the suite result carries over and
+nothing needed re-running.
+
 **Start here.** The previous handoff's step 1 was *"LAND the `gp_stand_leafon_basis` default flip"*. It is
 **not landed and deliberately so** — the 23rd assertion is line-S-owned, so the flip is an integration
 point, now raised. What this session did instead is the part that was unblocked, plus one repair.
