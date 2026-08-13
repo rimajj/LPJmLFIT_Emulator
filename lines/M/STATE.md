@@ -363,6 +363,13 @@ without daily physics.
 ### — MECHANICALLY, NOT STATISTICALLY — AND RELOCATED TO THE TWO EVERGREEN CELLS. NO BEHAVIOUR CHANGE
 ### (ADR 0134)**
 
+**MERGED to `main`** as `b380dff8` (merge commit `c77ed754`; branch sha `e3dce038`). Green on `main`:
+`docs`, `format`, `test (lts)`, `test (1)`, `test (macOS, lts)` and `changelog` — `test (pre)` is the
+known `continue-on-error` prerelease job. `docs` mattered here because the diff touches `src/**` and that
+gate never runs on a line branch. ⚠ The merge hit a conflict in the shared append-only
+`residual-diagnosis` skill (line S appended two sections to it the same day); resolved by **keeping both
+sides**, main's appends first — verified by grepping for all three section headings afterwards.
+
 **Start here.** The previous handoff's step 1 — *"`boreal_siberia`'s ALLOCATION, the one cell where it
 genuinely binds — and the concrete suspect is a per-PFT flag F does not have (`AllocParams.is_deciduous`)"*
 — is **closed as REFUTED**. Do not re-open it, and do not spend a probe on its incidence: the reason it is
