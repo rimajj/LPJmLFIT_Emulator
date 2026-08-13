@@ -1705,3 +1705,52 @@ Read verbatim in context, the live line matched the port exactly, cap and cap-or
 - **Report the refutation, with the retracted number.** A future session will find the same commented-out
   line. Writing down "this is dead, here is the 5–37× artefact it produces" is what stops it being rediscovered
   as a finding.
+
+## §11 — A CONFOUNDED *REFERENCE* IS THE SIBLING OF A CONFOUNDED *ARM*: SCORE A FAITHFULNESS FIX ON THE MOST FAITHFUL CONFIGURATION, NOT ON THE HISTORICAL CONTROL ARM (line M, 2026-08-13, ADR 0136)
+
+ADR 0126 §5 says: name the switch your decomposition arm flips, then ask what else that switch controls.
+This is the same error one level up, and it is quieter, because the thing that is confounded is not the arm
+you built — it is the **baseline you are differencing against**, which nobody re-examines because it is the
+published one.
+
+**The shape.** You have a control arm every prior number is quoted on. You add a faithfulness fix and
+difference against it. At one cell the fix "overshoots" — carries the model from 4 % above the reference to
+6.5 % below it — so you write the overshoot up as a per-cell cost of the fix and pre-register a flip
+criterion to protect against it. **Measured on the most faithful configuration available, the overshoot does
+not exist**: the same flag, alone, gives a large clean improvement (1.183 → 1.053) that never crosses 1.
+
+**Why.** The control arm's agreement at that cell was itself a compensating error — a previous ADR had
+already measured that *"boreal's earlier agreement came from two wrong parameters of opposite sign"*. A
+baseline that is right for the wrong reasons makes **any** faithfulness fix look like a regression, and the
+direction of that illusion is unpredictable from the fix.
+
+**Do this.**
+- **Run the fix on the SHIPPING configuration as well as on the historical arm, and print both.** They can
+  disagree about which arm is best — here the joint arm won on the historical basis by cancelling two
+  errors of opposite sign and lost to the single flag on the shipping basis.
+- **Before quoting an overshoot/regression at a cell, grep the ADR index for that cell + that baseline.**
+  "This cell agrees suspiciously well under a configuration we know is wrong" is usually already recorded.
+- **Add the single-flag arms on the shipping basis rather than crediting a joint arm's move to one flag.**
+  Two extra arms, minutes of compute, and it is the difference between a measurement and an attribution.
+
+## §12 — A FAITHFULNESS FIX THAT MAKES AGREEMENT WORSE IS A MEASUREMENT OF A COMPENSATING ERROR — AND IT RE-DATES YOUR HEADLINE RATIO AS A LOWER BOUND (line M, 2026-08-13, ADR 0135 + 0136)
+
+When the reference IS the oracle, a change that provably makes your code match the reference's *source* more
+closely and its *numbers* less closely cannot be a regression in the fix. It is evidence that a second error,
+of opposite sign, was being paid for by the first. That is a result, and it has a consequence you must
+propagate immediately:
+
+> **Every such term raises the estimated size of the true error, so the measured ratio becomes a LOWER
+> BOUND, not the error.** Say so in the same breath as the ratio, everywhere the ratio is quoted.
+
+Four terms in one subsystem now point the same way here (two absorbed-light placements, the stand
+conductance basis, the λ-solve Vcmax basis) — each individually faithful, each moving the model's input or
+its solved state DOWN while its output is measured ABOVE the reference. **Count them and report the count**:
+one such term is a curiosity, three is a localisation, and it re-points the work from "shave the measured
+few per cent" to "find what over-produces by more than that".
+
+Corollary for shipping: such a flag is **not** a flip candidate on fidelity grounds — flipping it trades a
+known faithfulness gain for a measured fidelity loss with no account of what pays for it. Ship it opt-in and
+say in the ADR that it exists as the **faithful control** for the compensating-error search. That is a
+different disposition from "deferred", and writing it down as such is what stops the next session either
+flipping it or deleting it.

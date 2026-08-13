@@ -272,6 +272,37 @@ Base.@kwdef struct WaterParams{T <: Real}
     # out-of-band conditioning column rather than merely being more faithful. Guardrail 4 is now served by
     # the OPT-OUT — `wscal_leafon = false` reproduces the pre-ADR-0051 expression exactly.
     wscal_leafon::Bool = true
+    # ── THE TWO REMAINING `gp_sum` BASIS DIFFERENCES (ADR 0136; both default off ⇒ byte-identical) ──
+    # ADR 0051's "Consequences" section registered these two as a separate opt-in change with their own
+    # re-measure, and they stayed unmeasured for two weeks. Both live in `gp_sum.c:36-68`, the pass that
+    # sets `pft->vmax` and returns the stand-mean potential conductance, and both act ONLY on
+    # partial-leaf days (`phen < 1`); at `phen ≡ 1` each is an exact identity, which is how they are
+    # unit-tested.
+    #
+    # (1) `gp_stand_leafon_basis` — the C computes each PFT's `gp` at FULL leaf cover (`apar ∝ pft->fpc`,
+    #     **no `phen`**, and `gmin·pft->fpc` likewise), then accumulates `gp_stand += gp·pft->phen` and
+    #     normalizes by the **plain** `Σ pft->fpc` (`gp_sum.c:57-67`). F_diff folds `φ` into the pass-1
+    #     `apar` and into `gmin`, and divides by the **phen-weighted** `Σ fpc·φ`. If `adtmm` were exactly
+    #     linear in `apar` the numerators would agree and the ratio would be `1/φ̄`, i.e. F_diff's
+    #     `gp_stand` is BIASED HIGH on any partial-leaf day ⇒ larger `demand`, larger `gc`, larger `gpd`,
+    #     larger `fac`, higher solved `λ`, more GPP. Turning this on uses the C's own numerator
+    #     `Σ gp_leafon·φ` over `Σ fpc` — both of which F_diff already accumulates for `wscal_leafon`.
+    # (2) `lambda_vm_gp` — the C's λ bisection runs `photosynthesis(..., compvm=FALSE)` with
+    #     `data.vmax = pft->vmax` **as left by `gp_sum`**, i.e. a Vcmax computed at the crown-cover,
+    #     no-phen `apar` (`water_stressed.c:204`), while its `data.apar` (and hence `je`) is the layered,
+    #     phen-scaled absorption. F_diff recomputes `vm` at the layered `apar` and uses that in the
+    #     residual. The C's FINAL call recomputes Vcmax at the layered `apar` on both sides
+    #     (`compvm=TRUE`, `water_stressed.c:206`), and Vcmax does not depend on λ, so **only the solved λ
+    #     differs — not the Vcmax the reported `agd`/`rd` are computed with**. Since `apar_leafon ≥ apar`
+    #     the C's residual generally carries the LARGER `vm` ⇒ larger `adtmm(λ)` ⇒ the root of
+    #     `fac·(1−λ) − adtmm(λ)` moves DOWN ⇒ less GPP. ⚠ That sign is conditional, not structural:
+    #     `∂adt/∂vm ∝ c2·∂agd/∂jc − b`, so it inverts wherever the individual is Rubisco-saturated
+    #     (`∂agd/∂jc < b/c2`). Do not state it as signed without the measurement (ADR 0131's lesson).
+    # ⚠ SCOPE: like the two demand gates, both are honoured ONLY on the multi-individual canopy path
+    # [`daily_step_canopy`](@ref) — the one `FDiffFastCore` and the coupled driver run. The
+    # single-individual `daily_step` / `daily_step_ml` kernels are byte-identical with either flag set.
+    gp_stand_leafon_basis::Bool = false
+    lambda_vm_gp::Bool = false
     # ── ADR 0110: PER-TREE ROOT PROFILES AND PER-TREE WATER STATUS ──────────────────────────────────
     # Off ⇒ every individual shares one cell-average root profile collapsed to one scalar `wr`, so two
     # trees differing only in rooting depth are identical in the water balance and drought response
@@ -1882,6 +1913,11 @@ function daily_step_canopy(
     gp_leafon_acc = zero(T)
     gp_stand_c_acc = zero(T)      # the C's OWN `gp_stand` numerator, `Σ gp_leafon·phen` (gp_sum.c:65)
     fpc_plain = zero(T)
+    # ADR 0136: the leaf-on (`φ ≡ 1`, crown-cover) pass is what `gp_sum.c` actually computes, so BOTH new
+    # basis flags need it as well as `wscal_leafon`. `vm_leafon` is the C's `pft->vmax` — captured only
+    # when the λ-solve arm asks for it, so the identity path allocates nothing and stays byte-identical.
+    need_leafon = w.wscal_leafon || w.gp_stand_leafon_basis || w.lambda_vm_gp
+    vm_leafon = w.lambda_vm_gp ? Vector{T}(undef, length(inds)) : nothing
     for (ii, ind) in enumerate(inds)
         phi = convert(T, _phen_at(phen, ii))
         fpc_i = convert(T, ind.fpc) * phi
@@ -1895,19 +1931,26 @@ function daily_step_canopy(
         gp_i = 1.6 * adtmm_gp / condfac + gmin_i * fpc_i
         gp_stand_acc += gp_i
         fpc_tot += fpc_i
-        if w.wscal_leafon
+        if need_leafon
             # the same expression at φ ≡ 1 — the C computes `gp` from `par·pft->fpc·alphaa·(1−albedo)`
             # (NO phen) and only then forms `gp_stand += gp·phen` vs `gp_stand_leafon += gp`.
             fpc_lo = convert(T, ind.fpc)
             apar_lo = par * (one(T) - convert(T, ind.albedo_leaf)) * convert(T, ind.alphaa) * fpc_lo
-            (_, _, _, adtmm_lo) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_lo, dl; comp_vm = true, vm_scale = vms)
+            (_, _, vm_lo, adtmm_lo) = photosynthesis(ind.photo, w.lambda_opt, tsi, co2_Pa, f.temp, apar_lo, dl; comp_vm = true, vm_scale = vms)
+            vm_leafon === nothing || (vm_leafon[ii] = vm_lo)
             gp_lo_i = 1.6 * adtmm_lo / condfac + gmin_i * fpc_lo
             gp_leafon_acc += gp_lo_i
             gp_stand_c_acc += gp_lo_i * phi
             fpc_plain += fpc_lo
         end
     end
-    gp_stand = fpc_tot > T(1.0e-20) ? gp_stand_acc / fpc_tot : zero(T)
+    # ADR 0136: the C's own expression is `Σ gp_leafon·φ / Σ fpc` gated on BOTH that numerator and the
+    # plain `Σ fpc` (`gp_sum.c:67`) — the same two-sided gate `gp_leafon` below already mirrors.
+    gp_stand = if w.gp_stand_leafon_basis
+        (gp_stand_c_acc < T(1.0e-20) || fpc_plain < T(1.0e-20)) ? zero(T) : gp_stand_c_acc / fpc_plain
+    else
+        fpc_tot > T(1.0e-20) ? gp_stand_acc / fpc_tot : zero(T)
+    end
     # `gp_sum.c:67` gates BOTH returns on the phen-weighted `gp_stand` and on the plain `fpc_total`, so a
     # fully leaf-off canopy yields `gp_stand_leafon = 0` and hence the C's `else wscal = 1` branch below.
     # The gate MUST use the C's own numerator `Σ gp_leafon·phen` (`gp_stand_c_acc`), NOT F_diff's
@@ -1961,7 +2004,12 @@ function daily_step_canopy(
         # `#_#10` kwarg method), while the plain positional inner constructor is transparent to it.
         # Behaviour-identical (same object) — the identity/regression baselines are unchanged.
         p_i = FDiffParams{T}(ind.photo, ind.tstress, w, p.resp, p.allom, p.nlambda, p.ω)
-        λ = solve_lambda(p_i, fac, tsi, co2_Pa, f.temp, apar, dl, vm)
+        # ADR 0136: the C's bisection residual carries `pft->vmax` from `gp_sum` (crown-cover, no-phen
+        # `apar`) while its `je` uses the layered `data.apar` — so ONLY the λ that comes out changes; the
+        # final `photosynthesis` call below keeps the layered `vm` on both sides, exactly as the C's
+        # `compvm=TRUE` final call does.
+        vm_λ = vm_leafon === nothing ? vm : vm_leafon[ii]
+        λ = solve_lambda(p_i, fac, tsi, co2_Pa, f.temp, apar, dl, vm_λ)
         # learned ci:ca correction (identity when no hook), re-clamped to the physical bracket (a no-op
         # in the identity path — solve_lambda already confines λ to [_LAMBDA_LO, _LAMBDA_HI]).
         λs = λ_scales === nothing ? one(T) : λ_scales[ii]

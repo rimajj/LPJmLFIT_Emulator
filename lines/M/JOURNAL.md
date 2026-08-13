@@ -1605,3 +1605,65 @@ recomputes at the actual apar in both, so only the solved λ differs; (b) the `t
 which F replaces with a smooth linear factor — ADR 0131's argument was about smoothness, not the threshold,
 and the threshold has never been scored; (c) the phenology trajectory itself, which ADR 0130 refuted as
 *the* single cause without excluding it as part of it.
+
+---
+
+## Session 21 (2026-08-13) — item (a) measured, and it came with a bigger sibling: both `gp_sum` basis differences (ADR 0136)
+
+Took the previous handoff's step 1(a) — the λ solve's Vcmax basis, *"the cheapest and the most concrete"* —
+and read `gp_sum.c` end to end to confirm what the C leaves in `pft->vmax`. That reading turned up a
+**second** difference in the same 30-line function, and both were already on record as unmeasured: ADR 0051's
+"Consequences" section names them together and defers them as *"a separate opt-in change with their own
+re-measure"*. Two weeks, no owner, no trigger — the ADR-0095 shape.
+
+**What the C does.** `gp_sum.c:53-67` computes each PFT's `gp` at FULL leaf cover (`apar ∝ pft->fpc`, no
+`phen`; `gmin·pft->fpc` likewise), then accumulates `gp_stand += gp·pft->phen` and `*fpc_total += pft->fpc`
+— the **plain** sum — and returns their ratio. F folded `φ` into the pass-1 `apar` and into `gmin` and
+divided by the phen-weighted `Σ fpc·φ`. And `water_stressed.c:198-206` bisects with
+`data.vmax = pft->vmax` (that crown-cover, no-phen Vcmax) while `data.apar` is the layered phen-carrying
+absorption. Two properties settle what these are: Vcmax does not depend on the λ argument
+(`photosynthesis.c:78-91` computes it at `pi = lambdamc3·co2`) and the C's final call is `compvm=TRUE` at
+`data.apar` — which is what F already does — so the Vcmax difference changes **only the solved λ**; and both
+differences are exact identities at `φ ≡ 1`, so both are partial-leaf-day effects. The unit test pins both
+boundaries **bitwise** (the second one needs a constructed roster with `fpar ≡ fpc`), each with a matched
+"the flag actually fires" partner so a green identity cannot be an inert path.
+
+**Predictions written into the probe before the arms ran.** Signed for the conductance basis (structural:
+with `adtmm` near-linear in `apar` the two numerators agree and the ratio is `≈1/φ̄ ≥ 1`, so F's `demand`,
+`gc`, `gpd`, `fac` and λ are all biased high) with its magnitude ranking predicted too; **deliberately
+unsigned for the Vcmax basis**, because `∂adt/∂vm ∝ c2·∂agd/∂jc − b` inverts under Rubisco saturation and
+`apar_leafon − apar` itself changes sign with how concentrated the stand's leaf area is. Graded by the
+script: direction CONFIRMED 5/5; ranking CONFIRMED (smallest at `semiarid_sahel`, where `gc` is
+supply-limited so the flag moves only `demand`, then `tropical_amazon`, nearest full leaf all year); the
+sub-prediction `|vmG| < |gpS|` REFUTED at 3 of 5.
+
+**The conductance basis is the biggest single fidelity win on record for the photosynthesis half.** On the
+shipping configuration it improves every cell and all four aggregates — 4-cell mean `|GPP F/C − 1|`
+0.0824 → **0.0328**, 4-cell mean `|bmi F/C − 1|` 0.1266 → **0.0535**, Hainich's GPP excess +9.1 % → +3.0 %
+— from a basis fix with no new physics and no parameter.
+
+**The Vcmax basis is faithful and makes agreement worse at all five cells**, because the layered `fpar`
+EXCEEDS the crown-cover `fpc` in a real stand (0.282 vs 0.151 for the unit roster's dominant stem), so the
+C's Vcmax is the smaller one and the solved λ goes up. That is the finding that matters: a MORE faithful arm
+scoring WORSE means a compensating error, so **F's true tree-photosynthesis error is larger than the ratio
+that measures it** — the third independent term to say so, after ADR 0135's `phen`-placement and missing
+snowcover factor. The ratio is a lower bound from here on.
+
+**Two method findings.** (1) The conductance basis looks like an OVERSHOOT at `boreal_siberia` on the
+historical control arm (1.044 → 0.935) and is a clean improvement on the shipping arm (1.183 → 1.053) —
+because ADR 0126 had already measured that arm's boreal agreement to come from two wrong parameters of
+opposite sign. **Score a faithfulness fix on the most faithful configuration available, not on the
+historical control arm**: a confounded *reference*, the sibling of ADR 0126 §5's confounded *arm*. That is
+also why the two single-flag arms on the shipping basis (`Pgbggs`/`Pgbggv`) were added rather than crediting
+the joint arm's move to one flag. (2) On arm A the joint arm looks best on the published assimilate
+statistic and that is a cancellation of the two errors above; on the shipping basis it is worse than the
+conductance basis alone on all four aggregates.
+
+**Not measured:** the incidence (how many partial-leaf tree-days each cell has), which needs an accumulator
+inside `daily_step_canopy` — a struct on the Enzyme path, ADR 0110's SIGABRT trap. So the per-cell numbers
+are incidence-weighted products and a small one does not separate "small mechanism" from "evergreen cell".
+Nothing coupled either; every number is rung 3.
+
+Both flags ship opt-in and default off, suite 275 621 pass / 0 fail with no committed baseline moved. The
+conductance basis's default flip is pre-registered with conditions 1–2 already met and only the
+blast-radius enumeration open — that is the next action, with its own ADR.

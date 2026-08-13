@@ -623,6 +623,32 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `has_header=False` makes every column a string; and **pin the dtypes**, because the `mort_*` columns are
   uninitialised garbage that often prints as whole numbers at the top of a restarted run, so inference calls
   them integer and then dies on the first real value.
+- ⚠ **`gp_sum.c` BUILDS EACH PFT's POTENTIAL CONDUCTANCE AT *FULL LEAF COVER* AND NORMALIZES BY THE *PLAIN*
+  `Σ fpc` — AND THE λ BISECTION CARRIES THAT PASS'S Vcmax, NOT THE LAYERED ONE (`[VERIFIED 2026-08-13]`,
+  ADR 0136).** Two separate differences from F_diff, both in `gp_sum.c:53-67`, both **exact identities at
+  `phen = 1`** ⇒ partial-leaf-day effects only. **(1)** The C computes `gp` from
+  `par·pft->fpc·alphaa·(1−albedo)·(1−snowcover)` with **no `phen`** (and `gmin·pft->fpc` likewise), then
+  forms `gp_stand += gp·pft->phen` and `*fpc_total += pft->fpc` — the **plain** sum — and returns
+  `gp_stand/fpc_total`. F_diff folded `φ` into the pass-1 `apar` AND into `gmin` and divided by the
+  phen-weighted `Σ fpc·φ`, so its stand conductance is biased HIGH by `≈1/φ̄` on a partial-leaf day, and
+  with it `demand`, `gc`, `gpd`, `fac` and the solved λ. Opt-in `WaterParams.gp_stand_leafon_basis`;
+  measured, it lowers F's tree GPP at **5 of 5** biome cells and improves every cell and every aggregate on
+  the shipping configuration (4-cell mean `|GPP_F/GPP_C −1|` **0.0824 → 0.0328**). **(2)** The λ bisection
+  runs `photosynthesis(..., compvm=FALSE)` with `data.vmax = pft->vmax` **as left by `gp_sum`** — i.e. a
+  Vcmax at that crown-cover, no-phen `apar` — while `data.apar` (hence `je`) is the layered, phen-carrying
+  absorption (`water_stressed.c:198-206`). ⚠ **Only the solved λ differs, never the final Vcmax**: Vcmax is
+  computed at `pi = lambdamc3·co2` and **does not depend on the λ argument** (`photosynthesis.c:78-91`),
+  and the C's final call is `compvm=TRUE` at `data.apar`, which is what F_diff already does. Opt-in
+  `WaterParams.lambda_vm_gp`; it is C-faithful and makes agreement **WORSE at 5 of 5 cells** (+0.7 to
+  +9.1 % GPP), because **the layered `fpar` EXCEEDS the crown-cover `fpc` in a real stand** (0.282 vs 0.151
+  for the dominant stem of the unit-test roster) — the layered integration shares all the stand's absorbed
+  light by leaf area while `fpc` saturates per crown — so the C's Vcmax is the SMALLER one. ⇒ **F's true
+  tree-photosynthesis error is LARGER than `GPP_F/GPP_C`; read that ratio as a LOWER BOUND** (the third
+  independent term to say so, with ADR 0135's `phen`-placement and missing snowcover factor).
+  ⚠ And the method fact: **score a faithfulness fix on the most faithful configuration available, not on
+  the historical control arm** — flag (1) looks like an overshoot at `boreal_siberia` on the beech-parameter
+  arm (1.044 → 0.935) purely because ADR 0126 measured that arm's boreal agreement to come from two wrong
+  parameters of opposite sign; on the shipping arm the same flag gives 1.183 → 1.053.
 - ⚠ **THE C GATES *EACH TREE'S* PHOTOSYNTHESIS ON ITS OWN CANOPY DEMAND, AND THE GATE ZEROES LEAF
   RESPIRATION TOO — F_diff RAN THE TREE PATH UNGATED (`[VERIFIED 2026-08-12]`, ADR 0131).**
   `water_stressed.c:196` runs photosynthesis only `if(gpd>1e-5 && isphoto(data.tstress))`; `:83` has already

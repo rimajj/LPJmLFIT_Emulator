@@ -359,7 +359,98 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 20) — **THE PHOTOSYNTHESIS HALF IS SCOPED: THE LIGHT INPUT IS
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 21) — **BOTH REMAINING `gp_sum` BASIS DIFFERENCES MEASURED ONE
+### AT A TIME: ONE IS THE BIGGEST SINGLE FIDELITY WIN ON RECORD FOR THE PHOTOSYNTHESIS HALF, THE OTHER IS
+### FAITHFUL AND MAKES AGREEMENT WORSE. BOTH OPT-IN, DEFAULT OFF (ADR 0136)**
+
+**Start here.** The previous handoff's step 1(a) — *"the λ solve's Vcmax basis, the cheapest and most
+concrete"* — is **done, and reading `gp_sum.c` end to end for it turned up a SECOND difference in the same
+30-line function.** Both were already registered as unmeasured by ADR 0051's "Consequences" section and had
+sat there two weeks. Both are **exact identities at `phen = 1`** ⇒ partial-leaf-day effects. Suite
+**275 621 pass / 0 fail**, no committed baseline moved (`logs/M-suite0136.1774427.out`); probe
+`logs/M-gpsum3.1775096.out`, basis gate PASS.
+
+**1. `gp_stand_leafon_basis` (the new one) — the C builds each PFT's potential conductance at FULL leaf
+cover and normalizes by the PLAIN `Σ fpc`; F folded `phen` into the pass-1 `apar` AND into `gmin` and
+divided by `Σ fpc·φ`**, biasing its stand conductance high by `≈1/φ̄` on any partial-leaf day, and with it
+`demand`, `gc`, `gpd`, `fac` and the solved λ. **It lowers F's tree GPP at 5 of 5 cells** (direction AND the
+magnitude ranking both pre-registered and confirmed — smallest at `semiarid_sahel`, where `gc` is
+supply-limited so the flag moves only `demand`, then `tropical_amazon`, nearest full leaf all year). On the
+**shipping configuration** (per-PFT parameters + tree demand gate + prognostic below-ground pool) it improves
+**every cell and all four aggregates**: 4-cell mean `|GPP F/C − 1|` **0.0824 → 0.0328** (−60 %), 4-cell mean
+`|bmi F/C − 1|` **0.1266 → 0.0535** (−58 %), Hainich's GPP excess **+9.1 % → +3.0 %**, per-cell
+1.183→1.053 / 1.091→1.030 / 1.619→1.609 / 1.029→1.025 / 1.027→1.023.
+
+**2. `lambda_vm_gp` (ADR 0135's item (a)) — faithful, and it makes the target statistic WORSE at 5 of 5
+cells** (+0.7 to +9.1 % GPP). No sign was predicted, deliberately. Cause, measured: **the layered `fpar`
+EXCEEDS the crown-cover `fpc` in a real stand** (0.282 vs 0.151 for the dominant stem of the unit roster),
+so the C's `gp_sum` Vcmax is the SMALLER one and the solved λ goes UP. ⚠ Note it changes **only the solved
+λ** — Vcmax does not depend on λ and the C's final call recomputes it at the layered `apar`, as F already
+does.
+
+**3. ★ THE LOAD-BEARING CONSEQUENCE. A more faithful arm scoring worse is evidence of a COMPENSATING ERROR,
+so F's true tree-photosynthesis error is LARGER than the `GPP_F/GPP_C` ratio that measures it.** This is now
+the **third independent term** saying so — ADR 0135 found the `phen`-inside-the-extinction placement and the
+missing `(1−snowcover)` factor, both of which make F absorb LESS light while its GPP sits above the C's.
+**Stop quoting that ratio as the size of the kernel error; it is a lower bound.**
+
+**4. METHOD FINDING — score a faithfulness fix on the most faithful configuration available, NOT on the
+historical control arm.** `gp_stand_leafon_basis` looks like an OVERSHOOT at `boreal_siberia` on the
+beech-parameter arm (1.044 → 0.935) and is a large clean improvement on the shipping arm (1.183 → 1.053).
+ADR 0126 had already measured why: that arm's boreal agreement comes from **two wrong parameters of
+opposite sign**, so it is a compensating-error reference and any faithfulness fix scored against it looks
+like an overshoot. Same family as ADR 0126 §5, one level up — a confounded *reference*, not a confounded arm.
+
+**5. And on arm A the JOINT arm looks best on the published assimilate statistic (0.1441 → 0.0956) — that is
+a CANCELLATION.** On the shipping basis, where neither offsetting error exists, the joint arm is **worse
+than `gp_stand_leafon_basis` alone on all four aggregates**. Two bases disagreeing about which arm is best
+is exactly what ADR 0174 §3b says a symmetric diagnostic cannot see.
+
+**6. DELIVERABLES.** Two `WaterParams` flags (scope: `daily_step_canopy` only, like the two demand gates);
+`test/testitems/gpsum_basis_tests.jl` pins both exact-boundary identities **bitwise**, each with a matched
+"the flag actually fires" partner, and asserts **no sign** for `lambda_vm_gp`; six new arms in
+`biome_sapwood_bg_probe.jl` PART 8/8b/8c (which grades its own pre-registered predictions); the committed
+`M_growth_channel_decomposition.csv` gains **30 lines with 0 pre-existing lines changed**.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **★ FLIP `gp_stand_leafon_basis`'s DEFAULT TO `true`. ADR 0136 §7's criterion is PRE-REGISTERED AND
+   CONDITIONS 1–2 ARE ALREADY MET** (4-cell GPP 0.0824→0.0328 and 4-cell bmi 0.1266→0.0535 on arm
+   `Pgbggs`, the flag alone on the shipping configuration; boreal inside its own noise floor on both
+   readings). **Only condition 3 is open — the blast-radius enumeration — and it is the whole cost.**
+   Follow the `julia-test` skill's default-flip procedure and ADR 0133's precedent: flip the default ALONE,
+   let the suite's failure list BE the measured blast radius, regenerate every moved baseline with a harness
+   that reproduces the OLD numbers **in the same run**, and — the trap ADR 0133 §4 paid for — **audit every
+   control arm**: `biome_sapwood_bg_probe.jl`'s `mkparams` and `biome_canopy_growth_probe.jl`'s already pass
+   `wscal_leafon`/`tree_demand_gate` explicitly *because* of this, and must now pass
+   `gp_stand_leafon_basis = false` too, or 30 committed rows silently change basis under their old labels.
+   Give it its own ADR (**0137**), and expect the Hainich canopy annual totals and the coupled biome GPP
+   pins to move.
+2. **THE COMPENSATING ERROR IS NOW THE HEAD OF THE PHOTOSYNTHESIS QUEUE** (finding 3 above). Three
+   independent faithful terms all move F's absorbed light or its λ DOWN while its GPP sits ABOVE the C's,
+   so something in the kernel over-produces by more than the measured 3–9 %. ADR 0135's shortlist keeps
+   **(b) the `tstress < 1e-2` hard zeroing** (`photosynthesis.c:54-61`; F replaces it with a smooth linear
+   `tstress` factor — ADR 0131's argument was about SMOOTHNESS, never the THRESHOLD, which has never been
+   scored) and **(c) the phenology trajectory**. Item (a) is closed. ⚠ **Do not re-open** the layered-light
+   model, the leaf-area density basis, `k_lambert`, `par`, `alphaa`, `albedo_leaf` or the SLA Vcmax cap
+   (ADR 0135 §4).
+3. **`boreal_siberia`'s allocation gap is still open and its ONLY remaining named suspect is the
+   `reprod_cost` path.** Unchanged. ADR 0132 §5 retired the below-ground wood port there; ADR 0134 retired
+   the leaf recycle. **Do not re-propose either at that cell.**
+4. **The relocated leaf-recycle gap at the two evergreen cells** (`mediterranean_iberia` 24.8 %,
+   `tropical_amazon` 12.4 %) is unchanged and still an **upper bound** — the latch-incidence probe in
+   ADR 0134's handoff is what closes it, with the activation count printed beside the fraction.
+5. **`bg_growth`'s DEFAULT IS STILL BLOCKED ON LINE S** — unchanged, criterion already pre-registered: flip
+   once S carries `heartwood_bg_c` through `slow.jl`'s four `TreePools` rebuild sites (recruit mix `:161`,
+   `_with_nind` `:249`, recruit build `:479`, K-cap merge `:670`) **and** the full suite's failure list is
+   enumerated. Raised in `lines/S/STATE.md`; nothing is broken today because the flag is off.
+6. **THE DIFFERENTIATED PATH RUNS THE TREE DEMAND GATE BY DEFAULT at the SOFT sharpness** — unchanged:
+   `rollout_canopy_years_gpp` reads `p.water` with no reconstruction, so the trainer inherits
+   `tree_demand_gate = true` at `βgpd_gate = 2e4` (and will inherit any `gp_stand_leafon_basis` flip the
+   same way — say so in that ADR). Any trainer arm that means "the pre-0133 path" must say so explicitly.
+   The trainer still builds its pools with the pre-`sapwood_bg` arity.
+
+### 0-PREV-20. ✅ DONE 2026-08-13 (session 20) — **THE PHOTOSYNTHESIS HALF IS SCOPED: THE LIGHT INPUT IS
 ### FAITHFUL, SO THE GPP EXCESS IS IN THE KERNEL — AND THE CANDIDATE THAT LOOKED DECISIVE WAS A
 ### COMMENTED-OUT C BRANCH. NO BEHAVIOUR CHANGE (ADR 0135)**
 

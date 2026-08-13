@@ -1057,6 +1057,239 @@ end
 @printf("A `drop` far below `target` with a NON-ZERO `belF_wood` means the sink is real but small; a\n")
 @printf("`belF_wood` of ~0 means the SEED, not the mechanism, is what is being measured.\n")
 
+# ── PART 8 — THE TWO REMAINING `gp_sum` BASIS DIFFERENCES (ADR 0136) ─────────────────────────────────
+# WHY HERE: ADR 0135 scoped the photosynthesis half of the assimilate error to the KERNEL — the light
+# INPUT is faithful factor by factor, so `GPP_F/GPP_C` on a matched roster IS the kernel error. Its
+# three-item shortlist put the λ solve's Vcmax basis first. Reading `water_stressed.c` for that turned up
+# TWO differences, both in `gp_sum.c` and both already registered as unmeasured by ADR 0051's
+# "Consequences" section ("a separate opt-in change with their own re-measure"). This part is that
+# re-measure. Both are exact identities at `φ ≡ 1`, so they are partial-leaf-day effects.
+#
+#   gpS (`gp_stand_leafon_basis`) — the C forms each PFT's `gp` at FULL leaf cover (`apar ∝ pft->fpc`,
+#       NO phen; `gmin·pft->fpc` likewise), accumulates `gp_stand += gp·pft->phen`, and normalizes by the
+#       PLAIN `Σ pft->fpc` (`gp_sum.c:57-67`). F folds `φ` into the pass-1 `apar` and `gmin` and divides
+#       by the phen-weighted `Σ fpc·φ`.
+#   vmG (`lambda_vm_gp`) — the C's λ bisection carries `data.vmax = pft->vmax` as left by `gp_sum`, i.e.
+#       a Vcmax at the CROWN-COVER, NO-PHEN `apar`, while its `data.apar` (hence `je`) is the layered
+#       phen-scaled absorption (`water_stressed.c:198-206`). ONLY the solved λ differs: the C's final
+#       call recomputes Vcmax at the layered `apar` (`compvm=TRUE`) exactly as F does, and Vcmax does not
+#       depend on λ.
+#
+# ⚠ PRE-REGISTERED PREDICTIONS, written before the arms ran (ADR 0131's rule — a prediction recorded
+# after the numbers exist can only ever confirm):
+#   (i)   gpS LOWERS F's GPP wherever the canopy is seasonal. The direction IS structural: with `adtmm`
+#         near-linear in `apar` the numerators agree and the ratio of the two `gp_stand`s is ≈ 1/φ̄ ≥ 1,
+#         so F's `demand`/`gc`/`gpd`/`fac` and hence its solved λ are all biased high on a partial-leaf
+#         day. The MAGNITUDE is not structural: `gp_stand` reaches GPP only where `gc` is
+#         conductance-limited, not supply-limited, so it should be SMALLEST at `semiarid_sahel`.
+#   (ii)  gpS is ~nil at a cell whose canopy is at full leaf all year. `tropical_amazon` is the candidate.
+#   (iii) vmG has NO PREDICTED SIGN, for two independent reasons, and asserting one would be a guess:
+#         `apar_leafon − apar` changes sign with how concentrated the stand's leaf area is (the layered
+#         share can EXCEED crown cover — measured `fpar` 0.282 vs `fpc` 0.151 for the dominant stem of
+#         the unit-test roster), and `∂adt/∂vm ∝ c2·∂agd/∂jc − b` inverts under Rubisco saturation.
+#         Predicted only: |vmG| < |gpS| at every cell.
+#   (iv)  Together they should move `GPP F/C` TOWARD 1 at `temperate_hainich`, whose kernel excess is
+#         ADR 0130's +7.4 % (tree GPP, matched population). An OVERSHOOT below 1 is the informative
+#         outcome and must be reported as such, not tuned away.
+# FALSIFIER, and it is the cheap one: if gpS moves GPP by < 1 % at EVERY cell, the basis difference is
+# priced and dead, and the photosynthesis shortlist drops to items (b) and (c) of ADR 0135.
+# ⚠ NOT MEASURED HERE (same limitation as PART 6): the INCIDENCE — how many partial-leaf tree-days each
+# cell actually has. The effect is the incidence-weighted product, so a small number at one cell does not
+# separate "the mechanism is small" from "that cell is evergreen" (ADR 0134's `CAN BIND` distinction).
+const PARAMS_GPS = let
+    w = PARAMS.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    typeof(w)(; merge(nt, (; gp_stand_leafon_basis = true))...)
+end
+const PARAMS_VMG = let
+    w = PARAMS.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    typeof(w)(; merge(nt, (; lambda_vm_gp = true))...)
+end
+const PARAMS_BOTH = let
+    w = PARAMS.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    typeof(w)(; merge(nt, (; gp_stand_leafon_basis = true, lambda_vm_gp = true))...)
+end
+wrapw(w) = FDiffParams{Float64}(PARAMS.photo, PARAMS.tstress, w, PARAMS.resp, PARAMS.allom, PARAMS.nlambda, PARAMS.ω)
+# ⚠ The gate-off `PARAMS` basis is deliberate: arm A is the reference every column below is differenced
+# against, and it is the arm ADR 0125/0127/0130 published. `Pgbgg2` repeats the pair on the most faithful
+# configuration that exists (per-PFT parameters + the C's demand-gate + the prognostic below-ground pool)
+# so the answer is not read only off a control arm.
+armAgps = [arm(k; params = wrapw(PARAMS_GPS)) for k in eachindex(NAMES)]
+@printf("arm Agps (A + the C's gp_stand leaf-on basis) done\n"); flush(stdout)
+armAvmg = [arm(k; params = wrapw(PARAMS_VMG)) for k in eachindex(NAMES)]
+@printf("arm Avmg (A + the C's gp_sum Vcmax in the lambda solve) done\n"); flush(stdout)
+armAgv = [arm(k; params = wrapw(PARAMS_BOTH)) for k in eachindex(NAMES)]
+@printf("arm Agv  (A + both) done\n"); flush(stdout)
+const PARAMS_TG_BOTH = let
+    w = PARAMS_TG.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    w2 = typeof(w)(; merge(nt, (; gp_stand_leafon_basis = true, lambda_vm_gp = true))...)
+    FDiffParams{Float64}(PARAMS_TG.photo, PARAMS_TG.tstress, w2, PARAMS_TG.resp, PARAMS_TG.allom, PARAMS_TG.nlambda, PARAMS_TG.ω)
+end
+armPgbgg2 = [
+    arm(k; per_pft = true, seed_bg = true, bg_growth = true, params = PARAMS_TG_BOTH)
+        for k in eachindex(NAMES)
+]
+@printf("arm Pgbgg2 (the most faithful arm + both gp_sum basis fixes) done\n"); flush(stdout)
+# ⚠ AND THE TWO SINGLES ON THE SAME BASIS. `Pgbgg2` turns BOTH flags on at once, so crediting its move to
+# either one would be exactly the ADR 0126 §5 error (a decomposition arm carrying a second change). The
+# flip criterion in ADR 0136 §7 is pre-registered on `Pgbggs`, so `Pgbggs` has to exist.
+const PARAMS_TG_GPS = let
+    w = PARAMS_TG.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    w2 = typeof(w)(; merge(nt, (; gp_stand_leafon_basis = true))...)
+    FDiffParams{Float64}(PARAMS_TG.photo, PARAMS_TG.tstress, w2, PARAMS_TG.resp, PARAMS_TG.allom, PARAMS_TG.nlambda, PARAMS_TG.ω)
+end
+const PARAMS_TG_VMG = let
+    w = PARAMS_TG.water
+    fns = fieldnames(typeof(w))
+    nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
+    w2 = typeof(w)(; merge(nt, (; lambda_vm_gp = true))...)
+    FDiffParams{Float64}(PARAMS_TG.photo, PARAMS_TG.tstress, w2, PARAMS_TG.resp, PARAMS_TG.allom, PARAMS_TG.nlambda, PARAMS_TG.ω)
+end
+armPgbggs = [
+    arm(k; per_pft = true, seed_bg = true, bg_growth = true, params = PARAMS_TG_GPS)
+        for k in eachindex(NAMES)
+]
+@printf("arm Pgbggs (the most faithful arm + the gp_stand leaf-on basis ALONE) done\n"); flush(stdout)
+armPgbggv = [
+    arm(k; per_pft = true, seed_bg = true, bg_growth = true, params = PARAMS_TG_VMG)
+        for k in eachindex(NAMES)
+]
+@printf("arm Pgbggv (the most faithful arm + the lambda-solve Vcmax basis ALONE) done\n\n"); flush(stdout)
+pAgps = [panel(a) for a in armAgps]
+pAvmg = [panel(a) for a in armAvmg]
+pAgv = [panel(a) for a in armAgv]
+pPgbgg2 = [panel(a) for a in armPgbgg2]
+pPgbggs = [panel(a) for a in armPgbggs]
+pPgbggv = [panel(a) for a in armPgbggv]
+
+@printf("\n--- PART 8: THE TWO `gp_sum` BASIS DIFFERENCES, ONE VARIABLE AT A TIME (ADR 0136) ---\n")
+@printf(
+    "%-22s %-10s %8s %7s %8s %7s %8s %8s %8s %8s\n",
+    "cell", "arm", "GPP", "dGPP%", "NPP", "dNPP%", "GPP F/C", "-> arm", "bmi F/C", "-> arm"
+)
+for (tag, refp, refa, newp, newa) in (
+        ("A->Agps", pA, armA, pAgps, armAgps),
+        ("A->Avmg", pA, armA, pAvmg, armAvmg),
+        ("A->Agv", pA, armA, pAgv, armAgv),
+        ("Pgbgg->Pgbggs", pPgbgg, armPgbgg, pPgbggs, armPgbggs),
+        ("Pgbgg->Pgbggv", pPgbgg, armPgbgg, pPgbggv, armPgbggv),
+        ("Pgbgg->Pgbgg2", pPgbgg, armPgbgg, pPgbgg2, armPgbgg2),
+    )
+    @printf("%s\n", tag)
+    for k in eachindex(NAMES)
+        c0 = refp[k]; c1 = newp[k]
+        q0 = cue_panel(refa[k], c0); q1 = cue_panel(newa[k], c1)
+        # `GPP F/C` is on the CLOSED population basis of PART 5d (both sides on F's own >5 m roster) so it
+        # is the same statistic ADR 0130's +7.4 % is quoted on; `nan` where that cell/window has no C
+        # daily-GPP oracle. `bmi F/C` is ADR 0125/0127's published assimilate-error statistic.
+        g0 = (q0 === nothing || isnan(q0.gpp_share) || !(q0.gppC5 > 0)) ? NaN : q0.gppF / q0.gppC5
+        g1 = (q1 === nothing || isnan(q1.gpp_share) || !(q1.gppC5 > 0)) ? NaN : q1.gppF / q1.gppC5
+        r0 = c0.bc != 0 ? c0.bf / c0.bc : NaN
+        r1 = c1.bc != 0 ? c1.bf / c1.bc : NaN
+        @printf(
+            "%-22s %-10s %8.1f %7.2f %8.1f %7.2f %8.3f %8.3f %8.3f %8.3f\n", NAMES[k], "",
+            c1.gf, 100 * (c1.gf / c0.gf - 1), c1.bf, 100 * (c1.bf / c0.bf - 1), g0, g1, r0, r1
+        )
+    end
+end
+@printf("\nHOW TO READ IT. `GPP`/`NPP` are F's OWN tree-only annual ensemble means (gC/m2/yr) on the NEW\n")
+@printf("arm; the `d%%` columns are that flag's effect with nothing else moving, since the two arms differ\n")
+@printf("in exactly one `WaterParams` field and the C side is arm-independent. `GPP F/C` is PART 5d's\n")
+@printf("closed-population ratio — the statistic ADR 0135 established IS the kernel error — printed for\n")
+@printf("the reference arm and the new one, so a move toward 1.0 is readable directly.\n")
+@printf("⚠ `Agv` is NOT `Agps + Avmg`: both flags act on the same lambda solve, so read the joint arm,\n")
+@printf("never the sum of the two singles.\n")
+@printf("⚠ A cell whose canopy is at full leaf all year is an EXACT identity for both flags, so a ~0 row\n")
+@printf("there is the phenology, not evidence that the mechanism is small (the incidence is NOT measured\n")
+@printf("here — see the header).\n")
+
+# ── PART 8b — THE HEADLINE AGGREGATES AND THE PRE-REGISTERED VERDICT, COMPUTED BY THE SCRIPT ──────────
+# ADR 0104: "have the SCRIPT compute the headline statistic" — an aggregate formed by reading the table
+# above is machine-truth-shaped and is not machine truth. Two statistics, both already blessed:
+#   `|GPP F/C − 1|` — ADR 0135 established this IS the kernel error on a matched roster, so it is the
+#       statistic THIS work is aimed at.
+#   `|bmi F/C − 1|` — ADR 0125/0127/0133's published assimilate-error statistic, i.e. what a flip would
+#       be graded on. A cell whose ratio is NEGATIVE (the arm's annual tree carbon balance changes sign)
+#       has no defined distance to 1 and is EXCLUDED with its count printed, never folded in.
+# BOTH cell sets are printed: all five, and the four with `mediterranean_iberia` dropped — that cell's own
+# 1.5-1.7x growth error dominates any mean it is in, and ADR 0127/0133 already exclude it for that reason.
+# Keeping both visible is ADR 0111 §9's "one ratio definition per panel, and say which panel you quote".
+function agg(ps, as, sel)
+    gs = Float64[]; bs = Float64[]
+    for k in eachindex(NAMES)
+        NAMES[k] in sel || continue
+        c = ps[k]; q = cue_panel(as[k], c)
+        if !(q === nothing || isnan(q.gpp_share) || !(q.gppC5 > 0))
+            push!(gs, abs(q.gppF / q.gppC5 - 1))
+        end
+        r = c.bc != 0 ? c.bf / c.bc : NaN
+        (isnan(r) || r <= 0) || push!(bs, abs(r - 1))
+    end
+    return (
+        g = isempty(gs) ? NaN : sum(gs) / length(gs), ng = length(gs),
+        b = isempty(bs) ? NaN : sum(bs) / length(bs), nb = length(bs),
+    )
+end
+const SEL5 = Set(NAMES)
+const SEL4 = setdiff(Set(NAMES), Set(["mediterranean_iberia"]))
+@printf("\n--- PART 8b: HEADLINE AGGREGATES (mean over cells of |ratio − 1|; lower is better) ---\n")
+@printf(
+    "%-10s %10s %4s %10s %4s %10s %4s %10s %4s\n",
+    "arm", "GPP 5cell", "n", "bmi 5cell", "n", "GPP 4cell", "n", "bmi 4cell", "n"
+)
+for (tag, ps, as) in (
+        ("A", pA, armA), ("Agps", pAgps, armAgps), ("Avmg", pAvmg, armAvmg), ("Agv", pAgv, armAgv),
+        ("Pgbgg", pPgbgg, armPgbgg), ("Pgbggs", pPgbggs, armPgbggs),
+        ("Pgbggv", pPgbggv, armPgbggv), ("Pgbgg2", pPgbgg2, armPgbgg2),
+    )
+    a5 = agg(ps, as, SEL5); a4 = agg(ps, as, SEL4)
+    @printf(
+        "%-10s %10.4f %4d %10.4f %4d %10.4f %4d %10.4f %4d\n",
+        tag, a5.g, a5.ng, a5.b, a5.nb, a4.g, a4.ng, a4.b, a4.nb
+    )
+end
+@printf("\n⚠ `n` is the number of cells that entered each mean. The `bmi` columns drop every cell whose\n")
+@printf("ratio is negative, so arm A's `bmi` mean is over a DIFFERENT and smaller cell set than arm\n")
+@printf("Pgbgg's — compare a `bmi` column only where the two `n`s agree.\n")
+
+@printf("\n--- PART 8c: THE PRE-REGISTERED PREDICTIONS, GRADED ---\n")
+let
+    dg(new, ref, k) = 100 * (new[k].gf / ref[k].gf - 1)
+    gps = [dg(pAgps, pA, k) for k in eachindex(NAMES)]
+    vmg = [dg(pAvmg, pA, k) for k in eachindex(NAMES)]
+    nneg = count(<(0), gps)
+    @printf("(i)   gpS lowers GPP at every cell: %d of %d negative -> %s\n", nneg, length(gps), nneg == length(gps) ? "CONFIRMED" : "REFUTED")
+    ord = sortperm(abs.(gps))
+    @printf("      |dGPP%%| ranking, smallest first: %s\n", join(NAMES[ord], " < "))
+    @printf("      (predicted SMALLEST at semiarid_sahel — supply-limited `gc` — and ~nil where phen ~ 1)\n")
+    nlt = count(i -> abs(vmg[i]) < abs(gps[i]), eachindex(NAMES))
+    @printf("(iii) |vmG| < |gpS| at every cell: %d of %d -> %s\n", nlt, length(gps), nlt == length(gps) ? "CONFIRMED" : "REFUTED")
+    @printf("      vmG sign: %d of %d positive (NO sign was predicted — see the header)\n", count(>(0), vmg), length(vmg))
+    kh = findfirst(==("temperate_hainich"), NAMES)
+    q0 = cue_panel(armA[kh], pA[kh]); q1 = cue_panel(armAgv[kh], pAgv[kh])
+    if q0 !== nothing && q1 !== nothing && q0.gppC5 > 0 && q1.gppC5 > 0
+        r0 = q0.gppF / q0.gppC5; r1 = q1.gppF / q1.gppC5
+        @printf(
+            "(iv)  Agv moves Hainich GPP F/C toward 1: %.3f -> %.3f -> %s%s\n", r0, r1,
+            abs(r1 - 1) < abs(r0 - 1) ? "CONFIRMED" : "REFUTED", r1 < 1 ? " (OVERSHOOT below 1)" : ""
+        )
+    end
+    big = count(i -> abs(gps[i]) >= 1.0, eachindex(NAMES))
+    @printf(
+        "FALSIFIER (gpS < 1%% at EVERY cell => the basis difference is priced and dead): %d cells >= 1%% -> %s\n",
+        big, big == 0 ? "FALSIFIED — drop it from the shortlist" : "NOT falsified — the difference is live"
+    )
+end
+
 # ── the COMMITTED table (the result, not the log) ────────────────────────────────────────────────────
 # ADR 0127's numbers live here rather than only in a `logs/` file, so a later session can re-score an arm
 # against them without re-deriving the basis. Regenerate by re-running this probe; the basis gate above
@@ -1085,6 +1318,11 @@ open(OUTCSV, "w") do io
     println(io, "#         split + the sapwood_bg->heartwood_bg turnover. These arms ALSO change the pool's")
     println(io, "#         SEED from D to the (1-turnover_sapwood)*D a stem in the C actually holds, taken")
     println(io, "#         one fixture earlier - with the D seed the top-up is identically zero.")
+    println(io, "#       Agps/Avmg/Agv = A + the C's gp_sum gp_stand leaf-on basis / + the C's gp_sum Vcmax")
+    println(io, "#         in the lambda solve / + BOTH (ADR 0136; both are exact identities at phen=1)")
+    println(io, "#       Pgbggs/Pgbggv/Pgbgg2 = Pgbgg + the gp_stand basis ALONE / the Vcmax basis ALONE /")
+    println(io, "#         BOTH. Pgbgg2 is the most faithful arm that exists; the two singles are what")
+    println(io, "#         make its move attributable to one flag (ADR 0126 section 5).")
     println(io, "# keepF_pub/keepC_pub reproduce ADR 0125 PART 7's published mean-of-per-year-ratios form;")
     println(io, "# keepF_abs/keepC_abs are the ratio-of-means. They are DIFFERENT statistics - see ADR 0127.")
     println(io, "# The last six columns (ADR 0129) split the assimilate error `bmi_F/bmi_C` EXACTLY into a")
@@ -1105,6 +1343,9 @@ open(OUTCSV, "w") do io
             ("A", pA, armA), ("Abg", pAbg, armAbg), ("P", pP, armP), ("Pbg", pPbg, armPbg),
             ("Ag", pAg, armAg), ("Ags", pAgs, armAgs), ("Pg", pPg, armPg),
             ("Abgg", pAbgg, armAbgg), ("Pbgg", pPbgg, armPbgg), ("Pgbgg", pPgbgg, armPgbgg),
+            ("Agps", pAgps, armAgps), ("Avmg", pAvmg, armAvmg), ("Agv", pAgv, armAgv),
+            ("Pgbggs", pPgbggs, armPgbggs), ("Pgbggv", pPgbggv, armPgbggv),
+            ("Pgbgg2", pPgbgg2, armPgbgg2),
         )
         for k in eachindex(NAMES)
             c = ps[k]
