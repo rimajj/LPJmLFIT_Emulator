@@ -363,6 +363,18 @@ without daily physics.
 ### AT A TIME: ONE IS THE BIGGEST SINGLE FIDELITY WIN ON RECORD FOR THE PHOTOSYNTHESIS HALF, THE OTHER IS
 ### FAITHFUL AND MAKES AGREEMENT WORSE. BOTH OPT-IN, DEFAULT OFF (ADR 0136)**
 
+**MERGED to `main`** as `f9c7063b` (merge commit `6a778933`; branch sha `6131a078`). Green on `main`:
+`docs`, `format`, `test (lts)`, `test (1)`, `test (macOS, lts)` and `changelog` — `test (pre)` is the
+known `continue-on-error` prerelease job (it fails at LOAD time on a Julia-prerelease
+`ScopedValue`/`setindex!` API change, checked, nothing to do with this diff). `docs` mattered again here
+because the diff touches `src/**` and that gate never runs on a line branch. ⚠ The local docs build FAILED
+first at `linkcheck` (`curl` to arxiv.org, exit 7) — the HPC's restricted egress; the runbook's
+`DOCS_LINKCHECK=false` must be **`export`ed**, the wrapper does not forward a bare `VAR=x` prefix. Rebuilt
+green with 5 `class="mermaid"` fences in `docs/build/diagrams.html`. Two rebases pulled in line-S work
+mid-session; **neither touched `src/`, `test/`, `ext/` or `Project.toml`** (verified by
+`git diff --stat <old> <new> -- src/ test/ ext/ Project.toml` = empty), so the measurement's configuration
+is unchanged and no arm needed re-running.
+
 **Start here.** The previous handoff's step 1(a) — *"the λ solve's Vcmax basis, the cheapest and most
 concrete"* — is **done, and reading `gp_sum.c` end to end for it turned up a SECOND difference in the same
 30-line function.** Both were already registered as unmeasured by ADR 0051's "Consequences" section and had
