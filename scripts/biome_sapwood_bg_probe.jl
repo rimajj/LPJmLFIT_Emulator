@@ -92,12 +92,18 @@ const NYEAR = Y1 - Y0 + 1
 # arm, collapse `PARAMS_TG` onto `PARAMS` (⇒ `Ag ≡ A`), and print six committed rows under labels that are
 # no longer true — the exact failure ADR 0075 §4 cost line E a verdict to. An arm that MEANS a specific
 # value passes that value; only an arm that means "whatever ships" takes the default by omission.
+# ⚠ `gp_stand_leafon_basis = false` is explicit for the SAME reason, written BEFORE its default moves
+# rather than after (ADR 0136 §7 has the flip pre-registered and line S has to sign off on it first).
+# Every arm below that does not carry the `s` suffix is DEFINED as the pre-ADR-0136 `gp_sum` basis, and
+# the `gpS`/`vmG` arms at PART 8 derive from this bundle by setting the flag — so had this been taken by
+# omission, the flip would have collapsed `Pgbggs` onto `Pgbgg` and re-based all 30 committed
+# decomposition rows under labels that no longer described them, exactly as the `Ag ≡ A` case above.
 function mkparams()
     p = FDiff.tebs_params(Float64)
     w = p.water
     fns = fieldnames(typeof(w))
     nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
-    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true, tree_demand_gate = false))...)
+    w2 = typeof(w)(; merge(nt, (; wscal_leafon = true, tree_demand_gate = false, gp_stand_leafon_basis = false))...)
     return FDiffParams{Float64}(p.photo, p.tstress, w2, p.resp, p.allom, p.nlambda, p.ω)
 end
 

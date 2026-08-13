@@ -50,12 +50,23 @@ mkclo(t0) = TWO_LAYER === nothing ? SEBEnergyClosure(; t_soil0 = t0) :
 # whatever the new code prints. `TREE_GATE=0` must return the pins committed before this flip to every
 # printed digit.
 const TREE_GATE = haskey(ENV, "TREE_GATE") ? ENV["TREE_GATE"] == "1" : nothing
-mkfparams() = TREE_GATE === nothing ? FDiff.tebs_params(Float64) : let
+# The C's leaf-on stand-conductance basis (`gp_sum.c:57-67`), ADR 0136. Same convention again: UNSET =
+# the package default. That default is still `false` today and ADR 0136 §7 pre-registers the flip to
+# `true`, so this knob is an OPT-OUT prepared IN ADVANCE — the whole point of step 3 is that the run
+# producing the NEW pins reproduces the OLD ones, and a knob added after the flip cannot be checked
+# against anything. Once the default moves, `GPSTAND=0` must return the pins committed before it to
+# every printed digit; until then `GPSTAND=0` and UNSET are the same arm, which is itself the check
+# that the knob is wired to the field it claims.
+const GPSTAND = haskey(ENV, "GPSTAND") ? ENV["GPSTAND"] == "1" : nothing
+mkfparams() = (TREE_GATE === nothing && GPSTAND === nothing) ? FDiff.tebs_params(Float64) : let
         p = FDiff.tebs_params(Float64)
         w = p.water
         fns = fieldnames(typeof(w))
         nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
-        w2 = typeof(w)(; merge(nt, (; tree_demand_gate = TREE_GATE))...)
+        kv = NamedTuple()
+        TREE_GATE === nothing || (kv = merge(kv, (; tree_demand_gate = TREE_GATE)))
+        GPSTAND === nothing || (kv = merge(kv, (; gp_stand_leafon_basis = GPSTAND)))
+        w2 = typeof(w)(; merge(nt, kv)...)
         FDiff.FDiffParams{Float64}(p.photo, p.tstress, w2, p.resp, p.allom, p.nlambda, p.ω)
 end
 

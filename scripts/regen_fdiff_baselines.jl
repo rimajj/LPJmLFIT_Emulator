@@ -87,13 +87,21 @@ end
 # package default AND on the explicit pre-0133 opt-out. The opt-out arm must reproduce the CURRENTLY
 # COMMITTED `hainich_canopy_baseline_2010.txt` to its printed precision — that is what makes the new
 # numbers a measured basis change rather than a re-record of whatever the new code emits.
-function canopy_arm(gate)
+#
+# A THIRD arm is prepared in advance for the pre-registered `gp_stand_leafon_basis` flip (ADR 0136 §7,
+# blocked on line S): `gps = false`. Its default has NOT moved yet, so today it is bitwise the same run as
+# `a_def` — and that equality is the check that the knob is wired to the field it names. Adding the
+# opt-out only AFTER a flip is useless, because by then there is nothing left to reproduce.
+function canopy_arm(gate; gps = nothing)
     p = tebs_params()
-    if gate !== nothing
+    if gate !== nothing || gps !== nothing
         w = p.water
         fns = fieldnames(typeof(w))
         nt = NamedTuple{fns}(map(f -> getfield(w, f), fns))
-        w2 = typeof(w)(; merge(nt, (; tree_demand_gate = gate))...)
+        kv = NamedTuple()
+        gate === nothing || (kv = merge(kv, (; tree_demand_gate = gate)))
+        gps === nothing || (kv = merge(kv, (; gp_stand_leafon_basis = gps)))
+        w2 = typeof(w)(; merge(nt, kv)...)
         p = FDiffParams{Float64}(p.photo, p.tstress, w2, p.resp, p.allom, p.nlambda, p.ω)
     end
     gpp = zeros(n); tr = zeros(n); ev = zeros(n); ic = zeros(n); rm = zeros(n); fa = zeros(n)
@@ -109,8 +117,9 @@ function canopy_arm(gate)
     end
     return (gpp = gpp, tr = tr, ev = ev, ic = ic, rm = rm, fa = fa)
 end
-a_def = canopy_arm(nothing)          # the package default = what the gate now runs
-a_off = canopy_arm(false)            # the pre-0133 opt-out = what the committed baseline holds
+a_def = canopy_arm(nothing)                 # the package default = what the gate now runs
+a_off = canopy_arm(false)                   # the pre-0133 opt-out
+a_gps0 = canopy_arm(nothing; gps = false)   # the PRE-REGISTERED gp_sum-basis opt-out (inert until the flip)
 gpp = a_def.gpp; tr = a_def.tr; ev = a_def.ev; ic = a_def.ic; rm = a_def.rm; fa = a_def.fa
 println("\n=== hainich_canopy_baseline_2010.txt (PACKAGE DEFAULT — tree demand-gate ON, ADR 0133) ===")
 println("gpp_annual        ", sum(gpp))
@@ -124,6 +133,17 @@ println("transp_annual     ", sum(a_off.tr))
 println("evap_annual       ", sum(a_off.ev))
 println("interc_annual     ", sum(a_off.ic))
 println("rootmoist_mean    ", _mean(a_off.rm))
+println("\n=== CONTROL ARM: gp_stand_leafon_basis = false (ADR 0136 §7, flip pending) ===")
+println("gpp_annual        ", sum(a_gps0.gpp))
+println("transp_annual     ", sum(a_gps0.tr))
+println("evap_annual       ", sum(a_gps0.ev))
+println("interc_annual     ", sum(a_gps0.ic))
+println("rootmoist_mean    ", _mean(a_gps0.rm))
+println(
+    "  (while that default is still `false` this MUST be bitwise `a_def` — that is the wiring check; ",
+    "after the flip it must reproduce the committed file instead)"
+)
+println("  bitwise == a_def: ", sum(a_gps0.gpp) === sum(gpp) && _mean(a_gps0.rm) === _mean(rm))
 println("\n=== gate effect on the committed quantities (default / off) ===")
 for (k, x, y) in (
         ("gpp_annual", sum(gpp), sum(a_off.gpp)), ("transp_annual", sum(tr), sum(a_off.tr)),

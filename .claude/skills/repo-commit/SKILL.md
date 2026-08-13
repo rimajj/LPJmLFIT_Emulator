@@ -1082,3 +1082,73 @@ Resolution is mechanical — take the HEAD side (already on `main`, i.e. the oth
 then drop the markers. Check afterwards that BOTH ADR references survive
 (`grep -c '^## ' <file>` and grep for your section heading *and* theirs). Cheap prevention: append under a
 heading that names your line and ADR, so the merged file reads as a sequence rather than an edit war.
+
+## ⚠ A FAILED `git fetch` MAKES THE RITUAL'S OWN DIAGNOSTICS LIE — and this remote fails INTERMITTENTLY (`[VERIFIED 2026-08-13]`, line M)
+
+**The transient.** `git fetch`/`push` against `git@github-esm` dies with
+
+```
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+Please make sure you have the correct access rights and the repository exists.
+```
+
+which reads *exactly* like a revoked deploy key — and then succeeds seconds later. Measured: **2 of 3**
+consecutive `ssh -T git@github-esm` calls authenticated fine, while the key was still registered `rw` with a
+`last_used` timestamp from that morning. Before escalating, confirm three things, in this order:
+
+```bash
+ssh-keygen -y -f ~/.ssh/esm_land_emulator_deploy          # must equal ~/.ssh/esm_land_emulator_deploy.pub
+curl -s -H "Authorization: token $TOKEN" \
+  https://api.github.com/repos/rimajj/LPJmLFIT_Emulator/keys    # the key, `rw`, recent `last_used`
+for i in 1 2 3 4 5; do git fetch origin && break; sleep 5; done  # then just retry
+```
+
+Wrap **both** network steps of the merge ritual (`pull --ff-only`, `push origin main`) in that retry loop.
+Same discipline as the `/p` EIO transient two sections above: **prove permanence before declaring an outage.**
+
+**★ THE EXPENSIVE HALF IS THE SECOND-ORDER TRAP, AND IT IS SPECIFIC TO THIS RITUAL.** Remote-tracking refs
+are updated *by* the fetch, so while the fetch is the call that is failing, **every ref-reading command
+answers from the LAST SUCCESSFUL FETCH and reports it with total confidence** — no warning, no staleness
+marker. Three of this skill's own instructions read those refs:
+
+| the step | what it reads | what a stale ref does to it |
+|---|---|---|
+| "decide which gates to expect" | `git diff --name-only origin/main...HEAD` | wrong file list ⇒ you wait for a gate that never runs, or skip one that does |
+| "merge `origin/line/<X>`, not the local branch" | `origin/line/<X>` | merges an OLD sha — the one CI verified is not the one you push |
+| "is my branch already merged?" | `git log --oneline origin/main..HEAD` | **empty output means "nothing to merge" AND "I could not check"** |
+
+That last one is what cost the time: it reported a branch two commits ahead as fully merged, so a **revert
+that fixed a red `main` looked already landed and sat unmerged for ~2 h.** ⇒ **Re-fetch SUCCESSFULLY first
+— check the exit status, not the absence of output — and only then read any ref.** When a ref-based answer
+is surprising ("nothing to merge", "no gates triggered", "already up to date"), re-fetch and ask again
+before believing it.
+
+**Two commit-discipline rules from the same incident**, both cheap and both would have prevented it alone:
+
+* **`git show --stat HEAD` before pushing, and check the paths against the commit's own type prefix.** The
+  red `main` came from `df02ec9f`, subject `docs(state): line M — record the ADR 0136 merge sha and the
+  green gates`, diff = that STATE file **plus a one-line default flip in `src/fdiff.jl`**. Nothing in the
+  §8 capture gate, in CI, or in the merge ritual asks whether a subject *describes* its diff — a
+  `docs`/`chore`-labelled commit carrying a `src/**` hunk is the failure mode, and it also defeats the
+  reader's reasonable shortcut of not re-reviewing prose commits. If the paths do not match the type, split.
+* **A revert is not done until it is MERGED.** Reverting on the line branch fixes the *branch*; `main` is
+  where the gate runs and where every other line pulls from. Finish the `flock` ritual in the same session
+  as the revert — a fix parked one merge away is indistinguishable, to everyone else, from no fix at all.
+
+### …and `collate_changelog.py --dry-run` exiting 0 does NOT mean your fragment's LINKS resolve (line M, 2026-08-13)
+
+The validator checks the Keep-a-Changelog **category heading**; it never opens a `docs/decisions/...`
+target. Nor does anything downstream — the `docs` gate builds the Documenter page tree and `CHANGELOG.md`
+is not in it, so a fragment citing an ADR under a slug that does not exist collates green and ships a dead
+link into the permanent changelog. ADR slugs are long and descriptive and are easy to reconstruct wrongly
+from memory (`0059-flip-wscal-leafon-default.md` vs the real
+`0059-the-c-faithful-water-stress-becomes-the-default.md`). One line, run it with the `--dry-run`:
+
+```bash
+grep -o 'docs/decisions/[0-9a-z-]*\.md' changelog.d/<LINE>-<slug>.md | sort -u | while read f; do
+  [ -f "$f" ] && echo "OK   $f" || echo "MISS $f"
+done
+```
+Same applies to an ADR body and to an inbound block in a sibling's `STATE.md`. Cheapest habit: cite by
+`ls docs/decisions/ | grep ^0059` rather than by recall.
