@@ -426,18 +426,47 @@ is exactly what ADR 0174 §3b says a symmetric diagnostic cannot see.
 
 ▶ **WHAT TO DO NEXT — in order.**
 
-1. **★ FLIP `gp_stand_leafon_basis`'s DEFAULT TO `true`. ADR 0136 §7's criterion is PRE-REGISTERED AND
-   CONDITIONS 1–2 ARE ALREADY MET** (4-cell GPP 0.0824→0.0328 and 4-cell bmi 0.1266→0.0535 on arm
-   `Pgbggs`, the flag alone on the shipping configuration; boreal inside its own noise floor on both
-   readings). **Only condition 3 is open — the blast-radius enumeration — and it is the whole cost.**
-   Follow the `julia-test` skill's default-flip procedure and ADR 0133's precedent: flip the default ALONE,
-   let the suite's failure list BE the measured blast radius, regenerate every moved baseline with a harness
-   that reproduces the OLD numbers **in the same run**, and — the trap ADR 0133 §4 paid for — **audit every
-   control arm**: `biome_sapwood_bg_probe.jl`'s `mkparams` and `biome_canopy_growth_probe.jl`'s already pass
-   `wscal_leafon`/`tree_demand_gate` explicitly *because* of this, and must now pass
-   `gp_stand_leafon_basis = false` too, or 30 committed rows silently change basis under their old labels.
-   Give it its own ADR (**0137**), and expect the Hainich canopy annual totals and the coupled biome GPP
-   pins to move.
+1. **★ LAND THE `gp_stand_leafon_basis` DEFAULT FLIP — ADR 0136 §7's conditions 1–2 are MET and
+   CONDITION 3 HAS NOW BEEN RUN, so the expensive half is already measured. It is bigger than assumed and
+   that is exactly why it needs its own deliverable (ADR 0137).**
+   Conditions 1–2: 4-cell GPP 0.0824→0.0328 and 4-cell bmi 0.1266→0.0535 on arm `Pgbggs` (the flag alone
+   on the shipping configuration), boreal inside its own noise floor on both readings.
+   ⚠ **Condition 3, MEASURED 2026-08-13 (`logs/M-flip0137.1775524.out`): flipping the default ALONE, with
+   no baseline touched, fails 23 assertions of 275 621 across EIGHT files** — against **3–5** for each of
+   the previous four flips, which is why the flip was attempted, reverted (`c9d78360`) and re-scoped rather
+   than finished as a tail-end change. The default in `src/fdiff.jl` carries a comment pointing here.
+   **The enumeration, so the next session starts from it rather than re-running the suite:**
+   * **`gpsum_basis_tests.jl` (10 of the 23) — ADR 0133 §6's trap fired on the file written to gate this
+     very flag, one commit before the flip.** Its control `pbase = with_water(p0, (;))` takes the PACKAGE
+     DEFAULT, so at the flip it becomes a second copy of the treatment arm and every comparison against it
+     goes vacuous (`:61`/`:63` the guardrail-4 "default is off" pair; `:97`/`:99` the fires-off-boundary
+     pair; `:113` ×3 the signed-direction loop). Pin `gp_stand_leafon_basis = false` in `pbase`, re-point
+     the guardrail-4 assertions at the new default, and keep the opt-out arm. **The generalisable lesson —
+     write the control arm's EXPLICIT value at the moment you write the flag, not at the moment you flip
+     it** (captured in the `julia-test` skill).
+   * **`multi_individual_tests.jl:190-194` + `sapwood_bg_tests.jl:122/131`** — the committed Hainich canopy
+     annual totals (`gpp_annual`) and the CUE gate (~0.5118). Regenerate through
+     `scripts/regen_fdiff_baselines.jl`, whose canopy block already runs two arms; add the
+     `gp_stand_leafon_basis` control so the run producing the NEW numbers reproduces the OLD ones.
+   * **`biome_coupled_tests.jl:338`** (×2) — the coupled biome GPP pins. Add a `GPSTAND=0` opt-out knob to
+     `scripts/biome_ensemble_pin_probe.jl` mirroring its existing `TREE_GATE=0`, and require it to return
+     the pre-flip pins to every printed digit (that is what makes the re-record checkable, ADR 0133 §6).
+   * **`decadal_validation_tests.jl:102-103`** — the documented band `1.0 ≤ meanratio ≤ 1.12`, i.e. F's
+     inherited ~+7 % GPP level. The flag LOWERS GPP, so this is a **deliberate fidelity re-statement with
+     the new number in an ADR**, never a widened band (`residual-diagnosis`: a band is a measurement, not
+     a tunable).
+   * **`wscal_leafon_tests.jl:93/218`** (`sens_df > 0.4`; the out-of-band assertion) and
+     **`grass_structure_tests.jl:256/257`** (per-PFT vs beech `leaf_c` within 2 %) — both downstream of
+     `demand`, both to be re-read rather than re-tuned.
+   * **⚠ `slow_level_anchor_tests.jl:181`** (`ret_025 > 0.7`) — **line-S-owned.** An F default that moves an
+     S gate is an INTEGRATION POINT: raise it in `lines/S/STATE.md` and land both sides together (ADR 0059
+     is the precedent — S gave an explicit GO before `wscal_leafon` flipped).
+   Also still required, and unchanged: **audit every control arm** — `biome_sapwood_bg_probe.jl`'s
+   `mkparams` and `biome_canopy_growth_probe.jl` / `biome_resilience_probe.jl` /
+   `biome_slow_oracle_probe.jl` already pass `wscal_leafon`/`tree_demand_gate` explicitly *because* of this
+   trap, and must now pass `gp_stand_leafon_basis = false` too, or 30 committed decomposition rows silently
+   change basis under their old labels. Note the label shift too: after the flip, `Pgbgg` is the
+   **pre-flip** shipping configuration and `Pgbggs` is the new one.
 2. **THE COMPENSATING ERROR IS NOW THE HEAD OF THE PHOTOSYNTHESIS QUEUE** (finding 3 above). Three
    independent faithful terms all move F's absorbed light or its λ DOWN while its GPP sits ABOVE the C's,
    so something in the kernel over-produces by more than the measured 3–9 %. ADR 0135's shortlist keeps

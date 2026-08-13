@@ -425,6 +425,29 @@ stay explicit, and a new assertion reads the flag off the CONSTRUCTOR
 back cannot pass the file. And the tell that this is step 5 rather than a physics regression: **all failures
 in one file, and the arm-side assertions all still green.**
 
+**Fifth instance — `gp_stand_leafon_basis`, line M, ADR 0136 (2026-08-13) — the first one the blast radius
+BLOCKED, and the first where step 1 was the whole value of the exercise.** Conditions on fidelity were met
+and pre-registered; flipping the default alone failed **23 assertions of 275 621 across EIGHT files**,
+against 3–5 for each of the four before it, and one of them was a **sibling line's** gate. The flip was
+reverted and re-scoped as its own deliverable with the enumeration written into the handoff. Three things
+worth copying:
+
+* **Step 1 is not a formality you do on the way to the flip — it is a GO/NO-GO measurement, and it can say
+  no.** Run it *before* you plan any regeneration, and be willing to stop. A 23-file-wide list finished in
+  a hurry is how a flip ships a silently re-based fixture.
+* **★ WRITE THE CONTROL ARM'S EXPLICIT VALUE AT THE MOMENT YOU WRITE THE FLAG, NOT AT THE MOMENT YOU FLIP
+  IT.** Step 6's trap fired on the testitem written *to gate this very flag*, one commit before the flip:
+  its control was `pbase = with_water(p0, (;))` — "the package default" — which at the flip became a second
+  copy of the treatment arm, so **10 of the 23 failures were that one file's comparisons going vacuous**,
+  including the two boundary identities and the signed-direction loop. Nothing about it looked wrong when
+  written; taking the default by omission is the *correct* idiom for an arm that means "whatever ships",
+  and this arm meant "the OLD basis". The rule generalises past probes to **tests**: if an assertion's
+  meaning depends on two arms differing, both arms must state their value.
+* **A flip that moves a SIBLING LINE's gate is an integration point, not a bigger commit** (here
+  `slow_level_anchor_tests.jl`, S-owned). ADR 0059 is the precedent: line S gave an explicit GO before
+  `wscal_leafon` flipped. Check the failing files' OWNERS (CLAUDE.md §9) as part of step 2, because that is
+  what decides whether the flip is yours to land at all.
+
 ## A `Vector` (or any heap-allocated) field on a struct the Enzyme path differentiates through ABORTS the whole suite (ADR 0110, line S, 2026-08-06)
 
 **Symptom, and why it is hard to read:** the suite dies with
