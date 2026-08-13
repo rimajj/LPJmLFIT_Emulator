@@ -117,9 +117,12 @@
         sap_perm2 += parse(Float64, ind["sapwood_c"][r]) * ni / length(patches)
     end
 
-    # (a) unseeded cell CUE unchanged (= the multi_individual gate value ~0.512)
+    # (a) unseeded cell CUE unchanged (= the multi_individual gate value)
+    # RE-PINNED 2026-08-13 for the `gp_stand_leafon_basis` default flip (ADR 0137): 0.5118 → 0.4843. The
+    # flip lowers GPP on partial-leaf days, and maintenance respiration is a stock term that does not
+    # follow, so the carbon-use efficiency falls. Re-measured, not widened — the atol is unchanged.
     @test 0.42 <= cue0 <= 0.56
-    @test isapprox(cue0, 0.5118; atol = 0.01)
+    @test isapprox(cue0, 0.4843; atol = 0.01)
 
     # (b) GPP byte-identical seeded vs unseeded — the maintenance term changes NPP, never GPP
     @test gpp1 == gpp0
@@ -128,7 +131,10 @@
     @test npp1 < npp0
     @test cue1 < cue0
     @test 0.42 <= cue1 <= 0.56
-    @test isapprox(cue1, 0.497; atol = 0.008)     # 0.512 → ~0.497 (growth-resp-rebated; probe §8: 0.4973)
+    # 0.4843 → ~0.4679 (growth-resp-rebated; the pre-ADR-0137 pair was 0.5118 → 0.4973, probe §8). The
+    # seeding step still costs the same ~0.016 of CUE; both ends moved together with the GPP basis, and
+    # the seeded value is now NEARER the C's own 0.46, not further.
+    @test isapprox(cue1, 0.4679; atol = 0.008)
 
     # (d) reconstructed pool matches the §8 probe (~531 gC/m² = ~23% of aboveground sapwood)
     @test isapprox(bg_perm2, 531.4; rtol = 0.05)

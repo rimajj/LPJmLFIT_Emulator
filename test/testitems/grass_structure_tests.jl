@@ -248,13 +248,20 @@ end
     # (2) the shaded understory grass is SUPPRESSED by its own light limiter (leaf-on less than beech GSI)
     @test gpft < gbeech
     @test gpft ≥ 0 && isfinite(gpft)
-    # (3) the TREES are essentially unchanged: the beech GSI `pft_phenparams(3) === tebs_phenparams`, so the
-    # id-3 tree leaf-DISPLAY is byte-identical; the trees shift only by < 1 % through the shared soil-water /
+    # (3) the TREES are nearly unchanged: the beech GSI `pft_phenparams(3) === tebs_phenparams`, so the
+    # id-3 tree leaf-DISPLAY is byte-identical; the trees shift only through the shared soil-water /
     # stand-conductance coupling to the now-lighter, light-limited grass (the C's tree↔grass competition —
     # physically correct, and only in a MIXED coupled patch; the validated tree-only paths stay byte-identical).
+    # ⚠ RE-MEASURED 2026-08-13 for the `gp_stand_leafon_basis` DEFAULT FLIP (ADR 0137): rtol 0.02 → 0.05,
+    # because the flip makes this coupling GENUINELY STRONGER, which is a mechanism and not a tolerance
+    # problem. F's old `gp_stand` divided a phen-scaled numerator by the phen-weighted `Σ fpc·φ`, so a
+    # change in the grass's leaf display moved numerator and denominator together and largely cancelled;
+    # the C's basis divides by the PLAIN `Σ fpc`, so the same change passes into the stand conductance
+    # undamped. Measured worst case 4.9 % (tree 2 `leaf_c` 366.09 → 348.21), then 4.0 % (tree 1 `leaf_c`
+    # 1239.76 → 1189.79) and 2.9 % (tree 1 `height` 14.61 → 15.02); pre-flip all three were under 2 %.
     for i in 1:(n - 1)
-        @test isapprox(pools_pft[end][i].leaf_c, pools_beech[end][i].leaf_c; rtol = 0.02)
-        @test isapprox(pools_pft[end][i].height, pools_beech[end][i].height; rtol = 0.02)
+        @test isapprox(pools_pft[end][i].leaf_c, pools_beech[end][i].leaf_c; rtol = 0.05)
+        @test isapprox(pools_pft[end][i].height, pools_beech[end][i].height; rtol = 0.05)
         @test pools_pft[end][i].leaf_c > 0 && isfinite(pools_pft[end][i].leaf_c)
     end
 end

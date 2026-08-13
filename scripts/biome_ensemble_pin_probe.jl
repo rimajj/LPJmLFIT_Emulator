@@ -51,12 +51,11 @@ mkclo(t0) = TWO_LAYER === nothing ? SEBEnergyClosure(; t_soil0 = t0) :
 # printed digit.
 const TREE_GATE = haskey(ENV, "TREE_GATE") ? ENV["TREE_GATE"] == "1" : nothing
 # The C's leaf-on stand-conductance basis (`gp_sum.c:57-67`), ADR 0136. Same convention again: UNSET =
-# the package default. That default is still `false` today and ADR 0136 §7 pre-registers the flip to
-# `true`, so this knob is an OPT-OUT prepared IN ADVANCE — the whole point of step 3 is that the run
-# producing the NEW pins reproduces the OLD ones, and a knob added after the flip cannot be checked
-# against anything. Once the default moves, `GPSTAND=0` must return the pins committed before it to
-# every printed digit; until then `GPSTAND=0` and UNSET are the same arm, which is itself the check
-# that the knob is wired to the field it claims.
+# the package default, which since ADR 0137 (2026-08-13) is `true`, so this knob is now the OPT-OUT arm
+# (the pre-flip `gp_sum` basis). It was prepared IN ADVANCE of that flip, and that is the whole point of
+# step 3: the run producing the NEW pins must also reproduce the OLD ones, and a knob added after a flip
+# cannot be checked against anything. It DID: job 1788023 (`GPSTAND=0`) returned all ten pre-flip pins to
+# every printed digit while job 1788022 (unset) produced the five committed today.
 const GPSTAND = haskey(ENV, "GPSTAND") ? ENV["GPSTAND"] == "1" : nothing
 mkfparams() = (TREE_GATE === nothing && GPSTAND === nothing) ? FDiff.tebs_params(Float64) : let
         p = FDiff.tebs_params(Float64)

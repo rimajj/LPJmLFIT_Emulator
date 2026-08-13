@@ -99,8 +99,22 @@
     ratios = gc ./ targets
     # ── 2. LEVEL — mean annual-GPP ratio near 1 over the decade; each year bounded ──
     meanratio = sum(ratios) / NY
-    @test 1.0 ≤ meanratio ≤ 1.12                           # F_diff's inherited ~+7 % GPP-phenology level (§13/§19)
-    @test all(0.9 .< ratios .< 1.2)                        # bounded every year (no drift blow-up)
+    # ⚠ RE-STATED 2026-08-13 for the `gp_stand_leafon_basis` DEFAULT FLIP (ADR 0137): [1.0, 1.12] → [0.92,
+    # 1.02], measured 0.964132 against ~+7 % before. This is the band's whole point — it records F's decadal
+    # GPP LEVEL against the C, and the flip moved that level by construction, so the band is re-measured,
+    # never widened (the width is unchanged at 0.10 and the measurement sits mid-band). ⚠ And read the
+    # direction honestly: F now sits ~3.6 % BELOW the C over the decade rather than ~4 % above, i.e. the
+    # flip did not merely shrink the error, it crossed zero on this statistic.
+    @test 0.92 ≤ meanratio ≤ 1.02
+    # ⚠ Asserted on the EXTREMA, not as `all(0.9 .< ratios .< 1.2)`: an `all(...)` failure prints nothing
+    # but `false`, so the one basis change that moved this band cost a second job to learn by how much.
+    (rmin, rmax) = extrema(ratios)
+    # RE-STATED with the band above (ADR 0137): measured rmin 0.889378 / rmax 1.012615, against the
+    # pre-flip `all(0.9 .< ratios .< 1.2)` (whose two bounds were never printed, hence the extrema form).
+    # Every year still lands within 11 % of the C's own annual GPP. The flip moved the LEVEL, not the
+    # interannual tracking — §3's correlation is the independent statement of that.
+    @test rmin > 0.85
+    @test rmax < 1.1
 
     # ── 3. INTERANNUAL TRACKING — F_diff follows the C's year-to-year variability ──
     _mean(x) = sum(x) / length(x)

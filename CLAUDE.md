@@ -379,7 +379,13 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   `lmtorm` (`allocation_tree.c:233`, the non-cotton `/NDAYYEAR` branch — the `growing_days` branch is
   cotton-only and dead here). A realized `min(1, Σsupply·fpc/Σdemand·fpc)` carries `phen` **squared** and
   collapses to 0 on a leafless day; that mismatch put the coupled Hainich feature 6.5 band widths out
-  (0.305 vs a C truth of 0.0014) and cost the Sahel 36 % of its trees. `WaterParams.wscal_leafon` (default
+  (0.305 vs a C truth of 0.0014) and cost the Sahel 36 % of its trees. ⚠ **THAT 0.305 / "6.5 band widths"
+  IS ON THE PRE-ADR-0137 CONDUCTANCE BASIS AND DOES NOT SURVIVE THE FLIP (`[VERIFIED 2026-08-13]`).** The
+  realized ratio's stress is `1 − supply/demand` and `demand` scales with the stand conductance, which F
+  inflated by ≈`1/φ̄` on partial-leaf days; on the C's own `gp_sum` basis the same feature measures
+  **0.0561** against a band top of 0.043155 — **still out of band, but by ~0.30 band widths, not >5**. So
+  most of what looked like the old *definition's* error was F's own conductance basis. Which definition is
+  faithful is unchanged; the size of the old one's error is not. `WaterParams.wscal_leafon` (default
   off) is the faithful port.
 - **Soil geometry & `whc_nat` (`[VERIFIED]`; the per-cell soil column basis — ADR 0050, skill
   `provision-coupled-cell`).** Layer thicknesses are a **C global, not per-cell**: `fscansoilpar.c:36-39`

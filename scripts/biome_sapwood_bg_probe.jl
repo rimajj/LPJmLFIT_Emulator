@@ -92,8 +92,11 @@ const NYEAR = Y1 - Y0 + 1
 # arm, collapse `PARAMS_TG` onto `PARAMS` (⇒ `Ag ≡ A`), and print six committed rows under labels that are
 # no longer true — the exact failure ADR 0075 §4 cost line E a verdict to. An arm that MEANS a specific
 # value passes that value; only an arm that means "whatever ships" takes the default by omission.
-# ⚠ `gp_stand_leafon_basis = false` is explicit for the SAME reason, written BEFORE its default moves
-# rather than after (ADR 0136 §7 has the flip pre-registered and line S has to sign off on it first).
+# ⚠ `gp_stand_leafon_basis = false` is explicit for the SAME reason, and it was written BEFORE that
+# default moved rather than after — which is why the flip (ADR 0137, 2026-08-13) cost this file nothing.
+# ⚠ SINCE THAT FLIP THE FLAG IS AN OPT-OUT, SO THE LABELS SHIFTED: `Pgbgg` is now the PRE-flip
+# configuration and `Pgbggs` is the shipping one. Every arm below that does not carry the `s` suffix
+# names a basis the package no longer runs by default — say so when quoting one.
 # Every arm below that does not carry the `s` suffix is DEFINED as the pre-ADR-0136 `gp_sum` basis, and
 # the `gpS`/`vmG` arms at PART 8 derive from this bundle by setting the flag — so had this been taken by
 # omission, the flip would have collapsed `Pgbggs` onto `Pgbgg` and re-based all 30 committed
