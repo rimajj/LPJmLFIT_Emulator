@@ -1762,3 +1762,49 @@ fifth.
 One validity-envelope note recorded rather than left implicit: the tropical evergreen's +3 °C threshold is
 9 °C above every other tree's, so the gate *would* be live at a cool cell dominated by PFT id 0 — a
 population none of the five biome cells samples.
+
+---
+
+## Session 24 — 2026-08-13 — the `gp_stand_leafon_basis` flip lands (ADR 0137), and one of its 23 casualties was a science finding
+
+Line S replied to the request session 22 raised and session 23 finally made reachable: **GO, option (a)**,
+with an explicit authorisation to re-pin the one S-owned assertion inside M's own commit so no second
+round-trip was needed. S's reasoning is worth keeping because it is the general shape of these arguments:
+the assertion that moved is at yr 25, the horizon the file's own comment flags in capitals as non-monotone
+and as *"the worst point of that transient"*, while the claim the file exists to protect is the yr-150
+separation (unanchored 1.036 vs anchored 0.051) — and all four anchored-vs-unanchored contrasts stayed
+green. A transient amplitude moving does not touch a 20× separation stated at a different horizon.
+
+So the flip is landed. F now forms its stand conductance the way `gp_sum.c` does — each individual's
+potential conductance at full leaf cover, the phen-weighted sum over the **plain** `Σ fpc` — instead of
+folding `phen` into the pass-1 `apar` and dividing by `Σ fpc·φ`, which inflated the conductance by ≈`1/φ̄`
+on every partial-leaf day and carried that into demand, `gc`, `gpd`, `fac`, the solved λ and GPP.
+
+**The 23 assertions, and why the count was misleading.** Ten were **vacuous, not wrong**: the gate file's
+own control arm took the package default by omission, so at the flip it became a second copy of the
+treatment arm and its comparisons went empty. Six were committed baselines and pins, and every one of them
+was re-recorded through its producing script with a control arm reproducing the pre-flip numbers **in the
+same run** — the canopy baseline's `gpp_annual` and all ten coupled biome pins came back to every printed
+digit. Four were fidelity bands, re-stated with their new measurement. Three were a coupling magnitude that
+genuinely grew. One was the S-owned gate. A large failure count is not a large defect; classify before
+costing, and the classification took one already-existing log rather than a new job.
+
+**The thing nobody went looking for.** `wscal_leafon_tests.jl:218` asserted that the pre-ADR-0051
+realized-ratio water-stress feature misses its trained band by **more than five band widths**. On the C's
+own conductance basis it misses by **~0.30** — 0.0561 against a band top of 0.043155. That feature's stress
+is `1 − supply/demand`, demand scales with the stand conductance, and F's conductance was the inflated one,
+so **most of what two earlier decision records measured as the old definition's error was F's own basis**.
+Which definition is faithful is unchanged; the size of the old one's error is not. The runbook's copy of
+the 0.305 figure now says so. The transferable form: a two-arm contrast measured under a shared upstream
+defect can rank the arms correctly and still price them wrongly.
+
+**And the direction that matters most.** The decadal Hainich GPP level went from about +4 % above the C to
+**3.6 % below** it. The flip did not shrink that error, it **crossed zero** — which is exactly what a
+still-present compensating error looks like, and is the fourth independent statement that `GPP_F/GPP_C` is
+a lower bound on F's tree-photosynthesis error rather than a measurement of it. The shortlist is down to
+item (c), the phenology trajectory, in its two concrete sub-items: the per-stem `minwscal` inflection (the
+data is already on `FDiff.Individual`) and the soil-temperature gate that F drives with air temperature.
+
+Recorded as unmeasured rather than implied, because S asked for it in as many words: the yr-150 unanchored
+retention under the flip. The suite reports yr 5 and yr 25 only, and the 150-year horizon needs its own
+job. S has queued the long-horizon assertion in S's own file.
