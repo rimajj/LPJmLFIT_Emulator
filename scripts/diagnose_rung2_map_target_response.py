@@ -179,11 +179,37 @@ NPREV = os.environ.get("NPREV", "roster")
 if NPREV not in ("roster", "predict"):
     raise SystemExit(f"NPREV must be roster or predict (got '{NPREV}')")
 
+def _split_arms(v):
+    """Split an arm list on commas OR whitespace, so one exported `ARMS` serves every scorer."""
+    return [a for a in re.split(r"[,\s]+", v.strip()) if a]
+
+
+#: EVERY arm name the directory layout can carry — the regex alternation only, so a `G*` leg is
+#: DISCOVERABLE. Longest-first: `S0h` must precede `S0` or the alternation matches the prefix and
+#: the `h` lands in the mode token. Kept separate from `ARMS` so widening what can be READ never
+#: widens what is REPORTED.
+ALL_ARMS = ("NP", "S0h", "S0", "S1", "G0h", "G0", "G1")
 APPLY_RE = re.compile(
-    r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(NP|S0h|S0|S1)_" + NPREV + r"_s(\d+)_apply$"
+    r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(" + "|".join(ALL_ARMS) + r")_"
+    + NPREV + r"_s(\d+)_apply$"
 )
-ARMS = ("NP", "S0", "S0h", "S1")
-LEARNED = ("S0", "S0h", "S1")
+#: which arms the TABLES report. Default unchanged, so every published number reproduces; widen it
+#: for the gross-budget campaign with e.g. `export ARMS="NP S0 S0h S1 G0 G0h G1"` (ADR 0240).
+ARMS = tuple(_split_arms(os.environ.get("ARMS", "NP S0 S0h S1")))
+for _a in ARMS:
+    if _a not in (*ALL_ARMS, "REC"):
+        raise SystemExit(f"ARMS: '{_a}' is not one of {(*ALL_ARMS, 'REC')}")
+#: `REC` is ACCEPTED in the env value and then DROPPED here: it has no `_apply` directory (it runs
+#: no harness), so this scorer reads it from `RECCSV` and adds it unconditionally. One exported
+#: `ARMS` is shared with `kill_selectivity`, where REC is MANDATORY — rejecting it would make the
+#: two knobs incompatible, and keeping it would look for apply dirs that cannot exist.
+ARMS = tuple(a for a in ARMS if a != "REC")
+#: ⚠ the BLESSED statistic's arm set stays PINNED to ADR 0185's pre-registered triple even when
+#: `ARMS` is widened. A verdict taken over arms that did not exist when the threshold was written is
+#: not the pre-registered verdict ("a pre-registered threshold is not a pre-registered verdict"), so
+#: `G*` campaign gets the descriptive tables here and is JUDGED by its own criterion (ADR 0188 §7 /
+#: 0189 §7) in the kill-rate and departure scorers. Override deliberately with `LEARNED_ARMS`.
+LEARNED = tuple(_split_arms(os.environ.get("LEARNED_ARMS", "S0 S0h S1")))
 TERMINAL_YEAR = {"historic": 2019, "ssp370": 2100, "ssp370frz": 2100}
 LEG = {"historic": (2000, 2019), "ssp370": (2020, 2100), "ssp370frz": (2020, 2100)}
 NPATCH = 25
@@ -414,6 +440,8 @@ def main() -> int:
         if not m:
             continue
         scen, cell, arm, seed = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
+        if arm not in ARMS:      # discoverable but not reported — see ALL_ARMS
+            continue
         path = os.path.join(ROOT, name, "s_arm_log.txt")
         if not os.path.isfile(path):
             excluded.append((name, "no s_arm_log.txt"))

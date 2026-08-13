@@ -173,6 +173,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from diagnose_rung2_map_target_response import (  # noqa: E402
     LEG,
     NPATCH,
+    _split_arms,
     median,
 )
 from diagnose_rung2_response import run_completed  # noqa: E402
@@ -192,8 +193,28 @@ ALL_CELLS = (12045, 12235, 18371, 22732, 22990, 32628, 42490, 42757, 42973, 4404
 CELLS = tuple(int(c) for c in os.environ["CELLS"].split(",")) if os.environ.get("CELLS") \
     else ALL_CELLS
 
-ARMS = ("REC", "NP", "S0", "S0h", "S1")
-OPERATOR_ARMS = ("S0h", "S1")   # the arms carrying a mortality operator -- the verdict is on these
+#: every arm this scorer can READ. `ARMS` (below) is what it REPORTS.
+ALL_ARMS = ("REC", "NP", "S0", "S0h", "S1", "G0", "G0h", "G1")
+#: which arms are reported. Default unchanged, so ADR 0187's published panels reproduce exactly;
+#: widen it for the gross-budget campaign with `export ARMS="REC NP S0 S0h S1 G0 G0h G1"` (ADR
+#: 0240), which is how the criterion's own two columns -- the DISCRETIONARY kill rate `fn` (panel 2)
+#: and the annual mass removal `m_arm` (panel 5) -- are obtained for a `G*` arm.
+ARMS = tuple(_split_arms(os.environ.get("ARMS", "REC NP S0 S0h S1")))
+for _a in ARMS:
+    if _a not in ALL_ARMS:
+        raise SystemExit(f"ARMS: '{_a}' is not one of {ALL_ARMS}")
+#: ⚠ `REC` is FORCED IN, whatever `ARMS` says: it is FIT's own roster, i.e. the reference every
+#: statistic here is formed against AND the basis of panel 3's height quintiles. Dropping it does
+#: not narrow the report, it empties it -- and one exported `ARMS` is shared with the other scorers,
+#: whose default lists do not name REC because they read it from a CSV instead.
+if "REC" not in ARMS:
+    ARMS = ("REC", *ARMS)
+#: ⚠ the arms carrying a mortality operator -- the PANEL-6 VERDICT is on these, and the pair stays
+#: PINNED to ADR 0187's pre-registration even when `ARMS` is widened: LAMBDA_CONFIRM/LAMBDA_REFUTE
+#: were written against S0h and S1, and a verdict recomputed over arms that did not exist when the
+#: thresholds were set is not the pre-registered verdict. A `G*` arm is judged by ADR 0188 §7's
+#: criterion (rate, mass removal, agb departure, roster horizon), not by this one.
+OPERATOR_ARMS = ("S0h", "S1")
 SCENS = ("historic", "ssp370")
 BLESSED_SCEN = "ssp370"
 
@@ -210,7 +231,13 @@ S0_SELFTEST_TOL = 0.15
 
 DUMP_FMT = "S_r2s_{scen}_c{cell}_{arm}_" + NPREV + "_s{seed}_dump"
 APPLY_FMT = "S_r2s_{scen}_c{cell}_{arm}_" + NPREV + "_s{seed}_apply"
-SEEDS = {"REC": (1,), "NP": (1,), "S0": (1, 2, 3), "S0h": (1, 2, 3), "S1": (1, 2, 3)}
+#: ⚠ THREE seeds for a stochastic arm, not the five that were RUN -- ADR 0187's choice, kept so its
+#: panels reproduce. The `G*` arms use the same three for exactly that comparability.
+SEEDS = {
+    "REC": (1,), "NP": (1,),
+    "S0": (1, 2, 3), "S0h": (1, 2, 3), "S1": (1, 2, 3),
+    "G0": (1, 2, 3), "G0h": (1, 2, 3), "G1": (1, 2, 3),
+}
 
 
 class LegStats:
@@ -531,6 +558,10 @@ def main() -> int:
     print("-" * 96)
     print("PANEL 1 -- PROVENANCE AND COVERAGE GATE")
     print("-" * 96)
+    # The scorer names its OWN mode and arm set: the sbatch wrappers forward a FIXED list of env
+    # names and echo only that list, so an `export`ed knob shows as an EMPTY `env:` line in the job
+    # log even when it did propagate (ADR 0188). Never read the mode off the wrapper.
+    print(f"  mode NPREV={NPREV}   ARMS={list(ARMS)}   cells={len(CELLS)}")
     print(f"  legs scored               : {len(legs)}")
     print(f"  audit cross-check PASSED  : {audit_ok}   (flagged-dead count == "
           f"n_kill_applied + n_forced_dead, per patch-year)")

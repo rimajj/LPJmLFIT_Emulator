@@ -49,7 +49,7 @@ its own criterion.
 
 Env:
   ROOT     dump root                 (default /p/tmp/jamirp/S_rung2)
-  ARMS     comma list                (default S0,S0h,S1,NP)
+  ARMS     comma OR space list       (default S0,S0h,S1,NP; add G0,G0h,G1 for ADR 0240's arms)
   ANCHORS  comma list of `a`         (default 0.1,0.25,0.5,1.0)
   TERMW    terminal window, years    (default 20 — the window the response statistic reads)
 """
@@ -63,13 +63,24 @@ import statistics
 import sys
 from collections import defaultdict
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Imported at MODULE level as well as inside the panels, because the arm-name set and the arm-list
+# parser now live there (ADR 0186's rule: import the criterion's own definition). At import time it
+# only defines constants and validates `NPREV`.
+import diagnose_rung2_map_target_response as S  # noqa: E402, N812
+
 ROOT = os.environ.get("ROOT", "/p/tmp/jamirp/S_rung2")
-ARMS = os.environ.get("ARMS", "S0,S0h,S1,NP").split(",")
+# Comma OR space separated (`S._split_arms`), so ONE exported `ARMS` serves every rung-2
+# scorer -- this one has always taken a comma list and the newer knobs a space-separated one.
+ARMS = S._split_arms(os.environ.get("ARMS", "S0,S0h,S1,NP"))
 ANCHORS = [float(x) for x in os.environ.get("ANCHORS", "0.1,0.25,0.5,1.0").split(",")]
 TERMW = int(os.environ.get("TERMW", "20"))
 
 RHO_LO, RHO_HI = 0.7, 1.3
-DIR_RE = re.compile(r"S_r2s_(\w+?)_c(\d+)_(REC|NP|S0h|S0|S1)_(roster|predict)_s(\d+)_apply$")
+DIR_RE = re.compile(
+    r"S_r2s_(\w+?)_c(\d+)_(REC|" + "|".join(S.ALL_ARMS) + r")_(roster|predict)_s(\d+)_apply$"
+)
 
 
 def read_log(path):

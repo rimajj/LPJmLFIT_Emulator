@@ -29,6 +29,23 @@ honouring certain kills (the decomposition control); `S1` = + the trait hazard's
 freezes only the 4 boundary columns fed to the emulator — it is **not** a frozen-climate control for the
 stand, because the C still runs transient forcing.
 
+**`G0`/`G0h`/`G1` are the same three operators spending a GROSS kill budget out of a per-patch running
+account** (ADR 0240, pre-registered by ADR 0189 §7). Only the MAGNITUDE they are asked for changes, not who
+they pick: `acct += (1−ρ)·n_tree + #{age == 1}`, spend `b = clamp(acct, 0, n_tree)` at `ρ_eff = 1 − b/n_tree`,
+then charge the realized `n_kill` back. They exist because an `S*` arm's budget is the NET count change and
+the flux that moves biomass is the GROSS one (ADR 0188). Three things to know before reading one:
+
+* **`rho` in the log is still the count model's own ratio — a `G*` arm's realized thinning is `rho_eff`.**
+  Four columns were APPENDED to `s_arm_log.txt` for this (`n_age1 budget rho_eff acct`), and every reader
+  here takes positions off the `#H L` header, so an older log simply lacks them.
+* **The `empty` gate moves from `ρ ≥ 1` to `budget ≤ 0` and gets BIGGER** (40–61 % vs 21.8 % for a naive
+  lagged budget) — mortality becomes lumpier than FIT's, which spreads ~6 %/yr fairly evenly. That is the
+  honest caveat against the accounting form; `diagnose_rung2_kill_budget.py`'s **panel F** prints it beside
+  the zero-kill share and the top-decile kill concentration.
+* **`spend` = nominations / budget runs ABOVE 1** (measured 1.23 at Hainich historic) and that is correct:
+  a certain death cannot be un-killed, so a short budget still costs `n_cert`, and the account then charges
+  the overshoot and suppresses later kills.
+
 ## ⚠ CHECK `<apply>/s_arm_log.txt` BEFORE YOU SCAN A SINGLE DUMP
 
 Beside every emulator arm's `_dump` there is an `_apply` directory, and in it the harness's own runtime log:
@@ -242,11 +259,45 @@ have already printed convincingly. A partial run that dies below the fold looks 
    quo is already known to do; do that before reading the other arms.** (The C's own hard kills on a gated
    year are still unmodelled — state such a residual rather than hiding it.)
 
+5m. **⚠ A BYTE DIFF OF TWO ROSTER DUMPS IS *NEVER* THE EQUALITY GATE — `sapwood_old` IS UNINITIALISED IN
+   EVERY PHASE (ADR 0240).** Guardrail 4 for a harness change is "the pre-existing arms decide identically",
+   and the obvious test — re-run one arm under the new code and `cmp` the dumps — reports **28 322 differing
+   lines of 40 569 tree records for byte-identical decisions**. `Pfttree.sapwood_old` is a DEAD struct field
+   that `new_tree` never zeroes, so it is garbage at `pre`/`grow`/`mort`/`post` alike (~7 000 records each),
+   and the five `mort_*` are garbage at `pre` and at a recruit's establishment year. **Use
+   `scripts/diagnose_rung2_dump_equality.py --ref <dirA> --new <dirB>`** — it knows the `UNINIT` set, prints
+   the expected differences separately, and exits 0 on "identical in every initialised column". Same family
+   as CLAUDE.md §3's NetCDF `history`-timestamp trap: the header lies, the variables agree. Pair it with a
+   `cut`-then-`cmp` of the arm log's PRE-EXISTING columns (500 patch-years, byte-identical) — the two
+   together are the gate, because the log proves the decisions and the dump proves the trajectory.
+
+5n. **⚠ ONE EXPORTED `ARMS` NOW WIDENS EVERY SCORER — AND THE BLESSED STATISTICS STAY PINNED (ADR 0240).**
+   `diagnose_rung2_{map_target_response,kill_budget,kill_selectivity,anchor_preflight}.py` all read `ARMS`
+   (comma OR space separated, one shared parser), default UNCHANGED so every published table reproduces, and
+   the arm-name alternation in each regex comes from `map_target_response.ALL_ARMS`. Two deliberate
+   asymmetries: **`kill_selectivity` FORCES `REC` back in** (it is the reference AND the height-quintile
+   basis — dropping it empties the report rather than narrowing it), and **`LEARNED`/`OPERATOR_ARMS` do NOT
+   follow `ARMS`** (ADR 0185's and 0187's verdicts were pre-registered over named arms; a verdict recomputed
+   over arms that did not exist when the threshold was written is not the pre-registered verdict). A `G*`
+   arm is therefore DESCRIBED by those scorers and JUDGED by ADR 0188 §7's own criterion.
+
 6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
    not in a level. **And it is what makes trap 5j's recruit identity exact.**
 7. **Empty patches emit no `T` record** but are a real all-zero stand row at runtime — enumerate patch-years
    from the `P grow` records, not from the trees.
+   ⚠ **AND THE SAME OMISSION USED TO DEADLOCK THE HARNESS ITSELF (ADR 0240 §6).**
+   `rung2_s_demography_harness.jl::read_request` took `(year, patch)` from the tree rows and left them at
+   their sentinel **−1** when a patch had none, so it wrote its answer to `rsp_…_y-0001_p-01` while the C
+   waited for the real name, marked the request served, and never retried — the C then died 600 s later on
+   **`ERROR043: rung2 apply: no answer for year <Y> patch <P>`**. It cost **53 of 360 legs** of the
+   gross-budget campaign (44 ssp370, 9 historic) and it had been latent for the whole investigation because
+   **no `S*` arm ever empties a patch and the `G*` arms do**. Fixed by reading the identity off the
+   `P grow` record, cross-checking the tree rows against it, and refusing a request whose identity is still
+   negative — a loud failure instead of a 10-minute deadlock. **Two reusable lessons:** the "no answer after
+   600 s" variant of `ERROR043` is NOT necessarily a slow harness (raising `--max-idle` treats a symptom
+   the harness may not have), and **whenever a filename is derived from parsed input, a parse that yields a
+   sentinel is a silent hang, not an error — assert the identity before you build the name.**
 8. `leaf_c`/`sapwood_c`/`heartwood_c` are `tree->ind.*.carbon`, i.e. **per individual** — multiply by `nind`
    exactly where the runtime does.
 
@@ -263,6 +314,8 @@ have already printed convincingly. A partial run that dies below the fold looks 
 | `scripts/diagnose_rung2_kill_selectivity.py` | **WHICH trees each arm kills, vs FIT's own kills** (ADR 0187) — mass selectivity `kill_frac_m/kill_frac_n` on the discretionary population stratified by patch-year, the size-conditional rate profile P(die \| height quintile of the REFERENCE arm's stand), standardized selection differentials, the ADR-0186 §8 reachability clause, and a verdict gated by the derived-a-priori `S0` self-test. ~9 min for 12 cells × 2 legs (24 GB). **Copy its self-test shape**: a uniform arm with a derivable answer is the cheapest real gate on a new scorer, and it caught two independent basis errors here. |
 | `scripts/diagnose_rung2_kill_budget.py` | **WHY the operator's kill RATE is short** (ADR 0188) — the budget side of ADR 0187's rate finding. Five panels: the derived-a-priori `S0` self-test that refutes the emitted-vs-roster population hypothesis, the ρ-clamp incidence, the `ρ ≥ 1` empty-kill-list gate plus `θ = 0` give-ups, the budget-vs-nominations decomposition, and **FIT's own gross kills / certain kills / discretionary kills / recruits / net** by the 5g count identity. Panels A–D are the arm logs alone (seconds, `SKIP_REC=1`); panel E is a 1.9 GB `REC` scan (~2 min). Imports ADR 0185 §5's coverage gate. **Use it for any FIT-side turnover reference** — gross mortality and recruitment per year are here.
 | `scripts/diagnose_rung2_gross_budget_lag.py` | **WOULD A PROPOSED BUDGET CHANGE ACTUALLY WORK, before the arm is written** (ADR 0189) — the feasibility half of ADR 0188's next action. Five panels off the `REC` dumps joined to `map_on_rec_stand_predict.csv` (so ρ and the roster are the same patch-years, gated on `n_tree`), plus the same statistic on `S1`'s own stand from its own dumps + arm log: the exact `age == 1` recruit-observability gate (trap 5j), recruitment's own statistics with the pooled AND within-patch lag-1 correlation, the telescoping count-departure check, and **the capacity table** — discretionary capacity, empty-budget share, implied total mortality, implied net and the compounded roster factor over the leg, for each of `none`/`lag1`/`mean5`/`expand`/`oracle`/`perfect` and the `_sm5`/`_acct` design probes. **Reuse it for ANY proposed change to what the operator is asked to kill**: it costs ~4 min and no model run, it carries the two derivable anchors (traps 5k/5l), and its `ROSTER-HORIZON` columns are the check that catches trading a biomass excess for a stand collapse. Extends `scan_rec_dump` additively (`n_cert`, `n_age1` at indices 6–7). |
+| `scripts/diagnose_rung2_gross_account_identity.py` | **the DERIVABLE A-PRIORI GATE on the `G*` gross-budget arms** (ADR 0240) — the account identity row by row, chained on the LOGGED account so an error cannot hide behind its own propagation (451 161 patch-years, max \|diff\| **0.000e+00**), plus the uniform arm's spend ratio against its derived 1.000 (**0.9998/0.9995**). Seconds, arm logs only. **Run it before reading any `G*` number** — and note it gates the IDENTITY, not coverage: a truncated leg still satisfies it. |
+| `scripts/check_rung2_campaign_coverage.py` | **which legs of a campaign finished, and the re-run lines for the rest.** Uses the C's own completion line plus the arm log's patch-year count. ⚠ It exists because the failures are silent everywhere else: the job exits on the C's code, a truncated dump looks like a short one, and `harness: served <N> patch-years` is written by the FAILURE path — the job file kills a healthy harness before it prints, so reading its absence as failure INVERTS the test. |
 | `scripts/diagnose_rung2_armc.py` | age–wooddens gradients and selection differentials (shared with line M's arm C; **each arm family has its own recorded baseline and they are NOT interchangeable**) |
 | `scripts/rung2_s_demography_harness.jl` | **the row assembly.** It reaches `flux_feature_vector` and `DRF.predict` as private names off the package rather than copying them — do the same, or the copy becomes the thing being measured (ADR 0023). |
 

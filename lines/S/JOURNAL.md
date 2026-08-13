@@ -2644,3 +2644,69 @@ Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
 Merged as `df45bd4f` (changelog collation `f5217508`, branch sha `7d907b62`). The diff touches no
 gate-watched path, so no branch CI ran (ADR 0090); on `main` the one gate the changelog fragment does
 trigger, `uncollated fragments`, is green on `f5217508`.
+
+---
+
+## 2026-08-13 (later) — the accounting gross-budget arm is built, and it over-kills by 12× because the recruit term is endogenous (ADR 0240)
+
+I built the arm ADR 0189 §7 pre-registered, exactly as specified: three new harness arms `G0`/`G0h`/`G1`
+that are `S0`/`S0h`/`S1` handed a GROSS kill budget out of a per-patch running account
+(`acct += (1−ρ)·n_tree + #{age == 1}`, spend `clamp(acct, 0, n_tree)`, charge the realized `n_kill`) rather
+than the net count change. Only the magnitude they are asked for changes; who they pick is untouched, which
+is what makes the S-vs-G contrast readable. Then I ran the full 360-leg matrix in `predict` mode — 12 cells
+× 2 legs × 3 arms × 5 seeds, 357 complete — and scored it on ADR 0188 §7's own criterion with its
+thresholds unmoved.
+
+**Two gates first, because the whole reading depends on the arm doing what its definition says.** Guardrail
+4: `S1` re-run under the new code is byte-identical over all 27 pre-existing arm-log columns (500
+patch-years) and identical in every initialised dump column (40 569 tree records). ⚠ I nearly mis-read that
+one — a file-level `cmp` on the two dumps reports 28 322 differing lines for those same byte-identical
+decisions, because `sapwood_old` is a dead struct field that `new_tree` never zeroes and is garbage in every
+phase; `diagnose_rung2_dump_equality.py` already knew this and I should have reached for it first (now skill
+trap 5m). The derivable gate: the account identity reproduces every logged `budget`, `rho_eff` and `acct`
+over **451 161 patch-years with max |diff| 0.000e+00**, and the uniform arm's spend ratio is 0.9998/0.9995
+against a derived 1.000. So nothing that follows is an implementation artifact.
+
+**The result, in one sentence: by the letter the criterion is met, and in substance it fails.** ssp370,
+FIT-gain cells: the discretionary kill rate goes 0.6 → **26.2 %/yr** against a ≥1.5 clause and FIT's own
+2.1; annual mass removal 0.01781 → **0.03203** against ≥0.025 and FIT's 0.03063; the agb departure falls
++90.6 % → **+2.9 %** against a <+40 % clause; the roster ends at 0.612×, nowhere near clause (a)'s 0.1 ×
+FAIL line. Every clause passes. But the count departure goes −2.9 % → **−72.1 %**, which forces per-stem
+mass to **+269 %** — *worse* than `S1`'s +96 %. The biomass total lands on FIT's by cancelling two large
+errors: a quarter of FIT's trees above 5 m, each 3.7× too heavy. So it is the exact mirror of ADR 0186 —
+the status quo has the right count and far too much mass in it, the gross-budget arm has the right total
+mass and far too few trees — and both are the same per-stem-mass defect read through a different
+constraint. I added a fourth clause to the criterion (both |dN| and |dAGB| under 40 %, per-stem mass printed
+beside them) rather than moving the three that were already written.
+
+**Why it over-spends is the interesting part.** With ρ ≈ 0.99 the budget IS `R̂`, which is the gross
+identity working as designed — a near-stationary count means `K = R`. The problem is whose `R`: FIT recruits
+6.456 %/yr of its roster, the arms recruit **27.6 / 32.7 / 70.6 %/yr** on their own. Establishment is the
+C's in every arm (`ESTAB_C`) and is light-driven, so killing opens space, the C fills it, and next year's
+budget grows with the killing that caused it. It is self-limiting — it settles at `R̂` ≈ `n_kill` with the
+roster around 0.6× — but at a young, thin, churning equilibrium. **That is why ADR 0189 §7's 1.493 %/yr
+"capacity on the arm's own stand" was 18× low**: it measured `R̂` on stands where the operator was not
+spending gross. I said in 0189 that its numbers were counterfactual; I did not identify which term made
+them so. The generalisable version: a counterfactual capacity panel cannot bound a quantity that responds
+to the change being costed, and the tell was available a priori — `R̂` is a stand statistic, and a stand
+statistic used as an operator INPUT closes a feedback loop.
+
+**The campaign also cost me 53 legs to a bug that had been latent for the entire investigation.**
+`read_request` took the `(year, patch)` identity from the tree rows, and a patch with no living trees emits
+no `T` record — the dump-analysis skill has said exactly that since ADR 0175, about the dumps, and nobody
+applied it to the request parser. So an empty patch-year was answered under `rsp_…_y-0001_p-01` while the C
+waited for `rsp_…_y02066_p005`, the request was marked served and never retried, and 600 s later the whole
+run died on `ERROR043: rung2 apply: no answer`. No `S*` arm ever empties a patch; the `G*` arms do (0.1 % of
+patch-years in the worst cell — enough). Fixed at the `P`-record source, with the tree rows checked against
+it and a refuse-on-sentinel guard so the failure can never be a silent hang again, and `--max-idle` raised
+300 → 900 s because it never exceeded the C's own 600 s wait. The reusable rule: whenever a filename is
+derived from parsed input, a parse that yields a sentinel is a deadlock rather than an error — assert the
+identity before building the name.
+
+Two smaller honesty fixes I made while reading my own first table: `R̂` now prints `nan` for the `S*` legs
+(their logs predate the column — their stands do recruit, it is just not logged, and 0.00 % would have
+asserted a false fact in the very table that makes the endogeneity argument), and the empty-roster share is
+reported as the WORST cell rather than the median, because 0.000 as a median and 0.001 as a maximum was the
+difference between "never happens" and "killed 53 legs".
+
+Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.

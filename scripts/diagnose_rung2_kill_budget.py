@@ -89,6 +89,7 @@ from diagnose_rung2_map_target_response import (  # noqa: E402
     NPATCH,
     NPREV,
     ROOT,
+    _split_arms,
     run_completed,
 )
 
@@ -98,8 +99,13 @@ RHO_LO, RHO_HI = 0.7, 1.3
 #: not moved afterwards (skill trap 5f) — the SE is derived from the between-cell spread and
 #: printed beside the verdict, together with the sigma-departure.
 H1_SIGMA = 3.0
-ARMS = ("NP", "S0", "S0h", "S1")
+#: which arms are REPORTED. Default unchanged so ADR 0188's tables reproduce; widen it for the
+#: gross-budget campaign with `export ARMS="NP S0 S0h S1 G0 G0h G1"` (ADR 0240). `APPLY_RE`
+#: (imported) already DISCOVERS the `G*` legs, so this is the only knob.
+ARMS = tuple(_split_arms(os.environ.get("ARMS", "NP S0 S0h S1")))
 SCENS = ("historic", "ssp370")
+#: the gross-budget arms — the ones whose logs carry `budget`/`acct`/`rho_eff` (ADR 0240).
+GROSS_ARMS = ("G0", "G0h", "G1")
 
 
 def median(v):
@@ -146,8 +152,33 @@ class ArmLeg:
         self.shortfall = 0
         self.years = set()
         self.patches = set()
+        # ── ADR 0240, the gross-budget columns. Present in every log written after 2026-08-13; a
+        #    leg from an older log leaves `has_g` False and panel F reports it as unavailable rather
+        #    than as zero (a missing measurement is not a value).
+        self.has_g = False
+        self.n_age1 = 0.0          # #{age == 1} — last year's recruits, EXACT (ADR 0189 §2)
+        self.budget = 0.0          # sum of the spendable budget `b`
+        self.budget_empty = 0      # patch-years with b <= 0: the account's own gate
+        self.acct_pos = 0          # patch-years leaving a POSITIVE account (unspent budget carried)
+        self.acct_neg = 0          # ... and a negative one (an overspend being repaid)
+        #: patch-years whose roster is EMPTY (`n_tree == 0`). Not a rate diagnostic but a hard fact
+        #: about the stand: FIT's own patches do not empty, and a patch the operator has emptied can
+        #: only refill by establishment, which the C owns. It is also what surfaced the ADR-0240 §6
+        #: harness deadlock, so it is worth a column of its own.
+        self.empty_stand = 0
+        #: n_kill histogram over patch-years — the LUMPINESS check ADR 0189 §7 asks for: FIT spreads
+        #: ~6 %/yr fairly evenly, and an account that delivers the same leg mean in fewer, bigger
+        #: years is a different mortality regime. Keyed by integer kill count; a few dozen keys.
+        self.kill_hist = defaultdict(int)
+        #: per patch, the roster count at the leg's FIRST and LAST year — the ROSTER-HORIZON column,
+        #: MEASURED rather than implied (ADR 0189's `_acct` panel could only imply it).
+        self.first = {}
+        self.last = {}
 
-    def add(self, year, patch, n_tree, n_emit, rho, theta, shortfall, n_kill):
+    def add(
+        self, year, patch, n_tree, n_emit, rho, theta, shortfall, n_kill,
+        n_age1=None, budget=None, acct=None,
+    ):
         self.rows += 1
         self.years.add(year)
         self.patches.add(patch)
@@ -167,6 +198,52 @@ class ArmLeg:
             self.theta0 += 1
         if shortfall > 0.0:
             self.shortfall += 1
+        self.kill_hist[int(round(n_kill))] += 1
+        if n_tree <= 0:
+            self.empty_stand += 1
+        if patch not in self.first or year < self.first[patch][0]:
+            self.first[patch] = (year, n_tree)
+        if patch not in self.last or year > self.last[patch][0]:
+            self.last[patch] = (year, n_tree)
+        if n_age1 is not None:
+            self.has_g = True
+            self.n_age1 += n_age1
+            if budget is not None and not math.isnan(budget):
+                self.budget += budget
+                if budget <= 0.0:
+                    self.budget_empty += 1
+            if acct is not None and not math.isnan(acct):
+                if acct > 1e-12:
+                    self.acct_pos += 1
+                elif acct < -1e-12:
+                    self.acct_neg += 1
+
+    def roster_factor(self):
+        """The arm's OWN roster over the leg: last year's stems / the first year's; 1.0 = flat.
+
+        ⚠ This is the check that catches trading a biomass excess for a stand collapse (ADR 0189
+        §6): a kill rate that clears its criterion while the roster runs to 0.1x has not fixed the
+        demography. Read it beside every rate, never instead of one."""
+        a = sum(v for _y, v in self.first.values())
+        b = sum(v for _y, v in self.last.values())
+        return b / a if a > 0 else float("nan")
+
+    def zero_kill_share(self):
+        return self.kill_hist.get(0, 0) / self.rows if self.rows else float("nan")
+
+    def kill_top_decile(self):
+        """Share of the leg's kills falling in the heaviest 10 % of patch-years (lumpiness)."""
+        if not self.rows or self.n_kill <= 0:
+            return float("nan")
+        want = max(1, int(round(0.1 * self.rows)))
+        got = tot = 0
+        for k in sorted(self.kill_hist, reverse=True):
+            take = min(self.kill_hist[k], want - got)
+            tot += take * k
+            got += take
+            if got >= want:
+                break
+        return tot / self.n_kill
 
     def complete(self, scen):
         y0, y1 = LEG[scen]
@@ -189,6 +266,10 @@ def read_arm_log(path: str) -> ArmLeg:
                 raise SystemExit(f"{path}: an L record before its '#H L' header")
             f = line.split()
             th = f[cols["theta"]]
+            # The ADR-0240 columns are APPENDED, and every reader here takes positions off the
+            # header, so an older log simply has no `n_age1` key and the leg stays non-`has_g`.
+            def _opt(name, f=f, cols=cols):
+                return float(f[cols[name]]) if name in cols else None
             leg.add(
                 int(f[cols["year"]]),
                 int(f[cols["patch"]]),
@@ -198,6 +279,7 @@ def read_arm_log(path: str) -> ArmLeg:
                 None if th == "NaN" else float(th),
                 float(f[cols["shortfall"]]),
                 float(f[cols["n_kill"]]),
+                _opt("n_age1"), _opt("budget"), _opt("acct"),
             )
     return leg
 
@@ -370,7 +452,7 @@ def main() -> int:
               f"set NPREV=predict to reproduce them.")
     print("=" * 100)
     print("  RUNG-2 KILL BUDGET — why the operator kills too few of the biomass-bearing trees")
-    print(f"  mode NPREV={NPREV}   root {ROOT}")
+    print(f"  mode NPREV={NPREV}   ARMS={list(ARMS)}   root {ROOT}")
     print("=" * 100)
 
     legs, excluded = collect_arms()
@@ -492,6 +574,9 @@ def main() -> int:
 
     if os.environ.get("SKIP_REC"):
         print("\n  SKIP_REC set — panel E (FIT's gross kills and recruits) not run.")
+        # Panel F still runs: it is arm-logs-only, so SKIP_REC (which skips the 1.9 GB REC dump
+        # scan) must not suppress it. It is handed an EMPTY `fit` and says so.
+        panel_f(legs, {})
         return 0
 
     # ── PANEL E — H3, gross vs net on FIT's own roster ──────────────────────────────────────────
@@ -502,6 +587,7 @@ def main() -> int:
     rec = collect_rec()
     if not rec:
         print("    no REC dumps found — panel E cannot run.")
+        panel_f(legs, {})
         return 0
     bad = sum(1 for py in rec.values() for v in py.values() if not v[4])
     tot = sum(len(py) for py in rec.values())
@@ -573,7 +659,116 @@ def main() -> int:
     print("\n    H3's prediction was `FIT gross K - nominated ~ FIT R`. Read FIT R against the gap")
     print("    between `FIT gross K` and `budget+`: if R were ~0 the budget would equal the gross")
     print("    flux and H3 would be dead.")
+
+    panel_f(legs, fit)
     return 0
+
+
+def panel_f(legs, fit):
+    """PANEL F — the GROSS-BUDGET arms: what they spend, and what it costs the stand (ADR 0240).
+
+    This is the panel ADR 0189 §7 asks for beside every kill rate, and it is deliberately not just a
+    rate table:
+
+    * `rate` is the arm's NOMINATION rate (`n_kill`/`n_tree`), the same quantity panel B reports —
+      not the discretionary rate the criterion is written on, which needs `mort_prob` per stem, so
+      lives in `diagnose_rung2_kill_selectivity.py`. Named `nominated` here for exactly that reason.
+    * `roster` is the ROSTER-HORIZON column and it is MEASURED (the arm's own first-to-last-year
+      stem count), not implied from a leg mean. A rate that clears its criterion while this runs
+      to 0.1x has traded a biomass excess for a stand collapse (ADR 0189 §6, skill trap 5k).
+    * `empty` is the account's own gate — patch-years the arm answered with an EMPTY kill list. For
+      an `S*` arm the equivalent gate is `rho >= 1` (panel C), printed in the same column so the two
+      regimes are comparable. The account is EXPECTED to raise it (40-61 % vs 21.8 % for the naive
+      lagged form) and the two lumpiness columns are what makes that visible rather than hidden.
+    * `spend` = realized nominations / budget. Above 1 the certain deaths overshot the budget (they
+      cannot be un-killed); the account then charges the overshoot and suppresses later kills, which
+      is the whole point of the accounting form and shows up as a raised `empty`.
+
+    ⚠ FIT's own row is the like-for-like reference for `nominated`? NO — FIT nominates nothing, its
+    numbers come from the dumps (panel E), and its gross/certain/discretionary rates are printed
+    there. Do not read an arm's `nominated` against FIT's gross K without that panel open: an arm's
+    nomination excludes the C's own hard kills (skill trap 5d).
+    """
+    gross = [a for a in ARMS if a in GROSS_ARMS]
+    print("\n" + "=" * 100)
+    print("  PANEL F — the GROSS-BUDGET (`G*`) arms: rate, the roster horizon, and lumpiness")
+    print("=" * 100)
+    if not gross:
+        print(f"    no `G*` arm in ARMS={list(ARMS)} — nothing to report. Widen it with")
+        print('    `export ARMS="NP S0 S0h S1 G0 G0h G1"` once the ADR-0240 campaign has run.')
+        return
+    have = [a for a in gross if any(k[1] == a for k in legs)]
+    if not have:
+        print(f"    ARMS names {gross} but no leg of any of them passed the coverage gate.")
+        return
+
+    print(f"    {'arm':<5} {'leg':<9} {'nominated':>10} {'empty':>7} {'zero-kill':>10}"
+          f" {'top-decile':>11} {'roster':>8} {'nostandX':>9} {'spend':>7} {'R_hat':>7}"
+          f" {'cells':>6}")
+    for arm in [a for a in ARMS if a in ("S0", "S0h", "S1") or a in GROSS_ARMS]:
+        for scen in SCENS:
+            ks = [k for k in legs if k[1] == arm and k[2] == scen]
+            if not ks:
+                continue
+            isg = arm in GROSS_ARMS
+            nom = per_cell(legs, arm, scen, ratio("n_kill", "n_tree"))
+            rho1 = per_cell(
+                legs, arm, scen, lambda g: g.rho_ge1 / g.rows if g.rows else float("nan")
+            )
+            emp = per_cell(
+                legs, arm, scen,
+                lambda g: (g.budget_empty / g.rows if g.has_g and g.rows else float("nan")),
+            ) if isg else rho1
+            zer = per_cell(legs, arm, scen, lambda g: g.zero_kill_share())
+            top = per_cell(legs, arm, scen, lambda g: g.kill_top_decile())
+            ros = per_cell(legs, arm, scen, lambda g: g.roster_factor())
+            spd = per_cell(
+                legs, arm, scen,
+                lambda g: (g.n_kill / g.budget if g.has_g and g.budget > 0 else float("nan")),
+            )
+            # ⚠ NaN, not 0, when the leg's log predates the `n_age1` column: the `S*` arms were run
+            #   before ADR 0240 added it, and `sum(n_age1)/sum(n_tree)` would print their recruit
+            #   rate as 0.00 % — a MISSING measurement dressed as a measured zero. Their own stands
+            #   do recruit; it is simply not in their logs (their dumps would give it).
+            rht = per_cell(
+                legs, arm, scen,
+                lambda g: (g.n_age1 / g.n_tree if g.has_g and g.n_tree > 0 else float("nan")),
+            )
+            nst = per_cell(
+                legs, arm, scen, lambda g: g.empty_stand / g.rows if g.rows else float("nan")
+            )
+            cs = sorted(nom)
+            print(f"    {arm:<5} {scen:<9} {100 * median(list(nom.values())):>9.3f}%"
+                  f" {median(list(emp.values())):>7.3f}"
+                  f" {median(list(zer.values())):>10.3f}"
+                  f" {median(list(top.values())):>11.3f}"
+                  f" {median(list(ros.values())):>7.3f}x"
+                  f" {max(list(nst.values())):>9.3f}"
+                  f" {median(list(spd.values())):>7.3f}"
+                  f" {100 * median(list(rht.values())):>6.2f}%"
+                  f" {len(cs):>6}")
+    print("\n    `nominated` = the arm's own kill nominations / roster, %/yr (NOT the")
+    print("    discretionary rate the ADR-0188 §7 criterion is written on — that one is in")
+    print("    diagnose_rung2_kill_selectivity.py, which needs per-stem `mort_prob`).")
+    print("    `empty` = share of patch-years answered with an EMPTY kill list: `budget <= 0` for")
+    print("    a `G*` arm, `rho >= 1` for an `S*` one. `zero-kill` is its realized version.")
+    print("    `top-decile` = share of the leg's kills in its heaviest 10 % of patch-years — the")
+    print("    LUMPINESS caveat against the accounting form: FIT spreads ~6 %/yr fairly evenly.")
+    print("    `roster` = measured last-year/first-year stems. Read it as a GATE, not a")
+    print("    diagnostic: a rate that clears 1.5 %/yr at roster 0.1x is a FAIL (ADR 0189 §7a).")
+    print("    `nostandX` = the WORST cell's share of patch-years with an EMPTY roster: a MAXIMUM,")
+    print("    not the median every other column uses, because emptying a patch is rare and fatal:")
+    print("    a median hides it at 0.000, and one empty patch-year used to deadlock the whole run")
+    print("    (ADR 0240 §6). A patch the operator empties can only refill by establishment, which")
+    print("    the C owns; FIT's own patches do not empty.")
+    print("    `spend` = nominations / budget; > 1 means certain deaths overshot and the account")
+    print("    is repaying. `R_hat` = the `age == 1` recruit count the budget is built on, %/yr —")
+    print("    EXACT, not modelled (ADR 0189 §2). It reads `nan` for a leg whose log predates the")
+    print("    column (every `S*` leg): their stands DO recruit, it is just not logged — a missing")
+    print("    measurement, never a measured zero.")
+    if fit:
+        print("\n    FIT's own rates are panel E's (gross K, K_cert, K_disc, R, net) — an arm's")
+        print("    `nominated` is not comparable to FIT's gross K without it (skill trap 5d).")
 
 
 if __name__ == "__main__":
