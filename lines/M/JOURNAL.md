@@ -1542,3 +1542,66 @@ over most of the reference's *realized* input range because of a clamp. Before b
 reproduce a reference's branch, evaluate **both** of the reference's branches on its own realized
 inputs and check they actually differ. One parquet scan retired an item that had survived two handoffs
 and would otherwise have bought a state machine, a per-stem field and an incidence probe.
+
+## Session 20 — 2026-08-13 — the photosynthesis half, scoped: the light input is faithful and the excess is in the kernel (ADR 0135)
+
+Took the head of the F queue — *"the photosynthesis half of the assimilate is still unscoped"*, with
+ADR 0130's **+10.1 %** Hainich GPP excess as the target. The scoping question was deliberately narrow:
+**is the excess in the light INPUT or in the kernel?** The kernel is homogeneous of degree 1 in `apar`
+except for the SLA Vcmax cap, so the light input is the largest single lever that is not the kernel, and
+"the tall dominants hog the light" is the most plausible-sounding suspect on the list — and by far the
+most expensive to be wrong about, since the fix would be a rewrite of the layered-light component.
+
+**Answer: the light input is faithful, so `GPP_F/GPP_C` on a matched roster IS the kernel error.** Every
+factor of `apar = par·(1−albedo_leaf)·alphaa·fpar` checked against the LIVE C line — `par` (`petpar3.c:74`),
+per-stem `alphaa`/`albedo_leaf`, the layered Beer–Lambert model (`getfpar.c`), its leaf-area density
+`min(leaf_c·sla/(h−bole), 40)·nind` **including the cap's ordering**, `k_lambert`=0.5, `VSTEP`, crown
+geometry, and the SLA Vcmax cap (`issla = config->individual` ⇒ ON, per stem's own `sla`). All match. The
+basis is then scored against a quantity the C *emits* rather than against its source: the port's patch LAI
+reproduces the run's own `LAI_STAND` at 0.878 / 0.869 / 0.981 / 0.907 at boreal / Hainich / mediterranean /
+Sahel — below 1 by exactly the `ind` writer's 5 m cut. `tropical_amazon` at 0.574 is printed as `CHECK`,
+not smoothed: that cell has the largest sub-5 m stem share, so it is *consistent* with the cut but is not
+evidence the way the other four are.
+
+**Two live differences survive, and both go the wrong way for the excess.** F applies `phen` after the
+layered share where the C puts it inside the extinction (`getfpar.c:126,158`), and F carries no
+`(1−snowcover)` factor where `fpar_tree_ind` has one. Both make F absorb LESS PAR, while its tree GPP is
+1.074× the C's. ⇒ neither explains the excess, and the kernel-side error is **larger** than the measured
+ratio. The phen difference is priced as a closed form — C absorbs `1−exp(−k·plai·φ)`, F absorbs
+`φ·(1−exp(−k·plai))` — giving a per-DAY upper bound of 15.0–47.5 % of F's own absorption at `φ≈0.45`.
+Published as a bound only: the annual weight of partial-leaf days is not measured (`phen` is not an `ind`
+column), so no default, no parameter, no recommendation (ADR 0105).
+
+**⚠ THE PART WORTH CARRYING: the first pass of this audit produced a defect that does not exist, and it
+was one commit from opening a rewrite of faithful code.** `getfpar.c:108-124` holds **three** expressions
+for the stem leaf-area density, and both `grep -n` and a `sed` line range surface a commented-out one
+(`/* test: use LAI for atoh calc */`, `/* test: like in GUESS3.0 */`) in which the density is per-CROWN and
+one variant drops `*nind`. Scored against those, F looked 5–37× too optically thin and the C's canopy came
+out fully opaque — absorbed fraction **1.000** at all five cells against F's 0.40–0.97 — a dramatic,
+internally consistent, cross-cell-reproducible finding. Reading the enclosing lines verbatim killed it in
+one command. Guardrail 5 and the `individual=true` dead-path rule are normally applied to a *config* gate;
+they apply just as hard to a comment block, and that case is quieter because a config gate at least shows
+up in the same line of output. Same file, one level up: under `individual:true` the registered `fpar()` is
+`fpar_tree_ind` (the layered share), **not** `fpar_tree` (crown-cover) — so `grep fpar_tree` finds a
+plausible, wrong definition too; follow the registration in `fscanpft_*.c`, not the name. Written up in
+`CLAUDE.md` §3 and appended to the shared `residual-diagnosis` skill as §10, **with the retracted number**,
+so the same commented-out line is not rediscovered as a finding.
+
+**One source comment corrected.** `src/fdiff.jl`'s multi-individual design block justified the layered-light
+port by saying the canopy *"absorbs the true layered fraction (≈0.83 leafon)"* rather than the `d_fapar`
+OUTPUT (≈0.49). 0.83 is F's **own** absorption at Hainich, not a C reference, and `d_fapar`/`FAPAR` is built
+from `pft->fpc` + the albedos (`albedo_tree.c:75`) — ADR 0060's crown-cover family — so it cannot validate
+the layered `pft->fpar` either way. The sentence asserted a validation that had never been run; it now says
+what is true and points at the `LAI_STAND` check that does constrain the basis.
+
+**Deliverable + gates.** `scripts/diagnose_layered_light_basis.py` — 2.4 s, no simulation, no SLURM: three
+panels (port basis vs `LAI_STAND`; the phen bound; the unpriced snowcover row), 0 findings under the repo's
+real ruff set (`E,F,I,UP,B`, line-length 100). No behaviour change — the only `src/` edit is a comment.
+
+**Shortlist handed forward**, each with the C line that scopes it: (a) the λ solve's Vcmax basis — the C
+bisects against `pft->vmax` as left by `gp_sum`, computed at `LAMBDA_OPT` from a **crown-cover, no-phen**
+apar, while F recomputes `vm` at the actual layered phen-scaled apar before its solve; the C's final call
+recomputes at the actual apar in both, so only the solved λ differs; (b) the `tstress<1e-2` hard zeroing,
+which F replaces with a smooth linear factor — ADR 0131's argument was about smoothness, not the threshold,
+and the threshold has never been scored; (c) the phenology trajectory itself, which ADR 0130 refuted as
+*the* single cause without excluding it as part of it.

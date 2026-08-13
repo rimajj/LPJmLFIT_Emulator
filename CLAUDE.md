@@ -645,6 +645,26 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   pins it to the C's hard `1e8` whenever the grass gate goes on (which `FDiffFastCore` does by default) — so
   **record which sharpness an arm ran at**; measured, the soft AD-usable `2e4` reproduces the hard step to
   the printed digit at three of five cells and within 1.6 pp at the worst.
+- ⚠ **THE C SOURCE CARRIES DEAD EXPRESSIONS INSIDE `/* test: */` COMMENT BLOCKS, AND `grep`/`sed` LANDS IN
+  THEM — READ THE ENCLOSING LINES VERBATIM BEFORE SCORING A PORT (`[VERIFIED 2026-08-13]`, ADR 0135).**
+  `src/lpj/getfpar.c:108-124` gives **three** expressions for one quantity — the stem leaf-area density the
+  vertical layered-light integration runs on. The LIVE one is `atoh = leaf_c·sla/(height−boleht)`, capped
+  `if(atoh>40) atoh=40`, then `lai_leafon_layer = atoh·frac·VSTEP · pft->nind` — **per PATCH**. The other
+  two, `/* test: use LAI for atoh calc */` and `/* test: like in GUESS3.0 */`, divide by `crownarea` (**per
+  CROWN**) and the second drops the `*nind`; scoring F against either reports a **5–37×** optical-thickness
+  gap and an opaque C canopy that does not exist. `F_diff::_patch_fpars_soa` matches the live line exactly,
+  cap and cap-ordering included, and its patch LAI reproduces the C's own `LAI_STAND` output at **0.87–0.98**
+  at four of five biome cells (below 1 by the `ind` writer's 5 m cut; `tropical_amazon` 0.574, flagged).
+  **Guardrail 5 / the `individual=true` dead-path rule extends to comment blocks:** a commented-out branch is
+  a dead path that no config check and no `grep` output distinguishes from live code. Audit:
+  `scripts/diagnose_layered_light_basis.py` (2 s, no simulation). Same file, same trap one level up: with
+  `individual:true` the `fpar(pft)` function pointer is **`fpar_tree_ind`** = `pft->fpar·(1−snowcover)` (the
+  layered share), **not** `fpar_tree` = `phen·fpc·(1−snowcover)` — the latter is the non-individual-mode
+  function and is dead here. ⇒ **F's tree APAR is faithful** (`par`, `alphaa`, `albedo_leaf`, `k_lambert`=0.5,
+  VSTEP, the per-stem SLA Vcmax cap all match), with two live exceptions, **both of which make F absorb LESS**
+  while its GPP is measured ABOVE the C's: F applies `phen` AFTER the layered share where the C puts it inside
+  the extinction (per-day upper bound 15–47 % of F's own absorption, at `phen≈0.45`; annual weight unmeasured),
+  and F has **no `(1−snowcover)`** factor at all.
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative

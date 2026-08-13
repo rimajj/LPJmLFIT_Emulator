@@ -359,7 +359,97 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 19) — **THE LEAF-RECYCLE SUSPECT IS REFUTED AT `boreal_siberia`
+### 0-NEWEST. ✅ DONE 2026-08-13 (session 20) — **THE PHOTOSYNTHESIS HALF IS SCOPED: THE LIGHT INPUT IS
+### FAITHFUL, SO THE GPP EXCESS IS IN THE KERNEL — AND THE CANDIDATE THAT LOOKED DECISIVE WAS A
+### COMMENTED-OUT C BRANCH. NO BEHAVIOUR CHANGE (ADR 0135)**
+
+**Start here.** The previous handoff's step 1 — *"the photosynthesis half of the assimilate is the head of
+the F queue and still unscoped"*, with ADR 0130's **+10.1 %** Hainich GPP excess as the target — is
+**scoped**. The scoping question was deliberately one bit: **is the excess in the light INPUT or in the
+kernel?** It is in the kernel.
+
+**1. THE LIGHT INPUT IS FAITHFUL — every factor checked against the LIVE C line.** `par = dayseconds·swdown/2`
+(`petpar3.c:74`) · per-stem `alphaa` and `albedo_leaf` · the vertical layered Beer–Lambert model
+(`getfpar.c`) · its leaf-area density `min(leaf_c·sla/(h−bole), 40)·nind` **including the cap's ordering** ·
+`k_lambert` = 0.5 (a global, not a PFT parameter) · `VSTEP` = 2.0 · crown geometry · and the SLA Vcmax cap
+(`issla = config->individual` ⇒ **ON**, using each stem's **own** `sla`). All match. **⇒ `GPP_F/GPP_C` on a
+matched roster IS the kernel error**, which makes ADR 0130's number a clean target rather than a composite.
+
+**2. THE BASIS IS SCORED AGAINST WHAT THE C EMITS, NOT ONLY AGAINST ITS SOURCE.** The layer loop telescopes,
+so the port's patch LAI has a closed form readable from the `ind` table
+(`crownarea·nind = fpc_ind/(1−exp(−k_pft·LAI))`) and can be checked against the run's own `LAI_STAND`:
+**0.878 / 0.869 / 0.981 / 0.907** at boreal / Hainich / mediterranean / Sahel — below 1 by exactly the `ind`
+writer's 5 m cut. ⚠ `tropical_amazon` is **0.574** and the script prints `CHECK`, not `OK`: that cell has the
+largest sub-5 m stem share (ADR 0130), so it is *consistent* with the cut but is **not evidence** the way the
+other four are. Do not quote it as a fifth confirmation.
+
+**3. TWO LIVE DIFFERENCES SURVIVE AND BOTH GO THE WRONG WAY FOR THE EXCESS.** (i) F applies `phen` **after**
+the layered share; the C puts it **inside** the extinction (`getfpar.c:126,158`). Closed form: C absorbs
+`1−exp(−k·plai·φ)`, F absorbs `φ·(1−exp(−k·plai))` ⇒ by concavity **F under-absorbs on every partial-leaf
+day**, per-DAY upper bound **15.0 / 38.9 / 19.5 / 15.0 / 47.5 %** of F's own absorption at `φ≈0.45`.
+(ii) F has **no `(1−snowcover)`** factor where `fpar_tree_ind` has one — not priceable from `ind`, listed and
+not measured. Both make F absorb LESS PAR while its tree GPP is **1.074×** the C's ⇒ **neither explains the
+excess, and the kernel-side error is LARGER than the measured ratio.** ⚠ The phen number is an **upper bound
+on a day**: the annual weight of partial-leaf days is unmeasured (`phen` is not an `ind` column), so **no
+default, no parameter, no recommendation off it** (ADR 0105).
+
+**4. ⚠ THE PART THAT MATTERS MOST — THE FIRST PASS FOUND A DEFECT THAT DOES NOT EXIST, AND IT WAS ONE COMMIT
+FROM OPENING A REWRITE OF FAITHFUL CODE.** `getfpar.c:108-124` holds **three** expressions for the stem
+leaf-area density; `grep -n` and a `sed` line range both surface a **commented-out** one
+(`/* test: use LAI for atoh calc */`, `/* test: like in GUESS3.0 */`) in which the density is per-CROWN and
+one variant drops `*nind`. Scored against those, F looked **5–37× too optically thin** and the C's canopy
+came out fully opaque (absorbed **1.000** at all five cells vs F's 0.40–0.97) — dramatic, internally
+consistent, reproducible across cells, and wrong. Reading the enclosing lines verbatim killed it in one
+command. **Guardrail 5 / the `individual=true` dead-path rule extends to comment blocks**, and that case is
+quieter than a config gate because nothing in any tool's output flags it. Same file one level up: under
+`individual:true` the registered `fpar()` is **`fpar_tree_ind`** (the layered share), **not** `fpar_tree`
+(crown-cover) — so `grep fpar_tree` finds a plausible, wrong definition too; follow the registration in
+`fscanpft_*.c`, not the name. In `CLAUDE.md` §3 and `residual-diagnosis` §10, **with the retracted number**.
+
+**5. ONE SOURCE COMMENT CORRECTED.** `src/fdiff.jl`'s multi-individual design block justified the port by
+saying the canopy *"absorbs the true layered fraction (≈0.83 leafon)"*. **0.83 is F's OWN absorption**, not a
+C reference — and the `d_fapar`/`FAPAR` output named beside it is built from `pft->fpc` + the albedos
+(`albedo_tree.c:75`), i.e. ADR 0060's crown-cover family, so it cannot validate the layered `pft->fpar` in
+either direction. It asserted a validation that had never been run; it now points at the `LAI_STAND` check.
+
+**6. DELIVERABLE + GATES.** `scripts/diagnose_layered_light_basis.py` — **2.4 s, no simulation, no SLURM**:
+port basis vs `LAI_STAND`, the phen bound, the unpriced snowcover row. 0 findings under the repo's real ruff
+set (`E,F,I,UP,B`, line-length 100). No behaviour change: the only `src/` edit is a comment block.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **THE PHOTOSYNTHESIS HALF IS NOW A THREE-ITEM SHORTLIST, EACH WITH THE C LINE THAT SCOPES IT.** Take them
+   in this order — and **do not re-open** the layered-light model, the leaf-area density basis, `k_lambert`,
+   `par`, `alphaa`, `albedo_leaf` or the per-stem SLA Vcmax cap (ADR 0135 §4 gives the settling C line for
+   each).
+   * **(a) The λ solve's Vcmax basis — the cheapest and the most concrete.** The C's bisection residual
+     (`water_stressed.c`, `data.compvm=FALSE`) uses `pft->vmax` **as left by `gp_sum`**, i.e. computed at
+     `LAMBDA_OPT` from a **crown-cover, no-phen** apar (`par·pft->fpc·alphaa·(1−albedo)·(1−snowcover)`),
+     while F recomputes `vm` at the **actual layered, phen-scaled** apar before its solve
+     (`fdiff.jl:1927`). The C's final call recomputes at the actual apar on both sides, so **only the solved
+     λ differs**, not the final Vcmax. Test arm: feed F's pass-1 (`apar_gp`) Vcmax into the pass-2 λ solve.
+   * **(b) The `tstress<1e-2` hard zeroing** (`photosynthesis.c:54-61`), which F replaces with a smooth
+     linear `tstress` factor. ADR 0131's argument for needing no branch is about **smoothness**, not about
+     the **threshold**, and the threshold has never been scored.
+   * **(c) The phenology trajectory itself.** ADR 0130 §6 refuted the bracket's upper end and with it
+     "GSI phenology is the single cause" — that does **not** exclude phenology as *part* of it, and §3 above
+     shows F's `phen` enters the light on a different basis as well.
+2. **`boreal_siberia`'s allocation gap is still open and its ONLY remaining named suspect is the
+   `reprod_cost` path.** Unchanged. ADR 0132 §5 retired the below-ground wood port there; ADR 0134 retired
+   the leaf recycle. **Do not re-propose either at that cell.**
+3. **The relocated leaf-recycle gap at the two evergreen cells** (`mediterranean_iberia` 24.8 %,
+   `tropical_amazon` 12.4 %) is unchanged and still an **upper bound** — the latch-incidence probe in
+   ADR 0134's handoff is what closes it, with the activation count printed beside the fraction.
+4. **`bg_growth`'s DEFAULT IS STILL BLOCKED ON LINE S** — unchanged, criterion already pre-registered: flip
+   once S carries `heartwood_bg_c` through `slow.jl`'s four `TreePools` rebuild sites (recruit mix `:161`,
+   `_with_nind` `:249`, recruit build `:479`, K-cap merge `:670`) **and** the full suite's failure list is
+   enumerated. Raised in `lines/S/STATE.md`; nothing is broken today because the flag is off.
+5. **THE DIFFERENTIATED PATH RUNS THE TREE DEMAND GATE BY DEFAULT at the SOFT sharpness** — unchanged from
+   session 18: `rollout_canopy_years_gpp` reads `p.water` with no reconstruction, so the trainer inherits
+   `tree_demand_gate = true` at `βgpd_gate = 2e4`. Any trainer arm that means "the pre-0133 path" must say
+   so explicitly. The trainer still builds its pools with the pre-`sapwood_bg` arity.
+
+### 0-PREV-19. ✅ DONE 2026-08-13 (session 19) — **THE LEAF-RECYCLE SUSPECT IS REFUTED AT `boreal_siberia`
 ### — MECHANICALLY, NOT STATISTICALLY — AND RELOCATED TO THE TWO EVERGREEN CELLS. NO BEHAVIOUR CHANGE
 ### (ADR 0134)**
 
