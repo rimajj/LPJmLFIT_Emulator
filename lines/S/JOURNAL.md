@@ -2200,3 +2200,44 @@ arrive through F moving the stand. Which is the pathway ADR 0178 measured as ~0.
 
 Also worth noting the split share barely moved under the ablation (10.10 % → 9.87 %) while the effect nearly
 tripled: the climate splits were always there, `n_prev` was muting them, not crowding them out.
+
+## 2026-08-13 — ADR 0181: the count model is a stand diagnostic, and ADR 0178's "drift" bucket hid the stand channel
+
+Took the handoff's flagged action ("drive the count model with FIT's OWN stand under both scenarios — a
+table scan, not a run") rather than the target redesign it listed first, because the redesign was
+conditional on the stand pathway being dead and that had never actually been measured.
+
+Wrote `scripts/slow_stand_forced_response_probe.jl`. K-fold BY CELL over 51 767 of 54 020 cells, CTRL vs
+the ADR-0180 in-place `n_prev` ablation, plus a four-group corner decomposition (FLUX / STAND / AR / CLIM)
+that maps each feature group to the part of the system that computes it at runtime. Smoke first
+(PSTRIDE=512 → the guard fired: 4 rows/cell, no scorable leg; a config error, not a result), then
+PSTRIDE=16, then production. Jobs 1772580/1772581/1772586 + scorers 1772587/1772872.
+
+Four basis checks passed before any arm was read; the strongest is that the retrained control reproduces the
+shipped artifact's **response statistic** exactly (area-weighted 0.707 vs 0.707), not merely its skill.
+
+Result: the de-leaked map delivers **0.292** of FIT's area-weighted warming response given a perfect stand
+(shipped 0.707, persistence null 0.685) ⇒ pre-registered verdict PARTIAL. The channel decomposition is the
+deliverable: **STAND slope 0.994, CLIM 0.016, FLUX 0.037**. So the count is an allometric consequence of the
+stand and its response is inherited, not learned — and the target redesign the handoff pre-registered is
+aimed at the wrong lever.
+
+Two things went wrong and are recorded rather than tidied away.
+
+1. **The probe's verdict expression keyed on the per-cell slope** — the statistic ADR 0112 already proved has
+   no power (all four arms including the null score 0.97–1.03) — and printed `H_map SUPPORTED` for an arm the
+   binding statistic calls PARTIAL. Both threshold pairs were pre-registered in the file; the expression just
+   used the wrong one. Fixed: the script now prints no verdict and names the job that decides it.
+2. **The scorer silently rewrote a committed shared fixture** (`S_truth_yardstick_summary.csv`, 66 deletions)
+   because `OUT_SUMMARY` defaults there and a COUNT_DIR-only run drops the trait rows. Reverted before
+   anything was committed; re-ran with the redirect (job 1772872) and reproduced every digit.
+
+And the finding I did not expect to make: **ADR 0178's frozen arm freezes only the 4 boundary columns**
+(read the writer, not the prose), so the stand-mediated response is inside its `drift` term by construction.
+"ADR 0178 measured that pathway as ~0" — in ADR 0180's text and in the handoff — is false. Nothing of
+ADR 0178 is withdrawn; the sentence built on it is.
+
+Next action pre-registered in ADR 0181 §7.3 and the STATE handoff: reconstruct each rung-2 arm's OWN
+`hmean/hmax/agb/lai/fpc/age_mean` from the dumps already on disk and compare its historic→ssp370 shift
+against FIT's ~0.30 sd. That decides whether the remaining defect is in S or upstream in the fast core.
+Liveness panel first.
