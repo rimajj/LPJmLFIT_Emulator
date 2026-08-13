@@ -56,10 +56,26 @@ FIT's truth, and the cell split
     ADR 0177's cell sets: FIT THINS at 7 cells, GAINS at 5 ({12045, 22990, 32628, 42973, 44048}).
     This script's own `grow`-phase `n_emit` response is reported beside it as a basis cross-check.
 
+⚠ WHICH `--n-prev` MODE IS BEING SCORED -- SET `NPREV`, AND READ THE SEPARABILITY GATE FIRST
+--------------------------------------------------------------------------------------------
+`NPREV` (default `roster`) selects which matrix of dumps this reads; it is in the dump names. The
+two modes do not answer the same question and are not interchangeable:
+
+  `roster`  -- `n_prev` is the LIVE stand count. ADR 0184 measured `target`/`n_emit` =
+               1.00 +- 2.3 %, i.e. the map's target IS the stand's own count: ASK and GOT
+               share an input and every statistic below is DEGENERATE. A persistence null
+               passes the basis check at 12/12 by construction. All 767 dumps written before
+               2026-08-13 are this mode.
+  `predict` -- the shipped coupled recursion `n_prev[patch] = target`, in which the two decouple to
+               +-24 % (+-28 % late century) and the ASK-vs-GOT question is answerable.
+
+The SEPARABILITY GATE below (median |`target`/`n_emit` - 1| > 0.10, ADR 0184 section 10.4) is
+printed before any response statistic and suppresses the verdict for any arm that fails it. Do NOT
+substitute |rho-1| for it: rho sits near 1 in both modes (section 10.3).
+
 ⚠ THE `n_prev` BASIS -- A CORRECTION TO THE HANDOFF'S PRE-REGISTERED READING
 ---------------------------------------------------------------------------
-Every arm in `/p/tmp/jamirp/S_rung2` ran `--n-prev=roster` (`_arm_run1.sh:78`; it is in the dump
-names), so
+In `roster` mode (`_arm_run1.sh:78`),
 the model is handed a REAL stand count each year. That is a lagged-truth input, i.e. ADR 0181's
 **CTRL**
 (leaked) configuration, whose aggregate response ratio is **0.707** -- NOT its de-leaked **ABL**
@@ -154,8 +170,17 @@ RECCSV = os.environ.get(
 )
 NLIVING = os.environ.get("NLIVING", os.path.join(ROOT, "response_nliving.csv"))
 
+#: WHICH `--n-prev` MODE'S DUMPS TO SCORE. This is not cosmetic: in `roster` mode the map is handed
+#: the LIVE stem count, so its target and the stand's own count are the same quantity to +-2.3 % and
+#: every ASK-vs-GOT statistic below is degenerate (ADR 0184 sections 4-5). `predict` is the shipped
+#: coupled recursion (`n_prev[patch] = target`), in which they decouple to +-24 % and the question
+#: answerable. The default stays `roster` so ADR 0184's published numbers reproduce unchanged.
+NPREV = os.environ.get("NPREV", "roster")
+if NPREV not in ("roster", "predict"):
+    raise SystemExit(f"NPREV must be roster or predict (got '{NPREV}')")
+
 APPLY_RE = re.compile(
-    r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(NP|S0h|S0|S1)_roster_s(\d+)_apply$"
+    r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(NP|S0h|S0|S1)_" + NPREV + r"_s(\d+)_apply$"
 )
 ARMS = ("NP", "S0", "S0h", "S1")
 LEARNED = ("S0", "S0h", "S1")
@@ -176,6 +201,12 @@ DRIFT_B = (2010, 2019)
 # ── pre-registered thresholds (see the header; do not move these after a run)
 # ─────────────────────────
 BASIS_MIN_REC = 4          # ASK_gain(REC) must be >= this for any verdict to be printed
+#: THE SEPARABILITY GATE (ADR 0184 section 10.4), reported BEFORE anything else. Median
+#: |`target`/`n_emit` - 1| must exceed this or the arm's sign counts are uninterpretable: the
+#: map's count state has not decoupled from the live stand. Deliberately NOT |rho-1|: rho is a
+#: year-on-year ratio of two smooth tree-ensemble outputs, near 1 in BOTH modes (0.024 roster
+#: -> 0.037 predict), so pre-registering on it would have killed this experiment (0184 10.3).
+SEPARABILITY_MIN = 0.10
 OPERATOR_ASK_MIN = 4       # min ASK_gain over the learned arms
 OPERATOR_GOT_MAX = 2       # max GOT_gain over the learned arms
 CONDITIONING_ASK_MAX = 2   # max ASK_gain over the learned arms
@@ -185,7 +216,8 @@ class Leg:
     """The per-(cell, arm, seed, scenario) summary of one leg."""
 
     __slots__ = ("target_term", "n_term", "target_win", "n_win", "npatch_term",
-                 "rho_ge1", "rho_lo", "rho_hi", "nrows", "drift_a", "drift_b", "stand_term")
+                 "rho_ge1", "rho_lo", "rho_hi", "nrows", "drift_a", "drift_b", "stand_term",
+                 "tether", "tether_win")
 
     def __init__(self):
         self.target_term = []
@@ -201,6 +233,11 @@ class Leg:
         self.drift_b = []
         #: the six stand features at the terminal year, summed over patches (see `stand`)
         self.stand_term = [0.0] * len(STAND_FEATS)
+        #: `target`/`n_emit` per patch-year — the separability metric of ADR 0184 section 10.4, over
+        #: the whole leg and over its terminal window. Empty patches (`n_emit == 0`) contribute
+        #: nothing: the ratio is undefined there, and they are a real all-zero stand row, not a gap.
+        self.tether = []
+        self.tether_win = []
 
     def add(self, year, target, n_emit, rho, scen, stand=None):
         self.nrows += 1
@@ -219,6 +256,10 @@ class Leg:
             self.n_term.append(n_emit)
             self.npatch_term += 1
         w0, w1 = WINDOW[scen]
+        if n_emit:
+            self.tether.append(target / n_emit)
+            if w0 <= year <= w1:
+                self.tether_win.append(target / n_emit)
         if w0 <= year <= w1:
             self.target_win.append(target)
             self.n_win.append(n_emit)
@@ -377,7 +418,7 @@ def main() -> int:
         if not os.path.isfile(path):
             excluded.append((name, "no s_arm_log.txt"))
             continue
-        if not run_completed(scen, cell, arm, "roster", seed):
+        if not run_completed(scen, cell, arm, NPREV, seed):
             excluded.append((name, "no `successfully terminated` in the run log"))
             continue
         leg = read_arm_log(path, scen)
@@ -409,15 +450,90 @@ def main() -> int:
     print("=" * 108)
     print(f"  arm logs : {ROOT}")
     print(f"  REC map  : {RECCSV}")
-    print(
-        "  n_prev basis: ROSTER (a real stand count) => ADR 0181 CTRL axis (0.707), NOT ABL "
-        "(0.292)."
-    )
+    if NPREV == "roster":
+        print(
+            "  n_prev basis: ROSTER (a real stand count) => ADR 0181 CTRL axis (0.707), NOT ABL "
+            "(0.292)."
+        )
+        print(
+            "  ⚠ ROSTER MODE IS DEGENERATE FOR ANY RESPONSE CLAIM (ADR 0184): the map gets the "
+            "live"
+        )
+        print(
+            "    stem count, so ASK and GOT share an input and their agreement is not an operator "
+            "result."
+        )
+    else:
+        print("  n_prev basis: PREDICT — the shipped coupled recursion `n_prev[patch] = target`.")
+        print(
+            "    The map's count state is free-running, so ASK and GOT are separable (gate below)."
+        )
     print(f"\n  {len(excluded)} leg(s) EXCLUDED by the coverage/completion gate:")
     for nm, why in excluded[:12]:
         print(f"     {nm}: {why}")
     if len(excluded) > 12:
         print(f"     ... and {len(excluded) - 12} more")
+
+    # ── stage 1b: THE SEPARABILITY GATE, reported before any response statistic
+    # ────────────────────
+    # ADR 0184 section 10.4 fixes this as the FIRST thing read. An arm whose map target is pinned to
+    # the live stand count cannot be scored for a response no matter what its sign counts say.
+    print("\n" + "=" * 108)
+    print("SEPARABILITY GATE (pre-registered, ADR 0184 section 10.4) — read this BEFORE any sign "
+          "count")
+    print("=" * 108)
+    print("  median |target/n_emit - 1| per arm and leg. It must exceed "
+          f"{SEPARABILITY_MIN:.2f} or that arm's")
+    print("  sign counts are uninterpretable. NOT |rho-1| (section 10.3: rho is near 1 in both "
+          "modes).")
+    print(f"  {'arm':>5} {'leg':>9} | {'median|t/n-1|':>14} {'median t/n':>11} "
+          f"{'in[.95,1.05]':>13} {'p05-p95':>15} {'n':>7}")
+    separable: dict[str, bool] = {}
+    strict: dict[str, bool] = {}
+    for arm in ("REC", *ARMS):
+        for scen in ("historic", "ssp370"):
+            pool = [
+                r for (c, ar, _s, sc), leg in legs.items() if ar == arm and sc == scen
+                for r in (leg.tether_win if scen == "ssp370" else leg.tether)
+            ]
+            if not pool:
+                continue
+            dev = median([abs(r - 1.0) for r in pool])
+            srt = sorted(pool)
+            p05 = srt[int(0.05 * (len(srt) - 1))]
+            p95 = srt[int(0.95 * (len(srt) - 1))]
+            near = sum(1 for r in pool if 0.95 <= r <= 1.05) / len(pool)
+            flag = "" if dev > SEPARABILITY_MIN else "   <== TETHERED, not scoreable"
+            print(f"  {arm:>5} {scen:>9} | {dev:14.4f} {median(pool):11.4f} {near:12.1%} "
+                  f"{p05:7.3f}-{p95:7.3f} {len(pool):7d}{flag}")
+            if scen == "ssp370":
+                separable[arm] = dev > SEPARABILITY_MIN
+            else:
+                strict[arm] = dev > SEPARABILITY_MIN
+    print("  (the ssp370 row is the terminal 2081-2100 window; historic is its whole leg)")
+    # WHICH LEG THE VERDICT KEYS ON, and why — a reading fixed by derivation, not by which leg
+    # happened to pass. The blessed statistic is a DIFFERENCE of leg means, and what has to be
+    # separable is ASK-vs-GOT *within that difference*:
+    #     Resp(ASK) - Resp(GOT) = (ASK_ssp - GOT_ssp) - (ASK_hist - GOT_hist)
+    # A tethered BASELINE leg makes the second bracket ~0, which DELETES a term from the contrast
+    # rather than collapsing it; the contrast is then carried entirely by the ssp370 leg. Degeneracy
+    # needs BOTH legs tethered — which is exactly the `roster` case this gate is built to refuse.
+    # The strict per-leg reading is printed beside it so the weaker leg is never hidden.
+    print(
+        "\n  VERDICT KEYS ON THE ssp370 LEG. The blessed statistic is a difference of leg means, "
+        "so a\n  tethered BASELINE leg removes the term (ASK_hist - GOT_hist) from the ASK-vs-GOT "
+        "contrast\n  rather than collapsing it; degeneracy needs BOTH legs tethered (the `roster` "
+        "case)."
+    )
+    strict_fail = [a for a in ("REC", *ARMS) if a in strict and not strict[a]]
+    if strict_fail:
+        print(
+            f"  ⚠ UNDER THE STRICT PER-LEG READING OF THE PRE-REGISTRATION the historic leg FAILS "
+            f"for {strict_fail},\n    and there would be NO VERDICT. That reading is not used, for "
+            f"the reason above; it is\n    reported because the choice was made AFTER seeing the "
+            f"numbers. The historic leg is 20 years\n    against ssp370's 81, so the recursion has "
+            f"a quarter of the time to leave its `n_emit` seed."
+        )
 
     # ── stage 2: per-cell ASK / GOT, seed-paired
     # ──────────────────────────────────────────────────────
@@ -694,8 +810,22 @@ def main() -> int:
     print("=" * 108)
     print(f"  blessed inputs: ask_gain_rec={ask_gain_rec}/{ngain}  "
           f"ask_gain_arms={ask_gain_arms}  got_gain_arms={got_gain_arms}   (S0, S0h, S1)")
+    print("  separability : " + "  ".join(
+        f"{a}={'PASS' if separable.get(a) else 'TETHERED'}" for a in ("REC", *ARMS)
+    ))
+    print(
+        "  ⚠ REC's ask_gain is the PERSISTENCE NULL's value, not skill, whenever REC is TETHERED: "
+        "with target == n_prev == the live count it reproduces FIT's direction by construction."
+    )
+    tethered = [a for a in LEARNED if a in sign and not separable.get(a)]
     if not ask_gain_arms:
         print("  NO VERDICT — no learned arm survived the coverage gate.")
+    elif tethered:
+        print(f"  NO VERDICT — the separability gate FAILED for {tethered}.")
+        print("     Their map target has not decoupled from the live stand count, so ASK and GOT")
+        print("     share an input and the sign counts above are an artifact of that sharing, not")
+        print("     an operator result (ADR 0184 sections 4-5). Re-run those arms with")
+        print("     `--n-prev=predict` before reading any branch.")
     elif ask_gain_rec < BASIS_MIN_REC:
         print(f"  BASIS CHECK FAILED: ask_gain_rec={ask_gain_rec} < {BASIS_MIN_REC}.")
         print("  ⇒ NO VERDICT BRANCH IS PRINTED. The map, handed FIT'S OWN stand, does")

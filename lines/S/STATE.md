@@ -257,13 +257,12 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0184 is ON `main`.** Merge commit `706ff4fc` (+ changelog collation
-> `c91f65f8`), branch sha `a1a528f5`. Branch gates green: `test (lts)`, `test (1)`, `format`,
-> `test (macOS, lts)`; **`main`'s own gates green** (`format`, `uncollated fragments`). Nothing in this
-> diff touches `src/**`, `test/**`, `python/**` or `docs/src/**`, so per ADR 0090 **no CI gate runs on it at
-> all** — it is scripts + ADR + STATE + skill + a changelog fragment. Do not wait for a verdict that cannot
-> arrive. The previous merge (ADR 0182 + 0183) was `af95bc55`, suite **275 606 pass / 0 fail** (job 1773556);
-> `test (pre)` is `continue-on-error` and red on Julia 1.13.0-rc2 prerelease churn — don't chase it.
+> **LAST MERGE — 2026-08-13, ADR 0185 is ON `main`.** Merge commit `PENDING_MERGE`, branch sha
+> `PENDING_BRANCH`. This diff is scripts + ADR + STATE + skill + a changelog fragment — nothing under
+> `src/**`, `test/**`, `python/**` or `docs/src/**` — so per ADR 0090 **no CI gate runs on it at all**.
+> Do not wait for a verdict that cannot arrive. The previous merge (ADR 0184) was `706ff4fc`; the last
+> suite run was **275 606 pass / 0 fail** (job 1773556, ADR 0182/0183 merge `af95bc55`). `test (pre)` is
+> `continue-on-error` and red on Julia 1.13.0-rc2 prerelease churn — don't chase it.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
@@ -279,95 +278,80 @@ rather than a request to flip now.
 >
 > | ADR | what it established |
 > |---|---|
-> | 0177 | the arms match FIT's sign where FIT thins, get it wrong where FIT gains, indistinguishable from a do-nothing null on DIRECTION. **NARROWED by 0184** — see below. |
+> | 0177 | the arms match FIT's sign where FIT thins, get it wrong where FIT gains, indistinguishable from a do-nothing null on DIRECTION. **NARROWED by 0184.** |
 > | 0178 | 94–100 % of the apparent response was drift — but what it isolated is the DIRECT boundary channel only (ADR 0181 §6). |
 > | 0179 | the climate channel is structurally WIDE OPEN (77 440 splits, 10.20 %) and carries almost nothing, at 12 cells. |
 > | 0180 | de-leaking `n_prev` buys 2.85× on that channel; the count is near-determined by the contemporaneous STAND (R² 0.9620 ≈ the persistence null's 0.9623). |
-> | 0181 | handed FIT's OWN stand, K-fold by cell over 51 767 cells, the de-leaked map delivers **0.292** of FIT's area-weighted response; the STAND columns carry ALL of it (slope 0.994), direct climate 0.016, flux 0.037. |
+> | 0181 | handed FIT's OWN stand, K-fold by cell over 51 767 cells, the de-leaked map delivers **0.292** of FIT's area-weighted response; the STAND columns carry ALL of it (slope 0.994). |
 > | 0182 | the arms' OWN stand DOES warm — cosine 0.97–0.99 where FIT's own stand moves substantially. **NARROWED by 0184.** |
 > | 0183 | the ported hazard IS `mortality_tree_ind` (recall = precision = 1.0000, mean \|Δhazard\| 5e-18) ⇒ `trait_mortality` FLIPPED ON. |
-> | **0184** | **the rung-2 count model's target is TETHERED to the live stand count, so the response question was unanswerable as run — and the arms' stand STRUCTURE departs by 2×.** |
+> | 0184 | the rung-2 count model's target is TETHERED to the live stand count ⇒ the response question was unanswerable as run; NO VERDICT. Its §10.4 pre-registered the fix. |
+> | **0185** | **the fix was run. Given real authority the map STOPS asking for FIT's gains ⇒ the limit is the STAND it is conditioned on, not the substitution operator.** |
 >
-> ### 0184 IN ONE PARAGRAPH (read this before planning anything)
+> ### 0185 IN ONE PARAGRAPH (this is the current state of the question)
 >
-> All **767** rung-2 dumps ran `--n-prev=roster`, which hands the model the live stem count. Measured:
-> `target/n_emit` = **1.00 ± 2.3 %**, i.e. within ±5 % in **84–87 %** of patch-years, and the [0.7,1.3] clamp
-> binds in ≤1.5 % — so **the map's count target IS the stand's own count**, and its whole per-year authority
-> is a 2–3 % nudge. Consequences: (i) the ASK-vs-GOT decomposition the handoff asked for is **degenerate** —
-> ASK ≈ GOT at every cell is an artifact of the shared input, not an operator result; (ii) the pre-registered
-> basis check (`ASK_gain(REC)` 5/5, 12/12 overall, slope 1.058) is **passed by the persistence null
-> `target = n_prev` by construction**, so it is not skill and must never be quoted as such; (iii) the fired
-> `CONDITIONING-LIMITED` branch is **overridden and recorded as NO VERDICT**. It also reconciles 0180 and
-> 0181 §7.4 as one mechanism — **with the live count the model is accurate but MUTE; without it, expressive
-> but mis-levelled** — and narrows 0177: the model was structurally incapable of doing much, so
-> "indistinguishable from doing nothing" was never a measurement of what it learned.
+> The 264-job `--n-prev=predict` matrix finished (**258 completed**) and ADR 0184 §10.4's reading was
+> executed with thresholds unmoved. **Separability passes**: median |`target`/`n_emit` − 1| on the ssp370
+> leg is **0.13–0.35**, against **0.018–0.031** for every `roster` arm and leg — the same scorer at the same
+> threshold **refuses `roster` (NO VERDICT) and admits `predict`**. **Blessed statistic** (sign agreement on
+> the 5 FIT-gain cells): basis `ASK_gain(REC)` = **4/5** while the do-nothing null `NP` returns **1/5**, and
+> the learned arms give `S0` 1/5, `S0h` 2/5, `S1` 2/5 ⇒ `max ASK_gain = 2 ≤ 2` ⇒ the pre-registered
+> **CONDITIONING-LIMITED** branch fires. **This discharges 0184's own gotcha**: the null's value was DERIVED
+> before the read — in `roster` mode `REC` = `NP` = 5/5 *by construction*, in `predict` mode 4/5 vs 1/5
+> separates — and since `REC` and the arms run the SAME map with the SAME free-running recursion, differing
+> ONLY in the stand they read, the gap is attributable to the stand. The mechanism is 0184 §7's structural
+> departure, now the *operative* limit: at ssp370 the arms sit at **+89 % to +312 % agb** and **+54 % to
+> +160 % `age_mean`** vs FIT, so the map is evaluated where FIT's stands never go.
 >
-> **Six things are now settled. Do not re-investigate them.**
+> **Seven things are now settled. Do not re-investigate them.**
 >
 > 1. **The training TARGET is not where the response is lost — do NOT start a target redesign** (0181 §4/§5).
 > 2. **The count is an allometric consequence of the stand, not a learned climate response** (0181).
 > 3. **`roster_n_prev` must NOT be flipped opportunistically** (0181 §7.4: aggregate 0.707 → 0.292).
 > 4. **The stand handed to the map carries FIT's warming DIRECTION** (0182) — but see 6.
 > 5. **The ported hazard needs no further validation as a function** (0183). Remaining questions are its INPUTS.
-> 6. **NEW (0184): a correct z-scored SHIFT sitting on a 2× displaced LEVEL is not the same conditioning.**
->    Nothing anchors the stand's size/age structure, and by 2100 the arms hold **~15 % FEWER stems but
->    +99–106 % agb and +47–84 % `age_mean`** vs FIT (`S0` +41 %/+31 %; the do-nothing null `NP`
->    **+312 %/+160 %**), growing monotonically from ~+38 % agb at the historic leg. **Every arm departs,
->    including the null**, so this is not a ranking statistic — but it is a measured, growing conditioning
->    defect that **no count-based statistic on this line detects**, and ADR 0103's level `anchor` is
->    **structurally absent from rung 2** (the harness calls `flux_feature_vector` directly and never builds a
->    `FluxDrivenSlowEmulator`).
+> 6. **A correct z-scored SHIFT sitting on a 2× displaced LEVEL is not the same conditioning** (0184 §7).
+> 7. **NEW (0185): the operator is NOT the measured bottleneck — and it is also NOT refuted.** With the map
+>    not asking for the gain, the thin-only operator was never given the chance to fail. `GOT_gain ≤ 2`
+>    everywhere is consistent with both stories. **Do not open operator work claiming 0185 motivates it.**
 >
-> ### B. THE NEXT ACTION — score the `predict`-mode matrix that is ALREADY RUNNING
+> ### B. THE NEXT ACTION — wire ADR 0103's `anchor` into the rung-2 path
 >
-> `predict` mode (`n_prev[patch] = target`, the shipped coupled path) had **never been run** — all 767 prior
-> dumps are `roster`. A 12-job smoke this session **succeeded**, and it is the mode in which the question is
-> answerable: `target/n_emit` decouples to **±24 %** (±28 % in 2081–2100, p05–p95 0.67–1.86) versus ±2.3 % in
-> `roster`. **A 264-job full matrix was submitted** (12 scoreable cells × 2 legs × `REC`/`NP`/`S0`/`S0h`/`S1`,
-> `SEEDS=3`, tags `S_r2s_<scen>_c<cell>_<arm>_predict_s<seed>` so nothing overwrote the `roster` dumps).
+> 0185 §7.2 names this as the work, on measured grounds, and it is a **harness change, not a flag flip**:
+> the rung-2 harness calls `flux_feature_vector` directly and **never constructs a `FluxDrivenSlowEmulator`**,
+> so `anchor` is structurally unreachable from every arm. The absolute-LEVEL calibration it performs is
+> exactly what the +89–312 % agb departure asks for.
 >
-> ✅ **ALL 264 WERE SUBMITTED AND HAVE FINISHED — 258 completed, 6 failed.** The queue is empty; do not
-> resubmit blanket (re-running a finished cell **overwrites its dumps**). Verify with:
+> **The criterion is already pre-registered — ADR 0185 §7.5, do not re-derive it.** With `anchor` wired in,
+> the same 12-cell `predict` matrix must move **`ASK_gain` over the learned arms to ≥ 4** *while* the
+> stand-level departure in `agb` at the FIT-gain cells falls **below +40 %**. ⚠ **If `ASK_gain` rises without
+> the level departure falling, 0185's attribution is WRONG and that ADR must be revisited** — that
+> conjunction is the whole point of the criterion, so do not score the two halves separately.
+>
+> Tooling needs no new code for the scoring half:
 > ```bash
-> grep -l "successfully terminated" /p/tmp/jamirp/esm_land_daily/*predict*/lpjml.*.out | wc -l   # 258
+> export DUMPS=/p/tmp/jamirp/S_rung2 NPREV=predict \
+>        OUT=/p/tmp/jamirp/S_rung2_maptarget/map_on_rec_stand_predict.csv
+> scripts/sbatch_julia.sh S-maprec-predict --project=. scripts/diagnose_rung2_map_on_rec_stand.jl
+> export ROOT=/p/tmp/jamirp/S_rung2 NPREV=predict \
+>        RECCSV=/p/tmp/jamirp/S_rung2_maptarget/map_on_rec_stand_predict.csv
+> /home/jamirp/.conda/envs/py311_new/bin/python scripts/diagnose_rung2_map_target_response.py
 > ```
-> ⚠ **Note the log glob is `lpjml.*.out`, not `lpjml_*.out`** — the wrong one silently reports 0 completions
-> and looks like a total failure.
+> Read the **`rung2-dump-analysis`** skill first — it now carries the `NPREV` chain rule and the
+> python-version trap. **Set `NPREV` on BOTH scripts**: `REC` has no runtime log, so its column is replayed
+> offline, and leaving that replay in `roster` while the arms run `predict` puts the reference on a tethered
+> axis and the arms on a free one, invisibly.
 >
-> **The 6 failures are a HARNESS IDLE TIMEOUT, not a physics or interface fault, and they are new to
-> `predict` mode.** `c12045 S1 s2/s3`, `c12235 S0h s1`, `c22732 S0h s1/s2`, `c52059 S1 s2` — all ssp370, all
-> late leg (years 2071–2094). The harness exits *cleanly* on its `--max-idle=300` while the C is still
-> running (`harness: served 1863 patch-years` of 2025), and the C then dies with
-> `ERROR043: rung2 apply: no answer for year <Y> patch <P> after 600 s`. **This is a DIFFERENT fault from the
-> `ERROR043 duplicate roster key` in §D** despite the shared error number — read the message text, not the
-> code. Fix if you need those legs: raise `--max-idle` in `scripts/run_rung2_s_arm.sh` (S-owned) above the C's
-> own 600 s wait. Otherwise ignore them: the coverage gate drops them automatically, and **2.3 % lost here vs
-> 18 % in the `roster` matrix**, so the `predict` matrix is the more scoreable of the two.
-> (Harmless startup noise you will also see: `⚠ year -1 is outside the boundary series ... clamped to 2020`.)
+> **Two gaps left by 0185, both worth closing when convenient, neither blocking:**
+> * **The `ssp370frz` frozen-boundary control was never run in `predict` mode**, so the direct-vs-total
+>   boundary share is unmeasured on the free-running axis (the scorer prints that panel empty).
+> * **The 6 timed-out legs** (`c12045 S1 s2/s3`, `c12235 S0h s1`, `c22732 S0h s1/s2`, `c52059 S1 s2`) are the
+>   harness `--max-idle=300` exiting under the C's own 600 s wait. Raise `--max-idle` in
+>   `scripts/run_rung2_s_arm.sh` (S-owned) above 600 s if you need them; the coverage gate drops them.
 >
-> **Then score it. The reading is pre-registered in ADR 0184 §10.4 — do not re-derive it:**
-> 1. **Report the separability metric FIRST**: median |`target`/`n_emit` − 1| per arm and leg. It must exceed
->    **0.10**, or that arm's sign counts are uninterpretable for the same reason `roster`'s were.
->    ⚠ **Do NOT use |ρ−1|** — ρ is a year-on-year ratio of two smooth tree-ensemble outputs and sits near 1 in
->    *both* modes (0.024 `roster` → 0.037 `predict`). Pre-registering on it would have wrongly killed this
->    experiment; that is why §10.3 exists.
-> 2. Then the blessed statistic — sign agreement on the **5 FIT-gain cells** ({12045, 22990, 32628, 42973,
->    44048}; FIT thins at the other 7), for `ASK` and `GOT`, with `NP` scored in the same process:
->    * `ASK_gain(S1) ≥ 4` and `GOT_gain(S1) ≤ 2` ⇒ **operator-limited** — given real authority the map asks
->      for FIT's gain and the **thin-only** operator cannot deliver it (ρ ≥ 1 ⇒ it kills nobody and overrides
->      FIT's own hazard to spare everyone; `ESTAB_C` always defers, so `n_recruit == 0` by construction).
->    * `ASK_gain(S1) ≤ 2` ⇒ **mis-levelled, not mute** ⇒ the work is absolute-level calibration, i.e. wiring
->      ADR 0103's `anchor` into the rung-2 path (see settled item 6).
-> 3. **Say every time that `REC`'s 12/12 is the null's value, not skill.**
->
-> Tooling is in place and needs no new code: `scripts/diagnose_rung2_map_target_response.py` (set
-> `ROOT`/`RECCSV`; it takes the arm logs, so point its `APPLY_RE` at `_predict_` — currently `roster`) and
-> `scripts/diagnose_rung2_map_on_rec_stand.jl` for the `REC` column. Read the **`rung2-dump-analysis`** skill
-> first: it now carries the arm-log shortcut and the `--n-prev` check.
->
-> **Secondary, and independent of the above** (settled item 6): the structural departure needs a
+> **Secondary, and independent of all of the above** (settled item 6): the structural departure still wants a
 > **size-resolved** comparison of *who dies* — the arm's mortality size/age distribution against FIT's — not
-> another count score. That is the first thing on this line that a count statistic provably cannot see.
+> another count score. That remains the first thing on this line a count statistic provably cannot see.
 >
 > ### C. FLAG STATE
 >
@@ -377,7 +361,7 @@ rather than a request to flip now.
 > | `trait_mortality` | **ON since ADR 0183** | guardrail 4 is served by the OPT-OUT `trait_mortality = false`, which every control arm must now pass EXPLICITLY. Blast radius was 5 assertions of 275 605. ⚠ **Six probe scripts take the default by omission** (`kcap_merge_confound`, `biome_slow_oracle`, `wscal_leafon`, `biome_resilience`, `measure_hainich_gate_bands`, `diagnose_count_recursion_anchor`) — every number they have already published is a PRE-0183 uniform-thinning number. |
 > | `roster_n_prev` | off | **keep it off** — measured NEGATIVE on the deliverable's axis (0181 §7.4). Note this is the `slow.jl` flag; it is a *different* thing from the rung-2 harness's `--n-prev`, which is what 0184 is about. |
 > | `recruit_establishment` | off | off for a GOOD measured reason (0172): a +2–8 % standing wood-density LEVEL offset at 5 cells. Do NOT flip it to satisfy the steer. |
-> | `anchor` (ADR 0103) | off, **and structurally absent from rung 2** | 0184 settled item 6 makes it a live candidate for the FIRST time on measured grounds. It is reachable only through `FluxDrivenSlowEmulator`, which the rung-2 harness never constructs — so using it there is a harness change, not a flag flip. |
+> | `anchor` (ADR 0103) | off, **and structurally absent from rung 2** | **THIS IS NOW SECTION B'S NEXT ACTION**, promoted by 0185's conditioning-limited verdict from a candidate to the named work. Still reachable only through `FluxDrivenSlowEmulator`, which the rung-2 harness never constructs — so using it there is a HARNESS CHANGE, not a flag flip. Pass criterion pre-registered in 0185 §7.5 (`ASK_gain` ≥ 4 **and** agb departure < +40 %, scored together). |
 > | `trait_drought_mortality` (M's, in `fast.jl`) | off | **an integration point to RAISE, not a flag to flip** (0183 §5.3). Criterion pre-registered in 0183 §5.4. |
 > | `per_pft_params` (M's) | off | M's call |
 >
@@ -395,6 +379,24 @@ rather than a request to flip now.
 >
 > ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
 >
+> * ⚠ **NEW (0185) — A MODE KNOB MUST REACH EVERY SCRIPT IN THE CHAIN, INCLUDING THE REFERENCE ARM'S.**
+>   `REC` has no runtime log, so its `target` column is replayed OFFLINE. Leaving that replay in `roster`
+>   while the arms run `predict` puts the reference on a tethered axis and the arms on a free one — a
+>   mis-comparison invisible in every output, which would have inflated `REC`'s 4/5 back toward the null's.
+> * ⚠ **NEW (0185) — GATE AN ADDED RECURSION ON THE YEAR IT CANNOT CHANGE, NOT ON AN AGGREGATE.** A
+>   `predict` patch's first year seeds from `n_emit`, so it must match the `roster` replay bit-for-bit while
+>   later years must not: 600/600 identical, 78.3 % of 29 700 later rows differing. One aggregate agreement
+>   number cannot tell "the recursion is wired in" from "the seed moved too".
+> * ⚠ **NEW (0185) — A THRESHOLD MET ON ONE LEG AND MISSED ON ANOTHER IS A DERIVATION PROBLEM.** The
+>   `predict` historic leg reaches only 0.079–0.099 against the 0.10 gate. Keying on ssp370 is defensible by
+>   algebra (the blessed statistic is a *difference of leg means*, so a tethered BASELINE leg DELETES the
+>   term `ASK_hist − GOT_hist` rather than collapsing the contrast; degeneracy needs BOTH legs tethered) —
+>   but the choice was made after seeing the numbers, so the scorer prints the strict alternative (NO
+>   VERDICT) on every run. Do the algebra of what your statistic needs from each leg BEFORE picking.
+> * ⚠ **NEW (0185) — `/usr/bin/python3` IS TOO OLD FOR `zip(..., strict=True)` HERE.** It dies
+>   `TypeError: zip() takes no keyword arguments` **two thirds down the output**, after the gate and the
+>   per-cell table have printed convincingly — a partial run that dies below the fold looks complete. Use
+>   `/home/jamirp/.conda/envs/py311_new/bin/python` and check the last line before reading any scorer.
 > * ⚠ **NEW (0184) — DERIVE WHAT THE NULL MUST RETURN FOR YOUR BLESSED STATISTIC, AND WRITE THAT NUMBER
 >   BESIDE THE THRESHOLD.** Not "score the null too" (0181 already did that). This probe's header named the
 >   null-power trap and its verdict read only blessed variables, and the blessed variable was *still* one the
