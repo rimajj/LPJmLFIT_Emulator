@@ -11,6 +11,11 @@
 #   ARM=S0h  S0, but deaths FIT had already settled (`mort >= 1`) are not overridden — the DECOMPOSITION
 #            CONTROL (ADR 0176): S1 differs from S0 in TWO ways and this arm changes only the first
 #   ARM=S1   f_i = (1 - mort_i)^theta     (learned target, trait-hazard ordering — the S1 - S0 measurement)
+#   ARM=G0 | G0h | G1                       the SAME three operators spending a GROSS kill budget out of a
+#            per-patch RUNNING ACCOUNT instead of the net count change (ADR 0189 §7 pre-registered them,
+#            ADR 0240 builds them). Only the MAGNITUDE they are asked for changes, not who they pick; same
+#            wall time and same everything else. Score them against the SAME per-cell REC baseline and the
+#            SAME S* arms — the S*-vs-G* contrast IS the deliverable, so never run a G arm on its own.
 #   ARM=NP   rho = 1 every year           (the PERSISTENCE NULL: keep the stand, learn nothing)
 #   ARM=REC  no substitution at all       (the per-cell, per-scenario RECORDED BASELINE every arm is
 #            scored against — see "WHY REC LIVES HERE" below)
@@ -41,6 +46,7 @@
 #
 # Env knobs:
 #   ARM      S0 | S0h | S1 | NP | REC             (default: S1)
+#            G0 | G0h | G1                        the gross-budget counterparts (ADR 0240)
 #   SCENARIO historic | ssp370                    (default: historic)
 #              historic  2000-2019 from restart_1999.lpj
 #              ssp370    2020-2100 from restart_2019.lpj  (81 yr — budget the wall time)
@@ -61,6 +67,15 @@
 #   SRC      run dir whose lpjml.js is reused     (default: generated for CELL+SCENARIO on demand)
 #   TAG      run tag                              (default: S_r2s_<scenario>_c<cell>_<arm>_<nprev>_s<seed>)
 #   TIME     SLURM wall limit                     (default: 00:40:00 historic / 04:00:00 ssp370)
+#   MAXIDLE  harness idle timeout, seconds        (default: 900 — MUST exceed the C's own
+#            LPJ_RUNG2_APPLY_TIMEOUT of 600 s, or the harness gives up FIRST and the C then dies on a
+#            rendezvous that nobody is serving. ⚠ This was 300 s until 2026-08-13 and it is the
+#            documented cause of 6 of ADR 0185's 264 predict runs dying in late ssp370; under a
+#            40-way concurrent campaign the same timeout fires far more often, because the shared-/p
+#            round trip per patch-year slows down with load, not because anything is wrong. The
+#            symptom is a harness log ending `harness: served <N> patch-years` with N SHORT of the
+#            leg (2025 for ssp370, 500 for historic) — and note that a HEALTHY run never prints that
+#            line at all, because the job file kills the harness once lpjml returns.)
 #   SUBMIT   yes | no                             (default: yes)
 #
 # ⚠ Needs a v6 binary and a v6-recorded reference dump — the harness REFUSES a roster with no `rootzone_w`
@@ -90,9 +105,14 @@ BIN="${BIN:-/home/jamirp/lpjml56fit/bin/lpjml_rung2_v6}"
 # a handful of interactive runs.
 PARTITION="${PARTITION:-standard}"
 QOS="${QOS:-short}"
+# Interpolated into the job file at GENERATION time, not read from the job's environment: the value a
+# run actually used then lives in its own provenance-bearing jcf instead of depending on what happened
+# to be exported (the same reason the boundary path is written out in full).
+MAXIDLE="${MAXIDLE:-900}"
 SUBMIT="${SUBMIT:-yes}"
 
-case "$ARM" in S0|S0h|S1|NP|REC) ;; *) echo "ARM must be S0, S0h, S1, NP or REC (got '$ARM')" >&2; exit 2 ;; esac
+case "$ARM" in S0|S0h|S1|NP|REC|G0|G0h|G1) ;; *)
+  echo "ARM must be S0, S0h, S1, NP, REC or a gross-budget arm G0, G0h, G1 (got '$ARM')" >&2; exit 2 ;; esac
 case "$SCENARIO" in historic|ssp370) ;; *)
   echo "SCENARIO must be historic or ssp370 (got '$SCENARIO')" >&2; exit 2 ;; esac
 case "$NPREV" in roster|predict) ;; *)
@@ -196,7 +216,7 @@ cd $REPO
 $JULIA --project=$REPO $REPO/scripts/rung2_s_demography_harness.jl \\
     --arm=$ARM --n-prev=$NPREV --seed=$SEED --cell=$CELL --drf=$DRF \\
     --boundary-csv=$BCSV \\
-    --apply-dir=$APPLY --ready=$APPLY/harness.ready --max-idle=300 > $DST/harness.out 2>&1 &
+    --apply-dir=$APPLY --ready=$APPLY/harness.ready --max-idle=$MAXIDLE > $DST/harness.out 2>&1 &
 HPID=\$!
 for i in \$(seq 1 300); do
   [ -f "$APPLY/harness.ready" ] && break

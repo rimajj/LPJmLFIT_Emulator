@@ -34,6 +34,32 @@
 #       so HERE then this harness has no more power than the offline basis did, and that is the first thing
 #       to check before believing S0-S2.
 #
+# THE `G*` ARMS — THE SAME THREE OPERATORS, SPENDING A GROSS KILL BUDGET FROM A RUNNING ACCOUNT
+# (ADR 0189 §7 pre-registered them; ADR 0240 builds them).  `G0`/`G0h`/`G1` are `S0`/`S0h`/`S1` with ONE
+# thing changed — the MAGNITUDE they are asked for, not who they pick.
+#   Why.  An `S*` arm's budget is `(1 - rho)*n`, and rho is a NEXT-YEAR COUNT ratio, so what it spends is
+#   the NET count change `K - R`.  The flux that moves biomass is the GROSS `K`, and because establishment
+#   is deferred to the C (`ESTAB_C`) the recruits `R` arrive regardless.  Measured on FIT's own roster over
+#   12 cells (ADR 0188 §4): gross kills 5.65/5.96 %/yr against a spendable budget of 0.78-1.02 %/yr, i.e.
+#   6.4-7.6x short, with FIT's NON-NEGOTIABLE deaths alone overdrawing the whole budget 4.1-5.3x.  That is
+#   why the discretionary kill rate lands at 0.5-0.6 %/yr against FIT's 2.05 (ADR 0187) and the biomass runs
+#   +90 % (ADR 0186) while the COUNT is on target.
+#   What changes.  The budget becomes `(n - target) + Rhat` with `Rhat = #{stems of age == 1}` — last year's
+#   recruit cohort, countable off the roster already in hand, EXACTLY (29 700 of 29 700 patch-years, ADR
+#   0189 §2, skill trap 5j), so this needs no dump-format change and no interface request to line M.  It is
+#   spent from a per-patch RUNNING ACCOUNT rather than rectified per year: a year the count model says
+#   "grow" REPAYS an earlier overspend instead of being clipped to zero, and a forced overshoot suppresses
+#   later kills.  ⚠ The account is not a refinement — rectifying per patch-year is CONVEX, so an
+#   unbiased-but-noisy budget OVER-kills (total mortality +17 % on FIT's stand, +66 % on the arm's own,
+#   roster to 0.62x/0.11x over the ssp370 leg), which the account fixes (5.817 vs FIT's 5.961 %/yr, roster
+#   1.70x).  Reference arithmetic: `capacity()`'s `_acct` branch in scripts/diagnose_rung2_gross_budget_lag.py.
+#   ⚠ Expect the criterion to be MARGINAL, and that is PRE-REGISTERED, not a surprise: the same panel puts
+#   the accounting form's discretionary capacity on the arm's OWN stand at 1.493 ± 0.180 %/yr against a
+#   1.5 %/yr criterion — 0.04 sigma BELOW it (ADR 0189 §7, item 17).  And capacity is NECESSARY, NOT
+#   SUFFICIENT: it is what the operator could afford, not what it realizes, so 0189's numbers are
+#   "capacity" and only an arm's own are a "rate".
+#   `G0` keeps `S0`'s derivable self-test: the draw is uniform at `1 - b/n`, so `E[n_kill] = b` exactly.
+#
 # WHAT THE C STILL OWNS in every arm here: turnover, allocation, growth, fire, the non-demographic hard
 # kills (negative pools, `isneg_tree`, bioclimatic `survive()`, `cut_year`), AND establishment.  So every
 # number this harness produces is a MORTALITY result on a real stand; when S2 is wired, only 4 of the 7
@@ -99,8 +125,10 @@ function parse_args(argv)
         haskey(opts, key) || error("unknown option --$(m.captures[1])")
         opts[key] = m.captures[2]
     end
-    opts["arm"] in ("S0", "S0h", "S1", "NP") ||
-        error("--arm must be S0, S0h, S1 or NP (got '$(opts["arm"])')")
+    opts["arm"] in ("S0", "S0h", "S1", "NP", "G0", "G0h", "G1") || error(
+        "--arm must be S0, S0h, S1, NP or one of the gross-budget arms G0, G0h, G1 " *
+            "(got '$(opts["arm"])')"
+    )
     opts["n_prev"] in ("roster", "predict") ||
         error("--n-prev must be roster or predict (got '$(opts["n_prev"])')")
     isempty(opts["apply_dir"]) && error("--apply-dir is required")
@@ -438,10 +466,15 @@ function main(argv)
     log = open(log_path, "w")
     println(
         log,
+        # The four `G*` columns are APPENDED at the end on purpose: every consumer of this file parses
+        # positions off this header line rather than hardcoding them (skill trap 1), so an additive column
+        # cannot move an existing one.  They are written for every arm — NaN/0 where the arm has no
+        # account — so the schema does not depend on the arm.
         "#H L year patch n_tree n_emit n_prev target rho theta shortfall n_kill n_recruit " *
             "bm_inc growth_eff water_stress soilmoist " *
             "hmean_rt hmax_rt agb_rt lai_rt fpc_rt age_rt " *
-            "hmean_c hmax_c agb_c lai_c fpc_c age_c"
+            "hmean_c hmax_c agb_c lai_c fpc_c age_c " *
+            "n_age1 budget rho_eff acct"
     )
     isempty(opts["ready"]) || close(open(opts["ready"], "w"))
 
@@ -449,6 +482,11 @@ function main(argv)
     # every year and this dictionary is only a fallback for the FIRST year of each patch, where there is no
     # previous roster; in `predict` mode it is the shipped recursion and this IS the state.
     n_prev = Dict{Int, Float64}()
+
+    # The `G*` arms' per-patch KILL ACCOUNT (ADR 0240), in stems.  Starts empty, i.e. at 0 for every patch,
+    # and each leg is its own run — so an account never carries across the scenario pair, exactly as the
+    # feasibility panel modelled it.  Left untouched (and unlogged as an account) by the `S*`/`NP` arms.
+    acct = Dict{Int, Float64}()
 
     served = Set{String}()
     clamped_warned = Set{Int}()          # years reported as outside the boundary series (report once each)
@@ -517,18 +555,55 @@ function main(argv)
 
             ρ = arm == "NP" ? 1.0 : clamp(target / (npv + 1.0e-12), 0.7, 1.3)
 
+            # ── the KILL BUDGET: what the operator is ASKED for, before anyone picks who (ADR 0240) ──
+            # `ρ` above is a next-year COUNT ratio, so an `S*` arm spends the NET change `K - R`.  A `G*`
+            # arm spends the GROSS budget from a per-patch running account and hands the SAME operators a
+            # different magnitude:
+            #
+            #     acct += (1 - ρ)·n_tree + R̂ ,  R̂ = #{age == 1}       the gross increment
+            #     b     = clamp(acct, 0, n_tree)                        what it may spend THIS year
+            #     ρ_dec = 1 - b/n_tree                                  the fraction the operators use
+            #     acct -= n_kill                                        charge what was actually removed
+            #
+            # Three things are load-bearing and each was paid for.  (1) `R̂` is `age == 1` and not a model:
+            # `age` at `grow` is POST-increment and establishment sets 0, so the count is EXACT (ADR 0189
+            # §2).  (2) The account, not a per-year `max(0, ·)`: rectification makes a noisy budget over-kill
+            # by convexity (ADR 0189 §6), and clamping `b` — not `acct` — is what lets a "grow" year repay.
+            # (3) The charge is the REALIZED `n_kill`, not the modelled `max(b, n_cert)` the feasibility
+            # panel used, because that is what the C actually removes; for `G0h`/`G1` the certain stems have
+            # `f = 0` so a realized charge is ≥ `n_cert` automatically, and for `G0` it equals `b` in
+            # expectation.  The C's own hard kills are outside the account in every arm — it cannot see them.
+            #
+            # ⚠ `ρ` stays in the log as the count model's own ratio; `ρ_dec` is what the draw ran at.  A
+            # scorer that wants the realized thinning of a `G*` arm must read `rho_eff`, not `rho`.
+            gross = arm in ("G0", "G0h", "G1")
+            # Counted for EVERY arm, not only the ones that spend it: it costs nothing over a ~10-30 stem
+            # roster, and logging 0 where it was simply not computed would be a wrong value dressed as a
+            # measurement.  For an `S*` arm it is the free recruit observable the log did not carry before.
+            n_age1 = count(t -> t.age == 1, trees)
+            ρ_dec = ρ
+            budget = NaN
+            if gross
+                a = get(acct, patch, 0.0) + (1.0 - ρ) * length(trees) + n_age1
+                budget = clamp(a, 0.0, Float64(length(trees)))
+                acct[patch] = a
+                ρ_dec = isempty(trees) ? 1.0 : 1.0 - budget / length(trees)
+            end
+
             # ── the decision ──
+            # Every arm below reads `ρ_dec`, which IS `ρ` for the `S*`/`NP` arms — so those arms are
+            # byte-identical to the pre-0240 harness by construction, not by inspection (guardrail 4).
             kills = Tuple{Int, Int}[]
             θ = NaN
             shortfall = 0.0
             rng = Xoshiro(hash((seed, year, patch)))
-            if ρ < 1.0 && !isempty(trees)
+            if ρ_dec < 1.0 && !isempty(trees)
                 nind = [t.nind for t in trees]
                 n_now = sum(nind)
                 f = Vector{Float64}(undef, length(trees))
-                if arm == "S0" || arm == "NP"
-                    fill!(f, ρ)                                   # the shipped uniform thinning
-                elseif arm == "S0h"
+                if arm == "S0" || arm == "NP" || arm == "G0"
+                    fill!(f, ρ_dec)                               # the shipped uniform thinning
+                elseif arm == "S0h" || arm == "G0h"
                     # THE DECOMPOSITION CONTROL (ADR 0176).  S1 beats S0 for two reasons at once and the
                     # audit cannot separate them: `f = (1-haz)^θ` is zero wherever FIT's own hazard is
                     # CERTAIN (`mort >= 1`), so S1 stops overriding deaths the C had already settled — and
@@ -540,8 +615,9 @@ function main(argv)
                     n_cert = sum(nind[i] for i in eachindex(trees) if certain[i]; init = 0.0)
                     # the survivors the target still has room for, spread over the non-certain stems
                     n_free = n_now - n_cert
-                    c = n_free <= 0.0 ? 0.0 : clamp(ρ * n_now / n_free, 0.0, 1.0)
-                    shortfall = ρ * n_now < n_now - n_free ? (n_now - n_free - ρ * n_now) / n_now : 0.0
+                    c = n_free <= 0.0 ? 0.0 : clamp(ρ_dec * n_now / n_free, 0.0, 1.0)
+                    shortfall = ρ_dec * n_now < n_now - n_free ?
+                        (n_now - n_free - ρ_dec * n_now) / n_now : 0.0
                     for i in eachindex(trees)
                         f[i] = certain[i] ? 0.0 : c
                     end
@@ -552,7 +628,7 @@ function main(argv)
                                 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, t.nind, t.sla, t.wooddens, false
                             ) for t in trees
                     ]
-                    θ, shortfall = EM._hazard_tilt(haz, tp, ρ * n_now, n_now)
+                    θ, shortfall = EM._hazard_tilt(haz, tp, ρ_dec * n_now, n_now)
                     for i in eachindex(trees)
                         w = 1.0 - haz[i]
                         f[i] = w <= 0.0 ? 0.0 : w^θ
@@ -562,6 +638,10 @@ function main(argv)
                     rand(rng) > f[i] && push!(kills, (trees[i].pft_id, trees[i].treeidx))
                 end
             end
+            # Charge the account with what was actually nominated — including 0 on a gated patch-year, where
+            # the kill list is empty and so the certain deaths are spared too (harness's own comment below;
+            # skill trap 5l).  An unspent budget therefore stays on the account and is available next year.
+            gross && (acct[patch] -= length(kills))
 
             # ── the answer ──
             # The kill list IS the mortality answer, including when it is empty: with rho >= 1 the count
@@ -583,7 +663,7 @@ function main(argv)
 
             hm, hx, ab, la, fp, ag = feats[5], feats[6], feats[7], feats[8], feats[9], feats[10]
             chm, chx, cab, cla, cfp, cag = ctrain_state(trees)
-            # Written as a joined line, NOT a `@printf`: the row is 27 fields wide and `@printf` needs its
+            # Written as a joined line, NOT a `@printf`: the row is 31 fields wide and `@printf` needs its
             # format as ONE string literal, so a concatenated format is a load-time `ArgumentError` — and
             # `Meta.parseall` does NOT catch it, because macro expansion happens after parsing. A
             # parse-check is not a load-check for this file.
@@ -592,6 +672,7 @@ function main(argv)
                 length(kills), nrec,
                 bm_inc, ge, ws, rzw, hm, hx, ab, la, fp, ag,
                 chm, chx, cab, cla, cfp, cag,
+                n_age1, budget, ρ_dec, get(acct, patch, 0.0),
             ]
             println(
                 log,

@@ -29,6 +29,23 @@ honouring certain kills (the decomposition control); `S1` = + the trait hazard's
 freezes only the 4 boundary columns fed to the emulator — it is **not** a frozen-climate control for the
 stand, because the C still runs transient forcing.
 
+**`G0`/`G0h`/`G1` are the same three operators spending a GROSS kill budget out of a per-patch running
+account** (ADR 0240, pre-registered by ADR 0189 §7). Only the MAGNITUDE they are asked for changes, not who
+they pick: `acct += (1−ρ)·n_tree + #{age == 1}`, spend `b = clamp(acct, 0, n_tree)` at `ρ_eff = 1 − b/n_tree`,
+then charge the realized `n_kill` back. They exist because an `S*` arm's budget is the NET count change and
+the flux that moves biomass is the GROSS one (ADR 0188). Three things to know before reading one:
+
+* **`rho` in the log is still the count model's own ratio — a `G*` arm's realized thinning is `rho_eff`.**
+  Four columns were APPENDED to `s_arm_log.txt` for this (`n_age1 budget rho_eff acct`), and every reader
+  here takes positions off the `#H L` header, so an older log simply lacks them.
+* **The `empty` gate moves from `ρ ≥ 1` to `budget ≤ 0` and gets BIGGER** (40–61 % vs 21.8 % for a naive
+  lagged budget) — mortality becomes lumpier than FIT's, which spreads ~6 %/yr fairly evenly. That is the
+  honest caveat against the accounting form; `diagnose_rung2_kill_budget.py`'s **panel F** prints it beside
+  the zero-kill share and the top-decile kill concentration.
+* **`spend` = nominations / budget runs ABOVE 1** (measured 1.23 at Hainich historic) and that is correct:
+  a certain death cannot be un-killed, so a short budget still costs `n_cert`, and the account then charges
+  the overshoot and suppresses later kills.
+
 ## ⚠ CHECK `<apply>/s_arm_log.txt` BEFORE YOU SCAN A SINGLE DUMP
 
 Beside every emulator arm's `_dump` there is an `_apply` directory, and in it the harness's own runtime log:
@@ -241,6 +258,28 @@ have already printed convincingly. A partial run that dies below the fold looks 
    number. **Any panel that contains the status quo as one of its arms can be checked against what the status
    quo is already known to do; do that before reading the other arms.** (The C's own hard kills on a gated
    year are still unmodelled — state such a residual rather than hiding it.)
+
+5m. **⚠ A BYTE DIFF OF TWO ROSTER DUMPS IS *NEVER* THE EQUALITY GATE — `sapwood_old` IS UNINITIALISED IN
+   EVERY PHASE (ADR 0240).** Guardrail 4 for a harness change is "the pre-existing arms decide identically",
+   and the obvious test — re-run one arm under the new code and `cmp` the dumps — reports **28 322 differing
+   lines of 40 569 tree records for byte-identical decisions**. `Pfttree.sapwood_old` is a DEAD struct field
+   that `new_tree` never zeroes, so it is garbage at `pre`/`grow`/`mort`/`post` alike (~7 000 records each),
+   and the five `mort_*` are garbage at `pre` and at a recruit's establishment year. **Use
+   `scripts/diagnose_rung2_dump_equality.py --ref <dirA> --new <dirB>`** — it knows the `UNINIT` set, prints
+   the expected differences separately, and exits 0 on "identical in every initialised column". Same family
+   as CLAUDE.md §3's NetCDF `history`-timestamp trap: the header lies, the variables agree. Pair it with a
+   `cut`-then-`cmp` of the arm log's PRE-EXISTING columns (500 patch-years, byte-identical) — the two
+   together are the gate, because the log proves the decisions and the dump proves the trajectory.
+
+5n. **⚠ ONE EXPORTED `ARMS` NOW WIDENS EVERY SCORER — AND THE BLESSED STATISTICS STAY PINNED (ADR 0240).**
+   `diagnose_rung2_{map_target_response,kill_budget,kill_selectivity,anchor_preflight}.py` all read `ARMS`
+   (comma OR space separated, one shared parser), default UNCHANGED so every published table reproduces, and
+   the arm-name alternation in each regex comes from `map_target_response.ALL_ARMS`. Two deliberate
+   asymmetries: **`kill_selectivity` FORCES `REC` back in** (it is the reference AND the height-quintile
+   basis — dropping it empties the report rather than narrowing it), and **`LEARNED`/`OPERATOR_ARMS` do NOT
+   follow `ARMS`** (ADR 0185's and 0187's verdicts were pre-registered over named arms; a verdict recomputed
+   over arms that did not exist when the threshold was written is not the pre-registered verdict). A `G*`
+   arm is therefore DESCRIBED by those scorers and JUDGED by ADR 0188 §7's own criterion.
 
 6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
