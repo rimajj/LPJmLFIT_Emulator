@@ -1,6 +1,6 @@
 ---
 name: residual-diagnosis
-description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. ALSO the FORCING-basis check every learned-component score needs before it is believed (ADR 0112): trace each conditioning feature back to who computed it, because K-fold BY CELL holds out space not time and a lagged-truth feature (`n_prev`, `*_init`, any AR state — grep the table builder for `shift(`) makes the score one-step teacher-forced; then build the NULL that is handed the same thing and learns nothing and score it in the SAME process — a metric the null also passes (here a deattenuated response slope of 1.03 vs the model's 1.01) has no power and cannot be quoted as evidence. And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
+description: The mandatory discipline BEFORE chasing any fidelity residual (an F_diff-vs-C gap, an S-panel miss, an energy/closure discrepancy) — state the reference basis and a falsifiable hypothesis, confirm the comparison basis is correct, and time-box before writing probe scripts. Use it at the start of any "why doesn't X match Y?" investigation. ALSO how to trisect the fallout when a basis error IS found (ADR 0060): a RATIO over time is partly robust to a basis substitution while a LEVEL is not, so label every downstream claim ratio-or-level before re-measuring; emit both columns side by side rather than replacing one; cross-check the corrected reference through a second independent reader; add the column additively and diff row-by-row. ALSO the FORCING-basis check every learned-component score needs before it is believed (ADR 0112): trace each conditioning feature back to who computed it, because K-fold BY CELL holds out space not time and a lagged-truth feature (`n_prev`, `*_init`, any AR state — grep the table builder for `shift(`) makes the score one-step teacher-forced; then build the NULL that is handed the same thing and learns nothing and score it in the SAME process — a metric the null also passes (here a deattenuated response slope of 1.03 vs the model's 1.01) has no power and cannot be quoted as evidence -- and running the null is NOT enough (ADR 0184): DERIVE what it must return for your blessed statistic and write that value beside the threshold before the run, because a probe that named this very trap still blessed a statistic the null passes 12/12 by construction, after the arms were run handing the model the live count it was asked to predict (target/n_emit = 1.00 +- 2.3 %); ask what PINS two quantities together before reading their agreement as a property of what sits between them, check which MODE a harness was actually run in, and prefer a ratio against the truth (authority) over a ratio of successive model outputs (smoothness). And separate an INITIALISATION gap from a GROWTH gap by reading the quantity at t=0 against the exact inputs the state was built from -- noting that a demography-off kernel arm has no mortality, so a monotone rise there is expected and cannot convict the growth code.
 ---
 
 # residual-diagnosis — don't chase a residual blind
@@ -917,6 +917,43 @@ mean by `(first − last)/N` — an artifact of the null, not a property of the 
 ⚠ **And do not read a null result as "the model is worthless".** State both directions: this model removes
 **53.3 %** of the null's residual variance and adds a third of the missing response amplitude. The finding is
 about what the *metric* proves, not about whether the model does anything.
+
+### ⚠ RUNNING THE NULL IS NOT ENOUGH — *DERIVE* WHAT IT MUST RETURN, BEFORE THE RUN (line S, 2026-08-13, ADR 0184)
+
+Scoring the null in the same process (above) still let a powerless statistic through a second time, in a probe
+whose own header named this trap and whose verdict expression read only its blessed variables. Both defences
+were in place and both missed it, because they are *post-hoc*: they compare the null's measured number to the
+model's, which only helps if you notice the two are close.
+
+**The defence that works is one line of algebra at pre-registration time.** For your blessed statistic, write
+down the value the null must return *analytically*, next to the threshold:
+
+> blessed: sign agreement vs FIT on the 5 gain cells · threshold ≥ 4/5 ·
+> **null (`target = n_prev`) returns FIT's own count ⇒ 5/5 by construction ⇒ THIS STATISTIC HAS NO POWER**
+
+That kills the design before any job runs. Measured, the trap was total: the arms were run handing the model
+the live stem count, so `target/n_emit` = **1.00 ± 2.3 %** (within ±5 % in 84–87 % of patch-years) — the
+model's output *was* the input, the two quantities the probe meant to separate were one quantity, and the
+basis check scored a flattering **12/12 cells, slope 1.058** that the null matches exactly.
+
+Three transferable rules:
+
+1. **Ask what PINS your two quantities together before reading their agreement** as a property of whatever
+   sits between them. "The operator transmits the map's request faithfully" was really "both numbers are the
+   same number".
+2. **A pre-registered threshold protects the verdict, not the experiment's premise.** State the *model of the
+   experiment* the branch assumes ("ASK and GOT are separable"), and check that assumption separately — it is
+   the thing that fails.
+3. **Check the MODE a harness was actually run in, not only what it supports.** `--n-prev` has two values,
+   one documented in the runner as "the shipped coupled path"; it had **never been used**, and three ADRs were
+   written on the other without saying so. `grep` the run script for defaulted knobs and record their values
+   in the write-up.
+
+And when you pick the metric that proves separability, **make sure it is the one that can move.** The obvious
+candidate here — the year-on-year ratio |ρ−1| — sits near 1 in *both* modes (0.024 → 0.037), because a tree
+ensemble's output is smooth in time; pre-registering on it would have wrongly killed the follow-up. The
+quantity that actually decoupled was the *level*, |`target`/`n_emit` − 1|: ±2.3 % → **±24 %**. **A ratio of
+successive model outputs measures the model's smoothness; a ratio against the truth measures its authority.**
 
 ## WHEN YOU CLOSE A "ONE DEFINITION ONLY" TRAP, GREP FOR THE OTHER CODE PATH — IT SURVIVED (line S, 2026-08-10, ADR 0113 §5)
 

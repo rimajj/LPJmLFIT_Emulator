@@ -615,4 +615,12 @@ function main(argv)
     return 0
 end
 
-exit(main(ARGS))
+# Guarded so this file can be `include`d for its DEFINITIONS without starting a rendezvous server.
+# `Tree`, `pools_of`, `flux_drivers`, `n_emitted`, `HEIGHT_MIN` and `boundary_series` are the exact
+# quantities the arms were actually run with, so an offline scorer that wants "the row this arm's stand
+# would produce" must reach them HERE rather than re-deriving them — the same ADR-0023 rule that makes
+# this file call `EM.flux_feature_vector` instead of assembling the row itself. A copy would make the
+# copy the thing being measured. Reused by `scripts/diagnose_rung2_map_on_rec_stand.jl`.
+if abspath(PROGRAM_FILE) == @__FILE__
+    exit(main(ARGS))
+end

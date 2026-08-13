@@ -2322,3 +2322,56 @@ mortality parameters from `fc.pft_ids`, which DEFAULTS to beech for every tree. 
 unwired coupled caller now runs the ported hazard on beech's mortality parameters — and those are strongly
 per-PFT. The measurement used the C's own ids, so it does not license the flip for an unwired caller; ADR
 0183 §5b says so.
+
+---
+
+## Session — 2026-08-13 · the map-on-arm-stand loop closure (ADR 0184)
+
+The handoff's pre-registered action was to run the count model on each arm's own stand and reconcile ADR
+0181's 0.292 with ADR 0177's null. It turned out to need almost no work: the harness already writes its own
+`target` — `DRF.predict` on that arm's own stand — at every rendezvous, into `<apply>/s_arm_log.txt`. Four
+of the five arms were therefore already measured, sitting in a 170 kB text file beside dumps that two
+previous sessions had scanned 38 GB of for stand features the same file already carried. That is now the
+first line of the `rung2-dump-analysis` skill.
+
+Only `REC` lacked a log, because pure observation never starts a harness. I supplied it by replaying FIT's
+own dumps through the shipped `flux_feature_vector` + `DRF.predict` rather than a copy (ADR 0023), which
+needed one small change: the harness's `exit(main(ARGS))` now sits behind the repo's standard
+`PROGRAM_FILE` guard so its `Tree`/`pools_of`/`flux_drivers` can be reused. The gate for that reader is the
+part I am happiest with — in year 2000 no arm has killed anything yet, so the offline row must equal the
+live rendezvous row, and it does to the last printed digit (`target = 6.819800183403388`). Cheap, and it
+made the reference trustworthy without argument.
+
+Then the result, which is not the one the handoff expected. `ASK ≈ GOT` at every cell for every arm, which
+reads as "the operator transmits the map's ask faithfully, so the loss is upstream" — and the pre-registered
+verdict duly fired `CONDITIONING-LIMITED`. I did not believe it, because the basis check had passed *too*
+well: the map on FIT's own stand agreed with FIT's own count direction at 12/12 cells with a slope of 1.058.
+Numbers that clean, on an axis where ADR 0177 measured I² of 93–99 %, are usually a null in disguise. They
+were. Every rung-2 run used `--n-prev=roster`, which hands the model the live stem count; measured,
+`target/n_emit` = 1.00 ± 2.3 %, within ±5 % in 84–87 % of patch-years. The model's target *is* the count it
+was handed, so ASK and GOT are the same quantity and the null `target = n_prev` scores 12/12 by
+construction. I overrode my own pre-registered branch and recorded NO VERDICT.
+
+The lesson I want to keep is sharper than "score the null too" — ADR 0181 already did that, and this probe's
+header already named the trap. What was missing was one line of algebra: *derive what the null must return
+for the blessed statistic, and write that number beside the threshold.* It would have voided the basis check
+before a single job ran.
+
+Two things came out of it that are worth more than the original question. First, it collapses ADR 0180 and
+ADR 0181 §7.4 into one mechanism — with the live count the model is accurate but mute, without it expressive
+but mis-levelled — and it narrows ADR 0177 from a statement about what the model learned to a statement
+about the configuration it ran in. Second, and independent of all the count arithmetic: nothing anchors the
+stand's size/age structure. By 2100 the arms hold ~15 % fewer stems but +99–106 % above-ground biomass and
++47–84 % mean age than FIT, growing monotonically from ~+38 % at the historic leg, and the do-nothing null
+departs worst of all at +312 %. ADR 0182's cosine of 0.97–0.99 is still true; a correctly-directed z-scored
+shift on a 2× displaced level is simply not the same conditioning, and no count statistic on this line can
+see it. That is the first defect here that provably needs a size-resolved measurement of *who dies*.
+
+I also checked whether the recommended fix is real before recommending it. `predict` mode — the shipped
+coupled path — had never been run in this harness. A 12-job smoke succeeded, and it caught my own
+pre-registration being on the wrong statistic: |ρ−1| barely moves (0.024 → 0.037, under my 0.10 threshold)
+because ρ is a ratio of two smooth tree-ensemble outputs in *both* modes. The right metric is the level
+decoupling, `target/n_emit`, which goes from ±2.3 % to ±24 % (±28 % late century). So the question is
+answerable there, and the full 264-job matrix is submitted with its reading pre-registered on the corrected
+metric. Next session scores it; ρ first, then the gain-cell signs, and `REC`'s 12/12 labelled as the null's
+every time it appears.
