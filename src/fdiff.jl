@@ -1608,8 +1608,15 @@ end
 #    photosynthesis sees `apar_i = par·(1−albedo_i)·alphaa_i·fpar_i·phen` (`water_stressed.c:204`),
 #    where `fpar_i` is its LAYERED absorbed fraction (Σ_i fpar_i = canopy-absorbed PAR). Distributing
 #    the light across individuals means the SLA-Vcmax cap no longer saturates one over-lit tree, and
-#    the canopy total absorbs the true layered fraction (≈0.83 leafon) rather than the fpc/albedo
+#    the canopy total absorbs its layered fraction (≈0.83 leafon at Hainich) rather than the fpc/albedo
 #    `d_fapar` OUTPUT (≈0.49) the single-individual drive mistakenly used — recovering GPP.
+#    ⚠ ADR 0135: that 0.83 is F's OWN absorption, NOT a C reference — `d_fapar`/`FAPAR` is built from
+#    `pft->fpc` + the albedos (`albedo_tree.c:75`), i.e. ADR 0060's crown-cover family, so it cannot
+#    validate the layered `pft->fpar`. The output that DOES constrain this basis is `LAI_STAND`, and
+#    the port is scored against it in `scripts/diagnose_layered_light_basis.py` (0.87–0.98 at four of
+#    five biome cells, below 1 by exactly the `ind` writer's 5 m cut). The density here is faithful to
+#    `getfpar.c`'s LIVE line, `min(leaf_c·sla/(h−bole), 40)·nind` — the per-CROWN variants in that file
+#    are inside `/* test: */` comment blocks and a `grep` lands in them.
 #  • Transpiration demand is STAND-level (`gp_sum.c` returns the fpc-normalized MEAN potential
 #    conductance `gp_stand = Σ_i gp_i·phen / Σ_i fpc_i`, with each `gp_i` from FPC-based light), and
 #    each individual transpires `min(supply_i, demand_stand)·fpc_i` (`water_stressed.c:153` after the

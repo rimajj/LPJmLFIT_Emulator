@@ -1633,3 +1633,38 @@ hazard", and that comment is what got written into the ADR.
 
 **Trace the field, not the prose around it** — declaration, then assignment, then use. A blocker that names a
 specific input is worth ten minutes of grep before it becomes a milestone's gate.
+
+## §10 — A COMMENTED-OUT BRANCH IS A DEAD PATH THAT `grep` CANNOT DISTINGUISH FROM LIVE CODE (line M, 2026-08-13, ADR 0135)
+
+§9 says: before porting a reference's *branch*, evaluate both of its branches on the reference's own realised
+inputs. This is the step before that one — **make sure the branch you are comparing against is compiled at
+all.** Guardrail 5 and the `individual=true` dead-path rule are usually applied to a *config* gate
+(`if(!config->individual)`); they apply just as hard to a `/* ... */` block, and that case is quieter, because
+a config gate is at least visible in the same line of output.
+
+**What it cost.** `getfpar.c:108-124` carries **three** expressions for one quantity (the stem leaf-area
+density the layered-light integration runs on). A `sed` line range and a `grep` both surfaced a commented-out
+variant. Scored against it, the emulator's light model looked 5–37× too optically thin, with the reference's
+canopy fully opaque (absorbed fraction 1.000 at all five cells) — a dramatic, internally consistent,
+cross-cell-reproducible finding that was one commit away from opening a rewrite of a **faithful** component.
+Read verbatim in context, the live line matched the port exactly, cap and cap-ordering included.
+
+- **`awk`/`sed` the ENCLOSING lines, not the matching one.** `grep -n` gives you a line; it does not tell you
+  whether `/*` opened above it. Print ±10 lines and look for the delimiters. If a file offers several
+  candidate expressions for one quantity, assume at most one is live until you have seen the comment
+  structure.
+- **Two or more variants of one expression in a file is itself a signal** — it usually means the reference's
+  own authors experimented there, so it is exactly the quantity a port is most likely to have taken from the
+  wrong copy. Say in the ADR which one is live and why.
+- **The same file can hold a live/dead pair one level up.** Here the *function pointer* was also a pair:
+  under `individual:true` the registered `fpar()` is `fpar_tree_ind` (the layered share) and `fpar_tree` (the
+  crown-cover form) is dead — so `grep fpar_tree` finds a plausible, wrong definition too. Follow the
+  registration (`fscanpft_*.c`), not the function name.
+- **Then score the port against something the reference EMITS, not only against its source.** That is what
+  makes the verdict a measurement: the port's patch LAI was checked against the run's own `LAI_STAND` output
+  (0.87–0.98 at four of five cells, below 1 by exactly the known writer cut). Pick the output that constrains
+  the quantity — the obvious-looking one here (`FAPAR`) is built from a *different* variable
+  (`albedo_tree.c:75` uses `pft->fpc`), i.e. §3f's same-name-different-quantity trap.
+- **Report the refutation, with the retracted number.** A future session will find the same commented-out
+  line. Writing down "this is dead, here is the 5–37× artefact it produces" is what stops it being rediscovered
+  as a finding.
