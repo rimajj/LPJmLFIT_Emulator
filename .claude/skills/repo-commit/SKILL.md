@@ -981,3 +981,45 @@ which is what every pre-existing `FDiff.*` mention in those files already does. 
 main-module symbols (`[`FToS`](@ref)`, `[`annual_step!`](@ref)`) and fine *inside* `src/fdiff.jl`, whose
 docstrings are never rendered and so never checked. Grep your diff for `` [`FDiff. `` / `` [`Allometry. ``
 / `` [`SmoothOps. `` before pushing; it is a one-line check.
+
+## VALIDATE YOUR CHANGELOG FRAGMENT BEFORE ENTERING THE MERGE LOCK — a bad category aborts the ritual MID-WAY (line S, 2026-08-13)
+
+The collation step ADR 0095 put inside the `flock` runs under `bash -eu`, so **`scripts/collate_changelog.py`
+failing takes the whole ritual down after the merge and before the push.** That leaves the integration
+worktree in a state nobody expects and the guide does not mention:
+
+* `$INT`'s local `main` carries the merge commit,
+* `origin/main` does not,
+* your branch looks merged locally and is not merged remotely.
+
+The trigger is trivial and invisible until that moment — a `### <Category>` heading that is not in
+`collate_changelog.py::CANONICAL_ORDER`:
+
+```
+Added · Changed · Fixed · Deprecated · Removed · Security · Documentation
+Validation · Verified · Measured · Verdict · Gates · Notes
+```
+
+`### Findings` is the one that bit (the natural word for a diagnostic result; the canonical category is
+**`Measured`**). Two seconds of prevention, before you take the lock:
+
+```bash
+python3 scripts/collate_changelog.py --check          # or --dry-run to see the result
+grep -h '^### ' changelog.d/*.md | sort -u           # eyeball every category you are about to merge
+```
+
+**Recovery, when it has already happened.** Do NOT merge a second time on top — that lands two merge
+commits for one integration. Check the integration worktree is otherwise clean, reset it back to the remote,
+fix the fragment on your own branch, and rerun the ritual once:
+
+```bash
+git -C "$INT" status --short                  # MUST be empty — if not, stop and look
+git -C "$INT" log --oneline origin/main..main # expect exactly your merge commit and its contents
+flock "$INT/.git/esm-integrate.lock" git -C "$INT" reset --hard origin/main
+# ... fix the fragment on line/<X>, commit, push, then rerun the full ritual
+```
+
+The reset is safe *only* because nothing was pushed and `$INT` is a checkout with no work of its own — verify
+both, in that order, rather than assuming. And note the fix commit touches `changelog.d/` only, which
+triggers **no branch gate at all** (ADR 0090), so it is mergeable as soon as it is pushed — do not wait for a
+verdict that cannot arrive.
