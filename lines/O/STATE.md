@@ -138,6 +138,21 @@ CONTROL run. **ADR 0082** set the direction: the ONLINE config is **ESM-first, v
 not LPJmL-FIT**; Terrarium owns skin temperature + SEB + soil; we own **vegetation** (S, FIT photosynthesis,
 FIT water-limited ET). No LPJmL-FIT physics is online yet.
 
+### ✅ MERGED AND GREEN — 2026-08-14
+
+`ad29901d` (the work) + `354ff3a9` (an ADR provenance note) + `436166ee` (a `repo-commit` skill capture),
+merged to `main` as `969e9343` and `ff2efa18`; changelog collated in `2e3a98a1`. **Branch CI on the
+code-bearing sha `ad29901d`: `format` ✅ · `test (lts)` ✅ · `test (1)` ✅ · `test (macOS, lts)` ✅**
+(`test (pre)` is the known `continue-on-error` prerelease job — it fails at load time on a Julia-prerelease
+API change, unrelated). **`main`'s own run on `2e3a98a1`: `format` ✅ · `changelog` ✅** — exactly the gate
+set the diff predicts (`scripts/*.jl` → `format`, `CHANGELOG.md` → `changelog`; no `src/**` ⇒ no `CI`, no
+`docs`). The full Julia matrix fired on the branch because the push span was old-tip → new-tip across the
+403 commits this line fast-forwarded past, not because the diff touched `src/**`.
+
+⚠ **New trap, captured in `repo-commit`:** `GET /commits/<sha>/check-runs` reported `test (1)` as
+`in_progress` for **~25 min after it had completed successfully**. Poll
+`GET /actions/runs/<id>/jobs` instead — that is the authoritative per-job verdict.
+
 ### 5-pre — ✅ **DONE 2026-08-14 (ADR 0084). THE TIMING GATE EXISTS. ADR 0093's 3.8× IS REPRODUCED AND IS 4.62× ONCE COMPONENT S IS ACTUALLY IN THE LOOP. Do not redo the measurement — extend it.**
 
 **Three committed reproducers replace the throwaway `/p/tmp/jamirp/npatch_analysis/bench_emulator.jl`:**
