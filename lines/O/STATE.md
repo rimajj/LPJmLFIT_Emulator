@@ -138,6 +138,107 @@ CONTROL run. **ADR 0082** set the direction: the ONLINE config is **ESM-first, v
 not LPJmL-FIT**; Terrarium owns skin temperature + SEB + soil; we own **vegetation** (S, FIT photosynthesis,
 FIT water-limited ET). No LPJmL-FIT physics is online yet.
 
+### 5-pre — ✅ **DONE 2026-08-14 (ADR 0084). THE TIMING GATE EXISTS. ADR 0093's 3.8× IS REPRODUCED AND IS 4.62× ONCE COMPONENT S IS ACTUALLY IN THE LOOP. Do not redo the measurement — extend it.**
+
+**Three committed reproducers replace the throwaway `/p/tmp/jamirp/npatch_analysis/bench_emulator.jl`:**
+
+| script | what it does |
+|---|---|
+| `scripts/bench_speed_gate.jl` | Julia arm. Three arms **S+F+E / F+E / F**, single-threaded, per cell-year + per patch-year + per cohort-year, fixed-vs-per-cohort regression, machine-readable `logs/bench_speed_gate.csv`. Env: `BENCH_YEARS` `BENCH_CELLS` `BENCH_REPS`. |
+| `scripts/bench_speed_gate_c.sh` | C arm. Parameterised cell block, runs it at **two lengths and differences them** so per-run start-up/restart/I-O cancels; `lpjcheck` pre-flight; requires the completion line, never trusts exit status. |
+| `scripts/profile_fdiff_hotspots.jl` | READ-ONLY attribution: sampling profile (self + `perf --children`-style inclusive), the `nlambda` sweep, leaf-kernel microbenchmarks. |
+
+**Re-run either arm (both are cheap):**
+```bash
+NCPUS=2 TIME=01:00:00 scripts/sbatch_julia.sh O-speedgate --project=. --threads=1 scripts/bench_speed_gate.jl
+scripts/bench_speed_gate_c.sh 42490 42490 10 20        # ~30 s of compute on `priority`
+```
+⚠ **`--threads=1` is load-bearing** — `DRF.predict` is `Threads.@threads`-parallel, so a multi-threaded run
+reports a smaller *wall* time for the same *core*-seconds and quietly flatters the S arm.
+
+**THE NUMBERS (cell 42490 Hainich, npatch 25, 1 core; C 2000–2019, emulator 2010–2019):**
+
+| | core-s / cell-year | job |
+|---|---|---|
+| LPJmL-FIT **C**, marginal rate | **0.2666** (0.3217 naive over 20 yr) | 1792835 |
+| LPJmL-FIT C, 21-cell block 42480–42500 | 0.2884 marginal (0.3029 naive) | 1792562 |
+| emulator **F+E** (= what ADR 0093 actually timed) | **1.1169** | 1792591 |
+| **emulator, full coupled S+F+E** | **1.2329** | 1792591 |
+
+⇒ **4.62× slower than the model it replaces.** ADR 0093 is **reproduced**, not refuted: its F+E arm comes
+back within **+1.9 %** across 403 commits and a rebuilt C binary — so nothing line M has landed in the fast
+core has cost speed. The rise from 3.8× is two basis corrections, both of which widen the gap: its harness
+printed `TOTAL coupled S+F+E` while leaving `run_coupled_cell`'s `slow` kwarg at `nothing` (**no Component
+S at all**), and it divided the C's whole-process wall time by cell-years instead of taking the marginal rate.
+**Quote 1.2329 and 4.62×. The S-less 1.096 is retired as a headline** (it remains valid as the F+E arm).
+
+Cost split: **S = 5.0–22.1 %** of the coupled run across the five biome cells (9.4 % at Hainich) · **E = 0.9 %**
+· **the fast core = 99 %**. Per-cohort cost is flat across biomes at **4.11–4.31e-3** core-s/cohort-year
+(ADR 0093: 3.998e-3). ⚠ Carry this caveat with every ratio: the C holds ~149 individuals per patch, the
+emulator 10.9 cohorts — **the emulator is 4.62× slower while simulating 13.7× fewer individuals.**
+
+**Against which atmosphere** — `EXECUTION_PLAN.md` §0's ≤0.030 (T63-class) / ≤0.0135 (T31-class) are a
+**convention** (10 % of a measured SpeedyWeather cost), *not* an owner requirement; against a CMIP-class 1°
+atmosphere nothing binds. From 1.2329 they need **41×** and **91×** (the plan's 37×/81× were off the S-less
+1.096). Say the atmosphere every time.
+
+### 5-pre PROFILE — ✅ **DONE. 83 % of the runtime is ONE λ solve, and `EXECUTION_PLAN.md` §4's premise about it is wrong.**
+
+Top of the line-level profile (Hainich, 53 004 samples, share of **total** runtime, inclusive):
+`daily_step_canopy` **98.0 %** · `photosynthesis` **87.9 %** (the C's is 41.3 %) · the `g(λ)` closure
+**82.1 %** · **`fdiff.jl:673` the central-difference derivative 56.0 %** · `:672` 27.7 % ·
+`softplus(adt, βadt)` **26.7 %** · `^(::Float64,::Float64)` **26.5 %**.
+
+1. **`solve_lambda` (`src/fdiff.jl:655`) is ALREADY fixed-iteration** — the plan proposes making it so.
+   Its real cost is `:673`, a **central finite-difference** Newton derivative ⇒ **3 photosynthesis
+   evaluations per iteration**, ⇒ **78–79 calls per individual per day** against the C's ≤ 30
+   (`water_stressed.c:207`). The profile confirms the arithmetic: `:673`/`:672` = 2.02 : 1.
+2. **`nlambda` is a parameter, so the headroom is measurable with no source change:**
+   25 → 1.0859 · 12 → 0.5995 (1.81×) · 6 → 0.3748 (2.89×) · **3 → 0.2644 (4.10×, ΔGPP −0.03 %)** ·
+   1 → 0.1879 (5.77×). **λ share = 82.7 %**, and `nlambda=1` still pays one 3-evaluation step ⇒ lower bound.
+3. **⚠ GPP is NON-MONOTONE in `nlambda`** (±2.1 %; `3` lands within 0.03 % of `25` while `12` and `6` sit
+   2.06 % away), and **two independent runs reproduce ΔGPP to three decimals**, so it is the solver, not
+   noise. **"25 iterations" is not evidence of convergence.** [ASSUMPTION, mechanism NOT verified] likely
+   the degenerate low-light branch the code's own comment at `:660-668` describes. **Not claiming the
+   shipped λ is wrong** — claiming convergence must be established, not assumed. Raised to M.
+4. **A separate 26.5 % that needs no solver reasoning:** `fdiff.jl:558/559/561` recompute
+   `ko`/`kc`/`tau = c * q10^((temp−25)*0.1)` on all ~78 calls although they depend on **`temp` alone** —
+   not λ, not `apar`, not `vm`, not the individual. Loop-invariant recomputation; hoisting is bit-identical.
+
+### 📤 TWO INTEGRATION POINTS RAISED 2026-08-14 — **both are OUT of O's hands; do NOT re-raise, check for a reply**
+
+* **→ LINE M** (`lines/M/STATE.md`, inside their `## NEXT`, ADR 0084 §5): a **named single-function
+  hand-over** of `solve_lambda` (`src/fdiff.jl:655-677`, 23 lines) + the 3-line kinetics hoist at
+  `:558-561`. Four tick-box options (a) hand over now / (b) after rung 4 / (c) M takes it / **(d) split —
+  M takes the solver, O takes the kinetics hoist (O's recommendation)**. Carries a **six-part
+  pre-registered equivalence criterion** (byte-identical opt-out · `‖Δλ‖∞ ≤ 1e-6` on a 10 000-point sweep ·
+  `|ΔGPP|/GPP ≤ 1e-3` per cell-year · AD gradient to 1e-6 · conservation · **≥ 2.5×** speed).
+  **Check for their reply before doing anything in `src/fdiff.jl`:**
+  `grep -n 'INBOUND FROM LINE M' lines/O/STATE.md` and `grep -n 'INBOUND FROM LINE O' lines/M/STATE.md`
+  (if the latter is gone, the block was lost to a rebase — re-place it, never resolve that conflict with
+  `--theirs`).
+* **→ THE INTEGRATOR** (`MEMORY.md` §3, ADR 0084 §6): wire the harness as a **required CI gate**; the
+  triggering event is **the next merge to `main` touching `src/**`**. Two design constraints the obvious
+  form gets wrong: a GitHub runner is not the cluster ⇒ threshold a **ratio measured inside the same job**
+  (arm F at `nlambda=25` vs `nlambda=1`), not an absolute core-s figure; and the `_t8` artifacts (180 MB on
+  `/p/tmp`) are unreachable from a runner ⇒ the CI arm must be **F or F+E**, never S+F+E.
+
+### ▶ WHERE TO PICK UP — in this order
+
+1. **`git log --oneline -3 -- lines/M/STATE.md` and look for M's reply.** If M ticked (a), (c) or (d), that
+   decides whether O may touch `solve_lambda`. **🚫 Until a hand-over is RECORDED, `src/fdiff.jl`,
+   `src/fdiff_smoothops.jl` and `src/components/fast.jl` remain line M's** (CLAUDE.md §9 Gap 1) — M is
+   working inside them right now (ADRs 0135–0138), so an edit from here is a merge conflict in a
+   2 000-line physics file, not a scientific disagreement.
+2. **5d — thread across cells. This is O's, needs nobody, and is untouched.** `EXECUTION_PLAN.md` §4 lists
+   it as "large, no risk": 54 020 cells are embarrassingly parallel and the harness already reports
+   single-core core-seconds, so the speed-up is directly measurable against a committed baseline. It does
+   **not** touch the fenced files — the parallelism lives in the driver.
+3. **Extend the harness to the C's own `npatch` sweep** if a patch-count decision is ever needed:
+   `scripts/bench_speed_gate_c.sh` takes the cell block, and ADR 0093 §2 already has the C at npatch 1/25/50.
+
+### O3b — **STILL OPEN, and it was NOT worked on this session.** Why: the owner re-tasked line O onto rung 5 (the timing gate + profile) for this session; O3b needs no result from that and is unaffected. Its state below is unchanged and still current — read job **1706979** first, exactly as the previous handoff says.
+
 ### O3a — ✅ DONE (2026-08-05, ADR 0083). Do not redo it.
 
 The online soil is a single `PrescribedSoilHorizon(:soil)` carrying the ground-truth run's own soilcode map
@@ -145,7 +246,7 @@ The online soil is a single `PrescribedSoilHorizon(:soil)` carrying the ground-t
 Pipeline: `scripts/online_coupling/build_soil_texture_field.py` → `soil_texture.jl::prescribed_texture_soil`.
 `[VERIFIED job 1706262]` clay 0.01–0.58 in the model state, `fc − wp` ∈ [0.0519, 0.0893], PAW no longer ≡ 1.
 
-### O3b (DO THIS FIRST) — read job **1706462**, then finish the `soilmoist` comparison
+### O3b (open; see the note above for why it did not move on 2026-08-14) — read job **1706979**, then finish the `soilmoist` comparison
 
 **Nothing measured so far is quotable — both runs are initial-condition artifacts, and they BRACKET the
 reference.** Score against the **LIVE** table only (ADR 0035): `tables/cell_year_soilmoist_ye_hist.parquet`,
@@ -308,7 +409,27 @@ Shared, additive-only: `src/LPJmLFITEmulator.jl` (inside `# ── line O ──
   per ADR 0004), its skin temperature is currently the top-soil-layer T, and its default drag ignores the
   roughness field.
 
-## Status (2026-07-28)
+## Status (2026-08-14)
+
+**Rung 5-pre is CLOSED (ADR 0084): the end-to-end timing gate and the cost attribution exist and are
+committed.** Headline, cell 42490 / npatch 25 / 1 core: the emulator costs **1.2329** core-s per cell-year
+full coupled S+F+E against the LPJmL-FIT C binary's **0.2666** ⇒ **4.62× slower than the model it
+replaces**. ADR 0093's 3.8× is reproduced (its F+E arm to +1.9 %); the increase is basis correction, not
+regression. **82.7 %** of the runtime is the λ solve (`solve_lambda`, already fixed-iteration, paying a
+central-difference derivative = 3 photosynthesis calls per iteration ⇒ 78–79 per individual-day vs the C's
+≤30); a further **26.5 %** is three temperature-only `q10^` calls recomputed on every one of them. Both
+live in `src/fdiff.jl`, which **line M owns** — a named hand-over with a pre-registered equivalence
+criterion is raised to M, and a required-CI-gate request to the integrator. Reproducers:
+`scripts/bench_speed_gate.jl` · `scripts/bench_speed_gate_c.sh` · `scripts/profile_fdiff_hotspots.jl`.
+
+**P4 (online coupling) — the harness RUNS** (Terrarium 0.1.3 + SpeedyWeather 0.21.1, Julia 1.10.10; the
+`vegetation=nothing` control run is job 1622172, 6 h, exit 0). **O3a is done** (ADR 0083: the online soil
+carries the LPJmL-FIT texture map behind `assert_nondegenerate_soil`); **O3b is open** — the soil-moisture
+comparison against the live `soilmoist_ye` table, blocked only on reading job 1706979. No LPJmL-FIT physics
+is online yet. **P5 licensing is DONE + CLOSED** (ADR 0080 + 0081) — do not reopen; the one standing
+obligation is transparent citation.
+
+### Superseded status text (kept for provenance, 2026-07-28)
 
 **P5 is DONE + CLOSED (ADR 0080 + 0081); P4 has zero code.** `ext/` contains only `FDiffTrainingExt.jl`; every
 `SpeedyWeather` / `Terrarium` hit in `src/`+`test/` is a comment or a test name. `MEMORY.md` phase table:
