@@ -410,3 +410,12 @@ days earlier. The instinct that paid was distrusting an agreement that was bette
 justify, and going to per-sample data rather than the summary the log had already printed.
 
 **Did not get to:** 5d (thread across cells) — still O's, still needs nobody, now the top actionable speed item.
+
+**Merge + two more captures.** Merged as `83bda486` (collation `22ee0009`); `main`'s `changelog` gate green,
+and it was correctly the *only* gate — nothing in the diff is watched. Two incidental captures, both in
+`repo-commit`: the shared `residual-diagnosis` conflict (third consecutive session; line S had appended §19 at
+the same spot — kept both sides, S's first, and left my section unnumbered so it cannot collide with a future
+§20), and a new one worth more than it looks: **`?head_sha=` does no prefix matching, so a short sha returns
+`0 runs` at HTTP 200.** That is dangerous here specifically because ADR 0090 makes "no gate triggered" the
+common, mergeable case — so the empty list is an answer you are primed to accept for a commit whose gates
+actually ran. `rev-parse` first, and cross-check against the gate set the diff predicts.

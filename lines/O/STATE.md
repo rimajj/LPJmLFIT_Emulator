@@ -203,6 +203,19 @@ informative range of the quantity* — not merely a feedback. Full detail in the
 `scripts/online_coupling/diagnose_paw_clamping.py` (exit 1 = CLAMPED, so it gates), ADR 0085, trap 9 in
 `online-coupling-env`, and the mirror-image basis check appended to `residual-diagnosis`.
 
+**✅ MERGED AND GREEN.** `7f4cbd19` (the finding) + `2dcc1e67` (this handoff), merged to `main` as
+`83bda486`, changelog collated in `22ee0009`. **No branch gate ran and none should have** — the diff touches
+no `src/**`, no `.jl`, no `python/**`, no `docs/src/**` (`docs/decisions/**` and `.claude/**` trigger nothing,
+ADR 0090). **`main`'s own run on `22ee0009`: `changelog` ✅ `success`** — the one gate `changelog.d/**` +
+`CHANGELOG.md` predict, and the only one.
+⚠ **The merge conflicted in the shared append-only `residual-diagnosis` skill** (line S had appended `§19` at
+the same spot) — resolved by keeping **BOTH** sides, S's first; verified no duplicate `§` numbers afterwards.
+This is the third consecutive session to hit that conflict; it is already documented in `repo-commit`, and my
+section is deliberately **unnumbered** so it cannot collide with a future `§20`.
+⚠ **New trap captured in `repo-commit` this session:** `GET /actions/runs?head_sha=` does **no prefix
+matching** — a short sha returns `0 runs` with HTTP 200, which is indistinguishable from ADR 0090's
+legitimate "no gate triggered" case that you are primed to accept. `rev-parse` first, always.
+
 ### ✅ MERGED AND GREEN — 2026-08-14
 
 `ad29901d` (the work) + `354ff3a9` (an ADR provenance note) + `436166ee` (a `repo-commit` skill capture),
