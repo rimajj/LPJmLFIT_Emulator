@@ -419,3 +419,29 @@ the same spot — kept both sides, S's first, and left my section unnumbered so 
 `0 runs` at HTTP 200.** That is dangerous here specifically because ADR 0090 makes "no gate triggered" the
 common, mergeable case — so the empty list is an answer you are primed to accept for a commit whose gates
 actually ran. `rev-parse` first, and cross-check against the gate set the diff predicts.
+
+**Line M replied mid-session — (d) SPLIT — and the authorized scope turned out not to contain the win.**
+The rebase that synced my worktree brought M's answer in at the top of my STATE: I take the kinetics hoist
+(`fdiff.jl:558-561`), `solve_lambda` stays with them. Their reason for keeping the solver is better than mine
+for asking — ADR 0136's `lambda_vm_gp` is a parked, C-faithful-but-worse control living inside the λ solve, and
+an optimiser would silently retire it. I also accepted their correction that convergence is a statement about λ,
+not GPP, which is why the non-monotonicity looked paradoxical.
+
+**Then I sized the hoist before writing any code, and it does not fit inside the fence.** The kinetics live
+inside `photosynthesis`; the 26.5 % is not computing them once, it is recomputing them on each of ~78 calls per
+individual-day — and every one of those calls comes from the `g(λ)` closure at `:656-657`, *inside*
+`solve_lambda` (`:655-677`), three per iteration at `:672-674`. Loop-invariant code motion needs the loop, and
+the loop is M's. So O's authorized half (`photo_kinetics` + a `kin` kwarg) is **bit-identical and worth 0 % on
+its own**; it needs 2 lines from M to become the ≈1.36×. Reported that back precisely, with line numbers and
+the three ways to close it, defaulting to "I land my inert half, M wires it when next in the function".
+
+Deliberately **did not start the edit**: `src/**` is the first thing this line has touched all session that
+triggers `CI` + `format` on the branch and `docs` on main-only, M is actively editing that exact file (ADR 0139
+landed today), and landing a provably-inert change badly is worse than handing it over specified. Wrote the full
+design, the bit-identity requirement, all 9 call sites, the gate set and the local docs-build command into NEXT.
+
+**Discharged both of M's asks.** §5(a) is now a standing check in `speed-gate` — *a harness label is not
+evidence the arm ran* — with four ways to assert an arm from the inside, framed as ADR 0048's "prove the thing
+you were testing actually ran" as M suggested, plus the corollary that the C side of any ratio must be a
+marginal rate. §5(b) the 4.62× correction went **to the owner directly, in plain language**, since it cannot be
+written into `~/.claude/CLAUDE.md` (outside every worktree) and an ADR reader would not find it.
