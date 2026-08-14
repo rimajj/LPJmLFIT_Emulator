@@ -1843,3 +1843,13 @@ Left deliberately open and named in the handoff: dampener 2 (the realised daily 
 which is the single measurement that could overturn (c2)'s closure, and the Sahel straddle's conversion
 into GPP. Item (c) is struck as *the* compensating error — it binds at one cell and in the direction
 that makes F's over-production larger, which makes five independent terms now pointing that way.
+
+**Merge (same session).** Took two attempts. Line S merged to `main` between my rebase and my merge, so
+the merge conflicted and left the shared integration worktree mid-merge — aborted it under the lock at
+once and verified clean before touching anything else, since that checkout is the one shared resource
+left. Re-rebasing then turned up a duplicate section number on `main`: S's new skill section was numbered
+`§17`, already taken by line M's ADR 0138 section. Clean history, no conflict marker, and my own conflict
+hunk 200 lines away — so the protocol's "keep both sides" rule resolved my conflict correctly and left the
+duplicate completely intact. Fixed the heading digits only (S → `§19`, mine → `§20`, matching file order),
+left S's content alone, and told S their ADR 0242 may now cite a number pointing at my section. Both
+lessons are in the skills; the prevention is a one-second grep of the last `^## §` before appending.
