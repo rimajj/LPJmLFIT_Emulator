@@ -6,8 +6,8 @@
 > S's **TIER-3 block is 0170–0189** — allocated in CLAUDE.md §9 at ADR 0119's merge under §9's rule that
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239) — and it is now **EXHAUSTED (ADR 0189
-> was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240.
-> **Next free number: 0241.**
+> was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240 and continued by ADR 0241.
+> **Next free number: 0242.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
@@ -344,7 +344,16 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-13, ADR 0240 is ON `main`.** Merge commit `221c726a` (+ changelog collation
+> **THIS SESSION (2026-08-14) — ADR 0241: the count-budget architecture is CLOSED.** Two scorers, no
+> model run, both from state already on disk. The integrator's question was answered on its own
+> pre-registered terms and the ARCHITECTURAL branch fired on both legs; line S STATE §B step 1 (the
+> matched-age/height decomposition) was run in the same session and returned STRUCTURE. §B above is
+> rewritten around a RATE operator; `S2` as previously scoped must not be built. Two new scripts,
+> `diagnose_rung2_count_precision_budget.py` (job 1793142) and `diagnose_rung2_perstem_mass_decomp.py`
+> (job 1793003) — both are `scripts/*.py`, so the ONLY gate the diff triggers is nothing at all unless a
+> `.jl` file is touched (ADR 0090; the 0240 merge's `format` gate fired because it touched a `.jl`).
+>
+> **PREVIOUS MERGE — 2026-08-13, ADR 0240 is ON `main`.** Merge commit `221c726a` (+ changelog collation
 > `c6289ee6`, branch sha `512f4a03`); **both gates the diff triggers are green on `c6289ee6` —
 > `format` and `uncollated fragments`.** The previous merge was ADR 0189: `df45bd4f` (collation `f5217508`,
 > branch sha `7d907b62`); ADR 0188 `7db91f5b`, 0187 `f3e100d8`, 0186 `e2620c61`.
@@ -364,7 +373,7 @@ rather than a request to flip now.
 >
 > ⚠ **ADR NUMBERS: line S's tier-3 block 0170–0189 is EXHAUSTED and the TIER-4 block 0240–0259 is now OPEN**
 > (ADR 0240 spent the first number; tier 4 was allocated for all lines at once — S 0240–0259 · M 0260–0279 ·
-> E 0280–0289 · O 0290–0299 · integrator 0300–0309). **Your next ADR is 0241.**
+> E 0280–0289 · O 0290–0299 · integrator 0300–0309). **Your next ADR is 0242.**
 >
 > ⚠ **THE CAMPAIGN ON DISK NOW INCLUDES THE `G*` ARMS.** 360 legs at
 > `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_{G0,G0h,G1}_predict_s<seed>_{dump,apply}`, **357 complete**;
@@ -401,6 +410,7 @@ rather than a request to flip now.
 > | 0188 | WHY the rate is short: the budget is the NET count change, not the GROSS flux. FIT turns over ~6 %/yr while staying near-stationary in count (kills 5.65–5.96, recruits 4.62–6.46 %/yr), so a next-year count target hands the operator only 0.78–1.02 %/yr — 6.4–7.6× short — and FIT's non-negotiable deaths ALONE overdraw that 4.1–5.3×. Plus: `if ρ < 1.0` leaves 42–46 % of patch-years with an EMPTY kill list. **Its §7 instrument AMENDED by 0189.** |
 > | **0240** | **the arm was BUILT and it over-kills 12×: the recruit term is ENDOGENOUS.** By the letter the criterion is met (discretionary rate 26.2 %/yr vs ≥1.5, mass removal 0.03203 vs ≥0.025, agb +2.9 % vs <+40 %); in substance it fails, because the count departs **−72.1 %** ⇒ per-stem mass **+269 %**, WORSE than `S1`'s +96 %. `R̂` on the arms' own stands is 27.6–70.6 %/yr against FIT's 6.456. |
 > | **0189** | **the required feasibility derivation: the LAG IS NOT THE OBSTACLE — last year's recruits are countable at the rendezvous EXACTLY (`age == 1`, 29 700/29 700), the lagged budget buys 3.525 %/yr of discretionary capacity against a 1.5 % criterion, and FIT's own recruitment RISES +39.8 % between the legs. But rectifying the budget per patch-year is CONVEX ⇒ it OVER-kills (+17 % on FIT's stand, +66 % on the arm's own; roster to 0.62×/0.11× over the leg). Spending from a running ACCOUNT fixes the horizon (5.817 vs 5.961 %/yr, roster 1.70×) at 2.702 %/yr capacity — but only 1.493 ± 0.180 on the arm's own stand, AT the criterion.** |
+> | **0241** | **ARCHITECTURAL: a next-year per-patch COUNT target can NEVER carry a gross mortality budget.** The budget is a difference of counts, so `\|dB\|/K = e/k` — the count error as a fraction of the level over the flux as a fraction of the level. Measured on FIT's own stand: `e` 11.8/15.2 %, `e/k` **2.09×/2.59×**; required for ±20 % is **1.13/1.18 %/patch-yr**; the irreducible realisation floor (FIT's own per-stem `mort_prob`, a strict lower bound for ANY learner) is 4.1/4.6 % ⇒ **A = 3.66×/3.89×, the pre-registered ARCHITECTURAL branch.** All three refutations fail; the integer atom alone exceeds the tolerance **4.09×/4.88×**. ⇒ the count model is RETIRED from the mortality path. §6: the per-stem mass excess is **STRUCTURE** — four of five height quintiles at ratio 0.92–1.05, the whole excess in the open-ended top bin. |
 >
 > ### 0240 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
 >
@@ -602,44 +612,58 @@ rather than a request to flip now.
 > 21. **NEW (0240): THE CRITERION IS NOW A PAIR, AND ITS THREE ORIGINAL CLAUSES WERE NOT MOVED.** `G1` meets
 >     all three (rate 26.2 %/yr, mass removal 0.03203, agb +2.9 %) while holding a quarter of FIT's trees.
 >     A candidate needs **both |dN| and |dAGB| under 40 %**, with per-stem mass printed beside them.
+> 22. **NEW (0241): A COUNT TARGET CANNOT CARRY A GROSS MORTALITY BUDGET, AT ANY PRECISION, FOR ANY
+>     LEARNER.** Not a tuning result. The budget is a DIFFERENCE of counts, so the count model's error
+>     is multiplied by the level-to-flux ratio (~17): measured `e/k` **2.09×/2.59×**. The ±20 % budget
+>     needs **1.13/1.18 %** per patch-year, against an irreducible realisation floor of 4.1/4.6 % (A =
+>     3.66×/3.89×), a cell-year conditioning floor of 39–42 % (A₁ ≈ 35×) and an integer atom that
+>     exceeds the tolerance **4.09×/4.88×**. **Do not propose another budget form, another count target,
+>     another account, or a "more accurate" count model for the mortality path.** The replacement is
+>     FIT's own per-tree hazard as a RATE, already exact (0183 5e-18; 0189's `perfect` arm |diff| 0.0000).
+> 23. **NEW (0241): THE ACCOUNT DOES NOT AVERAGE THE ERROR AWAY, AND THE REASON IS THAT IT IS A BIAS.**
+>     Realised gain 0.74/1.06 against the 4.5/9.0 an i.i.d. error would give; the systematic part alone
+>     is 157–248 % of the flux and the within-patch lag-1 autocorrelation is +0.62/+0.85. This is the
+>     strongest available refutation of 0241 and it FAILED — do not re-run it in another form.
+> 24. **NEW (0241): ADR 0185's ±24 % IS NOT THE COUNT MODEL'S ERROR** — it is the separability statistic
+>     on an ARM's diverged stand. On the model's own basis the error is **11.8/15.2 %**. Quote the right
+>     one; 0189 §5.3's attribution of the over-kill to "±24 %" is on the looser figure.
+> 25. **NEW (0241): THE PER-STEM MASS EXCESS IS A BIG-TREE TAIL, NOT A UNIFORM GROWTH EXCESS** — four of
+>     five height quintiles at ratio **0.92–1.05**, the whole excess in the OPEN-ENDED top bin where the
+>     arms hold 1.26×/**1.83×** FIT's stem share and their stems are 1.63–1.89× heavier. STRUCTURE, and
+>     the C's own growth doing it. Do not open an allometry or growth-parameter investigation on it.
 > 9. **NEW (0186): the level anchor is NOT wired into rung 2 and should not be.** This says nothing against
 >    ADR 0103 in the COUPLED path, where the departure genuinely is a count-level one (1.409× over-density).
 >    Do not read 0186 as retiring the anchor; its own flip criterion (0103 §6, line M's arm) is untouched.
 >
-> ### B. THE NEXT ACTION — WHY ARE THE SURVIVING TREES TOO HEAVY? (ADR 0240 §8, pre-registered)
+> ### B. THE NEXT ACTION — RE-SPECIFY THE OPERATOR AROUND A RATE, NOT A BUDGET (ADR 0241 §7)
 >
-> **Both formulations now put the same error in a different place, so the binding constraint is neither the
-> budget nor the selection: it is PER-STEM MASS.** `S1` = right count (−2.9 %), +96 % per-stem mass;
-> `G1` = right total mass (+2.9 % agb), −72.1 % count, +269 % per-stem mass. A mortality-only operator
-> cannot fix that — it decides who dies, and the survivors are too heavy whether there are many or few.
+> **The count-budget architecture is closed.** ADR 0241 measured what it would take and it is not
+> reachable: ~1.2 % per patch-year against an irreducible floor of 4.1–4.6 %, and against an integer
+> atom that is larger still. `S2` as previously scoped — "learned count + trait hazard + recruit
+> traits" — inherits the same budget and **must not be built as specified**. What survives of it is the
+> establishment half; what dies is the count budget.
 >
-> **⚠ AND NOTE WHAT THIS CANNOT BE.** In a rung-2 arm **the C does the growing** (skill trap 5), so a
-> per-stem mass excess is NOT a growth-code error and it is NOT F's — F never runs here. It is LPJmL-FIT's
-> own physics responding correctly to the stand the emulator produced: fewer trees ⇒ less competition ⇒
-> bigger trees. ⇒ **the per-stem mass error is DOWNSTREAM of the stand-structure error, not independent of
-> it**, and that is what makes the next step a structure question rather than an allometry one.
+> **STEP 1 — the rate operator, and it is mostly already written.** Replace `ρ` from the count model
+> with FIT's own per-tree hazard applied directly: each stem dies with probability
+> `TraitMortality.mortality_hazard(...)`, no target, no budget, no account, no `ρ ≥ 1` gate. ADR 0189's
+> `perfect` arm is the offline proof that this reproduces FIT's gross AND net kills exactly
+> (`|diff| 0.0000`), and ADR 0183 proved the hazard itself at `|Δhazard|` 5e-18. **⚠ ADR 0049 item 4
+> still bites**: offline the operator has neither of FIT's stress integrals, and in rung 2 it reads them
+> through the rendezvous. So this arm measures the CEILING (what an exact hazard buys) and does not by
+> itself close the standalone emulator — say which of the two any number is on.
+> **Pre-registered criterion: ADR 0240's PAIR, unmoved** — both |dN| and |dAGB| under 40 % on ADR 0185
+> §5's basis at the FIT-gain cells on the ssp370 leg, with per-stem mass printed beside them.
 >
-> **STEP 1 — a dumps-only decomposition, no model run.** Is the >5 m cohort's per-stem mass excess present
-> **at matched age and matched height**, or is it entirely a composition effect (the arm's >5 m population
-> being the few survivors of a thinned stand)? The machinery exists: `(Cell, Patch, ID)` is a stable
-> cross-year identity (ADR 0125) and the `grow`-phase dumps carry every pool, so this is a scan, not a run.
-> **Pre-registered reading:** if the matched-age per-stem mass excess is **< 25 %** of the unmatched +269 %,
-> the excess is a STRUCTURE consequence and step 2 is the right lever; if it is **> 60 %**, the arms' own
-> individual trees really are heavier at the same age and the question moves to what the C's growth is doing
-> on a thinned stand — which is a disclosure about the substitution, not a defect to fix in the operator.
-> Report the whole profile by height quintile, not a summary (0187's shape-vs-level rule).
+> **STEP 2, conditional on step 1 — establishment.** ADR 0240 §7's endogeneity finding is untouched by
+> 0241: as long as `ESTAB_C` supplies recruitment, the arm's own recruitment runs at 27.6–70.6 %/yr
+> against FIT's 6.456 whenever the operator kills hard. A rate operator does not read `R̂`, so the
+> feedback no longer enters the *budget* — but it still sets the stand the arm ends on, and §6's
+> big-tree tail is the visible consequence. The recruit half carries a structural replay floor of 0.907
+> (ADR 0121), which must be stated with any number.
 >
-> **STEP 2, conditional on step 1 — the operator must own ESTABLISHMENT (`S2`).** As long as establishment
-> is deferred to the C, the budget's own input is a feedback of the operator's killing (§7), and no
-> mortality-only budget can hold the count and the mass at once: FIT turns over 5.96 %/yr of ITS roster while
-> the arm's stand offers 27.6 %/yr of recruits to kill. `S2` (learned count + trait hazard + recruit traits
-> from the production copula) is listed as unwired in the harness header and is a real build; the recruit
-> half also carries a structural replay floor of 0.907 (ADR 0121), which must be stated with any number.
-> **Do not start step 2 before step 1 reads** — step 1 is hours and can retire it.
->
-> **What NOT to do.** No count-side instrument (item 8 still holds, and the count is now the thing the gross
-> budget BREAKS). No budget re-derivation (item 18). No `G0` variant (item 19). And do not read `G1`'s
-> +2.9 % agb as progress in any summary — item 21.
+> **What NOT to do.** No budget form of any kind (item 22). No account variant (item 23). No count-side
+> instrument (item 8). No `G0` variant (item 19). No allometry or growth-parameter work on the per-stem
+> mass excess (item 25) — in a rung-2 arm the C does the growing and F never runs.
 >
 > ### C. FLAG STATE
 >
@@ -666,6 +690,39 @@ rather than a request to flip now.
 >   the frozen variant too ⇒ cell-specific. Excluded, not scored early.
 >
 > ### E. GOTCHAS PAID FOR IN THIS INVESTIGATION
+>
+> * ⚠ **NEW (0241) — DERIVE THE FLOOR FROM THE REFERENCE'S OWN COIN FLIPS WHEN IT HAS THEM.** A
+>   between-unit spread (here the between-patch CV, 0.39–0.42) is the floor for a predictor that cannot
+>   see the unit — it is NOT the irreducible floor, and reading the verdict off it would have flattered
+>   this result by **9×**. LPJmL-FIT's mortality is an explicit per-stem Bernoulli probability that the
+>   dump already carries, so `sqrt(Σ p(1−p))` is an **exact** lower bound on ANY predictor's error, needs
+>   no replicates, and binds every architecture. Look for it before reaching for a between-unit CV.
+> * ⚠ **NEW (0241) — CHECK WHETHER THE QUANTITY BEING PREDICTED IS AN INTEGER.** Four numbers of
+>   arithmetic and it is the strongest result in the ADR: FIT's gross mortality is **1.22/1.03 stems per
+>   patch-year**, so a ±20 % budget means ±0.2 of a stem in a quantity whose atom is 1 (**4.09×/4.88×**).
+>   Whenever a required tolerance is a *fraction of a small count*, compare it against `1/count` FIRST.
+> * ⚠ **NEW (0241) — A PRE-REGISTERED SUMMARY STATISTIC CAN MISS A ONE-BIN EFFECT; THE PROFILE CLAUSE IS
+>   WHAT SAVES IT.** §6's scalar shares returned "in between" on 3 of 4 arm × axis combinations. The
+>   profile the same pre-registration demanded showed **four of five height quintiles at ratio 0.92–1.05**
+>   with the whole excess in one open-ended bin ⇒ STRUCTURE, unambiguously. Write the profile requirement
+>   INTO the pre-registration (0187's shape-vs-level rule, second time decisive).
+> * ⚠ **NEW (0241) — AN OPEN-ENDED TOP BIN CANNOT BE STANDARDISED AWAY.** A quantile-matched
+>   decomposition removes composition *within* the reference's range and is blind to a tail beyond it —
+>   which is why `S1`'s height-matched share (0.666) came out HIGHER than its age-matched one (0.423) for
+>   the same arm and the same data. State the open-endedness with any matched number leaning on the
+>   extreme bin.
+> * ⚠ **NEW (0241) — WHEN THE OPERATIVE MODE CHANGES THE ALGEBRA, MEASURE BOTH AND REPORT THE STRADDLE.**
+>   The pre-registered algebra assumes `n_prev ≈ M` (`roster` mode); in `predict` mode `ρ = T(y)/T(y−1)`
+>   is a ratio of two model outputs and a common level bias partly cancels. The two instruments give
+>   A = 3.66×/3.89× and A_ρ = 2.69×/2.72×, i.e. they **straddle the pre-registered 3× line**. Both are
+>   printed, the addition is disclosed as post-smoke-test, and the tie is broken by a third instrument
+>   (the integer atom) that binds both — never by picking the flattering one.
+> * **NEW (0241) — a basis gate that FAILS for a knowable reason is still a gate.** §6's `G1` row missed
+>   ADR 0240's published +269 % by 1.08 (dumps: +160.5 %). Diagnosing it — ratio-of-medians vs
+>   median-of-ratios, PLUS **`G1` having no emitted stems at all at 2 of 12 cells at 2100** (one a
+>   FIT-gain cell, extending item 19's `G0` annihilation finding to the trait arm) — turned the failure
+>   into two findings and kept the intra-cell *shares* readable. `S1` passed at |d| 0.03, which is what
+>   validates the per-stem mass definition `w = leaf_c + sapwood_c + heartwood_c − debt_c`.
 >
 > * ⚠ **NEW (0240) — AN EMPTY PATCH DEADLOCKED THE HARNESS, AND A FILENAME BUILT FROM PARSED INPUT IS WHY.**
 >   `read_request` took `(year, patch)` from the tree rows; a patch with no living trees emits no `T` record

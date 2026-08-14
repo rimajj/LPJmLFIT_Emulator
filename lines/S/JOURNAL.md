@@ -2710,3 +2710,46 @@ reported as the WORST cell rather than the median, because 0.000 as a median and
 difference between "never happens" and "killed 53 legs".
 
 Nothing flipped, no default moved, no baseline regenerated, no `src/**` change.
+
+## 2026-08-14 — ADR 0241: the count-budget architecture is closed, and the mass excess is a big-tree tail
+
+Two questions, two scorers, no model run — everything came out of dumps and one replay CSV already on
+disk (the fifth time this investigation has answered itself that way).
+
+**Task A, the integrator's question: can a next-year per-patch count target ever be precise enough to
+drive a gross mortality budget?** Posed as a hypothesis to REFUTE, with the reading pre-registered in
+`scripts/diagnose_rung2_count_precision_budget.py`'s header before it ran. The algebra is one line —
+a budget is a DIFFERENCE of counts, so `|δB|/K = e/k`, the count error as a fraction of the level over
+the flux as a fraction of the level, and the emitted-vs-roster population ratio cancels exactly.
+Measured on the count model's OWN basis (FIT's stand, the `ind` training target): `e` = 11.8/15.2 %,
+`e/k` = 2.09×/2.59×. Required for ±20 %: 1.13/1.18 % per patch-year. Irreducible realisation floor,
+built from FIT's own per-stem `mort_prob` as `sqrt(Σ p(1−p))/M` — a strict lower bound for any learner:
+4.1/4.6 %. ⇒ A = 3.66×/3.89×, the pre-registered ARCHITECTURAL branch, on both legs.
+
+All three refutations failed, and how they failed is the mechanism. The premise number was wrong in the
+*right* direction (ADR 0185's ±24 % is a different statistic on a diverged stand; the honest figure is
+11.8–15.2 % and the conclusion survives). The running account absorbs essentially nothing — gain
+0.74/1.06 against the 4.5/9.0 an i.i.d. error would give — because the error is a **bias** (157–248 %
+of the flux) and strongly autocorrelated within a patch (+0.62/+0.85). Its sign reproduces ADR
+0187/0188's measured under-kill from a completely different direction.
+
+Two things were added after a read and are disclosed as such. A mode-exact companion, because the
+pre-registered algebra assumes `n_prev ≈ M` and these runs are `predict` mode where `ρ = T(y)/T(y−1)`
+is a ratio of two model outputs; it gives A_ρ = 2.69×/2.72×, so the two instruments **straddle** the
+3× line and both are printed. Then the floor that needs no statistics at all: a stem count is an
+INTEGER, FIT kills 1.22/1.03 stems per patch-year, so ±20 % means ±0.2 of a stem — the atom exceeds the
+tolerance by 4.09×/4.88× and binds both instruments identically. That is what settles the straddle.
+
+**Task B, STATE §B step 1: the matched-age / matched-height decomposition of the per-stem mass excess.**
+Thresholds unmoved. The scalar shares landed IN BETWEEN on three of four arm × axis combinations — and
+the profile the same pre-registration demanded resolved it outright: in **four of five height quintiles
+of FIT's own terminal stand the arms' trees carry FIT's own per-stem mass to within 8 %** (0.92–1.05),
+and the entire excess sits in the open-ended TOP bin, where the arms hold 1.26×/1.83× FIT's stem share
+and their stems are 1.63–1.89× heavier. STRUCTURE, not a growth defect — and in a rung-2 arm the C does
+the growing, so it is FIT's own physics on a thinned stand. The basis gate passed for `S1` (+99.0 % vs
+the published +96 %, validating the per-stem mass definition) and failed for `G1` for a diagnosed
+reason, which turned into a second finding: `G1` has **no emitted stems at all at 2 of 12 cells at
+2100**, one of them a FIT-gain cell.
+
+§B is rewritten around a RATE operator. `S2` as previously scoped inherits the dead budget and must not
+be built as specified.
