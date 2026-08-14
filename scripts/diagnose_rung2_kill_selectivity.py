@@ -194,7 +194,7 @@ CELLS = tuple(int(c) for c in os.environ["CELLS"].split(",")) if os.environ.get(
     else ALL_CELLS
 
 #: every arm this scorer can READ. `ARMS` (below) is what it REPORTS.
-ALL_ARMS = ("REC", "NP", "S0", "S0h", "S1", "G0", "G0h", "G1")
+ALL_ARMS = ("REC", "NP", "S0", "S0h", "S1", "G0", "G0h", "G1", "H0", "H0h", "H1")
 #: which arms are reported. Default unchanged, so ADR 0187's published panels reproduce exactly;
 #: widen it for the gross-budget campaign with `export ARMS="REC NP S0 S0h S1 G0 G0h G1"` (ADR
 #: 0240), which is how the criterion's own two columns -- the DISCRETIONARY kill rate `fn` (panel 2)

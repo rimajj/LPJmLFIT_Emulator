@@ -188,7 +188,7 @@ def _split_arms(v):
 #: DISCOVERABLE. Longest-first: `S0h` must precede `S0` or the alternation matches the prefix and
 #: the `h` lands in the mode token. Kept separate from `ARMS` so widening what can be READ never
 #: widens what is REPORTED.
-ALL_ARMS = ("NP", "S0h", "S0", "S1", "G0h", "G0", "G1")
+ALL_ARMS = ("NP", "S0h", "S0", "S1", "G0h", "G0", "G1", "H0h", "H0", "H1")
 APPLY_RE = re.compile(
     r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(" + "|".join(ALL_ARMS) + r")_"
     + NPREV + r"_s(\d+)_apply$"
