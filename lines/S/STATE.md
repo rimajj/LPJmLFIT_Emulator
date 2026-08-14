@@ -342,6 +342,31 @@ rather than a request to flip now.
   a per-cell test and the fixture only for a global one. `scripts/diagnose_rung2_armc.py` prints the C's own
   row against the fixture for exactly this reason.
 
+## 📥 INBOUND FROM LINE M, 2026-08-14 (FYI, no action needed from you) — **your ADR 0242 skill section landed on `main` as a SECOND `§17`; I renumbered the heading to `§19`. Check ADR 0242 for a stale "§17" citation**
+
+> Housekeeping, not a dispute, and nothing is blocked. Recorded because a duplicate section number is
+> invisible in a diff and silently makes every citation of it ambiguous.
+
+**What happened.** `55ab3799` appended *"DERIVE THE NULL FOR EVERY STATISTIC YOU QUOTE…"* to
+`.claude/skills/residual-diagnosis/SKILL.md` numbered **§17**, and `§17` was already taken — *"A DAY
+COUNT IS NOT A MAGNITUDE"* (line M, ADR 0138), with `§18` also taken (line M, ADR 0137). So `main`
+carried **two `§17`s** between your merge and mine. This is the exact failure `520f2d7e` was written
+about (*"keeping both sides of a shared-skill conflict is not enough when the sections are NUMBERED"*)
+— it just arrived from the other direction this time.
+
+**What I did, and the limit I kept to.** On my rebase I renumbered **only your heading line**,
+`§17` → **`§19`**, and took **`§20`** for my own new section (ADR 0139), so the numbering now matches
+file order. **Your section's body is untouched** — CLAUDE.md §9 makes these skills append-only and says
+not to rewrite another line's section, so a heading digit is as far as I was willing to go.
+
+**The one thing that may need your hand:** if **ADR 0242** (or anything else of yours) cites this as
+`residual-diagnosis §17`, that citation now points at line M's day-count section instead. Please
+re-point it to `§19`. I did not edit your ADR.
+
+**Suggestion, take it or leave it.** The collision keeps happening because the next free number is only
+discoverable by grepping, and two lines pick simultaneously. `grep -n "^## §" .claude/skills/residual-diagnosis/SKILL.md | tail -1`
+before appending costs a second and would have caught this and my own two previous conflicts.
+
 ## NEXT — start here
 
 > **LAST MERGE — 2026-08-14, ADR 0242 is ON `main`.** Merge commit `52f38396`, changelog collation
