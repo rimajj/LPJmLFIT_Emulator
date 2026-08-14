@@ -349,3 +349,64 @@ re-tasked onto rung 5, and O3b needs nothing from it. Its handoff is intact and 
 **Jobs:** 1792591 (Julia gate), 1792835 + 1792562 (C arm), 1792811 / 1793072 / 1793368 (profile; the
 first died on the `@printf` bug after producing the profile and sweep, the third is the clean run).
 **Capture:** new skill `speed-gate`.
+
+---
+
+## 2026-08-14 (session 2) — O3b resolved as VOID: the online soil-moisture diagnostic is clamped
+
+**Entered** with the previous handoff's pick-up list: (1) check line M for a reply to the `solve_lambda`
+hand-over, (2) 5d thread-across-cells, (3) read job 1706979 and finish the O3b `soilmoist` comparison.
+
+**M has not replied.** The inbound block is intact and unticked at `lines/M/STATE.md:415`, verified against
+`origin/main` so it survived the rebase. M is working inside `src/fdiff.jl` right now (ADR 0137's default flip,
+then 0138), which explains the silence. The F-core files stay fenced; the 4.10× λ headroom stays unclaimed.
+Did not re-raise — re-raising a live message is how these get duplicated.
+
+**Job 1706979 (90 d) had completed** and returned root-zone PAW quantiles matching the 30-day run to four
+significant figures. The previous handoff had *pre-registered* that as "converged ⇒ the 2.4–4.6× dry gap is
+real", whose next step was to raise a train/inference shift with line S. Two things stopped me short of that.
+
+1. The agreement was **too** good: `q90 = 0.681` identical, `q75 = 0.3376` vs `0.338`. A Richards-equation soil
+   under a live atmosphere does not reproduce its own quantiles to four digits over 60 more simulated days.
+2. So I went to the per-column CSVs instead of the log summary — **90.8 % of the 1987 land columns were
+   bit-identical to 1e-12**, and the non-zero values took only **nine distinct levels across 909 columns**.
+
+Nine levels is a lattice, so I looked for the lattice. First guess (wetting front from the bottom up, wet below)
+was **wrong** — the values are not the bottom-up cumulative thicknesses. Reading Terrarium's own `get_spacing`
+for the real geometry and testing the *surface-down* cumulative ladder instead: **94.0 % of land columns land on
+it to |Δ| < 1e-5.** That is the whole story — `FieldCapacityLimitedPAW` is clipped at both ends, every root-zone
+layer is at one clamp or the other, and the thickness-weighted mean can therefore only report the depth of a
+stalled infiltration front. 90 % of the domain sits on four front positions; 47.9 % is bone dry. Whole-column
+mean saturation moved +0.070 % in 60 days.
+
+**Mechanism, and the part of it that is ours:** the run is `vegetation = nothing` (forced by trap 5's
+`@assert abs(vpd) > 0`). The only remaining sinks — top-layer evaporation and gravity drainage — both push
+layers *toward* the clamps. Transpiration is the one sink that removes water from the middle of the column, so
+disabling vegetation did not merely remove a feedback: **it removed the range the measured quantity varies
+over.** Compounded by a narrow SURFEX window (`fc − wp ∈ [0.052, 0.089]`), already printed by the ADR 0083
+guard, which had been sitting in the logs the whole time.
+
+**Verdict: O3b is VOID in this configuration, not "converged, gap real".** The "2.4–4.6× too dry" figure is
+retired as a fidelity statement and **nothing was reported to line S** — which is the point of the session,
+because the alternative was S retraining two learned artifacts on a soil-moisture basis that is a step
+function. The reference basis was *correct* throughout (ADR 0035's live year-end root-zone table); the arm's own
+variable was the problem, which is a check the basis discipline did not previously contain.
+
+**Consequences taken.** O3b is re-gated behind a pre-registered `INFORMATIVE` condition written before the arm
+exists (< 50 % of columns fully clamped *and* column storage moving > 1 % between two run lengths). **Line O
+reorders its own work: O3c (the vegetation/photosynthesis spike) and O4 now precede the comparison**, because a
+transpiration sink is a precondition for it being measurable rather than an independent milestone. This needs
+nobody else's agreement — it is inside O's own scope.
+
+**Captured** (§8 gate, all in the same commit): `scripts/online_coupling/diagnose_paw_clamping.py` — post-hoc,
+no simulation, ~1 s, **exits non-zero on `CLAMPED`** so it gates a comparison rather than informing one, lints
+clean under the repo's real rule set; **ADR 0085**; **trap 9** in `online-coupling-env`, plus a correction to
+trap 8, whose closing advice ("run two lengths and check it stopped moving") is exactly what failed here;
+and the mirror-image basis check appended to the shared `residual-diagnosis` — *checking the reference basis is
+not enough, also confirm the measured quantity is not saturated at its own clamps.*
+
+**Method note worth keeping.** The entire result cost **zero new simulation** — it came off CSVs written nine
+days earlier. The instinct that paid was distrusting an agreement that was better than the physics could
+justify, and going to per-sample data rather than the summary the log had already printed.
+
+**Did not get to:** 5d (thread across cells) — still O's, still needs nobody, now the top actionable speed item.
