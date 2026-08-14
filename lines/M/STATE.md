@@ -527,11 +527,27 @@ blocked** — the timing gate and the profile are done and merged either way.
 ### AND STRUCK (ADR 0139). THE WATER LIMITER IS A NEAR-STEP, SO IT IS SATURATED AND ITS 21.7-POINT
 ### PARAMETER ERROR IS INERT — AT FOUR OF FIVE CELLS. AT THE SEMI-ARID CELL IT IS BINARY. NO CODE CHANGE**
 
+**MERGED to `main`** as `0f9b91c6` (merge commit `cf09490c`; changelog collation `6c781332`). Branch
+gates green on that exact sha: `test (lts)`, `test (1)`, `test (macOS, lts)`, `format` — `test (pre)` is
+the known `continue-on-error` prerelease job, and this diff changes no executable line of `src/`, so it
+cannot be implicated. CI-faithful suite **275 625 pass / 0 fail** (`logs/M-adr0139.1796560.out`),
+identical to session 24's count, which is the expected result for a docstring/comment-only `src` change
+and was verified mechanically rather than assumed. `docs` built locally (`logs/M-docs0139b.1796563.out`,
+exit 0, 5 mermaid fences) because it watches `src/**` and never runs on a line branch.
+
+⚠ **The merge took TWO attempts and the second one found a defect on `main` that no gate can see.** Line S
+merged between my rebase and my merge — the documented push race — which left the SHARED integration
+worktree mid-merge (aborted under the lock immediately; verified clean before anything else). Re-rebasing
+then exposed that S's new `residual-diagnosis` section had been numbered **`§17`**, which was already
+taken by line M's ADR 0138 section, with `§18` also taken ⇒ **`main` carried two `§17`s, with clean history
+and no conflict marker**, and my own conflict hunk was 200 lines away so "keep both sides" left it intact.
+Renumbered S's **heading line only** (→ `§19`) and took `§20` for ADR 0139, so numbering matches file
+order; S's content untouched per §9's append-only rule; S notified in `lines/S/STATE.md` that ADR 0242 may
+now carry a stale `§17` citation. Captured in `repo-commit`.
+
 **Start here.** Item (c) — "the phenology trajectory", the only survivor of ADR 0135's shortlist after
 (a) closed with ADR 0136 and (b) with ADR 0138 — is now measured, and it is **not** the compensating
-error. Nothing was ported and no flag was added. Gates: format green (152 files), docs green locally
-(`logs/M-docs0139b.1796563.out`, exit 0, 5 mermaid fences — it watches `src/**` and never runs on a
-line branch), CI-faithful suite `logs/M-adr0139.1796560.out`. Full record: ADR 0139.
+error. Nothing was ported and no flag was added. Full record: ADR 0139.
 
 **1. THE ALGEBRA DID MOST OF THE WORK, AND IT IS THE REUSABLE PART.** The C's water-limiter inflection
 is the stem's own sampled `minwscal` trait (`phenology_gsi.c:64-66`, the live `individual` branch),
