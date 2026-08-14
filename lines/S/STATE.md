@@ -344,6 +344,8 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
+> **LAST MERGE — 2026-08-14, ADR 0241 is ON `main`.** Merge commit `d9ebf780`..`6a1aadd2` (collation `6a1aadd2`, branch sha `4aba3ee3`); the ONLY gate the diff triggers, `uncollated fragments` on `main`, is **green**. The previous merge was ADR 0240: `221c726a` (collation `c6289ee6`, branch sha `512f4a03`).
+>
 > **THIS SESSION (2026-08-14) — ADR 0241: the count-budget architecture is CLOSED.** Two scorers, no
 > model run, both from state already on disk. The integrator's question was answered on its own
 > pre-registered terms and the ARCHITECTURAL branch fired on both legs; line S STATE §B step 1 (the
