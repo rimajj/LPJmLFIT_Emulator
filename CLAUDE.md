@@ -387,6 +387,29 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   most of what looked like the old *definition's* error was F's own conductance basis. Which definition is
   faithful is unchanged; the size of the old one's error is not. `WaterParams.wscal_leafon` (default
   off) is the faithful port.
+- ⚠ **THE GSI WATER LIMITER IS A NEAR-STEP FUNCTION, SO IT IS SATURATED AT EVERY BIOME CELL AND ITS
+  PARAMETERS ARE MOSTLY INERT — EXCEPT AT THE SEMI-ARID CELL, WHERE F AND THE C SIT ON OPPOSITE SIDES
+  (`[VERIFIED 2026-08-14]`, ADR 0139).** `phenology_gsi.c:64-66` (the live `individual` branch) puts the
+  inflection at the stem's **own sampled `minwscal` trait**, and the slope is per **percentage** point
+  while the trait is a **fraction** ⇒ exponent `sl·100·(w−m)` with `sl` 5.0–5.24 for all seven trees, a
+  10–90 % transition width of `2·ln(9)/(100·sl)` ≈ **0.0084** in water availability. **So the value of the
+  inflection is inert; only which side of it `w` falls on matters.** F's `PhenParams.wscal_base` is
+  `100 ×` the par file's interval **`"median"`** field — *not* a realised median, despite what its
+  docstring said — and ADR 0047's trap bites: for **ids 3 (beech), 5 and 6 (larch) that `"median"` exceeds
+  the interval's own `high`**, so it is not a possible central value; measured against the C's own per-stem
+  output it is **+9.1 / +12.5 / +21.7 percentage points** too high (id 4 +17.9; ids 1/2/0 are −8.8/−3.7/−6.9).
+  All of it is **inert at 12 of 13 (cell, PFT) groups** — the filter is saturated fully OPEN, both arms
+  agreeing to four decimals. **At `semiarid_sahel` it is not:** the realised `w` (0.636) falls BETWEEN F's
+  inflection (0.60) and the C's realised median (0.669), so **F's water filter reads 1.0000 where the C's
+  reads 0.0000** — the whole of leaf display, not a few per cent — on both scenario legs and on both F arms
+  (beech's 20.96 is further open still). ⇒ before pricing ANY parameter of this filter, check saturation
+  first; and never read the par-file `"median"` as the trait's centre. The companion finding on the same
+  filter's 10 °C gate: **layer-1 soil temperature does NOT lag air** (best-fit lag **0 days**,
+  |mean(soil−air)| ≤ 0.13 °C at four of five cells; `boreal_siberia` is a **+4.40 °C snow/damping offset**,
+  sd 10.8, not a lag), so F passing `f.temp` into that slot is exact at four cells and the item is closed
+  with no port and no flag. Harnesses `scripts/diagnose_phenology_water_inflection.py` (parquet scan,
+  seconds) and `scripts/run_soiltemp_gate_cells.sh` → `scripts/diagnose_phenology_soiltemp_gate.py` (adds
+  the daily `soiltemp1` output = `update_daily.c:200`'s `patch->soil.temp[0]`, the gate's own variable).
 - **Soil geometry & `whc_nat` (`[VERIFIED]`; the per-cell soil column basis — ADR 0050, skill
   `provision-coupled-cell`).** Layer thicknesses are a **C global, not per-cell**: `fscansoilpar.c:36-39`
   reads `soildepth[NSOILLAYER]` once from `par/soil_20m.js` = `200,300,500,1000×19,3000` mm. The `soildepth`

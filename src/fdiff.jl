@@ -1501,21 +1501,32 @@ GSI leaf-phenology parameters for LPJmL-FIT natural PFT `id` (0-based scan order
 `par/pft_lpjmlfit.js`), the authoritative FIT file (`lpjmlfit.js` sets `"new_phenology":true` +
 `"individual":true`, so **every** natural PFT — trees AND grasses — runs the four-limiter GSI product;
 the "evergreen"-named PFTs are NOT static). Each PFT's `tmin/tmax/light` slope/base/tau come straight
-from its `par/pft_lpjmlfit.js` block; `wscal_base` is the individual-mode inflection `minwscal_median·100`
-(the par-file `wscal.base` is inert under `config->individual`, `phenology_gsi.c:64-66`). Supported ids:
+from its `par/pft_lpjmlfit.js` block; `wscal_base` is the individual-mode inflection, which the C
+takes from the stem's own sampled `minwscal` trait (`phenology_gsi.c:64-66`; the par-file
+`wscal.base` is inert under `config->individual`). Supported ids:
 
-| id | PFT (`par/pft_lpjmlfit.js`)                    | minwscal_med |
-|----|-----------------------------------------------|:------------:|
-| 0  | tropical broadleaved evergreen tree (TrBE)    | 0.60 |
-| 1  | temperate needleleaved evergreen tree (TeNE)  | 0.10 |
-| 2  | temperate broadleaved evergreen tree (TeBE)   | 0.10 |
-| 3  | temperate broadleaved summergreen tree (TeBS, **beech**) | 0.2096 |
-| 4  | boreal needleleaved evergreen tree (BoNE)     | 0.25 |
-| 5  | boreal broadleaved summergreen tree (BoBS)    | 0.25 |
-| 6  | boreal needleleaved summergreen tree (BoNS)   | 0.35 |
-| 7  | tropical C4 grass                             | 0.20 |
-| 8  | temperate C3 grass                            | 0.20 |
-| 9  | polar C3 grass                                | 0.20 |
+| id | PFT (`par/pft_lpjmlfit.js`)                    | par `"median"` | par `[low, high]` | realised median |
+|----|-----------------------------------------------|:------------:|:---------:|:-----:|
+| 0  | tropical broadleaved evergreen tree (TrBE)    | 0.60 | [0.05, 0.75] | 0.669 Sahel / 0.560 Amazon |
+| 1  | temperate needleleaved evergreen tree (TeNE)  | 0.10 | [0.025, 0.20] | 0.188 Iberia |
+| 2  | temperate broadleaved evergreen tree (TeBE)   | 0.10 | [0.025, 0.20] | 0.137 Iberia |
+| 3  | temperate broadleaved summergreen tree (TeBS, **beech**) | 0.2096 | [0.10, **0.15**] | 0.119 Hainich |
+| 4  | boreal needleleaved evergreen tree (BoNE)     | 0.25 | [0.05, 0.30] | 0.071 boreal |
+| 5  | boreal broadleaved summergreen tree (BoBS)    | 0.25 | [0.10, **0.15**] | 0.125 boreal |
+| 6  | boreal needleleaved summergreen tree (BoNS)   | 0.35 | [0.05, **0.15**] | 0.133 boreal |
+| 7  | tropical C4 grass                             | 0.20 | scalar | — |
+| 8  | temperate C3 grass                            | 0.20 | scalar | — |
+| 9  | polar C3 grass                                | 0.20 | scalar | — |
+
+⚠ **`wscal_base` is `100 ×` the par file's interval `"median"` field, NOT a realised median** — an
+earlier version of this docstring claimed the latter. ADR 0047's trap applies: for **ids 3, 5 and 6
+that `"median"` exceeds the interval's own `high`** (bold above), so it is not a possible central
+value of the trait the C samples, and the realised medians measured off the C's own per-stem output
+sit 9.1 / 12.5 / 21.7 percentage points below it. **This is inert at four of the five biome cells**
+because the limiter is saturated there (the transition width is only `2·ln(9)/(100·sl)` ≈ 0.0084 in
+water availability, so it is nearly a step at `w = minwscal`), but at `semiarid_sahel` the realised
+water availability falls BETWEEN F's inflection and the C's ⇒ F's filter reads 1.0 where the C's
+reads 0.0. Measured in ADR 0139; harness `scripts/diagnose_phenology_water_inflection.py`.
 
 Crops (id ≥ 10, `cropgreen`) use a different routine (`phenology.c`, not `phenology_gsi`) and are out of
 scope for the natural-vegetation canopy. The Hainich prototype (cell 42490) contains ids 1, 2, 3, 4, 5, 8.
@@ -2210,7 +2221,16 @@ function rollout_daily_canopy(
     sizehint!(days, length(forcings))
     for (i, f) in enumerate(forcings)
         # phenology: supplied crutch (phens) OR self-computed — per-PFT (per-individual vector) or the
-        # single patch-wide beech GSI (scalar; soil-temp gate ≈ air temp).
+        # single patch-wide beech GSI (scalar). ⚠ `f.temp` is passed TWICE: as air temperature and, in
+        # the last slot, as the C's `soil->temp[0]` for the 10 °C water-filter gate
+        # (`phenology_gsi.c:67`). MEASURED, not assumed (ADR 0139): layer-1 soil temperature tracks air
+        # with a best-fit lag of 0 days and |mean(soil−air)| ≤ 0.13 °C at four of the five biome cells,
+        # so the substitution is exact there. It is NOT at `boreal_siberia` (mean +4.40 °C, sd 10.8 —
+        # snow insulation in winter, thermal damping in summer, not a lag), which flips the gate's
+        # verdict on 10.5 % of days carrying 18.7 % of the annual light. That bound is credible only if
+        # the water filter would have been CLOSED on those days, and it is saturated OPEN there
+        # (`w` ≈ 0.69 against an inflection ≈ 0.13) — so no port and no flag. Harness
+        # `scripts/diagnose_phenology_soiltemp_gate.py`; dampener still open: the realised DAILY `w`.
         phen_arg = if phens !== nothing
             convert(T, phens[i])
         elseif per_pft
