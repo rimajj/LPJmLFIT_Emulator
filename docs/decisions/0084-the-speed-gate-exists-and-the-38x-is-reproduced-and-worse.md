@@ -58,6 +58,12 @@ every per-run fixed cost cancels exactly.
 across 403 commits and a rebuilt C binary — which is itself the useful result, because it means the
 per-tree cost has not drifted while line M has been working inside the fast core.
 
+⚠ **The C binary is not the one ADR 0093 timed** — it was rebuilt on **2026-08-12** for line M's opt-in
+`ind`-writer switches (ADR 0130), and the harness prints its mtime with every run for exactly this reason.
+It does not affect the comparison: those switches are `#ifdef`-gated additions to the `ind` writer, and
+the `ARM=min` arm used here emits only `grid` + `globalflux` — it never writes `ind` at all. The 21-cell
+block reproduces ADR 0093's 0.290 at 0.303 naive / 0.288 marginal, which is the empirical confirmation.
+
 **And on the corrected basis the gap is worse than published:**
 
 | ratio | value | reading |
