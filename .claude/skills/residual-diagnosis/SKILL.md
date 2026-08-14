@@ -2046,3 +2046,42 @@ the one number the criterion looked at. A criterion written on a single aggregat
 compensation. **Pre-register the pair** — here both the count and the mass departure, with the per-unit ratio
 printed beside them — and per the no-moving-thresholds rule, ADD the missing clause rather than editing the
 ones that were already written.
+
+## ⚠ TWO FLOORS TO CHECK BEFORE BLAMING A MODEL FOR MISSING A TOLERANCE (line S, 2026-08-14, ADR 0241)
+
+Both are cheap, both bind EVERY architecture, and one of them needs no data at all. Run them before
+concluding that a learned component is not accurate enough — and equally before promising that a
+better one would be.
+
+**1. IS THE QUANTITY AN INTEGER?** If the required tolerance is a *fraction of a small count*, compare
+it against `1/count` first. ADR 0241 needed a kill budget within ±20 % of a flux that is **1.0–1.2
+stems per patch-year** — i.e. ±0.2 of a stem, in a quantity whose atom is 1. The atom exceeds the
+tolerance by **4.1–4.9×**. That is four numbers of arithmetic, it cannot be argued with, and it settled
+a question that two competing statistical instruments had left straddling their threshold. Counts,
+event tallies, roster sizes, cohort memberships are all in scope.
+
+**2. WHEN THE REFERENCE'S STOCHASTICITY IS AN EXPLICIT PER-ITEM PROBABILITY, DERIVE THE FLOOR FROM IT
+— NOT FROM A BETWEEN-UNIT SPREAD.** A between-unit CV (patch-to-patch, site-to-site, replicate-to-
+replicate) is the floor for a predictor *that cannot see the unit*. It is not the irreducible floor, and
+using it flatters or damns a verdict by however much per-unit conditioning is worth — here **9×**
+(0.39–0.42 against 0.041–0.046). If the reference draws a Bernoulli per item at a probability its own
+output already carries, then `sd ≥ sqrt(Σ pᵢ(1−pᵢ))` is an **exact** lower bound on any predictor's
+error, per unit, with no replicates and no simulation. State what each floor is conditioned on in the
+same table — they answer different questions and only one of them binds "for any learner".
+
+**And when two instruments straddle a pre-registered threshold, report the straddle.** ADR 0241's
+level-basis instrument returned 3.66–3.89× (past its 3× line) and its mode-exact companion 2.69–2.72×
+(inside it). Picking either would have been a choice made after seeing the numbers. Print both, name the
+tie-breaker as a *modelling* question (here: whether the operator is charged the target's LEVEL error or
+only its year-on-year RATIO error), and settle it on a third instrument that binds both — not on
+whichever one agrees with you.
+
+**Corollary on pre-registration: a scalar summary statistic can miss a one-bin effect, so write the
+PROFILE requirement into the pre-registration.** ADR 0241 §6's matched-age and matched-height shares
+returned "in between" on three of four arm × axis combinations. The profile the same pre-registration
+demanded showed **four of five bins at ratio 0.92–1.05** with the entire excess in one open-ended bin —
+a shape statement the scalar could not make (ADR 0187's shape-vs-level rule, second time decisive).
+⚠ And an **open-ended extreme bin cannot be standardised away**: a quantile-matched decomposition
+removes composition *within* the reference's range and is blind to a tail beyond it, which is why
+matching on height removed LESS of the excess than matching on age for the same arm and the same data.
+Say so with any matched number that leans on the extreme bin.

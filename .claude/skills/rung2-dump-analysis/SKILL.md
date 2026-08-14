@@ -281,6 +281,27 @@ have already printed convincingly. A partial run that dies below the fold looks 
    over arms that did not exist when the threshold was written is not the pre-registered verdict). A `G*`
    arm is therefore DESCRIBED by those scorers and JUDGED by ADR 0188 §7's own criterion.
 
+5o. **⚠ A COUNT TARGET CANNOT DRIVE A MORTALITY BUDGET, AND THE ARITHMETIC IS ONE LINE (ADR 0241).**
+   A budget is a DIFFERENCE of counts, so `|δB|/K = e/k` — the count error as a fraction of the LEVEL
+   over the gross flux as a fraction of the LEVEL. FIT's flux is ~6 %/yr, so the amplification is ~17×
+   whatever the count model's error is; measured, the relative budget error is **209–259 %** against a
+   ±20 % target. The precision needed (**1.13/1.18 % per patch-year**) is inside the irreducible
+   realisation floor (4.1/4.6 %) and inside the **integer atom** — FIT kills **1.22/1.03 stems per
+   patch-year**, so ±20 % means ±0.2 of a stem. ⇒ **do not propose another budget, account, or count
+   target for the mortality path**; the replacement is FIT's own per-tree hazard as a RATE. And the
+   general habit: **whenever a required tolerance is a fraction of a SMALL COUNT, compare it against
+   `1/count` before anything else.**
+
+5p. **⚠ THE ARMS' EXCESS MASS IS A BIG-TREE TAIL, NOT A UNIFORM PER-STEM EXCESS (ADR 0241 §6).** In four
+   of five height quintiles of FIT's own terminal stand the arms' trees carry FIT's own per-stem mass to
+   within 8 % (ratios 0.92–1.05); the whole excess sits in the OPEN-ENDED top bin, where the arms hold
+   1.26×/**1.83×** FIT's stem share and their stems are 1.63–1.89× heavier. The C grows the stand
+   (trap 5), so this is FIT's own growth on a thinned stand — never an F defect, never an allometry one.
+   ⚠ A quantile-matched decomposition **cannot standardise away an open-ended top bin**, which is why
+   the height-matched share (0.666) exceeds the age-matched one (0.423) for the same arm; and `G1` has
+   **no emitted stems at all at 2 of 12 cells at 2100**, extending trap-adjacent ADR 0240 item 19's `G0`
+   annihilation finding to the trait arm.
+
 6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
    not in a level. **And it is what makes trap 5j's recruit identity exact.**
@@ -315,6 +336,8 @@ have already printed convincingly. A partial run that dies below the fold looks 
 | `scripts/diagnose_rung2_kill_budget.py` | **WHY the operator's kill RATE is short** (ADR 0188) — the budget side of ADR 0187's rate finding. Five panels: the derived-a-priori `S0` self-test that refutes the emitted-vs-roster population hypothesis, the ρ-clamp incidence, the `ρ ≥ 1` empty-kill-list gate plus `θ = 0` give-ups, the budget-vs-nominations decomposition, and **FIT's own gross kills / certain kills / discretionary kills / recruits / net** by the 5g count identity. Panels A–D are the arm logs alone (seconds, `SKIP_REC=1`); panel E is a 1.9 GB `REC` scan (~2 min). Imports ADR 0185 §5's coverage gate. **Use it for any FIT-side turnover reference** — gross mortality and recruitment per year are here.
 | `scripts/diagnose_rung2_gross_budget_lag.py` | **WOULD A PROPOSED BUDGET CHANGE ACTUALLY WORK, before the arm is written** (ADR 0189) — the feasibility half of ADR 0188's next action. Five panels off the `REC` dumps joined to `map_on_rec_stand_predict.csv` (so ρ and the roster are the same patch-years, gated on `n_tree`), plus the same statistic on `S1`'s own stand from its own dumps + arm log: the exact `age == 1` recruit-observability gate (trap 5j), recruitment's own statistics with the pooled AND within-patch lag-1 correlation, the telescoping count-departure check, and **the capacity table** — discretionary capacity, empty-budget share, implied total mortality, implied net and the compounded roster factor over the leg, for each of `none`/`lag1`/`mean5`/`expand`/`oracle`/`perfect` and the `_sm5`/`_acct` design probes. **Reuse it for ANY proposed change to what the operator is asked to kill**: it costs ~4 min and no model run, it carries the two derivable anchors (traps 5k/5l), and its `ROSTER-HORIZON` columns are the check that catches trading a biomass excess for a stand collapse. Extends `scan_rec_dump` additively (`n_cert`, `n_age1` at indices 6–7). |
 | `scripts/diagnose_rung2_gross_account_identity.py` | **the DERIVABLE A-PRIORI GATE on the `G*` gross-budget arms** (ADR 0240) — the account identity row by row, chained on the LOGGED account so an error cannot hide behind its own propagation (451 161 patch-years, max \|diff\| **0.000e+00**), plus the uniform arm's spend ratio against its derived 1.000 (**0.9998/0.9995**). Seconds, arm logs only. **Run it before reading any `G*` number** — and note it gates the IDENTITY, not coverage: a truncated leg still satisfies it. |
+| `scripts/diagnose_rung2_count_precision_budget.py` | **CAN A COUNT TARGET CARRY A GROSS MORTALITY BUDGET AT ALL** (ADR 0241) — the precision question behind ADR 0188's identity argument. Reproduction gate against ADR 0188 §4, the count model's per-patch-year error on FIT's OWN stand (`map_on_rec_stand_predict.csv` joined to the `REC` dumps — **11.8/15.2 % of the level, 2.09×/2.59× the gross flux**, NOT ADR 0185's ±24 %, which is a different statistic on a diverged stand), a mode-exact `ρ`-basis companion, TWO floors, three refutation panels and the integer-quantisation floor. ~3 min, no model run. **Reuse its FLOOR-2 construction for any "how precise could this ever be?" question**: `sqrt(Σ p(1−p))` off the dump's own `mort_prob` is an EXACT lower bound on any learner's error and needs no replicates. |
+| `scripts/diagnose_rung2_perstem_mass_decomp.py` | **IS THE PER-STEM MASS EXCESS THERE AT MATCHED AGE/HEIGHT** (ADR 0241 §6) — direct standardisation onto FIT's own terminal-stand quintiles, plus the full profile by height quintile. Answer: four of five bins at ratio **0.92–1.05**, the whole excess in the open-ended TOP bin ⇒ STRUCTURE. Terminal-year only, with a year-token prefilter that cuts the splits ~81× on an ssp370 leg; seconds per dump. Its `w = leaf_c + sapwood_c + heartwood_c − debt_c` is gated against ADR 0240's published `dPER` (`S1` +99.0 % vs +96 %). |
 | `scripts/check_rung2_campaign_coverage.py` | **which legs of a campaign finished, and the re-run lines for the rest.** Uses the C's own completion line plus the arm log's patch-year count. ⚠ It exists because the failures are silent everywhere else: the job exits on the C's code, a truncated dump looks like a short one, and `harness: served <N> patch-years` is written by the FAILURE path — the job file kills a healthy harness before it prints, so reading its absence as failure INVERTS the test. |
 | `scripts/diagnose_rung2_armc.py` | age–wooddens gradients and selection differentials (shared with line M's arm C; **each arm family has its own recorded baseline and they are NOT interchangeable**) |
 | `scripts/rung2_s_demography_harness.jl` | **the row assembly.** It reaches `flux_feature_vector` and `DRF.predict` as private names off the package rather than copying them — do the same, or the copy becomes the thing being measured (ADR 0023). |
