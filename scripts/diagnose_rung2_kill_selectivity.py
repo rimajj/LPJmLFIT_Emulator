@@ -237,6 +237,8 @@ SEEDS = {
     "REC": (1,), "NP": (1,),
     "S0": (1, 2, 3), "S0h": (1, 2, 3), "S1": (1, 2, 3),
     "G0": (1, 2, 3), "G0h": (1, 2, 3), "G1": (1, 2, 3),
+    # the ADR-0242 RATE arms, on the same three seeds for the same comparability
+    "H0": (1, 2, 3), "H0h": (1, 2, 3), "H1": (1, 2, 3),
 }
 
 

@@ -344,45 +344,98 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-14, ADR 0241 is ON `main`.** Merge commit `d9ebf780`..`6a1aadd2` (collation `6a1aadd2`, branch sha `4aba3ee3`); the ONLY gate the diff triggers, `uncollated fragments` on `main`, is **green**. The previous merge was ADR 0240: `221c726a` (collation `c6289ee6`, branch sha `512f4a03`).
+> **LAST MERGE — 2026-08-14, ADR 0242 is ON `main`.** (Merge shas pinned by the merging session below.)
+> The previous merge was ADR 0241: `d9ebf780`..`6a1aadd2` (collation `6a1aadd2`, branch sha `4aba3ee3`);
+> before that ADR 0240: `221c726a` (collation `c6289ee6`, branch sha `512f4a03`).
 >
-> **THIS SESSION (2026-08-14) — ADR 0241: the count-budget architecture is CLOSED.** Two scorers, no
-> model run, both from state already on disk. The integrator's question was answered on its own
-> pre-registered terms and the ARCHITECTURAL branch fired on both legs; line S STATE §B step 1 (the
-> matched-age/height decomposition) was run in the same session and returned STRUCTURE. §B above is
-> rewritten around a RATE operator; `S2` as previously scoped must not be built. Two new scripts,
-> `diagnose_rung2_count_precision_budget.py` (job 1793142) and `diagnose_rung2_perstem_mass_decomp.py`
-> (job 1793003) — both are `scripts/*.py`, so the ONLY gate the diff triggers is nothing at all unless a
-> `.jl` file is touched (ADR 0090; the 0240 merge's `format` gate fired because it touched a `.jl`).
+> # 🟢 THIS SESSION (2026-08-14) — ADR 0242: THE RATE OPERATOR MEETS THE CRITERION. The five-ADR hunt for the per-stem mass excess is OVER.
 >
-> **PREVIOUS MERGE — 2026-08-13, ADR 0240 is ON `main`.** Merge commit `221c726a` (+ changelog collation
-> `c6289ee6`, branch sha `512f4a03`); **both gates the diff triggers are green on `c6289ee6` —
-> `format` and `uncollated fragments`.** The previous merge was ADR 0189: `df45bd4f` (collation `f5217508`,
-> branch sha `7d907b62`); ADR 0188 `7db91f5b`, 0187 `f3e100d8`, 0186 `e2620c61`.
+> **`dN` +4.4 %, `dAGB` +4.1 %, per-stem mass −0.3 %** — ssp370 leg, FIT-gain cells, ADR 0185 §5's
+> imported basis, against ADR 0240's pair clause of 40 % on **both**. The excess that ADR
+> 0186/0187/0240/0241 chased (`S1` +96 %, `G1` +269 %) is gone. All three of ADR 0188 §7's clauses pass
+> too: discretionary rate **2.2 %/yr** (FIT 2.1, clause ≥1.5), mass removal **0.03406** (FIT 0.03063,
+> clause ≥0.025), agb **+4.1 %**. Nomination rate **5.961 %/yr against FIT's own gross 5.961**, `R̂`
+> **6.43 vs 6.456**, roster **1.000×** over 81 free-running years. Warming response: slope **1.150**,
+> RMSE **1.116** stems, |bias| **0.330** — **4.9×** below the do-nothing null and **4.5×** below the
+> status quo.
 >
-> ⚠ **A REMINDER THE 0240 MERGE PAID FOR: a `scripts/**`-only diff is NOT automatically gate-free.** It
-> touched no `src/**`, `test/**`, `python/**` or `docs/src/**` — but it touched a `*.jl` file
-> (`scripts/rung2_s_demography_harness.jl`), and the `format` gate (Runic) watches **any** `**/*.jl`, so it
-> ran on the branch AND on `main`. Expect exactly one gate for that shape of diff, not none and not four.
-> The last full suite run was
-> **275 606 pass / 0 fail** (job 1773556) and no `src/**` or `test/**` file has changed on this line since,
-> so that figure still stands.
+> **What was built.** Three harness arms mirroring `S0`/`S0h`/`S1`: **`H1`** `f = 1 − mort_i` per stem
+> (the shipped `TraitMortality.survival_prob`, i.e. FIT's own Bernoulli), **`H0`** uniform at the
+> nind-weighted mean hazard, **`H0h`** certain deaths honoured + uniform over the rest. No target, no
+> budget, no account, **no `ρ < 1` gate**. 360-leg campaign, **351 OK / 9 DEAD** (all the known open
+> C-side duplicate-roster-key fault — §D unchanged). Guardrail 4 measured; the new derivable gate
+> passes; sections 1–4 of the ADR were **committed before any campaign number existed**.
 >
-> ⚠ **THE NEXT `test/**` EDIT ON THIS LINE WILL TRIGGER THE FULL `CI` GATE** — the queued long-horizon anchor
-> assertion (see the ADR 0136 §7 reply block above). Budget the ~10 min branch-CI wait; the ADR-0090
-> "nothing to wait for" shortcut does not apply to it. `test (pre)` is `continue-on-error` and red on Julia
-> 1.13.0-rc2 prerelease churn — don't chase it.
+> ## ⚠ READ THIS BEFORE QUOTING ANY OF IT: IT IS A CEILING, NOT A FIDELITY RESULT
 >
-> ⚠ **ADR NUMBERS: line S's tier-3 block 0170–0189 is EXHAUSTED and the TIER-4 block 0240–0259 is now OPEN**
-> (ADR 0240 spent the first number; tier 4 was allocated for all lines at once — S 0240–0259 · M 0260–0279 ·
-> E 0280–0289 · O 0290–0299 · integrator 0300–0309). **Your next ADR is 0242.**
+> In rung 2 the hazard reads **FIT's own stress integrals through the rendezvous**, so `H1` is close to
+> replaying FIT's own mortality inside FIT's own physics and its agreement is EXPECTED (ADR 0049 item 4,
+> pre-registered in ADR 0242 §1). **It does not close the deliverable and must never be cited as if it
+> did.** What it does establish, none of which was known before: the count-budget architecture was the
+> **whole** of the mortality defect; nothing else in the loop (the C's growth, `ESTAB_C`, the rendezvous,
+> the 5 m cut, an 81-year free-running recursion) prevents ~5 % agreement on count AND biomass; ADR
+> 0241's replacement claim now holds in the closed loop and not only offline; and ADR 0241 §6's big-tree
+> tail was a property of stands built by a starved operator, not a separate defect.
 >
-> ⚠ **THE CAMPAIGN ON DISK NOW INCLUDES THE `G*` ARMS.** 360 legs at
-> `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_{G0,G0h,G1}_predict_s<seed>_{dump,apply}`, **357 complete**;
-> the 3 losses are the OPEN C-side `duplicate roster key` fault (`c52059` `G0` s2/s5, `c44048` `G0h` s5) and
-> are still to be raised with line M — see §D, which is unchanged and is still the binding constraint on
-> enlarging the cell set. Check coverage before scoring anything:
-> `/home/jamirp/.conda/envs/py311_new/bin/python scripts/check_rung2_campaign_coverage.py`.
+> ### B. THE NEXT ACTION — THE HAZARD'S INPUTS. That is the only thing left between this ceiling and the standalone emulator.
+>
+> **STEP 1 — measure how much of `H1` survives when the hazard is fed emulator-side inputs.** The
+> operator is settled; what it reads is not. `TraitMortality.mortality_hazard` needs `bm_delta`,
+> `leafarea_real`, `leaf_c`, `water_stress`, `temp_stress`, `bm_inc_counter`, `age`, `sla`, `wooddens`.
+> In rung 2 all of them arrive from the C. Offline the emulator has **neither of FIT's stress
+> integrals** (ADR 0049 item 4). **The cheap first cut already exists**:
+> `scripts/diagnose_rung2_ported_certain_set.jl` carries a **zeroed-stress arm** that evaluates the
+> hazard as the coupled loop would. Run it against `H1`'s own dumps and read the certain-set
+> recall/precision and the hazard distribution — no model run, and it tells you which of the two
+> integrals the answer hinges on before any arm is built.
+> **Pre-register before running it**, and derive the null: an arm handed the C's own stress integrals is
+> `H1` itself (the ceiling, now measured), and an arm handed nothing is bounded below by `NP`. State
+> both numbers beside whatever the third arm returns.
+>
+> **STEP 2, conditional on step 1 — the wiring question, and it is an integration point if it touches
+> `src/`.** A rate operator in the coupled path replaces `ρ`-driven thinning in
+> `src/components/slow.jl` (S-owned, so no integration point) but needs its stress integrals from
+> **F** (`src/fdiff.jl`, M-owned ⇒ integration point) unless S carries its own accumulator. Do not open
+> this before step 1 says which integral matters.
+>
+> **What NOT to do.** No budget of any kind (item 22). No account variant (item 23). No count-side
+> instrument (item 8). No `G0` variant (item 19). No allometry/growth work on the per-stem mass excess
+> (item 25) — and it is now not merely out of scope but **unnecessary**, since a rate operator removes
+> the excess without touching growth. **Do not re-run the `H*` campaign** to improve a number; it is
+> the ceiling and it is measured.
+>
+> ⚠ **THE ONE THING THIS SESSION LEFT UNMEASURED AND SHOULD NOT BE FORGOTTEN:** all four of `H1`'s
+> warming-response sign misses sit at **|FIT response| < 0.9 stems**, and whether that is inside FIT's
+> own two-run spread is **UNMEASURED** — the campaign has ONE `REC` member per cell. Under CLAUDE.md's
+> acceptance criterion the tolerance is `max(10 %, the original's own two-run spread)`, so this is the
+> statistic that decides whether those misses are real. It needs a second `REC` seed per cell, which is
+> a **second spin-up** (ADR 0041: bumping `random_seed` in a `-DFROM_RESTART` run yields a
+> byte-identical clone), so it is not cheap — say so rather than implying the sign misses are noise.
+>
+> ⚠ **GATES: the next `test/**` or `src/**` edit on this line triggers the full `CI` gate.** This
+> session touched only `scripts/**` (three `.py`, two `.jl`), `docs/decisions/**`, `changelog.d/**`,
+> `.claude/skills/**` and `lines/S/**` ⇒ the only gate that fires is **`format`** (Runic watches ANY
+> `**/*.jl`, incl. `scripts/`) on the branch, plus `uncollated fragments` on `main` after collation.
+> That is the ADR-0240 lesson: a `scripts/**`-only diff is NOT automatically gate-free. The queued
+> long-horizon anchor assertion (the ADR 0136 §7 reply block above) is still the item that WILL trigger
+> the full `CI` gate — budget ~10 min of branch-CI wait for it. Last full suite: **275 606 pass / 0
+> fail** (job 1773556); no `src/**` or `test/**` file has changed on this line since.
+>
+> ⚠ **ADR NUMBERS: line S is on its TIER-4 block 0240–0259.** 0240, 0241 and 0242 are spent ⇒ **your
+> next ADR is 0243.** (Tier 4 in full: S 0240–0259 · M 0260–0279 · E 0280–0289 · O 0290–0299 ·
+> integrator 0300–0309.)
+>
+> ⚠ **THE CAMPAIGN ON DISK NOW ALSO INCLUDES THE `H*` ARMS.** 360 legs at
+> `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_{H0,H0h,H1}_predict_s<seed>_{dump,apply}`, **351
+> complete**, on top of the `G*` campaign's 357 of 360 and ADR 0185's 258 of 264. Check coverage before
+> scoring anything: `export ARMS="H0 H0h H1"` then
+> `/home/jamirp/.conda/envs/py311_new/bin/python scripts/check_rung2_campaign_coverage.py`, and run
+> `scripts/diagnose_rung2_rate_flux_identity.py` before reading any `H*` number.
+>
+> ⚠ **A NOTE FOR LINE M's OPEN BUG (§D):** the duplicate-roster-key fault's incidence tracks how hard
+> the arm kills — 82 of 510 in the `roster` campaign, 3 of 360 for `G*`, **9 of 360 for `H*`** — and the
+> failing keys are high tree indices at a single PFT (`pft 3, tree 104-115` at c42973; `pft 6, tree
+> 819-852` at c52059). That is new information for the report, not a diagnosis.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
@@ -413,6 +466,7 @@ rather than a request to flip now.
 > | **0240** | **the arm was BUILT and it over-kills 12×: the recruit term is ENDOGENOUS.** By the letter the criterion is met (discretionary rate 26.2 %/yr vs ≥1.5, mass removal 0.03203 vs ≥0.025, agb +2.9 % vs <+40 %); in substance it fails, because the count departs **−72.1 %** ⇒ per-stem mass **+269 %**, WORSE than `S1`'s +96 %. `R̂` on the arms' own stands is 27.6–70.6 %/yr against FIT's 6.456. |
 > | **0189** | **the required feasibility derivation: the LAG IS NOT THE OBSTACLE — last year's recruits are countable at the rendezvous EXACTLY (`age == 1`, 29 700/29 700), the lagged budget buys 3.525 %/yr of discretionary capacity against a 1.5 % criterion, and FIT's own recruitment RISES +39.8 % between the legs. But rectifying the budget per patch-year is CONVEX ⇒ it OVER-kills (+17 % on FIT's stand, +66 % on the arm's own; roster to 0.62×/0.11× over the leg). Spending from a running ACCOUNT fixes the horizon (5.817 vs 5.961 %/yr, roster 1.70×) at 2.702 %/yr capacity — but only 1.493 ± 0.180 on the arm's own stand, AT the criterion.** |
 > | **0241** | **ARCHITECTURAL: a next-year per-patch COUNT target can NEVER carry a gross mortality budget.** The budget is a difference of counts, so `\|dB\|/K = e/k` — the count error as a fraction of the level over the flux as a fraction of the level. Measured on FIT's own stand: `e` 11.8/15.2 %, `e/k` **2.09×/2.59×**; required for ±20 % is **1.13/1.18 %/patch-yr**; the irreducible realisation floor (FIT's own per-stem `mort_prob`, a strict lower bound for ANY learner) is 4.1/4.6 % ⇒ **A = 3.66×/3.89×, the pre-registered ARCHITECTURAL branch.** All three refutations fail; the integer atom alone exceeds the tolerance **4.09×/4.88×**. ⇒ the count model is RETIRED from the mortality path. §6: the per-stem mass excess is **STRUCTURE** — four of five height quintiles at ratio 0.92–1.05, the whole excess in the open-ended top bin. |
+> | **0242** | **THE RATE OPERATOR MEETS THE CRITERION — `dN` +4.4 %, `dAGB` +4.1 %, per-stem mass **−0.3 %**, and the five-ADR per-stem-mass hunt is OVER.** `H0`/`H0h`/`H1` = FIT's own per-tree hazard as a rate (no target, budget, account or `ρ<1` gate), 351 of 360 legs. All three ADR 0188 §7 clauses pass too (rate 2.2 %/yr vs FIT 2.1; mass removal 0.03406 vs 0.03063). Nominates **5.961 %/yr against FIT's own gross 5.961**, roster **1.000×** over 81 free-running years, rate profile at FIT's shape AND level in all five height quintiles. Response RMSE **1.116** stems vs the null's 5.448 and `S1`'s 4.997. ⚠ **A CEILING** — the hazard reads FIT's own stress integrals through the rendezvous. ⚠ `H0` annihilates the >5 m stand (−99.6 % agb) at a whole-roster horizon of 0.971× ⇒ at FIT's full flux WHICH trees die is decisive, REFINING ADR 0187 rather than contradicting it. |
 >
 > ### 0240 IN ONE PARAGRAPH (THIS IS THE CURRENT STATE OF THE QUESTION)
 >
@@ -633,39 +687,45 @@ rather than a request to flip now.
 >     five height quintiles at ratio **0.92–1.05**, the whole excess in the OPEN-ENDED top bin where the
 >     arms hold 1.26×/**1.83×** FIT's stem share and their stems are 1.63–1.89× heavier. STRUCTURE, and
 >     the C's own growth doing it. Do not open an allometry or growth-parameter investigation on it.
+> 26. **NEW (0242): THE MORTALITY OPERATOR QUESTION IS CLOSED — a RATE works and the count budget was
+>     the whole defect.** `H1` meets ADR 0240's pair at `dN` +4.4 % / `dAGB` +4.1 % with per-stem mass
+>     −0.3 %. **Do not propose another mortality operator form**, and do not re-run the `H*` campaign to
+>     improve a number — it is a CEILING (the hazard reads FIT's own stress integrals through the
+>     rendezvous) and it is measured. The open question moved to the hazard's INPUTS.
+> 27. **NEW (0242): AT FIT's FULL FLUX, WHICH TREES DIE IS DECISIVE — AND THIS REFINES ADR 0187 RATHER
+>     THAN CONTRADICTING IT.** `H0` spends exactly FIT's own expected flux on the wrong stems and
+>     annihilates the >5 m stand (−98.5 % count, −99.6 % agb). ADR 0187 measured the kill set as
+>     unbiased at a discretionary rate of 0.5–0.6 %/yr, where mis-ordering had little to work with; at
+>     2.1 %/yr the same mis-ordering is the difference between +4.1 % and −99.6 %. **A scale-dependence:
+>     neither finding is quotable without the other.**
+> 28. **NEW (0242): ADR 0241 §6's BIG-TREE TAIL WAS NOT A SEPARATE DEFECT.** It was a property of stands
+>     built by a starved mortality operator; at FIT's rate it does not form (`hmean` +1.5 %, `age_mean`
+>     +4.2 %). Item 25 stands as a description of the `S*`/`G*` stands and is now also **unnecessary** as
+>     a work item — a rate operator removes the excess without touching growth or allometry.
+> 29. **NEW (0242): A WHOLE-ROSTER COUNT CANNOT SEE A STAND COLLAPSE, AND A SELF-NORMALIZED MARTINGALE
+>     POOLED OVER A FEEDBACK TRAJECTORY IS NOT A STANDARD NORMAL.** `H0`'s roster horizon reads 0.971×
+>     while the population it is judged on falls 98.5 % (it converts the stand to saplings) ⇒ **state
+>     which population a horizon column is on.** And a gate's pooled `z` came out at 4.47 with an
+>     unbiased draw, because its denominator is correlated with its own numerator through the
+>     trajectory; gate on the RATIO and settle such a question with a frozen-roster replay
+>     (`scripts/diagnose_rung2_rate_draw_replay.jl`), never by loosening the clause.
 > 9. **NEW (0186): the level anchor is NOT wired into rung 2 and should not be.** This says nothing against
 >    ADR 0103 in the COUPLED path, where the departure genuinely is a count-level one (1.409× over-density).
 >    Do not read 0186 as retiring the anchor; its own flip criterion (0103 §6, line M's arm) is untouched.
 >
-> ### B. THE NEXT ACTION — RE-SPECIFY THE OPERATOR AROUND A RATE, NOT A BUDGET (ADR 0241 §7)
+> ### B. ~~THE NEXT ACTION — RE-SPECIFY THE OPERATOR AROUND A RATE~~ — **DONE, AND IT WORKED (ADR 0242)**
 >
-> **The count-budget architecture is closed.** ADR 0241 measured what it would take and it is not
-> reachable: ~1.2 % per patch-year against an irreducible floor of 4.1–4.6 %, and against an integer
-> atom that is larger still. `S2` as previously scoped — "learned count + trait hazard + recruit
-> traits" — inherits the same budget and **must not be built as specified**. What survives of it is the
-> establishment half; what dies is the count budget.
+> ADR 0241 §7's step 1 was built and run in the very next session. The arms are `H0`/`H0h`/`H1`; the
+> criterion was ADR 0240's pair, unmoved; **`H1` meets it at `dN` +4.4 % / `dAGB` +4.1 % with per-stem
+> mass −0.3 %**, and the current next action is the one at the TOP of this file (§B of the NEXT block):
+> **the hazard's INPUTS**, which is where ADR 0049 item 4 has always pointed. Its step 2 —
+> establishment — is untouched and still conditional; ADR 0240 §7's endogeneity finding stands, and
+> ADR 0242 §5.3 shows the same mechanism firing through a different input (`H0`'s nomination rate runs
+> 23.2 %/yr against FIT's 5.96 because sparing certain deaths leaves stems lingering at `mort ≈ 1`).
+> The recruit half still carries the structural replay floor of 0.907 (ADR 0121).
 >
-> **STEP 1 — the rate operator, and it is mostly already written.** Replace `ρ` from the count model
-> with FIT's own per-tree hazard applied directly: each stem dies with probability
-> `TraitMortality.mortality_hazard(...)`, no target, no budget, no account, no `ρ ≥ 1` gate. ADR 0189's
-> `perfect` arm is the offline proof that this reproduces FIT's gross AND net kills exactly
-> (`|diff| 0.0000`), and ADR 0183 proved the hazard itself at `|Δhazard|` 5e-18. **⚠ ADR 0049 item 4
-> still bites**: offline the operator has neither of FIT's stress integrals, and in rung 2 it reads them
-> through the rendezvous. So this arm measures the CEILING (what an exact hazard buys) and does not by
-> itself close the standalone emulator — say which of the two any number is on.
-> **Pre-registered criterion: ADR 0240's PAIR, unmoved** — both |dN| and |dAGB| under 40 % on ADR 0185
-> §5's basis at the FIT-gain cells on the ssp370 leg, with per-stem mass printed beside them.
->
-> **STEP 2, conditional on step 1 — establishment.** ADR 0240 §7's endogeneity finding is untouched by
-> 0241: as long as `ESTAB_C` supplies recruitment, the arm's own recruitment runs at 27.6–70.6 %/yr
-> against FIT's 6.456 whenever the operator kills hard. A rate operator does not read `R̂`, so the
-> feedback no longer enters the *budget* — but it still sets the stand the arm ends on, and §6's
-> big-tree tail is the visible consequence. The recruit half carries a structural replay floor of 0.907
-> (ADR 0121), which must be stated with any number.
->
-> **What NOT to do.** No budget form of any kind (item 22). No account variant (item 23). No count-side
-> instrument (item 8). No `G0` variant (item 19). No allometry or growth-parameter work on the per-stem
-> mass excess (item 25) — in a rung-2 arm the C does the growing and F never runs.
+> ⚠ **`S2` as originally scoped is still dead** (it inherits the count budget). What survives is the
+> establishment half, and it should now be specified on top of a RATE operator.
 >
 > ### C. FLAG STATE
 >

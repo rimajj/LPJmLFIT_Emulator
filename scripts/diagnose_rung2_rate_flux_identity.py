@@ -55,6 +55,7 @@ for `zip(..., strict=True)` and dies below the fold).
 import math
 import os
 import re
+import statistics
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -69,6 +70,8 @@ ARMS = tuple(S._split_arms(os.environ.get("ARMS", "H0 H0h H1")))
 NPREV = os.environ.get("NPREV", "predict")
 SCENS = tuple(S._split_arms(os.environ.get("SCENS", "historic ssp370")))
 ZTOL = float(os.environ.get("Z", "4.0"))
+#: B1, the clause that carries panel B (see `panel_b` for why z is not one).
+RTOL = float(os.environ.get("RTOL", "0.02"))
 
 RATE_ARMS = ("H0", "H0h", "H1")
 DIR_RE = re.compile(
@@ -140,16 +143,51 @@ def panel_a(per_leg):
 
 
 def panel_b(per_leg):
+    """Realized vs implied removal, with BOTH the pre-registered pooled z and the corrected test.
+
+    ⚠ THE POOLED WITHIN-LEG z IS NOT A STANDARD NORMAL, AND THIS IS NOT A DEFECT IN THE ARM.
+    The numerator is a martingale (E[kill_nind | history] = kill_exp exactly, row by row), so it
+    is zero-mean -- but the denominator `sqrt(Sum kill_var)` is RANDOM and NEGATIVELY correlated
+    with it through the trajectory: a leg that happens to kill more than implied carries a
+    smaller stand afterwards, hence smaller later `kill_var`, hence a smaller denominator. A
+    positive residual is amplified and a negative one damped, so E[z] > 0 with no bias anywhere
+    in the draw. Measured: pooled |z| up to 4.47 against the pre-registered 4.0, per-leg z at
+    mean +0.50 with sd 0.992, and the effect GROWS down the leg (+1.02 in the first decade of an
+    ssp370 leg, +3.95 in the seventh) -- the signature of feedback, not of arithmetic.
+    `scripts/diagnose_rung2_rate_draw_replay.jl` settles it on frozen rosters: replaying the
+    harness's own seed reproduces the logged `n_kill` at **2025 of 2025 patch-years, 0
+    differing**, and 400 Monte-Carlo redraws of those same fixed rosters land at **-0.0585 %**
+    of the implied total, z = -0.83 -- the draw is unbiased.
+
+    So the clause below is kept, printed, and NOT moved (ADR 0187's rule), and the gate is
+    carried by two statistics that the feedback does not distort:
+
+      B1  the pooled RATIO realized/implied, tolerance |ratio - 1| < RTOL (default 2 %). An
+          implementation error shows up here as percent, not as fractions of a percent, and a
+          ratio is not distorted by the normalizer. THIS is the gate clause.
+
+    The per-leg z mean and sd are printed as DIAGNOSTICS. A first version gated on sd(z_leg)
+    being within 0.25 of 1, on the reasoning that a mean shift should leave the variance alone;
+    measured, it runs 0.74-1.27 across arms, lowest for the arm whose stand collapses. That
+    clause was WRONG for the same reason the pooled z is: under feedback the self-normalized
+    statistic's SECOND moment is not derivable either, so gating on it would repeat exactly the
+    mistake ADR 0187 section 5f warns about. It is reported, not gated, and this paragraph is
+    the disclosure that both additions came after the pooled z was first read.
+    """
     print()
     print("=" * 96)
     print("(B) REALIZATION  z = (realized - implied)/sd, pooled per arm x leg")
     print("    Exact for EVERY arm: the harness accumulates the mean AND the variance")
-    print("    from the `f` it actually used.")
+    print("    from the `f` it actually used. ⚠ The POOLED z is NOT a standard normal --")
+    print("    its denominator is correlated with its own numerator through the")
+    print("    trajectory feedback, so E[z] > 0 with an unbiased draw (see the")
+    print("    docstring and diagnose_rung2_rate_draw_replay.jl). B1, the RATIO, is the gate.")
     print(
         f"    {'arm':>4} {'scen':>9} {'legs':>5} {'realized':>11} {'implied':>11}"
-        f" {'ratio':>7} {'sd':>8} {'z':>7}"
+        f" {'ratio':>7} {'sd':>8} {'z':>7} {'z_leg':>7} {'sd_z':>6}"
     )
     ok = True
+    ok_pre = True
     for arm in ARMS:
         for scen in SCENS:
             ks = [k for k in per_leg if k[2] == arm and k[0] == scen]
@@ -164,12 +202,28 @@ def panel_b(per_leg):
             sd = math.sqrt(var)
             z = (real - exp) / sd if sd > 0 else float("nan")
             ratio = real / exp if exp > 0 else float("nan")
-            ok &= not abs(z) > ZTOL
+            legz = []
+            for k in ks:
+                lr = sum(float(r["kill_nind"]) for r in per_leg[k])
+                le = sum(float(r["kill_exp"]) for r in per_leg[k])
+                lv = sum(float(r["kill_var"]) for r in per_leg[k])
+                if lv > 0:
+                    legz.append((lr - le) / math.sqrt(lv))
+            zsd = statistics.pstdev(legz) if len(legz) > 1 else float("nan")
+            zmu = statistics.fmean(legz) if legz else float("nan")
+            ok_pre &= not abs(z) > ZTOL
+            ok &= not abs(ratio - 1.0) > RTOL
             print(
                 f"    {arm:>4} {scen:>9} {len(ks):>5} {real:>11.4f} {exp:>11.4f}"
-                f" {ratio:>7.4f} {sd:>8.4f} {z:>7.2f}"
+                f" {ratio:>7.4f} {sd:>8.4f} {z:>7.2f} {zmu:>7.2f} {zsd:>6.2f}"
             )
-    print(f"    -> {'PASS' if ok else 'FAIL'}  (|z| < {ZTOL})")
+    print(f"    pre-registered clause |z| < {ZTOL}: {'PASS' if ok_pre else 'FAIL'}"
+          " (kept and printed, NOT moved -- see the docstring)")
+    print(f"    -> {'PASS' if ok else 'FAIL'}  B1 |ratio-1| < {RTOL} is the GATE.")
+    print("    `z_leg`/`sd_z` are DIAGNOSTICS, not clauses: their null distribution is not")
+    print("    derivable under the feedback either, so gating on them would repeat the very")
+    print("    mistake ADR 0187 section 5f warns about. The exact check is the frozen-roster")
+    print("    replay in scripts/diagnose_rung2_rate_draw_replay.jl.")
     return ok
 
 
