@@ -2753,3 +2753,60 @@ reason, which turned into a second finding: `G1` has **no emitted stems at all a
 
 §B is rewritten around a RATE operator. `S2` as previously scoped inherits the dead budget and must not
 be built as specified.
+
+## 2026-08-14 — ADR 0242: the RATE operator, built and read in one session, and it MEETS the criterion
+
+ADR 0241 closed the count-budget architecture and named its replacement. This session built it.
+
+Three arms in `rung2_s_demography_harness.jl`, mirroring `S0`/`S0h`/`S1`: **`H1`** gives every stem
+`f = 1 − mort_i` (the shipped `TraitMortality.survival_prob`, i.e. FIT's own Bernoulli), **`H0`** draws
+uniformly at the nind-weighted mean hazard, **`H0h`** honours the certain deaths and thins the rest
+uniformly. No target, no budget, no account, and the `ρ < 1` gate deliberately NOT inherited — it belongs
+to the architecture 0241 retired. Sections 1–4 of the ADR were committed **before the campaign existed**
+(`83a10a7a`), so the pre-registration, including the judgement that `|dAGB|` was the clause at risk, is
+verifiable rather than asserted.
+
+Guardrail 4 first: `S1` re-run under the new code, 27 pre-existing arm-log columns byte-identical over
+500 patch-years, dump identical in every initialised column over 40 569 records. Then a new derivable
+gate (`diagnose_rung2_rate_flux_identity.py`) on five appended log columns — `haz_exp` (FIT's own
+expected removal on that roster, written for EVERY arm), `kill_nind` (realized density, as against the
+count `n_kill`), and `kill_exp`/`kill_var` (the arm's own implied mean and the EXACT variance of its
+draw). The expected-flux identity holds row by row at max |diff| 1.5e-16 over 441 346 patch-years.
+
+Campaign: 360 legs at 17 s (historic) / 40 s (ssp370) each — the whole thing is cheaper than one of the
+offline scorers. 351 OK, 9 DEAD, all the known open C-side duplicate-roster-key fault.
+
+**The result.** ssp370, FIT-gain cells: `dN` **+4.4 %**, `dAGB` **+4.1 %**, per-stem mass **−0.3 %** —
+the excess ADR 0186/0187/0240/0241 chased (`S1` +96 %, `G1` +269 %) is gone. Discretionary rate 2.2 %/yr
+against FIT's own 2.1; mass removal 0.03406 against 0.03063; nomination rate **5.961 %/yr against FIT's
+own gross 5.961**; `R̂` 6.43 against 6.456; roster **1.000×** over 81 free-running years where `S1`
+climbed monotonically to +91 %. The size-conditional rate profile has FIT's shape **at FIT's level** in
+all five height quintiles — ADR 0187 measured `S1` at FIT's shape and 2.9–4.6× lower level. Warming
+response: slope 1.150, RMSE 1.116 stems, |bias| 0.330, against the do-nothing null's 2.320 / 5.448 /
+3.490.
+
+⚠ Two things I made sure not to over-claim. **`r` does not discriminate** — the null scores 0.917, and I
+computed the null before reading the arms; the slope and the RMSE are what separate them. And **this is a
+CEILING**: the hazard reads FIT's own stress integrals through the rendezvous, so agreement is expected.
+What is new is that the count-budget architecture was the *whole* of the mortality defect, that nothing
+else in the loop prevents ~5 % agreement over 81 free-running years, and that 0241 §6's big-tree tail was
+a property of starved-operator stands rather than a separate defect.
+
+**The decomposition inverted an expectation.** `H0` spends exactly FIT's own flux on the wrong stems and
+annihilates the >5 m stand (−99.6 % agb) while its whole-roster horizon still reads 0.971×, because it
+converts the stand to saplings. So at FIT's full flux WHICH trees die is decisive — which refines ADR
+0187 (measured at a 4× lower rate) rather than contradicting it, and is a reminder to state which
+population a horizon column is on.
+
+**The gate's own clause failed, and diagnosing it was worth the detour.** Panel B's pre-registered
+|z| < 4 came out at 4.47. Per-leg z had mean +0.50 and sd 0.992 — a unit sd said the variance formula was
+right, so only the mean was shifted, and the shift grew down the leg. A frozen-roster replay
+(`diagnose_rung2_rate_draw_replay.jl`) reproduced the logged `n_kill` at 2025 of 2025 patch-years and put
+400 redraws at −0.0585 % (z −0.83): the draw is unbiased and the STATISTIC was biased, because a
+self-normalized martingale's denominator is negatively correlated with its own numerator through the
+trajectory. The clause was kept, printed and reported as failing; the ratio carries the gate. A second
+clause I proposed on `sd(z_leg)` failed the same way and is reported, not gated — which is the ADR 0187
+§5f lesson landing on me while I was writing it down.
+
+Next: the hazard's INPUTS. That is where ADR 0049 item 4 has always pointed, and it is now the only thing
+between this ceiling and the standalone emulator.

@@ -16,6 +16,11 @@
 #            ADR 0240 builds them). Only the MAGNITUDE they are asked for changes, not who they pick; same
 #            wall time and same everything else. Score them against the SAME per-cell REC baseline and the
 #            SAME S* arms — the S*-vs-G* contrast IS the deliverable, so never run a G arm on its own.
+#   ARM=H0 | H0h | H1                       the RATE arms (ADR 0241 §7): NO count target at all. Every
+#            stem faces FIT's own per-tree hazard (`H1`, f_i = 1 - mort_i), or a uniform draw at the
+#            nind-weighted mean hazard (`H0`), or that with the certain deaths honoured (`H0h`). All
+#            three have the SAME expected removed density by construction, so H1-H0h-H0 decomposes what
+#            per-stem ordering is worth once the RATE is right. `rho` is still logged and NOT consulted.
 #   ARM=NP   rho = 1 every year           (the PERSISTENCE NULL: keep the stand, learn nothing)
 #   ARM=REC  no substitution at all       (the per-cell, per-scenario RECORDED BASELINE every arm is
 #            scored against — see "WHY REC LIVES HERE" below)
@@ -111,8 +116,8 @@ QOS="${QOS:-short}"
 MAXIDLE="${MAXIDLE:-900}"
 SUBMIT="${SUBMIT:-yes}"
 
-case "$ARM" in S0|S0h|S1|NP|REC|G0|G0h|G1) ;; *)
-  echo "ARM must be S0, S0h, S1, NP, REC or a gross-budget arm G0, G0h, G1 (got '$ARM')" >&2; exit 2 ;; esac
+case "$ARM" in S0|S0h|S1|NP|REC|G0|G0h|G1|H0|H0h|H1) ;; *)
+  echo "ARM must be S0, S0h, S1, NP, REC, a gross-budget arm G0, G0h, G1, or a RATE arm H0, H0h, H1 (got '$ARM')" >&2; exit 2 ;; esac
 case "$SCENARIO" in historic|ssp370) ;; *)
   echo "SCENARIO must be historic or ssp370 (got '$SCENARIO')" >&2; exit 2 ;; esac
 case "$NPREV" in roster|predict) ;; *)

@@ -106,6 +106,10 @@ ARMS = tuple(_split_arms(os.environ.get("ARMS", "NP S0 S0h S1")))
 SCENS = ("historic", "ssp370")
 #: the gross-budget arms — the ones whose logs carry `budget`/`acct`/`rho_eff` (ADR 0240).
 GROSS_ARMS = ("G0", "G0h", "G1")
+#: The ADR-0242 RATE arms. They have NO budget and NO `rho < 1` gate, so panel F prints their
+#: `empty`/`spend` columns as NaN — those quantities do not exist for them, and a 0 would be a
+#: missing measurement dressed as a measured one (ADR 0240). Every other column is arm-agnostic.
+RATE_ARMS = ("H0", "H0h", "H1")
 
 
 def median(v):
@@ -689,13 +693,13 @@ def panel_f(legs, fit):
     there. Do not read an arm's `nominated` against FIT's gross K without that panel open: an arm's
     nomination excludes the C's own hard kills (skill trap 5d).
     """
-    gross = [a for a in ARMS if a in GROSS_ARMS]
+    gross = [a for a in ARMS if a in GROSS_ARMS or a in RATE_ARMS]
     print("\n" + "=" * 100)
-    print("  PANEL F — the GROSS-BUDGET (`G*`) arms: rate, the roster horizon, and lumpiness")
+    print("  PANEL F — the GROSS-BUDGET (`G*`) and RATE (`H*`) arms: rate, roster, lumpiness")
     print("=" * 100)
     if not gross:
-        print(f"    no `G*` arm in ARMS={list(ARMS)} — nothing to report. Widen it with")
-        print('    `export ARMS="NP S0 S0h S1 G0 G0h G1"` once the ADR-0240 campaign has run.')
+        print(f"    no `G*`/`H*` arm in ARMS={list(ARMS)} — nothing to report. Widen it with")
+        print('    `export ARMS="NP S0 S0h S1 G0 G0h G1 H0 H0h H1"`.')
         return
     have = [a for a in gross if any(k[1] == a for k in legs)]
     if not have:
@@ -705,26 +709,39 @@ def panel_f(legs, fit):
     print(f"    {'arm':<5} {'leg':<9} {'nominated':>10} {'empty':>7} {'zero-kill':>10}"
           f" {'top-decile':>11} {'roster':>8} {'nostandX':>9} {'spend':>7} {'R_hat':>7}"
           f" {'cells':>6}")
-    for arm in [a for a in ARMS if a in ("S0", "S0h", "S1") or a in GROSS_ARMS]:
+    for arm in [
+        a for a in ARMS if a in ("S0", "S0h", "S1") or a in GROSS_ARMS or a in RATE_ARMS
+    ]:
         for scen in SCENS:
             ks = [k for k in legs if k[1] == arm and k[2] == scen]
             if not ks:
                 continue
             isg = arm in GROSS_ARMS
+            isr = arm in RATE_ARMS
             nom = per_cell(legs, arm, scen, ratio("n_kill", "n_tree"))
             rho1 = per_cell(
                 legs, arm, scen, lambda g: g.rho_ge1 / g.rows if g.rows else float("nan")
             )
-            emp = per_cell(
-                legs, arm, scen,
-                lambda g: (g.budget_empty / g.rows if g.has_g and g.rows else float("nan")),
-            ) if isg else rho1
+            emp = (
+                per_cell(
+                    legs, arm, scen,
+                    lambda g: (g.budget_empty / g.rows if g.has_g and g.rows else float("nan")),
+                ) if isg
+                # a rate arm has NO gate: it decides on every non-empty patch-year, so neither the
+                # `budget <= 0` share nor the `rho >= 1` share is a property it has
+                else per_cell(legs, arm, scen, lambda g: float("nan")) if isr
+                else rho1
+            )
             zer = per_cell(legs, arm, scen, lambda g: g.zero_kill_share())
             top = per_cell(legs, arm, scen, lambda g: g.kill_top_decile())
             ros = per_cell(legs, arm, scen, lambda g: g.roster_factor())
             spd = per_cell(
                 legs, arm, scen,
-                lambda g: (g.n_kill / g.budget if g.has_g and g.budget > 0 else float("nan")),
+                lambda g, isr=isr: (
+                    float("nan") if isr
+                    else g.n_kill / g.budget if g.has_g and g.budget > 0
+                    else float("nan")
+                ),
             )
             # ⚠ NaN, not 0, when the leg's log predates the `n_age1` column: the `S*` arms were run
             #   before ADR 0240 added it, and `sum(n_age1)/sum(n_tree)` would print their recruit
@@ -751,7 +768,9 @@ def panel_f(legs, fit):
     print("    discretionary rate the ADR-0188 §7 criterion is written on — that one is in")
     print("    diagnose_rung2_kill_selectivity.py, which needs per-stem `mort_prob`).")
     print("    `empty` = share of patch-years answered with an EMPTY kill list: `budget <= 0` for")
-    print("    a `G*` arm, `rho >= 1` for an `S*` one. `zero-kill` is its realized version.")
+    print("    a `G*` arm, `rho >= 1` for an `S*` one, and NaN for an `H*` one, which has no gate")
+    print("    at all — it decides every non-empty patch-year (`zero-kill` is then purely the")
+    print("    draw's own doing). `zero-kill` is the realized version for every arm.")
     print("    `top-decile` = share of the leg's kills in its heaviest 10 % of patch-years — the")
     print("    LUMPINESS caveat against the accounting form: FIT spreads ~6 %/yr fairly evenly.")
     print("    `roster` = measured last-year/first-year stems. Read it as a GATE, not a")

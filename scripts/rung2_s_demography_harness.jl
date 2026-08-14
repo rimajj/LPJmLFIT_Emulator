@@ -60,6 +60,50 @@
 #   "capacity" and only an arm's own are a "rate".
 #   `G0` keeps `S0`'s derivable self-test: the draw is uniform at `1 - b/n`, so `E[n_kill] = b` exactly.
 #
+# THE `H*` ARMS — NO COUNT TARGET AT ALL: FIT's OWN PER-TREE HAZARD APPLIED AS A *RATE* (ADR 0241 §7)
+# ------------------------------------------------------------------------------------------------------
+# ADR 0241 retired the learned count model from the MORTALITY path, and not on a tuning argument: a kill
+# budget is a DIFFERENCE of counts, so the count model's error is multiplied by the level-to-flux ratio
+# (~17 here).  The precision that would be needed is 1.13/1.18 % per patch-year, against an irreducible
+# realisation floor of 4.1/4.6 % (FIT's own per-stem Bernoulli), a cell-year conditioning floor of 39-42 %,
+# and an INTEGER ATOM larger than the tolerance itself (FIT kills 1.22/1.03 stems per patch-year, so a
+# +-20 % budget is +-0.2 of a stem).  No learner and no budget form escapes that.  So these arms form no
+# budget at all:
+#
+#   H1   f_i = 1 - mort_i            every stem faces its own hazard.  No target, no budget, no account,
+#        no `rho >= 1` gate.  This is `survival_prob` from the SHIPPED `TraitMortality` — i.e. exactly the
+#        Bernoulli LPJmL-FIT itself realizes (`mortality_tree_ind.c:145`), which is why ADR 0189's
+#        `perfect` arm reproduces FIT's gross AND net kills at |diff| 0.0000 and ADR 0183 measured the
+#        port at |dhazard| 5e-18 with certain-set recall = precision = 1.0000.
+#   H0   f_i = 1 - hbar              the UNIFORM-RATE control: hbar = sum(nind*mort)/sum(nind), so the
+#        EXPECTED removed density is identical to H1's, stem for stem of total, with every per-stem
+#        ordering removed.
+#   H0h  f_i = 0 for a certain stem (`mort >= 1`), else `1 - hbar_disc` over the non-certain stems.
+#        The decomposition control, the same role S0h plays for S1: `H0h - H0` is worth honouring the
+#        deaths FIT had already settled, `H1 - H0h` is worth per-stem ordering among the rest.
+#
+# ⚠ ALL THREE HAVE THE SAME EXPECTED GROSS FLUX ON THE SAME ROSTER, EXACTLY.  `sum(nind_i*(1-f_i))` is
+#   `sum(nind_i*mort_i)` for each of them (for H0h because the certain stems contribute their own `nind*1`
+#   and the weighted mean over the rest is taken over exactly the rest).  That is a DERIVABLE a-priori
+#   self-test — `kill_exp` must equal `haz_exp` row by row for all three — and it is what makes the
+#   decomposition clean: on a given stand they differ ONLY in who is picked, never in how many.
+#   ⚠⚠ IT IS A PER-PATCH-YEAR IDENTITY AND *NOT* A LEG-TOTAL ONE, because the stands diverge — skill trap
+#   5 in a new place.  Measured at Hainich historic: H0's leg total `haz_exp` is 4.915 against H1's 2.585,
+#   1.9x, because H0 spares certain-death stems that then linger at `mort ~ 1` and inflate hbar every year
+#   after.  So NEVER read a leg-summed flux difference between these arms as an operator difference; the
+#   identity to gate is row by row, and the leg totals are a RESULT.
+#
+# ⚠ WHAT AN `H*` NUMBER IS AND IS NOT.  In rung 2 the hazard reads FIT's own stress integrals through the
+#   rendezvous, so these arms measure the CEILING: what an EXACT hazard buys, given inputs the standalone
+#   emulator does not have offline (ADR 0049 item 4).  They do not by themselves close the standalone
+#   emulator.  Say which of the two any number is on.
+#
+# ⚠ `rho`/`target` ARE STILL COMPUTED AND LOGGED FOR AN `H*` ARM, AND ARE NOT CONSULTED.  The count model
+#   still runs (it costs nothing beside the rendezvous, it keeps the log schema identical for every
+#   scorer, and it is the free counterfactual "what would the retired budget have asked for here").  A
+#   reader must not infer from a populated `rho` column that an `H*` arm used it: `rho_eff` is 1.0 and the
+#   operator never forms a budget.  The count model's OTHER consumers are untouched by ADR 0241.
+#
 # WHAT THE C STILL OWNS in every arm here: turnover, allocation, growth, fire, the non-demographic hard
 # kills (negative pools, `isneg_tree`, bioclimatic `survive()`, `cut_year`), AND establishment.  So every
 # number this harness produces is a MORTALITY result on a real stand; when S2 is wired, only 4 of the 7
@@ -125,9 +169,9 @@ function parse_args(argv)
         haskey(opts, key) || error("unknown option --$(m.captures[1])")
         opts[key] = m.captures[2]
     end
-    opts["arm"] in ("S0", "S0h", "S1", "NP", "G0", "G0h", "G1") || error(
-        "--arm must be S0, S0h, S1, NP or one of the gross-budget arms G0, G0h, G1 " *
-            "(got '$(opts["arm"])')"
+    opts["arm"] in ("S0", "S0h", "S1", "NP", "G0", "G0h", "G1", "H0", "H0h", "H1") || error(
+        "--arm must be S0, S0h, S1, NP, one of the gross-budget arms G0, G0h, G1, or one of the " *
+            "RATE arms H0, H0h, H1 (got '$(opts["arm"])')"
     )
     opts["n_prev"] in ("roster", "predict") ||
         error("--n-prev must be roster or predict (got '$(opts["n_prev"])')")
@@ -484,15 +528,15 @@ function main(argv)
     log = open(log_path, "w")
     println(
         log,
-        # The four `G*` columns are APPENDED at the end on purpose: every consumer of this file parses
-        # positions off this header line rather than hardcoding them (skill trap 1), so an additive column
-        # cannot move an existing one.  They are written for every arm — NaN/0 where the arm has no
-        # account — so the schema does not depend on the arm.
+        # The four `G*` columns and the fifth `H*` one are APPENDED at the end on purpose: every consumer
+        # of this file parses positions off this header line rather than hardcoding them (skill trap 1),
+        # so an additive column cannot move an existing one.  They are written for every arm — NaN/0
+        # where the arm has no account — so the schema does not depend on the arm.
         "#H L year patch n_tree n_emit n_prev target rho theta shortfall n_kill n_recruit " *
             "bm_inc growth_eff water_stress soilmoist " *
             "hmean_rt hmax_rt agb_rt lai_rt fpc_rt age_rt " *
             "hmean_c hmax_c agb_c lai_c fpc_c age_c " *
-            "n_age1 budget rho_eff acct"
+            "n_age1 budget rho_eff acct haz_exp kill_nind kill_exp kill_var"
     )
     isempty(opts["ready"]) || close(open(opts["ready"], "w"))
 
@@ -595,11 +639,21 @@ function main(argv)
             # ⚠ `ρ` stays in the log as the count model's own ratio; `ρ_dec` is what the draw ran at.  A
             # scorer that wants the realized thinning of a `G*` arm must read `rho_eff`, not `rho`.
             gross = arm in ("G0", "G0h", "G1")
+            rate = arm in ("H0", "H0h", "H1")
             # Counted for EVERY arm, not only the ones that spend it: it costs nothing over a ~10-30 stem
             # roster, and logging 0 where it was simply not computed would be a wrong value dressed as a
             # measurement.  For an `S*` arm it is the free recruit observable the log did not carry before.
             n_age1 = count(t -> t.age == 1, trees)
-            ρ_dec = ρ
+            # FIT's OWN expected gross removal on this patch-year's roster, `Σ nind·mort` — the flux the
+            # `H*` arms are built to realize and the reference flux every other arm is short of. Logged
+            # for EVERY arm because it is a property of the roster, not of the operator (so an `S*` leg
+            # gets the comparison for free), and because it is the derivable a-priori self-test for the
+            # rate arms: all three have this exact expected removed density, so realized/`haz_exp` must
+            # come out 1.00 for each.
+            haz_exp = sum(t.nind * t.mort for t in trees; init = 0.0)
+            # ⚠ NOT 1.0 and NOT ρ: a rate arm forms no thinning ratio at all, and printing one would be a
+            # missing measurement dressed as a measured value (ADR 0240's own lesson).
+            ρ_dec = rate ? NaN : ρ
             budget = NaN
             if gross
                 a = get(acct, patch, 0.0) + (1.0 - ρ) * length(trees) + n_age1
@@ -611,15 +665,56 @@ function main(argv)
             # ── the decision ──
             # Every arm below reads `ρ_dec`, which IS `ρ` for the `S*`/`NP` arms — so those arms are
             # byte-identical to the pre-0240 harness by construction, not by inspection (guardrail 4).
+            #
+            # ⚠ THE GATE IS PART OF THE COUNT-BUDGET ARCHITECTURE, SO A RATE ARM MUST NOT INHERIT IT.
+            # `ρ_dec < 1.0` says "act only in a year the count model asks the stand to shrink", which left
+            # 42–46 % of patch-years with an EMPTY kill list — and on such a year the certain deaths were
+            # spared too (ADR 0188 §3, skill trap 5l). An `H*` arm has no target to be gated on, so it
+            # enters the block on every non-empty patch-year; the log's `rho_eff` stays 1.0 to say so.
             kills = Tuple{Int, Int}[]
             θ = NaN
             shortfall = 0.0
+            # The arm's OWN implied removal `Σ nind·(1−f)` and the EXACT variance of its draw
+            # `Σ nind²·f(1−f)`, both accumulated from the `f` the arm actually used. They are 0 where no
+            # draw happens, and that is a measurement, not a gap: no draw removes nothing, with certainty.
+            # ⚠ These make the realized-vs-implied self-test EXACT for every arm, σ included — ADR 0188's
+            # `1.004 ± 0.009` had to hand-roll its SE from a uniform-draw assumption that only `S0` meets,
+            # and ADR 0187 §5f is the standing instruction to derive the sampling SE before choosing a
+            # tolerance. Cheap here, impossible offline.
+            kill_exp = 0.0
+            kill_var = 0.0
             rng = Xoshiro(hash((seed, year, patch)))
-            if ρ_dec < 1.0 && !isempty(trees)
+            if !isempty(trees) && (rate || ρ_dec < 1.0)
                 nind = [t.nind for t in trees]
                 n_now = sum(nind)
                 f = Vector{Float64}(undef, length(trees))
-                if arm == "S0" || arm == "NP" || arm == "G0"
+                if rate
+                    # ── ADR 0241 §7: FIT's own per-tree hazard as a RATE. No target is read here. ──
+                    haz = [t.mort for t in trees]
+                    if arm == "H1"
+                        for i in eachindex(trees)
+                            f[i] = 1.0 - haz[i]
+                        end
+                    elseif arm == "H0"
+                        # the nind-weighted mean hazard: identical EXPECTED removed density to H1's
+                        # `Σ nind·mort`, with every per-stem ordering removed
+                        h̄ = n_now <= 0.0 ? 0.0 :
+                            sum(nind[i] * haz[i] for i in eachindex(trees)) / n_now
+                        fill!(f, 1.0 - h̄)
+                    else
+                        # H0h — certain deaths honoured, the REST uniform at their own weighted mean
+                        # hazard, so the total expected removal is again exactly `Σ nind·mort`
+                        certain = [haz[i] >= 1.0 for i in eachindex(trees)]
+                        n_free = sum(nind[i] for i in eachindex(trees) if !certain[i]; init = 0.0)
+                        hsum = sum(
+                            nind[i] * haz[i] for i in eachindex(trees) if !certain[i]; init = 0.0
+                        )
+                        h̄d = n_free <= 0.0 ? 0.0 : hsum / n_free
+                        for i in eachindex(trees)
+                            f[i] = certain[i] ? 0.0 : 1.0 - h̄d
+                        end
+                    end
+                elseif arm == "S0" || arm == "NP" || arm == "G0"
                     fill!(f, ρ_dec)                               # the shipped uniform thinning
                 elseif arm == "S0h" || arm == "G0h"
                     # THE DECOMPOSITION CONTROL (ADR 0176).  S1 beats S0 for two reasons at once and the
@@ -653,9 +748,19 @@ function main(argv)
                     end
                 end
                 for i in eachindex(trees)
+                    kill_exp += nind[i] * (1.0 - f[i])
+                    kill_var += nind[i]^2 * f[i] * (1.0 - f[i])
                     rand(rng) > f[i] && push!(kills, (trees[i].pft_id, trees[i].treeidx))
                 end
             end
+            # The nominated stems' DENSITY, not their count — `n_kill` beside it is a count, and the
+            # expected-flux identity above is stated on `Σ nind`, so without this column the derivable
+            # self-test would have to ASSUME every stem in a patch carries the same `nind`. It does not
+            # cost a dump scan to measure, so it is measured.
+            killset = Set(kills)
+            kill_nind = sum(
+                t.nind for t in trees if (t.pft_id, t.treeidx) in killset; init = 0.0
+            )
             # Charge the account with what was actually nominated — including 0 on a gated patch-year, where
             # the kill list is empty and so the certain deaths are spared too (harness's own comment below;
             # skill trap 5l).  An unspent budget therefore stays on the account and is available next year.
@@ -681,7 +786,7 @@ function main(argv)
 
             hm, hx, ab, la, fp, ag = feats[5], feats[6], feats[7], feats[8], feats[9], feats[10]
             chm, chx, cab, cla, cfp, cag = ctrain_state(trees)
-            # Written as a joined line, NOT a `@printf`: the row is 31 fields wide and `@printf` needs its
+            # Written as a joined line, NOT a `@printf`: the row is 34 fields wide and `@printf` needs its
             # format as ONE string literal, so a concatenated format is a load-time `ArgumentError` — and
             # `Meta.parseall` does NOT catch it, because macro expansion happens after parsing. A
             # parse-check is not a load-check for this file.
@@ -690,7 +795,7 @@ function main(argv)
                 length(kills), nrec,
                 bm_inc, ge, ws, rzw, hm, hx, ab, la, fp, ag,
                 chm, chx, cab, cla, cfp, cag,
-                n_age1, budget, ρ_dec, get(acct, patch, 0.0),
+                n_age1, budget, ρ_dec, get(acct, patch, 0.0), haz_exp, kill_nind, kill_exp, kill_var,
             ]
             println(
                 log,
