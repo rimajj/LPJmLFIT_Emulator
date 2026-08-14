@@ -2085,3 +2085,50 @@ a shape statement the scalar could not make (ADR 0187's shape-vs-level rule, sec
 removes composition *within* the reference's range and is blind to a tail beyond it, which is why
 matching on height removed LESS of the excess than matching on age for the same arm and the same data.
 Say so with any matched number that leans on the extreme bin.
+
+## §17 — DERIVE THE NULL FOR EVERY STATISTIC YOU QUOTE, NOT JUST THE BLESSED ONE; AND A SELF-NORMALIZED STATISTIC OVER A FEEDBACK TRAJECTORY IS NOT ITS OWN NULL (ADR 0242)
+
+Two traps from the session that finally closed the rung-2 mortality operator. Both are general.
+
+**(a) The null must be computed for every number you put in a table.** §14 already says to run the null
+for the blessed statistic. ADR 0242 quoted four statistics of the warming response — slope, `r`, RMSE and
+mean bias — and **`r` turned out to have no power at all: the do-nothing null scores 0.917 against the
+arm's 0.946.** The slope (1.150 vs 2.320) and the RMSE (1.116 vs 5.448 stems) discriminate decisively.
+Had the null only been run on the blessed statistic, `r = 0.946` would have gone into an ADR as evidence.
+**Compute the null in the same pass, for every column, and delete the columns it also passes** — or keep
+them and print the null's value beside them, never alone.
+
+**(b) A statistic normalized by a quantity that responds to its own numerator is biased, and the tell is
+a mean shift with a UNIT variance.** A gate on a stochastic operator compared a realized total against
+its own implied mean, standardized by the exactly-known variance:
+`z = (realized − implied)/sqrt(Σ variance)`. Per patch-year the numerator is a martingale — exact,
+zero-mean, no approximation. Pooled over a leg it came out at **+4.47** with an unbiased draw, because
+the DENOMINATOR is negatively correlated with the numerator through the trajectory: a leg that removes
+more than implied carries a smaller stand afterwards, so its later variance terms shrink and the positive
+residual is amplified while a negative one is damped. Three diagnostics, in the order that costs least:
+
+1. **Look at the second moment.** Per-leg `z` had sd **0.992** — a unit sd says the variance formula is
+   right and only the mean is shifted, which immediately rules out an arithmetic error in the variance.
+2. **Decompose along the axis the feedback acts on.** The effect grew monotonically down the leg (+1.02 in
+   the first decade, +3.95 in the seventh). Feedback has a time signature; a coding bug usually does not.
+3. **FREEZE THE FEEDBACK AND RE-DRAW.** Take the trajectory's own states exactly as the reference produced
+   them, hold them fixed, and re-run only the stochastic step many times. The implied total is then a
+   CONSTANT and the Monte-Carlo mean is unbiased with no feedback anywhere. Measured **−0.0585 %,
+   z = −0.83** ⇒ the draw was fine. Working example: `scripts/diagnose_rung2_rate_draw_replay.jl`.
+
+⚠ **Do not respond by loosening the clause** (§ADR 0187's rule): keep it, print it, report it as failing,
+and carry the gate on a statistic the normalizer cannot distort — here the plain RATIO. ⚠ **And do not
+invent a second clause on the same distorted statistic**: a follow-up clause on `sd(z_leg)` being within
+0.25 of 1 failed for exactly the same reason (its second moment is not derivable under feedback either),
+which is §5f's "derive the sampling distribution before choosing a tolerance" biting twice in one hour.
+Disclose both additions as post-hoc rather than presenting them as the original design.
+
+**Bonus, same session, cheap and reusable:** a replay that reproduces the *logged* outcome of a
+stochastic step row for row is the cheapest IDENTIFICATION check available — reproducing 2025 of 2025
+patch-years' kill counts simultaneously proved that the state file being read was the state the operator
+actually saw AND that the ported hazard equals the reference model's own, without a separate experiment
+for either.
+
+⚠ **State which POPULATION a horizon or level column is on.** In the same ADR an arm's whole-roster
+horizon read 0.971× while the population it was judged on fell 98.5 % — it had converted the stand to
+saplings. A "the total didn't collapse" column can be true and completely misleading at the same time.
