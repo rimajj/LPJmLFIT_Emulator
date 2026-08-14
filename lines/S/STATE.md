@@ -344,9 +344,13 @@ rather than a request to flip now.
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-14, ADR 0242 is ON `main`.** (Merge shas pinned by the merging session below.)
-> The previous merge was ADR 0241: `d9ebf780`..`6a1aadd2` (collation `6a1aadd2`, branch sha `4aba3ee3`);
-> before that ADR 0240: `221c726a` (collation `c6289ee6`, branch sha `512f4a03`).
+> **LAST MERGE — 2026-08-14, ADR 0242 is ON `main`.** Merge commit `52f38396`, changelog collation
+> `16961c06`, branch sha `55ab3799`. **Both gates the diff triggers are green on `16961c06` — `format`
+> (Runic; it fired because the diff touches two `scripts/**.jl`) and `uncollated fragments`.** The merge
+> commit itself shows no check-runs, which is correct and path-filtered — the newest `main` sha is the one
+> that carries a verdict (ADR 0090). The previous merge was ADR 0241: `d9ebf780`..`6a1aadd2` (collation
+> `6a1aadd2`, branch sha `4aba3ee3`); before that ADR 0240: `221c726a` (collation `c6289ee6`, branch sha
+> `512f4a03`).
 >
 > # 🟢 THIS SESSION (2026-08-14) — ADR 0242: THE RATE OPERATOR MEETS THE CRITERION. The five-ADR hunt for the per-stem mass excess is OVER.
 >
