@@ -114,3 +114,34 @@ Two constraints the obvious design gets wrong: a GitHub runner is **not** the cl
 **ratio measured inside the same job** (arm F at `nlambda=25` vs `nlambda=1`) rather than an absolute
 core-s figure; and the pinned `_t8` artifacts (180 MB on `/p/tmp`) are unreachable from a runner, so the
 CI arm must be **F or F+E**, never S+F+E.
+
+## ⚠ A HARNESS LABEL IS NOT EVIDENCE THE ARM RAN — CHECK THE ARM'S OWN SWITCH (line M's ask, ADR 0084 §1; 2026-08-14)
+
+This is ADR 0048's *"prove the thing you were testing actually ran"* applied to a benchmark, and on this
+arm it has now fired **twice**, which is why it is a standing check rather than an anecdote.
+
+ADR 0093's harness printed `TOTAL coupled S+F+E` while calling `run_coupled_cell` with its **`slow` kwarg
+left at the `nothing` default** — i.e. no Component S in the loop at all. The label was the only evidence
+the arm existed, and it was wrong: the published headline (**3.8× slower than the C**) was an F+E number
+wearing an S+F+E label, and the real figure is **4.62×**. Nothing detected it for ~40 sessions, because a
+benchmark has no oracle — an arm that silently does less work returns a *better* number and looks like
+success.
+
+**So, for every arm in a timing table, assert the arm from the inside, not from its name:**
+
+* **A defaulted-off component is the failure mode.** Grep the harness for the component's own switch
+  (`slow=`, `energy=`, `per_pft_params=`, a `nothing` default) and assert it is populated — `@assert
+  fc.slow !== nothing` beside the timing call costs nothing.
+* **Assert a quantity only that arm can produce.** S+F+E must move a count/trait the F+E arm cannot touch;
+  if arm S+F+E and arm F+E return the *same* number for such a quantity, one of them is mislabelled. This
+  is the cheap oracle a benchmark otherwise lacks.
+* **Publish the per-arm cost SHARE, not just the totals.** ADR 0084's `S = 5.0–22.1 %` is what makes a
+  zero-cost S arm visible at a glance; a table of totals hides it.
+* **Sanity-check the ratio between arms.** Two arms whose totals agree to a fraction of a per cent are
+  probably the same arm run twice.
+
+⚠ **And the corollary for the C side of any ratio: use the MARGINAL rate, not the whole-process wall time.**
+The same ADR corrected a second defect in the same published number — dividing the C's total wall time by
+cell-years charges start-up, restart read and I/O to the physics. Run two lengths and difference them
+(`scripts/bench_speed_gate_c.sh` does exactly this). Both corrections widened the gap, so the direction of
+a harness error is not predictable — do not assume a sloppy baseline flatters the incumbent.
