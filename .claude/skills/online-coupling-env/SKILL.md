@@ -1,6 +1,6 @@
 ---
 name: online-coupling-env
-description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the eight traps that each cost a failed job: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
+description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the nine traps that each cost a failed job or a wrong verdict: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
 ---
 
 # online-coupling-env — SpeedyWeather + Terrarium on this cluster
@@ -14,7 +14,7 @@ cd /p/tmp/jamirp/esm_online_coupling
 ./sbatch_coupling.sh <O-tag> <script.jl>      # -> logs/<tag>.<jobid>.out on shared /p
 ```
 
-## The eight traps (each one cost a failed job)
+## The nine traps (each one cost a failed job, or a wrong verdict)
 
 1. **Julia 1.10.0 CANNOT build this stack — use `/p/system/packages_rhel9/tools/julia/1.10.10/bin/julia`.**
    On 1.10.0, Pkg's extension resolution dies with `KeyError: key "KernelAbstractions" not found`
@@ -94,9 +94,39 @@ cd /p/tmp/jamirp/esm_online_coupling
    cannot be told apart from a genuinely drier equilibrium by inspection: the soil column draining, *and*
    **SpeedyWeather's own precipitation climatology establishing from its default initial state**. The only
    honest test is to run two lengths (e.g. 30 d and 90 d) and check the distribution has **stopped moving**
-   before quoting it. Shrinking the column does *not* buy speed: `[VERIFIED 2026-08-05, job 1706597]` the
+   before quoting it — ⚠ **but that check is NOT SUFFICIENT ON ITS OWN; see trap 9. A clipped diagnostic
+   stops moving whether or not the physics converged, and reading "stopped moving" as "converged" is exactly
+   how O3b nearly reported a bogus training mismatch to line S.** Shrinking the column does *not* buy speed: `[VERIFIED 2026-08-05, job 1706597]` the
    19.5 m column still costs **~99 s per simulated day** (25 TiB allocated, 47 % GC over 30 days) — the RRE
    path is allocation-bound, not depth-bound, so budget ~10 h per simulated year regardless of `Δz_max`.
+
+9. **`plant_available_water` is CLIPPED AT BOTH ENDS, so a vegetation-free run reports a 10-level STEP
+   FUNCTION and it looks exactly like a converged distribution.** `FieldCapacityLimitedPAW` is
+   `W = min(max((θw−θwp)/(θfc−θwp), 0), 1)`: a layer at or above field capacity reports exactly `1.0`, one at
+   or below wilting point exactly `0.0`, **regardless of how much water is actually there**. So when every
+   root-zone layer sits at a clamp, the thickness-weighted root-zone mean can only take the `nlayer+1` values
+   of the cumulative-thickness ladder `ladder[m] = (Σ top m thicknesses)/(total)` — one per wetting-front
+   position. `[VERIFIED 2026-08-14, jobs 1706597 + 1706979, ADR 0085]` **94.0 % of the 1987 land columns lie
+   exactly on that ladder** (|Δ| < 1e-5), 90 % on just **four** front positions, 47.9 % bone dry, **90.8 %
+   bit-identical across 60 extra simulated days**, whole-column saturation +0.070 %. The 30 d and 90 d
+   quantiles agreed to **four significant figures** — which trap 8's two-lengths rule reads as "converged".
+   It was not; the diagnostic was saturated.
+   **Why it happens: `vegetation = nothing` (forced by trap 5) removes transpiration, and transpiration is
+   the process that POPULATES the informative `(θwp, θfc)` band** — the only other sinks are top-layer
+   evaporation and gravity drainage, which drive layers *to* the clamps. Compounded by a narrow SURFEX window
+   (`fc − wp ∈ [0.052, 0.089]` volumetric ⇒ a layer crosses the whole informative range on ~7 % water
+   change). The dominant levels match the ladder measured **from the surface down**, i.e. a *stalled
+   infiltration front*, not drying from above.
+   **Always run the check before quoting any PAW distribution** (post-hoc, no simulation, ~1 s):
+   ```bash
+   python3 scripts/online_coupling/diagnose_paw_clamping.py \
+       /p/tmp/jamirp/esm_online_coupling/terrarium_soilmoist_candidates_{A,B}.csv   # exit 1 = CLAMPED
+   ```
+   **A `CLAMPED` verdict means the comparison is VOID, not that the model is dry** — do not score those
+   quantiles against LPJmL's `soilmoist_ye` and do not report a train/inference shift to line S. The
+   generalisation, now in `residual-diagnosis`: checking the *reference* basis is not enough, **also confirm
+   the measured quantity is not saturated at its own clamps** — no statistic computed on a clipped field can
+   tell the two apart, only the structural ladder test or a cross-run bit-identity count.
 
 ## The coupling architecture (verified from source, not docs)
 

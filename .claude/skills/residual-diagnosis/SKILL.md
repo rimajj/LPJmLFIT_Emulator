@@ -2085,3 +2085,51 @@ a shape statement the scalar could not make (ADR 0187's shape-vs-level rule, sec
 removes composition *within* the reference's range and is blind to a tail beyond it, which is why
 matching on height removed LESS of the excess than matching on age for the same arm and the same data.
 Say so with any matched number that leans on the extreme bin.
+
+## ⚠ CHECK THAT THE MEASURED QUANTITY IS NOT SATURATED AT ITS OWN CLAMPS — A CLIPPED DIAGNOSTIC IS INDISTINGUISHABLE FROM A CONVERGED ONE (line O, 2026-08-14, ADR 0085)
+
+§0's basis discipline checks **the reference**. This is its mirror image on **the arm's own variable**, and
+it defeats a two-run convergence test — the standard remedy — without leaving any trace in the statistic.
+
+Line O compared the online coupled soil-moisture distribution against the offline training reference. The
+reference basis was *correct* (the live year-end root-zone table, not the retired porosity-normalised one —
+the trap §0 exists to catch, and it had already been caught). A convergence check was **pre-registered**:
+*"if the 90-day distribution agrees with the 30-day one, the run has converged and the gap is real; if it is
+drier again, it is still draining."* The 90-day run reproduced the 30-day quantiles **to four significant
+figures**, firing the "converged ⇒ the 2.4–4.6× dry gap is real" branch — whose consequence was to report a
+train/inference mismatch to another line, i.e. a retrain of two learned artifacts on a new basis.
+
+**The disjunction was incomplete.** The variable was `min(max((θ−θwp)/(θfc−θwp), 0), 1)` — **clipped at both
+ends** — so a layer at or above field capacity reports exactly `1.0` and one at or below wilting point exactly
+`0.0`, *independently of how much is actually there*. When every layer is at a clamp, the thickness-weighted
+mean can only take the `nlayer+1` values of the cumulative-thickness ladder `(Σ top m thicknesses)/total`, one
+per front position. Measured: **94.0 %** of land columns sat exactly on that ladder (|Δ| < 1e-5), 90 % on just
+**four** levels, 47.9 % at exactly 0, and **90.8 % were bit-identical across 60 extra simulated days**. The
+distribution had stopped moving because the *instrument* was saturated, not because the physics had settled.
+
+**The three checks, cheapest first — all post-hoc, none needs a new run:**
+
+1. **Count the distinct values.** A continuous field over ~2 000 samples should not have 59. A handful of
+   levels carrying 90 % of the mass is the signature.
+2. **Build the lattice the clamps imply and test membership.** If the statistic is a weighted mean of
+   per-element values that clip, enumerate the reachable values under all-elements-clamped and count how many
+   samples land on one. This is the decisive test, and it is arithmetic, not simulation.
+3. **Count bit-identical samples across two run lengths.** Not "did the quantiles move" — *how many individual
+   samples are unchanged to 1e-12*. A PDE integrated 60 more days cannot leave 91 % of its output bit-identical
+   unless that output is clipped.
+
+**Then ask what populates the informative range**, because the answer is usually a process you switched off.
+Here the run carried no vegetation (forced by an upstream assertion), and transpiration is the *only* sink that
+removes water from the middle of the column — evaporation and gravity drainage both drive layers **toward** the
+clamps. So the disabled component was not merely a missing feedback: **it was the process that gives the
+measured quantity any range to vary over.** Generalisation: before scoring a variable in a reduced
+configuration, ask which of the disabled processes is the one that keeps that variable off its bounds. If the
+answer is "the one I disabled", the comparison is void, not merely noisy — and **"void" is the honest verdict,
+not "the model is biased"**.
+
+⚠ **A clipped variable can still be the right variable.** The fix is not to substitute a differently
+normalised quantity (that reintroduces the definitional mismatch §0 rejects); it is to re-gate the comparison
+until the state populates the range. Pre-register that re-entry gate — a property of the *run* (e.g. "< 50 % of
+samples fully clamped", "column storage moves > 1 %"), never of the answer — in the same record, before the arm
+exists. Ready-made instance: `scripts/online_coupling/diagnose_paw_clamping.py` exits non-zero on `CLAMPED`,
+so it gates rather than informs.
