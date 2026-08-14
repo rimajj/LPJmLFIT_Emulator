@@ -1203,3 +1203,41 @@ Note the run-level conclusion is `success` even with `test (pre)` red, because t
 *which* were green. **Prefer `/actions/runs/<id>/jobs` for polling and use `check-runs` only for the
 initial "which gates fired at all?" question**, where it is fine (it lists the runs promptly; it is the
 terminal transition it is slow to publish).
+
+## ⚠ A DUPLICATE SECTION NUMBER ARRIVES VIA THE SIBLING'S MERGE, NOT VIA YOUR CONFLICT — SO "KEEP BOTH" NEVER SEES IT (line M, 2026-08-14)
+
+The §"TWO LINES APPENDING TO THE SAME SHARED SKILL FILE" rule above is right and it has a blind spot that
+fired the very next session. Keep-both resolves the **textual** conflict; it cannot resolve a **semantic**
+one, and a numbered heading is semantic. Worse, the collision usually is *not* in your conflict hunk at all:
+
+* line S appended a section numbered **`§17`** to `residual-diagnosis` and merged it to `main`;
+* `§17` was already taken (line M, ADR 0138), and `§18` too;
+* so **`main` carried two `§17`s**, with a clean history and no conflict marker anywhere;
+* my own rebase conflict was 200 lines further down, between S's block and mine — resolving it correctly,
+  keeping both sides, left the duplicate completely untouched.
+
+**Why it matters more than it looks.** Every cross-reference to that number becomes ambiguous, in both
+directions: the sibling's ADR cites `§17` meaning theirs, and this repo's runbook, handoffs and my own ADRs
+cite `§17` meaning the day-count section. Nothing breaks, nothing is red, and the two meanings drift.
+
+**The one-second prevention, and it is the whole fix — do this BEFORE appending, every time:**
+
+```bash
+grep -n "^## §" .claude/skills/<skill>/SKILL.md | tail -1     # → the last number actually in use
+```
+
+Pick the next one. Do not infer it from what you remember, and do not infer it from your own line's last
+section — the numbers are shared across all four lines and a sibling may have taken yours an hour ago.
+
+**When you find a duplicate on `main` (you are the one merging, so you are the integrator for that moment):**
+
+- **Renumber the NEWCOMER, keep the incumbent's number.** The incumbent has been citable for longer, and
+  in this case the incumbent's citations were already in `CLAUDE.md` and two ADRs.
+- **Make the numbering match FILE ORDER while you are there** — if the newcomer physically precedes your
+  own new section, give it the lower number and take the higher one yourself. Costs one extra heading edit
+  and stops the next reader assuming the file is out of order.
+- **Touch the heading line ONLY.** `CLAUDE.md` §9 makes these skills append-only and forbids rewriting
+  another line's section; a digit in a heading is the most you should do, and say so explicitly.
+- **Then tell the sibling, in their `STATE.md`, that their ADR may now carry a stale citation — and do not
+  edit their ADR.** Renumbering silently is how the stale citation survives; the note is the point of the
+  exercise, not the renumber.
