@@ -1203,3 +1203,30 @@ Note the run-level conclusion is `success` even with `test (pre)` red, because t
 *which* were green. **Prefer `/actions/runs/<id>/jobs` for polling and use `check-runs` only for the
 initial "which gates fired at all?" question**, where it is fine (it lists the runs promptly; it is the
 terminal transition it is slow to publish).
+
+### ⚠ `?head_sha=` NEEDS THE **FULL** 40-CHAR SHA — AND A SHORT SHA'S `0 runs` IS INDISTINGUISHABLE FROM ADR 0090's LEGITIMATE "NO GATE TRIGGERED" (line O, 2026-08-14)
+
+`GET /actions/runs?head_sha=<sha>` does **no** prefix matching: pass the short sha `git log --oneline`
+printed and it returns `{"total_count": 0, "workflow_runs": []}` — **HTTP 200, no error, empty list**.
+(This is the unexplained symptom already noted earlier in this skill as *"`?head_sha=<sha>` returned 0
+results here; list by branch instead"* — the cause is the short sha, and the endpoint is fine.)
+
+**Why this is worse here than in a normal repo:** ADR 0090 makes "this commit legitimately triggered **no**
+gates" the *common* case, and this skill correctly tells you to merge such a commit immediately. So an
+empty run list is a result you are *primed to accept*. With a short sha you get that exact answer for a
+commit whose gates **did** run — and might merge on an unread (or red) verdict.
+
+```bash
+FULL=$(git -C "$INT" rev-parse HEAD)     # or rev-parse <short-sha> — never paste the short form
+curl -s -H "Authorization: token $TOKEN" \
+  "https://api.github.com/repos/$R/actions/runs?head_sha=$FULL" | python3 -c "
+import json,sys
+rs=json.loads(sys.stdin.read()).get('workflow_runs',[])
+print(f'{len(rs)} run(s)')
+[print(f\"  {r['name']:12s} {r['status']}/{r['conclusion']}\") for r in rs]"
+```
+
+**Disambiguate an empty list before believing it** — always `rev-parse` first, and cross-check against the
+expected gate set you derived from `git diff --name-only` (§ the path table). If the diff predicts a gate and
+the API says zero runs, the query is wrong, not the CI. `[VERIFIED 2026-08-14: short `22ee0009` → 0 runs; full
+`22ee0009b42acc4e038db0147e54eebb7ad499c5` → the 1 expected `changelog` run, `success`.]`
