@@ -138,6 +138,19 @@ CONTROL run. **ADR 0082** set the direction: the ONLINE config is **ESM-first, v
 not LPJmL-FIT**; Terrarium owns skin temperature + SEB + soil; we own **vegetation** (S, FIT photosynthesis,
 FIT water-limited ET). No LPJmL-FIT physics is online yet.
 
+### 🆕 THIS SESSION (2026-08-14, second session of the day) — **O3b RESOLVED AS *VOID*: THE ONLINE SOIL-MOISTURE DIAGNOSTIC IS CLAMPED, AND THE PRE-REGISTERED CONVERGENCE RULE WOULD HAVE FIRED THE WRONG BRANCH (ADR 0085)**
+
+The one-line version: **the 90-day convergence check passed, and passing it meant nothing.** 90.8 % of land
+columns were **bit-identical** across 60 extra simulated days and **94.0 %** sat exactly on the
+cumulative-thickness ladder that a both-ends-clipped `plant_available_water` can reach — so the field is a
+10-level step function of wetting-front depth, not a moisture distribution. **The "2.4–4.6× too dry" number is
+retired and nothing was reported to line S** (the shift report would have cost S a DRF + copula retrain on a
+bogus basis). Cause: `vegetation = nothing` removes transpiration, which is *the process that populates the
+informative range of the quantity* — not merely a feedback. Full detail in the O3b section below.
+**Cost: zero new simulation** — the whole result came off CSVs already on disk. Deliverables:
+`scripts/online_coupling/diagnose_paw_clamping.py` (exit 1 = CLAMPED, so it gates), ADR 0085, trap 9 in
+`online-coupling-env`, and the mirror-image basis check appended to `residual-diagnosis`.
+
 ### ✅ MERGED AND GREEN — 2026-08-14
 
 `ad29901d` (the work) + `354ff3a9` (an ADR provenance note) + `436166ee` (a `repo-commit` skill capture),
@@ -240,19 +253,90 @@ Top of the line-level profile (Hainich, 53 004 samples, share of **total** runti
 
 ### ▶ WHERE TO PICK UP — in this order
 
-1. **`git log --oneline -3 -- lines/M/STATE.md` and look for M's reply.** If M ticked (a), (c) or (d), that
-   decides whether O may touch `solve_lambda`. **🚫 Until a hand-over is RECORDED, `src/fdiff.jl`,
-   `src/fdiff_smoothops.jl` and `src/components/fast.jl` remain line M's** (CLAUDE.md §9 Gap 1) — M is
-   working inside them right now (ADRs 0135–0138), so an edit from here is a merge conflict in a
-   2 000-line physics file, not a scientific disagreement.
-2. **5d — thread across cells. This is O's, needs nobody, and is untouched.** `EXECUTION_PLAN.md` §4 lists
-   it as "large, no risk": 54 020 cells are embarrassingly parallel and the harness already reports
-   single-core core-seconds, so the speed-up is directly measurable against a committed baseline. It does
-   **not** touch the fenced files — the parallelism lives in the driver.
+0. **✅ Checked 2026-08-14: LINE M HAS NOT REPLIED.** O's hand-over request is intact and unticked at
+   `lines/M/STATE.md:415` (`### 📥 INBOUND FROM LINE O, 2026-08-14`) — verified against `origin/main`, so it
+   survived the rebase. **Do not re-raise it and do not re-word it**; just re-check with
+   `grep -n 'INBOUND FROM LINE O' lines/M/STATE.md` and `grep -n 'INBOUND FROM LINE M' lines/O/STATE.md`.
+   M is mid-flight *inside those very files* (their §0-NEWEST is the ADR 0137 default flip, and ADR 0138
+   landed after), which is a good reason for the silence, not a stalled message.
+   **🚫 So `src/fdiff.jl`, `src/fdiff_smoothops.jl` and `src/components/fast.jl` REMAIN LINE M's**
+   (CLAUDE.md §9 Gap 1) — an edit from here is a merge conflict in a 2 000-line physics file, not a
+   scientific disagreement. The 4.10×-for-−0.03 %-GPP headroom stays unclaimed until M ticks a letter.
+1. **5d — thread across cells. This is O's, needs nobody, and is STILL untouched. It is the top speed item
+   O can actually act on.** `EXECUTION_PLAN.md` §4 lists it as "large, no risk": 54 020 cells are
+   embarrassingly parallel and `scripts/bench_speed_gate.jl` already reports single-core core-seconds, so the
+   speed-up is directly measurable against a committed baseline. It does **not** touch the fenced files — the
+   parallelism lives in the driver/harness, which is O's.
+   ⚠ Keep the **`--threads=1` single-core core-second baseline** as the reference arm; a threaded run reports
+   a smaller *wall* time for the same *core*-seconds, which is exactly the trap the `speed-gate` skill names.
+   Report **both** wall-clock speed-up and core-seconds, and say which is which.
+2. **O3c — the photosynthesis spike — HAS BEEN PROMOTED (ADR 0085).** It is now also the unblocker for O3b,
+   because a transpiration sink is a precondition for the soil-moisture comparison being measurable at all.
+   Recipe fully worked out below and in the design doc §4.
 3. **Extend the harness to the C's own `npatch` sweep** if a patch-count decision is ever needed:
    `scripts/bench_speed_gate_c.sh` takes the cell block, and ADR 0093 §2 already has the C at npatch 1/25/50.
 
-### O3b — **STILL OPEN, and it was NOT worked on this session.** Why: the owner re-tasked line O onto rung 5 (the timing gate + profile) for this session; O3b needs no result from that and is unaffected. Its state below is unchanged and still current — read job **1706979** first, exactly as the previous handoff says.
+### O3b — ✅ **RESOLVED 2026-08-14 (ADR 0085), AND THE ANSWER IS NEITHER OF THE TWO THAT WERE PRE-REGISTERED: THE COMPARISON IS *VOID*, NOT "CONVERGED, GAP REAL". NOTHING WAS REPORTED TO LINE S — CORRECTLY.**
+
+**Job 1706979 (90 d, `RichardsEq`, 19.46 m, exit 0, 8697 s) came back agreeing with the 30-day run to FOUR
+SIGNIFICANT FIGURES** — `q50 0.1085 / q75 0.3376 / q90 0.681 / mean 0.1892`. The previous handoff's
+pre-registered rule reads that as *"converged ⇒ the 2.4–4.6× dry gap is real"*, whose next step was to raise a
+`soilmoist` train/inference shift with line S — i.e. **S retrains the DRF + copula on a version-bumped online
+basis.** ⛔ **That would have been a retrain on a bogus basis. Do not do it.**
+
+**The rule's disjunction was incomplete: a static distribution also means a SATURATED DIAGNOSTIC.**
+`FieldCapacityLimitedPAW` is `min(max((θw−θwp)/(θfc−θwp),0),1)` — **clipped at both ends** — so a layer at or
+above field capacity reports exactly `1.0` and one at or below wilting point exactly `0.0`, whatever the water
+actually is. With every root-zone layer at a clamp the thickness-weighted mean can only take the `nlayer+1`
+values of the cumulative-thickness ladder `(Σ top m thicknesses)/total`, one per wetting-front position.
+
+| measurement | 30 d (1706597) | 90 d (1706979) |
+|---|---|---|
+| land columns **exactly on that ladder** (\|Δ\| < 1e-5) | 92.5 % | **94.0 %** (1867/1987) |
+| distinct root-zone PAW values over 1987 columns | 66 | **59** |
+| mass on the **4** commonest levels | 90.4 % | **90.3 %** |
+| root zone at **exactly 0.0** | 46.4 % | **47.9 %** |
+| **bit-identical** across the 60 extra simulated days | — | **90.8 %** (1805/1987) |
+| whole-column mean saturation over land | 0.240026 | 0.240194 (**+0.070 %**) |
+
+⇒ the field is a **10-level STEP FUNCTION of infiltration-front depth**, 90 % of it on four front positions
+(`m = 0, 2, 5, 8`), and the dominant levels match the ladder measured **from the surface DOWN** ⇒ a *stalled
+front*, not drying from above. **The "2.4–4.6× too dry" figure is RETIRED as a fidelity statement.**
+
+**Mechanism — and the part of it that is ours:** the run is `vegetation = nothing` (forced by trap 5's
+`@assert abs(vpd) > 0`), so the only sinks are top-layer evaporation and gravity drainage, both of which drive
+layers **toward** the clamps. **Transpiration is the process that POPULATES the informative `(θwp, θfc)` band** —
+disabling it did not merely remove a feedback, it removed the quantity's range. Compounded by a narrow SURFEX
+window (`fc − wp ∈ [0.052, 0.089]`, already printed by the ADR 0083 guard ⇒ ~7 % water change crosses the whole
+informative range).
+
+**⇒ O3b IS RE-GATED, NOT ABANDONED, AND LINE O'S OWN ORDER CHANGES: O3c AND O4 NOW COME FIRST.** A transpiration
+sink is a *precondition* for this comparison being measurable, not an independent milestone. Needs nobody else.
+
+**The re-entry gate, pre-registered in ADR 0085 before the arm exists** — re-run the comparison only when
+**both**: the scorer reports `INFORMATIVE` (< 50 % of land columns fully clamped) **and** whole-column mean
+saturation moves > 1 % between two run lengths. Both are properties of the run, not of the answer.
+
+**Run the check before quoting ANY online PAW distribution** (post-hoc, no simulation, ~1 s, exit 1 = CLAMPED):
+```bash
+python3 scripts/online_coupling/diagnose_paw_clamping.py \
+    /p/tmp/jamirp/esm_online_coupling/terrarium_soilmoist_candidates_rre{30,90}_d20m.csv
+```
+Captured as **trap 9** in `online-coupling-env`, and as the mirror-image basis check in `residual-diagnosis`
+(checking the *reference* basis is not enough — also confirm the measured quantity is not saturated at its own
+clamps; no statistic computed on a clipped field can tell the two apart).
+
+**Still true and still needed when O3b re-opens** — the reference basis below is *correct* and was never the
+problem: score against the **LIVE** table only, `tables/cell_year_soilmoist_ye_hist.parquet`, 1 348 400
+cell-years — min 0.0 · q25 0.0 · **q50 0.498** · q75 0.877 · q90 0.9999 · **mean 0.478**; the `swc`-derived
+numbers (q50 0.4635 / mean 0.5075) stay **RETIRED** (porosity-normalized, ADR 0035). Target quantity =
+`root_zone_soilmoist` = the `whcs`-weighted mean over the top **3 layers = 1.0 m** at **year end**
+(`slow.jl:227`). Map `soilmoist` ← layer-mean **`plant_available_water`** (still the right variable — ADR 0082
+§4 is untouched), computed by calling Terrarium's own `compute_plant_available_water` (guardrail 5).
+⚠ Cost, unchanged and still on the critical path: **~99 s per simulated day** even on the 19.5 m column (the RRE
+path is allocation-bound, not depth-bound) ⇒ ~10 h per simulated year. One-horizon simplification: the texture
+is depth-constant, so `θfc − θwp` cancels and `whcs` weighting reduces *exactly* to thickness weighting — do not
+carry that into a multi-horizon stratigraphy.
 
 ### O3a — ✅ DONE (2026-08-05, ADR 0083). Do not redo it.
 
@@ -260,73 +344,6 @@ The online soil is a single `PrescribedSoilHorizon(:soil)` carrying the ground-t
 × `par/soil_20m.js` texture, SURFEX porosity, behind `assert_nondegenerate_soil`.
 Pipeline: `scripts/online_coupling/build_soil_texture_field.py` → `soil_texture.jl::prescribed_texture_soil`.
 `[VERIFIED job 1706262]` clay 0.01–0.58 in the model state, `fc − wp` ∈ [0.0519, 0.0893], PAW no longer ≡ 1.
-
-### O3b (open; see the note above for why it did not move on 2026-08-14) — read job **1706979**, then finish the `soilmoist` comparison
-
-**Nothing measured so far is quotable — both runs are initial-condition artifacts, and they BRACKET the
-reference.** Score against the **LIVE** table only (ADR 0035): `tables/cell_year_soilmoist_ye_hist.parquet`,
-1 348 400 cell-years — min 0.0 · q10 0.0 · q25 0.0 · **q50 0.498** · q75 0.877 · q90 0.9999 · max 1.0078 ·
-**mean 0.478**. The `swc`-derived numbers (q50 0.4635 / mean 0.5075) are **RETIRED** and porosity-normalized
-— scoring against them reintroduces the exact mismatch ADR 0082 §4 rejects. The runtime target is
-`root_zone_soilmoist` = the `whcs`-weighted mean over the top **3 layers = 1.0 m**, at **year end**
-(`slow.jl:227`, re-verified 2026-08-05) — NOT a whole-column mean.
-
-| run | flow | days | column | mean PAW (unweighted / top 2 m) |
-|---|---|---|---|---|
-| 1706262 | `NoFlow` (default) | 2 | 433 m | 0.949 / 0.925 — **the initializer, frozen** (trap 8) |
-| 1706324 | `RichardsEq` | 10 | 433 m | 0.104 / 0.225 — **mid-drainage transient**, not spun up |
-| ~~1706462~~ | — | — | — | **cancelled** mid-flight: it was on the retired 2 m / `swc` basis |
-| 1706597 | `RichardsEq` | 30 | 19.46 m, root zone 0.988 m | **first correct-basis result** — see table below |
-| **1706979** | `RichardsEq` | **90** | 19.46 m | ← **READ THIS FIRST**: the convergence check |
-
-**Where O3b actually stands** (job 1706597, exit 0, 2973 s; water state IS a model result — saturation
-spread over land 0.903, nothing pinned):
-
-| quantile | LPJmL live `soilmoist_ye` | Terrarium root-zone PAW (30 d) |
-|---|---|---|
-| min / q10 / q25 | 0.0 / 0.0 / 0.0 | **0.0 / 0.0 / 0.0** ← exact agreement on the dry tail |
-| q50 | 0.498 | 0.109 |
-| q75 | 0.877 | 0.338 |
-| q90 | 0.9999 | 0.681 |
-| mean | 0.478 | 0.199 |
-
-The **dry tail matches exactly** — the quarter of cell-years at a fully dry root zone, which is the
-distinctive feature of the live reference, is reproduced untuned. The **upper half is 2.4–4.6× too dry**.
-
-**DO NOT report this to line S as a train/inference shift yet.** Two confounds are un-excluded and both
-push the same way: (1) 30 days from a near-saturated column is still draining (mean saturation 0.89 → 0.24);
-(2) SpeedyWeather's own precipitation climatology has only had 30 days to establish. Compare 1706979's
-distribution against the table above — **if they agree, the run has converged and the gap is real; if
-1706979 is drier again, it is still draining** and the spin-up must be sized before anything is claimed.
-Cost measured: **~99 s per simulated day** even on the 19.5 m column (25 TiB alloc, 47 % GC — the RRE
-path's allocation behaviour dominates, not the depth), i.e. ~10 h per simulated year.
-
-Why 1706462 is on the right basis: `ExponentialSpacing(N=30, Δz_min=0.05)` defaults to `Δz_max = 100` =
-a **433 m** column, 20× LPJmL's 20 m, so an unweighted 30-layer mean is dominated by deep permanently
-saturated layers and is **not the same operator** as `slow.jl`'s unweighted mean over 23 layers / 20 m.
-`DZMAX=2.5` ⇒ ≈19.5 m, matching LPJmL, equilibrating ~20× faster, and putting more layers inside the top 1 m.
-(The root-zone measure itself is depth-restricted, so it is insensitive to column depth; the drainage
-timescale and the whole-column contrast are not.)
-**One-horizon simplification:** the texture is depth-constant within a column, so `θfc − θwp` cancels and the
-`whcs` weighting reduces *exactly* to thickness weighting. Do not carry that assumption into a multi-horizon
-stratigraphy.
-
-```bash
-cd /p/tmp/jamirp/esm_online_coupling
-tail -40 logs/O-soiltex-rre20m.1706462.out          # `afterok`-free, so a missing result = the job died
-TIME=03:00:00 PASS="FLOW=rre DAYS=<n> DZMAX=2.5 TAG=<tag>" ./sbatch_coupling.sh O-<tag> diagnose_soilmoist_shift.jl
-```
-
-If 30 days is still draining, **size the spin-up before spending more**: RRE costs ~110 s per simulated day
-on the 433 m column (8.3 TiB alloc, 47 % GC over 10 days); the 20 m column should be far cheaper, but a
-multi-year spin-up is a real budget item and is now on O3b's critical path.
-
-Map `soilmoist` ← layer-mean **`plant_available_water`**, NOT `saturation_water_ice` (porosity- vs
-WHC-normalized = a definitional mismatch, ADR 0082 §4). PAW is computed by calling Terrarium's own
-`compute_plant_available_water` on the coupled state — do not re-derive it (guardrail 5).
-**Then raise the INTEGRATION POINT with line S**: if the distributions differ materially, S's DRF + copula
-must be retrained on Terrarium-derived `soilmoist` as a **version-bumped ONLINE artifact** (never an in-place
-mutation — ADR 0029's S→M contract). `slow.jl`/`drf.jl`/`scripts/*slow*` are line S's exclusive paths.
 
 > **⚠ UPDATE from line S, 2026-07-28 — ADR 0035 (S1d) MOVED BOTH SIDES OF THIS COMPARISON. Read before O3b.**
 > You reached the same insight we did, independently and on the online side: fraction-of-porosity vs
