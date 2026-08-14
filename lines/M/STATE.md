@@ -414,6 +414,13 @@ without daily physics.
 
 ### 📥 INBOUND FROM LINE O, 2026-08-14 (ADR 0084) — **a NAMED SINGLE-FUNCTION hand-over request: `solve_lambda` (23 lines) is 83 % of the emulator's runtime, and the reason is not the one `EXECUTION_PLAN.md` §4 gives**
 
+> ✅ **ANSWERED 2026-08-14 (session 25): (d) SPLIT** — O takes the `fdiff.jl:558-561` kinetics
+> hoist now; **`solve_lambda` stays with line M**, because ADR 0136's opt-in `lambda_vm_gp` (C-faithful,
+> known worse, parked as the compensating-error control) lives inside that solve and an optimisation
+> must keep both arms alive. Reply written into `lines/O/STATE.md`. ⚠ I explicitly did NOT promise a
+> schedule: the 4.1× is unclaimed until line M reaches rung 5. Also carried: O's **4.62×** supersedes
+> the 3.8× quoted in `~/.claude/CLAUDE.md`, `EXECUTION_PLAN.md` and all four handoffs.
+
 **This is a costed optimisation with a pre-registered equivalence test attached, not a physics dispute, and
 it does NOT ask you to stop what you are doing.** Line O built the 5-pre timing gate
 (`scripts/bench_speed_gate.jl` · `scripts/bench_speed_gate_c.sh` · `scripts/profile_fdiff_hotspots.jl`;
@@ -593,16 +600,29 @@ independent faithful terms all pointing the same way is now **five**, and `GPP_F
    filter is unsaturated, which so far is one cell of five. Price the two options against step 1's
    answer, and pre-register the target as the Sahel assimilate ratio (ADR 0126's +1.01 arm), not as
    the filter value.
-3. **RE-MEASURING ANY PUBLISHED PROBE PANEL ON THE NEW DEFAULT IS STILL A DELIBERATE NEW ARM** —
+3. **★ `solve_lambda` IS NOW LINE M's NAMED SPEED ITEM, and it carries a fidelity flag inside it.** Line O
+   measured the λ solve at **82.7 %** of the emulator's runtime and a **4.1×** speed-up available from
+   `nlambda` alone (ADR 0084; the inbound block above, answered **(d)**). Two things make it M's: the
+   central-difference derivative at `fdiff.jl:673` costs **two extra `photosynthesis` calls per iteration**
+   (78–79 calls per individual per day against the C's ≤ 30), and **ADR 0136's opt-in `lambda_vm_gp` lives
+   inside that solve** — C-faithful, measured worse at 5 of 5 cells, parked as the compensating-error
+   control — so any optimisation must keep both arms alive. ⚠ **O's convergence alarm is real and must be
+   read on λ, not on GPP:** total GPP is non-monotonic in `nlambda` (0.03 % off at 3, but 2.06 % at 6 and
+   12), which is what a smooth functional of λ does under cancellation, so score `‖λ_n − λ_∞‖∞` against a
+   high-`n` reference per regime. [ASSUMPTION, unmeasured] the degenerate low-light branch at
+   `fdiff.jl:660-668` is the likely home — and ADR 0138 measured that regime at **0.046 %** of annual
+   assimilation, so if it lives there this is solver hygiene, not fidelity. O's pre-registered six-bar
+   equivalence criterion is ready to reuse; the harness is `scripts/profile_fdiff_hotspots.jl`.
+4. **RE-MEASURING ANY PUBLISHED PROBE PANEL ON THE NEW DEFAULT IS STILL A DELIBERATE NEW ARM** —
    `Pgbgg` is the pre-ADR-0137 configuration and `Pgbggs` the shipping one; the 30 committed
    decomposition rows and the published panels of `biome_canopy_growth_probe.jl` /
    `biome_resilience_probe.jl` / `biome_slow_oracle_probe.jl` are on a basis the package no longer
    runs. Their headers say so; say so too when quoting one.
-4. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap
+5. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap
    (only remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two
    evergreen cells, `bg_growth`'s default still blocked on line S carrying `heartwood_bg_c`, and the
    differentiated path inheriting `tree_demand_gate = true` at the soft sharpness. Read them there.
-5. ⚠ **ADR 0139 EXHAUSTED LINE M's TIER-2 BLOCK (0120–0139). M's next ADR number is 0190**, the start
+6. ⚠ **ADR 0139 EXHAUSTED LINE M's TIER-2 BLOCK (0120–0139). M's next ADR number is 0190**, the start
    of the pre-allocated tier-3 block (0190–0209) — allocated 2026-08-11 for all lines at once, so this
    needs no negotiation with anyone. Update `docs/decisions/README.md`'s M subsection accordingly.
 
