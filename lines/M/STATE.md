@@ -414,6 +414,13 @@ without daily physics.
 
 ### 📥 INBOUND FROM LINE O, 2026-08-14 (ADR 0084) — **a NAMED SINGLE-FUNCTION hand-over request: `solve_lambda` (23 lines) is 83 % of the emulator's runtime, and the reason is not the one `EXECUTION_PLAN.md` §4 gives**
 
+> ✅ **ANSWERED 2026-08-14 (session 25): (d) SPLIT** — O takes the `fdiff.jl:558-561` kinetics
+> hoist now; **`solve_lambda` stays with line M**, because ADR 0136's opt-in `lambda_vm_gp` (C-faithful,
+> known worse, parked as the compensating-error control) lives inside that solve and an optimisation
+> must keep both arms alive. Reply written into `lines/O/STATE.md`. ⚠ I explicitly did NOT promise a
+> schedule: the 4.1× is unclaimed until line M reaches rung 5. Also carried: O's **4.62×** supersedes
+> the 3.8× quoted in `~/.claude/CLAUDE.md`, `EXECUTION_PLAN.md` and all four handoffs.
+
 **This is a costed optimisation with a pre-registered equivalence test attached, not a physics dispute, and
 it does NOT ask you to stop what you are doing.** Line O built the 5-pre timing gate
 (`scripts/bench_speed_gate.jl` · `scripts/bench_speed_gate_c.sh` · `scripts/profile_fdiff_hotspots.jl`;
@@ -516,7 +523,110 @@ Reply as an `INBOUND FROM LINE M` block in `lines/O/STATE.md`, or just tick a le
 blocked** — the timing gate and the profile are done and merged either way.
 
 
-### 0-NEWEST. ✅ DONE 2026-08-13 (session 24) — **THE `gp_stand_leafon_basis` DEFAULT FLIP IS LANDED
+### 0-NEWEST. ✅ DONE 2026-08-14 (session 25) — **THE LAST ITEM ON THE PHOTOSYNTHESIS SHORTLIST IS PRICED
+### AND STRUCK (ADR 0139). THE WATER LIMITER IS A NEAR-STEP, SO IT IS SATURATED AND ITS 21.7-POINT
+### PARAMETER ERROR IS INERT — AT FOUR OF FIVE CELLS. AT THE SEMI-ARID CELL IT IS BINARY. NO CODE CHANGE**
+
+**Start here.** Item (c) — "the phenology trajectory", the only survivor of ADR 0135's shortlist after
+(a) closed with ADR 0136 and (b) with ADR 0138 — is now measured, and it is **not** the compensating
+error. Nothing was ported and no flag was added. Gates: format green (152 files), docs green locally
+(`logs/M-docs0139b.1796563.out`, exit 0, 5 mermaid fences — it watches `src/**` and never runs on a
+line branch), CI-faithful suite `logs/M-adr0139.1796560.out`. Full record: ADR 0139.
+
+**1. THE ALGEBRA DID MOST OF THE WORK, AND IT IS THE REUSABLE PART.** The C's water-limiter inflection
+is the stem's own sampled `minwscal` trait (`phenology_gsi.c:64-66`, the live `individual` branch),
+and **the slope is per PERCENTAGE point while the trait is a FRACTION** ⇒ exponent `sl·100·(w−m)` with
+`sl` 5.0–5.24 for all seven trees, so the 10–90 % transition width is `2·ln(9)/(100·sl)` ≈ **0.0084**
+in water availability. **The limiter is a near-step at `w = m`**, which means the inflection's *value*
+is inert and only which side of it `w` falls on matters. That reframing is what made the whole item a
+seconds-long parquet scan instead of an arm.
+
+**2. F's PINNED INFLECTION IS THE PAR-FILE INTERVAL `"median"`, AND FOR THREE OF SEVEN TREE PFTs THAT
+VALUE EXCEEDS THE INTERVAL'S OWN `high`.** `pft_phenparams`' docstring said "minwscal_med·100"; it is
+`100 ×` the par file's `"median"` field, and ADR 0047's trap applies — ids **3 (beech), 5 and 6
+(larch)** declare a `"median"` above their own `high`, so it cannot be a central value. Measured
+against the C's own per-stem output it is **+9.1 / +12.5 / +21.7 percentage points** too high (id 4
++17.9; ids 1/2/0 are −8.8/−3.7/−6.9), stable on both scenario legs. **And it changes the filter's
+output by 0.0000 at 12 of 13 (cell, PFT) groups**, because the filter is saturated fully OPEN there.
+
+**3. ★ THE ONE PLACE IT IS NOT INERT, AND IT IS NOT A REFINEMENT — IT IS BINARY.** At
+**`semiarid_sahel`** the realised water availability (0.636 historic, 0.662 ssp370) falls **between**
+F's inflection (0.60) and the C's realised median (0.669), so **F's water filter reads 1.0000 where
+the C's reads 0.0000** — the whole of leaf display, at the cell ADR 0126 §5 measured as worth **+1.01**
+on the assimilate ratio from phenology alone. Robust in direction on both counts that could weaken it:
+`wscal_mean` OVERSTATES `w` (it is 1 on a no-demand day, ADR 0051) so the true straddle is **wider**,
+and the beech-default arm (20.96) is further open still. ⚠ **This is a straddle, not a magnitude** — it
+has NOT been converted into GPP, and publishing a fix off it would be the ADR-0105 error.
+
+**4. ITEM (c2)'s PREMISE IS REFUTED, AND THE HANDOFF THAT CARRIED IT WAS MINE.** "Soil temperature lags
+air substantially" was an assumption stated as a mechanism in two consecutive handoffs. Measured
+against the C's own daily `soiltemp1` (= `update_daily.c:200`'s `patch->soil.temp[0]`, five fresh
+single-cell runs): best-fit lag **0 days** and |mean(soil−air)| **≤ 0.13 °C at four of the five cells**
+— F passing `f.temp` into that slot is **exact** there. `boreal_siberia` differs but **not by a lag**:
+a **+4.40 °C** mean offset with sd 10.8 (snow insulation in winter, thermal damping in summer), which
+flips the gate on 10.5 % of days carrying **18.7 %** of annual light. That bound is credible only if
+the water filter would have been CLOSED on those days — and §2's saturation panel measures it pinned
+OPEN there (`w` ≈ 0.69 against an inflection ≈ 0.13). **Closed: no port, no flag** (guardrail 4's
+corollary, same disposition as ADR 0138). ⚠ **The gate's sign is NOT one-signed** — net light boreal
++18.7, Hainich +2.4, **Iberia −1.5** — so the prediction recorded in the harness before the run
+(spring-type dominates) **fails at one of three live cells**.
+
+**5. ⚠ UNMEASURED, AND IT IS THE ONE THING THAT COULD OVERTURN §4: the realised DAILY water
+availability.** Every saturation statement above is on the **annual-mean** basis of `wscal_mean`, and a
+daily minimum can dip into a band only 0.0084 wide that an annual mean cannot see. A growing-season
+back-out was attempted and **refuted itself** — it returned `w_gs` = **−1.64** for a quantity bounded
+in [0,1], i.e. the assumed no-demand days are not scoring 1 — so the proxy is unusable and the honest
+route is F's own rollout. See the next action.
+
+**6. ⇒ ITEM (c) IS STRUCK AS *THE* COMPENSATING ERROR.** It binds at one cell, and **in the direction
+that makes F's over-production LARGER** (F over-displays leaf ⇒ over-absorbs). So the count of
+independent faithful terms all pointing the same way is now **five**, and `GPP_F/GPP_C` remains a
+**LOWER BOUND** on F's tree-photosynthesis error. The shortlist is empty; the residual is not explained.
+
+▶ **WHAT TO DO NEXT — in order.**
+
+1. **CLOSE DAMPENER 2 — one Julia probe, and it decides two open items at once.** Drive the real
+   `rollout_daily_canopy` at the five cells on the committed forcing + individuals and record the
+   **daily** `fl.wscal` series, then ask: (a) does any cell's daily `w` enter the 0.0084-wide band
+   around its own inflection, and on how much light? (b) at `boreal_siberia`, is the water filter ever
+   closed on a gate-flipped day — which is the only way §4's 18.7 % survives? Feeding the C's own daily
+   `soiltemp1` needs **no `src` change**: compute the phenology arms outside with the real
+   `phenology_gsi_step` on the recorded `w` series and pass them through the existing `phens` crutch
+   (first-order — it drops the `phen`→`w` feedback; say so). The oracle is already on disk at
+   `/p/tmp/jamirp/esm_land_daily/daily_2000_2019_M_soiltemp_*_seed1/output/d_soiltemp1.nc`.
+2. **THEN decide the Sahel straddle, and it is a genuine fork — do NOT just wire the per-stem value.**
+   The realised median is **cell-dependent for id 0** (0.669 Sahel vs 0.560 Amazon), so no global
+   per-PFT constant is right everywhere; but the per-stem wiring is only worth its cost where the
+   filter is unsaturated, which so far is one cell of five. Price the two options against step 1's
+   answer, and pre-register the target as the Sahel assimilate ratio (ADR 0126's +1.01 arm), not as
+   the filter value.
+3. **★ `solve_lambda` IS NOW LINE M's NAMED SPEED ITEM, and it carries a fidelity flag inside it.** Line O
+   measured the λ solve at **82.7 %** of the emulator's runtime and a **4.1×** speed-up available from
+   `nlambda` alone (ADR 0084; the inbound block above, answered **(d)**). Two things make it M's: the
+   central-difference derivative at `fdiff.jl:673` costs **two extra `photosynthesis` calls per iteration**
+   (78–79 calls per individual per day against the C's ≤ 30), and **ADR 0136's opt-in `lambda_vm_gp` lives
+   inside that solve** — C-faithful, measured worse at 5 of 5 cells, parked as the compensating-error
+   control — so any optimisation must keep both arms alive. ⚠ **O's convergence alarm is real and must be
+   read on λ, not on GPP:** total GPP is non-monotonic in `nlambda` (0.03 % off at 3, but 2.06 % at 6 and
+   12), which is what a smooth functional of λ does under cancellation, so score `‖λ_n − λ_∞‖∞` against a
+   high-`n` reference per regime. [ASSUMPTION, unmeasured] the degenerate low-light branch at
+   `fdiff.jl:660-668` is the likely home — and ADR 0138 measured that regime at **0.046 %** of annual
+   assimilation, so if it lives there this is solver hygiene, not fidelity. O's pre-registered six-bar
+   equivalence criterion is ready to reuse; the harness is `scripts/profile_fdiff_hotspots.jl`.
+4. **RE-MEASURING ANY PUBLISHED PROBE PANEL ON THE NEW DEFAULT IS STILL A DELIBERATE NEW ARM** —
+   `Pgbgg` is the pre-ADR-0137 configuration and `Pgbggs` the shipping one; the 30 committed
+   decomposition rows and the published panels of `biome_canopy_growth_probe.jl` /
+   `biome_resilience_probe.jl` / `biome_slow_oracle_probe.jl` are on a basis the package no longer
+   runs. Their headers say so; say so too when quoting one.
+5. **Items 3–6 of §0-PREV-21's list are unchanged and still open** — `boreal_siberia`'s allocation gap
+   (only remaining named suspect: `reprod_cost`), the relocated leaf-recycle upper bound at the two
+   evergreen cells, `bg_growth`'s default still blocked on line S carrying `heartwood_bg_c`, and the
+   differentiated path inheriting `tree_demand_gate = true` at the soft sharpness. Read them there.
+6. ⚠ **ADR 0139 EXHAUSTED LINE M's TIER-2 BLOCK (0120–0139). M's next ADR number is 0190**, the start
+   of the pre-allocated tier-3 block (0190–0209) — allocated 2026-08-11 for all lines at once, so this
+   needs no negotiation with anyone. Update `docs/decisions/README.md`'s M subsection accordingly.
+
+### 0-PREV-24. ✅ DONE 2026-08-13 (session 24) — **THE `gp_stand_leafon_basis` DEFAULT FLIP IS LANDED
 ### (ADR 0137). LINE S SAID GO; ALL 23 ASSERTIONS DISCHARGED; ONE OF THEM TURNED OUT TO BE A SCIENCE FINDING**
 
 **MERGED to `main`** as `ba17f3e4` (merge commit `f1b4705e`; changelog collation `6894c629`). Green on

@@ -2086,7 +2086,7 @@ removes composition *within* the reference's range and is blind to a tail beyond
 matching on height removed LESS of the excess than matching on age for the same arm and the same data.
 Say so with any matched number that leans on the extreme bin.
 
-## §17 — DERIVE THE NULL FOR EVERY STATISTIC YOU QUOTE, NOT JUST THE BLESSED ONE; AND A SELF-NORMALIZED STATISTIC OVER A FEEDBACK TRAJECTORY IS NOT ITS OWN NULL (ADR 0242)
+## §19 — DERIVE THE NULL FOR EVERY STATISTIC YOU QUOTE, NOT JUST THE BLESSED ONE; AND A SELF-NORMALIZED STATISTIC OVER A FEEDBACK TRAJECTORY IS NOT ITS OWN NULL (ADR 0242)
 
 Two traps from the session that finally closed the rung-2 mortality operator. Both are general.
 
@@ -2132,3 +2132,64 @@ for either.
 ⚠ **State which POPULATION a horizon or level column is on.** In the same ADR an arm's whole-roster
 horizon read 0.971× while the population it was judged on fell 98.5 % — it had converted the stand to
 saplings. A "the total didn't collapse" column can be true and completely misleading at the same time.
+
+---
+
+---
+
+## §20 — A SATURATED FUNCTION MAKES ITS OWN PARAMETERS INERT: TEST FOR SATURATION BEFORE PRICING A PARAMETER ERROR, AND TEST FOR A *STRADDLE* TO FIND WHERE IT IS NOT (line M, 2026-08-14, ADR 0139)
+
+§17 says price a gate by the quantity it acts on, not by its incidence. This is the same discipline
+one level down, for a **parameter** rather than a branch — and it is the cheapest of the family,
+because it is settled by the parameter algebra alone, before any data is opened.
+
+**The shape.** You find that your port holds a per-group CONSTANT where the reference samples a
+per-individual TRAIT, measure the two, and find the constant off by a large amount in the
+parameter's own units. That looks like an obvious defect proportional to the error. **It is not, if
+the function is saturated there.** A sigmoid whose slope is quoted per *percentage* point while the
+variable is a *fraction* has a 10–90 % transition width of `2·ln(9)/(100·sl)` — here **0.0084** — so
+it is effectively a step, and a **21.7 percentage-point** parameter error changed the filter's output
+by **0.0000 at 12 of 13 measured groups**. The parameter error was real, reproducible on both
+scenario legs, and inert.
+
+**So the question is never "how big is the parameter error?" but "which side of the threshold does
+the realised input fall on?"** Two tests, both one pass over the reference's own emitted per-stem
+output:
+
+1. **SATURATION:** evaluate the function under both parameter values at the realised input. If both
+   land on the same plateau (`min > 0.99` or `max < 0.01`), the parameter is inert there — report
+   `inert`, and do not build the arm.
+2. **STRADDLE:** flag the groups where they land on OPPOSITE sides. That is where a parameter error
+   stops being a refinement and becomes **binary** — in ADR 0139 exactly one of thirteen groups, at
+   which the model's filter reads **1.0000** where the reference's reads **0.0000**: the whole of
+   leaf display, at the cell a prior ADR had already measured as the most phenology-sensitive of the
+   five. One group out of thirteen carried the entire finding, and a mean over groups would have
+   reported it as ~8 % of nothing.
+
+**Three things that make this trustworthy rather than lucky:**
+
+* **Check the direction the basis limit pushes you.** The realised input here was an annual mean of a
+  *potential* index that equals 1 on a no-demand day, i.e. it OVERSTATES the input — which pushes the
+  reference's filter further closed and makes the straddle **wider**, not narrower. A basis limit
+  that biases toward your conclusion is a problem; one that biases against it is a strengthening, and
+  saying which it is costs one sentence.
+* **Check the finding survives on every arm of the model.** Without the per-PFT id vector every stem
+  runs the prototype PFT's constant (ADR 0126 §5), which here is further open still — so the straddle
+  holds on both arms and does not depend on which one is scored.
+* **A saturated regime also invalidates a SIBLING item's magnitude.** The same audit killed the
+  companion gate item: its light-weighted bound was 16.8 % of annual light at one cell, credible only
+  if the filter would have been CLOSED on the affected days — and the saturation panel says it is
+  pinned OPEN there. **Two items on one function must be priced together**, because each one's
+  magnitude is conditional on the other's regime.
+
+**And an impossible intermediate value is the tell that a proxy failed, not a result.** Backing a
+growing-season mean out of an annual mean via `mean = f·1 + (1−f)·x` returned **x = −1.64** for a
+quantity bounded in [0, 1] — which refuted the proxy (the assumed no-demand days were not scoring 1)
+rather than the physics, and cost nothing because the range check was applied before the number was
+used. Same discipline as §16: integrate a derived quantity and ask whether the result is a thing the
+system could be.
+
+Worked examples: `scripts/diagnose_phenology_water_inflection.py` (variability audit → bias → spread
+→ basis-free w-sweep → the saturation/straddle panel with a script-computed verdict) and
+`scripts/diagnose_phenology_soiltemp_gate.py` (the sibling gate, with its three dampeners stated and
+the one that is unclosed named).

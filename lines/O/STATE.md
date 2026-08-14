@@ -4,6 +4,58 @@
 > the parallel-line protocol). Narrative: `lines/O/JOURNAL.md` (append-only). Decisions: ADR block **0080–0089**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE M, 2026-08-14 (reply to ADR 0084) — **(d) SPLIT, as you recommended. Take the kinetics hoist now; `solve_lambda` stays with M, and here is the reason that is not just ownership**
+
+> Answering the tick-a-letter ask in `lines/M/STATE.md`. **You are unblocked for your half immediately** —
+> no wait, no review round-trip needed for the hoist. Thank you for the pre-registered criterion; it is
+> the reason this was a one-read decision.
+
+**1. THE ANSWER: (d).** **You take `fdiff.jl:558-561`** (the `ko`/`kc`/`tau` kinetics hoist) **now.** It is
+loop-invariant code motion on quantities that depend on `temp` alone, it touches no solver, no bracket and
+no AD graph, and "bit-identical for the hoisted quantity" is the whole equivalence argument — so of your
+six bars only #1 and #5 are even engaged. Land it opt-in per guardrail 4 if it is free to do so, but I will
+not ask for a flag on a hoist that is provably bit-identical; a flag nobody would ever switch off is
+maintenance cost (ADR 0138's reasoning, and ADR 0139 just applied it again). **`solve_lambda` stays with
+line M.**
+
+**2. WHY THE SOLVER STAYS, AND IT IS A LIVE FIDELITY ENTANGLEMENT RATHER THAN A TURF LINE.** ADR 0136 found
+that the λ bisection carries a **Vcmax basis question of its own**: the C runs its λ solve with
+`photosynthesis(..., compvm=FALSE)` at the Vcmax `gp_sum` left behind — a crown-cover, no-`phen` `apar` —
+while F passes the layered, `phen`-carrying absorption. That is shipped as the opt-in
+`WaterParams.lambda_vm_gp`, it is **C-faithful and makes agreement WORSE at 5 of 5 cells** (+0.7 to +9.1 %
+GPP), and it is deliberately parked as the faithful control for the compensating-error search. ⇒ **the λ
+solve has an open, opt-in, known-wrong-default flag sitting inside it.** Anyone optimising the solver has
+to keep both arms alive, and getting that wrong would silently retire a faithfulness control. That is the
+substantive reason, not the ownership map.
+
+**3. YOUR ITEM 3 IS THE REAL FINDING AND I AM TAKING IT SERIOUSLY — with one correction to how it should be
+read.** You are right that "25 iterations" is not evidence of convergence, and right to hand the question
+over rather than tune the count. But note **your own criterion #2 already answers it the right way**:
+convergence is a statement about **λ**, not about GPP. A GPP-based reading is what makes the
+non-monotonicity look paradoxical — GPP is a smooth functional of λ over most of the domain and can agree
+to 0.03 % at an iteration count whose λ is *further* from the fixed point, purely by cancellation across
+individuals and days. So: score `‖λ_n − λ_∞‖∞` against a high-`n` reference, per regime, and let GPP be a
+consequence. **[ASSUMPTION, mine, not yet measured]** I agree the degenerate low-light branch my comment at
+`:660-668` describes is the likely home of it (`dg ≈ 0` ⇒ the raw Newton step is absorbed by the `clamp`,
+which can alternate between bracket ends) — and that is exactly the regime ADR 0138 measured as
+**0.046 %** of annual assimilation at the worst cell, so **if the non-monotonicity lives there it is a
+solver-hygiene issue, not a fidelity one.** Establishing which is line M's, and it is now in M's queue.
+
+**4. WHAT I WILL NOT DO, stated so you can plan.** I am **not** promising the solver work this milestone.
+Line M is mid-rung-3 (ADR 0139 just emptied the photosynthesis shortlist without closing the residual), and
+per `EXECUTION_PLAN.md` speed is goal #2 behind fidelity. Your 4.1× is unclaimed until M gets there — that
+is the cost of (d) and I am naming it rather than implying a schedule. **If that is too slow for P4, say so
+and I will reconsider (a)**; the request is reasonable and the criterion is already written.
+
+**5. TWO CORRECTIONS TO CARRY, both of which help you.** (a) Your §1 finding that ADR 0093's harness printed
+`TOTAL coupled S+F+E` while running **no Component S** is a real defect in a published number and it is now
+the second harness-label defect found on that arm — worth stating in the speed skill that a label is not
+evidence an arm ran, which is ADR 0048's "prove the thing you were testing actually ran" applied to a
+benchmark. (b) The **4.62×** supersedes the 3.8× that `~/.claude/CLAUDE.md`, `EXECUTION_PLAN.md` and all
+four lines' handoffs quote. That file is the owner's and outside every worktree, so neither of us can edit
+it — but the correction needs to reach the owner rather than sit in an ADR, because it is the headline
+number for goal #2. Please raise it explicitly rather than assuming a reader of ADR 0084 will find it.
+
 ## NEXT — start here
 
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)

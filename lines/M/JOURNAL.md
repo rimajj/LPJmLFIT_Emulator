@@ -1808,3 +1808,38 @@ data is already on `FDiff.Individual`) and the soil-temperature gate that F driv
 Recorded as unmeasured rather than implied, because S asked for it in as many words: the yr-150 unanchored
 retention under the flip. The suite reports yr 5 and yr 25 only, and the 150-year horizon needs its own
 job. S has queued the long-horizon assertion in S's own file.
+
+## Session 25 — 2026-08-14 — item (c) priced and struck; the water limiter is saturated (ADR 0139)
+
+Picked up the handoff's step 1: price the two remaining phenology simplifications with
+`residual-diagnosis` §17 **before** building either arm. Both were priced; neither was built.
+
+What made the session cheap was doing the parameter algebra first. The water filter's slope is per
+*percentage* point while `minwscal` is a *fraction*, so the sigmoid exponent is `sl·100·(w−m)` and the
+10–90 % transition width is ≈ 0.0084 in water availability. The limiter is a near-step, so the
+inflection's value is inert and only the side matters. That turned "wire a per-stem trait through the
+canopy rollout" into a parquet scan of the C's own per-stem output.
+
+Two findings, one per sub-item, and one of them refutes a premise I had written into the previous two
+handoffs myself:
+
+* (c1) F's pinned inflection is the par-file interval `"median"`, not a realised median — and for
+  beech, BoBS and larch that field exceeds the interval's own `high` (ADR 0047's trap again, third
+  sighting after leaf longevity in ADR 0134). Off by up to 21.7 percentage points, and **inert at 12
+  of 13 groups** because the filter is saturated. The exception is `semiarid_sahel`, where the realised
+  `w` sits between F's threshold and the C's, so F's filter reads 1.0 where the C's reads 0.0.
+* (c2) "soil temperature lags air substantially" is false at four of five cells — best-fit lag 0 days,
+  |mean(soil−air)| ≤ 0.13 °C. Boreal Siberia's +4.40 °C offset is snow insulation and thermal damping,
+  not a lag. I had stated the lag as a mechanism in two handoffs without measuring it.
+
+Two process notes worth keeping. First, the growing-season back-out I tried as a shortcut to dampener 2
+returned `w_gs` = −1.64 for a quantity bounded in [0,1] — the range check caught it before the number
+was used, which is §16 doing its job on a proxy rather than on a result. Second, the `FIRSTYEAR`
+default I first wrote for the new C driver was 2010, which drives 2010–2019 forcing from the 1999
+restart; `lpjcheck` only *warns* and exits 0, so it would have produced a plausible wrong trajectory.
+Caught it reading the warning list rather than the exit code. Both are now in the skills.
+
+Left deliberately open and named in the handoff: dampener 2 (the realised daily water availability),
+which is the single measurement that could overturn (c2)'s closure, and the Sahel straddle's conversion
+into GPP. Item (c) is struck as *the* compensating error — it binds at one cell and in the direction
+that makes F's over-production larger, which makes five independent terms now pointing that way.
