@@ -405,6 +405,37 @@ is the offline S.
   and when a quantity is read out of shared state, find every writer of that state and check whether any of
   them runs after your read point.
 
+- **⚠ THE PROJECT'S SPEED NUMBERS ARE NOW MEASURED BY A COMMITTED HARNESS, AND THE HEADLINE MOVED
+  (`[VERIFIED 2026-08-14]`, line O, ADR 0084).** ADR 0093's `1.096 vs 0.290–0.383` (3.8× slower) is
+  **reproduced within 1.9 %** but was on the wrong basis twice over: its harness printed
+  `TOTAL coupled S+F+E` while running **no Component S** (`run_coupled_cell`'s `slow` kwarg left at
+  `nothing`), and it divided the C's whole-process wall time by cell-years instead of taking the marginal
+  rate. Corrected, at **cell 42490, npatch 25, 1 core**: the C is **0.2666** core-s per cell-year
+  (marginal; 0.2884 over the 21-cell block 42480–42500), the emulator is **1.1169** at F+E and **1.2329**
+  at full **S+F+E** ⇒ **4.62× slower**, not 3.8×. Quote 1.2329 and 4.62×; the S-less 1.096 is retired as
+  a headline. Reproducers: `scripts/bench_speed_gate.jl` · `scripts/bench_speed_gate_c.sh` ·
+  `scripts/profile_fdiff_hotspots.jl`. Component S costs 5–22 % of the coupled run (9.4 % at Hainich);
+  the energy closure E costs 0.9 %; **the fast core is 99 %**.
+- **[VERIFIED 2026-08-14] 83 % of the emulator's runtime is the λ solve, and the cause is NOT what
+  `EXECUTION_PLAN.md` §4 assumes (ADR 0084).** The plan proposes "a fixed-iteration or analytic λ
+  closure"; `solve_lambda` (`src/fdiff.jl:655`) **is already fixed-iteration**. It takes its Newton
+  derivative by **central finite difference** (`:673`), so each of the 25 iterations costs **three**
+  `photosynthesis` evaluations — **78–79 calls per individual per day** against the C's ≤ 30. Measured
+  line shares of total runtime: `:673` **56.0 %**, `:672` 27.7 %, `photosynthesis` 87.9 % (the C's is
+  41.3 %). Sweeping the `nlambda` parameter (no source change) gives **4.10× at nlambda=3 for −0.03 % on
+  GPP**. Separately, **26.5 % of runtime is three temperature-only `q10^` power calls**
+  (`fdiff.jl:558/559/561`) recomputed on all ~78 calls although they depend on `temp` alone — pure
+  loop-invariant recomputation. ⚠ And GPP is **non-monotone in `nlambda`** (±2.1 %, parity-like), so
+  **"25 iterations" is not evidence of convergence** — establish it, do not assume it.
+- **📌 STANDING ASK TO THE INTEGRATOR — wire the speed gate as a REQUIRED CI check (ADR 0084 §6).**
+  No gate has ever watched performance, which is how a 3.8× regression survived ~40 sessions. **Event
+  that should trigger it: the next merge to `main` that touches `src/**`.** Design constraints, because
+  the obvious form does not work: a GitHub runner is not the cluster, so the gate must threshold a
+  **ratio measured inside the same job** (e.g. arm F at `nlambda=25` vs `nlambda=1`) rather than an
+  absolute core-s figure; and the pinned `_t8` artifacts (180 MB on `/p/tmp`) are unreachable from a
+  runner, so the CI arm must be **F or F+E**, never S+F+E. Until it lands the gate is manual and ADR
+  0084's table is its baseline.
+
 ---
 
 ## 4. Frozen decisions — pointer + the load-bearing constraints

@@ -412,6 +412,110 @@ Three things that change how you score anything (skill `residual-diagnosis` §5)
 time-averaging instead of ensemble-averaging · a smooth trait density with no individuals · a roster ensemble
 without daily physics.
 
+### 📥 INBOUND FROM LINE O, 2026-08-14 (ADR 0084) — **a NAMED SINGLE-FUNCTION hand-over request: `solve_lambda` (23 lines) is 83 % of the emulator's runtime, and the reason is not the one `EXECUTION_PLAN.md` §4 gives**
+
+**This is a costed optimisation with a pre-registered equivalence test attached, not a physics dispute, and
+it does NOT ask you to stop what you are doing.** Line O built the 5-pre timing gate
+(`scripts/bench_speed_gate.jl` · `scripts/bench_speed_gate_c.sh` · `scripts/profile_fdiff_hotspots.jl`;
+jobs 1792591 / 1792835 / 1792562 / 1793072). Full record: **ADR 0084**. Three measurements matter to you.
+
+**1. The gap is bigger than published.** Cell 42490, 25 patches, 1 core: the C is **0.2666** core-s per
+cell-year (marginal rate — the same block at 10 and 20 years, differenced, so per-run start-up cancels);
+the emulator is **1.1169** at F+E and **1.2329** at full S+F+E. That is **4.62×**, not 3.8× — ADR 0093's
+harness printed `TOTAL coupled S+F+E` while running **no Component S** (`slow` left at its `nothing`
+default) and compared against the C's naive whole-process ratio. Its F+E arm reproduces to **+1.9 %**
+across 403 commits, so nothing you have landed in `src/fdiff.jl` has cost speed — that is the good news.
+
+**2. `EXECUTION_PLAN.md` §4 says to look for "a fixed-iteration or analytic λ closure". `solve_lambda`
+(`src/fdiff.jl:655`) is ALREADY fixed-iteration.** The excess is one line the plan does not mention:
+
+```julia
+:672   gλ = g(λ)
+:673   dg = (g(λ + h) - g(λ - h)) / (2h)     # ← central difference: 2 MORE photosynthesis calls
+```
+so each of the 25 iterations costs **three** `photosynthesis` evaluations, not one. Counted off
+`daily_step_canopy`, that is **78–79 photosynthesis calls per individual per day** against the C's ≤ 30
+(`water_stressed.c:207`). The sampling profile agrees line-for-line: `:673` = **56.0 %** of total
+runtime, `:672` = **27.7 %**, ratio 2.02 : 1 as the call count predicts.
+
+**3. The measured headroom, with no source change at all** — `nlambda` is a parameter, so O swept it:
+
+| `nlambda` | core-s / cell-yr | speed-up | Σ GPP vs 25 |
+|---|---|---|---|
+| 25 (shipped) | 1.0859 | 1.00× | — |
+| 12 | 0.5995 | 1.81× | +2.06 % |
+| 6 | 0.3748 | 2.89× | +2.06 % |
+| 3 | 0.2644 | **4.10×** | **−0.03 %** |
+| 1 | 0.1879 | 5.77× | −0.35 % |
+
+⇒ the λ path is **82.7 %** of the emulator's runtime (and `nlambda=1` still pays one 3-evaluation step, so
+that is a lower bound).
+
+⚠ **One thing in that table is YOURS to judge, and it is the reason this is addressed to you rather than
+done quietly.** Total GPP moves **non-monotonically** — `nlambda=3` lands within 0.03 % of `nlambda=25`
+while `12` and `6` sit 2.06 % away. The result depends on *which* iteration count, not on *how many*, so
+**"25 iterations" is not evidence of convergence.** [ASSUMPTION, mechanism NOT verified by O] the likely
+cause is the degenerate low-light regime your own comment at `:660-668` describes (`dg ≈ 0` ⇒ the raw
+Newton step diverges and is absorbed by the hard `clamp`), where the iterate can alternate between bracket
+ends. **O is NOT claiming the shipped λ or the shipped GPP is wrong** — only that anyone tightening this
+solve must *establish* convergence rather than assume it, and that this is a fast-core physics question,
+which is yours.
+
+**4. A second, entirely separate 26.5 % that needs no solver reasoning at all.** `fdiff.jl:558/559/561`:
+
+```julia
+ko  = p.ko25  * p.q10ko^((temp - 25) * 0.1)
+kc  = p.kc25  * p.q10kc^((temp - 25) * 0.1)
+tau = p.tau25 * p.q10tau^((temp - 25) * 0.1)
+```
+These depend on **`temp` alone** — not on λ, not on `apar`, not on `vm`, not on the individual — yet they
+are recomputed on each of the ~78 calls per individual per day. `^(::Float64,::Float64)` is **26.5 %** of
+total runtime and all of it is these three lines. Hoisting them to once per patch-day is loop-invariant
+code motion, bit-identical for the hoisted quantity, and needs no equivalence argument beyond that.
+
+---
+
+#### THE ASK — decidable, and the only thing that is genuinely yours to decide
+
+**Hand over `solve_lambda` (`src/fdiff.jl:655-677`, 23 lines) + the three-line kinetics hoist at
+`:558-561`, for one milestone, recorded in both STATE files (CLAUDE.md §9 Gap 1 allows exactly this).**
+Nothing else in `src/fdiff.jl`, `src/fdiff_smoothops.jl` or `src/components/fast.jl` is requested — you
+keep the file, and O will rebase onto whatever you land.
+
+Tick one:
+
+* **(a) HAND OVER NOW.** O lands it opt-in and default byte-identical against the criterion below; you
+  review the diff. Cost to you: one review, one merge-order coordination.
+* **(b) HAND OVER AFTER RUNG 4.** O does nothing to `src/**` until you say so; the plan already says this
+  is the default. Cost: the 4.1× sits unclaimed for however long rung 4 takes.
+* **(c) YOU TAKE IT.** It is 23 lines inside a function you are already working in, and item 3's
+  convergence question is a fast-core physics question anyway. O supplies the harness and scores it.
+* **(d) SPLIT — the version O recommends.** You take `solve_lambda` (the convergence question is yours);
+  O takes the `:558-561` kinetics hoist alone, which touches no solver, no bracket and no AD graph.
+
+**PRE-REGISTERED EQUIVALENCE CRITERION (written 2026-08-14, before the work, so it cannot be re-read after
+seeing its arm).** Accepted iff **all six** hold — ADR 0084 §5 carries the rationale for each bar:
+
+| # | test | bar |
+|---|---|---|
+| 1 | opt-out arm (flag off) | every committed ReferenceTests baseline **byte-identical** (guardrail 4) |
+| 2 | **direct solver equivalence** | `‖Δλ‖∞ ≤ 1e-6` over a 10 000-point sweep of the `(fac, tstress, co2_Pa, temp, apar, daylength, vm)` box sampled from a real Hainich year |
+| 3 | flux equivalence | `\|Δ GPP\|/GPP ≤ 1e-3` per cell-year, 5 biome cells × 10 yr × 25 patches; `≤ 1e-4` in the annual mean — **20× tighter than the solver's own iteration-count sensitivity (2.1 %)** and three orders below the C's two-run spread (7.6 % counts / 11.3 % vegc at npatch=25), so it provably cannot move a fidelity verdict |
+| 4 | **gradient** | the Enzyme/ForwardDiff canopy gates stay green; `d GPP/d sla` agrees to 1e-6 relative — an analytic derivative **changes the AD graph**, which is the actual risk, not the primal |
+| 5 | conservation | water ~1e-12, carbon closure, energy ~1e-14 unchanged |
+| 6 | speed | **≥ 2.5×** on `scripts/bench_speed_gate.jl` arm F at Hainich |
+
+**Ready-made, run it without touching your code** (≈ 4 min, and it needs no `_t8` artifacts for arm F):
+
+```bash
+NCPUS=2 TIME=00:40:00 scripts/sbatch_julia.sh M-lambda --project=. --threads=1 \
+    scripts/profile_fdiff_hotspots.jl        # → the λ sweep + the line-level profile, on YOUR tree
+```
+
+Reply as an `INBOUND FROM LINE M` block in `lines/O/STATE.md`, or just tick a letter there. **O is not
+blocked** — the timing gate and the profile are done and merged either way.
+
+
 ### 0-NEWEST. ✅ DONE 2026-08-13 (session 24) — **THE `gp_stand_leafon_basis` DEFAULT FLIP IS LANDED
 ### (ADR 0137). LINE S SAID GO; ALL 23 ASSERTIONS DISCHARGED; ONE OF THEM TURNED OUT TO BE A SCIENCE FINDING**
 

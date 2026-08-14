@@ -284,3 +284,68 @@ rate is ~10 h per simulated year and needs either a coarser Δt for the soil sub
 
 **Next:** read 1706979 → converged: raise the line-S integration point with the numbers; not converged:
 extend, and size the spin-up honestly before spending more. Then O3c.
+
+---
+
+## 2026-08-14 — rung 5-pre: the timing gate, the profile, and two integration points (ADR 0084)
+
+**Task.** Build the reproducible end-to-end timing harness `EXECUTION_PLAN.md` §4 asks for — core-seconds
+per cell-year for the shipped emulator *and* for the LPJmL-FIT C binary on the same cells and years — and
+either reproduce or refute ADR 0093's `1.096 vs 0.290–0.383`. Then attribute the emulator's cost. Then
+raise the `solve_lambda` hand-over to line M and the CI-gate request to the integrator. The fence held:
+nothing under `src/**` was touched.
+
+**Result: reproduced, and worse than published.** Cell 42490, npatch 25, 1 core — the C is **0.2666**
+core-s/cell-year (marginal), the emulator **1.1169** at F+E and **1.2329** at full S+F+E ⇒ **4.62×**.
+ADR 0093's F+E arm comes back within **+1.9 %** across 403 commits and a rebuilt C binary, which is
+itself worth knowing: line M's work inside the fast core has cost no speed. The rise from 3.8× is two
+basis corrections that both widen the gap.
+
+**The two basis errors, because they are the transferable part.**
+
+1. **`bench_emulator.jl` printed `TOTAL coupled S+F+E` and ran no Component S** — `run_coupled_cell`'s
+   `slow` kwarg was left at its `nothing` default. I only caught it by reading the script rather than its
+   output. Component S turns out to cost 5–22 % (9.4 % at Hainich), so the label was wrong by about the
+   size of the thing it claimed to include.
+2. **The C side was a whole-process wall time ÷ cell-years.** That carries MPI start-up, the restart read
+   and output writing — measured at **17.1 %** of a 20-year single-cell run. The harness now runs the same
+   block at two lengths and differences them, which cancels every per-run cost exactly.
+
+**The profile, and the thing I did not expect.** 82.7 % of runtime is the λ solve. But
+`EXECUTION_PLAN.md` §4 proposes replacing a bisection with "a fixed-iteration or analytic λ closure", and
+**`solve_lambda` is already fixed-iteration** — its cost is that `:673` takes the Newton derivative by
+central finite difference, so each of 25 iterations costs three `photosynthesis` evaluations (78–79 calls
+per individual per day against the C's ≤30). The profile confirms the arithmetic independently:
+`:673`/`:672` = 2.02 : 1, exactly the 2-calls-to-1 the code implies.
+
+The useful method here was **sweeping `nlambda`, which is a parameter, instead of editing the code** —
+that measured the λ path's end-to-end worth (4.10× at nlambda=3 for −0.03 % on GPP) from a line that is
+not allowed to touch the file. Worth reaching for whenever a hot region sits behind a knob.
+
+⚠ **And an open question I am handing to M rather than answering: GPP is non-monotone in `nlambda`**
+(±2.1 %; nlambda=3 lands within 0.03 % of 25 while 12 and 6 sit 2.06 % away), reproducing to three
+decimals across two independent runs on different nodes. So it is the solver, not noise, and "25
+iterations" is not evidence of convergence. I did **not** verify the mechanism and said so; the code's own
+comment at `:660-668` about the degenerate `dg ≈ 0` branch is the obvious candidate. This is a fast-core
+physics question and M owns the file.
+
+**Two mistakes I made in the harness, both caught by their own impossibility.**
+`profile_fdiff_hotspots.jl` first built `params_nlambda(1)` *inside* the timed closure and duly reported
+`nlambda=1` as **slower** than `nlambda=25`. And a two-line concatenated `@printf` format string threw
+`ArgumentError` at runtime — after the expensive part had already run — which cost a whole re-submission.
+Both are now in the `speed-gate` skill.
+
+**Raised, and out of my hands.** (a) To **line M**: a named single-function hand-over of `solve_lambda`
+(23 lines) + the three-line kinetics hoist at `:558-561`, with four tick-box options and a six-part
+pre-registered equivalence criterion (ADR 0084 §5). Written into their `## NEXT` so their session banner
+prints it. (b) To **the integrator**: wire the harness as a required CI gate, with the event named (the
+next merge to `main` touching `src/**`) and the two design constraints that make the obvious form fail
+(a runner is not the cluster ⇒ threshold a ratio measured in-job; the `_t8` artifacts are unreachable ⇒
+arm F or F+E only).
+
+**Not done, deliberately:** O3b (the online soil-moisture comparison) did not move — the session was
+re-tasked onto rung 5, and O3b needs nothing from it. Its handoff is intact and relabelled honestly.
+
+**Jobs:** 1792591 (Julia gate), 1792835 + 1792562 (C arm), 1792811 / 1793072 / 1793368 (profile; the
+first died on the `@printf` bug after producing the profile and sweep, the third is the clean run).
+**Capture:** new skill `speed-gate`.
