@@ -1173,3 +1173,33 @@ done
 ```
 Same applies to an ADR body and to an inbound block in a sibling's `STATE.md`. Cheapest habit: cite by
 `ls docs/decisions/ | grep ^0059` rather than by recall.
+
+## ⚠ `/commits/<sha>/check-runs` GOES STALE — THE AUTHORITATIVE JOB STATUS IS THE RUN'S `/jobs` ENDPOINT (line O, 2026-08-14)
+
+This skill tells you to poll `GET /repos/$R/commits/<sha>/check-runs` for the verdict. **That endpoint can
+keep reporting `status: in_progress, conclusion: null` for a job that finished long ago.** Measured on
+sha `ad29901d`: `check-runs` showed `test (1)` as `in_progress` for **~25 minutes** after the job had
+completed successfully, while the workflow run itself already read `completed / success`. A poll loop
+written as *"wait until `test (1)` is completed"* against `check-runs` simply does not terminate — which
+looks exactly like the ADR-0090 "waiting for a gate that never runs" failure and is a different bug.
+
+**The tell:** the run-level and check-run-level answers disagree. Cross-check whenever a single job is
+the last one outstanding and it has been "in progress" longer than its siblings took:
+
+```bash
+TOKEN=$(python3 -c "import yaml;print(yaml.safe_load(open('/home/jamirp/.config/gh/hosts.yml'))['github.com']['oauth_token'])")
+R=rimajj/LPJmLFIT_Emulator
+# 1. run level — this is what actually concluded
+curl -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/$R/actions/runs?branch=line/<X>&per_page=5" \
+  | python3 -c "import sys,json;[print(r['name'],r['head_sha'][:8],r['status'],r['conclusion']) for r in json.load(sys.stdin)['workflow_runs']]"
+# 2. JOB level — the authoritative per-job verdict, and the one to poll
+RID=<the CI run id for your sha>
+curl -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/$R/actions/runs/$RID/jobs" \
+  | python3 -c "import sys,json;[print(f\"{j['name']:22s} {j['status']}/{j['conclusion']}\") for j in json.load(sys.stdin)['jobs']]"
+```
+
+Note the run-level conclusion is `success` even with `test (pre)` red, because that job is
+`continue-on-error` — so a green run **does** vouch for the required jobs, but read `/jobs` anyway to see
+*which* were green. **Prefer `/actions/runs/<id>/jobs` for polling and use `check-runs` only for the
+initial "which gates fired at all?" question**, where it is fine (it lists the runs promptly; it is the
+terminal transition it is slow to publish).
