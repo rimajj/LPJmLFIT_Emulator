@@ -669,3 +669,47 @@ of `TREE_TYPES` silently dropped 32.5 % of tree stems for months).
 seven tree PFTs declare `k_root` as a scalar 0.02 with the interval form commented out (ADR 0117), and the
 `"median"` of an interval is a GLOBAL default that lies outside `[low, high]` for four PFTs. Read the live
 file, and check whether the emitted column actually varies before treating a parameter as a trait.
+
+## Adding ANY daily output the stock config does not emit — the general recipe (line M, ADR 0139)
+
+The `ind`-writer section above is the special case (it needs a rebuilt binary and two env switches).
+**Most outputs need neither** — daily output is config-only (`getmintimestep.c` returns `DAILY` for
+everything except `VEGC`/`VEGN`/`GLOBALFLUX`/`CFTFRAC`/`SDATE`), so any `par/outputvars.js` entry can
+be requested at `"timestep":"daily"` with no recompile. Use this whenever a question needs a C daily
+series the 186 GB global set does not carry (it has water + carbon fluxes only).
+
+**Worked example, copy it:** `scripts/run_soiltemp_gate_cells.sh` adds daily `soiltemp1` at the five
+biome cells and finishes in seconds per cell.
+
+```bash
+# 1. generate the per-cell run from the production transient, but do NOT submit
+CELL=$cell FIRSTYEAR=2000 LASTYEAR=2019 RUNTAG=$tag SUBMIT=no \
+  bash scripts/run_fdiff_validation_cell.sh
+# 2. insert your output entry into the generated scripts_for_running_the_model/lpjml.js
+#    at the `  "output" :\n  [\n` anchor
+# 3. RE-VALIDATE — the wrapper lpjcheck'd the config BEFORE your insert
+bin/lpjcheck -DFROM_RESTART scripts_for_running_the_model/lpjml.js
+# 4. sbatch scripts_for_running_the_model/slurm.jcf
+```
+
+Five traps, each of which cost something:
+
+- **⚠ `FIRSTYEAR` MUST be 2000, because the only restart is `restart_1999.lpj`.** Setting it to 2010
+  drives 2010–2019 forcing from a **1999 state**. `lpjcheck` notices and only *warns*
+  (`WARNING005: Year of restart file=1999 not equal start year=2010-1`) — it exits 0, so this is a
+  **silent wrong-trajectory trap, not a caught one**. Run 2000–2019 and score the window you need.
+- **Read the ACCUMULATION LINE before trusting the output's name** (`residual-diagnosis` §3f). Grep
+  `src/` for the `getoutput(...,YOURVAR,config) +=` expression. `soiltemp1` turned out to be exactly
+  `patch->soil.temp[0]` — the very variable the phenology gate branches on — but it is carried as the
+  stand's **patch-ensemble mean**, which is a basis caveat for any per-patch claim. The dedicated
+  `D_LAI`/`D_PHEN`/`D_CLEAF` slots are **crop-only** and come back as zeros for a forest cell.
+- **The generated log is `lpjml.<jobid>.out`, not `lpjml_<jobid>.out`.** A glob with the wrong
+  separator finds nothing and the "require `lpjml successfully terminated, <n> grid cells processed.`"
+  check then reports a clean run as having **no completion line** — the ADR-0043 failure mode wearing
+  a different costume. Verify your glob matches before believing a negative.
+- **Do NOT insert with an f-string.** `}}` inside one collapses to a single `}`, emitting a config
+  json-c rejects at the *following* line ("quoted object property name expected"), so the error points
+  somewhere else. Use concatenation, and make step 3 a hard gate rather than a formality.
+- **Pin the dtypes when you read the committed `biome_forcing_*.csv` back**: polars infers `precip`
+  as `i64` from the first rows at some cells and then dies on the first fractional value — the same
+  trap the `ind` TXT reader's `mort_*` columns carry.
