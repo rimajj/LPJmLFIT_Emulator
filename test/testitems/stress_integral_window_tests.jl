@@ -74,6 +74,15 @@
     end
     @test on.temp_stress_acc[1] == 10                # would have been 0 before ADR 0244
     @test iszero(on.water_stress_acc[1])             # water still needs `per_tree_roots` — unchanged
+
+    # ── the flipped DEFAULT itself (ADR 0244 §5), pinned so a revert is loud ──────────────────────
+    # ⚠ WHY THIS ASSERTION EXISTS: flipping the default moved ZERO of the suite's 275 634 assertions,
+    # because beech's `temp_stressed` band is [-20, 54] °C and no test arm's forcing leaves it — so the
+    # suite CANNOT witness this flip and its silence is not evidence the flip does anything. The two
+    # things that are evidence are the -30 °C arms above and the 4 334/4 334 exact match against the C's
+    # own emitted `temp_stress` (ADR 0244 §3). This line is what makes the default itself gated.
+    @test WaterParams{Float64}().trait_drought_mortality
+    @test !WaterParams{Float64}().per_tree_roots      # the WATER half is still deliberately off
 end
 
 @testitem "stress integrals: the reset is the C's fixed calendar day, per hemisphere (ADR 0244)" tags = [:validation, :fdiff] begin

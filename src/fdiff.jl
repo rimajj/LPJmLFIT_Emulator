@@ -346,12 +346,25 @@ Base.@kwdef struct WaterParams{T <: Real}
     # channel, because the C's own `pft->wscal` is built from the UNCORRECTED supply (`:130-140`).
     per_tree_fpc_cap::Bool = true
     # ADR 0110 Phase 2: switch on the two climate-driven death risks ADR 0049 §3 set to ZERO for want of a
-    # per-tree water status. Requires `per_tree_roots` (it consumes the per-individual daily `wscal`); with
-    # it off there is no per-tree `wscal` and the accumulators stay identically 0. Off ⇒ byte-identical.
+    # per-tree water status. ⚠ ADR 0244 flipped this default `false → true` and corrected what it requires:
     #
-    # ⚠ Needs a REAL specific humidity in the forcing (`DailyForcing.humid` / `AtmForcing.qair`): the
+    #   * the TEMPERATURE integral (`mort_temp`) needs NOTHING but the day's air temperature and the PFT's
+    #     own `temp_stressed` interval (`tempstress_tree.c:29`), so it is live under this flag ALONE — and
+    #     it is EXACT: recomputed on the C's own reset window it reproduces the C's own emitted
+    #     `temp_stress` at 4 334 of 4 334 (cell, year, PFT) groups, integer for integer (ADR 0244 §3).
+    #   * the WATER integral (`mort_water`) still needs `per_tree_roots` for a per-individual daily
+    #     `wscal`; with that off `water_stress_acc` stays identically 0 and `mort_water` with it. That half
+    #     is deliberately still off by default — its runtime cost is unmeasured (speed is goal #2) and
+    #     ADR 0110 §6's step-2 flip criteria have never been measured.
+    #
+    # ⚠ The specific-humidity caveat below binds only on the WATER branch (VPD is read nowhere else), so it
+    # does not bind at this default: needs a REAL `DailyForcing.humid` / `AtmForcing.qair`, since the
     # default 0 reads as bone-dry air and inflates VPD. See `getvpd`.
-    trait_drought_mortality::Bool = false
+    #
+    # Opt OUT with `trait_drought_mortality = false` to reproduce the pre-ADR-0244 hazard exactly (both
+    # integrals zero), which is what every control arm that MEANS the old basis now states explicitly
+    # rather than taking by omission (ADR 0136 §7's lesson).
+    trait_drought_mortality::Bool = true
 end
 
 """

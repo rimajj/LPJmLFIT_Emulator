@@ -144,6 +144,36 @@ cells and pinned assertions may move with them. Prediction: the failure list is 
 that set means the change is not what this ADR says it is, and is to be diagnosed, not re-pinned. Any
 moved pin is listed in the flip commit with its old and new value read out of the failing run's own log.
 
+## 5a. The flip result — green, and the green is NOT the evidence
+
+| run | code under test | result |
+|---|---|---|
+| job 1815346 | §4's fix, default still `false` | **275 634 pass / 0 fail**, 138 items, 7m33s |
+| job 1815424 | + the default flipped to `true` | **275 634 pass / 0 fail**, 138 items, 7m20s |
+
+**The flip moved ZERO of 275 634 assertions**, and the pre-registered blast radius in §5 was therefore
+not merely met but empty. ⚠ **That is a fact about the test suite, not about the flip, and it must not be
+reported as if the suite had confirmed anything.** Beech's `temp_stressed` band is **[−20, 54] °C** — the
+widest interval in the parameter table — and no test arm's forcing leaves it, so `temp_stress` is 0 in
+every arm the suite runs and the suite **cannot witness this flip**. It was predicted before the run for
+exactly that reason.
+
+**What IS the evidence, then:** (a) the 4 334 / 4 334 integer-exact reproduction of the C's own emitted
+`temp_stress` in §3, and (b) the new testitem's −30 °C arms, which are the only place in the repo where the
+mechanism is actually exercised. And what makes the *default* gated rather than incidental is the
+assertion added with the flip — `WaterParams{Float64}().trait_drought_mortality` — plus its companion
+`!per_tree_roots`, so a silent revert of either half is loud. Verified live in the built package:
+`trait_drought_mortality = true`, `per_tree_roots = false`, `wscal_leafon = true`.
+
+**Where the flip does bite** is the field, not the fixtures: at the 12 rung-2 cells FIT's own mean
+`temp_stress` runs **0 → 24.1 days/yr**, with three cells at 12–24. Those are cells the emulator runs.
+
+⚠ **A green suite after a default flip is the case that most needs the honest reading**, and it is the
+mirror of ADR 0242 §7's lesson: there a pre-registered clause failed on a sound result, here a
+pre-registered clause passed vacuously. Both are only interpretable because the reading was fixed first.
+Recorded in the `julia-test` skill's default-flip procedure as the fifth outcome class: **vacuous — the
+suite has no arm in the regime the flag acts on**, which is itself a coverage finding.
+
 ## 6. What is NOT fixed, and what comes next
 
 * **The water half is still zero by default.** It needs `per_tree_roots = true`, and ADR 0243's bracket for

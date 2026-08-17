@@ -393,6 +393,18 @@ then the flag rots. Three have landed this way (`wscal_leafon` ADR 0059, `enable
 4. **Re-serve guardrail 4 through the OPT-OUT and assert it.** Pin the new default explicitly
    (`@test WaterParams{Float64}().wscal_leafon === true`) *and* keep a test that runs the old expression —
    otherwise the next flip is silent.
+5b. **⚠ A GREEN SUITE AFTER A FLIP CAN MEAN THE SUITE HAS NO ARM IN THE FLAG'S REGIME — THE FIFTH OUTCOME
+   CLASS, "VACUOUS" (ADR 0244).** `trait_drought_mortality` flipped with **0 of 275 634** assertions
+   moving, and that was a fact about the fixtures, not the flag: the mechanism counts days outside beech's
+   `temp_stressed` band, which is **[-20, 54] °C** — the widest in the table — and no test arm's forcing
+   leaves it. So the flip was unwitnessable by construction, and the pass count was identical to the digit
+   before and after. **Predict this before the run** (what regime does the flag act in? does any fixture
+   enter it?), and if the answer is "none", say so rather than reporting the green as confirmation. The
+   evidence then has to come from elsewhere — here an integer-exact reproduction of the C's own emitted
+   column over 4 334 groups plus a new testitem that forces the regime (-30 °C). **And it is itself a
+   coverage finding worth recording**: a shipped mechanism with no fixture in its own regime had no test at
+   all, which is how two faithfulness defects survived in it.
+
 5. **⚠ Audit every "control" arm that hardcoded the old default.** A probe arm written as
    `SEBParams(enable_two_layer = false)` to mean "the default" stops being a control the moment the default
    moves, and prints numbers under a label that is now false (line E lost a sub-daily `T_skin` verdict to
