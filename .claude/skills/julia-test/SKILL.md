@@ -33,6 +33,16 @@ Collect from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` 
 `=== JOB DONE tag=<tag> exit=<code> ===` (grep it; the ReTestItems `N pass, M fail` summary is just above).
 Expect ≈ **48.1k pass / 0 fail / 4 broken**, ~5–6 min. Julia = `/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia` (lts).
 
+⚠ **AN EMPTY `squeue` RIGHT AFTER LAUNCHING THIS WRAPPER DOES NOT MEAN IT FAILED — IT WARMS THE DEPOT ON
+THE LOGIN NODE *BEFORE* IT CALLS `sbatch`, WHICH TAKES 60–90 s (`[VERIFIED 2026-08-17]`, line S).** A
+launch whose shell was torn down (a backgrounded tool call, a dropped session) can therefore still submit
+seconds later, so "the submit died, resubmit" put **two concurrent `Pkg.test()` runs in ONE worktree** —
+the exact hazard ADR 0028 adopted worktrees to remove, because both delete and re-create the same
+`test/Manifest.toml`. **Before resubmitting, check for the artifact rather than the process:**
+`ls -t logs/<tag>.*.out` and `squeue -u $USER -o "%.10i %.16j %.8T"` (match the JOB NAME `jltest_<tag>`,
+not just any job). If you find two, `scancel` the newer one and keep the older — and treat the survivor's
+result as suspect if its log shows `can not merge projects`.
+
 **Run it from YOUR OWN worktree, and tag with your line prefix** (ADR 0028; this line used to read
 `cd /p/projects/open/Jamir/esm_land_emulator`, which is now the **integrator** worktree). The wrapper resolves
 its own root — `REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` — so `wt-M/scripts/run_tests_slurm.sh`
