@@ -18,6 +18,9 @@ cost), **not an owner requirement**; say so when you quote them. Against a CMIP-
 
 | script | arm | cost |
 |---|---|---|
+| `scripts/probe_c_patch_scaling.sh` | **the patch-scaling law of the C** — `cost(J) = a + b·J`, one spin-up per patch count (npatch is restart-pinned), two transient lengths differenced. Env: `NPATCHES` `SUBMIT` `ROOT` `REPS`. | ~20 min |
+| `scripts/probe_c_patch_convergence.sh` | **how many patches each OUTPUT needs** — R independent seeds per patch count ⇒ the estimator's own CV, fitted as `c/√J`, then patches-needed for 10/5/2 %. Env: `NPATCHES` `SEEDS`. | ~40 min |
+| `scripts/probe_c_genepool_diversity.sh` | **whether trait diversity collapses at low patch count** — the shared cell-level seed bank is sized `15.75 × npatch`, so few patches impoverish it. Reuses the scaling probe's restarts (`SRC`, `DEPEND=<jobid>`). | ~2 min |
 | `scripts/bench_speed_gate.jl` | **the emulator** — three arms `SFE` / `FE` / `F`, per cell-year, per patch-year, per cohort-year, plus a fixed-vs-per-cohort regression. Writes `logs/bench_speed_gate.csv`. Env: `BENCH_YEARS` `BENCH_CELLS` `BENCH_REPS`. | ~4 min, 5 cells |
 | `scripts/bench_speed_gate_c.sh` | **the LPJmL-FIT C binary** — parameterised cell block, generates its own config + jcf and submits. Env: `ARM=min\|ind` `SUBMIT` `PERF` `PARTITION` `QOS` `EXCLUSIVE` `ROOT`. | ~30 s–5 min |
 | `scripts/profile_fdiff_hotspots.jl` | **attribution** (READ-ONLY): sampling profile, the `nlambda` sweep, leaf-kernel microbenchmarks + the per-individual-per-day call-count audit. | ~4 min |
@@ -40,6 +43,37 @@ Cell **42490** (Hainich), **npatch 25**, **1 core**; C 2000–2019, emulator 201
 
 S costs 5.0–22.1 % of the coupled run (9.4 % at Hainich) · E costs 0.9 % · **the fast core is 99 %**.
 Per-cohort cost is flat across biomes at **4.11–4.31e-3** core-s/cohort-year.
+
+## ⚠ TRAP 0 — STATE THE PATCH COUNT, OR THE NUMBER IS MEANINGLESS (ADR 0085, 2026-08-17)
+
+**The single largest error this project has made about speed.** Every recorded speed verdict — ADR 0093's
+"the patch ensemble is NOT the bottleneck", ADR 0084's "patch reduction is a clean ~3× worth nothing to
+argue about now", and line O's kill of the few-patch→many-patch surrogate — was computed at
+**`npatch = 25`**, because that is what the committed ground truth used. **Publication-grade LPJmL-FIT runs
+use ~500 patches per cell** (owner, 2026-08-17); 25 was a testing convenience. All three verdicts invert.
+
+Measured (`scripts/probe_c_patch_scaling.sh`, cell 42490, 1 core):
+
+```
+cost(J) = 0.00404 + 0.013398 · J     core-s per cell-year      ⇒  J=500 : 6.70 core-s
+          ^^^^^^^ everything outside the patch loop = 0.06 % of the bill at J=500
+```
+
+⇒ at the production configuration **99.94 % of LPJmL-FIT is the patch ensemble**, the ceiling on patch
+reduction is **1658×**, and 500→25 is 19.8×, 500→10 is 48.6×, 500→5 is 94.4×. Every other lever in this
+skill is a rounding error beside it.
+
+**So: a *multiplicative* configuration knob must be quoted with every speed number, exactly as the cell and
+the core count already are.** `npatch` is restart-pinned (`newgrid.c:477` is the non-restart branch), so a
+`-DFROM_RESTART` run silently uses the restart's patch count and ignores the config — pointing five configs
+with five `npatch` values at one restart times **the same 25 patches five times**. `probe_c_patch_scaling.sh`
+pays for one spin-up per patch count for exactly this reason.
+
+⚠ **And which output you are converging matters more than the patch count itself.** Measured, 10-yr means
+at Hainich: gross carbon uptake varies **4.2 %** and net primary production **1.7 %** between 1 and 25
+patches, while vegetation carbon varies **34 %**, net ecosystem production **41 %** and establishment
+**97 %**. The atmosphere-facing fluxes barely need patches; the forest structure needs all 500. Never quote
+"how many patches are needed" without naming the quantity.
 
 ## ⚠ THE FOUR TRAPS — each makes a speed number WRONG, not noisy
 
