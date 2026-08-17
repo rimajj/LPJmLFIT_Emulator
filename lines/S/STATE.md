@@ -491,7 +491,15 @@ before appending costs a second and would have caught this and my own two previo
 > it does NOT mean the submit failed — "resubmit" put two concurrent `Pkg.test()` runs in one worktree
 > (caught, newer cancelled, survivor clean).
 >
-> **MERGE SHAS FOR ADR 0244:** pinned by the merging session at the end of this block.
+> **MERGE SHAS FOR ADR 0244 — MERGED 2026-08-17.** Merge commit `1ac404a8`, changelog collation
+> `543a5991`, branch sha `404b80ae`. Branch CI on `404b80ae`: **`format` success**, **`CI`: `test (lts)`
+> success · `test (1)` success · `test (macOS, lts)` success · `test (pre)` FAILURE**. ⚠ `test (pre)` is
+> `continue-on-error` and its failure is **not this diff** — it is Julia-prerelease API churn,
+> `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool}, ::Bool)`, i.e. exactly
+> the documented "don't chase it" case; the log was read rather than assumed. `docs` never runs on a line
+> branch and the diff touches `src/**`, so it was **built locally first** (`DOCS_LINKCHECK=false
+> julia --project=docs docs/make.jl`, exit 0, no `@ref` resolution errors) per ADR 0126's trap. `main`'s own
+> post-merge run is on `543a5991`.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
