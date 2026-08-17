@@ -2810,3 +2810,55 @@ clause I proposed on `sd(z_leg)` failed the same way and is reported, not gated 
 
 Next: the hazard's INPUTS. That is where ADR 0049 item 4 has always pointed, and it is now the only thing
 between this ceiling and the standalone emulator.
+
+---
+
+## 2026-08-17 — ADR 0243: the hazard's inputs. `Φ` = 0.78 on the coupled loop's own inputs, and the water integral is why.
+
+Picked up exactly where the last session pointed — ADR 0242 §B step 1, the hazard's inputs — and it was
+answerable with a parser, as the previous three questions were. The last session suggested reusing
+`diagnose_rung2_ported_certain_set.jl`'s zeroed-stress arm; I ran that too (it needed only an `NPREV` knob
+to see the `predict` campaign) and it agrees to four digits, but its statistic turned out to be the wrong
+one, and that is the finding I care most about.
+
+**The certain set is not the flux.** With both stress integrals zeroed the certain set is still recovered
+at recall 0.955–0.983, and that script printed "the missing integrals do not block the flip". On the same
+rows the arm nominates only **78 %** of the mortality flux FIT's own stand asks for. A certain set is a
+threshold-crossing COUNT; mortality is a mass-bearing FLUX; they moved apart by 5× in relative terms. And
+the `precision = 1.0000` column that made the old reading look safe is an **identity** — zeroing can only
+lower a hazard, so the zeroed certain set is a strict subset of FIT's. I narrowed that script's printed
+sentence in the same commit rather than leaving a true-but-misleading line on disk.
+
+**What I pre-registered, and why it mattered twice.** §§1–4 went in before any number existed (`270ab35a`).
+The part that earned its keep was deriving the nulls: `Φ(full) ≡ 1` caught nothing (it passed at 8.9e-16)
+but would have caught a mis-parsed column instantly, and the free inequality `1 − Φ ≤ S_wt` came with a
+**slack** — 0.2166 against 0.3190 — which turned out to be a measurement in its own right: a third of the
+discarded stress mass sits on stems the cap and the hard kills condemn anyway. I also derived the
+threshold from ADR 0187's own published (flux 0.58 → biomass 2.90×) pair instead of choosing one, printed
+the naive no-feedback bound beside it, and pre-declared the in-between band as NO VERDICT. The measured
+0.7834 is outside both, so the band never had to be argued about — which is the whole point of writing it
+down first.
+
+**The tilt is the result, not the level.** Q1 keeps 0.864 of its nominated flux, Q2–Q5 lose 26–38 %. So
+zeroing the water integral spares big trees — precisely the bin where ADR 0241 §6 put the entire per-stem
+mass excess, and precisely the failure mode ADR 0242's `H0` showed has teeth. A level shortfall could have
+been argued away with a scale factor; this cannot.
+
+**Two things I did not expect.** `bm_inc_counter` is worth *more* than `temp_stress` (9 pp of flux against
+6) — the counter's hard kills go 2 506 → 0 when it is held at zero, so a fresh rollout under-hazards its
+declining cohorts while it fills. And the annual `1 − wscal_mean` proxy that would have been the cheap fix
+explains under a quarter of the integral's variance (within-PFT median r 0.49/0.40), with the POOLED r
+*lower* than the within-group one — the opposite direction from the usual cross-sectional inflation, and
+worth stating because I had the trap in mind and it fired backwards.
+
+**One round trip lost to a wrapper name collision.** I exported `TAG=predict` as the scorer's mode knob;
+`sbatch_julia.sh` assigns its first positional to `TAG`, so the job ran with `TAG=S-hazinputs`, exited 0,
+and printed `scoring 0 dumps` — which reads as a missing campaign, not a clobbered knob. Renamed to
+`NPREV` (which every other rung-2 scorer already used), and captured it in CLAUDE.md §9 and the dump
+skill. The reason it cost only one round trip is that the scorer echoes its own knob values; that is now
+the recorded habit.
+
+**What I was careful not to claim.** This measures the cost of ZERO inputs, not of F's own. ADR 0110
+Phase 2's accumulator exists and is off behind a three-flag chain of which two fail silently — so the next
+step is to measure the middle of the bracket (0.78 ≤ F's own ≤ 1.00), and the fail-loudly fix is raised as
+an inbound to line M rather than done in their file.

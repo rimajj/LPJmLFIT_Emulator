@@ -6,8 +6,8 @@
 > S's **TIER-3 block is 0170–0189** — allocated in CLAUDE.md §9 at ADR 0119's merge under §9's rule that
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239) — and it is now **EXHAUSTED (ADR 0189
-> was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240 and continued by ADR 0241.
-> **Next free number: 0242.**
+> was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240 and continued by
+> ADR 0241, 0242 and 0243. **Next free number: 0244.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
@@ -370,101 +370,107 @@ before appending costs a second and would have caught this and my own two previo
 ## NEXT — start here
 
 > **LAST MERGE — 2026-08-14, ADR 0242 is ON `main`.** Merge commit `52f38396`, changelog collation
-> `16961c06`, branch sha `55ab3799`. **Both gates the diff triggers are green on `16961c06` — `format`
-> (Runic; it fired because the diff touches two `scripts/**.jl`) and `uncollated fragments`.** The merge
-> commit itself shows no check-runs, which is correct and path-filtered — the newest `main` sha is the one
-> that carries a verdict (ADR 0090). The previous merge was ADR 0241: `d9ebf780`..`6a1aadd2` (collation
-> `6a1aadd2`, branch sha `4aba3ee3`); before that ADR 0240: `221c726a` (collation `c6289ee6`, branch sha
-> `512f4a03`).
+> `16961c06`, branch sha `55ab3799`. Both gates that diff triggers were green on `16961c06` (`format`,
+> because it touched two `scripts/**.jl`, and `uncollated fragments`). ⚠ **THIS SESSION'S OWN MERGE SHAS
+> ARE PINNED AT THE BOTTOM OF THIS BLOCK — read them before assuming `main` is where you left it.**
 >
-> # 🟢 THIS SESSION (2026-08-14) — ADR 0242: THE RATE OPERATOR MEETS THE CRITERION. The five-ADR hunt for the per-stem mass excess is OVER.
+> # 🟢 THIS SESSION (2026-08-17) — ADR 0243: THE RATE OPERATOR CANNOT RUN ON THE INPUTS THE COUPLED LOOP FEEDS IT. `Φ` = 0.78, and the WATER integral is the reason.
 >
-> **`dN` +4.4 %, `dAGB` +4.1 %, per-stem mass −0.3 %** — ssp370 leg, FIT-gain cells, ADR 0185 §5's
-> imported basis, against ADR 0240's pair clause of 40 % on **both**. The excess that ADR
-> 0186/0187/0240/0241 chased (`S1` +96 %, `G1` +269 %) is gone. All three of ADR 0188 §7's clauses pass
-> too: discretionary rate **2.2 %/yr** (FIT 2.1, clause ≥1.5), mass removal **0.03406** (FIT 0.03063,
-> clause ≥0.025), agb **+4.1 %**. Nomination rate **5.961 %/yr against FIT's own gross 5.961**, `R̂`
-> **6.43 vs 6.456**, roster **1.000×** over 81 free-running years. Warming response: slope **1.150**,
-> RMSE **1.116** stems, |bias| **0.330** — **4.9×** below the do-nothing null and **4.5×** below the
-> status quo.
+> ADR 0242 §B step 1, executed. The operator is settled (ADR 0242); **what it READS is not**, and that is
+> now measured rather than asserted. `scripts/diagnose_rung2_hazard_inputs.jl` (new), SLURM job 1815280,
+> **1 389 207 tree stem-years** over 48 `REC`/`H1` `predict` dumps, **no model run**: the SHIPPED
+> `TraitMortality.mortality_hazard` re-evaluated on IDENTICAL roster rows under five input variants.
+> §§1–4 of the ADR were **committed before any number existed** (`270ab35a`).
 >
-> **What was built.** Three harness arms mirroring `S0`/`S0h`/`S1`: **`H1`** `f = 1 − mort_i` per stem
-> (the shipped `TraitMortality.survival_prob`, i.e. FIT's own Bernoulli), **`H0`** uniform at the
-> nind-weighted mean hazard, **`H0h`** certain deaths honoured + uniform over the rest. No target, no
-> budget, no account, **no `ρ < 1` gate**. 360-leg campaign, **351 OK / 9 DEAD** (all the known open
-> C-side duplicate-roster-key fault — §D unchanged). Guardrail 4 measured; the new derivable gate
-> passes; sections 1–4 of the ADR were **committed before any campaign number existed**.
+> **THE RESULT.** The blessed statistic is the nomination-flux ratio
+> `Φ = Σ nind·h / Σ nind·mort_prob`. On the inputs the coupled loop passes today (both stress integrals
+> zero, because `trait_drought_mortality` is off): **`Φ` = 0.7834 / 0.7834 on `REC`'s historic/ssp370
+> legs and 0.7776 / 0.7862 on `H1`'s ⇒ FAIL** against the pre-registered fail bound of 0.867 (derived from
+> ADR 0187's own measured flux→biomass mapping), outside the band by 0.084 and not a straddle. **WHICH
+> integral: water, by 2.4–2.8×** — `Φ(zeroW)` 0.8625/0.8399 vs `Φ(zeroT)` 0.9209/0.9437 — and the
+> decomposition is **additive to 2e-4**, so the two wire independently. It is a **dry-cell** defect, not a
+> global level error: FIT's water+temp hazard-mass share is 31 % pooled but **67 % at c44048** (Φ 0.464)
+> and 0.05 % at c12235 (Φ 1.0000).
 >
-> ## ⚠ READ THIS BEFORE QUOTING ANY OF IT: IT IS A CEILING, NOT A FIDELITY RESULT
+> **THE ORDERING CLAUSE IS WHAT GIVES IT TEETH.** The certain set SURVIVES (recall 0.955–0.983) — but the
+> height-quintile ordering does not: `max|Φ_q − Φ|` **0.162–0.185** against a ±0.15 clause, Q1 at 0.864
+> while Q2–Q5 lose 26–38 % ⇒ **zeroing the water integral spares BIG trees**, exactly where ADR 0241 §6
+> located the entire per-stem mass excess. Under ADR 0242's `H0` finding (at FIT's full flux WHICH trees
+> die is decisive) that is the failure mode that matters, not a level offset.
 >
-> In rung 2 the hazard reads **FIT's own stress integrals through the rendezvous**, so `H1` is close to
-> replaying FIT's own mortality inside FIT's own physics and its agreement is EXPECTED (ADR 0049 item 4,
-> pre-registered in ADR 0242 §1). **It does not close the deliverable and must never be cited as if it
-> did.** What it does establish, none of which was known before: the count-budget architecture was the
-> **whole** of the mortality defect; nothing else in the loop (the C's growth, `ESTAB_C`, the rendezvous,
-> the 5 m cut, an 81-year free-running recursion) prevents ~5 % agreement on count AND biomass; ADR
-> 0241's replacement claim now holds in the closed loop and not only offline; and ADR 0241 §6's big-tree
-> tail was a property of stands built by a starved operator, not a separate defect.
+> **THREE THINGS THAT MAKE IT TRUSTWORTHY, all pre-registered:** the identity self-test passes first
+> (`max|h_full − mort_prob|` **8.9e-16**, `Φ(full)` = 1.0000000000, reproducing ADR 0183 through a second
+> scorer); the derivable inequality `1 − Φ ≤ S_wt` HOLDS at 0.2166 ≤ 0.3190 with **slack 0.1025** (⇒ a
+> third of the discarded stress mass sits on stems the cap and hard kills condemn anyway); and the answer
+> is the same on FIT's stand and on the arm's own (every variant is evaluated on the same row, so trap 5
+> cannot bite). Cross-checked independently by `diagnose_rung2_ported_certain_set.jl` (job 1815281), which
+> reaches the certain-set numbers and `S_wt` through different code and agrees to 4 digits.
 >
-> ### B. THE NEXT ACTION — THE HAZARD'S INPUTS. That is the only thing left between this ceiling and the standalone emulator.
+> **TWO SIDE FINDINGS WORTH CARRYING.** (1) **`bm_inc_counter` is worth MORE than `temp_stress`** —
+> never learning it costs **9 pp** of flux against temperature's 6, with the `bm_inc_counter` hard kills
+> going 2 506 → 0 ⇒ a fresh rollout under-hazards its declining cohorts while the counter fills; the
+> coupled `_trait_hazards!` already advances it every year, and this prices that design. (2) **An annual
+> proxy cannot substitute for the daily integral:** the C's own `1 − wscal_mean` (which F has) tracks the
+> C's own `water_stress` at within-(cell,PFT) median r **0.49/0.40**, r² ≤ 0.24 — and the POOLED r is
+> LOWER (0.21), the opposite of trap 5j's inflation. Do not feed it in.
 >
-> **STEP 1 — measure how much of `H1` survives when the hazard is fed emulator-side inputs.** The
-> operator is settled; what it reads is not. `TraitMortality.mortality_hazard` needs `bm_delta`,
-> `leafarea_real`, `leaf_c`, `water_stress`, `temp_stress`, `bm_inc_counter`, `age`, `sla`, `wooddens`.
-> In rung 2 all of them arrive from the C. Offline the emulator has **neither of FIT's stress
-> integrals** (ADR 0049 item 4). **The cheap first cut already exists**:
-> `scripts/diagnose_rung2_ported_certain_set.jl` carries a **zeroed-stress arm** that evaluates the
-> hazard as the coupled loop would. Run it against `H1`'s own dumps and read the certain-set
-> recall/precision and the hazard distribution — no model run, and it tells you which of the two
-> integrals the answer hinges on before any arm is built.
-> **Pre-register before running it**, and derive the null: an arm handed the C's own stress integrals is
-> `H1` itself (the ceiling, now measured), and an arm handed nothing is bounded below by `NP`. State
-> both numbers beside whatever the third arm returns.
+> ### B. THE NEXT ACTION — MEASURE THE MIDDLE TERM OF THE BRACKET. It is the only thing between this and the standalone operator.
 >
-> **STEP 2, conditional on step 1 — the wiring question, and it is an integration point if it touches
-> `src/`.** A rate operator in the coupled path replaces `ρ`-driven thinning in
-> `src/components/slow.jl` (S-owned, so no integration point) but needs its stress integrals from
-> **F** (`src/fdiff.jl`, M-owned ⇒ integration point) unless S carries its own accumulator. Do not open
-> this before step 1 says which integral matters.
+> ⚠ **WHAT ADR 0243 DOES *NOT* SAY: it did not measure the cost of F's OWN integrals.** ADR 0110 Phase 2
+> already accumulates them per individual (`fast.jl::_accumulate_stress!`, on the C's own construction
+> from F's daily `wscal`/temperature). Those are F's VALUES, so no dump can carry them and the ADR
+> brackets the case instead: **0.78 (zeros) ≤ F's own ≤ 1.00 (the C's own = ADR 0242's ceiling).**
 >
-> **What NOT to do.** No budget of any kind (item 22). No account variant (item 23). No count-side
-> instrument (item 8). No `G0` variant (item 19). No allometry/growth work on the per-stem mass excess
-> (item 25) — and it is now not merely out of scope but **unnecessary**, since a rate operator removes
-> the excess without touching growth. **Do not re-run the `H*` campaign** to improve a number; it is
-> the ceiling and it is measured.
+> **STEP 1 — the F-vs-C comparison of the INTEGRAL ITSELF.** Run F at the same cells with
+> `per_tree_roots = true`, `wscal_leafon = true`, `trait_drought_mortality = true`, and score its
+> per-individual `water_stress_acc` / `temp_stress_acc` against the C's own `water_stress` / `temp_stress`
+> columns — then push F's values through the hazard and report `Φ` on the SAME basis this ADR used, so the
+> three numbers are directly comparable. This is `fdiff-validate`-shaped and needs **no rung-2 run**.
+> **Pre-register it with the bracket as its two nulls (0.78 and 1.00) and the same derived pass condition
+> `Φ ≥ 0.867`** — and state in advance that a value near 0.78 means F's integral carries no information,
+> not that the operator is wrong.
+> ⚠ **THE TRAP THAT WILL SILENTLY VOID THAT MEASUREMENT (ADR 0243 §6, skill trap 5r):** the accumulator
+> needs **all three** flags. `wscal_ind` is allocated only under `per_tree_roots && wscal_leafon`
+> (`fdiff.jl:2092`) and `_accumulate_stress!` returns early on `nothing`, so **setting
+> `trait_drought_mortality` alone reproduces this ADR's FAIL case with no error and no warning.** Assert a
+> non-zero accumulator before believing any arm ran with the integrals on.
 >
-> ⚠ **THE ONE THING THIS SESSION LEFT UNMEASURED AND SHOULD NOT BE FORGOTTEN:** all four of `H1`'s
-> warming-response sign misses sit at **|FIT response| < 0.9 stems**, and whether that is inside FIT's
-> own two-run spread is **UNMEASURED** — the campaign has ONE `REC` member per cell. Under CLAUDE.md's
-> acceptance criterion the tolerance is `max(10 %, the original's own two-run spread)`, so this is the
-> statistic that decides whether those misses are real. It needs a second `REC` seed per cell, which is
-> a **second spin-up** (ADR 0041: bumping `random_seed` in a `-DFROM_RESTART` run yields a
-> byte-identical clone), so it is not cheap — say so rather than implying the sign misses are noise.
+> **STEP 2, conditional on step 1.** If `Φ` clears 0.867 on F's own integrals, wire the rate operator into
+> `src/components/slow.jl` (S-owned, no integration point) and **come back to line M about the
+> `per_tree_roots` / `trait_drought_mortality` defaults with the number attached** — the shape ADR 0136 §7
+> used on this line. If it does not clear, the finding is that F's water status is the blocker, and that is
+> an F-fidelity question (M-owned file, S-specified change).
 >
-> ⚠ **GATES: the next `test/**` or `src/**` edit on this line triggers the full `CI` gate.** This
-> session touched only `scripts/**` (three `.py`, two `.jl`), `docs/decisions/**`, `changelog.d/**`,
-> `.claude/skills/**` and `lines/S/**` ⇒ the only gate that fires is **`format`** (Runic watches ANY
-> `**/*.jl`, incl. `scripts/`) on the branch, plus `uncollated fragments` on `main` after collation.
-> That is the ADR-0240 lesson: a `scripts/**`-only diff is NOT automatically gate-free. The queued
-> long-horizon anchor assertion (the ADR 0136 §7 reply block above) is still the item that WILL trigger
-> the full `CI` gate — budget ~10 min of branch-CI wait for it. Last full suite: **275 606 pass / 0
-> fail** (job 1773556); no `src/**` or `test/**` file has changed on this line since.
+> **What NOT to do.** Do not re-run the `H*` campaign (ADR 0242's ceiling is measured). Do not propose a
+> count-side instrument (ADR 0241 retired it). Do not feed `1 − wscal_mean` into the hazard as a proxy —
+> §5.4 measures why it would not work. Do not touch `fast.jl`/`fdiff.jl`: the fail-loudly request is
+> **already raised as an inbound in `lines/M/STATE.md`** (2026-08-17), so do not raise it twice.
 >
-> ⚠ **ADR NUMBERS: line S is on its TIER-4 block 0240–0259.** 0240, 0241 and 0242 are spent ⇒ **your
-> next ADR is 0243.** (Tier 4 in full: S 0240–0259 · M 0260–0279 · E 0280–0289 · O 0290–0299 ·
-> integrator 0300–0309.)
+> ⚠ **STILL UNMEASURED FROM ADR 0242, DO NOT LOSE IT:** all four of `H1`'s warming-response sign misses
+> sit at |FIT response| < 0.9 stems, and whether that is inside FIT's own two-run spread is **UNMEASURED**
+> — the campaign has ONE `REC` member per cell. It needs a second `REC` seed per cell, which is a second
+> SPIN-UP (ADR 0041), so it is not cheap; say so rather than implying the sign misses are noise.
 >
-> ⚠ **THE CAMPAIGN ON DISK NOW ALSO INCLUDES THE `H*` ARMS.** 360 legs at
-> `/p/tmp/jamirp/S_rung2/S_r2s_<scen>_c<cell>_{H0,H0h,H1}_predict_s<seed>_{dump,apply}`, **351
-> complete**, on top of the `G*` campaign's 357 of 360 and ADR 0185's 258 of 264. Check coverage before
-> scoring anything: `export ARMS="H0 H0h H1"` then
-> `/home/jamirp/.conda/envs/py311_new/bin/python scripts/check_rung2_campaign_coverage.py`, and run
-> `scripts/diagnose_rung2_rate_flux_identity.py` before reading any `H*` number.
+> ⚠ **GATES: this session touched no `src/**` and no `test/**`.** The diff is two `scripts/**.jl`, one
+> ADR, `docs/decisions/README.md`, `changelog.d/**`, `CLAUDE.md`, one skill and two `lines/*/STATE.md` ⇒
+> the only branch gate that fires is **`format`** (Runic watches ANY `**/*.jl`, including `scripts/`),
+> plus `uncollated fragments` on `main` after collation. Runic was run over `src test ext scripts` before
+> the push and exits 0. The queued long-horizon anchor assertion (the ADR 0136 §7 reply block below) is
+> still the item that WILL trigger the full `CI` gate — budget ~10 min of branch-CI wait for it. Last full
+> suite: **275 606 pass / 0 fail** (job 1773556); no `src/**` or `test/**` file has changed on this line
+> since.
 >
-> ⚠ **A NOTE FOR LINE M's OPEN BUG (§D):** the duplicate-roster-key fault's incidence tracks how hard
-> the arm kills — 82 of 510 in the `roster` campaign, 3 of 360 for `G*`, **9 of 360 for `H*`** — and the
-> failing keys are high tree indices at a single PFT (`pft 3, tree 104-115` at c42973; `pft 6, tree
-> 819-852` at c52059). That is new information for the report, not a diagnosis.
+> ⚠ **ADR NUMBERS: line S is on its TIER-4 block 0240–0259.** 0240–0243 are spent ⇒ **your next ADR is
+> 0244.** (Tier 4 in full: S 0240–0259 · M 0260–0279 · E 0280–0289 · O 0290–0299 · integrator 0300–0309.)
+>
+> ⚠ **A NEW WRAPPER TRAP, now in CLAUDE.md §9 and the dump skill's Mechanics:** `sbatch_julia.sh` assigns
+> its first positional to **`TAG`**, so an exported env knob called `TAG` is silently overwritten and
+> `--export=ALL` ships the wrapper's value to the job. The job exits **0** and the scorer prints
+> `scoring 0 dumps`, which reads as a missing campaign. Both rung-2 Julia scorers now use **`NPREV`** (the
+> name every other rung-2 scorer already used) and print their knob values in their own header line.
+>
+> **MERGE SHAS FOR THIS SESSION (ADR 0243):** see the pin appended at the end of this block once the merge
+> lands.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >
