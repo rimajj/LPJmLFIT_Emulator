@@ -113,9 +113,11 @@ mutable struct FDiffFastCore{T <: AbstractFloat} <: AbstractFastCore
     # ADR 0110: per-individual ANNUAL drought- and heat-stress accumulators — the two integrals ADR 0049
     # §3 could not supply, so `mort_water`/`mort_temp` were set to zero. `water_stress_acc[i]` sums the C's
     # `waterstress_tree.c` daily increment for individual `i` using ITS OWN daily `wscal` and ITS OWN
-    # `minwscal`; `temp_stress_acc[i]` counts its days outside `[temp_low, temp_high]`. Both are reset
-    # annually with `bm_inc_acc`, and both stay identically 0 unless `WaterParams.trait_drought_mortality`
-    # is on (the per-tree `wscal` they need only exists under `per_tree_roots`).
+    # `minwscal`; `temp_stress_acc[i]` counts its days outside `[temp_low, temp_high]`. Both stay
+    # identically 0 unless `WaterParams.trait_drought_mortality` is on. ⚠ ADR 0244 corrects two things
+    # this comment used to state: they are reset on the C's own COLDEST DAY (14 N / 195 S), not annually
+    # with `bm_inc_acc`, and only the WATER one needs the `per_tree_roots` per-tree `wscal` — the
+    # temperature count reads the day's air temperature and nothing else.
     water_stress_acc::Vector{T}
     temp_stress_acc::Vector{T}
     aphen_acc::Vector{T}          # days since leaf unfolding (the C's `pft->aphen`), the first gate
@@ -270,21 +272,48 @@ end
 #
 # `soilt` is the same gate source the GSI phenology already uses: Component E's skin temperature when the
 # coupled driver has set it, else the air-temperature proxy — so this is faithful whenever E is coupled.
+#
+# ── ADR 0244: the RESET DAY and the WATER-ONLY GATE, both measured wrong before this ──────────────────
+# `include/climate.h:20-21`. The C zeroes BOTH stress integrals — and `pft->aphen` with them
+# (`phenology_gsi.c:87-90`) — on a FIXED CALENDAR DAY that depends only on the hemisphere, and it does so
+# AFTER the day's increment. So the value the annual mortality call reads is the accumulation over days
+# `reset+1 … 365`, NOT a calendar-year total. Resetting with `bm_inc_acc` at year end instead (which is
+# what this did) hands the hazard days `1 … 365`: measured against the C's own dumped `temp_stress` over
+# 178 (cell, year, PFT) groups at two cells, the C's window reproduces it **178/178 integer for integer**
+# while the calendar year over-counts the stressed-day total by **+32 %** (up to 8 days at boreal
+# `c52059`) — and in the SOUTH the two windows differ by half a year
+# (`scripts/diagnose_stress_integral_window.py`, ADR 0244).
+const _COLDEST_DAY_NH = 14
+const _COLDEST_DAY_SH = 195
+
 function _accumulate_stress!(fc::FDiffFastCore{T}, fl, phen_vec, soilt, temp, humid) where {T}
     fc.params.water.trait_drought_mortality || return nothing
+    # ⚠ ADR 0244: the per-tree `wscal` gates the WATER integral ONLY. `tempstress_tree.c:29` reads the
+    # day's air temperature against the PFT's own `temp_stressed` interval and nothing else, so the
+    # temperature integral needs no per-tree water state — gating it on `wscal_ind` (as this did) made
+    # `mort_temp` silently zero without `per_tree_roots`, i.e. exactly the failing case ADR 0243 measured,
+    # and it is the DOMINANT of the two integrals at the cold cells (24 stressed days/yr at `c52059`
+    # against a water integral of 0.34, where the ordering reverses at the dry cells).
     ws = fl.wscal_ind
-    ws === nothing && return nothing          # needs per_tree_roots; without it there is no per-tree wscal
     @inbounds for i in eachindex(fc.pools)
         pool = fc.pools[i]
         (pool.is_grass || pool.nind <= 0) && continue
         phi = convert(T, FDiff._phen_at(phen_vec, i))
         phi > zero(T) && (fc.aphen_acc[i] += one(T))     # the C's `pft->aphen` day count
         prm = TraitMortality.pft_mort_params(fc.pft_ids[i])
-        fc.water_stress_acc[i] += TraitMortality.water_stress_increment(
-            prm, phi, FDiff.getvpd(temp, humid), convert(T, ws[i]),
-            convert(T, pool.minwscal); soil_temp = soilt, aphen = fc.aphen_acc[i],
-        )
+        if ws !== nothing
+            fc.water_stress_acc[i] += TraitMortality.water_stress_increment(
+                prm, phi, FDiff.getvpd(temp, humid), convert(T, ws[i]),
+                convert(T, pool.minwscal); soil_temp = soilt, aphen = fc.aphen_acc[i],
+            )
+        end
         fc.temp_stress_acc[i] += TraitMortality.temp_stress_increment(prm, temp)
+    end
+    # the C's fixed-calendar-day reset, applied AFTER the increment exactly as the C does
+    if fc.doy == (fc.lat >= zero(T) ? _COLDEST_DAY_NH : _COLDEST_DAY_SH)
+        fill!(fc.water_stress_acc, zero(T))
+        fill!(fc.temp_stress_acc, zero(T))
+        fill!(fc.aphen_acc, zero(T))
     end
     return nothing
 end
