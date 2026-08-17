@@ -130,6 +130,37 @@ roster and driven with the cell's own daily forcing for year y.
 `wscal_ind` is allocated only under `per_tree_roots && wscal_leafon` (`fdiff.jl:2092`) and the water branch
 is skipped on `nothing`. **Assert a non-zero `water_stress_acc` before reading any number.**
 
+## 2a. What the measurement can even SEE — the C side, measured before any F run
+
+The C's water integral is **sparse and heavy-tailed**, and that decides which statistic can carry the
+verdict. Historic leg, `REC` rosters, share of tree stem-years with a NON-ZERO integral:
+
+| cell | stems | non-zero `water_stress` | non-zero `temp_stress` | mean `water_stress` \| non-zero | p95 |
+|---|---|---|---|---|---|
+| `tropical_amazon` 12045 | 3 590 | **0.39 %** | 0.00 % | 0.970 | 2.58 |
+| `temperate_hainich` 42490 | 9 951 | 3.76 % | 1.15 % | 2.885 | 11.09 |
+| `semiarid_sahel` 18371 | 16 293 | **5.33 %** | 0.00 % | **21.374** | 70.32 |
+| `boreal_siberia` 52059 | 23 286 | **30.04 %** | 26.27 % | 1.375 | 4.36 |
+
+Four consequences, all fixed now rather than discovered afterwards:
+
+1. **The GATE is most of the signal, not the magnitude** — so §2.3's gate-vs-magnitude split is the
+   PRIMARY decomposition and not a footnote. At `semiarid_sahel` the 5.33 % of stems that carry any drought
+   stress carry a mean of **21.4** against a cell-wide stem mean of 1.27: a small, high-magnitude subset.
+   Reproducing *which* stems are stressed is therefore worth more than reproducing how much.
+2. **A per-stem mean ratio would be dominated by zeros** and must not be the headline. §2.2's separate
+   joint-zero / F-only / C-only counts are the reportable form.
+3. **`tropical_amazon` is nearly uninformative for this question** (0.39 % of stems, mean 0.97). A null
+   result there is a property of the cell, not evidence about F — say so rather than counting it as a pass
+   or a fail. Effectively this is a **three-cell** measurement with one bystander.
+4. ⚠ **The best-conditioned cell is also the most confounded one.** `boreal_siberia` is the only cell where
+   both integrals are common (30 % / 26 %), which makes it the natural place to score the comparison — and
+   it is exactly the cell where CLAUDE.md §3 records the air-for-soil-temperature proxy at its worst (a
+   **+4.40 °C** snow/damping offset, sd 10.8, against ≤ 0.13 °C at the other four). So a `boreal_siberia`
+   discrepancy is *attributable* and cannot on its own convict F's water status; a discrepancy that also
+   shows at `semiarid_sahel` and `temperate_hainich` can. This is stated before the run precisely because
+   it would otherwise be available afterwards as an excuse.
+
 ## 3. Measurement B — COST: what does `per_tree_roots` do to the speed gate?
 
 Speed is goal #2 and **`per_tree_roots` has never been timed**. It rebuilds a root profile per individual
