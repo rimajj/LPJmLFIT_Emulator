@@ -408,10 +408,16 @@ before appending costs a second and would have caught this and my own two previo
 > Reading the path against the C first (guardrail 5) found **two defects**, either of which alone would have
 > handed the hazard a WRONG non-zero integral — worse than a zero, per ADR 0242's `H0`.
 > **(1)** the TEMPERATURE integral was behind an early `return` on `wscal_ind === nothing`, so `mort_temp`
-> was identically zero without `per_tree_roots` **even with the flag on** — and it is the DOMINANT integral
-> at the cold cells (FIT's own mean **24.1 days/yr at c52059**, 13.3 / 12.0 at c57087 / c44048, against water
-> 0.34 / 0.01 / 1.89) while the ordering REVERSES at the dry cells (c18371 water 21.1 vs temp 0.0) ⇒ **the two
-> bind at DIFFERENT cells; neither is the small one.** **(2)** both integrals — and `pft->aphen` — are zeroed
+> was identically zero without `per_tree_roots` **even with the flag on**. ⚠ **CORRECTED BY ADR 0245 §0 —
+> do not repeat the original sentence.** It justified the fix by comparing `temp_stress` day counts against
+> `water_stress` sums: wrong twice, because the water figures took the FIRST stem of each (year, PFT) group
+> (valid for `temp_stress`, which is constant within the group; NOT for the per-stem `water_stress`), and the
+> two raw integrals are unit-incommensurable anyway. On the commensurable statistic ADR 0243 §5.1 already
+> emitted per cell — each integral's cost in NOMINATED MORTALITY FLUX — **temperature is the larger term at
+> exactly ONE of twelve cells (c57087, 0.088 vs 0.016), TIES at c52059 (0.1329 vs 0.1308, the cell ADR 0244
+> named), and water is larger at the other ten (0.429 at c44048 alone).** The defect and the exact fix stand
+> — temperature is 5.6–7.9 % of flux pooled and is the only half suppliable EXACTLY — but "dominant at the
+> cold cells" is withdrawn. **(2)** both integrals — and `pft->aphen` — are zeroed
 > by the C on a FIXED CALENDAR DAY **after** the increment (14 N / 195 S, `include/climate.h:20-21`), so its
 > "annual" value is days `reset+1 … 365`, **not** a calendar-year total; F reset at year end, and in the
 > SOUTH the two windows differ by half a year.
