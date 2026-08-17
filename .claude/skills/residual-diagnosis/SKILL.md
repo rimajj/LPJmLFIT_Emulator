@@ -2264,3 +2264,15 @@ biomass clause gives a pass line of 0.867, and the naive no-feedback version of 
 0.930. Pre-register **both**, name the in-between band NO VERDICT, and state that the calibration rests on
 one measured pair. When the answer lands outside both (0.783), the band never has to be argued about —
 which is the only reason writing it down first is worth the effort.
+
+⚠ **IF A SCORER ALREADY EMITS THE COMPARABLE QUANTITY PER UNIT, QUOTE IT — A HAND-ROLLED SECOND COMPARISON
+IS HOW A SOUND MEASUREMENT ACQUIRES AN UNSOUND JUSTIFICATION (ADR 0245 §0).** The blessed statistic had
+been derived, pre-registered and computed per cell; the ADR that consumed it then justified its own
+decision with a fresh `awk` over the raw columns instead, and got two independent errors in one sentence —
+a group scan reused on a column that (unlike the first) VARIES within the group, and a comparison between
+two quantities with different units and different downstream factors. Neither error touched the decision,
+which is exactly why it survived review: **a wrong supporting number attached to a right conclusion has no
+symptom.** Two checks, both free: does my summary statistic exist already in the scorer's own output? and
+are the two things I am comparing on the same scale after their downstream factors? This is dump-skill
+trap 5c ("a criterion is written against a definition — import that definition") one level down, applied
+to the *supporting* numbers rather than the blessed one.

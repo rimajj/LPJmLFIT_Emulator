@@ -356,6 +356,18 @@ have already printed convincingly. A partial run that dies below the fold looks 
    basis), and asserting the constancy catches a mis-read `#H` offset instantly — trap 1's silent failure
    mode is two same-typed columns, and a column that must be constant stops being constant the moment you
    read the wrong one. Assert it in the reader, not in a comment.
+5p3. **⚠ THE MIRROR OF 5p2, AND IT COST A PUBLISHED SENTENCE: THE SAME ONE-LINE SCAN CANNOT SUMMARISE A
+   COLUMN THAT VARIES WITHIN THE GROUP (ADR 0245 §0).** `temp_stress` is constant within
+   (year, patch, PFT), so a scan that keeps the FIRST stem per group reports it exactly. `water_stress` is
+   **per-stem** and varies inside every group, so the identical scan returns an arbitrary representative —
+   which is how "water integrals of 0.34 / 0.01 / 1.89" reached an ADR when the stem-weighted means are
+   0.414 / 0.035 / 2.361. **Before reusing a group scan on a second column, check whether that column is
+   constant within the group** (5p2's own assertion tells you for free). And the deeper error underneath it:
+   `temp_stress` is a day count entering `min(1, 5·ts/365)` while `water_stress` is an unbounded VPD-weighted
+   sum entering a different factor ⇒ **the two raw integrals are not commensurable at all.** The comparable
+   quantity is each one's cost in NOMINATED MORTALITY FLUX, which `diagnose_rung2_hazard_inputs.jl` already
+   emits per cell — on that basis temperature is the larger term at **1 of 12 cells**, not at "the cold
+   cells". Quote the scorer; do not hand-roll a second comparison.
 5q. **⚠ A CERTAIN-SET AGREEMENT DOES NOT LICENSE "THE HAZARD'S INPUTS DON'T MATTER" — SCORE THE FLUX
    (ADR 0243).** With both stress integrals zeroed (which is what the coupled loop feeds today) the
    certain set is still recovered at **recall 0.955–0.983**, and `diagnose_rung2_ported_certain_set.jl`
