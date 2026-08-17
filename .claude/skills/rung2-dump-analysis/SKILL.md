@@ -349,6 +349,26 @@ have already printed convincingly. A partial run that dies below the fold looks 
    **no emitted stems at all at 2 of 12 cells at 2100**, extending trap-adjacent ADR 0240 item 19's `G0`
    annihilation finding to the trait arm.
 
+5q. **⚠ A CERTAIN-SET AGREEMENT DOES NOT LICENSE "THE HAZARD'S INPUTS DON'T MATTER" — SCORE THE FLUX
+   (ADR 0243).** With both stress integrals zeroed (which is what the coupled loop feeds today) the
+   certain set is still recovered at **recall 0.955–0.983**, and `diagnose_rung2_ported_certain_set.jl`
+   printed that as "the missing integrals do not block the flip". On the same rows the arm nominates only
+   **`Φ` = 0.78** of the mortality flux FIT's own stand asks for, and the loss is **TILTED by height** —
+   the shortest quintile keeps 0.864 while Q2–Q5 lose 26–38 % ⇒ big trees are spared, exactly where ADR
+   0241 §6 put the per-stem mass excess. A certain set is a threshold-crossing COUNT; mortality is a
+   MASS-BEARING FLUX; the two can move apart by 5× in relative terms. ⚠ And that `precision = 1.0000`
+   column is **an identity, not evidence**: zeroing can only lower a hazard, so the zeroed certain set is
+   a strict SUBSET of FIT's and precision is 1 by construction — only recall carries information. **Free
+   corollary worth reusing: when a variant can only move a quantity one way, derive which confusion cell
+   is pinned before reading the table.**
+5r. **⚠ THE EMULATOR-SIDE STRESS INTEGRALS ARE THREE FLAGS DEEP AND TWO OF THEM FAIL SILENTLY
+   (ADR 0243 §6).** ADR 0110 Phase 2's `fast.jl::_accumulate_stress!` only ever accumulates when ALL of
+   `per_tree_roots` (default **false**), `wscal_leafon` (true since ADR 0059) and
+   `trait_drought_mortality` (default **false**) hold: `wscal_ind` is allocated only under
+   `per_tree && w.wscal_leafon` (`fdiff.jl:2092`) and the accumulator returns early on `nothing`. So
+   **flipping `trait_drought_mortality` alone reproduces the ZEROED regime with no error, no warning and
+   no visible difference** — and anyone measuring that flip would conclude the integrals do not help.
+   Set all three, and assert a non-zero accumulator before believing an arm ran with them.
 6. **`age` at `grow` is POST-increment** (the C's hazard used `age − 1`; ADR 0031's off-by-one). Subtract 1
    when feeding a ported equation; a constant offset cancels in a difference-of-means-over-sd statistic but
    not in a level. **And it is what makes trap 5j's recruit identity exact.**
@@ -387,6 +407,7 @@ have already printed convincingly. A partial run that dies below the fold looks 
 | `scripts/diagnose_rung2_perstem_mass_decomp.py` | **IS THE PER-STEM MASS EXCESS THERE AT MATCHED AGE/HEIGHT** (ADR 0241 §6) — direct standardisation onto FIT's own terminal-stand quintiles, plus the full profile by height quintile. Answer: four of five bins at ratio **0.92–1.05**, the whole excess in the open-ended TOP bin ⇒ STRUCTURE. Terminal-year only, with a year-token prefilter that cuts the splits ~81× on an ssp370 leg; seconds per dump. Its `w = leaf_c + sapwood_c + heartwood_c − debt_c` is gated against ADR 0240's published `dPER` (`S1` +99.0 % vs +96 %). |
 | `scripts/diagnose_rung2_rate_draw_replay.jl` | **the frozen-feedback check on a stochastic arm** (ADR 0242 §7) — replay a leg's draw on the dump's own `grow` rosters, once with the harness's seed (must reproduce the logged `n_kill` exactly: **2025/2025**, which also identifies the roster and re-proves the hazard port) and then N times with other seeds (the rosters are then FIXED, so `Σ(1−f)` is a constant and the Monte-Carlo mean is an unbiased estimate with no trajectory feedback: **−0.0585 %, z −0.83**). **Reach for this whenever a stochastic operator looks biased** — it separates "the draw is wrong" from "the statistic is wrong" in one job and needs no model run. |
 | `scripts/diagnose_rung2_rate_flux_identity.py` | **the DERIVABLE A-PRIORI GATE on the `H*` rate arms** (ADR 0242) — run it before reading any `H*` number, as `gross_account_identity` is for `G*`. Arm logs only, seconds. (A) the expected-flux identity `kill_exp == haz_exp` row by row (smoke: max \|diff\| **2.4e-17**); (B) realized vs implied with an **EXACT** sampling SE for EVERY arm, `z = (realized − implied)/sqrt(Σ kill_var)` — ADR 0188's `1.004 ± 0.009` had to hand-roll one from a uniform-draw assumption only `S0` meets, and ADR 0187 §5f is the standing instruction to derive the SE first; (C) the gate-incidence check that a rate arm decided on every non-empty patch-year and logged `rho_eff` as NaN; (D) **not a gate** — the delivered-flux column that gives ADR 0187's rate shortfall with no dump scan. **Copy panel B's shape for any new stochastic arm**: logging the draw's own mean AND variance makes the self-test exact instead of assumed. |
+| `scripts/diagnose_rung2_hazard_inputs.jl` | **WHAT THE HAZARD HAS TO BE FED — how much of an `H*` arm survives on emulator-side inputs** (ADR 0243). Re-evaluates the SHIPPED hazard on IDENTICAL roster rows under five input variants (`full` / `zeroW` / `zeroT` / `zeroWT` = the coupled default / `zeroWT_c0`) and reports the **nomination-flux ratio `Φ = Σ nind·h / Σ nind·mort_prob`** with three DERIVED nulls, the certain set, the height-quintile ordering, mass selectivity, and the annual-proxy relation. 48 dumps / 1.39 M stem-years in ~4 min, no model run. **Copy its null 3**: an inequality you can derive from the code (`1 − Φ ≤ FIT's own water+temp hazard-mass share`) is a free gate whose SLACK is itself a measurement. ⚠ Its knob is `NPREV`, never `TAG` — see Mechanics. |
 | `scripts/check_rung2_campaign_coverage.py` | **which legs of a campaign finished, and the re-run lines for the rest.** Uses the C's own completion line plus the arm log's patch-year count. ⚠ It exists because the failures are silent everywhere else: the job exits on the C's code, a truncated dump looks like a short one, and `harness: served <N> patch-years` is written by the FAILURE path — the job file kills a healthy harness before it prints, so reading its absence as failure INVERTS the test. |
 | `scripts/diagnose_rung2_armc.py` | age–wooddens gradients and selection differentials (shared with line M's arm C; **each arm family has its own recorded baseline and they are NOT interchangeable**) |
 | `scripts/rung2_s_demography_harness.jl` | **the row assembly.** It reaches `flux_feature_vector` and `DRF.predict` as private names off the package rather than copying them — do the same, or the copy becomes the thing being measured (ADR 0023). |
@@ -405,3 +426,12 @@ every env knob** — the wrappers forward only a fixed list of names. Python: li
 set, `ruff check --select E,F,I,UP,B --line-length 100` (CI does not lint `scripts/*.py`, so nobody else
 will). Julia: the repo-wide Runic `format` gate DOES cover `scripts/**` — run the check from the
 `julia-test` skill before pushing.
+
+⚠ **NAME THE MODE KNOB `NPREV`, NEVER `TAG` — `sbatch_julia.sh` USES `TAG` ITSELF AND SILENTLY WINS.**
+The wrapper's first positional is assigned as `TAG="${1:?…}"`, so `export TAG=predict` followed by
+`scripts/sbatch_julia.sh S-hazinputs …` ships **`TAG=S-hazinputs`** to the job (the assignment lands on the
+already-exported name and `--export=ALL` carries it). The regex then matches nothing, the job exits **0**,
+and the log says `scoring 0 dumps` — which reads as a missing campaign, not a clobbered knob. Every scorer
+here therefore **prints its own knob values in its header line**; that is what turns this into a one-round-trip
+diagnosis instead of a hunt through the dump directory. Same family as CLAUDE.md §9's "a new knob is not
+forwarded", but the opposite direction: `export` is what causes it.
