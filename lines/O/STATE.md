@@ -91,7 +91,53 @@ language** this session (it could not go in `~/.claude/CLAUDE.md`, which is outs
 
 ## NEXT — start here
 
-### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
+### 0★ ⛳⛳ THE PATCH COUNT INVALIDATES EVERY SPEED VERDICT THIS PROJECT HAS RECORDED (2026-08-17, ADR 0085; merged to `main` at `361f808a`)
+
+**READ ADR 0085 BEFORE TOUCHING ANYTHING ABOUT SPEED.** The owner stated that publication runs use
+**~500 patches per cell**; every recorded verdict — including block 0☆ below and ADR 0084 §4 — was computed
+at **25**. Measured on the C: `cost ≈ 0.0141 · npatch` core-s per cell-year, per-patch cost flat to 4.7 %
+over two decades of J, so at 500 patches **99.9 % of LPJmL-FIT is the patch ensemble** (the
+patch-count-independent part is at most 0.19 %) and it costs **7.06 core-s per cell-year**.
+⚠ **Block 0☆'s "the patch ensemble is NOT the bottleneck / 37× engineering + ~3× patches" is FALSE at the
+production configuration.** Do not act on it. Do not quote any speed number without its patch count.
+
+**What is settled (all measured, all committed):**
+
+* the scaling law + the per-output patch requirement + the profile → ADR 0085 §2, §3, §4a;
+* **the patch count is a pure VARIANCE knob — there is no patch-count bias** (§5b). `npatch` enters in two
+  non-cosmetic places and establishment is per-patch from that patch's own light. **The 21–81 % recruitment
+  loss is the cost of averaging the stand into ONE patch, not of running fewer patches.**
+* an **exact-only ~2×** single-core ladder, self-verified against the source (§3c);
+* **REJECTED BY MEASUREMENT:** the shared-gene-pool hypothesis (§5a), at Hainich *and* at the Amazon;
+* adversarial review of 18 proposals (§5d): the ensemble-side lever is **3–8×**, all ensemble-side ideas are
+  **ONE lever not factors to multiply**, and the learned annual operator is **1.3–1.5×** not 7–73× because
+  the per-tree daily step also drives the patch's soil.
+
+**▶ DO THESE THREE, IN ORDER — each is cheap and each settles something load-bearing:**
+
+1. **Price the exact-only ladder for real (§3c, ~2× claimed).** It is derived, not measured. The two
+   cleanest items need no design decision: cache `getrootdist` (it is called **twice per tree-day with
+   identical arguments**, `water_stressed.c:86` + `daily_natural.c:247`, for a value whose inputs change
+   once a year) and memoise the Vcmax bracket + `temp_stress` per `(cell-day, PFT id)` (**≤10 distinct
+   values, evaluated ~150 000 times**). Both bit-identical. Rebuild → `scripts/diagnose_cbinary_rebuild_equality.py`
+   → re-run `scripts/bench_speed_gate_c.sh`. **This is a C-source change: raise it as an integration point,
+   the C tree is not line-owned.**
+2. **Settle how much of the "warming response is indistinguishable from zero" problem is noise in the
+   REFERENCE.** §5b: at the strict reading the 500-patch reference resolves its own response to only
+   **8.5–12 %**. If true, effort spent chasing the emulator's response has been chasing reference noise.
+   ⚠ The reviewers cut the *speedup* from common random numbers to **~1.0×** because the two scenario legs
+   already share a restart and therefore already share seeds — so do **not** sell this as a speed lever.
+   The cheap version: score the response of the two committed ground-truth seeds against each other.
+3. **Re-run the 10 verifiers that died on a session limit** — they are exactly the concrete exact-code items:
+   `Workflow({scriptPath: '<session>/workflows/scripts/lpjmlfit-c-speed-at-500-patches-wf_22a4ba9d-607.js', resumeFromRunId: 'wf_22a4ba9d-607'})`.
+   Completed agents replay from cache. The synthesis agent also died; ADR 0085 §5d is the hand-written
+   replacement, so a re-run only needs to add the missing verdicts.
+
+**Do NOT redo:** the scaling law, the convergence table, the gene-pool test (rejected), or the profile.
+Scripts: `probe_c_patch_scaling.sh`, `probe_c_patch_convergence.sh`, `probe_c_genepool_diversity.sh`,
+`bench_speed_gate_c.sh PERF=1`. Skill `speed-gate` carries all of it as **trap 0**.
+
+### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094) — ⚠ ITS PATCH-ENSEMBLE CLAIM IS SUPERSEDED BY 0★ ABOVE
 
 **Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution
 ladder**, because offline Component S (98.2 % of count variance) and the coupled driver (terminal density
