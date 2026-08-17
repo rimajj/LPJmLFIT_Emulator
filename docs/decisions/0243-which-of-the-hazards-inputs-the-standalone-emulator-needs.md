@@ -1,6 +1,6 @@
 # ADR 0243 — Which of the hazard's inputs the standalone emulator actually needs
 
-* **Status:** proposed (sections 1–4 are the PRE-REGISTRATION and are committed before any number exists)
+* **Status:** accepted (sections 1–4 are the PRE-REGISTRATION and were committed before any number existed: commit `270ab35a`)
 * **Date:** 2026-08-17
 * **Line:** S (Component-S science)
 * **Supersedes / amends:** nothing. Builds ADR 0242 §B step 1.
@@ -170,6 +170,137 @@ ADR 0242's `H0` finding forces this: the same flux spent on the wrong stems anni
   that is a request to line M of the same shape as its own ADR 0136 inbound to this line.
 * **STRADDLE** ⇒ no verdict; the next step is a coupled arm, not another offline panel.
 
-## 5. Result
+## 5. Result — the shipped default FAILS, and the WATER integral is the reason
 
-*(to be written after the run — nothing above this line is edited once a number has been seen)*
+`scripts/diagnose_rung2_hazard_inputs.jl`, SLURM job 1815280, 48 dumps, **1 389 207 tree stem-years**,
+no model run. The independent cross-check is `scripts/diagnose_rung2_ported_certain_set.jl` (job 1815281,
+its `NPREV` knob added for this), which reaches the certain-set numbers through different code.
+
+**PANEL A — the identity self-test passes first.** `max |h_full − mort_prob| = 8.9e-16` over all cells and
+`Φ(full) = 1.0000000000` on every arm and leg, reproducing ADR 0183 through a second scorer. Zero stems
+dropped on the `mort_prob` guard.
+
+### 5.1 The blessed statistic
+
+`Φ` = nominated mortality flux relative to FIT's own, on identical rosters:
+
+| variant | REC historic | REC ssp370 | H1 historic | H1 ssp370 |
+|---|---|---|---|---|
+| `full` (the self-test) | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| `zeroT` (temp dropped) | 0.9209 | 0.9437 | 0.9207 | 0.9449 |
+| `zeroW` (**water** dropped) | 0.8625 | 0.8399 | 0.8569 | 0.8413 |
+| **`zeroWT` = the SHIPPED default** | **0.7834** | **0.7834** | **0.7776** | **0.7862** |
+| `zeroWT_c0` (counter never learned) | 0.6847 | 0.7001 | 0.6818 | 0.6932 |
+
+**Φ(zeroWT) = 0.78 ⇒ FAIL** on all four (arm, leg) combinations, against the pre-registered fail bound of
+0.867 — not a straddle, and outside by a margin (0.084 below the fail line, 0.147 below the pass line).
+Running the hazard on the inputs the emulator actually hands it today throws away **22 % of the mortality
+flux FIT's own stand is asking for**, which is the same *kind* of shortfall ADR 0187 measured for the
+retired count-budget operator (there 42 %) — smaller, and still over the line.
+
+Three things make the number trustworthy rather than merely large:
+
+1. **NULL 3, the derivable inequality, HOLDS with informative slack.** `1 − Φ(zeroWT) = 0.2166` against
+   `S_wt = 0.3190` (ssp370, REC) ⇒ slack **0.1025**. So about a third of the water+temp hazard mass is
+   absorbed by the `min(1, ·)` cap and the hard kills: those stems die anyway. The inequality could not
+   have been satisfied by a broken scorer, and its slack is a second, independent quantity.
+2. **The decomposition is ADDITIVE to 2e-4.** `(1 − Φ(zeroW)) + (1 − Φ(zeroT)) = 0.1601 + 0.0563 = 0.2164`
+   against a measured `1 − Φ(zeroWT) = 0.2166`. The hazard terms are additive before the cap, so this is
+   expected — and it means **there is no interaction to reason about**: the two integrals can be costed
+   and wired independently.
+3. **The answer does not depend on whose stand it is measured on.** `REC` (FIT's own roster) and `H1` (the
+   roster the rate operator built) give 0.7834 vs 0.7776 and 0.7834 vs 0.7862. Skill trap 5 does not bite
+   here by construction — every variant is evaluated on the same row — and the agreement confirms it.
+
+**WHICH integral: water, by 2.4–2.8×.** Dropping water costs 13.8/16.0 percentage points of flux; dropping
+temperature costs 7.9/5.6. FIT's own water+temp share of hazard mass is **31 %** pooled, and it is
+concentrated: at **c44048 it is 67 %** (Φ(zeroWT) = 0.464) and at **c52059 35 %** (Φ = 0.736), while at
+c12235 it is **0.05 %** (Φ = 1.0000). ⇒ the defect is a *dry-cell* defect, not a global level error, and a
+global mean would understate it at exactly the cells where mortality matters most.
+
+### 5.2 The ordering clauses — the certain set survives, the SIZE ordering does not
+
+* **Certain set: PRESERVED.** Recall 0.9825 / 0.9545 (REC), 0.9783 / 0.9581 (H1), all above the 0.9 clause.
+  ⚠ **Precision is 1.0000 at every cell BY CONSTRUCTION and is not evidence**: zeroing can only lower a
+  hazard, so the zeroed certain set is a strict subset of FIT's. Only recall carries information here. The
+  cross-check script printed that precision column as a pass for the whole question; its wording has been
+  narrowed in the same commit, because "the certain set survives" is exactly the reading this ADR refutes.
+* **Height-quintile ordering: TILTED, and the tilt is the shape that matters.** `max |Φ_q − Φ|` is
+  **0.185 / 0.162** (REC) and **0.177 / 0.168** (H1), all outside the ±0.15 clause. The profile (REC,
+  ssp370): Q1 **0.864**, Q2 0.672, Q3 0.745, Q4 **0.622**, Q5 0.713. The shortest quintile keeps most of
+  its nominated flux — those stems are condemned by `mort_npp` and the sapling-carbon hard kill regardless
+  — while the taller four lose 26–38 %. ⇒ **zeroing the water integral spares big trees preferentially**,
+  which is precisely where ADR 0241 §6 located the entire per-stem mass excess (the open-ended top height
+  bin). Under ADR 0242's `H0` finding — at FIT's full flux, WHICH trees die is decisive — a tilt in this
+  direction is the failure mode with teeth, not a level offset a scale factor could absorb.
+* Mass selectivity of the nominated flux moves little (`full` 0.518 → `zeroWT` 0.506 per patch-year,
+  ssp370 REC), which is consistent: the tilt is in *height*, and λ is a mass-weighting statistic pooled
+  over a right-skewed within-patch mass distribution. Reported as the sanity range it was pre-registered
+  as, and it gates nothing.
+
+### 5.3 The counter is worth as much as the temperature integral — and that was not expected
+
+`zeroWT_c0` is the pessimistic bound on never learning `bm_inc_counter` (holding it at 0 forever rather
+than bootstrapping it from 0): **Φ 0.685 / 0.700**, certain-set recall **0.851 (NOT preserved)**, quintile
+tilt **0.28**. The hard-kill census shows the mechanism exactly — `bm_inc_counter` kills go 2 506 → **0**
+on the ssp370 leg while `ghost_tree` kills rise only 20 023 → 20 132. So the counter contributes
+**~9 pp** of flux beyond the two integrals, i.e. **more than `temp_stress`'s 5.6**. The coupled
+`_trait_hazards!` already advances it every year precisely so it cannot drift (`slow.jl` :812-818), which
+is the right design; this measures what that design is worth and says the rollout's first years
+under-hazard its declining cohorts by up to this much.
+
+### 5.4 An annual proxy cannot stand in for the daily integral
+
+Information panel, and it closes a cheap-looking shortcut before anyone tries it. The correlation between
+the C's own annual `1 − wscal_mean` — which F already has — and the C's own `water_stress` integral, formed
+**within (cell, PFT)**: median `r` **0.4876** (historic) / **0.3981** (ssp370), range 0.05–0.69 over 7
+PFTs. That is `r²` ≈ 0.16–0.24 ⇒ an annual mean explains under a quarter of the variance of the integral it
+would be standing in for. Feeding it in as though it were the integral is the ADR 0023 train/inference
+shift and would not even buy accuracy. ⚠ Note the direction here: the **pooled** `r` is 0.21, *lower* than
+the within-group median — the opposite of skill trap 5j's usual inflation, because the per-PFT relations
+have different slopes and cancel when pooled. Both are printed; only the within-group value is read.
+
+## 6. What this changes, and what it does NOT
+
+**The §4.4 FAIL branch fires.** The rate operator cannot be wired with the stresses zeroed: it would go
+into the coupled loop nominating 78 % of the flux it needs, with the shortfall concentrated in the tall
+stems whose mass is the known excess.
+
+**The fix already exists and is switched off.** ADR 0110 Phase 2 built exactly these two integrals per
+individual (`fast.jl::_accumulate_stress!`), on the C's own construction. So the action is a **flag chain**,
+not new physics — and this is the guardrail-4 corollary again (an opt-in flag whose default is measured
+wrong is a defect on a timer, exactly as `wscal_leafon` was for weeks):
+
+⚠ **THE CHAIN IS THREE FLAGS DEEP AND TWO OF THEM SILENTLY DEFEAT IT.** `water_stress_acc` is only ever
+non-zero when **all three** of `per_tree_roots` (default **false**, `fdiff.jl:335`), `wscal_leafon`
+(default true since ADR 0059) and `trait_drought_mortality` (default **false**, `fdiff.jl:354`) hold:
+`wscal_ind` is allocated only under `per_tree && w.wscal_leafon` (`fdiff.jl:2092`), and
+`_accumulate_stress!` returns early on `ws === nothing`. So **turning `trait_drought_mortality` on alone
+reproduces the zeroed regime — this ADR's FAIL case — with no error, no warning and no visible
+difference.** Anyone measuring the flip would conclude the integrals do not help. That is a real trap on
+an M-owned file and it is raised as such (§7).
+
+**What is NOT claimed.** `Φ(zeroWT) = 0.78` is the cost of **zero** inputs, not the cost of **F's** inputs.
+The regime that matters for the standalone emulator sits between this and ADR 0242's ceiling and is
+**UNMEASURED** — no dump can carry it, because F's integrals are F's own values. The pre-registration said
+so before the run and the number does not change it: **this ADR does not establish that the coupled rate
+operator works, only that it cannot work on zeros.** Nor does it revisit ADR 0242's ceiling caveat.
+
+**No `src/**` change, no flag flipped, no default moved, no baseline regenerated.** The two touched scripts
+gained an `NPREV` knob and a narrowed printed conclusion; a default run of the cross-check still selects
+the same dumps and prints the same numbers it always did.
+
+## 7. Actions this ADR creates
+
+1. **Line S, next:** measure the middle term. A coupled arm with `per_tree_roots = true`,
+   `wscal_leafon = true`, `trait_drought_mortality = true` scored on `Φ` against the C's own
+   `water_stress` at the same cells — the F-vs-C comparison of the *integral itself*, which is an
+   `fdiff-validate`-shaped question and needs no rung-2 run. **Pre-register it with the bracket as its
+   two nulls: 0.78 (zeros) and 1.00 (the C's own).** The pass condition is Φ ≥ 0.867 by the same derivation.
+2. **A REQUEST TO LINE M (integration point, raised in `lines/M/STATE.md`):** make the silent chain loud.
+   A `trait_drought_mortality = true` configuration whose `wscal_ind` is `nothing` should ERROR rather
+   than accumulate zeros — the same "fail loudly instead of defaulting" discipline `pft_mort_params`
+   already applies. `fast.jl`/`fdiff.jl` are M-owned, so line S does not touch them; the measurement in
+   action 1 needs no change, only the default flip would.
+3. **Do NOT** re-run the `H*` campaign, propose a count-side instrument, or feed `1 − wscal_mean` into
+   the hazard as a proxy (§5.4 measures why it would not work).
