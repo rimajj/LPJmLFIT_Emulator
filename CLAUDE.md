@@ -1215,6 +1215,15 @@ next session. A session that ends without refreshing it has silently broken the 
   wrappers are **integrator-owned** (§9 Gap 3) so a line cannot extend the list — `export MYKNOB=1` first
   (SLURM's `--export=ALL` carries it), and `unset` it before the next submission or it leaks. The
   `env:` line the wrapper echoes shows only the FWD list, so an empty `env:` is not evidence of anything.
+  ⚠ **AND THE MIRROR TRAP, WHICH IS WORSE BECAUSE `export` CAUSES IT: an env knob whose NAME COLLIDES with
+  a variable the wrapper itself uses is silently OVERWRITTEN, and `--export=ALL` then ships the wrapper's
+  value to your job (`[VERIFIED 2026-08-17]`, line S).** `scripts/sbatch_julia.sh` opens with
+  `TAG="${1:?...}"`, so `export TAG=predict; scripts/sbatch_julia.sh S-mytag …` runs the job with
+  **`TAG=S-mytag`** — the assignment lands on the already-exported name and propagates. The job exits **0**
+  and the scorer reports `scoring 0 dumps`, which reads as "the campaign is missing", not as "your knob was
+  clobbered". Reserve the wrapper's own names (`TAG`, `TIME`, `NCPUS`, `JULIA`, `ACCOUNT`, `PARTITION`,
+  `QOS`, `WARMUP`, `REPO`, `LOGDIR`) and **echo every knob's value from inside the job** — both rung-2
+  scorers now print theirs in their own header line, which is how this was caught in one round trip.
 - **Julia BLOCK-BUFFERS stdout to a file, so a long probe's log stays at 0 lines until it exits
   (`[VERIFIED 2026-08-05]`).** A 22-minute probe looked indistinguishable from a hung job for its whole
   run. This is *not* the §3 "zero-byte log = hung" case (that is about the C binary, whose output dir is the

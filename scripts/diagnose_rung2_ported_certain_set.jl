@@ -41,7 +41,11 @@
 #   guard     : a stem whose `mort_prob` is not finite and in [0, 1] is DROPPED and counted, because the
 #               field is uninitialised for a stem that has not been through `mortality_tree_ind`.
 #
-# ENV: DUMPS (default /p/tmp/jamirp/S_rung2), ARMS (default "REC S1"), OUT (a CSV; optional)
+# ENV: DUMPS (default /p/tmp/jamirp/S_rung2), ARMS (default "REC S1"), NPREV (default "roster"), OUT
+#      (a CSV; optional). NPREV selects the campaign: `roster` (ADR 0184) or `predict` (ADR 0185, the
+#      shipped coupled path — and the only mode the `G*`/`H*` arms were ever run in). Defaults reproduce
+#      ADR 0183's published table exactly; the arm alternation was widened for `G*`/`H*` but the ARMS
+#      filter still decides, so a default run selects the same dumps it always did.
 # Run: TIME=00:40:00 scripts/sbatch_julia.sh S-certain --project=. \
 #          scripts/diagnose_rung2_ported_certain_set.jl
 # Exit 0 always: this is a measurement, not a gate.
@@ -53,6 +57,7 @@ const TM = LPJmLFITEmulator.TraitMortality
 
 const DUMPS = get(ENV, "DUMPS", "/p/tmp/jamirp/S_rung2")
 const ARMS = split(get(ENV, "ARMS", "REC S1"))
+const NPREV = get(ENV, "NPREV", "roster")
 const OUT = get(ENV, "OUT", "")
 
 # the pre-registered pass thresholds — ADR 0176 §4's, not this file's
@@ -155,7 +160,10 @@ function main()
     println("    this measurement prices the port's fidelity, it is not the flip's blocker.")
     println("="^100)
 
-    rx = r"^S_r2s_(historic|ssp370frz|ssp370)_c(\d+)_(REC|NP|S0h|S0|S1)_roster_s(\d+)_dump$"
+    rx = Regex(
+        "^S_r2s_(historic|ssp370frz|ssp370)_c(\\d+)_" *
+            "(REC|NP|S0h|S0|S1|G0h|G0|G1|H0h|H0|H1)_" * NPREV * "_s(\\d+)_dump\$"
+    )
     found = Tuple{String, Int, String, Int, String}[]
     for name in sort(readdir(DUMPS))
         m = match(rx, name)
@@ -182,7 +190,7 @@ function main()
         push!(seen, k)
         push!(keep, f)
     end
-    println("\nscoring $(length(keep)) dumps (arms $(join(ARMS, "/")); lowest seed each)")
+    println("\nscoring $(length(keep)) dumps (arms $(join(ARMS, "/")); NPREV=$NPREV; lowest seed each)")
     flush(stdout)
 
     per = Dict{Tuple{String, Int, String}, Any}()
@@ -258,8 +266,12 @@ function main()
                 "not scoreable"
             elseif r0 >= PASS_RECALL && pr0 >= PASS_PRECISION
                 "ALSO PASSES with the stress integrals ZEROED (recall $(round(r0, digits = 3)) / " *
-                    "precision $(round(pr0, digits = 3))) — i.e. as the COUPLED loop would run it, " *
-                    "so the missing integrals do not block the flip at these cells"
+                    "precision $(round(pr0, digits = 3))) — i.e. as the COUPLED loop would run it. " *
+                    "⚠ READ THIS NARROWLY (ADR 0243): the certain SET survives while 22 % of the " *
+                    "nominated mortality FLUX does not, and the `precision` column is 1.0000 BY " *
+                    "CONSTRUCTION here (zeroing can only lower a hazard, so the zeroed certain set " *
+                    "is a SUBSET of FIT's) ⇒ it is not evidence. Score the flux with " *
+                    "`diagnose_rung2_hazard_inputs.jl` before concluding the integrals do not matter"
             else
                 "FAILS once the stress integrals are ZEROED (recall $(round(r0, digits = 3)) / " *
                     "precision $(round(pr0, digits = 3))) — the coupled flip needs " *

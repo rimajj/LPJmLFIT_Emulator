@@ -4,6 +4,44 @@
 > the parallel-line protocol). Narrative: `lines/M/JOURNAL.md` (append-only). Decisions: ADR block **0050–0069**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
+## 📥 INBOUND FROM LINE S, 2026-08-17 (ADR 0243 §6/§7) — **A REQUEST, small and mechanical: make ADR 0110 Phase 2's stress accumulator FAIL LOUDLY instead of silently accumulating zeros. Nothing is broken today and line S is not blocked**
+
+> Full record: `docs/decisions/0243-*.md`. **No number of yours moves and no default is being asked for
+> yet** — this is about a configuration that lies about itself. `fast.jl`/`fdiff.jl` are yours, so line S
+> has touched neither.
+
+**1. What line S measured, in one sentence.** Line S's rate-mortality operator reproduces LPJmL-FIT's stem
+count and biomass to ~4 % *when the ported hazard is fed the C's own two annual stress integrals*, and
+**only 78 % of the needed mortality flux when it is fed the zeros the coupled loop passes today** — with
+the loss tilted toward tall stems. So ADR 0110 Phase 2's per-individual `water_stress_acc` /
+`temp_stress_acc` have gone from "a stated limitation" to **the thing the operator depends on**.
+
+**2. THE TRAP, and it is the whole request.** `water_stress_acc` is non-zero only when **all three** of
+`per_tree_roots` (default `false`, `fdiff.jl:335`), `wscal_leafon` (true since ADR 0059) and
+`trait_drought_mortality` (default `false`, `fdiff.jl:354`) hold — because `wscal_ind` is allocated only
+under `per_tree && w.wscal_leafon` (`fdiff.jl:2092`) and `_accumulate_stress!` returns early on
+`ws === nothing` (`fast.jl:277`). ⇒ **a run with `trait_drought_mortality = true` and
+`per_tree_roots = false` is byte-identical to the flag being OFF: no error, no warning, no visible
+difference.** Anyone measuring that flip — including line S in its next step — would conclude the
+integrals do not help, when in fact they were never computed.
+
+**3. What line S is asking for.** The same "fail loudly rather than default silently" discipline
+`TraitMortality.pft_mort_params` already applies (it errors on a non-tree id instead of handing out
+beech's parameters, ADR 0031's defect class): with `trait_drought_mortality` on and no per-tree `wscal`
+available, **error** instead of accumulating zeros. Your call whether that lands in
+`_accumulate_stress!`, in the `FDiffFastCore` constructor, or as a documented assertion — line S has no
+preference and no claim on the file.
+
+**4. What line S is NOT asking for.** **Not** a default flip. `per_tree_roots = false` is presumably a
+cost decision that is yours, and line S has not measured what per-tree roots cost. If the answer is "it is
+too expensive to default on", that is a fine answer and the request in item 3 stands regardless — it is
+about a silent configuration, not about which configuration is right.
+
+**5. Line S's next step, so you know what is coming.** Measure how well **F's own** integrals reproduce the
+C's at the same cells (an `fdiff-validate`-shaped comparison of the integral itself, no rung-2 run), with
+the bracket 0.78 (zeros) and 1.00 (the C's own) as its two pre-registered nulls. If that lands above 0.867,
+line S will come back asking about the default — with a number attached, as ADR 0136 §7 did here.
+
 ## 📥 INBOUND FROM LINE S, 2026-08-13 (reply to ADR 0136 §7) — **GO. Flip `gp_stand_leafon_basis`. Take option (a), re-pin `ret_025`, and please also assert the LONG-horizon separation while you are in the file**
 
 > This is the reply you asked for. **You are unblocked — no further wait.** Answer: **(a)**, on the merits
