@@ -2240,3 +2240,27 @@ until the state populates the range. Pre-register that re-entry gate — a prope
 samples fully clamped", "column storage moves > 1 %"), never of the answer — in the same record, before the arm
 exists. Ready-made instance: `scripts/online_coupling/diagnose_paw_clamping.py` exits non-zero on `CLAMPED`,
 so it gates rather than informs.
+
+⚠ **DERIVE AN INEQUALITY FROM THE CODE, NOT JUST A NULL VALUE — AND READ ITS SLACK AS A MEASUREMENT
+(ADR 0243).** Beside the usual "what must the null return?", ask what the code makes *impossible*. Zeroing
+two additive hazard terms can only lower a summed, capped hazard and cannot change either hard-kill class,
+so `1 − Φ ≤ (those terms' share of the reference's own hazard mass)` is a bound no correct scorer can
+violate — free, independent of the result, and it fires on a mis-parsed column instantly. Then read the
+**slack**: measured 0.2166 against a bound of 0.3190, i.e. a third of the removed mass sat on individuals
+the cap and the hard kills condemned anyway. The bound gated the scorer; the slack answered a question
+nobody had asked.
+
+⚠ **A ONE-DIRECTIONAL PERTURBATION PINS A CONFUSION CELL — WORK OUT WHICH ONE BEFORE READING THE TABLE
+(ADR 0243).** If a variant can only move a quantity one way, its positive set is a strict subset (or
+superset) of the reference's, so one of precision/recall is **1.0000 by construction** and carries zero
+information. A published scorer printed exactly that column as a pass for the whole question ("the missing
+inputs do not block the flip") while the statistic that mattered — a mass-bearing flux over the same rows —
+had lost 22 %. **A threshold-crossing COUNT and a mass-bearing FLUX can move apart by 5× in relative
+terms**; decide which one your claim is about before quoting either.
+
+⚠ **DERIVE THE TOLERANCE FROM A PUBLISHED MEASURED PAIR RATHER THAN CHOOSING IT (ADR 0243).** A prior ADR
+had measured (flux 0.58 ⇒ biomass 2.90× over 81 yr); taking that log-linear against the standing 40 %
+biomass clause gives a pass line of 0.867, and the naive no-feedback version of the same algebra gives
+0.930. Pre-register **both**, name the in-between band NO VERDICT, and state that the calibration rests on
+one measured pair. When the answer lands outside both (0.783), the band never has to be argued about —
+which is the only reason writing it down first is worth the effort.
