@@ -33,6 +33,16 @@ Collect from ANY session: `squeue -u $USER` · `tail -f logs/<tag>.<jobid>.out` 
 `=== JOB DONE tag=<tag> exit=<code> ===` (grep it; the ReTestItems `N pass, M fail` summary is just above).
 Expect ≈ **48.1k pass / 0 fail / 4 broken**, ~5–6 min. Julia = `/p/system/packages_rhel9/tools/julia/1.10.0/bin/julia` (lts).
 
+⚠ **AN EMPTY `squeue` RIGHT AFTER LAUNCHING THIS WRAPPER DOES NOT MEAN IT FAILED — IT WARMS THE DEPOT ON
+THE LOGIN NODE *BEFORE* IT CALLS `sbatch`, WHICH TAKES 60–90 s (`[VERIFIED 2026-08-17]`, line S).** A
+launch whose shell was torn down (a backgrounded tool call, a dropped session) can therefore still submit
+seconds later, so "the submit died, resubmit" put **two concurrent `Pkg.test()` runs in ONE worktree** —
+the exact hazard ADR 0028 adopted worktrees to remove, because both delete and re-create the same
+`test/Manifest.toml`. **Before resubmitting, check for the artifact rather than the process:**
+`ls -t logs/<tag>.*.out` and `squeue -u $USER -o "%.10i %.16j %.8T"` (match the JOB NAME `jltest_<tag>`,
+not just any job). If you find two, `scancel` the newer one and keep the older — and treat the survivor's
+result as suspect if its log shows `can not merge projects`.
+
 **Run it from YOUR OWN worktree, and tag with your line prefix** (ADR 0028; this line used to read
 `cd /p/projects/open/Jamir/esm_land_emulator`, which is now the **integrator** worktree). The wrapper resolves
 its own root — `REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"` — so `wt-M/scripts/run_tests_slurm.sh`
@@ -383,6 +393,18 @@ then the flag rots. Three have landed this way (`wscal_leafon` ADR 0059, `enable
 4. **Re-serve guardrail 4 through the OPT-OUT and assert it.** Pin the new default explicitly
    (`@test WaterParams{Float64}().wscal_leafon === true`) *and* keep a test that runs the old expression —
    otherwise the next flip is silent.
+5b. **⚠ A GREEN SUITE AFTER A FLIP CAN MEAN THE SUITE HAS NO ARM IN THE FLAG'S REGIME — THE FIFTH OUTCOME
+   CLASS, "VACUOUS" (ADR 0244).** `trait_drought_mortality` flipped with **0 of 275 634** assertions
+   moving, and that was a fact about the fixtures, not the flag: the mechanism counts days outside beech's
+   `temp_stressed` band, which is **[-20, 54] °C** — the widest in the table — and no test arm's forcing
+   leaves it. So the flip was unwitnessable by construction, and the pass count was identical to the digit
+   before and after. **Predict this before the run** (what regime does the flag act in? does any fixture
+   enter it?), and if the answer is "none", say so rather than reporting the green as confirmation. The
+   evidence then has to come from elsewhere — here an integer-exact reproduction of the C's own emitted
+   column over 4 334 groups plus a new testitem that forces the regime (-30 °C). **And it is itself a
+   coverage finding worth recording**: a shipped mechanism with no fixture in its own regime had no test at
+   all, which is how two faithfulness defects survived in it.
+
 5. **⚠ Audit every "control" arm that hardcoded the old default.** A probe arm written as
    `SEBParams(enable_two_layer = false)` to mean "the default" stops being a control the moment the default
    moves, and prints numbers under a label that is now false (line E lost a sub-daily `T_skin` verdict to

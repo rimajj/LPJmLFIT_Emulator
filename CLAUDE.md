@@ -720,6 +720,24 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   while its GPP is measured ABOVE the C's: F applies `phen` AFTER the layered share where the C puts it inside
   the extinction (per-day upper bound 15–47 % of F's own absorption, at `phen≈0.45`; annual weight unmeasured),
   and F has **no `(1−snowcover)`** factor at all.
+- ⚠ **EVERY ANNUAL ACCUMULATOR IN THE C IS RESET ON A FIXED CALENDAR DAY — `COLDEST_DAY_NHEMISPHERE` 14 /
+  `COLDEST_DAY_SHEMISPHERE` 195 — SO ITS "ANNUAL" VALUE IS *NOT* A CALENDAR-YEAR TOTAL
+  (`[VERIFIED 2026-08-17]`, ADR 0244).** `include/climate.h:20-21`, and the reset fires **after** the day's
+  increment, at the bottom of `tempstress_tree.c:31-33`, `waterstress_tree.c:40-42` and
+  `phenology_gsi.c:87-90` (which also clears `pft->aphen` and the `tree->isphen` leaf-recycle latch). The
+  value the annual `mortality_tree_ind` call reads is therefore the accumulation over days
+  **`reset+1 … 365`** only. Measured against the C's own dumped `temp_stress` over **4 334
+  (cell, year, PFT) groups**: recomputing the count from the run's own daily temperature on the C's window
+  reproduces it **4 334/4 334 integer for integer**, while a calendar-year window is wrong in **431**
+  groups, over-counts the stressed-day total by **+17.1 %** and misses by up to **14 days** — and in the
+  **SOUTHERN hemisphere the two windows differ by half a year**. Any port of a C accumulator must carry the
+  reset day and the hemisphere test (`lat >= 0.0` ⇒ the northern branch, equator included). Verifier:
+  `scripts/diagnose_stress_integral_window.py`.
+  ⚠ **And the C's COMMENT on that reset says "set to zero by start of vegetation period" while its CODE
+  says a fixed calendar day.** The code is the authority — a phenological reading would not have
+  reproduced the dumps. Same family as ADR 0135's `/* test: */` dead-expression trap, one step worse: here
+  the comment is attached to *live* code and describes the wrong semantics, so nothing but the measurement
+  distinguishes them.
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative

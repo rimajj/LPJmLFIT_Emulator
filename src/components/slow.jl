@@ -175,9 +175,11 @@ function reconcile_demography!(
 
     # reset the within-year accumulators + per-PFT phenology cold-start (mirrors annual_step!)
     fill!(fc.bm_inc_acc, zero(T))
-    # ADR 0110: the C resets `tree->water_stress` at the coldest day (`waterstress_tree.c:39-42`) and
-    # `temp_stress`/`aphen` at the start of the vegetation period; the emulator's year boundary is the
-    # one reset point it has, so all three clear here with `bm_inc_acc`.
+    # ADR 0110/0244: the C resets all three on its own COLDEST DAY (14 N / 195 S, after that day's
+    # increment) — which `_accumulate_stress!` now does. Clearing them again at the year boundary is
+    # EQUIVALENT for the annual consumer and is kept deliberately: the only reader is `_trait_hazards!`
+    # at year end, and by then both conventions hold exactly the C's window (days `reset+1 … 365`), while
+    # a fresh zero at Jan 1 keeps a rollout that starts mid-stream well defined.
     fill!(fc.water_stress_acc, zero(T))
     fill!(fc.temp_stress_acc, zero(T))
     fill!(fc.aphen_acc, zero(T))
