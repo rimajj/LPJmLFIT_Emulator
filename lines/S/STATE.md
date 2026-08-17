@@ -7,7 +7,7 @@
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239) — and it is now **EXHAUSTED (ADR 0189
 > was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240 and continued by
-> ADR 0241, 0242 and 0243. **Next free number: 0244.**
+> ADR 0241, 0242, 0243 and 0244. **Next free number: 0245.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
@@ -369,108 +369,129 @@ before appending costs a second and would have caught this and my own two previo
 
 ## NEXT — start here
 
-> **LAST MERGE — 2026-08-14, ADR 0242 is ON `main`.** Merge commit `52f38396`, changelog collation
-> `16961c06`, branch sha `55ab3799`. Both gates that diff triggers were green on `16961c06` (`format`,
-> because it touched two `scripts/**.jl`, and `uncollated fragments`). ⚠ **THIS SESSION'S OWN MERGE SHAS
-> ARE PINNED AT THE BOTTOM OF THIS BLOCK — read them before assuming `main` is where you left it.**
+> **LAST MERGE — 2026-08-17, ADR 0243 is ON `main`.** Merge commit `728a0320`, changelog collation
+> `48aad206`, branch sha `0bcb28e3`. Branch CI green on `0bcb28e3` (`format` + `CI` — `CI` fired because a
+> rebase-onto-newer-`main` force-push makes the push RANGE include `main`'s own `src/**` commits, which is
+> expected, not a surprise). `main` green on `48aad206` (`changelog` + `format`). ⚠ **The commit-status
+> endpoint reported `0 runs` for both shas while the RUNS endpoint showed them green** — poll
+> `/actions/runs?branch=main`, as the `repo-commit` skill says. **ADR 0244's own merge shas are pinned at
+> the end of this block.**
 >
-> # 🟢 THIS SESSION (2026-08-17) — ADR 0243: THE RATE OPERATOR CANNOT RUN ON THE INPUTS THE COUPLED LOOP FEEDS IT. `Φ` = 0.78, and the WATER integral is the reason.
+> # 🟢 THIS SESSION (2026-08-17) — TWO ADRs. 0243 priced the hazard's inputs (Φ = 0.78, FAIL); 0244 FIXED the temperature half EXACTLY and flipped its default ON.
 >
-> ADR 0242 §B step 1, executed. The operator is settled (ADR 0242); **what it READS is not**, and that is
-> now measured rather than asserted. `scripts/diagnose_rung2_hazard_inputs.jl` (new), SLURM job 1815280,
-> **1 389 207 tree stem-years** over 48 `REC`/`H1` `predict` dumps, **no model run**: the SHIPPED
-> `TraitMortality.mortality_hazard` re-evaluated on IDENTICAL roster rows under five input variants.
-> §§1–4 of the ADR were **committed before any number existed** (`270ab35a`).
+> ## A. ADR 0243 — the rate operator cannot run on the inputs the coupled loop feeds it
 >
-> **THE RESULT.** The blessed statistic is the nomination-flux ratio
-> `Φ = Σ nind·h / Σ nind·mort_prob`. On the inputs the coupled loop passes today (both stress integrals
-> zero, because `trait_drought_mortality` is off): **`Φ` = 0.7834 / 0.7834 on `REC`'s historic/ssp370
-> legs and 0.7776 / 0.7862 on `H1`'s ⇒ FAIL** against the pre-registered fail bound of 0.867 (derived from
-> ADR 0187's own measured flux→biomass mapping), outside the band by 0.084 and not a straddle. **WHICH
-> integral: water, by 2.4–2.8×** — `Φ(zeroW)` 0.8625/0.8399 vs `Φ(zeroT)` 0.9209/0.9437 — and the
-> decomposition is **additive to 2e-4**, so the two wire independently. It is a **dry-cell** defect, not a
-> global level error: FIT's water+temp hazard-mass share is 31 % pooled but **67 % at c44048** (Φ 0.464)
-> and 0.05 % at c12235 (Φ 1.0000).
+> The SHIPPED hazard re-evaluated on IDENTICAL roster rows under five input variants, **1 389 207 tree
+> stem-years**, 48 `REC`/`H1` `predict` dumps, no model run (`scripts/diagnose_rung2_hazard_inputs.jl`, job
+> 1815280). §§1–4 committed before any number existed (`318d1351`). Blessed statistic
+> `Φ = Σ nind·h / Σ nind·mort_prob`:
 >
-> **THE ORDERING CLAUSE IS WHAT GIVES IT TEETH.** The certain set SURVIVES (recall 0.955–0.983) — but the
-> height-quintile ordering does not: `max|Φ_q − Φ|` **0.162–0.185** against a ±0.15 clause, Q1 at 0.864
-> while Q2–Q5 lose 26–38 % ⇒ **zeroing the water integral spares BIG trees**, exactly where ADR 0241 §6
-> located the entire per-stem mass excess. Under ADR 0242's `H0` finding (at FIT's full flux WHICH trees
-> die is decisive) that is the failure mode that matters, not a level offset.
+> | variant | REC hist | REC ssp | H1 hist | H1 ssp |
+> |---|---|---|---|---|
+> | `full` (self-test, must be 1) | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+> | `zeroT` | 0.9209 | 0.9437 | 0.9207 | 0.9449 |
+> | `zeroW` | 0.8625 | 0.8399 | 0.8569 | 0.8413 |
+> | **`zeroWT` = shipped** | **0.7834** | **0.7834** | **0.7776** | **0.7862** |
+> | `zeroWT_c0` | 0.6847 | 0.7001 | 0.6818 | 0.6932 |
 >
-> **THREE THINGS THAT MAKE IT TRUSTWORTHY, all pre-registered:** the identity self-test passes first
-> (`max|h_full − mort_prob|` **8.9e-16**, `Φ(full)` = 1.0000000000, reproducing ADR 0183 through a second
-> scorer); the derivable inequality `1 − Φ ≤ S_wt` HOLDS at 0.2166 ≤ 0.3190 with **slack 0.1025** (⇒ a
-> third of the discarded stress mass sits on stems the cap and hard kills condemn anyway); and the answer
-> is the same on FIT's stand and on the arm's own (every variant is evaluated on the same row, so trap 5
-> cannot bite). Cross-checked independently by `diagnose_rung2_ported_certain_set.jl` (job 1815281), which
-> reaches the certain-set numbers and `S_wt` through different code and agrees to 4 digits.
+> **FAIL** on all four against the derived 0.867 bound. Identity self-test passed first (`max|h − mort_prob|`
+> **8.9e-16**); the free inequality `1 − Φ ≤ S_wt` held at 0.2166 ≤ 0.3190, **slack 0.1025** ⇒ a third of the
+> discarded stress mass sits on stems the cap and hard kills condemn anyway; the two integrals decompose
+> **additively to 2e-4**. Certain set SURVIVES (recall 0.955–0.983) while the height-quintile ordering is
+> **TILTED** (max|dev| 0.162–0.185 vs ±0.15) — **big trees spared**, exactly where ADR 0241 §6 put the
+> per-stem mass excess. ⚠ `precision = 1.0000` is an IDENTITY there (a one-directional perturbation ⇒ subset),
+> not evidence. `bm_inc_counter` is worth MORE than `temp_stress` (9 pp vs 6). An annual `1 − wscal_mean`
+> proxy explains ≤ 24 % of the integral's variance ⇒ do not feed it in.
 >
-> **TWO SIDE FINDINGS WORTH CARRYING.** (1) **`bm_inc_counter` is worth MORE than `temp_stress`** —
-> never learning it costs **9 pp** of flux against temperature's 6, with the `bm_inc_counter` hard kills
-> going 2 506 → 0 ⇒ a fresh rollout under-hazards its declining cohorts while the counter fills; the
-> coupled `_trait_hazards!` already advances it every year, and this prices that design. (2) **An annual
-> proxy cannot substitute for the daily integral:** the C's own `1 − wscal_mean` (which F has) tracks the
-> C's own `water_stress` at within-(cell,PFT) median r **0.49/0.40**, r² ≤ 0.24 — and the POOLED r is
-> LOWER (0.21), the opposite of trap 5j's inflation. Do not feed it in.
+> ## B. ADR 0244 — the owner said "make it hand over the right inputs", and switching the flag on would NOT have done it
 >
-> ### B. THE NEXT ACTION — MEASURE THE MIDDLE TERM OF THE BRACKET. It is the only thing between this and the standalone operator.
+> Reading the path against the C first (guardrail 5) found **two defects**, either of which alone would have
+> handed the hazard a WRONG non-zero integral — worse than a zero, per ADR 0242's `H0`.
+> **(1)** the TEMPERATURE integral was behind an early `return` on `wscal_ind === nothing`, so `mort_temp`
+> was identically zero without `per_tree_roots` **even with the flag on** — and it is the DOMINANT integral
+> at the cold cells (FIT's own mean **24.1 days/yr at c52059**, 13.3 / 12.0 at c57087 / c44048, against water
+> 0.34 / 0.01 / 1.89) while the ordering REVERSES at the dry cells (c18371 water 21.1 vs temp 0.0) ⇒ **the two
+> bind at DIFFERENT cells; neither is the small one.** **(2)** both integrals — and `pft->aphen` — are zeroed
+> by the C on a FIXED CALENDAR DAY **after** the increment (14 N / 195 S, `include/climate.h:20-21`), so its
+> "annual" value is days `reset+1 … 365`, **not** a calendar-year total; F reset at year end, and in the
+> SOUTH the two windows differ by half a year.
 >
-> ⚠ **WHAT ADR 0243 DOES *NOT* SAY: it did not measure the cost of F's OWN integrals.** ADR 0110 Phase 2
-> already accumulates them per individual (`fast.jl::_accumulate_stress!`, on the C's own construction
-> from F's daily `wscal`/temperature). Those are F's VALUES, so no dump can carry them and the ADR
-> brackets the case instead: **0.78 (zeros) ≤ F's own ≤ 1.00 (the C's own = ADR 0242's ceiling).**
+> **MEASURED with an EXACT null** (`scripts/diagnose_stress_integral_window.py`, job 1815335, no model run),
+> against the C's own dumped `temp_stress` over **4 334 (cell, year, PFT) groups**: the C's window reproduces
+> it **4 334/4 334 integer for integer**; a calendar year is wrong in **431** groups, **+17.1 %** over-count,
+> up to **14 days**, only 0.647/0.692/0.672 exact at the three cold cells. ⇒ **the emulator can supply this
+> integral EXACTLY — same forcing, same interval, same window, no new physics, no per-tree water, no cost.**
+> ADR 0049 §3's blocker is RETIRED for the temperature half.
 >
-> **STEP 1 — the F-vs-C comparison of the INTEGRAL ITSELF.** Run F at the same cells with
-> `per_tree_roots = true`, `wscal_leafon = true`, `trait_drought_mortality = true`, and score its
-> per-individual `water_stress_acc` / `temp_stress_acc` against the C's own `water_stress` / `temp_stress`
-> columns — then push F's values through the hazard and report `Φ` on the SAME basis this ADR used, so the
-> three numbers are directly comparable. This is `fdiff-validate`-shaped and needs **no rung-2 run**.
-> **Pre-register it with the bracket as its two nulls (0.78 and 1.00) and the same derived pass condition
-> `Φ ≥ 0.867`** — and state in advance that a value near 0.78 means F's integral carries no information,
-> not that the operator is wrong.
-> ⚠ **THE TRAP THAT WILL SILENTLY VOID THAT MEASUREMENT (ADR 0243 §6, skill trap 5r):** the accumulator
-> needs **all three** flags. `wscal_ind` is allocated only under `per_tree_roots && wscal_leafon`
-> (`fdiff.jl:2092`) and `_accumulate_stress!` returns early on `nothing`, so **setting
-> `trait_drought_mortality` alone reproduces this ADR's FAIL case with no error and no warning.** Assert a
-> non-zero accumulator before believing any arm ran with the integrals on.
+> **Both defects fixed** in `fast.jl` (`_COLDEST_DAY_NH/SH`, the water gate narrowed to the water branch);
+> `slow.jl`'s stale reset comment corrected; **guardrail 4 holds BY CONSTRUCTION**. The flag had **NO test and
+> NO probe at all** — the root cause — now `test/testitems/stress_integral_window_tests.jl`.
 >
-> **STEP 2, conditional on step 1.** If `Φ` clears 0.867 on F's own integrals, wire the rate operator into
-> `src/components/slow.jl` (S-owned, no integration point) and **come back to line M about the
-> `per_tree_roots` / `trait_drought_mortality` defaults with the number attached** — the shape ADR 0136 §7
-> used on this line. If it does not clear, the finding is that F's water status is the blocker, and that is
-> an F-fidelity question (M-owned file, S-specified change).
+> **THE DEFAULT IS FLIPPED: `trait_drought_mortality = true`** (`per_tree_roots` deliberately still false, so
+> the hazard gets an EXACT `temp_stress` and an unchanged ZERO `water_stress`). Suite: **275 634 pass / 0 fail
+> both before (job 1815346) and after (job 1815424)** the flip.
+> ⚠ **THE FLIP MOVED ZERO ASSERTIONS AND THAT IS A FACT ABOUT THE FIXTURES, NOT THE FLAG** — beech's
+> `temp_stressed` band is [−20, 54] °C and no test arm's forcing leaves it, so the suite CANNOT witness it.
+> Predicted before the run; recorded in `julia-test` as the fifth outcome class, **VACUOUS**. The evidence is
+> the 4 334/4 334 match plus the new testitem's −30 °C arms; the default itself is pinned by
+> `@test WaterParams{Float64}().trait_drought_mortality`.
+>
+> ### C. THE NEXT ACTION — THE WATER HALF. It is the only piece of ADR 0243's 22 % still open.
+>
+> **STEP 1 — score F's OWN water integral against the C's, and TIME `per_tree_roots`.** The bracket is
+> unchanged and pre-registered: **0.78 (zeros) ≤ F's own ≤ 1.00 (the C's own)**, pass at **Φ ≥ 0.867** by ADR
+> 0243 §4.1's derivation. Two measurements, both needed before any flip:
+> * **fidelity** — run F at the biome cells with `per_tree_roots = true, wscal_leafon = true,
+>   trait_drought_mortality = true` and compare per-individual `water_stress_acc` against the C's dumped
+>   per-stem `water_stress` (the `REC` dumps carry it, and `wscal_mean` beside it for a second, independent
+>   check on the daily driver). `fdiff-validate`-shaped, kernel-isolated at t = 0 to avoid trajectory
+>   divergence — **no rung-2 run**. Then push F's values through the hazard and report `Φ` on ADR 0243's own
+>   basis so the three numbers are directly comparable.
+> * **cost** — `per_tree_roots` rebuilds a root profile per individual per year and moves `wr` inside the
+>   individual loop. **Speed is goal #2**, and its cost has NEVER been measured. Use the `speed-gate` skill
+>   (`scripts/bench_speed_gate.jl`, on/off arms, core-seconds per cell-year). ADR 0110 §6's step-2 flip
+>   criteria (a)–(c) were never measured either — do those in the same job.
+> ⚠ **THE TRAP THAT WOULD SILENTLY VOID THE FIDELITY RUN:** all three flags are needed. `wscal_ind` is
+> allocated only under `per_tree_roots && wscal_leafon` (`fdiff.jl:2092`) and the water branch is skipped on
+> `nothing` — so **assert a non-zero `water_stress_acc` before believing any arm ran with the integral on.**
+> ⚠ **AND `soil_temp` IS AN AIR-TEMPERATURE PROXY** in the water increment (the C uses `soil->temp[0] > 10`).
+> Its stated direction is an OVER-count of shoulder-season stress days ⇒ if F's integral comes out HIGH, that
+> proxy is a candidate cause and must be priced before concluding F's water status is wrong.
+>
+> **STEP 2, conditional.** If Φ ≥ 0.867 on F's own integrals AND the speed cost is acceptable, flip
+> `per_tree_roots` too — and that one IS line M's call, with the number attached (the inbound is already in
+> `lines/M/STATE.md`). If Φ is near 0.78, the finding is that F's water status carries no information and the
+> question becomes an F-fidelity one (M-owned file, S-specified change).
 >
 > **What NOT to do.** Do not re-run the `H*` campaign (ADR 0242's ceiling is measured). Do not propose a
-> count-side instrument (ADR 0241 retired it). Do not feed `1 − wscal_mean` into the hazard as a proxy —
-> §5.4 measures why it would not work. Do not touch `fast.jl`/`fdiff.jl`: the fail-loudly request is
-> **already raised as an inbound in `lines/M/STATE.md`** (2026-08-17), so do not raise it twice.
+> count-side instrument (ADR 0241 retired it). Do not feed `1 − wscal_mean` into the hazard (ADR 0243 §5.4
+> measured why). Do not re-raise the fail-loudly request to line M — it is already an inbound, and it now
+> also records that the fix landed.
 >
-> ⚠ **STILL UNMEASURED FROM ADR 0242, DO NOT LOSE IT:** all four of `H1`'s warming-response sign misses
-> sit at |FIT response| < 0.9 stems, and whether that is inside FIT's own two-run spread is **UNMEASURED**
-> — the campaign has ONE `REC` member per cell. It needs a second `REC` seed per cell, which is a second
-> SPIN-UP (ADR 0041), so it is not cheap; say so rather than implying the sign misses are noise.
+> ⚠ **A FILE-OWNERSHIP DISCLOSURE THE NEXT SESSION MUST NOT LOSE.** `src/fdiff.jl` and
+> `src/components/fast.jl` are **line M's**. This session edited both, on the owner's explicit steer of
+> 2026-08-17 plus the standing one of 2026-08-12, and disclosed it in `lines/M/STATE.md` with an explicit
+> offer to revert or reshape. **If line M asks for changes there, do them — do not defend the edit.**
 >
-> ⚠ **GATES: this session touched no `src/**` and no `test/**`.** The diff is two `scripts/**.jl`, one
-> ADR, `docs/decisions/README.md`, `changelog.d/**`, `CLAUDE.md`, one skill and two `lines/*/STATE.md` ⇒
-> the only branch gate that fires is **`format`** (Runic watches ANY `**/*.jl`, including `scripts/`),
-> plus `uncollated fragments` on `main` after collation. Runic was run over `src test ext scripts` before
-> the push and exits 0. The queued long-horizon anchor assertion (the ADR 0136 §7 reply block below) is
-> still the item that WILL trigger the full `CI` gate — budget ~10 min of branch-CI wait for it. Last full
-> suite: **275 606 pass / 0 fail** (job 1773556); no `src/**` or `test/**` file has changed on this line
-> since.
+> ⚠ **STILL UNMEASURED FROM ADR 0242:** all four of `H1`'s warming-response sign misses sit at |FIT response|
+> < 0.9 stems, and whether that is inside FIT's own two-run spread is UNMEASURED (one `REC` member per cell;
+> a second needs a second SPIN-UP, ADR 0041). Say so rather than implying the misses are noise.
 >
-> ⚠ **ADR NUMBERS: line S is on its TIER-4 block 0240–0259.** 0240–0243 are spent ⇒ **your next ADR is
-> 0244.** (Tier 4 in full: S 0240–0259 · M 0260–0279 · E 0280–0289 · O 0290–0299 · integrator 0300–0309.)
+> ⚠ **GATES:** this session's diff touches `src/**` and `test/**` ⇒ the FULL `CI` gate ran on the branch (4
+> Julia jobs, ~10 min) plus `format`, and `docs` runs on `main` after the merge (it watches `src/**` and never
+> runs on a line branch — ADR 0126's trap). Last full suite: **275 634 pass / 0 fail**, 138 items (job
+> 1815424, post-flip).
 >
-> ⚠ **A NEW WRAPPER TRAP, now in CLAUDE.md §9 and the dump skill's Mechanics:** `sbatch_julia.sh` assigns
-> its first positional to **`TAG`**, so an exported env knob called `TAG` is silently overwritten and
-> `--export=ALL` ships the wrapper's value to the job. The job exits **0** and the scorer prints
-> `scoring 0 dumps`, which reads as a missing campaign. Both rung-2 Julia scorers now use **`NPREV`** (the
-> name every other rung-2 scorer already used) and print their knob values in their own header line.
+> ⚠ **ADR NUMBERS: line S is on TIER-4 0240–0259.** 0240–0244 spent ⇒ **your next ADR is 0245.**
 >
-> **MERGE SHAS FOR THIS SESSION (ADR 0243):** see the pin appended at the end of this block once the merge
-> lands.
+> ⚠ **TWO PROCESS TRAPS CAUGHT LIVE, both now captured:** `sbatch_julia.sh` assigns its first positional to
+> **`TAG`**, so an exported env knob named `TAG` is silently overwritten and the job scores 0 dumps while
+> exiting 0 (use `NPREV`; both rung-2 Julia scorers now echo their knobs). And `run_tests_slurm.sh` warms the
+> depot on the login node for 60–90 s **before** it calls `sbatch`, so an empty `squeue` right after launching
+> it does NOT mean the submit failed — "resubmit" put two concurrent `Pkg.test()` runs in one worktree
+> (caught, newer cancelled, survivor clean).
+>
+> **MERGE SHAS FOR ADR 0244:** pinned by the merging session at the end of this block.
 
 > ## 🔴 STANDING OWNER STEER — FIX THE WARMING RESPONSE, TURN THE MECHANISMS ON, RUNG 2 IS LINE S'S (2026-08-12, ADR 0175/0176)
 >

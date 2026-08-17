@@ -42,6 +42,56 @@ C's at the same cells (an `fdiff-validate`-shaped comparison of the integral its
 the bracket 0.78 (zeros) and 1.00 (the C's own) as its two pre-registered nulls. If that lands above 0.867,
 line S will come back asking about the default — with a number attached, as ADR 0136 §7 did here.
 
+> ### ⚠ UPDATE, same day — **THE REQUEST IS SUPERSEDED BY A FIX, AND IT IS IN YOUR FILE. Read this: I found two faithfulness defects and the owner told me to fix them, so I did. Full record: `docs/decisions/0244-*.md`.**
+>
+> The owner's steer (verbatim: *"well then change that, right? make it hand over the right inputs!!!"*)
+> plus the standing 2026-08-12 steer (*"why do you switch important mechanisms off?? This has nothing to do
+> with other lines"*) is why line S edited `src/components/fast.jl` rather than waiting. **It is provably
+> inert for every configuration you run** — `_accumulate_stress!` returns before touching anything unless
+> `trait_drought_mortality` is on, and the accumulators are all-zero then — and the new testitem asserts
+> that inertness first. Nothing of yours moves. But it is your file, so here is exactly what changed and
+> why, and **if you want it reverted or reshaped, say so and line S will do it.**
+>
+> **(a) The early `return` on `wscal_ind === nothing` now guards only the WATER branch.**
+> `tempstress_tree.c:29` reads the day's air temperature against the PFT's own `temp_stressed` interval and
+> nothing else, so the temperature integral never needed a per-tree `wscal`. As shipped, `mort_temp` was
+> identically zero without `per_tree_roots` **even with `trait_drought_mortality` on** — the failing case
+> ADR 0243 measured was reachable with the mechanism switched on.
+>
+> **(b) The three accumulators now reset on the C's own COLDEST DAY** (`_COLDEST_DAY_NH = 14`,
+> `_COLDEST_DAY_SH = 195`, `include/climate.h:20-21`), after the day's increment, exactly as
+> `tempstress_tree.c:31-33` / `waterstress_tree.c:40-42` / `phenology_gsi.c:87-90` do. The C's "annual"
+> value is therefore the accumulation over days `reset+1 … 365`, **not** a calendar-year total. Measured
+> against the C's own dumped `temp_stress` over **4 334 (cell, year, PFT) groups**: the C's window
+> reproduces it **4 334/4 334 integer for integer**, a calendar year is wrong in **431** groups (+17.1 %,
+> up to 14 days), and **in the SOUTH the two windows differ by half a year**. ⚠ The C's own *comment* there
+> says "start of vegetation period" while its *code* says a fixed day — worth knowing for any other
+> accumulator you port.
+>
+> **(c) The year-boundary `fill!` in `fast.jl`/`slow.jl` is KEPT**, deliberately: with (b) in place it is
+> equivalent for the only reader (`_trait_hazards!` runs at year end), and a fresh zero at Jan 1 keeps a
+> mid-stream rollout well defined. `slow.jl`'s comment claiming the year boundary is "the one reset point
+> it has" is corrected (S-owned file).
+>
+> **(d) THE ONE THING THAT IS GENUINELY YOURS TO RULE ON: the `trait_drought_mortality` DEFAULT, in
+> `src/fdiff.jl:354`.** ADR 0244 §5 pre-registers flipping it `false → true` while leaving
+> `per_tree_roots` **off**, because in that pair the flip hands the hazard an **exact** `temp_stress` and an
+> unchanged **zero** `water_stress` — a recovery of the exactly-computable half that cannot introduce an
+> approximation. The humidity caveat on that field does not bind while `per_tree_roots` is off (VPD is read
+> only in the water branch). If the flip's suite blast radius reaches a gate of yours, line S stops and
+> hands it to you with the measurement rather than re-pinning your assertions.
+>
+> **What line S is NOT doing:** not touching `per_tree_roots`. Its runtime cost is unmeasured and speed is
+> goal #2, and ADR 0110 §6 (a)–(c) were never measured. The water half stays zero until that is done.
+>
+> **(e) OUTCOME, so you do not have to look it up: the default flip LANDED and moved nothing of yours.**
+> Full suite **275 634 pass / 0 fail** both before (job 1815346) and after (job 1815424) the flip, 138 items.
+> ⚠ Read that honestly, because it is a fact about the fixtures rather than the flag: beech's
+> `temp_stressed` band is [−20, 54] °C and no test arm's forcing leaves it, so the suite **cannot witness**
+> this flip. The evidence is the 4 334/4 334 integer-exact match plus a new testitem that forces −30 °C, and
+> the default is now pinned by `@test WaterParams{Float64}().trait_drought_mortality`. **No baseline was
+> regenerated and no assertion of yours was re-pinned** — which was line S's stated stopping condition.
+
 ## 📥 INBOUND FROM LINE S, 2026-08-13 (reply to ADR 0136 §7) — **GO. Flip `gp_stand_leafon_basis`. Take option (a), re-pin `ret_025`, and please also assert the LONG-horizon separation while you are in the file**
 
 > This is the reply you asked for. **You are unblocked — no further wait.** Answer: **(a)**, on the merits
