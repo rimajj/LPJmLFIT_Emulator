@@ -7,7 +7,7 @@
 > whoever holds the integration lock is the integrator for that moment (tier 3 in full: S 0170–0189 ·
 > M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239) — and it is now **EXHAUSTED (ADR 0189
 > was the last)**, so line S is on its **TIER-4 block 0240–0259**, opened by ADR 0240 and continued by
-> ADR 0241, 0242, 0243 and 0244. **Next free number: 0245.**
+> ADR 0241, 0242, 0243, 0244 and 0245. **Next free number: 0246.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ## 📥 INBOUND FROM LINE M, 2026-08-13 (ADR 0136 §7) — **A REQUEST, AND IT NEEDS YOUR GO: an F default flip moves ONE assertion in your `slow_level_anchor_tests.jl`. Nothing is broken today; the flip is parked until you answer**
@@ -442,60 +442,74 @@ before appending costs a second and would have caught this and my own two previo
 > the 4 334/4 334 match plus the new testitem's −30 °C arms; the default itself is pinned by
 > `@test WaterParams{Float64}().trait_drought_mortality`.
 >
-> ### C. THE NEXT ACTION — THE WATER HALF. It is the only piece of ADR 0243's 22 % still open.
+> ### C. THE NEXT ACTION — BUILD ADR 0245's WATER PROBE. Everything except the probe itself is done.
 >
-> **STEP 1 — score F's OWN water integral against the C's, and TIME `per_tree_roots`.** The bracket is
-> unchanged and pre-registered: **0.78 (zeros) ≤ F's own ≤ 1.00 (the C's own)**, pass at **Φ ≥ 0.867** by ADR
-> 0243 §4.1's derivation. Two measurements, both needed before any flip:
-> * **fidelity** — run F at the biome cells with `per_tree_roots = true, wscal_leafon = true,
->   trait_drought_mortality = true` and compare per-individual `water_stress_acc` against the C's dumped
->   per-stem `water_stress` (the `REC` dumps carry it, and `wscal_mean` beside it for a second, independent
->   check on the daily driver). `fdiff-validate`-shaped, kernel-isolated at t = 0 to avoid trajectory
->   divergence — **no rung-2 run**. Then push F's values through the hazard and report `Φ` on ADR 0243's own
->   basis so the three numbers are directly comparable.
-> * **cost** — `per_tree_roots` rebuilds a root profile per individual per year and moves `wr` inside the
->   individual loop. **Speed is goal #2**, and its cost has NEVER been measured. Use the `speed-gate` skill
->   (`scripts/bench_speed_gate.jl`, on/off arms, core-seconds per cell-year). ADR 0110 §6's step-2 flip
->   criteria (a)–(c) were never measured either — do those in the same job.
-> ⚠ **THE TRAP THAT WOULD SILENTLY VOID THE FIDELITY RUN:** all three flags are needed. `wscal_ind` is
-> allocated only under `per_tree_roots && wscal_leafon` (`fdiff.jl:2092`) and the water branch is skipped on
-> `nothing` — so **assert a non-zero `water_stress_acc` before believing any arm ran with the integral on.**
-> ⚠ **AND `soil_temp` IS AN AIR-TEMPERATURE PROXY** in the water increment (the C uses `soil->temp[0] > 10`).
-> Its stated direction is an OVER-count of shoulder-season stress days ⇒ if F's integral comes out HIGH, that
-> proxy is a candidate cause and must be priced before concluding F's water status is wrong.
+> **ADR 0245 is committed and it is TWO things.** §0 is a **correction** (read it before quoting ADR 0244:
+> the "temperature is dominant at the cold cells" sentence is WITHDRAWN — on the commensurable statistic
+> temperature is the larger term at **1 of 12 cells**, water at 10, and c52059 is a TIE; ADR 0244's defects,
+> its 4 334/4 334 exact null, its fix and its default flip all STAND). §§1–4 + §2a are the full
+> **pre-registration** of the water measurement, with every prerequisite already verified. **Your job is to
+> write and run the probe — do not re-derive the design.**
 >
-> **STEP 2, conditional.** If Φ ≥ 0.867 on F's own integrals AND the speed cost is acceptable, flip
-> `per_tree_roots` too — and that one IS line M's call, with the number attached (the inbound is already in
-> `lines/M/STATE.md`). If Φ is near 0.78, the finding is that F's water status carries no information and the
-> question becomes an F-fidelity one (M-owned file, S-specified change).
+> **MEASUREMENT A (fidelity) — what is already settled for you:**
+> * **Basis:** the `REC` dumps are BOTH initial condition and truth. Verified: `pre`/`grow` hold the same
+>   stem set (16 293 = 16 293); `water_stress` is identical at `pre`/`grow`/`mort`; **`post(y−1)` minus its
+>   `isdead` stems IS the roster year y's daily loop ran on** (deferred kills). Use that as F's init.
+> * **Cells:** the four that are both biome AND rung-2 cells — `tropical_amazon` 12045, `semiarid_sahel`
+>   18371, `temperate_hainich` 42490, `boreal_siberia` 52059. `mediterranean_iberia` 33335 is NOT a rung-2
+>   cell ⇒ out of scope, and say so rather than scoring four and calling it five.
+> * **Fixtures all exist and are committed:** `references/biome_forcing_<name>.csv` (**historic 2010–2019
+>   daily**, cols `year,doy,temp,swdown,lwnet,precip,huss,daylength,co2` — `huss` gives VPD) and
+>   `references/M_soilcolumn_<name>.txt` for all five cells. The rung-2 historic leg is 2000–2019, so
+>   **score years 2010–2019** where forcing and dumps overlap.
+> * **Driver:** copy `scripts/biome_sapwood_bg_probe.jl::run_one_year!` verbatim — build `FDiffFastCore`,
+>   loop `couple_day!` over the year's forcing, then `annual_step!`. ⚠ **Read `core.water_stress_acc` /
+>   `core.temp_stress_acc` BEFORE `annual_step!`** — it zeroes them, exactly as that probe already documents
+>   for `gpp_acc`/`npp_acc`.
+> * **Arm:** `per_tree_roots = true`, `wscal_leafon = true`, `trait_drought_mortality = true`, and
+>   **`pft_ids` passed with `per_pft_params = true`** (ADR 0126 §5 — omitting it runs beech's phenology for
+>   every stem and moved a Sahel statistic by +1.01).
+> * **Statistics + nulls (pre-registered, do not move):** blessed **`Φ_F`** on ADR 0243's basis with nulls
+>   **0.78** (zeros) and **1.00** (the C's own), **PASS at ≥ 0.867**; the joint-zero / F-only / C-only counts
+>   reported separately; and the **derived free bound** splitting GATE from MAGNITUDE disagreement (a stem
+>   whose F-side `wscal` never crosses `mort_water_res − minwscal` must return EXACTLY 0).
+> * ⚠ **§2a's reading rules, because the C's integral is SPARSE:** non-zero on **0.39 %** of stems at
+>   `tropical_amazon`, 3.76 % at Hainich, **5.33 %** at `semiarid_sahel` (mean **21.4** there vs a cell-wide
+>   1.27) and **30.0 %** at `boreal_siberia`. ⇒ **the GATE is most of the signal**, a per-stem mean ratio
+>   would be dominated by zeros and cannot be the headline, `tropical_amazon` is nearly uninformative (treat
+>   a null there as a property of the cell — this is effectively a THREE-cell measurement), and **the
+>   best-conditioned cell is also the most confounded**: `boreal_siberia` is where both integrals are common
+>   AND where the air-for-soil-temperature proxy is worst (**+4.40 °C**, vs ≤ 0.13 °C elsewhere), so a
+>   boreal-only discrepancy is attributable and cannot convict F's water status alone.
+> * ⚠ **The one-line trap that would void the run:** `wscal_ind` is allocated only under
+>   `per_tree_roots && wscal_leafon` (`fdiff.jl:2092`) and the water branch skips on `nothing`. **Assert a
+>   non-zero `water_stress_acc` before reading any number.**
 >
-> **What NOT to do.** Do not re-run the `H*` campaign (ADR 0242's ceiling is measured). Do not propose a
-> count-side instrument (ADR 0241 retired it). Do not feed `1 − wscal_mean` into the hazard (ADR 0243 §5.4
-> measured why). Do not re-raise the fail-loudly request to line M — it is already an inbound, and it now
-> also records that the fix landed.
+> **MEASUREMENT B (cost) — NOT started, and it gates the recommendation.** `per_tree_roots` has **never
+> been timed** and speed is goal #2. `scripts/bench_speed_gate.jl` has **no knob for it** (it builds params
+> internally via `leafon_params()`), and that file is line O's instrument (ADR 0084) — so add an **opt-in,
+> default-byte-identical** env arm (e.g. `BENCH_PTR=1`) rather than changing what it reports by default, or
+> write a focused single-thread timing probe that respects the `speed-gate` skill's four traps (no naive
+> wall time, `--threads=1`, honest arm labels, the per-individual normalisation). **ADR 0245 §3
+> pre-registers NO pass threshold on purpose:** the honest output is a priced trade — "the water integral
+> costs X % of runtime and buys `Φ` from 0.78 to Y" — handed to the owner, and **a fidelity pass alone does
+> NOT authorise the default.** Both numbers go in the same document.
+>
+> **What NOT to do.** Do not re-run the `H*` campaign. Do not propose a count-side instrument. Do not feed
+> `1 − wscal_mean` into the hazard (ADR 0243 §5.4 measured why). Do not re-raise the fail-loudly request to
+> line M — it is already an inbound and already records that the fix landed. Do not quote ADR 0244's
+> withdrawn per-cell sentence.
 >
 > ⚠ **A FILE-OWNERSHIP DISCLOSURE THE NEXT SESSION MUST NOT LOSE.** `src/fdiff.jl` and
-> `src/components/fast.jl` are **line M's**. This session edited both, on the owner's explicit steer of
+> `src/components/fast.jl` are **line M's**. This session edited both on the owner's explicit steer of
 > 2026-08-17 plus the standing one of 2026-08-12, and disclosed it in `lines/M/STATE.md` with an explicit
-> offer to revert or reshape. **If line M asks for changes there, do them — do not defend the edit.**
+> offer to revert or reshape. **If line M asks for changes there, make them — do not defend the edit.**
 >
 > ⚠ **STILL UNMEASURED FROM ADR 0242:** all four of `H1`'s warming-response sign misses sit at |FIT response|
 > < 0.9 stems, and whether that is inside FIT's own two-run spread is UNMEASURED (one `REC` member per cell;
 > a second needs a second SPIN-UP, ADR 0041). Say so rather than implying the misses are noise.
 >
-> ⚠ **GATES:** this session's diff touches `src/**` and `test/**` ⇒ the FULL `CI` gate ran on the branch (4
-> Julia jobs, ~10 min) plus `format`, and `docs` runs on `main` after the merge (it watches `src/**` and never
-> runs on a line branch — ADR 0126's trap). Last full suite: **275 634 pass / 0 fail**, 138 items (job
-> 1815424, post-flip).
->
-> ⚠ **ADR NUMBERS: line S is on TIER-4 0240–0259.** 0240–0244 spent ⇒ **your next ADR is 0245.**
->
-> ⚠ **TWO PROCESS TRAPS CAUGHT LIVE, both now captured:** `sbatch_julia.sh` assigns its first positional to
-> **`TAG`**, so an exported env knob named `TAG` is silently overwritten and the job scores 0 dumps while
-> exiting 0 (use `NPREV`; both rung-2 Julia scorers now echo their knobs). And `run_tests_slurm.sh` warms the
-> depot on the login node for 60–90 s **before** it calls `sbatch`, so an empty `squeue` right after launching
-> it does NOT mean the submit failed — "resubmit" put two concurrent `Pkg.test()` runs in one worktree
-> (caught, newer cancelled, survivor clean).
+> ⚠ **ADR NUMBERS: line S is on TIER-4 0240–0259.** 0240–0245 spent ⇒ **your next ADR is 0246.**
 >
 > **MERGE SHAS FOR ADR 0244 — MERGED 2026-08-17.** Merge commit `1ac404a8`, changelog collation
 > `543a5991`, branch sha `404b80ae`. Branch CI on `404b80ae`: **`format` success**, **`CI`: `test (lts)`
