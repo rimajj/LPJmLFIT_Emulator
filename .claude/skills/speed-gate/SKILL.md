@@ -44,7 +44,7 @@ Cell **42490** (Hainich), **npatch 25**, **1 core**; C 2000–2019, emulator 201
 S costs 5.0–22.1 % of the coupled run (9.4 % at Hainich) · E costs 0.9 % · **the fast core is 99 %**.
 Per-cohort cost is flat across biomes at **4.11–4.31e-3** core-s/cohort-year.
 
-## ⚠ TRAP 0 — STATE THE PATCH COUNT, OR THE NUMBER IS MEANINGLESS (ADR 0085, 2026-08-17)
+## ⚠ TRAP 0 — STATE THE PATCH COUNT, OR THE NUMBER IS MEANINGLESS (ADR 0086, 2026-08-17)
 
 **The single largest error this project has made about speed.** Every recorded speed verdict — ADR 0093's
 "the patch ensemble is NOT the bottleneck", ADR 0084's "patch reduction is a clean ~3× worth nothing to
@@ -116,8 +116,20 @@ engineering has to close. Neither alone is honest.
   move whenever a hot region is behind a knob, and it works from a line that does not own the file.
 * ⚠ **GPP is NON-MONOTONE in `nlambda`** (±2.1 %, reproducing to three decimals across independent runs),
   so **"25 iterations" is not evidence of convergence.** Establish convergence before tightening a solve.
-* **26.5 % is loop-invariant recomputation**: `fdiff.jl:558/559/561` recompute
+* **26.5 % is loop-invariant recomputation**: `photosynthesis` recomputes
   `ko`/`kc`/`tau = c·q10^((temp−25)·0.1)` on all ~78 calls although they depend on **`temp` alone**.
+  **The SEAM for this now exists and is in `main` (ADR 0087):** `FDiff.photo_kinetics(p, temp) ->
+  (fac_kin, gammastar)` plus a `kin` kwarg on `photosynthesis` whose default recomputes it, so every call
+  site is bit-identical (gated bitwise with `===` by `test/testitems/o_photo_kinetics_seam_tests.jl`).
+  ⚠ **It is worth 0 % on its own and is deliberately INERT** — the 78 calls originate in the `g(λ)` closure
+  *inside* `solve_lambda`, so realising the **≈1.36×** needs two lines there, in **line M's** file. Do not
+  quote the 1.36× as achieved; it is arithmetic, not a benchmark.
+
+  ⚠ **And do not cite a hot line by NUMBER out of this skill.** Every `fdiff.jl` line number in the
+  profile above has already moved twice — M's ADRs 0135–0139 shifted the kinetics by +13 lines between the
+  profile being taken and the seam being landed, so the "`:558/559/561`" this bullet carried for four days
+  pointed into `_sla_vm_cap` by the time anyone reopened it. **Grep for the expression** (`q10ko`,
+  `photo_kinetics`, `central-difference`) and re-derive the line, or you will price the wrong code.
 
 ## Two gotchas in writing a benchmark here
 

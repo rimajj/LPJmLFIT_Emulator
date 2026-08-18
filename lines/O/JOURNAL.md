@@ -445,3 +445,57 @@ evidence the arm ran* — with four ways to assert an arm from the inside, frame
 you were testing actually ran" as M suggested, plus the corollary that the C side of any ratio must be a
 marginal rate. §5(b) the 4.62× correction went **to the owner directly, in plain language**, since it cannot be
 written into `~/.claude/CLAUDE.md` (outside every worktree) and an ADR reader would not find it.
+
+## 2026-08-18 — the kinetics seam lands inert; its gate finds a Float64 promotion; the ADR record had a duplicate number  [rung 5a groundwork]
+
+- **Goal:** clear item 1 of the previous handoff — land O's authorized half of the (d) split with line M
+  (the temperature-only photosynthesis kinetics), bit-identical and unflagged, and say plainly that it is
+  worth nothing until M hoists it.
+- **Did:**
+  - Rebased onto `main` first (M is actively editing `src/fdiff.jl`; fast-forwarded `641b4c73` → `6fe3b5ec`).
+    **The kinetics had moved `:558-561` → `:571-575`** since ADR 0084 profiled them — the handoff's line
+    numbers pointed into `_sla_vm_cap`. Grepped `q10ko` instead.
+  - Factored `photo_kinetics(p::PhotoParams, temp) -> (fac_kin, gammastar)` out of `photosynthesis` verbatim
+    (operand for operand, same order, same `one(temp)` promotion) and added a `kin` kwarg defaulting to it.
+    `ko`/`kc`/`tau` are intermediates, so the two returned quantities are the whole downstream contract —
+    the design in the handoff was already right about that.
+  - Wrote `test/testitems/o_photo_kinetics_seam_tests.jl`: the equivalence argument as assertions, `===`
+    (type-sensitive bit comparison) and never `≈`, over 3 240 kernel calls — both pathways, six temperatures,
+    three daylengths, five λ across the bracket, three `apar` including 0, all three call shapes
+    (`comp_vm` true/false and the `vm_scale` hook) — with the sweep count asserted so it cannot silently
+    empty, plus a frozen local copy of the pre-refactor arithmetic.
+  - Gates run locally before pushing: **Runic 1.7.0** (the CI version, from the persistent env at
+    `/p/tmp/jamirp/runic_env`) clean on both files; **docs built** with `DOCS_LINKCHECK=false` (rc=0) after
+    `Pkg.instantiate()` — the docs env is per-worktree and was empty here; **mermaid render checked in the
+    built HTML** (`grep -c 'class="mermaid"' docs/build/diagrams.html` = 5), not inferred from the green
+    build (ADR 0091's amendment).
+  - Suite CI-faithfully on SLURM, twice: **job 1832506 → exit 1, 40 failures, ALL 40 in my own new file**
+    (279 076 pass elsewhere, every ReferenceTests baseline and the numerical-regression baseline green ⇒ the
+    refactor is bit-identical, the *test* was wrong). Then job 1832524 after correcting it.
+- **The failure was the interesting part.** 39 × `eltype(got) === T` for `T = Float32`, and 1 ×
+  `all(x -> x isa Float32, a32)`. Measured the promotion directly rather than guessing its extent: the
+  exponent literal `0.1` is a `Float64`, so `(temp − 25) * 0.1` promotes and `Float32 ^ Float64 → Float64`
+  carries double precision through everything. **`temp_stress` promotes identically and this seam never
+  touched it** — which is what proves it is the kernel's Float64 literals in general, not one expression.
+  All four `photosynthesis` returns are `Float64` for a fully-Float32 call.
+  - **The seam is innocent and the run already proved it:** `===` compares type as well as bits, so the 39
+    passing `got === want` comparisons against the frozen pre-refactor copy are exactly the statement that
+    the promotion predates the refactor.
+  - **The four "(SpeedyWeather-coupling type)" testitems pass because the output structs convert on
+    assignment.** They never gated the arithmetic — so *"Float32 readiness is gated"*, which this line's own
+    STATE has claimed since 2026-07-28, was true of the interface types and false of the kernel.
+  - Did **not** fix it: type-generic literals would make a Float32 run compute in single precision, which
+    moves numbers ⇒ its own opt-in and its own re-measure (guardrail 4), not a ride-along on a bit-identical
+    refactor. Pinned the measured behaviour instead, so a future change fails loudly.
+- **Also fixed, found while picking an ADR number:** the 2026-08-17 patch-scaling ADR was committed as
+  **`0085`, a duplicate** of the 2026-08-14 online-PAW ADR (older, indexed, cited from four skills and a
+  committed scorer), and was **never added to `docs/decisions/README.md`**. Renumbered → **0086**, both rows
+  indexed, references repointed (this line's block 0★, `speed-gate` trap 0). Its **title also asserted the
+  shared gene pool that its own §5a measures and kills** — retitled to §5b's actual conclusion (the patch
+  count is a pure variance knob). A record-correction box at the top states exactly what moved; no
+  measurement, number or decision changed.
+- **Result:** ADR 0087; the seam in `main`; M's two lines unblocked and raised to them in `lines/M/STATE.md`.
+  **No speed-up claimed and none measured** — the emulator still costs 1.2329 core-s per cell-year at cell
+  42490, npatch 25, one core, and that verdict is still at 25 patches against a production ~500 (ADR 0086).
+- **Skill capture:** `speed-gate` — the seam's existence and inertness under the 26.5 % bullet, plus a new
+  standing warning not to cite a hot `fdiff.jl` line by number (they moved twice in four days).

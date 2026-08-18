@@ -91,9 +91,9 @@ language** this session (it could not go in `~/.claude/CLAUDE.md`, which is outs
 
 ## NEXT — start here
 
-### 0★ ⛳⛳ THE PATCH COUNT INVALIDATES EVERY SPEED VERDICT THIS PROJECT HAS RECORDED (2026-08-17, ADR 0085; merged to `main` at `361f808a`)
+### 0★ ⛳⛳ THE PATCH COUNT INVALIDATES EVERY SPEED VERDICT THIS PROJECT HAS RECORDED (2026-08-17, **ADR 0086** — renumbered from 0085 on 2026-08-18, it was a duplicate; merged to `main` at `361f808a`)
 
-**READ ADR 0085 BEFORE TOUCHING ANYTHING ABOUT SPEED.** The owner stated that publication runs use
+**READ ADR 0086 BEFORE TOUCHING ANYTHING ABOUT SPEED.** The owner stated that publication runs use
 **~500 patches per cell**; every recorded verdict — including block 0☆ below and ADR 0084 §4 — was computed
 at **25**. Measured on the C: `cost ≈ 0.0141 · npatch` core-s per cell-year, per-patch cost flat to 4.7 %
 over two decades of J, so at 500 patches **99.9 % of LPJmL-FIT is the patch ensemble** (the
@@ -103,7 +103,7 @@ production configuration.** Do not act on it. Do not quote any speed number with
 
 **What is settled (all measured, all committed):**
 
-* the scaling law + the per-output patch requirement + the profile → ADR 0085 §2, §3, §4a;
+* the scaling law + the per-output patch requirement + the profile → ADR 0086 §2, §3, §4a;
 * **the patch count is a pure VARIANCE knob — there is no patch-count bias** (§5b). `npatch` enters in two
   non-cosmetic places and establishment is per-patch from that patch's own light. **The 21–81 % recruitment
   loss is the cost of averaging the stand into ONE patch, not of running fewer patches.**
@@ -130,7 +130,7 @@ production configuration.** Do not act on it. Do not quote any speed number with
    The cheap version: score the response of the two committed ground-truth seeds against each other.
 3. **Re-run the 10 verifiers that died on a session limit** — they are exactly the concrete exact-code items:
    `Workflow({scriptPath: '<session>/workflows/scripts/lpjmlfit-c-speed-at-500-patches-wf_22a4ba9d-607.js', resumeFromRunId: 'wf_22a4ba9d-607'})`.
-   Completed agents replay from cache. The synthesis agent also died; ADR 0085 §5d is the hand-written
+   Completed agents replay from cache. The synthesis agent also died; ADR 0086 §5d is the hand-written
    replacement, so a re-run only needs to add the missing verdicts.
 
 **Do NOT redo:** the scaling law, the convergence table, the gene-pool test (rejected), or the profile.
@@ -395,26 +395,58 @@ Top of the line-level profile (Hainich, 53 004 samples, share of **total** runti
   (arm F at `nlambda=25` vs `nlambda=1`), not an absolute core-s figure; and the `_t8` artifacts (180 MB on
   `/p/tmp`) are unreachable from a runner ⇒ the CI arm must be **F or F+E**, never S+F+E.
 
+### 🆕 THIS SESSION (2026-08-18) — **THE KINETICS SEAM IS LANDED, BIT-IDENTICAL AND INERT (ADR 0087); ITS OWN GATE FOUND THAT THE PHOTOSYNTHESIS KERNEL RUNS IN Float64 EVEN AT Float32; AND THE ADR RECORD HAD A DUPLICATE NUMBER (0085 → 0086)**
+
+**1. Landed O's half of the split — item 1 below is DONE.** `src/fdiff.jl` now has
+`FDiff.photo_kinetics(p, temp) -> (fac_kin, gammastar)` + a `kin` kwarg on `photosynthesis` defaulting to
+it. **All 9 call sites bit-identical, no flag.** Gate: `test/testitems/o_photo_kinetics_seam_tests.jl` —
+bitwise `===` over 3 240 kernel calls (both pathways, the SLA-capped Vcmax branch, the `vm_scale` hook,
+Float32 params) plus a frozen copy of the pre-refactor arithmetic. **Worth 0 %, and no speed-up is claimed**
+— the ~78 repeated calls originate inside `solve_lambda`, so the ≈1.36× needs M's two lines. **Raised to M**
+as `📥 INBOUND FROM LINE O, 2026-08-18` in `lines/M/STATE.md`, anchored before their long-lived
+`## ✅ RESOLVED — the JET 0.12.0 blocker` heading (if it is gone, a rebase ate it — re-place it, never
+resolve that conflict with `--theirs`).
+
+**2. ⭐ THE FINDING, and it is about the ONLY P4 preparation this repo has in code: the photosynthesis kernel
+computes in Float64 even when parameterised Float32.** The exponent literal `0.1` is a `Float64`, so
+`(temp − 25) * 0.1` promotes and `Float32 ^ Float64 → Float64` propagates. Measured: `photo_kinetics` returns
+`Tuple{Float64,Float64}` for `PhotoParams{Float32}`, **`temp_stress` promotes identically with the seam not
+involved at all**, and all four kernel returns are `Float64` for a fully-Float32 call. The four
+"(SpeedyWeather-coupling type)" testitems and `@test c.npp isa Float32` **all still pass — the output structs
+convert on assignment, so they never gated the arithmetic.** ⇒ **stop saying "Float32 readiness is gated"**;
+say *the interface types are Float32-clean, the kernel arithmetic is not*. **Directly relevant to O3c:**
+behind `Terrarium.AbstractPhotosynthesis{NF}` a run at `NF = Float32` would silently compute the hot kernel
+in double precision, so any Float32 speed/memory expectation online is unfounded. **Deliberately NOT fixed**
+(type-generic literals move numbers ⇒ own opt-in + own re-measure, guardrail 4); **pinned** by the gate so a
+future single-precision change fails loudly. Full detail: ADR 0087 §5.
+⚠ Method note worth keeping: the failing assertion was **mine**, and the finding was real. When a refactor's
+own gate reds, establish which of the two it is — *the refactor broke something* vs *the assertion claimed
+something the code never did* — before touching either. Here 279 076 assertions and every baseline were green
+and only the new purity claim failed, which localised it in one read.
+
+**3. FIXED — two defects in the ADR record from the 2026-08-17 session.** The patch-scaling ADR was committed
+as **`0085`, a duplicate** of the (older, already-indexed, four-skill-cited) online-PAW-clamping ADR, and was
+**never added to `docs/decisions/README.md`**. Renumbered to **0086**, both rows now indexed. Its title also
+claimed *"the patches are COUPLED through a shared gene pool"* — which **its own §5a measures and kills** at
+Hainich and at the Amazon; retitled to what it actually concludes (**the patch count is a pure variance knob,
+no patch-count bias**). No measurement, number or decision changed; a record-correction box at the top of the
+file says exactly what moved. References that meant the patch ensemble (this file's block 0★, `speed-gate`
+trap 0) now point at 0086. **`0085` still means the PAW/O3b finding — the O3b sections below are correct.**
+
+**Line O's next free ADR number is 0088.**
+
 ### ▶ WHERE TO PICK UP — in this order
 
-0. **✅ M REPLIED — (d) SPLIT. Read the two blocks at the TOP of this file** (`📥 INBOUND FROM LINE M` and
-   O's `📤 REPLY`) before touching anything. Net position: **O may edit `photosynthesis`'s kinetics
-   (`fdiff.jl:558-561`) only**; `solve_lambda` and the rest of the F core stay M's (CLAUDE.md §9 Gap 1).
-1. **THE KINETICS HOIST — authorized, designed, NOT STARTED. This is the top actionable speed item.**
-   Land **O's half only**: factor `:558-561` into `@inline photo_kinetics(p::PhotoParams{T}, temp) ->
-   (fac_kin, gammastar)` and add a kwarg `kin = photo_kinetics(p, temp)` to `photosynthesis`, using
-   `fac_kin, gammastar = kin`. **The default must reproduce today's arithmetic in the same order of
-   operations ⇒ bit-identical at all 9 existing call sites** (`:657, 817, 831, 1253, 1272, 1958, 1967, 2005,
-   2045`). No flag (M agreed: a flag nobody would switch off is maintenance cost).
-   **It is worth 0 % until M adds their 2 lines inside `solve_lambda` — that is expected, not a failure.**
-   Land it, say so plainly, and do not report a speed-up from it alone.
-   ⚠ **Gates this DOES trigger** (unlike everything merged this session): `src/**` ⇒ **`CI`** (4 Julia jobs) +
-   **`format`** (Runic) on the branch, and **`docs`** on `main` *having never run on the branch* — so
-   **build the docs locally first**: `DOCS_LINKCHECK=false julia --project=docs docs/make.jl`. Suite
-   CI-faithfully on SLURM: `scripts/run_tests_slurm.sh O-hoist`. Expect **~275 625 pass / 0 fail**; a
-   `signal: 6/11` with no `Test Summary` is an AD/LLVM crash, not a numerical failure (ADR 0110) — but a
-   `Tuple{T,T}` of scalars is stack-allocated and should not trip it.
-   ⚠ **Rebase first — M is actively editing this file** (ADR 0139 just landed; ADRs 0135–0138 before it).
+0. **✅ M REPLIED — (d) SPLIT, and O's half is now DONE (see THIS SESSION above).** Net position: the F core
+   stays M's (CLAUDE.md §9 Gap 1); O's authorized edit is spent. **Do not edit `src/fdiff.jl` again without a
+   new recorded hand-over.**
+1. ~~**THE KINETICS HOIST**~~ — ✅ **DONE 2026-08-18 (ADR 0087).** Do not redo it. What is left is **M's two
+   lines inside `solve_lambda`**, raised to them; the ≈1.36× is unclaimed until they land it, and it is not
+   O's to claim then either. ⚠ **Do not quote the 1.36× as achieved anywhere** — it is arithmetic, not a
+   benchmark.
+   ⚠ **When you next touch a hot line, grep for the expression, not the line number.** These moved twice in
+   four days (`:558-561` → `:571-575`) and the stale reference pointed into `_sla_vm_cap`; now a standing
+   warning in `speed-gate`.
 2. **5d — thread across cells. This is O's, needs nobody, and is STILL untouched.** `EXECUTION_PLAN.md` §4
    lists it as "large, no risk": 54 020 cells are
    embarrassingly parallel and `scripts/bench_speed_gate.jl` already reports single-core core-seconds, so the

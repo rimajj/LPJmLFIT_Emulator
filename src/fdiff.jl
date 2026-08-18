@@ -544,12 +544,15 @@ end
 # Photosynthesis kernel — photosynthesis.c:36-166 (Haxeltine & Prentice 1996)
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 """
-    photosynthesis(p::PhotoParams, λ, tstress, co2_Pa, temp, apar, daylength; comp_vm=true, vm=0) -> (agd, rd, vm, adtmm)
+    photosynthesis(p::PhotoParams, λ, tstress, co2_Pa, temp, apar, daylength; comp_vm=true, vm=0, kin=photo_kinetics(p, temp)) -> (agd, rd, vm, adtmm)
 
 Daily photosynthesis (`photosynthesis.c:36-166`), returning gross daytime assimilation `agd`
 (gC/m²/day), leaf respiration `rd` (gC/m²/day), Vcmax `vm`, and the CO₂-flux form `adtmm`
 (mm/m²/day) used in the λ residual. `comp_vm=true` computes `vm` at the optimal λ (the C `gp_sum`
-pass); `comp_vm=false` uses the passed-in `vm` (the λ-solve residual pass). Non-smooth ops replaced
+pass); `comp_vm=false` uses the passed-in `vm` (the λ-solve residual pass). `kin` carries the
+temperature-only Michaelis-Menten kinetics `(fac_kin, gammastar)`; its default recomputes them, so a
+caller looping at one temperature can hoist `photo_kinetics` out and pass the result unchanged (same
+arithmetic, evaluated once). Non-smooth ops replaced
 by [`SmoothOps`](@ref) surrogates: the σ floor (`sqrt_floor`), the C4 `phipi<1` mask (sigmoid), and
 the `adt≤0` floor (softplus). The co-limitation discriminant `(je+jc)²−4θ·je·jc ≥ (je−jc)² ≥ 0` is
 positive by construction (θ<1), so its sqrt needs only a round-off floor.
@@ -562,17 +565,31 @@ function _sla_vm_cap(p::PhotoParams, vm, temp)
     return smoothmin(vm, vm_n, p.βvm)
 end
 
-function photosynthesis(
-        p::PhotoParams{T}, λ, tstress, co2_Pa, temp, apar, daylength;
-        comp_vm::Bool = true, vm = zero(T), vm_scale = one(T)
-    ) where {T}
-    θ = p.theta
-    # temperature-dependent kinetics (photosynthesis.c:66-70)
+# Temperature-dependent Michaelis-Menten kinetics (`photosynthesis.c:66-70`), split out of
+# `photosynthesis` so a caller that evaluates the kernel repeatedly at ONE temperature can hoist
+# them out of its loop. `ko`/`kc`/`tau` depend on `temp` ALONE — not on λ, `apar`, `vm` or the
+# individual — yet the λ solve re-evaluates them on each of its ~78 kernel calls per individual-day,
+# which the profile attributes 26.5 % of total runtime to (ADR 0084 §5). Returns the only two derived
+# quantities the kernel consumes, as a `Tuple` of scalars: stack-allocated, so this is NOT the
+# heap-allocated-field-on-a-differentiated-struct shape that aborts the suite under Enzyme (ADR 0110).
+@inline function photo_kinetics(p::PhotoParams, temp)
     ko = p.ko25 * p.q10ko^((temp - 25) * 0.1)
     kc = p.kc25 * p.q10kc^((temp - 25) * 0.1)
     fac_kin = kc * (one(temp) + p.po2 / ko)
     tau = p.tau25 * p.q10tau^((temp - 25) * 0.1)
     gammastar = p.po2 / (2 * tau)
+    return (fac_kin, gammastar)
+end
+
+function photosynthesis(
+        p::PhotoParams{T}, λ, tstress, co2_Pa, temp, apar, daylength;
+        comp_vm::Bool = true, vm = zero(T), vm_scale = one(T),
+        kin = photo_kinetics(p, temp)
+    ) where {T}
+    θ = p.theta
+    # temperature-dependent kinetics (photosynthesis.c:66-70) — identical arithmetic whether computed
+    # here by the default kwarg or hoisted by the caller and passed in (`photo_kinetics` above).
+    fac_kin, gammastar = kin
 
     if p.path === :c3
         α = p.alphac3
