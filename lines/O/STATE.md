@@ -435,6 +435,22 @@ trap 0) now point at 0086. **`0085` still means the PAW/O3b finding — the O3b 
 
 **Line O's next free ADR number is 0088.**
 
+**✅ MERGED AND GREEN.** Branch `afacb236` (4 commits: the ADR renumber · the seam · this handoff · a
+`repo-commit` skill capture), merged to `main` as **`0ab14f76`**, changelog collated in the same `flock`.
+**Branch CI on `afacb236`: `format` ✅ · `test (lts)` ✅ · `test (1)` ✅ · `test (macOS, lts)` ✅.**
+**`main`'s own run on `0ab14f76`: `format` ✅ · `changelog` ✅ · `docs` ✅ · `test (lts)` ✅ · `test (1)` ✅ ·
+`test (macOS, lts)` ✅** — `docs` is the one that **never runs on a line branch**, which is why it was built
+locally first; it is green on `main`. `test (pre)` ❌ on both, and it is **not mine and not required**: it
+dies at load time on `MethodError: no method matching setindex!(::Base.ScopedValues.ScopedValue{Bool},
+::Bool)`, a Julia-prerelease API change, with no test failure and no mention of anything in this diff. I
+checked the failing step rather than assuming the known-red status still applied.
+⚠ **Two process defects of my own, both fixed and both now in `repo-commit`:** a `git add` whose pathspec
+list still named the pre-rename file **failed as a whole and staged nothing** (with `2>/dev/null` hiding the
+`fatal:`), so the first commit carried a bare `git mv` and its message described a retitle it did not
+contain — found by the per-commit `git show --stat` audit this skill already mandates and I had skipped.
+Fixed by reset + amend + cherry-pick (no interactive rebase in this environment), verified with
+`git diff --stat tmp-save HEAD`.
+
 ### ▶ WHERE TO PICK UP — in this order
 
 0. **✅ M REPLIED — (d) SPLIT, and O's half is now DONE (see THIS SESSION above).** Net position: the F core
