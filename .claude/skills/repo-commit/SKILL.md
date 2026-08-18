@@ -1267,3 +1267,73 @@ section — the numbers are shared across all four lines and a sibling may have 
 - **Then tell the sibling, in their `STATE.md`, that their ADR may now carry a stale citation — and do not
   edit their ADR.** Renumbering silently is how the stale citation survives; the note is the point of the
   exercise, not the renumber.
+
+## ⚠ `git add` WITH ONE UNMATCHED PATHSPEC STAGES **NOTHING** — AND `2>/dev/null` MAKES THAT INVISIBLE (line O, 2026-08-18)
+
+A split-into-logical-commits sequence quietly produced a commit whose message described a retitle it did
+not contain. Exact mechanism, because the innocent-looking part is the redirect:
+
+1. `git mv old.md new.md` staged the **rename** while the file still had its old content.
+2. The file was then edited (a new title + a correction box) ⇒ `git status` showed **`RM`** — staged rename,
+   **unstaged** modification.
+3. The commit ran
+   `git add new.md "old.md" README.md skill.md 2>/dev/null` — and `old.md` no longer exists on disk.
+   **`git add` treats an unmatched pathspec as fatal, exits non-zero, and stages NONE of the paths**, even
+   the three that do match. The `2>/dev/null` swallowed `fatal: pathspec … did not match any files`.
+4. `git commit` then committed **what was already in the index** — the bare rename — and exited 0. The next
+   commit swept up the orphaned edits, so the *net tree* was right and only the *split* was wrong. Nothing
+   was red at any point.
+
+**Rules that each independently prevent it:**
+
+* **Never `2>/dev/null` a `git add`** (or any staging command). There is no noisy-but-harmless stderr worth
+  hiding here; the only thing it hides is this.
+* **A renamed file that you then EDIT needs re-adding.** `git mv` stages the rename at the content of that
+  moment. `RM` in `git status --short` is the tell — the `M` is not staged.
+* **Chain staging to the commit:** `git add … && git commit …`, so a failed add cannot be followed by a
+  commit. Do not put them in separate steps that both "look fine".
+* **Audit per commit, which this skill already tells you to do** — `git show --stat --format='' HEAD`. It
+  takes two seconds and it is the check that catches this; skipping it is what let the wrong split through.
+  For a rename+edit specifically, also confirm the content landed: `git show HEAD:<newpath> | head -1`.
+
+**Fixing it after the fact, with nothing pushed yet and no interactive rebase** (`-i` is unavailable in this
+environment): save the good working-tree file aside, `git branch tmp-save` as a net, `git reset --hard <C1>`,
+restore the file, `git commit --amend --no-edit`, then `git cherry-pick <C2> <C3>` — the later commits do not
+touch that file, so they replay cleanly. Verify with `git diff --stat tmp-save HEAD` (the only difference
+should be the content you were adding), then delete the safety branch.
+
+## ⚠ AN ADR NUMBER CAN COLLIDE INSIDE YOUR OWN LINE'S BLOCK, AND A MISSING `README.md` ROW IS WHAT HIDES IT (line O, 2026-08-18, ADR 0086)
+
+Distinct from the duplicate-**skill-section** trap above: this is two sessions of the *same* line taking the
+same **ADR** number three days apart. `0085` was published twice — the online-PAW finding (2026-08-14) and
+the patch-scaling finding (2026-08-17).
+
+**The index is the ledger, and that is why the second one was invisible.** `CLAUDE.md` §9 already requires
+adding a row to your line's subsection of `docs/decisions/README.md`. The 2026-08-17 session skipped it — so
+the *only* place a reader looks still showed `0085` used exactly once, and nothing anywhere was inconsistent.
+⇒ **the row is not bookkeeping, it is the collision detector.** Check both, in the same breath, immediately
+before naming the file:
+
+```bash
+ls docs/decisions/ | grep -E '^00(8[0-9])'          # your block, on disk — a glob, not memory
+grep -c '^| \[0086\](' docs/decisions/README.md      # and the ledger everyone actually reads
+```
+
+**Resolving a duplicate ADR number** (same shape as the skill-section rule, with one difference that
+matters):
+
+- **Renumber the NEWCOMER**, keep the incumbent's number — older, indexed, and here cited from four skills
+  and a committed scorer, so moving it would have been the wider break.
+- **ADRs are immutable once accepted, so ANNOTATE rather than silently rewrite.** Put a short
+  record-correction box at the top saying what moved and, explicitly, that no measurement, number or
+  decision changed. A silent renumber is indistinguishable from a rewrite of an accepted decision.
+- **Repoint every reference that meant the newcomer, in the same commit** — grep the string, then decide per
+  hit which of the two ADRs it meant. Half the hits here legitimately meant the incumbent.
+
+**And while you are in the file, check the TITLE against the body.** The same ADR was titled *"the patches
+are COUPLED through a shared gene pool"* while its own §5a **measures that mechanism and kills it**; §5b
+carries the actual conclusion. A reader who stopped at the title took away the opposite of the result. This
+is a live failure mode for the long, measurement-dense ADRs in this repo, where a hypothesis is often stated
+as a heading *before* the section that refutes it: **the title must state the finding, not the hypothesis
+that motivated the work.** Retitle it, leave the internal heading directly above its own refutation, and say
+in the correction box that you did.
