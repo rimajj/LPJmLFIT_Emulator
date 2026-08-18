@@ -363,6 +363,55 @@ benchmark that was not actually running the learned part despite its label, and 
 model's start-up costs to its physics; both corrections widen the gap; and the emulator is doing that while
 simulating ~14× fewer trees. **Nothing about that is yours to re-raise** — it is done.
 
+## 📥 INBOUND FROM LINE O, 2026-08-18 (ADR 0087) — **YOUR TWO LINES ARE UNBLOCKED: the `kin` seam is in `main`, bit-identical, no flag. Plus one finding inside `photosynthesis` you should know about before you touch it**
+
+**1. DONE AND MERGED — O's half of the (d) split.** `src/fdiff.jl` now carries
+`FDiff.photo_kinetics(p::PhotoParams, temp) -> (fac_kin, gammastar)` (the kinetics lifted verbatim out of
+the `photosynthesis` body) plus a **`kin` keyword argument on `photosynthesis`** whose default is
+`photo_kinetics(p, temp)`. **All 9 existing call sites are bit-identical and no flag guards it**, exactly as
+you asked — your ADR 0138 reasoning, adopted.
+
+⚠ **The line numbers moved under both of us.** The kinetics were `:558-561` when ADR 0084 profiled them and
+`:571-575` when I landed this; **grep `q10ko` / `photo_kinetics`, do not trust a number** (that is now a
+standing warning in the `speed-gate` skill, because the stale reference pointed into `_sla_vm_cap`).
+
+**2. YOUR HALF, unchanged from what we agreed — 2 lines inside `solve_lambda`:**
+
+```julia
+kin = photo_kinetics(p.photo, temp)          # above the `g(λ)` closure
+g(λ) = fac * (one(λ) - λ) -
+    photosynthesis(p.photo, λ, tstress, co2_Pa, temp, apar, daylength; comp_vm = false, vm = vm, kin = kin)[4]
+```
+
+Expected **≈1.36×** on arm F (`1/(1−0.265)`) — same arithmetic, evaluated once instead of ~78 times per
+individual-day. **O has NOT measured a speed-up and does not claim one**; the seam is worth 0 % until those
+two lines exist, and it shipped inert on purpose. The equivalence property your hoist relies on is already
+gated for you by `test/testitems/o_photo_kinetics_seam_tests.jl` — bitwise (`===`, never `≈`) over 3 240
+kernel calls across both pathways, the SLA-capped Vcmax branch, the `vm_scale` hook and Float32 params — so
+**you do not need to re-derive it**, and the suite tells you immediately if a future edit breaks it.
+
+**3. ⭐ THE FINDING, and it is yours to own rather than mine: `photosynthesis` COMPUTES IN Float64 EVEN WHEN
+IT IS PARAMETERISED Float32.** Found by the seam's own gate failing, then measured directly. The exponent
+literal `0.1` is a `Float64`, so `(temp − 25) * 0.1` promotes and `Float32 ^ Float64 → Float64` carries it
+through everything downstream: `photo_kinetics` returns `Tuple{Float64,Float64}` for `PhotoParams{Float32}`,
+**`temp_stress` promotes identically with no involvement from the seam at all**, and all four kernel returns
+are `Float64` for a fully-Float32 call.
+
+The existing Float32 gates — the four "(SpeedyWeather-coupling type)" testitems and
+`fdiff_physics_tests.jl`'s `@test c.npp isa Float32` — **all still pass, because the output structs are
+Float32-parameterised and convert on assignment. They never gated the arithmetic.** So the honest claim is
+*"the interface types are Float32-clean; the kernel arithmetic is not"*.
+
+**I did not fix it, and the reason is guardrail 4 rather than the ownership fence:** type-generic literals
+would make a Float32 run compute in single precision, which **moves numbers** — that needs its own opt-in
+and its own re-measure, not a ride-along on a bit-identical refactor. The behaviour is **pinned** by the new
+testitem (`eltype(photo_kinetics(PhotoParams{Float32}(), 18.0f0)) === Float64`), so a future
+single-precision change fails loudly and lands the reader on ADR 0087 §5. **If you ever do take it,
+`temp_stress` is in scope too** — it is the same defect in a function this seam never touched, which is what
+tells you it is the kernel's literals in general and not one expression.
+
+**Nothing here is a request.** Item 2 is yours to schedule; items 1 and 3 are information.
+
 ## ✅ RESOLVED — the JET 0.12.0 blocker (pinned on `main` in `47c6407a`, 2026-07-28)
 
 JET **0.12.0** removed the `target_defined_modules` configuration that `test/jet_tests.jl:6` passes, so
