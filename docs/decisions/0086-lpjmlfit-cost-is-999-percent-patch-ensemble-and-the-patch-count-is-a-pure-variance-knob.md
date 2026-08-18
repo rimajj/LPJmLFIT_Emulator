@@ -1,4 +1,4 @@
-# ADR 0085 — LPJmL-FIT's cost is 99.9 % patch ensemble, the patches are COUPLED through a shared gene pool, and the atmosphere-facing fluxes converge in a handful of patches
+# ADR 0086 — LPJmL-FIT's cost is 99.9 % patch ensemble at the production 500 patches, the patch count is a pure VARIANCE knob, and the atmosphere-facing fluxes converge in a handful of patches
 
 * **Status:** accepted
 * **Date:** 2026-08-17
@@ -8,6 +8,27 @@
   derived at `npatch = 25` and both invert at the production `npatch ≈ 500`.**
 * **Trigger:** the owner, 2026-08-17: *"take the original C code as starting point … Remember that usually
   for publications at least 500 patches per cell are used — the 25 were just for testing."*
+
+> ### ⚠ RECORD CORRECTION, 2026-08-18 (line O) — this file was committed as `0085` and titled with a claim its own §5a kills
+>
+> Two defects in the record, both fixed here without touching a single measurement, a number, or a
+> decision. **Nothing below this box changed except the number in the heading.**
+>
+> 1. **The number was a DUPLICATE.** This ADR was committed on 2026-08-17 as `0085`, which
+>    [ADR 0085](0085-the-online-paw-diagnostic-is-clamped-so-o3b-is-void-not-converged.md) (the online
+>    `plant_available_water` clamping finding, 2026-08-14) already held and was already registered in
+>    `README.md`. It was also never added to that index at all. Renumbered to **0086** — the incumbent
+>    keeps `0085` because it is older, registered, and cited from four skills and a committed scorer, so
+>    moving it would have been the wider break. Both rows are now in the index.
+> 2. **The title asserted the shared gene pool as a finding.** §5 verifies the mechanism *exists in the
+>    source*; **§5a then measures it and KILLS it** ("the gene-pool mechanism does NOT bite, at either
+>    cell"), and §5b supplies what the ADR actually concludes instead — the patch count is a pure variance
+>    knob with no patch-count bias. A reader who stopped at the title would carry away the opposite of the
+>    result. Retitled to §5b's finding; §5's own heading is left as written, immediately above its own
+>    refutation, which is where it belongs.
+>
+> ⇒ **Cite this as ADR 0086.** References that said `ADR 0085` and meant the patch ensemble
+> (`lines/O/STATE.md` block 0★, `speed-gate` trap 0) are updated in the same commit.
 
 ---
 
