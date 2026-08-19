@@ -59,6 +59,7 @@ To work a line, launch a session in ITS worktree instead:
   cd /p/projects/open/Jamir/wt-M   # line/M — multi-cell coupled S+F+E (P3)
   cd /p/projects/open/Jamir/wt-E   # line/E — Component E vs observations (P2)
   cd /p/projects/open/Jamir/wt-O   # line/O — online coupling: Terrarium + SpeedyWeather (P4/P5)
+  cd /p/projects/open/Jamir/wt-X   # line/X — project direction & exploration (new ideas; explores, never implements)
 
 Protocol: \`CLAUDE.md\` §9. Ownership map + frozen cross-line contracts: ADR 0029. Line state: \`lines/<X>/STATE.md\`.
 EOF
