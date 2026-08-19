@@ -499,3 +499,45 @@ written into `~/.claude/CLAUDE.md` (outside every worktree) and an ADR reader wo
   42490, npatch 25, one core, and that verdict is still at 25 patches against a production ~500 (ADR 0086).
 - **Skill capture:** `speed-gate` — the seam's existence and inertness under the 26.5 % bullet, plus a new
   standing warning not to cite a hot `fdiff.jl` line by number (they moved twice in four days).
+
+## 2026-08-19 — the owner asked whether the hybrid could be replaced entirely; line O explored it and it was RELOCATED to a new line X
+
+**Not line O's question, and the owner said so.** Asked whether a **purely data-driven** emulator could
+replace the hybrid — learn `(forest state, climate) → next forest state`, roll it out, plus a daily flux head
+for an ESM. Line O ran the exploration (14 agents: 6 investigations, 6 adversarial reviewers, synthesis,
+completeness critic; all six investigations **refuted**). Then two owner corrections, in quick succession:
+
+1. *"no! stop! dont write anythign of this to other lines!!! we are jsut discussion a new direction of this
+   project here, nothing to do wiht other lines!!!"* — arriving mid-write, while this session was inserting an
+   INBOUND block into `lines/S/STATE.md` and preparing to append cross-cutting facts to `MEMORY.md`. **Both
+   abandoned; the `lines/O/STATE.md` edit reverted with `git checkout --`.** Nothing reached another line.
+2. *"you are also nto the correct person to discuss this with. relocate our whole discussion to a new line
+   that is responisble for these project lever decisions and exploring new ideas."*
+
+**The lesson for this line, and it is about the capture discipline rather than about the finding.** CLAUDE.md
+§8 pushes every session to route a finding to its durable home immediately, and §9's integration-point rule
+says to note a cross-line item in *both* lines' STATE files. Followed literally on an **architecture-level**
+question, that discipline propagates a proposal into two other lines' state before the owner has decided
+anything — which is exactly what was happening when the owner stopped it. **The routing rules assume the
+finding belongs to a subsystem. An architecture question belongs to none of them**, and line O has no standing
+to schedule work on the ladder. ⇒ line X now exists for precisely that class, with a charter whose *negative*
+scope (no implementation, no writes into another line's state, promotion is always the owner's call) is the
+load-bearing half.
+
+**What line O did, mechanically:** bootstrapped line X complete — branch `line/X`, worktree
+`/p/projects/open/Jamir/wt-X`, `lines/X/{STATE,JOURNAL}.md`, ADR block **0310–0329** (tier-2 0330–0349
+reserved) registered in CLAUDE.md §9 and `docs/decisions/README.md`, `wt-X` added to the SessionStart hook's
+integrator hint list — and **relocated ADR 0088 → ADR 0310 before it was ever committed.** Hook verified live
+in `wt-X`: it resolves the title and the handoff with no per-line code, being generic over `line/*`.
+Merged at `18c15984`; `main` green on the changelog gate at `9d23f3d3`.
+
+**⚠ Line O carries NOTHING from this forward.** The finding, the three unpropagated measured facts (the
+ssp126 third leg, the 1000-step spin-up carbon trajectory, the per-stem bad-years counter being in the rung-2
+dumps) and the five open disagreements all live in ADR 0310 and `lines/X/STATE.md`. **If the owner raises the
+topic in a line O session again, point at line X rather than answering here.** Line O's own next action is
+unchanged: block 0★, the exact-only speed ladder.
+
+**Skill capture:** `repo-commit` — opening a new work line: the five artifacts, and the **three registries that
+must agree** with no gate enforcing any of them (the same hole that produced the ADR 0086 number collision).
+Plus the two non-obvious facts: the hook needs no per-line code, and a new line's diff triggers **no CI gate at
+all**, so there is no verdict to wait for.
