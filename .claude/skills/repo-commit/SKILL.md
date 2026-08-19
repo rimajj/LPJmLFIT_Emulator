@@ -1337,3 +1337,55 @@ is a live failure mode for the long, measurement-dense ADRs in this repo, where 
 as a heading *before* the section that refutes it: **the title must state the finding, not the hypothesis
 that motivated the work.** Retitle it, leave the internal heading directly above its own refutation, and say
 in the correction box that you did.
+
+---
+
+## OPENING A NEW WORK LINE — five artifacts and three registry edits, and the registry edits are the ones that get missed (line O, 2026-08-19, ADR 0310)
+
+A fifth line (**X — project direction & exploration**) was created on owner instruction. The mechanics are
+mostly obvious; **what is not obvious is that three separate registries have to agree, and none of them is
+enforced by a gate**, so a line that is half-registered looks fine until a future session cannot find it or
+picks a colliding ADR number.
+
+**Do it under the `flock` — creating a line is an integrator action** (it edits `CLAUDE.md` §9's line table
+and allocates an ADR block), and §9's standing rule is that whoever holds the lock is the integrator for that
+moment. That is the same precedent by which line S allocated tier 3 for all lines at once.
+
+**The five artifacts:**
+
+```bash
+INT=/p/projects/open/Jamir/esm_land_emulator
+L=X                                            # one letter — the hook's fallback glob is `wt-?`
+mkdir -p lines/$L
+# lines/$L/STATE.md   <- MUST have an H1 reading "LINE $L — <scope> (branch `line/$L`, worktree `wt-$L`)"
+#                        and a `## NEXT — start here` block; the hook parses BOTH (H1 -> title, NEXT -> handoff)
+# lines/$L/JOURNAL.md <- append-only narrative
+# ... commit + push + merge to main FIRST, then:
+git worktree add /p/projects/open/Jamir/wt-$L -b line/$L main    # branch from main, never from your own line
+```
+
+**The three registry edits — grep for the sibling lines to find every site, do not trust this list:**
+
+| registry | what to add | how it bites if you skip it |
+|---|---|---|
+| `CLAUDE.md` §9 line table | the row (branch · worktree · scope · state file) | a session in the new worktree gets the hook's generic block and no scope; and §9 is what every session reads to learn the protocol |
+| `CLAUDE.md` §9 "A decision" row | the **ADR block allocation** (tier 1 + a reserved tier 2 at the same width) | two lines pick the same number. This has already happened once in this repo without a new line being involved (ADR 0086) |
+| `docs/decisions/README.md` | the block-table rows **and** a `#### Line <L> — <scope> (<range>)` index subsection | the ADR-number/index collision above: a missing `README.md` row is exactly what hides a duplicate |
+
+**What you do NOT have to change:** `.claude/hooks/session-line-context.sh` is **generic over `line/*`** — it
+derives the letter from the branch, reads `lines/<letter>/STATE.md`, and needs no per-line code. The only edit
+is cosmetic: add a `cd .../wt-<L>` line to the hint list it prints in the **integrator** worktree. (Its
+detached-HEAD fallback matches `wt-?`, i.e. **one character** — a two-letter worktree name would silently lose
+that recovery path.)
+
+**Pick the letter for absence of collision, not for elegance.** S/M/E/O are taken; the letter also must not
+read as a component or a units abbreviation someone will later mistake for one.
+
+**A new line's diff normally triggers NO CI gate at all** (prose + `changelog.d/**`, and the `changelog` gate
+is `main`-only), so there is no verdict to wait for — merge as soon as it is pushed. Verify from
+`git diff --name-only origin/main...HEAD` against §5's table rather than assuming.
+
+**And state the line's NEGATIVE scope in its `STATE.md`, not just its positive scope.** The reason line X
+exists at all is that a line without an explicit "does NOT do" list will do the thing the §8 capture
+discipline pushes every session toward — writing its findings into other lines' state. That is correct
+behaviour for a component line and wrong for an exploration line, and only the charter can distinguish them.
