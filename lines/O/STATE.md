@@ -91,6 +91,19 @@ language** this session (it could not go in `~/.claude/CLAUDE.md`, which is outs
 
 ## NEXT — start here
 
+### 0↗ THE "PURELY DATA-DRIVEN EMULATOR?" CONVERSATION MOVED TO **LINE X** (2026-08-19, owner instruction) — do not carry it here
+
+The owner asked whether the hybrid could be replaced by a learned `(forest state, climate) -> next forest
+state` map plus a daily flux head. Line O explored it, and the owner then relocated the whole discussion:
+*"you are also nto the correct person to discuss this with. relocate our whole discussion to a new line that
+is responisble for these project lever decisions and exploring new ideas."* ⇒ **new line X — project direction
+& exploration** (`line/X`, `/p/projects/open/Jamir/wt-X`, ADR block 0310-0329). The finding is **ADR 0310**;
+the live handoff is `lines/X/STATE.md`.
+
+**If the owner raises it in a line O session, point at line X instead of answering here.** Line O has no
+standing to schedule architecture-level work. Nothing from it was propagated to any line or to `MEMORY.md`,
+deliberately. Line O's next action is unchanged — block 0★ below.
+
 ### 0★ ⛳⛳ THE PATCH COUNT INVALIDATES EVERY SPEED VERDICT THIS PROJECT HAS RECORDED (2026-08-17, **ADR 0086** — renumbered from 0085 on 2026-08-18, it was a duplicate; merged to `main` at `361f808a`)
 
 **READ ADR 0086 BEFORE TOUCHING ANYTHING ABOUT SPEED.** The owner stated that publication runs use
