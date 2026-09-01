@@ -45,7 +45,7 @@ jobs:
     name: uncollated fragments
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # --check exits 1 and lists the offending fragments (grouped by work line) when `main`
       # carries any. It is a pure-stdlib script: no deps to install, runs in seconds.
       - name: No uncollated changelog fragments on main
