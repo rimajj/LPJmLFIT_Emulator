@@ -84,6 +84,30 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 00✦ 🔨 OWNER INSTRUCTION 2026-09-30: BUILD the data-driven emulator, Germany first (supersedes "line X does not implement" FOR THIS BUILD ONLY)
+
+Owner, verbatim: *"ok go on and build the emulator. you can also do it for germany only now, for testing. for germany we have runs with
+more pathces and several different ssp scenarios and two differnt models in /p/projects/waldspektrum/data/LPJmlFit/productionruns_Jamir"*
+(the real path is `/p/projects/waldspektrum/data/LPJmLFIT/productionruns_jamir`), and *"be aware that the trasnioent run is only until
+2100, after that the climate is recycled, so no warmin response is tehre"*. Ultracode (multi-agent) switched on by the owner the same turn.
+**The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
+it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
+
+**The Germany data [VERIFIED 2026-09-30]:** 2 GCMs (MPI-ESM1-2-HR, ACCESS-CM2) x {Historical, ssp126, ssp245, ssp370} x 2 independent
+spin-up seeds, 9067 cells (~8 km), **npatch 250**, all 16 runs log a clean termination. `ind` tables: Historical 1985-2014; each ssp
+2015-2044 / 2071-2100 / 3071-3100 (**no table for 2045-2070**; **3071-3100 is recycled shuffled 2071-2100 climate = equilibrium test
+only, never a response window**). ⚠ MPI ssp370 seed2 `ind_3100.csv` is 10 GB vs ~120 GB siblings — suspect truncated. Fire is ON.
+Daily forcing `/p/projects/waldspektrum/data/FirEUrisk/<GCM>/{TMean,tpr,HRMean,SWR,LWR,windspeed}_<GCM>_<leg>_germany.clm` (v3 float32).
+The original costs ~12 core-s per cell-year at 250 patches (2048 tasks x 3556 s / (65 yr x 9067 cells)).
+**Why this data matters:** the same cell sees six different futures (2 GCMs x 3 scenarios) — the design that can break the
+"warming vs character of the place" confound ADR 0311 found, and ssp245 is a bracketed held-out scenario.
+
+**Round 1 workflow `wf_89265fa2-f32`** (conversion of all 40 tables to parquet, climate features, transition anatomy + verifier,
+scorer + null scores, 3-architect design panel + judge, critic). Resume: `Workflow({scriptPath:
+"~/.claude/projects/-p-projects-open-Jamir-esm-land-emulator-lines-X/a19083d6-0024-4d05-8614-5e108626a023/workflows/scripts/de-emulator-germany-foundation-wf_89265fa2-f32.js",
+resumeFromRunId: "wf_89265fa2-f32"})`. Round 2 = build + train + free-running rollouts + held-out scoring, from the judge's work items.
+
+
 ### 0✦ 💬 NEW OWNER QUESTION, ANSWERED — where does the ORIGINAL model's time go? (owner, 2026-09-02; **ADR 0312**)
 
 Owner, verbatim: *"find out which parts of the original model consume most computational time (e.g.

@@ -191,3 +191,17 @@ cheapest and the boreal one the most expensive.** The daily loop is 97.4–98.2 
 
 Meanwhile the round-2 data-driven campaign hit the session usage limit for a third time; B4/B5/B6, the
 spectrum synthesis, the completeness critic and B1's verifier are still outstanding and still cached.
+
+
+---
+
+## 2026-09-30 — the owner asks why a data-driven transition emulator should be impossible, then says: build it (Germany)
+
+Owner question (verbatim, abridged): *"I still can't believe that a data-driven emulator of lpjml-FIT that can emulate transient runs is not
+possible ... given the forest state now and the climate of the next year, what is the forest like in the next year ... The most naive
+emulator would be like a look up table ... what is the reason that it is not learnable? Do we need better data? more patches per cell?"*
+Answered from ADR 0310/0311/0312: not shown impossible; partly learnable; the specific obstacles are the tiny per-year climate signal
+under per-tree dice rolls, error build-up in free runs of one-step-trained models, the warming-vs-place confound from a single scenario,
+and invisible state (sub-5 m trees, the bad-growth counter — recoverable). More patches helps the trait targets (whose two-seed
+reproducibility is poor at 25 patches) but not the confound; designed climate variation does. The owner then pointed at the Germany
+production runs (250 patches, 2 GCMs x 4 legs x 2 seeds) and instructed the build; see STATE `00✦`.
