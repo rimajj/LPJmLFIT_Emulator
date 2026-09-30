@@ -105,7 +105,12 @@ The original costs ~12 core-s per cell-year at 250 patches (2048 tasks x 3556 s 
 **Round 1 workflow `wf_89265fa2-f32`** (conversion of all 40 tables to parquet, climate features, transition anatomy + verifier,
 scorer + null scores, 3-architect design panel + judge, critic). Resume: `Workflow({scriptPath:
 "~/.claude/projects/-p-projects-open-Jamir-esm-land-emulator-lines-X/a19083d6-0024-4d05-8614-5e108626a023/workflows/scripts/de-emulator-germany-foundation-wf_89265fa2-f32.js",
-resumeFromRunId: "wf_89265fa2-f32"})`. Round 2 = build + train + free-running rollouts + held-out scoring, from the judge's work items.
+resumeFromRunId: "wf_89265fa2-f32"})`. ⚠ The first launch died with the session at ~14:50 (no agent finished); the
+cluster jobs survived. Resumed 14:57 with a durability note: the full conversion is SLURM array **2363349** (submitted directly, not by an
+agent; ~4 min/file, idempotent: `scripts/explore_de_convert.py submit|collect`), every agent keeps `/p/tmp/jamirp/X_de/_status/<label>.md`
+and writes its report to `/p/tmp/jamirp/X_de/_reports/<label>.json`. **If the session dies again, read those two folders first.**
+First measured facts: raw key (Cell,Patch,Type,ID) has 2 779 duplicates / 569 M tree rows (0 with SLA+Wooddens added); MPI ssp370 s2
+w3071 confirmed truncated. Round 2 = build + train + free-running rollouts + held-out scoring, from the judge's work items.
 
 
 ### 0✦ 💬 NEW OWNER QUESTION, ANSWERED — where does the ORIGINAL model's time go? (owner, 2026-09-02; **ADR 0312**)
