@@ -97,6 +97,18 @@ works we can then use the method for the global emulator"*** — so build the ME
 round-1 design panel now has FOUR architects (per-tree boosted heads · structured = learned growth + the original's own death/recruit
 rules · recurrent LSTM/GRU memory for the invisible state · patch-level neural set model with multi-step training), and the judge
 plans SHARED infrastructure + one parallel build TRACK per promising design, all scored by the same scorer.
+**Round 1 DONE (2026-10-01, `wf_89265fa2-f32`):** all 40 tables converted + gated; climate features; transition anatomy (verified);
+scorer + nulls; 4-architect panel → judge plan = shared SH0–SH13 + tracks A-TAB / B-STRUCT / C-RECUR / D-NSET; critic amendments.
+Everything in `/p/tmp/jamirp/X_de/_reports/` (`round1_all.json`, `round2_args.json` = the build plan).
+⚠ **[VERIFIED] HUMIDITY CONFIG DEFECT IN THE GERMANY PRODUCTION RUNS:** `"relative_humidity": true` is missing from every
+`lpjml_2100_*` and `lpjml_3100_*` segment config (present in Historical/2044/2070/3070); `fscanconfig.c:255` defaults it FALSE, so
+2071–2100 and 3071–3100 read relative humidity as specific humidity ⇒ VPD 0 ⇒ **water-stress mortality exactly 0** (living trees with
+mort_water>0: 5.1 % in 2015, 0.0 in 2071/2085/2100, MPI ssp370 s1 dev cells; same ACCESS ssp126). Told the owner; rerun = owner decision.
+Emulator carries `rh_on` as an input; primary response statistic = between-scenario contrast at w2071 (cancels it).
+Also: all ssp245 segments ran the Feb-2026 binary, everything else Dec-2025.
+**Round 2 RUNNING (`wf_d4262351-d9d`):** 40-item dependency graph, verifiers on critical items, synthesis + critic. Resume:
+`Workflow({scriptPath: "~/.claude/projects/-p-projects-open-Jamir-esm-land-emulator-lines-X/a19083d6-0024-4d05-8614-5e108626a023/workflows/scripts/de-emulator-germany-build-wf_d4262351-d9d.js", resumeFromRunId: "wf_d4262351-d9d"})`;
+per-item reports `_reports/r2_<id>.json`, status `_status/<id>.md`.
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
 it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
 
