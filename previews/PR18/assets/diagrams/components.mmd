@@ -1,0 +1,42 @@
+%% CURATED (hand-authored) — the OWNER'S mental model of the components.
+%% NOT auto-generated. Source of truth is docs/src/generated/components.mmd
+%% (derived from src/registry.jl); if that changes, the derived diagram acts as a
+%% DIFF ALARM to revisit this file by hand. ENGINEERING_STANDARDS §5(i).
+%% Renders natively on GitHub (flowchart). ML pieces highlighted; one shared state.
+flowchart TB
+    ATM["ATM — Atmosphere / forcing<br/>SpeedyWeather.jl or FLUXNET (external)"]
+
+    S["S — Slow distribution emulator<br/>ML: trait/size distribution + count N (annual)"]
+
+    subgraph E["E — Energy balance + skin-T closure (hybrid, sub-daily)"]
+        direction TB
+        ESEB["SEB physics (reuse Terrarium.jl)<br/>solve T_skin; A = Rn − G → LE, H, G (H residual)"]
+        ENN["bounded NN<br/>closure correction / g_a"]
+    end
+
+    F["F — Fast physical core, LPJmL-FIT<br/>physics: GPP→NPP, water, snow, soil thermal (daily)"]
+
+    STATE["SharedState — ONE authoritative copy<br/>soil water · snow · soil thermal (enth)<br/>SOM/litter · vegc · climate buffers"]
+
+    ATM --> F
+    ATM --> E
+    S <--> F
+    S --> E
+    F <--> E
+    E --> ATM
+
+    S -.-> STATE
+    F -.-> STATE
+    E -.-> STATE
+
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef external fill:#e5e7eb,stroke:#374151,stroke-width:1px,stroke-dasharray:5 4,color:#111827;
+    classDef state fill:#fce7f3,stroke:#9d174d,stroke-width:2px,color:#111827;
+
+    class S ml;
+    class ENN ml;
+    class F physics;
+    class ESEB physics;
+    class ATM external;
+    class STATE state;

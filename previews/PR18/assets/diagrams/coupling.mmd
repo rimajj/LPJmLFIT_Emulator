@@ -1,0 +1,34 @@
+%% CURATED (hand-authored) — the fast↔slow COUPLING, the owner's mental model.
+%% NOT auto-generated. Kept in sync by hand with src/registry.jl / DESIGN.md §8;
+%% the derived diagrams (docs/src/generated/) are the diff alarm. ENG_STANDARDS §5(i).
+%% Two timescale tiers as subgraphs; the CROSSING ARROWS are the state pools / handoffs.
+flowchart TB
+    subgraph ANNUAL["Annual (slow tier)"]
+        S["S — Slow distribution emulator<br/>allocates delivered bm_inc by flux-then-integrate"]
+    end
+
+    subgraph DAILY["Daily / sub-daily (fast tier)"]
+        direction LR
+        F["F — Fast physical core (LPJmL-FIT)"]
+        E["E — Energy balance + skin-T closure"]
+    end
+
+    %% ── Crossing arrows between tiers = the conserved carbon + structure handoffs ──
+    F -- "bm_inc + stress + soil-moisture state<br/>(conserved carbon UP)" --> S
+    S -- "structure DOWN: LAI, height, z0, rootdepth, Vcmax, FPC, albedo" --> F
+    S -- "structure DOWN: albedo, z0, canopy" --> E
+
+    %% ── Within the fast tier = the energy handshake (LE / T_skin between F and E) ──
+    F -- "LE = λ·ET; GPP, NPP, Rh, firec; G" --> E
+    E -- "T_skin (mandatory top thermal BC); G(T_skin); g_a" --> F
+
+    classDef ml fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111827;
+    classDef physics fill:#bfdbfe,stroke:#1e40af,stroke-width:2px,color:#111827;
+    classDef hybrid fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#111827;
+
+    class S ml;
+    class F physics;
+    class E hybrid;
+
+    style ANNUAL fill:#fffbeb,stroke:#b45309,stroke-dasharray:6 4;
+    style DAILY fill:#eff6ff,stroke:#1e40af,stroke-dasharray:6 4;
