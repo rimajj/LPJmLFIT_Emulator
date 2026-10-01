@@ -93,6 +93,10 @@ more pathces and several different ssp scenarios and two differnt models in /p/p
 **Milestone (owner, 2026-10-01, verbatim): *"the next milestone is to make a "germany emulator" work with the germany data. once that
 works we can then use the method for the global emulator"*** — so build the METHOD so it transfers: nothing Germany-specific baked in
 (cell counts, patch count, PFT set, file paths all parameters).
+**Owner, 2026-10-01, verbatim: *"I want you to try out all the most promising designs in parallel. is LSTM also an option?"*** ⇒ the
+round-1 design panel now has FOUR architects (per-tree boosted heads · structured = learned growth + the original's own death/recruit
+rules · recurrent LSTM/GRU memory for the invisible state · patch-level neural set model with multi-step training), and the judge
+plans SHARED infrastructure + one parallel build TRACK per promising design, all scored by the same scorer.
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
 it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
 
