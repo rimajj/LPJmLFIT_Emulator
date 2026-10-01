@@ -106,6 +106,13 @@ Everything in `/p/tmp/jamirp/X_de/_reports/` (`round1_all.json`, `round2_args.js
 mort_water>0: 5.1 % in 2015, 0.0 in 2071/2085/2100, MPI ssp370 s1 dev cells; same ACCESS ssp126). Told the owner; rerun = owner decision.
 Emulator carries `rh_on` as an input; primary response statistic = between-scenario contrast at w2071 (cancels it).
 Also: all ssp245 segments ran the Feb-2026 binary, everything else Dec-2025.
+🛑 **OWNER DECISION 2026-10-01 (verbatim): *"double check if the runs after 2070 were really corrupted with the wrong settings. if its
+true, lets only use the earlier data that is correct, for now."*** Double-checked three ways and TRUE: configs (key in 12/12 2044,
+12/12 2070, 12/12 3070, 4/4 Historical; 0/12 2100, 0/12 3100), run logs (2071–2100/3071–3100 list "humid", all others "rhumid"),
+data (mort_water>0 share exactly 0.0 in 2071 and 2100 in all 24 ssp runs vs 0.02–5.1 % in 2015, 0.08–9.4 % in 2044;
+`/p/tmp/jamirp/X_de/_jobs/check_rh_effect.py`, log X-de-rhcheck.2371045). ⇒ **the build uses 1985–2044 only**; w2071/w3071 excluded
+everywhere; primary response = ssp370−ssp126 contrast in 2015–2044; the correct 2045–2070 segment's gridded outputs become optional
+cell-aggregate checks to 2070. A rerun of 2071–2100 (and beyond) is the owner's call.
 **Round 2 RUNNING (`wf_d4262351-d9d`):** 40-item dependency graph, verifiers on critical items, synthesis + critic. Resume:
 `Workflow({scriptPath: "~/.claude/projects/-p-projects-open-Jamir-esm-land-emulator-lines-X/a19083d6-0024-4d05-8614-5e108626a023/workflows/scripts/de-emulator-germany-build-wf_d4262351-d9d.js", resumeFromRunId: "wf_d4262351-d9d"})`;
 per-item reports `_reports/r2_<id>.json`, status `_status/<id>.md`.

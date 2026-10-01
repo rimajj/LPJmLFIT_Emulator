@@ -28,9 +28,13 @@ Stages:
                     reference/cell_year/<member>.parquet
   submit [array]    SLURM array of `reduce` (default 0-39)
   assemble          -> reference/levels_long.parquet, reference/tolerance.parquet, reference/aggregate.parquet,
-                       reference/_gates.json, reference/_DEFINITION.md
-  calibrate         adds allowed_cal to tolerance.parquet (second-run passes the panel in 95 % of cells)
+                       reference/_gates.json, reference/_DEFINITION.md; and the truth-seed-2 twins
+                       tolerance_t2.parquet, aggregate_t2.parquet, _gates_t2.json (SH14)
+  calibrate [ts]    re-calibrates tolerance{,_t2}.parquet in place (allowed_cal, allowed_cal_c; assemble already
+                    calibrates since SH14) -- the second run passes the panel in 95 % of cells
   blocks            the same reference at ~1-degree BLOCK scale -> reference/block/, reference/block_dev/
+                    (*_t2 files = truth seed 2)
+  frozen            window statistics of FROZEN 1985 / 2014 rosters per gcm and seed -> reference/frozen/ (SH14)
   verify            independent duckdb recomputation of reference/stats for sample cells -> reference/_verify.json
   collect           print which members are done / missing
 
@@ -49,13 +53,16 @@ import numpy as np
 import polars as pl
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-XDE = "/p/tmp/jamirp/X_de"
+# SH14 repair: the data root, the configured patch count and the partition width are parameters (env knobs, EXPORT
+# them), not Germany constants. Defaults = the Germany round-1/2 setup.
+XDE = os.environ.get("XDE_ROOT", "/p/tmp/jamirp/X_de")
 IND = f"{XDE}/ind"
-OUT = f"{XDE}/reference"
+OUT = os.environ.get("XDE_REFERENCE", f"{XDE}/reference")
 LOGDIR = f"{REPO}/logs"
 PY = "/home/jamirp/.conda/envs/py311_new/bin/python"
 
-NPATCH = 250
+NPATCH = int(os.environ.get("XDE_NPATCH", "250"))
+CELLS_PER_PARTITION = int(os.environ.get("XDE_CELLS_PER_PARTITION", "500"))  # the converter's cb = Cell // 500
 HMIN = 5.0
 NMIN_STEMYEARS = 30  # fewer living stem-years than this in a window -> quantiles are not scored (null)
 TRAITS = ["SLA", "Wooddens", "D95max", "minwscal", "Longevity", "Height", "agb"]
@@ -64,6 +71,10 @@ QN = ["q05", "q25", "q50", "q75", "q95"]
 PFTS = list(range(7))
 WINDOWS = {"h1985": (1985, 2014), "w2015": (2015, 2044), "w2071": (2071, 2100), "w3071": (3071, 3100)}
 RESPONSES = {"r2071": "w2071", "r2015": "w2015"}  # response target -> the window it is (window - h1985) of
+# SH14 amendment 3: between-scenario CONTRASTS at fixed gcm and seed, X(scen, w) - X(ssp126, w)
+CONTRASTS = {"c2071": "w2071", "c2015": "w2015"}  # contrast target -> the window both legs are taken in
+CONTRAST_BASE = "ssp126"
+CONTRAST_SCENS = ["ssp370", "ssp245"]
 STRATA_EDGES = [2.0, 5.0, 10.0, 20.0]
 STRATA_LABELS = ["<2", "2-5", "5-10", "10-20", ">20"]
 MIN_CELLS_STRATUM = 30
@@ -163,6 +174,17 @@ def member_root(r: dict) -> str:
     return f"{IND}/{r['gcm']}/{r['scen']}/s{r['seed']}/{r['window']}"
 
 
+def partitions(root: str) -> list[int]:
+    """The cb=NN partition ids present under a member root (globbed, not range(19): the partition count is a
+    property of the converted domain, not a constant)."""
+    import glob
+
+    ids = sorted(int(os.path.basename(os.path.dirname(f)).split("=", 1)[1])
+                 for f in glob.glob(f"{root}/cb=*/part-0.parquet"))
+    assert ids, f"no cb=*/part-0.parquet under {root}"
+    return ids
+
+
 def reduce_member(idx: int) -> int:
     g = gates().filter(pl.col("idx") == idx)
     assert g.height == 1, f"no gate row idx={idx}"
@@ -188,7 +210,7 @@ def reduce_member(idx: int) -> int:
     parts_w, parts_cy = [], []
     n_live_total = 0
     n_height_cut = 0
-    for cb in range(19):
+    for cb in partitions(root):
         f = f"{root}/cb={cb:02d}/part-0.parquet"
         if not os.path.exists(f):
             raise FileNotFoundError(f)
@@ -198,7 +220,7 @@ def reduce_member(idx: int) -> int:
         n_base = base.select(pl.len()).collect().item()
         n_height_cut += n_base - trees.height
         n_live_total += trees.height
-        cyb = cells_years.filter((pl.col("Cell") // 500) == cb)
+        cyb = cells_years.filter((pl.col("Cell") // CELLS_PER_PARTITION) == cb)
         parts_w.append(reduce_window(trees, cyb))
         parts_cy.append(reduce_cell_year(trees))
         del trees
@@ -331,15 +353,22 @@ def strat_stats(d: pl.DataFrame, by: list[str], col: str) -> pl.DataFrame:
     return s.select(by + ["stratum", "s_med", "s_q90", "s_n", "stratum_own"])
 
 
-def build_tolerance(lv: pl.DataFrame) -> pl.DataFrame:
+def build_tolerance(lv: pl.DataFrame, truth_seed: int = 1) -> pl.DataFrame:
+    """Tolerance table. truth_seed = 1 (default, the round-1 table): C = seed 1, R = seed 2. truth_seed = 2 (SH14
+    amendment 2): C = seed 2, R = seed 1 -- for a hold-out whose history is shared with seed-1 training data.
+    Targets: levels, responses (window - h1985, same seed) and, added by SH14 (amendment 3), CONTRASTS
+    X(scen, w) - X(ssp126, w) at fixed gcm and seed (target_kind "contrast", windows c2015/c2071).
+    Every round-1 column is unchanged for truth_seed = 1; new columns are appended (see DEFINITION)."""
+    ts, ots = int(truth_seed), 3 - int(truth_seed)
+    assert ts in (1, 2)
     k = ["gcm", "scen", "window", "Cell", "quantity"]
-    s1 = lv.filter(pl.col("seed") == 1).select(k + [pl.col("value").alias("C")])
+    s1 = lv.filter((pl.col("seed") == ts) & pl.col("valid")).select(k + [pl.col("value").alias("C")])
     s2 = (
-        lv.filter((pl.col("seed") == 2) & pl.col("valid"))
+        lv.filter((pl.col("seed") == ots) & pl.col("valid"))
         .select(k + [pl.col("value").alias("R")])
     )
     lev = s1.join(s2, on=k, how="left")
-    # density stratum: 2-seed mean (seed 1 alone where seed 2 is invalid) of n_per_patch in that window
+    # density stratum: 2-seed mean (truth seed alone where the other seed is invalid) of n_per_patch in that window
     dens = lev.filter(pl.col("quantity") == "n_per_patch").select(
         ["gcm", "scen", "window", "Cell", pl.when(pl.col("R").is_null()).then(pl.col("C"))
          .otherwise((pl.col("C") + pl.col("R")) / 2).alias("dens")]
@@ -366,10 +395,10 @@ def build_tolerance(lv: pl.DataFrame) -> pl.DataFrame:
         x = fut.join(hist, on=["gcm", "seed", "Cell", "quantity"], how="left").with_columns(
             (pl.col("value") - pl.col("H")).alias("D"), (pl.col("valid") & pl.col("Hvalid")).alias("dvalid")
         )
-        c = x.filter(pl.col("seed") == 1).select(
+        c = x.filter((pl.col("seed") == ts) & pl.col("dvalid")).select(
             ["gcm", "scen", "Cell", "quantity", pl.col("D").alias("C"), pl.col("H").alias("H1")]
         )
-        r = x.filter((pl.col("seed") == 2) & pl.col("dvalid")).select(
+        r = x.filter((pl.col("seed") == ots) & pl.col("dvalid")).select(
             ["gcm", "scen", "Cell", "quantity", pl.col("D").alias("R"), pl.col("H").alias("H2")]
         )
         y = c.join(r, on=["gcm", "scen", "Cell", "quantity"], how="left").with_columns(
@@ -389,15 +418,73 @@ def build_tolerance(lv: pl.DataFrame) -> pl.DataFrame:
         pl.lit("response").alias("target_kind"),
         # per-cell signal-to-noise of the truth's response (ADR 0111 S/N: |mean response| / |seed1 - seed2|)
     )
+    # ---- contrasts (SH14 amendment 3): d = X(scen, w) - X(ssp126, w), same gcm, same seed. Both legs share the
+    #      CO2 file and the segment's humidity configuration, so the contrast is free of both confounders.
+    #      scale = |mean over seeds of the ssp126 leg's level| (the contrast's baseline); stratum = historical.
+    con_parts = []
+    basel = lv.filter(pl.col("scen") == CONTRAST_BASE).select(
+        ["gcm", "seed", "window", "Cell", "quantity", pl.col("value").alias("B"), pl.col("valid").alias("Bvalid")]
+    )
+    for cname, wname in CONTRASTS.items():
+        fut = lv.filter((pl.col("window") == wname) & pl.col("scen").is_in(CONTRAST_SCENS))
+        x = fut.join(basel.filter(pl.col("window") == wname).drop("window"),
+                     on=["gcm", "seed", "Cell", "quantity"], how="left").with_columns(
+            (pl.col("value") - pl.col("B")).alias("D"), (pl.col("valid") & pl.col("Bvalid")).alias("dvalid"))
+        c = x.filter((pl.col("seed") == ts) & pl.col("dvalid")).select(
+            ["gcm", "scen", "Cell", "quantity", pl.col("D").alias("C"), pl.col("B").alias("B1"),
+             pl.col("value").alias("V1")])
+        r = x.filter((pl.col("seed") == ots) & pl.col("dvalid")).select(
+            ["gcm", "scen", "Cell", "quantity", pl.col("D").alias("R"), pl.col("B").alias("B2"),
+             pl.col("value").alias("V2")])
+        con_parts.append(c.join(r, on=["gcm", "scen", "Cell", "quantity"], how="left").with_columns(
+            pl.lit(cname).alias("window")))
+    con = pl.concat(con_parts)
+    con = con.with_columns(
+        pl.when(pl.col("B2").is_null()).then(pl.col("B1").abs())
+        .otherwise(((pl.col("B1") + pl.col("B2")) / 2).abs()).alias("scale"))
+    con = con.join(hdens, on=["gcm", "Cell"], how="left").with_columns(stratum_expr("dens").alias("stratum"))
+    con = con.with_columns(
+        pl.when(pl.col("quantity").str.starts_with("share_"))
+        .then((pl.col("C") - pl.col("R")).abs())
+        .otherwise((pl.col("C") - pl.col("R")).abs() / pl.col("scale"))
+        .alias("spread_cell"),
+        pl.lit("contrast").alias("target_kind"),
+        # SH14 repair (verifier: common random numbers). In the truth BOTH scenario legs of one seed restart from
+        # the same 2014 state incl. its random-number state, so the replica's contrast error |C - R| is the noise
+        # of a run whose legs are BRANCHED from one state. An arm whose legs are not branched carries more noise.
+        # Two empirical brackets for such an arm (sigma^2 = per-leg level variance, rho = within-seed leg
+        # correlation; an unbranched arm vs the truth has variance 2 sigma^2 (2 - rho)):
+        #   dev_unbr_hi = |V2 - V1|              replica scen leg + the TRUTH's ssp126 leg: 2 sigma^2  (optimistic)
+        #   dev_unbr_lo = |(V1 - V2) + (B1 - B2)| the two cross-seed contrasts against each other: 4 sigma^2 (1+rho)
+        #                                        (pessimistic)
+        (pl.col("V2") - pl.col("V1")).abs().alias("dev_unbr_hi"),
+        ((pl.col("V1") - pl.col("V2")) + (pl.col("B1") - pl.col("B2"))).abs().alias("dev_unbr_lo"),
+    )
     cols = ["gcm", "scen", "window", "Cell", "quantity", "target_kind", "C", "R", "scale", "dens", "stratum",
             "spread_cell"]
-    allt = pl.concat([lev.select(cols), rsp.select(cols)])
+    ucols = ["dev_unbr_lo", "dev_unbr_hi"]
+    nul = [pl.lit(None, dtype=pl.Float64).alias(c) for c in ucols]
+    allt = pl.concat([lev.with_columns(nul).select(cols + ucols), rsp.with_columns(nul).select(cols + ucols),
+                      con.select(cols + ucols)])
+    # SH14 amendment 1: the SYMMETRIC level spread |C-R|/|C| (so |C| * S >= |C-R| holds for the replica itself);
+    # identical to spread_cell for shares, responses and contrasts (those are already absolute / scale-based)
+    isf0 = pl.col("quantity").str.starts_with("share_")
+    allt = allt.with_columns(
+        pl.when((pl.col("target_kind") == "level") & ~isf0)
+        .then((pl.col("C") - pl.col("R")).abs() / pl.col("C").abs())
+        .otherwise(pl.col("spread_cell")).alias("spread_cell_c"))
+    allt = allt.with_columns(
+        pl.when(pl.col("spread_cell_c").is_finite()).then(pl.col("spread_cell_c")).otherwise(None)
+        .alias("_spc_fin"))
     # ---- stratum spreads
     by = ["gcm", "scen", "window", "quantity"]
     st = strat_stats(allt, by, "spread_cell")
     allt = allt.join(st, on=by + ["stratum"], how="left")
-    # where seed 2 is invalid for a whole (gcm, scen, window) (MPI ssp370 w3071 and its responses none, since
-    # r2071 uses w2071), borrow the stratum spread of the same gcm's OTHER scenarios for that window
+    stc = strat_stats(allt.drop(["s_med", "s_q90", "s_n", "stratum_own"]), by, "_spc_fin").select(
+        by + ["stratum", pl.col("s_med").alias("s_med_c"), pl.col("s_q90").alias("s_q90_c")])
+    allt = allt.join(stc, on=by + ["stratum"], how="left")
+    # where the other seed is invalid for a whole (gcm, scen, window) (MPI ssp370 w3071 with truth seed 1), borrow
+    # the stratum spread of the same gcm's OTHER scenarios for that window
     miss = allt.group_by(by).agg(pl.col("R").is_not_null().sum().alias("nR")).filter(pl.col("nR") == 0)
     allt = allt.with_columns(pl.lit("own").alias("tol_source"))
     if miss.height:
@@ -406,18 +493,22 @@ def build_tolerance(lv: pl.DataFrame) -> pl.DataFrame:
             .filter(pl.col("R").is_not_null())
             .group_by(["gcm", "window", "quantity", "stratum"])
             .agg(pl.col("spread_cell").median().alias("b_med"), pl.col("spread_cell").quantile(0.9).alias("b_q90"),
+                 pl.col("_spc_fin").drop_nulls().median().alias("b_med_c"),
+                 pl.col("_spc_fin").drop_nulls().quantile(0.9).alias("b_q90_c"),
                  pl.col("scen").unique().sort().str.join("+").alias("b_src"))
         )
         allt = allt.join(miss.select(by).with_columns(pl.lit(True).alias("_m")), on=by, how="left")
         allt = allt.join(bor, on=["gcm", "window", "quantity", "stratum"], how="left").with_columns(
             pl.when(pl.col("_m")).then(pl.col("b_med")).otherwise(pl.col("s_med")).alias("s_med"),
             pl.when(pl.col("_m")).then(pl.col("b_q90")).otherwise(pl.col("s_q90")).alias("s_q90"),
+            pl.when(pl.col("_m")).then(pl.col("b_med_c")).otherwise(pl.col("s_med_c")).alias("s_med_c"),
+            pl.when(pl.col("_m")).then(pl.col("b_q90_c")).otherwise(pl.col("s_q90_c")).alias("s_q90_c"),
             pl.when(pl.col("_m")).then(pl.lit("borrowed:") + pl.col("b_src")).otherwise(pl.col("tol_source"))
             .alias("tol_source"),
-        ).drop(["_m", "b_med", "b_q90", "b_src"])
+        ).drop(["_m", "b_med", "b_q90", "b_med_c", "b_q90_c", "b_src"])
     # ---- allowed absolute error
     isf = pl.col("quantity").str.starts_with("share_")
-    isr = pl.col("target_kind") == "response"
+    isr = pl.col("target_kind").is_in(["response", "contrast"])
     absC = pl.col("C").abs()
 
     def allowed(sp: pl.Expr) -> pl.Expr:
@@ -429,6 +520,7 @@ def build_tolerance(lv: pl.DataFrame) -> pl.DataFrame:
             .otherwise(absC * pl.max_horizontal(pl.lit(REL_FLOOR), sp))
         )
 
+    dCR = (pl.col("C") - pl.col("R")).abs()
     allt = allt.with_columns(
         allowed(pl.col("s_med")).alias("allowed"),
         allowed(pl.col("s_q90")).alias("allowed_q90"),
@@ -438,12 +530,23 @@ def build_tolerance(lv: pl.DataFrame) -> pl.DataFrame:
         .then(((pl.col("C") + pl.col("R")) / 2).abs() / (pl.col("C") - pl.col("R")).abs())
         .otherwise(None)
         .alias("sn_cell"),
-    )
+        # SH14 amendment 1 (appended columns)
+        pl.when(pl.col("R").is_null()).then(None)
+        .when(isf).then(pl.max_horizontal(REL_FLOOR * absC, dCR, pl.lit(SHARE_FLOOR)))
+        .otherwise(pl.max_horizontal(REL_FLOOR * absC, dCR)).alias("allowed_cell_abs"),
+        allowed(pl.col("s_med_c")).alias("allowed_c"),
+        allowed(pl.col("s_q90_c")).alias("allowed_q90_c"),
+    ).drop("_spc_fin")
     # trait quantiles with too few stems -> C null -> not scored
     allt = allt.filter(pl.col("C").is_not_null())
     k2 = ["gcm", "scen", "window", "Cell", "quantity"]
     assert allt.select(k2).n_unique() == allt.height, "duplicate keys in tolerance table"
-    return allt.sort(k2)
+    lead = ["gcm", "scen", "window", "Cell", "quantity", "target_kind", "C", "R", "scale", "dens", "stratum",
+            "spread_cell", "s_med", "s_q90", "s_n", "stratum_own", "tol_source", "allowed", "allowed_q90",
+            "allowed_cell", "sn_cell"]
+    tail = ["spread_cell_c", "s_med_c", "s_q90_c", "allowed_cell_abs", "allowed_c", "allowed_q90_c",
+            "dev_unbr_lo", "dev_unbr_hi"]
+    return allt.select(lead + tail).sort(k2)
 
 
 def build_aggregate(tol: pl.DataFrame) -> pl.DataFrame:
@@ -521,55 +624,122 @@ Built by `scripts/explore_de_reference.py` from the converted ind parquet. Score
 ## Panels
 * panel106 = n_per_patch + q05..q95 of SLA, Wooddens, D95max, minwscal, Height, agb (31 quantities, ADR 0106 §2)
 * extended = panel106 + Longevity q05..q95 + agb_stand + share_0..share_6 (44 quantities)
+
+## SH14 amendments (round 2, 2026-10-01; round-1 columns unchanged, everything below is ADDED)
+Demanded by the round-1 completeness critic; pre-edit scripts and reference backed up at
+/p/tmp/jamirp/X_de/shared/scorer/backup_pre_SH14/.
+1. Symmetric tolerances. The round-1 literal per-cell level tolerance `|C| * max(0.1, |C-R|/mean(C,R))` is
+   smaller than `|C-R|` whenever R > C, so the original's own second run could fail it. Added:
+   * `allowed_cell_abs` = `max(0.10*|C|, |C-R|)` (shares: also >= 0.005; responses/contrasts: `max(0.1|dC|, |dC-dR|)`,
+     identical to allowed_cell there). The other seed passes it at 1.0 by construction.
+   * `allowed_c` / `allowed_q90_c` = the stratum median / q90 versions with the level spread `|C-R|/|C|`
+     (`spread_cell_c`, non-finite values excluded from the stratum statistics); shares/responses/contrasts as before.
+   * `allowed_cal_c` = the calibration (same construction) on `s_med_c`.
+2. Truth-seed switch. `tolerance_t2.parquet`, `aggregate_t2.parquet`, `block*/{mask,levels,tolerance}_t2.parquet`:
+   the same construction with C = seed 2 and R = seed 1 (for a hold-out whose history is shared with seed-1
+   training data, e.g. MPI ssp245, which continues seed 1's Historical). MPI ssp370 w3071 has no seed-2 truth
+   (truncated) and is therefore not a target under truth seed 2.
+3. Between-scenario CONTRASTS (target_kind "contrast"): `c2071` = X(scen, 2071-2100) - X(ssp126, 2071-2100),
+   `c2015` likewise for 2015-2044, scen in {ssp370, ssp245}, same gcm, same seed (C from the truth seed, R from the
+   other). scale = |two-seed mean of the ssp126 leg|, stratum = the cell's historical stratum; tolerance columns
+   built exactly as for responses (all variants, own calibration). Both legs share the CO2 file and the segment's
+   humidity configuration, so the contrast carries neither the 1985->2020 CO2 rise nor the 2071 humidity switch:
+   c2071 is the PRIMARY response statistic. r2071 stays, labelled as containing both. ssp245 contrasts also
+   contain a binary change (ssp245 ran the Feb-2026 build): reported, never used for the learned-response test.
+4. Frozen rosters (reference/frozen/): window statistics of each seed's living 1985 and 2014 Historical roster
+   repeated over a 30-year window (what an engine FROZEN run writes), scored by the scorer as nulls.
+
+## SH14 repair (round 2, after the adversarial verifier; still additive for every round-1 column)
+5. Contrast calibration is fitted on ssp370 rows only (CONTRAST_FIT_SCENS) and applied to all contrast rows
+   (ssp245 = scenario + binary). This changes allowed_cal / allowed_cal_c on CONTRAST rows only (SH14-new rows).
+6. Calibration overfit. The round-1 calibration fits one multiplier per quantity (31 free parameters per target
+   kind) on the very replica it is then judged by; at block scale (52 blocks) the replica's 0.95 does not transfer
+   across GCMs (verifier: fit on one GCM, apply to the other -> block responses 0.70/0.79). Added columns:
+   `allowed_cal1` (ONE multiplier per target kind, = the 95 % quantile over units of the unit's largest panel106
+   ratio), `allowed_cal_xg` (the round-1 per-quantity calibration fitted on the OTHER GCM only) and
+   `allowed_cal1_xg` (one multiplier per kind, fitted on the other GCM). The replica's pass under a *_xg column is
+   an out-of-sample ceiling. calibration_extra*.csv lists every k with its fitted-set and held-out conj.
+7. Unbranched scenario legs. In the truth both legs of one seed restart from ONE 2014 state incl. its
+   random-number state, so the replica's contrast error is the noise of a BRANCHED pair. Contrast rows carry
+   `dev_unbr_hi` = |V2 - V1| (replica scen leg with the truth's own ssp126 leg; variance 2 s^2, optimistic) and
+   `dev_unbr_lo` = |(V1 - V2) + (B1 - B2)| (the two cross-seed contrasts against each other; variance
+   4 s^2 (1 + rho), pessimistic). An arm whose legs are NOT branched from one state with shared random numbers has
+   variance 2 s^2 (2 - rho) and is bracketed by the two; the scorer reports the matching ceilings.
 """
 
 
 def assemble() -> int:
+    """levels_long + the tolerance tables for truth seed 1 (tolerance.parquet, the round-1 file, extended) and truth
+    seed 2 (tolerance_t2.parquet, SH14), each CALIBRATED before it is written (atomic replace), + aggregates."""
     t0 = time.time()
     lv = load_levels()
     log(f"levels: {lv.height} rows")
-    lv.write_parquet(f"{OUT}/levels_long.parquet")
-    tol = build_tolerance(lv)
-    log(f"tolerance: {tol.height} rows")
-    tol.write_parquet(f"{OUT}/tolerance.parquet")
-    agg, terc = build_aggregate(tol)
-    agg.write_parquet(f"{OUT}/aggregate.parquet")
-    agg.write_csv(f"{OUT}/aggregate.csv")
-    # summary of the tolerances themselves
-    summ = (
-        tol.group_by(["gcm", "scen", "window", "quantity"])
-        .agg(
-            pl.len().alias("n_cells"),
-            pl.col("R").is_not_null().sum().alias("n_with_seed2"),
-            pl.col("spread_cell").median().alias("spread_cell_med"),
-            (pl.col("allowed") / pl.col("C").abs()).median().alias("allowed_rel_med"),
-            (pl.col("allowed") > REL_FLOOR * pl.col("C").abs() * 1.0000001).mean().alias("frac_spread_binds"),
-            pl.col("sn_cell").median().alias("sn_cell_med"),
-            (pl.col("sn_cell") >= 3).mean().alias("frac_sn_ge3"),
-            pl.col("tol_source").first(),
+    write_atomic(lv, f"{OUT}/levels_long.parquet")
+    for ts in (1, 2):
+        sfx = "" if ts == 1 else "_t2"
+        tol = build_tolerance(lv, ts)
+        log(f"tolerance{sfx}: {tol.height} rows")
+        tol, cals = calibrate_all(tol)
+        for (scol, _), cal in zip(CAL_VARIANTS, cals[:2], strict=True):
+            cal.sort(["target_kind", "quantity"]).write_csv(
+                f"{OUT}/calibration{'_c' if scol.endswith('_c') else ''}{sfx}.csv")
+        cals[2].write_csv(f"{OUT}/calibration_extra{sfx}.csv")
+        write_atomic(tol, f"{OUT}/tolerance{sfx}.parquet")
+        agg, terc = build_aggregate(tol)
+        write_atomic(agg, f"{OUT}/aggregate{sfx}.parquet")
+        agg.write_csv(f"{OUT}/aggregate{sfx}.csv")
+        # summary of the tolerances themselves
+        summ = (
+            tol.group_by(["gcm", "scen", "window", "quantity"])
+            .agg(
+                pl.len().alias("n_cells"),
+                pl.col("R").is_not_null().sum().alias("n_with_seed2"),
+                pl.col("spread_cell").median().alias("spread_cell_med"),
+                (pl.col("allowed") / pl.col("C").abs()).median().alias("allowed_rel_med"),
+                (pl.col("allowed") > REL_FLOOR * pl.col("C").abs() * 1.0000001).mean().alias("frac_spread_binds"),
+                pl.col("sn_cell").median().alias("sn_cell_med"),
+                (pl.col("sn_cell") >= 3).mean().alias("frac_sn_ge3"),
+                pl.col("tol_source").first(),
+                pl.col("spread_cell_c").median().alias("spread_cell_c_med"),
+                (pl.col("allowed_c") / pl.col("C").abs()).median().alias("allowed_c_rel_med"),
+                (pl.col("allowed_cell_abs") / pl.col("C").abs()).median().alias("allowed_cell_abs_rel_med"),
+            )
+            .sort(["gcm", "scen", "window", "quantity"])
         )
-        .sort(["gcm", "scen", "window", "quantity"])
-    )
-    summ.write_csv(f"{OUT}/tolerance_summary.csv")
-    strata = tol.filter(pl.col("quantity") == "n_per_patch").group_by(["gcm", "scen", "window", "stratum"]).len()
-    gate = {
-        "levels_rows": lv.height,
-        "tolerance_rows": tol.height,
-        "tolerance_keys_unique": True,
-        "members": lv.select(["gcm", "scen", "seed", "window"]).unique().height,
-        "invalid_members": lv.filter(~pl.col("valid")).select(["gcm", "scen", "seed", "window"]).unique().to_dicts(),
-        "cells_per_target_min": int(tol.group_by(["gcm", "scen", "window", "quantity"]).len()["len"].min()),
-        "cells_per_target_max": int(tol.group_by(["gcm", "scen", "window", "quantity"]).len()["len"].max()),
-        "strata_counts": strata.sort(["gcm", "scen", "window", "stratum"]).to_dicts(),
-        "lat_tercile_edges": terc,
-        "wall_s": round(time.time() - t0, 1),
-    }
-    json.dump(gate, open(f"{OUT}/_gates.json", "w"), indent=1, default=str)
+        summ.write_csv(f"{OUT}/tolerance_summary{sfx}.csv")
+        strata = tol.filter(pl.col("quantity") == "n_per_patch").group_by(
+            ["gcm", "scen", "window", "stratum"]).len()
+        gate = {
+            "truth_seed": ts,
+            "levels_rows": lv.height,
+            "tolerance_rows": tol.height,
+            "tolerance_rows_by_kind": {r["target_kind"]: r["len"] for r in tol.group_by("target_kind").len()
+                                       .iter_rows(named=True)},
+            "tolerance_keys_unique": True,
+            "members": lv.select(["gcm", "scen", "seed", "window"]).unique().height,
+            "invalid_members": lv.filter(~pl.col("valid")).select(["gcm", "scen", "seed", "window"]).unique()
+            .to_dicts(),
+            "cells_per_target_min": int(tol.group_by(["gcm", "scen", "window", "quantity"]).len()["len"].min()),
+            "cells_per_target_max": int(tol.group_by(["gcm", "scen", "window", "quantity"]).len()["len"].max()),
+            "strata_counts": strata.sort(["gcm", "scen", "window", "stratum"]).to_dicts(),
+            "lat_tercile_edges": terc,
+            "calibration_p": pl.concat(cals[:2]).select(["spread_variant", "target_kind", "p", "conj_panel106"])
+            .unique().sort(["spread_variant", "target_kind"]).to_dicts(),
+            "calibration_extra": cals[2].to_dicts(),
+            "contrast_fit_scens": CONTRAST_FIT_SCENS,
+            "replica_passes_allowed_cell_abs": float(
+                tol.filter(pl.col("R").is_not_null()).select(
+                    ((pl.col("R") - pl.col("C")).abs() <= pl.col("allowed_cell_abs") * (1 + 1e-9)).mean()).item()),
+            "wall_s": round(time.time() - t0, 1),
+        }
+        json.dump(gate, open(f"{OUT}/_gates{sfx}.json", "w"), indent=1, default=str)
+        with pl.Config(tbl_rows=200, tbl_cols=20, fmt_str_lengths=40):
+            print(summ.filter(pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50",
+                                                        "D95max_q50", "minwscal_q50", "Height_q50", "share_3"])
+                              & (pl.col("gcm") == "MPI-ESM1-2-HR")))
+        del tol
     open(f"{OUT}/_DEFINITION.md", "w").write(DEFINITION)
     log(f"assemble done in {time.time() - t0:.0f} s")
-    with pl.Config(tbl_rows=200, tbl_cols=20, fmt_str_lengths=40):
-        print(summ.filter(pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50",
-                                                    "D95max_q50", "minwscal_q50", "Height_q50", "share_3"])))
     return 0
 
 
@@ -581,75 +751,225 @@ CAL_TARGET = 0.95
 
 def _floor_base():
     isf = pl.col("quantity").str.starts_with("share_")
-    isr = pl.col("target_kind") == "response"
+    isr = pl.col("target_kind").is_in(["response", "contrast"])
     absC = pl.col("C").abs()
     floor = pl.when(isf).then(pl.max_horizontal(REL_FLOOR * absC, pl.lit(SHARE_FLOOR))).otherwise(REL_FLOOR * absC)
     base = pl.when(isf).then(pl.lit(1.0)).when(isr).then(pl.col("scale")).otherwise(absC)
     return floor, base
 
 
-def calibrate() -> int:
+CAL_VARIANTS = [("s_med", "allowed_cal"), ("s_med_c", "allowed_cal_c")]  # (stratum spread column, output column)
+TARGET_KINDS = ["level", "response", "contrast"]
+
+
+def calibrate(truth_seed: int = 1) -> int:
     """Per (quantity, target_kind) multiplier k_q on the stratum-median spread, all k_q at the same per-quantity
-    quantile p of the seed-2-vs-seed-1 ratio, with p found by bisection so that seed 2 passes ALL panel106
-    quantities in CAL_TARGET of (target, cell) pairs. In-sample by construction for the other-seed null (stated).
-    Adds column allowed_cal to tolerance.parquet; writes calibration.csv."""
+    quantile p of the other-seed-vs-truth ratio, with p found by bisection so that the other seed passes ALL
+    panel106 quantities in CAL_TARGET of (target, cell) pairs. In-sample by construction for the other-seed null
+    (stated). Adds allowed_cal (round-1 spread) and allowed_cal_c (SH14 symmetric spread) to the tolerance file;
+    writes calibration{,_c}{,_t2}.csv. (assemble already does this; this stage re-calibrates an existing file.)"""
     t0 = time.time()
-    tol = pl.read_parquet(f"{OUT}/tolerance.parquet")
-    tol, cal = calibrate_table(tol)
-    cal.sort(["target_kind", "quantity"]).write_csv(f"{OUT}/calibration.csv")
-    tol.write_parquet(f"{OUT}/tolerance.parquet")
-    log(f"calibrate done ({time.time() - t0:.0f} s)")
+    sfx = "" if truth_seed == 1 else "_t2"
+    tol = pl.read_parquet(f"{OUT}/tolerance{sfx}.parquet")
+    tol, cals = calibrate_all(tol)
+    for (scol, _), cal in zip(CAL_VARIANTS, cals[:2], strict=True):
+        vtag = "_c" if scol.endswith("_c") else ""
+        cal.sort(["target_kind", "quantity"]).write_csv(f"{OUT}/calibration{vtag}{sfx}.csv")
+    cals[2].write_csv(f"{OUT}/calibration_extra{sfx}.csv")
+    write_atomic(tol, f"{OUT}/tolerance{sfx}.parquet")
+    log(f"calibrate{sfx} done ({time.time() - t0:.0f} s)")
     with pl.Config(tbl_rows=100):
-        print(cal.sort(["target_kind", "quantity"]))
+        print(cals[0].sort(["target_kind", "quantity"]))
     return 0
 
 
-def calibrate_table(tol: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """The calibration itself (see calibrate()); works on a cell-scale or block-scale tolerance table."""
-    if "allowed_cal" in tol.columns:
-        tol = tol.drop("allowed_cal")
+def calibrate_all(tol: pl.DataFrame) -> tuple[pl.DataFrame, list[pl.DataFrame]]:
+    """Returns (tol, [cal_s_med, cal_s_med_c, extra_summary]); the extra columns come from calibrate_extra."""
+    cals = []
+    for scol, ocol in CAL_VARIANTS:
+        tol, cal = calibrate_table(tol, scol, ocol)
+        cals.append(cal.with_columns(pl.lit(scol).alias("spread_variant")))
+    tol, extra = calibrate_extra(tol, "s_med")
+    cals.append(extra)
+    return tol, cals
+
+
+def write_atomic(df: pl.DataFrame, path: str) -> None:
+    """Write via a temp file + rename, so a concurrent scorer never reads a half-written / uncalibrated table."""
+    tmp = f"{path}.tmp{os.getpid()}"
+    df.write_parquet(tmp)
+    os.replace(tmp, path)
+
+
+CONTRAST_FIT_SCENS = ["ssp370"]  # SH14 repair: ssp245 contrasts mix the scenario with the Feb-2026 binary change,
+#                                  so the contrast multiplier is fitted on ssp370 rows only (applied to both)
+
+
+def _ratio_frame(tol: pl.DataFrame, s_col: str) -> pl.DataFrame:
+    """Rows with a replica: dev = |R - C|, r = dev / (spread * base), r = 0 where the 10 % floor already covers dev."""
     floor, base = _floor_base()
     x = tol.filter(pl.col("R").is_not_null()).select(
-        ["gcm", "scen", "window", "Cell", "quantity", "target_kind", "C", "R", "s_med", "scale"]
+        ["gcm", "scen", "window", "Cell", "quantity", "target_kind", "C", "R", pl.col(s_col).alias("s_x"), "scale"]
     ).with_columns(floor.alias("floor"), base.alias("base"), (pl.col("R") - pl.col("C")).abs().alias("dev"))
-    x = x.with_columns(
+    return x.with_columns(
         pl.when(pl.col("dev") <= pl.col("floor")).then(0.0)
-        .when(pl.col("s_med") * pl.col("base") > 0).then(pl.col("dev") / (pl.col("s_med") * pl.col("base")))
+        .when(pl.col("s_x") * pl.col("base") > 0).then(pl.col("dev") / (pl.col("s_x") * pl.col("base")))
         .otherwise(float("inf")).alias("r")
     )
+
+
+def _fit_scope(x: pl.DataFrame, kind: str) -> pl.DataFrame:
+    y = x.filter(pl.col("target_kind") == kind)
+    if kind == "contrast":
+        y = y.filter(pl.col("scen").is_in(CONTRAST_FIT_SCENS))
+    return y
+
+
+def _conj_units(sub: pl.DataFrame, k: pl.DataFrame | float) -> float:
+    """Fraction of (gcm, scen, window, Cell) units whose panel106 rows all have r <= k."""
+    if isinstance(k, pl.DataFrame):
+        y = sub.join(k, on="quantity", how="left").with_columns((pl.col("r") <= pl.col("k")).fill_null(False)
+                                                                 .alias("ok"))
+    else:
+        y = sub.with_columns((pl.col("r") <= k).alias("ok"))
+    return float(y.group_by(["gcm", "scen", "window", "Cell"]).agg(pl.col("ok").all())["ok"].mean())
+
+
+def _fit_perq(x: pl.DataFrame, kind: str) -> tuple[pl.DataFrame, float, float] | None:
+    """Round-1 calibration: per-quantity k = the p-quantile (higher) of r, one p for all quantities, bisected so the
+    replica passes ALL panel106 quantities in CAL_TARGET of units. Returns (k per quantity, p, conj)."""
+    scope = _fit_scope(x, kind)
+    sub = scope.filter(pl.col("quantity").is_in(PANEL106))
+    if not sub.height:
+        return None
+
+    def kq(p, sub=sub):
+        return sub.group_by("quantity").agg(pl.col("r").quantile(p, interpolation="higher").alias("k"))
+
+    lo, hi = 0.5, 1.0
+    for _ in range(22):
+        mid = (lo + hi) / 2
+        if _conj_units(sub, kq(mid)) >= CAL_TARGET:
+            hi = mid
+        else:
+            lo = mid
+    p = hi
+    c = _conj_units(sub, kq(p))
+    k = scope.group_by("quantity").agg(
+        pl.col("r").quantile(p, interpolation="higher").alias("k"),
+        pl.col("s_x").median().alias("s_med_median"),
+    )
+    return k, p, c
+
+
+def _fit_single(x: pl.DataFrame, kind: str) -> tuple[float | None, float] | None:
+    """SH14 repair: ONE multiplier per target kind (1 free parameter instead of one per quantity, against the
+    block-scale in-sample overfit): k = the CAL_TARGET quantile (higher) over units of the unit's largest panel106 r,
+    i.e. exactly the smallest k under which CAL_TARGET of units pass the whole panel. Returns (k, conj)."""
+    sub = _fit_scope(x, kind).filter(pl.col("quantity").is_in(PANEL106))
+    if not sub.height:
+        return None
+    u = sub.group_by(["gcm", "scen", "window", "Cell"]).agg(pl.col("r").max().alias("m"))
+    k = float(u["m"].quantile(CAL_TARGET, interpolation="higher"))
+    c = float((u["m"] <= k).mean())
+    return (None if not np.isfinite(k) else k), c
+
+
+def calibrate_table(tol: pl.DataFrame, s_col: str = "s_med",
+                    out_col: str = "allowed_cal") -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The calibration itself (see calibrate()); works on a cell-scale or block-scale tolerance table.
+    s_col/out_col select the spread variant (round-1: s_med -> allowed_cal; SH14: s_med_c -> allowed_cal_c).
+    Each target kind (level / response / contrast) is calibrated on its own rows, so adding the contrast kind
+    leaves the level and response multipliers of round 1 unchanged. SH14 repair: the contrast kind is fitted on
+    CONTRAST_FIT_SCENS (ssp370) rows only and applied to every contrast row. In-sample for the replica by
+    construction -- read the cross-GCM columns of calibrate_extra for an out-of-sample ceiling."""
+    if out_col in tol.columns:
+        tol = tol.drop(out_col)
+    floor, base = _floor_base()
+    x = _ratio_frame(tol, s_col)
     rows = []
-    for kind in ["level", "response"]:
-        sub = x.filter((pl.col("target_kind") == kind) & pl.col("quantity").is_in(PANEL106))
-
-        def conj(p, sub=sub):
-            k = sub.group_by("quantity").agg(pl.col("r").quantile(p, interpolation="higher").alias("k"))
-            y = sub.join(k, on="quantity").with_columns((pl.col("r") <= pl.col("k")).alias("ok"))
-            return y.group_by(["gcm", "scen", "window", "Cell"]).agg(pl.col("ok").all())["ok"].mean()
-
-        lo, hi = 0.5, 1.0
-        for _ in range(22):
-            mid = (lo + hi) / 2
-            if conj(mid) >= CAL_TARGET:
-                hi = mid
-            else:
-                lo = mid
-        p = hi
-        c = conj(p)
-        allq = x.filter(pl.col("target_kind") == kind)
-        k = allq.group_by("quantity").agg(
-            pl.col("r").quantile(p, interpolation="higher").alias("k"),
-            pl.col("s_med").median().alias("s_med_median"),
-        )
+    for kind in TARGET_KINDS:
+        f = _fit_perq(x, kind)
+        if f is None:
+            continue
+        k, p, c = f
         k = k.with_columns(pl.lit(kind).alias("target_kind"), pl.lit(p).alias("p"), pl.lit(c).alias("conj_panel106"))
         rows.append(k)
-        log(f"calibrate {kind}: p = {p:.5f}, seed-2 panel106 conjunctive pass = {c:.4f}")
+        log(f"calibrate [{s_col}] {kind}: p = {p:.5f}, other-seed panel106 conjunctive pass = {c:.4f}")
     cal = pl.concat(rows).with_columns(
         pl.when(pl.col("k").is_infinite()).then(None).otherwise(pl.col("k")).alias("k"))
     tol = tol.join(cal.select(["quantity", "target_kind", "k"]), on=["quantity", "target_kind"], how="left")
     tol = tol.with_columns(
-        pl.max_horizontal(floor, pl.col("k").fill_null(0.0) * pl.col("s_med") * base).alias("allowed_cal")
+        pl.max_horizontal(floor, pl.col("k").fill_null(0.0) * pl.col(s_col) * base).alias(out_col)
     ).drop("k")
     return tol, cal
+
+
+EXTRA_CAL_COLS = ["allowed_cal1", "allowed_cal_xg", "allowed_cal1_xg"]
+
+
+def calibrate_extra(tol: pl.DataFrame, s_col: str = "s_med") -> tuple[pl.DataFrame, pl.DataFrame]:
+    """SH14 repair (verifier: the block-scale calibration overfits in-sample). Three more tolerance columns on the
+    round-1 spread:
+      allowed_cal1     ONE multiplier per target kind, fitted on all GCMs (in-sample for the replica)
+      allowed_cal_xg   the round-1 per-quantity calibration fitted on the OTHER GCM(s) only (cross-fit)
+      allowed_cal1_xg  one multiplier per target kind fitted on the other GCM(s) only (cross-fit)
+    The replica's pass fraction under a *_xg column is an OUT-OF-SAMPLE ceiling: its k never saw that GCM.
+    Returns (tol, summary) with per (variant, target kind, applied gcm) the k, the fitted-set conj and the
+    applied-set (held-out) replica conj on panel106 (contrasts: CONTRAST_FIT_SCENS rows)."""
+    tol = tol.drop([c for c in EXTRA_CAL_COLS if c in tol.columns])
+    floor, base = _floor_base()
+    x = _ratio_frame(tol, s_col)
+    gcms = sorted(tol["gcm"].unique().to_list())
+    kparts = {c: [] for c in EXTRA_CAL_COLS}
+    summ = []
+    for kind in TARGET_KINDS:
+        f1 = _fit_single(x, kind)
+        if f1 is None:
+            continue
+        kparts["allowed_cal1"].append(pl.DataFrame({"gcm": gcms, "target_kind": [kind] * len(gcms),
+                                                    "k": [f1[0]] * len(gcms)}, schema_overrides={"k": pl.Float64}))
+        summ.append({"variant": "allowed_cal1", "target_kind": kind, "applied_gcm": "all", "k": f1[0],
+                     "conj_fit": f1[1], "conj_applied": f1[1]})
+        for g in gcms:
+            xf = x.filter(pl.col("gcm") != g)
+            xa = _fit_scope(x.filter(pl.col("gcm") == g), kind).filter(pl.col("quantity").is_in(PANEL106))
+            if not xf.height or _fit_scope(xf, kind).height == 0:
+                continue
+            s1 = _fit_single(xf, kind)
+            if s1 is not None:
+                kparts["allowed_cal1_xg"].append(pl.DataFrame(
+                    {"gcm": [g], "target_kind": [kind], "k": [s1[0]]}, schema_overrides={"k": pl.Float64}))
+                summ.append({"variant": "allowed_cal1_xg", "target_kind": kind, "applied_gcm": g, "k": s1[0],
+                             "conj_fit": s1[1],
+                             "conj_applied": _conj_units(xa, s1[0] if s1[0] is not None else 0.0) if xa.height
+                             else None})
+            pq = _fit_perq(xf, kind)
+            if pq is not None:
+                kq, p, c = pq
+                kq = kq.with_columns(pl.when(pl.col("k").is_infinite()).then(None).otherwise(pl.col("k")).alias("k"))
+                kparts["allowed_cal_xg"].append(kq.select(["quantity", "k"]).with_columns(
+                    pl.lit(g).alias("gcm"), pl.lit(kind).alias("target_kind")))
+                summ.append({"variant": "allowed_cal_xg", "target_kind": kind, "applied_gcm": g, "k": None,
+                             "p": p, "conj_fit": c,
+                             "conj_applied": _conj_units(xa, kq.select(["quantity", pl.col("k").fill_null(0.0)]))
+                             if xa.height else None})
+    for col, parts in kparts.items():
+        if not parts:
+            tol = tol.with_columns(pl.lit(None, dtype=pl.Float64).alias(col))
+            continue
+        kk = pl.concat(parts, how="diagonal_relaxed")
+        on = ["gcm", "target_kind"] + (["quantity"] if "quantity" in kk.columns else [])
+        tol = tol.join(kk.select(on + ["k"]), on=on, how="left")
+        # k null (an infinite quantile, as in round 1) -> the floor alone. A single-GCM domain has no *_xg fit at
+        # all and gets an all-null column above (= that tolerance is not available).
+        tol = tol.with_columns(
+            pl.max_horizontal(floor, pl.col("k").fill_null(0.0) * pl.col(s_col) * base).alias(col)).drop("k")
+    sm = pl.DataFrame(summ, infer_schema_length=None)
+    for r in sm.iter_rows(named=True):
+        log(f"calibrate_extra {r['variant']} {r['target_kind']} applied to {r['applied_gcm']}: k={r['k']} "
+            f"conj fit {r['conj_fit']:.4f} -> applied {r['conj_applied']}")
+    return tol, sm
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -692,13 +1012,15 @@ def block_map(cells: list[int] | None = None) -> pl.DataFrame:
     return out
 
 
-def block_mask(lv: pl.DataFrame, bm: pl.DataFrame) -> pl.DataFrame:
-    """Which cells enter each block mean: per (gcm, scen, window, quantity, Cell), seed 1 is non-null and (seed 2
-    is non-null or seed 2 is invalid for that member-window). The emulator is averaged over the SAME cells."""
+def block_mask(lv: pl.DataFrame, bm: pl.DataFrame, truth_seed: int = 1) -> pl.DataFrame:
+    """Which cells enter each block mean: per (gcm, scen, window, quantity, Cell), the truth seed is non-null and
+    (the other seed is non-null or invalid for that member-window). The emulator is averaged over the SAME cells.
+    truth_seed = 1 is the round-1 mask; truth_seed = 2 (SH14) swaps the roles."""
+    ts, ots = int(truth_seed), 3 - int(truth_seed)
     k = ["gcm", "scen", "window", "Cell", "quantity"]
-    s1 = lv.filter(pl.col("seed") == 1).select(k + [pl.col("value").alias("C")])
-    s2 = lv.filter((pl.col("seed") == 2) & pl.col("valid")).select(k + [pl.col("value").alias("R")])
-    s2m = lv.filter((pl.col("seed") == 2) & pl.col("valid")).select(["gcm", "scen", "window"]).unique() \
+    s1 = lv.filter((pl.col("seed") == ts) & pl.col("valid")).select(k + [pl.col("value").alias("C")])
+    s2 = lv.filter((pl.col("seed") == ots) & pl.col("valid")).select(k + [pl.col("value").alias("R")])
+    s2m = lv.filter((pl.col("seed") == ots) & pl.col("valid")).select(["gcm", "scen", "window"]).unique() \
         .with_columns(pl.lit(True).alias("s2valid"))
     m = s1.join(s2, on=k, how="left").join(s2m, on=["gcm", "scen", "window"], how="left").with_columns(
         pl.col("s2valid").fill_null(False))
@@ -719,9 +1041,9 @@ def block_values(vals: pl.DataFrame, mask: pl.DataFrame, by: list[str]) -> pl.Da
     return g.rename({"block": "Cell"})
 
 
-def build_block_reference(lv: pl.DataFrame, cells: list[int] | None = None) -> dict:
+def build_block_reference(lv: pl.DataFrame, cells: list[int] | None = None, truth_seed: int = 1) -> dict:
     bm = block_map(cells)
-    mask = block_mask(lv.filter(pl.col("Cell").is_in(bm["Cell"].to_list())), bm)
+    mask = block_mask(lv.filter(pl.col("Cell").is_in(bm["Cell"].to_list())), bm, truth_seed)
     parts = []
     for seed in (1, 2):
         v = lv.filter(pl.col("seed") == seed)
@@ -731,49 +1053,138 @@ def build_block_reference(lv: pl.DataFrame, cells: list[int] | None = None) -> d
         parts.append(b)
     blv = pl.concat(parts).select(["gcm", "scen", "seed", "window", "Cell", "quantity", "value", "valid",
                                    "n_cells_block"])
-    tol = build_tolerance(blv.drop("n_cells_block"))
-    tol, cal = calibrate_table(tol)
-    ncb = blv.filter(pl.col("seed") == 1).select(["gcm", "scen", "window", "Cell", "quantity", "n_cells_block"])
+    tol = build_tolerance(blv.drop("n_cells_block"), truth_seed)
+    tol, cals = calibrate_all(tol)
+    ncb = blv.filter(pl.col("seed") == truth_seed).select(
+        ["gcm", "scen", "window", "Cell", "quantity", "n_cells_block"])
     tol = tol.join(ncb, on=["gcm", "scen", "window", "Cell", "quantity"], how="left")
-    return {"map": bm, "mask": mask, "levels": blv, "tolerance": tol, "calibration": cal}
+    return {"map": bm, "mask": mask, "levels": blv, "tolerance": tol, "calibration": cals[0],
+            "calibration_c": cals[1], "calibration_extra": cals[2]}
 
 
 def blocks() -> int:
     """Block-scale reference for all reference cells (reference/block/) and for the dev cells Cell % 10 == 0
-    (reference/block_dev/), so a dev-subset arm is scored against blocks built from the same cells."""
+    (reference/block_dev/), so a dev-subset arm is scored against blocks built from the same cells.
+    Files without suffix = truth seed 1 (round 1, extended); *_t2 = truth seed 2 (SH14)."""
     t0 = time.time()
     lv = pl.read_parquet(f"{OUT}/levels_long.parquet")
     allcells = sorted(lv["Cell"].unique().to_list())
     for name, cells in [("block", allcells), ("block_dev", [c for c in allcells if c % 10 == 0])]:
         d = f"{OUT}/{name}"
         os.makedirs(d, exist_ok=True)
-        r = build_block_reference(lv, cells)
-        for key in ["map", "mask", "levels", "tolerance"]:
-            r[key].write_parquet(f"{d}/{key}.parquet")
-        r["calibration"].sort(["target_kind", "quantity"]).write_csv(f"{d}/calibration.csv")
-        nb = r["map"]["block"].n_unique()
-        szs = r["map"].group_by("block").len()["len"]
-        tol = r["tolerance"]
-        k2 = ["gcm", "scen", "window", "Cell", "quantity"]
-        assert tol.select(k2).n_unique() == tol.height
-        summ = (tol.group_by(["gcm", "scen", "window", "quantity"]).agg(
-            pl.len().alias("n_blocks"), pl.col("spread_cell").median().alias("spread_block_med"),
-            (pl.col("allowed") / pl.col("C").abs()).median().alias("allowed_rel_med"),
-            (pl.col("allowed_cal") / pl.col("C").abs()).median().alias("allowed_cal_rel_med"),
-            pl.col("sn_cell").median().alias("sn_block_med"), (pl.col("sn_cell") >= 3).mean().alias("frac_sn_ge3"))
-            .sort(["gcm", "scen", "window", "quantity"]))
-        summ.write_csv(f"{d}/tolerance_summary.csv")
-        g = {"cells": len(cells), "blocks": nb, "block_size_min": int(szs.min()), "block_size_median": float(
-            szs.median()), "block_size_max": int(szs.max()), "block_deg": BLOCK_DEG,
-             "block_min_cells": BLOCK_MIN_CELLS, "tolerance_rows": tol.height, "keys_unique": True,
-             "calibration_p": r["calibration"].select(["target_kind", "p", "conj_panel106"]).unique().to_dicts()}
-        json.dump(g, open(f"{d}/_gates.json", "w"), indent=1)
-        log(f"{name}: {json.dumps(g)}")
-        with pl.Config(tbl_rows=60, tbl_cols=12, float_precision=3):
-            print(summ.filter(pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50",
-                                                         "D95max_q50", "minwscal_q50", "share_3"])
-                              & pl.col("window").is_in(["r2071", "h1985"]) & (pl.col("gcm") == "MPI-ESM1-2-HR")))
+        for ts in (1, 2):
+            sfx = "" if ts == 1 else "_t2"
+            r = build_block_reference(lv, cells, ts)
+            if ts == 1:
+                write_atomic(r["map"], f"{d}/map.parquet")
+            for key in ["mask", "levels", "tolerance"]:
+                write_atomic(r[key], f"{d}/{key}{sfx}.parquet")
+            r["calibration"].sort(["target_kind", "quantity"]).write_csv(f"{d}/calibration{sfx}.csv")
+            r["calibration_c"].sort(["target_kind", "quantity"]).write_csv(f"{d}/calibration_c{sfx}.csv")
+            r["calibration_extra"].write_csv(f"{d}/calibration_extra{sfx}.csv")
+            nb = r["map"]["block"].n_unique()
+            szs = r["map"].group_by("block").len()["len"]
+            tol = r["tolerance"]
+            k2 = ["gcm", "scen", "window", "Cell", "quantity"]
+            assert tol.select(k2).n_unique() == tol.height
+            summ = (tol.group_by(["gcm", "scen", "window", "quantity"]).agg(
+                pl.len().alias("n_blocks"), pl.col("spread_cell").median().alias("spread_block_med"),
+                (pl.col("allowed") / pl.col("C").abs()).median().alias("allowed_rel_med"),
+                (pl.col("allowed_cal") / pl.col("C").abs()).median().alias("allowed_cal_rel_med"),
+                pl.col("sn_cell").median().alias("sn_block_med"),
+                (pl.col("sn_cell") >= 3).mean().alias("frac_sn_ge3"),
+                (pl.col("allowed_c") / pl.col("C").abs()).median().alias("allowed_c_rel_med"),
+                (pl.col("allowed_cal_c") / pl.col("C").abs()).median().alias("allowed_cal_c_rel_med"))
+                .sort(["gcm", "scen", "window", "quantity"]))
+            summ.write_csv(f"{d}/tolerance_summary{sfx}.csv")
+            g = {"truth_seed": ts, "cells": len(cells), "blocks": nb, "block_size_min": int(szs.min()),
+                 "block_size_median": float(szs.median()), "block_size_max": int(szs.max()), "block_deg": BLOCK_DEG,
+                 "block_min_cells": BLOCK_MIN_CELLS, "tolerance_rows": tol.height, "keys_unique": True,
+                 "tolerance_rows_by_kind": {x["target_kind"]: x["len"] for x in tol.group_by("target_kind").len()
+                                            .iter_rows(named=True)},
+                 "calibration_p": pl.concat([r["calibration"].with_columns(pl.lit("s_med").alias("v")),
+                                             r["calibration_c"].with_columns(pl.lit("s_med_c").alias("v"))],
+                                            how="diagonal_relaxed")
+                 .select(["v", "target_kind", "p", "conj_panel106"]).unique().sort(["v", "target_kind"]).to_dicts(),
+                 "calibration_extra": r["calibration_extra"].to_dicts(), "contrast_fit_scens": CONTRAST_FIT_SCENS}
+            json.dump(g, open(f"{d}/_gates{sfx}.json", "w"), indent=1)
+            log(f"{name}{sfx}: {json.dumps(g)}")
+            with pl.Config(tbl_rows=60, tbl_cols=12, float_precision=3):
+                print(summ.filter(pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50",
+                                                             "D95max_q50", "minwscal_q50", "share_3"])
+                                  & pl.col("window").is_in(["r2071", "c2071", "h1985"])
+                                  & (pl.col("gcm") == "MPI-ESM1-2-HR")))
     log(f"blocks done in {time.time() - t0:.0f} s")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------------------
+# frozen (SH14 amendment 4): the window statistics of a FROZEN roster -- the living trees of year Y repeated for
+# every year of a 30-year window, exactly what an engine FROZEN run writes -- from each seed's Historical roster
+# in 1985 and 2014. The scorer's frozen nulls read these. Also records how far a frozen window statistic is from
+# the single-year statistic (the pre-registered N2 identity holds exactly for counts/shares/agb_stand but only
+# approximately for linear-interpolated quantiles of a replicated sample).
+# ---------------------------------------------------------------------------------------------------------
+FROZEN_YEARS = (1985, 2014)
+FROZEN_NREP = 30
+
+
+def frozen() -> int:
+    t0 = time.time()
+    d = f"{OUT}/frozen"
+    os.makedirs(d, exist_ok=True)
+    g = gates().filter(pl.col("scen") == "Historical")
+    recs = []
+    for r in g.iter_rows(named=True):
+        member = r["member"]
+        census = pl.read_parquet(f"{IND}/_census/{member}.parquet")
+        root = member_root(r)
+        rep_parts = {y: [] for y in FROZEN_YEARS}
+        one_parts = {y: [] for y in FROZEN_YEARS}
+        nliv = {y: 0 for y in FROZEN_YEARS}
+        for cb in partitions(root):
+            lf = pl.scan_parquet(f"{root}/cb={cb:02d}/part-0.parquet").select(READ_COLS)
+            allt = living(lf.filter(pl.col("Year").is_in(list(FROZEN_YEARS)))).collect()
+            for y in FROZEN_YEARS:
+                cells = census.filter((pl.col("Year") == y)
+                                      & ((pl.col("Cell") // CELLS_PER_PARTITION) == cb)).select("Cell")
+                trees = allt.filter(pl.col("Year") == y)
+                nliv[y] += trees.height
+                rep = trees.with_columns(pl.lit(list(range(FROZEN_NREP)), dtype=pl.List(pl.Int16)).alias("_r")) \
+                    .explode("_r").drop("_r")
+                rep_parts[y].append(reduce_window(rep, cells.with_columns(pl.lit(FROZEN_NREP).alias("n_years"))))
+                one_parts[y].append(reduce_window(trees, cells.with_columns(pl.lit(1).alias("n_years"))))
+        for y in FROZEN_YEARS:
+            meta = [pl.lit(r["gcm"]).alias("gcm"), pl.lit(int(r["seed"])).cast(pl.Int8).alias("seed"),
+                    pl.lit(y).cast(pl.Int32).alias("year")]
+            rep = pl.concat(rep_parts[y]).with_columns(meta)
+            one = pl.concat(one_parts[y]).with_columns(meta)
+            assert rep["Cell"].n_unique() == rep.height
+            write_atomic(rep, f"{d}/{r['gcm']}_s{r['seed']}_y{y}.parquet")
+            write_atomic(one, f"{d}/{r['gcm']}_s{r['seed']}_y{y}_singleyear.parquet")
+            j = rep.select(["Cell"] + QUANTITIES).unpivot(index="Cell", variable_name="quantity", value_name="a") \
+                .join(one.select(["Cell"] + QUANTITIES).unpivot(index="Cell", variable_name="quantity",
+                                                               value_name="b"), on=["Cell", "quantity"])
+            j = j.filter(pl.col("a").is_not_null() & pl.col("b").is_not_null()).with_columns(
+                ((pl.col("a") - pl.col("b")).abs() / pl.col("b").abs().clip(1e-12)).alias("rel"))
+            per_q = j.group_by("quantity").agg(pl.col("rel").max().alias("max_rel"),
+                                               pl.col("rel").median().alias("med_rel")).sort("quantity")
+            rec = {"member": member, "year": y, "cells": rep.height, "living_trees": nliv[y],
+                   "n_years_rep": FROZEN_NREP,
+                   "rep_vs_single_max_rel_counts_shares": float(
+                       j.filter(~pl.col("quantity").str.contains("_q")).select(pl.col("rel").max()).item() or 0.0),
+                   "rep_vs_single_max_rel_quantiles": float(
+                       j.filter(pl.col("quantity").str.contains("_q")).select(pl.col("rel").max()).item() or 0.0),
+                   "rep_vs_single_median_rel_quantiles": float(
+                       j.filter(pl.col("quantity").str.contains("_q")).select(pl.col("rel").median()).item()
+                       or 0.0),
+                   "rep_vs_single_per_quantity": per_q.to_dicts()}
+            recs.append(rec)
+            log(f"frozen {member} {y}: {rep.height} cells, {nliv[y]} living trees, max rel (counts/shares) "
+                f"{rec['rep_vs_single_max_rel_counts_shares']:.2e}, quantiles max "
+                f"{rec['rep_vs_single_max_rel_quantiles']:.2e} median {rec['rep_vs_single_median_rel_quantiles']:.2e}")
+    json.dump({"frozen": recs, "wall_s": round(time.time() - t0, 1)}, open(f"{d}/_gates.json", "w"), indent=1)
+    log(f"frozen done in {time.time() - t0:.0f} s")
     return 0
 
 
@@ -796,7 +1207,7 @@ def verify() -> int:
         st = pl.read_parquet(f"{OUT}/stats/{member}.parquet")
         sparse = st.filter(pl.col("n_stemyears") > 0).sort("n_stemyears")["Cell"].head(2).to_list()
         cells = sorted(set(rng.choice(st["Cell"].to_numpy(), 10, replace=False).tolist()) | set(sparse))
-        cbs = sorted({c // 500 for c in cells})
+        cbs = sorted({c // CELLS_PER_PARTITION for c in cells})
         files = ",".join(f"'{member_root(r)}/cb={cb:02d}/part-0.parquet'" for cb in cbs)
         cl = ",".join(str(c) for c in cells)
         y0, y1 = WINDOWS[r["window"]]
@@ -863,7 +1274,9 @@ def main() -> int:
     if a[0] == "assemble":
         return assemble()
     if a[0] == "calibrate":
-        return calibrate()
+        return calibrate(int(a[1]) if len(a) > 1 else 1)
+    if a[0] == "frozen":
+        return frozen()
     if a[0] == "blocks":
         return blocks()
     if a[0] == "verify":
