@@ -72,5 +72,57 @@ class TabALG2(ts.TabAL):
             z1 = z1 + r
         z1 = np.clip(z1, np.log(g2.EPS), np.log(G.C["LAI_max"] * 1.2 + g2.EPS))
         L = np.maximum(np.exp(z1) - g2.EPS, 0.0)
-        fpc, agb = g2.closure(L, np.asarray(fpc_next, np.float64), G.C)
+        fpc, agb = self._cover(X, L, np.asarray(fpc_next, np.float64))
+        diag = os.environ.get("XDE_GRASS_DIAG")
+        if diag:  # one json line per step: the grass state the recruit head reads next year (read-only diagnostic)
+            import json
+            t1 = np.asarray(fpc_next, np.float64)
+            pot = 1 - np.exp(-G.C["K"] * L)
+            cap = (pot - fpc) > 1e-3
+            d = 1 - fpc - t1
+            with open(diag, "a") as fh:
+                fh.write(json.dumps({"Year": self._year + 1, "n": int(len(fpc)), "g_mean": float(fpc.mean()),
+                                     "pot_mean": float(pot.mean()), "cap_share": float(cap.mean()),
+                                     "h_mean_capped": float(d[cap].mean()) if cap.any() else None,
+                                     "t1_mean": float(t1.mean()), "L_mean": float(L.mean()),
+                                     "nrec_pp": float(self._nrec.mean()) if getattr(self, "_nrec", None) is not None
+                                     else None}) + "\n")
         return {g2.GF[:-2]: fpc, g2.GL[:-2]: L, g2.GA[:-2]: agb}
+
+    def _cover(self, X, L, fpc_next):
+        """grass cover + biomass at y+1 from the next-year LAI (grass2: the per-tree-cover-bin closure)."""
+        return g2.closure(L, fpc_next, self.G2.C)
+
+
+class TabALG2HS(TabALG2):
+    """TabALG2 whose grass COVER comes from the carried hidden-cover model (explore_de_hidden_cover.HS) instead of
+    the closure: the cap slack h of each patch follows from its own previous grass cover, this step's tree-cover change
+    and its own recruits (drawn by the recruit head from the grass cover this model produced last year — the loop the
+    grass-only replay could not close). Grass LAI and biomass exactly as TabALG2. Draws on streams "hs_cap"/"hs_res"."""
+
+    def __init__(self, param: str = "bite", **kw):
+        super().__init__(**kw)
+        self.param = param
+        self.HS = None
+        self._nrec = None
+
+    def _recruits(self, state, Xp, cdir, clim_y1, flags_y1, rand, y):
+        recs, aux = super()._recruits(state, Xp, cdir, clim_y1, flags_y1, rand, y)
+        npt = len(state.cell["cells"]) * state.npatch
+        if recs is None or not len(recs["Cell"]):
+            self._nrec = np.zeros(npt)
+        else:
+            rpi = state.cell_index(recs["Cell"]) * state.npatch + recs["Patch"].astype(np.int64)
+            self._nrec = np.bincount(rpi, minlength=npt).astype(np.float64)
+        return recs, aux
+
+    def _cover(self, X, L, fpc_next):
+        import explore_de_hidden_cover as hc
+        if self.HS is None:
+            self.HS = hc.HS(self.split if hasattr(self, "split") else "DEV-A", self.param)
+        D = hc.derive(X.with_columns(n_recruit_y1=pl.Series(self._nrec)), self.HS.K, L1=L, t1=fpc_next)
+        cell, pat = X["Cell"].to_numpy(), X["Patch"].to_numpy()
+        u_c = self._rand.uniform("hs_cap", self._year, cell, pat)
+        u_r = self._rand.uniform("hs_res", self._year, cell, pat)
+        fpc, _, _ = self.HS.step(D, None, u_cap=u_c, u_res=u_r)
+        return fpc, self.G2.C["AGB_PER_LAI"] * L

@@ -60,6 +60,9 @@ def main():
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--max-cells", type=int, default=0)
     ap.add_argument("--chunk-cells", type=int, default=200, help="the first N cells = the coupled runs' chunks 0-1")
+    ap.add_argument("--heads", default=None, help="patch-heads split to score (default: --split); grass models "
+                    "always come from --split")
+    ap.add_argument("--tag-suffix", default="")
     a = ap.parse_args()
     t0 = time.time()
     cells = sorted(pl.read_parquet(g2.F.patch_file(f"{a.gcm}_Historical_s{a.seed}_h1985", 1985),
@@ -78,7 +81,7 @@ def main():
     sub200 = np.isin(ref["Cell"].to_numpy(), cells[: a.chunk_cells])
     print(f"{a.gcm} s{a.seed} {a.leg}: {len(cells)} cells, {ref.height} patches, state years {years[0]}..{years[-1]}"
           f" ({time.time() - t0:.0f} s)", flush=True)
-    H = ph.load_heads(a.split)
+    H = ph.load_heads(a.heads or a.split)
     G2 = g2.Grass2(a.split, kappa=1.0)
     A3 = g2.A3Old(a.split, kappa=1.0)
     # ---- gate 1: the patch table's grass == the stored recruit features' grass (same quantity, two pipelines)
@@ -157,7 +160,7 @@ def main():
                        g2.GA: np.asarray(ag, np.float64)}
         if y % 10 == 0:
             print(f"  {y} done ({time.time() - t0:.0f} s)", flush=True)
-    tag = f"{a.gcm}_s{a.seed}_{a.leg}" + (f"_c{a.max_cells}" if a.max_cells else "")
+    tag = f"{a.gcm}_s{a.seed}_{a.leg}" + (f"_c{a.max_cells}" if a.max_cells else "") + a.tag_suffix
     R = pl.DataFrame(rows)
     B = pl.DataFrame(bins)
     R.write_csv(os.path.join(EVAL, f"recruit_grass_{tag}.csv"))

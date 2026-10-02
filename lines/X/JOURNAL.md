@@ -271,3 +271,19 @@ cover is whatever the trees leave, including the young trees below the 5 m print
 original, recruits next year rise three- to four-fold with that squeezed-out cover, and it drains when recruits appear.
 The recruit model learned to read it; any grass model with a closure rule erases it. The young-tree layer is a hidden
 state the emulator needs to carry itself.
+
+---
+
+## 2026-10-03 (seventh session) — carrying the young trees, and what that exposed
+
+Picked up the hidden young-tree layer. First tried the cheapest fix: let the recruit model stop reading grass cover.
+That removes the bias, but costs 5 % of its skill on every scenario of the climate model it never saw, so the signal
+is real. Putting last year's true hidden cover back recovers about 70 % of that, which is more than I had expected.
+The reason became clear from the next model: total tree cover at all heights barely changes from year to year, and
+the "hidden" share only looks noisy because cover moves to the printed side when a young tree passes 5 m. Built a
+model of next year's cover cap that carries this. One step ahead on the original's trees it is close to perfect. A
+grass-only free run fails, but that run feeds the carried state with the original's recruits, so it cannot test a
+state that recruitment itself depends on. In the coupled emulator it fixes the early recruit shortfall, then
+over-recruits by 15-27 % from 2006 on. A logged re-run showed why: in both emulator variants, grass leaf area stays far
+too high after 2000, where in the original it falls by 60 %. The current variant's near-correct late recruitment was
+two errors cancelling. Next: find what in the emulator's own trees keeps the grass from declining.
