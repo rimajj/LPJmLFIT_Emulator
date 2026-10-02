@@ -220,3 +220,19 @@ time) put ~90 % of the excess on canopy cover alone. The cell-level stem density
 pushes the other way. The gate earned its keep twice: it caught that the plain tree key has duplicates (the trait-
 extended key fixes it), which would otherwise have shown as a phantom history mismatch in 2–6 patches per year.
 Consequence recorded in STATE: do not let the free-run calibration absorb this into the recruit offset.
+
+---
+
+## 2026-10-02 (fourth session) — the free run's big trees grow slowly because its grass never dies back
+
+Picked up the growth half of the drift. Pre-registered first that a one-step bias would have to be at least
+0.004/yr to explain the gap; on the original's held-out states it is 0.000-0.0024, so the free run builds most of
+it itself. Re-ran the tabular free run with an instrumented copy of the stepper (proved identical to the analysed
+run, file for file) and paired every big tree with the same tree in the original. The deterministic growth chain
+fed the free run's inputs loses 0.0029/yr against the same chain fed the original's; swapping one input group at a
+time put it on the grass under the trees and on the place-wide stem count, with the tree's own shape and the patch
+stand pushing slightly the other way. The grass is the striking part: in the original it disappears under a
+maturing canopy, in the free run it creeps up, because the grass model is a mean regression applied year after
+year and a mean can never reach zero. A counterfactual that replays only the original's grass closes 54-85 % of
+the drift in stems, recruits, biomass, big-tree growth and cover. This also qualifies the earlier recruit finding,
+which had held grass at the original's values. Next: a grass model that can collapse, tested in isolation first.

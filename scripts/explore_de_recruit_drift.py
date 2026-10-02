@@ -22,7 +22,8 @@ Hypotheses this separates (stated before running):
       canopy and over-recruits. Predicts arm fpc/patch below truth while stems/patch is above, with the gap growing.
   H3  neither: first appearances genuinely excessive at matched cover -> the recruit head itself (or its draw).
 
-Usage:  python explore_de_recruit_drift.py [--chunks 0,1] [--leg ssp370] [--arms tabAL,tabAk0,struct_noacc]
+Usage:  python explore_de_recruit_drift.py [--chunks 0,1] [--leg ssp370] [--arms tabAL,tabAk0,struct_noacc] [--tag _x]
+        an arm may be given as label@<run dir> (a run outside runs/<arm>/<RUN>, e.g. a counterfactual)
 Writes /p/tmp/jamirp/X_de/shared/eval/recruit_drift_<leg>.csv and prints a compact table.
 """
 
@@ -44,8 +45,9 @@ def arm_frame(arm: str, chunks: list[int], leg: str, cells: list[int] | None) ->
     """The first arm fixes the cell set from its chunks; later arms (whose chunking may differ) read every chunk and
     keep exactly those cells."""
     fs = []
+    base = arm.split("@", 1)[1] if "@" in arm else os.path.join(XDE, "runs", arm, RUN)
     for c in (chunks if cells is None else range(1000)):
-        d = os.path.join(XDE, "runs", arm, RUN, f"chunk_{c:03d}")
+        d = os.path.join(base, f"chunk_{c:03d}")
         fs += sorted(glob.glob(os.path.join(d, "*_Historical.parquet"))) + sorted(
             glob.glob(os.path.join(d, f"*_{leg}.parquet")))
     lf = pl.concat([pl.scan_parquet(f).select(COLS) for f in fs], how="vertical_relaxed")
@@ -125,6 +127,7 @@ def main():
     ap.add_argument("--leg", default="ssp370")
     ap.add_argument("--arms", default="tabAL,tabAk0,struct_noacc")
     ap.add_argument("--npatch", type=int, default=250)
+    ap.add_argument("--tag", default="", help="suffix of the output csv")
     a = ap.parse_args()
     chunks = [int(c) for c in a.chunks.split(",")]
     res, cells = [], None
@@ -133,12 +136,12 @@ def main():
         cells = cells or c
         assert c == cells, f"{arm}: cell set differs"
         print(f"{arm}: {D.height} rows, {len(c)} cells, min printed height {D['Height'].min():.3f}", flush=True)
-        res.append(yearly(D, a.npatch, arm))
+        res.append(yearly(D, a.npatch, arm.split("@", 1)[0]))
     T = truth_frame(cells, a.leg, int(res[0]["Year"].min()) - 1, int(res[0]["Year"].max()))
     print(f"truth: {T.height} rows", flush=True)
     res.append(yearly(T, a.npatch, "truth"))
     R = pl.concat(res, how="diagonal_relaxed")
-    out = os.path.join(XDE, "shared", "eval", f"recruit_drift_{a.leg}.csv")
+    out = os.path.join(XDE, "shared", "eval", f"recruit_drift_{a.leg}{a.tag}.csv")
     R.write_csv(out)
     pl.Config.set_tbl_rows(200)
     pl.Config.set_tbl_cols(20)
