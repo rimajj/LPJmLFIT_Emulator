@@ -137,6 +137,7 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   ssp126/245/370 + their climate-blind twins, scored with explore_de_sh_eval.py exactly like the lookup; (3) the
   free-run calibration steps (A7 / B5) ONLY on training members; (4) speed: both learned designs are 10-25x slower than
   the lookup — shrink/distill before any full-Germany run.
+* **2026-10-02 (later session): A6 and B5 HANDED TO TWO BACKGROUND HELPERS** (no Workflow). A6 = `scripts/explore_de_tab_stepper.py` (arms A-L, A-L+phys, A-S, A-1step, A-k0) + smoke (20 cells, MPI ssp370 1985->2044) + free runs ACCESS s1 A-L/A-S/A-k0 + scoring. B5 = `scripts/explore_de_struct_stepper.py` (B-noacc as main because B4 acceptance is not built, B-noAR, climate-blind twin) + smoke + free runs + scoring; calibration NOT in this pass. Helpers do not commit. **If the session died: read `_status/A6.md`, `_status/B5.md`, `_reports/r2_A6.json`, `_reports/r2_B5.json` first, then `squeue -u jamirp`.**
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
