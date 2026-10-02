@@ -12,9 +12,14 @@ EMULATOR OUTPUT CONTRACT (either format; both reach the same scoring code)
       Longevity, agb (any others ignored; dtypes are cast). One row per individual per year, at least every
       LIVING tree taller than 5 m (rows with Type > 6, isdead == 1 or Height < 5 m are dropped by the scorer, so
       emitting them is harmless). Required columns gcm and scen, or pass --gcm/--scen for the whole submission.
-      Years map to windows h1985 1985-2014, w2015 2015-2044, w2071 2071-2100, w3071 3071-3100; years outside
-      them are ignored. Each window's statistic is normalised by the number of DISTINCT years the submission
-      has in that window (reported; a partial window is flagged) and by --npatch patches (default 250).
+      Years map to windows h1985 1985-2014 and w2015 2015-2044 (the CLEAN reference set, default; owner decision
+      2026-10-01). Years 2071-2100 / 3071-3100 (w2071 / w3071, EXCLUDED: wrong humidity setting in the original
+      runs) are dropped and listed in coverage.json excluded_windows_dropped; they are scored only with --refset full
+      (legacy, never evidence). Any other year (e.g. 2045-2070 of a free run continued to 2070) is dropped and listed
+      in coverage.json years_outside_windows, which points to the SH12 cell-aggregate check tables for those years.
+      A submission with no year in a scored window is refused with an explicit error. Each window's statistic is
+      normalised by the number of DISTINCT years the submission has in that window (reported; a partial window is
+      flagged) and by --npatch patches (default 250).
       Cells: the cells the run covered = --cells file (one int per line; SH14: rows of other cells are now
       FILTERED OUT, they used to abort the reduction) or, by default, every Cell that appears in the submission;
       a covered cell with no living tree in a window scores n_per_patch = 0 (coverage.json lists covered cells
@@ -25,18 +30,30 @@ EMULATOR OUTPUT CONTRACT (either format; both reach the same scoring code)
   (B) stats  -- the per-cell window statistics directly, long format: columns gcm, scen, window, Cell,
       quantity, value (quantity names as in explore_de_reference.QUANTITIES), or wide format: gcm, scen,
       window, Cell + one column per quantity. h1985 rows: scen "Historical" (or the ssp, as in (A)).
-  Responses (r2071 = w2071 - h1985, r2015 = w2015 - h1985) are computed by the scorer from the submission's
-  own levels. If the submission has no h1985 for a gcm, the reference truth-seed h1985 is used as its baseline
-  (flagged baseline=reference) -- i.e. a run initialised from the truth in 2014.
-  CONTRASTS (SH14): c2071 = X(scen, 2071-2100) - X(ssp126, 2071-2100) and c2015 likewise, scen in {ssp370,
-  ssp245}, computed from the submission's own levels whenever it carries that window for ssp126 AND the other
-  scenario of the same gcm (one call with both scenarios: a multi-scen roster, or a --manifest). c2071 is the
-  PRIMARY response statistic: CO2-free and free of the 2071 humidity-configuration switch (both legs share it).
-  r2071 contains both; ssp245 contrasts also contain the ssp245 binary change (never use them for H4).
+  Responses (r2015 = w2015 - h1985) are computed by the scorer from the submission's own levels. If the
+  submission has no h1985 for a gcm, the reference truth-seed h1985 is used as its baseline (flagged
+  baseline=reference) -- i.e. a run initialised from the truth in 2014. r2015 contains the 1985->2020 CO2 rise.
+  CONTRASTS: c2015 = X(scen, 2015-2044) - X(ssp126, 2015-2044), scen in {ssp370, ssp245}, computed from the
+  submission's own levels whenever it carries 2015-2044 for ssp126 AND the other scenario of the same gcm (one call
+  with both scenarios: a multi-scen roster, or a --manifest). c2015 ssp370 is the PRIMARY response statistic
+  (CO2-free; both legs share the humidity setting). ssp245 contrasts also contain the Feb-2026 binary change (never
+  for H4). The PRIMARY GATE (primary_gate.csv, printed) is block-scale c2015 ssp370 panel106, read like for like:
+  the arm's pass fraction in tolerance column X against PRIMARY_MARGIN (0.9) x the replica's pass fraction in the
+  SAME column X on the same rows (ceiling_same_*), for X = allowed_cal (in-sample calibration) and allowed_cal_xg
+  (calibration fitted on the other GCM). It is ASSESSABLE only for an arm whose scenario legs branch from the arm's
+  own 2014 state with COMMON random-number streams (--legs-branched yes), as the original model's legs do; for any
+  other arm the verdict is "not_assessable" and ceiling_unbr_lo/hi (both 0.000 for all-cell blocks) are printed
+  beside it.
+  TRUTH SEED / ROLE (SH14 repair 2): the truth seed of each (gcm, scen) is looked up in
+  <XDE>/shared/registry/test_pairs.parquet for --split (default DEV-A); a CLI --truth-seed that disagrees is refused
+  unless --truth-seed-override; a call mixing two registry truth seeds is refused (split it). Every summary row
+  carries the member's role from splits.parquet (train / train_twin / test_truth / test_ref ...), in_sample
+  (train, train_twin) and held_out (test_truth only); headline defaults to held-out rows (--members all for all).
 
 USAGE
   score --pred PATH --format roster|stats --label NAME [--gcm G] [--scen S] [--npatch 250] [--cells FILE]
-        [--scope all|covered] [--truth-seed 1|2] [--start-seed 1|2] [--out DIR]
+        [--scope all|covered] [--truth-seed 1|2 [--truth-seed-override]] [--split DEV-A] [--start-seed 1|2]
+        [--legs-branched yes|state-only|no|unknown] [--out DIR]
   score --manifest M.csv --label NAME [--format ...] [--cells FILE] [--fold-map F] [--truth-seed ..] ...
         manifest = POOLED CROSS-FIT mode: one row per prediction, columns pred (required), and optionally format,
         gcm, scen, cells (a cell-list file), fold (int; the cells of that fold in --fold-map, default
@@ -70,15 +87,25 @@ USAGE
     --start-year Y      the run was initialised from the truth roster of year Y: rows of Y are dropped (else the
                         truth's own roster is scored for 1/30 of h1985, or ALL of it for a 2014 start)
     --held-out-place    true|false|unknown: a whole-dev-set score of a model trained on those cells is IN-PLACE
-    --legs-branched     yes|no|unknown: the truth branches every scenario leg from ONE 2014 state with shared
-                        random numbers; an arm that does not must read contrasts against ceiling_unbr_lo/hi_* (the
-                        bracket for unbranched legs), not ceiling_same_*
+    --legs-branched     yes|state-only|no|unknown. yes = every scenario leg starts from the arm's OWN single 2014
+                        state AND uses common random-number streams (e.g. keyed by cell, patch, year, draw) -- the
+                        way the original model's legs do. Only then is the primary c2015 gate assessable. state-only
+                        = one 2014 state, independent random numbers after the branch: its ceiling is UNMEASURED
+                        (measure it with the armnoise command); no = legs from different states (bracket
+                        ceiling_unbr_lo/hi_*, 0.000 for all-cell blocks). Anything but yes -> verdict
+                        not_assessable, never 'failed'.
   SH14 REPAIR tolerance columns: allowed_cal1 (one multiplier per target kind), allowed_cal_xg / allowed_cal1_xg
     (fitted on the OTHER GCM: the replica's pass under these is an out-of-sample ceiling -- quote it beside every
     block number). The contrast calibration is fitted on ssp370 only. aggregate_response.csv: pass_same is passed
     by the replica by construction where the floor does not bind; read pass_floor_same against floor_binds_same and
     pass_same against p_indep_same_upper (headline: expected_indep_pass_same_determined).
-  headline [--label a,b]                  -> DIR/headline.csv (+ headline_aggregate_response.csv), light
+  headline [--label a,b] [--members held_out|all]  -> DIR/headline.csv (+ headline_aggregate_response.csv), light;
+                                          default held_out = only rows whose truth member is a test_truth
+  armnoise --manifest-a A.csv --manifest-b B.csv --label NAME [--cells F --scope covered] -> the contrast ceiling of
+        an arm with a SHARED 2014 state and INDEPENDENT random numbers per leg, measured from two runs of the arm that
+        differ only in their random streams (A, B: manifests as in score, each with ssp126 + ssp370 of one gcm).
+        Pseudo-prediction E* = C + (E_a - E_b)/sqrt(2) (optimistic: the truth's own leg noise is ignored) and
+        E** = R + (E_a - E_b)/sqrt(2) (pessimistic) -> DIR/<label>/armnoise_{cell,block}.csv
 Heavy (a full-Germany roster or `nulls`): run on SLURM.
 """
 
@@ -97,12 +124,21 @@ import polars as pl
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import explore_de_reference as R  # noqa: E402
 
-REFDIR = R.OUT
-DEFAULT_OUT = f"{R.OUT}/scores"
+REFDIR = R.REFOUT  # the selected reference set's directory (set_refset); reference/clean by default
+DEFAULT_OUT = f"{R.REFOUT}/scores"
 DEFAULT_FOLD_MAP = f"{R.XDE}/shared/registry/folds.parquet"
 LEVEL_WINDOWS = list(R.WINDOWS)
 SSPS = ["ssp126", "ssp245", "ssp370"]
 ROSTER_COLS = ["Year", "Cell", "Type", "isdead", "Height"] + [t for t in R.TRAITS if t != "Height"]
+REGISTRY = f"{R.XDE}/shared/registry"  # SH0 split registry: test_pairs.parquet (truth seed), splits.parquet (role)
+SH12_CHECK = f"{R.XDE}/shared/gap/check"  # SH12 cell-aggregate check tables for 2045-2070 (no tree table exists)
+DEFAULT_SPLIT = "DEV-A"
+IN_SAMPLE_ROLES = ("train", "train_twin")  # in_sample = the scored truth member was trained on (or is its twin)
+HELD_OUT_ROLES = ("test_truth",)  # held_out = the scored truth member is a registry test truth; test_ref (the other
+#   seed of a test pair, e.g. MPI ssp245 seed 1 whose 1985-2014 history is training data) is NEITHER
+PRIMARY_MARGIN = 0.9  # proposed acceptance wording: arm >= 0.9 x the replica in the SAME tolerance column
+PRIMARY_PANEL = "panel106"
+LEGS_ASSESSABLE = ("yes",)
 BLOCK_CACHE_VERSION = "v3"  # SH14 repair: tolerance tables gained cal1/cal_xg/cal1_xg + dev_unbr_*; never reuse v1/v2
 
 # (tolerance column, pass column). The first four are round 1; the last four are SH14 amendment 1.
@@ -136,15 +172,34 @@ TARGET_NOTE = {
     "r2015": "response vs 1985-2014; contains the 1985->2020 CO2 rise the emulator does not see",
     "r2071": "response vs 1985-2014; contains the 2071 humidity-configuration switch AND the CO2 rise",
     "c2015": "scenario contrast vs ssp126 at fixed gcm+seed, 2015-2044: CO2-free, same humidity config",
-    "c2071": "PRIMARY response: scenario contrast vs ssp126 at fixed gcm+seed, 2071-2100: CO2-free, same "
-             "humidity config in both legs",
+    "c2071": "scenario contrast vs ssp126 at fixed gcm+seed, 2071-2100: CO2-free, same humidity config in both "
+             "legs (the SH14 primary before the owner excluded 2071-2100)",
 }
+
+
+def set_refset(name: str) -> None:
+    """OWNER DECISION 2026-10-01: 'clean' (default) = 1985-2044 only, reference/clean/; 'full' = the legacy reference
+    incl. the excluded 2071-2100 / 3071-3100 windows (corrupted humidity setting -- never evidence)."""
+    global REFDIR, DEFAULT_OUT
+    R.set_refset(name)
+    REFDIR = R.REFOUT
+    DEFAULT_OUT = f"{R.REFOUT}/scores"
+    _TOL.clear()
 
 
 def target_note_expr() -> pl.Expr:
     base = pl.col("window").replace_strict(TARGET_NOTE, default="")
+    if R.REFSET == "clean":
+        base = pl.when(pl.col("window") == R.PRIMARY_CONTRAST).then(
+            pl.lit("PRIMARY response (clean set, ssp370): ") + base).otherwise(base)
+    else:
+        base = pl.when(pl.col("window").is_in(list(R.EXCLUDED_TARGETS))).then(
+            pl.lit("EXCLUDED BY OWNER DECISION 2026-10-01 (wrong humidity setting), legacy only: ") + base
+        ).otherwise(base)
     return (pl.when(pl.col("window").str.starts_with("c") & (pl.col("scen") == "ssp245"))
             .then(base + pl.lit("; ssp245 ran the Feb-2026 binary: scenario + binary contrast, not for H4"))
+            .when(pl.col("scen") == "ssp245")
+            .then(base + pl.lit("; ssp245 ran the Feb-2026 binary"))
             .otherwise(base).alias("target_note"))
 
 
@@ -177,14 +232,16 @@ def tolerance(scale: str = "cell", truth_seed: int = 1) -> pl.DataFrame:
 
 def block_reference_for(cells: list[int] | None, scope: str, truth_seed: int = 1) -> tuple[str, pl.DataFrame]:
     """Which block reference scores this submission: the full one (scope all), the dev one (scope covered with
-    exactly the Cell % 10 == 0 cells), else one built on the fly from the covered cells (cached, versioned)."""
+    exactly the cells the block_dev reference was built on -- read from its own mask, no hard-coded dev rule), else
+    one built on the fly from the covered cells (cached, versioned)."""
     sfx = _sfx(truth_seed)
     if scope == "all" or cells is None:
         return "block", pl.read_parquet(f"{REFDIR}/block/mask{sfx}.parquet")
     ref_cells = set(tolerance("cell").filter(pl.col("window") == "h1985")["Cell"].unique().to_list())
     cov = sorted(set(cells) & ref_cells)
-    if cov == sorted(c for c in ref_cells if c % 10 == 0):
-        return "block_dev", pl.read_parquet(f"{REFDIR}/block_dev/mask{sfx}.parquet")
+    dev_mask = pl.read_parquet(f"{REFDIR}/block_dev/mask{sfx}.parquet")
+    if cov == sorted(dev_mask["Cell"].unique().to_list()):
+        return "block_dev", dev_mask
     h = hashlib.sha1(",".join(map(str, cov)).encode()).hexdigest()[:16]
     name = f"{BLOCK_CACHE_VERSION}{sfx}_{h}"
     d = f"{REFDIR}/block_cache/{name}"
@@ -256,13 +313,16 @@ def roster_to_levels(path: str, gcm: str | None, scen: str | None, npatch: int,
     if drop_years:
         lf = lf.filter(~pl.col("Year").is_in([int(y) for y in drop_years]))
     years = lf.select(["gcm", "scen", "Year"]).unique().collect()
+    excl = _excluded_years(years)
+    outside = _years_outside(years)
     present = sorted(lf.select("Cell").unique().collect()["Cell"].to_list())
     if cells is None:
         cells = present
     cov = {"files": len(files), "cells_covered": len(cells), "cells_filter": cells_filter,
            "dropped_start_years": [int(y) for y in drop_years] if drop_years else [],
            "cells_without_any_row": sorted(set(cells) - set(present))[:50],
-           "n_cells_without_any_row": len(set(cells) - set(present)), "windows": []}
+           "n_cells_without_any_row": len(set(cells) - set(present)), "windows": [],
+           "reference_set": R.REFSET, "excluded_windows_dropped": excl, "years_outside_windows": outside}
     out = []
     for (g, s), yy in years.group_by(["gcm", "scen"]):
         for w, (y0, y1) in R.WINDOWS.items():
@@ -273,17 +333,22 @@ def roster_to_levels(path: str, gcm: str | None, scen: str | None, npatch: int,
             cov["windows"].append({"gcm": g, "scen": s, "window": w, "n_years": ny, "partial": ny < y1 - y0 + 1})
             cy = pl.DataFrame({"Cell": cells, "n_years": [ny] * len(cells)})
             parts = []
-            # chunk by cell blocks of 500 (bounded memory for a full-Germany roster)
-            for cb in sorted({c // 500 for c in cells}):
+            # chunk by cell partitions (bounded memory for a full-domain roster); size = R.CELLS_PER_PARTITION
+            cpp = int(R.CELLS_PER_PARTITION)
+            for cb in sorted({c // cpp for c in cells}):
                 trees = R.living(
                     lf.filter((pl.col("gcm") == g) & (pl.col("scen") == s) & pl.col("Year").is_between(y0, y1)
-                              & ((pl.col("Cell") // 500) == cb))
+                              & ((pl.col("Cell") // cpp) == cb))
                 ).collect()
-                parts.append(R.reduce_window(trees, cy.filter((pl.col("Cell") // 500) == cb), npatch))
+                parts.append(R.reduce_window(trees, cy.filter((pl.col("Cell") // cpp) == cb), npatch))
             wd = pl.concat(parts).with_columns(
                 pl.lit(g).alias("gcm"), pl.lit(s).alias("scen"), pl.lit(w).alias("window"))
             out.append(wd)
             log(f"roster reduced: {g} {s} {w} ({ny} years, {wd.height} cells)")
+    if not out:
+        raise SystemExit(
+            f"explore_de_score: the roster {path} has NO year in a scored window {dict(R.WINDOWS)} (reference set "
+            f"{R.REFSET}). Dropped: excluded windows {excl}; years outside every window {outside}. Nothing to score.")
     wide = pl.concat(out)
     return wide_to_long(wide), cov
 
@@ -293,6 +358,41 @@ def wide_to_long(wide: pl.DataFrame) -> pl.DataFrame:
     return wide.unpivot(index=["gcm", "scen", "window", "Cell"], on=q, variable_name="quantity",
                         value_name="value").with_columns(pl.col("Cell").cast(pl.Int32),
                                                          pl.col("value").cast(pl.Float64))
+
+
+def _excluded_years(years: pl.DataFrame) -> list[dict]:
+    """OWNER DECISION 2026-10-01: years of a submission that fall in an EXCLUDED window of the active reference set
+    are never scored (R.WINDOWS lacks them). Returns what was dropped, and prints a loud warning."""
+    out = []
+    for w, (y0, y1) in R.ALL_WINDOWS.items():
+        if w in R.WINDOWS:
+            continue
+        x = years.filter(pl.col("Year").is_between(y0, y1))
+        if x.height:
+            out.append({"window": w, "n_gcm_scen_years": x.height, "years": [int(x["Year"].min()),
+                                                                           int(x["Year"].max())]})
+            log(f"WARNING: {x.height} (gcm, scen, year) of window {w} ({y0}-{y1}) in the submission are NOT scored: "
+                f"{R.EXCLUSION_REASON}")
+    return out
+
+
+def _years_outside(years: pl.DataFrame) -> list[dict]:
+    """SH14 repair 2: years in NO window of ALL_WINDOWS (e.g. 2045-2070 of a free run continued to 2070, for which no
+    tree table exists). Never scored here; listed per (gcm, scen) with a pointer to the SH12 check tables."""
+    inw = pl.lit(False)
+    for y0, y1 in R.ALL_WINDOWS.values():
+        inw = inw | pl.col("Year").is_between(y0, y1)
+    x = years.filter(~inw)
+    if not x.height:
+        return []
+    out = []
+    for (g, sc), yy in x.group_by(["gcm", "scen"]):
+        ys = sorted(yy["Year"].to_list())
+        out.append({"gcm": g, "scen": sc, "n_years": len(ys), "years": [int(ys[0]), int(ys[-1])],
+                    "check_with": f"{SH12_CHECK} (cell aggregates 1985-2070, SH12)"})
+        log(f"NOTE: {len(ys)} years {ys[0]}-{ys[-1]} of {g} {sc} lie outside every scored window and are not scored "
+            f"here; check them on the SH12 cell aggregates in {SH12_CHECK}")
+    return sorted(out, key=lambda e: (e["gcm"], e["scen"]))
 
 
 def stats_to_levels(path: str, gcm: str | None, scen: str | None,
@@ -308,11 +408,24 @@ def stats_to_levels(path: str, gcm: str | None, scen: str | None,
                   pl.col("quantity"), pl.col("value").cast(pl.Float64)])
     unknown = set(d["quantity"].unique().to_list()) - set(R.QUANTITIES)
     assert not unknown, f"unknown quantities {sorted(unknown)}"
-    cov = {"cells_filter": cells is not None}
+    badw = set(d["window"].unique().to_list()) - set(R.ALL_WINDOWS)
+    assert not badw, f"unknown windows {sorted(badw)} (level windows only: {list(R.ALL_WINDOWS)})"
+    exw = sorted(set(d["window"].unique().to_list()) - set(R.WINDOWS))
+    excl = [{"window": w, "n_rows": int((d["window"] == w).sum())} for w in exw]
+    for e in excl:
+        log(f"WARNING: {e['n_rows']} rows of window {e['window']} are NOT scored: {R.EXCLUSION_REASON}")
+    d = d.filter(pl.col("window").is_in(list(R.WINDOWS)))
+    if not d.height:
+        raise SystemExit(
+            f"explore_de_score: the stats file {path} has NO row in a scored window {list(R.WINDOWS)} (reference set "
+            f"{R.REFSET}). Dropped rows of excluded windows: {excl}. Nothing to score.")
+    cov = {"cells_filter": cells is not None, "reference_set": R.REFSET, "excluded_windows_dropped": excl}
     if cells is not None:
         present = set(d["Cell"].unique().to_list())
         d = d.filter(pl.col("Cell").is_in(cells))
         cov["n_cells_without_any_row"] = len(set(cells) - present)
+        if not d.height:
+            raise SystemExit(f"explore_de_score: the stats file {path} has no row for any of the {len(cells)} --cells")
     cov["cells_covered"] = d["Cell"].n_unique()
     return d, cov
 
@@ -355,7 +468,129 @@ def manifest_to_levels(path: str, default_format: str, npatch: int, cells_global
     allp = allp.drop("_row")
     assert allp.select(k).n_unique() == allp.height
     return allp, {"manifest": path, "manifest_rows": rows, "cells_covered": allp["Cell"].n_unique(),
-                  "pooled_crossfit": True, "_cells_declared": sorted(declared) if declared else None}
+                  "pooled_crossfit": True, "_cells_declared": sorted(declared) if declared else None,
+                  "reference_set": R.REFSET,
+                  "excluded_windows_dropped": [dict(e, manifest_row=r["row"]) for r in rows
+                                               for e in r.get("excluded_windows_dropped", [])]}
+
+
+# ---------------------------------------------------------------------------------------------------------
+# SH14 repair 2: the split registry decides the truth seed and the train/test role of every member
+# ---------------------------------------------------------------------------------------------------------
+def _test_pairs(split: str) -> pl.DataFrame:
+    tp = pl.read_parquet(f"{REGISTRY}/test_pairs.parquet")
+    x = tp.filter(pl.col("split") == split)
+    assert x.height, f"split {split!r} not in {REGISTRY}/test_pairs.parquet (have {sorted(tp['split'].unique())})"
+    return x
+
+
+def resolve_truth_seed(lev: pl.DataFrame, split: str, cli: int | None, override: bool) -> tuple[int, dict]:
+    """The truth seed of every (gcm, ssp) of the submission is the registry's (test_pairs.parquet, this split).
+    Members absent from test_pairs are training members (in-sample; no constraint). Refuses a call that mixes two
+    registry truth seeds, and a CLI --truth-seed that disagrees with the registry unless override=True."""
+    tp = _test_pairs(split)
+    gs = lev.filter(pl.col("scen") != "Historical").select(["gcm", "scen"]).unique().sort(["gcm", "scen"])
+    j = gs.join(tp.select(["gcm", "scen", "truth_seed", "kind"]), on=["gcm", "scen"], how="left")
+    reg = {f"{g}|{sc}": (None if t is None else int(t)) for g, sc, t in j.select(["gcm", "scen", "truth_seed"])
+           .iter_rows()}
+    seeds = sorted({v for v in reg.values() if v is not None})
+    not_test = sorted(k for k, v in reg.items() if v is None)
+    info = {"split": split, "registry_truth_seed": reg, "members_not_in_test_pairs (training, in-sample)": not_test}
+    if len(seeds) > 1:
+        raise SystemExit(
+            f"explore_de_score: this submission mixes members whose registry truth seeds differ ({reg}, split {split})."
+            " Score them in separate calls, one per truth seed (e.g. MPI ssp245 with truth seed 2 apart from the "
+            "ACCESS-CM2 members with truth seed 1).")
+    if cli is None:
+        ts, src = (seeds[0], "registry") if seeds else (1, "default (no test member in the call)")
+    elif seeds and cli != seeds[0]:
+        if not override:
+            raise SystemExit(
+                f"explore_de_score: --truth-seed {cli} disagrees with the split registry (split {split}: {reg}). "
+                f"The registry's truth seed is {seeds[0]}: a hold-out scored against the seed whose history is "
+                "training data scores itself. Drop --truth-seed, or pass --truth-seed-override to force it.")
+        ts, src = cli, "cli_override_of_registry"
+        log(f"WARNING: --truth-seed {cli} OVERRIDES the registry truth seed {seeds[0]} (split {split})")
+    else:
+        ts, src = cli, "cli (agrees with registry)" if seeds else "cli (no test member in the call)"
+    if not_test:
+        log(f"NOTE: {not_test} are not test pairs of split {split}: training members, scored IN-SAMPLE")
+    info.update(truth_seed=ts, truth_seed_source=src)
+    return ts, info
+
+
+def member_roles(split: str, truth_seed: int) -> pl.DataFrame:
+    """(gcm, scen, window) -> role, in_sample for every target of this truth seed: levels from splits.parquet
+    (seed = truth seed), responses/contrasts take the role of their future window, scen Historical takes the most
+    in-sample role of that gcm's h1985 rows (train > train_twin > others)."""
+    sp = pl.read_parquet(f"{REGISTRY}/splits.parquet").filter(
+        (pl.col("split") == split) & (pl.col("seed") == int(truth_seed)))
+    lv = sp.select(["gcm", "scen", pl.col("win").alias("window"), "role"])
+    rank = {"train": 0, "train_twin": 1}
+    hist = []
+    for g, x in lv.filter(pl.col("window") == "h1985").group_by("gcm"):
+        roles = sorted(set(x["role"].to_list()), key=lambda r: (rank.get(r, 9), r))
+        hist.append({"gcm": g[0], "scen": "Historical", "window": "h1985", "role": roles[0]})
+    der = []
+    for t, w in list(R.ALL_RESPONSES.items()) + list(R.ALL_CONTRASTS.items()):
+        der.append(lv.filter(pl.col("window") == w).with_columns(pl.lit(t).alias("window")))
+    out = pl.concat([lv, pl.DataFrame(hist, schema=lv.schema)] + der).unique(["gcm", "scen", "window"])
+    return out.with_columns(pl.col("role").is_in(list(IN_SAMPLE_ROLES)).alias("in_sample"),
+                            pl.col("role").is_in(list(HELD_OUT_ROLES)).alias("held_out"))
+
+
+def add_roles(s: dict, roles: pl.DataFrame) -> dict:
+    """Join role / in_sample onto every summary table (criterion: the role of its w2015 member)."""
+    for k in ["quantity", "conjunctive"]:
+        if s.get(k) is not None and s[k].height:
+            s[k] = s[k].join(roles, on=["gcm", "scen", "window"], how="left").with_columns(
+                pl.col("role").fill_null("unknown"), pl.col("held_out").fill_null(False))
+    if s.get("criterion") is not None and s["criterion"].height:
+        rc = roles.filter(pl.col("window") == "w2015").drop("window")
+        s["criterion"] = s["criterion"].join(rc, on=["gcm", "scen"], how="left").with_columns(
+            pl.col("role").fill_null("unknown"), pl.col("held_out").fill_null(False))
+    return s
+
+
+def primary_gate(s: dict, scale: str, cov: dict) -> pl.DataFrame:
+    """The PRIMARY response gate, like for like: the arm's panel106 c2015 ssp370 conjunctive pass fraction in
+    tolerance column X against PRIMARY_MARGIN x the replica's pass fraction in the SAME column on the same rows
+    (ceiling_same_*). Binding column: allowed_cal_xg (calibration fitted on the other GCM, out of sample for the
+    replica); allowed_cal (in sample) beside it. Verdict not_assessable unless --legs-branched yes; in_sample when
+    the member is a training member; per-cell rows are informational (per-cell c2015 has no power)."""
+    c = s["conjunctive"].filter((pl.col("window") == R.PRIMARY_CONTRAST) & (pl.col("scen") == "ssp370")
+                                & (pl.col("panel") == PRIMARY_PANEL))
+    if not c.height:
+        return pl.DataFrame()
+    lb = cov.get("legs_branched", "unknown")
+    rows = []
+    for r in c.iter_rows(named=True):
+        rec = {"scale": scale, "gcm": r["gcm"], "scen": r["scen"], "window": r["window"], "panel": PRIMARY_PANEL,
+               "n_units": r["n_cells"], "role": r.get("role"), "in_sample": r.get("in_sample"),
+               "held_out": r.get("held_out"),
+               "legs_branched": lb, "margin": PRIMARY_MARGIN}
+        for tag, col in [("cal_xg", "all_pass_cal_xg_frac"), ("cal", "all_pass_cal_frac")]:
+            arm, ceil = r.get(col), r.get(f"ceiling_same_{col}")
+            rec[f"arm_{tag}"] = arm
+            rec[f"ceiling_same_{tag}"] = ceil
+            rec[f"ratio_{tag}"] = (arm / ceil) if (arm is not None and ceil) else None
+            rec[f"meets_{tag}"] = (arm is not None and ceil is not None and arm >= PRIMARY_MARGIN * ceil - 1e-12)
+            rec[f"ceiling_unbr_lo_{tag}"] = r.get(f"ceiling_unbr_lo_{col}")
+            rec[f"ceiling_unbr_hi_{tag}"] = r.get(f"ceiling_unbr_hi_{col}")
+        if lb not in LEGS_ASSESSABLE:
+            v = ("not_assessable: scenario legs not branched from the arm's own 2014 state with common random "
+                 "numbers (--legs-branched yes); at this noise level the test cannot tell skill from leg noise")
+        elif scale == "cell":
+            v = ("informational only: per-cell c2015 has no power (zero-contrast null passes more often than the "
+                 "replica)")
+        elif not r.get("held_out"):
+            v = (f"not_held_out (role {r.get('role')}): not evidence of skill ("
+                 + ("meets" if rec["meets_cal_xg"] else "misses") + " the bar)")
+        else:
+            v = "pass" if rec["meets_cal_xg"] else "fail"
+        rec["verdict"] = v
+        rows.append(rec)
+    return pl.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -488,24 +723,26 @@ def summarise(d: pl.DataFrame) -> dict[str, pl.DataFrame]:
         lead = by + ["n_cells", "n_quantities"] + [f"all_{p}_frac" for p in PASS_NAMES[:4]] + ["panel"]
         conj.append(c.select(lead + [f"all_{p}_frac" for p in PASS_NAMES[4:]]))
     conj = pl.concat(conj).sort(by + ["panel"]).with_columns(target_note_expr())
-    # the whole criterion per (gcm, scen) and cell: every panel quantity passes in h1985 + w2015 + w2071 + the
-    # response target. Round 1: r2071 (all ssps). SH14: also c2071 (ssp370/ssp245, the CO2-free response).
+    # the whole criterion per (gcm, scen) and cell: every panel quantity passes in h1985 + the future level
+    # window(s) + the response target. CLEAN set (default, owner decision 2026-10-01): h1985 + w2015 + r2015 or
+    # c2015 (c2015 = the primary, CO2-free response; ssp370/ssp245). FULL (legacy): h1985 + w2015 + w2071 + r2071
+    # or c2071 (round 1 + SH14).
     crit = []
     for g, s in d.filter(pl.col("scen") != "Historical").select(["gcm", "scen"]).unique().sort(
             ["gcm", "scen"]).iter_rows():
-        for rt in ["r2071", "c2071"]:
-            if rt == "c2071" and s not in R.CONTRAST_SCENS:
+        for rt in R.CRITERION_TARGETS:
+            if rt in R.CONTRASTS and s not in R.CONTRAST_SCENS:
                 continue
-            need = [("Historical", "h1985"), (s, "w2015"), (s, "w2071"), (s, rt)]
+            need = [("Historical", "h1985")] + [(s, w) for w in R.CRITERION_LEVELS] + [(s, rt)]
             x = d.filter(pl.col("gcm") == g).join(
                 pl.DataFrame({"scen": [a for a, _ in need], "window": [b for _, b in need]}), on=["scen", "window"])
             have = x.select(["scen", "window"]).unique().height
-            if rt == "c2071" and not x.filter(pl.col("window") == "c2071").height:
+            if rt in R.CONTRASTS and not x.filter(pl.col("window") == rt).height:
                 continue
             for pname in ["panel106", "extended"]:
                 y = x.filter(pl.col("quantity").is_in(GROUPS[pname])).group_by("Cell").agg(
                     *[pl.col(p).all().alias(p) for p in PASS_NAMES])
-                rec = {"gcm": g, "scen": s, "panel": pname, "targets_present": have, "targets_needed": 4,
+                rec = {"gcm": g, "scen": s, "panel": pname, "targets_present": have, "targets_needed": len(need),
                        "n_cells": y.height}
                 rec.update({f"all_{p}_frac": (y[p].mean() if y.height else None) for p in PASS_NAMES})
                 rec["response_target"] = rt
@@ -524,8 +761,8 @@ def aggregate_response(d: pl.DataFrame, truth_seed: int = 1) -> pl.DataFrame:
         .otherwise(pl.lit("north")).alias("region"), pl.col("Cell").cast(pl.Int32))
     x = d.filter(~pl.col("missing")).join(st, on="Cell")
     out = []
-    for reg in ["DE", "south", "central", "north"]:
-        y = x if reg == "DE" else x.filter(pl.col("region") == reg)
+    for reg in [R.REGION_ALL, "south", "central", "north"]:
+        y = x if reg == R.REGION_ALL else x.filter(pl.col("region") == reg)
         a = y.group_by(["gcm", "scen", "window", "quantity"]).agg(
             ((pl.col("E") * pl.col("area_km2_approx")).sum() / pl.col("area_km2_approx").sum()).alias("aggE"),
             ((pl.col("C") * pl.col("area_km2_approx")).sum() / pl.col("area_km2_approx").sum()).alias("aggC_scored"),
@@ -548,8 +785,8 @@ def aggregate_response(d: pl.DataFrame, truth_seed: int = 1) -> pl.DataFrame:
     # max(10 % |aggC_same|, |aggC_same - aggR_same|), sn_same, determined_same, pass_same.
     xs = x.filter(pl.col("R").is_not_null())
     outs = []
-    for reg in ["DE", "south", "central", "north"]:
-        y = xs if reg == "DE" else xs.filter(pl.col("region") == reg)
+    for reg in [R.REGION_ALL, "south", "central", "north"]:
+        y = xs if reg == R.REGION_ALL else xs.filter(pl.col("region") == reg)
         w = pl.col("area_km2_approx")
         outs.append(y.group_by(["gcm", "scen", "window", "quantity"]).agg(
             ((pl.col("E") * w).sum() / w.sum()).alias("aggE_same"),
@@ -637,7 +874,7 @@ def add_ceiling_same(s: dict, d: pl.DataFrame) -> dict:
                                                       for p in PASS_NAMES])
             s["conjunctive"] = s["conjunctive"].join(ce, on=["gcm", "scen", "window", "panel"], how="left")
             if s["criterion"].height and cu["criterion"].height:
-                cc = cu["criterion"].filter(pl.col("response_target") == "c2071").select(
+                cc = cu["criterion"].filter(pl.col("response_target").is_in(list(R.CONTRASTS))).select(
                     ["gcm", "scen", "panel", "response_target"] + [
                         pl.col(f"all_{p}_frac").alias(f"ceiling_unbr_{tag}_all_{p}_frac") for p in PASS_NAMES])
                 s["criterion"] = s["criterion"].join(cc, on=["gcm", "scen", "panel", "response_target"], how="left")
@@ -645,8 +882,10 @@ def add_ceiling_same(s: dict, d: pl.DataFrame) -> dict:
 
 
 def run_score(pred_levels: pl.DataFrame, label: str, out: str, cov: dict, quiet: bool = False,
-              scope: str = "all", truth_seed: int = 1, cells_declared: list[int] | None = None) -> dict:
+              scope: str = "all", truth_seed: int = 1, cells_declared: list[int] | None = None,
+              split: str = DEFAULT_SPLIT) -> dict:
     t0 = time.time()
+    roles = member_roles(split, truth_seed)
     od = f"{out}/{label}"
     os.makedirs(od, exist_ok=True)
     targets, prov = make_targets(pred_levels, "cell", truth_seed)
@@ -655,11 +894,13 @@ def run_score(pred_levels: pl.DataFrame, label: str, out: str, cov: dict, quiet:
     isna = label.startswith("null_a_other_seed")
     s = add_ceiling_same(add_ceiling(dict(summarise(d), _is_null_a=isna), out, "", truth_seed), d)
     s.pop("_is_null_a", None)
+    s = add_roles(s, roles)
     s["quantity"].write_csv(f"{od}/summary_quantity.csv")
     s["conjunctive"].write_csv(f"{od}/summary_conjunctive.csv")
     if s["criterion"].height:
         s["criterion"].write_csv(f"{od}/summary_criterion.csv")
-    ag = aggregate_response(d, truth_seed)
+    ag = aggregate_response(d, truth_seed).join(roles, on=["gcm", "scen", "window"], how="left").with_columns(
+        pl.col("role").fill_null("unknown"), pl.col("held_out").fill_null(False))
     ag.write_csv(f"{od}/aggregate_response.csv")
     # ---- block scale (same code, blocks in place of cells)
     # SH14 repair: the block reference is chosen from the DECLARED cells when given, so a declared cell the
@@ -673,12 +914,24 @@ def run_score(pred_levels: pl.DataFrame, label: str, out: str, cov: dict, quiet:
     bd.write_parquet(f"{od}/block/cells.parquet")
     bs = add_ceiling_same(add_ceiling(dict(summarise(bd), _is_null_a=isna), out, "block/", truth_seed), bd)
     bs.pop("_is_null_a", None)
+    bs = add_roles(bs, roles)
     bs["quantity"].write_csv(f"{od}/block/summary_quantity.csv")
     bs["conjunctive"].write_csv(f"{od}/block/summary_conjunctive.csv")
     if bs["criterion"].height:
         bs["criterion"].write_csv(f"{od}/block/summary_criterion.csv")
     ss = cov.get("start_seed")
-    cov = dict(cov, label=label, baselines=prov, scope=scope, truth_seed=int(truth_seed),
+    pg = [x for x in [primary_gate(bs, "block", cov), primary_gate(s, "cell", cov)] if x.height]
+    pg = pl.concat(pg, how="diagonal_relaxed") if pg else pl.DataFrame()
+    if pg.height:
+        pg.write_csv(f"{od}/primary_gate.csv")
+    cov = dict(cov, label=label, baselines=prov, scope=scope, truth_seed=int(truth_seed), split=split,
+               member_roles=s["conjunctive"].select(["gcm", "scen", "window", "role", "in_sample", "held_out"]).unique()
+               .sort(["gcm", "scen", "window"]).to_dicts(),
+               primary_gate=pg.to_dicts() if pg.height else "no c2015 ssp370 target in this call (needs ssp126 + "
+                                                            "ssp370 of one gcm in ONE call)",
+               reference_set=R.REFSET, reference_dir=REFDIR, scored_targets=sorted(d["window"].unique().to_list()),
+               excluded_targets=[] if R.REFSET == "full" else list(R.EXCLUDED_TARGETS),
+               primary_response=f"{R.PRIMARY_CONTRAST} (ssp370 - ssp126)",
                start_state_shared_with_truth=(None if ss is None else int(ss) == int(truth_seed)),
                held_out_place=cov.get("held_out_place", "unknown"), legs_branched=cov.get("legs_branched", "unknown"),
                n_cells_declared=None if cells_declared is None else len(cells_declared),
@@ -688,15 +941,31 @@ def run_score(pred_levels: pl.DataFrame, label: str, out: str, cov: dict, quiet:
     json.dump(cov, open(f"{od}/coverage.json", "w"), indent=1, default=str)
     if not quiet:
         print_summary(label, s, ag, bs, cov)
-    return {"cells": d, **s, "aggregate": ag, "coverage": cov, "block": {"cells": bd, **bs}}
+        if pg.height:
+            with pl.Config(tbl_rows=50, tbl_cols=30, tbl_width_chars=250, float_precision=3, fmt_str_lengths=60):
+                print(f"PRIMARY GATE ({R.PRIMARY_CONTRAST} ssp370, {PRIMARY_PANEL}; binding: arm cal_xg >= "
+                      f"{PRIMARY_MARGIN} x replica cal_xg on the same rows; the unbranched brackets beside):")
+                print(pg.select(["scale", "gcm", "role", "legs_branched", "arm_cal_xg", "ceiling_same_cal_xg",
+                                 "ratio_cal_xg", "arm_cal", "ceiling_same_cal", "ratio_cal", "ceiling_unbr_lo_cal_xg",
+                                 "ceiling_unbr_hi_cal_xg", "verdict"]))
+    return {"cells": d, **s, "aggregate": ag, "coverage": cov, "block": {"cells": bd, **bs}, "primary_gate": pg}
 
 
 def print_summary(label: str, s: dict, ag: pl.DataFrame, bs: dict | None = None, cov: dict | None = None) -> None:
     print(f"\n===== {label} =====")
+    if R.REFSET == "full":
+        print("!!! REFERENCE SET 'full' (legacy): contains the 2071-2100 / 3071-3100 windows the owner EXCLUDED on "
+              "2026-10-01 (wrong humidity setting). Do not quote w2071/w3071/r2071/c2071 numbers as evidence. !!!")
+    else:
+        print(f"reference set: clean (1985-2044 only); primary response = {R.PRIMARY_CONTRAST} ssp370 - ssp126")
+    if cov is not None and cov.get("excluded_windows_dropped"):
+        print(f"!!! submitted rows of EXCLUDED windows were dropped, not scored: {cov['excluded_windows_dropped']}")
     if cov is not None:
         print(f"held_out_place = {cov.get('held_out_place')}  (anything but 'true' is IN-PLACE: not evidence of skill "
-              f"on unseen places) | legs_branched = {cov.get('legs_branched')}  (not 'yes' -> read contrasts against "
-              f"ceiling_unbr_lo/hi_*, not ceiling_same_*) | start_seed = {cov.get('start_seed')}, "
+              f"on unseen places) | legs_branched = {cov.get('legs_branched')}  (not 'yes' = one 2014 state AND "
+              f"common random numbers -> the primary contrast gate is NOT ASSESSABLE; ceiling_unbr_lo/hi_* beside) | "
+              f"truth seed {cov.get('truth_seed')} ({(cov.get('truth_seed_resolution') or {}).get('truth_seed_source')}"
+              f") | start_seed = {cov.get('start_seed')}, "
               f"start_state_shared_with_truth = {cov.get('start_state_shared_with_truth')}, dropped start years = "
               f"{cov.get('dropped_start_years', [])}")
     with pl.Config(tbl_rows=400, tbl_cols=12, fmt_str_lengths=30, float_precision=3, tbl_width_chars=200):
@@ -710,10 +979,12 @@ def print_summary(label: str, s: dict, ag: pl.DataFrame, bs: dict | None = None,
                       + "  (ceiling = the other seed on the same rows: summary_conjunctive.csv ceiling_same_*)")
                 print(c.pivot(on="panel", index=["gcm", "scen", "window"], values=col).sort(["gcm", "scen", "window"]))
             if ss["criterion"].height:
-                print(f"[{scale}] whole criterion (h1985 + w2015 + w2071 + response target, every panel quantity):")
+                print(f"[{scale}] whole criterion (h1985 + {' + '.join(R.CRITERION_LEVELS)} + response target, "
+                      f"every panel quantity):")
                 print(ss["criterion"].select(["gcm", "scen", "panel", "response_target", "n_cells", "all_pass_frac",
                                               "all_pass_cal_frac", "all_pass_cal_xg_frac", "all_pass_cal1_xg_frac"]))
-        a = ag.filter((pl.col("region") == "DE") & pl.col("window").is_in(["r2071", "c2071"]) &
+        a = ag.filter((pl.col("region") == R.REGION_ALL)
+                      & pl.col("window").is_in(list(R.RESPONSES) + list(R.CONTRASTS)) &
                       pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50", "D95max_q50",
                                                 "minwscal_q50", "Height_q50", "share_3"]))
         if a.height:
@@ -727,14 +998,15 @@ def print_summary(label: str, s: dict, ag: pl.DataFrame, bs: dict | None = None,
 def frozen_levels(gcm_seed_year: list[tuple[str, int, int]]) -> pl.DataFrame:
     parts = []
     for g, sd, y in gcm_seed_year:
-        w = pl.read_parquet(f"{REFDIR}/frozen/{g}_s{sd}_y{y}.parquet")
+        w = pl.read_parquet(f"{R.OUT}/frozen/{g}_s{sd}_y{y}.parquet")  # frozen rosters: shared by both sets
         parts.append(w.select(["Cell"] + R.QUANTITIES).with_columns(pl.lit(g).alias("gcm")))
     w = pl.concat(parts)
     return w.unpivot(index=["gcm", "Cell"], on=R.QUANTITIES, variable_name="quantity", value_name="value") \
         .with_columns(pl.col("Cell").cast(pl.Int32), pl.col("value").cast(pl.Float64))
 
 
-def nulls(out: str, truth_seed: int = 1, cells: list[int] | None = None, scope: str = "all") -> int:
+def nulls(out: str, truth_seed: int = 1, cells: list[int] | None = None, scope: str = "all",
+          split: str = DEFAULT_SPLIT) -> int:
     ts, ots = int(truth_seed), 3 - int(truth_seed)
     sfx = _sfx(ts)
     lv = pl.read_parquet(f"{REFDIR}/levels_long.parquet")
@@ -749,8 +1021,11 @@ def nulls(out: str, truth_seed: int = 1, cells: list[int] | None = None, scope: 
     res = {}
 
     def run(pred, name, meta):
-        res[name] = run_score(pred, name, out, dict(meta, cells_given=cells is not None), scope=scope,
-                              truth_seed=ts)
+        # every null's scenario legs are either the original model's own (branched, common random numbers) or
+        # identical (zero contrast): the primary gate is assessable for all of them
+        res[name] = run_score(pred, name, out, dict(meta, cells_given=cells is not None, legs_branched="yes"),
+                              scope=scope,
+                              truth_seed=ts, split=split)
 
     # (a) the other seed predicting the truth seed (every valid window; responses/contrasts from its own levels)
     run(s2, f"null_a_other_seed{sfx}", {"null": f"seed {ots} levels as prediction of seed {ts}"})
@@ -759,14 +1034,17 @@ def nulls(out: str, truth_seed: int = 1, cells: list[int] | None = None, scope: 
     h = s1.filter(pl.col("window") == "h1985")
     parts = []
     for scen in SSPS:
-        for w in ["w2015", "w2071"]:
+        for w in R.NULL_FUTURE_WINDOWS:
             parts.append(h.with_columns(pl.lit(scen).alias("scen"), pl.lit(w).alias("window")))
     pers = pl.concat(parts).select(s1.columns)
-    run(pers, f"null_b_persistence{sfx}", {"null": f"seed-{ts} h1985 levels predicting w2015/w2071; response = 0; "
+    run(pers, f"null_b_persistence{sfx}", {"null": f"seed-{ts} h1985 levels predicting "
+                                                    f"{'/'.join(R.NULL_FUTURE_WINDOWS)}; response = 0; "
                                                     "scenario contrast = 0"})
-    # (d) equilibrium: truth 2071-2100 predicting truth 3071-3100 (same gcm, scen)
-    eq = s1.filter(pl.col("window") == "w2071").with_columns(pl.lit("w3071").alias("window"))
-    run(eq, f"null_d_equilibrium{sfx}", {"null": f"seed-{ts} w2071 levels predicting w3071"})
+    # (d) equilibrium: truth 2071-2100 predicting truth 3071-3100 (same gcm, scen) -- FULL (legacy) set only; both
+    #     windows are excluded by the owner decision of 2026-10-01, so the clean set has no equilibrium null
+    if "w3071" in R.WINDOWS:
+        eq = s1.filter(pl.col("window") == "w2071").with_columns(pl.lit("w3071").alias("window"))
+        run(eq, f"null_d_equilibrium{sfx}", {"null": f"seed-{ts} w2071 levels predicting w3071"})
     # (e) spatial null: every cell gets the Germany-wide area-weighted truth mean of its target (all windows;
     #     the mean is over ALL reference cells even when scoring a cell subset)
     m = truth_all.join(st, on="Cell").group_by(["gcm", "scen", "window", "quantity"]).agg(
@@ -789,9 +1067,10 @@ def nulls(out: str, truth_seed: int = 1, cells: list[int] | None = None, scope: 
             {"null": f"seed-{from_seed} living 1985 roster frozen: h1985 + w2015 (response r2015 = 0)",
              "start_seed": from_seed})
         p14 = [f14.with_columns(pl.lit(sc).alias("scen"), pl.lit(w).alias("window")) for sc in SSPS
-               for w in ["w2015", "w2071"]]
+               for w in R.NULL_FUTURE_WINDOWS]
         run(pl.concat(p14).select(s1.columns), f"null_g_frozen2014_from_s{from_seed}{sfx}",
-            {"null": f"seed-{from_seed} living 2014 roster frozen: w2015 + w2071 (baseline = reference truth h1985)",
+            {"null": f"seed-{from_seed} living 2014 roster frozen: {' + '.join(R.NULL_FUTURE_WINDOWS)} "
+                     "(baseline = reference truth h1985; scenario contrast = 0)",
              "start_seed": from_seed})
     # one compact table across nulls
     allc = pl.concat([r["conjunctive"].with_columns(pl.lit(n).alias("null")) for n, r in res.items()],
@@ -807,7 +1086,73 @@ def nulls(out: str, truth_seed: int = 1, cells: list[int] | None = None, scope: 
     ballc.write_csv(f"{out}/nulls_conjunctive_block{sfx}.csv")
     pl.concat([r["aggregate"].with_columns(pl.lit(n).alias("null")) for n, r in res.items()]).write_csv(
         f"{out}/nulls_aggregate{sfx}.csv")
+    rgates = [r["primary_gate"].with_columns(pl.lit(n).alias("null")) for n, r in res.items()
+              if r["primary_gate"].height]
+    if rgates:
+        pl.concat(rgates, how="diagonal_relaxed").write_csv(f"{out}/nulls_primary_gate{sfx}.csv")
     log(f"nulls{sfx} done ({len(res)} nulls, out={out})")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------------------
+# armnoise: the contrast ceiling of an arm with ONE 2014 state and INDEPENDENT random numbers per leg
+# ---------------------------------------------------------------------------------------------------------
+def _armnoise_scale(ta: pl.DataFrame, tb: pl.DataFrame, scale: str, truth_seed: int) -> pl.DataFrame:
+    k = ["gcm", "scen", "window", "Cell", "quantity"]
+    tol = tolerance(scale, truth_seed).filter(pl.col("target_kind") == "contrast")
+    x = tol.join(ta.rename({"value": "Ea"}), on=k, how="inner").join(tb.rename({"value": "Eb"}), on=k, how="inner")
+    half = (pl.col("Ea") - pl.col("Eb")) / 2 ** 0.5
+    res = []
+    for tag, base in [("opt", pl.col("C")), ("pess", pl.col("R"))]:
+        y = _passes(x.with_columns((base + half).alias("E"), (base + half).is_null().alias("missing")))
+        c = y.filter(pl.col("quantity").is_in(GROUPS[PRIMARY_PANEL])).group_by(["gcm", "scen", "window", "Cell"]).agg(
+            *[pl.col(p).all().alias(p) for p in PASS_NAMES]).group_by(["gcm", "scen", "window"]).agg(
+            pl.len().alias("n_units"), *[pl.col(p).mean().alias(f"all_{p}_frac") for p in PASS_NAMES])
+        res.append(c.with_columns(pl.lit(tag).alias("bracket"), pl.lit(scale).alias("scale")))
+    # and the replica on the same rows (like-for-like reference)
+    yr = _passes(x.with_columns(pl.col("R").alias("E"), pl.col("R").is_null().alias("missing")))
+    c = yr.filter(pl.col("quantity").is_in(GROUPS[PRIMARY_PANEL])).group_by(["gcm", "scen", "window", "Cell"]).agg(
+        *[pl.col(p).all().alias(p) for p in PASS_NAMES]).group_by(["gcm", "scen", "window"]).agg(
+        pl.len().alias("n_units"), *[pl.col(p).mean().alias(f"all_{p}_frac") for p in PASS_NAMES])
+    res.append(c.with_columns(pl.lit("replica_same_rows").alias("bracket"), pl.lit(scale).alias("scale")))
+    sd = x.group_by(["gcm", "scen", "window", "quantity"]).agg(
+        ((pl.col("Ea") - pl.col("Eb")).abs() / 2 ** 0.5).median().alias("arm_leg_noise_med"),
+        (pl.col("C") - pl.col("R")).abs().median().alias("truth_two_seed_spread_med"))
+    return pl.concat(res, how="diagonal_relaxed").sort(["gcm", "scen", "window", "bracket"]), sd
+
+
+def armnoise(man_a: str, man_b: str, label: str, out: str, fmt: str, npatch: int, cells: list[int] | None,
+             fold_map: str, scope: str, split: str, cli_ts: int | None, override: bool,
+             start_years: list[int] | None) -> int:
+    """Two runs of ONE arm from the same 2014 state that differ only in their random streams (A, B: manifests with
+    ssp126 + ssp370 of one gcm). Their contrast difference (E_a - E_b)/sqrt(2) is the arm's own leg noise; adding it
+    to the truth (opt: E* = C + ..., ignores the truth's own noise) or to the replica (pess: E** = R + ...) and
+    scoring through the same pass test gives the bracket an arm with a shared state and independent random
+    numbers can reach. Writes DIR/<label>/armnoise_{cell,block}.csv and _legnoise_{cell,block}.csv."""
+    la, ca = manifest_to_levels(man_a, fmt, npatch, cells, fold_map, start_years)
+    lb, cb = manifest_to_levels(man_b, fmt, npatch, cells, fold_map, start_years)
+    ts, tsinfo = resolve_truth_seed(la, split, cli_ts, override)
+    ta, _ = make_targets(la, "cell", ts)
+    tb, _ = make_targets(lb, "cell", ts)
+    od = f"{out}/{label}"
+    os.makedirs(od, exist_ok=True)
+    rc, sc = _armnoise_scale(ta, tb, "cell", ts)
+    decl = cells if (scope == "covered" and cells is not None) else (ca.get("_cells_declared") if scope == "covered"
+                                                                    else None)
+    cl = decl if decl is not None else sorted(la["Cell"].unique().to_list())
+    bscale, mask = block_reference_for(cl, scope, ts)
+    tba, _ = make_targets(pred_to_blocks(la, mask), bscale, ts)
+    tbb, _ = make_targets(pred_to_blocks(lb, mask), bscale, ts)
+    rb, sb = _armnoise_scale(tba, tbb, bscale, ts)
+    rc.write_csv(f"{od}/armnoise_cell.csv")
+    rb.write_csv(f"{od}/armnoise_block.csv")
+    sc.write_csv(f"{od}/armnoise_legnoise_cell.csv")
+    sb.write_csv(f"{od}/armnoise_legnoise_block.csv")
+    json.dump({"manifest_a": man_a, "manifest_b": man_b, "truth_seed_resolution": tsinfo, "block_reference": bscale,
+               "scope": scope}, open(f"{od}/armnoise_coverage.json", "w"), indent=1, default=str)
+    with pl.Config(tbl_rows=60, tbl_width_chars=220, float_precision=3):
+        print(pl.concat([rc, rb], how="diagonal_relaxed").select(
+            ["scale", "gcm", "scen", "window", "bracket", "n_units", "all_pass_cal_frac", "all_pass_cal_xg_frac"]))
     return 0
 
 
@@ -828,15 +1173,26 @@ def _cmp_cells(a: pl.DataFrame, b: pl.DataFrame, cols: list[str]) -> dict:
     rec = {"rows_a": a.height, "rows_b": b.height, "rows_joined": j.height, "unmatched": unmatched}
     bad = 0
     for c in cols:
-        if a.schema[c] == pl.Boolean:
-            nb = int((j[c] != j[f"{c}_r"]).sum() or 0)
+        if a.schema[c] in (pl.Boolean, pl.Utf8, pl.String):
+            nb = int((j[c].cast(pl.Utf8) != j[f"{c}_r"].cast(pl.Utf8)).fill_null(False).sum() or 0) \
+                + int((j[c].is_null() != j[f"{c}_r"].is_null()).sum())
             rec[f"diff_{c}"] = nb
             bad += nb
         else:
             nn = int((j[c].is_null() != j[f"{c}_r"].is_null()).sum())
-            v = j.select(_maxrel(pl.col(c), pl.col(f"{c}_r"))).item()
+            # NaN-aware (SH14 clean): NaN == NaN and inf == inf are equal; NaN/inf against anything else is a miss;
+            # finite pairs within 1e-12 relative (a NaN max_rel used to pass silently)
+            x, y = pl.col(c), pl.col(f"{c}_r")
+            both = j.filter(x.is_not_null() & y.is_not_null())
+            nanm = int((both[c].is_nan() != both[f"{c}_r"].is_nan()).sum()) if both.height else 0
+            infm = both.filter((x.is_infinite() | y.is_infinite()) & ~(x.is_nan() | y.is_nan()) & (x != y)).height \
+                if both.height else 0
+            fin = both.filter(x.is_finite() & y.is_finite())
+            v = fin.select(_maxrel(x, y)).item() if fin.height else 0.0
             rec[f"maxrel_{c}"] = v
-            bad += int((v or 0.0) > 1e-12) + nn
+            if nanm or infm:
+                rec[f"naninf_mismatch_{c}"] = nanm + infm
+            bad += int((v or 0.0) > 1e-12) + nn + nanm + infm
     rec["mismatches"] = bad
     rec["ok"] = bad == 0 and a.height == b.height == j.height and unmatched == 0
     return rec
@@ -906,31 +1262,33 @@ def selftest(out: str) -> int:
             rec[f"B_null_a{sfx}_{sub or 'cell/'}pass_cell_abs"] = fr
             rec[f"B_null_a{sfx}_{sub or 'cell/'}levels_pass_cell_round1"] = frl
             checks[f"B_symmetric{sfx}_{sub or 'cell/'}"] = fr == 1.0
-    # ---- (C) contrasts via a two-row manifest of seed-2 dev rosters (MPI ssp126 + ssp370, 2071-2100)
-    sd = f"{R.XDE}/shared/scorer/selftest"
+    # ---- (C) contrasts via a two-row manifest of seed-2 dev rosters (MPI ssp126 + ssp370, the primary contrast's
+    #      window: 2015-2044 in the clean set, 2071-2100 in the legacy full set)
+    pc, pw = R.PRIMARY_CONTRAST, R.CONTRASTS[R.PRIMARY_CONTRAST]
+    sd = f"{R.XDE}/shared/scorer/selftest" + ("" if R.REFSET == "full" else "_clean")
     os.makedirs(sd, exist_ok=True)
     man = f"{sd}/manifest_contrast.csv"
-    pl.DataFrame({"pred": [f"{R.XDE}/ind_dev/MPI-ESM1-2-HR_{s}_s2_w2071.parquet" for s in ["ssp126", "ssp370"]],
+    pl.DataFrame({"pred": [f"{R.XDE}/ind_dev/MPI-ESM1-2-HR_{s}_s2_{pw}.parquet" for s in ["ssp126", "ssp370"]],
                   "gcm": ["MPI-ESM1-2-HR"] * 2, "scen": ["ssp126", "ssp370"], "format": ["roster"] * 2}).write_csv(man)
     lc, cc = manifest_to_levels(man, "roster", R.NPATCH, cells, DEFAULT_FOLD_MAP)
     rc = run_score(lc, "selftest_contrast_s2_dev", out, cc, quiet=True, scope="covered")
     for scale_name, tab in [("cell", rc["cells"]), ("block", rc["block"]["cells"])]:
-        x = tab.filter((pl.col("window") == "c2071") & pl.col("R").is_not_null())
+        x = tab.filter((pl.col("window") == pc) & pl.col("R").is_not_null())
         mr = x.select(_maxrel(pl.col("E"), pl.col("R"))).item() if x.height else None
         rec[f"C_contrast_{scale_name}_rows"] = x.height
         rec[f"C_contrast_{scale_name}_max_rel_E_vs_R"] = mr
         checks[f"C_contrast_{scale_name}"] = x.height > 0 and mr is not None and mr < 1e-9 \
             and int(x["missing"].sum()) == 0
     if os.path.exists(na):
-        a = pl.read_parquet(na).filter((pl.col("window") == "c2071") & (pl.col("gcm") == "MPI-ESM1-2-HR")
+        a = pl.read_parquet(na).filter((pl.col("window") == pc) & (pl.col("gcm") == "MPI-ESM1-2-HR")
                                        & (pl.col("scen") == "ssp370") & pl.col("Cell").is_in(cells))
-        b = rc["cells"].filter(pl.col("window") == "c2071")
+        b = rc["cells"].filter(pl.col("window") == pc)
         jj = a.join(b, on=["gcm", "scen", "window", "Cell", "quantity"], suffix="_r")
         rec["C_pass_mismatch_vs_null_a"] = int(sum(int((jj[p] != jj[f"{p}_r"]).sum()) for p in PASS_NAMES))
         rec["C_rows_vs_null_a"] = jj.height
         checks["C_vs_null_a"] = rec["C_pass_mismatch_vs_null_a"] == 0 and jj.height == b.height > 0
     # (H) on a prediction equal to the replica, ceiling_same == own fractions
-    cj = rc["conjunctive"].filter(pl.col("window").is_in(["c2071", "w2071"]))
+    cj = rc["conjunctive"].filter(pl.col("window").is_in([pc, pw]))
     dd = cj.select([(pl.col(f"all_{p}_frac") - pl.col(f"ceiling_same_all_{p}_frac")).abs().max().alias(p)
                     for p in PASS_NAMES]).row(0)
     rec["H_ceiling_same_max_abs_diff"] = max(dd)
@@ -980,7 +1338,7 @@ def selftest(out: str) -> int:
     rec["F_block_reference"] = rf5["coverage"]["block_reference"]
     checks["F_cells_filter"] = rec["F_cells_filter_cell"]["ok"]
     # ---- (G) frozen: 20 dev cells, seed-1 2014 living roster repeated over 2015-2044 -> roster path
-    fz = pl.read_parquet(f"{REFDIR}/frozen/MPI-ESM1-2-HR_s1_y2014.parquet")
+    fz = pl.read_parquet(f"{R.OUT}/frozen/MPI-ESM1-2-HR_s1_y2014.parquet")  # shared by both sets
     c20 = cells[::45][:20]
     t14 = R.living(pl.scan_parquet(f1).select(R.READ_COLS).filter((pl.col("Year") == 2014)
                                                                     & pl.col("Cell").is_in(c20))).collect()
@@ -1001,7 +1359,8 @@ def selftest(out: str) -> int:
     import numpy as np
 
     lv = pl.read_parquet(f"{REFDIR}/levels_long.parquet").filter(
-        pl.col("valid") & pl.col("scen").is_in(["ssp126", "ssp370"]) & pl.col("window").is_in(["w2015", "w2071"]))
+        pl.col("valid") & pl.col("scen").is_in(["ssp126", "ssp370"])
+        & pl.col("window").is_in(list(R.CONTRASTS.values())))
     tolc = tolerance("cell").filter((pl.col("target_kind") == "contrast") & (pl.col("scen") == "ssp370"))
     irec = {}
     for cname, wname in R.CONTRASTS.items():
@@ -1046,6 +1405,157 @@ def selftest(out: str) -> int:
     ll, cl = roster_to_levels(f, "MPI-ESM1-2-HR", "Historical", R.NPATCH, cells, [1985])
     rec["L_windows"] = cl["windows"]
     checks["L_start_year_dropped"] = cl["windows"][0]["n_years"] == 29 and cl["dropped_start_years"] == [1985]
+    # ---- (M) OWNER DECISION 2026-10-01 (clean set): the excluded windows are refused. (M1) no reference table of the
+    #      clean set carries an excluded target; (M2) a roster with 2071-2100 rows scores only 2015-2044 and flags the
+    #      dropped years; (M3) a stats submission with a w2071 row likewise; (M4) the clean set's level/response/
+    #      contrast rows carry exactly the full set's C and R and every NON-calibrated tolerance column (strata are per
+    #      window, so only the calibration multipliers, which pooled the corrupted windows, may differ).
+    if R.REFSET == "clean":
+        bad = {}
+        for sub in ["", "block/", "block_dev/"]:
+            for sfx in ["", "_t2"]:
+                fp = f"{REFDIR}/{sub}tolerance{sfx}.parquet"
+                ws = set(pl.scan_parquet(fp).select("window").unique().collect()["window"].to_list())
+                bad[f"{sub}tolerance{sfx}"] = sorted(ws & set(R.EXCLUDED_TARGETS))
+        lvw = set(pl.read_parquet(f"{REFDIR}/levels_long.parquet")["window"].unique().to_list())
+        bad["levels_long"] = sorted(lvw & set(R.EXCLUDED_TARGETS))
+        rec["M1_excluded_in_clean_reference"] = bad
+        checks["M1_clean_reference_has_no_excluded_target"] = not any(bad.values())
+        c20 = cells[:20]
+        mix = pl.concat([
+            pl.scan_parquet(f"{R.XDE}/ind_dev/MPI-ESM1-2-HR_ssp370_s2_{w}.parquet").select(R.READ_COLS)
+            .filter(pl.col("Cell").is_in(c20)).collect() for w in ["w2015", "w2071"]], how="vertical_relaxed")
+        fm_ = f"{sd}/mixed_2015_2071_20cells.parquet"
+        mix.write_parquet(fm_)
+        lm, cm = roster_to_levels(fm_, "MPI-ESM1-2-HR", "ssp370", R.NPATCH, c20)
+        rec["M2_windows_scored"] = sorted(lm["window"].unique().to_list())
+        rec["M2_excluded_windows_dropped"] = cm["excluded_windows_dropped"]
+        checks["M2_roster_excluded_dropped_and_flagged"] = rec["M2_windows_scored"] == ["w2015"] and \
+            [e["window"] for e in cm["excluded_windows_dropped"]] == ["w2071"]
+        st_ = lm.with_columns(pl.lit("w2015").alias("window"))
+        st_ = pl.concat([st_, st_.with_columns(pl.lit("w2071").alias("window"))])
+        fs_ = f"{sd}/stats_with_w2071.parquet"
+        st_.write_parquet(fs_)
+        ls_, cs_ = stats_to_levels(fs_, None, None, c20)
+        rec["M3_excluded_windows_dropped"] = cs_["excluded_windows_dropped"]
+        checks["M3_stats_excluded_dropped_and_flagged"] = sorted(ls_["window"].unique().to_list()) == ["w2015"] \
+            and cs_["excluded_windows_dropped"][0]["window"] == "w2071"
+        ffull = f"{R.OUT}/tolerance.parquet"
+        if os.path.exists(ffull):
+            same = ["C", "R", "scale", "dens", "stratum", "spread_cell", "s_med", "s_q90", "allowed", "allowed_q90",
+                    "allowed_cell", "sn_cell", "spread_cell_c", "s_med_c", "s_q90_c", "allowed_cell_abs", "allowed_c",
+                    "allowed_q90_c", "dev_unbr_lo", "dev_unbr_hi"]
+            k = ["gcm", "scen", "window", "Cell", "quantity"]
+            cl_ = tolerance("cell").select(k + same)
+            fu_ = pl.scan_parquet(ffull).filter(pl.col("window").is_in(list(cl_["window"].unique()))).select(
+                k + same).collect()
+            m4 = _cmp_cells(cl_, fu_, same)
+            rec["M4_clean_vs_full_noncalibrated"] = m4
+            checks["M4_clean_equals_full_except_calibration"] = m4["ok"]
+    # ---- (N) SH14 repair 2 (verifier r2_verify_SH14.json)
+    #  N1 the split registry decides the truth seed; a disagreeing CLI value or a mixed call is refused
+    def _refused(fn):
+        try:
+            fn()
+        except SystemExit as e:
+            return str(e)[:160]
+        return None
+
+    def _lv(pairs):
+        return pl.DataFrame({"gcm": [g for g, _ in pairs], "scen": [sc for _, sc in pairs],
+                             "window": ["w2015"] * len(pairs), "Cell": [0] * len(pairs),
+                             "quantity": ["n_per_patch"] * len(pairs), "value": [1.0] * len(pairs)})
+    mpi245, acc = _lv([("MPI-ESM1-2-HR", "ssp245")]), _lv([("ACCESS-CM2", "ssp126"), ("ACCESS-CM2", "ssp370")])
+    mix = _lv([("MPI-ESM1-2-HR", "ssp245"), ("ACCESS-CM2", "ssp126")])
+    train = _lv([("MPI-ESM1-2-HR", "ssp126"), ("MPI-ESM1-2-HR", "ssp370")])
+    n1 = {"mpi245_default": resolve_truth_seed(mpi245, DEFAULT_SPLIT, None, False)[0],
+          "mpi245_cli1_refused": _refused(lambda: resolve_truth_seed(mpi245, DEFAULT_SPLIT, 1, False)),
+          "mpi245_cli1_override": resolve_truth_seed(mpi245, DEFAULT_SPLIT, 1, True)[0],
+          "mixed_refused": _refused(lambda: resolve_truth_seed(mix, DEFAULT_SPLIT, None, False)),
+          "access_default": resolve_truth_seed(acc, DEFAULT_SPLIT, None, False)[0],
+          "train_default": resolve_truth_seed(train, DEFAULT_SPLIT, None, False)}
+    rec["N1_registry_truth_seed"] = n1
+    checks["N1_registry_truth_seed"] = n1["mpi245_default"] == 2 and n1["mpi245_cli1_refused"] is not None \
+        and n1["mpi245_cli1_override"] == 1 and n1["mixed_refused"] is not None and n1["access_default"] == 1 \
+        and n1["train_default"][0] == 1 and len(n1["train_default"][1][
+            "members_not_in_test_pairs (training, in-sample)"]) == 2
+    #  N2 roles from splits.parquet
+    r1, r2_ = member_roles(DEFAULT_SPLIT, 1), member_roles(DEFAULT_SPLIT, 2)
+
+    def _role(rr, g, sc, w):
+        x = rr.filter((pl.col("gcm") == g) & (pl.col("scen") == sc) & (pl.col("window") == w))
+        return x.select(["role", "in_sample", "held_out"]).row(0) if x.height == 1 else None
+    n2 = {"mpi_ssp370_c2015_t1": _role(r1, "MPI-ESM1-2-HR", "ssp370", "c2015"),
+          "access_ssp370_c2015_t1": _role(r1, "ACCESS-CM2", "ssp370", "c2015"),
+          "access_hist_h1985_t1": _role(r1, "ACCESS-CM2", "Historical", "h1985"),
+          "mpi_hist_h1985_t1": _role(r1, "MPI-ESM1-2-HR", "Historical", "h1985"),
+          "mpi_ssp245_w2015_t1": _role(r1, "MPI-ESM1-2-HR", "ssp245", "w2015"),
+          "mpi_ssp245_w2015_t2": _role(r2_, "MPI-ESM1-2-HR", "ssp245", "w2015")}
+    rec["N2_roles"] = {k: list(v) if v else None for k, v in n2.items()}
+    checks["N2_roles"] = n2["mpi_ssp370_c2015_t1"] == ("train", True, False) \
+        and n2["access_ssp370_c2015_t1"] == ("test_truth", False, True) \
+        and n2["access_hist_h1985_t1"] == ("test_truth", False, True) \
+        and n2["mpi_hist_h1985_t1"] == ("train", True, False) \
+        and n2["mpi_ssp245_w2015_t1"] == ("test_ref", False, False) \
+        and n2["mpi_ssp245_w2015_t2"] == ("test_truth", False, True)
+    #  N3 edge cases: nothing scoreable -> explicit refusal; 2045-2070 years listed, not scored
+    c20 = cells[:20]
+    only71 = f"{sd}/stats_only_w2071.parquet"
+    lev.filter(pl.col("Cell").is_in(c20)).with_columns(pl.lit("w2071").alias("window")).write_parquet(only71)
+    y4550 = f"{sd}/roster_2050_2054.parquet"
+    t40 = pl.scan_parquet(f"{R.XDE}/ind_dev/MPI-ESM1-2-HR_ssp370_s2_w2015.parquet").select(R.READ_COLS).filter(
+        pl.col("Cell").is_in(c20) & (pl.col("Year") >= 2040)).collect()
+    t40.with_columns((pl.col("Year") + 10).cast(t40.schema["Year"])).write_parquet(y4550)
+    y4050 = f"{sd}/roster_2040_2054.parquet"
+    pl.concat([t40, t40.with_columns((pl.col("Year") + 10).cast(t40.schema["Year"]))]).write_parquet(y4050)
+    l4050, c4050 = roster_to_levels(y4050, "MPI-ESM1-2-HR", "ssp370", R.NPATCH, c20)
+    n3 = {"stats_only_w2071_refused": _refused(lambda: stats_to_levels(only71, None, None, c20)),
+          "roster_only_2050_2054_refused": _refused(
+              lambda: roster_to_levels(y4550, "MPI-ESM1-2-HR", "ssp370", R.NPATCH, c20)),
+          "years_outside_windows": c4050["years_outside_windows"], "windows": c4050["windows"]}
+    rec["N3_edge_cases"] = n3
+    checks["N3_edge_cases"] = n3["stats_only_w2071_refused"] is not None \
+        and n3["roster_only_2050_2054_refused"] is not None \
+        and [(e["years"], e["n_years"]) for e in n3["years_outside_windows"]] == [([2050, 2054], 5)] \
+        and [(w["window"], w["n_years"]) for w in n3["windows"]] == [("w2015", 5)]
+    #  N4 the partition size is a parameter, not a literal: a different chunking gives identical levels
+    cpp0 = R.CELLS_PER_PARTITION
+    try:
+        R.CELLS_PER_PARTITION = 137
+        lp, _ = roster_to_levels(f, "MPI-ESM1-2-HR", "Historical", R.NPATCH, cells[:60])
+    finally:
+        R.CELLS_PER_PARTITION = cpp0
+    lq, _ = roster_to_levels(f, "MPI-ESM1-2-HR", "Historical", R.NPATCH, cells[:60])
+    jn = lp.join(lq, on=["gcm", "scen", "window", "Cell", "quantity"], how="full", coalesce=True, suffix="_r")
+    n4 = {"rows": jn.height, "null_mismatch": jn.filter(pl.col("value").is_null() != pl.col("value_r").is_null())
+          .height, "max_rel": jn.select(_maxrel(pl.col("value"), pl.col("value_r"))).item()}
+    rec["N4_partition_param"] = n4
+    checks["N4_partition_param"] = n4["rows"] == lq.height == lp.height and n4["null_mismatch"] == 0 \
+        and (n4["max_rel"] or 0.0) == 0.0
+    #  N5 primary gate: like for like; not_assessable unless legs branched; replica arm == its own ceiling
+    pg_u = primary_gate(rc["block"], "block", {})
+    pg_y = primary_gate(rc["block"], "block", {"legs_branched": "yes"})
+    n5 = {"unknown_verdicts": pg_u["verdict"].to_list() if pg_u.height else None,
+          "yes_rows": pg_y.to_dicts() if pg_y.height else None}
+    rec["N5_primary_gate"] = n5
+    checks["N5_primary_gate"] = pg_u.height > 0 and all(v.startswith("not_assessable") for v in pg_u["verdict"]) \
+        and pg_y.height > 0 and all(r_["arm_cal_xg"] == r_["ceiling_same_cal_xg"] and r_["arm_cal"] ==
+                                    r_["ceiling_same_cal"] and r_["meets_cal_xg"] for r_ in pg_y.to_dicts()) \
+        and all(v.startswith("not_held_out (role train)") for v in pg_y["verdict"])
+    #  N6 armnoise: two identical arm runs -> leg noise 0 -> the pessimistic bracket IS the replica on the same rows
+    tc_, _ = make_targets(lc, "cell", 1)
+    an, _ = _armnoise_scale(tc_, tc_, "cell", 1)
+    pes = an.filter(pl.col("bracket") == "pess").sort(["gcm", "scen", "window"])
+    rep_ = an.filter(pl.col("bracket") == "replica_same_rows").sort(["gcm", "scen", "window"])
+    opt = an.filter(pl.col("bracket") == "opt").sort(["gcm", "scen", "window"])
+    fr = [f"all_{p}_frac" for p in PASS_NAMES]
+    n6 = {"rows": pes.height, "pess_minus_replica_max": max(
+        abs(a_ - b_) for c_ in fr for a_, b_ in zip(pes[c_].to_list(), rep_[c_].to_list(), strict=True)),
+        "opt_ge_replica": all(a_ >= b_ for c_ in fr for a_, b_ in zip(opt[c_].to_list(), rep_[c_].to_list(),
+                                                                      strict=True))}
+    rec["N6_armnoise"] = n6
+    checks["N6_armnoise"] = n6["rows"] > 0 and n6["pess_minus_replica_max"] == 0.0 and n6["opt_ge_replica"]
+    rec["reference_set"] = R.REFSET
     rec["checks"] = checks
     rec["ok"] = all(checks.values())
     rec["wall_s"] = round(time.time() - t0, 1)
@@ -1060,11 +1570,13 @@ def selftest(out: str) -> int:
 HEADLINE_TOL = {f"all_{p}_frac": (p.replace("pass_", "").replace("pass", "") or "stratum") for p in PASS_NAMES}
 
 
-def headline(out: str, labels: list[str] | None = None) -> int:
+def headline(out: str, labels: list[str] | None = None, members: str = "held_out") -> int:
     """One compact table over scored submissions: per (label, scale, target window, panel, tolerance column) the
     median / min / max over (gcm, scen) of the conjunctive pass fraction, + the same for ceiling_same_* (the other
     seed on the same rows) + the DE aggregate response pass rate. Tolerance names: stratum, cell, q90, cal (round
-    1) and cell_abs, c, q90_c, cal_c (SH14 symmetric)."""
+    1) and cell_abs, c, q90_c, cal_c (SH14 symmetric). SH14 repair 2: members "held_out" (default) keeps only rows
+    whose truth member is a registry test truth (role test_truth in splits.parquet); "all" keeps every row. Summaries
+    written before the role column existed are used whole and labelled members = all(no role column)."""
     labels = labels or ["null_a_other_seed", "null_b_persistence", "null_d_equilibrium", "null_e_germany_mean"]
     rows = []
     for lab in labels:
@@ -1074,6 +1586,14 @@ def headline(out: str, labels: list[str] | None = None) -> int:
                 continue
             c = pl.read_csv(f, infer_schema_length=None).filter(pl.col("panel").is_in(
                 ["panel106", "extended", "count", "traits4_median", "traits4_dist", "size_dist", "pft_shares"]))
+            if "held_out" in c.columns:
+                mlab = members
+                if members == "held_out":
+                    c = c.filter(pl.col("held_out").fill_null(False))
+            else:
+                mlab = "all(no role column)"
+            if not c.height:
+                continue
             for col, tname in HEADLINE_TOL.items():
                 if col not in c.columns:
                     continue
@@ -1084,19 +1604,24 @@ def headline(out: str, labels: list[str] | None = None) -> int:
                     agg.append(pl.col(cs).median().alias("ceiling_same_med"))
                 a = c.group_by(["window", "panel"]).agg(agg)
                 rows.append(a.with_columns(pl.lit(lab).alias("label"), pl.lit(scale).alias("scale"),
-                                           pl.lit(tname).alias("tolerance")))
+                                           pl.lit(tname).alias("tolerance"), pl.lit(mlab).alias("members")))
     h = pl.concat(rows, how="diagonal_relaxed")
     if "ceiling_same_med" not in h.columns:
         h = h.with_columns(pl.lit(None, dtype=pl.Float64).alias("ceiling_same_med"))
-    h = h.select(["label", "scale", "tolerance", "panel", "window", "med", "min", "max", "n_gcm_scen",
+    h = h.select(["label", "members", "scale", "tolerance", "panel", "window", "med", "min", "max", "n_gcm_scen",
                   "ceiling_same_med"]).sort(["label", "scale", "tolerance", "panel", "window"])
-    h.write_csv(f"{out}/headline.csv")
+    hsfx = "" if members == "held_out" else f"_{members}"
+    h.write_csv(f"{out}/headline{hsfx}.csv")
     ag = []
     for lab in labels:
         f = f"{out}/{lab}/aggregate_response.csv"
         if os.path.exists(f):
             a = pl.read_csv(f, infer_schema_length=None).filter(pl.col("window").is_in(
                 ["r2015", "r2071", "c2015", "c2071"]))
+            if "held_out" in a.columns and members == "held_out":
+                a = a.filter(pl.col("held_out").fill_null(False))
+            if not a.height:
+                continue
             extra = []
             if "pass_same" in a.columns:
                 ds = pl.col("determined_same")
@@ -1114,7 +1639,7 @@ def headline(out: str, labels: list[str] | None = None) -> int:
                 .alias("pass_frac_determined"), pl.len().alias("n"), *extra).with_columns(pl.lit(lab).alias("label")))
     if ag:
         pl.concat(ag, how="diagonal_relaxed").sort(["label", "window", "region"]).write_csv(
-            f"{out}/headline_aggregate_response.csv")
+            f"{out}/headline_aggregate_response{hsfx}.csv")
     with pl.Config(tbl_rows=500, tbl_width_chars=200, float_precision=3):
         print(h.filter(pl.col("panel").is_in(["panel106"])
                        & pl.col("tolerance").is_in(["stratum", "cal", "cell_abs", "c", "cal_c"])))
@@ -1125,7 +1650,7 @@ def headline(out: str, labels: list[str] | None = None) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["score", "nulls", "selftest", "headline"])
+    ap.add_argument("cmd", choices=["score", "nulls", "selftest", "headline", "armnoise"])
     ap.add_argument("--pred")
     ap.add_argument("--manifest", help="pooled cross-fit / multi-prediction CSV (see USAGE)")
     ap.add_argument("--fold-map", default=DEFAULT_FOLD_MAP)
@@ -1135,28 +1660,48 @@ def main() -> int:
     ap.add_argument("--scen")
     ap.add_argument("--npatch", type=int, default=R.NPATCH)
     ap.add_argument("--cells")
-    ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument("--out", default=None, help="default: <reference set dir>/scores")
+    ap.add_argument("--refset", choices=["clean", "full"], default=os.environ.get("XDE_REFSET", "clean"),
+                    help="OWNER DECISION 2026-10-01: clean (default) = 1985-2044 only (reference/clean); full = the "
+                         "legacy reference incl. the EXCLUDED 2071-2100/3071-3100 windows (wrong humidity setting)")
     ap.add_argument("--scope", choices=["all", "covered"], default="all",
                     help="all = acceptance (uncovered cells fail); covered = score only the cells submitted")
-    ap.add_argument("--truth-seed", type=int, choices=[1, 2], default=1)
+    ap.add_argument("--truth-seed", type=int, choices=[1, 2], default=None,
+                    help="score: default = the split registry's truth seed (test_pairs.parquet); a disagreeing value "
+                         "is refused unless --truth-seed-override. nulls: default 1.")
+    ap.add_argument("--truth-seed-override", action="store_true")
+    ap.add_argument("--split", default=DEFAULT_SPLIT, help="split registry row set (test_pairs/splits.parquet)")
+    ap.add_argument("--members", choices=["held_out", "all"], default="held_out", help="headline: which rows")
+    ap.add_argument("--manifest-a")
+    ap.add_argument("--manifest-b")
     ap.add_argument("--start-seed", type=int, choices=[1, 2], default=None)
     ap.add_argument("--start-year", type=int, action="append", default=None,
                     help="SH14 repair: the run was initialised from the truth roster of this year; its rows of that "
                          "year are dropped (they are the initial state, not a prediction). Repeatable.")
     ap.add_argument("--held-out-place", choices=["true", "false", "unknown"], default="unknown",
                     help="SH14 repair: were the scored cells' places unseen in training? Recorded and printed.")
-    ap.add_argument("--legs-branched", choices=["yes", "no", "unknown"], default="unknown",
-                    help="SH14 repair: did every scenario leg start from ONE emulator 2014 state of the same run with "
-                         "shared random numbers (like the truth)? If not, read contrasts against ceiling_unbr_*.")
+    ap.add_argument("--legs-branched", choices=["yes", "state-only", "no", "unknown"], default="unknown",
+                    help="yes = every scenario leg starts from the arm's own single 2014 state AND uses common random-"
+                         "number streams, like the truth; state-only = one state, independent random numbers; no = "
+                         "different states. Only 'yes' makes the primary contrast gate assessable.")
     a = ap.parse_args()
+    set_refset(a.refset)
+    if a.out is None:
+        a.out = DEFAULT_OUT
+    log(f"reference set: {R.REFSET} ({REFDIR}); scored targets: levels {list(R.WINDOWS)}, responses "
+        f"{list(R.RESPONSES)}, contrasts {list(R.CONTRASTS)}; primary response {R.PRIMARY_CONTRAST}")
     os.makedirs(a.out, exist_ok=True)
     cells = read_cells(a.cells)
     if a.cmd == "nulls":
-        return nulls(a.out, a.truth_seed, cells, a.scope)
+        return nulls(a.out, a.truth_seed or 1, cells, a.scope, a.split)
     if a.cmd == "selftest":
         return selftest(a.out)
     if a.cmd == "headline":
-        return headline(a.out, a.label.split(",") if a.label else None)
+        return headline(a.out, a.label.split(",") if a.label else None, a.members)
+    if a.cmd == "armnoise":
+        assert a.label and a.manifest_a and a.manifest_b, "armnoise needs --label --manifest-a --manifest-b"
+        return armnoise(a.manifest_a, a.manifest_b, a.label, a.out, a.format, a.npatch, cells, a.fold_map,
+                        a.scope, a.split, a.truth_seed, a.truth_seed_override, a.start_year)
     assert a.label and (a.pred or a.manifest), "score needs --label and --pred or --manifest"
     if a.manifest:
         lev, cov = manifest_to_levels(a.manifest, a.format, a.npatch, cells, a.fold_map, a.start_year)
@@ -1165,6 +1710,8 @@ def main() -> int:
     else:
         assert not a.start_year, "--start-year applies to rosters (a stats submission must exclude it itself)"
         lev, cov = stats_to_levels(a.pred, a.gcm, a.scen, cells)
+    ts, tsinfo = resolve_truth_seed(lev, a.split, a.truth_seed, a.truth_seed_override)
+    cov["truth_seed_resolution"] = tsinfo
     declared = cells if cells is not None else cov.pop("_cells_declared", None)
     cov.pop("_cells_declared", None)
     cov["pred"] = a.pred
@@ -1173,8 +1720,8 @@ def main() -> int:
     cov["cells_file"] = a.cells
     cov["held_out_place"] = a.held_out_place
     cov["legs_branched"] = a.legs_branched
-    run_score(lev, a.label, a.out, cov, scope=a.scope, truth_seed=a.truth_seed,
-              cells_declared=declared if a.scope == "covered" else None)
+    run_score(lev, a.label, a.out, cov, scope=a.scope, truth_seed=ts,
+              cells_declared=declared if a.scope == "covered" else None, split=a.split)
     return 0
 
 

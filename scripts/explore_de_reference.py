@@ -38,7 +38,10 @@ Stages:
   verify            independent duckdb recomputation of reference/stats for sample cells -> reference/_verify.json
   collect           print which members are done / missing
 
-Env knobs (EXPORT them): DEREF_FORCE=1 re-reduce even if done.
+Env knobs (EXPORT them): DEREF_FORCE=1 re-reduce even if done. XDE_REFSET=clean|full (default clean):
+  OWNER DECISION 2026-10-01 -- the 2071-2100 / 3071-3100 runs used the wrong humidity setting; the CLEAN set
+  (1985-2044 only, derived files in reference/clean/) is the default for assemble/calibrate/blocks; "full" rebuilds
+  the legacy reference/ files incl. the excluded windows. stats/, cell_year/, frozen/ are shared by both sets.
 """
 
 from __future__ import annotations
@@ -63,6 +66,9 @@ PY = "/home/jamirp/.conda/envs/py311_new/bin/python"
 
 NPATCH = int(os.environ.get("XDE_NPATCH", "250"))
 CELLS_PER_PARTITION = int(os.environ.get("XDE_CELLS_PER_PARTITION", "500"))  # the converter's cb = Cell // 500
+# SH14 repair 2: the name of the whole-domain aggregate region (the reference tables call it "DE"; a global reuse
+# exports XDE_REGION_ALL=GLOBAL and rebuilds). Never hard-code the literal in a consumer: use R.REGION_ALL.
+REGION_ALL = os.environ.get("XDE_REGION_ALL", "DE")
 HMIN = 5.0
 NMIN_STEMYEARS = 30  # fewer living stem-years than this in a window -> quantiles are not scored (null)
 TRAITS = ["SLA", "Wooddens", "D95max", "minwscal", "Longevity", "Height", "agb"]
@@ -75,6 +81,49 @@ RESPONSES = {"r2071": "w2071", "r2015": "w2015"}  # response target -> the windo
 CONTRASTS = {"c2071": "w2071", "c2015": "w2015"}  # contrast target -> the window both legs are taken in
 CONTRAST_BASE = "ssp126"
 CONTRAST_SCENS = ["ssp370", "ssp245"]
+# ---- OWNER DECISION 2026-10-01 ("lets only use the earlier data that is correct, for now"). Every 2071-2100 and
+# 3071-3100 segment ran with "relative_humidity" missing from its config (LPJmL default false, fscanconfig.c:255):
+# the relative-humidity file was read as specific humidity -> VPD 0 -> water-stress mortality exactly 0 in all 24
+# ssp runs. Those windows (and every target built from them) are EXCLUDED by default. The REFERENCE SET selects:
+#   "clean" (DEFAULT): only 1985-2044 (h1985, w2015, r2015, c2015); derived files under reference/clean/; the
+#                      calibration is fitted on these targets only; primary response = c2015.
+#   "full"           : the round-1/SH14 reference incl. the corrupted late windows (reference/, legacy, kept so the
+#                      old behaviour stays reachable -- NEVER use its w2071/w3071/r2071/c2071 rows as evidence).
+# Select with the env knob XDE_REFSET (export it) or the scorer's --refset; R.set_refset() switches in-process.
+EXCLUDED_WINDOWS = ("w2071", "w3071")
+EXCLUDED_TARGETS = ("w2071", "w3071", "r2071", "c2071")
+EXCLUSION_REASON = ("owner decision 2026-10-01: 2071-2100 and 3071-3100 segments ran with relative_humidity "
+                    "missing from the config (humidity read as specific humidity, VPD 0, water-stress mortality 0); "
+                    "only 1985-2044 is correct data")
+ALL_WINDOWS, ALL_RESPONSES, ALL_CONTRASTS = dict(WINDOWS), dict(RESPONSES), dict(CONTRASTS)
+REFSET = "full"
+REFOUT = OUT
+PRIMARY_CONTRAST = "c2071"
+CRITERION_LEVELS: list[str] = []
+CRITERION_TARGETS: list[str] = []
+NULL_FUTURE_WINDOWS: list[str] = []
+
+
+def set_refset(name: str) -> None:
+    """Switch every module-level window table and the derived-file directory between the clean (default) and the
+    full (legacy) reference set. Mutates WINDOWS/RESPONSES/CONTRASTS IN PLACE so importers holding the dicts see
+    the change."""
+    global REFSET, REFOUT, PRIMARY_CONTRAST
+    assert name in ("clean", "full"), f"unknown reference set {name!r} (clean|full)"
+    REFSET = name
+    for d, full in [(WINDOWS, ALL_WINDOWS), (RESPONSES, ALL_RESPONSES), (CONTRASTS, ALL_CONTRASTS)]:
+        d.clear()
+        d.update({k: v for k, v in full.items() if name == "full" or k not in EXCLUDED_TARGETS})
+    REFOUT = OUT if name == "full" else f"{OUT}/clean"
+    PRIMARY_CONTRAST = "c2071" if name == "full" else "c2015"
+    # whole-criterion definition: the level windows besides h1985 and the response targets it is formed with
+    CRITERION_LEVELS[:] = ["w2015", "w2071"] if name == "full" else ["w2015"]
+    CRITERION_TARGETS[:] = ["r2071", "c2071"] if name == "full" else ["r2015", "c2015"]
+    # the future level windows the persistence / frozen-2014 nulls predict (w3071 never: equilibrium null only)
+    NULL_FUTURE_WINDOWS[:] = ["w2015", "w2071"] if name == "full" else ["w2015"]
+
+
+set_refset(os.environ.get("XDE_REFSET", "clean"))
 STRATA_EDGES = [2.0, 5.0, 10.0, 20.0]
 STRATA_LABELS = ["<2", "2-5", "5-10", "10-20", ">20"]
 MIN_CELLS_STRATUM = 30
@@ -326,6 +375,8 @@ def load_levels() -> pl.DataFrame:
                        variable_name="quantity", value_name="value")
         parts.append(lg.with_columns(pl.lit(bool(j["valid_window"])).alias("valid")))
     d = pl.concat(parts)
+    # reference set (owner decision 2026-10-01): the clean set keeps only the windows in WINDOWS (h1985, w2015)
+    d = d.filter(pl.col("window").is_in(list(WINDOWS)))
     k = ["gcm", "scen", "seed", "window", "Cell", "quantity"]
     assert d.select(k).n_unique() == d.height
     return d
@@ -560,8 +611,8 @@ def build_aggregate(tol: pl.DataFrame) -> pl.DataFrame:
     )
     d = tol.select(["gcm", "scen", "window", "Cell", "quantity", "target_kind", "C", "R"]).join(st, on="Cell")
     out = []
-    for reg in ["DE", "south", "central", "north"]:
-        x = d if reg == "DE" else d.filter(pl.col("region") == reg)
+    for reg in [REGION_ALL, "south", "central", "north"]:
+        x = d if reg == REGION_ALL else d.filter(pl.col("region") == reg)
         a = x.group_by(["gcm", "scen", "window", "quantity", "target_kind"]).agg(
             ((pl.col("C") * pl.col("area_km2_approx")).sum() / pl.col("area_km2_approx").sum()).alias("aggC"),
             pl.when(pl.col("R").is_null().any()).then(None).otherwise(
@@ -667,14 +718,41 @@ Demanded by the round-1 completeness critic; pre-edit scripts and reference back
    variance 2 s^2 (2 - rho) and is bracketed by the two; the scorer reports the matching ceilings.
 """
 
+CLEAN_DEFINITION = """
+## CLEAN REFERENCE SET (reference/clean/, the DEFAULT since the owner decision of 2026-10-01)
+Owner, verbatim: "double check if the runs after 2070 were really corrupted with the wrong settings. if its true,
+lets only use the earlier data that is correct, for now." Verified by the orchestrator three ways: every
+2071-2100 and 3071-3100 segment's config lacks `"relative_humidity": true` (present in all 1985-2070 configs;
+LPJmL defaults it false, fscanconfig.c:255), its log lists the humidity input as `humid` (specific humidity)
+instead of `rhumid`, and the share of living trees with mort_water > 0 is exactly 0 in 2071 and 2100 in all 24 ssp
+runs (0.02-9.4 % in 2015-2044). So:
+* Windows: h1985 (1985-2014) and w2015 (2015-2044) only. Targets: levels h1985, w2015; response r2015 = w2015 -
+  h1985; contrasts c2015 = X(scen, 2015-2044) - X(ssp126, 2015-2044), scen in {ssp370, ssp245}.
+* EXCLUDED everywhere in this set: w2071, w3071, r2071, c2071 (no rows exist; the scorer drops any submitted
+  2071-2100 / 3071-3100 years and flags them in coverage.json).
+* Every tolerance column is rebuilt from these rows only; in particular every calibration multiplier (allowed_cal,
+  _c, cal1, cal_xg, cal1_xg) is FITTED on 1985-2044 targets only (the full set's multipliers pooled the corrupted
+  windows). Contrast multipliers: fitted on ssp370 c2015 rows only.
+* PRIMARY response statistic: c2015 for ssp370 (ssp370 - ssp126 at fixed gcm and seed; both legs share CO2 and the
+  configuration). ssp245 contrasts and ssp245 levels/responses also contain the Feb-2026 binary change. r2015 is kept
+  beside it (contains the 1985->2020 CO2 rise the emulator does not see).
+* Whole criterion: h1985 + w2015 + the response target (r2015 or c2015), every panel quantity.
+* This limits the warming that can be tested to the early century: 2015-2044 warming is smaller than 2071-2100,
+  so the response signal-to-noise is lower (measured per quantity in shared/scorer/sh14_clean_snr.csv).
+"""
+
 
 def assemble() -> int:
     """levels_long + the tolerance tables for truth seed 1 (tolerance.parquet, the round-1 file, extended) and truth
     seed 2 (tolerance_t2.parquet, SH14), each CALIBRATED before it is written (atomic replace), + aggregates."""
     t0 = time.time()
+    os.makedirs(REFOUT, exist_ok=True)
     lv = load_levels()
-    log(f"levels: {lv.height} rows")
-    write_atomic(lv, f"{OUT}/levels_long.parquet")
+    log(f"levels ({REFSET} reference set, windows {sorted(lv['window'].unique().to_list())}): {lv.height} rows "
+        f"-> {REFOUT}")
+    if REFSET == "clean":
+        assert not set(lv["window"].unique().to_list()) & set(EXCLUDED_WINDOWS), "excluded window leaked"
+    write_atomic(lv, f"{REFOUT}/levels_long.parquet")
     for ts in (1, 2):
         sfx = "" if ts == 1 else "_t2"
         tol = build_tolerance(lv, ts)
@@ -682,12 +760,12 @@ def assemble() -> int:
         tol, cals = calibrate_all(tol)
         for (scol, _), cal in zip(CAL_VARIANTS, cals[:2], strict=True):
             cal.sort(["target_kind", "quantity"]).write_csv(
-                f"{OUT}/calibration{'_c' if scol.endswith('_c') else ''}{sfx}.csv")
-        cals[2].write_csv(f"{OUT}/calibration_extra{sfx}.csv")
-        write_atomic(tol, f"{OUT}/tolerance{sfx}.parquet")
+                f"{REFOUT}/calibration{'_c' if scol.endswith('_c') else ''}{sfx}.csv")
+        cals[2].write_csv(f"{REFOUT}/calibration_extra{sfx}.csv")
+        write_atomic(tol, f"{REFOUT}/tolerance{sfx}.parquet")
         agg, terc = build_aggregate(tol)
-        write_atomic(agg, f"{OUT}/aggregate{sfx}.parquet")
-        agg.write_csv(f"{OUT}/aggregate{sfx}.csv")
+        write_atomic(agg, f"{REFOUT}/aggregate{sfx}.parquet")
+        agg.write_csv(f"{REFOUT}/aggregate{sfx}.csv")
         # summary of the tolerances themselves
         summ = (
             tol.group_by(["gcm", "scen", "window", "quantity"])
@@ -706,11 +784,16 @@ def assemble() -> int:
             )
             .sort(["gcm", "scen", "window", "quantity"])
         )
-        summ.write_csv(f"{OUT}/tolerance_summary{sfx}.csv")
+        summ.write_csv(f"{REFOUT}/tolerance_summary{sfx}.csv")
         strata = tol.filter(pl.col("quantity") == "n_per_patch").group_by(
             ["gcm", "scen", "window", "stratum"]).len()
         gate = {
             "truth_seed": ts,
+            "reference_set": REFSET,
+            "windows": sorted(lv["window"].unique().to_list()),
+            "targets": sorted(tol["window"].unique().to_list()),
+            "excluded_targets": [] if REFSET == "full" else list(EXCLUDED_TARGETS),
+            "exclusion_reason": None if REFSET == "full" else EXCLUSION_REASON,
             "levels_rows": lv.height,
             "tolerance_rows": tol.height,
             "tolerance_rows_by_kind": {r["target_kind"]: r["len"] for r in tol.group_by("target_kind").len()
@@ -732,13 +815,13 @@ def assemble() -> int:
                     ((pl.col("R") - pl.col("C")).abs() <= pl.col("allowed_cell_abs") * (1 + 1e-9)).mean()).item()),
             "wall_s": round(time.time() - t0, 1),
         }
-        json.dump(gate, open(f"{OUT}/_gates{sfx}.json", "w"), indent=1, default=str)
+        json.dump(gate, open(f"{REFOUT}/_gates{sfx}.json", "w"), indent=1, default=str)
         with pl.Config(tbl_rows=200, tbl_cols=20, fmt_str_lengths=40):
             print(summ.filter(pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50",
                                                         "D95max_q50", "minwscal_q50", "Height_q50", "share_3"])
                               & (pl.col("gcm") == "MPI-ESM1-2-HR")))
         del tol
-    open(f"{OUT}/_DEFINITION.md", "w").write(DEFINITION)
+    open(f"{REFOUT}/_DEFINITION.md", "w").write(DEFINITION + (CLEAN_DEFINITION if REFSET == "clean" else ""))
     log(f"assemble done in {time.time() - t0:.0f} s")
     return 0
 
@@ -770,13 +853,13 @@ def calibrate(truth_seed: int = 1) -> int:
     writes calibration{,_c}{,_t2}.csv. (assemble already does this; this stage re-calibrates an existing file.)"""
     t0 = time.time()
     sfx = "" if truth_seed == 1 else "_t2"
-    tol = pl.read_parquet(f"{OUT}/tolerance{sfx}.parquet")
+    tol = pl.read_parquet(f"{REFOUT}/tolerance{sfx}.parquet")
     tol, cals = calibrate_all(tol)
     for (scol, _), cal in zip(CAL_VARIANTS, cals[:2], strict=True):
         vtag = "_c" if scol.endswith("_c") else ""
-        cal.sort(["target_kind", "quantity"]).write_csv(f"{OUT}/calibration{vtag}{sfx}.csv")
-    cals[2].write_csv(f"{OUT}/calibration_extra{sfx}.csv")
-    write_atomic(tol, f"{OUT}/tolerance{sfx}.parquet")
+        cal.sort(["target_kind", "quantity"]).write_csv(f"{REFOUT}/calibration{vtag}{sfx}.csv")
+    cals[2].write_csv(f"{REFOUT}/calibration_extra{sfx}.csv")
+    write_atomic(tol, f"{REFOUT}/tolerance{sfx}.parquet")
     log(f"calibrate{sfx} done ({time.time() - t0:.0f} s)")
     with pl.Config(tbl_rows=100):
         print(cals[0].sort(["target_kind", "quantity"]))
@@ -1067,10 +1150,10 @@ def blocks() -> int:
     (reference/block_dev/), so a dev-subset arm is scored against blocks built from the same cells.
     Files without suffix = truth seed 1 (round 1, extended); *_t2 = truth seed 2 (SH14)."""
     t0 = time.time()
-    lv = pl.read_parquet(f"{OUT}/levels_long.parquet")
+    lv = pl.read_parquet(f"{REFOUT}/levels_long.parquet")
     allcells = sorted(lv["Cell"].unique().to_list())
     for name, cells in [("block", allcells), ("block_dev", [c for c in allcells if c % 10 == 0])]:
-        d = f"{OUT}/{name}"
+        d = f"{REFOUT}/{name}"
         os.makedirs(d, exist_ok=True)
         for ts in (1, 2):
             sfx = "" if ts == 1 else "_t2"
@@ -1097,7 +1180,8 @@ def blocks() -> int:
                 (pl.col("allowed_cal_c") / pl.col("C").abs()).median().alias("allowed_cal_c_rel_med"))
                 .sort(["gcm", "scen", "window", "quantity"]))
             summ.write_csv(f"{d}/tolerance_summary{sfx}.csv")
-            g = {"truth_seed": ts, "cells": len(cells), "blocks": nb, "block_size_min": int(szs.min()),
+            g = {"truth_seed": ts, "reference_set": REFSET, "targets": sorted(tol["window"].unique().to_list()),
+                 "cells": len(cells), "blocks": nb, "block_size_min": int(szs.min()),
                  "block_size_median": float(szs.median()), "block_size_max": int(szs.max()), "block_deg": BLOCK_DEG,
                  "block_min_cells": BLOCK_MIN_CELLS, "tolerance_rows": tol.height, "keys_unique": True,
                  "tolerance_rows_by_kind": {x["target_kind"]: x["len"] for x in tol.group_by("target_kind").len()
@@ -1112,7 +1196,7 @@ def blocks() -> int:
             with pl.Config(tbl_rows=60, tbl_cols=12, float_precision=3):
                 print(summ.filter(pl.col("quantity").is_in(["n_per_patch", "agb_stand", "SLA_q50", "Wooddens_q50",
                                                              "D95max_q50", "minwscal_q50", "share_3"])
-                                  & pl.col("window").is_in(["r2071", "c2071", "h1985"])
+                                  & pl.col("window").is_in(list(RESPONSES) + list(CONTRASTS) + ["h1985"])
                                   & (pl.col("gcm") == "MPI-ESM1-2-HR")))
     log(f"blocks done in {time.time() - t0:.0f} s")
     return 0
