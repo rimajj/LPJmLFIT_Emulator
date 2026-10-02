@@ -137,7 +137,27 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   ssp126/245/370 + their climate-blind twins, scored with explore_de_sh_eval.py exactly like the lookup; (3) the
   free-run calibration steps (A7 / B5) ONLY on training members; (4) speed: both learned designs are 10-25x slower than
   the lookup — shrink/distill before any full-Germany run.
-* **2026-10-02 (later session): A6 and B5 HANDED TO TWO BACKGROUND HELPERS** (no Workflow). A6 = `scripts/explore_de_tab_stepper.py` (arms A-L, A-L+phys, A-S, A-1step, A-k0) + smoke (20 cells, MPI ssp370 1985->2044) + free runs ACCESS s1 A-L/A-S/A-k0 + scoring. B5 = `scripts/explore_de_struct_stepper.py` (B-noacc as main because B4 acceptance is not built, B-noAR, climate-blind twin) + smoke + free runs + scoring; calibration NOT in this pass. Helpers do not commit. **If the session died: read `_status/A6.md`, `_status/B5.md`, `_reports/r2_A6.json`, `_reports/r2_B5.json` first, then `squeue -u jamirp`.**
+* **2026-10-02 (later session): A6 + B5 DONE — first free runs of both learned designs, scored** (helpers, committed
+  bfe39d76 / 1c96dfda; reports `_reports/r2_A6.json`, `r2_B5.json`; table `shared/eval/comparison.csv`, column
+  pass_cal_xg). ACCESS s1, 907 dev cells, 1985 start, legs forked 2014, to 2044. **Fold-5 (185 held-out places), cell
+  panel pass:** h1985 — lookup 0.83 · TAB A-L 0.62 · A-S 0.68 · A-k0 0.45 · STRUCT 0.00 · ceiling 0.91.
+  w2015 (ssp126/245/370) — lookup 0.08/0.11/0.07 · A-L 0.37/0.37/0.34 · A-S 0.43/0.46/0.36 · A-k0 0.35/0.41/0.37 ·
+  STRUCT 0/0/0 · ceiling 0.91-0.92. Block scale: every arm 0 in w2015; the block contrast gate's own ceiling is 0.09
+  on 11 fold-5 blocks => no power there; the per-cell contrast has none either (blind twins pass 0.99).
+  READING: (a) TAB beats the lookup ~4x in 2015-2044, but its climate-blind twin does almost as well => the gain is
+  not a climate response; climate does set the TIMING of deaths (yearly death corr A-L 0.51-0.56 vs A-k0 0.03).
+  (b) rule death (A-S) >= learned death (A-L) in every window. (c) TAB stems drift to 1.21x truth by 2044 in every arm:
+  deaths are right (3.52 vs 3.47 %/yr) but recruits are ~11 % too many (3.56 vs 3.20 % of stems/yr). STRUCT recruits
+  are too many as well (3.67 vs 3.20) — BOTH use the SH13 recruit-count head => suspect a shared cause first.
+  (d) STRUCT: free-run biomass ~2x truth by w2015 (median agb 162 vs 83) despite G R2 0.93-0.96 one-step; no
+  acceptance => beech 0.81 vs 0.93, boreal NE 5 % vs 0.9 %. Cost (core-s/cell-yr, 250 patches, excl. daily->annual
+  climate): lookup 0.12 · TAB 1.17-1.30 · STRUCT 2.86 · original ~12.
+  **NEXT, in order:** (1) diagnose the recruit excess in the SH13 count head under free run (teacher-forced it matched
+  totals 1.028 — so check what the free-run patch state feeds it); (2) A7 free-run calibration of TAB on TRAINING
+  members only (recruit-count log offset is one of its 8 scalars); (3) STRUCT: B4 acceptance + the growth-memory
+  calibration; find why one-step-good growth doubles biomass in free run; (4) cross-fit for all-52-block scoring
+  (critic gap 1) so block-scale gates get power. Engine `submit` hard-codes the priority QOS (64-cpu user cap) —
+  helpers ran its `run` command from their own standard/short arrays.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
