@@ -113,9 +113,24 @@ data (mort_water>0 share exactly 0.0 in 2071 and 2100 in all 24 ssp runs vs 0.02
 `/p/tmp/jamirp/X_de/_jobs/check_rh_effect.py`, log X-de-rhcheck.2371045). ⇒ **the build uses 1985–2044 only**; w2071/w3071 excluded
 everywhere; primary response = ssp370−ssp126 contrast in 2015–2044; the correct 2045–2070 segment's gridded outputs become optional
 cell-aggregate checks to 2070. A rerun of 2071–2100 (and beyond) is the owner's call.
-**Round 2 RUNNING (`wf_d4262351-d9d`):** 40-item dependency graph, verifiers on critical items, synthesis + critic. Resume:
-`Workflow({scriptPath: "~/.claude/projects/-p-projects-open-Jamir-esm-land-emulator-lines-X/a19083d6-0024-4d05-8614-5e108626a023/workflows/scripts/de-emulator-germany-build-wf_d4262351-d9d.js", resumeFromRunId: "wf_d4262351-d9d"})`;
-per-item reports `_reports/r2_<id>.json`, status `_status/<id>.md`.
+**Round 2 — the multi-agent workflow `wf_d4262351-d9d` DIED (~14:17, 2026-10-01) after SH0, SH1, SH2, SH12, SH14 (+ verifiers
+of SH2, SH14); a workflow cannot be resumed from another session. 2026-10-02 the build continued BY HAND + background Agent
+helpers (no Workflow call: ultracode was not re-confirmed this session).** State per item (status `_status/<id>.md`):
+* DONE 2026-10-02 (dev cellset = 907 cells): **SH3** transition table `shared/trans/dev/` (882 M rows, ALL gates pass) ·
+  **SH4** patch + recruit tables (4/6 gates; the 2 misses are pre-registered bands contradicting their own source
+  measurement — release x3.17-3.31 = round 1's 0.29->0.92-1.06; re-entry is episodic 0-2.15 %/yr) · **SH5** initial
+  states 1985/2014/2044 (20/20 pass) · **SH6** engine `scripts/explore_de_engine.py` — conformance (i) REPLAY == truth
+  EXACTLY through the scorer (239 448 cell + 13 728 block rows, incl. the c2015 contrast); (ii)-(iv) rerun after two fixes
+  (bank row order made runs non-deterministic; frozen test's expectation wrong for interpolated quantiles).
+* **SH8** rules ceiling `explore_de_sh_oracle.py` run (runs/oracle1/), scoring + yearly death series submitted.
+  ⚠ FINDING: per-patch fire identification from one patch-year is biased ~9x (clipping keeps the positive Bernoulli
+  noise); pooled per cell-year the rule deaths are +3.5-3.9 % of truth. Told the SH13 helper.
+* **SH7** LOOKUP `explore_de_sh_lookup.py` bank + one-step gate submitted. **SH9** `explore_de_sh_eval.py` (score / dynamics
+  / table -> shared/eval/comparison.csv) written.
+* Background helpers (do not duplicate; they do not commit): SH13 patch heads, STRUCT B1-B3, TAB A1-A5 — outputs under
+  `shared/patchheads/`, `struct/`, `tab/`, status `_status/{SH13,B1..B3,A1..A5}.md`.
+* NOT started: SH10 timing harness, SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
+  calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
 it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
 

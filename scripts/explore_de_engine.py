@@ -371,6 +371,8 @@ def apply_step(state: RosterState, out: StepOut, year: int, P, needs_bank: bool 
                     R[k] = np.full(m, -1, np.int64)
                 elif v.dtype.kind == "f":
                     R[k] = np.full(m, np.nan, np.float32)
+                elif k == "c":
+                    R[k] = np.zeros(m, np.int8)  # a new stem has no bad-growth history
                 else:
                     raise ValueError(f"recruits lack required field {k}")
         R = _typed(R)
@@ -435,7 +437,8 @@ def bank_update(state: RosterState, E: pl.DataFrame, y1: int, P):
     B = B.with_columns(n_years=pl.min_horizontal(
         pl.col("n_years"), (pl.col("last_year").cast(pl.Int32) - pl.max_horizontal(pl.col("first_year").cast(pl.Int32),
                                                                                     pl.lit(lo)) + 1)).cast(pl.Int16))
-    state.cell["bank"] = B.select(state.cell["bank"].columns)
+    # sort: group_by returns rows in a non-deterministic order, and arms draw bank members by position
+    state.cell["bank"] = B.select(state.cell["bank"].columns).sort(KEY)
 
 
 # ================================================================================================ built-in steppers
@@ -747,14 +750,16 @@ def frozen_check(od) -> dict:
     hist = tr.historical_of(mem, "MPI-ESM1-2-HR", 1)
     T = tr.read_year(hist["ind_dev_path"], 2014, None).filter(
         (pl.col("Type") <= 6) & (pl.col("isdead") == 0) & pl.col("Cell").is_in(cells.tolist()))
-    cy_e = pl.DataFrame({"Cell": cells.astype(np.int32)}).join(pl.DataFrame({"Year": list(range(2015, 2045))}),
-                                                                how="cross")
-    cy_t = pl.DataFrame({"Cell": cells.astype(np.int32), "Year": [2014] * len(cells)})
+    cy_e = pl.DataFrame({"Cell": cells.astype(np.int32), "n_years": [30] * len(cells)})
+    # the truth side = the 2014 roster repeated 30 times: quantiles with linear interpolation are NOT invariant to
+    # repeating every value, so a single 2014 copy is not the exact expectation (medians, counts and shares are)
+    cy_t = pl.DataFrame({"Cell": cells.astype(np.int32), "n_years": [30] * len(cells)})
+    T = pl.concat([T.with_columns(Year=pl.lit(y, pl.Int16)) for y in range(2015, 2045)])
     e = R.reduce_window(E.filter(pl.col("Year").is_between(2015, 2044)).with_columns(pl.col("Cell").cast(pl.Int32)),
                         cy_e)
     t = R.reduce_window(T.with_columns(pl.col("Cell").cast(pl.Int32)), cy_t)
     keys = [c for c in e.columns if c in ("Cell", "quantity")]
-    num = [c for c in e.columns if c not in keys and e.schema[c].is_numeric()]
+    num = [c for c in e.columns if c not in keys + ["n_years", "n_stemyears"] and e.schema[c].is_numeric()]
     j = e.join(t, on=keys, suffix="_t")
     worst = 0.0
     for c in num:
