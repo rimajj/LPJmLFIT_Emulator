@@ -236,3 +236,22 @@ maturing canopy, in the free run it creeps up, because the grass model is a mean
 year and a mean can never reach zero. A counterfactual that replays only the original's grass closes 54-85 % of
 the drift in stems, recruits, biomass, big-tree growth and cover. This also qualifies the earlier recruit finding,
 which had held grass at the original's values. Next: a grass model that can collapse, tested in isolation first.
+
+---
+
+## 2026-10-02 (fifth session) — a grass model that can collapse; it fixes the 2030s, not the 1990s
+
+Picked up NEXT item (1). First looked at what grass in the original actually is: one number per patch (leaf area),
+with biomass exactly 23.67 x leaf area and cover following from leaf area unless the patch is full; it is bimodal and
+very persistent on a log scale. So the new model predicts next year's log leaf area plus a residual drawn from its own
+out-of-sample errors, and derives cover and biomass from it. Pre-registered a grass-only test (the original's trees,
+only grass free, 907 places of a climate model the model never saw) with a falsifier: if the old grass model did not
+drift on its own, the earlier diagnosis was wrong. It does drift (under big trees it holds 5 % cover where the
+original has none). The new model passes every bar in the 1990s and misses one in the 2030s — it keeps too much grass
+under closed canopy and too little in the open, i.e. it responds too weakly to tree cover. Coupled into the full
+tabular emulator it closes 84-103 % of the 2030s gap in stem count, recruitment and biomass per stem, and about half of
+the big-tree growth gap — better than the earlier "replay the original's grass" counterfactual, which turns out not to
+be an upper bound because it paired the original's grass with different trees. But the 1990s-2000s are now wrong in
+the other direction (too few stems and recruits, stems too heavy): the stand matures early and arrives at the right
+2030s state by a different path, so part of the 2030s agreement is compensation. Next: find what drives the early
+path, and tune the grass on a development set that is not the test.
