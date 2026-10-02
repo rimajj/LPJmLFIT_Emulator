@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- line X (Germany emulator prototype): a recruit-head refit without grass cover, a carried hidden-cover model of the
+  grass cap for trees below the 5 m print height, its coupled variant, and a grass-state log. One step ahead it
+  removes the recruit bias; coupled, it exposes that the emulator's grass does not decline as in the original, which
+  the current variant had been hiding through a compensating error.
+
+### Added
+
 - line X (Germany emulator exploration): probes `scripts/explore_de_recruit_grass.py`, `explore_de_recruit_hidden.py`,
   `explore_de_hidden_persist.py` — the early recruit shortfall of the tabular emulator with the new grass model is the
   grass cover rule erasing the original's capped grass cover, which encodes the unprinted < 5 m tree layer.
