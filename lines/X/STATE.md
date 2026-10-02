@@ -152,12 +152,32 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (d) STRUCT: free-run biomass ~2x truth by w2015 (median agb 162 vs 83) despite G R2 0.93-0.96 one-step; no
   acceptance => beech 0.81 vs 0.93, boreal NE 5 % vs 0.9 %. Cost (core-s/cell-yr, 250 patches, excl. daily->annual
   climate): lookup 0.12 · TAB 1.17-1.30 · STRUCT 2.86 · original ~12.
-  **NEXT, in order:** (1) diagnose the recruit excess in the SH13 count head under free run (teacher-forced it matched
-  totals 1.028 — so check what the free-run patch state feeds it); (2) A7 free-run calibration of TAB on TRAINING
-  members only (recruit-count log offset is one of its 8 scalars); (3) STRUCT: B4 acceptance + the growth-memory
-  calibration; find why one-step-good growth doubles biomass in free run; (4) cross-fit for all-52-block scoring
-  (critic gap 1) so block-scale gates get power. Engine `submit` hard-codes the priority QOS (64-cpu user cap) —
-  helpers ran its `run` command from their own standard/short arrays.
+* **2026-10-02 (third session): the recruit excess is DIAGNOSED — it is the STAND, not the recruit head** [VERIFIED,
+  ACCESS s1 ssp370 leg, 200 dev cells = chunks 0-1 of the TAB run; `scripts/explore_de_recruit_drift.py` ->
+  `shared/eval/recruit_drift_ssp370.csv`, `scripts/explore_de_recruit_attrib.py` -> `shared/eval/recruit_attrib_tabAL.csv`].
+  (a) NOT threshold flicker: TAB re-entries 0.0002-0.0015/patch-yr; entry height/age match truth (5.07 m, ~12 yr).
+  (b) The original SELF-THINS (stems/patch 9.17 -> 7.19 from 1996 to 2036, agb/stem 497 -> 899, cover 0.42 -> 0.48,
+  recruits 0.31 -> 0.21-0.24/patch-yr); TAB never matures (agb/stem ~500 flat, cover 0.44-0.46, recruits 0.34-0.37).
+  (c) Biomass budget: death losses per patch are the SAME as truth (110-190/yr); the gap is GROWTH of big trees
+  (>= 15 m: median dln agb 0.022-0.026 vs 0.026-0.030 from decade 2 on; summed survivor rate 2.9-3.6 % vs 3.1-3.8 %).
+  (d) Input-swap attribution, recruit head on the original's stand with free-run inputs swapped in (gate: rebuilt
+  inputs == stored SH13 features on the original, 0 mismatches, needs the SLA+Wooddens key): original 0.237 (obs
+  0.249) · full free-run stand 0.353 (realised free run 0.33-0.40) · **cover only (sum_fpc + patch_lai) 0.343 = ~90 %**
+  · everything except cover 0.223 · cell stem density alone 0.228 (NEGATIVE: crowding, no cell-level feedback) ·
+  patch stem count alone 0.258 (a weak positive loop, ~10-25 % in context — watch it).
+  ⇒ the head responds honestly to a canopy that is too open; the canopy is too open because big-tree growth is too
+  slow in free run. ⚠ **Do NOT fix this with A7's recruit-count log offset** — that would hide the growth error behind
+  a compensating recruit error (the ADR 0126 "two wrong parameters of opposite sign" trap).
+  STRUCT is a different failure: recruits/patch are about right, but its trees DROP BELOW 5 m at 15x the original's
+  rate (exit 0.03-0.04 vs 0.002/patch-yr) and stems/patch fall too fast (8.25 -> 6.04) while agb/stem overshoots.
+  **NEXT, in order:** (1) TAB: find why big trees grow slower in free run than one-step — compare the growth head's
+  inputs (its AR residual state e_dagb, G, c, the canopy features) free-run vs truth for >= 15 m stems, same swap
+  method (`explore_de_recruit_attrib.py` is the template: rebuild from roster, gate against stored, swap groups);
+  (2) A7 free-run calibration of TAB on TRAINING members only, with the recruit offset FROZEN at 0 until (1) is
+  understood; (3) STRUCT: why its trees shrink below 5 m (height-from-agb closure?) + B4 acceptance + the
+  growth-memory calibration; (4) cross-fit for all-52-block scoring (critic gap 1) so block-scale gates get power.
+  Engine `submit` hard-codes the priority QOS (64-cpu user cap) — helpers ran its `run` command from their own
+  standard/short arrays.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
