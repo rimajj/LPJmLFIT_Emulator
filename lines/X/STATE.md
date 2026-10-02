@@ -127,12 +127,16 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   noise); pooled per cell-year the rule deaths are +3.5-3.9 % of truth. Told the SH13 helper.
 * **SH7** LOOKUP `explore_de_sh_lookup.py` bank + one-step gate submitted. **SH9** `explore_de_sh_eval.py` (score / dynamics
   / table -> shared/eval/comparison.csv) written.
-* Background helpers (do not duplicate; they do not commit): SH13 patch heads, STRUCT B1-B3, TAB A1-A5 — outputs under
-  `shared/patchheads/`, `struct/`, `tab/`, status `_status/{SH13,B1..B3,A1..A5}.md`.
-* **FIRST FREE-RUNNING GERMANY EMULATOR RESULT (lookup, 2026-10-02):** held-out GCM, 1985->2044: 1985-2014 cell pass 0.89
-  vs other-seed 0.95; 2015-2044 collapses to 0.11-0.19 vs 0.96 — stem-count drift (deaths 2-3 %/yr too few compound).
-  Details `_status/SH7.md`. Timing job 2381453 (shared/timing/lookup.json). TAB helper handed back early: its A2-A4 gate
-  jobs 2381397-9 run on their own (reports r2_A2..A4.json); three heads stopped at the old round cap — retrain decision open.
+* All three helpers FINISHED 2026-10-02 (committed): SH13 patch heads (3/4 gates; fire yearly r 0.821 vs a 0.9 gate whose
+  noise ceiling is ~0.89), TAB A1-A5 (one-step held-out: G-sign log-loss 0.110-0.144 vs persistence 0.25-0.30; scenario
+  sign gate 76 % on ACCESS; full chain death rate 3.39 vs 3.44 %; 543 CPU-us per tree-step ≈ 1.1 core-s per 250-patch
+  cell-year; FOUR boosters hit their round cap — retrain open), STRUCT B1-B3 (G R2 0.93-0.96 vs persistence 0.67-0.77;
+  water-stress amount fails; ~3 core-s per 250-patch cell-year). Everything one-step / teacher-forced.
+* **NEXT ACTIONS, in order:** (1) the TAB rollout stepper (A6) and the STRUCT stepper (B5) on the engine — the API of each
+  is in its report (`_reports/r2_A*.json`, `docs/notes/exploration_de_struct.md`); (2) free runs on ACCESS s1 1985->2044
+  ssp126/245/370 + their climate-blind twins, scored with explore_de_sh_eval.py exactly like the lookup; (3) the
+  free-run calibration steps (A7 / B5) ONLY on training members; (4) speed: both learned designs are 10-25x slower than
+  the lookup — shrink/distill before any full-Germany run.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
