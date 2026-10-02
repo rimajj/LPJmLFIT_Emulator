@@ -73,6 +73,20 @@ class TabALG2(ts.TabAL):
         z1 = np.clip(z1, np.log(g2.EPS), np.log(G.C["LAI_max"] * 1.2 + g2.EPS))
         L = np.maximum(np.exp(z1) - g2.EPS, 0.0)
         fpc, agb = self._cover(X, L, np.asarray(fpc_next, np.float64))
+        diag = os.environ.get("XDE_GRASS_DIAG")
+        if diag:  # one json line per step: the grass state the recruit head reads next year (read-only diagnostic)
+            import json
+            t1 = np.asarray(fpc_next, np.float64)
+            pot = 1 - np.exp(-G.C["K"] * L)
+            cap = (pot - fpc) > 1e-3
+            d = 1 - fpc - t1
+            with open(diag, "a") as fh:
+                fh.write(json.dumps({"Year": self._year + 1, "n": int(len(fpc)), "g_mean": float(fpc.mean()),
+                                     "pot_mean": float(pot.mean()), "cap_share": float(cap.mean()),
+                                     "h_mean_capped": float(d[cap].mean()) if cap.any() else None,
+                                     "t1_mean": float(t1.mean()), "L_mean": float(L.mean()),
+                                     "nrec_pp": float(self._nrec.mean()) if getattr(self, "_nrec", None) is not None
+                                     else None}) + "\n")
         return {g2.GF[:-2]: fpc, g2.GL[:-2]: L, g2.GA[:-2]: agb}
 
     def _cover(self, X, L, fpc_next):

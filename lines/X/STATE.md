@@ -262,6 +262,37 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   the grass mean's weak tree-cover response (may be the same cap channel: check closed-patch grass vs h first), the
   `cell_stems_per_patch` retrain, A7 with the recruit offset frozen at 0, all-10-chunks + seed 2 + MPI, STRUCT
   shrink-below-5 m, cross-fit for block scoring. Still one GCM, one seed.
+* **2026-10-03 (seventh session): the hidden < 5 m layer is worth carrying, and carrying it exposes a grass error
+  that a compensation had been hiding** [VERIFIED, ACCESS s1 unless stated; pre-registrations + results
+  `_status/HR.md`, `_status/HS.md`; scripts `explore_de_recruit_nofpc.py`, `explore_de_hidden_cover.py`,
+  `explore_de_tab_g2.py:TabALG2HS`, `explore_de_grass_diag_truth.py`]. C fact: after establishment, if total
+  cover > 1 every grass fpc is divided so grass = 1 - ALL tree cover (`establishmentpft_ind.c:197-204`;
+  `reduce_grass.c` touches fpc only). (a) Recruit head WITHOUT grass cover: 5.2 % worse deviance (13 % of what it
+  explains over a constant), +4.3..+5.4 % on every ACCESS leg; grass2 then biases it only +-0.01 after 1990 (+0.054
+  in 1986-89). Adding the TRUTH's last-year hidden cover back closes 70-73 % of that gap on every member; the
+  emulator's own recruit history closes 0.2-1.8 % => the signal persists, so an explicit state is worth building.
+  (b) Why it persists despite a lag-1 corr of 0.12: TOTAL tree cover (printed + hidden) is nearly conserved year to
+  year; cover just moves between the labels as trees cross 5 m (next-year h is 76 % "minus the printed-cover
+  change"). (c) HS = two-part model of next year's cap (P(cap) + log bite, residual draws), carrying the patch's own
+  previous grass cover. One step ahead on the original's trees: head bias -0.021..+0.012 in every window, 85-89 %
+  of the closure's lost information recovered, P(cap) within 0.001. A direct-h parametrisation: 91 %, but -0.031
+  in 1990-94 (fails the bar). (d) Grass-only free run FAILS (-6..-9 % early, +5..+11 % late) but is the wrong test:
+  it drives the carried state with the original's recruits. (e) COUPLED TAB + HS, 200 cells: early recruit deficit
+  fixed (1996-2005 -6 % vs -15 %) but +15..+27 % too many recruits from 2006 on and stems +14..+16 % by the 2030s
+  (bars FAIL). (f) Diagnosis (re-run of 100 cells with a grass log; reruns reproduce the scored rosters exactly):
+  HS's hidden cover runs ~15-25 % high after 2010, but the bigger cause is in BOTH coupled arms: grass leaf area
+  does not decline as in the original (truth 3.08 -> 1.13-1.35, emulator 2.7 -> 1.8-2.1), so 0.34-0.42 of patches
+  stay capped vs 0.18-0.24 and grass cover is +60-80 %. ⇒ the current arm's near-right late recruitment is a
+  COMPENSATION (too much grass + the median closure); HS reads the same wrong grass more faithfully.
+  **NEXT, in order (supersedes the sixth session's list):** (1) input-swap attribution of grass2's next-year LAI
+  on the coupled emulator state vs the original's (template `explore_de_recruit_attrib.py`; candidates stand
+  biomass, stem counts, loss history, recruits) — the grass-only replay on the original's trees is already +27 %
+  on these cells in the 2020s, coupled +75 %, so check both the grass model's own response to tree cover (fifth
+  session's finding) and what the emulator's trees feed it; (2) only then re-score TAB + HS coupled (bars in
+  `_status/HS.md`); keep the HS bite parametrisation; (3) the HS hidden cover's own ~15-25 % late excess; (4) the
+  tree heads ALSO read grass8_fpc_y (G / growth / death), so the same hidden-layer channel enters tree growth —
+  price it after (1); (5) then the fifth/sixth-session items (`cell_stems_per_patch` retrain, A7 with recruit offset
+  frozen at 0, all 10 chunks + seed 2 + MPI, STRUCT shrink-below-5 m, cross-fit). Still one GCM, one seed, 200 cells.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
