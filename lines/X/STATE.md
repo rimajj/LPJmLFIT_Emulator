@@ -129,7 +129,11 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   / table -> shared/eval/comparison.csv) written.
 * Background helpers (do not duplicate; they do not commit): SH13 patch heads, STRUCT B1-B3, TAB A1-A5 — outputs under
   `shared/patchheads/`, `struct/`, `tab/`, status `_status/{SH13,B1..B3,A1..A5}.md`.
-* NOT started: SH10 timing harness, SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
+* **FIRST FREE-RUNNING GERMANY EMULATOR RESULT (lookup, 2026-10-02):** held-out GCM, 1985->2044: 1985-2014 cell pass 0.89
+  vs other-seed 0.95; 2015-2044 collapses to 0.11-0.19 vs 0.96 — stem-count drift (deaths 2-3 %/yr too few compound).
+  Details `_status/SH7.md`. Timing job 2381453 (shared/timing/lookup.json). TAB helper handed back early: its A2-A4 gate
+  jobs 2381397-9 run on their own (reports r2_A2..A4.json); three heads stopped at the old round cap — retrain decision open.
+* NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
 it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
