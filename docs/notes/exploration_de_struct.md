@@ -131,3 +131,46 @@ SH10 harness.
 * The heads are slow (see above); most models stopped at the 1 500-round cap, still improving.
 * The persistence terms are estimated one step ahead from out-of-fold residuals; free-run re-calibration is not done.
 * Grass cover is an input but no head updates it; a stepper must carry it (or freeze it) explicitly.
+
+## B5 — the free-running stepper, first runs (`scripts/explore_de_struct_stepper.py`, report `_reports/r2_B5.json`)
+
+**What it is.** An engine stepper that, each year and for every tree, builds the B1 inputs from the emulator's own
+state (never from the original model's), samples next year's growth efficiency, water stress and size changes with
+a per-tree persistent random term, applies the original model's death rules (bad-growth counter, the four hazards,
+the 5-year kill, the bioclimatic survival test, then fire with the learned patch rate), hides trees that fall below
+the 5 m print cut, and adds recruits: how many per patch from the learned patch head, which type and traits from
+the original model's inheritance rule (B3, no acceptance filter yet), entry height/age from the learned entry
+heads, entry biomass from the inverse height allometry, and the other entry sizes from a small per-type log-linear
+fit on training recruits (stage `entry`; R² 0.99 vegetation carbon, 0.77-0.90 leaf area, 0.84-0.92 crown cover,
+0.49-0.64 rooting depth). Grass is carried unchanged (no head updates it). Arms: main = no acceptance filter;
+"no persistence" = the random term redrawn every year (same spread, no year-to-year memory); "climate-blind" = the
+same code run on the engine's frozen-climatology provider (`--clim frozen_mean`: each cell's own 1985-2014 mean
+climate, anomalies zero) — no stepper hack. The persistence parameters are the uncalibrated out-of-fold ones; an
+optional calibration file (`struct/cal/<split>.json`) is read if it exists and was NOT created.
+
+**Smoke (20 dev cells, MPI-ESM1-2-HR seed 1, ssp370, 1985-2044, 1 180 cell-years).** No NaN anywhere; living stem
+count 0.85-1.00 of the original's every year (0.90 in 2044); death rate 3.3 %/yr vs 3.1 %; share of living trees
+with a bad-growth counter ≥ 1: 11.7-12.1 % (target 9.6-13.7 %, in range); hard kills (hazard = 1, here almost all
+the 5-year counter kill) 1.06 %/tree-yr (target 1.1-1.4 %, just below). The no-persistence arm: 0.97 %/tree-yr,
+12.2 %, count ratio 0.86-1.00 — persistence barely matters for these rates. Cost 3.42 core-s per cell-year
+(process CPU over 16 threads; 0.23 s wall per cell-year), vs 0.121 for the lookup (28x) and ~12 for the original at
+the same 250 patches.
+
+**Free runs (ACCESS-CM2 = the climate model never trained on, seed 1, 907 dev cells, 1985 start, three scenario legs
+forked at 2014, to 2044; 107 933 cell-years each; 10 chunks x ~34 min on 16 cores; 2.86 core-s per cell-year).**
+Germany-wide (dev cells): living stems 0.83-1.00 of the original, 0.84-0.88 in 2044; death rate 3.59 %/yr vs 3.44 %,
+year-to-year correlation with the original's 0.76-0.79 (climate-blind twin: 0.20-0.25, so the yearly death signal is
+the climate response); new stems 3.67 % of living per year vs 3.20 % (+14 %); bad-growth prevalence 10.4 %; hard
+kills 1.42 %/tree-yr (in the target band at Germany scale, unlike the 20-cell smoke).
+
+**Scored on the 185 held-out fold-5 cells (the only evidence), full conjunctive panel, other-seed ceiling beside:**
+1985-2014 history 0 % of cells pass (ceiling 95 %; lookup 86 %); 2015-2044 every scenario 0 % (ceiling 92-93 %;
+lookup 6-10 %). The per-cell scenario-contrast row (ssp370 − ssp126) gives 56 % vs a 96 % ceiling, but the
+climate-blind twin scores 99 % on it — that row has no power and is not evidence. The block-scale primary response
+gate fails for every arm including the lookup (ceiling 9 %). **Why it fails (28 of 88 quantities):** (1) trees grow
+too fast in free run — median above-ground biomass 1.4x the original's in 1985-2014 and ~2x in 2015-2044, median
+height +7 %, stem density 17 % low by 2015-2044; (2) without the acceptance filter the kernel's type mix and trait
+tails reach the visible stand: beech share 0.81 vs 0.93, boreal needle-leaf 5 % vs 0.9 %, low-SLA / long-leaf-life
+tails (5 % SLA quantile 0.0145 vs 0.0243; 95 % leaf longevity 2.2 vs 1.1 yr). Both were expected to be the
+weak points (acceptance not built; growth persistence not calibrated in free run); the size of the growth drift was
+not known before. Teacher-forced skill (B1) did not carry over to the free run.
