@@ -178,6 +178,24 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   growth-memory calibration; (4) cross-fit for all-52-block scoring (critic gap 1) so block-scale gates get power.
   Engine `submit` hard-codes the priority QOS (64-cpu user cap) — helpers ran its `run` command from their own
   standard/short arrays.
+* **2026-10-02 (fourth session): the slow big-tree growth is mostly GRASS + the cell stem count, not the tree**
+  [VERIFIED, ACCESS s1 Historical+ssp370, chunks 0-1 = 200 dev cells]. (a) One step ahead on the original's own
+  held-out states the growth chain is only 0.000-0.0024/yr low for >= 15 m stems (median; pre-registered bar 0.004)
+  — but its negative-growth-year probability is too high for big trees (0.11 vs 0.05 in the 1980s, 0.27 vs 0.22 in
+  the 2040s) [`scripts/explore_de_growth_onestep.py` -> `shared/eval/growth_onestep_GCM.csv`]. (b) Instrumented
+  re-run `scripts/explore_de_tab_probe.py:TabALProbe` (gate: its rosters == the analysed tabAL run, 120/120 files;
+  dumped inputs reproduce the stepper's growth mean to 7e-9) + same-tree pairing with the original (2.01 M
+  tree-years >= 15 m, climate columns identical) [`scripts/explore_de_growth_attrib.py` ->
+  `shared/eval/growth_attrib_tabAL{,_shift}.csv`]. Median dln agb, 2010s: original realised 0.0285; chain on the
+  original's inputs 0.0271 (one-step bias 0.0014); chain on the free run's inputs 0.0242 (input shift 0.0029);
+  free run realised 0.0242 (sampling adds nothing). Swap one group in: GRASS -0.0026, CELL stem density -0.0023,
+  own lagged G -0.0019; patch stand +0.0015 and previous growth +0.0015 push the other way (non-additive).
+  **The grass under big trees is the striking drift:** original grass cover there falls to ~0 (median 0.0007 in the
+  2010s, mean 0.18 -> 0.08), the free run's RISES (median 0.09, mean 0.19 -> 0.26). The A3 grass heads are a
+  deterministic mean regression of next-year grass iterated forward — that cannot reproduce a bounded variable
+  collapsing to 0. ⚠ This also qualifies the recruit attribution above: it held grass at the ORIGINAL's values.
+  Counterfactual: `TabALGrassOracle` (same run, grass replayed from the original's patch table) array 2382412 ->
+  chained `explore_de_recruit_drift.py --tag _grassreplay` job 2382416 -> `shared/eval/recruit_drift_ssp370_grassreplay.csv`.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
