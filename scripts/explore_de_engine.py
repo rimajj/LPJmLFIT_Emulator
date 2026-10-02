@@ -278,7 +278,9 @@ def _typed(d: dict) -> dict:
     return out
 
 
-def load_init(name: str, cellset: str, cells: np.ndarray) -> RosterState:
+def load_init(name: str, cellset: str, cells: np.ndarray, patch_step: int = 1) -> RosterState:
+    """patch_step > 1 keeps patches with Patch % patch_step == 0 (renumbered Patch // patch_step), so a 250-patch
+    state becomes a 25-patch one (patch_step 10): the speed setting of the global model, not a fidelity claim."""
     base = os.path.join(si.INIT, cellset, name)
     dirs = sorted(glob.glob(os.path.join(base, "cb=*")))
     assert dirs, f"no initial state {base} (build SH5 first)"
@@ -291,7 +293,11 @@ def load_init(name: str, cellset: str, cells: np.ndarray) -> RosterState:
         return pl.concat([pl.scan_parquet(os.path.join(d, f)).filter(pl.col("Cell").is_in(cl)) for d in dirs]
                          ).collect()
 
-    T = rd("trees.parquet").sort(["Cell", "Patch", "Type", "ID"])
+    T = rd("trees.parquet")
+    if patch_step > 1:
+        npatch //= patch_step
+        T = T.filter(pl.col("Patch") % patch_step == 0).with_columns(pl.col("Patch") // patch_step)
+    T = T.sort(["Cell", "Patch", "Type", "ID"])
     have = np.unique(T["Cell"].to_numpy())
     missing = np.setdiff1d(cells, have)
     tree = {c: T[c].to_numpy() for c in ["Cell", "Patch", "Type", "ID"] + tr.TRAITS
@@ -301,7 +307,10 @@ def load_init(name: str, cellset: str, cells: np.ndarray) -> RosterState:
     tree["hidden"] = np.zeros(T.height, bool)
     tree["hidden_years"] = np.zeros(T.height, np.int16)
     tree = _typed(tree)
-    Pt = rd("patches.parquet").sort("Cell", "Patch")
+    Pt = rd("patches.parquet")
+    if patch_step > 1:
+        Pt = Pt.filter(pl.col("Patch") % patch_step == 0).with_columns(pl.col("Patch") // patch_step)
+    Pt = Pt.sort("Cell", "Patch")
     cells_sorted = np.sort(cells)
     assert Pt.height == len(cells_sorted) * npatch, (Pt.height, len(cells_sorted), npatch)
     patch = {c: Pt[c].cast(pl.Float32).to_numpy() for c in Pt.columns if c.startswith("grass")}
@@ -312,6 +321,9 @@ def load_init(name: str, cellset: str, cells: np.ndarray) -> RosterState:
     patch["hist_years"] = Pt["hist_years"].to_numpy().astype(np.int8)
     bank = rd("bank.parquet")
     im = rd("idmax.parquet")
+    if patch_step > 1:
+        bank = bank.filter(pl.col("Patch") % patch_step == 0).with_columns(pl.col("Patch") // patch_step)
+        im = im.filter(pl.col("Patch") % patch_step == 0).with_columns(pl.col("Patch") // patch_step)
     idmax = np.zeros((len(cells_sorted), npatch, tr.MAX_TREE_TYPE + 1), dtype=np.int64)
     if im.height:
         ci = np.searchsorted(cells_sorted, im["Cell"].to_numpy())
@@ -523,7 +535,7 @@ def run_chunk(a, k: int, cells: np.ndarray, out_dir: str) -> dict:
     timing = {"init": 0.0, "climate": 0.0, "step": 0.0, "engine": 0.0, "write": 0.0}
     t0 = time.process_time()
     name = init_name(a.gcm, a.seed, a.start, legs[0])
-    state = load_init(name, a.cellset, cells)
+    state = load_init(name, a.cellset, cells, getattr(a, "patch_step", 1) or 1)
     assert state.year == a.start, (state.year, a.start)
     ctx = {"gcm": a.gcm, "seed": a.seed, "rep": a.rep, "arm": a.arm, "cellset": a.cellset, "npatch": state.npatch,
            "P": P, "start": a.start, "clim_mode": a.clim, "traj": "Historical" if a.start <= 2014 else legs[0]}
@@ -793,6 +805,7 @@ def main(argv=None):
     ap.add_argument("--ncpu", type=int, default=8)
     ap.add_argument("--timing", action="store_true")
     ap.add_argument("--tests", default="i,ii,iii,iv")
+    ap.add_argument("--patch-step", type=int, default=1)
     a = ap.parse_args(argv)
     {"run": stage_run, "submit": stage_submit, "conform": stage_conform}[a.stage](a)
 

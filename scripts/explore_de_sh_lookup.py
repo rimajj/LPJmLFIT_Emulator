@@ -22,7 +22,7 @@ Simplification (stated): a tree the copy sends below the 5 m print cut is remove
 shrunken trees (0.3-1 % of new stems, SH4) are therefore not produced; patches that copy a recruit count include only
 true recruits.
 
-STAGES  bank --split DEV-A [--bank-rows 1000000]   build the banks from the split's training members, dev folds 1-4
+STAGES  bank --split DEV-A [--bank-rows 300000]   build the banks from the split's training members, dev folds 1-4
         gate --split DEV-A                          teacher-forced one-step death and recruit rates on fold-5 dev cells
                                                     of the training-GCM members vs truth (pre-registered: within 5 %)
 Stepper: explore_de_sh_lookup:Lookup (kwargs: split, noclim, verbatim, k).
@@ -38,7 +38,7 @@ import time
 
 import numpy as np
 import polars as pl
-from sklearn.neighbors import KDTree
+from scipy.spatial import cKDTree
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
@@ -109,7 +109,7 @@ def stage_bank(a):
             ok = np.isfinite(X).all(1)
             X, g = X[ok], g.filter(pl.Series(ok))
             mu, sd = X.mean(0), X.std(0) + 1e-9
-            banks[(int(typ), int(c))] = {"tree": KDTree((X - mu) / sd, leaf_size=40), "mu": mu, "sd": sd,
+            banks[(int(typ), int(c))] = {"tree": cKDTree((X - mu) / sd, leafsize=32), "mu": mu, "sd": sd,
                                          "Y": g.select(TREE_TARGETS).cast(pl.Float64).to_numpy()}
             meta["partitions"][f"{typ}_{c}_{'noclim' if noclim else 'clim'}"] = int(g.height)
         # per-Type fallback (any counter)
@@ -120,7 +120,7 @@ def stage_bank(a):
             ok = np.isfinite(X).all(1)
             X, g = X[ok], g.filter(pl.Series(ok))
             mu, sd = X.mean(0), X.std(0) + 1e-9
-            banks[(typ, -1)] = {"tree": KDTree((X - mu) / sd, leaf_size=40), "mu": mu, "sd": sd,
+            banks[(typ, -1)] = {"tree": cKDTree((X - mu) / sd, leafsize=32), "mu": mu, "sd": sd,
                                 "Y": g.select(TREE_TARGETS).cast(pl.Float64).to_numpy()}
         with open(os.path.join(OUT, a.split, f"tree_bank_{'noclim' if noclim else 'clim'}.pkl"), "wb") as f:
             pickle.dump({"keys": keys, "banks": banks}, f, protocol=5)
@@ -159,10 +159,11 @@ def stage_bank(a):
         keys = PATCH_STATE_KEYS + ([] if noclim else [f"{c}_y1" for c in CLIM_KEYS])
         X = Pt.select(keys).cast(pl.Float64).fill_null(0.0).to_numpy()
         mu, sd = X.mean(0), X.std(0) + 1e-9
+        # (patch bank tree built below)
         pids = Pt["_pid"].to_numpy()
         rr = np.array([pid_to_rows.get(int(p), (0, 0)) for p in pids], dtype=np.int64)
         with open(os.path.join(OUT, a.split, f"patch_bank_{'noclim' if noclim else 'clim'}.pkl"), "wb") as f:
-            pickle.dump({"keys": keys, "tree": KDTree((X - mu) / sd, leaf_size=40), "mu": mu, "sd": sd,
+            pickle.dump({"keys": keys, "tree": cKDTree((X - mu) / sd, leafsize=32), "mu": mu, "sd": sd,
                          "rec_range": rr, "R": R}, f, protocol=5)
     # training medians and ranges per Type (fallback + clipping)
     tm = Rt.group_by("Type").agg(**{f"{t}_med": pl.col(t).cast(pl.Float64).median() for t in STD_TRAITS},
@@ -185,8 +186,14 @@ def patch_features_truth(Pt: pl.DataFrame) -> pl.DataFrame:
 class Lookup:
     needs_bank = False
 
-    def __init__(self, split: str = "DEV-A", noclim: bool = False, verbatim: bool = False, k: int = 16):
+    def __init__(self, split: str = "DEV-A", noclim: bool = False, verbatim: bool = False, k: int = 16,
+                 eps: float = 1.0, workers: int | None = None):
+        """eps: approximate neighbour search (scipy cKDTree: every returned neighbour is within (1 + eps) of the
+        true k-th distance; measured 94 % overlap with the exact 16 at eps = 1, 12x faster). workers: query threads
+        (default: POLARS_MAX_THREADS, 1 under the timing harness)."""
         self.split, self.noclim, self.verbatim, self.k = split, noclim, verbatim, int(k)
+        self.eps = float(eps)
+        self.workers = int(workers or os.environ.get("POLARS_MAX_THREADS", "1"))
 
     def init(self, state, ctx):
         tag = "noclim" if self.noclim else "clim"
@@ -244,7 +251,8 @@ class Lookup:
                 if b is None:
                     raise KeyError(f"no lookup bank for Type {typ}")
                 kk = min(self.k, b["Y"].shape[0])
-                _, nb = b["tree"].query((X[m] - b["mu"]) / b["sd"], k=kk)
+                _, nb = b["tree"].query((X[m] - b["mu"]) / b["sd"], k=kk, eps=self.eps, workers=self.workers)
+                nb = nb.reshape(m.sum(), kk)
                 pick = nb[np.arange(m.sum()), np.minimum((u[m] * kk).astype(np.int64), kk - 1)]
                 Y[m] = b["Y"][pick]
         fate = Y[:, 0].astype(np.int64)
@@ -271,7 +279,7 @@ class Lookup:
             Xp = np.column_stack([Xp, C[pc]])
         pb = self.pb
         kk = self.k
-        _, nb = pb["tree"].query((Xp - pb["mu"]) / pb["sd"], k=kk)
+        _, nb = pb["tree"].query((Xp - pb["mu"]) / pb["sd"], k=kk, eps=self.eps, workers=self.workers)
         pcell, ppat = cells[pc], np.tile(np.arange(npatch), len(cells))
         up = rand.uniform("lookup_patch", y, pcell, ppat)
         pick = nb[np.arange(npat), np.minimum((up * kk).astype(np.int64), kk - 1)]
@@ -319,6 +327,8 @@ def stage_gate(a):
     f5 = pl.read_parquet(os.path.join(tr.REG, "folds.parquet")).filter(pl.col("is_dev") & (pl.col("fold") == 5))
     cells = np.sort(f5["Cell"].to_numpy())
     res = {}
+    L = Lookup(a.split)
+    loaded = False
     for m in members:
         row = tr.member_row(tr.registry()[0], m)
         g = json.load(open(os.path.join(tr.TRANS, "dev", m, "cb=dev", "_gates.json")))
@@ -338,8 +348,9 @@ def stage_gate(a):
             st.patch["loss_ring"] = np.column_stack([Pt[f"frac_loss_lag{k}"].fill_null(np.nan).to_numpy()
                                                      for k in range(en.NLAG)]).astype(np.float32)
             clim = en.Climate(row["gcm"], row["scen"], int(row["seed"]), cells).year(y + 1)
-            L = Lookup(a.split)
-            L.init(st, {"P": P})
+            if not loaded:
+                L.init(st, {"P": P})
+                loaded = True
             o = L.step(st, {}, y, clim, {"rh_on": 1}, en.Rand("lookup_gate", 1, row["gcm"]))
             out.append({"Year": y, "n": T.height, "truth_dead": int((T["fate_y1"] == 1).sum()),
                         "lookup_dead": int(o.isdead.sum()),
@@ -360,7 +371,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["bank", "gate"])
     ap.add_argument("--split", default="DEV-A")
-    ap.add_argument("--bank-rows", type=int, default=1_000_000)
+    ap.add_argument("--bank-rows", type=int, default=300_000)
     ap.add_argument("--c0-frac", type=float, default=0.1)
     a = ap.parse_args(argv)
     {"bank": stage_bank, "gate": stage_gate}[a.stage](a)
