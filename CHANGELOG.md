@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X (Germany emulator exploration): big-tree growth attribution of the tabular free run — one-step check
+  (`scripts/explore_de_growth_onestep.py`), an instrumented stepper gated identical to the analysed run plus a
+  grass-replay counterfactual (`scripts/explore_de_tab_probe.py`), and a same-tree input-swap attribution
+  (`scripts/explore_de_growth_attrib.py`). Finding: the free-run grass model is the largest single cause of the drift.
+
+### Added
+
 - Line X (Germany emulator prototype): `scripts/explore_de_recruit_drift.py` and `scripts/explore_de_recruit_attrib.py`
   — read-only probes that trace the free runs' excess recruitment to too-slow growth of large trees (the canopy stays
   open), not to the recruit model; the attribution rebuilds the recruit model's inputs from a roster, gates them
