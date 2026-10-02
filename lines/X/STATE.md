@@ -209,6 +209,32 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (3) the big-tree negative-G over-prediction (one-step); (4) only then A7 calibration, recruit offset still frozen
   at 0; (5) STRUCT shrink-below-5 m and the cross-fit for block scoring stay as listed above. All on 200 cells of
   one GCM/scenario so far — rerun the counterfactual on all 10 chunks before quoting it as general.
+* **2026-10-02 (fifth session): a grass model that can collapse — it fixes most of the 2030s drift, but distorts
+  the 1990s-2000s path** [VERIFIED, ACCESS s1; `scripts/explore_de_grass2.py` (model + grass-only replay),
+  `scripts/explore_de_tab_g2.py:TabALG2` (TAB with it); pre-registration + results `_status/G2.md`; models
+  `tab/models/DEV-A/grass2_*`; tables `shared/eval/grass2_replay_ACCESS-CM2_s1_ssp370*.csv|json`,
+  `shared/eval/recruit_drift_ssp370_g2.csv`; runs `runs/_tabg2_{ar,m}`]. (a) Grass in the original is ONE number per
+  patch: agb = 23.673 x LAI exactly; cover = 1-exp(-0.5 LAI) unless total cover is capped (~1/3 of patch-years);
+  bimodal (30 % < 1e-3) and persistent in log space (corr 0.988). New model = next-year log LAI (two-stage boosted,
+  residual draws), cover/biomass by that closure. (b) Grass-only free run on the original's own trees (907 cells,
+  1985->2043): the OLD heads drift on their own (falsifier did not fire: grass under >= 15 m stems median 0.054 vs
+  0.000, P(grass < 1e-3) 0.016 vs 0.484 in 2026-35); the new one passes every pre-registered gate in 1995-2004 and in
+  2026-35 misses only the under-big-tree mean (0.090 vs 0.068). Its remaining error is the MEAN response to tree
+  cover, too weak (too much grass in closed patches, too little in open ones). (c) Coupled TAB + new grass, 200 cells:
+  2026-35 it closes 84-103 % of the stems / recruits / biomass-per-stem / stand-biomass gap and 55 % of the
+  big-tree growth gap — better than the grass-replay counterfactual, which is therefore NOT an upper bound (it pasted
+  the original's grass onto a different tree roster). ⚠ BUT 1991-2010 is wrong the other way: stems 5-8 % low,
+  recruits ~15 % low, biomass per stem 9-11 % high — the stand matures too early and reaches the right 2030s state by
+  a different path. Treat the 2030s agreement as partly compensating until the early path is fixed.
+  **NEXT, in order (supersedes the fourth session's list):** (1) the early-maturation undershoot: input-swap
+  attribution (template `explore_de_recruit_attrib.py`) on 1991-2010 for TAB+G2 vs the original — is it the open-patch
+  grass deficit, or the recruit head's response to it? (2) the grass mean's weak cover response: candidate features
+  (lagged grass change, the stepper's own sub-5 m trees' cover, which the original's grass also sees) — and ⚠ TUNE on a
+  dev set that is NOT the test: use the training GCM's held-out place fold (MPI s1, fold 5) for the grass-only
+  replay, keep ACCESS as the untouched test; (3) the remaining big-tree growth gap (~0.002/yr in the 2030s) = one-step
+  bias + the cell stem-density shortcut: retrain the G/growth heads without `cell_stems_per_patch`; (4) then A7
+  calibration, recruit offset still frozen at 0; (5) rerun on all 10 chunks + seed 2 + MPI before quoting anything
+  as general; (6) STRUCT shrink-below-5 m and the cross-fit for block scoring stay as listed above.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
