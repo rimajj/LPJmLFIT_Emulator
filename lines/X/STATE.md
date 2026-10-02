@@ -235,6 +235,33 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   bias + the cell stem-density shortcut: retrain the G/growth heads without `cell_stems_per_patch`; (4) then A7
   calibration, recruit offset still frozen at 0; (5) rerun on all 10 chunks + seed 2 + MPI before quoting anything
   as general; (6) STRUCT shrink-below-5 m and the cross-fit for block scoring stay as listed above.
+* **2026-10-02 (sixth session): the early recruit shortfall is the grass COVER RULE erasing a hidden-sapling
+  signal** [VERIFIED, ACCESS s1, 907 dev cells; `scripts/explore_de_recruit_grass.py` -> `shared/eval/recruit_grass_
+  ACCESS-CM2_s1_ssp370{,_bins}.csv`; `scripts/explore_de_recruit_hidden.py` -> `recruit_hidden_ACCESS-CM2_s1.csv`;
+  `scripts/explore_de_hidden_persist.py` (log only); pre-registration + results `_status/RG.md`]. (a) Coupled fact:
+  the 1986 roster is identical across TAB arms, yet 1987 recruits are grass2 0.335 / grass replay 0.381 / old A3 0.406
+  / truth 0.368 per patch => the grass alone. (b) Recruit head on the ORIGINAL's trees (gates exact: 0.0), grass
+  swapped: grass2 one step ahead -0.066 / -0.107 / -0.111 / -0.092 relative in 1985-89 / 90-94 / 95-99 / 2000-04
+  (-0.10..-0.16 on the coupled 200 cells), shrinking to 0 by 2015 and +0.06..+0.10 after 2025; the grass-only free run
+  gives the same within 0.01 => one-step error, no accumulation. (c) Keeping the original's own grass LAI/biomass and
+  replacing ONLY grass cover by grass2's closure of that LAI reproduces it in full (-0.108; no cap at all -0.533).
+  (d) Why: where total cover is capped (35 % of patch-years) the original's grass cover = 1 - tree cover - the patch's
+  OWN cover of unprinted < 5 m trees, and those are next year's recruits. In the truth, at matched tree cover, recruits
+  rise 3-4x across quartiles of that implied hidden cover h (tree cover 0.4-0.5: 0.13 -> 0.51 per patch-yr); the head
+  learned it; grass2 uses a per-bin median, which flattens and inverts it. h drains when recruits appear (mean change
+  +0.006 / -0.006 / -0.020 / -0.041 for 0 / 1 / 2 / 3+ recruits) but is noisy year to year (corr 0.12); capped status
+  persists (0.94). ⇒ **the sub-5 m layer is a real hidden state, the old grass heads leaked it in through grass cover,
+  and any grass model with a closure removes it.** The 2030s "agreement" of TAB+grass2 is then partly a compensating
+  error (late positive bias of the same channel).
+  **NEXT, in order (supersedes the fifth session's list):** (1) DESIGN, then test in replay: give the emulator an
+  explicit hidden-sapling cover per patch (grows each year, drained by recruits, bounded above by 1 - grass pot cover
+  - tree cover where uncapped, observed where capped), let the recruit head read IT instead of grass cover, and keep
+  grass2 for grass. Retrain the recruit head with h (and without grass fpc) on training members; score one-step
+  first, then the recruit-only replay on the original's trees, then coupled. ⚠ Do not "fix" it by putting the
+  original's grass-cover noise back into grass2 — that re-hides the state. (2) Then the remaining fifth-session items:
+  the grass mean's weak tree-cover response (may be the same cap channel: check closed-patch grass vs h first), the
+  `cell_stems_per_patch` retrain, A7 with the recruit offset frozen at 0, all-10-chunks + seed 2 + MPI, STRUCT
+  shrink-below-5 m, cross-fit for block scoring. Still one GCM, one seed.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):

@@ -255,3 +255,19 @@ be an upper bound because it paired the original's grass with different trees. B
 the other direction (too few stems and recruits, stems too heavy): the stand matures early and arrives at the right
 2030s state by a different path, so part of the 2030s agreement is compensation. Next: find what drives the early
 path, and tune the grass on a development set that is not the test.
+
+---
+
+## 2026-10-02 (sixth session) — the grass was smuggling in the young trees
+
+Picked up NEXT item (1), the too-early maturation with the new grass model. The coupled runs already isolated the first
+year: the tree rosters are identical across the emulator variants in 1986, and the new grass alone lowers 1987 recruits
+by 12 %. Pre-registered and ran the same swap on the original's own trees for every year: the new grass lowers the
+recruit model's output by 7-11 % until about 2005 and raises it after 2025, one step ahead as much as in a free run, so
+nothing accumulates. In the patches carrying the gap the new grass has the right average cover and leaf area, which
+pointed away from the grass amount. Replacing only the grass cover by the new model's cover rule, with the original's
+own grass leaf area kept, reproduces the whole effect. The reason is that where the patch is full the original's grass
+cover is whatever the trees leave, including the young trees below the 5 m print threshold, so it measures them; in the
+original, recruits next year rise three- to four-fold with that squeezed-out cover, and it drains when recruits appear.
+The recruit model learned to read it; any grass model with a closure rule erases it. The young-tree layer is a hidden
+state the emulator needs to carry itself.
