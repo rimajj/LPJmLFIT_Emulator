@@ -191,3 +191,32 @@ cheapest and the boreal one the most expensive.** The daily loop is 97.4–98.2 
 
 Meanwhile the round-2 data-driven campaign hit the session usage limit for a third time; B4/B5/B6, the
 spectrum synthesis, the completeness critic and B1's verifier are still outstanding and still cached.
+
+
+---
+
+## 2026-09-30 — the owner asks why a data-driven transition emulator should be impossible, then says: build it (Germany)
+
+Owner question (verbatim, abridged): *"I still can't believe that a data-driven emulator of lpjml-FIT that can emulate transient runs is not
+possible ... given the forest state now and the climate of the next year, what is the forest like in the next year ... The most naive
+emulator would be like a look up table ... what is the reason that it is not learnable? Do we need better data? more patches per cell?"*
+Answered from ADR 0310/0311/0312: not shown impossible; partly learnable; the specific obstacles are the tiny per-year climate signal
+under per-tree dice rolls, error build-up in free runs of one-step-trained models, the warming-vs-place confound from a single scenario,
+and invisible state (sub-5 m trees, the bad-growth counter — recoverable). More patches helps the trait targets (whose two-seed
+reproducibility is poor at 25 patches) but not the confound; designed climate variation does. The owner then pointed at the Germany
+production runs (250 patches, 2 GCMs x 4 legs x 2 seeds) and instructed the build; see STATE `00✦`.
+
+---
+
+## 2026-10-02 (third session) — the free runs' extra recruits are the stand's fault, not the recruit model's
+
+Picked up NEXT item (1). Pre-registered three readings (flicker of trees around the 5 m print threshold; an open
+canopy honestly inviting recruits; a self-reinforcing input in the recruit model) and measured from the saved free
+runs, no model run. Flicker is negligible. The original model self-thins — fewer, much bigger trees, a closing canopy,
+recruitment falling by a third — while the tabular free run never matures. Deaths remove the same biomass in both;
+the difference is that big trees grow 15–25 % slower in the free run. An input-swap test (rebuild the recruit model's
+inputs from a roster, first proven identical to the stored training inputs on the original, then swap one group at a
+time) put ~90 % of the excess on canopy cover alone. The cell-level stem density, my main suspect for a runaway loop,
+pushes the other way. The gate earned its keep twice: it caught that the plain tree key has duplicates (the trait-
+extended key fixes it), which would otherwise have shown as a phantom history mismatch in 2–6 patches per year.
+Consequence recorded in STATE: do not let the free-run calibration absorb this into the recruit offset.

@@ -84,6 +84,125 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 00✦ 🔨 OWNER INSTRUCTION 2026-09-30: BUILD the data-driven emulator, Germany first (supersedes "line X does not implement" FOR THIS BUILD ONLY)
+
+Owner, verbatim: *"ok go on and build the emulator. you can also do it for germany only now, for testing. for germany we have runs with
+more pathces and several different ssp scenarios and two differnt models in /p/projects/waldspektrum/data/LPJmlFit/productionruns_Jamir"*
+(the real path is `/p/projects/waldspektrum/data/LPJmLFIT/productionruns_jamir`), and *"be aware that the trasnioent run is only until
+2100, after that the climate is recycled, so no warmin response is tehre"*. Ultracode (multi-agent) switched on by the owner the same turn.
+**Milestone (owner, 2026-10-01, verbatim): *"the next milestone is to make a "germany emulator" work with the germany data. once that
+works we can then use the method for the global emulator"*** — so build the METHOD so it transfers: nothing Germany-specific baked in
+(cell counts, patch count, PFT set, file paths all parameters).
+**Owner, 2026-10-01, verbatim: *"I want you to try out all the most promising designs in parallel. is LSTM also an option?"*** ⇒ the
+round-1 design panel now has FOUR architects (per-tree boosted heads · structured = learned growth + the original's own death/recruit
+rules · recurrent LSTM/GRU memory for the invisible state · patch-level neural set model with multi-step training), and the judge
+plans SHARED infrastructure + one parallel build TRACK per promising design, all scored by the same scorer.
+**Round 1 DONE (2026-10-01, `wf_89265fa2-f32`):** all 40 tables converted + gated; climate features; transition anatomy (verified);
+scorer + nulls; 4-architect panel → judge plan = shared SH0–SH13 + tracks A-TAB / B-STRUCT / C-RECUR / D-NSET; critic amendments.
+Everything in `/p/tmp/jamirp/X_de/_reports/` (`round1_all.json`, `round2_args.json` = the build plan).
+⚠ **[VERIFIED] HUMIDITY CONFIG DEFECT IN THE GERMANY PRODUCTION RUNS:** `"relative_humidity": true` is missing from every
+`lpjml_2100_*` and `lpjml_3100_*` segment config (present in Historical/2044/2070/3070); `fscanconfig.c:255` defaults it FALSE, so
+2071–2100 and 3071–3100 read relative humidity as specific humidity ⇒ VPD 0 ⇒ **water-stress mortality exactly 0** (living trees with
+mort_water>0: 5.1 % in 2015, 0.0 in 2071/2085/2100, MPI ssp370 s1 dev cells; same ACCESS ssp126). Told the owner; rerun = owner decision.
+Emulator carries `rh_on` as an input; primary response statistic = between-scenario contrast at w2071 (cancels it).
+Also: all ssp245 segments ran the Feb-2026 binary, everything else Dec-2025.
+🛑 **OWNER DECISION 2026-10-01 (verbatim): *"double check if the runs after 2070 were really corrupted with the wrong settings. if its
+true, lets only use the earlier data that is correct, for now."*** Double-checked three ways and TRUE: configs (key in 12/12 2044,
+12/12 2070, 12/12 3070, 4/4 Historical; 0/12 2100, 0/12 3100), run logs (2071–2100/3071–3100 list "humid", all others "rhumid"),
+data (mort_water>0 share exactly 0.0 in 2071 and 2100 in all 24 ssp runs vs 0.02–5.1 % in 2015, 0.08–9.4 % in 2044;
+`/p/tmp/jamirp/X_de/_jobs/check_rh_effect.py`, log X-de-rhcheck.2371045). ⇒ **the build uses 1985–2044 only**; w2071/w3071 excluded
+everywhere; primary response = ssp370−ssp126 contrast in 2015–2044; the correct 2045–2070 segment's gridded outputs become optional
+cell-aggregate checks to 2070. A rerun of 2071–2100 (and beyond) is the owner's call.
+**Round 2 — the multi-agent workflow `wf_d4262351-d9d` DIED (~14:17, 2026-10-01) after SH0, SH1, SH2, SH12, SH14 (+ verifiers
+of SH2, SH14); a workflow cannot be resumed from another session. 2026-10-02 the build continued BY HAND + background Agent
+helpers (no Workflow call: ultracode was not re-confirmed this session).** State per item (status `_status/<id>.md`):
+* DONE 2026-10-02 (dev cellset = 907 cells): **SH3** transition table `shared/trans/dev/` (882 M rows, ALL gates pass) ·
+  **SH4** patch + recruit tables (4/6 gates; the 2 misses are pre-registered bands contradicting their own source
+  measurement — release x3.17-3.31 = round 1's 0.29->0.92-1.06; re-entry is episodic 0-2.15 %/yr) · **SH5** initial
+  states 1985/2014/2044 (20/20 pass) · **SH6** engine `scripts/explore_de_engine.py` — conformance (i) REPLAY == truth
+  EXACTLY through the scorer (239 448 cell + 13 728 block rows, incl. the c2015 contrast); (ii)-(iv) rerun after two fixes
+  (bank row order made runs non-deterministic; frozen test's expectation wrong for interpolated quantiles).
+* **SH8** rules ceiling `explore_de_sh_oracle.py` run (runs/oracle1/), scoring + yearly death series submitted.
+  ⚠ FINDING: per-patch fire identification from one patch-year is biased ~9x (clipping keeps the positive Bernoulli
+  noise); pooled per cell-year the rule deaths are +3.5-3.9 % of truth. Told the SH13 helper.
+* **SH7** LOOKUP `explore_de_sh_lookup.py` bank + one-step gate submitted. **SH9** `explore_de_sh_eval.py` (score / dynamics
+  / table -> shared/eval/comparison.csv) written.
+* All three helpers FINISHED 2026-10-02 (committed): SH13 patch heads (3/4 gates; fire yearly r 0.821 vs a 0.9 gate whose
+  noise ceiling is ~0.89), TAB A1-A5 (one-step held-out: G-sign log-loss 0.110-0.144 vs persistence 0.25-0.30; scenario
+  sign gate 76 % on ACCESS; full chain death rate 3.39 vs 3.44 %; 543 CPU-us per tree-step ≈ 1.1 core-s per 250-patch
+  cell-year; FOUR boosters hit their round cap — retrain open), STRUCT B1-B3 (G R2 0.93-0.96 vs persistence 0.67-0.77;
+  water-stress amount fails; ~3 core-s per 250-patch cell-year). Everything one-step / teacher-forced.
+* **NEXT ACTIONS, in order:** (1) the TAB rollout stepper (A6) and the STRUCT stepper (B5) on the engine — the API of each
+  is in its report (`_reports/r2_A*.json`, `docs/notes/exploration_de_struct.md`); (2) free runs on ACCESS s1 1985->2044
+  ssp126/245/370 + their climate-blind twins, scored with explore_de_sh_eval.py exactly like the lookup; (3) the
+  free-run calibration steps (A7 / B5) ONLY on training members; (4) speed: both learned designs are 10-25x slower than
+  the lookup — shrink/distill before any full-Germany run.
+* **2026-10-02 (later session): A6 + B5 DONE — first free runs of both learned designs, scored** (helpers, committed
+  bfe39d76 / 1c96dfda; reports `_reports/r2_A6.json`, `r2_B5.json`; table `shared/eval/comparison.csv`, column
+  pass_cal_xg). ACCESS s1, 907 dev cells, 1985 start, legs forked 2014, to 2044. **Fold-5 (185 held-out places), cell
+  panel pass:** h1985 — lookup 0.83 · TAB A-L 0.62 · A-S 0.68 · A-k0 0.45 · STRUCT 0.00 · ceiling 0.91.
+  w2015 (ssp126/245/370) — lookup 0.08/0.11/0.07 · A-L 0.37/0.37/0.34 · A-S 0.43/0.46/0.36 · A-k0 0.35/0.41/0.37 ·
+  STRUCT 0/0/0 · ceiling 0.91-0.92. Block scale: every arm 0 in w2015; the block contrast gate's own ceiling is 0.09
+  on 11 fold-5 blocks => no power there; the per-cell contrast has none either (blind twins pass 0.99).
+  READING: (a) TAB beats the lookup ~4x in 2015-2044, but its climate-blind twin does almost as well => the gain is
+  not a climate response; climate does set the TIMING of deaths (yearly death corr A-L 0.51-0.56 vs A-k0 0.03).
+  (b) rule death (A-S) >= learned death (A-L) in every window. (c) TAB stems drift to 1.21x truth by 2044 in every arm:
+  deaths are right (3.52 vs 3.47 %/yr) but recruits are ~11 % too many (3.56 vs 3.20 % of stems/yr). STRUCT recruits
+  are too many as well (3.67 vs 3.20) — BOTH use the SH13 recruit-count head => suspect a shared cause first.
+  (d) STRUCT: free-run biomass ~2x truth by w2015 (median agb 162 vs 83) despite G R2 0.93-0.96 one-step; no
+  acceptance => beech 0.81 vs 0.93, boreal NE 5 % vs 0.9 %. Cost (core-s/cell-yr, 250 patches, excl. daily->annual
+  climate): lookup 0.12 · TAB 1.17-1.30 · STRUCT 2.86 · original ~12.
+* **2026-10-02 (third session): the recruit excess is DIAGNOSED — it is the STAND, not the recruit head** [VERIFIED,
+  ACCESS s1 ssp370 leg, 200 dev cells = chunks 0-1 of the TAB run; `scripts/explore_de_recruit_drift.py` ->
+  `shared/eval/recruit_drift_ssp370.csv`, `scripts/explore_de_recruit_attrib.py` -> `shared/eval/recruit_attrib_tabAL.csv`].
+  (a) NOT threshold flicker: TAB re-entries 0.0002-0.0015/patch-yr; entry height/age match truth (5.07 m, ~12 yr).
+  (b) The original SELF-THINS (stems/patch 9.17 -> 7.19 from 1996 to 2036, agb/stem 497 -> 899, cover 0.42 -> 0.48,
+  recruits 0.31 -> 0.21-0.24/patch-yr); TAB never matures (agb/stem ~500 flat, cover 0.44-0.46, recruits 0.34-0.37).
+  (c) Biomass budget: death losses per patch are the SAME as truth (110-190/yr); the gap is GROWTH of big trees
+  (>= 15 m: median dln agb 0.022-0.026 vs 0.026-0.030 from decade 2 on; summed survivor rate 2.9-3.6 % vs 3.1-3.8 %).
+  (d) Input-swap attribution, recruit head on the original's stand with free-run inputs swapped in (gate: rebuilt
+  inputs == stored SH13 features on the original, 0 mismatches, needs the SLA+Wooddens key): original 0.237 (obs
+  0.249) · full free-run stand 0.353 (realised free run 0.33-0.40) · **cover only (sum_fpc + patch_lai) 0.343 = ~90 %**
+  · everything except cover 0.223 · cell stem density alone 0.228 (NEGATIVE: crowding, no cell-level feedback) ·
+  patch stem count alone 0.258 (a weak positive loop, ~10-25 % in context — watch it).
+  ⇒ the head responds honestly to a canopy that is too open; the canopy is too open because big-tree growth is too
+  slow in free run. ⚠ **Do NOT fix this with A7's recruit-count log offset** — that would hide the growth error behind
+  a compensating recruit error (the ADR 0126 "two wrong parameters of opposite sign" trap).
+  STRUCT is a different failure: recruits/patch are about right, but its trees DROP BELOW 5 m at 15x the original's
+  rate (exit 0.03-0.04 vs 0.002/patch-yr) and stems/patch fall too fast (8.25 -> 6.04) while agb/stem overshoots.
+  **NEXT, in order:** (1) TAB: find why big trees grow slower in free run than one-step — compare the growth head's
+  inputs (its AR residual state e_dagb, G, c, the canopy features) free-run vs truth for >= 15 m stems, same swap
+  method (`explore_de_recruit_attrib.py` is the template: rebuild from roster, gate against stored, swap groups);
+  (2) A7 free-run calibration of TAB on TRAINING members only, with the recruit offset FROZEN at 0 until (1) is
+  understood; (3) STRUCT: why its trees shrink below 5 m (height-from-agb closure?) + B4 acceptance + the
+  growth-memory calibration; (4) cross-fit for all-52-block scoring (critic gap 1) so block-scale gates get power.
+  Engine `submit` hard-codes the priority QOS (64-cpu user cap) — helpers ran its `run` command from their own
+  standard/short arrays.
+* NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
+  calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
+**The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
+it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
+
+**The Germany data [VERIFIED 2026-09-30]:** 2 GCMs (MPI-ESM1-2-HR, ACCESS-CM2) x {Historical, ssp126, ssp245, ssp370} x 2 independent
+spin-up seeds, 9067 cells (~8 km), **npatch 250**, all 16 runs log a clean termination. `ind` tables: Historical 1985-2014; each ssp
+2015-2044 / 2071-2100 / 3071-3100 (**no table for 2045-2070**; **3071-3100 is recycled shuffled 2071-2100 climate = equilibrium test
+only, never a response window**). ⚠ MPI ssp370 seed2 `ind_3100.csv` is 10 GB vs ~120 GB siblings — suspect truncated. Fire is ON.
+Daily forcing `/p/projects/waldspektrum/data/FirEUrisk/<GCM>/{TMean,tpr,HRMean,SWR,LWR,windspeed}_<GCM>_<leg>_germany.clm` (v3 float32).
+The original costs ~12 core-s per cell-year at 250 patches (2048 tasks x 3556 s / (65 yr x 9067 cells)).
+**Why this data matters:** the same cell sees six different futures (2 GCMs x 3 scenarios) — the design that can break the
+"warming vs character of the place" confound ADR 0311 found, and ssp245 is a bracketed held-out scenario.
+
+**Round 1 workflow `wf_89265fa2-f32`** (conversion of all 40 tables to parquet, climate features, transition anatomy + verifier,
+scorer + null scores, 3-architect design panel + judge, critic). Resume: `Workflow({scriptPath:
+"~/.claude/projects/-p-projects-open-Jamir-esm-land-emulator-lines-X/a19083d6-0024-4d05-8614-5e108626a023/workflows/scripts/de-emulator-germany-foundation-wf_89265fa2-f32.js",
+resumeFromRunId: "wf_89265fa2-f32"})`. ⚠ The first launch died with the session at ~14:50 (no agent finished); the
+cluster jobs survived. Resumed 14:57 with a durability note: the full conversion is SLURM array **2363349** (submitted directly, not by an
+agent; ~4 min/file, idempotent: `scripts/explore_de_convert.py submit|collect`), every agent keeps `/p/tmp/jamirp/X_de/_status/<label>.md`
+and writes its report to `/p/tmp/jamirp/X_de/_reports/<label>.json`. **If the session dies again, read those two folders first.**
+First measured facts: raw key (Cell,Patch,Type,ID) has 2 779 duplicates / 569 M tree rows (0 with SLA+Wooddens added); MPI ssp370 s2
+w3071 confirmed truncated. Round 2 = build + train + free-running rollouts + held-out scoring, from the judge's work items.
+
+
 ### 0✦ 💬 NEW OWNER QUESTION, ANSWERED — where does the ORIGINAL model's time go? (owner, 2026-09-02; **ADR 0312**)
 
 Owner, verbatim: *"find out which parts of the original model consume most computational time (e.g.
