@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- line X (Germany emulator exploration): probes `scripts/explore_de_recruit_grass.py`, `explore_de_recruit_hidden.py`,
+  `explore_de_hidden_persist.py` — the early recruit shortfall of the tabular emulator with the new grass model is the
+  grass cover rule erasing the original's capped grass cover, which encodes the unprinted < 5 m tree layer.
+
+### Added
+
 - Line X, Germany emulator prototype: a log-space grass model that can fall to ~0 under a closing canopy
   (`scripts/explore_de_grass2.py`), its grass-only free-run test on the original model's trees, and a tabular
   stepper using it (`scripts/explore_de_tab_g2.py`). In the coupled run it removes most of the 2030s drift in stem
