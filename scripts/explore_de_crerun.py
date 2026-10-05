@@ -59,6 +59,10 @@ def make_config(a, out_dir):
     s = sub1(r'"startgrid"\s*:\s*"all",', f'"startgrid" : {a.start}, "endgrid" : {a.end},', s)
     # (3) output list of the FROM_RESTART branch: keep ind + globalflux only
     i0 = s.index("#ifdef FROM_RESTART\n\n  \"output\"")
+    # drop /* ... */ comments first (cpp would): the Historical configs comment out a run of output entries that
+    # SPANS an "#ifdef WITH_SPITFIRE / #else / #endif", so the section's "#else" must be searched for outside
+    # comments, and the line filter below must not see a "/*{ "id" ..." opener without its "}}*/" (ERROR228)
+    s = s[:i0] + re.sub(r"/\*.*?\*/", "", s[i0:], flags=re.S)
     i1 = s.index("\n#else", i0)
     block = s[i0:i1]
     keep = []
@@ -110,6 +114,7 @@ def make_jcf(a, out_dir, ncell):
 #SBATCH --partition={a.partition}
 #SBATCH --qos={a.qos}
 #SBATCH --ntasks={a.ntasks}
+#SBATCH --cpus-per-task={a.cpus_per_task}
 {"#SBATCH --exclusive" if a.exclusive else ""}
 #SBATCH --time={a.time}
 #SBATCH --output={out_dir}/lpjml.%j.out
@@ -148,6 +153,8 @@ def main():
     ap.add_argument("--partition", default="standard")
     ap.add_argument("--qos", default="short")
     ap.add_argument("--exclusive", action="store_true")
+    # 2 => twice the memory per MPI task (MaxMemPerCPU is fixed at 5468 MB); one 320-cell ssp370 run was OOM-killed
+    ap.add_argument("--cpus-per-task", type=int, default=1)
     ap.add_argument("--submit", action="store_true")
     a = ap.parse_args()
     assert a.scen != "ssp245", "ssp245 ran the Feb-2026 build; this binary is the Dec-2025 one"
