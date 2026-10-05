@@ -322,6 +322,24 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   on MPI held-out weather (ssp245) — ACCESS stays the untouched test. (3) adopt g2hs (bite) as the TAB grass-cover
   default once (1) is understood; (4) then the older items: `cell_stems_per_patch` retrain, A7 with the recruit
   offset frozen at 0, all 10 chunks + seed 2, STRUCT shrink-below-5 m, cross-fit for block scoring.
+* **2026-10-05 (ninth session, IN PROGRESS): two things running.** (a) One-step check of the TAB growth + death
+  heads by tree size on the original's own states (`scripts/explore_de_tree_onestep.py`, sets SEED2 / F5 / GCM,
+  job 2406987 -> `shared/eval/tree_onestep_<set>.csv`; pre-registration `_status/TS.md`). Motivation, from
+  `recruit_drift_ssp370_g2_mpi2.csv`: < 15 m survivor growth is +0.002..+0.005/yr above the original from the very
+  first window, and the emulator's dead trees are smaller than the original's (dead/living agb 0.74-0.88 vs
+  0.87-0.97). (b) 🔨 **OWNER, 2026-10-05, verbatim: *"if you need th esapling data form trees below 5 m, just make
+  new simualtisn for the cells you need, where you write out the output you need"*** ⇒ re-runs of the ORIGINAL
+  with every tree printed. Binary = PRIVATE clone `/p/tmp/jamirp/X_de/cbuild/lpjml_dec2025` at commit fcd3a30
+  (= the "Dec 17 2025" build all non-ssp245 segments ran) + only the LPJ_IND_ALL_HEIGHTS writer switch
+  (`lines/X/dec2025_ind_all_heights.patch`); the shared C tree `/home/jamirp/lpjml56fit` is untouched. ⚠ ssp245
+  ran the Feb-2026 build (b2e5ca9 inheritance fix) — never re-run it with this binary. Driver
+  `scripts/explore_de_crerun.py make` (production config + cell range + years + `ind`/`globalflux` only),
+  gate `scripts/explore_de_crerun_gate.py` (every production row reproduced; extra rows only trees <= 5 m).
+  Gate run: MPI s2 ssp370 2015-2016, cells 0-319 on 64 tasks (= the production task->cell layout, 5 cells per
+  task), job 2406986, dir `/p/tmp/jamirp/X_de/crerun/MPI-ESM1-2-HR_ssp370_s2_c0-319_2015-2016_gate`. If it
+  passes: Historical 1950-2014 (output 1985) + ssp370 2015-2044 for cells 0-1999 (covers dev chunks 0-1) on 400
+  tasks. ⚠ The standard queue gave a 400-task job a start estimate 3 days out (2026-10-05); the priority
+  partition is full of the lpjml-fit port's global runs.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
