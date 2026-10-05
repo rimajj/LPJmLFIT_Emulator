@@ -322,24 +322,33 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   on MPI held-out weather (ssp245) — ACCESS stays the untouched test. (3) adopt g2hs (bite) as the TAB grass-cover
   default once (1) is understood; (4) then the older items: `cell_stems_per_patch` retrain, A7 with the recruit
   offset frozen at 0, all 10 chunks + seed 2, STRUCT shrink-below-5 m, cross-fit for block scoring.
-* **2026-10-05 (ninth session, IN PROGRESS): two things running.** (a) One-step check of the TAB growth + death
-  heads by tree size on the original's own states (`scripts/explore_de_tree_onestep.py`, sets SEED2 / F5 / GCM,
-  job 2406987 -> `shared/eval/tree_onestep_<set>.csv`; pre-registration `_status/TS.md`). Motivation, from
-  `recruit_drift_ssp370_g2_mpi2.csv`: < 15 m survivor growth is +0.002..+0.005/yr above the original from the very
-  first window, and the emulator's dead trees are smaller than the original's (dead/living agb 0.74-0.88 vs
-  0.87-0.97). (b) 🔨 **OWNER, 2026-10-05, verbatim: *"if you need th esapling data form trees below 5 m, just make
-  new simualtisn for the cells you need, where you write out the output you need"*** ⇒ re-runs of the ORIGINAL
-  with every tree printed. Binary = PRIVATE clone `/p/tmp/jamirp/X_de/cbuild/lpjml_dec2025` at commit fcd3a30
-  (= the "Dec 17 2025" build all non-ssp245 segments ran) + only the LPJ_IND_ALL_HEIGHTS writer switch
-  (`lines/X/dec2025_ind_all_heights.patch`); the shared C tree `/home/jamirp/lpjml56fit` is untouched. ⚠ ssp245
-  ran the Feb-2026 build (b2e5ca9 inheritance fix) — never re-run it with this binary. Driver
-  `scripts/explore_de_crerun.py make` (production config + cell range + years + `ind`/`globalflux` only),
-  gate `scripts/explore_de_crerun_gate.py` (every production row reproduced; extra rows only trees <= 5 m).
-  Gate run: MPI s2 ssp370 2015-2016, cells 0-319 on 64 tasks (= the production task->cell layout, 5 cells per
-  task), job 2406986, dir `/p/tmp/jamirp/X_de/crerun/MPI-ESM1-2-HR_ssp370_s2_c0-319_2015-2016_gate`. If it
-  passes: Historical 1950-2014 (output 1985) + ssp370 2015-2044 for cells 0-1999 (covers dev chunks 0-1) on 400
-  tasks. ⚠ The standard queue gave a 400-task job a start estimate 3 days out (2026-10-05); the priority
-  partition is full of the lpjml-fit port's global runs.
+* **2026-10-05 (ninth session): the small-tree growth excess is built by the free run, not the heads one step
+  ahead** [VERIFIED; `_status/TS.md`]. (a) One-step check (`scripts/explore_de_tree_onestep.py`, job 2406987 ->
+  `shared/eval/tree_onestep_{SEED2,F5,GCM}.csv`): on the original's own states the growth heads are only
+  +0.0016/+0.0022 per yr high for < 10 m stems in 1985-94 (about half the coupled run's first-decade excess) and
+  within 0.001 after 1995; death rate model/truth 0.98-1.02, dead-tree size within 0.03 => the coupled excess and the
+  "dead trees too small" signature are built by the free run's own inputs. The one-step growth bias drifts with
+  calendar time (positive 1985-94, negative after 2005, all three sets) — note for later. (b) Instrumented coupled
+  re-run DONE (`scripts/explore_de_tab_probe2.py:TabALG2HSProbe`, job 2407363, `runs/_probe2_g2hs_mpi2`, dump 2.4 GB);
+  same-tree input-swap attribution `scripts/explore_de_tree_attrib.py` submitted 2026-10-05 22:46 as job **2419827**
+  (`_jobs/tree_attrib_g2hs_mpi2.jcf` -> `shared/eval/tree_attrib_g2hs_mpi2{,_shift}.csv`, log
+  `logs/X-de-treeattr.<jid>.out`); pre-registered readings in `_status/TS.md` second section.
+  (c) 🔨 **OWNER, 2026-10-05, verbatim: *"if you need th esapling data form trees below 5 m, just make new
+  simualtisn for the cells you need, where you write out the output you need"*** => re-runs of the ORIGINAL with every
+  tree printed. Binary = PRIVATE clone `/p/tmp/jamirp/X_de/cbuild/lpjml_dec2025` at commit fcd3a30 (= the "Dec 17
+  2025" build all non-ssp245 segments ran) + only the LPJ_IND_ALL_HEIGHTS writer switch
+  (`lines/X/dec2025_ind_all_heights.patch`); the shared C tree is untouched. ⚠ ssp245 ran the Feb-2026 build — never
+  re-run it with this binary. Driver `scripts/explore_de_crerun.py make`; gate run (MPI s2 ssp370 2015-16, cells
+  0-319, 64 tasks = the production task->cell layout) PASSED: every production row reproduced, the extra rows are
+  only trees <= 5 m (~1.18 extra per printed row). Campaign = cells 0-2239 in 7 blocks of 320 on 64 tasks, for
+  MPI s1 {Historical, ssp126, ssp370}, MPI s2 {Historical, ssp370}, ACCESS s1 {Historical, ssp370}. 20 of 21
+  ssp runs FINISHED (one OOM, one timeout at 2030 -> resubmitted with 2 cpus/task, 8 h); ALL 21 Historical runs
+  had failed in 5 s on a config parse error (the generator cut the output section at an `#else` inside a comment;
+  FIXED 0a981697) and were resubmitted 2026-10-05 (job ids in `_jobs/crerun_resubmit_20261005.txt`, 8 h limit).
+  Collection (gate every year + parquet to `/p/tmp/jamirp/X_de/ind_all/<gcm>/<scen>/s<seed>/<win>/c<a>-<b>.parquet`
+  + delete the ~8 GB CSV) = `_jobs/crerun_collect.jcf` (idempotent; skips unfinished runs; rerun it after the
+  resubmits finish), first pass job **2419828**. ⚠ The live tree's `lpjcheck` cannot fully check these configs
+  (it expects 421 output variables, the Dec-2025 build has 419) — it still catches a parse error.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
