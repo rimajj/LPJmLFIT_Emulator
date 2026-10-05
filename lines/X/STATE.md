@@ -293,6 +293,35 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   tree heads ALSO read grass8_fpc_y (G / growth / death), so the same hidden-layer channel enters tree growth —
   price it after (1); (5) then the fifth/sixth-session items (`cell_stems_per_patch` retrain, A7 with recruit offset
   frozen at 0, all 10 chunks + seed 2 + MPI, STRUCT shrink-below-5 m, cross-fit). Still one GCM, one seed, 200 cells.
+* **2026-10-05 (eighth session): the coupled grass excess on ACCESS is a CLIMATE-MODEL TRANSFER failure of the grass
+  model, not the emulator's trees; on MPI weather the carried hidden-cover design works** [VERIFIED; pre-registrations
+  + results `_status/GA.md`, `_status/HS.md` (last two sections); scripts `explore_de_grass_attrib.py` (grass-only
+  replay along either tree history, GATED to reproduce the coupled run's own grass log exactly: the engine's random
+  stream is keyed on (arm, rep, gcm, stream, year, cell, patch), so any coupled run's grass state can be rebuilt from
+  its rosters — no re-run needed), `explore_de_grass_onestep.py`, `explore_de_grass_climrange.py`;
+  `explore_de_recruit_drift.py` now takes `--gcm/--seed`]. (a) ACCESS s1, 200 cells: grass2 on the ORIGINAL's trees
+  already carries ~87 % of the coupled LAI excess after 2016; the emulator's trees ~13 % (falsifier fired). Group swaps
+  were uninterpretable (patches are different stands after 1985) and are not used. (b) Under a closed canopy grass2 is
+  ~right one step ahead in LAI but biased -0.11/yr in log space after 2006 on ACCESS, flat across stand biomass, loss
+  history and hidden cover: it is weather — a few warm bad years (2008, 2012, 2035, 2041 = -1.04) crash grass in the
+  original more than predicted, and a near-zero grass state ratchets. (c) Same check, MPI s2 (training weather, new
+  trees): +0.007/yr, 5-step within 4 %; MPI s1 ssp245 (weather years never seen): +0.020/yr, but yearly error x3
+  (sd 0.14 vs 0.05 — part of the weather response is memorised years); ACCESS -0.129/yr, sd 0.24. ACCESS's bad years
+  are mostly INSIDE the training weather range (only 2035, 2041 partly outside). (d) COUPLED on MPI s2: grass within
+  13 % of truth every decade; carried hidden cover (g2hs) vs closure (g2ar): 1991-2010 recruits -6.7 % vs -12.3 %
+  (bar +-5 %: narrowly FAILS), stems -2.1 % vs -4.1 %; 2026-35 stems -0.4 %, recruits +5.5 %, biomass/stem +5.4 %
+  (PASS); NO late over-recruitment (max +6 %) => the ACCESS +15..+27 % was the ACCESS grass. ⚠ MPI s2 shares the
+  training GCM's weather: this is "new trees, familiar weather", not a transfer test.
+  **NEXT, in order (supersedes the seventh session's list):** (1) the tree-side early maturation that remains in BOTH
+  arms on MPI s2 (biomass/stem +8..+17 % in 1996-2025, deaths -7..-14 % in 2006-2025) — same input-swap method on the
+  growth and death heads (templates `explore_de_growth_attrib.py`, `explore_de_tab_probe.py`), on MPI s2 so the GCM
+  transfer cannot contaminate it; it plausibly carries the residual recruit deficit. (2) The cross-GCM weather
+  transfer of grass2 (and check the TREE heads for the same: they are MPI-trained too): does the original respond to
+  the same weather anomaly more strongly in ACCESS than in MPI (=> a missing input: absolute temperature level,
+  daily extremes) or is it a booster limitation (=> fewer / smoother weather inputs, monotone constraints)? Tune only
+  on MPI held-out weather (ssp245) — ACCESS stays the untouched test. (3) adopt g2hs (bite) as the TAB grass-cover
+  default once (1) is understood; (4) then the older items: `cell_stems_per_patch` retrain, A7 with the recruit
+  offset frozen at 0, all 10 chunks + seed 2, STRUCT shrink-below-5 m, cross-fit for block scoring.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):

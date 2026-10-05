@@ -287,3 +287,23 @@ state that recruitment itself depends on. In the coupled emulator it fixes the e
 over-recruits by 15-27 % from 2006 on. A logged re-run showed why: in both emulator variants, grass leaf area stays far
 too high after 2000, where in the original it falls by 60 %. The current variant's near-correct late recruitment was
 two errors cancelling. Next: find what in the emulator's own trees keeps the grass from declining.
+
+---
+
+## 2026-10-05 (eighth session) — the grass excess is a climate-model transfer failure, not the emulator's trees
+
+Picked up the open question of what keeps grass from thinning in the coupled emulator. The coupled run never saved its
+grass, but the grass model carries its own state and the emulator's random numbers are keyed by place and year, so I
+could replay the grass model along the emulator's tree history and reproduce its grass exactly (to a few parts per
+million), then replay it along the original's trees. The guess I wrote down beforehand was wrong: the emulator's trees
+account for about an eighth of the excess; the grass model on the original's own trees accounts for the rest. Swapping
+single groups of tree inputs was uninformative, because after 1985 the same patch number holds different stands in the
+two runs. One year ahead the grass model is roughly right in leaf area but, under closed canopy, too slow to let grass
+collapse in a handful of warm bad years, and grass near zero stays there, so the misses ratchet. It does not do this
+on the climate model it was trained on, with new trees, nor on that model's unseen medium-emissions years (where its
+year-to-year error is larger but has no consistent sign), so it is a failure to carry its weather response over to
+the second climate model; the bad years are mostly inside the training weather range. Re-running the coupled
+emulator on the training climate model's second seed: grass stays within 13 % of the original, and carrying the
+hidden young-tree layer halves the early recruit deficit with no late over-recruitment. The late over-recruitment on
+ACCESS was the ACCESS grass. What remains on clean ground is on the tree side: stems get too heavy too early and too
+few die in the middle decades.
