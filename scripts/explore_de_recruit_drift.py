@@ -57,9 +57,9 @@ def arm_frame(arm: str, chunks: list[int], leg: str, cells: list[int] | None) ->
     return D, sorted(D["Cell"].unique().to_list())
 
 
-def truth_frame(cells: list[int], leg: str, y0: int, y1: int) -> pl.DataFrame:
+def truth_frame(cells: list[int], leg: str, y0: int, y1: int, gcm: str = "ACCESS-CM2", seed: int = 1) -> pl.DataFrame:
     m = pl.read_parquet(os.path.join(XDE, "shared", "registry", "members.parquet")).filter(
-        (pl.col("gcm") == "ACCESS-CM2") & (pl.col("seed") == 1) & ~pl.col("excluded")
+        (pl.col("gcm") == gcm) & (pl.col("seed") == seed) & ~pl.col("excluded")
         & pl.col("scen").is_in(["Historical", leg]))
     parts = [pl.scan_parquet(p).select(COLS) for p in m["ind_dev_path"].to_list()]
     return (pl.concat(parts, how="vertical_relaxed")
@@ -128,6 +128,8 @@ def main():
     ap.add_argument("--arms", default="tabAL,tabAk0,struct_noacc")
     ap.add_argument("--npatch", type=int, default=250)
     ap.add_argument("--tag", default="", help="suffix of the output csv")
+    ap.add_argument("--gcm", default="ACCESS-CM2", help="the truth member (must match the arms' runs)")
+    ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
     chunks = [int(c) for c in a.chunks.split(",")]
     res, cells = [], None
@@ -137,7 +139,7 @@ def main():
         assert c == cells, f"{arm}: cell set differs"
         print(f"{arm}: {D.height} rows, {len(c)} cells, min printed height {D['Height'].min():.3f}", flush=True)
         res.append(yearly(D, a.npatch, arm.split("@", 1)[0]))
-    T = truth_frame(cells, a.leg, int(res[0]["Year"].min()) - 1, int(res[0]["Year"].max()))
+    T = truth_frame(cells, a.leg, int(res[0]["Year"].min()) - 1, int(res[0]["Year"].max()), a.gcm, a.seed)
     print(f"truth: {T.height} rows", flush=True)
     res.append(yearly(T, a.npatch, "truth"))
     R = pl.concat(res, how="diagonal_relaxed")
