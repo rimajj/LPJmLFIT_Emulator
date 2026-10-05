@@ -1,0 +1,42 @@
+diff --git a/src/lpj/fwriteoutput_ind.c b/src/lpj/fwriteoutput_ind.c
+index 775c11c..a6f3ba2 100644
+--- a/src/lpj/fwriteoutput_ind.c
++++ b/src/lpj/fwriteoutput_ind.c
+@@ -20,6 +20,19 @@
+ 
+ #define MSGTAG 2005
+ 
++/* LINE X (2026-10-05): opt-in LPJ_IND_ALL_HEIGHTS — emit every tree, not only those above
++   param.height_min (5 m). OFF unless the env var is set (same switch as patches/lpjmlfit_ind_true_gpp.patch). */
++static Bool ind_all_heights(void)
++{
++  static int cached=-1;
++  if(cached<0)
++  {
++    const char *env=getenv("LPJ_IND_ALL_HEIGHTS");
++    cached=(env!=NULL && *env!='\0' && strcmp(env,"0")!=0);
++  }
++  return cached ? TRUE : FALSE;
++} /* of 'ind_all_heights' */
++
+ static void printind(FILE *file,const Output_ind *output,int fmt)
+ {
+   switch(fmt)
+@@ -81,7 +94,7 @@ static Bool getind(Output_ind *output,const Pft *pft,int year,int cell,int np)
+   {
+     tree=pft->data;
+     treepar=pft->par->data;
+-    if(tree->height>param.height_min)
++    if(tree->height>param.height_min || ind_all_heights())
+     {
+         output->year=year;
+         output->id=pft->par->id;
+@@ -243,7 +256,7 @@ void fwriteoutput_ind(Outputfile *output,  /**< output file array */
+                 if(pft->par->type==TREE)
+                 {
+                   tree=pft->data;
+-                  if(tree->height>param.height_min)
++                  if(tree->height>param.height_min || ind_all_heights())
+                     num++;
+                 }
+                 else if(pft->par->type==GRASS)
