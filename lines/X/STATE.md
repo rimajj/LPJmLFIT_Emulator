@@ -405,6 +405,13 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   quantile model (fewer levels / shallower / distil) and re-gate; (4) sapling layer (25 cancelled blocks: owner's
   call); (5) the eighth-session items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch
   retrain, A7, all 10 chunks + seed 2, STRUCT, cross-fit). Still one GCM, one seed, 200 cells, training weather.
+* **2026-10-06 (thirteenth session, IN PROGRESS):** coupled gqs run 2425236 moved to the priority partition (started
+  15:53); scoring chained as job 2425244 (`_jobs/score_g2hsgqs_mpi2.jcf`: recruit_drift tag `_gqs_mpi2` for P2-P4,
+  gdrift tag `gqsrun_mpi2` for P1). Owner, verbatim: *"work on the other emulator methods while this is running"* =>
+  three background helpers, each pre-registers in `_status/` and reports in `_reports/`: **C0** quick cell-level LSTM
+  (`_status/C0.md`, `scripts/explore_de_rec_lstmstats.py`); **SD** STRUCT free-run drift diagnosis (`_status/SD.md`);
+  **SH11 + D1 + D2** padded patch tensors + neural set model + stage-1 training and its gate (`_status/SH11.md`, `D.md`).
+  If the session died: read those status files and `squeue -u $USER` before redoing anything.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
