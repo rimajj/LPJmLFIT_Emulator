@@ -74,12 +74,20 @@ def main():
             cert_m.append(c1 >= st.cmax)
         p_m, gneg_m, cert_m = np.mean(p_m, axis=0), np.mean(gneg_m, axis=0), np.mean(cert_m, axis=0)
         h = X["Height"].to_numpy()
+        c0 = np.rint(X["c_y"].cast(pl.Float64).to_numpy())
         for cls, q in (("lt10", h < HCUT), ("ge10", h >= HCUT), ("all", np.ones(n, bool))):
-            rows.append({"year": y + 1, "hcls": cls, "n": int(q.sum()), "truth": float(dead[q].mean()),
-                         "tf": float(p_tf[q].mean()), "model": float(p_m[q].mean()),
-                         "G_true_med": float(np.median(G_t[q])),
-                         "gneg_true": float((G_t[q] < 0).mean()), "gneg_model": float(gneg_m[q].mean()),
-                         "certain_true": float((c_t[q] >= st.cmax).mean()), "certain_model": float(cert_m[q].mean())})
+            r = {"year": y + 1, "hcls": cls, "n": int(q.sum()), "truth": float(dead[q].mean()),
+                 "tf": float(p_tf[q].mean()), "model": float(p_m[q].mean()),
+                 "G_true_med": float(np.median(G_t[q])),
+                 "gneg_true": float((G_t[q] < 0).mean()), "gneg_model": float(gneg_m[q].mean()),
+                 "certain_true": float((c_t[q] >= st.cmax).mean()), "certain_model": float(cert_m[q].mean())}
+            # streak continuation by the current counter (TS.md "STREAK dynamics": start = c_y 0, p_k = c_y k)
+            for kc in range(5):
+                qk = q & (c0 == kc)
+                r[f"n_c{kc}"] = int(qk.sum())
+                r[f"gneg_true_c{kc}"] = float((G_t[qk] < 0).mean()) if qk.any() else float("nan")
+                r[f"gneg_model_c{kc}"] = float(gneg_m[qk].mean()) if qk.any() else float("nan")
+            rows.append(r)
         print(f"transition {y}->{y + 1}: {n} trees, truth {dead.mean():.4f} tf {p_tf.mean():.4f} "
               f"model {p_m.mean():.4f}", flush=True)
     R = pl.DataFrame(rows)
