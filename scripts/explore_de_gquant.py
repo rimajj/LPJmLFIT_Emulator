@@ -45,6 +45,7 @@ import explore_de_tab_stepper as ts  # noqa: E402
 
 QLEV = [0.005, 0.02, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.98, 0.995]
 UCLIP = 1e-4
+LEVELSETS = {"11": list(range(11)), "7": [1, 3, 4, 5, 6, 7, 9], "5": [2, 4, 5, 6, 8]}
 MAX_ROWS = int(os.environ.get("GQ_MAX_ROWS", "6000000"))
 NTHREADS = int(os.environ.get("SLURM_CPUS_PER_TASK", "8"))
 PARAMS = dict(objective="quantile", metric="quantile", learning_rate=0.1, num_leaves=63, min_data_in_leaf=1000,
@@ -226,34 +227,57 @@ def submit(split, hours=6):
 
 # ================================================================================================ the sampler
 class GQ:
-    def __init__(self, split="DEV-A", conformal=False):
+    def __init__(self, split="DEV-A", conformal=False, niter=None, levels=None):
+        """niter: predict with each head's first niter trees only (None = all; env GQ_NITER); levels: name in
+        LEVELSETS or None = all 11 (env GQ_LEVELS) — the shrunk sampler of the "shrink" stage."""
         import lightgbm as lgb
 
+        if niter is None and os.environ.get("GQ_NITER"):
+            niter = int(os.environ["GQ_NITER"])
+        if levels is None:
+            levels = os.environ.get("GQ_LEVELS") or "11"
+        keep = LEVELSETS[str(levels)]
         d = gdir(split)
         self.d = d
+        self.niter, self.levels = niter, str(levels)
         self.b, self.base = {}, {}
         for s in ("neg", "pos"):
             self.b[s], self.base[s] = [], []
-            for i in range(len(QLEV)):
+            for i in keep:
                 nm = os.path.join(d, f"{s}_q{i:02d}")
                 self.b[s].append(lgb.Booster(model_file=nm + ".txt"))
                 m = json.load(open(nm + ".json"))
                 self.base[s].append(m["base"])
                 self.feats = m["features"]
-        self.lv = np.asarray(QLEV)
+        self.lv = np.asarray(QLEV)[keep]
         self.nthreads = NTHREADS
-        self.off = {s: np.zeros(len(QLEV)) for s in ("neg", "pos")}
+        self.off = {s: np.zeros(len(keep)) for s in ("neg", "pos")}
         if conformal:
             cj = json.load(open(os.path.join(d, "calib.json")))
-            self.off = {s: np.asarray(cj[s]["offset"]) for s in ("neg", "pos")}
+            self.off = {s: np.asarray(cj[s]["offset"])[keep] for s in ("neg", "pos")}
 
     @classmethod
     def load(cls, split="DEV-A", conformal=False):
         return cls(split, conformal)
 
+    def view(self, niter=None, levels="11") -> GQ:
+        """a shallow copy predicting with the first niter trees of the heads in LEVELSETS[levels] (subset of self)."""
+        import copy
+
+        v = copy.copy(self)
+        pos = [list(np.asarray(QLEV)[LEVELSETS[self.levels]]).index(QLEV[i]) for i in LEVELSETS[str(levels)]]
+        v.b = {s: [self.b[s][j] for j in pos] for s in self.b}
+        v.base = {s: [self.base[s][j] for j in pos] for s in self.base}
+        v.off = {s: self.off[s][pos] for s in self.off}
+        v.lv = self.lv[pos]
+        v.niter, v.levels = niter, str(levels)
+        return v
+
     def quantiles(self, X: pl.DataFrame, sign: str) -> np.ndarray:
-        M = F.to_matrix(X, self.feats)
-        Q = np.column_stack([b0 + b.predict(M, raw_score=True, num_threads=self.nthreads)
+        return self.quantiles_m(F.to_matrix(X, self.feats), sign)
+
+    def quantiles_m(self, M: np.ndarray, sign: str) -> np.ndarray:
+        Q = np.column_stack([b0 + b.predict(M, raw_score=True, num_threads=self.nthreads, num_iteration=self.niter)
                              for b, b0 in zip(self.b[sign], self.base[sign], strict=True)])
         return np.sort(np.sort(Q, axis=1) + self.off[sign][None, :], axis=1)
 
@@ -344,9 +368,62 @@ _GQ: dict = {}
 
 
 def load(split="DEV-A", conformal=False) -> GQ:
-    if (split, conformal) not in _GQ:
-        _GQ[(split, conformal)] = GQ(split, conformal)
-    return _GQ[(split, conformal)]
+    key = (split, conformal, os.environ.get("GQ_NITER"), os.environ.get("GQ_LEVELS"))
+    if key not in _GQ:
+        _GQ[key] = GQ(split, conformal)
+    return _GQ[key]
+
+
+def shrink(split, nval=300_000, ntime=20_000):
+    """truncation x level-subset scan on the validation fold (pre-registration: TS.md "SHRINKING the quantile G
+    model"): mean pinball over all 11 QLEV, worst |coverage - alpha|, single-thread predict cost -> gq_shrink.json"""
+    d = gdir(split)
+    g = GQ(split)
+    qa = np.asarray(QLEV)
+    rows = []
+    for s in ("neg", "pos"):
+        va = np.load(os.path.join(d, f"{s}_va.npy"))
+        idx = np.flatnonzero(va)
+        idx = np.sort(np.random.default_rng(7).choice(idx, min(nval, idx.size), replace=False))
+        X = np.asarray(np.load(os.path.join(d, f"{s}_X.npy"), mmap_mode="r")[idx], dtype=np.float64)
+        y = np.load(os.path.join(d, f"{s}_y.npy"))[idx].astype(np.float64)
+        w = np.load(os.path.join(d, f"{s}_w.npy"))[idx].astype(np.float64)
+        for lev in ("11", "7", "5"):
+            for k in (50, 100, 200, 400, 800, 1500, None):
+                v = g.view(k, lev)
+                t0 = time.time()
+                Q = v.quantiles_m(X, s)
+                Qa = np.column_stack([v.inv(Q, np.full(len(y), a)) for a in qa])
+                pin = float(np.mean([np.average(pinball(Qa[:, i], y, a), weights=w) for i, a in enumerate(qa)]))
+                cov = [float(np.average(y <= Qa[:, i], weights=w)) for i in range(len(qa))]
+                v.nthreads = 1
+                Xt = X[:ntime]
+                v.quantiles_m(Xt[:200], s)
+                t1 = time.perf_counter()
+                v.quantiles_m(Xt, s)
+                us = (time.perf_counter() - t1) / len(Xt) * 1e6
+                r = {"sign": s, "levels": lev, "niter": k or 0, "pinball": pin,
+                     "worst_cov_err": float(np.max(np.abs(np.asarray(cov) - qa))), "us_per_tree_1thr": us,
+                     "n": int(len(y)), "t_eval_s": round(time.time() - t0, 1)}
+                rows.append(r)
+                print(json.dumps(r), flush=True)
+    full = {s: next(r for r in rows if r["sign"] == s and r["levels"] == "11" and r["niter"] == 0)
+            for s in ("neg", "pos")}
+    for r in rows:
+        f = full[r["sign"]]
+        r["pin_ratio"] = r["pinball"] / f["pinball"]
+        r["cov_excess"] = r["worst_cov_err"] - f["worst_cov_err"]
+    ok = {}
+    for lev in ("11", "7", "5"):
+        for k in (50, 100, 200, 400, 800, 1500, 0):
+            rr = [r for r in rows if r["levels"] == lev and r["niter"] == k]
+            ok[(lev, k)] = (all(r["pin_ratio"] <= 1.005 and r["cov_excess"] <= 0.005 for r in rr),
+                            sum(r["us_per_tree_1thr"] for r in rr) / 2)
+    passing = sorted((c, key) for key, (p, c) in ok.items() if p)
+    sel = {"levels": passing[0][1][0], "niter": passing[0][1][1], "us_per_tree": passing[0][0]} if passing else None
+    out = {"rows": rows, "selected": sel, "rule": "pin_ratio <= 1.005 and cov_excess <= 0.005 for both signs"}
+    json.dump(out, open(os.path.join(d, "gq_shrink.json"), "w"), indent=1)
+    print("SELECTED", json.dumps(sel), flush=True)
 
 
 class TabALG2HSGQ(tg2.TabALG2HS):
@@ -374,7 +451,7 @@ class TabALG2HSGQProbe(pr2._DumpMixin, TabALG2HSGQ):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit"])
+    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit", "shrink"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -389,6 +466,8 @@ def main():
         sign_platt(a.split)
     elif a.stage == "bench":
         bench(a.split)
+    elif a.stage == "shrink":
+        shrink(a.split)
     else:
         submit(a.split)
 
