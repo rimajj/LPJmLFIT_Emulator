@@ -344,7 +344,7 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (23/23 single-type runs pass the row-by-row gate, 21/23 mixed fail, 3/3 out-of-sample predictions right; CLAUDE.md
   §3). 16 runs PASS and are in `/p/tmp/jamirp/X_de/ind_all/<gcm>/<scen>/s<seed>/<win>/c<a>-<b>.parquet` (29 cols +
   `in_prod`); the other 26 were resubmitted with `--nodes 1` 2026-10-06 (`_jobs/crerun_rerun1node_jobs.txt`; moved
-  from priority to standard because priority caps 64 cpus PER USER). When they finish: `sbatch --cpus-per-task=32
+  from priority to standard because priority caps 64 cpus PER USER). Collection is CHAINED to start after all of them (job 2420688, afterany); if it is gone, check `logs/X-crr-collect.2420688_*.out` and each run dir's `gate.json`, else rerun: `sbatch --cpus-per-task=32
   --time=04:00:00 _jobs/crerun_collect.jcf` (idempotent; gates every year; deletes the CSV only on PASS; now reads
   only the newest log). Earlier fixes: the Historical config generator cut at an `#else` inside a comment (fixed).
   **NEXT, in order (supersedes the eighth session's list):** (1) the G sampler's early drift — why the free run's
