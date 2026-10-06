@@ -379,6 +379,13 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (4) sapling layer from the collected re-runs (ask the owner about the 25 cancelled blocks); (5) the eighth-session
   items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2,
   STRUCT, cross-fit).
+* **2026-10-06 (eleventh session, IN PROGRESS): a quantile model of next-year G replaces the mean + pooled residual**
+  (pre-registration with gates Q1 calibration / Q2 sharpness / Q3 G-only chain: `_status/TS.md` last section).
+  `scripts/explore_de_gquant.py` (prep -> 22-task training array -> `GQ` sampler, `attach(stepper)`,
+  `TabALG2HSGQ` coupled arm); `explore_de_gpit.py` / `explore_de_gdrift.py` take `--sampler gq`. Models in
+  `tab/models/DEV-A/gquant/`. Jobs: training arrays 2421581 (neg) / 2421582 (pos); chained scorers 2421585 (gpit ->
+  `shared/eval/gpit_gq_mpi2*`) and 2421586 (gdrift -> `shared/eval/gdrift_gq_g2hs_mpi2_*`), logs in `wt-X/logs/`.
+  If the session dies: check those logs, then score against the gates in TS.md.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
