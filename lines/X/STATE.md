@@ -473,6 +473,30 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   climate inputs; pre-register: pulse-year certain kills within +-15 % and quiet-year over-kill removed; (3) by the
   rqs verdict: pass => rq is the working G model; fail => the single monotone network; (4)-(9) as in the thirteenth
   session's list (grass into NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
+* **2026-10-06 (fifteenth session): the pulses are STREAK CONTINUATION, and the sign head is mis-calibrated by
+  counter** [VERIFIED, MPI s2 Historical+ssp370, 200 dev cells; everything + pre-registrations in `_status/TS.md` from
+  "WHICH certain-kill rule makes the pulses" on]. (a) Correction of the fourteenth session: the counter IS recoverable
+  (trans `c_y`/`c_y1`), so the two certain-kill rules are separable: the 5-bad-years COUNTER rule carries 100 % of the
+  pulse rise, the sapling-leaf-carbon rule fires on 0 trees (`explore_de_certain_rule.py`). (b) Truth's same-year
+  negative-growth share does NOT pulse (0.146 vs 0.147) => the planned "year-shared latent in the G-sign draw" is
+  WRONG and was not built. What pulses is the c = 4 pool a year earlier (0.041 vs 0.015). (c) `explore_de_streak.py`:
+  the coupled gqs run STARTS streaks right (0.065 vs 0.061, yearly corr 0.94, same sd) but CONTINUES them too rarely
+  after year 1 (p1 0.56 vs 0.63; chain to 5 = 0.32 vs 0.39), most in the high-continuation cohorts that make the
+  2019/2025/2031/2038 pulses. (d) One step on the original's states (job 2427208): deaths and certain kills are RIGHT
+  (pulse 0.0555 vs 0.0552); continuation P(G<0 | c_y = 1) 0.579 vs 0.630 while starts run high (0.067 vs 0.062) — the
+  errors cancel in the all-tree share, which is why every earlier sign check passed. Same pattern in the training OOF.
+  (e) Fix arm **gqsc** = Platt per counter c_y = 0..4 (`explore_de_gquant.py signc`, `sign_platt_c.json`; OOF
+  log-loss 0.1027 -> 0.1016); sampler option `sign_cal="c"`. Pre-registered C2 (one step) / C3 (coupled) in TS.md.
+  (f) rqs (cheap residual quantile model) coupled: R2 FAILS (biomass/stem +5.8 / +9.7 / +8.6 % in 1996-2025, bar
+  +-6 %), R3 passes => not the working model; R1 from job 2427211. (g) Queue: 32-core 2-3 h jobs were not being
+  scheduled on `standard` while 8-16-core ones start at once — submit at <= 16 cores.
+  **PENDING:** 2427263 one-step gqsc (C2), 2427264 coupled gqsc run (C3; then score it like gqs:
+  `score_g2hsgqs_mpi2.jcf` with the run dir swapped, + `explore_de_streak.py --dump runs/_probe2_g2hsgqsc_mpi2/dump`),
+  2427211 rqs scorer (R1), 2427212 1995-2004 swap attribution (W0/W1/H1/H2).
+  **NEXT, in order:** (1) read C2, then C3 against TS.md; (2) if C3 passes, gqsc is the working sign model; if C2
+  passes but C3's pulses stay < -15 %: cohort probe of the streaking trees' state drift; (3) record R1 and the swap
+  verdicts; (4) the cheap G path is now the single monotone network (rq failed R2); (5)-(9) as in the thirteenth
+  session's list (grass into NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
