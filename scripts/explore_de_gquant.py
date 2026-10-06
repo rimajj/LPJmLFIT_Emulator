@@ -148,6 +148,26 @@ def calib(split):
     json.dump(out, open(os.path.join(d, "calib.json"), "w"), indent=1)
 
 
+def bench(split, n=200_000, threads=1):
+    """predict cost per tree of the magnitude step: old (mean head B0 + B1 of one sign) vs this model (11 heads),
+    single thread, on cached training rows."""
+    d = gdir(split)
+    feats = json.load(open(os.path.join(d, "pos_prep.json")))["features"]
+    X = pl.DataFrame(np.asarray(np.load(os.path.join(d, "pos_X.npy"), mmap_mode="r")[:n]), schema=feats, orient="row")
+    H = Hh.TabHeads.load(split, heads=["gmag_pos"])
+    H.nthreads = threads
+    g = GQ(split)
+    g.nthreads = threads
+    out = {}
+    for lab, f in (("old_mean_head", lambda: H.raw("gmag_pos", X, 1.0)),
+                   ("quantile_11", lambda: g.quantiles(X, "pos"))):
+        f()
+        t0 = time.perf_counter()
+        f()
+        out[lab] = (time.perf_counter() - t0) / n * 1e6
+    print(json.dumps({"us_per_tree": {k: round(v, 2) for k, v in out.items()}, "threads": threads, "n": n}), flush=True)
+
+
 def submit(split, hours=6):
     logs = os.path.join(REPO, "logs")
     jd = os.path.join(F.TAB, "_jobs")
@@ -294,7 +314,7 @@ class TabALG2HSGQ(tg2.TabALG2HS):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["prep", "train", "calib", "submit"])
+    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "submit"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -305,6 +325,8 @@ def main():
         train(a.split, a.sign, a.level)
     elif a.stage == "calib":
         calib(a.split)
+    elif a.stage == "bench":
+        bench(a.split)
     else:
         submit(a.split)
 
