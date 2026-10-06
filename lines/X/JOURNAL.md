@@ -378,3 +378,25 @@ quantile shape is irregular (its raw levels cross in over half the rows). The ch
 model need that accuracy at all (coupled rq) — was submitted and then killed when every one of the owner's SLURM jobs,
 another project's included, was cancelled at 18:42:34 by someone outside this session. Not resubmitted. A helper's
 claim that an unordered group_by caused run-to-run differences did not reproduce; the fix was kept, the claim softened.
+
+## 2026-10-06 — fourteenth session: the death shortfall is small trees in bad years
+
+Owner: "continue". Resubmitted the cheaper growth-model test that the mass cancellation had killed, on the standard
+queue because the owner's own jobs were filling the fast one; it ran cleanly at about 2 core-seconds per cell-year,
+less than half the full quantile model. While it waited to be scored, I took the item labelled "too few big trees
+die in 2016-25" and split the shortfall into "fewer trees at risk" and "lower death rate" per size class. The label
+was wrong: almost all of it is trees of 5-10 m, and it sits in a handful of years in which the original kills far
+more trees than usual (2019 is the largest: 7.5 % of small trees against the emulator's 5.4 %). Those years are not
+fires or patch clearings — deaths are spread across patches — and the emulator gets the timing right but damps the
+size of each pulse, while killing slightly too many in quiet years. Two checks are queued: whether the damping comes
+through the sampled growth state (which feeds the death model) or from the death model itself, and which input
+carries the low growth-state drift of 1995-2004.
+
+Later the same session: the extra deaths in the bad years are not more likely ordinary deaths. They are the
+original's two certain-kill rules — a tree that has had five consecutive years of negative growth, or whose leaves
+have shrunk below a sapling's, dies for sure. Those rules account for all of the pulse; ordinary deaths are flat from
+year to year. The emulator has the five-bad-years rule too, and it fires in the right years, but only about two
+thirds as often in each pulse, while its share of bad-growth draws hardly moves between good and bad years. The
+reading is that in the original, a bad year is bad for many trees at once, and the emulator draws each tree's bad
+year independently. A one-step check of exactly that is queued but will not start until tomorrow, as are the scoring
+of the cheaper growth model and the 1995-2004 attribution.
