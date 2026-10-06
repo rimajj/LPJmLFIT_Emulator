@@ -87,8 +87,15 @@ def stepper():
     return st, P
 
 
+def with_agb(X):
+    """the dump carries log_agb only; _growth reads agb solely to pick the AR (rho, sigma) size class, and the AR term
+    is zero here (e_prev = z = 0), so exp(log_agb) at float32 precision cannot change mu."""
+    return X if "agb" in X.columns else X.with_columns(agb=pl.col("log_agb").cast(pl.Float64).exp())
+
+
 def chain(st, X, U):
     """mean over K common-random-number draws of the growth mean (no AR term) and of the survival probability."""
+    X = with_agb(X)
     n = X.height
     zero = {"dagb": np.zeros(n), "dvegc": np.zeros(n)}
     mu, pd = np.zeros(n), np.zeros(n)
@@ -125,7 +132,7 @@ def main():
     cells = sorted(A["Cell"].unique().to_list())
     print(f"dump: {A.height} rows, {len(cells)} cells, years {A['Year'].min()}-{A['Year'].max()}", flush=True)
     # g2: the stepper's functions on the dumped inputs reproduce the dumped outputs
-    smp = A.filter(pl.col("Year").is_in([1990, 2010, 2030]))
+    smp = with_agb(A.filter(pl.col("Year").is_in([1990, 2010, 2030])))
     n0 = smp.height
     zero = {"dagb": np.zeros(n0), "dvegc": np.zeros(n0)}
     G1, c1 = smp["G1"].to_numpy().astype(np.float64), smp["c1"].to_numpy().astype(np.int64)

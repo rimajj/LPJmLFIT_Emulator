@@ -15,6 +15,10 @@ own `ind` table for the same cells and years. Per (source, year) it reports, Ger
   dead_*                 who dies: agb / fpc lost per patch (sized at y-1), mean dying agb over mean living agb at y-1,
                          median height of the dying vs of all living at y-1
 
+  coh_<init|entr>_<b1|b2|b3>_<n|m>   < 15 m survivors split by cohort (INITIAL = printed in the run's first year,
+                         ENTRANT = first printed later) and height at y-1 (5-7.5 / 7.5-10 / 10-15 m): count and MEAN
+                         log agb ratio — for an additive composition / within-bin decomposition of the growth gap
+
 Hypotheses this separates (stated before running):
   H1  re-entry inflation: the arm's "excess recruits" are threshold flicker of its own noisy growth, not births.
       Predicts arm re-entry/patch >> truth re-entry/patch, and first-appearance/patch close to truth.
@@ -72,6 +76,7 @@ def yearly(D: pl.DataFrame, npatch: int, src: str) -> pl.DataFrame:
     npt = ncell * npatch
     years = sorted(D["Year"].unique().to_list())
     seen = D.filter(pl.col("Year") == years[0]).select(KEY).unique()
+    init = seen.with_columns(_init=pl.lit(True))
     prev = D.filter(pl.col("Year") == years[0])
     out = []
     for y in years[1:]:
@@ -86,6 +91,12 @@ def yearly(D: pl.DataFrame, npatch: int, src: str) -> pl.DataFrame:
             live.select(*KEY, a1="agb", f1="fpc_ind"), on=KEY, how="inner")
         lr = (sv["a1"] / sv["a0"]).log()
         small = sv["h0"] < 15.0
+        # cohort x size bins of the < 15 m survivors (INITIAL = printed in the run's first year, else ENTRANT)
+        cb = (sv.with_columns(lr=lr).join(init, on=KEY, how="left").filter(pl.col("h0") < 15.0)
+              .with_columns(coh=pl.when(pl.col("_init")).then(pl.lit("init")).otherwise(pl.lit("entr")),
+                            hb=pl.col("h0").cut([7.5, 10.0], labels=["b1", "b2", "b3"]).cast(pl.Utf8))
+              .group_by("coh", "hb").agg(n=pl.len(), m=pl.col("lr").mean()))
+        cbins = {f"coh_{r['coh']}_{r['hb']}_{k}": r[k] for r in cb.iter_rows(named=True) for k in ("n", "m")}
         # who dies: trees flagged dead at y, sized at their y-1 (living) value
         dy = cur.filter(pl.col("isdead") == 1).select(KEY).join(
             live_prev.select(*KEY, "agb", "fpc_ind", "Height"), on=KEY, how="inner")
@@ -115,6 +126,8 @@ def yearly(D: pl.DataFrame, npatch: int, src: str) -> pl.DataFrame:
             "stand_agb_pp": float(live["agb"].sum()) / npt,
             "first_age_med": float(first["Age"].median()) if first.height else None,
             "first_h_med": float(first["Height"].median()) if first.height else None,
+            "surv_dlnagb_mean_lt15m": float(lr.filter(small).mean()),
+            **cbins,
         })
         seen = pl.concat([seen, first.select(KEY)])
         prev = cur
