@@ -182,6 +182,22 @@ def pairs(A: pl.DataFrame, T: pl.DataFrame, src: str) -> pl.DataFrame:
     return g
 
 
+def cohort(A: pl.DataFrame, T: pl.DataFrame, src: str) -> pl.DataFrame:
+    """Unconditioned spread: quantiles of ln agb of first-year-roster trees alive in THIS run at y
+    (no pairing, no conditioning on the other run's outcome) and of all stems."""
+    y0 = int(T["Year"].min())
+    init = T.filter((pl.col("Year") == y0) & (pl.col("isdead") == 0)).select(PKEY)
+    L = A.filter(pl.col("isdead") == 0).with_columns(la=pl.col("agb").log())
+    ci = L.join(init, on=PKEY, how="semi")
+    q = [0.1, 0.25, 0.5, 0.75, 0.9]
+    a = ci.group_by("Year").agg(
+        pl.len().alias("n_init"),
+        *[pl.col("la").quantile(v).alias(f"init_q{int(v * 100)}") for v in q],
+    )
+    b = L.group_by("Year").agg(*[pl.col("la").quantile(v).alias(f"all_q{int(v * 100)}") for v in q])
+    return a.join(b, on="Year").with_columns(src=pl.lit(src)).sort("Year")
+
+
 def allom_resid(D: pl.DataFrame, src: str, coef: pl.DataFrame, years) -> pl.DataFrame:
     d = D.filter((pl.col("isdead") == 0) & pl.col("Year").is_in(years))
     hh = st.rl.predict_height(
@@ -232,6 +248,11 @@ def main():
     Yd.write_csv(out + ".csv")
     P = pl.concat([pairs(D, T, k) for k, D in frames.items()], how="diagonal_relaxed")
     P.write_csv(out + "_pairs.csv")
+    C = pl.concat(
+        [cohort(T, T, "truth")] + [cohort(D, T, k) for k, D in frames.items()],
+        how="diagonal_relaxed",
+    )
+    C.write_csv(out + "_cohort.csv")
     coef = st.full_allometry("DEV-A")
     ys = [1985, 1986, 1990, 2000, 2014, 2030, 2044]
     Al = pl.concat(

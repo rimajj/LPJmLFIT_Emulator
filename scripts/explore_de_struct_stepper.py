@@ -743,7 +743,9 @@ class Struct:
                 pr = self.K.propose(bank, n_c * self.accept_m, el[i], build, rng)
                 if len(pr["Type"]):
                     w = np.asarray(
-                        self.acceptor.weights(pr, {"Cell": c, "Year": y1, "clim_y1": clim_y1[i]}),
+                        self.acceptor.weights(
+                            pr, {"Cell": c, "Year": y1, "clim_y1": clim_y1[int(i)]}
+                        ),
                         np.float64,
                     )
                     w = w / w.sum() if w.sum() > 0 else np.full(len(w), 1.0 / len(w))
