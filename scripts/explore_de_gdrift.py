@@ -31,6 +31,7 @@ import numpy as np
 import polars as pl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import explore_de_gquant as gq_  # noqa: E402
 import explore_de_sh_rules as rl  # noqa: E402
 import explore_de_tab_features as F  # noqa: E402
 import explore_de_tree_attrib as ta  # noqa: E402
@@ -75,8 +76,12 @@ def main():
     ap.add_argument("--y1", type=int, default=2004)
     ap.add_argument("--frac", type=float, default=0.1)
     ap.add_argument("--K", type=int, default=4)
+    ap.add_argument("--sampler", choices=["pool", "gq", "gqc", "gqs"], default="pool",
+                    help="pool = TAB stepper; gq = explore_de_gquant; gqc = conformalised; gqs = gq + Platt sign")
     a = ap.parse_args()
     st, P = ta.stepper()
+    if a.sampler in ("gq", "gqc", "gqs"):
+        gq_.load(st.split, conformal=a.sampler == "gqc").attach(st, sign_cal=a.sampler == "gqs")
     files = sorted(glob.glob(os.path.join(a.dump, "*", "*.parquet")))
     files = [f for f in files if int(os.path.basename(f)[1:5]) <= a.y1]
     A = pl.concat([pl.read_parquet(f) for f in files], how="vertical_relaxed")

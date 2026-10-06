@@ -379,8 +379,75 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (4) sapling layer from the collected re-runs (ask the owner about the 25 cancelled blocks); (5) the eighth-session
   items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2,
   STRUCT, cross-fit).
-* NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
-  calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
+* **2026-10-06 (eleventh + twelfth sessions): a quantile model of next-year G fixes the sampler's shape; the chain gate
+  still fails by ~1 point; coupled run submitted** [VERIFIED, MPI s2 one step / G-only chain, 200 dev cells;
+  everything in `_status/TS.md` from "a DISTRIBUTIONAL G-magnitude model" on]. `scripts/explore_de_gquant.py`: 11
+  LightGBM quantile heads per sign (models `tab/models/DEV-A/gquant/`), arms gq (as fitted) / gqc (validation-fold
+  conformal offsets) / gqs (+ Platt-recalibrated sign head, `sign_platt.json`); stepper class `TabALG2HSGQ` (+ `Probe`);
+  scorers `explore_de_gpit.py` / `explore_de_gdrift.py --sampler gq|gqc|gqs`. (a) Calibration by previous-G decile:
+  0.29-0.67 (old) -> 0.465-0.530 (gqs); gate +-0.02 FAILS in 1-3 deciles. Sharpness: pinball -30..-40 % in every group
+  (PASS). Year shock sd ~1/3 smaller. (b) FOUND: the sign head was badly under-confident (predicted 3.3 % -> observed
+  0.7 % negative G) with the errors cancelling in the mean, which is why every earlier check called the sign right;
+  Platt a = 1.47 fixes it to 0.93-1.08 per bin. (c) G-only chain, < 15 m median / mean: old +13.9 / +3.4 % ->
+  gqs -3.7 / -2.6 % (1985-94), gate +-3 % FAILS narrowly; loop gain 2.1-2.5 in every arm => needs one-step error
+  within ~1.3 %. (d) Cost 13x the old magnitude head (1 820 vs 140 us/tree single thread) — fidelity test only.
+  (e) COUPLED gqs run despite the failed gates (deviation pre-registered; job 2425236, `runs/_probe2_g2hsgqs_mpi2`
+  + dump; scored `shared/eval/recruit_drift_ssp370_gqs_mpi2.csv`, `gpaired_gqs_vs_g2hs_mpi2.csv`): early small-tree G
+  drift 1985-94 +16.4 % -> -2.7 % (median), biomass/stem excess 1996-2025 +7.6..+13.4 % -> +2.3..+5.0 %, stems within
+  1 % to 2025 (was -4.9 %), recruit deficit halved; the ninth session's attribution holds. Remaining: (i) small-tree G
+  now drifts LOW from 1995 (-9.0 % median, -5.4 % mean in 1995-2004); (ii) 2016-25 deaths -7.7 % (separate big-tree
+  hazard item); (iii) 2036-44 stems +4.1 %, stand biomass +5.3 %. Cost 4.7-5.0 core-s/cell-year incl. the dump
+  (old 1.28): no longer cheaper than the original's ~12 by a margin worth having until shrunk.
+  (the (e) NEXT list that stood here is merged into the thirteenth-session list below.)
+* **2026-10-06 (thirteenth session): the other three designs, and three failed attempts to make the quantile G
+  model cheap** [all pre-registered in `_status/` before running; reports in `_reports/`]. Owner, verbatim: *"work on
+  the other emulator methods while this is running"*.
+  (a) **Quick LSTM (C0)**, `scripts/explore_de_rec_lstmstats.py`, `_status/C0.md`, `recurrent/lstmstats/`: a cell-level
+  2x64 LSTM over yearly cell statistics + climate, trained on MPI s1 only, 5-fold block cross-fit. Held-out places,
+  held-out GCM (ACCESS): from the 2014 truth 0.97-0.98 of fold-5 cells pass (persistence 0.33-0.48, other-seed
+  ceiling 0.92-0.93); from 1985, 2015-44 cells 0.79-0.91 (lookup 0.06-0.10, TAB 0.34-0.46, STRUCT 0). Emits no trees and
+  has no sampling noise (not equal footing). Climate: beats its frozen-climate twin by 0.04-0.16 from 1985, not from
+  2014; collapses on resampled historical weather (partly warming-as-clock); the ssp370-ssp126 block contrast FAILS
+  for every arm (0.31 vs 0.46 for "no difference"; the two scenarios differ by +0.015 K here). Cost ~2.4e-6 core-s.
+  The window aggregation was changed (log-space mixture) after the first scores, because the truth replay failed;
+  it applies to every arm, old scores kept.
+  (b) **Neural set model (SH11 + D1 + D2)**, `scripts/explore_de_sh_tensors.py`, `explore_de_nset_{model,train,stepper}.py`,
+  tensors `shared/tensors/dev/` (98 GB, 5 members), `nset/`, `_status/SH11.md`, `D.md`: tensors round-trip exactly;
+  unit checks pass; stage 1 on one H100 (~1 h per arm, still improving). Stage-2 gate PASSES on paper but has no power
+  (one-step death Brier beats the rule hazard by 0.001 %; the +-50 % stems test is passed by a frozen roster too).
+  30-yr free run from 2014: stems 0.87 x truth (19 % of cells within +-10 %; ACCESS fold 5 0.91, 67 %); deaths right
+  incl. 2018; recruits ~30 % short after year 1 — replaying the original's grass removes it (the same grass-closure
+  defect TAB had). Poor transfer of the continuous heads to ACCESS. Stage 2 NOT started.
+  (c) **STRUCT diagnosis (SD)**, `scripts/explore_de_struct_*.py`, `_status/SD.md`, `struct/accept/`: on ACCESS s1, 200
+  cells. "Biomass 2x" was the per-cell MEDIAN tree (stand biomass right to ~4 %); the real failure is a stem deficit of
+  trees < 10 m, caused by the recruit kernel with no acceptance step (wrong type mix / trait tails enter at 5 m, bad
+  years 2-6x, drop below 5 m or die). Fix arm `acc` = no-shrink height rule + a B4-lite acceptance classifier trained
+  on MPI s1 ssp370 only: closes 106 % of the 2026-35 stem gap (7.37 vs 7.31, base 6.21), 33 % of the median-tree gap;
+  size SHAPE still wrong (too many 10-20 m trees), recruits/deaths ~20 % low. Also: two same-seed runs of one
+  stepper DIFFER (262 of 425 427 rows in 1986, <= 0.01 stems/patch); the helper blamed the PatchHeads entry-table
+  group_by — made ordered anyway, but NOT confirmed (old split identical in 5 repeats and at 1-16 threads on the
+  login node) => the source of run-to-run noise is OPEN; "same random streams" comparisons carry it.
+  (d) **Coupled gqs** (scored twice, independently; both in `_status/TS.md`): P1/P2/P4 pass, P3 fails; small-tree G
+  now -9 % median in 1995-2004; cost 4.7-5.0 core-s/cell-year. **Cheaper G model: three attempts, all FAIL** (TS.md
+  SYNTHESIS): truncation/fewer levels best 1.007-1.009 x pinball at 0.70 x cost; residual start `rq` 1.12-1.23 x at
+  0.26-0.30 x (confounded: 5x fewer rows); distillation `dq` 1.29-1.41 x and coverage off by 0.19. gq's raw quantiles
+  cross in 51-65 % of held-out rows. Code: stages shrink / r* / d* in `scripts/explore_de_gquant.py`.
+  (e) ⚠ **ALL of the owner's SLURM jobs were cancelled at 18:42:34** (incl. ~30 `globN-*` jobs from another project) —
+  not by this session or its helpers. The coupled `rqs` run (pre-registered in TS.md, `_jobs/probe2_g2hsrqs_mpi2.jcf`
+  + `score_g2hsrqs_mpi2.jcf`, env GQ_TAG=_res) died with it at year 2001; NOT resubmitted pending the owner.
+  **NEXT, in order:** (1) if the owner agrees, resubmit the coupled `rqs` run: does the coupled model need gq's last
+  12-23 % of pinball? (pass => rq is the working G model at ~1/3 the cost); (2) if it fails: ONE network with 22
+  monotone outputs, pinball loss, all rows (the neural-set GPU tooling exists); (3) the second-decade LOW small-tree G
+  drift (1995-2004 -9 % median): magnitude loop vs the sign head's G_y-shaped error; (4) the >= 15 m hazard deficit
+  (2016-25 deaths -7.7 %) and the late biomass excess; (5) GRASS is now the shared failure of three designs (TAB fixed by
+  grass2; NSET recruits -30 %; STRUCT frozen grass): port grass2 into NSET, then NSET stage 2; (6) STRUCT: the size
+  shape with acceptance on, acceptance without no-shrink, other members, fold-5 scoring; (7) the LSTM's response: the
+  block contrast has no power in 2015-44 — it needs a longer clean window (a 2045-2070 ind table or a rerun of the
+  humidity-defective 2071-2100 segments: owner's call); (8) sapling layer (25 cancelled blocks: owner's call); (9) the
+  eighth-session items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10
+  chunks + seed 2, cross-fit). Still mostly one GCM, one seed, 200 cells.
+* NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
+  (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
 it is a standalone prototype, no `src/**` edits, nothing propagated to other lines.
 

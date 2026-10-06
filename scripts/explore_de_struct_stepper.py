@@ -571,7 +571,7 @@ class Struct:
         lai1 = np.maximum(t["LAI"].astype(np.float64) + d["dlai"], 1e-4)
         fpc1 = t["fpc_ind"].astype(np.float64) * np.exp(d["dlfpc"])
         d951 = t["D95"].astype(np.float64) * np.exp(d["dld95"])
-        h1 = rl.predict_height(agb1, t["Wooddens"], t["SLA"], typ, self.allom)
+        h1 = self._height_next(t, agb, agb1, typ)
 
         # ---- 3 death (SH2 rules, C order) + survive + fire
         C1 = clim_y1.select(
@@ -686,6 +686,7 @@ class Struct:
             )
             json.dump(self.diag, open(self.diag_path, "w"), indent=0, default=float)
         state.aux_patch["agb_dead"] = agb_dead
+        self._hook(y, t, keys, hidden0, z, d, agb1, h1, dead_h, dead_s, dead_f, hidden1, mo, R)
         return en.StepOut(
             tree=upd,
             isdead=isdead_out,
@@ -696,6 +697,15 @@ class Struct:
             aux_recruits={"z": zr},
             aux_patch=state.aux_patch,
         )
+
+    # ------------------------------------------------- overridable pieces (diagnostic subclasses)
+    def _height_next(self, t, agb, agb1, typ):
+        """Height of year y+1: the SH2 allometry of the new agb (the B5 closure)."""
+        return rl.predict_height(agb1, t["Wooddens"], t["SLA"], typ, self.allom)
+
+    def _hook(self, y, t, keys, hidden0, z, d, agb1, h1, dead_h, dead_s, dead_f, hidden1, mo, R):
+        """No-op; a probe subclass dumps the step's internals here."""
+        return None
 
     # ---------------------------------------------------------------- recruits
     def _recruits(self, state, ctx, y1, clim_y1, flags_y1, rand, Xp1, nrec, pcell, ppat):
@@ -733,7 +743,9 @@ class Struct:
                 pr = self.K.propose(bank, n_c * self.accept_m, el[i], build, rng)
                 if len(pr["Type"]):
                     w = np.asarray(
-                        self.acceptor.weights(pr, {"Cell": c, "Year": y1, "clim_y1": clim_y1[i]}),
+                        self.acceptor.weights(
+                            pr, {"Cell": c, "Year": y1, "clim_y1": clim_y1[int(i)]}
+                        ),
                         np.float64,
                     )
                     w = w / w.sum() if w.sum() > 0 else np.full(len(w), 1.0 / len(w))

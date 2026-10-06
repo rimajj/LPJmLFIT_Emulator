@@ -593,7 +593,10 @@ class PatchHeads:
         self.ent_b = {nm: (ld(nm + "_B0"), ld(nm + "_B1")) for nm in self.meta["entry"]["heads"]}
         self.table = pl.read_parquet(os.path.join(self.dir, "entry_table.parquet"))
         self._tab = {}
-        for (ty, te), g in self.table.group_by(["Type", "terc"]):
+        # deterministic within-group row order: the entry draws index into these arrays, and an unordered
+        # group_by made two runs of the same stepper differ (262 of 425 427 rows in 1986; STRUCT diagnosis SD)
+        tab = self.table.sort(["Type", "terc", "Height", "Age", "c", "G", "cenG"])
+        for (ty, te), g in tab.group_by(["Type", "terc"], maintain_order=True):
             self._tab[(int(ty), int(te))] = {c: g[c].to_numpy() for c in ("Height", "Age", "c", "G", "cenG")}
         self.nthreads = NTHREADS
 
