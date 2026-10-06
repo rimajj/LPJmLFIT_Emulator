@@ -13,6 +13,7 @@ validation fold (the gsign OOF rows):
 Stages:
   explain   -> shared/eval/contin_explain.json + contin_member_year.csv
   yearblock  W1 cross-fitted by YEAR groups -> shared/eval/contin_yearblock.json
+  lowcap     year-blocked low-capacity arms L1 (logistic) / L2 (4-leaf booster) -> shared/eval/contin_lowcap.json
   fit --arm W1|WB   final residual booster on ALL fold-4 OOF rows -> tab/models/DEV-A/gquant/contin_<arm>.txt + .json
 Usage:  python explore_de_contin.py explain | fit --arm W1
 """
@@ -254,6 +255,60 @@ def yearblock(split=SPLIT):
     print(json.dumps({k: v for k, v in res.items() if k != "arms"}), "wrote", out, flush=True)
 
 
+LOWCAP_X = [f"a_{v}_{s}" for v in ("cwb_amjjas", "swdown_ann", "vpd_jja", "tmean_ann") for s in ("y", "y1")]
+LGB_LOW = dict(LGB, num_leaves=4, min_data_in_leaf=20000, learning_rate=0.03, lambda_l2=100.0)
+
+
+def lowcap(split=SPLIT):
+    """L1 / L2 (TS.md "LOW-CAPACITY streak x weather terms"): year-blocked cross-fit of a per-counter logistic on
+    eight drought/energy anomalies and of a 4-leaf booster on W1's features, both on top of the gqsc logit."""
+    global LGB
+    J = load(split)
+    y = J["_y"].to_numpy().astype(np.float64)
+    w = J["w_ip"].to_numpy().astype(np.float64)
+    w = w / w.mean()
+    z0 = gqsc_logit(J, J["p1"].to_numpy().astype(np.float64))
+    grp = (J["Year"].cast(pl.Int64).hash(11) % NGRP).cast(pl.Int8).to_numpy()
+    c = np.minimum(np.rint(J["c_y"].cast(pl.Float64).to_numpy()), 4).astype(int)
+    res = {"arms": [score(J, sig(z0), y, w, "gqsc")]}
+    Xl = J.select(LOWCAP_X).to_numpy().astype(np.float64)
+    Xl = (Xl - Xl.mean(0)) / Xl.std(0)
+    Z = np.column_stack([Xl, np.ones(len(y))])
+    pL = np.empty_like(y)
+    for k in range(1, 5):
+        for gi in range(NGRP):
+            te, trn = (c == k) & (grp == gi), (c == k) & (grp != gi)
+            pL[te] = sig(z0[te] + Z[te] @ logfit_off(Z[trn], y[trn], w[trn], z0[trn]))
+    res["L1_coef_c1"] = dict(zip(LOWCAP_X + ["d"], logfit_off(Z[c == 1], y[c == 1], w[c == 1], z0[c == 1]).round(4)
+                                 .tolist(), strict=True))
+    print("L1 coef c1:", json.dumps(res["L1_coef_c1"]), flush=True)
+    res["arms"].append(score(J, pL, y, w, "L1_logistic"))
+    X = F.to_matrix(J, W_FEATS)
+    pB = np.empty_like(y)
+    its = []
+    LGB, keep = LGB_LOW, LGB
+    try:
+        for gi in range(NGRP):
+            te, es = grp == gi, grp == (gi + 1) % NGRP
+            trn = ~te & ~es
+            b = booster_fit(X[trn], y[trn], w[trn], z0[trn], W_FEATS, X[es], y[es], w[es], z0[es], rounds=400)
+            pB[te] = sig(z0[te] + b.predict(X[te], raw_score=True))
+            its.append(b.best_iteration)
+    finally:
+        LGB = keep
+    r = score(J, pB, y, w, "L2_booster4")
+    r["iters"] = its
+    res["arms"].append(r)
+    g0 = res["arms"][0]
+    for r in res["arms"][1:]:
+        r["pass"] = bool(r["c1_slope"] >= g0["c1_slope"] + 0.03 and r["ll"] < g0["ll"])
+    res["falsifier"] = bool(all(abs(r["c1_slope"] - g0["c1_slope"]) <= 0.01 for r in res["arms"][1:]))
+    out = os.path.join(XDE, "shared", "eval", "contin_lowcap.json")
+    json.dump(res, open(out, "w"), indent=1)
+    print(json.dumps({"L1": res["arms"][1]["pass"], "L2": res["arms"][2]["pass"], "falsifier": res["falsifier"]}),
+          "wrote", out, flush=True)
+
+
 def fit(arm, split=SPLIT):
     """final residual booster on ALL fold-4 OOF c_y >= 1 rows (rounds = the cross-fit's median best iteration)."""
     J = load(split)
@@ -274,13 +329,15 @@ def fit(arm, split=SPLIT):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["explain", "yearblock", "fit"])
+    ap.add_argument("stage", choices=["explain", "yearblock", "lowcap", "fit"])
     ap.add_argument("--arm", default="W1")
     a = ap.parse_args()
     if a.stage == "explain":
         explain()
     elif a.stage == "yearblock":
         yearblock()
+    elif a.stage == "lowcap":
+        lowcap()
     else:
         fit(a.arm)
 
