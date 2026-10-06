@@ -37,7 +37,7 @@ def main():
     ap.add_argument("--gcm", required=True)
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--leg", default="ssp370")
-    ap.add_argument("--sampler", choices=["pool", "gq", "gqs"], default="gqs")
+    ap.add_argument("--sampler", choices=["pool", "gq", "gqs", "gqsc"], default="gqs")
     ap.add_argument("--y0", type=int, default=1985)
     ap.add_argument("--y1", type=int, default=2043)
     ap.add_argument("--frac", type=float, default=0.1)
@@ -46,7 +46,7 @@ def main():
     a = ap.parse_args()
     st, P = ta.stepper()
     if a.sampler != "pool":
-        gq_.load(st.split).attach(st, sign_cal=a.sampler == "gqs")
+        gq_.load(st.split).attach(st, sign_cal={"gq": False, "gqs": True, "gqsc": "c"}[a.sampler])
     f0 = sorted(glob.glob(os.path.join(a.cells_from, "chunk_*", "*.parquet")))
     cells = sorted(pl.concat([pl.scan_parquet(f).select("Cell") for f in f0 if os.path.basename(f).startswith(
         f"y{a.y0 + 1}_")]).unique().collect()["Cell"].to_list())
