@@ -171,8 +171,11 @@ def stage_fit():
     X = X.with_columns(wkey=pl.concat_str([pl.col("clim_scen_y1"), pl.col("clim_year_y1").cast(pl.Utf8)]))
     X = X.with_columns(grp=pl.col("wkey").map_elements(lambda s: zlib.crc32(s.encode()) % NGRP,
                                                        return_dtype=pl.Int64))
-    is_train = (pl.col("gcm") == "MPI-ESM1-2-HR") & (pl.col("seed") == 1) & pl.col("traj").is_in(
+    split = os.environ.get("SPLIT", "mpi")  # mpi = DEV-A's GCM only; both = both GCMs, ssp245 held out
+    gcms = ["MPI-ESM1-2-HR"] if split == "mpi" else ["MPI-ESM1-2-HR", "ACCESS-CM2"]
+    is_train = pl.col("gcm").is_in(gcms) & (pl.col("seed") == 1) & pl.col("traj").is_in(
         ["Historical", "ssp126", "ssp370"])
+    X = X.with_columns(wkey=pl.concat_str([pl.col("gcm"), pl.col("wkey")]))
     TR = X.filter(is_train)
     print(f"train cell-years {TR.height}, weather years {TR['wkey'].n_unique()}  ({time.time() - t0:.0f}s)", flush=True)
     P = dict(objective="regression", learning_rate=0.03, num_leaves=31, min_data_in_leaf=100, feature_fraction=0.7,
@@ -202,9 +205,9 @@ def stage_fit():
             Tt = T.with_columns(pl.Series("p", oof))
             for cs_name, cs in (("200", c2), ("907", None)):
                 D = Tt if cs is None else Tt.filter(pl.col("Cell").is_in(cs))
-                for traj in ["Historical", "ssp126", "ssp370"]:
-                    r = ycorr(D.filter(pl.col("traj") == traj), t, "p", wcol)
-                    res.append(dict(target=t, set=sname, eval="train_OOF_year", gcm="MPI-ESM1-2-HR", seed=1,
+                for (gcm, traj), Dg in D.group_by("gcm", "traj"):
+                    r = ycorr(Dg, t, "p", wcol)
+                    res.append(dict(target=t, set=sname, eval="train_OOF_year", gcm=gcm, seed=1,
                                     traj=traj, cells=cs_name, best_iter=nfin, **r))
             # unseen / held-out members
             H = X.filter(~is_train & pl.col(t).is_not_null() & (pl.col(wcol) > 0))
@@ -228,7 +231,7 @@ def stage_fit():
                                         cells=cs_name, best_iter=nfin, cellyear_anom_r2=float(r2), **r))
             print(f"{t} set {sname}: best iters {best} -> {nfin}  ({time.time() - t0:.0f}s)", flush=True)
     R = pl.DataFrame(res)
-    out = os.path.join(EVAL, "gsign_info_fit.csv")
+    out = os.path.join(EVAL, "gsign_info_fit.csv" if split == "mpi" else f"gsign_info_fit_{split}.csv")
     R.write_csv(out)
     pl.Config.set_tbl_rows(400)
     pl.Config.set_tbl_cols(20)
