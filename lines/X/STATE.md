@@ -355,6 +355,30 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   truth's); (4) once the re-runs are collected: use the < 5 m trees to replace the hidden-cover proxy with the
   real sapling layer (the seventh-session design question); (5) the eighth-session items (cross-GCM grass weather
   transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2, STRUCT, cross-fit).
+* **2026-10-06 (tenth session): the early growth-efficiency drift is the SAMPLER'S SHAPE, half one step ahead and half
+  amplified by feeding it its own draws** [VERIFIED, MPI s2, 200 dev cells; `_status/TS.md` last two sections;
+  `scripts/explore_de_gdrift.py` -> `shared/eval/gdrift_g2hs_mpi2_*.csv`, `scripts/explore_de_gpit.py` ->
+  `shared/eval/gpit_mpi2*`]. (a) Start is exact (466 979 paired trees, G identical in 1985). (b) < 15 m median next-year
+  G, 1985-94, model/truth - 1: one step ahead on the original's inputs +6.2 %, G-only chain on the original +13.0 %,
+  the free run +14.7 % — the means only +1.8 / +3.4 / +6.6 %, q25 LOW => a shape error, not a level error; other drifted
+  inputs add little (swap: G_y alone 96 %). (c) Exact PIT of the original's next-year G under the sampler: share below
+  the sampler's median 0.543 in 1985-94, drifting to 0.47-0.50 after 2015; by previous-G decile 0.46..0.67..0.29 —
+  the LOCATION of the conditional distribution bends wrongly with the previous G (spread is about right everywhere);
+  plus a year-common shock (sd 0.06 of that share, range 0.36-0.66) that the climate inputs do not carry even though
+  this member shares the training member's weather years; beech carries the excess, ids 1/2/4 go the other way.
+  Sapling re-runs: 24 of 49 blocks collected and gated (`ind_all/`); **the other 25 were CANCELLED at 07:00 on
+  2026-10-06 by the owner's own account while still pending** (not by this line) — resubmission is the owner's call
+  (`_jobs/crerun_rerun1node_jobs.txt` lists them; collector `scripts/explore_de_crerun_collect.py` now skips never-run
+  blocks instead of crashing).
+  **NEXT, in order (supersedes the ninth session's list):** (1) a distributional magnitude model for G: LightGBM
+  quantile heads for log|G| (~9 levels, Type-aware, previous G and weather as inputs) replacing the pooled residual,
+  trained on training members only; gate = PIT share < 0.5 within 0.50 +- 0.02 in every previous-G decile one step
+  ahead on MPI s2, then the G-only chain (`explore_de_gdrift.py` S3) within +-3 % in median AND mean, only then coupled;
+  measure how much of the year shock it removes before chasing that; (2) the >= 15 m hazard deficit on shared trees;
+  (3) the narrow small-tree growth distribution (likely the same shape defect one level down — re-check after (1));
+  (4) sapling layer from the collected re-runs (ask the owner about the 25 cancelled blocks); (5) the eighth-session
+  items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2,
+  STRUCT, cross-fit).
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):

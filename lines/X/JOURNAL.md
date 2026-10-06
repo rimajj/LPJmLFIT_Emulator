@@ -326,3 +326,18 @@ The re-runs of the original that print every tree taught me something about the 
 nodes of different processor types diverges from production from the first year, while every run on one processor
 type reproduces it exactly. A prediction from the node lists alone got three of three right. All failed runs are
 resubmitted on single nodes.
+
+---
+
+## 2026-10-06 (tenth session) — the early growth-state drift is in the shape of the random draw
+
+Picked up why the emulator's trees start the 1990s with too high a growth state. The start is exact. One year ahead,
+on the original's own inputs, the emulator's draw of next year's growth efficiency already has a median about 6 % too
+high while its average is nearly right; letting it carry its own draws forward, with everything else held at the
+original's values, doubles that to 13 %, which is almost all of what the full free run shows. So it is not other
+drifting inputs. A direct calibration check (where each true value falls inside the emulator's predicted distribution)
+showed what is wrong: the spread is about right, but the centre bends the wrong way with the tree's previous growth
+state — too high for middling trees, too low for the fastest — and every year carries a common shift the weather
+inputs do not explain, even though this member shares its weather with the training data. The fix is a model of the
+whole distribution rather than a mean plus a pooled residual. The sapling re-runs of the original were cancelled from
+the owner's account at 07:00 while waiting in the queue; the ones that had finished are collected and checked.
