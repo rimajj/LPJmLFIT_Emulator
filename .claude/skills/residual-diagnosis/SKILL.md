@@ -2288,3 +2288,11 @@ deciles of the lagged input: a sign change across deciles with the central share
 with that input (a pool binned by predicted value cannot fix it — the pool's bins showed the same pattern); a central
 share off in the same direction everywhere is a SPREAD error; a share that swings by year is a common shock the
 inputs do not carry. Three different fixes — read the split before choosing one.
+
+**A cross-fit by PLACE leaks the YEAR when the target responds to weather shared across places (line X, 2026-10-06).**
+If every cell of a year sees the same large-scale weather, a learner cross-fitted by cell can recognise the year from
+other cells and memorise its outcome: a streak x weather term looked like a +0.11 gain in year-to-year slope by cell
+and was −0.02 by year (`scripts/explore_de_contin.py` yearblock). The same trap sits in EARLY STOPPING on a cell fold
+of the training years (the Germany sign head ran 400 rounds; on held-out years the optimum was ~43), and in any test
+member that shares the training member's weather (a second spin-up seed of the same forcing). Before quoting a
+year-to-year skill: name which weather years the model trained on, and score on years it did not.

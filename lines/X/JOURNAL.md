@@ -400,3 +400,21 @@ thirds as often in each pulse, while its share of bad-growth draws hardly moves 
 reading is that in the original, a bad year is bad for many trees at once, and the emulator draws each tree's bad
 year independently. A one-step check of exactly that is queued but will not start until tomorrow, as are the scoring
 of the cheaper growth model and the 1995-2004 attribution.
+
+## 2026-10-06/07 — sixteenth session: the year-to-year skill was memorised weather
+
+Owner: "continue". The open item was why the emulator under-reproduces how often a run of bad-growth years continues
+into a second year, which damps the original's death pulses. First the explanation: what the current predictor gets
+wrong follows the weather of the year the run started — a run that began in a dry, bright year tends to end (the
+tree recovers), one that began in ordinary weather tends to continue. How many trees in the cell started a run
+together explains nothing. A model term that lets the weather response differ for trees already in a run looked
+like a large improvement (year-to-year slope 0.85 → 0.97) — but the test held out places, not years, and every
+place in Germany shares a year's weather. Holding out whole years, the gain vanished: it had memorised the years.
+That raised a bigger question, and the answer is uncomfortable: the shipped predictor's excellent year-to-year
+timing on the second MPI run (correlation 0.98) is itself mostly memorised, because that run uses the same weather
+years as training. On MPI's own SSP2-4.5 years, which it never saw, it is 0.78; on the ACCESS climate model 0.43-0.63.
+Averages stay right everywhere. The mechanism is in the training code — every weather part stops training when it
+stops improving on other cells of the same years — but fixing the stopping rule only removed the inflated score; it
+did not raise the skill on unseen years (0.775 → 0.790). The limit is information in the annual weather inputs.
+All earlier timing results on the second MPI run, the death-pulse deficit included, were scored on trained weather
+years; the next session measures them on unseen ones first.

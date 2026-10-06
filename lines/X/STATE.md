@@ -505,6 +505,35 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   worse anywhere and fixes the counter means); (3) the cheap G model: single monotone network (rq failed R2, but its
   second-decade undershoot is smaller — compare loop gains); (4)-(8) as in the thirteenth session's list (grass into
   NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
+* **2026-10-06/07 (sixteenth session): the sign head's year-to-year skill was MEMORISED WEATHER YEARS; on unseen
+  years it is corr ~0.78 and no stopping rule or streak term raises it** [VERIFIED; every number + pre-registration in
+  `_status/TS.md` from "WHAT CARRIES truth's yearly streak continuation" on; `scripts/explore_de_contin.py`,
+  `scripts/explore_de_gsign_yb.py`; tables `shared/eval/contin_*.json|csv`, `death_onestep_{gqsk,gqsy}_*.csv`,
+  `death_onestep_gqsc_{acc1,mpi1_245}.csv`]. (a) The continuation residual follows the weather of the streak's START
+  year (dry/bright start -> recovery); cell-year streak breadth carries nothing (B1 +0.007). (b) A streak x weather
+  booster lifted the yearly c_y = 1 slope 0.851 -> 0.965 under a cross-fit by CELL — but under a cross-fit by YEAR it
+  stops at 1-54 rounds and scores 0.833: every cell of a member-year shares Germany's weather, so a cell cross-fit
+  leaks the year. Low-capacity variants fail too. Its coupled run was cancelled. (c) One step on weather years never
+  trained on, the SHIPPED sign head's yearly corr (starts / all-tree negative share / c_y = 1) is 0.98 / 0.98 / 0.90
+  on MPI s2 (shares MPI s1's weather years) -> 0.78 / 0.78 / 0.69 on MPI s1 ssp245 (same GCM, unseen years) ->
+  0.57 / 0.63 / 0.60 on ACCESS (0.51 / 0.43 / 0.49 in its 2015-44). Means stay right. (d) Mechanism of the
+  memorisation: every two-stage head early-stops its weather booster on held-out CELLS of the SAME years. Refitting
+  gsign's B1 with YEAR-held-out stopping (arm gqsy) stops at median 43 rounds instead of 400 and removes the
+  memorised skill (MPI s2 0.98 -> 0.90) but barely raises unseen-year skill (ssp245 0.775 -> 0.790, ACCESS 0.627 ->
+  0.621) and damps the swings further => not adopted; the limit is the transferable INFORMATION in the annual
+  weather anomalies, not the stop. ⚠ Consequence: every yearly-timing number scored on MPI s2 (incl. the C3 pulse
+  deficit, -25 %) was on trained weather years; the pulse deficit on unseen years is unmeasured and likely larger.
+  **NEXT, in order:** (1) MEASURE on unseen weather: rerun the coupled gqsc arm on MPI s1 ssp245 (same GCM, unseen
+  years; `_jobs/probe2_g2hsgqsc_mpi2.jcf` with --seed 1 --legs ssp245 + the scorer) and on ACCESS s1, and score the
+  pulses / deaths / stems there — that is the honest baseline every later fix must be scored against; (2) the
+  information ceiling: a YEAR-level cross-validated regression of the member-year negative-growth share (and c_y = 1
+  continuation) on (a) the current annual anomalies and (b) richer seasonal/monthly drought + temperature features
+  from the daily forcing (the C decides growth from daily water/temperature) — if (b) beats (a) out of year, rebuild
+  the weather inputs of all heads; (3) more weather years: a held-out-SCENARIO split (train Hist + ssp126 + ssp370 of
+  BOTH GCMs' seed 1, test ssp245 of both) doubles the training weather years — costs the held-out-GCM test, decide
+  after (2); (4) adopt year-held-out early stopping for every weather booster anyway (it removes the inflation of
+  in-year scores; scores must then be on unseen years); (5)-(9) as before (cheap G model, grass into NSET, STRUCT size
+  shape, LSTM response window, sapling layer, eighth-session items). gqsc stays the sign calibration.
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
@@ -733,6 +762,12 @@ what would have to be true to promote it.)*
 ---
 
 ## Line X gotchas
+
+- **A cross-fit by CELL leaks the YEAR whenever the target responds to weather shared by every cell (2026-10-06,
+  sixteenth session).** Germany's cells share each year's weather, so a booster cross-fitted by cell can recognise a
+  member-year from other cells and memorise its outcome (continuation slope 0.85 -> 0.97 by cell, 0.83 by year). The
+  seed-2 members share the seed-1 members' weather years, so MPI s2 cannot rule it out either. Hold out YEARS (or a
+  scenario / GCM with its own weather years) for anything weather-driven; early-stop on held-out years too.
 
 * **The SessionStart hook is generic over `line/*`** — it reads `lines/<letter>/STATE.md` and needs no
   per-line code. Only the integrator-worktree hint list names worktrees explicitly, and `wt-X` was added
