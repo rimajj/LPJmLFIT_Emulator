@@ -53,8 +53,8 @@ PARAMS = dict(objective="quantile", metric="quantile", learning_rate=0.1, num_le
               seed=13)
 
 
-def gdir(split):
-    d = os.path.join(Hh.mdir(split), "gquant" + os.environ.get("GQ_TAG", ""))
+def gdir(split, tag=None):
+    d = os.path.join(Hh.mdir(split), "gquant" + (os.environ.get("GQ_TAG", "") if tag is None else tag))
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -75,7 +75,7 @@ def prep(split, sign):
     h = Hh.HEADS[f"gmag_{sign}"]
     feats = features(split)
     t0 = time.time()
-    df = Hh.load_rows(split, "train", h["filt"], h["label"], MAX_ROWS, keep=feats + ["G_y1", "c_y1"])
+    df = Hh.load_rows(split, "train", h["filt"], h["label"], MAX_ROWS, keep=feats + ["G_y1", "c_y1", "Cell"])
     y = df["_y"].to_numpy().astype(np.float64)
     ok = np.isfinite(y)
     df, y = df.filter(pl.Series(ok)), y[ok]
@@ -84,6 +84,7 @@ def prep(split, sign):
     np.save(os.path.join(d, f"{sign}_y.npy"), y.astype(np.float32))
     np.save(os.path.join(d, f"{sign}_w.npy"), df["w_ip"].to_numpy().astype(np.float32))
     np.save(os.path.join(d, f"{sign}_va.npy"), df["fold"].to_numpy() == spec["val_fold"])
+    np.save(os.path.join(d, f"{sign}_cell.npy"), df["Cell"].to_numpy().astype(np.int64))
     json.dump({"features": feats, "n": int(df.height), "sign": sign}, open(os.path.join(d, f"{sign}_prep.json"), "w"))
     print(f"prep {sign}: {df.height} rows, {len(feats)} features, {time.time() - t0:.0f} s", flush=True)
 
@@ -225,9 +226,146 @@ def submit(split, hours=6):
     print("prep jobs", jids, flush=True)
 
 
+# ================================================================================================ residual heads ("rq")
+RTAG = "_res"
+RPARAMS = dict(PARAMS, num_leaves=31, min_data_in_leaf=500)
+
+
+def mean_head(H, sign: str, M: np.ndarray, feats: list[str]) -> np.ndarray:
+    """the shipped L2 magnitude head (B0 + B1 at kappa 1) on a feature matrix in `feats` order."""
+    return H.raw(f"gmag_{sign}", pl.DataFrame(M, schema=feats, orient="row"), 1.0)
+
+
+def cell_slice(cell: np.ndarray) -> np.ndarray:
+    """deterministic 0..4 slice by cell (Knuth multiplicative hash): 0 = held out, 1 = early stopping, 2-4 = train."""
+    return ((cell.astype(np.uint64) * np.uint64(2654435761)) % np.uint64(2**32)) % np.uint64(5)
+
+
+def rprep(split, sign):
+    """re-cache the training rows WITH Cell into gquant_res/, gate them against the cached gquant/ rows, and store
+    the mean head on the validation-fold rows (the only rows on which it is out of sample)."""
+    os.environ["GQ_TAG"] = RTAG
+    prep(split, sign)
+    d0, d = gdir(split, ""), gdir(split, RTAG)
+    for nm in ("y", "va", "w"):
+        a, b = np.load(os.path.join(d0, f"{sign}_{nm}.npy")), np.load(os.path.join(d, f"{sign}_{nm}.npy"))
+        assert a.shape == b.shape and np.array_equal(a, b), f"re-prep differs from the cache in {nm}"
+    va = np.load(os.path.join(d, f"{sign}_va.npy"))
+    idx = np.flatnonzero(va)
+    feats = json.load(open(os.path.join(d, f"{sign}_prep.json")))["features"]
+    X = np.asarray(np.load(os.path.join(d, f"{sign}_X.npy"), mmap_mode="r")[idx], dtype=np.float64)
+    H = Hh.TabHeads.load(split, heads=[f"gmag_{sign}"])
+    np.save(os.path.join(d, f"{sign}_vidx.npy"), idx)
+    np.save(os.path.join(d, f"{sign}_m.npy"), mean_head(H, sign, X, feats))
+    cs = cell_slice(np.load(os.path.join(d, f"{sign}_cell.npy"))[idx])
+    print(f"rprep {sign}: gate OK (y, va, w identical); {idx.size} validation rows, "
+          f"{len(np.unique(np.load(os.path.join(d, f'{sign}_cell.npy'))[idx]))} cells, slices "
+          f"{np.bincount(cs.astype(np.int64), minlength=5).tolist()}", flush=True)
+
+
+def rtrain(split, sign, level):
+    import lightgbm as lgb
+
+    d = gdir(split, RTAG)
+    a = QLEV[level]
+    feats = json.load(open(os.path.join(d, f"{sign}_prep.json")))["features"]
+    idx = np.load(os.path.join(d, f"{sign}_vidx.npy"))
+    X = np.asarray(np.load(os.path.join(d, f"{sign}_X.npy"), mmap_mode="r")[idx])
+    y = np.load(os.path.join(d, f"{sign}_y.npy"))[idx].astype(np.float64)
+    w = np.load(os.path.join(d, f"{sign}_w.npy"))[idx].astype(np.float64)
+    m = np.load(os.path.join(d, f"{sign}_m.npy"))
+    cs = cell_slice(np.load(os.path.join(d, f"{sign}_cell.npy"))[idx])
+    trm, esm = cs >= 2, cs == 1
+    base = wquantile(y[trm] - m[trm], w[trm], a)
+    cat = [i for i, c in enumerate(feats) if c in F.CAT]
+    t0 = time.time()
+    dt = lgb.Dataset(X[trm], y[trm], weight=w[trm], init_score=m[trm] + base, feature_name=feats,
+                     categorical_feature=cat, free_raw_data=True)
+    dv = lgb.Dataset(X[esm], y[esm], weight=w[esm], init_score=m[esm] + base, reference=dt)
+    b = lgb.train(dict(RPARAMS, alpha=a, num_threads=NTHREADS), dt, num_boost_round=1000, valid_sets=[dv],
+                  valid_names=["es"], callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(100)])
+    nm = f"{sign}_q{level:02d}"
+    b.save_model(os.path.join(d, nm + ".txt"), num_iteration=b.best_iteration)
+    meta = {"sign": sign, "level": level, "alpha": a, "base": base, "init": "mean_head",
+            "best_iter": int(b.best_iteration), "n_train": int(trm.sum()), "n_es": int(esm.sum()),
+            "t_s": round(time.time() - t0), "features": feats}
+    json.dump(meta, open(os.path.join(d, nm + ".json"), "w"), indent=1)
+    print(json.dumps({k: v for k, v in meta.items() if k != "features"}), flush=True)
+
+
+def rcompare(split, ntime=20_000):
+    """rq vs gq on the held-out cells (slice 0) of the validation fold -> gquant_res/rq_compare.json"""
+    d = gdir(split, RTAG)
+    gq, rq = GQ(split, tag=""), GQ(split, tag=RTAG)
+    qa = np.asarray(QLEV)
+    res = {}
+    for s in ("neg", "pos"):
+        idx = np.load(os.path.join(d, f"{s}_vidx.npy"))
+        ho = cell_slice(np.load(os.path.join(d, f"{s}_cell.npy"))[idx]) == 0
+        X = np.asarray(np.load(os.path.join(d, f"{s}_X.npy"), mmap_mode="r")[idx[ho]], dtype=np.float64)
+        y = np.load(os.path.join(d, f"{s}_y.npy"))[idx[ho]].astype(np.float64)
+        w = np.load(os.path.join(d, f"{s}_w.npy"))[idx[ho]].astype(np.float64)
+        for lab, g in (("gq", gq), ("rq", rq)):
+            Q = g.quantiles_m(X, s)
+            pin = float(np.mean([np.average(pinball(Q[:, i], y, a), weights=w) for i, a in enumerate(qa)]))
+            cov = [float(np.average(y <= Q[:, i], weights=w)) for i in range(len(qa))]
+            g.nthreads = 1
+            g.quantiles_m(X[:200], s)
+            t1 = time.perf_counter()
+            g.quantiles_m(X[:ntime], s)
+            us = (time.perf_counter() - t1) / min(ntime, len(y)) * 1e6
+            g.nthreads = NTHREADS
+            res[f"{s}_{lab}"] = {"pinball": pin, "coverage": cov, "worst_cov_err": float(np.max(np.abs(
+                np.asarray(cov) - qa))), "us_per_tree_1thr": us, "n": int(len(y)),
+                "crossing_share": float((np.diff(np.column_stack([b0 + b.predict(X[:20000], raw_score=True)
+                                                                  for b, b0 in zip(g.b[s], g.base[s], strict=True)]),
+                                                 axis=1) < 0).any(1).mean())}
+            print(lab, s, json.dumps({k: v for k, v in res[f"{s}_{lab}"].items() if k != "coverage"}), flush=True)
+    v = {}
+    for s in ("neg", "pos"):
+        g_, r_ = res[f"{s}_gq"], res[f"{s}_rq"]
+        v[s] = {"pin_ratio": r_["pinball"] / g_["pinball"], "cov_excess": r_["worst_cov_err"] - g_["worst_cov_err"],
+                "cost_ratio": r_["us_per_tree_1thr"] / g_["us_per_tree_1thr"]}
+    ok = all(x["pin_ratio"] <= 1.005 and x["cov_excess"] <= 0.005 and x["cost_ratio"] <= 0.25 for x in v.values())
+    out = {"rows": res, "verdict": v, "pass": ok,
+           "rule": "pin_ratio <= 1.005, cov_excess <= 0.005, cost_ratio <= 0.25, both signs (TS.md, arm rq)"}
+    json.dump(out, open(os.path.join(d, "rq_compare.json"), "w"), indent=1)
+    print("VERDICT", json.dumps(v), "PASS" if ok else "FAIL", flush=True)
+
+
+def rsubmit(split):
+    logs = os.path.join(REPO, "logs")
+    jd = os.path.join(F.TAB, "_jobs")
+    me = os.path.abspath(__file__)
+    head = ("#!/bin/bash\n#SBATCH --account=waldspektrum --partition=standard --qos=short\n"
+            "#SBATCH --cpus-per-task={c} --time={h:02d}:00:00\n#SBATCH --job-name={n} --output={o}\n{x}"
+            "set -eu\nexport POLARS_MAX_THREADS={c} OMP_NUM_THREADS={c} SLURM_CPUS_PER_TASK={c}\n")
+    pj = []
+    for s in ("neg", "pos"):
+        js = os.path.join(jd, f"rq_prep_{s}.jcf")
+        open(js, "w").write(head.format(c=16, h=2, n=f"X-de-rq-prep-{s}", o=f"{logs}/X-de-rq-prep-{s}.%j.out", x="")
+                            + f"{F.PY} -u {me} rprep --split {split} --sign {s}\necho '=== JOB DONE ==='\n")
+        pj.append(os.popen(f"sbatch --parsable {js}").read().strip())
+    tj = []
+    for k, s in enumerate(("neg", "pos")):
+        js = os.path.join(jd, f"rq_train_{s}.jcf")
+        open(js, "w").write(
+            head.format(c=8, h=4, n=f"X-de-rq-{s}", o=f"{logs}/X-de-rq-{s}.%A_%a.out",
+                        x=f"#SBATCH --array=0-{len(QLEV) - 1} --dependency=afterok:{pj[k]}\n")
+            + f"{F.PY} -u {me} rtrain --split {split} --sign {s} --level $SLURM_ARRAY_TASK_ID\n"
+            + "echo '=== JOB DONE ==='\n")
+        tj.append(os.popen(f"sbatch --parsable {js}").read().strip())
+    js = os.path.join(jd, "rq_compare.jcf")
+    open(js, "w").write(head.format(c=16, h=2, n="X-de-rq-cmp", o=f"{logs}/X-de-rq-cmp.%j.out",
+                                    x=f"#SBATCH --dependency=afterok:{tj[0]}:{tj[1]}\n")
+                        + f"{F.PY} -u {me} rcompare --split {split}\necho '=== JOB DONE ==='\n")
+    cj = os.popen(f"sbatch --parsable {js}").read().strip()
+    print("rq jobs: prep", pj, "train", tj, "compare", cj, flush=True)
+
+
 # ================================================================================================ the sampler
 class GQ:
-    def __init__(self, split="DEV-A", conformal=False, niter=None, levels=None):
+    def __init__(self, split="DEV-A", conformal=False, niter=None, levels=None, tag=None):
         """niter: predict with each head's first niter trees only (None = all; env GQ_NITER); levels: name in
         LEVELSETS or None = all 11 (env GQ_LEVELS) — the shrunk sampler of the "shrink" stage."""
         import lightgbm as lgb
@@ -237,9 +375,10 @@ class GQ:
         if levels is None:
             levels = os.environ.get("GQ_LEVELS") or "11"
         keep = LEVELSETS[str(levels)]
-        d = gdir(split)
+        d = gdir(split, tag)
         self.d = d
         self.niter, self.levels = niter, str(levels)
+        self.H = None
         self.b, self.base = {}, {}
         for s in ("neg", "pos"):
             self.b[s], self.base[s] = [], []
@@ -249,6 +388,8 @@ class GQ:
                 m = json.load(open(nm + ".json"))
                 self.base[s].append(m["base"])
                 self.feats = m["features"]
+                if m.get("init") == "mean_head" and self.H is None:
+                    self.H = Hh.TabHeads.load(split, heads=["gmag_neg", "gmag_pos"])
         self.lv = np.asarray(QLEV)[keep]
         self.nthreads = NTHREADS
         self.off = {s: np.zeros(len(keep)) for s in ("neg", "pos")}
@@ -279,6 +420,9 @@ class GQ:
     def quantiles_m(self, M: np.ndarray, sign: str) -> np.ndarray:
         Q = np.column_stack([b0 + b.predict(M, raw_score=True, num_threads=self.nthreads, num_iteration=self.niter)
                              for b, b0 in zip(self.b[sign], self.base[sign], strict=True)])
+        if self.H is not None:  # residual heads ("rq"): add the L2 mean head at kappa 1
+            self.H.nthreads = self.nthreads
+            Q = Q + mean_head(self.H, sign, M, self.feats)[:, None]
         return np.sort(np.sort(Q, axis=1) + self.off[sign][None, :], axis=1)
 
     def inv(self, Q: np.ndarray, u: np.ndarray) -> np.ndarray:
@@ -451,7 +595,8 @@ class TabALG2HSGQProbe(pr2._DumpMixin, TabALG2HSGQ):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit", "shrink"])
+    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit", "shrink", "rprep", "rtrain",
+                                      "rcompare", "rsubmit"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -468,6 +613,14 @@ def main():
         bench(a.split)
     elif a.stage == "shrink":
         shrink(a.split)
+    elif a.stage == "rprep":
+        rprep(a.split, a.sign)
+    elif a.stage == "rtrain":
+        rtrain(a.split, a.sign, a.level)
+    elif a.stage == "rcompare":
+        rcompare(a.split)
+    elif a.stage == "rsubmit":
+        rsubmit(a.split)
     else:
         submit(a.split)
 
