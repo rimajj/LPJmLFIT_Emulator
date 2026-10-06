@@ -490,13 +490,21 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (f) rqs (cheap residual quantile model) coupled: R2 FAILS (biomass/stem +5.8 / +9.7 / +8.6 % in 1996-2025, bar
   +-6 %), R3 passes => not the working model; R1 from job 2427211. (g) Queue: 32-core 2-3 h jobs were not being
   scheduled on `standard` while 8-16-core ones start at once — submit at <= 16 cores.
-  **PENDING:** 2427263 one-step gqsc (C2), 2427264 coupled gqsc run (C3; then score it like gqs:
-  `score_g2hsgqs_mpi2.jcf` with the run dir swapped, + `explore_de_streak.py --dump runs/_probe2_g2hsgqsc_mpi2/dump`),
-  2427211 rqs scorer (R1), 2427212 1995-2004 swap attribution (W0/W1/H1/H2).
-  **NEXT, in order:** (1) read C2, then C3 against TS.md; (2) if C3 passes, gqsc is the working sign model; if C2
-  passes but C3's pulses stay < -15 %: cohort probe of the streaking trees' state drift; (3) record R1 and the swap
-  verdicts; (4) the cheap G path is now the single monotone network (rq failed R2); (5)-(9) as in the thirteenth
-  session's list (grass into NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
+  **RESULTS later the same session (all in TS.md):** C2 one step PASSES on means (c1 0.561 vs truth 0.574 all trees;
+  < 10 m 0.621 vs 0.630, was 0.579), but C3 coupled FAILS: pulse-year certain kills < 10 m -24.7 % (gqs -26.3 %),
+  2016-25 deaths -6.9 % (gqs -7.7 %); quiet years, biomass/stem and stems 2026-35 still pass. Reason (one step on the
+  original's states): the corrected head is right on AVERAGE but its year-to-year continuation is COMPRESSED (slope
+  0.78, corr 0.84) — low in exactly the pulse cohorts' second years (2016 0.78 vs 0.85, 2022 0.77 vs 0.88). A
+  per-counter weather scale (gqsc2) does not move it (OOF slope 0.851 -> 0.861; falsifier fired). rqs: R1 PASS
+  (+3.7 / +1.4 %), R2 FAIL, R3 PASS => not the working model. 1995-2004 small-tree undershoot (swap job): 53 % of the
+  median gap is the G magnitude's own autoregressive loop (H1 pass), no single stand/grass input carries the rest.
+  **NEXT, in order:** (1) explain truth's yearly streak continuation (the breadth of the start year is a candidate:
+  2026 p1 0.10 after the huge 2025 start cohort vs 2016 0.84 after 2015), then RETRAIN a continuation sign head for
+  c_y >= 1 with the inputs that carry it; pre-register on the one-step yearly slope (>= 0.90 on MPI s2) + the four
+  pulse-cohort second years, then the C3 bars coupled; (2) keep gqsc as the sign calibration meanwhile (it is not
+  worse anywhere and fixes the counter means); (3) the cheap G model: single monotone network (rq failed R2, but its
+  second-decade undershoot is smaller — compare loop gains); (4)-(8) as in the thirteenth session's list (grass into
+  NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
