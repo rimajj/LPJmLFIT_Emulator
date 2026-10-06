@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import explore_de_contin as ct  # noqa: E402
 import explore_de_gdrift as gd  # noqa: E402
 import explore_de_gquant as gq_  # noqa: E402
 import explore_de_sh_rules as rl  # noqa: E402
@@ -37,7 +38,7 @@ def main():
     ap.add_argument("--gcm", required=True)
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--leg", default="ssp370")
-    ap.add_argument("--sampler", choices=["pool", "gq", "gqs", "gqsc", "gqsc2"], default="gqs")
+    ap.add_argument("--sampler", choices=["pool", "gq", "gqs", "gqsc", "gqsc2", "gqsk", "gqskb"], default="gqs")
     ap.add_argument("--y0", type=int, default=1985)
     ap.add_argument("--y1", type=int, default=2043)
     ap.add_argument("--frac", type=float, default=0.1)
@@ -46,7 +47,8 @@ def main():
     a = ap.parse_args()
     st, P = ta.stepper()
     if a.sampler != "pool":
-        gq_.load(st.split).attach(st, sign_cal={"gq": False, "gqs": True, "gqsc": "c", "gqsc2": "c2"}[a.sampler])
+        gq_.load(st.split).attach(st, sign_cal={"gq": False, "gqs": True, "gqsc": "c", "gqsc2": "c2", "gqsk": "k",
+                                              "gqskb": "kb"}[a.sampler])
     f0 = sorted(glob.glob(os.path.join(a.cells_from, "chunk_*", "*.parquet")))
     cells = sorted(pl.concat([pl.scan_parquet(f).select("Cell") for f in f0 if os.path.basename(f).startswith(
         f"y{a.y0 + 1}_")]).unique().collect()["Cell"].to_list())
@@ -57,6 +59,11 @@ def main():
     for y in range(a.y0, a.y1 + 1):
         m = mem["Historical" if y < 2014 else a.leg]
         T = gd.truth_year(m, y, cells, P)
+        if a.sampler == "gqskb":  # cell-year streak covariates over ALL printed trees at y (no fate filter, no
+            # subsample: the same basis as the training rows, explore_de_contin.trans_cell_feats)
+            cs = ct.cell_streak_feats(gd.F.raw_training_frame(m, y, cells), by=("Cell",)).collect()
+            T = T.join(cs.with_columns(pl.col("Cell").cast(T.schema["Cell"])), on="Cell", how="left",
+                       maintain_order="left")
         T = T.filter(pl.Series(gd.key_hash(T) < sub))
         X = ta.with_agb(T)
         n = X.height
