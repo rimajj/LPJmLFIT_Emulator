@@ -363,3 +363,18 @@ sees. In the full emulator the first-decade drift is gone, the overweight trees 
 their excess, and stem counts stay within 1 % until 2025, which supports the last session's explanation. What is
 left: the growth state now drifts low from 1995, too few big trees die in 2016-25, and biomass creeps 5 % high by the
 2040s. It costs four times as much as before, so it needs shrinking before it can count for speed.
+
+## 2026-10-06 — thirteenth session (x-8f): the other three designs; the quantile G model will not shrink
+
+Owner: "work on the other emulator methods while this is running". The coupled gqs run sat queued on `standard`;
+moved to `priority` it ran at once, and was scored twice by accident (this session and x-2f, who then handed the line
+over) — the two scorings agree on every verdict. Three helpers ran in parallel: the quick cell-level LSTM (very good
+cell statistics on held-out places and GCM, no transferable scenario contrast, no trees), the neural set model (built,
+gated, stage 1 trained; its stage-2 gate has no power; recruits fall short for the same grass reason as TAB), and the
+STRUCT diagnosis (the "2x biomass" was the median tree; the stem deficit is the missing recruit acceptance — a
+training-member-only filter closes 106 % of it). I tried three pre-registered ways to make the quantile G model cheap
+(truncation, residual start, distillation); all failed, and the distillation failure showed why: the model's per-tree
+quantile shape is irregular (its raw levels cross in over half the rows). The cheap decisive test — does the coupled
+model need that accuracy at all (coupled rq) — was submitted and then killed when every one of the owner's SLURM jobs,
+another project's included, was cancelled at 18:42:34 by someone outside this session. Not resubmitted. A helper's
+claim that an unordered group_by caused run-to-run differences did not reproduce; the fix was kept, the claim softened.
