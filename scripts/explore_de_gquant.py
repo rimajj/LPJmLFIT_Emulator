@@ -16,6 +16,7 @@ STAGES  prep   --sign neg|pos         cache the training matrix (same rows / wei
                                       <= MAX_ROWS per sign) to tab/models/<split>/gquant/<sign>_*.npy
         train  --sign S --level i     fit one quantile head (SLURM array: i = task id)
         submit                        prep (2 jobs) then the 22-task training array, chained
+        sign                          Platt recalibration of the gsign head on its OOF -> sign_platt.json (arm "gqs")
         calib                         conformal offsets on the validation fold -> calib.json (arm "gqc")
 API     GQ.load(split); gq.attach(stepper)  -> stepper._sample_G uses the quantile model (kappa = 0 refused)
         gq.pit(X, g, p) / gq.quantiles(X, sign) / gq.sample(X, p, u_s, u_r)
@@ -148,6 +149,34 @@ def calib(split):
     json.dump(out, open(os.path.join(d, "calib.json"), "w"), indent=1)
 
 
+def sign_platt(split):
+    """Platt recalibration of the gsign head: weighted logistic regression of the label on its raw logit (OOF = the
+    split's validation fold of the training members) -> gquant/sign_platt.json {a, b}."""
+    oof = pl.read_parquet(os.path.join(Hh.mdir(split), "gsign_oof.parquet"))
+    s = oof["p1"].to_numpy().astype(np.float64)
+    y = oof["_y"].to_numpy().astype(np.float64)
+    w = oof["w_ip"].to_numpy().astype(np.float64)
+    w = w / w.mean()
+    th = np.array([1.0, 0.0])
+    for _ in range(50):  # Newton
+        z = th[0] * s + th[1]
+        p = 1.0 / (1.0 + np.exp(-np.clip(z, -40, 40)))
+        g = np.array([np.sum(w * (p - y) * s), np.sum(w * (p - y))])
+        h = w * p * (1 - p)
+        Hm = np.array([[np.sum(h * s * s), np.sum(h * s)], [np.sum(h * s), np.sum(h)]])
+        step = np.linalg.solve(Hm, g)
+        th = th - step
+        if np.abs(step).max() < 1e-10:
+            break
+    def ll(a, b):
+        z = a * s + b
+        return float(np.average(np.logaddexp(0, z) - y * z, weights=w))
+    out = {"a": float(th[0]), "b": float(th[1]), "oof_logloss_before": ll(1.0, 0.0),
+           "oof_logloss_after": ll(th[0], th[1]), "n": int(len(y))}
+    json.dump(out, open(os.path.join(gdir(split), "sign_platt.json"), "w"), indent=1)
+    print(json.dumps(out), flush=True)
+
+
 def bench(split, n=200_000, threads=1):
     """predict cost per tree of the magnitude step: old (mean head B0 + B1 of one sign) vs this model (11 heads),
     single thread, on cached training rows."""
@@ -199,6 +228,7 @@ class GQ:
         import lightgbm as lgb
 
         d = gdir(split)
+        self.d = d
         self.b, self.base = {}, {}
         for s in ("neg", "pos"):
             self.b[s], self.base[s] = [], []
@@ -280,15 +310,26 @@ class GQ:
             old[msk] = np.mean([pinball(Qo[:, i], y, a) for i, a in enumerate(self.lv)], axis=0)
         return new, old
 
-    def attach(self, st):
-        """route st._sample_G through this model (sign head + calibrated offset unchanged)."""
+    def attach(self, st, sign_cal=False):
+        """route st._sample_G through this model. sign_cal: the gsign logit is Platt-recalibrated (a s + b, from
+        sign_platt.json) instead of + logit_off_g."""
         if st.k_g == 0.0:
             raise ValueError("the quantile G sampler has no climate-blind (kappa = 0) variant")
         gq = self
+        if sign_cal:
+            pc = json.load(open(os.path.join(self.d, "sign_platt.json")))
+            a_, b_ = pc["a"], pc["b"]
+        else:
+            a_, b_ = 1.0, st.cal["logit_off_g"]
+
+        def _p_neg(X):
+            return ts.sigmoid(a_ * st.H.raw("gsign", X, st.k_g) + b_)
 
         def _sample_G(X, u_s, u_r):
-            p = ts.sigmoid(st.H.raw("gsign", X, st.k_g) + st.cal["logit_off_g"])
+            p = _p_neg(X)
             return gq.sample(X, p, u_s, u_r), p
+
+        st._p_neg = _p_neg
 
         st._sample_G = _sample_G
         st.gq = gq
@@ -314,7 +355,7 @@ class TabALG2HSGQ(tg2.TabALG2HS):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "submit"])
+    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -325,6 +366,8 @@ def main():
         train(a.split, a.sign, a.level)
     elif a.stage == "calib":
         calib(a.split)
+    elif a.stage == "sign":
+        sign_platt(a.split)
     elif a.stage == "bench":
         bench(a.split)
     else:

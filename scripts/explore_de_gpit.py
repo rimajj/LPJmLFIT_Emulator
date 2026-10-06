@@ -34,7 +34,7 @@ XDE = ta.XDE
 def pit(st, X: pl.DataFrame, g: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     H, k = st.H, st.k_g
     kk = "k1" if k != 0.0 else "k0"
-    p = ts.sigmoid(H.raw("gsign", X, k) + st.cal["logit_off_g"])
+    p = st._p_neg(X) if hasattr(st, "_p_neg") else ts.sigmoid(H.raw("gsign", X, k) + st.cal["logit_off_g"])
     if hasattr(st, "gq"):  # the quantile sampler (explore_de_gquant): no pools
         return st.gq.pit(X, g, p), p, np.full(len(g), -1)
     out = np.full(len(g), np.nan)
@@ -77,12 +77,12 @@ def main():
     ap.add_argument("--y0", type=int, default=1985)
     ap.add_argument("--y1", type=int, default=2043)
     ap.add_argument("--frac", type=float, default=0.1)
-    ap.add_argument("--sampler", choices=["pool", "gq", "gqc"], default="pool",
-                    help="pool = the TAB stepper's own; gq = explore_de_gquant quantiles; gqc = conformalised")
+    ap.add_argument("--sampler", choices=["pool", "gq", "gqc", "gqs"], default="pool",
+                    help="pool = TAB stepper; gq = explore_de_gquant; gqc = conformalised; gqs = gq + Platt sign")
     a = ap.parse_args()
     st, P = ta.stepper()
-    if a.sampler in ("gq", "gqc"):
-        gq_.load(st.split, conformal=a.sampler == "gqc").attach(st)
+    if a.sampler in ("gq", "gqc", "gqs"):
+        gq_.load(st.split, conformal=a.sampler == "gqc").attach(st, sign_cal=a.sampler == "gqs")
     cells = sorted(set().union(*[set(pl.read_parquet(f, columns=["Cell"])["Cell"].unique().to_list())
                                  for f in glob.glob(os.path.join(a.cells_from, "*", "y1985_*.parquet"))]))
     feats = []
