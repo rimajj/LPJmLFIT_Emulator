@@ -391,3 +391,12 @@ fires or patch clearings — deaths are spread across patches — and the emulat
 size of each pulse, while killing slightly too many in quiet years. Two checks are queued: whether the damping comes
 through the sampled growth state (which feeds the death model) or from the death model itself, and which input
 carries the low growth-state drift of 1995-2004.
+
+Later the same session: the extra deaths in the bad years are not more likely ordinary deaths. They are the
+original's two certain-kill rules — a tree that has had five consecutive years of negative growth, or whose leaves
+have shrunk below a sapling's, dies for sure. Those rules account for all of the pulse; ordinary deaths are flat from
+year to year. The emulator has the five-bad-years rule too, and it fires in the right years, but only about two
+thirds as often in each pulse, while its share of bad-growth draws hardly moves between good and bad years. The
+reading is that in the original, a bad year is bad for many trees at once, and the emulator draws each tree's bad
+year independently. A one-step check of exactly that is queued but will not start until tomorrow, as are the scoring
+of the cheaper growth model and the 1995-2004 attribution.
