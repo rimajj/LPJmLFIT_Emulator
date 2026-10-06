@@ -379,13 +379,27 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   (4) sapling layer from the collected re-runs (ask the owner about the 25 cancelled blocks); (5) the eighth-session
   items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2,
   STRUCT, cross-fit).
-* **2026-10-06 (eleventh session, IN PROGRESS): a quantile model of next-year G replaces the mean + pooled residual**
-  (pre-registration with gates Q1 calibration / Q2 sharpness / Q3 G-only chain: `_status/TS.md` last section).
-  `scripts/explore_de_gquant.py` (prep -> 22-task training array -> `GQ` sampler, `attach(stepper)`,
-  `TabALG2HSGQ` coupled arm); `explore_de_gpit.py` / `explore_de_gdrift.py` take `--sampler gq`. Models in
-  `tab/models/DEV-A/gquant/`. Jobs: training arrays 2421581 (neg) / 2421582 (pos); chained scorers 2421585 (gpit ->
-  `shared/eval/gpit_gq_mpi2*`) and 2421586 (gdrift -> `shared/eval/gdrift_gq_g2hs_mpi2_*`), logs in `wt-X/logs/`.
-  If the session dies: check those logs, then score against the gates in TS.md.
+* **2026-10-06 (eleventh + twelfth sessions): a quantile model of next-year G fixes the sampler's shape; the chain gate
+  still fails by ~1 point; coupled run submitted** [VERIFIED, MPI s2 one step / G-only chain, 200 dev cells;
+  everything in `_status/TS.md` from "a DISTRIBUTIONAL G-magnitude model" on]. `scripts/explore_de_gquant.py`: 11
+  LightGBM quantile heads per sign (models `tab/models/DEV-A/gquant/`), arms gq (as fitted) / gqc (validation-fold
+  conformal offsets) / gqs (+ Platt-recalibrated sign head, `sign_platt.json`); stepper class `TabALG2HSGQ` (+ `Probe`);
+  scorers `explore_de_gpit.py` / `explore_de_gdrift.py --sampler gq|gqc|gqs`. (a) Calibration by previous-G decile:
+  0.29-0.67 (old) -> 0.465-0.530 (gqs); gate +-0.02 FAILS in 1-3 deciles. Sharpness: pinball -30..-40 % in every group
+  (PASS). Year shock sd ~1/3 smaller. (b) FOUND: the sign head was badly under-confident (predicted 3.3 % -> observed
+  0.7 % negative G) with the errors cancelling in the mean, which is why every earlier check called the sign right;
+  Platt a = 1.47 fixes it to 0.93-1.08 per bin. (c) G-only chain, < 15 m median / mean: old +13.9 / +3.4 % ->
+  gqs -3.7 / -2.6 % (1985-94), gate +-3 % FAILS narrowly; loop gain 2.1-2.5 in every arm => needs one-step error
+  within ~1.3 %. (d) Cost 13x the old magnitude head (1 820 vs 140 us/tree single thread) — fidelity test only.
+  (e) COUPLED gqs probe submitted despite the failed gates (deviation + predictions P1-P4 pre-registered in TS.md):
+  job 2425236 (array 0-1) -> `runs/_probe2_g2hsgqs_mpi2` (+ dump); compare with `runs/_probe2_g2hs_mpi2` via
+  `explore_de_recruit_drift.py` (both arms, `--gcm MPI-ESM1-2-HR --seed 2`) and `explore_de_gdrift.py` S1.
+  **NEXT, in order:** (1) score the coupled run against P1-P4; (2) if P1/P2 hold: shrink the quantile model (fewer
+  levels, shallower, distil) and re-gate before anything at scale; (3) the >= 15 m hazard deficit; (4) the sign head's
+  remaining G_y-shaped error in 1995-04 (d0 +0.045, d2 -0.033: needs a better sign model, not a 2-parameter fix);
+  (5) sapling layer from the collected re-runs (the 25 cancelled blocks are the owner's call); (6) the eighth-session
+  items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2,
+  STRUCT, cross-fit).
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
