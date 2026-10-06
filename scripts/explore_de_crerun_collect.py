@@ -50,6 +50,11 @@ def one(run):
     if os.path.exists(out) and not os.path.exists(csv):
         print(f"{run}: already collected")
         return True
+    if not os.path.exists(csv):
+        # a resubmitted run cancelled before it started: nothing to collect — report it instead of crashing, which
+        # stopped the array task before it reached the finished runs after this one
+        print(f"{run}: NO ind.csv (never ran or cancelled)")
+        return False
     if not done(run, b - a + 1):
         print(f"{run}: NOT finished (no completion line)")
         return False
