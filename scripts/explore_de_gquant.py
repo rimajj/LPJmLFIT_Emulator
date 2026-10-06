@@ -16,6 +16,7 @@ STAGES  prep   --sign neg|pos         cache the training matrix (same rows / wei
                                       <= MAX_ROWS per sign) to tab/models/<split>/gquant/<sign>_*.npy
         train  --sign S --level i     fit one quantile head (SLURM array: i = task id)
         submit                        prep (2 jobs) then the 22-task training array, chained
+        calib                         conformal offsets on the validation fold -> calib.json (arm "gqc")
 API     GQ.load(split); gq.attach(stepper)  -> stepper._sample_G uses the quantile model (kappa = 0 refused)
         gq.pit(X, g, p) / gq.quantiles(X, sign) / gq.sample(X, p, u_s, u_r)
         class TabALG2HSGQ  = the g2hs coupled arm with this sampler
@@ -120,6 +121,33 @@ def train(split, sign, level):
     print(json.dumps({k: v for k, v in meta.items() if k != "features"}), flush=True)
 
 
+def calib(split):
+    """conformalised offsets: per sign and level c = weighted validation quantile at alpha of (y - q) -> calib.json"""
+    import lightgbm as lgb
+
+    d = gdir(split)
+    out = {}
+    for s in ("neg", "pos"):
+        X = np.load(os.path.join(d, f"{s}_X.npy"), mmap_mode="r")
+        va = np.load(os.path.join(d, f"{s}_va.npy"))
+        Xv = np.asarray(X[va])
+        y = np.load(os.path.join(d, f"{s}_y.npy")).astype(np.float64)[va]
+        w = np.load(os.path.join(d, f"{s}_w.npy")).astype(np.float64)[va]
+        Q = []
+        for i in range(len(QLEV)):
+            nm = os.path.join(d, f"{s}_q{i:02d}")
+            b = lgb.Booster(model_file=nm + ".txt")
+            Q.append(json.load(open(nm + ".json"))["base"] + b.predict(Xv, raw_score=True, num_threads=NTHREADS))
+        Q = np.sort(np.column_stack(Q), axis=1)
+        c = [wquantile(y - Q[:, i], w, a) for i, a in enumerate(QLEV)]
+        Qc = np.sort(Q + np.asarray(c)[None, :], axis=1)
+        out[s] = {"offset": c,
+                  "coverage_before": [float(np.average(y <= Q[:, i], weights=w)) for i in range(len(QLEV))],
+                  "coverage_after": [float(np.average(y <= Qc[:, i], weights=w)) for i in range(len(QLEV))]}
+        print(s, json.dumps({k: np.round(v, 4).tolist() for k, v in out[s].items()}), flush=True)
+    json.dump(out, open(os.path.join(d, "calib.json"), "w"), indent=1)
+
+
 def submit(split, hours=6):
     logs = os.path.join(REPO, "logs")
     jd = os.path.join(F.TAB, "_jobs")
@@ -147,7 +175,7 @@ def submit(split, hours=6):
 
 # ================================================================================================ the sampler
 class GQ:
-    def __init__(self, split="DEV-A"):
+    def __init__(self, split="DEV-A", conformal=False):
         import lightgbm as lgb
 
         d = gdir(split)
@@ -162,16 +190,20 @@ class GQ:
                 self.feats = m["features"]
         self.lv = np.asarray(QLEV)
         self.nthreads = NTHREADS
+        self.off = {s: np.zeros(len(QLEV)) for s in ("neg", "pos")}
+        if conformal:
+            cj = json.load(open(os.path.join(d, "calib.json")))
+            self.off = {s: np.asarray(cj[s]["offset"]) for s in ("neg", "pos")}
 
     @classmethod
-    def load(cls, split="DEV-A"):
-        return cls(split)
+    def load(cls, split="DEV-A", conformal=False):
+        return cls(split, conformal)
 
     def quantiles(self, X: pl.DataFrame, sign: str) -> np.ndarray:
         M = F.to_matrix(X, self.feats)
         Q = np.column_stack([b0 + b.predict(M, raw_score=True, num_threads=self.nthreads)
                              for b, b0 in zip(self.b[sign], self.base[sign], strict=True)])
-        return np.sort(Q, axis=1)
+        return np.sort(np.sort(Q, axis=1) + self.off[sign][None, :], axis=1)
 
     def inv(self, Q: np.ndarray, u: np.ndarray) -> np.ndarray:
         lv = self.lv
@@ -246,10 +278,10 @@ class GQ:
 _GQ: dict = {}
 
 
-def load(split="DEV-A") -> GQ:
-    if split not in _GQ:
-        _GQ[split] = GQ(split)
-    return _GQ[split]
+def load(split="DEV-A", conformal=False) -> GQ:
+    if (split, conformal) not in _GQ:
+        _GQ[(split, conformal)] = GQ(split, conformal)
+    return _GQ[(split, conformal)]
 
 
 class TabALG2HSGQ(tg2.TabALG2HS):
@@ -262,7 +294,7 @@ class TabALG2HSGQ(tg2.TabALG2HS):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["prep", "train", "submit"])
+    ap.add_argument("stage", choices=["prep", "train", "calib", "submit"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -271,6 +303,8 @@ def main():
         prep(a.split, a.sign)
     elif a.stage == "train":
         train(a.split, a.sign, a.level)
+    elif a.stage == "calib":
+        calib(a.split)
     else:
         submit(a.split)
 

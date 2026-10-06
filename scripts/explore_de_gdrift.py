@@ -76,12 +76,12 @@ def main():
     ap.add_argument("--y1", type=int, default=2004)
     ap.add_argument("--frac", type=float, default=0.1)
     ap.add_argument("--K", type=int, default=4)
-    ap.add_argument("--sampler", choices=["pool", "gq"], default="pool",
-                    help="pool = the TAB stepper's own; gq = the quantile model of explore_de_gquant")
+    ap.add_argument("--sampler", choices=["pool", "gq", "gqc"], default="pool",
+                    help="pool = the TAB stepper's own; gq = explore_de_gquant quantiles; gqc = conformalised")
     a = ap.parse_args()
     st, P = ta.stepper()
-    if a.sampler == "gq":
-        gq_.load(st.split).attach(st)
+    if a.sampler in ("gq", "gqc"):
+        gq_.load(st.split, conformal=a.sampler == "gqc").attach(st)
     files = sorted(glob.glob(os.path.join(a.dump, "*", "*.parquet")))
     files = [f for f in files if int(os.path.basename(f)[1:5]) <= a.y1]
     A = pl.concat([pl.read_parquet(f) for f in files], how="vertical_relaxed")
