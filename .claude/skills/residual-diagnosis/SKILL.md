@@ -2276,3 +2276,15 @@ symptom.** Two checks, both free: does my summary statistic exist already in the
 are the two things I am comparing on the same scale after their downstream factors? This is dump-skill
 trap 5c ("a criterion is written against a definition — import that definition") one level down, applied
 to the *supporting* numbers rather than the blessed one.
+
+⚠ **A MEDIAN GAP WITH A NEAR-ZERO MEAN GAP IS A SHAPE ERROR — CHECK CALIBRATION WITH AN EXACT PIT, SPLIT BY THE
+SAMPLER'S STRONGEST INPUT (line X, 2026-10-06).** A learned sampler (mean head + residual drawn from a pool binned by
+the predicted value) can be unbiased in its mean and still put its median 6 % too high one step ahead; fed its own
+draws as a lagged input, the error doubled (`scripts/explore_de_gdrift.py`: one-step on truth inputs vs a chain that
+carries only the lagged state). The diagnostic that names WHAT is wrong is the probability integral transform of the
+truth under the sampler — and for a sign-mixture + magnitude head + empirical pool it is CLOSED FORM, no Monte Carlo
+(`scripts/explore_de_gpit.py::pit`; gate it once against the sampler's own draws). Split the share PIT < 0.5 by
+deciles of the lagged input: a sign change across deciles with the central share flat is a LOCATION error that bends
+with that input (a pool binned by predicted value cannot fix it — the pool's bins showed the same pattern); a central
+share off in the same direction everywhere is a SPREAD error; a share that swings by year is a common shock the
+inputs do not carry. Three different fixes — read the split before choosing one.
