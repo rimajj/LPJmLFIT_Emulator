@@ -273,6 +273,17 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   **matched-decomposition full-grid** run, not a subset. Harness:
   `scripts/diagnose_ind_binary_equality.py` (it carries the decomposition control and exits **3 = VOID**
   when the control fires, rather than reporting a false verdict).
+- ⚠ **A RE-RUN WHOSE MPI TASKS LAND ON NODES OF *DIFFERENT PROCESSOR TYPES* DOES NOT REPRODUCE PRODUCTION — PIN IT
+  TO ONE NODE (`[VERIFIED 2026-10-06]`, line X).** The standard partition mixes `csl`/`csm`/`csn`/`cso` nodes and
+  exposes **no** feature to select one. 46 re-runs of Germany production members (Dec-2025 build + only the
+  `LPJ_IND_ALL_HEIGHTS` writer switch, 320 cells on 64 tasks = the production task→cell layout, row-by-row gate
+  against the production `ind`): **23 of 23 runs on a single node type reproduced every production row in every
+  year** (whichever type: csm-only, csn-only and cso-only all pass, over 1–10 nodes), **21 of 23 runs spread over
+  mixed types failed** — 99.3–99.97 % of rows match in the FIRST year, then the stochastic gap model amplifies it
+  (ADR 0041's shape); an out-of-sample prediction from the node list alone was 3 of 3 right. This is very likely
+  part of ADR 0041's "unestablished mechanism". ⇒ for any equality-gated re-run use `#SBATCH --nodes=1` (64 tasks
+  fit one 128-cpu node); `priority` caps **64 cpus per USER**, not per job, so a batch there runs one at a time.
+  Driver `scripts/explore_de_crerun.py --nodes 1`, gate `scripts/explore_de_crerun_collect.py`.
 - **`random_seed` is INERT in any `-DFROM_RESTART` run, and invisible in the log (ADR 0041).** With
   `"new_seed": false` the per-cell RAND48 seeds are restored from the restart file
   (`newgrid.c:507-513` → `freadcell.c:37`) and the `setseed` that would apply `config->seed_start` is
