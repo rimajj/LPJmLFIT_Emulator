@@ -65,17 +65,21 @@ def main():
         c_t = X["c_y1"].cast(pl.Float64).to_numpy()
         p_tf = st._p_death_learned(X, G_t, c_t)
         age = X["Age"].to_numpy()
-        p_m = []
+        p_m, gneg_m, cert_m = [], [], []
         for k in range(a.K):
             G1 = st._sample_G(X, gd.unif(T, y, 2 * k), gd.unif(T, y, 2 * k + 1))[0]
             c1 = np.minimum(rl.counter_step(X["c_y"].to_numpy(), G1, age), st.cmax)
             p_m.append(st._p_death_learned(X, G1, c1))
-        p_m = np.mean(p_m, axis=0)
+            gneg_m.append(G1 < 0)
+            cert_m.append(c1 >= st.cmax)
+        p_m, gneg_m, cert_m = np.mean(p_m, axis=0), np.mean(gneg_m, axis=0), np.mean(cert_m, axis=0)
         h = X["Height"].to_numpy()
         for cls, q in (("lt10", h < HCUT), ("ge10", h >= HCUT), ("all", np.ones(n, bool))):
             rows.append({"year": y + 1, "hcls": cls, "n": int(q.sum()), "truth": float(dead[q].mean()),
                          "tf": float(p_tf[q].mean()), "model": float(p_m[q].mean()),
-                         "G_true_med": float(np.median(G_t[q]))})
+                         "G_true_med": float(np.median(G_t[q])),
+                         "gneg_true": float((G_t[q] < 0).mean()), "gneg_model": float(gneg_m[q].mean()),
+                         "certain_true": float((c_t[q] >= st.cmax).mean()), "certain_model": float(cert_m[q].mean())})
         print(f"transition {y}->{y + 1}: {n} trees, truth {dead.mean():.4f} tf {p_tf.mean():.4f} "
               f"model {p_m.mean():.4f}", flush=True)
     R = pl.DataFrame(rows)
