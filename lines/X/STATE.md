@@ -322,33 +322,39 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   on MPI held-out weather (ssp245) — ACCESS stays the untouched test. (3) adopt g2hs (bite) as the TAB grass-cover
   default once (1) is understood; (4) then the older items: `cell_stems_per_patch` retrain, A7 with the recruit
   offset frozen at 0, all 10 chunks + seed 2, STRUCT shrink-below-5 m, cross-fit for block scoring.
-* **2026-10-05 (ninth session): the small-tree growth excess is built by the free run, not the heads one step
-  ahead** [VERIFIED; `_status/TS.md`]. (a) One-step check (`scripts/explore_de_tree_onestep.py`, job 2406987 ->
-  `shared/eval/tree_onestep_{SEED2,F5,GCM}.csv`): on the original's own states the growth heads are only
-  +0.0016/+0.0022 per yr high for < 10 m stems in 1985-94 (about half the coupled run's first-decade excess) and
-  within 0.001 after 1995; death rate model/truth 0.98-1.02, dead-tree size within 0.03 => the coupled excess and the
-  "dead trees too small" signature are built by the free run's own inputs. The one-step growth bias drifts with
-  calendar time (positive 1985-94, negative after 2005, all three sets) — note for later. (b) Instrumented coupled
-  re-run DONE (`scripts/explore_de_tab_probe2.py:TabALG2HSProbe`, job 2407363, `runs/_probe2_g2hs_mpi2`, dump 2.4 GB);
-  same-tree input-swap attribution `scripts/explore_de_tree_attrib.py` submitted 2026-10-05 22:46 as job **2419827**
-  (`_jobs/tree_attrib_g2hs_mpi2.jcf` -> `shared/eval/tree_attrib_g2hs_mpi2{,_shift}.csv`, log
-  `logs/X-de-treeattr.<jid>.out`); pre-registered readings in `_status/TS.md` second section.
-  (c) 🔨 **OWNER, 2026-10-05, verbatim: *"if you need th esapling data form trees below 5 m, just make new
-  simualtisn for the cells you need, where you write out the output you need"*** => re-runs of the ORIGINAL with every
-  tree printed. Binary = PRIVATE clone `/p/tmp/jamirp/X_de/cbuild/lpjml_dec2025` at commit fcd3a30 (= the "Dec 17
-  2025" build all non-ssp245 segments ran) + only the LPJ_IND_ALL_HEIGHTS writer switch
-  (`lines/X/dec2025_ind_all_heights.patch`); the shared C tree is untouched. ⚠ ssp245 ran the Feb-2026 build — never
-  re-run it with this binary. Driver `scripts/explore_de_crerun.py make`; gate run (MPI s2 ssp370 2015-16, cells
-  0-319, 64 tasks = the production task->cell layout) PASSED: every production row reproduced, the extra rows are
-  only trees <= 5 m (~1.18 extra per printed row). Campaign = cells 0-2239 in 7 blocks of 320 on 64 tasks, for
-  MPI s1 {Historical, ssp126, ssp370}, MPI s2 {Historical, ssp370}, ACCESS s1 {Historical, ssp370}. 20 of 21
-  ssp runs FINISHED (one OOM, one timeout at 2030 -> resubmitted with 2 cpus/task, 8 h); ALL 21 Historical runs
-  had failed in 5 s on a config parse error (the generator cut the output section at an `#else` inside a comment;
-  FIXED 0a981697) and were resubmitted 2026-10-05 (job ids in `_jobs/crerun_resubmit_20261005.txt`, 8 h limit).
-  Collection (gate every year + parquet to `/p/tmp/jamirp/X_de/ind_all/<gcm>/<scen>/s<seed>/<win>/c<a>-<b>.parquet`
-  + delete the ~8 GB CSV) = `_jobs/crerun_collect.jcf` (idempotent; skips unfinished runs; rerun it after the
-  resubmits finish), first pass job **2419828**. ⚠ The live tree's `lpjcheck` cannot fully check these configs
-  (it expects 421 output variables, the Dec-2025 build has 419) — it still catches a parse error.
+* **2026-10-05/06 (ninth session): the tree-side early maturation is NOT a small-tree growth bias after 2000; it is
+  an early G-state drift + a big-tree hazard deficit** [VERIFIED; `_status/TS.md` has every number + pre-registrations].
+  (a) One-step on the original's states (`explore_de_tree_onestep.py` -> `shared/eval/tree_onestep_*.csv`): growth
+  heads +0.0016/+0.0022 per yr high for < 10 m stems in 1985-94 only, death rate 0.98-1.02, dead-tree size right.
+  (b) Same-tree input-swap attribution on the instrumented coupled run (`explore_de_tab_probe2.py`, job 2407363;
+  `explore_de_tree_attrib.py`, job 2420297 -> `shared/eval/tree_attrib_g2hs_mpi2{,_shift}.csv`; all three gates
+  pass): on trees living in both runs (0.33 of the free run) the < 15 m growth gap is +0.0016 in 1985-94, carried by
+  the tree's own last-year G (G_y free median 34.3 vs 30.7; "only G_y" 144 %, "all except G_y" closes 88 %) — GRASS
+  carries none of it (the pre-registered prediction FAILED); ~0 after 1995 with large offsetting input shifts. No
+  hazard deficit for small trees; >= 15 m hazard 0.88 of truth in 1995-2004 and 0.87 in 2035-44, no single carrier.
+  (c) Cohort x size decomposition (`explore_de_recruit_drift.py` now splits < 15 m survivors INITIAL/ENTRANT x
+  height bin; `shared/eval/recruit_drift_ssp370_g2_mpi2_coh.csv`, `smallgrowth_cohort_decomp_g2_mpi2.csv`): the
+  composition term is <= 0.0001 everywhere; the MEAN small-tree growth gap is +0.0014/+0.0035/+0.0013 in 1986-2000
+  (within initial trees) and |<= 0.0022|, sign-changing after; the persistent +0.002..+0.003 quoted earlier is a
+  MEDIAN artefact: the free run's small-tree growth is less right-skewed (too few very fast years).
+  (d) Sapling re-runs of the original (every tree printed; private Dec-2025 binary + LPJ_IND_ALL_HEIGHTS; owner
+  instruction 2026-10-05 above in the ninth-session record of git history): campaign = cells 0-2239 in 7 blocks of
+  320 on 64 tasks for MPI s1 {Historical, ssp126, ssp370}, MPI s2 {Historical, ssp370}, ACCESS s1 {Historical,
+  ssp370}. ⚠ **[VERIFIED] a re-run spread over nodes of different processor types does NOT reproduce production**
+  (23/23 single-type runs pass the row-by-row gate, 21/23 mixed fail, 3/3 out-of-sample predictions right; CLAUDE.md
+  §3). 16 runs PASS and are in `/p/tmp/jamirp/X_de/ind_all/<gcm>/<scen>/s<seed>/<win>/c<a>-<b>.parquet` (29 cols +
+  `in_prod`); the other 26 were resubmitted with `--nodes 1` 2026-10-06 (`_jobs/crerun_rerun1node_jobs.txt`; moved
+  from priority to standard because priority caps 64 cpus PER USER). When they finish: `sbatch --cpus-per-task=32
+  --time=04:00:00 _jobs/crerun_collect.jcf` (idempotent; gates every year; deletes the CSV only on PASS; now reads
+  only the newest log). Earlier fixes: the Historical config generator cut at an `#else` inside a comment (fixed).
+  **NEXT, in order (supersedes the eighth session's list):** (1) the G sampler's early drift — why the free run's
+  G_y runs 12 % above truth in 1985-94 when the one-step G draw is unbiased later (check the first years: the
+  initial-state G_y vs the sampled one, and the residual pool by size); (2) the >= 15 m hazard deficit on shared
+  trees (0.87-0.88 in two windows) — joint inputs, try a two-group swap of LAGGED_OWN + stand; (3) the narrow
+  small-tree growth distribution (residual draw / AR sigma — compare the free run's per-tree growth quantiles with
+  truth's); (4) once the re-runs are collected: use the < 5 m trees to replace the hidden-cover proxy with the
+  real sapling layer (the seventh-session design question); (5) the eighth-session items (cross-GCM grass weather
+  transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2, STRUCT, cross-fit).
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):

@@ -307,3 +307,22 @@ emulator on the training climate model's second seed: grass stays within 13 % of
 hidden young-tree layer halves the early recruit deficit with no late over-recruitment. The late over-recruitment on
 ACCESS was the ACCESS grass. What remains on clean ground is on the tree side: stems get too heavy too early and too
 few die in the middle decades.
+
+---
+
+## 2026-10-05/06 (ninth session) — the small trees were not growing too fast after all
+
+Picked up the tree side of the early maturation. One year ahead, on the original's own states, the emulator's growth
+and death models are nearly right; only small trees in the first decade grow a little fast. So the coupled run builds
+its error from its own drifting inputs. Swapping inputs for the same tree between the emulator and the original
+showed that the first-decade excess comes from the tree's own previous-year growth state, which the emulator draws
+too high early on; the grass, which I had predicted, carries none of it. After 1995 the trees both runs share show
+no growth excess at all. Splitting the small trees by whether they were there at the start or recruited later, and
+by size, showed no mix effect either, and showed that the excess I had been chasing after 2000 was in the median
+only: on average small trees grow at the right rate, the emulator just has too few very fast years. What is left is
+the early growth-state drift and too few deaths of big trees in two decades.
+
+The re-runs of the original that print every tree taught me something about the cluster: a run whose tasks land on
+nodes of different processor types diverges from production from the first year, while every run on one processor
+type reproduces it exactly. A prediction from the node lists alone got three of three right. All failed runs are
+resubmitted on single nodes.
