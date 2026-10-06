@@ -34,7 +34,9 @@ NAME = re.compile(r"(?P<gcm>.+?)_(?P<scen>Historical|ssp\d+)_s(?P<seed>\d)_c(?P<
 def done(run, ncell):
     logs = sorted(glob.glob(os.path.join(run, "lpjml.*.out")), key=os.path.getmtime)
     pat = f"lpjml successfully terminated, {ncell} grid cells processed."
-    return bool(logs) and any(pat in open(lg).read() for lg in logs)
+    # the NEWEST log only: a resubmitted run keeps its predecessor's logs, and an old completion line must not make
+    # a half-written ind.csv of the new attempt look finished
+    return bool(logs) and pat in open(logs[-1]).read()
 
 
 def one(run):

@@ -116,6 +116,7 @@ def make_jcf(a, out_dir, ncell):
 #SBATCH --ntasks={a.ntasks}
 #SBATCH --cpus-per-task={a.cpus_per_task}
 {"#SBATCH --exclusive" if a.exclusive else ""}
+{f"#SBATCH --nodes={a.nodes}" if a.nodes else ""}
 #SBATCH --time={a.time}
 #SBATCH --output={out_dir}/lpjml.%j.out
 #SBATCH --error={out_dir}/lpjml.%j.err
@@ -155,6 +156,10 @@ def main():
     ap.add_argument("--exclusive", action="store_true")
     # 2 => twice the memory per MPI task (MaxMemPerCPU is fixed at 5468 MB); one 320-cell ssp370 run was OOM-killed
     ap.add_argument("--cpus-per-task", type=int, default=1)
+    # 1 => all tasks on ONE node. A re-run spread over nodes of DIFFERENT processor types reproduces production in
+    # the first year only to ~99.3-99.9 % of rows and then diverges (19 of 21 mixed runs failed the gate, all 22
+    # single-type runs passed, 2026-10-06); one node is one processor type. 64 tasks fit the priority partition.
+    ap.add_argument("--nodes", type=int, default=None)
     ap.add_argument("--submit", action="store_true")
     a = ap.parse_args()
     assert a.scen != "ssp245", "ssp245 ran the Feb-2026 build; this binary is the Dec-2025 one"
