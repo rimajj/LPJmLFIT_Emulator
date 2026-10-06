@@ -333,7 +333,10 @@ def window_stats(Y: pl.DataFrame, years: tuple[int, int], keys=("gcm", "scen")) 
                 continue
             qv = np.stack([grp[f"{v}_{pn}"].to_numpy().astype(float) for pn in PN], axis=1)
             ok = np.all(np.isfinite(qv), axis=1)
-            qq = _mixture_quantiles(qv[ok], stemyears[ok])
+            if v in LOGT:  # skewed sizes: mix the yearly CDFs in log space (G0: 6-12 % -> 1-2 %)
+                qq = np.exp(_mixture_quantiles(np.log(np.maximum(qv[ok], 1e-6)), stemyears[ok]))
+            else:
+                qq = _mixture_quantiles(qv[ok], stemyears[ok])
             for qn, x in zip(QN, qq, strict=True):
                 r[f"{v}_{qn}"] = float(x)
         rows.append(r)
@@ -580,8 +583,9 @@ def stage_train(a) -> None:
     torch = _torch()
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "8")))
     rng = np.random.default_rng(1000 + a.fold)
-    torch.manual_seed(1000 + a.fold)
-    clim_mode = "frozen" if a.arm == "lstmCB" else "real"
+    # replicate arms (suffix r2): same data, same validation blocks, a different weight init/batches
+    torch.manual_seed(1000 + a.fold + (7919 if a.arm.endswith("r2") else 0))
+    clim_mode = "frozen" if a.arm.removesuffix("r2") == "lstmCB" else "real"
     seq = build_sequences(TRAIN["gcm"], TRAIN["seed"], TRAIN["scens"], clim_mode)
     train_cells, _ = fold_cells(a.fold)
     f = pl.read_parquet(FOLDS).filter(pl.col("is_dev"))
@@ -726,12 +730,38 @@ def stage_submit_train(a) -> None:
 # --------------------------------------------------------------------------------------------------
 # 5. free runs
 # --------------------------------------------------------------------------------------------------
+def yearly_to_stats(Yp: pl.DataFrame, arm: str, start: str, grp: str, k: int, scens) -> None:
+    """Yearly predictions of one (arm, start, group, fold) -> the scorer's window statistics."""
+    parts = []
+    if start == "S85":
+        # the Historical part is identical for every leg (deterministic): take the first scenario's
+        h = Yp.filter((pl.col("scen") == scens[0]) & (pl.col("Year") <= YSPLIT)).with_columns(
+            pl.lit("Historical").alias("scen")
+        )
+        parts.append(
+            window_stats(h, (YEAR0 + 1, YSPLIT)).with_columns(pl.lit("h1985").alias("window"))
+        )
+    parts.append(window_stats(Yp, WINDOWS["w2015"]).with_columns(pl.lit("w2015").alias("window")))
+    st = pl.concat(parts, how="diagonal_relaxed").drop("n_years")
+    st.write_parquet(f"{OUT}/preds/stats_{arm}_{start}_{grp}_f{k}.parquet")
+
+
+def stage_reagg(a) -> None:
+    """Rebuild every arm's window statistics from its stored yearly predictions."""
+    for f in sorted(glob.glob(f"{OUT}/preds/yearly_*_f[1-5].parquet")):
+        arm, start, grp, fk = os.path.basename(f)[len("yearly_") : -len(".parquet")].split("_")
+        yearly_to_stats(pl.read_parquet(f), arm, start, grp, int(fk[1:]), TESTS[grp][2])
+        log(f"reagg {arm} {start} {grp} {fk}")
+
+
 def stage_predict(a) -> None:
     torch = _torch()
     torch.set_num_threads(1)  # single thread: the timing below is core-seconds
     arm = a.arm
     model_arm = "lstm" if arm == "lstmCBres" else arm
-    clim_mode = {"lstm": "real", "lstmCB": "frozen", "lstmCBres": "resample"}[arm]
+    clim_mode = {"lstm": "real", "lstmCB": "frozen", "lstmCBres": "resample"}[
+        arm.removesuffix("r2")
+    ]
     os.makedirs(f"{OUT}/preds", exist_ok=True)
     timing = []
     for grp, (gcm, seed, scens) in TESTS.items():
@@ -777,25 +807,9 @@ def stage_predict(a) -> None:
                     }
                 ).with_columns(pl.lit(gcm).alias("gcm"))
                 Yp.write_parquet(f"{OUT}/preds/yearly_{arm}_{start}_{grp}_f{k}.parquet")
-                parts = []
-                if start == "S85":
-                    # Historical part is identical for every leg (deterministic): take the first
-                    # scenario's
-                    h = Yp.filter(
-                        (pl.col("scen") == scens[0]) & (pl.col("Year") <= YSPLIT)
-                    ).with_columns(pl.lit("Historical").alias("scen"))
-                    parts.append(
-                        window_stats(h, (YEAR0 + 1, YSPLIT)).with_columns(
-                            pl.lit("h1985").alias("window")
-                        )
-                    )
-                parts.append(
-                    window_stats(Yp, WINDOWS["w2015"]).with_columns(pl.lit("w2015").alias("window"))
-                )
-                st = pl.concat(parts, how="diagonal_relaxed").drop("n_years")
-                st.write_parquet(f"{OUT}/preds/stats_{arm}_{start}_{grp}_f{k}.parquet")
+                yearly_to_stats(Yp, arm, start, grp, k, scens)
                 log(
-                    f"{arm} {start} {grp} fold {k}: {st.height} stats rows, {cpu:.2f} cpu-s for "
+                    f"{arm} {start} {grp} fold {k}: {cpu:.2f} cpu-s for "
                     f"{Z.shape[0] * (T - 1)} cell-years"
                 )
     json.dump(timing, open(f"{OUT}/preds/timing_{arm}.json", "w"), indent=1)
@@ -983,12 +997,211 @@ def stage_report(a) -> None:
                         "verdict": r["verdict"],
                     }
                 )
+        ag = os.path.join(d, "aggregate_response.csv")
+        if os.path.exists(ag):
+            g = pl.read_csv(ag, infer_schema_length=10000).filter(
+                pl.col("determined_same").cast(pl.Utf8) == "true"
+            )
+            for (gcm, scen, win), grp in g.group_by(["gcm", "scen", "window"]):
+                rows.append(
+                    {
+                        "label": lab,
+                        "scale": "aggregate",
+                        "gcm": gcm,
+                        "scen": scen,
+                        "window": win,
+                        "n_units": grp.height,
+                        "pass_cal": float((grp["pass_same"].cast(pl.Utf8) == "true").mean()),
+                    }
+                )
     df = pl.DataFrame(rows, infer_schema_length=None)
+    df = df.with_columns(
+        pl.col("label").str.extract(r"^C0(\w+?)_(?:S14|S85|ALL)_", 1).alias("arm"),
+        pl.col("label").str.extract(r"_(S14|S85|ALL)_", 1).alias("start"),
+        pl.col("label").str.extract(r"_(ACCESS|MPI)_", 1).alias("grp"),
+        pl.col("label").str.extract(r"_(f5|xf|dev)$", 1).alias("cells"),
+    )
     df.write_csv(f"{OUT}/comparison_C0.csv")
     pl.Config.set_tbl_rows(400)
-    pl.Config.set_tbl_cols(14)
-    pl.Config.set_tbl_width_chars(220)
-    print(df.sort("label", "scale", "window", "scen"))
+    pl.Config.set_tbl_cols(20)
+    pl.Config.set_tbl_width_chars(250)
+    pl.Config.set_float_precision(2)
+    for grp in ("ACCESS", "MPI"):
+        for cl in (["f5"], ["xf", "dev"]):
+            x = df.filter(
+                pl.col("grp").eq(grp)
+                & pl.col("cells").is_in(cl)
+                & pl.col("window").is_in(["h1985", "w2015", "c2015", "r2015"])
+            )
+            x = x.with_columns((pl.col("arm") + "_" + pl.col("start")).alias("a"))
+            pv = x.pivot(
+                on="a",
+                index=["scale", "window", "scen"],
+                values="pass_cal",
+                aggregate_function="first",
+            )
+            c = x.group_by(["scale", "window", "scen"]).agg(
+                pl.col("ceiling_cal").max().alias("ceiling"), pl.col("n_units").max().alias("n")
+            )
+            print(grp, cl)
+            print(
+                pv.join(c, on=["scale", "window", "scen"], how="left").sort(
+                    "scale", "window", "scen"
+                )
+            )
+
+
+PANEL106 = ["n_per_patch"] + [
+    f"{v}_{q}" for v in ["SLA", "Wooddens", "D95max", "minwscal", "Height", "agb"] for q in QN
+]
+
+
+def _contrast(df: pl.DataFrame, a: str = "ssp370", b: str = "ssp126") -> pl.DataFrame:
+    """df: long (scen, Cell, quantity, value) of w2015 -> (Cell, quantity, c) = a - b."""
+    x = df.filter(pl.col("scen") == a).select("Cell", "quantity", pl.col("value").alias("va"))
+    y = df.filter(pl.col("scen") == b).select("Cell", "quantity", pl.col("value").alias("vb"))
+    return x.join(y, on=["Cell", "quantity"]).select(
+        "Cell", "quantity", (pl.col("va") - pl.col("vb")).alias("c")
+    )
+
+
+def _arm_long(arm: str, start: str, grp: str) -> pl.DataFrame:
+    fs = sorted(glob.glob(f"{OUT}/preds/stats_{arm}_{start}_{grp}_f[1-5].parquet"))
+    if not fs:
+        fs = sorted(glob.glob(f"{OUT}/preds/stats_{arm}_{start}_{grp}_all.parquet"))
+    d = pl.concat([pl.read_parquet(f) for f in fs], how="diagonal_relaxed")
+    q = [c for c in PANEL106 + ["agb_stand"] if c in d.columns]
+    return d.unpivot(
+        index=["gcm", "scen", "window", "Cell"], on=q, variable_name="quantity", value_name="value"
+    ).with_columns(pl.col("Cell").cast(pl.Int32), pl.col("value").cast(pl.Float64))
+
+
+def _gseries(Y: pl.DataFrame, col: str, cells: list[int]) -> np.ndarray:
+    """Dev-cell mean of a yearly column, years YEAR0+1..YEAR1 (one value per year)."""
+    x = Y.filter(pl.col("Cell").is_in(cells) & (pl.col("Year") > YEAR0))
+    x = x.group_by("Year").agg(pl.col(col).mean()).sort("Year")
+    assert x.height == YEAR1 - YEAR0, x.height
+    return x[col].to_numpy()
+
+
+def stage_analyse(a) -> None:
+    """Climate-response diagnostics beside the scorer: (1) cross-cell correlation of the predicted
+    ssp370 - ssp126 contrast (2015-2044) with the truth contrast, against the other seed's own
+    correlation (pre-registered H-climate b); (2) Germany-mean change 2015-2044 minus 1985-2014,
+    truth vs arms; (3) EXPLORATORY (not pre-registered): year-to-year timing of the Germany-mean
+    stems per patch and stand biomass vs the truth, ceiling = the other seed; (4) cost."""
+    ref = pl.read_parquet(f"{XDE}/reference/clean/levels_long.parquet").filter(pl.col("valid"))
+    cells = read_cells(CELLS_DEV)
+    res: dict = {"contrast_corr": [], "change": [], "timing": [], "cost": {}}
+    for grp, (gcm, seed, _sc) in TESTS.items():
+        oseed = 3 - seed
+        R1 = ref.filter((pl.col("gcm") == gcm) & pl.col("Cell").is_in(cells))
+        tw = {
+            sd: R1.filter((pl.col("seed") == sd) & (pl.col("window") == "w2015")) for sd in (1, 2)
+        }
+        ct = _contrast(tw[seed]).rename({"c": "c_truth"})
+        co = _contrast(tw[oseed]).rename({"c": "c_other"})
+        for arm in ("lstm", "lstmCB", "lstmCBres"):
+            for start in ("S14", "S85"):
+                E = _arm_long(arm, start, grp)
+                ce = _contrast(E.filter(pl.col("window") == "w2015")).rename({"c": "c_arm"})
+                j = ct.join(co, on=["Cell", "quantity"]).join(ce, on=["Cell", "quantity"])
+                for cl, cset in (("f5", read_cells(CELLS_F5)), ("xf", cells)):
+                    jj = j.filter(pl.col("Cell").is_in(cset))
+                    rr = []
+                    for q in PANEL106:
+                        x = jj.filter(pl.col("quantity") == q).drop_nulls()
+                        if x.height < 20:
+                            continue
+                        ca = (
+                            np.corrcoef(x["c_arm"], x["c_truth"])[0, 1]
+                            if x["c_arm"].std() > 0
+                            else 0.0
+                        )
+                        co_ = np.corrcoef(x["c_other"], x["c_truth"])[0, 1]
+                        sa = float((x["c_arm"].abs() / x["c_truth"].abs().clip(1e-12)).median())
+                        rr.append((q, float(ca), float(co_), sa))
+                    if rr:
+                        res["contrast_corr"].append(
+                            {
+                                "grp": grp,
+                                "arm": arm,
+                                "start": start,
+                                "cells": cl,
+                                "median_corr_arm": float(np.median([r[1] for r in rr])),
+                                "median_corr_other_seed": float(np.median([r[2] for r in rr])),
+                                "median_abs_ratio_arm_to_truth": float(
+                                    np.median([r[3] for r in rr])
+                                ),
+                                "n_quantities": len(rr),
+                                "fires": bool(
+                                    np.median([r[1] for r in rr])
+                                    >= np.median([r[2] for r in rr]) + 0.1
+                                ),
+                            }
+                        )
+        # Germany-mean change w2015 - h1985 (S85 arms have their own h1985)
+        for sc in ("ssp126", "ssp245", "ssp370"):
+
+            def gm(df, w, s):
+                x = df.filter((pl.col("window") == w) & (pl.col("scen") == s))
+                return dict(x.group_by("quantity").agg(pl.col("value").mean()).iter_rows())
+
+            row = {"grp": grp, "scen": sc}
+            for sd in (1, 2):
+                T = R1.filter(pl.col("seed") == sd)
+                h, w = gm(T, "h1985", "Historical"), gm(T, "w2015", sc)
+                row[f"truth_s{sd}"] = {
+                    q: w[q] - h[q]
+                    for q in ("n_per_patch", "agb_stand", "Height_q50", "Wooddens_q50")
+                }
+            for arm in ("lstm", "lstmCB", "lstmCBres"):
+                E = _arm_long(arm, "S85", grp)
+                h, w = gm(E, "h1985", "Historical"), gm(E, "w2015", sc)
+                row[arm] = {
+                    q: w[q] - h[q]
+                    for q in ("n_per_patch", "agb_stand", "Height_q50", "Wooddens_q50")
+                    if q in w and q in h
+                }
+            res["change"].append(row)
+        # yearly timing (exploratory): Germany-mean year-to-year change of stems/patch, agb_stand
+        Yt = load_yearly(gcm, seed)
+        Yo = load_yearly(gcm, oseed)
+        for arm in ("lstm", "lstmCB", "lstmCBres"):
+            Ya = pl.concat(
+                [
+                    pl.read_parquet(f)
+                    for f in sorted(glob.glob(f"{OUT}/preds/yearly_{arm}_S85_{grp}_f[1-5].parquet"))
+                ]
+            )
+            for sc in ("ssp126", "ssp245", "ssp370"):
+                for col in ("n_per_patch", "agb_stand"):
+                    ya = _gseries(Ya.filter(pl.col("scen") == sc), col, cells)
+                    yt = _gseries(Yt.filter(pl.col("scen").is_in(["Historical", sc])), col, cells)
+                    yo = _gseries(Yo.filter(pl.col("scen").is_in(["Historical", sc])), col, cells)
+                    da, dt, do = np.diff(ya), np.diff(yt), np.diff(yo)
+                    res["timing"].append(
+                        {
+                            "grp": grp,
+                            "arm": arm,
+                            "scen": sc,
+                            "quantity": col,
+                            "corr_dyear_arm_truth": float(np.corrcoef(da, dt)[0, 1]),
+                            "corr_dyear_otherseed_truth": float(np.corrcoef(do, dt)[0, 1]),
+                            "level_2044_arm": float(ya[-1]),
+                            "level_2044_truth": float(yt[-1]),
+                            "level_2044_otherseed": float(yo[-1]),
+                        }
+                    )
+    for arm in ("lstm", "lstmCB", "lstmCBres"):
+        f = f"{OUT}/preds/timing_{arm}.json"
+        if os.path.exists(f):
+            t = json.load(open(f))
+            cpu = sum(x["cpu_s"] for x in t)
+            cy = sum(x["cell_years"] for x in t)
+            res["cost"][arm] = {"cpu_s": cpu, "cell_years": cy, "core_s_per_cell_year": cpu / cy}
+    json.dump(res, open(f"{OUT}/analyse.json", "w"), indent=1)
+    print(json.dumps(res, indent=1)[:6000])
 
 
 def main(argv=None) -> None:
@@ -1005,6 +1218,8 @@ def main(argv=None) -> None:
             "pers",
             "submit-score",
             "report",
+            "analyse",
+            "reagg",
         ],
     )
     ap.add_argument("--member")
@@ -1026,6 +1241,8 @@ def main(argv=None) -> None:
         "pers": stage_pers,
         "submit-score": stage_submit_score,
         "report": stage_report,
+        "analyse": stage_analyse,
+        "reagg": stage_reagg,
     }[a.stage](a)
 
 
