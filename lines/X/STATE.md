@@ -446,6 +446,30 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   humidity-defective 2071-2100 segments: owner's call); (8) sapling layer (25 cancelled blocks: owner's call); (9) the
   eighth-session items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10
   chunks + seed 2, cross-fit). Still mostly one GCM, one seed, 200 cells.
+* **2026-10-06 (fourteenth session): the 2016-25 death deficit is SMALL trees in diffuse PULSE years, not big trees**
+  [VERIFIED, MPI s2 ssp370 leg, 200 dev cells; `_status/TS.md` from "WHERE the 2016-25 death deficit sits"].
+  (a) Owner said "continue" => resubmitted the coupled `rqs` run on `standard` (the owner's own `globN` jobs fill
+  `priority`): job 2427029, both chunks clean, **2.0-2.1 core-s per cell-year** (gqs 4.7-5.0, old 1.2-1.3; all with the
+  dump on; pre-registration guessed ~1.5). Scorer 2427030 chained (afterok) — R1-R3 verdict PENDING.
+  (b) `scripts/explore_de_death_decomp.py` (job 2427038): gqs 2016-25 deaths -7.9 % = composition +0.0025, RATE
+  -0.0250, interaction -0.0002 per patch-yr; rate term 5-10 m -0.0200, 10-15 m -0.0036, >= 15 m -0.0014. The
+  pre-registered ">= 15 m carries >= 60 %" FAILED, falsifier fired: the "big-tree hazard" label was wrong.
+  (c) `scripts/explore_de_death_pulse.py` (job 2427039): the deficit is concentrated in the original's mortality
+  PULSE years (2019: < 10 m death rate 0.0745 vs 0.0538; 2025, 2026, 2031, 2010, 2015 likewise; quiet years the
+  emulator is slightly HIGH) and the pulses are DIFFUSE — patch clearings (>= 80 % of a patch dying) carry < 0.12 %
+  of deaths in every year, both sources, so it is not fire. Timing right, amplitude damped (both G samplers).
+  Side fact: ~200-370 deaths/yr are trees printed for the first time already dead at 5.0-5.1 m (cross the 5 m cut and
+  die in the same year) — definitional, same in both.
+  (d) Submitted, pending: `scripts/explore_de_death_onestep.py` (job 2427045 — death head one step ahead at the TRUE
+  vs the SAMPLED next-year growth; E1 = damping comes via the sampled G, E2 = the death head itself lacks the pulse
+  signal) and the 1995-2004 swap attribution of the low small-tree G drift (job 2427035,
+  `explore_de_gdrift.py --swap-y0 1995 --swap-y1 2004`, tag gqsrun_swap2_mpi2; pre-registered H1/H2 in TS.md).
+  **NEXT, in order:** (1) read the three pending jobs against their pre-registrations in TS.md (rqs R1-R3; death
+  E1/E2; swap W0/W1/H1/H2) and record verdicts there; (2) if E1: the death pulse is the G sampler's missing
+  year-common shock — test a year-shared latent in the G draw; if E2: add/strengthen stress inputs of the death head
+  (which climate signal marks the pulse years? check truth's mort_* split in the pulse years first); (3) by the rqs
+  verdict: pass => rq is the working G model; fail => the single monotone network; (4)-(9) as in the thirteenth
+  session's list (grass into NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
