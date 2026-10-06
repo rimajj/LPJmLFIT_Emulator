@@ -94,7 +94,9 @@ class Member:
         self.T = len(m["years"])
         self.idx = np.asarray(D["idx"])
         tc = {c: j for j, c in enumerate(m["tok_cols"])}
-        tok = np.load(os.path.join(st.member_dir(name), "tok.npy"))  # one sequential read (not 25 strided)
+        tok = np.load(
+            os.path.join(st.member_dir(name), "tok.npy")
+        )  # one sequential read (not 25 strided)
 
         def col(c):
             return np.asarray(tok[:, tc[c]]).astype(np.float64)
@@ -170,7 +172,7 @@ class Member:
         return np.flatnonzero(np.repeat(cf, self.npatch))
 
     def batch(self, p: np.ndarray, t0: int, L: int, frozen: bool = False) -> dict:
-        """Window of years t0 .. t0+L-1 (plus t0+L for next-year targets when available) for patches p."""
+        """Years t0 .. t0+L-1 (+ t0+L for next-year targets when available) of patches p."""
         T = self.T
         tt = np.arange(t0, min(t0 + L + 1, T))
         ix = self.idx[p][:, tt, :]  # [B, L', S]
@@ -227,7 +229,7 @@ def to_dev(b: dict, dev) -> dict:
 # ================================================================================================
 # the window loss
 def window(model: nm.NSet, b: dict, collect: bool = False):
-    """Teacher-forced pass over a window. Returns {head: (sum nll, count)} and (if collect) per-tree outputs."""
+    """Teacher-forced pass over a window -> {head: (sum nll, count)} [+ per-tree outputs]."""
     N = model.norm
     dev = b["mask"].device
     nst = b["nsteps"]
@@ -474,7 +476,8 @@ def stage_train(a):
                 vl = sum(vh.values())
             hist.append({"step": step, "train_loss": float(loss), "val_loss": vl, "val_heads": vh})
             log(
-                f"step {step} train {float(loss):.4f} val {vl:.4f} (load {t_load:.0f}s gpu {t_gpu:.0f}s) "
+                f"step {step} train {float(loss):.4f} val {vl:.4f} "
+                f"(load {t_load:.0f}s gpu {t_gpu:.0f}s) "
                 + " ".join(f"{k2}={v:.3f}" for k2, v in vh.items())
             )
             if vl < best:
@@ -568,6 +571,8 @@ def score_member(model, m: Member, dev, frozen: bool, fire13=None, B=512) -> dic
         "pred_model": 0.0,
         "pred_base": 0.0,
     }
+    ncell = len(m.cells)
+    cell_sse = np.zeros((ncell, 3))  # per cell: n, SSE model, SSE base (for the cell bootstrap)
     gcal = []
     with torch.no_grad():
         for i in range(0, len(pp), B):
@@ -599,6 +604,10 @@ def score_member(model, m: Member, dev, frozen: bool, fire13=None, B=512) -> dic
                 br["dead"] += int(dead.sum())
                 br["model"] += float(((pdie - dead) ** 2).sum())
                 br["base"] += float(((base - dead) ** 2).sum())
+                pc_cell = np.repeat((p // m.npatch)[:, None], pres.shape[1], 1)[pres]
+                np.add.at(cell_sse, (pc_cell, 0), 1.0)
+                np.add.at(cell_sse, (pc_cell, 1), (pdie - dead) ** 2)
+                np.add.at(cell_sse, (pc_cell, 2), (base - dead) ** 2)
                 br["rule_only"] += float(((rule - dead) ** 2).sum())
                 br["pred_model"] += float(pdie.sum())
                 br["pred_base"] += float(base.sum())
@@ -628,6 +637,7 @@ def score_member(model, m: Member, dev, frozen: bool, fire13=None, B=512) -> dic
             "pred_rate_model": br["pred_model"] / n,
             "pred_rate_base": br["pred_base"] / n,
         }
+        out["cell_sse"] = cell_sse[cell_sse[:, 0] > 0].tolist()
         G = np.concatenate(gcal)
         q = np.quantile(G[:, 0], np.linspace(0, 1, 11))
         d = np.clip(np.searchsorted(q, G[:, 0], side="right") - 1, 0, 9)
@@ -659,7 +669,8 @@ def stage_score(a):
             r_frz = score_member(model, m, dev, True)
             res[pool][mn] = {"true": r_true, "frozen": {"nll": r_frz["nll"]}}
             log(
-                f"{a.arm} {mn}: brier model {r_true['brier']['model']:.6f} base {r_true['brier']['base']:.6f} "
+                f"{a.arm} {mn}: brier model {r_true['brier']['model']:.6f} "
+                f"base {r_true['brier']['base']:.6f} "
                 f"rule {r_true['brier']['rule_only']:.6f} | nll true "
                 + json.dumps({k: round(v, 4) for k, v in r_true["nll"].items()})
                 + " frozen "
@@ -672,6 +683,26 @@ def stage_score(a):
             k: sum(x[k] * x["n"] for x in bt) / n
             for k in ("model", "base", "rule_only", "obs_rate", "pred_rate_model", "pred_rate_base")
         } | {"n": n}
+        # bootstrap of (model - base) Brier over (member, cell) units, resampled with replacement
+        cs = np.concatenate(
+            [
+                np.asarray(r["true"]["cell_sse"])
+                for r in res[pool].values()
+                if isinstance(r, dict) and "true" in r
+            ]
+        )
+        brs = np.random.default_rng(3)
+        dif = []
+        for _ in range(2000):
+            j = brs.integers(0, len(cs), len(cs))
+            dif.append((cs[j, 1].sum() - cs[j, 2].sum()) / cs[j, 0].sum())
+        res[pool]["_pooled_brier"]["diff_model_minus_base"] = (
+            cs[:, 1].sum() - cs[:, 2].sum()
+        ) / cs[:, 0].sum()
+        res[pool]["_pooled_brier"]["diff_ci95_cell_bootstrap"] = [
+            float(np.quantile(dif, 0.025)),
+            float(np.quantile(dif, 0.975)),
+        ]
     pa, pb = res["A_MPI_fold5"]["_pooled_brier"], res["B_ACCESS_fold5"]["_pooled_brier"]
     res["gate_a"] = {
         "A": {"model": pa["model"], "base": pa["base"], "pass": pa["model"] <= pa["base"]},
@@ -680,7 +711,8 @@ def stage_score(a):
     res["gate_a"]["pass"] = res["gate_a"]["A"]["pass"] and res["gate_a"]["B"]["pass"]
     json.dump(res, open(os.path.join(NSET, a.arm, "score.json"), "w"), indent=1)
     status(
-        f"D2 score {a.arm}: gate (a) death Brier pool A model {pa['model']:.6f} vs base {pa['base']:.6f}; pool B "
+        f"D2 score {a.arm}: gate (a) death Brier pool A model {pa['model']:.6f} "
+        f"vs base {pa['base']:.6f}; pool B "
         f"model {pb['model']:.6f} vs base {pb['base']:.6f} -> pass={res['gate_a']['pass']}"
     )
 
@@ -699,8 +731,8 @@ def gate_cells(n: int = 200) -> np.ndarray:
 def stage_gate(a):
     import explore_de_sh_trans as tr
 
-    cells = gate_cells()
-    rd = glob_run(a.arm)
+    cells = gate_cells() if not a.cells else np.loadtxt(a.cells, dtype=np.int64)
+    rd = glob_run(a.arm, a.gcm)
     E = pl.concat(
         [
             pl.read_parquet(f)
@@ -708,7 +740,7 @@ def stage_gate(a):
         ]
     )
     emu = E.filter(pl.col("isdead") == 0).group_by("Cell", "Year").agg(n=pl.len())
-    mem = "MPI-ESM1-2-HR_ssp370_s1_w2015"
+    mem = f"{a.gcm}_ssp370_s1_w2015"
     tf = st.year_files(tr.TRANS, mem)
     tru = []
     for y, f in sorted(tf.items()):
@@ -763,13 +795,19 @@ def stage_gate(a):
         "cells_with_truth_stems": ok.height,
         "share_within_50pct_2035_2044": share,
         "median_ratio_2035_2044": float(ok["ratio"].median()),
+        "diag_share_within_10pct": float(((ok["ratio"] - 1).abs() <= 0.1).mean()),
+        "diag_share_within_20pct": float(((ok["ratio"] - 1).abs() <= 0.2).mean()),
         "pass": share >= 0.9,
         "per_year": per_year.to_dicts(),
     }
-    json.dump(g, open(os.path.join(NSET, a.arm, "gate_b.json"), "w"), indent=1)
+    tag = "" if not a.tag else f"_{a.tag}"
+    g["gcm"], g["cellfile"] = a.gcm, a.cells or "gate_cells (first 200 dev cells of folds 1-4)"
+    json.dump(g, open(os.path.join(NSET, a.arm, f"gate_b{tag}.json"), "w"), indent=1)
     status(
-        f"D2 gate (b) {a.arm}: free run 2014->2044 ssp370, {ok.height} training cells: share within +-50 % of "
-        f"truth stems/patch (2035-44 mean) = {share:.3f} (median ratio {g['median_ratio_2035_2044']:.3f}) -> "
+        f"D2 gate (b){tag} {a.arm} {a.gcm}: free run 2014->2044 ssp370, {ok.height} cells: "
+        "share within +-50 % of "
+        f"truth stems/patch (2035-44 mean) = {share:.3f} "
+        f"(median ratio {g['median_ratio_2035_2044']:.3f}) -> "
         f"pass={g['pass']}"
     )
     log(json.dumps({k: v for k, v in g.items() if k != "per_year"}))
@@ -782,12 +820,85 @@ def _glob(p):
     return glob.glob(p)
 
 
-def glob_run(arm: str) -> str:
-    rs = _glob(
-        os.path.join(XDE, "runs", f"nset_{arm}", "MPI-ESM1-2-HR_s1_2014-2044_ssp370_actual_r1")
-    )
+def glob_run(arm: str, gcm: str = "MPI-ESM1-2-HR") -> str:
+    rs = _glob(os.path.join(XDE, "runs", f"nset_{arm}", f"{gcm}_s1_2014-2044_ssp370_actual_r1"))
     assert rs, "no free run"
     return rs[0]
+
+
+# ================================================================================================
+# free-run trajectory diagnostic (not a gate)
+def stage_traj(a):
+    """Yearly cell-mean trajectories of the free runs vs the truth on the gate cells: living printed
+    stems per
+    patch, flagged deaths per patch, new stems per patch, mean agb and height of living stems."""
+    import explore_de_sh_trans as tr
+
+    cells = gate_cells() if not a.cells else np.loadtxt(a.cells, dtype=np.int64)
+    rows = []
+    mem = f"{a.gcm}_ssp370_s1_w2015"
+    tf = st.year_files(tr.TRANS, mem)
+    for y, f in sorted(tf.items()):
+        d = (
+            pl.scan_parquet(f)
+            .filter(pl.col("Cell").is_in(cells.tolist()))
+            .select("agb", "Height", "fate_y1", "is_new_y")
+            .collect()
+        )
+        np_ = len(cells) * 250
+        rows.append(
+            {
+                "src": "truth",
+                "Year": y,
+                "stems": d.height / np_,
+                "deaths_next": float((d["fate_y1"] == 1).sum()) / np_,
+                "new": float(d["is_new_y"].sum()) / np_,
+                "agb": float(d["agb"].mean()),
+                "height": float(d["Height"].mean()),
+            }
+        )
+    for arm in a.arms.split(","):
+        rd = os.path.join(
+            XDE, "runs", f"nset_{arm}", f"{a.gcm}_s1_2014-2044_ssp370_actual_r1", "chunk_000"
+        )
+        prev = None
+        fs = sorted(_glob(os.path.join(rd, "y*.parquet")))
+        frames = {int(os.path.basename(f)[1:5]): pl.read_parquet(f) for f in fs}
+        for y in sorted(frames):
+            E = frames[y]
+            liv = E.filter(pl.col("isdead") == 0)
+            np_ = len(cells) * 250
+            key = liv.select(
+                pl.concat_str(["Cell", "Patch", "Type", "ID"], separator="_").alias("k")
+            )["k"]
+            new = 0 if prev is None else int((~key.is_in(prev)).sum())
+            nxt = frames.get(y + 1)
+            dn = float((nxt["isdead"] == 1).sum()) / np_ if nxt is not None else np.nan
+            rows.append(
+                {
+                    "src": arm,
+                    "Year": y,
+                    "stems": liv.height / np_,
+                    "deaths_next": dn,
+                    "new": new / np_ if prev is not None else np.nan,
+                    "agb": float(liv["agb"].mean()),
+                    "height": float(liv["Height"].mean()),
+                }
+            )
+            prev = key
+    T = pl.DataFrame(rows)
+    out = os.path.join(NSET, f"traj_gate_cells{'_' + a.tag if a.tag else ''}.csv")
+    T.write_csv(out)
+    dec = (
+        T.filter(pl.col("Year") >= 2015)
+        .with_columns(dec=((pl.col("Year") - 2015) // 10) * 10 + 2015)
+        .group_by("src", "dec")
+        .agg(pl.col("stems", "deaths_next", "new", "agb", "height").mean())
+        .sort("src", "dec")
+    )
+    with pl.Config(tbl_rows=60, tbl_cols=10):
+        log(dec)
+    dec.write_csv(os.path.join(NSET, f"traj_gate_cells{'_' + a.tag if a.tag else ''}_decades.csv"))
 
 
 # ================================================================================================
@@ -808,10 +919,15 @@ def _pool_nll(score: dict, pool: str, which: str) -> dict:
 
 def stage_report(a):
     arms = {}
-    for arm in ("D-main", "N-free", "N-set"):
+    for arm in ("D-main", "N-free", "N-set", "FROZEN", "D-main-grassreplay"):
         d = os.path.join(NSET, arm)
         r = {}
-        for nm_, f in (("train", "train.json"), ("score", "score.json"), ("gate_b", "gate_b.json")):
+        for nm_, f in (
+            ("train", "train.json"),
+            ("score", "score.json"),
+            ("gate_b", "gate_b.json"),
+            ("free_run_heldout_ACCESS_fold5", "gate_b_heldout_ACCESS_fold5.json"),
+        ):
             fp = os.path.join(d, f)
             if os.path.exists(fp):
                 r[nm_] = json.load(open(fp))
@@ -819,7 +935,9 @@ def stage_report(a):
             continue
         if "train" in r:
             hist = r["train"].get("history") or [None]
-            r["train"] = {k: v for k, v in r["train"].items() if k != "history"} | {"last": hist[-1]}
+            r["train"] = {k: v for k, v in r["train"].items() if k != "history"} | {
+                "last": hist[-1]
+            }
         if "score" in r:
             sc = r["score"]
             r["heldout"] = {
@@ -852,7 +970,8 @@ def stage_report(a):
             r["free_run_cost"] = {
                 "core_s_per_cell_year": mt["core_s_per_cell_year"],
                 "core_s_per_cell_year_step": mt["core_s_per_cell_year_step"],
-                "note": "process CPU time of the engine process; the model ran on one H100 GPU, whose "
+                "note": "process CPU time of the engine process; the model ran on one H100 "
+                "GPU, whose "
                 "time is NOT in this number",
             }
         arms[arm] = r
@@ -876,6 +995,16 @@ def stage_report(a):
             os.path.join(REPO, "scripts", "explore_de_nset_stepper.py"),
             NSET,
             STATUS,
+        ],
+        "notes": [
+            "gate (b) has no power: the FROZEN null (no dynamics) also passes it on 100 % of cells",
+            "gate (a) passes by 2e-7 in Brier (0.001 %): with the rule hazard as offset the "
+            "learned correction adds "
+            "~nothing; N-free (no offset) is 0.4-0.5 % worse",
+            "free runs: recruitment ~20-30 % short from the second step on; replaying the truth's "
+            "grass removes it "
+            "(grass-cover closure erases the hidden sub-5 m signal)",
+            "trajectory tables: nset/traj_gate_cells*.csv",
         ],
     }
     json.dump(rep, open(REPORT, "w"), indent=1, default=str)
@@ -901,7 +1030,8 @@ def stage_submit(a):
     if "run" in steps:
         body.append(
             f"XDE_NSET_ARM={a.arm} {PY} {eng} run --arm nset_{a.arm} --stepper "
-            f'explore_de_nset_stepper:NsetStepper --kwargs \'{{"arm": "{a.arm}"}}\' --gcm MPI-ESM1-2-HR '
+            "explore_de_nset_stepper:NsetStepper "
+            f'--kwargs \'{{"arm": "{a.arm}"}}\' --gcm MPI-ESM1-2-HR '
             f"--seed 1 --start 2014 --end 2044 --legs ssp370 --cells {cf} --chunk-size 200"
         )
     if "gate" in steps:
@@ -910,17 +1040,24 @@ def stage_submit(a):
     allm = TRAIN + POOL_B
     gj = " ".join(os.path.join(st.OUT, "dev", m_, "_gates.json") for m_ in allm)
     pre = ""
-    if "build" in steps:  # the standard partition was saturated: build SH11 on this node, 5 members at once
-        pre = "".join(
-            f"( POLARS_MAX_THREADS=3 {PY} {tens} build --member {m_} && POLARS_MAX_THREADS=3 {PY} {tens} "
-            f"gates --member {m_} ) &\n"
-            for m_ in allm
-        ) + "wait\n"
+    if (
+        "build" in steps
+    ):  # the standard partition was saturated: build SH11 on this node, 5 members at once
+        pre = (
+            "".join(
+                f"( POLARS_MAX_THREADS=3 {PY} {tens} build --member {m_} && "
+                f"POLARS_MAX_THREADS=3 {PY} {tens} "
+                f"gates --member {m_} ) &\n"
+                for m_ in allm
+            )
+            + "wait\n"
+        )
     # every consumer waits for the five SH11 gate files and refuses to train unless all pass
     pre += (
         f"until [ $(ls {gj} 2>/dev/null | wc -l) -eq {len(allm)} ]; do sleep 30; done\n"
-        f"{PY} -c \"import json,sys; g=[json.load(open(f))['pass'] for f in sys.argv[1:]]; print('SH11 gates', g); "
-        f"sys.exit(0 if all(g) else 1)\" {gj} || exit 1\n"
+        f"{PY} -c \"import json,sys; g=[json.load(open(f))['pass'] for f in sys.argv[1:]]; "
+        "print('SH11 gates', g); "
+        f'sys.exit(0 if all(g) else 1)" {gj} || exit 1\n'
     )
     cmds = pre + " && \\\n".join(body)
     with open(jcf, "w") as f:
@@ -948,7 +1085,11 @@ echo "=== JOB DONE exit=$? ==="
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["train", "score", "gate", "submit", "report"])
+    ap.add_argument("stage", choices=["train", "score", "gate", "submit", "report", "traj"])
+    ap.add_argument("--arms", default="D-main,N-free,N-set,FROZEN")
+    ap.add_argument("--gcm", default="MPI-ESM1-2-HR")
+    ap.add_argument("--cells", default="")
+    ap.add_argument("--tag", default="")
     ap.add_argument("--arm", default="D-main")
     ap.add_argument("--minutes", type=float, default=70)
     ap.add_argument("--batch", type=int, default=256)
@@ -958,10 +1099,14 @@ def main(argv=None):
     ap.add_argument("--after", default="")
     ap.add_argument("--qos", default="gpushort")
     a = ap.parse_args(argv)
-    {"train": stage_train, "score": stage_score, "gate": stage_gate, "submit": stage_submit,
-     "report": stage_report}[
-        a.stage
-    ](a)
+    {
+        "train": stage_train,
+        "score": stage_score,
+        "gate": stage_gate,
+        "submit": stage_submit,
+        "report": stage_report,
+        "traj": stage_traj,
+    }[a.stage](a)
 
 
 if __name__ == "__main__":

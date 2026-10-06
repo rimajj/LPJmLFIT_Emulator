@@ -146,7 +146,7 @@ def parse_member(member: str) -> dict:
 
 
 def to_f64(df: pl.DataFrame, cols: list[str]) -> np.ndarray:
-    """[n, len(cols)] float64 with nulls -> NaN, booleans -> 0/1 (the comparison basis of the round trip)."""
+    """[n, len(cols)] float64, nulls -> NaN, booleans -> 0/1 (the round-trip comparison basis)."""
     out = np.empty((df.height, len(cols)), dtype=np.float64)
     for j, c in enumerate(cols):
         s = df[c]
@@ -408,7 +408,7 @@ def load(member: str, cellset: str = "dev", mmap: bool = True) -> dict:
 
 
 def rows_of_year(D: dict, t: int) -> pl.DataFrame:
-    """Tensor -> SH3 rows of year index t (the round-trip direction; also what a consumer uses to go back)."""
+    """Tensor -> SH3 rows of year index t (the round-trip direction; also for consumers)."""
     m = D["meta"]
     idx = np.asarray(D["idx"][:, t, :])
     p, s = np.nonzero(idx >= 0)
@@ -626,7 +626,8 @@ def fork_index(cellset: str = "dev") -> pl.DataFrame:
     ok = bool((F["same_2014"].fill_null(False)).all())
     status(
         f"fork index: {F.height} (gcm, seed, Cell, leg pair) rows; 2014 roster identical in "
-        f"{F['same_2014'].fill_null(False).mean():.4f} -> G4 pass={ok}; median first differing year "
+        f"{F['same_2014'].fill_null(False).mean():.4f} -> G4 pass={ok}; "
+        "median first differing year "
         f"{F['first_diff_year'].median()}"
     )
     json.dump(
@@ -661,7 +662,8 @@ case $SLURM_ARRAY_TASK_ID in
 {lines}
 esac
 export POLARS_MAX_THREADS=4
-{PY} {me} build --member "$M" --cellset {cellset} && {PY} {me} gates --member "$M" --cellset {cellset}
+{PY} {me} build --member "$M" --cellset {cellset} && \\
+  {PY} {me} gates --member "$M" --cellset {cellset}
 echo "=== JOB DONE exit=$? ==="
 """)
     jid = subprocess.check_output(["sbatch", "--parsable", jcf], text=True).strip()
@@ -696,15 +698,26 @@ def report(members: list[str], cellset: str = "dev"):
         mf = os.path.join(member_dir(m, cellset), "meta.json")
         if os.path.exists(mf):
             mt = json.load(open(mf))
-            gs[m]["size"] = {"rows": mt["N"], "years": mt["years"], "S": mt["S"], "max_live": mt["max_live"],
-                             "build_s": mt["build_s"]}
+            gs[m]["size"] = {
+                "rows": mt["N"],
+                "years": mt["years"],
+                "S": mt["S"],
+                "max_live": mt["max_live"],
+                "build_s": mt["build_s"],
+            }
     fk = json.load(open(os.path.join(OUT, cellset, "_fork_gates.json")))
     du = subprocess.check_output(["du", "-sh", os.path.join(OUT, cellset)], text=True).split()[0]
-    rep = {"id": "SH11", "status": "ok" if all(g["pass"] for g in gs.values()) and fk["pass"] else "fail",
-           "deliverables": [os.path.abspath(__file__), os.path.join(OUT, cellset), STATUS],
-           "members": gs, "fork_index": fk, "disk": du,
-           "notes": "padded INDEX tensor idx[P,T,S] into a row store tok[N,F] (tok[idx] is the padded token "
-                    "tensor); round trip exact against SH3/SH4; paired-fork index over all 12 usable ssp members"}
+    rep = {
+        "id": "SH11",
+        "status": "ok" if all(g["pass"] for g in gs.values()) and fk["pass"] else "fail",
+        "deliverables": [os.path.abspath(__file__), os.path.join(OUT, cellset), STATUS],
+        "members": gs,
+        "fork_index": fk,
+        "disk": du,
+        "notes": "padded INDEX tensor idx[P,T,S] into a row store tok[N,F] (tok[idx] is the padded "
+        "token tensor); round trip exact against SH3/SH4; paired-fork index over all 12 usable "
+        "ssp members",
+    }
     json.dump(rep, open(REPORT, "w"), indent=1, default=str)
     log(f"report: {rep['status']} disk {du}")
 

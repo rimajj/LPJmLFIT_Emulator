@@ -58,8 +58,12 @@ def _seed(*parts) -> int:
 class NsetStepper:
     needs_bank = False
 
-    def __init__(self, arm: str = "D-main", device: str | None = None):
+    def __init__(self, arm: str = "D-main", device: str | None = None, grass_replay: bool = False):
+        """grass_replay = True: COUNTERFACTUAL diagnostic, not an arm - the next-year grass state is
+        read from the
+        truth's SH4 patch table (same cells/patches) instead of the grass head."""
         self.arm = arm
+        self.grass_replay = grass_replay
         self.dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
     def init(self, state, ctx):
@@ -347,6 +351,28 @@ class NsetStepper:
             "grass8_agb": nm.GRASS_K * lai,
             "grass8_fpc": np.minimum(gfpc, cap),
         }
+        fy = (
+            st.year_files(st.PATCHT, f"{self.gcm}_{ctx['traj']}_s{ctx['seed']}_w2015")
+            if self.grass_replay
+            else {}
+        )
+        if self.grass_replay and (year + 1) in fy:
+            import polars as pl
+
+            f = fy[year + 1]
+            g = (
+                pl.read_parquet(
+                    f, columns=["Cell", "Patch", "grass8_fpc_y", "grass8_LAI_y", "grass8_agb_y"]
+                )
+                .filter(pl.col("Cell").is_in(self.cells.tolist()))
+                .sort("Cell", "Patch")
+            )
+            assert g.height == Ptot, (g.height, Ptot)
+            grass = {
+                "grass8_LAI": g["grass8_LAI_y"].to_numpy(),
+                "grass8_agb": g["grass8_agb_y"].to_numpy(),
+                "grass8_fpc": g["grass8_fpc_y"].to_numpy(),
+            }
         auxp = {"h": hnew, "c": cnew} if m.lstm_on else None
         return eng.StepOut(
             tree=upd,

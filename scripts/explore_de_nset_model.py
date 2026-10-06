@@ -199,7 +199,7 @@ def patch_scal(n_live, sum_fpc, sum_agb, lags=None) -> np.ndarray:
 
 
 def grow_targets(T: dict) -> np.ndarray:
-    """T: dict with state at y and y+1 (raw). -> [..., len(GROW_T)] unstandardised; NaN where unavailable."""
+    """T: state at y and y+1 (raw) -> [..., len(GROW_T)] unstandardised; NaN where unavailable."""
     with np.errstate(divide="ignore", invalid="ignore"):
         out = [
             np.log(T["Height_y1"]) - np.log(T["Height"]),
@@ -316,7 +316,7 @@ def mlp(i, h, o, n=2, act=nn.GELU):
 
 
 class SetBlock(nn.Module):
-    """Pre-norm set-transformer block with key-padding mask and FiLM from the conditioning vector."""
+    """Pre-norm set-transformer block, key-padding mask, FiLM from the conditioning vector."""
 
     def __init__(self, d, heads, dcond):
         super().__init__()
@@ -459,7 +459,7 @@ class NSet(nn.Module):
     # ------------------------------------------------------------------------------------------
     # trunk
     def initial_state(self, tok_raw_feat, typ, mask):
-        """h0, c0 from the start roster: 8-bin histograms of ln Age and Height (shares), n_live, sum_fpc proxy."""
+        """h0, c0 from the start roster: 8-bin ln Age and Height histograms, n_live, sum fpc."""
         B = mask.shape[0]
         if not self.lstm_on:
             return None
