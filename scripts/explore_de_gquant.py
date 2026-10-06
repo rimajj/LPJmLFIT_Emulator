@@ -36,9 +36,11 @@ import polars as pl
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
+import explore_de_sh_trans as tr  # noqa: E402
 import explore_de_tab_features as F  # noqa: E402
 import explore_de_tab_g2 as tg2  # noqa: E402
 import explore_de_tab_heads as Hh  # noqa: E402
+import explore_de_tab_probe2 as pr2  # noqa: E402
 import explore_de_tab_stepper as ts  # noqa: E402
 
 QLEV = [0.005, 0.02, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.98, 0.995]
@@ -310,14 +312,14 @@ class GQ:
             old[msk] = np.mean([pinball(Qo[:, i], y, a) for i, a in enumerate(self.lv)], axis=0)
         return new, old
 
-    def attach(self, st, sign_cal=False):
-        """route st._sample_G through this model. sign_cal: the gsign logit is Platt-recalibrated (a s + b, from
-        sign_platt.json) instead of + logit_off_g."""
+    def sampler(self, st, sign_cal=False):
+        """-> (p_neg(X), sample_G(X, u_s, u_r) -> (G, p)) closures over the stepper st. sign_cal: the gsign logit is
+        Platt-recalibrated (a s + b, from sign_platt.json) instead of + logit_off_g."""
         if st.k_g == 0.0:
             raise ValueError("the quantile G sampler has no climate-blind (kappa = 0) variant")
         gq = self
         if sign_cal:
-            pc = json.load(open(os.path.join(self.d, "sign_platt.json")))
+            pc = json.load(open(os.path.join(gdir(st.split), "sign_platt.json")))
             a_, b_ = pc["a"], pc["b"]
         else:
             a_, b_ = 1.0, st.cal["logit_off_g"]
@@ -329,10 +331,12 @@ class GQ:
             p = _p_neg(X)
             return gq.sample(X, p, u_s, u_r), p
 
-        st._p_neg = _p_neg
+        return _p_neg, _sample_G
 
-        st._sample_G = _sample_G
-        st.gq = gq
+    def attach(self, st, sign_cal=False):
+        """route st._sample_G through this model (instance attributes; for the one-step / chain scorers)."""
+        st._p_neg, st._sample_G = self.sampler(st, sign_cal)
+        st.gq = self
         return st
 
 
@@ -346,11 +350,26 @@ def load(split="DEV-A", conformal=False) -> GQ:
 
 
 class TabALG2HSGQ(tg2.TabALG2HS):
-    """the g2hs coupled arm with the quantile G-magnitude sampler."""
+    """the g2hs coupled arm with the quantile G-magnitude sampler. kwargs gq_sign_cal (Platt sign, arm "gqs"; default
+    on), gq_conformal (validation-fold offsets, arm "gqc"; default off). _sample_G is a METHOD (not an instance
+    attribute) so a probe mixin placed before this class in the MRO still wraps it."""
+
+    def __init__(self, gq_sign_cal: bool = True, gq_conformal: bool = False, **kw):
+        super().__init__(**kw)
+        self.gq_sign_cal, self.gq_conformal = bool(gq_sign_cal), bool(gq_conformal)
 
     def init(self, state, ctx):
         super().init(state, ctx)
-        load(self.split).attach(self)
+        self.gq = load(self.split, conformal=self.gq_conformal)
+        self._gq_p, self._gq_sample = self.gq.sampler(self, self.gq_sign_cal)
+        tr.log(f"TabALG2HSGQ: quantile G sampler, sign_cal={self.gq_sign_cal} conformal={self.gq_conformal}")
+
+    def _sample_G(self, X, u_s, u_r):
+        return self._gq_sample(X, u_s, u_r)
+
+
+class TabALG2HSGQProbe(pr2._DumpMixin, TabALG2HSGQ):
+    """the same with the per-tree dump of explore_de_tab_probe2 (same columns, same layout)."""
 
 
 def main():
