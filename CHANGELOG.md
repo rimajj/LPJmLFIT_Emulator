@@ -8,6 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X (Germany emulator prototype): `scripts/explore_de_gdrift.py` and `scripts/explore_de_gpit.py` — diagnosis of
+  the early growth-efficiency drift (start gate, one-step, self-fed chain, input swaps) and an exact one-step
+  calibration test of the growth-efficiency sampler. Finding: the drift is the sampler's distribution shape (its centre
+  bends wrongly with the previous growth state), half one step ahead and half amplified by its own feedback.
+
+### Fixed
+
+- `scripts/explore_de_crerun_collect.py` no longer crashes on a re-run block that never ran.
+
+### Added
+
 - Line X (Germany emulator prototype): one-step tree check by size (`scripts/explore_de_tree_onestep.py`), an
   instrumented coupled arm (`scripts/explore_de_tab_probe2.py`) with same-tree input-swap attribution
   (`scripts/explore_de_tree_attrib.py`), and a cohort x size split in `scripts/explore_de_recruit_drift.py`. Finding:
