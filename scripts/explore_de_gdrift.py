@@ -16,7 +16,7 @@ error is either (a) the start convention, (b) a one-step bias of the sampler, (c
 Statistics per year and height class (< 15 m, >= 15 m): quantiles 10/25/50/75/90, mean, P(G < 0).
 
 Usage:  python explore_de_gdrift.py --probe <run dir> --dump <dump dir> --gcm MPI-ESM1-2-HR --seed 2 --tag g2hs_mpi2
-        [--y1 2004] [--frac 0.1] [--K 4]
+        [--y1 2004] [--frac 0.1] [--K 4] [--swap-y0 1985 --swap-y1 1994]
 Writes /p/tmp/jamirp/X_de/shared/eval/gdrift_<tag>_{paired,onestep_chain,swap}.csv
 """
 
@@ -76,6 +76,8 @@ def main():
     ap.add_argument("--y1", type=int, default=2004)
     ap.add_argument("--frac", type=float, default=0.1)
     ap.add_argument("--K", type=int, default=4)
+    ap.add_argument("--swap-y0", type=int, default=1985, help="first year of the S4 swap window")
+    ap.add_argument("--swap-y1", type=int, default=1994, help="last year of the S4 swap window")
     ap.add_argument("--sampler", choices=["pool", "gq", "gqc", "gqs"], default="pool",
                     help="pool = TAB stepper; gq = explore_de_gquant; gqc = conformalised; gqs = gq + Platt sign")
     a = ap.parse_args()
@@ -156,8 +158,8 @@ def main():
                     rows_c.append({"year": y, "hcls": cls, "what": f"chain_G1_yic{lo}-{hi}",
                                    **gstats(np.concatenate([g[q] for g in G1_ch]))})
                     rows_c.append({"year": y, "hcls": cls, "what": f"truth_G1_yic{lo}-{hi}", **gstats(g_true[q])})
-        # ---- S4 swaps on paired trees (subsample), years up to 1994 only
-        if y <= 1994:
+        # ---- S4 swaps on paired trees (subsample), years swap_y0..swap_y1 (default 1985-94)
+        if a.swap_y0 <= y <= a.swap_y1:
             Js = J.filter(pl.Series(key_hash(J) < sub))
             XA = Js.select("Type", "SLA", "Wooddens", *[c for c in feat if c not in ("Type", "SLA", "Wooddens")])
             XT = Js.select("Type", "SLA", "Wooddens",
@@ -192,7 +194,7 @@ def main():
         print(f"== onestep/chain lt15 {v}")
         print(Pc.filter((pl.col("hcls") == "lt15") & ~pl.col("what").str.contains("yic")).pivot(
             on="what", index="year", values=v).with_columns(pl.exclude("year").round(2)))
-    print("== swaps lt15 q50 / mean, 1985-94 pooled over years (mean of yearly values)")
+    print(f"== swaps lt15 q50 / mean, {a.swap_y0}-{a.swap_y1} pooled over years (mean of yearly values)")
     print(Ps.filter(pl.col("hcls") == "lt15").group_by("swap", maintain_order=True)
           .agg(pl.col("q50").mean().round(2), pl.col("mean").mean().round(2), pl.col("pneg").mean().round(4)))
     print("wrote", out + "_*.csv")
