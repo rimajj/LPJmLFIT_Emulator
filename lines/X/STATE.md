@@ -391,22 +391,20 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   Platt a = 1.47 fixes it to 0.93-1.08 per bin. (c) G-only chain, < 15 m median / mean: old +13.9 / +3.4 % ->
   gqs -3.7 / -2.6 % (1985-94), gate +-3 % FAILS narrowly; loop gain 2.1-2.5 in every arm => needs one-step error
   within ~1.3 %. (d) Cost 13x the old magnitude head (1 820 vs 140 us/tree single thread) — fidelity test only.
-  (e) COUPLED gqs probe submitted despite the failed gates (deviation + predictions P1-P4 pre-registered in TS.md):
-  job 2425236 (array 0-1) -> `runs/_probe2_g2hsgqs_mpi2` (+ dump); compare with `runs/_probe2_g2hs_mpi2` via
-  `explore_de_recruit_drift.py` (both arms, `--gcm MPI-ESM1-2-HR --seed 2`) and `explore_de_gdrift.py` S1.
-  **NEXT, in order:** (1) score the coupled run against P1-P4; (2) if P1/P2 hold: shrink the quantile model (fewer
-  levels, shallower, distil) and re-gate before anything at scale; (3) the >= 15 m hazard deficit; (4) the sign head's
-  remaining G_y-shaped error in 1995-04 (d0 +0.045, d2 -0.033: needs a better sign model, not a 2-parameter fix);
-  (5) sapling layer from the collected re-runs (the 25 cancelled blocks are the owner's call); (6) the eighth-session
-  items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch retrain, A7, all 10 chunks + seed 2,
-  STRUCT, cross-fit).
-* **2026-10-06 (thirteenth session, IN PROGRESS):** coupled gqs run 2425236 moved to the priority partition (started
-  15:53); scoring chained as job 2425244 (`_jobs/score_g2hsgqs_mpi2.jcf`: recruit_drift tag `_gqs_mpi2` for P2-P4,
-  gdrift tag `gqsrun_mpi2` for P1). Owner, verbatim: *"work on the other emulator methods while this is running"* =>
-  three background helpers, each pre-registers in `_status/` and reports in `_reports/`: **C0** quick cell-level LSTM
-  (`_status/C0.md`, `scripts/explore_de_rec_lstmstats.py`); **SD** STRUCT free-run drift diagnosis (`_status/SD.md`);
-  **SH11 + D1 + D2** padded patch tensors + neural set model + stage-1 training and its gate (`_status/SH11.md`, `D.md`).
-  If the session died: read those status files and `squeue -u $USER` before redoing anything.
+  (e) COUPLED gqs run despite the failed gates (deviation pre-registered; job 2425236, `runs/_probe2_g2hsgqs_mpi2`
+  + dump; scored `shared/eval/recruit_drift_ssp370_gqs_mpi2.csv`, `gpaired_gqs_vs_g2hs_mpi2.csv`): early small-tree G
+  drift 1985-94 +16.4 % -> -2.7 % (median), biomass/stem excess 1996-2025 +7.6..+13.4 % -> +2.3..+5.0 %, stems within
+  1 % to 2025 (was -4.9 %), recruit deficit halved; the ninth session's attribution holds. Remaining: (i) small-tree G
+  now drifts LOW from 1995 (-9.0 % median, -5.4 % mean in 1995-2004); (ii) 2016-25 deaths -7.7 % (separate big-tree
+  hazard item); (iii) 2036-44 stems +4.1 %, stand biomass +5.3 %. Cost 4.7-5.0 core-s/cell-year incl. the dump
+  (old 1.28): no longer cheaper than the original's ~12 by a margin worth having until shrunk.
+  **NEXT, in order:** (1) the second-decade LOW G drift: same tools as the tenth session (`explore_de_gdrift.py
+  --sampler gqs` S1/S3 on the new dump, `explore_de_gpit.py` by previous-G decile 1995-2004) — is it the magnitude
+  loop (chain -3.9 %) amplified, or the sign head's G_y-shaped error in 1995-04 (d0 +0.045, d2 -0.033)?; (2) the
+  2016-25 death deficit = the >= 15 m hazard item, and whether it explains the late biomass excess; (3) shrink the
+  quantile model (fewer levels / shallower / distil) and re-gate; (4) sapling layer (25 cancelled blocks: owner's
+  call); (5) the eighth-session items (cross-GCM grass weather transfer, g2hs as default, cell_stems_per_patch
+  retrain, A7, all 10 chunks + seed 2, STRUCT, cross-fit). Still one GCM, one seed, 200 cells, training weather.
 * NOT started: SH11 neural tensors (deferred until a neural track starts), tracks C/D, steppers A6/B5,
   calibrations, full-cellset (9065) builds (trans dev = 108 GB -> full ~1 TB: check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
