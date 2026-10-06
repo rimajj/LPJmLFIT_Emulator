@@ -17,6 +17,8 @@ STAGES  prep   --sign neg|pos         cache the training matrix (same rows / wei
         train  --sign S --level i     fit one quantile head (SLURM array: i = task id)
         submit                        prep (2 jobs) then the 22-task training array, chained
         sign                          Platt recalibration of the gsign head on its OOF -> sign_platt.json (arm "gqs")
+        signc                         the same PER COUNTER c_y = 0..4 -> sign_platt_c.json (arm "gqsc")
+        signc2                        per counter with a separate weather-booster scale -> sign_platt_c2.json ("gqsc2")
         calib                         conformal offsets on the validation fold -> calib.json (arm "gqc")
 API     GQ.load(split); gq.attach(stepper)  -> stepper._sample_G uses the quantile model (kappa = 0 refused)
         gq.pit(X, g, p) / gq.quantiles(X, sign) / gq.sample(X, p, u_s, u_r)
@@ -179,6 +181,147 @@ def sign_platt(split):
            "oof_logloss_after": ll(th[0], th[1]), "n": int(len(y))}
     json.dump(out, open(os.path.join(gdir(split), "sign_platt.json"), "w"), indent=1)
     print(json.dumps(out), flush=True)
+
+
+def _platt(s, y, w):
+    """weighted Newton fit of the label on a s + b -> (a, b)."""
+    th = np.array([1.0, 0.0])
+    for _ in range(50):
+        p = 1.0 / (1.0 + np.exp(-np.clip(th[0] * s + th[1], -40, 40)))
+        g = np.array([np.sum(w * (p - y) * s), np.sum(w * (p - y))])
+        h = w * p * (1 - p)
+        step = np.linalg.solve(np.array([[np.sum(h * s * s), np.sum(h * s)], [np.sum(h * s), np.sum(h)]]), g)
+        th = th - step
+        if np.abs(step).max() < 1e-10:
+            break
+    return float(th[0]), float(th[1])
+
+
+SIGNC_MAX = 4  # counter groups 0..SIGNC_MAX (the C's BM_INC_COUNTER_MAX - 1: a c_y = 5 tree is already dead)
+
+
+def sign_platt_c(split):
+    """PER-COUNTER Platt recalibration of the gsign head (arm "gqsc"; TS.md "per-counter sign recalibration"): the
+    pooled Platt of sign_platt corrects the pooled calibration only, while the head under-predicts the continuation
+    of a negative-growth streak (c_y >= 1) and over-predicts its start (c_y = 0). Same OOF rows; c_y joined from the
+    trans table on the full tree key -> gquant/sign_platt_c.json {"by_c": {k: {a, b}}, gates}."""
+    keys = ["member", "Year", "Cell", "Patch", "Type", "ID", "sla_i", "wd_i"]
+    oof = pl.read_parquet(os.path.join(Hh.mdir(split), "gsign_oof.parquet"))
+    parts = []
+    for mem in oof["member"].unique().to_list():
+        o = oof.filter(pl.col("member") == mem)
+        t = (pl.scan_parquet(os.path.join(tr.TRANS, "dev", mem, "cb=dev", "y*.parquet"))
+             .select(*[pl.col(k).cast(o.schema[k]) for k in keys[1:]], "c_y")
+             .join(o.lazy().select(keys[1:]), on=keys[1:], how="semi").collect())
+        parts.append(o.join(t, on=keys[1:], how="left"))
+    J = pl.concat(parts)
+    found = float(J["c_y"].is_not_null().mean())
+    extra = J.height - oof.height
+    print(f"join: {J.height} rows ({extra} extra from duplicate keys), c_y found {found:.5f}", flush=True)
+    J = J.filter(pl.col("c_y").is_not_null())
+    s = J["p1"].to_numpy().astype(np.float64)
+    y = J["_y"].to_numpy().astype(np.float64)
+    w = J["w_ip"].to_numpy().astype(np.float64)
+    w = w / w.mean()
+    c = np.minimum(np.rint(J["c_y"].cast(pl.Float64).to_numpy()), SIGNC_MAX).astype(int)
+    pc = json.load(open(os.path.join(gdir(split), "sign_platt.json")))
+
+    def sig(z):
+        return 1.0 / (1.0 + np.exp(-np.clip(z, -40, 40)))
+
+    def ll(z, q):
+        return float(np.average(np.logaddexp(0, z) - y[q] * z, weights=w[q]))
+
+    z_pool = pc["a"] * s + pc["b"]
+    by_c, z_new = {}, np.empty_like(s)
+    for k in range(SIGNC_MAX + 1):
+        q = c == k
+        a_, b_ = _platt(s[q], y[q], w[q])
+        z_new[q] = a_ * s[q] + b_
+        by_c[str(k)] = {"a": a_, "b": b_, "n": int(q.sum()), "obs": float(np.average(y[q], weights=w[q])),
+                        "pred_pooled": float(np.average(sig(z_pool[q]), weights=w[q])),
+                        "pred_after": float(np.average(sig(z_new[q]), weights=w[q])),
+                        "ll_pooled": ll(z_pool[q], q), "ll_after": ll(z_new[q], q)}
+        print(k, json.dumps({kk: round(v, 5) if isinstance(v, float) else v for kk, v in by_c[str(k)].items()}),
+              flush=True)
+    allq = np.ones(len(s), bool)
+    out = {"by_c": by_c, "join_found": found, "join_extra_rows": extra,
+           "ll_pooled": ll(z_pool, allq), "ll_after": ll(z_new, allq),
+           "C0_c1_under": by_c["1"]["pred_pooled"] < by_c["1"]["obs"],
+           "C0_c0_over": by_c["0"]["pred_pooled"] > by_c["0"]["obs"],
+           "C1_max_abs_after": max(abs(v["pred_after"] - v["obs"]) for v in by_c.values())}
+    json.dump(out, open(os.path.join(gdir(split), "sign_platt_c.json"), "w"), indent=1)
+    print(json.dumps({k: v for k, v in out.items() if k != "by_c"}), flush=True)
+
+
+def _logfit(Z, y, w):
+    """weighted Newton logistic regression of y on the columns of Z (no implicit intercept) -> coefficients."""
+    th = np.zeros(Z.shape[1])
+    th[:-1] = 1.0
+    for _ in range(60):
+        p = 1.0 / (1.0 + np.exp(-np.clip(Z @ th, -40, 40)))
+        g = Z.T @ (w * (p - y))
+        Hm = (Z * (w * p * (1 - p))[:, None]).T @ Z
+        step = np.linalg.solve(Hm, g)
+        th = th - step
+        if np.abs(step).max() < 1e-10:
+            break
+    return th
+
+
+def sign_platt_c2(split):
+    """PER-COUNTER Platt with a SEPARATE scale for the weather booster (arm "gqsc2"; TS.md "per-counter CLIMATE scale"):
+    logit = a0_k * B0 + a1_k * B1 + b_k, B0 = OOF p0 (kappa 0), B1 = p1 - p0, per c_y = 0..SIGNC_MAX. Gate G0: the
+    yearly (member-year) slope of predicted vs observed continuation at c_y = 1, for the pooled Platt, gqsc and this
+    fit -> gquant/sign_platt_c2.json."""
+    keys = ["Year", "Cell", "Patch", "Type", "ID", "sla_i", "wd_i"]
+    oof = pl.read_parquet(os.path.join(Hh.mdir(split), "gsign_oof.parquet"))
+    parts = []
+    for mem in oof["member"].unique().to_list():
+        o = oof.filter(pl.col("member") == mem)
+        t = (pl.scan_parquet(os.path.join(tr.TRANS, "dev", mem, "cb=dev", "y*.parquet"))
+             .select(*[pl.col(k).cast(o.schema[k]) for k in keys], "c_y")
+             .join(o.lazy().select(keys), on=keys, how="semi").collect())
+        parts.append(o.join(t, on=keys, how="left"))
+    J = pl.concat(parts).filter(pl.col("c_y").is_not_null())
+    s0 = J["p0"].to_numpy().astype(np.float64)
+    s1 = J["p1"].to_numpy().astype(np.float64)
+    y = J["_y"].to_numpy().astype(np.float64)
+    w = J["w_ip"].to_numpy().astype(np.float64)
+    w = w / w.mean()
+    c = np.minimum(np.rint(J["c_y"].cast(pl.Float64).to_numpy()), SIGNC_MAX).astype(int)
+    pc = json.load(open(os.path.join(gdir(split), "sign_platt.json")))
+    bc = json.load(open(os.path.join(gdir(split), "sign_platt_c.json")))["by_c"]
+
+    def sig(z):
+        return 1.0 / (1.0 + np.exp(-np.clip(z, -40, 40)))
+
+    z = {"pooled": pc["a"] * s1 + pc["b"],
+         "gqsc": np.array([bc[str(k)]["a"] for k in range(SIGNC_MAX + 1)])[c] * s1
+         + np.array([bc[str(k)]["b"] for k in range(SIGNC_MAX + 1)])[c],
+         "gqsc2": np.empty_like(s1)}
+    by_c = {}
+    for k in range(SIGNC_MAX + 1):
+        q = c == k
+        th = _logfit(np.column_stack([s0[q], s1[q] - s0[q], np.ones(q.sum())]), y[q], w[q])
+        z["gqsc2"][q] = th[0] * s0[q] + th[1] * (s1[q] - s0[q]) + th[2]
+        by_c[str(k)] = {"a0": float(th[0]), "a1": float(th[1]), "b": float(th[2]), "n": int(q.sum())}
+    out = {"by_c": by_c}
+    q1 = c == 1
+    for nm, zz in z.items():
+        f = pl.DataFrame({"member": J["member"].to_numpy()[q1], "Year": J["Year"].to_numpy()[q1],
+                          "w": w[q1], "y": y[q1], "p": sig(zz[q1])})
+        g = (f.group_by("member", "Year").agg(n=pl.len(), obs=(pl.col("y") * pl.col("w")).sum() / pl.col("w").sum(),
+                                              pred=(pl.col("p") * pl.col("w")).sum() / pl.col("w").sum())
+             .filter(pl.col("n") >= 200))
+        slope = g.select(pl.cov("obs", "pred") / pl.col("obs").var()).item()
+        corr = g.select(pl.corr("obs", "pred")).item()
+        ll = float(np.average(np.logaddexp(0, zz) - y * zz, weights=w))
+        out[nm] = {"c1_year_slope": slope, "c1_year_corr": corr, "c1_groups": g.height, "ll": ll}
+        print(nm, json.dumps(out[nm]), flush=True)
+    for k, v in by_c.items():
+        print(k, json.dumps(v), f"a1/a0 {v['a1'] / v['a0']:.3f}", flush=True)
+    json.dump(out, open(os.path.join(gdir(split), "sign_platt_c2.json"), "w"), indent=1)
 
 
 def bench(split, n=200_000, threads=1):
@@ -616,14 +759,34 @@ class GQ:
         if st.k_g == 0.0:
             raise ValueError("the quantile G sampler has no climate-blind (kappa = 0) variant")
         gq = self
-        if sign_cal:
-            pc = json.load(open(os.path.join(gdir(st.split), "sign_platt.json")))
-            a_, b_ = pc["a"], pc["b"]
-        else:
-            a_, b_ = 1.0, st.cal["logit_off_g"]
+        if sign_cal == "c2":  # per-counter Platt with a separate weather-booster scale (arm "gqsc2")
+            bc2 = json.load(open(os.path.join(gdir(st.split), "sign_platt_c2.json")))["by_c"]
+            a0c = np.array([bc2[str(k)]["a0"] for k in range(SIGNC_MAX + 1)])
+            a1c = np.array([bc2[str(k)]["a1"] for k in range(SIGNC_MAX + 1)])
+            b2c = np.array([bc2[str(k)]["b"] for k in range(SIGNC_MAX + 1)])
 
-        def _p_neg(X):
-            return ts.sigmoid(a_ * st.H.raw("gsign", X, st.k_g) + b_)
+            def _p_neg(X):
+                k = np.clip(np.rint(X["c_y"].cast(pl.Float64).to_numpy()), 0, SIGNC_MAX).astype(int)
+                s0 = st.H.raw("gsign", X, 0.0)
+                s1 = st.H.raw("gsign", X, st.k_g) - s0
+                return ts.sigmoid(a0c[k] * s0 + a1c[k] * s1 + b2c[k])
+        elif sign_cal == "c":  # per-counter Platt (arm "gqsc", sign_platt_c.json)
+            bc = json.load(open(os.path.join(gdir(st.split), "sign_platt_c.json")))["by_c"]
+            ac = np.array([bc[str(k)]["a"] for k in range(SIGNC_MAX + 1)])
+            bcv = np.array([bc[str(k)]["b"] for k in range(SIGNC_MAX + 1)])
+
+            def _p_neg(X):
+                k = np.clip(np.rint(X["c_y"].cast(pl.Float64).to_numpy()), 0, SIGNC_MAX).astype(int)
+                return ts.sigmoid(ac[k] * st.H.raw("gsign", X, st.k_g) + bcv[k])
+        else:
+            if sign_cal:
+                pc = json.load(open(os.path.join(gdir(st.split), "sign_platt.json")))
+                a_, b_ = pc["a"], pc["b"]
+            else:
+                a_, b_ = 1.0, st.cal["logit_off_g"]
+
+            def _p_neg(X):
+                return ts.sigmoid(a_ * st.H.raw("gsign", X, st.k_g) + b_)
 
         def _sample_G(X, u_s, u_r):
             p = _p_neg(X)
@@ -735,9 +898,12 @@ class TabALG2HSGQ(tg2.TabALG2HS):
     on), gq_conformal (validation-fold offsets, arm "gqc"; default off). _sample_G is a METHOD (not an instance
     attribute) so a probe mixin placed before this class in the MRO still wraps it."""
 
-    def __init__(self, gq_sign_cal: bool = True, gq_conformal: bool = False, **kw):
+    def __init__(self, gq_sign_cal: bool | str = True, gq_conformal: bool = False, **kw):
         super().__init__(**kw)
-        self.gq_sign_cal, self.gq_conformal = bool(gq_sign_cal), bool(gq_conformal)
+        # "c" = per-counter Platt (arm "gqsc"); env GQ_SIGN_CAL=c selects it without a new stepper class
+        gq_sign_cal = os.environ.get("GQ_SIGN_CAL", gq_sign_cal)
+        self.gq_sign_cal = gq_sign_cal if gq_sign_cal in ("c", "c2") else bool(gq_sign_cal)
+        self.gq_conformal = bool(gq_conformal)
 
     def init(self, state, ctx):
         super().init(state, ctx)
@@ -755,8 +921,9 @@ class TabALG2HSGQProbe(pr2._DumpMixin, TabALG2HSGQ):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit", "shrink", "rprep", "rtrain",
-                                      "rcompare", "rsubmit", "dprep", "dtrain", "dcompare", "dsubmit"])
+    ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "signc", "signc2", "submit", "shrink",
+                                      "rprep", "rtrain", "rcompare", "rsubmit", "dprep", "dtrain", "dcompare",
+                                      "dsubmit"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -769,6 +936,10 @@ def main():
         calib(a.split)
     elif a.stage == "sign":
         sign_platt(a.split)
+    elif a.stage == "signc":
+        sign_platt_c(a.split)
+    elif a.stage == "signc2":
+        sign_platt_c2(a.split)
     elif a.stage == "bench":
         bench(a.split)
     elif a.stage == "shrink":
