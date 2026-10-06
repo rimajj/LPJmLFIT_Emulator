@@ -770,6 +770,40 @@ class GQ:
                 s0 = st.H.raw("gsign", X, 0.0)
                 s1 = st.H.raw("gsign", X, st.k_g) - s0
                 return ts.sigmoid(a0c[k] * s0 + a1c[k] * s1 + b2c[k])
+        elif sign_cal in ("k", "kb"):  # gqsc + a streak-continuation residual booster on c_y >= 1 (explore_de_contin)
+            import lightgbm as lgb
+
+            bc = json.load(open(os.path.join(gdir(st.split), "sign_platt_c.json")))["by_c"]
+            ac = np.array([bc[str(k)]["a"] for k in range(SIGNC_MAX + 1)])
+            bcv = np.array([bc[str(k)]["b"] for k in range(SIGNC_MAX + 1)])
+            arm = {"k": "W1", "kb": "WB"}[sign_cal]
+            km = json.load(open(os.path.join(gdir(st.split), f"contin_{arm}.json")))
+            kbst = lgb.Booster(model_file=os.path.join(gdir(st.split), f"contin_{arm}.txt"))
+
+            def _p_neg(X):
+                k = np.clip(np.rint(X["c_y"].cast(pl.Float64).to_numpy()), 0, SIGNC_MAX).astype(int)
+                z = ac[k] * st.H.raw("gsign", X, st.k_g) + bcv[k]
+                q = k >= 1
+                if q.any():
+                    if "cs_start" in km["features"] and "cs_start" not in X.columns:
+                        # the cell-year covariates must count PRINTED LIVING trees (the rollout frame carries
+                        # hidden and dead rows); only the one-step scorer, which attaches them, supports WB yet
+                        raise NotImplementedError("arm WB needs cs_* columns attached by the caller")
+                    z[q] += kbst.predict(F.to_matrix(X.filter(pl.Series(q)), km["features"]), raw_score=True)
+                return ts.sigmoid(z)
+        elif sign_cal == "y":  # B0 + the year-held-out-stopped B1 refit + its per-counter Platt (explore_de_gsign_yb)
+            import lightgbm as lgb
+
+            yb = json.load(open(os.path.join(gdir(st.split), "gsign_yb.json")))
+            ay = np.array([yb["by_c"][str(k)]["a"] for k in range(SIGNC_MAX + 1)])
+            by_ = np.array([yb["by_c"][str(k)]["b"] for k in range(SIGNC_MAX + 1)])
+            b1y = lgb.Booster(model_file=os.path.join(gdir(st.split), "gsign_yb_B1.txt"))
+
+            def _p_neg(X):
+                k = np.clip(np.rint(X["c_y"].cast(pl.Float64).to_numpy()), 0, SIGNC_MAX).astype(int)
+                s = st.H.raw("gsign", X, 0.0) + st.k_g * b1y.predict(F.to_matrix(X, yb["features_B1"]),
+                                                                       raw_score=True)
+                return ts.sigmoid(ay[k] * s + by_[k])
         elif sign_cal == "c":  # per-counter Platt (arm "gqsc", sign_platt_c.json)
             bc = json.load(open(os.path.join(gdir(st.split), "sign_platt_c.json")))["by_c"]
             ac = np.array([bc[str(k)]["a"] for k in range(SIGNC_MAX + 1)])
@@ -902,7 +936,7 @@ class TabALG2HSGQ(tg2.TabALG2HS):
         super().__init__(**kw)
         # "c" = per-counter Platt (arm "gqsc"); env GQ_SIGN_CAL=c selects it without a new stepper class
         gq_sign_cal = os.environ.get("GQ_SIGN_CAL", gq_sign_cal)
-        self.gq_sign_cal = gq_sign_cal if gq_sign_cal in ("c", "c2") else bool(gq_sign_cal)
+        self.gq_sign_cal = gq_sign_cal if gq_sign_cal in ("c", "c2", "k", "kb", "y") else bool(gq_sign_cal)
         self.gq_conformal = bool(gq_conformal)
 
     def init(self, state, ctx):
