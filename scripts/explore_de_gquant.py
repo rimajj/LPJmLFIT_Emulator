@@ -363,6 +363,136 @@ def rsubmit(split):
     print("rq jobs: prep", pj, "train", tj, "compare", cj, flush=True)
 
 
+# =============================================================================================== distilled heads ("dq")
+DTAG = "_dist"
+DMAX = int(os.environ.get("DQ_MAX_ROWS", "3000000"))
+DPARAMS = dict(objective="regression", metric="l2", learning_rate=0.1, num_leaves=31, min_data_in_leaf=500,
+               feature_fraction=0.8, bagging_fraction=0.7, bagging_freq=1, lambda_l2=1.0, max_bin=127, verbose=-1,
+               seed=13)
+GAP_EPS = 1e-3
+
+
+def dtarget(Q: np.ndarray, j: int) -> np.ndarray:
+    """student head j: 0 = the teacher's median (level 5); j >= 1 = log(gap + eps) between sorted levels j-1 and j."""
+    return Q[:, 5] if j == 0 else np.log(Q[:, j] - Q[:, j - 1] + GAP_EPS)
+
+
+def dprep(split, sign):
+    """teacher (gq, sorted) quantiles on gq's training rows (<= DMAX) and on the early-stopping cells of the
+    validation fold -> gquant_dist/"""
+    d0, dr, d = gdir(split, ""), gdir(split, RTAG), gdir(split, DTAG)
+    va = np.load(os.path.join(d0, f"{sign}_va.npy"))
+    tr_idx = np.flatnonzero(~va)
+    if tr_idx.size > DMAX:
+        tr_idx = np.sort(np.random.default_rng(11).choice(tr_idx, DMAX, replace=False))
+    vidx = np.load(os.path.join(dr, f"{sign}_vidx.npy"))
+    cs = cell_slice(np.load(os.path.join(dr, f"{sign}_cell.npy"))[vidx])
+    es_idx = vidx[cs == 1]
+    g = GQ(split, tag="")
+    Xm = np.load(os.path.join(d0, f"{sign}_X.npy"), mmap_mode="r")
+    for nm, idx in (("t", tr_idx), ("e", es_idx)):
+        t0 = time.time()
+        Q = np.vstack([g.quantiles_m(np.asarray(Xm[idx[i:i + 500_000]], dtype=np.float64), sign)
+                       for i in range(0, idx.size, 500_000)])
+        np.save(os.path.join(d, f"{sign}_{nm}idx.npy"), idx)
+        np.save(os.path.join(d, f"{sign}_Q{nm}.npy"), Q.astype(np.float32))
+        print(f"dprep {sign} {nm}: {idx.size} rows, teacher {time.time() - t0:.0f} s", flush=True)
+
+
+def dtrain(split, sign, j):
+    import lightgbm as lgb
+
+    d0, d = gdir(split, ""), gdir(split, DTAG)
+    feats = json.load(open(os.path.join(d0, f"{sign}_prep.json")))["features"]
+    Xm = np.load(os.path.join(d0, f"{sign}_X.npy"), mmap_mode="r")
+    w = np.load(os.path.join(d0, f"{sign}_w.npy")).astype(np.float64)
+    ti, ei = np.load(os.path.join(d, f"{sign}_tidx.npy")), np.load(os.path.join(d, f"{sign}_eidx.npy"))
+    yt = dtarget(np.load(os.path.join(d, f"{sign}_Qt.npy")).astype(np.float64), j)
+    ye = dtarget(np.load(os.path.join(d, f"{sign}_Qe.npy")).astype(np.float64), j)
+    cat = [i for i, c in enumerate(feats) if c in F.CAT]
+    t0 = time.time()
+    dt = lgb.Dataset(np.asarray(Xm[ti]), yt, weight=w[ti], feature_name=feats, categorical_feature=cat,
+                     free_raw_data=True)
+    dv = lgb.Dataset(np.asarray(Xm[ei]), ye, weight=w[ei], reference=dt)
+    b = lgb.train(dict(DPARAMS, num_threads=NTHREADS), dt, num_boost_round=1000, valid_sets=[dv], valid_names=["es"],
+                  callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(100)])
+    nm = f"{sign}_d{j:02d}"
+    b.save_model(os.path.join(d, nm + ".txt"), num_iteration=b.best_iteration)
+    pe = b.predict(np.asarray(Xm[ei]), num_iteration=b.best_iteration)
+    meta = {"sign": sign, "head": j, "init": "distil", "best_iter": int(b.best_iteration),
+            "es_mae": float(np.average(np.abs(pe - ye), weights=w[ei])), "n_train": int(ti.size),
+            "t_s": round(time.time() - t0), "features": feats}
+    json.dump(meta, open(os.path.join(d, nm + ".json"), "w"), indent=1)
+    print(json.dumps({k: v for k, v in meta.items() if k != "features"}), flush=True)
+
+
+def dcompare(split, ntime=20_000):
+    """dq vs gq on the held-out cells (slice 0) of the validation fold, against the TRUE y -> gquant_dist/"""
+    dr, d0 = gdir(split, RTAG), gdir(split, "")
+    gq, dq = GQ(split, tag=""), DQ(split)
+    qa = np.asarray(QLEV)
+    res = {}
+    for s in ("neg", "pos"):
+        idx = np.load(os.path.join(dr, f"{s}_vidx.npy"))
+        idx = idx[cell_slice(np.load(os.path.join(dr, f"{s}_cell.npy"))[idx]) == 0]
+        X = np.asarray(np.load(os.path.join(d0, f"{s}_X.npy"), mmap_mode="r")[idx], dtype=np.float64)
+        y = np.load(os.path.join(d0, f"{s}_y.npy"))[idx].astype(np.float64)
+        w = np.load(os.path.join(d0, f"{s}_w.npy"))[idx].astype(np.float64)
+        Qs = {}
+        for lab, g in (("gq", gq), ("dq", dq)):
+            Q = Qs[lab] = g.quantiles_m(X, s)
+            pin = float(np.mean([np.average(pinball(Q[:, i], y, a), weights=w) for i, a in enumerate(qa)]))
+            cov = [float(np.average(y <= Q[:, i], weights=w)) for i in range(len(qa))]
+            g.nthreads = 1
+            g.quantiles_m(X[:200], s)
+            t1 = time.perf_counter()
+            g.quantiles_m(X[:ntime], s)
+            us = (time.perf_counter() - t1) / min(ntime, len(y)) * 1e6
+            g.nthreads = NTHREADS
+            res[f"{s}_{lab}"] = {"pinball": pin, "coverage": cov, "worst_cov_err": float(np.max(np.abs(
+                np.asarray(cov) - qa))), "us_per_tree_1thr": us, "n": int(len(y))}
+            print(lab, s, json.dumps({k: v for k, v in res[f"{s}_{lab}"].items() if k != "coverage"}), flush=True)
+        res[f"{s}_student_teacher_mae"] = np.average(np.abs(Qs["dq"] - Qs["gq"]), axis=0, weights=w).tolist()
+        print("student-teacher MAE by level", s, np.round(res[f"{s}_student_teacher_mae"], 4).tolist(), flush=True)
+    v = {s: {"pin_ratio": res[f"{s}_dq"]["pinball"] / res[f"{s}_gq"]["pinball"],
+             "cov_excess": res[f"{s}_dq"]["worst_cov_err"] - res[f"{s}_gq"]["worst_cov_err"],
+             "cost_ratio": res[f"{s}_dq"]["us_per_tree_1thr"] / res[f"{s}_gq"]["us_per_tree_1thr"]}
+         for s in ("neg", "pos")}
+    ok = all(x["pin_ratio"] <= 1.005 and x["cov_excess"] <= 0.005 and x["cost_ratio"] <= 0.25 for x in v.values())
+    json.dump({"rows": res, "verdict": v, "pass": ok}, open(os.path.join(gdir(split, DTAG), "dq_compare.json"), "w"),
+              indent=1)
+    print("VERDICT", json.dumps(v), "PASS" if ok else "FAIL", flush=True)
+
+
+def dsubmit(split):
+    logs = os.path.join(REPO, "logs")
+    jd = os.path.join(F.TAB, "_jobs")
+    me = os.path.abspath(__file__)
+    head = ("#!/bin/bash\n#SBATCH --account=waldspektrum --partition=priority --qos=priority\n"
+            "#SBATCH --cpus-per-task={c} --time={h:02d}:00:00\n#SBATCH --job-name={n} --output={o}\n{x}"
+            "set -eu\nexport POLARS_MAX_THREADS={c} OMP_NUM_THREADS={c} SLURM_CPUS_PER_TASK={c}\n")
+    pj = []
+    for s in ("neg", "pos"):
+        js = os.path.join(jd, f"dq_prep_{s}.jcf")
+        open(js, "w").write(head.format(c=32, h=2, n=f"X-de-dq-prep-{s}", o=f"{logs}/X-de-dq-prep-{s}.%j.out", x="")
+                            + f"{F.PY} -u {me} dprep --split {split} --sign {s}\necho '=== JOB DONE ==='\n")
+        pj.append(os.popen(f"sbatch --parsable {js}").read().strip())
+    tj = []
+    for k, s in enumerate(("neg", "pos")):
+        js = os.path.join(jd, f"dq_train_{s}.jcf")
+        open(js, "w").write(
+            head.format(c=8, h=4, n=f"X-de-dq-{s}", o=f"{logs}/X-de-dq-{s}.%A_%a.out",
+                        x=f"#SBATCH --array=0-{len(QLEV) - 1} --dependency=afterok:{pj[k]}\n")
+            + f"{F.PY} -u {me} dtrain --split {split} --sign {s} --level $SLURM_ARRAY_TASK_ID\n"
+            + "echo '=== JOB DONE ==='\n")
+        tj.append(os.popen(f"sbatch --parsable {js}").read().strip())
+    js = os.path.join(jd, "dq_compare.jcf")
+    open(js, "w").write(head.format(c=16, h=2, n="X-de-dq-cmp", o=f"{logs}/X-de-dq-cmp.%j.out",
+                                    x=f"#SBATCH --dependency=afterok:{tj[0]}:{tj[1]}\n")
+                        + f"{F.PY} -u {me} dcompare --split {split}\necho '=== JOB DONE ==='\n")
+    print("dq jobs: prep", pj, "train", tj, "compare", os.popen(f"sbatch --parsable {js}").read().strip(), flush=True)
+
+
 # ================================================================================================ the sampler
 class GQ:
     def __init__(self, split="DEV-A", conformal=False, niter=None, levels=None, tag=None):
@@ -508,6 +638,36 @@ class GQ:
         return st
 
 
+class DQ:
+    """the distilled student: same sampling interface as GQ (inv / cdf / sample / pit come from GQ)."""
+
+    def __init__(self, split="DEV-A"):
+        import lightgbm as lgb
+
+        d = gdir(split, DTAG)
+        self.b = {s: [lgb.Booster(model_file=os.path.join(d, f"{s}_d{j:02d}.txt")) for j in range(len(QLEV))]
+                  for s in ("neg", "pos")}
+        self.feats = json.load(open(os.path.join(d, "pos_d00.json")))["features"]
+        self.lv = np.asarray(QLEV)
+        self.nthreads = NTHREADS
+
+    inv, cdf, sample, pit, sampler, attach = GQ.inv, GQ.cdf, GQ.sample, GQ.pit, GQ.sampler, GQ.attach
+
+    def quantiles(self, X: pl.DataFrame, sign: str) -> np.ndarray:
+        return self.quantiles_m(F.to_matrix(X, self.feats), sign)
+
+    def quantiles_m(self, M: np.ndarray, sign: str) -> np.ndarray:
+        P = [b.predict(M, num_threads=self.nthreads) for b in self.b[sign]]
+        gap = [np.maximum(np.exp(p) - GAP_EPS, 0.0) for p in P[1:]]  # gap[i] between levels i and i+1
+        Q = np.empty((M.shape[0], len(QLEV)))
+        Q[:, 5] = P[0]
+        for i in range(6, len(QLEV)):
+            Q[:, i] = Q[:, i - 1] + gap[i - 1]
+        for i in range(4, -1, -1):
+            Q[:, i] = Q[:, i + 1] - gap[i]
+        return Q
+
+
 _GQ: dict = {}
 
 
@@ -596,7 +756,7 @@ class TabALG2HSGQProbe(pr2._DumpMixin, TabALG2HSGQ):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["prep", "train", "calib", "bench", "sign", "submit", "shrink", "rprep", "rtrain",
-                                      "rcompare", "rsubmit"])
+                                      "rcompare", "rsubmit", "dprep", "dtrain", "dcompare", "dsubmit"])
     ap.add_argument("--split", default="DEV-A")
     ap.add_argument("--sign", choices=["neg", "pos"])
     ap.add_argument("--level", type=int)
@@ -621,6 +781,14 @@ def main():
         rcompare(a.split)
     elif a.stage == "rsubmit":
         rsubmit(a.split)
+    elif a.stage == "dprep":
+        dprep(a.split, a.sign)
+    elif a.stage == "dtrain":
+        dtrain(a.split, a.sign, a.level)
+    elif a.stage == "dcompare":
+        dcompare(a.split)
+    elif a.stage == "dsubmit":
+        dsubmit(a.split)
     else:
         submit(a.split)
 
