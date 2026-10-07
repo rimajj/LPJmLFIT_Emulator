@@ -635,6 +635,25 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   it is what the margin route for the magnitude needs; score it with `explore_de_gmargin.py` as a third arm against
   RM / PM; (3) then the coupled gqm / gqmc runs only once (1) moves the >= 10 m excess under +0.008; (4) the grass2
   leaf-area transfer across GCMs (eighteenth session); (5)-(9) as in the sixteenth session's list.
+* **2026-10-07 (twenty-second session): the margin model's tall-tree bias on the other climate model is a GCM-SPECIFIC
+  weather -> growth mapping; that model's own historical run removes about half of it** [VERIFIED; every number +
+  pre-registration in `_status/TS.md` from "Pre-registration T" on; `scripts/explore_de_mstransfer.py` (level swap) and
+  `... anom` (by warming bin), arm `MSx` in `explore_de_nppmodel2.py` (`TRAIN_X`: MS + ACCESS Historical s1; `zstats MSx`);
+  tables `shared/eval/mstransfer_{zstats,levels,yearly,anom}.csv`, `nppmodel2_ms_zstats_MSx.csv`]. (a) T: every weather
+  ANOMALY input is already GCM-common; replacing ACCESS's 15 climatology levels + 2 absolute temperatures by MPI's for the
+  same cell closes only 5-8 % of the futures' 15-25 m shift (28 % on ACCESS Hist) — falsifier fired. (b) T3: at equal
+  warming (+0.5..+1.5 K) ACCESS is shifted (+0.05..+0.67) where MPI ssp245 is not (-0.01..+0.06), and on rows with every
+  anomaly inside the training range the shift is still +0.14..+0.43 => GCM-specific response, not only extrapolation
+  (though ACCESS's faster-rising 20-yr means leave the range on 25-48 % of big-tree rows). (c) T4: MSx (+ ACCESS Hist in
+  training) halves it: 15-25 m +0.17..+0.38 -> +0.09..+0.25, >= 10 m bad-year excess +0.023..+0.025 -> +0.013..+0.016
+  (MPI ssp245 +0.013 -> +0.010); ssp245 worst, not the warmest. Prediction failed, falsifier not fired.
+  **NEXT, in order:** (1) the realistic multi-GCM setting: arm MSb trained on BOTH GCMs' Historical/ssp126/ssp370 (s1),
+  tested on the bracketed held-out scenario ssp245 of both GCMs (+ s2 members if loadable) — add it to `TRAIN_X`, give
+  `zstats`/`score_calib` a test-member list; pre-register >= 10 m excess <= +0.010 and 15-25 m r/s <= +0.10 on both, and
+  the yearly corr kept; if it passes, rerun the coupled gqm runs with it (`_jobs/probe2_g2hsgqm_*.jcf` + scorers, new
+  XDE_RUNS dir); (2) the productivity-per-leaf-area model r_y1 (twenty-first session's item 2), scored as a third arm
+  in `explore_de_gmargin.py`; (3) the grass2 leaf-area transfer across GCMs (eighteenth session) — same family as (a)-(c),
+  so test the "train on both GCMs' history" fix there first; (4)-(8) as in the sixteenth session's list.
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
