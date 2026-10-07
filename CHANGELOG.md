@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X (Germany emulator exploration): `scripts/explore_de_nppmodel2.py` (per-tree loss + growth-margin models for the
+  yearly negative-growth share, with a shared-residual check) and `scripts/explore_de_access_drift.py` (grass
+  counterfactual steppers attributing the coupled stand drift on the second climate model).
+
+### Added
+
 - Line X (Germany emulator prototype): `scripts/explore_de_contin.py` (what carries the year-to-year continuation of
   a negative-growth streak: cell-grouped vs YEAR-grouped cross-fits of streak-breadth and streak x weather terms) and
   `scripts/explore_de_gsign_yb.py` (refit of the sign head's weather booster with early stopping on held-out years);
