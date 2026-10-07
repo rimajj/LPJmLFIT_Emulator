@@ -18,6 +18,8 @@ Usage:  python explore_de_nppmodel2.py fit W|L|M|MN   -> tab/models/DEV-A/npp2/<
         python explore_de_nppmodel2.py score          -> shared/eval/nppmodel2_yearly.csv
         python explore_de_nppmodel2.py fit MS / score_ms -> the stepper-feasible margin model (no npp / transp /
                                                          wscal_mean input; thr missing for first-printed trees)
+        python explore_de_nppmodel2.py oof MS / calib MS / score_calib -> its size-wise probit recalibration (arm
+                                                         "MS+c"; TS.md "Pre-registration K")
 """
 
 from __future__ import annotations
@@ -78,9 +80,8 @@ def arm_spec(arm: str, wcols: list[str]) -> tuple[list[str], str]:
             "MS": ([c for c in nm.TREE if c not in MS_DROP] + wcols + ["thr"], "m")}[arm]
 
 
-def stage_fit(arm: str):
-    import lightgbm as lgb
-
+def _train_table(arm: str):
+    """the training rows, design matrix, target and year-group of an arm, exactly as stage_fit builds them"""
     t0 = time.time()
     W, wcols = weather()
     TR = pl.concat([nm.load(m, frac=nm.FRAC) for m in nm.TRAIN], how="vertical_relaxed").join(W, on=JOIN, how="left")
@@ -96,7 +97,14 @@ def stage_fit(arm: str):
     print(f"arm {arm}: train rows {TR.height}, {len(cols)} features, target {tgt} ({time.time() - t0:.0f}s)",
           flush=True)
     Xt = TR.select(cols).to_numpy().astype(np.float32)
-    y, g = TR[tgt].to_numpy(), TR["grp"].to_numpy()
+    return TR, cols, tgt, Xt, TR[tgt].to_numpy(), TR["grp"].to_numpy()
+
+
+def _fold_oof(Xt: np.ndarray, y: np.ndarray, g: np.ndarray) -> tuple[np.ndarray, list[int]]:
+    """year-grouped folds: fold k is held out, fold k+1 early-stops, the rest trains"""
+    import lightgbm as lgb
+
+    t0 = time.time()
     oof, best = np.full(len(y), np.nan), []
     for k in range(gi.NGRP):
         te, es = g == k, g == (k + 1) % gi.NGRP
@@ -107,6 +115,15 @@ def stage_fit(arm: str):
         best.append(b.best_iteration)
         oof[te] = b.predict(Xt[te], num_iteration=b.best_iteration)
         print(f"  fold {k}: best {b.best_iteration} ({time.time() - t0:.0f}s)", flush=True)
+    return oof, best
+
+
+def stage_fit(arm: str):
+    import lightgbm as lgb
+
+    t0 = time.time()
+    TR, cols, tgt, Xt, y, g = _train_table(arm)
+    oof, best = _fold_oof(Xt, y, g)
     res = y - oof
     sd = float(np.std(res))
     print(f"arm {arm}: out-of-year residual sd {sd:.4f} (target sd {y.std():.4f}, R2 {1 - res.var() / y.var():.3f})",
@@ -131,17 +148,102 @@ def stage_fit(arm: str):
     print(f"saved {arm} ({time.time() - t0:.0f}s)")
 
 
+def stage_oof(arm: str = "MS"):
+    """K: the arm's out-of-year mu (stage_fit's folds, same rows / params / seed) and a CROSS-FITTED per-tree spread s
+    (fold k's spread booster never saw fold k's residuals) -> npp2/<arm>.oof.parquet, the calibration's only input."""
+    import lightgbm as lgb
+
+    t0 = time.time()
+    TR, cols, tgt, Xt, y, g = _train_table(arm)
+    oof, _ = _fold_oof(Xt, y, g)
+    res = y - oof
+    z = np.log(res ** 2 + 1e-4 * res.var())
+    zs = np.full(len(y), np.nan)
+    for k in range(gi.NGRP):
+        te = g == k
+        bs = lgb.train(PS, lgb.Dataset(Xt[~te], z[~te], categorical_feature=[0]), num_boost_round=NSD)
+        zs[te] = bs.predict(Xt[te])
+    c = float(np.log(np.mean(res ** 2 / np.exp(zs))))
+    s = np.exp(0.5 * (zs + c))
+    out = TR.select("traj", "Year", "Height", "c_y", thr_ok=pl.col("thr").is_not_null()).with_columns(
+        m=pl.Series(y), mu=pl.Series(oof), s=pl.Series(s), grp=pl.Series(g))
+    path = os.path.join(MDIR, f"{arm}.oof.parquet")
+    out.write_parquet(path)
+    print(f"arm {arm}: OOF R2 {1 - res.var() / y.var():.3f}, cross-fitted spread c {c:.3f}; wrote {path} "
+          f"({time.time() - t0:.0f}s)", flush=True)
+
+
+HBINS = (10.0, 15.0, 20.0, 25.0)  # height classes (m) of the size-wise recalibration: < 10, 10-15, ..., >= 25
+
+
+def hclass(h: np.ndarray) -> np.ndarray:
+    return np.searchsorted(HBINS, np.asarray(h, np.float64), side="right")
+
+
+def stage_calib(arm: str = "MS"):
+    """K: probit recalibration per height class on the training OOF rows, P(m < 0) = Phi(alpha_h + beta_h a),
+    a = -mu/s -> npp2/<arm>.calib.json. Prints the OOF bias before / after by class, counter and period (K0)."""
+    from scipy.optimize import minimize
+
+    D = pl.read_parquet(os.path.join(MDIR, f"{arm}.oof.parquet"))
+    a = (-D["mu"] / D["s"]).to_numpy()
+    yv = (D["m"] < 0).to_numpy().astype(np.float64)
+    hc = hclass(D["Height"].to_numpy())
+    alpha, beta = [], []
+    for h in range(len(HBINS) + 1):
+        i = hc == h
+        ai, yi = a[i], yv[i]
+
+        def nll(p, ai=ai, yi=yi):
+            e = p[0] + p[1] * ai
+            return -np.sum(yi * norm.logcdf(e) + (1 - yi) * norm.logcdf(-e)) / len(ai)
+
+        r = minimize(nll, np.array([0.0, 1.0]), method="Nelder-Mead", options=dict(xatol=1e-6, fatol=1e-10))
+        assert r.success and r.x[1] > 0, r
+        alpha.append(float(r.x[0]))
+        beta.append(float(r.x[1]))
+        print(f"class {h}: n {int(i.sum())}, true {yi.mean():.4f}, raw {norm.cdf(ai).mean():.4f}, calibrated "
+              f"{norm.cdf(r.x[0] + r.x[1] * ai).mean():.4f}; alpha {r.x[0]:+.4f} beta {r.x[1]:.4f}", flush=True)
+    json.dump(dict(hbins=list(HBINS), alpha=alpha, beta=beta, n=int(D.height)),
+              open(os.path.join(MDIR, f"{arm}.calib.json"), "w"), indent=1)
+    pc = norm.cdf(np.asarray(alpha)[hc] + np.asarray(beta)[hc] * a)
+    T = D.select("Year", "Height", "c_y", "thr_ok").with_columns(
+        true=pl.Series(yv), p_raw=pl.Series(norm.cdf(a)), p_cal=pl.Series(pc),
+        hcls=pl.when(pl.col("Height") >= 10).then(pl.lit("ge10")).otherwise(pl.lit("lt10")),
+        cpos=pl.col("c_y") >= 1, per=pl.when(pl.col("Year") <= 2013).then(pl.lit("<=2013")).otherwise(pl.lit(">=2014")))
+    for keys in (["hcls"], ["per", "hcls"], ["hcls", "cpos"], ["hcls", "thr_ok"]):
+        G = T.group_by(keys).agg(pl.col("true", "p_raw", "p_cal").mean(), n=pl.len()).with_columns(
+            bias_raw=pl.col("p_raw") - pl.col("true"), bias_cal=pl.col("p_cal") - pl.col("true")).sort(keys)
+        print("K0 OOF (training members)", keys)
+        print(G.with_columns(pl.col(pl.Float64).round(4)), flush=True)
+
+
 class Arm:
+    """a fitted margin / NPP arm; "<arm>+c" additionally applies the size-wise probit recalibration <arm>.calib.json
+    as mu' = mu - (alpha_h / beta_h) s, s' = s / beta_h  (so Phi(-mu'/s') = Phi(alpha_h + beta_h (-mu/s)))"""
+
     def __init__(self, arm: str):
         import lightgbm as lgb
 
-        self.meta = json.load(open(os.path.join(MDIR, f"{arm}.json")))
-        self.mu = lgb.Booster(model_file=os.path.join(MDIR, f"{arm}.mu.txt"))
-        self.sdb = lgb.Booster(model_file=os.path.join(MDIR, f"{arm}.sd.txt"))
+        base, _, opt = arm.partition("+")
+        self.meta = json.load(open(os.path.join(MDIR, f"{base}.json")))
+        self.mu = lgb.Booster(model_file=os.path.join(MDIR, f"{base}.mu.txt"))
+        self.sdb = lgb.Booster(model_file=os.path.join(MDIR, f"{base}.sd.txt"))
         self.cols = self.meta["cols"]
+        self.cal = None
+        if opt == "c":
+            self.cal = json.load(open(os.path.join(MDIR, f"{base}.calib.json")))
+            self.ih = self.cols.index("Height")
+        elif opt:
+            raise ValueError(arm)
 
     def pred(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        return self.mu.predict(X), np.exp(0.5 * (self.sdb.predict(X) + self.meta["c"]))
+        mu, s = self.mu.predict(X), np.exp(0.5 * (self.sdb.predict(X) + self.meta["c"]))
+        if self.cal is not None:
+            hc = hclass(X[:, self.ih])
+            al, be = np.asarray(self.cal["alpha"])[hc], np.asarray(self.cal["beta"])[hc]
+            mu, s = mu - (al / be) * s, s / be
+        return mu, s
 
 
 def stage_score():
@@ -260,6 +362,84 @@ def stage_score_ms_size():
     print("wrote", path)
 
 
+def stage_score_calib(arms: tuple[str, ...] = ("MS", "MS+c")):
+    """K1 / K2: one step on MZ's test rows, each arm's negative-share bias by height class (and the five classes) per
+    member and period, and the yearly corr / slope of the implied all-tree share -> nppmodel2_ms_calib_{size,yearly}"""
+    W, wcols = weather()
+    A = {a: Arm(a) for a in arms}
+    c2 = gi.cells200()
+    rows, yrows = [], []
+    for mem in nm.TEST:
+        D = y1_side(nm.load(mem, cells=c2, frac=TEST_FRAC).join(W, on=JOIN, how="left"))
+        assert D[wcols[0]].null_count() == 0
+        D = D.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
+        T = D.select("Year", "Height").with_columns(
+            true=(D["gain_y1"] < D["L_y1"]).cast(pl.Float64),
+            hcls=pl.when(pl.col("Height") >= 10).then(pl.lit("ge10")).otherwise(pl.lit("lt10")),
+            h5=pl.Series(hclass(D["Height"].to_numpy())),
+            per=pl.when(pl.col("Year") <= 2013).then(pl.lit("<=2013")).otherwise(pl.lit(">=2014")))
+        for a, M in A.items():
+            mu, s = M.pred(D.select(M.cols).to_numpy().astype(np.float32))
+            T = T.with_columns(pl.Series(f"p_{a}", norm.cdf(-mu / s)))
+        pc = [f"p_{a}" for a in arms]
+        for keys in (["per", "hcls"], ["per", "h5"]):
+            G = (T.group_by(keys).agg(pl.col("true", *pc).mean(), n=pl.len())
+                 .with_columns(*[(pl.col(c) - pl.col("true")).alias("bias_" + c[2:]) for c in pc],
+                               member=pl.lit(mem), by=pl.lit("+".join(keys))).sort(keys))
+            rows.append(G.with_columns(pl.col("hcls" if "hcls" in keys else "h5").cast(pl.Utf8).alias("cls"))
+                        .drop("hcls", "h5", strict=False))
+            print(mem, keys)
+            print(G.with_columns(pl.col(pl.Float64).round(4)), flush=True)
+        Y = T.group_by("Year").agg(pl.col("true", *pc).mean(), n=pl.len()).sort("Year").with_columns(member=pl.lit(mem))
+        yrows.append(Y)
+        windows = [("all", Y)]
+        if mem.startswith("ACCESS") or "ssp245" in mem:
+            windows.append(("2015-44", Y.filter(pl.col("Year") >= 2014)))
+        for wn, Yw in windows:
+            if Yw.height < 10:
+                continue
+            t = Yw["true"].to_numpy()
+            for c in pc:
+                e = Yw[c].to_numpy()
+                print(f"   {wn:7s} {c:8s} corr {np.corrcoef(t, e)[0, 1]:.3f}  slope "
+                      f"{np.cov(t, e)[0, 1] / t.var(ddof=1):.3f}  mean {e.mean():.4f} (true {t.mean():.4f})",
+                      flush=True)
+    for name, R in (("size", rows), ("yearly", yrows)):
+        path = os.path.join(gi.EVAL, f"nppmodel2_ms_calib_{name}.csv")
+        pl.concat(R, how="diagonal_relaxed").write_csv(path)
+        print("wrote", path)
+
+
+def stage_zstats(arm: str = "MS"):
+    """KZ: mean residual r = m - mu, mean s, mean(r)/mean(s), sd(r/s) and the Phi(-mu/s) excess by height class, on the
+    training OOF rows and on the K1 test rows -> nppmodel2_ms_zstats.csv"""
+    def stats(T: pl.DataFrame, src: str) -> pl.DataFrame:
+        T = T.with_columns(r=pl.col("m") - pl.col("mu"), h5=pl.Series(hclass(T["Height"].to_numpy())),
+                           p=pl.Series(norm.cdf((-T["mu"] / T["s"]).to_numpy())),
+                           neg=(pl.col("m") < 0).cast(pl.Float64))
+        G = (T.group_by("h5").agg(pl.col("r").mean().alias("r_mean"), pl.col("s").mean().alias("s_mean"),
+                                  (pl.col("r") / pl.col("s")).std().alias("z_sd"),
+                                  (pl.col("r") / pl.col("s")).median().alias("z_med"),
+                                  (pl.col("p") - pl.col("neg")).mean().alias("excess"), n=pl.len())
+             .with_columns(r_over_s=pl.col("r_mean") / pl.col("s_mean"), src=pl.lit(src)).sort("h5"))
+        print(src)
+        print(G.with_columns(pl.col(pl.Float64).round(4)), flush=True)
+        return G
+
+    rows = [stats(pl.read_parquet(os.path.join(MDIR, f"{arm}.oof.parquet")), "OOF")]
+    W, wcols = weather()
+    A = Arm(arm)
+    c2 = gi.cells200()
+    for mem in nm.TEST:
+        D = y1_side(nm.load(mem, cells=c2, frac=TEST_FRAC).join(W, on=JOIN, how="left"))
+        D = D.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
+        mu, s = A.pred(D.select(A.cols).to_numpy().astype(np.float32))
+        rows.append(stats(D.select("Height", "m").with_columns(mu=pl.Series(mu), s=pl.Series(s)), mem))
+    path = os.path.join(gi.EVAL, "nppmodel2_ms_zstats.csv")
+    pl.concat(rows).write_csv(path)
+    print("wrote", path)
+
+
 def stage_shared(nrep: int = 20):
     """I10: how much of the margin model's residual is SHARED by the trees of a cell-year, and does drawing that part as
     a common shock restore the amplitude of the yearly swings? Split fitted on ACCESS Historical (held-out GCM, past
@@ -322,5 +502,13 @@ if __name__ == "__main__":
         stage_score_ms()
     elif sys.argv[1] == "score_ms_size":
         stage_score_ms_size()
+    elif sys.argv[1] == "oof":
+        stage_oof(sys.argv[2])
+    elif sys.argv[1] == "calib":
+        stage_calib(sys.argv[2])
+    elif sys.argv[1] == "score_calib":
+        stage_score_calib()
+    elif sys.argv[1] == "zstats":
+        stage_zstats()
     else:
         stage_score()
