@@ -450,3 +450,23 @@ showed its low slopes are timing error, not shrunken swings — my hypothesis th
 counterfactual reruns on ACCESS: pasting in the original's grass amount removes half to two thirds of the stand drift;
 pasting its grass cover too removes less. The rest is the tree growth models transferring poorly to the other climate
 model. Next: build the margin model into the stepper and score it coupled on unseen weather.
+
+## 2026-10-07 — nineteenth + twentieth sessions: the margin model in the coupled emulator
+
+Owner: "continue". The nineteenth session built the version of the "growth margin" model the emulator can actually
+run (it may not read a tree's own productivity, transpiration or water stress, which the emulator does not carry),
+wrote the stepper that draws each tree's bad-growth year from it, and pre-registered the coupled test, then ended
+before recording anything. This session scored what it had left: dropping those three inputs costs nothing
+systematic one step ahead, and the ACCESS big-tree growth deficit is not a generic climate-model problem.
+
+A probe then pinned that deficit down. Given the TRUE next-year growth efficiency, the growth model is exact on every
+member; the deficit sits entirely in the drawn efficiency, and there in its size, not its sign: on weather years it
+never saw, the yearly mean of the drawn efficiency swings too little (yearly error 20-33 %, anti-correlated with the
+true swing). Whether that nets to -3 % or to zero depends on which years a member draws. My two predictions (that the
+growth model, then that the sign, carried it) were both wrong; the falsifiers said so.
+
+The coupled margin run itself: on the other climate model the timing of mortality pulses jumps from a 0.51 to a 0.84
+year-to-year correlation — the largest gain on unseen weather so far — but the stand degrades on both members: too
+many bad-growth years land on big trees, they shrink, the canopy opens and recruits flood in (biomass per tree -10 to
+-25 %). Not adoptable as is. A one-step check of whether that size misallocation is the model's or the free run's is
+running.

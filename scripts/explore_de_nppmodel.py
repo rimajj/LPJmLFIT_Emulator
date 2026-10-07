@@ -41,7 +41,7 @@ TREE = ["Type", "SLA", "Wooddens", "D95max", "minwscal", "Longevity", "Height", 
 def load(mem: str, cells=None, frac=None) -> pl.DataFrame:
     fs = sorted(glob.glob(os.path.join(gi.XDE, "shared", "trans", "dev", mem, "cb=dev", "y*.parquet")))
     cols = list(dict.fromkeys(["gcm", "traj", "seed", "Year", "Cell", "u_hash", "fate_y1", "c_y1", "npp_y1", "LAI_y1",
-                               "fpc_ind_y1", "G_y", "G_y1", "cenG_y", "cenG_y1"] + TREE))
+                               "fpc_ind_y1", "G_y", "G_y1", "cenG_y", "cenG_y1", "is_new_y"] + TREE))
     lf = (pl.concat([pl.scan_parquet(f).select(cols) for f in fs])
           .filter((pl.col("Type") <= 6) & (pl.col("fate_y1") < 2) & (pl.col("cenG_y") == 0) & (pl.col("npp") > 0)
                   & (pl.col("LAI") > 0)))

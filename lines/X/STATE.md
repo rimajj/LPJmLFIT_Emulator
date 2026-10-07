@@ -586,6 +586,31 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   size class, 1996-2010 big trees first; (4) more weather information for the margin (it is now the limit everywhere):
   per-tree daily/monthly drivers, cost-checked; (5)-(9) as in the sixteenth session's list (cheap G model, grass into
   NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
+* **2026-10-07 (nineteenth + twentieth sessions): the margin sign fixes cross-model TIMING but misallocates bad years
+  to big trees; the ACCESS big-tree deficit is the G MAGNITUDE's compressed year swings** [VERIFIED; every number +
+  pre-registration in `_status/TS.md` from "Pre-registration I11" on; scripts `explore_de_nppmodel2.py fit MS |
+  score_ms | score_ms_size`, `explore_de_tab_margin.py:TabALG2HSGQMProbe` (arm gqm), `explore_de_bigtree_resp.py
+  [--gq]`; tables `shared/eval/{nppmodel2_ms_yearly,nppmodel2_ms_size,bigtree_resp_yearly,bigtree_resp_gq_yearly,
+  unseen_score}.csv`, `recruit_drift_*_gqm_*`, `streak_gqm_*`]. (a) I11: the stepper-feasible margin model MS (no
+  per-tree npp / transpiration / water stress) is within -0.05..+0.04 of Mh one step; falsifier not fired. (b) TG +
+  BT + BT3: given the TRUE next-year G the dagb growth head is exact on every member (|error| <= 0.0006/yr); the ACCESS
+  big-tree deficit is the DRAWN G's MAGNITUDE (true sign closes 0-18 %, true |G| most of it): on unseen weather the
+  yearly mean drawn G swings too little (yearly error sd 0.20-0.33, corr -0.45 with the true G), netting ~-3 % of
+  growth/yr on ACCESS ssp126 / ssp370 and ~0 on ssp245 / MPI ssp245. TG's "monotone ssp370 decline" was the OLD
+  sampler's. (c) CM coupled (arm gqm, 200 cells): timing corr U-M 0.785 -> 0.798, U-A 0.505 -> **0.838**; pulses
+  U-M -35 % (worse), U-A -28.5 %, quiet U-A +30 -> +13 %; but the stand regresses: agb/stem U-M -10 / -13 % (2006-25),
+  U-A -19 / -25 %, stems +9..+19 %, recruits +8..+27 % — CM1-CM3 FAIL, falsifier not fired. Cost 5.2-5.6 core-s.
+  (d) MZ: MS over-predicts bad-growth years for >= 10 m trees ONE STEP ahead by +0.013..+0.025 (13-24 % relative) on
+  every test member; < 10 m +0.002..+0.010 => model calibration, not free-run feedback.
+  **NEXT, in order:** (1) size-wise recalibration of MS (scale on s or Platt on -mu/s per height class, maybe per
+  counter c_y), fitted ONLY on training-member out-of-fold rows (the fit stage's year-grouped folds; save OOF if not
+  saved); pre-register one-step by size (>= 10 m and < 10 m within +-0.005 on all five test members) and keep the
+  yearly corr; then rerun CM coupled (same jobs, `_jobs/probe2_g2hsgqm_*.jcf` + scorers, new XDE_RUNS dir) — the timing
+  gain on ACCESS is worth keeping if the stand holds; (2) the G magnitude's compressed year swings: derive the
+  magnitude from the margin too (|G| = (gain_y1 / la)(1 - e^-m)), or add the margin as a magnitude input; (3) the
+  grass2 leaf-area weather transfer across GCMs (half the ACCESS drift, eighteenth session); (4)-(8) as in the
+  sixteenth session's list. ⚠ `explore_de_unseen_score.py` OVERWRITES `unseen_score.csv` with only the rows passed —
+  pass every row you want kept (now: mpi2, um, ua, um_gqm, ua_gqm).
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
