@@ -233,6 +233,33 @@ def stage_score_ms():
     print("wrote", path)
 
 
+def stage_score_ms_size():
+    """MZ: one-step MSh negative-share bias by height class (< 10 / >= 10 m) and carried-margin presence, per member and
+    period (<= 2013 / >= 2014 start year), truth vs mean Phi(-mu/s)."""
+    W, wcols = weather()
+    A = Arm("MS")
+    c2 = gi.cells200()
+    rows = []
+    for mem in nm.TEST:
+        D = y1_side(nm.load(mem, cells=c2, frac=TEST_FRAC).join(W, on=JOIN, how="left"))
+        D = D.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
+        mu, s = A.pred(D.select(A.cols).to_numpy().astype(np.float32))
+        T = D.select("Year", "Height", "thr").with_columns(
+            true=(D["gain_y1"] < D["L_y1"]).cast(pl.Float64), p=pl.Series(norm.cdf(-mu / s)),
+            hcls=pl.when(pl.col("Height") >= 10).then(pl.lit("ge10")).otherwise(pl.lit("lt10")),
+            thr_ok=pl.col("thr").is_not_null(), per=pl.when(pl.col("Year") <= 2013).then(pl.lit("<=2013"))
+            .otherwise(pl.lit(">=2014")))
+        for keys in (["per", "hcls"], ["per", "hcls", "thr_ok"]):
+            G = (T.group_by(keys).agg(pl.col("true", "p").mean(), n=pl.len()).with_columns(
+                member=pl.lit(mem), bias=pl.col("p") - pl.col("true")).sort(keys))
+            rows.append(G)
+            print(mem, keys)
+            print(G.with_columns(pl.col(pl.Float64).round(4)), flush=True)
+    path = os.path.join(gi.EVAL, "nppmodel2_ms_size.csv")
+    pl.concat(rows, how="diagonal_relaxed").write_csv(path)
+    print("wrote", path)
+
+
 def stage_shared(nrep: int = 20):
     """I10: how much of the margin model's residual is SHARED by the trees of a cell-year, and does drawing that part as
     a common shock restore the amplitude of the yearly swings? Split fitted on ACCESS Historical (held-out GCM, past
@@ -293,5 +320,7 @@ if __name__ == "__main__":
         stage_shared()
     elif sys.argv[1] == "score_ms":
         stage_score_ms()
+    elif sys.argv[1] == "score_ms_size":
+        stage_score_ms_size()
     else:
         stage_score()
