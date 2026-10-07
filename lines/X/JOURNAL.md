@@ -483,3 +483,10 @@ largest for the tallest trees on the ACCESS futures (+0.17..+0.38 spread units).
 tested the twentieth session's NEXT (2): the exact identity G = r (1 - e^-m) holds; with the true productivity r the
 drawn margin carries the magnitude's year swing better than the current quantile sampler, with last year's r it does
 not. Details and every number: TS.md, "Pre-registration K" onwards. Jobs 2431747, 2431753, 2432298.
+
+## 2026-10-07 — twenty-second session: where the margin model's tall-tree transfer bias comes from
+Three one-step probes on the five test members (details + pre-registrations in `_status/TS.md`, "Pre-registration T" on).
+Level swap (T): ACCESS climatology levels -> MPI's closes 5-8 % of the futures' shift; falsifier fired. By warming bin (T3):
+the shift exists at equal warming and on fully in-range rows, so it is a GCM-specific response. Refit with ACCESS Historical
+in training (T4, arm MSx, 31 min fit): halves it; ssp245 stays worst. One job failed on my own sed mangling the script name
+in a copied .jcf (resubmitted). Next: the both-GCM training arm tested on the held-out ssp245 of both GCMs.

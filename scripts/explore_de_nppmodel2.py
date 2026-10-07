@@ -50,6 +50,8 @@ PS = dict(P, learning_rate=0.05, num_leaves=31, min_data_in_leaf=1000)
 NSD = 300
 GAIN_EPS = 1e-3
 MS_DROP = ("npp", "transp", "wscal_mean")
+# arms trained on more members than nm.TRAIN (T4: MSx = MS + the other GCM's Historical run)
+TRAIN_X = {"MSx": nm.TRAIN + ["ACCESS-CM2_Historical_s1_h1985"]}
 
 
 def weather():
@@ -77,18 +79,20 @@ def arm_spec(arm: str, wcols: list[str]) -> tuple[list[str], str]:
             "MN": (nm.TREE + clim + ["thr"], "m"),
             # stepper-feasible margin model: no per-tree flux inputs the TAB roster does not carry (npp, transp,
             # wscal_mean); thr is the tree's own previous margin (-m_y), NaN for a first-printed tree (is_new_y)
-            "MS": ([c for c in nm.TREE if c not in MS_DROP] + wcols + ["thr"], "m")}[arm]
+            "MS": ([c for c in nm.TREE if c not in MS_DROP] + wcols + ["thr"], "m"),
+            "MSx": ([c for c in nm.TREE if c not in MS_DROP] + wcols + ["thr"], "m")}[arm]
 
 
 def _train_table(arm: str):
     """the training rows, design matrix, target and year-group of an arm, exactly as stage_fit builds them"""
     t0 = time.time()
     W, wcols = weather()
-    TR = pl.concat([nm.load(m, frac=nm.FRAC) for m in nm.TRAIN], how="vertical_relaxed").join(W, on=JOIN, how="left")
+    TR = pl.concat([nm.load(m, frac=nm.FRAC) for m in TRAIN_X.get(arm, nm.TRAIN)], how="vertical_relaxed").join(
+        W, on=JOIN, how="left")
     assert TR[wcols[0]].null_count() == 0
     if arm != "W":  # W keeps I8's rows exactly; the loss / margin targets need next year's loss
         TR = y1_side(TR)
-    if arm == "MS":  # a recruit's first step has no carried margin in the stepper: train it as missing too
+    if arm.startswith("MS"):  # a recruit's first step has no carried margin in the stepper: train it as missing too
         TR = TR.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
         print(f"arm MS: thr set missing on {int(TR['thr'].null_count())} first-printed rows", flush=True)
     TR = TR.with_columns(grp=pl.concat_str([pl.col("clim_scen_y1"), pl.col("clim_year_y1").cast(pl.Utf8)])
@@ -410,7 +414,7 @@ def stage_score_calib(arms: tuple[str, ...] = ("MS", "MS+c")):
         print("wrote", path)
 
 
-def stage_zstats(arm: str = "MS"):
+def stage_zstats(arm: str = "MS", path_tag: str = ""):
     """KZ: mean residual r = m - mu, mean s, mean(r)/mean(s), sd(r/s) and the Phi(-mu/s) excess by height class, on the
     training OOF rows and on the K1 test rows -> nppmodel2_ms_zstats.csv"""
     def stats(T: pl.DataFrame, src: str) -> pl.DataFrame:
@@ -426,7 +430,8 @@ def stage_zstats(arm: str = "MS"):
         print(G.with_columns(pl.col(pl.Float64).round(4)), flush=True)
         return G
 
-    rows = [stats(pl.read_parquet(os.path.join(MDIR, f"{arm}.oof.parquet")), "OOF")]
+    oofp = os.path.join(MDIR, f"{arm}.oof.parquet")
+    rows = [stats(pl.read_parquet(oofp), "OOF")] if os.path.exists(oofp) else []
     W, wcols = weather()
     A = Arm(arm)
     c2 = gi.cells200()
@@ -435,7 +440,7 @@ def stage_zstats(arm: str = "MS"):
         D = D.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
         mu, s = A.pred(D.select(A.cols).to_numpy().astype(np.float32))
         rows.append(stats(D.select("Height", "m").with_columns(mu=pl.Series(mu), s=pl.Series(s)), mem))
-    path = os.path.join(gi.EVAL, "nppmodel2_ms_zstats.csv")
+    path = os.path.join(gi.EVAL, f"nppmodel2_ms_zstats{path_tag}.csv")
     pl.concat(rows).write_csv(path)
     print("wrote", path)
 
@@ -509,6 +514,6 @@ if __name__ == "__main__":
     elif sys.argv[1] == "score_calib":
         stage_score_calib()
     elif sys.argv[1] == "zstats":
-        stage_zstats()
+        stage_zstats(*(sys.argv[2:3] or ["MS"]), path_tag="" if len(sys.argv) < 3 else f"_{sys.argv[2]}")
     else:
         stage_score()
