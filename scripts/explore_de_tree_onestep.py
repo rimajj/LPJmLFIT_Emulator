@@ -52,6 +52,7 @@ def main():
     ap.add_argument("--set", default="SEED2")
     ap.add_argument("--members", default=None)
     ap.add_argument("--ndraw", type=int, default=4)
+    ap.add_argument("--tag", default="", help="suffix of the output csv (keeps an earlier run of the same set)")
     a = ap.parse_args()
     members = (a.members or DEFAULT_MEMBERS[a.set]).split(",")
     H = Hh.TabHeads.load("DEV-A", kappa=1.0)
@@ -106,7 +107,7 @@ def main():
                     "dead_rel_tf": float((pd_tf[q] * agb[q]).sum() / pd_tf[q].sum() / agb[q].mean()),
                 })
     R = pl.DataFrame(rows)
-    out = os.path.join(XDE, "shared", "eval", f"tree_onestep_{a.set}.csv")
+    out = os.path.join(XDE, "shared", "eval", f"tree_onestep_{a.set}{a.tag}.csv")
     R.write_csv(out)
     pl.Config.set_tbl_rows(400)
     pl.Config.set_tbl_cols(30)

@@ -16,6 +16,8 @@ each with a second booster on its log squared out-of-year residual (per-tree spr
   M / Mh / MNh   Phi(-mu_M / sd_M)
 Usage:  python explore_de_nppmodel2.py fit W|L|M|MN   -> tab/models/DEV-A/npp2/<arm>.*
         python explore_de_nppmodel2.py score          -> shared/eval/nppmodel2_yearly.csv
+        python explore_de_nppmodel2.py fit MS / score_ms -> the stepper-feasible margin model (no npp / transp /
+                                                         wscal_mean input; thr missing for first-printed trees)
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ P = dict(objective="regression", learning_rate=0.1, num_leaves=127, min_data_in_
 PS = dict(P, learning_rate=0.05, num_leaves=31, min_data_in_leaf=1000)
 NSD = 300
 GAIN_EPS = 1e-3
+MS_DROP = ("npp", "transp", "wscal_mean")
 
 
 def weather():
@@ -69,7 +72,10 @@ def arm_spec(arm: str, wcols: list[str]) -> tuple[list[str], str]:
     return {"W": (nm.TREE + wcols, "lr"),
             "L": (nm.TREE + wcols + ["lr", "thr"], "ll"),
             "M": (nm.TREE + wcols + ["thr"], "m"),
-            "MN": (nm.TREE + clim + ["thr"], "m")}[arm]
+            "MN": (nm.TREE + clim + ["thr"], "m"),
+            # stepper-feasible margin model: no per-tree flux inputs the TAB roster does not carry (npp, transp,
+            # wscal_mean); thr is the tree's own previous margin (-m_y), NaN for a first-printed tree (is_new_y)
+            "MS": ([c for c in nm.TREE if c not in MS_DROP] + wcols + ["thr"], "m")}[arm]
 
 
 def stage_fit(arm: str):
@@ -81,6 +87,9 @@ def stage_fit(arm: str):
     assert TR[wcols[0]].null_count() == 0
     if arm != "W":  # W keeps I8's rows exactly; the loss / margin targets need next year's loss
         TR = y1_side(TR)
+    if arm == "MS":  # a recruit's first step has no carried margin in the stepper: train it as missing too
+        TR = TR.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
+        print(f"arm MS: thr set missing on {int(TR['thr'].null_count())} first-printed rows", flush=True)
     TR = TR.with_columns(grp=pl.concat_str([pl.col("clim_scen_y1"), pl.col("clim_year_y1").cast(pl.Utf8)])
                          .map_elements(lambda s: zlib.crc32(s.encode()) % gi.NGRP, return_dtype=pl.Int64))
     cols, tgt = arm_spec(arm, wcols)
@@ -188,6 +197,42 @@ def stage_score():
     print("wrote", path)
 
 
+def stage_score_ms():
+    """MS (stepper-feasible margin) vs Mh one step on the I9 test rows: same members, cells, tree sample; MS sees thr
+    missing on first-printed rows exactly as the stepper will."""
+    t0 = time.time()
+    W, wcols = weather()
+    A = {a: Arm(a) for a in ("M", "MS")}
+    c2 = gi.cells200()
+    rows = []
+    for mem in nm.TEST:
+        D = y1_side(nm.load(mem, cells=c2, frac=TEST_FRAC).join(W, on=JOIN, how="left"))
+        assert D[wcols[0]].null_count() == 0
+        out = D.select("Year", true=(pl.col("gain_y1") < pl.col("L_y1")).cast(pl.Float64))
+        mu, s = A["M"].pred(D.select(A["M"].cols).to_numpy().astype(np.float32))
+        DS = D.with_columns(thr=pl.when(pl.col("is_new_y").fill_null(False)).then(None).otherwise(pl.col("thr")))
+        muS, sS = A["MS"].pred(DS.select(A["MS"].cols).to_numpy().astype(np.float32))
+        out = out.with_columns(p_Mh=pl.Series(norm.cdf(-mu / s)), p_MSh=pl.Series(norm.cdf(-muS / sS)))
+        Y = out.group_by("Year").agg(pl.all().mean(), n=pl.len()).sort("Year").with_columns(member=pl.lit(mem))
+        rows.append(Y)
+        print(f"{mem}: {D.height} trees ({time.time() - t0:.0f}s)", flush=True)
+        windows = [("all", Y)]
+        if mem.startswith("ACCESS") or "ssp245" in mem:
+            windows.append(("2015-44", Y.filter(pl.col("Year") >= 2014)))
+        for wn, Yw in windows:
+            if Yw.height < 10:
+                continue
+            t = Yw["true"].to_numpy()
+            for c in ("p_Mh", "p_MSh"):
+                e = Yw[c].to_numpy()
+                print(f"   {wn:7s} {c:6s} corr {np.corrcoef(t, e)[0, 1]:.3f}  slope "
+                      f"{np.cov(t, e)[0, 1] / t.var(ddof=1):.3f}  mean {e.mean():.4f} (true {t.mean():.4f})",
+                      flush=True)
+    path = os.path.join(gi.EVAL, "nppmodel2_ms_yearly.csv")
+    pl.concat(rows).write_csv(path)
+    print("wrote", path)
+
+
 def stage_shared(nrep: int = 20):
     """I10: how much of the margin model's residual is SHARED by the trees of a cell-year, and does drawing that part as
     a common shock restore the amplitude of the yearly swings? Split fitted on ACCESS Historical (held-out GCM, past
@@ -246,5 +291,7 @@ if __name__ == "__main__":
         stage_fit(sys.argv[2])
     elif sys.argv[1] == "shared":
         stage_shared()
+    elif sys.argv[1] == "score_ms":
+        stage_score_ms()
     else:
         stage_score()
