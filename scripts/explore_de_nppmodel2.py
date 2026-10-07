@@ -188,8 +188,63 @@ def stage_score():
     print("wrote", path)
 
 
+def stage_shared(nrep: int = 20):
+    """I10: how much of the margin model's residual is SHARED by the trees of a cell-year, and does drawing that part as
+    a common shock restore the amplitude of the yearly swings? Split fitted on ACCESS Historical (held-out GCM, past
+    weather), applied to the futures + MPI ssp245. Per member: residual r = m - mu_M; rho = var(cell-year mean of r,
+    corrected for its finite-n sampling part) / var(r). Simulation: m* = mu_M + s_M (sqrt(rho) z_cy + sqrt(1-rho) z_i),
+    yearly share of m* < 0 per replicate; reported: mean single-realisation corr / slope with the truth, and the ratio
+    of the simulated yearly share sd to truth's (amplitude)."""
+    t0 = time.time()
+    W, wcols = weather()
+    M = Arm("M")
+    c2 = gi.cells200()
+    rng = np.random.default_rng(11)
+    rho_fit = None
+    rows = []
+    for mem in ["ACCESS-CM2_Historical_s1_h1985"] + [m for m in nm.TEST if "Historical" not in m]:
+        D = y1_side(nm.load(mem, cells=c2, frac=TEST_FRAC).join(W, on=JOIN, how="left"))
+        mu, s = M.pred(D.select(M.cols).to_numpy().astype(np.float32))
+        D = D.select("Year", "Cell", "m", true=(pl.col("gain_y1") < pl.col("L_y1")).cast(pl.Float64)).with_columns(
+            z=pl.Series((D["m"].to_numpy() - mu) / s), mu=pl.Series(mu), s=pl.Series(s))
+        G = D.group_by("Year", "Cell").agg(zb=pl.col("z").mean(), n=pl.len(), zv=pl.col("z").var())
+        zb, n = G["zb"].to_numpy(), G["n"].to_numpy()
+        vb = float(np.var(zb) - np.mean(G["zv"].fill_null(0).to_numpy() / n))
+        rho = max(vb, 0.0) / float(D["z"].var())
+        if rho_fit is None:
+            rho_fit = rho
+        cy = D.select(k=pl.col("Year").cast(pl.Int64) * 100000 + pl.col("Cell").cast(pl.Int64))["k"].to_numpy()
+        _, inv = np.unique(cy, return_inverse=True)
+        yr = D["Year"].to_numpy()
+        T = D.group_by("Year").agg(pl.col("true").mean()).sort("Year")
+        t = T["true"].to_numpy()
+        mu_a, s_a = D["mu"].to_numpy(), D["s"].to_numpy()
+        res = {}
+        for lab, r_ in (("indep", 0.0), ("shared", rho_fit)):
+            cs, sl, amp = [], [], []
+            for _ in range(nrep):
+                zc = rng.standard_normal(inv.max() + 1)[inv]
+                zi = rng.standard_normal(len(inv))
+                neg = (mu_a + s_a * (np.sqrt(r_) * zc + np.sqrt(1 - r_) * zi)) < 0
+                e = pl.DataFrame({"Year": yr, "neg": neg.astype(np.float64)}).group_by("Year").agg(
+                    pl.col("neg").mean()).sort("Year")["neg"].to_numpy()
+                cs.append(np.corrcoef(t, e)[0, 1])
+                sl.append(np.cov(t, e)[0, 1] / t.var(ddof=1))
+                amp.append(e.std() / t.std())
+            res[lab] = (float(np.mean(cs)), float(np.mean(sl)), float(np.mean(amp)))
+        rows.append(dict(member=mem, rho_member=rho, rho_used=rho_fit,
+                         **{f"{k}_{q}": v[i] for k, v in res.items() for i, q in enumerate(("corr", "slope", "amp"))}))
+        print(f"{mem}: rho {rho:.3f} (used {rho_fit:.3f}); indep corr/slope/amp {res['indep']}; shared "
+              f"{res['shared']} ({time.time() - t0:.0f}s)", flush=True)
+    path = os.path.join(gi.EVAL, "nppmodel2_shared.csv")
+    pl.DataFrame(rows).write_csv(path)
+    print("wrote", path)
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "fit":
         stage_fit(sys.argv[2])
+    elif sys.argv[1] == "shared":
+        stage_shared()
     else:
         stage_score()

@@ -561,6 +561,31 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   it (grass transfer across GCMs was the eighth session's suspect) before blaming the sign head; (3)-(8) as in the
   sixteenth session's list (cheap G model, grass into NSET, STRUCT size shape, LSTM response window, sapling layer,
   eighth-session items). Score everything weather-driven on MPI s1 ssp245 + ACCESS s1, never only on MPI s2.
+* **2026-10-07 (eighteenth session): the bad-growth LOSS side is solved, the limit is the weather -> tree margin map; the
+  ACCESS stand drift is half grass, half tree heads** [VERIFIED; every number + pre-registration in `_status/TS.md` from
+  "I9 NPP route + LOSS model" on; `scripts/explore_de_nppmodel2.py` (fit W|L|M|MN, score, shared; models
+  `tab/models/DEV-A/npp2/`), `scripts/explore_de_access_drift.py` (steppers GrassLAIOracle / GrassFullOracle); tables
+  `shared/eval/nppmodel2_{yearly,shared}.csv`, `recruit_drift_ssp370_{grl,grf}_acc1.csv`].
+  (a) I9: a per-tree LOSS model (log loss change | true NPP change, R2 0.79) reproduces the yearly negative-growth share
+  at 0.90-0.99 with the mean right to 0.004 when given the TRUE NPP => the loss side is solved. With PREDICTED NPP it is
+  WORSE than I8 (falsifier fired): I8's last-year-loss basis over-swung and its NPP under-swung — a compensation. Best
+  model: the MARGIN log(gain_y1/L_y1) directly (arm Mh, per-tree spread): yearly corr 0.874 MPI s1 ssp245 / 0.798 ACCESS
+  Hist / 0.583 / 0.750 / 0.718 ACCESS ssp126/245/370 (shipped sign head one step: 0.775 / ~0.43-0.51), mean +0.005..+0.016;
+  null without weather anomalies 0.25 / 0.15 / -0.01 / 0.03 on futures. (b) I10: 24-33 % of its residual is shared by a
+  cell-year, but the simulated swings already have the right size (0.8-1.1 x truth) — the low slopes are timing error,
+  not damping; my premise was wrong. (c) ACCESS drift: replaying the original's grass LEAF AREA (cover still from the
+  emulator's hidden-cover model) closes 71 / 59 / 54 % of the recruit / stem / biomass-per-stem gaps; replaying cover too
+  closes LESS (41 / 34 / 30 %) and adds an early recruit excess. Big-tree growth -6..-9 % from 1996 and small-tree growth
+  -9..-17 % after 2030 are untouched => the tree heads' own cross-GCM transfer is the other half.
+  **NEXT, in order:** (1) build the margin model Mh as the G-SIGN replacement in the TAB stepper (sign = margin < 0 drawn
+  from mu + s z, cell-year shared part rho ~0.3 optional; G magnitude stays gqsc's quantile heads conditioned on sign)
+  and score it coupled on MPI s1 ssp245 + ACCESS s1 against the honest baseline (U-M / U-A rows in TS.md); pre-register
+  pulse / quiet / timing-corr bars first; (2) the grass2 LEAF-AREA weather transfer across GCMs (half the ACCESS drift):
+  is it a missing input (absolute temperature level, daily extremes) or booster extrapolation? tune on MPI held-out
+  weather only, ACCESS stays the test; (3) the tree growth heads' ACCESS transfer: one-step growth on ACCESS states by
+  size class, 1996-2010 big trees first; (4) more weather information for the margin (it is now the limit everywhere):
+  per-tree daily/monthly drivers, cost-checked; (5)-(9) as in the sixteenth session's list (cheap G model, grass into
+  NSET, STRUCT size shape, LSTM response window, sapling layer, eighth-session items).
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
