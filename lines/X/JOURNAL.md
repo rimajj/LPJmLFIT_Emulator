@@ -438,3 +438,15 @@ productivity falls below its losses, and the losses barely move — taking this 
 losses reproduces the yearly swing at 0.83-0.97. The swing is individual trees crossing a threshold, which averages
 blur. That suggests modelling each tree's productivity (smooth, well-posed) and letting the original's own threshold
 decide the sign; a first test of that is running.
+
+## 2026-10-07 — eighteenth session: the loss side is solved; the ACCESS drift splits between grass and trees
+
+Continued the bad-growth-year work. Gave the "model productivity, threshold it" route a proper loss model: given the
+true productivity, it reproduces the yearly share of trees with negative growth almost perfectly (0.90-0.99), so the
+loss side is no longer a limit. Plugged into predicted productivity it got worse, which exposed that the previous
+version's good amplitude had been two errors cancelling. Modelling the growth margin directly is the best so far and
+beats the shipped sign model on unseen weather (by ~0.1 on the same climate model, 0.2-0.3 on the other). A follow-up
+showed its low slopes are timing error, not shrunken swings — my hypothesis there was wrong. Separately, two coupled
+counterfactual reruns on ACCESS: pasting in the original's grass amount removes half to two thirds of the stand drift;
+pasting its grass cover too removes less. The rest is the tree growth models transferring poorly to the other climate
+model. Next: build the margin model into the stepper and score it coupled on unseen weather.
