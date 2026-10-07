@@ -470,3 +470,16 @@ year-to-year correlation — the largest gain on unseen weather so far — but t
 many bad-growth years land on big trees, they shrink, the canopy opens and recruits flood in (biomass per tree -10 to
 -25 %). Not adoptable as is. A one-step check of whether that size misallocation is the model's or the free run's is
 running.
+
+## 2026-10-07 — twenty-first session: size-wise recalibration of the margin model fails; the excess is member transfer
+
+Picked up the twentieth session's NEXT (1): recalibrate the stepper-feasible margin model MS by tree height on training
+out-of-fold rows. Added `oof` / `calib` / `score_calib` / `zstats` stages to `scripts/explore_de_nppmodel2.py` (refactored
+the fit into `_train_table` + `_fold_oof`; `Arm("MS+c")` applies the probit as a shift/scale of mu, s so the stepper
+still draws a carried margin). Pre-registered K before the run: the out-of-year training rows show almost no big-tree
+excess (+0.003), so the fitted calibration removed only a third of the test members' excess — falsifier fired, coupled
+run not submitted. KZ split the rest: a tail shape (everywhere) plus a mean bias that only appears on unseen members,
+largest for the tallest trees on the ACCESS futures (+0.17..+0.38 spread units). In parallel GM (`explore_de_gmargin.py`)
+tested the twentieth session's NEXT (2): the exact identity G = r (1 - e^-m) holds; with the true productivity r the
+drawn margin carries the magnitude's year swing better than the current quantile sampler, with last year's r it does
+not. Details and every number: TS.md, "Pre-registration K" onwards. Jobs 2431747, 2431753, 2432298.

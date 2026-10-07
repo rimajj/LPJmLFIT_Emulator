@@ -611,6 +611,30 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   grass2 leaf-area weather transfer across GCMs (half the ACCESS drift, eighteenth session); (4)-(8) as in the
   sixteenth session's list. ⚠ `explore_de_unseen_score.py` OVERWRITES `unseen_score.csv` with only the rows passed —
   pass every row you want kept (now: mpi2, um, ua, um_gqm, ua_gqm).
+* **2026-10-07 (twenty-first session): the margin model's big-tree excess is NOT a calibration error; the margin
+  carries the G magnitude's year swing only if productivity per leaf area is known** [VERIFIED; every number +
+  pre-registration in `_status/TS.md` from "Pre-registration K" on; `scripts/explore_de_nppmodel2.py oof | calib |
+  score_calib | zstats` (arm "MS+c" = MS + per-height probit, `npp2/MS.{oof.parquet,calib.json}`),
+  `scripts/explore_de_gmargin.py`; tables `shared/eval/nppmodel2_ms_{calib_size,calib_yearly,zstats}.csv`,
+  `gmargin_yearly.csv`]. (a) K: on the TRAINING members out of year the >= 10 m bad-year share is right (+0.003), so a
+  size-wise probit fitted there removes only ~1/3 of the test excess (MPI ssp245 +0.013 -> +0.008, ACCESS +0.015..+0.025
+  -> +0.012..+0.019); falsifier fired, coupled gqmc NOT run (job files ready: `_jobs/probe2_g2hsgqmc_*.jcf`,
+  `score_g2hsgqmc_*.jcf`). (b) KZ: two parts. A tail-shape part for big trees present everywhere (the calibration's
+  third), and a MEMBER-TRANSFER mean bias: on ACCESS futures the tall trees do better than predicted by +0.17..+0.38
+  spread units (mu too low, growing with height), plus a too-narrow spread on ssp370 (z sd 1.2-1.3). Same family as the
+  eighteenth session's tree-head cross-GCM transfer. All-tree bad-year share is +0.006..+0.015 too high on every test
+  member (OOF ~0). (c) GM: G_y1 = (NPP per leaf area) x (1 - e^-margin) exactly (1.5e-13). With the TRUE productivity
+  the drawn margin tracks the 15-25 m yearly G at corr 0.83-0.94 (gqsc's reference 0.74-0.80 on ACCESS); with LAST
+  year's productivity only 0.74-0.83 (level with gqsc); both 4-12 % LOW in mean (the excess above). GM1/GM2 miss,
+  falsifier not fired.
+  **NEXT, in order:** (1) the margin model's cross-member transfer: why does mu run low for tall trees on the other
+  climate model's weather? Check whether the weather inputs for big-tree rows leave the training range (the
+  `explore_de_grass_climrange.py` logic), and refit MS with the GCM-common inputs only (anomalies relative to each
+  member's own 1985-2014 climatology — check how `gi.features` defines them first); score with `score_calib`/`zstats`
+  on the five test members; (2) a productivity-per-leaf-area model r_y1 (weather + state, stepper-feasible) — GM showed
+  it is what the margin route for the magnitude needs; score it with `explore_de_gmargin.py` as a third arm against
+  RM / PM; (3) then the coupled gqm / gqmc runs only once (1) moves the >= 10 m excess under +0.008; (4) the grass2
+  leaf-area transfer across GCMs (eighteenth session); (5)-(9) as in the sixteenth session's list.
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):
