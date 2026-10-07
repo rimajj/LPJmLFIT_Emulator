@@ -534,6 +534,33 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   after (2); (4) adopt year-held-out early stopping for every weather booster anyway (it removes the inflation of
   in-year scores; scores must then be on unseen years); (5)-(9) as before (cheap G model, grass into NSET, STRUCT size
   shape, LSTM response window, sapling layer, eighth-session items). gqsc stays the sign calibration.
+* **2026-10-07 (seventeenth session): honest baseline on unseen weather, and WHERE the year-to-year bad-growth swing
+  lives** [VERIFIED; every number + pre-registration in `_status/TS.md` from "the HONEST BASELINE" on; scripts
+  `explore_de_{unseen_score,gsign_info,monthly_oracle,negG_npp,phenlatch,bmdelta,nppmodel}.py`; tables
+  `shared/eval/{unseen_score,gsign_info_*,monthly_oracle_*,negG_npp_yearly,phenlatch_*,bmdelta_yearly,nppmodel_yearly}`].
+  (a) HONEST BASELINE, coupled gqsc, 200 cells, pulse years = each member's own 8 truth-highest < 10 m certain-kill
+  years 2016-44: MPI s2 (seen weather) pulse -19 % / quiet +3 % / timing corr 0.93; MPI s1 ssp245 (unseen yrs) -25 % /
+  +14 % / 0.79, stand bars still pass (biomass/stem +2.5..+4.7 %, stems +2.8 %), deaths 16-25 -6 %; ACCESS s1 ssp370
+  -32 % / +30 % / 0.51 AND the stand drifts (stems +11..+14 %, biomass/stem -13 % by 2016-25, deaths +8.6 %).
+  (b) The original's yearly bad-growth swing is ~100 % WEATHER: its two seeds on identical weather agree at corr
+  0.996-0.9999 (Germany yearly) and 0.94-0.98 per cell-year. Ceiling ~1, emulator ~0.78.
+  (c) Reduced-form cell regressions, out-of-year: annual weather 0.86, + monthly anomalies 0.92 (MPI unseen); ACCESS
+  futures 0.51-0.79 -> 0.69-0.89. Doubling weather years (both GCMs) adds 0.01 on a seen GCM. The original's OWN
+  monthly NPP / soil water / phenology as oracle features add <= 0.02. The whole-leaf-drop latch reconstructed from
+  daily forcing (gated vs the C's monthly phenology: means to 1e-4) is constant for beech (one drop every year).
+  (d) MECHANISM: negative growth = the tree's NPP below its loss (turnover + reproduction + excess + debt); holding
+  last year's loss and taking this year's NPP reproduces the yearly share at 0.83-0.97, the reverse ~0. So the swing
+  is a THRESHOLD CROSSING of individual trees' NPP — a tail event the cell means blur.
+  PROPOSAL (not built): replace the G-sign head by a smooth per-tree NPP model + a pool-based loss model, sign by the
+  C's own threshold. First test I8 (`explore_de_nppmodel.py`): implied yearly share corr 0.835 / slope 0.86 on MPI
+  unseen years (sign head 0.775 / 0.64), 0.69-0.74 on ACCESS ssp245/370 (sign head ~0.43), 0.37 on ACCESS ssp126; mean
+  biased high by ~0.03; bars (0.88 / 0.75) missed, falsifier not fired => promising, not yet good enough.
+  **NEXT, in order:** (1) improve the NPP route before building it in: a loss model for L_y1 (pools + fractions of
+  gain) instead of last year's loss, a size/light-dependent residual spread, then re-run I8's test; if it clears the
+  bars, build the NPP + loss G model as a TAB stepper option and score it coupled on BOTH unseen members against (a); (2) ACCESS's stand drift after ~2006 is a second, separate failure — attribute
+  it (grass transfer across GCMs was the eighth session's suspect) before blaming the sign head; (3)-(8) as in the
+  sixteenth session's list (cheap G model, grass into NSET, STRUCT size shape, LSTM response window, sapling layer,
+  eighth-session items). Score everything weather-driven on MPI s1 ssp245 + ACCESS s1, never only on MPI s2.
 * NOT started: tracks C (full roster recurrent, C1-C6) and D stage 2; calibrations; full-cellset (9065) builds
   (trans dev = 108 GB, tensors dev 98 GB for 5 members -> check /p/tmp quota first).
 **The build stays inside line X's owned paths** (`scripts/explore_de_*.py`, `/p/tmp/jamirp/X_de/`, `docs/notes/exploration_de_*.md`):

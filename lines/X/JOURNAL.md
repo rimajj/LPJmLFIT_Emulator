@@ -418,3 +418,23 @@ stops improving on other cells of the same years — but fixing the stopping rul
 did not raise the skill on unseen years (0.775 → 0.790). The limit is information in the annual weather inputs.
 All earlier timing results on the second MPI run, the death-pulse deficit included, were scored on trained weather
 years; the next session measures them on unseen ones first.
+
+## 2026-10-07 — seventeenth session: the honest baseline, and where the bad-growth swing lives
+
+Owner: "continue". First the measurement the last session asked for: the coupled emulator run on weather it never
+trained on. On the MPI model's medium-emissions scenario the forest state holds (biomass per tree and tree counts
+within a few per cent), but the timing of mortality pulses degrades from a 0.93 to a 0.79 year-to-year correlation,
+pulse years are 25 % short and calm years over-killed by 14 %. On the ACCESS climate model the timing falls to 0.51
+and, separately, the stand drifts after about twenty years (too many, too small trees). These are the numbers any
+fix has to beat.
+
+Then the question of whether better timing is even possible. The original model's two random-seed runs on identical
+weather agree on the year-to-year share of trees with a bad-growth year at 0.999: the swing is pure weather, so the
+ceiling is about 1, not 0.8. Monthly weather gets a simple model from 0.86 to 0.92 on unseen years; twice as many
+training years barely helps; even the original's own monthly productivity and soil water add almost nothing; and a
+leaf-shedding switch in the C code, reconstructed exactly from the daily forcing, turns out to fire once every year
+for beech and so cannot carry a swing. What finally located it: a tree has a bad-growth year when its own
+productivity falls below its losses, and the losses barely move — taking this year's productivity with last year's
+losses reproduces the yearly swing at 0.83-0.97. The swing is individual trees crossing a threshold, which averages
+blur. That suggests modelling each tree's productivity (smooth, well-posed) and letting the original's own threshold
+decide the sign; a first test of that is running.
