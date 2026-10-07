@@ -552,9 +552,12 @@ helpers (no Workflow call: ultracode was not re-confirmed this session).** State
   last year's loss and taking this year's NPP reproduces the yearly share at 0.83-0.97, the reverse ~0. So the swing
   is a THRESHOLD CROSSING of individual trees' NPP — a tail event the cell means blur.
   PROPOSAL (not built): replace the G-sign head by a smooth per-tree NPP model + a pool-based loss model, sign by the
-  C's own threshold. First test I8 (`explore_de_nppmodel.py`, job 2428361) — see TS.md for its result.
-  **NEXT, in order:** (1) read I8 (pass => build the NPP + loss G model as a TAB stepper option and score it coupled
-  on BOTH unseen members against (a)); (2) ACCESS's stand drift after ~2006 is a second, separate failure — attribute
+  C's own threshold. First test I8 (`explore_de_nppmodel.py`): implied yearly share corr 0.835 / slope 0.86 on MPI
+  unseen years (sign head 0.775 / 0.64), 0.69-0.74 on ACCESS ssp245/370 (sign head ~0.43), 0.37 on ACCESS ssp126; mean
+  biased high by ~0.03; bars (0.88 / 0.75) missed, falsifier not fired => promising, not yet good enough.
+  **NEXT, in order:** (1) improve the NPP route before building it in: a loss model for L_y1 (pools + fractions of
+  gain) instead of last year's loss, a size/light-dependent residual spread, then re-run I8's test; if it clears the
+  bars, build the NPP + loss G model as a TAB stepper option and score it coupled on BOTH unseen members against (a); (2) ACCESS's stand drift after ~2006 is a second, separate failure — attribute
   it (grass transfer across GCMs was the eighth session's suspect) before blaming the sign head; (3)-(8) as in the
   sixteenth session's list (cheap G model, grass into NSET, STRUCT size shape, LSTM response window, sapling layer,
   eighth-session items). Score everything weather-driven on MPI s1 ssp245 + ACCESS s1, never only on MPI s2.
