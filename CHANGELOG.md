@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- line X (Germany emulator exploration): `scripts/explore_de_mstransfer.py` and the `MSx` arm of
+  `scripts/explore_de_nppmodel2.py` — the tall-tree bad-growth bias on the second climate model is a model-specific
+  weather response, not its climatology levels; adding that model's historical run to training halves it.
+
+### Added
+
 - line X (Germany emulator prototype): the stepper-feasible margin model and a TAB stepper drawing each tree's
   bad-growth year from it (`scripts/explore_de_tab_margin.py`), a big-tree one-step response probe
   (`scripts/explore_de_bigtree_resp.py`) and a size-split one-step scorer (`explore_de_nppmodel2.py score_ms_size`).
