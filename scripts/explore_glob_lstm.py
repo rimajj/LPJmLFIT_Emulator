@@ -306,7 +306,7 @@ def make_model(d_state: int, d_in: int, hidden: int = 128, layers: int = 2):
 
 
 def rollout(model, Z, C, S, t_free, n_steps):
-    """Inputs at step t: state t (TRUTH if t < t_free, else own prediction), climate t+1, static. P[:, t] = state t+1."""
+    """Inputs at step t: state t (truth if t < t_free, else own), climate t+1, static; P[:, t] = state t+1."""
     import torch
 
     hc, z, preds = None, Z[:, 0], []
@@ -347,7 +347,7 @@ def stage_train(a) -> None:
     S_all = static(cells)
 
     Xs, Ws, Cs, Ss, tags = [], [], [], [], []
-    for seed in ev.TRAIN:
+    for seed in a.train_seeds:
         for scen in TRAIN_SCENS:
             X, W = full_state(seed, scen, cells)
             Xs.append(X)
@@ -390,7 +390,7 @@ def stage_train(a) -> None:
     Zs_, Cs_, Ss_, Ws_ = (torch.cat([s[k] for s in segs]) for k in range(4))
     D, F = Ztr.shape[2], Ctr_.shape[2]
     log(
-        f"fold {a.fold} arm {a.arm}: train seq {Ztr.shape[0]}, val seq {Zva.shape[0]}, segments {Zs_.shape[0]}, D {D}, F {F}"
+        f"fold {a.fold} arm {a.arm}: train seq {Ztr.shape[0]}, val seq {Zva.shape[0]}, segments {Zs_.shape[0]}"
     )
     model = make_model(D, D + F + Str.shape[1])
     opt = torch.optim.Adam(model.parameters(), lr=a.lr, weight_decay=1e-5)
@@ -462,7 +462,7 @@ def stage_train(a) -> None:
     if best[2] is not None:
         model.load_state_dict(best[2])
     lv, lp = val()
-    d = os.path.join(OUT, a.arm)
+    d = os.path.join(OUT, a.arm + a.tag)
     os.makedirs(d, exist_ok=True)
     torch.save({"state": model.state_dict(), "mu": mu, "sd": sd, "cmu": cmu, "csd": csd}, f"{d}/f{a.fold}.pt")
     info = {
@@ -486,7 +486,7 @@ def stage_train(a) -> None:
     model.eval()
     out, timing = [], {}
     for scen in TEST_SCENS:
-        X8, _ = full_state(ev.TRUTH, scen, cells)
+        X8, _ = full_state(a.test_seed, scen, cells)
         X8 = X8[i_te]
         Xf = ffill(X8)
         Xf = np.where(np.isfinite(Xf), Xf, mu)
@@ -517,12 +517,13 @@ def stage_train(a) -> None:
 
 
 # ------------------------------------------------------------------------------------------------ score
-def stage_score(_a) -> None:
+def stage_score(a) -> None:
+    TR, RP = a.test_seed, a.replica
     cells = ev.dev_cells()
-    T_h, R_h = ev.lev(ev.mname("historical", ev.TRUTH)), ev.lev(ev.mname("historical", ev.REPLICA))
-    T14, R14 = ev.lev(ev.mname("historical", ev.TRUTH), "_y2014"), ev.lev(ev.mname("historical", ev.REPLICA), "_y2014")
+    T_h, R_h = ev.lev(ev.mname("historical", TR)), ev.lev(ev.mname("historical", RP))
+    T14, R14 = ev.lev(ev.mname("historical", TR), "_y2014"), ev.lev(ev.mname("historical", RP), "_y2014")
     first = (
-        pl.read_parquet(os.path.join(YEARLY, f"{ev.mname('historical', ev.TRUTH)}.parquet"))
+        pl.read_parquet(os.path.join(YEARLY, f"{ev.mname('historical', TR)}.parquet"))
         .filter(pl.col("Year") == Y0)
         .select("Cell", "Year", "n_per_patch", "agb_stand", *[f"{v}_{pn}" for v in TRAITS for pn in PN])
     )
@@ -550,11 +551,9 @@ def stage_score(_a) -> None:
         )
 
     # harness check: the truth's own yearly statistics through this aggregator
-    yr8 = {
-        s: pl.read_parquet(os.path.join(YEARLY, f"{ev.mname(s, ev.TRUTH)}.parquet")) for s in ("historical", "ssp370")
-    }
+    yr8 = {s: pl.read_parquet(os.path.join(YEARLY, f"{ev.mname(s, TR)}.parquet")) for s in ("historical", "ssp370")}
     rep_w, rep_h = window_stats(yr8["ssp370"], W0, Y1), window_stats(yr8["historical"], Y0, YS)
-    T_w, R_w = ev.lev(ev.mname("ssp370", ev.TRUTH)), ev.lev(ev.mname("ssp370", ev.REPLICA))
+    T_w, R_w = ev.lev(ev.mname("ssp370", TR)), ev.lev(ev.mname("ssp370", RP))
     sc = cells.join(
         pl.concat([d.filter(pl.col("n_per_patch") > 0).select("Cell") for d in (T_w, T_h)]).unique(), on="Cell"
     )
@@ -563,8 +562,8 @@ def stage_score(_a) -> None:
     rel = {q: float(((j[q] - j[f"{q}_T"]).abs() / j[f"{q}_T"].abs()).max()) for q in ("n_per_patch", "agb_per_stem")}
     log(f"HARNESS replay max rel diff {rel}")
 
-    for arm in ("lstm", "lstmCB"):
-        d = os.path.join(OUT, arm)
+    for arm in a.arms:
+        d = os.path.join(OUT, arm + a.tag)
         P = pl.concat([pl.read_parquet(f"{d}/f{k}_pred.parquet") for k in range(1, 6)])
         infos = [json.load(open(f"{d}/f{k}.json")) for k in range(1, 6)]
         meta = dict(
@@ -572,7 +571,7 @@ def stage_score(_a) -> None:
             core_s_per_cell_year=float(np.median([i["core_s_per_cell_year"]["ssp370_S14"] for i in infos])),
         )
         for scen in TEST_SCENS:
-            T_w, R_w = ev.lev(ev.mname(scen, ev.TRUTH)), ev.lev(ev.mname(scen, ev.REPLICA))
+            T_w, R_w = ev.lev(ev.mname(scen, TR)), ev.lev(ev.mname(scen, RP))
             sc = cells.join(
                 pl.concat([x.filter(pl.col("n_per_patch") > 0).select("Cell") for x in (T_w, T_h)]).unique(), on="Cell"
             )
@@ -592,7 +591,7 @@ def stage_score(_a) -> None:
                     p14 = window_stats(p, YS, YS)
                     s = ev.score(p14, p14, T14, T14, R14, R14, sch)
                     emit(f"{arm}_S85_y2014", "historical", {k: v for k, v in s.items() if not k.startswith("resp_")})
-    out = os.path.join(ev.EVAL, "scores_A2g.csv")
+    out = os.path.join(ev.EVAL, f"scores_A2g{a.tag}.csv")
     pl.DataFrame(rows, infer_schema_length=None).write_csv(out)
     log(f"wrote {out}")
 
@@ -602,6 +601,13 @@ def main():
     ap.add_argument("stage", choices=["yearly", "train", "score"])
     ap.add_argument("--fold", type=int, default=1)
     ap.add_argument("--arm", default="lstm", choices=["lstm", "lstmCB"])
+    ap.add_argument("--arms", type=lambda x: x.split(","), default=["lstm", "lstmCB"])
+    ap.add_argument(
+        "--train-seeds", dest="train_seeds", type=lambda x: [int(v) for v in x.split(",")], default=list(ev.TRAIN)
+    )
+    ap.add_argument("--test-seed", dest="test_seed", type=int, default=ev.TRUTH)
+    ap.add_argument("--replica", type=int, default=ev.REPLICA)
+    ap.add_argument("--tag", default="", help="suffix of the arm directory and score file (per-version runs)")
     ap.add_argument("--iters", type=int, default=400)
     ap.add_argument("--iters-full", dest="iters_full", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=1e-3)

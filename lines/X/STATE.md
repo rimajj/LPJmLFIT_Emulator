@@ -122,8 +122,10 @@ retrained on one run of each build reach the same skill on Feb, May, Oct-1/6/7/8
 the pre-registered ratio test was badly posed — §11.1). Per-version inputs to fix: `tstress_pft0` threshold per build,
 no per-tree column the Oct layout lacks.
 **NEXT, in order:**
-1. Read `scores_A2g.csv`: replay harness check first (pass ≥ 0.95, totals exact), then DP-G1 (a)–(d) for `lstm_S14` on
-   ssp370 against `lstmCB_S14`; `converged_folds` must be 5. Write ADR 0315 §11; benchmark is A7s (0.131, slope 0.63).
+1. **A2g scored (ADR 0315 §12):** pass 0.125 (fails (a) by 0.015; A7s 0.131), totals −0.6 % / +5.4 %, response slope
+   0.86 — but its climate-blind twin gives 0.69 (elapsed time as a clock). Per-version runs of A2g RUNNING: train
+   2445979 (Feb 2→8 tag `_pvF2`, May 9→10 tag `_pvM9`) → score 2445980 → `eval/scores_A2g_pvF2.csv`, `_pvM9.csv`.
+   Write ADR §13 from them. Then: a non-warming test of the clock (constant-climate or plateau scenario).
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
