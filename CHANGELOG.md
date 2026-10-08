@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: per-version retraining test (`scripts/explore_glob_pv.py`, ADR 0315 §11) after the owner clarified that
+  "every model version" means the method retrained per build, not one emulator transferred across builds. The direct
+  window-map arm reaches the same skill on the Feb, May and four October builds when trained on each build's own runs.
+
+### Added
+
 - Line X: the model-version transfer split (GV) on Billing's global runs (`scripts/explore_glob_gv.py`, ADR 0315 §10).
   The May-2026 build is indistinguishable from the February build and an emulator trained on February runs transfers
   without loss; the October builds are four different models (biomass per tree differs by up to 30 % on identical
