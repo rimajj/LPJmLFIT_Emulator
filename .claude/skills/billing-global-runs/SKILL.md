@@ -42,3 +42,19 @@ Output `/p/projects/open/Jamir/esm_land_emulator_data/billing_global/`. Judge by
 `Cell` with orderA tables (Hainich = 42490). Soil file `soil_new_67420.bin` is raw uint8, no header (code 13 = rock).
 Global `Cell` needs Int32 (> 32 767). 25 patches. `"relative_humidity": false` with `huss` = consistent (no Germany
 humidity defect). CO2 constant from 2014 in the scenarios.
+
+**Two build families, two `ind` layouts.** Feb/May-2026 builds (GFDL-ESM4 members) write the stock 29 columns. The
+**Oct-2026 builds (reanalysis members) write 30**: + `Height_max`, `stemdiam`, `barkthickness`, `mort_fire`;
+− `wscal_mean`, `beta_root`, `k_root`. The converter's header guard refuses an unknown layout (`header drift`);
+`explore_glob_convert.py::use_layout(COLS_OCT2026)` handles it, kept native. Registry column `ind_layout`.
+⚠ **Parameters are read at RUN START from Billing's live par file**, edited in place (it set `MORT_TEMP_FACTOR` 4.0
+instead of 5.0 and the tropical tree's cold limit 14 instead of 12.5 °C by Oct 2026). What a run used is recoverable
+only from its own output — e.g. the printed `mort_temp` / its day count.
+
+**Climate inputs:** `scripts/explore_glob_climate.py cy,assemble` (SLURM, 32 cpus + `NPROC=16`, ~5 min) then `gates`
+→ `.../billing_global/climate/cell_year/<gcm>_<scen>.parquet` (Germany feature names; key gcm, scen, Cell, Year;
+`grid.bin` order). These runs read NET longwave (`lwnet`, no σT⁴ term in PET) and SPECIFIC humidity; getvpd.c's
+`0.263 * 1013.25 * q / exp(...)` is CORRECT (hPa ⇒ a fraction; the Pa form gives percent) — do not "fix" it.
+Stress counts use the hemisphere reset day (14 north / 195 south). The `mort_temp` gate (printed per-tree value vs
+`min(1, factor · tstress_pft<Type> / 365)`) is the end-to-end proof — 100 % on all 38 tables.
+**Registry / splits / folds:** `scripts/explore_glob_registry.py build` → `.../billing_global/registry/` (ADR 0315).

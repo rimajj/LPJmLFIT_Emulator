@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/X/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0310–0329**, opened by **ADR 0310**. **Next free number: 0313.**
+> **0310–0329**, opened by **ADR 0310**. **Next free number: 0316.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ---
@@ -96,14 +96,23 @@ GFDL-ESM4 × {historical h1985 (1985–2014), ssp126/245/370 w2071 (2071–2100)
 9,10 (May-2026); GSWP3-W5E5 obsclim h1990 (1990–2019) × members 1,2,3,5,6,7 (Oct-2026 builds). 67 420 cells, 25 patches.
 ⚠ Cells are in `grid.bin` order (Hainich = 28008), not orderA. ⚠ No per-tree table 2015–2070 (gridded only, in each
 run's `output_transient/`). ⚠ Expected gate "fails": `census` (bare-land cells, verified) and `unique` (raw ID key).
+**Done 2026-10-08 (night, ADR 0314/0315):** all 38 tables converted (the six Oct-build reanalysis tables have a
+30-column layout — converted natively, `ind_layout` in the registry); climate inputs built and verified end to end
+(`…/billing_global/climate/cell_year/<gcm>_<scen>.parquet`, Germany feature names; printed per-tree `mort_temp`
+reproduced 100 % on all 38 tables); registry + folds + splits at `…/billing_global/registry/`; **DP-G1 pre-registered**
+in ADR 0315 before any arm is scored. ⚠ The Oct builds use `MORT_TEMP_FACTOR` 4.0 and a 14 °C tropical cold limit (Feb/May:
+5.0, 12.5) — different model, by design part of the GV split. ⚠ getvpd.c's `1013.25` is NOT a unit slip (ADR 0314 §2).
 **NEXT, in order:**
-1. `python scripts/explore_glob_convert.py collect` → all 38 rows `conversion_ok`; re-submit any failed index
-   (`submit <idx> priority priority 16 01:00:00`).
-2. Climate features for these legs from the ISIMIP3bv2 GFDL-ESM4 `.clm` files the runs read (same `grid.bin` order;
-   paths in each run dir's `input_*.js`), on the same feature definitions the Germany arms use.
-3. Re-target round 1 of A2–A7 to this set: held-out axes = member and scenario (one GCM only); the across-model test
-   stays with line S's real-scenario panel. Raise the DP-A1 re-definition as an integration point.
-4. The Germany tables + scorer stay usable as a secondary venue; do not resubmit D2 without the owner.
+1. **The shared global scorer** — generalise `scripts/explore_de_sh_eval.py` (or a `explore_glob_eval.py` beside it) to
+   the registry: GS370 venue, 2071–2100 per-cell means on held-out-fold tree-bearing cells, the member-7-vs-8 ceiling,
+   level at both tolerances, response vs 1985–2014, and the nulls. **Score the nulls FIRST** (persistence from the 2014
+   state, lookup from the training members' ssp245, the ceiling) and write their values into ADR 0315's table — the
+   persistence response must come out exactly 0 (a harness check).
+2. **Re-target the arms** (A2–A7 of plan revision 2) to the global venue, one at a time, each with its climate-blind
+   twin; within-training free run 1985 → 2014 beside every extrapolation score.
+3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1 for line X's
+   venue; and the X ↔ S overlap (line S's five-model panel keeps the across-model test).
+4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
 
 
 ### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
