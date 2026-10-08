@@ -398,6 +398,31 @@ thresholds may be tightened before a run, never loosened; no CO2.
 
 ---
 
+### 0⛏ TRACK D WAS LAUNCHED 2026-10-08 (ADR 0246; owner: "yes, produce all data that you need") — collect + verify it
+
+An integrator-launched session built and submitted the whole Track-D campaign on THIS branch (line X had a live
+session). Skill **`trackd-data`** has the procedure and the traps; data README:
+`/p/projects/open/Jamir/esm_land_emulator_data/trackD/README.md`. **Do not assert queue state from this note —
+query it:** `squeue -u $USER | grep -E 'S-D'` and `python scripts/trackd_panel.py status`.
+
+| part | what was submitted | where the result lands | job ids |
+|---|---|---|---|
+| D0 panel | 105 blocks x 10 cells, 96 tiles | `test/testitems/references/S_D0_panel_blocks.csv` | done |
+| forcing | 65 orderA files, 5 models x 3 scen. (gate: MPI file re-derived byte-identically) | `/p/tmp/jamirp/trackD/forcing/` | done (2440394) |
+| D1/D3/D4 panel | 74 jobs: m1-m4 x (hist + 15 real-climate legs + ctl_obs + ctl_mpi370), m3/m4 spin-ups chained | raw `/p/tmp/jamirp/trackD/panel/m*/<leg>/b*/`; tables `.../esm_land_emulator_data/trackD/panel/` via 72 chained collectors | `/p/tmp/jamirp/trackD/panel/jobs.json`, `collect_jobs.json` |
+| D2 Germany | 8 Dec-build members (2440306-2440313) + chained converters (2440805-2440812) | raw `/p/tmp/jamirp/trackD/germany_rh/<member>/`; tables `.../trackD/germany_rh/ind/` | see left |
+| D2 ssp245 | Feb-build gate 2440305 -> evaluation 2440813, which submits the 4 ssp245 members + converters ONLY if the gate passes | `.../trackD/gate/*/gate.json`, `logs/S-D2gate-eval.<id>.out` | 2440305, 2440813 |
+
+**When it has landed, in order:** (1) `python scripts/trackd_panel.py status` — every (member, leg) 105/105; any
+`LEG INCOMPLETE` names its failed blocks in `job.<id>.out`; re-run those blocks' `lpjml.js` by hand. (2) Check the
+72 `logs/S-Dcol-*.out` end in `PASS`. (3) Read `logs/S-D2gate-eval.*.out`: if `GATE FAILED`, the ssp245 members were
+not submitted — investigate the build before anything else; if the job could not `sbatch` from the compute node,
+submit the four with `scripts/trackd_germany_rerun.py d2 ... --submit` by hand. (4) Germany: `logs/S-D2conv-*.out`
+end in `conversion_ok`; then compare the re-run's 2045-2070 GRIDDED outputs with production's (decoded variables,
+never `cmp`, ADR 0043) — identical means production was reproduced, different means a new realisation (node types,
+CLAUDE.md §3); say which. (5) Replace ADR 0246 §7's derived costs with `sacct` numbers. (6) Then DP-0 (plan §8): the
+original's own response signal-to-noise on (scenario − ctl_obs) with four members.
+
 > **LAST MERGE — 2026-08-17, ADR 0243 is ON `main`.** Merge commit `728a0320`, changelog collation
 > `48aad206`, branch sha `0bcb28e3`. Branch CI green on `0bcb28e3` (`format` + `CI` — `CI` fired because a
 > rebase-onto-newer-`main` force-push makes the push RANGE include `main`'s own `src/**` commits, which is

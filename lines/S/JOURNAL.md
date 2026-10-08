@@ -2862,3 +2862,21 @@ the recorded habit.
 Phase 2's accumulator exists and is off behind a three-flag chain of which two fail silently — so the next
 step is to measure the middle of the bracket (0.78 ≤ F's own ≤ 1.00), and the fail-loudly fix is raised as
 an inbound to line M rather than done in their file.
+
+## 2026-10-08 — Track D built and launched (integrator-launched session on line S; ADR 0246)
+
+Owner answered the plan's open question with "yes, produce all data that you need". Built on this branch because
+line X had a live session. What happened, in order: built the Feb-2026 LPJmL-FIT (source b2e5ca9) for the Germany
+ssp245 members, after reading every member's production log banner (ssp245 = Feb 5 2026, others Dec 17 2025);
+found the production 2071-2100 config also carries a fix_climate block that acts only after 2100, so the 2045-2070
+config + lastyear 2100 is the faithful template (and fills the 2045-2070 tree-table gap); submitted the 8 Dec-build
+Germany members and a Feb-build row gate whose evaluation job submits the 4 ssp245 members only on PASS. Found that
+/p/projects/lpjml/input/scenarios/ISIMIP3bv2 holds LPJmL-ready climate for ten models x four scenarios, so the
+climate-contrast set became REAL scenarios (5 models x ssp126/370/585) instead of the plan's synthetic rescaling;
+regridded 65 files to orderA after re-deriving the ground truth's MPI file byte-identically. Chose the panel as
+contiguous 10-cell blocks (LPJmL needs contiguous ranges; orderA is lat bands west->east); first draw covered 64
+tiles, a round-robin draw preferring unused tiles covers 96. Snapshot LPJROOT needed include/ (cpp of
+par/soil_20m.js). Smoke chain (3-yr spin-up -> 2-yr hist -> 2-yr ssp370 + ctl_obs) passed: restart hand-offs, all
+outputs, `fix climate after year 2019 shuffling years 1990-2019`, real per-tree GPP ~2x npp, small trees present.
+The ind key (Year, Cell, Patch, ID, Type) is NOT unique in the C output (ID reuse, different Age) — the collector
+gates fully identical rows instead. Submitted 74 panel jobs + 72 chained collectors + 8 chained Germany converters.
