@@ -378,7 +378,7 @@ def read_back(stage_dir: str, stage_dev: str, census: pl.DataFrame, nthreads: in
                              use_statistics=False, parallel="columns")
         out = dict(cb=cb, meta_rows=md.num_rows, rows=df.height, row_groups=md.num_row_groups)
         out["cell_block_bad"] = int((df["Cell"] // CELL_BLOCK != cb).sum())
-        sk = (df["Year"].cast(pl.Int64) * 10_000_000 + df["Cell"].cast(pl.Int64) * 256
+        sk = (df["Year"].cast(pl.Int64) * 1_000_000_000 + df["Cell"].cast(pl.Int64) * 256
               + df["Patch"].cast(pl.Int64))
         out["sort_viol"] = int((sk.diff() < 0).sum())
         out["census"] = df.group_by(["Year", "Cell"]).agg(n_rows_disk=pl.len())
@@ -427,7 +427,7 @@ def read_back(stage_dir: str, stage_dev: str, census: pl.DataFrame, nthreads: in
     res["dev_rows_expected"] = exp_dev
     res["dev_cells"] = int(ddf["Cell"].n_unique())
     res["dev_cell_bad"] = int((ddf["Cell"] % DEV_MOD != 0).sum())
-    dk = (ddf["Year"].cast(pl.Int64) * 10_000_000 + ddf["Cell"].cast(pl.Int64) * 256
+    dk = (ddf["Year"].cast(pl.Int64) * 1_000_000_000 + ddf["Cell"].cast(pl.Int64) * 256
           + ddf["Patch"].cast(pl.Int64))
     res["dev_sort_viol"] = int((dk.diff() < 0).sum())
     res["dev_row_groups"] = pq.ParquetFile(stage_dev).metadata.num_row_groups
@@ -623,7 +623,8 @@ def run(idx: int) -> int:
     extra_years = [y for y in years_present if y not in years_expected]
     # (Year, Cell) census over the EXPECTED grid
     full = pl.DataFrame({"Year": np.repeat(years_expected, NCELL).astype(np.int16),
-                         "Cell": np.tile(np.arange(NCELL), len(years_expected)).astype(np.int16)})
+                         "Cell": np.tile(np.arange(NCELL), len(years_expected))},
+                        schema_overrides={"Cell": SCHEMA["Cell"]})
     cj = full.join(census, on=["Year", "Cell"], how="left")
     miss = cj.filter(pl.col("n_rows").is_null())
     miss_by_year = {}
@@ -655,7 +656,7 @@ def run(idx: int) -> int:
             ["Year", "Cell", "Patch", "Type", "ID", "n", "n_trait_distinct", "height_min",
              "height_max"]).sort(["Cell", "Patch", "Type", "ID", "Year"])
     else:
-        dupk = pl.DataFrame(schema={"Year": pl.Int16, "Cell": pl.Int16, "Patch": pl.Int16,
+        dupk = pl.DataFrame(schema={"Year": pl.Int16, "Cell": SCHEMA["Cell"], "Patch": pl.Int16,
                                     "Type": pl.Int8, "ID": pl.Int32, "n": pl.UInt32,
                                     "n_trait_distinct": pl.UInt32, "height_min": pl.Float32,
                                     "height_max": pl.Float32})

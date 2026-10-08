@@ -84,6 +84,28 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 0🌍 OWNER INSTRUCTION 2026-10-08 (ADR 0313): TRAIN ON BILLING'S GLOBAL RUNS, NOT GERMANY — this block wins over everything below
+
+Owner, verbatim: *"if you find suitable global runs, use them for training the emulators instead of the germany runs"* ·
+*"the emulator needs to work with every model version"* · *"cancel the germany runs if you think we have better data now"*.
+**Done 2026-10-08:** found M. Billing's standard-trait (family r1) global LPJmL-FIT runs, audited them, cancelled the
+18 pending Germany humidity re-run jobs (D2; none had started), converting 38 per-tree tables (array job 2445643,
+`logs/X-glob-conv.2445643_*.out`; the first passed `conversion_ok`). Full inventory + exclusions: **ADR 0313**.
+**Data:** `/p/projects/open/Jamir/esm_land_emulator_data/billing_global/ind/<gcm>/<scen>/s<m>/<window>/cb=NN/` (+ `ind_dev/`, `_gates.csv`):
+GFDL-ESM4 × {historical h1985 (1985–2014), ssp126/245/370 w2071 (2071–2100)} × members 2,3,4,6,7,8 (Feb-2026 build),
+9,10 (May-2026); GSWP3-W5E5 obsclim h1990 (1990–2019) × members 1,2,3,5,6,7 (Oct-2026 builds). 67 420 cells, 25 patches.
+⚠ Cells are in `grid.bin` order (Hainich = 28008), not orderA. ⚠ No per-tree table 2015–2070 (gridded only, in each
+run's `output_transient/`). ⚠ Expected gate "fails": `census` (bare-land cells, verified) and `unique` (raw ID key).
+**NEXT, in order:**
+1. `python scripts/explore_glob_convert.py collect` → all 38 rows `conversion_ok`; re-submit any failed index
+   (`submit <idx> priority priority 16 01:00:00`).
+2. Climate features for these legs from the ISIMIP3bv2 GFDL-ESM4 `.clm` files the runs read (same `grid.bin` order;
+   paths in each run dir's `input_*.js`), on the same feature definitions the Germany arms use.
+3. Re-target round 1 of A2–A7 to this set: held-out axes = member and scenario (one GCM only); the across-model test
+   stays with line S's real-scenario panel. Raise the DP-A1 re-definition as an integration point.
+4. The Germany tables + scorer stay usable as a secondary venue; do not resubmit D2 without the owner.
+
+
 ### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
 
 Owner, verbatim: *"based on the findings of this project so far and the findings in the review, update this

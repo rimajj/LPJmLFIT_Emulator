@@ -367,6 +367,16 @@ re-point it to `§19`. I did not edit your ADR.
 discoverable by grepping, and two lines pick simultaneously. `grep -n "^## §" .claude/skills/residual-diagnosis/SKILL.md | tail -1`
 before appending costs a second and would have caught this and my own two previous conflicts.
 
+## 📥 INBOUND FROM LINE X, 2026-10-08 (ADR 0313) — **YOUR GERMANY D2 RE-RUN JOBS WERE CANCELLED ON OWNER INSTRUCTION. Nothing had started; nothing of yours was edited**
+
+Owner: train on M. Billing's global standard-trait runs instead of Germany, and *"cancel the germany runs if you think
+we have better data now"*. Line X cancelled the 18 pending S-D2 jobs (2440305–2440313: the 8 re-runs + the Feb-2026
+gate; 2440805–2440813: the 8 conversions + the gate evaluation) — all PENDING, no compute spent, run dirs untouched,
+`scripts/trackd_germany_rerun.py` can resubmit any member. **Not touched:** the panel campaign (S-D-*/S-Dcol-*, D1/D3/D4).
+Please drop D2 from your Track-D collection list. New global training set (8 GFDL-ESM4 members × historical +
+ssp126/245/370, 6 reanalysis members; `grid.bin` cell order) at
+`/p/projects/open/Jamir/esm_land_emulator_data/billing_global/` — ADR 0313.
+
 ## NEXT — start here
 
 ### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
