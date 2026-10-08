@@ -103,6 +103,25 @@ def manifest() -> list[dict]:
 cv.manifest = manifest
 cv.rock_cells = rock_cells
 
+# The Oct-2026 builds (reanalysis members) write a 30-column `ind` table: + Height_max (height_max is a trait in
+# that build), stemdiam, barkthickness, mort_fire; - wscal_mean, beta_root, k_root  [VERIFIED 2026-10-08 from the
+# r1_1 header]. Kept NATIVE (owner: the emulator must work with every model version) -- never padded or renamed;
+# consumers read the layout per member (registry members.parquet `ind_layout`).
+COLS_OCT2026 = [
+    "Year", "ID", "Type", "Height", "Height_max", "Age", "agb", "vegc", "transp", "npp", "gpp", "SLA", "Longevity",
+    "Wooddens", "LAI", "stemdiam", "barkthickness", "fpc_ind", "minwscal", "D95", "D95max", "mort_npp", "mort_age",
+    "mort_water", "mort_temp", "mort_fire", "mort", "isdead", "Patch", "Cell",
+]
+
+
+def use_layout(cols: list[str]) -> None:
+    """Point the converter (module globals, read at call time) at another `ind` column layout."""
+    cv.COLS = cols
+    cv.SCHEMA = {c: {**cv.INT_DT, "Cell": pl.Int32}.get(c, pl.Float32) for c in cols}
+    cv.FLOATS = [c for c in cols if cv.SCHEMA[c] == pl.Float32]
+    cv.MORT = [c for c in cols if c.startswith("mort")]
+    cv.PQ_KW = {**cv.PQ_KW, "column_encoding": {c: "BYTE_STREAM_SPLIT" for c in cv.FLOATS}}
+
 
 def submit(args: list[str]) -> int:
     array = args[0]
@@ -153,7 +172,10 @@ if __name__ == "__main__":
         for m in manifest():
             print(m["idx"], m["member"], m["src"])
     elif stage == "run":
-        sys.exit(cv.run(int(sys.argv[2])))
+        idx = int(sys.argv[2])
+        if manifest()[idx]["gcm"] == "GSWP3-W5E5":
+            use_layout(COLS_OCT2026)
+        sys.exit(cv.run(idx))
     elif stage == "collect":
         cv.collect()
         print(cv.GATES_CSV)

@@ -503,3 +503,17 @@ humidity defect); the 18 S-D2 jobs were all still pending, cancelled by explicit
 refused by the permission classifier). Converter needed two global-size fixes (Int16 Cell; 1e7 sort-key
 multiplier). First table gate: conversion_ok, census/unique "fail" = bare-land cells (1 616 of 1 627 VegC == 0)
 and the known duplicate raw key.
+
+## 2026-10-08 (night) — global set: conversion finished, climate inputs built and verified, venue pre-registered (ADR 0314/0315)
+
+Collected the conversion: 32 GFDL-ESM4 tables fine; all six reanalysis tables failed on `header drift` — the Oct-2026
+builds write a 30-column `ind` (+Height_max/stemdiam/barkthickness/mort_fire, −wscal_mean/beta_root/k_root). Added a
+native layout switch, reconverted (2445730), 38/38 conversion_ok. Built `explore_glob_climate.py` (net longwave PET,
+specific-humidity VPD, hemisphere reset windows). ⚠ Mid-session I claimed getvpd.c's `1013.25` was an hPa/Pa slip
+making rh 100× too small, and told the owner so; the script's first run refuted it (the formula with hPa yields a
+fraction — mean rh 0.63 on a test sample, 0.69 globally). Retracted to the owner, the dependent probe deleted before
+it ran. Lesson: check a "units bug" numerically on the real file before saying it. End-to-end gate (printed mort_temp
+from tstress_pft<Type>) passed 100 % on all 32 GFDL tables at first try; the Oct tables matched 94.7 % — implied
+count exactly 0.8× ⇒ Billing's live par file now sets MORT_TEMP_FACTOR 4.0 (and tropical cold limit 14 °C); with that
+override 38/38 at 100 %. Registry: 58 187 tree-bearing cells, 5 folds balanced to ±1 cell, four splits. ADR 0315
+pre-registers DP-G1 before any arm runs. Jobs 2445718 (climate), 2445735 (registry), 2445741 (gates).
