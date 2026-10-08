@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: arm A2g on the global venue (`scripts/explore_glob_lstm.py`, ADR 0315 §12) — a cell-level LSTM trained to
+  free-run across the 2015-2070 gap with loss only where per-tree truth exists. Totals within 6 % and a stronger
+  warming response than the direct map, but it misses the round-1 pass-rate bar by 0.015, and its climate-blind twin
+  shows most of the response pattern is learned from elapsed time, not climate.
+
+### Added
+
 - Line X: per-version retraining test (`scripts/explore_glob_pv.py`, ADR 0315 §11) after the owner clarified that
   "every model version" means the method retrained per build, not one emulator transferred across builds. The direct
   window-map arm reaches the same skill on the Feb, May and four October builds when trained on each build's own runs.
