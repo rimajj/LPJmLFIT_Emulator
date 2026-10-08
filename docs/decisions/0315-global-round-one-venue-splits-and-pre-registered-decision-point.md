@@ -142,3 +142,56 @@ it is the benchmark the recursive arms now have to beat** (pass 0.131, response 
 * **Amendment to DP-G1 (a):** an arm that predicts the ensemble expectation (A7, any deterministic regressor) is held
   to **0.5 × `ceiling_mean`** (0.140 on GS370); an arm that samples one realization to 0.5 × `ceiling` (0.087); both
   must beat the best null. A tightening, as §5 permits. **A7s (0.131) now fails (a) as well as (b).**
+
+## 10. GV — the model-version split, measured (`scripts/explore_glob_gv.py`, job 2445825; expectations in its header)
+
+Dev cells (every 10th), level pass at `max(10 %, two-member spread)`. Three one-variable parts.
+
+**A — Feb-5 vs May-26 build, same GFDL-ESM4 climate, no model.** The two builds are indistinguishable on this panel.
+
+| truth | scored against | historical | ssp126 | ssp245 | ssp370 |
+|---|---|---|---|---|---|
+| May member 9 / 10 | the other May member | 0.171 / 0.167 | 0.177 / 0.177 | 0.188 / 0.189 | 0.190 / 0.194 |
+| May member 9 / 10 | one Feb member (8) | 0.164 / 0.167 | 0.177 / 0.177 | 0.181 / 0.182 | 0.192 / 0.180 |
+| May member 9 / 10 | mean of Feb 2,3,4,6,7 | 0.276 / 0.267 | 0.284 / 0.276 | 0.290 / 0.283 | 0.287 / 0.280 |
+| Feb member 8 (reference) | mean of Feb 2,3,4,6,7 | 0.270 | 0.282 | 0.280 | **0.281** (= §9's `ceiling_mean`: harness check passed) |
+
+Area totals Feb-mean / May within 0.2 % (stems) and 0.8 % (biomass per tree); response slopes 0.95–1.07. The
+pre-registered "inert" outcome holds.
+
+**B — A7/A7s trained on Feb 2,3,4,6,7 (all legs), predicting May members 9, 10 and Feb member 8.** A7s at ssp370:
+0.168 / 0.164 on May vs 0.166 on Feb 8; at ssp126/245 0.181–0.193 vs 0.193–0.198. No transfer loss. (A7s's
+historical row, ~0.30, is not a result: its input is its own 1985–2014 state, which is the target there.)
+
+**C — the October-build reanalysis family (GSWP3-W5E5, 1990–2019).** Forcing AND build differ from training, so the
+Feb-vs-Oct numbers mix the two; within the Oct family the forcing is identical, so differences there are version only.
+
+| truth (Oct-1 member) | other Oct-1 member | mean of the other five Oct members | Feb historical mean | Feb-trained A7 |
+|---|---|---|---|---|
+| pass rate | 0.164–0.165 | 0.213–0.216 | **0.004–0.005** | **0.003** |
+| biomass per tree, prediction / truth | 0.99–1.02 | 0.86–0.87 | 0.68–0.69 | 0.73–0.74 |
+
+Per member, relative to Feb member 2's GFDL historical window (area-weighted, dev cells):
+
+| member (build) | stems | biomass per tree | median rooting depth (cm) | median min. water scalar |
+|---|---|---|---|---|
+| Feb 2 / May 9 | 1.000 / 0.999 | 1.000 / 1.006 | 256 / 258 | 0.157 / 0.158 |
+| Oct 1, 2, 3 (Oct-1 build) | 0.956–0.959 | **1.46–1.48** | 181–183 | 0.128–0.129 |
+| Oct 5 (Oct-6) | 0.970 | **1.22** | 196 | 0.128 |
+| Oct 6 (Oct-7) | 0.976 | **1.04** | 204 | 0.128 |
+| Oct 7 (Oct-8) | 0.963 | **1.11** | 187 | 0.129 |
+
+* ⚠ **The October "family" is four models, not one.** On identical forcing, biomass per tree differs by up to 30 %
+  between the Oct-1 build and the Oct-7 build. ADR 0314 §4 already found the parameters are read from a directory
+  edited in place; this is the size of it.
+* A Feb-trained emulator is useless on the October builds (0.3 % of cells vs the 16 % two Oct-1 runs agree on) —
+  no better than the "nothing changes" null. Biomass per tree is the dominant miss; rooting depth and the minimum
+  water scalar medians fail too.
+* The pre-registered sign (boreal stems Oct/Feb > 1, from the weaker temperature mortality) is **falsified**: 0.90
+  boreal, 0.96 temperate, 1.02 tropics. Confounded with the forcing change, so it says nothing about the parameter
+  change alone.
+
+**Reading for the owner's "work with every model version":** a version that does not change the panel (Feb → May)
+costs nothing. A version that does (any October build) cannot be learned from other versions' runs; supporting it
+needs its own runs or an input that tells the emulator which parameter values it is emulating, and the October builds
+would each count as a separate version.

@@ -105,14 +105,24 @@ in ADR 0315 before any arm is scored. ⚠ The Oct builds use `MORT_TEMP_FACTOR` 
 **Done (late night):** scorer `scripts/explore_glob_eval.py` + baselines (ceiling 0.173 conjunctive pass; lookup 0.100 ⇒
 DP-G1 (a) tightened to "above the best null"); arm A7 `scripts/explore_glob_a7.py`: A7s 0.131, response slope 0.63,
 biomass per tree +12.4 % ⇒ fails (b). Scores: `…/billing_global/eval/scores_GS370.csv`; ADR 0315 §7–8.
+**Done 2026-10-08/09 (night): GV measured (ADR 0315 §10, `scripts/explore_glob_gv.py`, `eval/scores_GV.csv`).** Feb → May build
+is inert (Feb-mean vs May 0.28 = vs Feb 8 0.28; A7s transfers with no loss). The Oct builds are four different models
+(biomass per tree 1.47 / 1.22 / 1.04 / 1.11 × Feb on identical forcing within the family); Feb-trained A7 passes 0.3 %
+of Oct cells vs 16 % Oct-to-Oct — useless there.
+**Running: arm A2g, the cell-level LSTM with a GAP-CROSSING rollout loss** (`scripts/explore_glob_lstm.py`; trains on
+members 2,3,4,6 × hist+ssp126/245, free-runs 2015→2100 and is penalised only where truth exists). Yearly stats built
+(`…/billing_global/yearly/`, 32 files). Smoke passed (beats 2014 persistence on held-out blocks after 100 steps;
+~7e-6 core-s per cell-year). Train array **2445840** (lstm/lstmCB × 5 folds, `logs/X-glob-a2tr.2445840_*.out`) →
+score **2445841** (`afterok`; `eval/scores_A2g.csv`, log `logs/X-glob-a2sc.2445841_*.out`). Pre-registered expectations
++ gates in the script header. If the score job is missing: a training task failed (check `JOB DONE exit=`).
 **NEXT, in order:**
-1. Done for GS245/GM (ADR 0315 §9): biomass error is extrapolation, the weak response is the method; the single-member
-   ceiling rewards smoothing ⇒ `ceiling_mean` (oracle mean of members 2,3,4,6,7: 0.281) added; expectation-predicting
-   arms are held to 0.5 × that (ADR 0315 §9). GV (model-build transfer) still open.
-2. **Re-target the recursive arms** (A2 LSTM rollout, A3, A4, A6) to the global venue, each with its climate-blind twin;
-   they must beat A7s (pass 0.131, response slope 0.63) — and need a free run 2015 → 2100 from the 2014 state.
+1. Read `scores_A2g.csv`: replay harness check first (pass ≥ 0.95, totals exact), then DP-G1 (a)–(d) for `lstm_S14` on
+   ssp370 against `lstmCB_S14`; `converged_folds` must be 5. Write ADR 0315 §11; benchmark is A7s (0.131, slope 0.63).
+2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
+5. Owner-facing: the October builds are a moving target (§10) — ask the owner which version(s) "every model version"
+   must cover before spending on them.
 
 
 ### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
