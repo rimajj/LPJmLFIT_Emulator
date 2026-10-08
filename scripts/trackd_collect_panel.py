@@ -15,8 +15,7 @@ Tables (one file each, all keyed by the orderA `Cell` index, read from each bloc
 
 GATE (nothing is written unless all hold): every block log has "lpjml successfully terminated, 10 grid cells
 processed."; every block's grid.nc cellids equal its [start, end] from S_D0_panel_blocks.csv; every table covers
-exactly the leg's years; the ind table has no fully identical row (a block merged twice); shared tree IDs inside
-a patch are a property of the C writer and are counted in the manifest, not gated.
+exactly the leg's years; shared tree IDs inside a patch are a property of the C writer and are counted in the manifest, not gated.
 
 Usage: python scripts/trackd_collect_panel.py <member> <leg> [--panel DIR] [--out DIR]
 """
@@ -114,7 +113,8 @@ def main():
         if a.leg != "spinup":
             d = pl.read_csv(os.path.join(out, "ind.csv"), has_header=True, new_columns=COLS, schema=SCHEMA)
             inds.append(d)
-            man["blocks"][b] = {"ind_rows": d.height}
+            key = ["Year", "Cell", "Patch", "ID", "Type"]
+            man["blocks"][b] = {"ind_rows": d.height, "shared_id_rows": d.height - d.select(key).unique().height}
             for f, kind in (("vegc.nc", "annual"), ("lai_stand.nc", "annual"), ("mswc.nc", "monthly"),
                             ("whc_nat.nc", "monthly")):  # fmt: skip
                 p = os.path.join(out, f)
@@ -141,12 +141,10 @@ def main():
         yrs = ind["Year"].unique().sort().to_list()
         assert yrs == list(range(y0, y1 + 1)), f"ind years {yrs[:3]}..{yrs[-3:]}"
         # The C reuses tree IDs inside a patch (two different trees, different Age, same (Cell, Patch, ID, Type)),
-        # so the key is NOT unique by design and is reported, not gated. What IS gated: no fully identical row,
-        # which is what a block merged twice would produce.
-        key = ["Year", "Cell", "Patch", "ID", "Type"]
-        man["shared_id_rows"] = ind.height - ind.select(key).unique().height
-        full = ind.height - ind.unique().height
-        assert full == 0, f"{full} fully identical ind rows (a block merged twice?)"
+        # so that key is NOT unique by design: it is counted per block (cheap) and reported, not gated. A block
+        # merged twice is impossible here: the block dirs are distinct and every block's cellids were asserted to be
+        # its own disjoint range above. (A full-row unique() over ~64 M rows OOM-killed the first collectors.)
+        man["shared_id_rows"] = int(sum(v.get("shared_id_rows", 0) for v in man["blocks"].values()))
         ind.write_parquet(os.path.join(od, "ind.parquet"), **PQ)
         man["ind_rows"] = ind.height
 
