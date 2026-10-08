@@ -134,7 +134,11 @@ it is the benchmark the recursive arms now have to beat** (pass 0.131, response 
   direct map (it shrinks toward the training mean), not of the held-out climate.
 * ⚠ **"≥ k × the ceiling" is not a ceiling for a model that predicts the ensemble expectation.** A7s beats member 7 on
   three of five rows: a mean prediction sits closer to any one member than another member does. So DP-G1 (a), and
-  plan §4's "read every arm as a ratio to the ceiling", reward smoothing. (b) and (c) are unaffected. **Proposed
-  addition (not yet adopted):** score the per-cell trait DISTRIBUTION (q05–q95, all four traits) against the member
-  spread, which a mean-predictor cannot pass by smoothing; and report the pass rate of the training members' own
-  ensemble mean as the smoothing null.
+  plan §4's "read every arm as a ratio to the ceiling", reward smoothing. (b) and (c) are unaffected.
+* **Measured (job 2445815):** the ORACLE expectation — the mean of members 2,3,4,6,7 under ssp370 — passes **0.281**
+  of cells (flat 10 %: 0.226) against the single member's 0.173; totals 0.999 / 1.006, response slopes 0.99 / 1.02.
+  (An earlier draft of this section proposed scoring the q05–q95 distribution as the fix; that is wrong — an averaged
+  quantile is as smooth as an averaged median.)
+* **Amendment to DP-G1 (a):** an arm that predicts the ensemble expectation (A7, any deterministic regressor) is held
+  to **0.5 × `ceiling_mean`** (0.140 on GS370); an arm that samples one realization to 0.5 × `ceiling` (0.087); both
+  must beat the best null. A tightening, as §5 permits. **A7s (0.131) now fails (a) as well as (b).**

@@ -106,9 +106,9 @@ in ADR 0315 before any arm is scored. ⚠ The Oct builds use `MORT_TEMP_FACTOR` 
 DP-G1 (a) tightened to "above the best null"); arm A7 `scripts/explore_glob_a7.py`: A7s 0.131, response slope 0.63,
 biomass per tree +12.4 % ⇒ fails (b). Scores: `…/billing_global/eval/scores_GS370.csv`; ADR 0315 §7–8.
 **NEXT, in order:**
-1. Done for GS245/GM (ADR 0315 §9): biomass error is extrapolation, the weak response is the method; ⚠ the ceiling
-   ratio rewards smoothing — add the smoothing null (training-member ensemble mean) + the q05–q95 distribution score
-   to `explore_glob_eval.py` BEFORE scoring a recursive arm. GV (model-build transfer) still open.
+1. Done for GS245/GM (ADR 0315 §9): biomass error is extrapolation, the weak response is the method; the single-member
+   ceiling rewards smoothing ⇒ `ceiling_mean` (oracle mean of members 2,3,4,6,7: 0.281) added; expectation-predicting
+   arms are held to 0.5 × that (ADR 0315 §9). GV (model-build transfer) still open.
 2. **Re-target the recursive arms** (A2 LSTM rollout, A3, A4, A6) to the global venue, each with its climate-blind twin;
    they must beat A7s (pass 0.131, response slope 0.63) — and need a free run 2015 → 2100 from the 2014 state.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
