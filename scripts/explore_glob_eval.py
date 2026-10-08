@@ -31,6 +31,10 @@ BASELINES and what each MUST return (written before the run, ADR 0184; the `expe
               response; level pass rate below the ceiling.
   lookup_245  mean over the GS370 training members (2,3,4,6) of the SAME cell's ssp245 2071-2100 statistics: the
               nearest training scenario; aggregate response ratio < 1 if ssp370's response exceeds ssp245's.
+  ceiling_mean  (added after ADR 0315 sec. 9) the mean of members 2,3,4,6,7 of the SAME scenario -- an ORACLE (it sees
+              the held-out scenario), i.e. the ceiling for an arm that predicts the ensemble EXPECTATION. A single
+              member (`ceiling`) is the ceiling only for an arm that samples one realization. Expected: pass rate
+              ABOVE `ceiling` (a mean sits closer to member 8 than member 7 does).
 """
 
 from __future__ import annotations
@@ -167,7 +171,12 @@ def stage_nulls():
         [pl.col(q).mean() for q in PANEL])
     look_h = pl.concat([lev(mname("historical", s)) for s in TRAIN]).group_by("Cell").agg(
         [pl.col(q).mean() for q in PANEL])
+    mean_w = pl.concat([lev(mname("ssp370", s)) for s in (*TRAIN, REPLICA)]).group_by("Cell").agg(
+        [pl.col(q).mean() for q in PANEL])
+    mean_h = pl.concat([lev(mname("historical", s)) for s in (*TRAIN, REPLICA)]).group_by("Cell").agg(
+        [pl.col(q).mean() for q in PANEL])
     arms = {
+        "ceiling_mean": (mean_w, mean_h, "oracle expectation; pass ABOVE the single-member ceiling"),
         "ceiling": (R_w, R_h, "pass <= 1; area ratios within 0.05 of 1; aggregate response 0.8-1.2"),
         "persist_h": (T_h, T_h, "response EXACTLY 0 (harness check)"),
         "persist_2014": (snap, T_h, "small response; pass below ceiling"),
