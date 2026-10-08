@@ -83,3 +83,37 @@ one core) is reported for every arm beside its score.
 * It does not replace the across-climate-model test, which stays with line S's five-model panel.
 * It does not touch the acceptance criterion (ADR 0106): passing DP-G1 is "survives round 1", never "finished".
 * The plan edit (DP-A1 → DP-G1 for line X's venue) is raised as an integration point.
+
+## 7. Baselines measured before any arm, and one tightening (2026-10-08, `scripts/explore_glob_eval.py`, job 2445751)
+
+Scored on GS370: 5 809 dev cells carrying trees in member 8's 1985–2014 or 2071–2100 window (dev = every 10th cell;
+**not** the all-cell basis of the acceptance criterion). Harness check passed: carrying 1985–2014 forward gives a
+response of exactly 0.
+
+| baseline | cells passing all six | flat 10 % | trees (area-weighted, P/T) | biomass per tree | tree-count response, aggregate / deattenuated slope |
+|---|---|---|---|---|---|
+| ceiling (member 7) | **0.173** | 0.136 | 0.998 | 0.999 | 0.98 / 0.99 |
+| 1985–2014 carried forward | 0.060 | 0.046 | 0.877 | 1.298 | 0 / 0 |
+| 2014 snapshot carried forward | 0.057 | 0.045 | 0.907 | 1.283 | 0.24 / 0.09 |
+| lookup: training members' ssp245 | **0.100** | 0.076 | 0.954 | 1.205 | 0.63 / 0.83 |
+
+⚠ **Two independent runs of the original model agree in only 17 % of cells on all six quantities** (stems 68 %,
+biomass per tree 50 %, rooting-depth median 51 %): at 25 patches the per-cell criterion is near the original's own
+noise. ⚠ **DP-G1 (a) as written (≥ 0.5 × 0.173 = 0.087) is passed by the lookup null (0.100)** — no power. Tightened,
+as §5 permits: **(a) also requires a pass rate above the best null's (0.100)**. Honest timing: decided after the
+baselines and stated to the owner before the first arm finished, but written here after it; it changes no verdict
+below (A7s passes (a) either way, A7 fails either way).
+
+## 8. First arm on the venue: A7, the direct window map (`scripts/explore_glob_a7.py`, job 2445762)
+
+| variant | pass | trees P/T | biomass per tree P/T | tree-count response agg / deatt. slope | wood-density response agg / slope |
+|---|---|---|---|---|---|
+| A7 (window climate + place) | 0.039 | 1.002 | 1.060 | 1.08 / 0.65 | 0.37 / 0.51 |
+| A7cb (climate-blind twin) | 0.036 | 0.914 | 1.293 | 0 / 0 | 0 / 0 |
+| **A7s** (+ the member's own 1985–2014 state) | **0.131** | 0.985 | **1.124** | 0.84 / 0.63 | 0.65 / 0.44 |
+| A7scb (its twin) | 0.099 | 0.915 | 1.290 | 0 / 0 | 0 / 0 |
+
+**DP-G1 verdicts:** A7 fails (a). **A7s passes (a)** (0.131 > 0.100 and > 0.087), **fails (b)** (biomass per tree
++12.4 % > 10 %), passes (c) (response slope 0.63 vs its twin's 0; the ceiling's deattenuated slope is 0.99, so member
+noise is far smaller than the gap), (d) not applicable (no stepping). ⇒ **A7s does not survive round 1 as specified;
+it is the benchmark the recursive arms now have to beat** (pass 0.131, response slope 0.63).

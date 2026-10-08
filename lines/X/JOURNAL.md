@@ -517,3 +517,11 @@ from tstress_pft<Type>) passed 100 % on all 32 GFDL tables at first try; the Oct
 count exactly 0.8× ⇒ Billing's live par file now sets MORT_TEMP_FACTOR 4.0 (and tropical cold limit 14 °C); with that
 override 38/38 at 100 %. Registry: 58 187 tree-bearing cells, 5 folds balanced to ±1 cell, four splits. ADR 0315
 pre-registers DP-G1 before any arm runs. Jobs 2445718 (climate), 2445735 (registry), 2445741 (gates).
+
+## 2026-10-08 (late night) — global scorer, baselines and the first arm (ADR 0315 §7–8)
+Owner asked why nothing was running: I had stopped after the data prep instead of starting the scorer — no reason to
+wait. Built `explore_glob_eval.py` (Germany reduction code, 25 patches, GS370 venue, dev cells) and scored the nulls
+(job 2445751, ~2 min). Ceiling only 0.173 conjunctive per-cell pass; the lookup null at 0.100 beat DP-G1 (a)'s 0.087
+⇒ tightened (a) to "above the best null". A7 direct map (job 2445762, 3 min): A7s 0.131 pass, response slope 0.63 vs 0
+for its twin, but biomass per tree +12.4 % ⇒ fails (b). Owner also asked whether Germany runs were still going: all 18
+D2 jobs CANCELLED, the 64 queued S-D*/S-Dcol* jobs are line S's global five-model panel (kept on purpose).
