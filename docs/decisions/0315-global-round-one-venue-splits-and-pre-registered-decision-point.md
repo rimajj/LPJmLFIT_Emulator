@@ -281,3 +281,22 @@ zero-response null §4 assumed; (c) must be read as "climate adds 0.17 of slope"
 The ESM consequence: a model that reads the calendar would respond to a cooling or a stabilised scenario as if it
 warmed. Test that before any recurrent arm is trusted: a scenario that does NOT warm (the constant-climate control
 line S has, or ssp126's late plateau).
+
+## 13. A2g retrained per build, one training run each (jobs 2445979/80, `eval/scores_A2g_pvF2.csv`, `_pvM9.csv`)
+
+Same method and settings as §12, trained on ONE run (historical + ssp126 + ssp245), scored on a held-out run of the
+same build under ssp370. All ten fold models beat 2014 persistence on held-out blocks (0.081–0.089 vs 0.187–0.231).
+
+| build: train → test | ceiling (two runs) | pass | trees | biomass per tree | tree-count response (deatt.) | wood-density response |
+|---|---|---|---|---|---|---|
+| Feb: 2 → 8 | 0.173 | 0.115 | 1.001 | 1.078 | 0.78 | 0.95 |
+| May: 9 → 10 | 0.194 | 0.101 | 0.994 | 1.097 | 0.71 | 0.97 |
+| (Feb, four training runs, §12) | 0.173 | 0.125 | 0.994 | 1.054 | 0.86 | 0.99 |
+
+Within training years (free from 1985, at 2014): Feb trees 0.979 / biomass 1.013; May 0.984 / 1.018.
+
+* The retrained method behaves the same on both builds; May is slightly worse on every quantity (pass −0.014,
+  biomass +2 points, response −0.07). With one draw per build the LSTM's own draw-to-draw spread is unmeasured, so
+  this gap cannot be attributed to the build. (A7's draw spread, §11.1, was 0.003 in pass.)
+* One training run instead of four costs 0.010 of pass and 0.08 of response slope (Feb).
+* Untested per build: the Oct builds (no scenario legs to train a gap-crossing model on).
