@@ -117,3 +117,24 @@ below (A7s passes (a) either way, A7 fails either way).
 +12.4 % > 10 %), passes (c) (response slope 0.63 vs its twin's 0; the ceiling's deattenuated slope is 0.99, so member
 noise is far smaller than the gap), (d) not applicable (no stepping). ⇒ **A7s does not survive round 1 as specified;
 it is the benchmark the recursive arms now have to beat** (pass 0.131, response slope 0.63).
+
+## 9. A7 on the other splits (job 2445785) — and a defect in the ceiling ratio
+
+| split · test scenario | ceiling | A7s | A7scb | A7 | A7s biomass per tree | A7s tree-count response (deatt.) | A7s wood-density response |
+|---|---|---|---|---|---|---|---|
+| GS245 · ssp245 | 0.179 | **0.186** | 0.161 | 0.055 | 1.003 | 0.57 | 0.46 |
+| GM · ssp126 | 0.179 | **0.195** | 0.168 | 0.062 | 0.971 | 0.49 | 0.31 |
+| GM · ssp245 | 0.179 | **0.191** | 0.169 | 0.061 | 1.006 | 0.60 | 0.47 |
+| GM · ssp370 | 0.173 | 0.162 | 0.117 | 0.049 | 1.048 | 0.66 | 0.47 |
+| GS370 · ssp370 | 0.173 | 0.131 | 0.099 | 0.039 | 1.124 | 0.63 | 0.44 |
+
+* **The biomass-per-tree failure on GS370 is extrapolation error:** with ssp370 in training (GM) it is +4.8 %, held out
+  +12.4 %.
+* **The response shortfall is not:** ~0.5–0.66 of the truth's even with the scenario in training ⇒ a property of the
+  direct map (it shrinks toward the training mean), not of the held-out climate.
+* ⚠ **"≥ k × the ceiling" is not a ceiling for a model that predicts the ensemble expectation.** A7s beats member 7 on
+  three of five rows: a mean prediction sits closer to any one member than another member does. So DP-G1 (a), and
+  plan §4's "read every arm as a ratio to the ceiling", reward smoothing. (b) and (c) are unaffected. **Proposed
+  addition (not yet adopted):** score the per-cell trait DISTRIBUTION (q05–q95, all four traits) against the member
+  spread, which a mean-predictor cannot pass by smoothing; and report the pass rate of the training members' own
+  ensemble mean as the smoothing null.
