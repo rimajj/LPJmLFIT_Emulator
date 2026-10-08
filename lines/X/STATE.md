@@ -102,16 +102,14 @@ run's `output_transient/`). ⚠ Expected gate "fails": `census` (bare-land cells
 reproduced 100 % on all 38 tables); registry + folds + splits at `…/billing_global/registry/`; **DP-G1 pre-registered**
 in ADR 0315 before any arm is scored. ⚠ The Oct builds use `MORT_TEMP_FACTOR` 4.0 and a 14 °C tropical cold limit (Feb/May:
 5.0, 12.5) — different model, by design part of the GV split. ⚠ getvpd.c's `1013.25` is NOT a unit slip (ADR 0314 §2).
+**Done (late night):** scorer `scripts/explore_glob_eval.py` + baselines (ceiling 0.173 conjunctive pass; lookup 0.100 ⇒
+DP-G1 (a) tightened to "above the best null"); arm A7 `scripts/explore_glob_a7.py`: A7s 0.131, response slope 0.63,
+biomass per tree +12.4 % ⇒ fails (b). Scores: `…/billing_global/eval/scores_GS370.csv`; ADR 0315 §7–8.
 **NEXT, in order:**
-1. **The shared global scorer** — generalise `scripts/explore_de_sh_eval.py` (or a `explore_glob_eval.py` beside it) to
-   the registry: GS370 venue, 2071–2100 per-cell means on held-out-fold tree-bearing cells, the member-7-vs-8 ceiling,
-   level at both tolerances, response vs 1985–2014, and the nulls. **Score the nulls FIRST** (persistence from the 2014
-   state, lookup from the training members' ssp245, the ceiling) and write their values into ADR 0315's table — the
-   persistence response must come out exactly 0 (a harness check).
-2. **Re-target the arms** (A2–A7 of plan revision 2) to the global venue, one at a time, each with its climate-blind
-   twin; within-training free run 1985 → 2014 beside every extrapolation score.
-3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1 for line X's
-   venue; and the X ↔ S overlap (line S's five-model panel keeps the across-model test).
+1. A7 on the other splits (GS245, GM; GV = the model-build transfer) — cheap, same script generalised.
+2. **Re-target the recursive arms** (A2 LSTM rollout, A3, A4, A6) to the global venue, each with its climate-blind twin;
+   they must beat A7s (pass 0.131, response slope 0.63) — and need a free run 2015 → 2100 from the 2014 state.
+3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
 
 
