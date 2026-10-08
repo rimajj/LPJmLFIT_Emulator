@@ -195,3 +195,54 @@ Per member, relative to Feb member 2's GFDL historical window (area-weighted, de
 costs nothing. A version that does (any October build) cannot be learned from other versions' runs; supporting it
 needs its own runs or an input that tells the emulator which parameter values it is emulating, and the October builds
 would each count as a separate version.
+
+## 11. Correction by the owner: the requirement is per-version retraining, not transfer (2026-10-09)
+
+Owner, verbatim: *"dude. of course an eulator trained on one model verison cant be used for another. it only works for
+one model verision. but for any model version"*.
+
+* **§2's GV row and §10's "reading for the owner" misread the requirement.** "Work with every model version" means the
+  METHOD must reach the same skill on any build when it is trained on that build's own runs. It does not mean that one
+  trained emulator must transfer across builds. §10's measurements stand as facts about the data (the Feb and May builds
+  are indistinguishable; the October builds are four different models). Its transfer verdict answers a question nobody
+  asked. **GV is redefined:** train on one build's runs, score on a held-out run of the SAME build, for every build,
+  with the same amount of training data, and compare skill relative to each build's own run-to-run ceiling.
+* **What that makes a defect:** anything version-specific baked into the method — a feature computed with one build's
+  parameter values (`tstress_pft0` uses the Feb tropical cold limit 12.5 °C; the Oct builds use 14 °C, ADR 0314 §4), a
+  hard-coded per-tree column (`wscal_mean` is absent in the Oct layout), or a hyper-parameter tuned on one build.
+  Parameter-dependent features must be derived from each run's own parameter files.
+* **The data limit, stated:** the Oct-1 build has three runs and one present-day window (no scenario legs); the
+  Oct-6/7/8 builds have one run each. So per-version tests on those builds are present-day level only, and for the
+  single-run builds only within-run (held-out places) at a flat 10 %. A warming-response test per version exists only
+  for the Feb and May builds.
+* The per-version test is `scripts/explore_glob_pv.py` (job 2445892), expectations in its header.
+
+### 11.1 Result (job 2445892, `eval/scores_PV.csv`): the method retrains equally well on every build tested
+
+One training member per build; pass rates at each build's own tolerance; "ceiling" = two runs of the same build.
+
+| test | build | ceiling | A7s | A7s / ceiling | A7s biomass per tree | A7s tree-count response (deatt.) |
+|---|---|---|---|---|---|---|
+| ssp370, train 2 / 3 → 8 | Feb | 0.173 | 0.150 / 0.153 | 0.87 / 0.88 | 1.042 / 1.052 | 0.64 / 0.65 |
+| ssp370, train 9 → 10 / 10 → 9 | May | 0.194 / 0.190 | 0.147 / 0.156 | 0.76 / 0.82 | 1.042 / 1.049 | 0.65 / 0.67 |
+| ssp245, same pairs | Feb | 0.179 | 0.181 / 0.186 | 1.01 / 1.04 | 1.000 / 1.001 | 0.59 / 0.60 |
+| ssp245, same pairs | May | 0.189 / 0.188 | 0.182 / 0.179 | 0.96 / 0.95 | 1.001 / 1.004 | 0.60 / 0.62 |
+
+| present day, A7 (climate + place) | ceiling | A7 | A7 / ceiling |
+|---|---|---|---|
+| Oct-1, train 1 / 2 → 3 | 0.164 | 0.055 / 0.055 | 0.34 / 0.34 |
+| Feb, train 2 / 3 → 8 | 0.172 | 0.049 / 0.047 | 0.28 / 0.27 |
+
+Single run per build, A7 trained on the run's other places, flat 10 %: Oct-1 0.026–0.030 · Oct-6 0.039 · Oct-7 0.044
+· Oct-8 0.035 · Feb 0.034–0.037. Area totals within 2.1 % of truth in every one of these rows.
+
+* **Against the pre-registered test, literally:** the May ratio at ssp370 (0.76–0.82) and the Oct-1 present-day ratio
+  (0.34) fall outside the Feb two-draw spread (0.87–0.88; 0.27–0.28), in opposite directions. In absolute terms the
+  arm's numbers are the same on Feb and May to within 0.01 (pass, biomass, response); what differs is the denominator —
+  May's two runs happen to agree more often (0.19 vs 0.17). The test was badly posed: its spread varied only the
+  training member, not the noise in the ceiling itself. Recorded as written, not relabelled.
+* **Reading:** no build shows a version-specific failure. The method's skill is set by the method (A7 is weak
+  everywhere), not by which build it was trained on. The known version-specific input (`tstress_pft0` at the Feb
+  threshold) did not visibly cost the Oct builds anything here; it stays a defect to fix (§11).
+* **Not tested:** the warming response per version beyond Feb/May (no scenario legs exist for Oct builds); the
+  recurrent arm per version (next, on the May build with one training member).

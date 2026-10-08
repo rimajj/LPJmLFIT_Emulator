@@ -115,14 +115,19 @@ members 2,3,4,6 × hist+ssp126/245, free-runs 2015→2100 and is penalised only 
 ~7e-6 core-s per cell-year). Train array **2445840** (lstm/lstmCB × 5 folds, `logs/X-glob-a2tr.2445840_*.out`) →
 score **2445841** (`afterok`; `eval/scores_A2g.csv`, log `logs/X-glob-a2sc.2445841_*.out`). Pre-registered expectations
 + gates in the script header. If the score job is missing: a training task failed (check `JOB DONE exit=`).
+**Owner correction 2026-10-09, verbatim:** *"dude. of course an eulator trained on one model verison cant be used for
+another. it only works for one model verision. but for any model version"* ⇒ "every model version" = **the METHOD
+retrained per build**, not transfer (ADR 0315 §11). Tested (`scripts/explore_glob_pv.py`, `eval/scores_PV.csv`): A7/A7s
+retrained on one run of each build reach the same skill on Feb, May, Oct-1/6/7/8 (absolute numbers equal to ~0.01;
+the pre-registered ratio test was badly posed — §11.1). Per-version inputs to fix: `tstress_pft0` threshold per build,
+no per-tree column the Oct layout lacks.
 **NEXT, in order:**
 1. Read `scores_A2g.csv`: replay harness check first (pass ≥ 0.95, totals exact), then DP-G1 (a)–(d) for `lstm_S14` on
    ssp370 against `lstmCB_S14`; `converged_folds` must be 5. Write ADR 0315 §11; benchmark is A7s (0.131, slope 0.63).
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
-5. Owner-facing: the October builds are a moving target (§10) — ask the owner which version(s) "every model version"
-   must cover before spending on them.
+5. Per-version test of the recurrent arm on the May build (train member 9 only → test 10), once A2g is scored.
 
 
 ### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
