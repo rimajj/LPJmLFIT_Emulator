@@ -14,6 +14,8 @@ Variants (one variable each):
   A7cb   A7's climate-blind twin: every row gets its cell's 1985-2014 climate instead of the target window's
   A7scb  A7s's climate-blind twin
 Output: eval/arms/<variant>/{pred_w2071.parquet, pred_h1985.parquet}; scores appended to eval/scores_GS370.csv.
+Other splits (`python explore_glob_a7.py GS245|GM`): the same arm with that split's held-out scenario(s), scored per
+test scenario beside that scenario's ceiling (member 7) -> eval/scores_<split>.csv, preds eval/arms/<split>/<variant>/.
 """
 
 from __future__ import annotations
@@ -52,7 +54,10 @@ def climate_windows(cells: list[int]) -> pl.DataFrame:
     return pl.concat(out)
 
 
-def build_rows(cells_df: pl.DataFrame) -> pl.DataFrame:
+SPLIT_TEST = {"GS370": ("ssp370",), "GS245": ("ssp245",), "GM": ("ssp126", "ssp245", "ssp370")}
+
+
+def build_rows(cells_df: pl.DataFrame, split: str = "GS370") -> pl.DataFrame:
     cells = cells_df["Cell"].to_list()
     cw = climate_windows(cells)
     hist_clim = cw.filter(pl.col("scen") == "historical").drop("scen").rename({c: f"{c}_cb" for c in CLIM_COLS})
@@ -61,10 +66,11 @@ def build_rows(cells_df: pl.DataFrame) -> pl.DataFrame:
     for seed in (*ev.TRAIN, ev.TRUTH):
         h = ev.lev(ev.mname("historical", seed)).rename({q: f"s0_{q}" for q in ev.PANEL})
         for scen in LEGS:
-            if seed == ev.TRUTH and scen not in ("historical", "ssp370"):
-                continue  # the test member: only its baseline window and the held-out scenario
-            if seed != ev.TRUTH and scen == "ssp370":
-                continue  # GS370: ssp370 is never seen in training
+            test = SPLIT_TEST[split]
+            if seed == ev.TRUTH and scen not in ("historical", *test):
+                continue  # the test member: only its baseline window and the held-out scenario(s)
+            if seed != ev.TRUTH and scen in test and split != "GM":
+                continue  # a held-out scenario is never seen in training
             y = ev.lev(ev.mname(scen, seed))
             rows.append(y.with_columns(pl.lit(seed).alias("seed"), pl.lit(scen).alias("scen"))
                         .join(h, on="Cell").join(cw.filter(pl.col("scen") == scen).drop("scen"), on="Cell"))
@@ -92,6 +98,37 @@ def fit_predict(df: pl.DataFrame, variant: str) -> pl.DataFrame:
             out = out.with_columns(pl.Series(q, p))
         preds.append(out)
     return pl.concat(preds)
+
+
+def other_split(split: str):
+    t0 = time.time()
+    cells = ev.dev_cells()
+    df = build_rows(cells, split)
+    T_h, R_h = ev.lev(ev.mname("historical", ev.TRUTH)), ev.lev(ev.mname("historical", ev.REPLICA))
+    preds = {v: fit_predict(df, v) for v in ("A7", "A7cb", "A7s", "A7scb")}
+    rows = []
+    for scen in SPLIT_TEST[split]:
+        T_w, R_w = ev.lev(ev.mname(scen, ev.TRUTH)), ev.lev(ev.mname(scen, ev.REPLICA))
+        tb = (T_w.filter(pl.col("n_per_patch") > 0).select("Cell")
+              .vstack(T_h.filter(pl.col("n_per_patch") > 0).select("Cell")).unique())
+        scored = cells.join(tb, on="Cell")
+        cand = {"ceiling": (R_w, R_h)}
+        for v, p in preds.items():
+            pw = p.filter(pl.col("scen") == scen).drop("scen")
+            ph = p.filter(pl.col("scen") == "historical").drop("scen")
+            d = os.path.join(ARMS, split, v)
+            os.makedirs(d, exist_ok=True)
+            pw.write_parquet(os.path.join(d, f"pred_{scen}_w2071.parquet"))
+            ph.write_parquet(os.path.join(d, "pred_h1985.parquet"))
+            cand[v] = (pw, ph)
+        for name, (pw, ph) in cand.items():
+            s = ev.score(pw, ph, T_w, T_h, R_w, R_h, scored)
+            rows.append(dict(split=split, test_scen=scen, baseline=name, **s))
+            ev.log(split, scen, name, {k: round(x, 4) for k, x in s.items()
+                                       if k in ("pass_rate", "stems_ratio", "agb_per_stem_ratio",
+                                                "resp_n_per_patch_slope_deatt", "resp_Wooddens_q50_slope_deatt")})
+    pl.DataFrame(rows).write_csv(os.path.join(ev.EVAL, f"scores_{split}.csv"))
+    ev.log(f"{split} done ({time.time() - t0:.0f}s)")
 
 
 def main():
@@ -124,4 +161,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sp = sys.argv[1] if len(sys.argv) > 1 else "GS370"
+    if sp == "GS370":
+        main()
+    else:
+        for x in sp.split(","):
+            other_split(x)
