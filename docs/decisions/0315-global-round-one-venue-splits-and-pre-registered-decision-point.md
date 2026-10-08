@@ -246,3 +246,38 @@ Single run per build, A7 trained on the run's other places, flat 10 %: Oct-1 0.0
   threshold) did not visibly cost the Oct builds anything here; it stays a defect to fix (§11).
 * **Not tested:** the warming response per version beyond Feb/May (no scenario legs exist for Oct builds); the
   recurrent arm per version (next, on the May build with one training member).
+
+## 12. Arm A2g — the cell-level LSTM with a gap-crossing rollout (`scripts/explore_glob_lstm.py`, jobs 2445840/41)
+
+Trained on members 2,3,4,6 × (historical + ssp126, historical + ssp245): 30-year segment curriculum, then free runs
+from a random year ≤ 2014 through 2100, loss only where per-tree truth exists. All ten fold models beat carrying the
+2014 state forward on held-out blocks (validation loss 0.077–0.088 vs 0.196–0.207). Cost ≈ 6–7 × 10⁻⁶ core-s per
+cell-year (one core, inference). Harness check passed: member 8's own yearly statistics through the window
+aggregator pass 0.975 of cells, totals identical to 1e-15.
+
+GS370 (member 8, ssp370, 2071–2100, 5 809 dev cells):
+
+| arm | pass | trees P/T | biomass per tree P/T | tree-count response: aggregate / deatt. slope | wood-density response: aggregate / slope |
+|---|---|---|---|---|---|
+| **lstm**, from the 2014 state | **0.125** | 0.994 | **1.054** | 0.95 / **0.86** | 0.96 / **0.99** |
+| lstmCB (climate-blind twin) | 0.102 | 0.917 | 1.245 | 0.33 / 0.69 | 0.96 / 0.88 |
+| lstm, free from 1985 | 0.113 | 0.997 | 1.037 | 1.09 / 0.80 | 0.72 / 0.75 |
+| A7s (benchmark, §8) | 0.131 | 0.985 | 1.124 | 0.84 / 0.63 | 0.65 / 0.44 |
+
+Within training years (free from 1985, scored at 2014): trees 0.974, biomass per tree 1.001.
+
+**DP-G1 verdict:** (a) **fails** — 0.125 < 0.5 × `ceiling_mean` = 0.140 (and < A7s's 0.131); (b) passes (−0.6 %,
++5.4 %); (c) passes on the letter (0.86 vs the twin's 0.69; the member noise in the slope is ≈ 0.01); (d) passes
+(−2.6 %, +0.1 %). ⇒ **does not survive round 1**, on (a) only. It beats A7s on totals and on both responses; the
+binding per-quantity passes are stems (0.44) and biomass per tree (0.36).
+
+⚠ **The climate-blind twin "responds".** Pre-registered expectation: ≈ 0. Measured: deattenuated tree-count slope
+0.69 and the full wood-density aggregate (0.96, the same as the real arm's). A recurrent model with frozen climate
+still knows how many years have passed, and every training scenario warms, so it learns the warming *pattern* as a
+function of elapsed time (the Germany "warming as a clock" finding, ADR 0311, again). What climate adds on ssp370 is
+the **size** of the tree-count change (aggregate 0.95 vs 0.33) and the totals (biomass per tree +5 % vs +25 %); the
+wood-density response is not attributable to climate at all in this arm. So the twin of a recurrent arm is not the
+zero-response null §4 assumed; (c) must be read as "climate adds 0.17 of slope", not "the arm responds with 0.86".
+The ESM consequence: a model that reads the calendar would respond to a cooling or a stabilised scenario as if it
+warmed. Test that before any recurrent arm is trusted: a scenario that does NOT warm (the constant-climate control
+line S has, or ssp126's late plateau).
