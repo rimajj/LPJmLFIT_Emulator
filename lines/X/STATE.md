@@ -84,6 +84,35 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
+
+Owner, verbatim: *"based on the findings of this project so far and the findings in the review, update this
+projects plan. the goal stays the same, upate the plan on how to get there if necessary. try all promising
+methods"*. The goal (ADR 0094/0106/0107) is unchanged. The 2026-08-07 error-attribution ladder is **no longer the
+order of work** — its findings stand (plan §11) and so does its rule *one variable per arm*. Read
+`EXECUTION_PLAN.md` §1–§9 and `docs/review_comparison.md` (the literature comparison) before planning.
+**Where anything further down this NEXT block conflicts with this block, this block wins.**
+
+**Line X's assignment** (consistent with the owner's Germany-first milestone of 2026-10-01; line X's own charter
+still holds: it does not write into other lines' state):
+* **Germany round 1 of arms A2–A7 on one scorer** (`scripts/explore_de_sh_eval.py`, extended with the plan §4
+  statistics: within-training-period free run, speed, conservation): **A2** add a rollout loss + 4 → 8 → 16-yr
+  curriculum to the LSTM, then a per-tree output stage; **A3** one dataset-aggregation round on TAB (retrain on its
+  own free-run states, targets from the original via the C re-run driver); **A4** free-run calibration / signed
+  zero-sum loss on TAB; **A5** finish the set model's scoring; **A6** your current margin/NPP route; **A7** re-score a
+  direct non-recursive window map as the benchmark. A8 only if a slot is free.
+* **D2** — the Germany 2071–2100 re-run with the humidity setting corrected (`restart_2070_nv.lpj` exists for every
+  leg; ~900 core-h per leg) — **only after the owner says yes**.
+* **C3** — equilibrium initialiser: `vegemu`'s map (read-only) + the functional restart test.
+* **Do NOT start:** the global transfer of an arm before it passes DP-A1.
+* **Integration points:** X ↔ S (shared Track-Y statistics, D0 cell list).
+
+**Bound by (plan §4, §8, §10):** every score carries its nulls (persistence, lookup, climate-blind twin,
+frozen-climate control, other-member ceiling) and its free-run beside any one-step number; decision-point
+thresholds may be tightened before a run, never loosened; no CO2.
+
+---
+
 ### 00✦ 🔨 OWNER INSTRUCTION 2026-09-30: BUILD the data-driven emulator, Germany first (supersedes "line X does not implement" FOR THIS BUILD ONLY)
 
 Owner, verbatim: *"ok go on and build the emulator. you can also do it for germany only now, for testing. for germany we have runs with

@@ -6,6 +6,28 @@
 
 ## NEXT — start here
 
+### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
+
+Owner, verbatim: *"based on the findings of this project so far and the findings in the review, update this
+projects plan. the goal stays the same, upate the plan on how to get there if necessary. try all promising
+methods"*. The goal (ADR 0094/0106/0107) is unchanged. The 2026-08-07 error-attribution ladder is **no longer the
+order of work** — its findings stand (plan §11) and so does its rule *one variable per arm*. Read
+`EXECUTION_PLAN.md` §1–§9 and `docs/review_comparison.md` (the literature comparison) before planning.
+**Where anything further down this NEXT block conflicts with this block, this block wins.**
+
+**Line E's assignment:**
+* **C2 (energy side)** — export reflected shortwave and upward longwave from the closure, and feed the remapped real
+  wind and surface pressure into the coupled driver (your E5), with line M.
+* **Experiment B** — score the closure with the physics core's own latent heat (the coupled score).
+* **Review F3** — few-patch fluxes share the soil/ground-heat column you own.
+* **Integration points:** E ↔ M (C2, F3).
+
+**Bound by (plan §4, §8, §10):** every score carries its nulls (persistence, lookup, climate-blind twin,
+frozen-climate control, other-member ceiling) and its free-run beside any one-step number; decision-point
+thresholds may be tightened before a run, never loosened; no CO2.
+
+---
+
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
 
 **Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution

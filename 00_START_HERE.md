@@ -3,12 +3,17 @@
 A router, not a status page. Goal: be productive in **< 15k tokens**.
 
 
-> ⛳ **THE ORDER OF WORK IS `EXECUTION_PLAN.md`** (owner-approved 2026-08-07; ADR 0093 + 0094). The project runs
-> as an **error-attribution ladder** — rung 0/1 line S · rung 2/3/4 line M · rung 5 (speed) line O · line E off
-> the critical path. Two owner decisions re-rank everything: **per-year ESM speed is now goal #2** and the
-> spin-up saving is explicitly not the goal (ADR 0094), and **the shipped Julia emulator is 3.8× SLOWER per
-> cell-year than the C model it replaces** — the ~100× needed decomposes as **37× single-core engineering +
-> ~3× patches**, so the patch ensemble is the *last* lever, not the first (ADR 0093).
+> ⛳ **THE ORDER OF WORK IS `EXECUTION_PLAN.md` REVISION 2** (owner instruction 2026-10-08; ADR 0096, which
+> replaces the 2026-08-07 error-attribution ladder as the order of work — its findings stand, plan §11). The project
+> runs **all promising methods in parallel as arms on one yardstick**, with **response-identifying data first**:
+> Track D (constant-climate control, extra members, a ~1000-cell panel, a real-pattern climate-contrast ensemble),
+> Track Y (one scorer + nulls), Track A (8 annual-demography arms), Track F (3 daily-flux arms), Track C (coupling
+> + 300-yr stability gate), Track U (calibration). Arms are dropped only at pre-registered decision points (§8).
+> One variable per arm; never a coupled score without the isolated ones beside it. Basis: `docs/review_comparison.md`.
+> The plan is **integrator-owned** (a line raises a change as an integration point, it does not edit it).
+> Speed (goal #2, ADR 0094): the emulator is **4.62× SLOWER** per cell-year than the original at 25 patches
+> (ADR 0084); at the ~500 patches used in publications the original's cost is 99.9 % patch ensemble (ADR 0086), so
+> **few-patch fluxes are now a first-class lever**, behind only the per-tree daily step (plan §6).
 
 ## 0. Which line are you? (read this first)
 

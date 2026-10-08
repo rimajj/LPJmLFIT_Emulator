@@ -27,11 +27,14 @@
 
 ## 0. Router — which line am I, and where do I continue?
 
-> ⛳ **THE ORDER OF WORK IS `EXECUTION_PLAN.md`** (owner-approved 2026-08-07; ADR 0093 + 0094). The project
-> runs as an **error-attribution ladder** — isolate one error source per rung, never climb two at once, never
-> report a coupled score without the isolated ones beside it. Rung ownership, entry/exit gates and the
-> pre-registered flip criteria are in that file; it is **integrator-owned** (a line raises a change as an
-> integration point, it does not edit it).
+> ⛳ **THE ORDER OF WORK IS `EXECUTION_PLAN.md` REVISION 2** (owner instruction 2026-10-08; ADR 0096, which
+> replaces the 2026-08-07 error-attribution ladder as the order of work — its findings stand, plan §11). The project
+> runs **all promising methods in parallel as arms on one yardstick**, with **response-identifying data first**:
+> Track D (constant-climate control, extra members, a ~1000-cell panel, a real-pattern climate-contrast ensemble),
+> Track Y (one scorer + nulls), Track A (8 annual-demography arms), Track F (3 daily-flux arms), Track C (coupling
+> + 300-yr stability gate), Track U (calibration). Arms are dropped only at pre-registered decision points (§8).
+> One variable per arm; never a coupled score without the isolated ones beside it. Basis: `docs/review_comparison.md`.
+> The plan is **integrator-owned** (a line raises a change as an integration point, it does not edit it).
 
 Work runs as **5 parallel lines**, one long-lived branch + git worktree each (ADR 0028/0029). A session's line
 is the branch in the worktree it was launched from; the `SessionStart` hook prints it plus that line's
@@ -68,11 +71,11 @@ Orders + reasoning: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`. Runboo
 
 ## 2. Where the project stands (2026-09-02)
 
-**Current order of work = the ladder in `EXECUTION_PLAN.md`.** Status there, not here — as of its last edit
-(2026-08-12): rung 0 and **rung 1 are CLOSED** (ADR 0174 — the isolated learned demography passes on LEVEL and
+**Current order of work = `EXECUTION_PLAN.md` revision 2 (2026-10-08, ADR 0096): parallel method arms on one
+yardstick, data first.** The ladder's record, as of its last edit (2026-08-12): rung 0 and **rung 1 are CLOSED** (ADR 0174 — the isolated learned demography passes on LEVEL and
 **fails on the SIGN of the warming response**), rung 2 is line S's by owner steer, rungs 3–4 line M, rung 5
 (speed) line O. The phase numbers P0–P7 used in the older docs come from `DEVELOPMENT_PLAN.md`; where the two
-disagree about *priority*, the ladder wins.
+disagree about *priority*, `EXECUTION_PLAN.md` wins.
 
 | Component | State | The evidence that backs it |
 |---|---|---|

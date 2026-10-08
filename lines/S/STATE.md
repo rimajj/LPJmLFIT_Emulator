@@ -369,6 +369,35 @@ before appending costs a second and would have caught this and my own two previo
 
 ## NEXT — start here
 
+### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
+
+Owner, verbatim: *"based on the findings of this project so far and the findings in the review, update this
+projects plan. the goal stays the same, upate the plan on how to get there if necessary. try all promising
+methods"*. The goal (ADR 0094/0106/0107) is unchanged. The 2026-08-07 error-attribution ladder is **no longer the
+order of work** — its findings stand (plan §11) and so does its rule *one variable per arm*. Read
+`EXECUTION_PLAN.md` §1–§9 and `docs/review_comparison.md` (the literature comparison) before planning.
+**Where anything further down this NEXT block conflicts with this block, this block wins.**
+
+**Line S's assignment:**
+* **A1** — the hybrid arm (the original grows the stand, the emulator applies mortality as a per-tree RATE): your
+  existing NEXT, ADR 0245's water-integral probe (fidelity ≥ 0.867, nulls 0.78 / 1.00) plus its cost, stays first.
+* **Track D (global):** **D0** fix and commit a ~1 000-cell stratified panel over the ~161 populated 15° tiles;
+  **D1** a constant-climate control of the original on D0 (2019 restart, 2020–2100, 1990–2019 weather detrended and
+  recycled, constant CO2); **D3** a 3rd and 4th independent member on D0, each its own spin-up, WITH daily outputs;
+  then **D4** the real-pattern climate-contrast ensemble (plan §3). Pin re-runs to one node type.
+* **Track Y (global side):** extend the rung-2 scorers to the plan §4 statistics, one row per (arm, venue, statistic).
+* **A4 (global):** free-run calibration / signed zero-sum loss on the global count/rate model.
+* **U1** after D3: coverage + rank-histogram calibration against the members.
+* **Do NOT start:** new one-step count-model work.
+* **Integration points:** S ↔ X (shared Track-Y statistics, D0 cell list); S ↔ M if the water integral needs F's
+  `per_tree_roots`.
+
+**Bound by (plan §4, §8, §10):** every score carries its nulls (persistence, lookup, climate-blind twin,
+frozen-climate control, other-member ceiling) and its free-run beside any one-step number; decision-point
+thresholds may be tightened before a run, never loosened; no CO2.
+
+---
+
 > **LAST MERGE — 2026-08-17, ADR 0243 is ON `main`.** Merge commit `728a0320`, changelog collation
 > `48aad206`, branch sha `0bcb28e3`. Branch CI green on `0bcb28e3` (`format` + `CI` — `CI` fired because a
 > rebase-onto-newer-`main` force-push makes the push RANGE include `main`'s own `src/**` commits, which is

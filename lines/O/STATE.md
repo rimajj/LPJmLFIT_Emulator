@@ -91,6 +91,33 @@ language** this session (it could not go in `~/.claude/CLAUDE.md`, which is outs
 
 ## NEXT — start here
 
+### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
+
+Owner, verbatim: *"based on the findings of this project so far and the findings in the review, update this
+projects plan. the goal stays the same, upate the plan on how to get there if necessary. try all promising
+methods"*. The goal (ADR 0094/0106/0107) is unchanged. The 2026-08-07 error-attribution ladder is **no longer the
+order of work** — its findings stand (plan §11) and so does its rule *one variable per arm*. Read
+`EXECUTION_PLAN.md` §1–§9 and `docs/review_comparison.md` (the literature comparison) before planning.
+**Where anything further down this NEXT block conflicts with this block, this block wins.**
+
+**Line O's assignment:**
+* **F2 phase A** — test offline whether a learned daily water–carbon model reproduces the original: soil water as an
+  explicit residual-updated state with the bucket closed by construction, fluxes re-diagnosed from state each day,
+  inputs = daily forcing + annual stand state, trained on the existing ~1 TB daily dataset, split by spatial blocks
+  + scenario hold-out. Pass bar (plan §6): annual GPP/ET/NPP within ±5 % at ≥4 of 5 biome cells and on the panel
+  median, SSP370 change in GPP inside the original's two-member band at ≥4 of 5, ≤ 0.01 core-s per cell-year.
+  Energy stays physics. Line M reviews fidelity.
+* **Speed:** measure F1 as M lands it; ask the integrator to wire `bench_speed_gate` as a required gate; threads
+  across cells.
+* **Do NOT start:** online work beyond the C4 self-test until the speed decision point.
+* **Integration points:** O ↔ M (F1/F2; you do not edit `src/fdiff.jl` without a recorded hand-over).
+
+**Bound by (plan §4, §8, §10):** every score carries its nulls (persistence, lookup, climate-blind twin,
+frozen-climate control, other-member ceiling) and its free-run beside any one-step number; decision-point
+thresholds may be tightened before a run, never loosened; no CO2.
+
+---
+
 ### 0↗ THE "PURELY DATA-DRIVEN EMULATOR?" CONVERSATION MOVED TO **LINE X** (2026-08-19, owner instruction) — do not carry it here
 
 The owner asked whether the hybrid could be replaced by a learned `(forest state, climate) -> next forest

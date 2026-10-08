@@ -566,6 +566,36 @@ handoff note are both one level removed from the thing you actually need.
 
 ## NEXT — start here
 
+### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
+
+Owner, verbatim: *"based on the findings of this project so far and the findings in the review, update this
+projects plan. the goal stays the same, upate the plan on how to get there if necessary. try all promising
+methods"*. The goal (ADR 0094/0106/0107) is unchanged. The 2026-08-07 error-attribution ladder is **no longer the
+order of work** — its findings stand (plan §11) and so does its rule *one variable per arm*. Read
+`EXECUTION_PLAN.md` §1–§9 and `docs/review_comparison.md` (the literature comparison) before planning.
+**Where anything further down this NEXT block conflicts with this block, this block wins.**
+
+**Line M's assignment:**
+* **F1** — make the re-implemented physics fast without moving fidelity: wire the precomputed temperature kinetics
+  into `solve_lambda` (≈1.36×, ADR 0087), replace its central finite-difference Newton derivative with an analytic or
+  implicit-function derivative, and replace the fixed 25 iterations by a convergence test (GPP is non-monotone ±2.1 %
+  in the count). Pass: GPP/ET/growth ratios within ±0.5 % at the 5 cells, gradient gate green, speed via
+  `scripts/bench_speed_gate.jl`.
+* **C1** — 300-yr recycled-climate stability gate for the coupled model (today biomass drifts 1.39–5.15× per
+  century, ADR 0055).
+* **C2** — close the coupling interface: export reflected SW, upward LW, runoff, snow; add heterotrophic
+  respiration with explicit litter/soil pools + fire so net CO2 exchange is complete (with E for the energy side).
+* **F3** — few representative patches for the fluxes (1/3/5 vs 25, and vs 250 in Germany); E reviews.
+* **Review F2** (line O builds it) with the `fdiff-validate` oracle.
+* **Do NOT start:** open-ended fidelity hunts in the physics core (paused until the daily-method decision point).
+* **Integration points:** M ↔ O (`src/fdiff.jl` stays M's unless a hand-over is recorded); M ↔ E (F3, C2).
+
+**Bound by (plan §4, §8, §10):** every score carries its nulls (persistence, lookup, climate-blind twin,
+frozen-climate control, other-member ceiling) and its free-run beside any one-step number; decision-point
+thresholds may be tightened before a run, never loosened; no CO2.
+
+---
+
 ### 0☆ ⛳ THE PROGRAM CHANGED — `EXECUTION_PLAN.md` IS NOW THE ORDER OF WORK (owner-approved 2026-08-07; ADR 0093 + 0094)
 
 **Read `EXECUTION_PLAN.md` before planning anything.** The project now runs as a strict **error-attribution

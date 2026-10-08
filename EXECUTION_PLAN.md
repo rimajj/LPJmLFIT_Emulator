@@ -1,283 +1,268 @@
-# EXECUTION_PLAN.md — the current program, owner-approved 2026-08-07
+# EXECUTION_PLAN.md — the current program (revision 2, owner instruction 2026-10-08)
 
-**Read this after `CLAUDE.md` and before `lines/<X>/STATE.md`.** It is the *dated, executable* program:
-which rung of the ladder your line is on, what decides whether you climb, and what you must not start yet.
-`DEVELOPMENT_PLAN.md` stays the stable phased architecture; `STEERING_PROMPT.md` is older and its ordering
-is superseded by this file. Evidence behind every number here: **ADR 0093**. The goal re-ranking: **ADR 0094**.
+**Read this after `CLAUDE.md` and before `lines/<X>/STATE.md`.** It is the executable program: what each line
+works on, what decides which method survives, and what must not be started yet. `DEVELOPMENT_PLAN.md` stays the
+stable phased architecture; `STEERING_PROMPT.md` is older and its ordering is superseded by this file.
 
-**Integrator-owned.** A line does not edit this file — it records progress in its own `STATE.md` and raises a
-change here as an integration point.
+**Revision 2 replaces the 2026-08-07 error-attribution ladder as the order of work.** The ladder did its job (§11
+records what each rung found), and its findings plus a systematic literature review changed *how* we get to the
+goal, not the goal itself. Owner, verbatim, 2026-10-08:
+
+> *"based on the findings of this project so far and the findings in the review, update this projects plan. the
+> goal stays the same, upate the plan on how to get there if necessary. try all promising methods"*
+
+Evidence and reasoning: **ADR 0096** (the decision) and **`docs/review_comparison.md`** (the comparison against
+115 published emulator/hybrid studies, with quotes). Previous version: `git show a0f2cbba:EXECUTION_PLAN.md`.
+
+**Integrator-owned.** A line does not edit this file. It records progress in its own `STATE.md` and raises a change
+here as an integration point. Whoever holds the merge lock is the integrator for that moment (CLAUDE.md §9).
 
 ---
 
-## 0. The goal, in the owner's own ranking (ADR 0094)
+## 0. The goal — unchanged (ADR 0094, 0106, 0107)
 
-> *"I want a fast emulator that can be run in an ESM without too much compute cost."* — owner, 2026-08-07,
-> when told the spin-up saving was the project's measured compute case: *"the savings for the spin-up is
-> boring and not my main goal."*
-
-So the ranking is:
-
-1. **A faithful emulator** — tree counts, trait distributions and trait medians within `max(10 %, the C's own
-   two-run spread)` on all 54 020 tree-bearing cells, both scenarios, **and the response between them**
-   (ADR 0106, unchanged and still binding).
-2. **Fast enough to live inside an ESM.** This is now a **first-class deliverable, not a by-product.**
+1. **Faithful.** Tree counts, trait distributions and trait medians within `max(10 %, the original's own two-run
+   spread)` on **all 54 020 tree-bearing cells**, both scenarios, **and the response between them** — "especially
+   under climate change" (ADR 0106).
+2. **Fast enough to live inside an ESM** — a first-class deliverable.
 3. **Coupled to the ESM.**
 
-**The speed target, stated as a gate so it can be measured:**
+**CO2: the emulator does not see CO2 and must not respond to it** (ADR 0004/0107; closed — do not re-litigate).
 
-| gate | core-s per cell-year, full coupled S+F+E | speedup needed from today |
+**The speed gate, with the numbers measured since 2026-08-07:**
+
+| configuration | core-s per cell-year | source |
 |---|---|---|
-| today, 25 patches (MEASURED) | 1.096 | — |
-| the C model it replaces (MEASURED) | 0.290–0.383 | 2.9–3.8× just to reach parity |
-| **T63-class allowance (intermediate milestone)** | **≤ 0.030** | **37×** |
-| **T31-class allowance (the real target)** | **≤ 0.0135** | **81×** |
+| emulator today, full coupled, 25 patches, 1 core | **1.233** (4.62× slower than the original) | ADR 0084 (supersedes ADR 0093's 1.096 / 3.8×) |
+| the original, 25 patches | 0.267 (biome range 0.20–0.33) | ADR 0084, 0312 |
+| the original, ~500 patches (publication setting) | **7.06** (Hainich) / 4.19 (Amazon); 99.9 % of it is the patch ensemble | ADR 0086 |
+| the original, Germany production setting (250 patches) | ~12 | `lines/X/STATE.md` |
+| **T63-class allowance** (intermediate) | **≤ 0.030** | convention: 10 % of a measured SpeedyWeather coupled cost |
+| **T31-class allowance** (target) | **≤ 0.0135** | same |
 
-⚠ The two allowances are a **convention** (10 % of a measured SpeedyWeather coupled cost), not an owner
-requirement. They are the best available number; if the owner sets a different budget, this table changes and
-nothing else does. Against a CMIP-class 1° atmosphere (~50 core-s per land-column-year) nothing binds at all —
-**so always say which atmosphere a speed claim is against.**
-
-**Never again claim "faster than LPJmL-FIT" without a measured end-to-end number.** As of 2026-08-07 the
-emulator is **3.8× slower** than the model it replaces and nothing in the repo was measuring it.
+The allowances are a convention, not an owner budget; against a CMIP-class 1° atmosphere (~50 core-s per
+land-column-year) nothing binds. **Always name the atmosphere a speed claim is measured against.**
 
 ---
 
-## 1. Why a ladder, and not more of the same
+## 1. Why the "how" changed — seven findings
 
-Offline Component S explains 98.2 % of the variance in per-patch tree counts and 99.9 % of per-cell means.
-The coupled driver is 1.35 / 1.15 / 1.38 / **0.52** / 1.04 × on terminal density across the five biome cells.
-Those cannot both describe one error — and ADR 0105 records the proof: *"offline bias predicts the coupled
-error with the wrong size in every cell and the wrong sign in two."*
+1. **The warming response is not identifiable in the data we have.** Within one scenario, 76.4 % of a cell's
+   warming is predictable from its baseline climate (ADR 0311); the effective sample is ~161 independent 15° tiles
+   (ADR 0310). Two members disagree on the per-cell response sign in 18.7–42.2 % of cells (ADR 0111). In Germany
+   the usable window (1985–2044) carries almost no scenario contrast, and the 2071–2100 years were run with the
+   humidity setting missing. ⇒ **data that identify the response come first (Track D)**; no architecture can be
+   judged on the binding clause without them. Literature: present-day perfect, 2100 response badly wrong (R00289).
+2. **The demography's failure is a ROLLOUT failure of a one-step-trained operator.** One-step R² 0.982 vs a
+   persistence null of 0.962; free-running, the aggregate response flips +0.707 → −0.226 through rectification
+   (ADR 0113–0116). Every published remedy — rollout loss with increment targets (R00067, R00593), fitting on the
+   free-running trajectory (R00661), a signed zero-sum segment loss (R01133), retraining on the model's own rollout
+   states — is untried here. "XGB specifically drifts at long lead times" (R00067) describes our configuration.
+3. **Mortality must be a rate, not a count target.** A count target cannot carry a gross mortality budget
+   (needed precision 1.1–1.2 %, irreducible floor 4.1–4.6 %; ADR 0241); the original's per-tree hazard applied as
+   a rate meets the criterion as a ceiling (ADR 0242). This matches the literature consensus: the learned part
+   predicts rates, the host keeps the pools (R00342, R00278).
+4. **The re-implemented daily physics is both the speed problem and an unexplained fidelity problem.** Growth
+   1.6–4× too fast at three of five cells, Mediterranean GPP 1.61× with the shortlist of causes exhausted, GPP
+   warming response 8 % of the original's at Hainich and the wrong sign at the Sahel (ADR 0125, 0128, 0139). No
+   speed-up has landed since 2026-08-07. In the literature the large speed-ups come from **learning the expensive
+   step or solver** (R02497 18×; R00568 +3 % cost inside LPJmL; ecLand MLP ≈4800×), not from re-implementing it.
+5. **At production patch counts the patch ensemble is the dominant cost**, and atmosphere-facing fluxes converge
+   within 1.7–6.6 % at a single patch while carbon/establishment do not (ADR 0086). ⇒ the old plan's "patch cut is
+   LAST" is reversed: **fluxes on few patches, demography statistics from the emulator** is a first-class lever.
+6. **The original's demography is 0.4–1.1 % of its runtime** (ADR 0312). Learning the demography alone buys no
+   speed; its value is fidelity and removing the patch ensemble.
+7. **No method has been shown to win; several are promising.** In Germany a cell-level LSTM holds 0.79–0.91 of
+   held-out cells on an unseen climate model, but emits no trees and has a weak climate channel; per-tree boosted
+   trees hold 0.34–0.46 and are nearly matched by their climate-blind twin. ⇒ **run all promising methods in
+   parallel as arms on one shared yardstick, and kill them only by pre-registered criteria.**
 
-**At least three error sources are being measured only in combination:** the learned demography, the fast
-physics, and the feedback between them. Every rung below isolates exactly one. **Do not climb two at once.**
-
-### The hypothesis this ladder exists to test (owner agreed, 2026-08-07)
-
-**Compensating errors.** The demography model may have been tuned, implicitly, while the fast core was
-biased — two errors that cancel at present-day and stop cancelling under a different climate. The evidence
-that puts this in play: teacher-forcing the emulator with the C truth made the score **worse in all five
-cells** (0.149→0.277, 0.086→0.153, 0.180→0.259, 0.349→0.460, 0.029→0.069). That is backwards.
-
-⚠ **Therefore: if rung 1 scores WORSE than the coupled result, that is the finding, not a failed test.**
-Pre-registered here so no session can reinterpret it later. It would also explain the flat warming response
-directly, which makes it the highest-value single result available.
+**What is kept from the ladder:** its principle — **one variable per arm**, and never a coupled score without the
+isolated scores beside it.
 
 ---
 
-## 2. The ladder — ownership, entry, exit
+## 2. Program shape
 
-| rung | what runs | isolates | line | gate to climb |
+Six tracks run **in parallel**. Decision points (§8) are the only places where arms are dropped.
+
+| track | what it delivers | lines |
+|---|---|---|
+| **D — data** | runs of the original model in which the warming response is identifiable, plus enough members to calibrate | S (global panel), X (Germany) |
+| **Y — the yardstick** | one scorer + one set of nulls applied to every arm | X (Germany), S (global panel) |
+| **A — annual demography methods** | 8 arms, from hybrid-with-the-original's-physics to fully learned | S, X |
+| **F — daily flux methods** | 3 arms: faster re-implemented physics, a learned daily water–carbon model, few-patch fluxes | M, O, E |
+| **C — coupling & stability** | long-run stability gate, complete coupling interface, equilibrium initialiser, online self-test | M, E, X, O |
+| **U — uncertainty** | predictive distributions calibrated against independent members | S |
+
+**Venues, in order:** (1) **Germany** — 9 067 cells × 250 patches, 2 climate models, historical + SSP126/245/370,
+2 seeds; the owner's first milestone is *"make a germany emulator work … then use the method for the global
+emulator"* (2026-10-01). (2) **The global stratified panel** (D0) — ~1 000 cells over the ~161 tiles. (3) **The
+five biome cells** — the physics debugging venue only. (4) **All 54 020 cells** — acceptance only.
+
+---
+
+## 3. Track D — data that can identify the response
+
+| id | what | why | cost (derived) | owner |
 |---|---|---|---|---|
-| **0** | re-score existing artefacts on a corrected yardstick | the **target** | **S** (+ integrator for the seeds) | a noise floor + a deattenuated response slope exist for all four trait axes and counts |
-| **1** | S alone, fed the C's own per-tree fluxes | **S's demography** | **S** | ✅ **CLOSED 2026-08-12, ADR 0174** — score against the rung-0 floor: **LEVEL passes** (free-running count bias < 2 % of the mean vs a 6.8–16.6 % two-run floor), **RESPONSE fails on SIGN** (+0.707 one-step → −0.226 free-running; validity horizon ~3 yr). Compensating-errors verdict: **YES, three named channels** — teacher forcing, a **rectified** loss-side error (+0.155 stems/patch = the size of FIT's whole global count response, so the level gate passes *because of* the error that fails the response gate), and a survivor-trained recruit marginal that already contains the selection arm C would add |
-| **2** | S + the **real C** fast part, closed annual loop | **the feedback**, physics exact | **M** (S = contract counterpart) | the loop runs 20 yr on ≥5 cells and its score is reported next to rung 1's |
-| **3** | F alone, fed the C's own canopy | **F's physics** | **M** | the decadal canopy drift is quantified and either fixed or bounded |
-| **4** | S + F coupled | the residual | **M** | residual = rung1 ⊕ rung3 ⊕ loop, attributed |
-| **5** | speed | — | **O** (+ M for the F core) | each sub-step byte-identical or explicitly opt-in |
-| **6** | ESM coupling | — | **O** | — |
+| **D0** | **The global stratified panel**: ~1 000 cells, stratified by biome × climate, spread over the ~161 populated 15° tiles, fixed and committed (cell list + seed). Replaces ad-hoc 5/12/674-cell panels for any global score | one comparable venue | none | **S** |
+| **D1** | **Constant-climate control of the original**: from the 2019 restart, 2020–2100 with 1990–2019 weather detrended and recycled, same members, constant CO2 — on D0 (global optional). The original's response is then **SSP370 − control**, not SSP370 terminal − historic terminal | the original's own 2020–2100 change has never been split into climate response and continuing stand dynamics; R00661 isolates its response exactly this way | ~6 core-h per member on D0 at 25 patches | **S** |
+| **D2** | **Re-run Germany 2071–2100 with the humidity setting corrected** (from the existing `restart_2070_nv.lpj`, every scenario × seed leg), and the post-2100 continuation if it is used | the only years in which the Germany scenarios separate | ~900 core-h per leg at ~12 core-s per cell-year (~10⁴ for all legs) | **X** — ⚠ **owner decision pending** (recorded 2026-10-01 as the owner's call); everything else proceeds without it |
+| **D3** | **A 3rd and 4th independent member on D0** (each a separate spin-up — ADR 0041: a new seed under restart is a byte-identical clone), **with daily outputs** | calibrated uncertainty needs >2 members; the daily fluxes have **no** two-run spread today | ~80 core-h per member | **S** |
+| **D4** | **Transient climate-contrast ensemble on D0**: from the 2019 state, 2020–2100 under SSP370, SSP126, the D1 control, SSP370 change patterns of both climate models swapped between cells, and SSP370's change pattern scaled ×0.5 and ×1.5 (scale in temperature and relative humidity, then convert, so the variables stay consistent); ≥2 members; constant CO2. **Hold out ×1.5 and one climate model** as the out-of-distribution test | breaks the place-vs-response confounding by construction. **Anchored on real patterns, NOT stylised factorials**: stylised T/P grids "failed to extrapolate effectively to the real CMIP6 climate scenarios" (R00430); delta grids work for totals but not composition (R00201) | ~100 core-h at 25 patches; ~1 300 at 250 | **S** |
 
-### What can run in PARALLEL right now
-
-* **S** starts rung 0 today (existing artefacts, no new runs) and rolls into rung 1. Nothing blocks it.
-* **M** can build the rung-2 harness **now**, in parallel with S's rung 1 — the harness build does not depend
-  on rung 1's answer, only its *interpretation* does.
-* **O** starts rung 5's **prerequisite** now: the end-to-end timing gate and the profile (§4). **O does not
-  edit `src/fdiff.jl` until M clears rung 4 or explicitly hands the file over** (CLAUDE.md §9 Gap 1 allows a
-  recorded hand-over) — the collision is a git conflict in a 2 000-line physics file, not a scientific one.
-* **E** continues its own observational programme; it is **not on the critical path**. E is a required
-  reviewer for rung 5b (§4) because sharing a soil column touches the ground-heat column E owns.
+Rules for every Track-D run: same binary as the reference it is compared to; **pinned to one node type**
+(`#SBATCH --nodes=1`, CLAUDE.md §3); a subset run is compared only to other runs of the same subset, never row by
+row to the global truth (ADR 0041); gate new members with `scripts/diagnose_ind_seed_independence.py`.
 
 ---
 
-## 3. Rungs 0–4 in detail
+## 4. Track Y — one yardstick for every arm
 
-### Rung 0 — fix the yardstick · line S · days, no new model runs
+**Statistics (all reported for every arm, every venue):**
 
-The emulator is being scored against **one roll of a stochastic model's dice**, and for two trait axes the
-dice are louder than the signal. Deliver:
+1. **Level** — fraction of cells inside `max(10 %, two-member spread)` for stems, biomass, and the four trait
+   medians and q05–q95 (ADR 0106).
+2. **Response** — the aggregate (area-weighted, and per biome) response ratio, deattenuated (ADR 0111). Reference
+   response = **scenario − control** once D1/D2 exist; until then scenario − historic, labelled as such.
+3. **Free-run stability** — validity horizon; drift at leads 5/20/40/80 yr; **a within-training-period free run**
+   (a free run inside the training years, which separates step bias from extrapolation — R00593's test).
+4. **Speed** — end-to-end core-s per cell-year on one core, with the atmosphere it is compared against.
+5. **Conservation** — carbon/water closure where the arm carries pools.
 
-1. **A per-cell, per-quantity noise floor** from the two existing seeds, for counts, stand carbon and all four
-   trait medians, **stratified by stem density** (the <2 stems/patch stratum is 7 964 cells at 31.6 % on
-   counts / 42.7 % on carbon — it cannot share a tolerance with dense forest).
-2. **The deattenuated response slope.** `λ = Var(true)/(Var(true)+Var(noise))` from the two seeds in both
-   scenarios; report the raw slope **and** `slope/λ`.
-   ✅ **DONE (ADR 0111), and the numbers this item used to quote were wrong — they were the λ values, not the
-   deattenuated slopes.** The measured 2-seed panel is **SLA 1.28 · Wooddens 0.66 · D95max 0.73 ·
-   minwscal 1.06** on the production `pooled_w20_t8` pin (λ: 0.784 / 0.676 / 0.330 / 0.780) — name the
-   artifact with the panel; the fixture also carries a `t9envT` variant at 1.14 / 0.64 / 0.77 / 1.07.
-   So it is **two** axes that fall short, not four, and D95max's λ of 0.33 (0.198 on one seed) means ~4/5 of
-   its single-seed between-cell variance is noise — a raw slope on that axis is uninterpretable. Evidence:
-   `test/testitems/references/S_truth_yardstick_summary.csv`. **"Four broken axes" is retired.**
-3. **A response score that is not per-cell single-seed.** The two seeds disagree on the *sign* in 33–37 % of
-   cells while the area-mean carbon response has signal-to-noise ≈ 200. Define and publish an aggregate
-   response metric (area-mean and/or biome-mean) as the primary, with per-cell as a reported secondary.
+**Nulls, always in the same table:** persistence; the lookup/analog null; the **climate-blind twin** (same arm,
+climate inputs frozen to the baseline); the **frozen-climate control** (ADR 0178); the other member as the
+ceiling. **No one-step score is quoted without the free-run score beside it.**
 
-**Integrator, in parallel:** schedule **two more reference seeds** (~35 000 core-h ≈ 17 h on 2048 cores),
-both scenarios. Gate each with `scripts/diagnose_ind_seed_independence.py`; a second seed is a second
-**spin-up** (ADR 0041 — bumping `random_seed` under `-DFROM_RESTART` yields a byte-identical clone).
-
-### Rung 1 — S alone, on the C's own fluxes · line S · no C/Julia mixing needed
-
-**The `ind` parquet already IS the C's fast part** — per (Cell, Patch, Year) it carries each tree's growth,
-water stress and four death rates. Feed those to the demography and ask: given perfect physics, does it
-reproduce FIT's forest?
-
-Run it as a **stated set of arms**, and report all of them:
-
-* **A** — free-running (today's behaviour), the control.
-* **B** — fed the C's own per-tree fluxes each year.
-* **C** — B **plus** `trait_mortality` ON. This is the pre-registered flip test for that flag.
-* ~~**D** — C **plus** the bounded-Beta trait family replacing the copula marginals.~~ ❌ **DESCOPED
-  (ADR 0173).** Its motivating claim (ADR 0093 §5.3's "a bounded Beta beats the copula 2–3× on per-cell KS")
-  was three confounds, not a distribution family: a **one-sample** KS against a Beta fitted to that same
-  sample's own two moments, grouped per (Cell, PFT) on the top-400 densest cells per PFT, versus the copula's
-  **two-sample**, PFT-**mixed**, out-of-sample number. The estimator alone accounts for 1.7–2.4×, the grouping
-  a further 1.2–1.5×, and the published Beta figure sits **at its own statistic's noise floor**. Scored like
-  for like, an **oracle-moment** Beta ties the **out-of-sample** copula on two axes and is **7–12 % worse** on
-  the other two — and the **deployable** arm (a Beta carrying the *same learned moments*, off the same forests,
-  leaf pool and uniform) is worse on **all four**: median per-cell KS +36 / +9 / +13 / +28 %, pooled KS
-  6.5–16.6×, every axis failing the `≤ 0.02` criterion the copula passes. Reproducers:
-  `test/testitems/references/S_beta_vs_copula_likeforlike.csv` and `scripts/eval_slow_beta_arm.jl`.
-
-Cheap wins to fold in and measure separately, all from ADR 0093 §5:
-
-* **The determinism dividend is free**: predict the ensemble *expectation*, not a draw. Worth **+2.9 to
-  +14.4 pp** of cells inside the 10 % band at zero compute cost.
-* **Bounded Beta on each PFT's own trait interval**: median per-cell KS **0.042–0.073** vs the shipped
-  copula's **0.129–0.173** — 2–3× better, two moments, no fitting. `new_tree.c:38-61` reflects traits at the
-  interval edges, which is why a bounded family is the right one.
-* **`trait_mortality`**: keeping `mort_max(wooddens)` **per-individual** holds the wood-density selection
-  differential at **0.98–1.06 across all seven PFTs** even with growth efficiency collapsed to a patch mean.
-  Collapse `mort_max` too and it drops 47–100 % and **flips sign in PFTs 3, 5, 6**.
-
-**FLIP CRITERION for `trait_mortality` (pre-registered, guardrail-4 corollary):** flip the default to ON if
-arm C improves the **deattenuated Wooddens response slope** by ≥+0.10 over arm B **and** does not lose more
-than 1.0 pp of cells inside the 10 % band on any of the four trait axes or on counts. Decide from arm C
-against arm B only — not from a later arm, and not re-read after the fact (the ADR-0104 error).
-
-### Rung 2 — S + the real C fast part · **line S** · the harness
-
-> ⚠ **OWNERSHIP CHANGED 2026-08-12 — this rung moved from line M to line S by owner steer**, recorded here
-> rather than left to an ADR, because this file is where a line looks up what it owns. The steer: *"using the
-> original code for fast physics for the emulator has to work in line S!!!!!! if that does not work we don't
-> have to do the other lines!!"* Line S has since built and run the harness
-> (`scripts/rung2_s_demography_harness.jl` + `run_rung2_s_arm.sh`; ADR 0175/0176), so the **S → M** integration
-> point below is **dormant, not deleted** — it revives only if the harness is handed back to M.
-
-**Narrow interface first — this is the recommendation the owner asked for.** Replace **only who dies and who
-establishes.** Leave turnover, allocation and growth to the C. Reasons, in order of weight:
-
-1. It keeps the C's internal per-tree accumulators intact — the running water stress, the growth-failure
-   counter — which **three of the four death rates depend on** and which the emulator does not currently
-   produce (`waterstress_tree.c:31-38`, `mortality_tree_ind.c:66-96`).
-2. It halves the interface surface, so a failure is attributable.
-3. Widening later is then its own experiment, one function at a time.
-
-**Where to hook it.** The whole demography is one loop, `src/lpj/annual_natural.c:55-232` in
-`/home/jamirp/lpjml56fit`: `annualpft` (turnover/allocation/mortality) at :73, `light` at :118 (**dead** under
-`individual=true`), fire at :121-135, `establishmentpft_ind` at :145. Add an **opt-in config flag** that dumps
-the patch roster + accumulated per-tree fluxes at the top of the block and reads a replacement roster at the
-bottom. Precedent for the mechanics: `patches/lpjmlfit_daily_grass_gpp.patch` + rebuild
-(skill `lpjmlfit-cbinary`). Per-year file I/O is free at a handful of cells.
-
-**This is a throwaway test harness, not a deliverable.** Build it cheap. Its only job is to answer *is the
-defect in S, in F, or in the loop?* Keep it opt-in so the stock binary stays byte-identical.
-
-Fallbacks if the hook stalls: (b) step the C one year at a time through restart files, rewriting the restart
-between years (needs a writer for `fwritecell.c` → `fwritestandlist` → `fwritestand` → `fwritepftlist`);
-(c) link LPJmL as a shared library and `ccall` — **not worth it** (global state, MPI, its own I/O).
-
-### Rung 3 — F alone, on the C's own canopy · line M
-
-Partly exists (`fdiff-validate`). The open item is the **decadal canopy drift**: over 2010–2019 F's leaf
-cover moves **1.56×** where the C's moves 0.90× (boreal), 1.27 vs 1.00 (Hainich), 0.71 vs 1.23 (Sahel).
-Score **year-matched over a decade**, not as a 10-year-mean ratio, which hides drift. Read the ratio's
-**shape**. Mandatory basis checks before comparing anything: `fdiff-validate` §the four basis checks.
-
-### Rung 4 — coupled · line M
-
-Only now is a residual attributable, because 1–3 are clean. Report the decomposition explicitly:
-residual = (rung 1) ⊕ (rung 3) ⊕ (the loop). If the three do not add up, the loop is amplifying, and that is
-a result worth its own ADR.
+**Tooling:** Germany — `scripts/explore_de_sh_eval.py` (line X's scorer, extended with statistics 3–5). Global
+panel — line S's rung-2 scorers, extended to the same statistics. Both write one row per (arm, venue, statistic).
 
 ---
 
-## 4. Rung 5 — speed, in the order the measurement forces · line O (+ M for the F core)
+## 5. Track A — annual demography methods (all run; Germany first where the arm exists there)
 
-**This is now goal #2, not a tidy-up.** The order below is forced by the cost anatomy, not by taste.
+| id | method | literature basis | owner | first step |
+|---|---|---|---|---|
+| **A1** | **Hybrid with the original's physics**: the original grows the stand, the emulator applies mortality as a per-tree **rate** from its own stress integrals (temperature integral exact and on; water integral next) | rates not counts (R00342, R00278); ADR 0242–0245 | **S** | ADR 0245's water probe (fidelity ≥ 0.867, nulls 0.78 / 1.00) + its cost |
+| **A2** | **Rollout-trained recurrent stand/cell model** (the Germany LSTM, extended with a per-tree output stage), trained on increments scaled by their spread with a **rollout loss and a 4 → 8 → 16-year curriculum**, gradient clipping | R00067, R00593 (stable 4-yr free run), R01133 | **X** | add the rollout loss + curriculum to the existing LSTM; then the per-tree stage |
+| **A3** | **Per-tree boosted trees retrained on their own free-run states** ("dataset aggregation" / "data as demonstrator"), targets from the original — in Germany via the C re-run driver, globally via the harness that plugs the original's physics into the loop | R00342 (trained on the host's trajectory, collapses on its own); out-of-corpus DAgger / DaD (`docs/review_comparison.md` §7) | **X** | one aggregation round on the TAB arm |
+| **A4** | **Free-run calibration**: a handful of bias/response parameters fitted on the free-running trajectory, or a signed zero-sum loss over teacher-forced segments, on top of TAB and of the global count/rate model | R00661 (fits on the 1900–2100 free run), R01133 | **X** (Germany), **S** (global) | aimed at the rectification (86.7 % of declines vs 96.2 % of rises) |
+| **A5** | **Neural set model with multi-step training** (D-NSET) | R00593 | **X** | finish the scoring already in progress |
+| **A6** | **Per-tree NPP + loss model, sign by the original's own threshold** (the "margin" route) | — (no precedent) | **X** | line X's current NEXT |
+| **A7** | **Direct non-recursive map**: 20–30-year climate window → state distribution, no rollout (the frozen sibling emulator's design; EcoDiffusion's non-autoregressive idea) — the benchmark every recursive arm must beat on response | R00514; frozen `emulator` (per-cell r ~0.9 at 2100) | **X** | re-score on the Track-Y statistics |
+| **A8** | **Probabilistic state-transition model** (iLand-style transition probabilities) — exploratory, lowest priority | R01728 | **X** | only if a round-1 slot is free |
 
-| # | step | worth | risk | owner | notes |
-|---|---|---|---|---|---|
-| **5-pre** | **the end-to-end timing gate** | — | none | **O** | **start now.** See below. |
-| **5a** | close the per-tree gap in the Julia core | **37×** | **none** | **O** after M clears rung 4 (or a recorded hand-over) | must be **byte-identical** against the committed baselines — it is the same computation, faster |
-| **5b** | one shared soil column per cell | removes the floor that caps everything else at ~3× | low, measured | **M**, **E reviews** | share the soil column, **never** the canopy |
-| **5c** | 25 patches → 8–12 | ~3× | small, quantified | **M** | `scripts/run_coupled_biomes.jl`; sd cost ×1.15–1.43 |
-| **5d** | threads across cells | large | none | **O** | 54 020 cells are embarrassingly parallel |
-| **5e** | GPU | re-ask with numbers | high effort, poor fit | **O** | **deliberately last** |
-
-**5-pre, the standing gate O starts with.** No end-to-end emulator-vs-C timing has ever existed — which is
-exactly how a 3.8× regression went unnoticed. Deliver a reproducible harness that reports core-s per cell-year
-for the emulator and for the C on the same cells and years, and a profile attributing the emulator's cost.
-Starting point: `/p/tmp/jamirp/npatch_analysis/bench_emulator.jl`. Then **the integrator wires it as a
-required gate** (workflows are integrator-owned) so a performance regression reds CI like a physics one.
-
-**Why 5a is worth 37× and carries no fidelity risk.** The Julia per-individual daily step costs **51×** the
-C's (3.998e-3 vs 7.84e-5 core-s per individual-year) while its per-patch fixed cost is only **0.066×**
-(3.3e-4 vs 5.0e-3). Closing that gap alone takes 25 patches from 1.096 → **0.0296**; 8 patches then lands at
-**0.0093**, inside the T31 allowance with 45 % margin. In the C, 72–86 % of runtime is per-individual
-per-day photosynthesis and the λ bisection alone is **33.3 %** (≤30 photosynthesis calls per tree per day,
-`water_stressed.c:207`) — a fixed-iteration or analytic λ closure is the first thing to look at, and the
-gradient-friendly core wants it anyway.
-
-**Why the patch cut is LAST and not first.** Because patch reduction in the *emulator* has no fixed-cost
-floor (unlike the C's 33 %), the ~100× decomposes as **37× engineering + ~3× patches**. Price every future
-speed proposal against the **Julia** cost model: four candidate architectures looked good against the C and
-are all **slower than the existing code at 8 patches** (ADR 0093 §2).
-
-**Why GPU is last.** 54 020 independent cells already saturate a CPU node through threads; the 51× gap is
-single-core inefficiency and a GPU running inefficient code is still inefficient; and the workload fits badly
-— variable roster length per patch, a per-tree branching death test, and an iterative λ solve with a
-data-dependent trip count all cause lane divergence.
+**Traits:** every arm that emits trees either predicts traits itself or uses the shipped copula sampler (S), scored
+on the same statistics. The copula's survivor-training bias (+12.18 % on wood density, ADR 0174) is a known
+defect any arm inherits if it uses it.
 
 ---
 
-## 5. Standing rules this program adds
+## 6. Track F — daily flux methods
 
-1. **Every speed claim carries a measured end-to-end number and names the atmosphere it is measured against.**
-2. **Every fidelity claim carries the target's own noise floor** for that quantity and stratum
-   (skill `residual-diagnosis` §5).
-3. **Response is scored on a multi-seed mean and deattenuated**; a per-cell single-seed response plot is
-   mostly noise (signs disagree in 33–37 % of cells).
-4. **Do not climb two rungs at once**, and do not report a coupled score without the isolated ones beside it.
-5. **Refuted routes stay refuted** (ADR 0093 §4): one big patch (−81.3 % recruitment), structural
-   stratification (variance-reduction 1.00–1.13 on traits), time-averaging (32–41 yr decorrelation), a smooth
-   trait density with no individuals (flips the selection sign in 4 of 7 PFTs), a roster ensemble without
-   daily physics (flips the minwscal selection sign). Re-proposing one of these needs new evidence, not a
-   new argument.
-6. **The emulator must not see CO2** (ADR 0107, closed, do not re-litigate).
+| id | method | owner | first step | pass bar (DP-F) |
+|---|---|---|---|---|
+| **F0** | the original model's physics — the reference, and A1's physics | — | — | — |
+| **F1** | **Re-implemented differentiable physics, made fast**: replace the finite-difference Newton derivative in the λ solve (`src/fdiff.jl:685-707`) with an analytic or implicit-function derivative, wire the precomputed temperature kinetics (≈1.36×, ADR 0087), replace the fixed 25 iterations by a convergence test (3 iterations measured 4.10× at −0.03 % GPP, but GPP is non-monotone ±2.1 % in the count) | **M** (owns the file); **O** measures | the two-line kinetics wiring, then the derivative | GPP/ET/growth ratios unchanged within ±0.5 % at the 5 cells; gradient gate green |
+| **F2** | **Learned daily water–carbon model** with soil water as an explicit, residual-updated state and the bucket closed by construction; fluxes re-diagnosed from state each day (aiLand pattern). Inputs: daily forcing + the annual stand state. Energy stays physics (LPJmL-FIT has no energy target, ADR 0310). **Phase A, offline** on the existing ~1 TB daily dataset (spatial blocks + scenario hold-out); **phase B** (coupled) only if A passes | **O** (speed line; owns `ext/`), **M** reviews fidelity with the `fdiff-validate` oracle | phase A learnability test | annual GPP, ET, NPP within ±5 % of the original at ≥4 of 5 biome cells and on the D0 median; SSP370 change in GPP inside the original's two-member band at ≥4 of 5 cells; ≤ 0.01 core-s per cell-year |
+| **F3** | **Few representative patches for the fluxes**, canopy = the emulator's ensemble-mean stand; demography statistics from Track A | **M**, **E** reviews (shares the soil column) | 1/3/5 patches vs 25 and 250 (Germany) | fluxes within 5 % of the full-ensemble original; measure the "mean of fluxes vs flux of the mean canopy" gap explicitly |
+
+**Open-ended F fidelity hunts are paused until DP-F**, except where F1 must preserve fidelity. F's known residuals
+(ADR 0125/0128/0139) stay documented; if F2 fails, they become the next round.
+
+**Speed levers, re-ranked by the measurements:** (1) the per-tree daily step — F2 or F1; (2) fewer patches — F3;
+(3) threads across cells (embarrassingly parallel, untouched); (4) GPU — last. Every lever reports the end-to-end
+number from `scripts/bench_speed_gate.jl` and the matching original-model number.
 
 ---
 
-## 6. Where each line records what
+## 7. Tracks C and U — coupling, stability, uncertainty
 
-Unchanged from CLAUDE.md §9 — restated because this program spans all four lines:
+| id | what | owner | why |
+|---|---|---|---|
+| **C1** | **Long-run stability gate**: any coupled configuration runs 300 yr under recycled climate; its above-ground biomass must become stationary and sit inside the original's own variability under the same forcing. Today it drifts 1.39–5.15× per century (ADR 0055) | **M** | an ESM integrates for centuries; an emulator without a fixed point cannot be initialised from any equilibrium (DifferLand's drift penalty, R00383) |
+| **C2** | **Close the coupling interface**: export reflected shortwave, upward longwave, runoff, snow; real wind and pressure in the coupled driver; add heterotrophic respiration with explicit litter/soil pools and fire, so net CO2 exchange is complete (port the original's decomposition, 4.6–6.6 % of its runtime) | **M** (+ **E** for the energy-side exports and wind/pressure) | review requirement 2: no published emulator closes the interface; keep pools explicit (R00755) |
+| **C3** | **Equilibrium initialiser**: use an equilibrium predictor (the `vegemu` map, read-only) to start the forward emulator under a new climate; check with the functional restart test (write the state into a restart, let the original continue, measure the relaxation) | **X** | review requirement 1; PHASE (R01211), R00211 |
+| **C4** | **Online**: a coupled self-test (learned component trained on the host's own output reproduces the host online) and a "no-learned-process" null, then the chosen fast configuration online | **O**, after DP-S | R00602, R02497 |
+| **U1** | **Calibrated uncertainty**: per-cell predictive distributions scored by coverage and rank histograms against the D3 members; the coupler receives the ensemble expectation (worth +2.9 to +14.4 pp of cells in band, ADR 0093) | **S**, after D3 | R00157; the corpus has no emulator scored against seed spread |
+
+---
+
+## 8. Decision points — pre-registered (arm owners may TIGHTEN a threshold before running, never loosen it)
+
+| id | when | question | rule |
+|---|---|---|---|
+| **DP-0** | D1 (+ D2 if approved) landed | does the original's own response have power? | signal-to-noise ≥ 2 on the primary aggregate response statistic with the available members. If not, D4's held-out ×1.5 amplitude becomes the primary response test |
+| **DP-A1** | each Track-A arm's first scored free run in Germany (held-out climate model, 1985 → 2044) | does it survive round 1? | survives if (a) cell pass rate ≥ 0.5 × the other-member ceiling, (b) stems and biomass per stem within ±10 % at 2044, and (c) it is **not worse than its climate-blind twin** (before DP-0) / **beats it by more than the member-to-member noise on the response** (after DP-0) |
+| **DP-A2** | survivors scored on D0 + D4 | which arms go to all cells? | response ratio (deattenuated, vs the control) inside the original's two-member band on the held-out amplitude and the held-out climate model, with no more than 1 pp loss of level cells vs the best arm |
+| **DP-F** | F1 and F2-phase-A scored on the 5 cells + D0 | which fast side? | the cheapest arm meeting its §6 pass bar. If none meets the response clause, the fast side is the bottleneck and gets the next round |
+| **DP-C** | the chosen A arm + F arm coupled | is it stable? | C1 passes at ≥ 4 of 5 biome cells and on a D0 subsample |
+| **DP-S** | after DP-C | is it fast enough? | end-to-end ≤ 0.030 core-s per cell-year (T63) at the chosen patch count, then ≤ 0.0135 |
+| **Accept** | after DP-S | done? | §0 on all 54 020 cells, both scenarios and the response |
+
+⚠ **If the best arm fails a decision point, that is the finding, not a failed test** — record it in an ADR and say
+which statistic failed. Do not re-read a criterion after seeing its arm (the ADR-0104 error).
+
+---
+
+## 9. What each line does now (all in parallel)
+
+| line | now | must NOT start yet |
+|---|---|---|
+| **S** | A1 (ADR 0245's water probe); D0 panel; D1 control; D3 members; then D4; global side of Track Y; A4 on the global model; U1 after D3 | no new one-step count-model work |
+| **X** | Germany round 1 of A2–A7 on the Track-Y scorer (owner's Germany-first milestone); D2 when the owner approves; C3 | the global transfer of an arm before it passes DP-A1 |
+| **M** | F1 (kinetics wiring → analytic/implicit derivative → convergence test); C1 stability gate; C2 interface + soil respiration/fire; F3 | open-ended F residual hunts (paused until DP-F) |
+| **O** | F2 phase A (offline learnability of the daily water–carbon model); the speed harness as a CI gate (request to the integrator); threads across cells | online work beyond the C4 self-test until DP-S |
+| **E** | C2 energy-side exports + real wind/pressure in the coupled driver (with M); Experiment B (the closure scored with F's own LE); review F3 | — |
+| **integrator** | wire the speed harness as a required gate; keep this file and `MEMORY.md` current | — |
+
+**Integration points this creates (record in BOTH lines' STATE):** M ↔ O for F1/F2 (who edits `src/fdiff.jl`: M
+only, unless a hand-over is recorded); M ↔ E for F3 and C2; S ↔ X for the shared Track-Y statistics and D0; S ↔ M
+if A1's water integral needs F's per-tree roots (`per_tree_roots`).
+
+---
+
+## 10. Standing rules
+
+1. **Every speed claim** carries a measured end-to-end number and names the atmosphere it is measured against.
+2. **Every fidelity claim** carries the target's own noise floor for that quantity and stratum, and says how many
+   of the 54 020 cells it covers.
+3. **Response is scored on a multi-member mean, deattenuated**, against the control once D1 exists.
+4. **One variable per arm**; never a coupled score without the isolated ones beside it.
+5. **No one-step score without its free-run score beside it**, and no score without its nulls (§4).
+6. **Refuted routes stay refuted** (ADR 0093 §4 list; plus: a count target for mortality, ADR 0241; the ratio-target
+   count model, ADR 0115; the level anchor, ADR 0105/0113; bounded-Beta marginals, ADR 0173). Re-proposing one
+   needs new evidence.
+7. **The emulator must not see CO2** (ADR 0107).
+8. **No stylised-only factorial training data** (R00430) and **no learned memory in place of an explicit carbon or
+   water pool** (R00755).
+9. **Original-model re-runs are pinned to one node type** (CLAUDE.md §3).
+
+---
+
+## 11. What the 2026-08-07 ladder found (record; details in the ADRs)
+
+| rung | isolated | outcome |
+|---|---|---|
+| 0 — yardstick | the target | ✅ noise floors + deattenuated slopes (SLA 1.28, wood density 0.66, D95max 0.73, minwscal 1.06); "four broken axes" retired (ADR 0111) |
+| 1 — demography alone on the original's fluxes | the learned demography | ✅ closed: level passes, **response fails on sign** (+0.707 one-step → −0.226 free-running); three compensating errors named (ADR 0174) |
+| 2 — demography + the original's physics | the feedback | deep: count target retired from mortality (ADR 0241); hazard-as-rate meets the criterion as a ceiling (ADR 0242); on the emulator's own inputs 0.78 of the mortality flux, temperature integral fixed (ADR 0243–0245) → **continues as A1** |
+| 3 — physics alone on the original's canopy | the fast physics | quantified, not fixed: growth 1.6–4× high, Mediterranean GPP 1.61×, warming response wrong (ADR 0125–0139) → **F1/F2** |
+| 4 — coupled residual | the remainder | not done → replaced by DP-C on the chosen arms |
+| 5 — speed | — | timing gate + profile built (ADR 0084); no speed-up landed; patch cost law measured (ADR 0086) → **F1/F2/F3** |
+| 6 — ESM coupling | — | harness runs without this project's physics (ADR 0083/0085) → **C4** |
+
+---
+
+## 12. Where each line records what
 
 | kind | destination |
 |---|---|
-| rung progress + the `## NEXT` handoff | `lines/<X>/STATE.md` (**yours only**) |
+| progress + the `## NEXT` handoff | `lines/<X>/STATE.md` (yours only) |
 | narrative | `lines/<X>/JOURNAL.md` (append) |
-| a decision | an ADR from **your** block (S 0100–0119 · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0094–0099) |
+| a decision | an ADR from **your current block** (see `docs/decisions/README.md`: S 0246+, M 0190–0209, E 0076–0079 then 0140–0149, O 0088–0089 then 0150–0159, X 0313+, integrator 0097–0099 then 0160–0169) |
+| an arm's result | one row per (arm, venue, statistic) in the Track-Y table of your venue, plus an ADR when it decides anything |
 | a cross-cutting `[VERIFIED]` fact | `MEMORY.md` (additive) |
-| changelog | a **new** `changelog.d/<X>-<slug>.md` |
-| a change to THIS file, or to the rung ownership | an **integration point** — raise it, do not edit |
-
-**Cross-line integration points this program creates, all of which must be recorded in BOTH lines' STATE.md:**
-
-* **S → M (rung 2): DORMANT since 2026-08-12** — line S owns both halves now (see the rung-2 heading); it
-  revives only if the harness is handed back to M.
-* **M → O (rung 5a):** the hand-over of `src/fdiff.jl` for performance work, after rung 4.
-* **M → E (rung 5b):** the shared soil column touches E's ground-heat column.
-* **any line → integrator:** the extra seeds, the timing gate becoming a CI gate, `Project.toml`,
-  `scripts/sbatch_*`, `config/**`.
+| changelog | a new `changelog.d/<X>-<slug>.md` |
+| a change to THIS file | an integration point — raise it, do not edit |
