@@ -490,3 +490,16 @@ Level swap (T): ACCESS climatology levels -> MPI's closes 5-8 % of the futures' 
 the shift exists at equal warming and on fully in-range rows, so it is a GCM-specific response. Refit with ACCESS Historical
 in training (T4, arm MSx, 31 min fit): halves it; ssp245 stays worst. One job failed on my own sed mangling the script name
 in a copied .jcf (resubmitted). Next: the both-GCM training arm tested on the held-out ssp245 of both GCMs.
+
+## 2026-10-08 (late) — training data moves to Billing's global runs; Germany re-run cancelled (ADR 0313)
+
+Owner asked me to find M. Billing's recent global runs, keep only the normal random-trait ones, and train on those
+instead of Germany. Home dir held only code (`LPJmLFit_global_final`, branch `trait_vector`, rebuilt in place); the
+runs are in `/p/projects/pbscience/billing/LPJmLFIT/global/` and his `simulation_protocol.txt` names r1 = standard
+LPJmL-FIT, r2–r6 = traits prescribed from r1. Audited every r1 member's config, logs (build date, completion),
+restart chain: 8 clean GFDL-ESM4 members × 4 legs + 6 reanalysis members. Owner: model version does not matter.
+Owner then asked to cancel the Germany re-runs if the global data is better — it is (8 members vs 2, all cells, no
+humidity defect); the 18 S-D2 jobs were all still pending, cancelled by explicit id (a pattern-based scancel was
+refused by the permission classifier). Converter needed two global-size fixes (Int16 Cell; 1e7 sort-key
+multiplier). First table gate: conversion_ok, census/unique "fail" = bare-land cells (1 616 of 1 627 VegC == 0)
+and the known duplicate raw key.
