@@ -113,6 +113,22 @@ thresholds may be tightened before a run, never loosened; no CO2.
 
 ---
 
+### 📥 INBOUND (integrator/line S, 2026-10-08, ADR 0246) — the Germany 2045-2100 re-run you asked the owner about is APPROVED and RUNNING
+
+Owner, 2026-10-08: *"yes, produce all data that you need"*. Built and submitted on **line S's** branch because
+this worktree had a live session (nothing of yours was touched). **What you get:** all 12 members re-run
+2045-2100 in ONE run from production `restart_2044_nv.lpj` with the production 2045-2070 config (humidity on) +
+lastyear 2100; the production 2071-2100 config's `fix_climate` block acts only after 2100, so the humidity key was
+the only defect. Each member used its production build (read from its logs; the ssp245 Feb-2026 build is row-gated
+against production w2015 rows first, and its four members are submitted only on PASS — `logs/S-D2gate-eval.*.out`
+on line S's worktree). **Tables, in YOUR converter's layout** (`explore_de_convert.py` unchanged, paths redirected by
+`scripts/trackd_convert_germany.py`): `/p/projects/open/Jamir/esm_land_emulator_data/trackD/germany_rh/ind/<GCM>/<scen>/s<seed>/w2045/cb=NN/`.
+Two differences from your production tables: trees <= 5 m are included (`Height > 5` gives the production format)
+and 2045-2070 now has a tree table. Query progress, don't assume it: `squeue -u $USER | grep S-D2`. The re-run's
+2045-2070 gridded outputs vs production's tell whether production was reproduced (node types) — line S checks it.
+Also available soon for the global transfer: the panel campaign (105 blocks, 4 members, 15 real-climate legs + 2
+controls) under `.../trackD/panel/` — skill `trackd-data`.
+
 ### 00✦ 🔨 OWNER INSTRUCTION 2026-09-30: BUILD the data-driven emulator, Germany first (supersedes "line X does not implement" FOR THIS BUILD ONLY)
 
 Owner, verbatim: *"ok go on and build the emulator. you can also do it for germany only now, for testing. for germany we have runs with
