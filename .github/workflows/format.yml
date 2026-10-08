@@ -39,4 +39,4 @@ jobs:
       # Usage per https://github.com/fredrikekre/runic-action
       - uses: fredrikekre/runic-action@v1
         with:
-          version: '1'
+          version: '1.8.0'  # pinned 2026-10-08: Runic 1.13.0 (resolved by '1') reformats 75 files that 1.8.0 passed

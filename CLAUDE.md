@@ -192,7 +192,7 @@ the agent scratchpad under `/tmp/claude-*` (login-node-local → compute nodes c
   FiniteDifferences) is a **test/train-time** dep only. Learned-closure training ships as the package
   **extension** `ext/FDiffTrainingExt.jl` (weakdeps Lux/Zygote/Optimisers/Enzyme). Aqua enforces no stale
   deps — don't add to `[deps]` until a runtime feature truly needs it.
-- **Format gate (Runic):** CI installs **Runic 1.7.0**. Check locally by adding Runic v1 to a temp env
+- **Format gate (Runic):** CI installs **Runic 1.8.0, PINNED in `.github/workflows/format.yml`** (`[VERIFIED 2026-10-08]`: the action's `version: '1'` floated to Runic 1.13.0, which reformats 75 files 1.8.0 passed — every format run from 2026-09-01 on was red with no code change; the last green main run installed 1.8.0). Bump the pin deliberately, reformatting the repo in the same commit. Check locally by adding Runic 1.8.0 to a temp env
   and `Runic.main(["--check", <files>])`. Reformat all tracked `.jl` with that version.
 - ⚠ **BUILD THE DOCS LOCALLY WHENEVER YOUR DIFF TOUCHES `src/**`, NOT ONLY `docs/src/**`
   (`[VERIFIED 2026-08-12]`, ADR 0126 merge).** The `docs` gate watches `src/**` too (Documenter splices the
