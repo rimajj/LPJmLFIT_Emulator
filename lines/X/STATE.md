@@ -123,13 +123,12 @@ the pre-registered ratio test was badly posed — §11.1). Per-version inputs to
 no per-tree column the Oct layout lacks.
 **NEXT, in order:**
 1. **A2g scored (ADR 0315 §12):** pass 0.125 (fails (a) by 0.015; A7s 0.131), totals −0.6 % / +5.4 %, response slope
-   0.86 — but its climate-blind twin gives 0.69 (elapsed time as a clock). Per-version runs of A2g RUNNING: train
-   2445979 (Feb 2→8 tag `_pvF2`, May 9→10 tag `_pvM9`) → score 2445980 → `eval/scores_A2g_pvF2.csv`, `_pvM9.csv`.
-   Write ADR §13 from them. Then: a non-warming test of the clock (constant-climate or plateau scenario).
+   0.86 — but its climate-blind twin gives 0.69 (elapsed time as a clock). Per-version A2g DONE (§13): Feb 2→8 pass 0.115, May 9→10 0.101 — same behaviour, May slightly worse, draw spread
+   unmeasured.
+   NEXT: a non-warming test of the clock (constant-climate or plateau scenario); a second draw per build if needed.
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
-5. Per-version test of the recurrent arm on the May build (train member 9 only → test 10), once A2g is scored.
 
 
 ### 0⛳ PLAN REVISION 2 — `EXECUTION_PLAN.md` CHANGED 2026-10-08 (owner instruction; ADR 0096): parallel method arms on one yardstick, data first
