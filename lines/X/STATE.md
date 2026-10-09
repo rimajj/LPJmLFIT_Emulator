@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/X/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0310–0329**, opened by **ADR 0310**. **Next free number: 0316.**
+> **0310–0329**, opened by **ADR 0310**. **Next free number: 0317.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ---
@@ -83,6 +83,29 @@ and caught only by adversarial review.
 ---
 
 ## NEXT — start here
+
+### 0🧪 2026-10-09 (ADR 0316) — PANEL VENUE + MORE DATA RUNNING — this block wins over everything below
+
+Owner, verbatim: *"continue. the goal stays the same. do everything you need to do to reach it. including producing more
+data if that is mandatory and we have solid results that support the assumption that more data gives the breakthroug."*
+**Read ADR 0316 first.** Done: panel venue on line S's Track-D runs (`scripts/explore_panel_prep.py`, data
+`…/esm_land_emulator_data/xpanel/`); direct map with cells held out fails; in the DEPLOYMENT setting (cells seen, run +
+climate model held out) the anchored direct map **A7r** passes the bar on 11/13 held-out-model cases (`explore_panel_a7.py
+seen`, 5 seeds, `LGB_SEED`), global GS370 on the bar 0.140 ± 0.004 (`explore_glob_a7r.py`). Data curves all rising ⇒
+**more data submitted** (`scripts/explore_panel_runs.py`): 5 new climate models × 3 scen for m1–m4 + new members m5/m6
+(spin-up + everything). Jobs: forcing 2451723 (done, gate PASS); runs 2451818/20/22/24/26/28 (one node per member),
+collectors 2451819/21/23/25/27/29 → tables `…/esm_land_emulator_data/xpanel_runs/m<k>/<leg>/` (`status`:
+`python scripts/explore_panel_runs.py status`). Also resubmitted line S's two dead panel legs (m3 MPI ssp585 run 2451101 →
+collector 2451102; m4 UKESM ssp585 2451103 → 2451104; these write into line S's trackD tables, unchanged tooling).
+**NEXT, in order:**
+1. When the runs land: extend `explore_panel_prep.py` (LEGS/MEMBERS + the xpanel_runs table root) and test ADR 0316 §7's
+   PREDICTION (A7r on the 5 original held-out models' ssp370, trained on 9 models and runs m1,m2,m3,m5,m6: mean pass ≥ 0.182,
+   bar on ≥ 12/13; falsifier gain < 0.01). Do NOT re-tune before scoring it.
+2. Collect the panel LSTM score (job 2451440 → `xpanel/eval/lstm_scores.csv`; held-out-cell setting, no anchor) and write
+   it into ADR 0316 §9. If it beats A7s-core, port the anchor into it (cells seen).
+3. Owner decision raised (ADR 0316 §8): which reading of the acceptance tolerance — a second run of the original passes only
+   17–21 % of cells under the current reading. Also: whether cells the original was never run on must be emulated (§4).
+4. If the prediction holds: price global (all-cell) runs under more climate models (disk is the cost; trees > 5 m only).
 
 ### 0🌍 OWNER INSTRUCTION 2026-10-08 (ADR 0313): TRAIN ON BILLING'S GLOBAL RUNS, NOT GERMANY — this block wins over everything below
 
