@@ -8,6 +8,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: `scripts/explore_glob_clock.py` — tests whether the global LSTM arm reads the climate or elapsed time
+  (scenario contrast + a no-warming drive against the panel's constant-climate control); ADR 0315 §14.
+
+### Fixed
+
+- Line X: ADR 0315 §12's LSTM tree-count response (0.86) was inflated by an input back-fill from the test member's
+  future truth; the clean value is 0.65 (ADR 0315 §14.1).
+
+### Added
+
 - Line X: arm A2g on the global venue (`scripts/explore_glob_lstm.py`, ADR 0315 §12) — a cell-level LSTM trained to
   free-run across the 2015-2070 gap with loss only where per-tree truth exists. Totals within 6 % and a stronger
   warming response than the direct map, but it misses the round-1 pass-rate bar by 0.015, and its climate-blind twin
