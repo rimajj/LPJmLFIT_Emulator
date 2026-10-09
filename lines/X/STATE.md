@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/X/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0310–0329**, opened by **ADR 0310**. **Next free number: 0317.**
+> **0310–0329**, opened by **ADR 0310**. **Next free number: 0318.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ---
@@ -83,6 +83,24 @@ and caught only by adversarial review.
 ---
 
 ## NEXT — start here
+
+### 0🎯 2026-10-09 (ADR 0317) — THE TARGET CHANGED: "as close as a second run of the original" — read with ADR 0316 below
+
+Owner, verbatim: *"of course. the goal is to be as close as a secodn run of the orignal model. it is even fine if it s worse.
+find a good measure ... I would be happy if the emolator is not more than 10% worse thatn a second model run of the
+orignal"* · then *"but maybe the threshold should be even 20%?? what do you think?"*
+**Done:** measure defined + measured (`scripts/explore_tolerance_measure.py`, ~1 min, login node OK): per quantity, the
+emulator's per-cell error vs an unseen run divided by a second run's, at the median cell and the 90th centile, levels and
+response, all cells + per region; plus area totals ≤ 5 % and no drift (proposed). Harness passed (second run 0.95–1.03,
+mean of 3 runs 0.82 as derived). **A7r: traits 0.66–0.94 (better than a second run); tree count 1.43 / 2.23, biomass per
+tree 1.63 / 1.76 — FAILS, and barely beats the lookup null (1.52 / 1.66).** Recommended 10 % on all cells, 20 % per region.
+**NEXT:**
+1. Owner's answer on 10 % vs 20 % (and on the 5 % totals line, which is line X's own proposal). Record it as ADR 0317 §7.
+   Propagation to `~/.claude/CLAUDE.md` / MEMORY / the plan only if the owner says so.
+2. Score every new result on BOTH the old screens and this measure (`explore_tolerance_measure.py`; extend it to the
+   global venue: members 2,3,4,6,7 as second runs, 8 as truth, once A7r's global predictions are saved).
+3. The binding gap is now per-cell tree count and biomass per tree under a held-out climate model. When ADR 0316's
+   more-data test lands (item 1 below), read it on this measure too: does more data move ρ on those two quantities?
 
 ### 0🧪 2026-10-09 (ADR 0316) — PANEL VENUE + MORE DATA RUNNING — this block wins over everything below
 

@@ -599,3 +599,14 @@ fits, levels below the direct map; parked. A first summary had averaged the runa
 the yearly predictions decade by decade. Global A7r with member 7 as a fifth training run: +0.003 (inconclusive, at
 the falsifier line), clears the bar by 0.003. The panel extension runs were stuck ~3 days for whole nodes; resubmitted
 spread over free cores (new runs need no node pin), all started at once. Prediction test chained (2452216-21).
+
+## 2026-10-09 (night) — the acceptance target becomes "as close as a second run" (ADR 0317)
+
+Owner decided the target is closeness to a second run of the original, "not more than 10 % worse" (then asked whether
+20 %). Defined an error-ratio measure (per quantity: centile-50 and centile-90 of per-cell errors vs an unseen run,
+divided by a second run's; levels and response; all cells + regions; area totals as a separate check) and measured it
+on the panel (`scripts/explore_tolerance_measure.py`). Nulls came out as derived (second run ~1.0, mean of three runs
+0.82). The best arm is better than a second run on the four trait medians but 1.4–2.2x worse on tree count and
+1.6–1.8x on biomass per tree, hardly better than a lookup; the old conjunctive pass rate had hidden that. Literature
+checked (ClimateBench, Lütjens 2025, CESM consistency test, Global Carbon Budget 2024). Recommended 10 % on all cells,
+20 % per region (measurement noise). Not propagated.
