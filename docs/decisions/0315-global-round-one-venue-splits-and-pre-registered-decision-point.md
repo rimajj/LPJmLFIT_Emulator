@@ -458,3 +458,38 @@ Within training years (free from 1985, at 2014): Feb 0.977 / 1.014, May 0.976 / 
 retrains: pass down 0.004–0.012, tree-count response up 0.05 (Feb/May) or unchanged (four-run model). The LSTM's own
 draw-to-draw spread is still unmeasured, so these shifts are not attributed to the fill. §13's conclusion (the method
 behaves the same on both builds, May slightly worse) stands.
+
+## 16. The per-tree arm A-TAB on this venue — the port, and expectations written BEFORE its first free run (2026-10-09)
+
+A3, A4 and A6 are all built on the Germany per-tree stepper (A-TAB), which had never run on global data. It now runs on
+a Germany-format data root over the Feb-build GFDL members 2,3,4,6,7,8 (`scripts/explore_glob_tabroot.py`; the map, the
+eight blockers and the parameter check are `docs/notes/exploration_glob_tab_port.md`). Code changes, all switched on
+only by environment settings so that every Germany run is unchanged: the engine's last year (`XDE_LAST_SIM_YEAR`), the
+recruiting tree types and grass types (`XDE_RECR_TYPES`, `XDE_GRASS_TYPES`: all seven trees recruit, one grass model per
+grass type), the trait-fit build (`XDE_TRAIT_BUILD`), and a late window that does not continue the historical table
+starts its own chain at 2071 (fires only when the window is not contiguous, which never happens in Germany).
+
+Built and gated so far: the transition tables of all 24 member-windows (707 M tree-year pairs; age +1, traits
+identical, dead never reappear, the recovered growth counter follows its rule on **all** 706 M checkable pairs — the
+rule library holds on the seven tree types of the global set); the patch tables (patch rows and deaths match; the
+Germany recruit-dispersion / re-entry / release bands fail and are descriptive at 25 patches); the start states of
+member 8 (1985, 2014) and member 7 (2014).
+
+**Arms.** TabAL (learned survival, the A3 grass heads per grass type, no calibration) and its climate-blind twin TabAk0,
+from member 8's 2014 state (86 free steps, GS370) and from its 1985 state (115 steps, gives (d)). The newer Germany
+variants (the second grass model, hidden cover, the margin sign) assume one grass type and are not ported yet.
+
+**Harness check (must hold exactly):** the engine's frozen stepper from 2014, through `scripts/explore_glob_tabeval.py`,
+reproduces §7's "2014 carried forward" row: stems 0.907 and biomass per tree 1.283, per-cell stems and biomass per tree
+equal to 1e-9; medians may differ by interpolation of a 30× repeated sample (reported, not gated).
+
+**Expectations (from the Germany free runs, where A-L's stems drifted to 1.21× truth in 59 steps because recruits ran
+11 % high, trees never matured, and the twin scored almost as well as the arm):**
+* TabAL fails DP-G1 (b): stems ratio at 2071–2100 **≥ 1.10** and biomass per tree **≤ 0.90** of the truth's.
+* TabAL's level pass rate is **below the lookup null's 0.100** (and so below A2g's 0.119 and A7s's 0.131).
+* The twin's tree-count response slope is **not** ≈ 0: it carries the arm's own drift; read (c) as arm minus twin.
+* From 1985, (d) fails in the same direction (stems ≥ 1.05 at 2014).
+* Speed: about 0.12–0.13 core-s per cell-year (Germany's 1.2 per 250-patch cell-year, scaled to 25 patches).
+
+**Falsifier:** if TabAL passes (b) on GS370, the Germany drift does not transfer (25 patches, a different climate
+range), and the per-tree route is stronger here than the Germany record says.

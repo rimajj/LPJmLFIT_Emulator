@@ -83,6 +83,8 @@ CLIM_COLS = ([f"anom_{f}" for f in CLIM_F] + [f"anom_{t}" for t in TSTRESS] + TS
              + sorted(set(ABS_Y1 + ELIG_ABS)))
 TRAITS = list(tr.TRAITS)
 GRASS_TYPES = [8]  # detected from the tables at build time; checked in `samples`
+# global venue: grasses 7, 8, 9 (XDE_GRASS_TYPES="7,8,9"); default = Germany, unchanged
+GRASS_TYPES = [int(t) for t in os.environ.get("XDE_GRASS_TYPES", ",".join(map(str, GRASS_TYPES))).split(",")]
 CAT = ["Type", "soil_code"]
 
 
@@ -325,6 +327,8 @@ def comp_from_trees(t: pl.DataFrame, types: list[int]) -> tuple[pl.DataFrame, pl
 
 
 RECR_TYPES = [1, 2, 3, 4, 5]  # tree PFTs with Germany recruits (checked in `recruits`)
+# global venue: all seven tree PFTs recruit (XDE_RECR_TYPES="0,1,2,3,4,5,6"); default = Germany, unchanged
+RECR_TYPES = [int(t) for t in os.environ.get("XDE_RECR_TYPES", ",".join(map(str, RECR_TYPES))).split(",")]
 RECR_CLIM = [f"anom_{f}" for f in CLIM_F] + [f"anom_{f}" for f in TR20] + sorted(set(ABS_Y1 + ELIG_ABS))
 
 

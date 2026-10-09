@@ -101,6 +101,10 @@ def build_one(member: str, cellset: str, cb: str, force: bool = False) -> dict:
     hist_tg = json.load(open(os.path.join(tr.TRANS, cellset, hist["member"], f"cb={cb}", "_gates.json")))
     hist_years = [int(y) for y in hist_tg["out_years"]]  # Historical trans years (1985..2013)
     chain_trans = hist_years + ([] if is_hist else out_years)
+    if not is_hist and out_years[0] > hy:
+        # a window that does not continue the Historical table (global venue: SH3 started its chain at 2071): its
+        # first year has no recruit history and no loss lags, exactly like the Historical chain's first year
+        chain_trans = list(out_years)
 
     def tmember(y):
         return hist["member"] if (y in hist_years and (is_hist or y < out_years[0])) else member
