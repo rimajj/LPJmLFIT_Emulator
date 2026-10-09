@@ -20,6 +20,7 @@ its w2071 reduction must equal explore_glob_eval's persist_2014 null: n_per_patc
 and therefore stems_ratio 0.907 / agb_per_stem_ratio 1.283 (ADR 0315 sec. 7). Any other result is a harness bug.
 
 Run: explore_glob_tabeval.py --run DIR --label NAME [--legs ssp370,ssp126,ssp245] [--expect frozen]
+     [--truth-seed 2 --fold 1]   (A4 calibration basis: a training member, one fold of dev cells; never gated)
 """
 
 from __future__ import annotations
@@ -95,16 +96,22 @@ def main():
     ap.add_argument("--label", required=True)
     ap.add_argument("--legs", default="ssp370,ssp126,ssp245")
     ap.add_argument("--expect", default=None, choices=[None, "frozen"])
+    ap.add_argument("--truth-seed", type=int, default=E.TRUTH,
+                    help="member scored against (default 8 = GS370); A4 calibration uses a training member")
+    ap.add_argument("--fold", type=int, default=None, help="score only the dev cells of this fold (A4 calibration)")
     a = ap.parse_args()
+    TR = a.truth_seed
     rj = json.load(open(os.path.join(a.run, "run.json"))) if os.path.exists(os.path.join(a.run, "run.json")) else {}
     start = int(rj.get("start", 2014 if "_2014-" in a.run else 1985))
     cells = E.dev_cells()
+    if a.fold is not None:
+        cells = cells.filter(pl.col("fold") == a.fold)
     clist = cells["Cell"].to_list()
-    T_h, R_h = E.lev(E.mname("historical", E.TRUTH)), E.lev(E.mname("historical", E.REPLICA))
+    T_h, R_h = E.lev(E.mname("historical", TR)), E.lev(E.mname("historical", E.REPLICA))
     if start <= 1985:
         P_h = reduce_lf(read_run(a.run, "Historical", 1985, 2014), 1985, 2014, clist).select(["Cell"] + E.PANEL)
         snap = reduce_lf(read_run(a.run, "Historical", 2014, 2014), 2014, 2014, clist)
-        tsnap = pl.read_parquet(os.path.join(E.LEV, f"{E.mname('historical', E.TRUTH)}_y2014.parquet"))
+        tsnap = pl.read_parquet(os.path.join(E.LEV, f"{E.mname('historical', TR)}_y2014.parquet"))
         (nP, bP), (nT, bT) = totals(snap, cells), totals(tsnap, cells)
         d_stems, d_agb = nP / nT, bP / bT
         log(f"DP-G1 (d) free run 1985 -> 2014: stems {d_stems:.3f}, biomass per stem {d_agb:.3f}")
@@ -112,19 +119,20 @@ def main():
         P_h, d_stems, d_agb = T_h, None, None
     rows = []
     for scen in a.legs.split(","):
-        T_w, R_w = E.lev(E.mname(scen, E.TRUTH)), E.lev(E.mname(scen, E.REPLICA))
+        T_w, R_w = E.lev(E.mname(scen, TR)), E.lev(E.mname(scen, E.REPLICA))
         tb = (T_w.filter(pl.col("n_per_patch") > 0).select("Cell")
               .vstack(T_h.filter(pl.col("n_per_patch") > 0).select("Cell")).unique())
         sc = cells.join(tb, on="Cell")
         Pw_full = reduce_lf(read_run(a.run, scen, 2071, 2100), 2071, 2100, clist)
         s = E.score(Pw_full.select(["Cell"] + E.PANEL), P_h, T_w, T_h, R_w, R_h, sc)
         row = dict(label=a.label, run=os.path.basename(a.run), arm=os.path.basename(os.path.dirname(a.run)),
-                   start=start, scen=scen, gated=scen == "ssp370", free2014_stems=d_stems, free2014_agb_per_stem=d_agb,
+                   start=start, scen=scen, gated=scen == "ssp370" and TR == E.TRUTH and a.fold is None,
+                   truth_seed=TR, fold=a.fold, free2014_stems=d_stems, free2014_agb_per_stem=d_agb,
                    core_s_per_cell_year=speed(a.run), **s)
         rows.append(row)
         log(scen, json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}))
         if a.expect == "frozen":
-            snap = pl.read_parquet(os.path.join(E.LEV, f"{E.mname('historical', E.TRUTH)}_y2014.parquet"))
+            snap = pl.read_parquet(os.path.join(E.LEV, f"{E.mname('historical', TR)}_y2014.parquet"))
             j = Pw_full.join(snap, on="Cell", suffix="_s")
             exact = {c: float(((j[c] - j[f"{c}_s"]).abs() / j[f"{c}_s"].abs().clip(1e-12)).fill_nan(0.0).max() or 0.0)
                      for c in ("n_per_patch", "agb_per_stem")}

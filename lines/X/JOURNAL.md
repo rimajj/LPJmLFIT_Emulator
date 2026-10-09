@@ -564,3 +564,14 @@ pass 0.022, trees 1.17, biomass per tree 0.505 — and the climate-blind twin is
 climate-driven collapse on top of Germany's slow growth deficit. Submitted a one-channel attribution (§16.2).
 Snags: `sh_init submit` ignores `--start` (30 tasks; cancelled), the registry must live under `shared/registry`,
 the survival training job segfaulted AFTER saving both heads, the trait fit failed only on a missing `_reports` dir.
+
+## 2026-10-09 (afternoon) — which climate channel collapses the per-tree arm, and the calibration arm A4
+
+Collected the four one-channel runs (two scoring jobs were stuck behind the per-user CPU cap; moved to `standard`).
+Growth efficiency is the channel: switching off its climate booster closes 60 % of the biomass-per-tree gap (bar was
+≥ 50 %). The two secondary expectations failed — the growth-amount booster does nothing, and the recruit booster was
+*suppressing* recruits (switching it off adds 8 % stems). Read-only check: the growth-efficiency sign head is calibrated
+on true stands (held-out rows, within 0.4–0.6 points) but the free run's bad-year streak share climbs to 0.135 by 2030
+and 0.16 by 2085 vs the original's ~0.12 ⇒ an error that compounds once the simulated stand drifts. ADR 0315 §16.3.
+Pre-registered A4 (§16.4) and submitted the calibration grid on member 2 / ssp245 / fold 1 (8 runs, 2450600–19, scorer
+gained `--truth-seed`/`--fold`; driver `scripts/explore_glob_a4.py` with stages cal / pick / confirm).

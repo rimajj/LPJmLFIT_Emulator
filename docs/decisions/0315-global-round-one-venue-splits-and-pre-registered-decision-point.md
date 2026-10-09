@@ -531,3 +531,61 @@ efficiency sign + magnitude), **kGr0** `kappa_growth = 0` (agb / vegc growth), *
   and stunt growth). kGr0 closes the next-largest share. kR0 closes most of the stems excess and little biomass.
 * Falsifier: kG0 closes < 25 % of the biomass gap. The four shares need not sum to 1 (channels interact; the twin also
   freezes the grass heads and the direct climate channels).
+
+### 16.3 Result of the channel attribution (runs 2450390/92/402/404, scored 2450391/401/403/405; `eval/scores_TAB_k*.csv`)
+
+GS370, from member 8's 2014 state, ssp370, 5 809 dev cells; reference rows TabAL (1.170 / 0.505) and twin (0.900 / 0.902).
+
+| variant (climate booster switched off) | pass | trees P/T | biomass per tree P/T | share of biomass gap closed | share of stems excess closed | tree-count response (deatt.) |
+|---|---|---|---|---|---|---|
+| **kG0** growth efficiency (sign + magnitude) | 0.025 | 1.077 | **0.744** | **+60 %** | +34 % | 0.75 |
+| kGr0 growth amount (agb / vegc) | 0.021 | 1.173 | 0.511 | +2 % | −1 % | 0.76 |
+| kS0 survival | 0.020 | 1.139 | 0.505 | 0 % | +12 % | 0.75 |
+| kR0 recruit count | 0.022 | **1.254** | 0.478 | −7 % | **−31 %** | 0.81 |
+
+* **Main expectation held:** kG0 closes 60 % of the biomass gap (bar ≥ 50 %, falsifier < 25 %). **The two secondary
+  ones failed:** the growth-amount booster closes nothing (expected second-largest), and removing the recruit-count
+  booster *adds* stems (expected to remove most of the excess) — the learned climate effect on recruitment was
+  suppressing recruits, not causing the excess. The four shares sum to ≈ 55 % of the biomass gap; the remainder sits in
+  the channels not switched off here (recruit type, fire, entry, grass heads, the direct climate inputs) or in
+  interactions.
+* **Where the excess bad-growth years come from — teacher-forced vs free run** (read-only check, this session). The
+  growth-efficiency sign model is calibrated when fed the TRUE forest: on its held-out validation rows (training members
+  2,3,4,6) it predicts 0.124 / 0.134 / 0.133 bad-year shares where the original has 0.120 / 0.132 / 0.127 (historical /
+  ssp126 / ssp245 windows; within 0.4–0.6 points, every decade within 0.9). In the free run the share of living trees
+  >5 m carrying a bad-year streak (counter > 0) is 0.135 by 2030, 0.142 by 2050, 0.145 at 2072 and 0.16 by 2085, against
+  the original's 0.107–0.118 (1985–2013) and 0.116–0.122 (ssp370, 2072–2099, member 8); the twin stays at 0.106–0.120;
+  kG0 starts at 0.113 but still climbs to 0.16 by 2099. So the excess is **not a wrong learned climate effect on true
+  stands; it is an error that builds up once the simulated stand has drifted** (biomass per tree in the free run is
+  already 541 vs the twin's 564 g C by 2030 and 373 vs 493 by 2050). That is the failure the free-run calibration (A4)
+  and the dataset aggregation (A3) are for.
+
+### 16.4 Arm A4 — free-run calibration of the growth-efficiency channel: expectations before the run
+
+**Basis.** Calibration ONLY on a training member and a training scenario: **member 2, ssp245 leg, from its own 2014
+state, fold-1 dev cells only** (the heads were fit on member 2's rows; what is new is the free-run state). The calibrated
+value is then frozen and run ONCE on GS370 (member 8, ssp370, all 5 809 dev cells). Calibration statistic, on member 2's
+own 2071–2100 truth: `L = |ln(stems P/T)| + |ln(biomass-per-tree P/T)|`, area-weighted totals as in §5 (b). Two
+one-variable families, each with the identity point (TabAL as is) shared:
+
+* **A4κ** — `kappa_g` ∈ {0, 0.25, 0.5, 0.75, 1}: shrink the learned climate effect on growth efficiency.
+* **A4o** — `logit_off_g` ∈ {−0.15, −0.3, −0.5} at `kappa_g = 1`: shift the bad-year probability down everywhere,
+  climate effect kept.
+
+The scorer gains `--truth-seed` and `--fold` (calibration scoring on member 2 / fold 1); nothing else changes.
+
+**Expected:**
+1. Identity on member 2 / ssp245 / fold 1 reproduces member 8's ssp245 picture: stems 1.10–1.25, biomass per tree
+   0.45–0.65.
+2. A4κ: biomass per tree rises monotonically as `kappa_g` falls; even `kappa_g = 0` stays **≤ 0.80** (member 8's kG0
+   gave 0.74) ⇒ the κ family **cannot** bring (b) within ±10 %; its winner is the boundary value 0.
+3. A4o: biomass per tree rises monotonically with a more negative offset; the winner is an interior value (−0.3 expected)
+   with biomass per tree within 0.85–1.15 and stems within 0.90–1.10 on member 2.
+4. On GS370 the A4o winner keeps its member-2 levels to within ±0.10 on both ratios (the calibration transfers to the
+   unseen member and scenario), passes (b), and keeps a tree-count response slope ≥ 0.5; its level pass rate stays
+   **below the lookup's 0.100** (fails (a): the traits are not touched).
+5. (d) is NOT tested by this arm (it starts from 2014); a 1985 run of the winner follows only if 4 holds.
+
+**Falsifiers:** A4o's biomass is not monotone in the offset (the channel does not act as modelled); or the member-2
+winner misses GS370 by more than 0.10 on either ratio (calibration does not transfer — a scalar fitted on one member's
+free run fixes that run, not the method).
