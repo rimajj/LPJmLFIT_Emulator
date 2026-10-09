@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: a relative-error (log-ratio) training target for the anchored direct map (`explore_panel_a7.py logt`,
+  `logt_mix`; ADR 0316 §11). With it on biomass per tree only, the per-cell biomass-per-tree error falls from 1.42× to
+  1.26× a second run's (bad cells 1.71× → 1.26×) and the pass rate on held-out climate models rises 0.193 → 0.207.
+  `explore_tolerance_measure.py` gains `PRED_ARMS`.
+
+### Added
+
 - Line X: the panel more-data test scored (ADR 0316 §10). Five more climate models and two more runs of the original raise
   the anchored direct map's pass rate on held-out climate models from 0.161 to 0.193 (prediction held; the climate models
   carry it), but on the "as close as a second run" measure it stays 1.35× (tree count) and 1.42× (biomass per tree) a
