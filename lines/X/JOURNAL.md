@@ -621,3 +621,15 @@ count (1.44) or biomass per tree (1.96), and on biomass per tree it does not bea
 miss sits in sparse cells. A fifth training run changes nothing (≤ 0.02). Recorded as ADR 0317 §8 (§7 stays reserved
 for the owner's 10 %/20 % answer).
 Follow-up, same session: the 'anchor too low' hypothesis refuted on disk (anchor/truth 1.11 for biomass per tree, 0.94 for tree count; ssp370 = more, smaller trees). Next: measure extrapolation of ssp370 climate beyond the training legs.
+
+## 2026-10-10 — the more-data prediction scored (ADR 0316 §10)
+
+All chained jobs had finished overnight (m5/m6 present; line S's two dead m4 legs now exist, so 15 test cases). Aggregated
+the five seeds: the pre-registered prediction held on both conditions (+0.033 on ssp370, bar on 12 of 13), base
+re-measured 0.161 vs the earlier 0.162. The gain splits as +0.023 from five more climate models and +0.005 from two more
+runs. Then read the same predictions on the second-run measure (added a `PRED_SET` knob to
+`explore_tolerance_measure.py`, expectations written into its header first): biomass per tree 1.64 → 1.42 (expectation
+held), tree count 1.39 → 1.35 (missed the 0.05 expectation, above the falsifier). Conclusion: more climate models help
+and have not saturated, but even optimistic linear extrapolation needs ~14–40 training models to reach the owner's
+1.1–1.2, and ISIMIP3b has ten. The arm must improve; more runs per cell are not worth producing. A first draft of the
+write-up over-counted the 15-case bar passes (14 → 13) and gave a loose extrapolation; both corrected before commit.
