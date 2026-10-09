@@ -610,3 +610,13 @@ on the panel (`scripts/explore_tolerance_measure.py`). Nulls came out as derived
 1.6–1.8x on biomass per tree, hardly better than a lookup; the old conjunctive pass rate had hidden that. Literature
 checked (ClimateBench, Lütjens 2025, CESM consistency test, Global Carbon Budget 2024). Recommended 10 % on all cells,
 20 % per region (measurement noise). Not propagated.
+
+## 2026-10-09 (late) — global venue on the second-run measure (ADR 0317 §8)
+
+Runs m1–m4 of the more-data campaign finished; m5/m6 still running (spin-ups, history and 2 models done). Collector m1
+moved to the priority partition (started at once); m2–m4 collectors still queued on standard, the chained prediction
+test waits on them. Wrote `scripts/explore_glob_tolerance.py` (factored `prepare()` out of `explore_glob_a7r.py`),
+predictions committed before the run. Result: harness and oracle as derived; A7r is not as close as a second run on tree
+count (1.44) or biomass per tree (1.96), and on biomass per tree it does not beat the ssp245 lookup null (1.84). The
+miss sits in sparse cells. A fifth training run changes nothing (≤ 0.02). Recorded as ADR 0317 §8 (§7 stays reserved
+for the owner's 10 %/20 % answer).

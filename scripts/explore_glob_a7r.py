@@ -121,9 +121,8 @@ def fit_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.DataFrame:
     return out
 
 
-def main():
-    t0 = time.time()
-    cells = ev.dev_cells()
+def prepare(cells: pl.DataFrame) -> pl.DataFrame:
+    """The anchored row table for the training runs in TRAIN (+ the truth member), sorted (deterministic)."""
     rows0 = A7.build_rows(cells)
     extra = [m for m in TRAIN if m not in ev.TRAIN]
     for m in extra:  # a further training run of the same build (historical + the training scenarios)
@@ -138,13 +137,18 @@ def main():
         st = pl.read_parquet(os.path.join(A7.CLIM, "cell_static.parquet")).select("Cell", "lon", "soil_code")
         rows0 = pl.concat([rows0, pl.concat(add).join(hist_clim, on="Cell").join(cells, on="Cell").join(st, on="Cell")
                            .select(rows0.columns)])
-    df = anchored(rows0)
+    return anchored(rows0).sort(["seed", "scen", "Cell"])
+
+
+def main():
+    t0 = time.time()
+    cells = ev.dev_cells()
+    df = prepare(cells)
     T_w, T_h = ev.lev(ev.mname("ssp370", ev.TRUTH)), ev.lev(ev.mname("historical", ev.TRUTH))
     R_w, R_h = ev.lev(ev.mname("ssp370", ev.REPLICA)), ev.lev(ev.mname("historical", ev.REPLICA))
     tb = (T_w.filter(pl.col("n_per_patch") > 0).select("Cell")
           .vstack(T_h.filter(pl.col("n_per_patch") > 0).select("Cell")).unique())
     scored = cells.join(tb, on="Cell")
-    df = df.sort(["seed", "scen", "Cell"])
     tr = df.filter(pl.col("seed").is_in(list(TRAIN)))
     te = df.filter(pl.col("seed") == ev.TRUTH)
     rows = []

@@ -128,6 +128,43 @@ response test uses the arm's own control prediction.
   until the owner adopts this; new results should report **both**.
 * The "17–21 % of cells" figure is retired as an acceptance number. It remains a fact about the old reading.
 
+## 8. Measured on the global venue (2026-10-09, addendum; `scripts/explore_glob_tolerance.py`, job 2454951)
+
+Venue ADR 0315 GS370 in the deployment setting of ADR 0316 §5: one climate model (GFDL-ESM4), cells seen in training,
+the scenario (ssp370) and the run (member 8) held out; 5 809 tree-bearing dev cells; second runs = Feb-build members
+2,3,4,6,7. A7r is reported as the mean over LightGBM seeds 1–5 (seed sd 0.01–0.09). Predictions were committed before
+the run (d7742c14).
+
+| candidate | tree count ρ₅₀ / ρ₉₀ | biomass per tree ρ₅₀ / ρ₉₀ | traits ρ₅₀ (4 medians) | totals off: stems / biomass |
+|---|---|---|---|---|
+| a second run (member 7, harness) | 1.02 / 1.00 | 1.02 / 1.00 | 0.98–1.04 | 0.2 % / 0.2 % |
+| mean of 5 runs (oracle) | 0.78 / 0.80 | 0.80 / 0.78 | 0.79–0.82 | 0.1 % / 0.4 % |
+| lookup null (ssp245, mean of 4 runs) | 1.52 / 2.34 | 1.84 / 1.93 | 0.87–1.02 | 4.6 % / 15.0 % |
+| **A7r, 4 training runs** | **1.44 / 3.62** | **1.96 / 2.75** | 0.59–1.05 | 1.5 % / **8.1 %** |
+| A7r, 5 training runs | 1.44 / 3.59 | 1.95 / 2.80 | 0.59–1.05 | 1.2 % / 8.1 % |
+| A7rcb (climate-blind), 4 runs | 1.97 / 2.69 | 2.68 / 2.80 | 0.55–0.98 | 8.9 % / 23.5 % |
+
+Against the predictions: harness **held** (0.96–1.04); oracle **held** (0.77–0.85 vs 0.77); lookup **held** (tree count
+1.52, biomass 1.84 > 1.2); climate-blind worse on the response **held** (tree-count response 1.66 vs 1.39).
+**"The global venue is easier than the panel" is FALSIFIED** (tree count ρ₅₀ 1.44 ≥ the 1.43 falsifier; biomass per
+tree 1.96 vs the panel's 1.63). The fifth training run moved ρ by ≤ 0.02 — inside the predicted 0.00–0.10, at its floor.
+
+What it says:
+1. **The best arm is not as close as a second run on tree count or biomass per tree, on either venue**, and on this
+   venue it is **worse than the lookup null on biomass per tree** (1.96 vs 1.84 at the typical cell) and on the bad
+   cells for tree count (3.62 vs 2.34). Its area-total biomass is 8 % off, outside the proposed 5 % line.
+2. **The failure is concentrated in sparse cells.** Tree count ρ₅₀ by the truth's density: 6.4 (< 2 trees per patch,
+   863 cells), 3.2 (2–5), 1.14 (5–10), 1.67 (10–20); a second run is 0.92–1.07 in every class. Biomass per tree is
+   2.5–4.5 outside the 5–10 class.
+3. **Traits below 1 are mostly averaging, not skill**: the lookup null, which knows nothing about ssp370, already
+   reaches 0.87–1.02, and the mean of runs 0.79–0.82. A7r's 0.59–0.70 on rooting depth and wood density is better than
+   both; its SLA (1.05, ρ₉₀ 1.15–1.22) is not.
+4. **More runs of the same design do not move it** (4 → 5 runs: ≤ 0.02). This venue's limit is the arm, not the data.
+   That does not prejudge the panel's more-data test (ADR 0316 §7), which adds climate models, not runs.
+5. Hypothesis for the biomass-per-tree miss, **not yet tested**: the anchor averages the historical window with two
+   future ones, while biomass per tree keeps rising through the century, so the anchor sits low and the learned
+   correction does not close it. The cheap test is an anchor built from the future legs only, pre-registered first.
+
 ## References
 
 * Baker, A. H. et al. (2015), *A new ensemble-based consistency test for the Community Earth System Model (pyCECT
