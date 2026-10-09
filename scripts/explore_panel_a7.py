@@ -81,6 +81,8 @@ models x 3 scenarios + ctl_obs. Four training sets, five LightGBM seeds each, on
 The bar stays 0.5 x ceiling_mean (mean of m1-m3, as before) AND above the lookup of the SAME training set.
 Prediction: `both` mean pass on ssp370 >= base + 0.02, bar passed on >= 12 of the 13 HG cases. Falsifier: both - base
 < 0.01. The `mod` and `run` rows split the gain between the two kinds of data.
+RESULT (jobs 2452217-21, 2026-10-10, ADR 0316 sec. 10): HELD -- both - base = +0.033 on ssp370 (0.161 -> 0.193), bar on
+12 of 13; mod +0.023, run +0.005. Only UKESM ssp370 still fails (0.134 vs 0.151).
 """
 
 from __future__ import annotations

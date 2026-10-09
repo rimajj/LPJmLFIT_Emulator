@@ -186,3 +186,58 @@ agreement (§5).
 * The per-tree arm is not retried here (ADR 0315 §16.7 stands).
 * No global (all-cell) runs under more climate models: §6 measures data value on 1 050 cells; whether the same holds at
   54 020 cells, and what it would cost in disk (the per-tree table dominates), is the next decision, not taken here.
+
+## 10. The more-data prediction, scored (2026-10-10; jobs 2452216–21, `explore_panel_a7.py more`, 5 seeds)
+
+All new legs arrived (m5/m6 present; line S's two dead legs, MPI and UKESM ssp585 of m4, now exist, so there are **15**
+held-out-model test cases instead of 13). Mean over LightGBM seeds 1–5 (seed sd 0.004–0.007); seed-mean table
+`xpanel/eval/a7_more_mean.csv`. The bar is unchanged (0.5 × mean-of-m1–m3 pass rate AND above the lookup of the same
+training set).
+
+| A7r on HG, mean over the 5 held-out models | base (4 models, 3 runs) | mod (9 models, 3 runs) | run (4 models, 5 runs) | both (9 models, 5 runs) |
+|---|---|---|---|---|
+| pass, ssp126 | 0.175 | 0.188 | 0.183 | **0.193** |
+| pass, ssp370 | 0.161 | 0.184 | 0.166 | **0.193** |
+| pass, ssp585 | 0.135 | 0.161 | 0.141 | **0.164** |
+| lookup of the same training set, ssp370 | 0.097 | 0.108 | 0.098 | 0.108 |
+| bar passed, the original 13 cases | 11 | 12 | 11 | **12** |
+| bar passed, all 15 cases | 12 | 13 | 12 | **13** |
+
+* **Harness:** `base` re-measures curves_seen's 0.162 as **0.161**.
+* **Prediction HELD on both conditions:** `both` − `base` on ssp370 = **+0.033** (≥ +0.02 required; falsifier < +0.01),
+  and the bar is passed on **12 of the 13** original cases (≥ 12 required). Per model on ssp370: GFDL +0.034, IPSL +0.029,
+  MPI +0.025, MRI **+0.060**, UKESM +0.014.
+* **The gain is the climate models, not the runs:** `mod` +0.023, `run` +0.005 (ssp370); the two add nearly linearly
+  (+0.028 vs the measured +0.033).
+* **The one remaining failure is the hottest held-out case, UKESM ssp370** (0.134 vs bar 0.151; it was 0.120), and its
+  ssp585 is far off (0.073 vs 0.143) — UKESM is the warmest model and, held out, lies outside every training model.
+* Totals unchanged and fine (stems 0.98–0.99, biomass per tree 1.02–1.03). The ssp370 response slope vs the
+  constant-climate control drops slightly with more models (0.72 → 0.67); the climate-blind twin of `both` is 0.37, so
+  the margin (0.30) still clears the pre-registered 0.2.
+
+**On the second-run error-ratio measure (ADR 0317; `PRED_SET=<set> explore_tolerance_measure.py`, seed 1, expectations
+written in its header before the run).** Ratios of the emulator's per-cell error to a second run's (1.0 = as close as a
+second run), median over the five held-out models, ssp370:
+
+| | tree count, typical cell / bad cells | biomass per tree, typical / bad |
+|---|---|---|
+| lookup null | 1.56 / 2.80 | 1.66 / 1.84 |
+| A7r `base` | 1.39 / 2.23 | 1.64 / 1.77 |
+| A7r `mod` | 1.35 / 2.02 | 1.43 / 1.77 |
+| A7r `run` | 1.41 / 2.21 | 1.58 / 1.73 |
+| **A7r `both`** | **1.35 / 2.08** | **1.42 / 1.71** |
+
+Harness (`base` ≈ the earlier HG run): within 0.05 on the all-case medians, 0.07 on one ssp370 centile (biomass per
+tree, bad cells) — a different process draws different LightGBM rows (§5). Against the expectation: biomass per tree fell
+**−0.22** (≥ 0.05 required: **held**); tree count **−0.04** (≥ 0.05 required: **missed**, but above the 0.02 falsifier).
+The traits stay below 1 (0.61–0.87 typical cell). Again the climate models carry it; the two extra runs do almost nothing.
+
+**What it says.** More climate models is a real lever and the panel has not saturated: the pass rate rose by as much as the
+whole 1 → 4-model curve had promised, and the biomass-per-tree ratio fell from 1.64 to 1.42. **But it is nowhere near
+enough:** at 9 training models the emulator's typical-cell error is still 1.35× a second run's on tree count and 1.42× on
+biomass per tree, and 2.1× / 1.7× on the bad cells, against the owner's target of ≤ 1.1–1.2. Even if each further
+model helped as much as these five did (data curves usually flatten), biomass per tree would reach 1.2 at ~14 training
+models, tree count at ~28 (typical cell) and ~40 (bad cells) — and the panel already uses all ten ISIMIP3b models
+(9 in training + the held-out one). So **more data of this kind is necessary but not sufficient**: the arm itself must
+improve. The case to price all-cell runs under more climate models (§9) is strengthened on the pass rate, not settled on
+the second-run measure. Two extra runs per cell are not worth producing for this arm.

@@ -28,6 +28,16 @@ WHAT EACH CANDIDATE MUST RETURN (written before the run, ADR 0184):
 RESULT (2026-10-09, login node, ~1 min; ADR 0317): harness passes -- m3 0.88-1.18 (sd 0.05), mean3 0.82 on every
 quantity. A7r: traits 0.66-0.94 (better than a second run), stems 1.43 / 2.23 (centile 50 / 90), biomass per stem
 1.63 / 1.76; area totals 1.6 % / 3.2 % off vs a second run's 0.3 % / 0.8 %. Lookup null: stems 1.52, biomass 1.66.
+
+KNOB PRED_SET (2026-10-10): which saved prediction set to score -- `HG` (default, the result above) or one of the
+training sets of ADR 0316 sec. 7's more-data test, `base` / `mod` / `run` / `both` (`explore_panel_a7.py more`, seed 1;
+A7rcb exists for `both` only). Output: tolerance_measure[_<set>].csv. The reference pool stays m1-m3 for every set so
+the ratios are comparable. WRITTEN BEFORE THE RUN: `base` reproduces HG within 0.05 on every quantity (same training
+data; a different process => different LightGBM draw); `both` vs `base` on ssp370, median over the five models: the
+centile-50 ratio for tree count and biomass per tree falls by >= 0.05 each (pass rate rose +0.033, ADR 0316 sec. 10);
+falsifier: < 0.02 on both => the extra data raised the pass rate without moving per-cell error nearer a second run.
+RESULT (2026-10-10, ADR 0316 sec. 10): base ~ HG within 0.05 (0.07 on one ssp370 centile); both vs base on ssp370:
+biomass per tree 1.64 -> 1.42 (held), tree count 1.39 -> 1.35 (missed 0.05, above the falsifier). `mod` carries it.
 """
 
 from __future__ import annotations
@@ -43,7 +53,8 @@ MODELS = ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-
 SCENS = ["ssp126", "ssp370", "ssp585"]
 POOL, TRUTH = (1, 2, 3), 4
 STRATA = [2.0, 5.0, 10.0, 20.0]
-OUT = os.path.join(D, "eval", "tolerance_measure.csv")
+PRED_SET = os.environ.get("PRED_SET", "HG")
+OUT = os.path.join(D, "eval", "tolerance_measure.csv" if PRED_SET == "HG" else f"tolerance_measure_{PRED_SET}.csv")
 
 
 def lev(m: int, leg: str, win: str = "w2071") -> pl.DataFrame | None:
@@ -99,8 +110,8 @@ def main():
         .then(pl.lit("mid")).otherwise(pl.lit("high")).alias("zone"))
     rows, sub = [], []
     for g in MODELS:
-        preds = {a: pl.read_parquet(os.path.join(D, "eval", "preds_seen", "s1", f"HG_{g}_{a}.parquet"))
-                 for a in ("A7r", "A7rcb")}
+        pp = {a: os.path.join(D, "eval", "preds_seen", "s1", f"{PRED_SET}_{g}_{a}.parquet") for a in ("A7r", "A7rcb")}
+        preds = {a: pl.read_parquet(f) for a, f in pp.items() if os.path.exists(f)}
         for s in SCENS:
             leg = f"{g}_{s}"
             T, Tc = lev(TRUTH, leg), lev(TRUTH, "ctl_obs")
@@ -118,8 +129,9 @@ def main():
             lk_c = mean_of(list(Rc.values()))
             cand = {"A7r": (preds["A7r"].filter(pl.col("leg") == leg).drop("leg"),
                             preds["A7r"].filter(pl.col("leg") == "ctl_obs").drop("leg"), POOL),
-                    "A7rcb": (preds["A7rcb"].filter(pl.col("leg") == leg).drop("leg"),
-                              preds["A7rcb"].filter(pl.col("leg") == "ctl_obs").drop("leg"), POOL),
+                    **({"A7rcb": (preds["A7rcb"].filter(pl.col("leg") == leg).drop("leg"),
+                                  preds["A7rcb"].filter(pl.col("leg") == "ctl_obs").drop("leg"), POOL)}
+                       if "A7rcb" in preds else {}),
                     "lookup": (lk, lk_c, POOL),
                     "mean3": (mean_of(list(R.values())), lk_c, POOL),
                     "m3": (R[3], Rc[3], (1, 2))}

@@ -84,6 +84,27 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 0📈 2026-10-10 (ADR 0316 §10) — THE MORE-DATA PREDICTION HELD, AND IT IS NOT ENOUGH — read first
+
+Scored the chained test (5 seeds, `xpanel/eval/a7_more_mean.csv`; second-run measure via
+`PRED_SET=<base|mod|run|both> python scripts/explore_tolerance_measure.py`, ~1 min each, login node OK).
+**Pass rate:** `both` (9 models, 5 runs) − `base` (4 models, 3 runs) = **+0.033** on ssp370 (0.161 → 0.193), bar on 12 of
+13 ⇒ the prediction **HELD**. The gain is the climate models (`mod` +0.023), not the runs (`run` +0.005). Still failing:
+UKESM ssp370 (0.134 vs 0.151) and UKESM ssp585 (0.073 vs 0.143) — the warmest model, outside every training model.
+**Second-run measure (ssp370, median over 5 held-out models):** tree count 1.39 → **1.35** (bad cells 2.23 → 2.08),
+biomass per tree 1.64 → **1.42** (1.77 → 1.71). Target ≤ 1.1–1.2. The panel already uses all ten ISIMIP3b models.
+⇒ **More climate models are necessary, not sufficient; the arm must improve.** More runs per cell: not worth producing.
+**NEXT, in order:**
+1. **The arm, not the data.** Where does A7r's per-cell tree-count / biomass-per-tree error come from on the panel `both`
+   set? Split by the truth's density class (the global venue's miss sat in sparse cells, ADR 0317 §8 item 2) and by how far
+   the leg's climate lies outside the training legs per cell (ADR 0317 §8 item 5's open question — same measurement, now
+   on both venues). Score on `explore_tolerance_measure.py` / `explore_glob_tolerance.py`. Measure first, then one
+   one-variable treatment (e.g. a sparse-cell target transform or a log-count target), pre-registered.
+2. Owner questions still open: 10 % vs 20 % (ADR 0317 §7 reserved), the 5 % area-total line, and ADR 0316 §8/§4
+   (cells never run by the original). Do not propagate the threshold without the owner.
+3. Global all-cell runs under more climate models: NOT recommended yet on this evidence (pass rate yes, second-run
+   measure no). Re-raise only with an arm whose ratio moves with data.
+
 ### 0🎯 2026-10-09 (ADR 0317) — THE TARGET CHANGED: "as close as a second run of the original" — read with ADR 0316 below
 
 Owner, verbatim: *"of course. the goal is to be as close as a secodn run of the orignal model. it is even fine if it s worse.
@@ -123,7 +144,7 @@ pin waited ~3 days and matters only for row-by-row reproduction of an existing r
 collector 2451929; m4 UKESM ssp585 2451930 → 2451931; all 105 blocks re-run, spread over nodes; these write into line S's
 trackD tables with unchanged tooling).
 **NEXT, in order:**
-1. The prediction test is CHAINED (already extended code: `explore_panel_prep.py` reads `xpanel_runs`, `explore_panel_a7.py
+1. ✅ DONE 2026-10-10 (ADR 0316 §10, prediction HELD; see the 📈 block). Was: The prediction test is CHAINED (already extended code: `explore_panel_prep.py` reads `xpanel_runs`, `explore_panel_a7.py
    more`): statistics 2452216 → `more` seeds 1–5 (2452217–21, logs `logs/X-pan-more-s*.out`, outputs
    `xpanel/eval/a7_more_s<k>.csv`). Aggregate the 5 seeds per (set, held-out model, scenario) and read ADR 0316 §7's
    PREDICTION (`both` vs `base` on ssp370: ≥ +0.02, bar on ≥ 12/13; falsifier < +0.01); `mod`/`run` split the gain.
