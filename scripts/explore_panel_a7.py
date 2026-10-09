@@ -70,6 +70,17 @@ setting (cells seen, A7r only, test = m4 on the held-out model's ssp370; mean ov
   1 -> 3 runs adds >= 0.01 and 2 -> 3 adds >= 0.003 (=> more runs still help); ENV lowers pass by >= 0.01 vs the full
   HG (=> covering hotter climates than the target matters). A step below its bar => that kind of data is saturated
   at this panel size and producing more of it is NOT justified by this evidence.
+
+MODE `more` -- the test of ADR 0316 sec. 7's PREDICTION (written there before the new runs existed; restated, not
+changed): A7r, held-out model g in the FIRST five, test m4 g x ssp370 (126/585 reported too), training legs = the other
+models x 3 scenarios + ctl_obs. Four training sets, five LightGBM seeds each, one process, rows sorted:
+  base  4 other first-five models, runs m1-m3      (the 0.162 setting of curves_seen, re-measured here)
+  mod   9 other models (4 + the 5 new), runs m1-m3
+  run   4 other first-five models, runs m1, m2, m3, m5, m6
+  both  9 other models, runs m1, m2, m3, m5, m6
+The bar stays 0.5 x ceiling_mean (mean of m1-m3, as before) AND above the lookup of the SAME training set.
+Prediction: `both` mean pass on ssp370 >= base + 0.02, bar passed on >= 12 of the 13 HG cases. Falsifier: both - base
+< 0.01. The `mod` and `run` rows split the gain between the two kinds of data.
 """
 
 from __future__ import annotations
@@ -97,7 +108,8 @@ PARAMS = dict(objective="regression", learning_rate=0.05, num_leaves=31, min_dat
               seed=int(os.environ.get("LGB_SEED", "1")))
 ROUNDS = 400
 TRAIN_M, TRUTH, REPLICA = (1, 2, 3), 4, 3
-SCEN_LEGS = PP.SLEGS
+SCEN_LEGS = PP.SLEGS  # the first five models: every split of the modes core / seen / curves* is defined on these
+ALL_SLEGS = PP.SLEGS + PP.NEW_SLEGS  # + the five models of ADR 0316 sec. 7 (mode `more`)
 CTLS = list(PP.CTL)
 
 
@@ -111,17 +123,19 @@ def lev(m, leg, win):
 
 
 def gcm_of(leg):
-    return leg.rsplit("_", 1)[0] if leg in SCEN_LEGS else ("mpi-esm1-2-hr" if leg == "ctl_mpi370" else "obs")
+    return leg.rsplit("_", 1)[0] if leg in ALL_SLEGS else ("mpi-esm1-2-hr" if leg == "ctl_mpi370" else "obs")
 
 
 def scen_of(leg):
-    return leg.rsplit("_", 1)[1] if leg in SCEN_LEGS else leg
+    return leg.rsplit("_", 1)[1] if leg in ALL_SLEGS else leg
 
 
 # ------------------------------------------------------------------------------------------------ the row table
 def climate_windows() -> pl.DataFrame:
     out = []
-    for leg in ["hist", *SCEN_LEGS]:
+    for leg in ["hist", *ALL_SLEGS]:
+        if not os.path.exists(os.path.join(PP.CLIM_DIR, f"{leg}.parquet")):
+            continue
         d = pl.scan_parquet(os.path.join(PP.CLIM_DIR, f"{leg}.parquet"))
         for win, (y0, y1) in (("h2000", (2000, 2019)),) if leg == "hist" else (("w2041", (2041, 2070)),
                                                                               ("w2071", (2071, 2100))):
@@ -142,14 +156,16 @@ def build_rows() -> pl.DataFrame:
     hist_clim = (cw.filter(pl.col("leg") == "hist").drop("leg", "win")
                  .rename({x: f"{x}_cb" for x in CLIM_COLS}))
     rows = []
-    for m in (*TRAIN_M, TRUTH):
+    for m in PP.MEMBERS:
         h = lev(m, "hist", "h2000")
         if h is None:
-            raise SystemExit(f"missing hist levels for m{m}")
+            if m in (*TRAIN_M, TRUTH):
+                raise SystemExit(f"missing hist levels for m{m}")
+            continue  # a new member not produced yet
         s0 = h.rename({q: f"s0_{q}" for q in PANEL})
         rows.append(h.join(s0, on="Cell").with_columns(pl.lit(m).alias("member"), pl.lit("hist").alias("leg"),
                                                        pl.lit("h2000").alias("win")))
-        for leg in [*SCEN_LEGS, *CTLS]:
+        for leg in [*ALL_SLEGS, *CTLS]:
             for win in ("w2041", "w2071"):
                 y = lev(m, leg, win)
                 if y is None:
@@ -300,7 +316,7 @@ def fit_predict_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.Dat
     return out
 
 
-def run_split_seen(df, name, train_legs, test_legs, train_members=TRAIN_M):
+def run_split_seen(df, name, train_legs, test_legs, train_members=TRAIN_M, variants=("A7s-seen", "A7r", "A7rcb")):
     t0 = time.time()
     cells = PP.cells().select("Cell", "lat")
     an = anchored(df, train_legs, train_members)
@@ -310,8 +326,8 @@ def run_split_seen(df, name, train_legs, test_legs, train_members=TRAIN_M):
     tr_r = an.filter(pl.col("member").is_in(list(train_members)) & pl.col("leg").is_in(list(train_legs)))
     te_r = an.filter((pl.col("member") == TRUTH) & pl.col("leg").is_in([*test_legs, "ctl_obs"]) & (pl.col("win") == "w2071"))
     T_h = lev(TRUTH, "hist", "h2000")
-    preds = {"A7s-seen": fit_predict_seen(tr_s, te_s, "A7s-seen"), "A7r": fit_predict_seen(tr_r, te_r, "A7r"),
-             "A7rcb": fit_predict_seen(tr_r, te_r, "A7rcb")}
+    preds = {v: fit_predict_seen(tr_s if v == "A7s-seen" else tr_r, te_s if v == "A7s-seen" else te_r, v)
+             for v in variants}
     pd = os.path.join(EVAL, "preds_seen", f"s{os.environ.get('LGB_SEED', '1')}")
     os.makedirs(pd, exist_ok=True)
     for v, p in preds.items():
@@ -377,6 +393,17 @@ def main():
             rows += run_split_seen(df, f"HG:{g}", other + ctl, [f"{g}_{s}" for s in PP.SCENS])
             o585 = [lg for lg in other if scen_of(lg) != "ssp585"]
             rows += run_split_seen(df, f"H585G:{g}", o585 + ctl, [f"{g}_ssp585"])
+    elif mode == "more":
+        new_m = [m for m in (5, 6) if lev(m, "hist", "h2000") is not None]
+        sets = {"base": (SCEN_LEGS, TRAIN_M), "mod": (ALL_SLEGS, TRAIN_M),
+                "run": (SCEN_LEGS, (*TRAIN_M, *new_m)), "both": (ALL_SLEGS, (*TRAIN_M, *new_m))}
+        log(f"new members present: {new_m}")
+        for g in G:
+            for nm, (pool, mem) in sets.items():
+                legs = [lg for lg in pool if gcm_of(lg) != g] + ["ctl_obs"]
+                legs = [lg for lg in legs if df.filter(pl.col("leg") == lg).height > 0]
+                var = ("A7r", "A7rcb") if nm == "both" else ("A7r",)
+                rows += run_split_seen(df, f"{nm}:{g}", legs, [f"{g}_{s}" for s in PP.SCENS], mem, var)
     elif mode == "curves_seen":
         def one(name, legs, test, mem=TRAIN_M):
             an = anchored(df, legs, mem)

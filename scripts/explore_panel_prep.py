@@ -63,11 +63,24 @@ OBS = {"temp": f"{G}/temperature_test.clm", "prec": f"{G}/precipitation_test.clm
        "swdown": f"{G}/short_wave_radiation_test.clm", "lwnet": f"{G}/long_wave_radiation_test.clm"}
 SVAR = {"temp": "tas", "prec": "pr", "humid": "huss", "swdown": "rsds", "lwnet": "lwnet"}
 GCMS = ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+NEW_GCMS = ["canesm5", "cnrm-cm6-1", "cnrm-esm2-1", "ec-earth3", "miroc6"]  # ADR 0316 sec. 7 (explore_panel_runs.py)
 SCENS = ["ssp126", "ssp370", "ssp585"]
 SLEGS = [f"{g}_{s}" for g in GCMS for s in SCENS]
+NEW_SLEGS = [f"{g}_{s}" for g in NEW_GCMS for s in SCENS]
 CTL = {"ctl_obs": ("obs", 1990, 2019), "ctl_mpi370": ("mpi-esm1-2-hr_ssp370", 2015, 2034)}
-LEGS = ["hist", *SLEGS, *CTL]
-MEMBERS = [1, 2, 3, 4]
+LEGS = ["hist", *SLEGS, *NEW_SLEGS, *CTL]
+MEMBERS = [1, 2, 3, 4, 5, 6]
+XRUNS_IND = "/p/projects/open/Jamir/esm_land_emulator_data/xpanel_runs"  # line X's own runs (trees > 5 m only)
+XRUNS_FORC = "/p/tmp/jamirp/xpanel_runs/forcing"
+
+
+def table_dir(member, leg):
+    """line S's Track-D tables first, then line X's extension runs; None if neither has the (member, leg)."""
+    for root in (PANEL_IND, XRUNS_IND):
+        d = os.path.join(root, f"m{member}", leg)
+        if os.path.exists(os.path.join(d, "manifest.json")):
+            return d
+    return None
 WINS = {"h2000": (2000, 2019), "y2019": (2019, 2019), "w2041": (2041, 2070), "w2071": (2071, 2100)}
 CLIM_DIR, LEV_DIR = os.path.join(OUT, "climate"), os.path.join(OUT, "levels")
 
@@ -146,7 +159,8 @@ def _features(src, years, idx, lat):
 
 def _scen_paths(leg):
     g, s = leg.rsplit("_", 1)
-    return {v: f"{FORC}/{s}/{SVAR[v]}_{g}_{s}_2015-2100_orderA.clm" for v in SVAR}
+    base = FORC if g in GCMS else XRUNS_FORC
+    return {v: f"{base}/{s}/{SVAR[v]}_{g}_{s}_2015-2100_orderA.clm" for v in SVAR}
 
 
 def _add_tr20(d: pl.DataFrame) -> pl.DataFrame:
@@ -207,7 +221,7 @@ def reduce_one(path, y0, y1, cl):
 
 
 def complete_blocks(member, leg) -> list[int]:
-    m = json.load(open(os.path.join(PANEL_IND, f"m{member}", leg, "manifest.json")))
+    m = json.load(open(os.path.join(table_dir(member, leg), "manifest.json")))
     return sorted(int(b) for b in m.get("blocks", {}))
 
 
@@ -218,15 +232,13 @@ def stage_levels(a):
     for i, (m, lg) in enumerate(jobs):
         if i % a.nparts != a.part:
             continue
-        path = os.path.join(PANEL_IND, f"m{m}", lg, "ind.parquet")
-        if not os.path.exists(path):
+        td = table_dir(m, lg)
+        if td is None:
             log(f"m{m} {lg}: NO TABLE")
             continue
+        path = os.path.join(td, "ind.parquet")
         wins = ("h2000", "y2019") if lg == "hist" else ("w2041", "w2071")
-        try:
-            blocks = complete_blocks(m, lg) if lg != "hist" else list(range(105))
-        except FileNotFoundError:
-            blocks = list(range(105))
+        blocks = complete_blocks(m, lg) if lg != "hist" else list(range(105))
         cl = c.filter(pl.col("block").is_in(blocks))["Cell"].to_list()
         for w in wins:
             out = os.path.join(LEV_DIR, f"m{m}_{lg}_{w}.parquet")
