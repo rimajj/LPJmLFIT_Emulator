@@ -493,3 +493,41 @@ equal to 1e-9; medians may differ by interpolation of a 30× repeated sample (re
 
 **Falsifier:** if TabAL passes (b) on GS370, the Germany drift does not transfer (25 patches, a different climate
 range), and the per-tree route is stronger here than the Germany record says.
+
+### 16.1 Result of the first free run (jobs 2450053/61/62/63, scored 2450112–15; `eval/scores_TAB_tab*.csv`)
+
+GS370 (member 8, ssp370, 2071–2100, 5 809 dev cells), harness check exact (`scores_TAB_frozen.csv` = §7's 2014 row):
+
+| arm | pass | flat 10 % | trees P/T | biomass per tree P/T | tree-count response (deatt. slope) | core-s / cell-year |
+|---|---|---|---|---|---|---|
+| TabAL from 2014 | **0.022** | 0.016 | **1.170** | **0.505** | 0.78 (aggregate 2.38) | 0.17 |
+| TabAk0 (twin) from 2014 | 0.026 | 0.021 | 0.900 | 0.902 | 0.36 (aggregate 0.19) | 0.11 |
+| TabAL from 1985 | 0.015 | 0.012 | 1.185 | 0.500 | 0.68 | 0.18 |
+| TabAk0 from 1985 | 0.021 | 0.015 | 0.906 | 0.886 | 0.25 | 0.11 |
+
+From 1985, at 2014 (DP-G1 (d)): TabAL stems 1.037, biomass per tree **0.710**; twin 0.974 / 0.766. ssp126 / ssp245
+(scenarios in OTHER members' training): TabAL pass 0.025 / 0.023, trees 1.19 / 1.18, biomass per tree 0.54 / 0.53.
+
+* **The expectations held in direction, the biomass one far beyond its bound:** (b) fails (trees +17 %, biomass per
+  tree −49 %); pass rate below the lookup (0.100) and below carrying 2014 forward (0.057); (d) fails on biomass (−29 %
+  inside the training years). Falsifier not fired. DP-G1: **fails (a), (b) and (d)**; (c) not readable (aggregate
+  response 2.4× the truth's — drift, not response).
+* **Two failures, separable by the twin.** A slow one present without climate change (biomass per tree −23 to −29 %
+  over 1985–2014 in both arm and twin — Germany's "trees never mature"), and a CLIMATE-driven collapse: only the arm
+  that sees the changing climate halves its biomass per tree by 2071–2100, on ssp126 as much as on ssp370, i.e. not an
+  extrapolation beyond the training climates.
+* Speed 0.17 core-s per cell-year (25 patches, one core) — 30 % above the 0.12–0.13 expected; ≈ 0.6 × the original's
+  0.267 at 25 patches (ADR 0084), before any shrinking.
+
+### 16.2 Which climate channel drives the collapse — expectations before the run
+
+Four one-variable variants of TabAL from 2014, ssp370 leg only, each with ONE climate booster switched off through the
+stepper's calibration scalars (everything else identical, same random numbers): **kG0** `kappa_g = 0` (growth
+efficiency sign + magnitude), **kGr0** `kappa_growth = 0` (agb / vegc growth), **kS0** `kappa_surv = 0` (survival),
+**kR0** `kappa_rec = 0` (recruit count). Statistic: share of the biomass-per-tree gap closed,
+`(b_v − 0.505) / (0.902 − 0.505)`, and the same for the stems excess `(1.170 − n_v) / (1.170 − 0.900)`.
+* Expected: **kG0 closes ≥ 50 % of the biomass gap** (the Germany record put the year-to-year weather signal in the
+  growth-efficiency sign; under a warming climate that head predicts more bad-growth years, which raise the counter
+  and stunt growth). kGr0 closes the next-largest share. kR0 closes most of the stems excess and little biomass.
+* Falsifier: kG0 closes < 25 % of the biomass gap. The four shares need not sum to 1 (channels interact; the twin also
+  freezes the grass heads and the direct climate channels).
