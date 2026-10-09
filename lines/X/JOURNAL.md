@@ -544,3 +544,12 @@ Localised it: the 303 exposed cells — leak-trained model with clean input pred
 95 %, all other cells agree to 0.4 %. So §14.1 priced a train/inference mismatch, not the leak; withdrawn in §15.
 Added `--tag` to `explore_glob_clock.py`; calendar contrast on the clean models: stems slope 0.47 (0.30 before).
 Germany LSTM leak probe: 0 exposed cells. Skill gotcha added to `residual-diagnosis`.
+
+## 2026-10-09 (afternoon) — what it takes to run the per-tree arms on the global venue
+
+NEXT item 2 (A3/A4/A6 on the global venue) turned out to need a port first: all three are built on the Germany TAB
+stepper. Mapped the whole chain (subagent read of ~25 modules) → `docs/notes/exploration_glob_tab_port.md`: eight
+blockers, the data root to build, stage order. Checked the one scientific risk in it — whether the rule library's
+parameters are the ones Billing's Feb/May runs used. His live par files differ from ours in 160 values but were edited
+after those runs; the runs' own output (longevity inferred from mort_age to 1e-6, k_root, mort_temp) matches the LOCAL
+set exactly on both builds. No jobs run.
