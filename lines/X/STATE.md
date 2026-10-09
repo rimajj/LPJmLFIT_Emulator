@@ -102,8 +102,9 @@ tree 1.63 / 1.76 — FAILS, and barely beats the lookup null (1.52 / 1.66).** Re
    count 1.44 / 3.62, biomass per tree 1.96 / 2.75 — worse than the lookup null on biomass (1.84) and on bad-cell tree
    count (2.34)**; biomass total 8 % off; failure concentrated in sparse cells (tree count 6.4 at < 2 trees/patch);
    5th training run moves ≤ 0.02. "Global is easier than the panel" FALSIFIED.
-   **Next test (pre-register first):** anchor from the future legs only (hypothesis: the historical window in the anchor
-   drags biomass per tree low), and a sparse-cell treatment; score on `explore_glob_tolerance.py`.
+   The "anchor too low" hypothesis is REFUTED on disk (anchor is 11 % HIGH on biomass per tree; ssp370 = more, smaller
+   trees). **Next (measure, don't fix):** how far ssp370's climate lies outside the training scenarios' range per cell,
+   and whether the A7r miss tracks it; then a sparse-cell treatment. Score on `explore_glob_tolerance.py`.
 3. The binding gap is now per-cell tree count and biomass per tree under a held-out climate model. When ADR 0316's
    more-data test lands (item 1 below), read it on this measure too: does more data move ρ on those two quantities?
 
