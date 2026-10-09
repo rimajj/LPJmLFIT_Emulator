@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: panel venue on the Track-D runs, the deployment-setting test (cells seen) with a per-cell anchored direct map
+  that passes the survival bar on 11 of 13 held-out-climate-model cases, measured data curves, and new runs of the
+  original (five more climate models, two new independent members) (ADR 0316).
+
+### Added
+
 - Line X: climate-channel attribution of the global per-tree stepper and arm A4 (free-run scalar calibration on a
   training member) — the growth-efficiency channel carries 60 % of the collapse on the held-out member, no scalar
   reaches ±10 %; per-tree arms recommended parked on the global venue (ADR 0315 §16.3–16.7,
