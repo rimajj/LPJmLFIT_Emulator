@@ -96,6 +96,15 @@ Expected (seed 1 on the second-run measure, ssp370 and all-case medians over the
   conjunctive pass rate on ssp370 not lower than A7r's by more than 0.005; area totals still within 5 %.
   Falsifier: the sparse-class tree-count ratio moves by < 0.1 => the loss weighting is NOT why sparse cells fail.
   Harness: A7r here equals mode `more`'s `both` A7r pass rate per seed (same rows, same seed, rows sorted).
+RESULT (jobs 2456437-41, 2026-10-10, ADR 0316 sec. 11): harness exact (0.0 over 75 cases). MIXED: biomass per tree
+1.42 -> 1.26 typical / 1.71 -> 1.24 bad cells (better in every class but 5-10, unchanged); tree count trades -- < 2 class
+3.45 -> 2.04 but 10-20 class 1.25 -> 1.38, typical cell 1.35 -> 1.40 (expectation FAILED), bad cells 2.08 -> 1.86; stems
+total 4 % low (the log target predicts a geometric mean). Pass rate ssp370 0.193 -> 0.197.
+
+MODE `logt_mix` (no fitting; reads mode logt's saved predictions of seed LGB_SEED): A7rH = A7r's tree count + A7rL's
+other five quantities (each quantity is its own model, so this IS the arm with the log target on biomass per tree only).
+Written before scoring: tree-count and trait ratios equal A7r's / biomass equals A7rL's by construction; pass rate on
+ssp370 >= A7r's; stems total as A7r's.
 """
 
 from __future__ import annotations
@@ -433,6 +442,18 @@ def main():
             legs = [lg for lg in legs if df.filter(pl.col("leg") == lg).height > 0]
             rows += run_split_seen(df, f"logt:{g}", legs, [f"{g}_{s}" for s in PP.SCENS], (*TRAIN_M, *new_m),
                                    ("A7r", "A7rL"))
+    elif mode == "logt_mix":
+        pd = os.path.join(EVAL, "preds_seen", f"s{os.environ.get('LGB_SEED', '1')}")
+        cells = PP.cells().select("Cell", "lat")
+        for g in G:
+            a = pl.read_parquet(os.path.join(pd, f"logt_{g}_A7r.parquet"))
+            b = pl.read_parquet(os.path.join(pd, f"logt_{g}_A7rL.parquet"))
+            h = b.drop("n_per_patch").join(a.select("Cell", "leg", "n_per_patch"), on=["Cell", "leg"]).select(a.columns)
+            h.write_parquet(os.path.join(pd, f"logt_{g}_A7rH.parquet"))
+            pc = h.filter(pl.col("leg") == "ctl_obs").drop("leg")
+            for leg in [f"{g}_{s}" for s in PP.SCENS]:
+                cand = {"A7rH": (h.filter(pl.col("leg") == leg).drop("leg"), lev(TRUTH, "hist", "h2000"), pc)}
+                rows += [dict(split=f"logt:{g}", **r) for r in score_leg(leg, cand, cells)]
     elif mode == "curves_seen":
         def one(name, legs, test, mem=TRAIN_M):
             an = anchored(df, legs, mem)
