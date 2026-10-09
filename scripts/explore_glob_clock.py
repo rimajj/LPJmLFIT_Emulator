@@ -18,6 +18,11 @@ Two one-variable tests, no retraining (the fold models of jobs 2445840 are loade
      _ssp126, members m1-m3, from the same 2019 state. Compared as a RATIO of area-weighted changes,
      R(drive) = d(drive) / d(ssp370), d = window(2071-2100) - window(first free decade of the no-warming drive).
 
+--tag _causal (ADR 0315 sec. 15): the same tests on the A2g fold models RETRAINED with the causal input fill
+(`explore_glob_lstm.py --fill causal --tag _causal`). Inputs are filled forward only, exactly as in that training; no
+"_leaky" drive exists, and harness-1 compares the ssp370/ssp126 re-predictions with that run's stored predictions.
+Outputs go to <OUT>_causal/ and eval/clock_*_causal.csv; the panel windows are shared (read from the untagged <OUT>).
+
 STAGES
   predict   harness re-prediction + the drives {ssp370, ssp126, nowarm} for lstm and lstmCB -> <OUT>/<arm>_f<k>.parquet
   panel     the original model's windows on the panel -> <OUT>/panel_windows.parquet
@@ -116,7 +121,8 @@ def stage_predict(a) -> None:
     import torch
 
     torch.set_num_threads(1)
-    os.makedirs(OUT, exist_ok=True)
+    out_dir = OUT + a.tag
+    os.makedirs(out_dir, exist_ok=True)
     folds = ev.dev_cells()
     cells = folds["Cell"].to_list()
     idx = {c: i for i, c in enumerate(cells)}
@@ -133,15 +139,19 @@ def stage_predict(a) -> None:
     n_leak = int(np.any(~np.isfinite(clean[:, : L.I14 + 1]).all(axis=1) & np.isfinite(X8["ssp370"]).any(axis=1),
                         axis=1).sum())
     log(f"cells with a state variable missing in all of 1985-2014 but present later (leak-exposed): {n_leak}")
+    fill, check = L.ffill, ("ssp370_leaky", "ssp126_leaky")
     runs = {
         "lstm": [("ssp370_leaky", X8["ssp370"], real["ssp370"]), ("ssp126_leaky", X8["ssp126"], real["ssp126"]),
                  ("ssp370", clean, real["ssp370"]), ("ssp126", clean, real["ssp126"]), ("nowarm", clean, nw)],
         "lstmCB": [("ssp370_leaky", X8["ssp370"], froz["ssp370"]), ("ssp126_leaky", X8["ssp126"], froz["ssp126"]),
                    ("ssp370", clean, froz["ssp370"]), ("ssp126", clean, froz["ssp126"])],
     }
+    if a.tag:  # retrained with the causal fill: its own input construction, no leaky drive
+        fill, check = L.fill_causal, ("ssp370", "ssp126")
+        runs = {arm: [r for r in todo if not r[0].endswith("_leaky")] for arm, todo in runs.items()}
     worst = 0.0
     for arm, todo in runs.items():
-        d = os.path.join(L.OUT, arm)
+        d = os.path.join(L.OUT, arm + a.tag)
         for k in range(1, 6):
             ck = torch.load(f"{d}/f{k}.pt", weights_only=False)
             mu, sd, cmu, csd = ck["mu"], ck["sd"], ck["cmu"], ck["csd"]
@@ -154,7 +164,7 @@ def stage_predict(a) -> None:
             stored = pl.read_parquet(f"{d}/f{k}_pred.parquet").filter(pl.col("start") == "S14")
             out = []
             for drive, Xs, C in todo:
-                Xf = L.ffill(Xs[i_te])
+                Xf = fill(Xs[i_te])
                 Xf = np.where(np.isfinite(Xf), Xf, mu)
                 Z = torch.tensor((Xf - mu) / sd, dtype=torch.float32)
                 Cc = torch.tensor((C[i_te] - cmu) / csd, dtype=torch.float32)
@@ -165,14 +175,14 @@ def stage_predict(a) -> None:
                 df = pl.DataFrame({"Cell": np.repeat(te, L.T - 1).astype(np.int32),
                                    "Year": np.tile(L.YEARS[1:], len(te)).astype(np.int32),
                                    **{c: v.reshape(-1) for c, v in phys.items()}})
-                if drive.endswith("_leaky"):
+                if drive in check:
                     j = df.join(stored.filter(pl.col("scen") == drive.split("_")[0]), on=["Cell", "Year"], suffix="_s")
                     assert j.height == df.height, "stored predictions do not cover the re-prediction"
                     rel = float(((j["n_per_patch"] - j["n_per_patch_s"]).abs()
                                  / j["n_per_patch_s"].abs().clip(lower_bound=1e-6)).max())
                     worst = max(worst, rel)
                 out.append(df.with_columns(pl.lit(drive).alias("drive")))
-            pl.concat(out).write_parquet(os.path.join(OUT, f"{arm}_f{k}.parquet"))
+            pl.concat(out).write_parquet(os.path.join(out_dir, f"{arm}_f{k}.parquet"))
             log(f"{arm} fold {k}: {len(te)} cells predicted")
     log(f"HARNESS-1 max relative stems difference vs stored predictions = {worst:.2e} "
         f"({'PASS' if worst < 1e-5 else 'FAIL'})")
@@ -225,13 +235,14 @@ def agg(d: pl.DataFrame, w: pl.DataFrame) -> dict:
     return out
 
 
-def stage_score(_a) -> None:
+def stage_score(a) -> None:
+    out_dir, tag = OUT + a.tag, a.tag
     cells = ev.dev_cells()
     w = cells.select("Cell", np.cos(np.deg2rad(pl.col("lat"))).alias("w"))
     T = {s: ev.lev(ev.mname(s, ev.TRUTH)) for s in ("historical", "ssp126", "ssp245", "ssp370")}
     Rp = {s: ev.lev(ev.mname(s, ev.REPLICA)) for s in ("historical", "ssp126", "ssp245", "ssp370")}
     sc = cells.join(pl.concat([T[s].filter(pl.col("n_per_patch") > 0).select("Cell") for s in T]).unique(), on="Cell")
-    P = {arm: pl.concat([pl.read_parquet(os.path.join(OUT, f"{arm}_f{k}.parquet")) for k in range(1, 6)])
+    P = {arm: pl.concat([pl.read_parquet(os.path.join(out_dir, f"{arm}_f{k}.parquet")) for k in range(1, 6)])
          for arm in ("lstm", "lstmCB")}
     win = {(arm, dr, y0): L.window_stats(P[arm].filter(pl.col("drive") == dr), y0, y1)
            for arm in P for dr in P[arm]["drive"].unique().to_list() for (y0, y1) in ((2071, 2100), (2015, 2024))}
@@ -243,14 +254,15 @@ def stage_score(_a) -> None:
     sc370 = cells.join(pl.concat([T[s].filter(pl.col("n_per_patch") > 0).select("Cell")
                                   for s in ("historical", "ssp370")]).unique(), on="Cell")
     for arm in ("lstm", "lstmCB"):
-        for v in ("ssp370_leaky", "ssp370"):
+        for v in ("ssp370",) if tag else ("ssp370_leaky", "ssp370"):
             s = ev.score(win[(arm, v, 2071)], T["historical"], T["ssp370"], T["historical"], Rp["ssp370"],
                          Rp["historical"], sc370)
-            rows.append({"arm": arm, "input": "leaky (as published)" if v.endswith("leaky") else "clean", **s})
+            inp = "leaky (as published)" if v.endswith("leaky") else ("causal retrain" if tag else "clean")
+            rows.append({"arm": arm, "input": inp, **s})
             log("LEAK", arm, v, {k: round(s[k], 4) for k in ("pass_rate", "stems_ratio", "agb_per_stem_ratio",
                                                              "resp_n_per_patch_slope_deatt",
                                                              "resp_Wooddens_q50_slope_deatt")})
-    pl.DataFrame(rows, infer_schema_length=None).write_csv(os.path.join(ev.EVAL, "clock_leak.csv"))
+    pl.DataFrame(rows, infer_schema_length=None).write_csv(os.path.join(ev.EVAL, f"clock_leak{tag}.csv"))
 
     # ---- A: scenario contrast ssp370 - ssp126 at 2071-2100 (clean input)
     rows = []
@@ -269,7 +281,7 @@ def stage_score(_a) -> None:
     cb = rows[2]
     z = all(abs(cb[f"resp_{q}_agg_ratio"]) < 1e-12 for q in ("n_per_patch", "Wooddens_q50"))
     log(f"HARNESS-3 lstmCB contrast exactly 0: {'PASS' if z else 'FAIL'}")
-    pl.DataFrame(rows).write_csv(os.path.join(ev.EVAL, "clock_contrast.csv"))
+    pl.DataFrame(rows).write_csv(os.path.join(ev.EVAL, f"clock_contrast{tag}.csv"))
 
     # ---- B: no-warming ratios
     rows = []
@@ -329,7 +341,7 @@ def stage_score(_a) -> None:
                     r[f"R_{q}"] = (lt[q] - e[q]) / (l370[q] - e[q])
                 rows.append(r)
     df = pl.DataFrame(rows, infer_schema_length=None)
-    df.write_csv(os.path.join(ev.EVAL, "clock_nowarm.csv"))
+    df.write_csv(os.path.join(ev.EVAL, f"clock_nowarm{tag}.csv"))
     with pl.Config(tbl_rows=60, tbl_cols=20, tbl_width_chars=250):
         print(df.select("source", "cells", "drive", *[f"R_{q}" for q in QS]))
         print(df.select("source", "cells", "drive", *[f"d_{q}" for q in QS]))
@@ -338,6 +350,7 @@ def stage_score(_a) -> None:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["predict", "panel", "score"])
+    ap.add_argument("--tag", default="", help="A2g model variant, e.g. _causal (the retrain with the causal fill)")
     a = ap.parse_args()
     {"predict": stage_predict, "panel": stage_panel, "score": stage_score}[a.stage](a)
     log("=== DONE")

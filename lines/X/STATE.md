@@ -122,14 +122,15 @@ retrained on one run of each build reach the same skill on Feb, May, Oct-1/6/7/8
 the pre-registered ratio test was badly posed — §11.1). Per-version inputs to fix: `tstress_pft0` threshold per build,
 no per-tree column the Oct layout lacks.
 **NEXT, in order:**
-1. **A2g scored (ADR 0315 §12–14).** ⚠ §14 (2026-10-09, `scripts/explore_glob_clock.py`): the LSTM's prediction
-   input back-filled cells that were treeless in 1985–2014 from the TEST member's 2071–2100 truth (303 colonised cells);
-   clean, the tree-count response slope is **0.65, not 0.86** (twin 0.53); pass 0.125 unchanged. Calendar test: the arm
-   DOES separate ssp370 from ssp126 (stems total 1.08) but puts the difference in the wrong places (per-cell slope 0.30);
-   the no-warming comparison against the panel's constant-climate control is inconclusive (cell-set/build gap, same size
-   under ssp126). The original model itself drifts under constant climate (stems fall as much as they rise under ssp370).
-   NEXT: **fix the fill in `explore_glob_lstm.py` (mask 2015–2100 before filling, in training AND prediction) and retrain
-   A2g + twin** before any recurrent arm is scored again; also check the Germany LSTM's exposure (same pattern, line 777).
+1. **A2g DONE, clean (ADR 0315 §15, 2026-10-09).** The input fill is now causal (forward only, training AND prediction;
+   `explore_glob_lstm.py --fill causal`, default). Clean retrain (tag `_causal`, `eval/scores_A2g_causal.csv`): pass
+   0.119, trees 0.996, biomass per tree 1.068, tree-count response slope **0.85** (twin 0.59), free run from 1985 at 2014
+   0.986 / 0.990 ⇒ DP-G1 fails on (a) only, as before. ⚠ §14.1's "clean slope 0.65" was a train/inference mismatch (the
+   leak-trained model fed an input it never saw; 22 % of colonising stems vs 95 % after the retrain) — the leak was
+   worth ≈ 0.01, superseded. Calendar test on the clean models (`clock_*_causal.csv`): scenario-contrast stems slope
+   0.47 (was 0.30), still just under the 0.5 rule; total overshoots +19 %. Germany LSTM: 0 cells exposed (§15.4).
+   Per-build retrains clean (§15.5): Feb pass 0.103 / slope 0.83, May 0.097 / 0.77 — §13's reading stands.
+   **Rule from now on:** every recurrent arm uses `fill_causal`; price a leak with a retrain, never a re-prediction.
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.

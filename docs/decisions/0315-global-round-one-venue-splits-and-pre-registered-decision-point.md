@@ -308,6 +308,8 @@ models were reloaded. Harness checks all passed: the reloaded models reproduce t
 relative difference 0); the recomputed 20-year trailing climate means match the stored ones (≤ 5e-4); the twin's
 scenario contrast is exactly 0; the panel's constant-climate and ssp370 legs start within 1.5 % of each other in stems.
 
+⚠ **§14.1's "clean" rows and the leak price drawn from them are superseded by §15.1** (a retrain shows the leak was worth ≈ 0.01 of slope, not 0.21).
+
 **14.1 An input leak in §12, found while writing the probe.** The prediction input fills missing state values forward
 and then BACKWARD over the whole leg. A cell with no trees in 1985–2014 has no trait quantiles or species shares there,
 so they were back-filled from the test member's own 2071–2100 truth. 303 of the 6 420 dev cells are exposed — the cells
@@ -374,3 +376,85 @@ biomass per tree truth −0.13 / lstm −0.17. A model that only counted years w
 the right total). Its weak form holds for where the response falls (per-cell slope 0.30). The leak fix removes a quarter
 of the published tree-count response skill. A clean retrain (masking the fill during training too) is required before
 any recurrent arm is scored again. Outputs: `eval/clock_leak.csv`, `eval/clock_contrast.csv`, `eval/clock_nowarm.csv`.
+
+## 15. A2g retrained with a causal input fill — §14.1's "clean" numbers were a train/inference mismatch (jobs 2447157/58, 2447277; `eval/scores_A2g_causal.csv`)
+
+`explore_glob_lstm.py --fill causal` (now the default): missing inputs are filled FORWARD ONLY, in training and in
+prediction, so an input of year t never carries a value from a later year. That also closes a second, smaller leak
+§14.1 did not: §14.1's "clean" input still filled backward inside 1985–2014, so the free run from 1985 (S85) saw later
+historical years at its first step. `--fill leaky` reproduces §12. Same settings, seeds and folds as §12. All ten fold
+models beat carrying the 2014 state forward (validation 0.083–0.092 vs 0.210–0.242). Harness checks as §12 (replay
+pass 0.975, totals to 1e-15).
+
+**Pre-registered (script header, before the run):** lstm pass ≈ 0.125 ± 0.01; tree-count response slope ≈ 0.65 (the
+§14.1 re-prediction), read ± 0.1 as "the same"; twin ≈ 0.53; "well above 0.75 would mean the backward fill had also been
+hurting it". **Measured — the slope expectation was WRONG:**
+
+| GS370, member 8, ssp370 | pass | trees P/T | biomass per tree P/T | tree-count response (deatt. slope) | wood-density response |
+|---|---|---|---|---|---|
+| lstm, §12 (leaky training + input) | 0.125 | 0.994 | 1.054 | 0.86 | 0.99 |
+| lstm, §14.1 (leaky model, clean input) | 0.125 | 0.975 | 1.072 | 0.65 | 0.99 |
+| **lstm, causal retrain** | **0.119** | **0.996** | **1.068** | **0.85** | **0.97** |
+| lstmCB, §12 | 0.102 | 0.917 | 1.245 | 0.69 | 0.88 |
+| lstmCB, §14.1 | 0.102 | 0.904 | 1.261 | 0.53 | 0.88 |
+| **lstmCB, causal retrain** | **0.112** | **0.919** | **1.228** | **0.59** | **0.86** |
+| lstm causal, free from 1985 (S85) | 0.102 | 0.999 | 1.051 | 0.80 | 0.72 |
+
+Within training years (S85 scored at 2014): trees 0.986, biomass per tree 0.990 (§12: 0.974 / 1.001).
+
+**15.1 Why the expectation was wrong — measured, not inferred.** Late-century stems (2071–2100) predicted over truth,
+area-weighted, on the 303 cells that are treeless in 1985–2014 and colonised later (3.1 % of late stems) vs all others:
+
+| | exposed 303 cells | all other cells |
+|---|---|---|
+| lstm §12 (sees the future traits) | 1.014 | 0.993 |
+| lstm §14.1 (leaky model, clean input) | **0.221** | 0.993 |
+| lstm causal retrain | **0.951** | 0.997 |
+| lstmCB §12 / §14.1 / causal | 0.557 / 0.002 / 0.303 | 0.926 / 0.926 / 0.934 |
+
+The leak-trained model had only ever seen a treeless cell carrying (future) trait values; fed the training mean there
+instead, it predicted almost no colonisation. That is an input it never saw in training — the ADR 0023
+train/inference-shift trap — so §14.1 measured the mismatch, not the leak. Retrained on the input it gets at
+prediction, the model predicts 95 % of colonisation from climate (the twin 30 %). **⇒ The leak was real but worth
+≈ 0.01 of tree-count slope, not 0.21. §14.1's table, §14.1's "the leak fix removes a quarter of the published
+response skill" and §14.4's sentence of the same content are superseded by this section.** The general lesson (now in
+the `residual-diagnosis` skill's spirit): a leak cannot be priced by removing it at prediction time only; the honest
+price is a retrain.
+
+**15.2 DP-G1 on the causal retrain:** (a) **fails** — 0.119 < 0.140 (and < A7s 0.131; above the best null 0.100);
+(b) passes (−0.4 %, +6.8 %); (c) passes — 0.85 vs the twin's 0.59, climate adds **0.26** of slope (member noise ≈ 0.01);
+(d) passes (−1.4 %, −1.0 %). Verdict unchanged: **does not survive round 1, on (a) only.**
+
+**15.3 Calendar test (§14.2) repeated on the causal models** (`explore_glob_clock.py --tag _causal`; harness-1 exact,
+harness-2/3/4 pass). ssp370 minus ssp126 at 2071–2100, member 8:
+
+| | stems: aggregate / deatt. slope | biomass per tree | SLA median |
+|---|---|---|---|
+| ceiling (member 7) | 1.01 / 0.98 | 1.00 / 1.04 | 0.68 / 0.97 |
+| lstm, §14.2 (leaky model, clean input) | 1.08 / 0.30 | 0.82 / 0.66 | −0.02 / 0.20 |
+| **lstm, causal retrain** | **1.19 / 0.47** | 0.79 / 0.64 | 0.02 / 0.22 |
+| A7s, ssp370 IN training | 0.94 / 0.51 | 0.69 / 0.76 | −0.26 / 0.26 |
+
+By the pre-registered rule stems are still flagged (0.47 < 0.5, noise share 0.13), now by a hair, and the aggregate
+overshoots by 19 %. SLA stays flagged (0.22). Wood density is noise-dominated (share 0.58) and not read; its ratios in
+`clock_nowarm_causal.csv` have a near-zero denominator (the arm's own ssp370 wood-density change) and are meaningless.
+§14.3's no-warming comparison stays inconclusive for the reason §14.3 gave (cell set/build gap as large for ssp126).
+**Reading:** the recurrent arm reads the climate for totals and partly for where the scenario difference falls; it is
+still worse than the direct window map at placing it. Outputs: `eval/clock_*_causal.csv`.
+
+**15.4 The Germany LSTM is not exposed.** `scripts/explore_de_lstm_leak_probe.py` (job 2447175): 0 of 907 test cells,
+both GCMs, all three scenarios, have a state value missing at 1985 — Germany is forested from the first year — so its
+backward fill never had anything to fill. Its published numbers stand.
+
+**15.5 The per-build runs of §13, retrained with the causal fill** (jobs 2447168/69, `eval/scores_A2g_pvF2c.csv`,
+`_pvM9c.csv`; one training run each, ssp370 on a held-out run of the same build):
+
+| build: train → test | pass §13 → causal | trees | biomass per tree | tree-count response (deatt.) | wood-density response |
+|---|---|---|---|---|---|
+| Feb: 2 → 8 | 0.115 → **0.103** | 1.001 → 0.993 | 1.078 → 1.081 | 0.78 → **0.83** | 0.95 → 0.94 |
+| May: 9 → 10 | 0.101 → **0.097** | 0.994 → 1.016 | 1.097 → 1.092 | 0.71 → **0.77** | 0.97 → 0.99 |
+
+Within training years (free from 1985, at 2014): Feb 0.977 / 1.014, May 0.976 / 1.033. Same direction on all three
+retrains: pass down 0.004–0.012, tree-count response up 0.05 (Feb/May) or unchanged (four-run model). The LSTM's own
+draw-to-draw spread is still unmeasured, so these shifts are not attributed to the fill. §13's conclusion (the method
+behaves the same on both builds, May slightly worse) stands.
