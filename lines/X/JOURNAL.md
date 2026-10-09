@@ -620,3 +620,4 @@ predictions committed before the run. Result: harness and oracle as derived; A7r
 count (1.44) or biomass per tree (1.96), and on biomass per tree it does not beat the ssp245 lookup null (1.84). The
 miss sits in sparse cells. A fifth training run changes nothing (≤ 0.02). Recorded as ADR 0317 §8 (§7 stays reserved
 for the owner's 10 %/20 % answer).
+Follow-up, same session: the 'anchor too low' hypothesis refuted on disk (anchor/truth 1.11 for biomass per tree, 0.94 for tree count; ssp370 = more, smaller trees). Next: measure extrapolation of ssp370 climate beyond the training legs.

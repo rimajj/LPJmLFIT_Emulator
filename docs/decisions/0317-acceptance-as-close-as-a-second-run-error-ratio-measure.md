@@ -161,9 +161,14 @@ What it says:
    both; its SLA (1.05, ρ₉₀ 1.15–1.22) is not.
 4. **More runs of the same design do not move it** (4 → 5 runs: ≤ 0.02). This venue's limit is the arm, not the data.
    That does not prejudge the panel's more-data test (ADR 0316 §7), which adds climate models, not runs.
-5. Hypothesis for the biomass-per-tree miss, **not yet tested**: the anchor averages the historical window with two
-   future ones, while biomass per tree keeps rising through the century, so the anchor sits low and the learned
-   correction does not close it. The cheap test is an anchor built from the future legs only, pre-registered first.
+5. ~~Hypothesis: the anchor sits LOW on biomass per tree because it averages in the historical window.~~ **Refuted
+   on data already on disk, before any run** (same session): the anchor (training runs 2,3,4,6, mean of historical +
+   ssp126 + ssp245) is **HIGH** — median anchor/truth **1.11** for biomass per tree (typical |error| 0.22) and **0.94**
+   for tree count; a future-only anchor is worse (1.19), ssp245 alone 1.15. Under ssp370 the original grows **more,
+   smaller trees** than under the milder scenarios, so the anchor has the wrong sign of change on both quantities
+   and the learned correction under-corrects it. The open question is therefore why the correction, which sees the
+   climate difference, does not learn the "warmer ⇒ more, smaller trees" shift — ssp370 lies outside the training
+   scenarios' climate range in many cells (extrapolation), which is the next thing to measure, not to fix.
 
 ## References
 
