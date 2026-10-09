@@ -132,13 +132,23 @@ no per-tree column the Oct layout lacks.
    Per-build retrains clean (§15.5): Feb pass 0.103 / slope 0.83, May 0.097 / 0.77 — §13's reading stands.
    **Rule from now on:** every recurrent arm uses `fill_causal`; price a leak with a retrain, never a re-prediction.
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
-   ⚠ **All three sit on the Germany per-tree stepper (TAB), which has never run on global data — the PORT comes first.**
-   Map + blockers + the data root to build: `docs/notes/exploration_glob_tab_port.md` (2026-10-09). `XDE_ROOT` alone
-   does not port it: Int16 cell ids (renumber dev cells in the new root), the engine's 2070 horizon, recruit types 1–5
-   only, ONE grass type everywhere (global has 7/8/9 — a remodel), SH4 crashes at the first ssp-window year (no 2070
-   table), the margin arm's weather is built from truth (none for 2015–2070). Parameters: the Feb/May runs used the
-   LOCAL par set on every value checkable from output (longevity 400/125, k_root 0.02, mort_temp 5.0); Billing's live
-   files were edited after them (Oct). Order: build the root → SH2..A6 stages → plain TAB + its twin on GS370 → A3/A4/A6.
+   ⚠ **All three sit on the Germany per-tree stepper (TAB) — the PORT is IN PROGRESS (2026-10-09, ADR 0315 §16).**
+   Map + blockers: `docs/notes/exploration_glob_tab_port.md`. Data root (Germany format, Feb members 2,3,4,6,7,8, dev
+   cells renumbered 0..6419): `…/billing_global/xde`, built by `scripts/explore_glob_tabroot.py` (gates pass).
+   **Every stage needs these exported** (sbatch forwards the env): `XDE_ROOT=…/billing_global/xde XDE_GRASS_TYPES=7,8,9
+   XDE_RECR_TYPES=0,1,2,3,4,5,6 XDE_TRAIT_BUILD=feb2026 XDE_LAST_SIM_YEAR=2100`.
+   DONE + gated: SH2 params/allometry, SH3 transitions (24 member-windows; identity gates all pass), SH4 patches,
+   SH5 starts (s8 1985/2014, s7 2014; NOTE `sh_init submit` ignores `--start` — use `build --start` via
+   sbatch_python), A1 samples. Scorer `scripts/explore_glob_tabeval.py`; harness (frozen stepper) reproduces §7's
+   persist_2014 row EXACTLY (`eval/scores_TAB_frozen.csv`).
+   RUNNING at handoff time: SH13 fit 2447665 (gates 2447666 will fail on `src_csv`, harmless), A1 recruits 2447737,
+   heads 2447739-44 (`logs/X-de-g_*.<jobid>.out`), rtype 2447745 + traits 2447746 (after recruits).
+   NEXT: `explore_de_tab_stepper.py prep` → smoke one chunk of TabAL (`explore_de_engine.py run --arm tabAL --stepper
+   explore_de_tab_stepper:TabAL --gcm GFDL-ESM4 --seed 8 --start 2014 --end 2100 --legs ssp370,ssp126,ssp245
+   --chunk-size 400 --chunks 0`) → full TabAL + TabAk0 from 2014 and from 1985 → score → compare with §16's
+   expectations. Then A4 (calibration scalars `tab/cal/DEV-A.json` fitted on TRAINING-member free runs only), A6 (needs
+   the margin model's weather rebuilt from climate, blocker B7). A3 needs the original's physics on the arm's own
+   states — not available on this venue without a C re-run harness; say so, do not fake it.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
 
