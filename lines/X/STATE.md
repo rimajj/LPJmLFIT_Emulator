@@ -141,13 +141,17 @@ no per-tree column the Oct layout lacks.
    SH5 starts (s8 1985/2014, s7 2014; NOTE `sh_init submit` ignores `--start` — use `build --start` via
    sbatch_python), A1 samples. Scorer `scripts/explore_glob_tabeval.py`; harness (frozen stepper) reproduces §7's
    persist_2014 row EXACTLY (`eval/scores_TAB_frozen.csv`).
-   RUNNING at handoff time: SH13 fit 2447665 (gates 2447666 will fail on `src_csv`, harmless), A1 recruits 2447737,
-   heads 2447739-44 (`logs/X-de-g_*.<jobid>.out`), rtype 2447745 + traits 2447746 (after recruits).
-   NEXT: `explore_de_tab_stepper.py prep` → smoke one chunk of TabAL (`explore_de_engine.py run --arm tabAL --stepper
-   explore_de_tab_stepper:TabAL --gcm GFDL-ESM4 --seed 8 --start 2014 --end 2100 --legs ssp370,ssp126,ssp245
-   --chunk-size 400 --chunks 0`) → full TabAL + TabAk0 from 2014 and from 1985 → score → compare with §16's
-   expectations. Then A4 (calibration scalars `tab/cal/DEV-A.json` fitted on TRAINING-member free runs only), A6 (needs
-   the margin model's weather rebuilt from climate, blocker B7). A3 needs the original's physics on the arm's own
+   DONE too: SH13 heads, A1 recruits, all 20 TAB heads (one grass model per grass type), stepper prep.
+   **First free run SCORED (ADR 0315 §16.1): plain TAB FAILS badly** — GS370 pass 0.022 (below carrying 2014 forward,
+   0.057), trees 1.17, biomass per tree **0.505**; its climate-blind twin 0.026 / 0.90 / 0.90. Two failures: a slow
+   growth deficit in both (−23..−29 % biomass per tree by 2014 from 1985) and a CLIMATE-driven halving only in the arm
+   (on ssp126 too ⇒ not extrapolation). 0.17 core-s per cell-year.
+   RUNNING at handoff: the one-channel attribution of §16.2 (kappa_g / kappa_growth / kappa_surv / kappa_rec = 0, from
+   2014, ssp370): runs 2450390/92/402/404, scores 2450391/401/403/405 → `logs/X-gtabev-k*.out`,
+   `eval/scores_TAB_k*.csv`. Pre-registered: kG0 closes ≥ 50 % of the biomass gap (falsifier < 25 %).
+   NEXT: read the attribution against §16.2 → decide A4 (calibration scalars on TRAINING-member free runs only; the
+   attribution says which scalar matters) and whether A6 is worth porting (needs
+   the margin model's weather rebuilt from climate, blocker B7, and four single-grass modules). A3 needs the original's physics on the arm's own
    states — not available on this venue without a C re-run harness; say so, do not fake it.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.

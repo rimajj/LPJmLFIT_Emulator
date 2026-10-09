@@ -553,3 +553,14 @@ blockers, the data root to build, stage order. Checked the one scientific risk i
 parameters are the ones Billing's Feb/May runs used. His live par files differ from ours in 160 values but were edited
 after those runs; the runs' own output (longevity inferred from mort_age to 1e-6, k_root, mort_temp) matches the LOCAL
 set exactly on both builds. No jobs run.
+
+## 2026-10-09 (midday) — the per-tree arm ported to the global venue, and its first free run
+
+Built a Germany-format data root over the Feb GFDL members (`explore_glob_tabroot.py`), made five env-gated,
+Germany-inert changes (horizon, recruit/grass types, one grass model per type, trait build, a late window starting its
+own chain), and ran the chain SH2→SH3→SH4→SH5→SH13→A1→A2–A5→A6 prep; every integrity gate passed (counter recursion
+holds on all 706 M pairs). Scorer harness exact. Expectations written first (ADR 0315 §16). Result: plain TAB fails —
+pass 0.022, trees 1.17, biomass per tree 0.505 — and the climate-blind twin is much closer on totals (0.90 / 0.90): a
+climate-driven collapse on top of Germany's slow growth deficit. Submitted a one-channel attribution (§16.2).
+Snags: `sh_init submit` ignores `--start` (30 tasks; cancelled), the registry must live under `shared/registry`,
+the survival training job segfaulted AFTER saving both heads, the trait fit failed only on a missing `_reports` dir.
