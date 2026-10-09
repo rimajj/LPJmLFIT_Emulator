@@ -633,3 +633,8 @@ held), tree count 1.39 → 1.35 (missed the 0.05 expectation, above the falsifie
 and have not saturated, but even optimistic linear extrapolation needs ~14–40 training models to reach the owner's
 1.1–1.2, and ISIMIP3b has ten. The arm must improve; more runs per cell are not worth producing. A first draft of the
 write-up over-counted the 15-case bar passes (14 → 13) and gave a loose extrapolation; both corrected before commit.
+Afternoon: broke the remaining error down by tree density — sparse cells (< 5 trees per patch) are 3× a second run while
+5–20 classes are near 1.2. The arm fits absolute residuals; switched the target to a log ratio (A7rL, pre-registered):
+mixed — biomass per tree improves everywhere (1.42 → 1.26, bad cells 1.71 → 1.26), tree count trades sparse for dense
+and its total drifts 4 % low. Combined (A7rH: log target for biomass per tree only) is the new best: pass 0.207. Tree
+count is now the binding gap; next one-variable test is a count-aware loss.

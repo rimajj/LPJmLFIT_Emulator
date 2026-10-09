@@ -84,6 +84,23 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 0🎯 2026-10-10 (ADR 0316 §11) — BEST ARM NOW A7rH: biomass per tree 1.26× a second run; TREE COUNT IS THE BINDING GAP
+
+Sparse cells (< 5 trees per patch, ~20 % of cells) carried most of the error: A7r's tree-count ratio 3.1–3.5 there vs
+1.15–1.36 at 5–20, while the mean of three runs is 0.82 everywhere. Cause found in part: squared error on the ABSOLUTE
+residual. `explore_panel_a7.py logt` (A7rL: log-ratio target, jobs 2456437–41) + `logt_mix` (A7rH = log target on biomass
+per tree only, job 2456487). **A7rH** (`both` set, ssp370): pass 0.207 (A7r 0.193), biomass per tree **1.26 / 1.26**
+(was 1.42 / 1.71), tree count unchanged 1.35 / 2.08, totals 1.9 % / 4.2 %. The log target on tree count helps sparse cells
+(3.45 → 2.04) but hurts the 10–20 class and biases the stem total 4 % low.
+**NEXT, in order:**
+1. **Tree count, one variable:** a count-aware loss (LightGBM `poisson`/`tweedie` objective, anchor as `init_score` offset
+   in log space) vs A7r on the same `both` set; pre-register in the header (expect: < 2 class ≤ 2.5, 10–20 class not worse
+   by > 0.05, stems total within 2 %). Score with `logt`-style mode + `PRED_SET=… PRED_ARMS=…`.
+2. Port A7rH to the global venue (`explore_glob_a7r.py`, then `explore_glob_tolerance.py`) — does the biomass gain
+   (1.96 there) reproduce on 5 809 cells?
+3. UKESM (warmest model) still fails the bar: the extrapolation measurement of ADR 0317 §8 item 5 is still open.
+4. Owner questions (10 %/20 %, 5 % totals, unseen cells) unchanged.
+
 ### 0📈 2026-10-10 (ADR 0316 §10) — THE MORE-DATA PREDICTION HELD, AND IT IS NOT ENOUGH — read first
 
 Scored the chained test (5 seeds, `xpanel/eval/a7_more_mean.csv`; second-run measure via
