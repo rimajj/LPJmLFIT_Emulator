@@ -83,6 +83,19 @@ Prediction: `both` mean pass on ssp370 >= base + 0.02, bar passed on >= 12 of th
 < 0.01. The `mod` and `run` rows split the gain between the two kinds of data.
 RESULT (jobs 2452217-21, 2026-10-10, ADR 0316 sec. 10): HELD -- both - base = +0.033 on ssp370 (0.161 -> 0.193), bar on
 12 of 13; mod +0.023, run +0.005. Only UKESM ssp370 still fails (0.134 vs 0.151).
+
+MODE `logt` (pre-registered 2026-10-10, BEFORE its run): ONE variable on the `both` set of mode `more`. A7r fits the
+ABSOLUTE residual (value - anchor) with squared error, so dense cells dominate the loss, while every score is a PER-CELL
+RELATIVE error; on the second-run measure (ADR 0316 sec. 10) A7r is 1.13-1.36x a second run in the 5-20 trees-per-patch
+classes but 2.5-3.5x in the < 5 classes (~20 % of cells), where the mean of three runs reaches 0.82. A7rL = A7r with the
+target for tree count and biomass per tree replaced by the LOG RATIO log((value + e) / (anchor + e)), prediction
+(anchor + e) * exp(p) - e; e = 0.1 trees per patch / 1 gC per tree. Same features, rows, rounds, other four quantities.
+Expected (seed 1 on the second-run measure, ssp370 and all-case medians over the five held-out models; pass over 5 seeds):
+  sparse classes (< 2 and 2-5 trees per patch): tree-count ratio falls by >= 0.3 in each; biomass per tree by >= 0.2;
+  all cells: tree-count ratio (typical cell) falls by >= 0.05; the 5-20 classes worsen by no more than 0.05;
+  conjunctive pass rate on ssp370 not lower than A7r's by more than 0.005; area totals still within 5 %.
+  Falsifier: the sparse-class tree-count ratio moves by < 0.1 => the loss weighting is NOT why sparse cells fail.
+  Harness: A7r here equals mode `more`'s `both` A7r pass rate per seed (same rows, same seed, rows sorted).
 """
 
 from __future__ import annotations
@@ -109,6 +122,7 @@ PARAMS = dict(objective="regression", learning_rate=0.05, num_leaves=31, min_dat
               bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1, num_threads=16,
               seed=int(os.environ.get("LGB_SEED", "1")))
 ROUNDS = 400
+LOG_EPS = {"n_per_patch": 0.1, "agb_per_stem": 1.0}  # mode `logt` only
 TRAIN_M, TRUTH, REPLICA = (1, 2, 3), 4, 3
 SCEN_LEGS = PP.SLEGS  # the first five models: every split of the modes core / seen / curves* is defined on these
 ALL_SLEGS = PP.SLEGS + PP.NEW_SLEGS  # + the five models of ADR 0316 sec. 7 (mode `more`)
@@ -296,16 +310,22 @@ def fit_predict_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.Dat
     import lightgbm as lgb
 
     resid = variant.startswith("A7r")
+    logt = variant.startswith("A7rL")
     f = feats_r(variant) if resid else feats(variant.replace("-seen", ""))
     out = te.select("Cell", "leg")
     for q in PANEL:
         t = tr.filter(pl.col(q).is_not_null() & (pl.col(f"anc_{q}").is_not_null() if resid else pl.lit(True)))
-        y = (t[q] - t[f"anc_{q}"]).to_numpy() if resid else t[q].to_numpy()
+        lq = logt and q in LOG_EPS
+        if lq:  # mode `logt`: relative target, so a sparse cell weighs as much as a dense one
+            e = LOG_EPS[q]
+            y = np.log((t[q].to_numpy() + e) / (t[f"anc_{q}"].to_numpy() + e))
+        else:
+            y = (t[q] - t[f"anc_{q}"]).to_numpy() if resid else t[q].to_numpy()
         mdl = lgb.train(PARAMS, lgb.Dataset(t.select(f).to_numpy(), y), ROUNDS)
         p = mdl.predict(te.select(f).to_numpy())
         if resid:  # where a cell has no anchor (no trees in any training run): the direct model of the same arm
             anc = te[f"anc_{q}"].to_numpy().astype(float)
-            p = p + anc
+            p = (anc + LOG_EPS[q]) * np.exp(p) - LOG_EPS[q] if lq else p + anc
             miss = ~np.isfinite(anc)
             if miss.any():
                 f0 = feats("A7scb" if variant.endswith("cb") else "A7s")
@@ -406,6 +426,13 @@ def main():
                 legs = [lg for lg in legs if df.filter(pl.col("leg") == lg).height > 0]
                 var = ("A7r", "A7rcb") if nm == "both" else ("A7r",)
                 rows += run_split_seen(df, f"{nm}:{g}", legs, [f"{g}_{s}" for s in PP.SCENS], mem, var)
+    elif mode == "logt":
+        new_m = [m for m in (5, 6) if lev(m, "hist", "h2000") is not None]
+        for g in G:
+            legs = [lg for lg in ALL_SLEGS if gcm_of(lg) != g] + ["ctl_obs"]
+            legs = [lg for lg in legs if df.filter(pl.col("leg") == lg).height > 0]
+            rows += run_split_seen(df, f"logt:{g}", legs, [f"{g}_{s}" for s in PP.SCENS], (*TRAIN_M, *new_m),
+                                   ("A7r", "A7rL"))
     elif mode == "curves_seen":
         def one(name, legs, test, mem=TRAIN_M):
             an = anchored(df, legs, mem)

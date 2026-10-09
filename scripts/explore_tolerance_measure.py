@@ -36,6 +36,8 @@ the ratios are comparable. WRITTEN BEFORE THE RUN: `base` reproduces HG within 0
 data; a different process => different LightGBM draw); `both` vs `base` on ssp370, median over the five models: the
 centile-50 ratio for tree count and biomass per tree falls by >= 0.05 each (pass rate rose +0.033, ADR 0316 sec. 10);
 falsifier: < 0.02 on both => the extra data raised the pass rate without moving per-cell error nearer a second run.
+KNOB PRED_ARMS (comma list, default "A7r,A7rcb"): which saved arms of PRED_SET to score, e.g. PRED_SET=logt
+PRED_ARMS=A7r,A7rL for the log-ratio target of `explore_panel_a7.py logt` (missing arms are skipped).
 RESULT (2026-10-10, ADR 0316 sec. 10): base ~ HG within 0.05 (0.07 on one ssp370 centile); both vs base on ssp370:
 biomass per tree 1.64 -> 1.42 (held), tree count 1.39 -> 1.35 (missed 0.05, above the falsifier). `mod` carries it.
 """
@@ -54,6 +56,7 @@ SCENS = ["ssp126", "ssp370", "ssp585"]
 POOL, TRUTH = (1, 2, 3), 4
 STRATA = [2.0, 5.0, 10.0, 20.0]
 PRED_SET = os.environ.get("PRED_SET", "HG")
+PRED_ARMS = os.environ.get("PRED_ARMS", "A7r,A7rcb").split(",")
 OUT = os.path.join(D, "eval", "tolerance_measure.csv" if PRED_SET == "HG" else f"tolerance_measure_{PRED_SET}.csv")
 
 
@@ -110,7 +113,7 @@ def main():
         .then(pl.lit("mid")).otherwise(pl.lit("high")).alias("zone"))
     rows, sub = [], []
     for g in MODELS:
-        pp = {a: os.path.join(D, "eval", "preds_seen", "s1", f"{PRED_SET}_{g}_{a}.parquet") for a in ("A7r", "A7rcb")}
+        pp = {a: os.path.join(D, "eval", "preds_seen", "s1", f"{PRED_SET}_{g}_{a}.parquet") for a in PRED_ARMS}
         preds = {a: pl.read_parquet(f) for a, f in pp.items() if os.path.exists(f)}
         for s in SCENS:
             leg = f"{g}_{s}"
@@ -127,11 +130,8 @@ def main():
             other = [f"{h}_{s}" for h in MODELS if h != g]
             lk = mean_of([x for m in POOL for h in other if (x := lev(m, h)) is not None])
             lk_c = mean_of(list(Rc.values()))
-            cand = {"A7r": (preds["A7r"].filter(pl.col("leg") == leg).drop("leg"),
-                            preds["A7r"].filter(pl.col("leg") == "ctl_obs").drop("leg"), POOL),
-                    **({"A7rcb": (preds["A7rcb"].filter(pl.col("leg") == leg).drop("leg"),
-                                  preds["A7rcb"].filter(pl.col("leg") == "ctl_obs").drop("leg"), POOL)}
-                       if "A7rcb" in preds else {}),
+            cand = {**{a: (p.filter(pl.col("leg") == leg).drop("leg"), p.filter(pl.col("leg") == "ctl_obs").drop("leg"),
+                           POOL) for a, p in preds.items()},
                     "lookup": (lk, lk_c, POOL),
                     "mean3": (mean_of(list(R.values())), lk_c, POOL),
                     "m3": (R[3], Rc[3], (1, 2))}
