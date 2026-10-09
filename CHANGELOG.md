@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: the panel more-data test scored (ADR 0316 §10). Five more climate models and two more runs of the original raise
+  the anchored direct map's pass rate on held-out climate models from 0.161 to 0.193 (prediction held; the climate models
+  carry it), but on the "as close as a second run" measure it stays 1.35× (tree count) and 1.42× (biomass per tree) a
+  second run's error. `explore_tolerance_measure.py` gains a `PRED_SET` knob.
+
+### Added
+
 - Line X: `scripts/explore_glob_tolerance.py` scores the global venue on the "as close as a second run" error-ratio
   measure (ADR 0317 §8): the best direct map is 1.44× a second run's error on tree count and 1.96× on biomass per
   tree, no better than a lookup null on biomass; a fifth training run does not move it.
