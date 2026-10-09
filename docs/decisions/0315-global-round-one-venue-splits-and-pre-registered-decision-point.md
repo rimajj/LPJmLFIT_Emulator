@@ -589,3 +589,41 @@ The scorer gains `--truth-seed` and `--fold` (calibration scoring on member 2 / 
 **Falsifiers:** A4o's biomass is not monotone in the offset (the channel does not act as modelled); or the member-2
 winner misses GS370 by more than 0.10 on either ratio (calibration does not transfer — a scalar fitted on one member's
 free run fixes that run, not the method).
+
+### 16.5 Result of the A4 calibration grid (runs 2450600–18, scored 2450601–19; `eval/scores_A4cal_*.csv`, `eval/a4_pick.json`)
+
+Member 2, ssp245, from 2014, fold-1 dev cells (1 253), against member 2's own 2071–2100 truth:
+
+| point | trees P/T | biomass per tree P/T | L | pass | tree-count response (deatt.) |
+|---|---|---|---|---|---|
+| identity (TabAL) | 1.192 | 0.506 | 0.857 | 0.015 | 0.73 |
+| `kappa_g` 0.75 / 0.5 / 0.25 | 1.188 / 1.173 / 1.168 | 0.516 / 0.533 / 0.537 | 0.83 / 0.79 / 0.78 | ≤ 0.023 | 0.72–0.73 |
+| **`kappa_g` 0** (family winner) | 1.144 | **0.596** | **0.652** | 0.035 | 0.74 |
+| `logit_off_g` −0.15 / −0.3 | 1.192 / 1.191 | 0.538 / 0.565 | 0.80 / 0.75 | ≤ 0.031 | 0.74–0.76 |
+| **`logit_off_g` −0.5** (family winner) | 1.200 | **0.587** | 0.715 | 0.025 | 0.77 |
+
+* Expectations 1 and 2 **held** (identity in band; κ monotone, ≤ 0.80, winner at the boundary 0). Expectation 3
+  **failed**: the offset family is monotone but its best point is the grid edge and reaches only 0.587 (band was
+  0.85–1.15). Falsifier (non-monotone) not fired.
+* **What it shows.** −0.5 logits lowers the free run's bad-year share by ≈ 3.5 points (0.13 → 0.095 in the run log) —
+  more than the whole free-run excess of §16.3 — and buys only 16 % of the biomass gap. So the NUMBER of bad years is not
+  where the biomass goes; the 60 % of kG0 must come through the other half of that switch, the learned climate effect on
+  the growth-efficiency MAGNITUDE, which is an input of the growth, crown and survival heads (`G_y1`).
+* **Transfer of the κ winner (expectation 4) — already measured:** `kappa_g = 0` on GS370 is exactly §16.3's kG0 run:
+  trees 1.077 / biomass per tree 0.744 vs member 2's 1.144 / 0.596 — **misses by 0.15 on biomass ⇒ the transfer
+  falsifier fires for the κ family** (part of it is the scenario: the switched-off booster matters more under ssp370's
+  larger warming, which is itself a sign it is the climate-driven part of the drift, not a constant bias). No scalar of
+  the two families brings (b) within ±10 % on its own calibration member ⇒ **A4 as specified fails DP-G1 (b)** before
+  any test-member run; the A4o winner's GS370 run is still made, as pre-registered, to measure transfer.
+
+### 16.6 Sign vs magnitude of the growth-efficiency channel — expectations before the run
+
+Two new calibration scalars split `kappa_g` (`kappa_gsign`, `kappa_gmag`, both multiply it; default 1 = unchanged, so
+every earlier run is unaffected). Same basis as §16.5 (member 2 / ssp245 / fold 1 / from 2014), one variable each:
+**kGs0** `kappa_gsign = 0` (climate off on how OFTEN a bad year occurs), **kGm0** `kappa_gmag = 0` (climate off on how
+BAD or GOOD the year is; the residual pool switches with it, as it does for `kappa_g = 0`).
+* Expected: kGm0 recovers **≥ 75 %** of the κ = 0 gain over identity (biomass per tree ≥ 0.574); kGs0 **≤ 25 %**
+  (≤ 0.528, consistent with the offset family's small effect).
+* Falsifier: kGs0 recovers more than kGm0.
+* If kGm0 carries it, the next calibration target is the magnitude model (a scale on its climate booster, or a
+  free-run-trained correction), not the sign.

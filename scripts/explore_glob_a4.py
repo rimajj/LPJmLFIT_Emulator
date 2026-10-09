@@ -11,6 +11,7 @@ statistic L = |ln stems P/T| + |ln biomass-per-stem P/T| at 2071-2100 against me
 Stages
   cal      submit the 7 calibration runs (engine arrays) + one chained scoring job each (--truth-seed 2 --fold 1)
   pick     read eval/scores_A4cal_*.csv, print L per point, the winner of each family -> eval/a4_pick.json
+  split    sec. 16.6: kappa_gsign = 0 and kappa_gmag = 0 on the same basis (+ chained scoring)
   confirm  run each family's winner ONCE on GS370 (member 8, ssp370, all dev cells, from 2014) + chained scoring
 
 Every stage needs the global-root environment (exported here, so sbatch's --export=ALL carries it to the jobs):
@@ -39,6 +40,8 @@ CELLS = os.path.join(XDE, "runs", "cells_fold1.txt")
 GRID = {"A4cal_k0": {"kappa_g": 0.0}, "A4cal_k025": {"kappa_g": 0.25}, "A4cal_k05": {"kappa_g": 0.5},
         "A4cal_k075": {"kappa_g": 0.75}, "A4cal_k1": {},
         "A4cal_o015": {"logit_off_g": -0.15}, "A4cal_o03": {"logit_off_g": -0.3}, "A4cal_o05": {"logit_off_g": -0.5}}
+# sec. 16.6: which half of kappa_g carries the effect (same calibration basis, one variable each)
+SPLIT = {"A4cal_gs0": {"kappa_gsign": 0.0}, "A4cal_gm0": {"kappa_gmag": 0.0}}
 FAMILY = {"k": ["A4cal_k0", "A4cal_k025", "A4cal_k05", "A4cal_k075", "A4cal_k1"],
           "o": ["A4cal_k1", "A4cal_o015", "A4cal_o03", "A4cal_o05"]}
 
@@ -89,16 +92,21 @@ def stage_cal(_a):
         submit(arm, cal, 2, "ssp245", CELLS, 420, arm, "--truth-seed 2 --fold 1")
 
 
+def stage_split(_a):
+    for arm, cal in SPLIT.items():
+        submit(arm, cal, 2, "ssp245", CELLS, 420, arm, "--truth-seed 2 --fold 1")
+
+
 def stage_pick(_a):
     rows = []
-    for arm in GRID:
+    for arm in {**GRID, **SPLIT}:
         f = os.path.join(EVAL, f"scores_{arm}.csv")
         if not os.path.exists(f):
             print(f"{arm}: no score yet")
             continue
         d = pl.read_csv(f).row(0, named=True)
         L = abs(math.log(d["stems_ratio"])) + abs(math.log(d["agb_per_stem_ratio"]))
-        rows.append(dict(arm=arm, cal=GRID[arm], stems=d["stems_ratio"], bpt=d["agb_per_stem_ratio"],
+        rows.append(dict(arm=arm, cal={**GRID, **SPLIT}[arm], stems=d["stems_ratio"], bpt=d["agb_per_stem_ratio"],
                          pass_rate=d["pass_rate"], slope=d["resp_n_per_patch_slope_deatt"], L=L))
     for r in rows:
         print(f"{r['arm']:12s} {json.dumps(r['cal']):24s} stems {r['stems']:.3f} biomass/tree {r['bpt']:.3f} "
@@ -115,15 +123,18 @@ def stage_pick(_a):
 def stage_confirm(_a):
     pick = json.load(open(os.path.join(EVAL, "a4_pick.json")))
     for fam, r in pick.items():
+        if r["cal"] == {"kappa_g": 0.0}:  # identical to sec. 16.3's kG0 run (same member, leg, cells, start)
+            print(f"family {fam}: winner {r['cal']} == runs/tabAL_kG0, scores_TAB_kG0.csv -- not re-run")
+            continue
         arm = f"A4{fam}_GS370"
         submit(arm, r["cal"], 8, "ssp370", None, 400, arm, "")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["cal", "pick", "confirm"])
+    ap.add_argument("stage", choices=["cal", "split", "pick", "confirm"])
     a = ap.parse_args()
-    {"cal": stage_cal, "pick": stage_pick, "confirm": stage_confirm}[a.stage](a)
+    {"cal": stage_cal, "split": stage_split, "pick": stage_pick, "confirm": stage_confirm}[a.stage](a)
 
 
 if __name__ == "__main__":

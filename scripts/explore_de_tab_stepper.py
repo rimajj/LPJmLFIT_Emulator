@@ -93,6 +93,8 @@ CAL_KEYS = [
     "logit_off_surv",
     "log_off_rec",
     "ar_sigma_mult",
+    "kappa_gsign",
+    "kappa_gmag",
 ]
 CAL_ID = {
     "kappa_g": 1.0,
@@ -103,6 +105,10 @@ CAL_ID = {
     "logit_off_surv": 0.0,
     "log_off_rec": 0.0,
     "ar_sigma_mult": 1.0,
+    # split of kappa_g (global venue, ADR 0315 sec. 16.5): the climate booster on the growth-efficiency SIGN and on
+    # its MAGNITUDE separately; both multiply kappa_g, default 1 = unchanged
+    "kappa_gsign": 1.0,
+    "kappa_gmag": 1.0,
 }
 DONOR_K = 20  # recruit donor: one of the DONOR_K same-Type training recruits nearest in Height
 STATE_F = ["Height", "agb", "vegc", "LAI", "fpc_ind", "D95", "G"]
@@ -286,9 +292,10 @@ class TabStepper:
 
     # ---------------------------------------------------------------------------------- pieces
     def _sample_G(self, X, u_s, u_r):
-        H, k = self.H, self.k_g
+        H = self.H
+        ks, k = self.k_g * self.cal["kappa_gsign"], self.k_g * self.cal["kappa_gmag"]
         kk = "k1" if k != 0.0 else "k0"
-        p = sigmoid(H.raw("gsign", X, k) + self.cal["logit_off_g"])
+        p = sigmoid(H.raw("gsign", X, ks) + self.cal["logit_off_g"])
         neg = u_s < p
         mag = np.zeros(X.height)
         for s, msk in (("neg", neg), ("pos", ~neg)):
