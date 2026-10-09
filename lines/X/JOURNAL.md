@@ -525,3 +525,13 @@ wait. Built `explore_glob_eval.py` (Germany reduction code, 25 patches, GS370 ve
 ⇒ tightened (a) to "above the best null". A7 direct map (job 2445762, 3 min): A7s 0.131 pass, response slope 0.63 vs 0
 for its twin, but biomass per tree +12.4 % ⇒ fails (b). Owner also asked whether Germany runs were still going: all 18
 D2 jobs CANCELLED, the 64 queued S-D*/S-Dcol* jobs are line S's global five-model panel (kept on purpose).
+
+## 2026-10-09 — the calendar test for A2g, and a leak in its published score (ADR 0315 §14)
+
+Built `scripts/explore_glob_clock.py` (expectations in its header before the run): reloaded the A2g fold models,
+re-predicted member 8 with (a) ssp370/ssp126 contrast — elapsed time cancels — and (b) a no-warming drive (1985–2014
+years shuffled), compared with the track-D panel's constant-climate control. While writing it, found the prediction
+input back-fills treeless-in-history cells from the test member's 2071–2100 truth; measured it in the same run.
+Jobs 2447108/09/10, all four harness checks pass. Results: leak inflated the tree-count response slope 0.65 → 0.86;
+the arm separates scenarios in total but not per cell (0.30); the panel comparison is inconclusive by its own basis.
+Next: clean retrain.
