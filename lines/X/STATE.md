@@ -93,19 +93,23 @@ data if that is mandatory and we have solid results that support the assumption 
 climate model held out) the anchored direct map **A7r** passes the bar on 11/13 held-out-model cases (`explore_panel_a7.py
 seen`, 5 seeds, `LGB_SEED`), global GS370 on the bar 0.140 ± 0.004 (`explore_glob_a7r.py`). Data curves all rising ⇒
 **more data submitted** (`scripts/explore_panel_runs.py`): 5 new climate models × 3 scen for m1–m4 + new members m5/m6
-(spin-up + everything). Jobs: forcing 2451723 (done, gate PASS); runs 2451818/20/22/24/26/28 (one node per member),
-collectors 2451819/21/23/25/27/29 → tables `…/esm_land_emulator_data/xpanel_runs/m<k>/<leg>/` (`status`:
-`python scripts/explore_panel_runs.py status`). Also resubmitted line S's two dead panel legs (m3 MPI ssp585 run 2451101 →
-collector 2451102; m4 UKESM ssp585 2451103 → 2451104; these write into line S's trackD tables, unchanged tooling).
+(spin-up + everything). Jobs: forcing 2451723 (done, gate PASS); runs 2451916/18/20/22/24/26 (spread over free cores: the one-node
+pin waited ~3 days and matters only for row-by-row reproduction of an existing run), collectors 2451917/19/21/23/25/27 → tables `…/esm_land_emulator_data/xpanel_runs/m<k>/<leg>/` (`status`:
+`python scripts/explore_panel_runs.py status`). Also resubmitted line S's two dead panel legs (m3 MPI ssp585 run 2451928 →
+collector 2451929; m4 UKESM ssp585 2451930 → 2451931; all 105 blocks re-run, spread over nodes; these write into line S's
+trackD tables with unchanged tooling).
 **NEXT, in order:**
-1. When the runs land: extend `explore_panel_prep.py` (LEGS/MEMBERS + the xpanel_runs table root) and test ADR 0316 §7's
-   PREDICTION (A7r on the 5 original held-out models' ssp370, trained on 9 models and runs m1,m2,m3,m5,m6: mean pass ≥ 0.182,
-   bar on ≥ 12/13; falsifier gain < 0.01). Do NOT re-tune before scoring it.
-2. Collect the panel LSTM score (job 2451440 → `xpanel/eval/lstm_scores.csv`; held-out-cell setting, no anchor) and write
-   it into ADR 0316 §9. If it beats A7s-core, port the anchor into it (cells seen).
-3. Owner decision raised (ADR 0316 §8): which reading of the acceptance tolerance — a second run of the original passes only
+1. The prediction test is CHAINED (already extended code: `explore_panel_prep.py` reads `xpanel_runs`, `explore_panel_a7.py
+   more`): statistics 2452216 → `more` seeds 1–5 (2452217–21, logs `logs/X-pan-more-s*.out`, outputs
+   `xpanel/eval/a7_more_s<k>.csv`). Aggregate the 5 seeds per (set, held-out model, scenario) and read ADR 0316 §7's
+   PREDICTION (`both` vs `base` on ssp370: ≥ +0.02, bar on ≥ 12/13; falsifier < +0.01); `mod`/`run` split the gain.
+   If a job died: `python scripts/explore_panel_runs.py status`, rerun the missing collector, then the chain. Do NOT
+   re-tune before scoring it. Write the result as ADR 0316 §10 (or 0317 if it changes direction).
+2. Panel LSTM: DONE, parked (ADR 0316 §9: stable for 3 of 5 held-out models, runaway for 2; levels below the direct map).
+3. Global venue: A7r with 5 training runs (2,3,4,6,7) clears DP-G1 (a) by 0.003 — marginal (ADR 0316 §5).
+4. Owner decision raised (ADR 0316 §8): which reading of the acceptance tolerance — a second run of the original passes only
    17–21 % of cells under the current reading. Also: whether cells the original was never run on must be emulated (§4).
-4. If the prediction holds: price global (all-cell) runs under more climate models (disk is the cost; trees > 5 m only).
+5. If the prediction holds: price global (all-cell) runs under more climate models (disk is the cost; trees > 5 m only).
 
 ### 0🌍 OWNER INSTRUCTION 2026-10-08 (ADR 0313): TRAIN ON BILLING'S GLOBAL RUNS, NOT GERMANY — this block wins over everything below
 

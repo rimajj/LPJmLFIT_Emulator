@@ -594,3 +594,8 @@ mixed (pooled yes, per case 7/13). Data curves (models, runs, ssp585) all still 
 models (regrid gate byte-identical) for m1–m4 and two new independent members m5/m6; 62/62 configs pass lpjcheck. Resubmitted
 line S's two panel legs that died of a cluster launch failure. 75 panel LSTM fold models trained (all converged), scoring
 chained. Jobs 2451013/14/146/116/117/438/440/593/596/605/614/619–23/628/684/711/723/818–29, 2451101–04.
+Evening: the panel LSTM scored (2451440) — stable for 3 of 5 held-out models, runaway (up to 6-8x stems) for MRI/UKESM
+fits, levels below the direct map; parked. A first summary had averaged the runaways into "2.2x"; caught by checking
+the yearly predictions decade by decade. Global A7r with member 7 as a fifth training run: +0.003 (inconclusive, at
+the falsifier line), clears the bar by 0.003. The panel extension runs were stuck ~3 days for whole nodes; resubmitted
+spread over free cores (new runs need no node pin), all started at once. Prediction test chained (2452216-21).

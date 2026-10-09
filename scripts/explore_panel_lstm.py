@@ -65,7 +65,7 @@ I19, I71 = YS - Y0, W0 - Y0  # 19, 71
 CLIM = GL.CLIM
 TRAITS, PN, PS, PFTS = GL.TRAITS, GL.PN, GL.PS, GL.PFTS
 TRAIN_M, TRUTH, REPLICA = (1, 2, 3), 4, 3
-SEQ_LEGS = [*PP.SLEGS, "ctl_obs"]
+SEQ_LEGS = [*PP.SLEGS, *PP.NEW_SLEGS, "ctl_obs"]
 
 
 def log(*a):
@@ -81,9 +81,10 @@ def stage_yearly(a) -> None:
         if i % a.nparts != a.part:
             continue
         out = os.path.join(YEARLY, f"m{m}_{lg}.parquet")
-        path = os.path.join(PP.PANEL_IND, f"m{m}", lg, "ind.parquet")
-        if os.path.exists(out) or not os.path.exists(path):
+        td = PP.table_dir(m, lg)
+        if os.path.exists(out) or td is None:
             continue
+        path = os.path.join(td, "ind.parquet")
         t0 = time.time()
         y0, y1 = (2000, 2019) if lg == "hist" else (2020, 2100)
         blocks = list(range(105)) if lg == "hist" else PP.complete_blocks(m, lg)
@@ -122,7 +123,7 @@ def ctl_sequence(m: int) -> list[int]:
     mm, fy, *_ = open_clm(PP.OBS["prec"])
     c = PP.cells()
     probe = c.group_by("block").agg(pl.col("Cell").min()).sort("block")["Cell"].to_list()[::15]  # 7 blocks
-    d = (pl.scan_parquet(os.path.join(PP.PANEL_IND, f"m{m}", "ctl_obs", "daily.parquet"))
+    d = (pl.scan_parquet(os.path.join(PP.table_dir(m, "ctl_obs"), "daily.parquet"))
          .filter(pl.col("Cell").is_in(probe)).select("Cell", "Year", "Day", "prec").collect().sort("Cell", "Year", "Day"))
     pool = np.array([[np.asarray(mm[y - fy][cell], dtype=np.float64) for cell in probe] for y in range(1990, 2020)])
     seq = []
