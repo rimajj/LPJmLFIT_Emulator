@@ -132,6 +132,13 @@ no per-tree column the Oct layout lacks.
    Per-build retrains clean (§15.5): Feb pass 0.103 / slope 0.83, May 0.097 / 0.77 — §13's reading stands.
    **Rule from now on:** every recurrent arm uses `fill_causal`; price a leak with a retrain, never a re-prediction.
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
+   ⚠ **All three sit on the Germany per-tree stepper (TAB), which has never run on global data — the PORT comes first.**
+   Map + blockers + the data root to build: `docs/notes/exploration_glob_tab_port.md` (2026-10-09). `XDE_ROOT` alone
+   does not port it: Int16 cell ids (renumber dev cells in the new root), the engine's 2070 horizon, recruit types 1–5
+   only, ONE grass type everywhere (global has 7/8/9 — a remodel), SH4 crashes at the first ssp-window year (no 2070
+   table), the margin arm's weather is built from truth (none for 2015–2070). Parameters: the Feb/May runs used the
+   LOCAL par set on every value checkable from output (longevity 400/125, k_root 0.02, mort_temp 5.0); Billing's live
+   files were edited after them (Oct). Order: build the root → SH2..A6 stages → plain TAB + its twin on GS370 → A3/A4/A6.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
 
