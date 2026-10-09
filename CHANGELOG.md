@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: `scripts/explore_glob_tolerance.py` scores the global venue on the "as close as a second run" error-ratio
+  measure (ADR 0317 §8): the best direct map is 1.44× a second run's error on tree count and 1.96× on biomass per
+  tree, no better than a lookup null on biomass; a fifth training run does not move it.
+
+### Added
+
 - Line X: ADR 0317 and `scripts/explore_tolerance_measure.py` — the acceptance target re-read as "as close as a second
   run of the original" (owner decision 2026-10-09), measured as an error ratio against a second run over all cells.
 
