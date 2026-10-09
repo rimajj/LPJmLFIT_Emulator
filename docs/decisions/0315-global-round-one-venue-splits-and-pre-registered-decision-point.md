@@ -300,3 +300,77 @@ Within training years (free from 1985, at 2014): Feb trees 0.979 / biomass 1.013
   this gap cannot be attributed to the build. (A7's draw spread, §11.1, was 0.003 in pass.)
 * One training run instead of four costs 0.010 of pass and 0.08 of response slope (Feb).
 * Untested per build: the Oct builds (no scenario legs to train a gap-crossing model on).
+
+## 14. Does A2g read the climate or the calendar? — and an input leak in §12 (`scripts/explore_glob_clock.py`, jobs 2447108/09/10)
+
+Expectations and the decision rule were written in the script header before the run. No retraining: the §12 fold
+models were reloaded. Harness checks all passed: the reloaded models reproduce the stored predictions exactly (max
+relative difference 0); the recomputed 20-year trailing climate means match the stored ones (≤ 5e-4); the twin's
+scenario contrast is exactly 0; the panel's constant-climate and ssp370 legs start within 1.5 % of each other in stems.
+
+**14.1 An input leak in §12, found while writing the probe.** The prediction input fills missing state values forward
+and then BACKWARD over the whole leg. A cell with no trees in 1985–2014 has no trait quantiles or species shares there,
+so they were back-filled from the test member's own 2071–2100 truth. 303 of the 6 420 dev cells are exposed — the cells
+trees colonise under warming (3.1 % of late-century stems). Training inputs carry the same fill (from training members,
+so not a test leak, but the model learned to use it). Re-predicted with 2015–2100 masked before filling:
+
+| arm, input | pass | trees P/T | biomass per tree P/T | tree-count response (deatt. slope) | wood-density response |
+|---|---|---|---|---|---|
+| lstm, as published (§12) | 0.125 | 0.994 | 1.054 | **0.86** | 0.99 |
+| lstm, clean | 0.125 | 0.975 | 1.072 | **0.65** | 0.99 |
+| lstmCB, as published | 0.102 | 0.917 | 1.245 | 0.69 | 0.88 |
+| lstmCB, clean | 0.102 | 0.904 | 1.261 | 0.53 | 0.88 |
+
+⇒ §12's tree-count response slope 0.86 was inflated by the leak; the clean value is **0.65**, the same as A7s (0.63),
+and climate adds **0.12** of slope over the twin, not 0.17. The DP-G1 verdict is unchanged (fails (a); (b) and (c) still
+pass on the clean numbers; (d), the free run from 1985, carries the same fill at its first year and was not re-run). §13's per-build runs use the same code and carry the same leak. The Germany LSTM
+(`explore_de_rec_lstmstats.py`, prediction at line 777) has the same fill pattern; its exposure is not measured.
+
+**14.2 Scenario contrast (truth exists): ssp370 minus ssp126 at 2071–2100, member 8, clean input.** Same start state
+and same number of years in both legs, so elapsed time cancels.
+
+| | stems: aggregate / deatt. slope | biomass per tree | SLA median | wood-density median |
+|---|---|---|---|---|
+| truth noise share (members 7 vs 8) | 0.13 | 0.37 | 0.47 | **0.59 — noise-dominated, not read** |
+| ceiling (member 7) | 1.01 / 0.98 | 1.00 / 1.04 | 0.68 / 0.97 | — |
+| **lstm** | **1.08 / 0.30** | 0.82 / 0.66 | −0.02 / 0.20 | — |
+| lstmCB (twin) | 0 / 0 (harness) | 0 / 0 | 0 / 0 | — |
+| A7s, ssp370 IN training (GM) | 0.94 / 0.51 | 0.69 / 0.76 | −0.26 / 0.26 | — |
+
+On the 1985–2014 baseline, the ssp126 response as a share of the ssp370 response: stems truth 0.32 / lstm 0.10;
+biomass per tree truth −0.13 / lstm −0.17. A model that only counted years would give ≈ 1.
+
+* **The lstm does separate the scenarios** — the area total of the stems difference is right (1.08), and its weak
+  scenario responds less than its strong one (more so than the truth). That is not a calendar.
+* **But where the difference falls is mostly wrong:** the per-cell slope of the stems contrast is 0.30, below the
+  pre-registered 0.5 ⇒ by the rule, stems are flagged; biomass per tree (0.66) is not; SLA (0.20) is flagged (its
+  noise share 0.47 is just under the 0.5 reading limit). The direct window map, with ssp370 in training, does somewhat
+  better on stems (0.51).
+
+**14.3 No-warming drive vs the original model's constant-climate control (different build and cell set).** Changes
+2071–2100 minus the first free decade, as a share of the same arm's ssp370 change (area-weighted):
+
+| | stems | biomass per tree | wood-density median |
+|---|---|---|---|
+| lstm, no warming (6 420 dev cells, Feb build) | −0.22 | −0.38 | 0.83 |
+| lstm, ssp126 | −0.22 | −0.18 | 0.58 |
+| original, constant climate (panel, 1 050 cells, mean of m1–m3) | −1.05 | −0.61 | 0.43 (members 0.50 / 0.05 / 0.52) |
+| original, ssp126 (panel) | −0.59 | −0.31 | 0.60 |
+
+* The pre-registered rule (lstm minus original > 0.3) **fires for stems (+0.83) and wood density (+0.40)**, not for
+  biomass per tree (+0.23). Recorded as written.
+* ⚠ **The basis does not support reading it as a calendar effect**, and this was seen only after the run: the lstm
+  vs panel gap is as large for **ssp126** (−0.22 vs −0.59) as for no warming, so it is a difference between the two
+  cell sets/builds/baselines, not something specific to a non-warming climate. On the 88 cells the two sets share the
+  ratios swing by several units between members (unreadable). This arm of the probe is therefore inconclusive.
+* **What the panel does establish about the original model:** under constant climate its stems FALL by about as much
+  as they rise under ssp370 (−0.34 vs +0.33 stems per patch), and its wood-density median drifts in the same direction
+  as under warming (shares 0.05–0.52 by member). ⇒ **Part of the original's "warming response" in wood density is drift
+  shared by every scenario**; a twin that reproduces it from elapsed time is partly reproducing real drift, not only
+  faking a response. §12's reading ("the wood-density response is not attributable to climate at all") is therefore
+  not evidence of a defect by itself.
+
+**14.4 Reading.** The calendar hypothesis in its strong form is falsified for stems (the arm separates scenarios, with
+the right total). Its weak form holds for where the response falls (per-cell slope 0.30). The leak fix removes a quarter
+of the published tree-count response skill. A clean retrain (masking the fill during training too) is required before
+any recurrent arm is scored again. Outputs: `eval/clock_leak.csv`, `eval/clock_contrast.csv`, `eval/clock_nowarm.csv`.

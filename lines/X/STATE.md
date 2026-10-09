@@ -122,10 +122,14 @@ retrained on one run of each build reach the same skill on Feb, May, Oct-1/6/7/8
 the pre-registered ratio test was badly posed — §11.1). Per-version inputs to fix: `tstress_pft0` threshold per build,
 no per-tree column the Oct layout lacks.
 **NEXT, in order:**
-1. **A2g scored (ADR 0315 §12):** pass 0.125 (fails (a) by 0.015; A7s 0.131), totals −0.6 % / +5.4 %, response slope
-   0.86 — but its climate-blind twin gives 0.69 (elapsed time as a clock). Per-version A2g DONE (§13): Feb 2→8 pass 0.115, May 9→10 0.101 — same behaviour, May slightly worse, draw spread
-   unmeasured.
-   NEXT: a non-warming test of the clock (constant-climate or plateau scenario); a second draw per build if needed.
+1. **A2g scored (ADR 0315 §12–14).** ⚠ §14 (2026-10-09, `scripts/explore_glob_clock.py`): the LSTM's prediction
+   input back-filled cells that were treeless in 1985–2014 from the TEST member's 2071–2100 truth (303 colonised cells);
+   clean, the tree-count response slope is **0.65, not 0.86** (twin 0.53); pass 0.125 unchanged. Calendar test: the arm
+   DOES separate ssp370 from ssp126 (stems total 1.08) but puts the difference in the wrong places (per-cell slope 0.30);
+   the no-warming comparison against the panel's constant-climate control is inconclusive (cell-set/build gap, same size
+   under ssp126). The original model itself drifts under constant climate (stems fall as much as they rise under ssp370).
+   NEXT: **fix the fill in `explore_glob_lstm.py` (mask 2015–2100 before filling, in training AND prediction) and retrain
+   A2g + twin** before any recurrent arm is scored again; also check the Germany LSTM's exposure (same pattern, line 777).
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
