@@ -581,3 +581,16 @@ growth-efficiency MAGNITUDE (an input of the growth heads), not the count of bad
 (`kappa_gsign`/`kappa_gmag`, default 1). The climate-blind twin on member 2 is itself 26 % short on biomass per tree.
 Offset −0.5 transfers to member 8 / ssp370 within 0.03 but scores 0.614 / pass 0.024. A4 fails; recommendation to
 park the per-tree arms on this venue recorded in STATE. Jobs 2450600–19, 2450733–36, 2450741/42, 2450798/99.
+
+## 2026-10-09 (late afternoon) — the panel venue, the deployment setting, and more data (ADR 0316)
+
+Owner: continue, produce more data if solid results support it; asked for a status report (given in chat). Built the
+panel venue on line S's Track-D runs (climate features, levels, yearly stats, control draws recovered exactly from daily
+precipitation). Direct map with cells held out: below the lookup null, falsifier fired as written — the split also held
+out the cells. Added the deployment setting (cells seen) and a per-cell anchor: A7r passes the bar on 11/13 held-out-model
+cases (fails the two hottest), ~0.9 of a second run's agreement in range; global GS370 exactly on the bar. Found that
+ADR 0315's 0.131 was a favourable draw (polars row order × LightGBM bagging; 5-seed mean 0.126). Cell-level coverage test
+mixed (pooled yes, per case 7/13). Data curves (models, runs, ssp585) all still rising ⇒ produced more data: 5 new climate
+models (regrid gate byte-identical) for m1–m4 and two new independent members m5/m6; 62/62 configs pass lpjcheck. Resubmitted
+line S's two panel legs that died of a cluster launch failure. 75 panel LSTM fold models trained (all converged), scoring
+chained. Jobs 2451013/14/146/116/117/438/440/593/596/605/614/619–23/628/684/711/723/818–29, 2451101–04.
