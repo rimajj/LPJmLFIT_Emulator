@@ -35,6 +35,11 @@ at least +-0.004 in pass rate that was never measured.
 SECOND RUN (pre-registered before it, 2026-10-09): rows sorted (deterministic), every variant fitted with LightGBM seeds
 1-5; the verdict uses the MEAN over the five seeds, the spread is reported beside it. Expectations unchanged (E1, E2,
 falsifier). The harness check becomes: the A7s seed mean within 2 seed-sd of the stored 0.1307.
+
+THIRD RUN, `--train 2,3,4,6,7` (pre-registered before it, 2026-10-09): the data lever on THIS venue with data on disk.
+Member 7 (the replica that sets the tolerance) becomes a fifth training run of the same build; it carries no
+information about member 8. Expected from the panel runs curve (ADR 0316 sec. 6): A7r +0.005 to +0.01 over the
+4-run 0.1401 (5-seed means). Falsifier: < +0.003 (the global venue does not respond to more runs).
 """
 
 from __future__ import annotations
@@ -55,8 +60,11 @@ PANEL, CLIM_COLS = ev.PANEL, A7.CLIM_COLS
 ANCHOR_LEGS = ("historical", "ssp126", "ssp245")
 
 
+TRAIN = tuple(int(x) for x in os.environ.get("A7R_TRAIN", ",".join(map(str, ev.TRAIN))).split(","))
+
+
 def anchored(df: pl.DataFrame) -> pl.DataFrame:
-    base = df.filter(pl.col("seed").is_in(list(ev.TRAIN)) & pl.col("scen").is_in(list(ANCHOR_LEGS)))
+    base = df.filter(pl.col("seed").is_in(list(TRAIN)) & pl.col("scen").is_in(list(ANCHOR_LEGS)))
     vals = PANEL + CLIM_COLS
     tot = base.group_by("Cell").agg([pl.col(v).sum().alias(f"S_{v}") for v in vals]
                                     + [pl.col(v).count().alias(f"N_{v}") for v in vals])
@@ -71,7 +79,7 @@ def anchored(df: pl.DataFrame) -> pl.DataFrame:
     out = out.with_columns(ex).with_columns(
         [(pl.col(c) - pl.col(f"anc_{c}")).alias(f"dclim_{c}") for c in CLIM_COLS]
         + [(pl.col(f"{c}_cb") - pl.col(f"anc_{c}")).alias(f"dclim_{c}_cb") for c in CLIM_COLS])
-    hm = (df.filter(pl.col("seed").is_in(list(ev.TRAIN)) & (pl.col("scen") == "historical"))
+    hm = (df.filter(pl.col("seed").is_in(list(TRAIN)) & (pl.col("scen") == "historical"))
           .group_by("Cell").agg([pl.col(q).mean().alias(f"hm_{q}") for q in PANEL]))
     out = out.join(hm, on="Cell", how="left").with_columns(
         [(pl.col(f"s0_{q}") - pl.col(f"hm_{q}")).alias(f"memoff_{q}") for q in PANEL])
@@ -116,14 +124,28 @@ def fit_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.DataFrame:
 def main():
     t0 = time.time()
     cells = ev.dev_cells()
-    df = anchored(A7.build_rows(cells))
+    rows0 = A7.build_rows(cells)
+    extra = [m for m in TRAIN if m not in ev.TRAIN]
+    for m in extra:  # a further training run of the same build (historical + the training scenarios)
+        h = ev.lev(ev.mname("historical", m)).rename({q: f"s0_{q}" for q in PANEL})
+        cw = A7.climate_windows(cells["Cell"].to_list())
+        add = []
+        for scen in ("historical", "ssp126", "ssp245"):
+            y = ev.lev(ev.mname(scen, m))
+            add.append(y.with_columns(pl.lit(m).alias("seed"), pl.lit(scen).alias("scen")).join(h, on="Cell")
+                       .join(cw.filter(pl.col("scen") == scen).drop("scen"), on="Cell"))
+        hist_clim = cw.filter(pl.col("scen") == "historical").drop("scen").rename({c: f"{c}_cb" for c in CLIM_COLS})
+        st = pl.read_parquet(os.path.join(A7.CLIM, "cell_static.parquet")).select("Cell", "lon", "soil_code")
+        rows0 = pl.concat([rows0, pl.concat(add).join(hist_clim, on="Cell").join(cells, on="Cell").join(st, on="Cell")
+                           .select(rows0.columns)])
+    df = anchored(rows0)
     T_w, T_h = ev.lev(ev.mname("ssp370", ev.TRUTH)), ev.lev(ev.mname("historical", ev.TRUTH))
     R_w, R_h = ev.lev(ev.mname("ssp370", ev.REPLICA)), ev.lev(ev.mname("historical", ev.REPLICA))
     tb = (T_w.filter(pl.col("n_per_patch") > 0).select("Cell")
           .vstack(T_h.filter(pl.col("n_per_patch") > 0).select("Cell")).unique())
     scored = cells.join(tb, on="Cell")
     df = df.sort(["seed", "scen", "Cell"])
-    tr = df.filter(pl.col("seed") != ev.TRUTH)
+    tr = df.filter(pl.col("seed").is_in(list(TRAIN)))
     te = df.filter(pl.col("seed") == ev.TRUTH)
     rows = []
     for sd in range(1, 6):
@@ -139,11 +161,12 @@ def main():
             ev.log(sd, v, {k: round(x, 4) for k, x in s.items() if isinstance(x, float) and k in (
                 "pass_rate", "stems_ratio", "agb_per_stem_ratio", "resp_n_per_patch_slope_deatt")})
     d = pl.DataFrame(rows)
-    out = os.path.join(ev.EVAL, "scores_A7r_GS370.csv")
+    tag = "" if TRAIN == tuple(ev.TRAIN) else "_train" + "".join(map(str, TRAIN))
+    out = os.path.join(ev.EVAL, f"scores_A7r_GS370{tag}.csv")
     d.write_csv(out)
     num = [c for c, t in d.schema.items() if t.is_numeric() and c != "lgb_seed"]
     summ = d.group_by("arm").agg([pl.col(c).mean() for c in num] + [pl.col("pass_rate").std().alias("pass_sd")])
-    summ.write_csv(os.path.join(ev.EVAL, "scores_A7r_GS370_mean.csv"))
+    summ.write_csv(os.path.join(ev.EVAL, f"scores_A7r_GS370{tag}_mean.csv"))
     with pl.Config(tbl_cols=10, float_precision=4):
         print(summ.select("arm", "pass_rate", "pass_sd", "pass_rate_flat10", "stems_ratio", "agb_per_stem_ratio",
                           "resp_n_per_patch_slope_deatt", "resp_Wooddens_q50_slope_deatt"))

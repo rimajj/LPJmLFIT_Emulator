@@ -105,6 +105,14 @@ DP-G1: (a) **on the bar** (0.140 vs 0.140; not a pass), (b) passes, (c) passes (
 Harness: the re-run A7s seed mean is 2 sd below the stored 0.1307 — recorded as FAIL as written; the cause is §5's draw
 noise, not code or data (the inputs and code are unchanged since the stored run).
 
+**A fifth training run on the global venue** (`A7R_TRAIN=2,3,4,6,7`, job 2451988; pre-registered in the script header:
+expected +0.005 to +0.01, falsifier < +0.003). Member 7 (the tolerance's replica, same build) joins training; it carries
+no information about member 8. A7r **0.1431 ± 0.0034** vs 0.1401 with four runs: **+0.0030** (paired by seed: +0.004,
++0.002, +0.010, −0.005, +0.003). Expectation not met; falsifier exactly at its line — **inconclusive**: this venue
+responds weakly to one more run. On these numbers A7r clears DP-G1 (a) by 0.003 (≈ one seed sd), passes (b) (stems
+1.012, biomass per tree 1.068) and (c) (0.90 vs the twin's 0.55); (d) does not apply (no stepping). **A marginal pass,
+not a robust one.** Harness: the spatial A7s seed mean 0.1285 ± 0.0038 is within 2 sd of the stored 0.1307 (PASS).
+
 ## 6. Is it the climate coverage? Two tests
 
 **Cell level, within a test case** (`explore_panel_envelope.py`, job 2451711; harness: recomputed per-cell pass equals
@@ -140,7 +148,10 @@ Under the owner's instruction above, §6's curves are the solid result that supp
 Same binary snapshot and configuration as line S's campaign; the configuration differs from line S's member-3 file only
 in the seed, the restart path and two dropped diagnostic outputs (verified by `cpp` diff); 62 of 62 checkable configs
 pass `lpjcheck`. The `ind` writer emits only trees > 5 m (the scored population). Nothing of line S is written; its
-restarts, forcing and collector are read or run unchanged. Jobs 2451818–29 (one node per member, collector chained).
+restarts, forcing and collector are read or run unchanged. Jobs 2451916–27 (first submitted pinned to one node as 2451818–29; the scheduler put a free node ~3 days out, so they were
+resubmitted spread over free cores — the pin matters only for reproducing an existing run row by row). Line S's two dead
+legs were resubmitted the same way (2451928/30, both 105/105). The test of the prediction is chained:
+statistics 2452216 (after all six collectors) → `explore_panel_a7.py more` with seeds 1–5 (2452217–21).
 
 **Prediction, written before the runs exist:** A7r on the 5 original held-out models' ssp370, trained on the other 9
 models and runs m1, m2, m3, m5, m6: mean pass ≥ 0.182 (≥ +0.02 over 0.162), the bar passed on ≥ 12 of 13 HG cases.
@@ -160,8 +171,18 @@ agreement (§5).
 
 ## 9. Not done / open
 
-* The recurrent arm on the panel (`explore_panel_lstm.py`, 75 fold models trained, all converged; scoring job 2451440)
-  — result pending; it is on the held-out-cell setting (no anchor).
+* **The recurrent arm on the panel** (`explore_panel_lstm.py`, held-out cells, no anchor; 75 fold models, every one beats
+  carrying 2019 forward on its validation blocks; scored by job 2451440, harness replay 0.962 with totals exactly 1.000).
+  ⚠ A first summary averaged the models and read "totals 2.2×"; per held-out model the picture is two-sided:
+  **stable for GFDL, IPSL, MPI** (HG ssp370 stems 0.94–0.98, biomass per tree 1.05–1.08; IPSL ssp585 1.21) and
+  **runaway for MRI and UKESM** (stems up to 6–8× — including under the constant-climate control, so a property of
+  those fold models' free run, not of the climate), and for three of five H585G fits. Yearly predictions of a stable
+  model track the truth decade by decade (GFDL ssp370: total stems 0.94–0.97, biomass 0.97–1.01, 2025–2100).
+  Level pass 0.034–0.095 on the scenarios — **below the held-out-cell direct map on all 5 models**; its
+  scenario-minus-control tree-count slope (0.38–0.55 where stable) is above that map's for 4 of 5. Within the training
+  years (free from 2000, at 2019): stems 0.96, biomass per tree 1.01. The pre-registered falsifier (no pass advantage
+  on ≥ 3 of 5 AND no response advantage) did not fire (response half). E1 (scenario-minus-control slope ≥ 0.5 on ≥ 4 of
+  5) failed (2 of 5). **Parked**: far behind the anchored map, and half its fits are unstable over 81 free years.
 * The per-tree arm is not retried here (ADR 0315 §16.7 stands).
 * No global (all-cell) runs under more climate models: §6 measures data value on 1 050 cells; whether the same holds at
   54 020 cells, and what it would cost in disk (the per-tree table dominates), is the next decision, not taken here.
