@@ -627,3 +627,35 @@ BAD or GOOD the year is; the residual pool switches with it, as it does for `kap
 * Falsifier: kGs0 recovers more than kGm0.
 * If kGm0 carries it, the next calibration target is the magnitude model (a scale on its climate booster, or a
   free-run-trained correction), not the sign.
+
+### 16.7 Result of the split, the twin on the calibration basis, and the A4o transfer run (runs 2450733/35/98/741)
+
+Calibration basis (member 2 / ssp245 / fold 1). The climate-blind twin there: **trees 0.948, biomass per tree 0.743**
+(pass 0.039) ⇒ the climate-attributable biomass gap on this basis is 0.743 − 0.506 = 0.237.
+
+| point | biomass per tree | share of the 0.237 gap |
+|---|---|---|
+| `kappa_gsign = 0` (how often) | 0.536 | 13 % |
+| `kappa_gmag = 0` (how bad / good) | 0.571 | 27 % |
+| `kappa_g = 0` (both) | 0.596 | 38 % |
+| `logit_off_g = −0.5` | 0.587 | 34 % |
+
+* §16.6 **both expectations narrowly missed** (magnitude 72 % of the κ = 0 gain, bar ≥ 75 %; sign 33 %, bar ≤ 25 %);
+  the falsifier (sign > magnitude) did not fire. The halves add up (13 + 27 ≈ 38 %).
+* **On this basis the growth-efficiency channel carries only 38 % of the climate-attributable gap** (60 % on GS370:
+  the booster matters more under ssp370). The rest is spread over channels that were not attributed or their
+  interactions; no single scalar reaches it.
+* **A4o on GS370** (member 8, ssp370, all 5 809 dev cells, `logit_off_g = −0.5` frozen from member 2): trees 1.174,
+  biomass per tree **0.614**, pass **0.024**, tree-count response 0.80, 0.17 core-s per cell-year. Against member 2's
+  1.200 / 0.587: **the calibration transfers (|Δ| 0.03 on both ratios, bound 0.10)**, but does not pass (b), and the
+  pass rate is below carrying 2014 forward (0.057). Expectation 4: transfer held, (b) failed, response held, pass held.
+* **Verdict for A4 (scalar free-run calibration of A-TAB): fails DP-G1 (a), (b); (d) untested.** Its best GS370 point
+  (kG0, 0.744 / 1.077, pass 0.025) still fails (b) by 26 % on biomass per tree. Two separate defects remain and neither
+  is a scalar's job: (1) the slow growth deficit that the climate-blind twin shows on its own (biomass per tree 0.74 on
+  member 2, 0.90 on member 8 ssp370; −23 to −29 % over 1985–2014 in §16.1); (2) a climate-driven collapse spread over
+  several heads, which compounds once the simulated stand has left the training distribution.
+* **Consequence for the other per-tree arms.** A3 (retrain on the arm's own states) is the textbook fix for (2) but needs
+  the ORIGINAL's response on those states — no C re-run harness exists on this venue (say so; do not fake it with
+  truth-relabelling). A6 (the margin / NPP route) needs blocker B7 (weather frames rebuilt from climate) and four
+  single-grass modules ported. On the evidence so far the per-tree route is the weakest on the global venue (best pass
+  0.035 on its calibration member, 0.025 on GS370) against the cell-level arms (A7s 0.131, A2g 0.119).

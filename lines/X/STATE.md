@@ -146,13 +146,19 @@ no per-tree column the Oct layout lacks.
    0.057), trees 1.17, biomass per tree **0.505**; its climate-blind twin 0.026 / 0.90 / 0.90. Two failures: a slow
    growth deficit in both (−23..−29 % biomass per tree by 2014 from 1985) and a CLIMATE-driven halving only in the arm
    (on ssp126 too ⇒ not extrapolation). 0.17 core-s per cell-year.
-   RUNNING at handoff: the one-channel attribution of §16.2 (kappa_g / kappa_growth / kappa_surv / kappa_rec = 0, from
-   2014, ssp370): runs 2450390/92/402/404, scores 2450391/401/403/405 → `logs/X-gtabev-k*.out`,
-   `eval/scores_TAB_k*.csv`. Pre-registered: kG0 closes ≥ 50 % of the biomass gap (falsifier < 25 %).
-   NEXT: read the attribution against §16.2 → decide A4 (calibration scalars on TRAINING-member free runs only; the
-   attribution says which scalar matters) and whether A6 is worth porting (needs
-   the margin model's weather rebuilt from climate, blocker B7, and four single-grass modules). A3 needs the original's physics on the arm's own
-   states — not available on this venue without a C re-run harness; say so, do not fake it.
+   **Attribution DONE (§16.3):** the growth-efficiency climate booster carries 60 % of the GS370 biomass collapse; the
+   growth-amount booster 0 %, survival 0 %, and the recruit booster was SUPPRESSING recruits (off ⇒ +8 % stems). The
+   sign head is calibrated on true stands (held-out, within 0.4–0.6 points); the excess bad years appear only in the
+   free run (drift compounds). **A4 DONE — fails DP-G1 (a), (b) (§16.5–16.7):** scalar calibration on member 2 /
+   ssp245 / fold 1 (`scripts/explore_glob_a4.py` cal|split|twin|pick|confirm; stepper gained `kappa_gsign`/`kappa_gmag`,
+   default 1). No scalar reaches (b): best κ_g = 0 → biomass per tree 0.596 (twin there 0.743); offset −0.5 → 0.587,
+   transfers to GS370 within 0.03 (0.614 / 1.174, pass 0.024). Growth-efficiency channel = 38 % of the climate gap on
+   the calibration basis (magnitude 27 %, how-often 13 %). The twin itself is 26 % short (trees never mature).
+   **NEXT for the per-tree route (decide, don't drift):** it is the weakest arm on this venue (pass ≤ 0.035 vs A7s 0.131,
+   A2g 0.119, 2014-persistence 0.057). A3 needs the original's response on the arm's own states — no C re-run harness
+   here; A6 needs B7 + four single-grass modules. Recommended to the owner: park A3/A4/A6 on TAB; the open per-tree
+   question worth one probe is the twin's slow growth deficit (a multi-step / rollout loss on the growth heads, as A2g's
+   gap-crossing loss did for the LSTM) — only if the owner wants the per-tree route kept alive.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
 

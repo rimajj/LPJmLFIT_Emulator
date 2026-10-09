@@ -575,3 +575,9 @@ on true stands (held-out rows, within 0.4–0.6 points) but the free run's bad-y
 and 0.16 by 2085 vs the original's ~0.12 ⇒ an error that compounds once the simulated stand drifts. ADR 0315 §16.3.
 Pre-registered A4 (§16.4) and submitted the calibration grid on member 2 / ssp245 / fold 1 (8 runs, 2450600–19, scorer
 gained `--truth-seed`/`--fold`; driver `scripts/explore_glob_a4.py` with stages cal / pick / confirm).
+Results (§16.5–16.7): no scalar brings the per-tree arm within ±10 %. The offset family moves the bad-year rate by more
+than the free-run excess and buys only a sixth of the gap ⇒ the biomass goes through the learned climate effect on
+growth-efficiency MAGNITUDE (an input of the growth heads), not the count of bad years. Split added to the stepper
+(`kappa_gsign`/`kappa_gmag`, default 1). The climate-blind twin on member 2 is itself 26 % short on biomass per tree.
+Offset −0.5 transfers to member 8 / ssp370 within 0.03 but scores 0.614 / pass 0.024. A4 fails; recommendation to
+park the per-tree arms on this venue recorded in STATE. Jobs 2450600–19, 2450733–36, 2450741/42, 2450798/99.

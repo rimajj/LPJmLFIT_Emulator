@@ -12,6 +12,7 @@ Stages
   cal      submit the 7 calibration runs (engine arrays) + one chained scoring job each (--truth-seed 2 --fold 1)
   pick     read eval/scores_A4cal_*.csv, print L per point, the winner of each family -> eval/a4_pick.json
   split    sec. 16.6: kappa_gsign = 0 and kappa_gmag = 0 on the same basis (+ chained scoring)
+  twin     the climate-blind twin TabAk0 on the same basis (the gap denominator on member 2)
   confirm  run each family's winner ONCE on GS370 (member 8, ssp370, all dev cells, from 2014) + chained scoring
 
 Every stage needs the global-root environment (exported here, so sbatch's --export=ALL carries it to the jobs):
@@ -42,6 +43,7 @@ GRID = {"A4cal_k0": {"kappa_g": 0.0}, "A4cal_k025": {"kappa_g": 0.25}, "A4cal_k0
         "A4cal_o015": {"logit_off_g": -0.15}, "A4cal_o03": {"logit_off_g": -0.3}, "A4cal_o05": {"logit_off_g": -0.5}}
 # sec. 16.6: which half of kappa_g carries the effect (same calibration basis, one variable each)
 SPLIT = {"A4cal_gs0": {"kappa_gsign": 0.0}, "A4cal_gm0": {"kappa_gmag": 0.0}}
+ALL = {**GRID, **SPLIT, "A4cal_twin": {"twin": True}}
 FAMILY = {"k": ["A4cal_k0", "A4cal_k025", "A4cal_k05", "A4cal_k075", "A4cal_k1"],
           "o": ["A4cal_k1", "A4cal_o015", "A4cal_o03", "A4cal_o05"]}
 
@@ -55,9 +57,9 @@ def run_dir(arm, seed, legs):
     return os.path.join(XDE, "runs", arm, f"GFDL-ESM4_s{seed}_2014-2100_{legs}_actual_r1")
 
 
-def submit(arm, cal, seed, legs, cells, chunk, label, score_args):
+def submit(arm, cal, seed, legs, cells, chunk, label, score_args, stepper="TabAL"):
     cmd = [PY, os.path.join(REPO, "scripts", "explore_de_engine.py"), "submit", "--arm", arm,
-           "--stepper", "explore_de_tab_stepper:TabAL", "--kwargs", json.dumps({"cal": cal}),
+           "--stepper", f"explore_de_tab_stepper:{stepper}", "--kwargs", json.dumps({"cal": cal}),
            "--gcm", "GFDL-ESM4", "--seed", str(seed), "--start", "2014", "--end", "2100", "--legs", legs,
            "--cellset", "dev", "--chunk-size", str(chunk), "--parallel", "17"]
     if cells:
@@ -97,16 +99,21 @@ def stage_split(_a):
         submit(arm, cal, 2, "ssp245", CELLS, 420, arm, "--truth-seed 2 --fold 1")
 
 
+def stage_twin(_a):
+    """The climate-blind twin TabAk0 on the calibration basis: the denominator of every gap share on member 2."""
+    submit("A4cal_twin", {}, 2, "ssp245", CELLS, 420, "A4cal_twin", "--truth-seed 2 --fold 1", stepper="TabAk0")
+
+
 def stage_pick(_a):
     rows = []
-    for arm in {**GRID, **SPLIT}:
+    for arm in ALL:
         f = os.path.join(EVAL, f"scores_{arm}.csv")
         if not os.path.exists(f):
             print(f"{arm}: no score yet")
             continue
         d = pl.read_csv(f).row(0, named=True)
         L = abs(math.log(d["stems_ratio"])) + abs(math.log(d["agb_per_stem_ratio"]))
-        rows.append(dict(arm=arm, cal={**GRID, **SPLIT}[arm], stems=d["stems_ratio"], bpt=d["agb_per_stem_ratio"],
+        rows.append(dict(arm=arm, cal=ALL[arm], stems=d["stems_ratio"], bpt=d["agb_per_stem_ratio"],
                          pass_rate=d["pass_rate"], slope=d["resp_n_per_patch_slope_deatt"], L=L))
     for r in rows:
         print(f"{r['arm']:12s} {json.dumps(r['cal']):24s} stems {r['stems']:.3f} biomass/tree {r['bpt']:.3f} "
@@ -132,9 +139,10 @@ def stage_confirm(_a):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["cal", "split", "pick", "confirm"])
+    ap.add_argument("stage", choices=["cal", "split", "twin", "pick", "confirm"])
     a = ap.parse_args()
-    {"cal": stage_cal, "split": stage_split, "pick": stage_pick, "confirm": stage_confirm}[a.stage](a)
+    stages = {"cal": stage_cal, "split": stage_split, "twin": stage_twin, "pick": stage_pick, "confirm": stage_confirm}
+    stages[a.stage](a)
 
 
 if __name__ == "__main__":
