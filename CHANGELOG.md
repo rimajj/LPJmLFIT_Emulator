@@ -8,6 +8,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Line X: ADR 0317 and `scripts/explore_tolerance_measure.py` — the acceptance target re-read as "as close as a second
+  run of the original" (owner decision 2026-10-09), measured as an error ratio against a second run over all cells.
+
+### Added
+
 - Line X: panel venue on the Track-D runs, the deployment-setting test (cells seen) with a per-cell anchored direct map
   that passes the survival bar on 11 of 13 held-out-climate-model cases, measured data curves, and new runs of the
   original (five more climate models, two new independent members) (ADR 0316).
