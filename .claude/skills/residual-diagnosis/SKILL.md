@@ -2296,3 +2296,15 @@ and was −0.02 by year (`scripts/explore_de_contin.py` yearblock). The same tra
 of the training years (the Germany sign head ran 400 rounds; on held-out years the optimum was ~43), and in any test
 member that shares the training member's weather (a second spin-up seed of the same forcing). Before quoting a
 year-to-year skill: name which weather years the model trained on, and score on years it did not.
+
+## ⚠ A LEAK CANNOT BE PRICED BY REMOVING IT AT PREDICTION TIME ONLY — RETRAIN (line X, 2026-10-09, ADR 0315 §15)
+
+Found: the global LSTM's input fill ran backward over the whole leg, so 303 treeless-then-colonised cells read the test
+member's future traits. Removing the leak at PREDICTION only (same trained model) dropped the tree-count response slope
+0.86 → 0.65, and that was written up as "the leak inflated the skill by a quarter". Wrong: the model had been TRAINED
+with that fill, so a clean input was an input it had never seen (it predicted 22 % of the colonising stems). The
+causal-fill RETRAIN scored 0.85 and predicted 95 % of them from climate — the leak was worth ≈ 0.01. Rules: (1) price a
+leak with a retrain on the clean input, never with a clean re-prediction of the leaky model (the ADR 0023
+train/inference-shift trap in disguise); (2) localise the change to the exposed rows before reading an aggregate —
+here every other cell agreed to 0.4 %, which is what made the mismatch visible; (3) make fills CAUSAL (forward only)
+by construction, in training and prediction alike — `explore_glob_lstm.py::fill_causal`.

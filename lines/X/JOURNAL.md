@@ -535,3 +535,12 @@ input back-fills treeless-in-history cells from the test member's 2071–2100 tr
 Jobs 2447108/09/10, all four harness checks pass. Results: leak inflated the tree-count response slope 0.65 → 0.86;
 the arm separates scenarios in total but not per cell (0.30); the panel comparison is inconclusive by its own basis.
 Next: clean retrain.
+
+## 2026-10-09 (morning) — A2g causal fill + retrain (ADR 0315 §15)
+
+Replaced the forward+backward input fill by a forward-only one in `explore_glob_lstm.py` (training and prediction) and
+retrained A2g + twin (2447157/58) and the two per-build runs (2447168/69). Expected (header) slope ≈ 0.65; got 0.85.
+Localised it: the 303 exposed cells — leak-trained model with clean input predicts 22 % of their late stems, the retrain
+95 %, all other cells agree to 0.4 %. So §14.1 priced a train/inference mismatch, not the leak; withdrawn in §15.
+Added `--tag` to `explore_glob_clock.py`; calendar contrast on the clean models: stems slope 0.47 (0.30 before).
+Germany LSTM leak probe: 0 exposed cells. Skill gotcha added to `residual-diagnosis`.
