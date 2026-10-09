@@ -97,8 +97,13 @@ tree 1.63 / 1.76 — FAILS, and barely beats the lookup null (1.52 / 1.66).** Re
 **NEXT:**
 1. Owner's answer on 10 % vs 20 % (and on the 5 % totals line, which is line X's own proposal). Record it as ADR 0317 §7.
    Propagation to `~/.claude/CLAUDE.md` / MEMORY / the plan only if the owner says so.
-2. Score every new result on BOTH the old screens and this measure (`explore_tolerance_measure.py`; extend it to the
-   global venue: members 2,3,4,6,7 as second runs, 8 as truth, once A7r's global predictions are saved).
+2. Score every new result on BOTH the old screens and this measure. **Global venue DONE (ADR 0317 §8,
+   `scripts/explore_glob_tolerance.py`, ~5 min on SLURM):** harness 0.96–1.04, mean-of-5 oracle 0.78–0.82; **A7r tree
+   count 1.44 / 3.62, biomass per tree 1.96 / 2.75 — worse than the lookup null on biomass (1.84) and on bad-cell tree
+   count (2.34)**; biomass total 8 % off; failure concentrated in sparse cells (tree count 6.4 at < 2 trees/patch);
+   5th training run moves ≤ 0.02. "Global is easier than the panel" FALSIFIED.
+   **Next test (pre-register first):** anchor from the future legs only (hypothesis: the historical window in the anchor
+   drags biomass per tree low), and a sparse-cell treatment; score on `explore_glob_tolerance.py`.
 3. The binding gap is now per-cell tree count and biomass per tree under a held-out climate model. When ADR 0316's
    more-data test lands (item 1 below), read it on this measure too: does more data move ρ on those two quantities?
 
