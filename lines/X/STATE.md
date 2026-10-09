@@ -93,10 +93,11 @@ data if that is mandatory and we have solid results that support the assumption 
 climate model held out) the anchored direct map **A7r** passes the bar on 11/13 held-out-model cases (`explore_panel_a7.py
 seen`, 5 seeds, `LGB_SEED`), global GS370 on the bar 0.140 ± 0.004 (`explore_glob_a7r.py`). Data curves all rising ⇒
 **more data submitted** (`scripts/explore_panel_runs.py`): 5 new climate models × 3 scen for m1–m4 + new members m5/m6
-(spin-up + everything). Jobs: forcing 2451723 (done, gate PASS); runs 2451818/20/22/24/26/28 (one node per member),
-collectors 2451819/21/23/25/27/29 → tables `…/esm_land_emulator_data/xpanel_runs/m<k>/<leg>/` (`status`:
-`python scripts/explore_panel_runs.py status`). Also resubmitted line S's two dead panel legs (m3 MPI ssp585 run 2451101 →
-collector 2451102; m4 UKESM ssp585 2451103 → 2451104; these write into line S's trackD tables, unchanged tooling).
+(spin-up + everything). Jobs: forcing 2451723 (done, gate PASS); runs 2451916/18/20/22/24/26 (spread over free cores: the one-node
+pin waited ~3 days and matters only for row-by-row reproduction of an existing run), collectors 2451917/19/21/23/25/27 → tables `…/esm_land_emulator_data/xpanel_runs/m<k>/<leg>/` (`status`:
+`python scripts/explore_panel_runs.py status`). Also resubmitted line S's two dead panel legs (m3 MPI ssp585 run 2451928 →
+collector 2451929; m4 UKESM ssp585 2451930 → 2451931; all 105 blocks re-run, spread over nodes; these write into line S's
+trackD tables with unchanged tooling).
 **NEXT, in order:**
 1. When the runs land: extend `explore_panel_prep.py` (LEGS/MEMBERS + the xpanel_runs table root) and test ADR 0316 §7's
    PREDICTION (A7r on the 5 original held-out models' ssp370, trained on 9 models and runs m1,m2,m3,m5,m6: mean pass ≥ 0.182,

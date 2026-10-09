@@ -336,7 +336,10 @@ def stage_submit(a):
     jobs = {}
     for member in a.members:
         dep = [f"--dependency=afterok:{a.forcing_job}"] if a.forcing_job else []
-        run = subprocess.run(["sbatch", "--parsable", *dep, os.path.join(ROOT, "_jobs", f"run_m{member}.jcf")],
+        # --nodes=1-105: the one-node pin matters only for reproducing an existing run row by row (CLAUDE.md sec. 3);
+        # these are NEW runs, and a whole free node waited ~3 days in the queue (2026-10-09)
+        run = subprocess.run(["sbatch", "--parsable", "--nodes=1-105", *dep,
+                              os.path.join(ROOT, "_jobs", f"run_m{member}.jcf")],
                              capture_output=True, text=True, check=True).stdout.strip()
         col = subprocess.run(["sbatch", "--parsable", f"--dependency=afterany:{run}",
                               os.path.join(ROOT, "_jobs", f"collect_m{member}.jcf")],
