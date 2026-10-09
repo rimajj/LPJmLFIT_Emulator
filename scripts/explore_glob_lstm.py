@@ -37,6 +37,16 @@ WHAT EACH MUST RETURN, written before the run (ADR 0184):
            ceiling_mean = 0.140 AND above the best null 0.100; (b) area-weighted stems and biomass per stem within
            +-10 %; (c) deattenuated tree-count response slope above lstmCB's by more than the member spread;
            (d) S85 at 2014 within +-10 % on both totals. Benchmark to beat: A7s (0.131, slope 0.63).
+
+INPUT FILL (ADR 0315 sec. 14.1, 2026-10-09). The sec. 12/13 runs filled missing inputs forward AND backward over the
+whole leg, so a cell treeless in 1985-2014 got its trait/share inputs from the test member's own 2071-2100 truth
+(303 dev cells). Default is now --fill causal (forward only, in training AND prediction); --fill leaky reproduces the
+published runs. The clean RETRAIN (--tag _causal) must return, written before the run: lstm pass ~0.125 (+-0.01) and a
+deattenuated tree-count response slope near sec. 14.1's clean RE-PREDICTION of the leaky model, 0.65; lstmCB ~0.53.
+Retraining is a new draw (A7's draw spread in pass is 0.003; the LSTM's is unmeasured), so read +-0.1 of slope as
+"the same". A slope well BELOW 0.55 would mean the leaky model had learned something from the fill that the clean one
+cannot recover; well ABOVE 0.75 would mean the backward fill had also been hurting it. The S85 free run (d) is now
+leak-free for the first time; its 2014 totals may move either way.
 """
 
 from __future__ import annotations
@@ -216,6 +226,10 @@ def from_z(X: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def ffill(X: np.ndarray) -> np.ndarray:
+    """The ADR 0315 sec. 12/13 input fill: forward, then BACKWARD over the whole leg. LEAKS (sec. 14.1): a value missing
+    in all of 1985-2014 (a treeless cell has no trait quantiles or shares) is back-filled from that leg's 2071-2100
+    truth, and the S85 start's 1985 input from any later year. Kept only to reproduce the published runs (--fill leaky,
+    scripts/explore_glob_clock.py)."""
     X = X.copy()
     for t in range(1, X.shape[1]):
         m = ~np.isfinite(X[:, t])
@@ -224,6 +238,19 @@ def ffill(X: np.ndarray) -> np.ndarray:
         m = ~np.isfinite(X[:, t])
         X[:, t][m] = X[:, t + 1][m]
     return X
+
+
+def fill_causal(X: np.ndarray) -> np.ndarray:
+    """Forward fill only, along T: the input of year t carries a value from a year <= t or stays NaN (the caller then
+    puts the training mean there). Same in training and prediction, so no input can see a later year's truth."""
+    X = X.copy()
+    for t in range(1, X.shape[1]):
+        m = ~np.isfinite(X[:, t])
+        X[:, t][m] = X[:, t - 1][m]
+    return X
+
+
+FILL = {"causal": fill_causal, "leaky": ffill}
 
 
 def full_state(seed: int, scen: str, cells: list[int]) -> tuple[np.ndarray, np.ndarray]:
@@ -366,7 +393,7 @@ def stage_train(a) -> None:
     del Ctr
 
     def tens(ii):
-        Xf = ffill(flat(X, ii))
+        Xf = FILL[a.fill](flat(X, ii))
         Xf = np.where(np.isfinite(Xf), Xf, mu)
         return (
             torch.tensor((Xf - mu) / sd, dtype=torch.float32),
@@ -469,6 +496,7 @@ def stage_train(a) -> None:
         "arm": a.arm,
         "fold": a.fold,
         "clim_mode": mode,
+        "fill": a.fill,
         "best_it": best[1],
         "val_best": lv,
         "val_persist": lp,
@@ -488,7 +516,7 @@ def stage_train(a) -> None:
     for scen in TEST_SCENS:
         X8, _ = full_state(a.test_seed, scen, cells)
         X8 = X8[i_te]
-        Xf = ffill(X8)
+        Xf = FILL[a.fill](X8)
         Xf = np.where(np.isfinite(Xf), Xf, mu)
         Z = torch.tensor((Xf - mu) / sd, dtype=torch.float32)
         Cc = torch.tensor((climate(scen, cells, mode)[i_te] - cmu) / csd, dtype=torch.float32)
@@ -608,6 +636,7 @@ def main():
     ap.add_argument("--test-seed", dest="test_seed", type=int, default=ev.TRUTH)
     ap.add_argument("--replica", type=int, default=ev.REPLICA)
     ap.add_argument("--tag", default="", help="suffix of the arm directory and score file (per-version runs)")
+    ap.add_argument("--fill", default="causal", choices=list(FILL), help="input fill (ADR 0315 sec. 14.1)")
     ap.add_argument("--iters", type=int, default=400)
     ap.add_argument("--iters-full", dest="iters_full", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=1e-3)
