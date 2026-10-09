@@ -241,3 +241,44 @@ models, tree count at ~28 (typical cell) and ~40 (bad cells) — and the panel a
 (9 in training + the held-out one). So **more data of this kind is necessary but not sufficient**: the arm itself must
 improve. The case to price all-cell runs under more climate models (§9) is strengthened on the pass rate, not settled on
 the second-run measure. Two extra runs per cell are not worth producing for this arm.
+
+## 11. Where the remaining error sits, and a relative-error target (2026-10-10; `explore_panel_a7.py logt` / `logt_mix`)
+
+**Where (second-run measure, `both` set, seed 1, all 15 cases).** By the truth's tree density, A7r's tree-count ratio
+is 1.15 (5–10 trees per patch, 527 cells) and 1.36 (10–20, 290), but **3.45 (< 2, 117 cells) and 3.11 (2–5, 98)**;
+biomass per tree 1.13 / 1.60 / 2.57 / 2.49 in the same classes. The mean of three runs is 0.80–0.85 in every class, so
+sparse cells are not unpredictable — the arm under-serves them. Same shape as the global venue (ADR 0317 §8 item 2).
+Cause hypothesised: the target is the **absolute** residual (value − anchor) with squared error, so dense cells dominate
+the loss, while every score is a per-cell **relative** error.
+
+**A7rL** (one variable; pre-registered in the script header, commit cc0e8bb6): target for tree count and biomass per tree
+= `log((value + e) / (anchor + e))`, e = 0.1 trees per patch / 1 gC per tree; prediction `(anchor + e)·exp(p) − e`.
+Harness: A7r inside the same job equals §10's `both` A7r on all 75 seed × case pass rates (difference 0.0).
+**A7rH** = A7r's tree-count model + A7rL's other five (each quantity is its own model, so this is exactly "log target on
+biomass per tree only"; expectations written before scoring).
+
+| ssp370, median over the 5 held-out models | A7r | A7rL | **A7rH** |
+|---|---|---|---|
+| pass rate (5 seeds) | 0.193 | 0.197 | **0.207** |
+| bar passed, ssp370 / all 15 cases | 4 / 13 | 4 / 13 | 4 / 13 |
+| tree count ratio, typical / bad cells | 1.35 / 2.08 | 1.40 / 1.86 | 1.35 / 2.08 |
+| biomass per tree ratio, typical / bad cells | 1.42 / 1.71 | **1.26 / 1.26** | **1.26 / 1.26** |
+| tree-count ratio in the < 2 / 10–20 classes | 3.45 / 1.25 | **2.04** / 1.38 | 3.45 / 1.25 |
+| area totals off: stems / biomass (median; worst case all 15) | 1.9 % / 1.2 % (13.5 %) | 4.4 % / 4.9 % (6.8 %) | 1.9 % / 4.2 % (6.3 %) |
+| tree-count response slope vs control | 0.68 | 0.61 | 0.68 |
+
+Against the A7rL expectations: biomass per tree in the sparse classes **held** (< 2: −0.97; 2–5: −0.53); tree count in
+the < 2 class **held** (−1.41) but in the 2–5 class **missed** (−0.23 vs ≥ 0.3); typical-cell tree count **FAILED** (+0.05,
+worse); the 10–20 class worsened by 0.13 (> 0.05 allowed: **failed**); pass rate **held**; totals at the 5 % line (4.4 % /
+4.9 %). Falsifier did not fire. ⇒ **the loss weighting is part of why sparse cells fail, and for biomass per tree it is
+most of it** (better in every class except 5–10, unchanged; bad cells 1.71 → 1.26). For tree count the log target buys
+sparse cells at the expense of dense ones and biases the total 4 % low (it predicts a geometric mean). A7rH's
+expectations held (pass ≥ A7r: +0.014; stems total unchanged). Its biomass total is median 4.2 % off on ssp370 (A7r 1.2 %)
+but its worst case over all 15 is better (6.3 % vs 13.5 %).
+
+**State of the best arm (A7rH, 9 training models, 5 runs, held-out climate model):** traits 0.61–0.87× a second run's
+error (better than a second run), biomass per tree **1.26×**, tree count **1.35× (typical) / 2.08× (bad cells)**, the
+last concentrated in cells with < 5 trees per patch (~20 % of tree-bearing cells). UKESM, the warmest model, still fails
+the bar on ssp370/585. Tree count is now the binding quantity. Next one-variable candidates for it: a count-aware loss
+(Poisson / Tweedie objective on the count with the anchor as offset) instead of the log transform, or the log target
+with a bias correction; pre-register before running.
