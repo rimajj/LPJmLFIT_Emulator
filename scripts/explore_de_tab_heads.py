@@ -365,14 +365,36 @@ def ar_table(split, name, oof: pl.DataFrame, nd=10) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------ grass head
-GRASS_STATE = ["grass8_fpc_y", "grass8_LAI_y", "grass8_agb_y", "sum_fpc_y", "n_live_y", "sum_agb_y", "d_sum_fpc",
-               "frac_loss_lag0", "frac_loss_lag1", "frac_loss_lag2", "soil_code"] + [f"c85_{f}" for f in F.C85_F]
+# One set of heads per grass Type (F.GRASS_TYPES). With Germany's single grass (8) the names, features and models are
+# EXACTLY the original ones (grass_g_*_y1, grass8_* state); with several grasses (global venue: 7, 8, 9) each type t
+# gets grass<t>_g_*_y1 heads whose state is its own grass<t>_* columns plus the patch's OTHER grasses' total cover.
+_GRASS_REST = ["sum_fpc_y", "n_live_y", "sum_agb_y", "d_sum_fpc", "frac_loss_lag0", "frac_loss_lag1",
+               "frac_loss_lag2", "soil_code"] + [f"c85_{f}" for f in F.C85_F]
 GRASS_CLIM = [f"a_{f}_y1" for f in F.CLIM_F] + [f"{f}_y1" for f in F.ABS_Y1]
+GRASS_TGT = ("g_fpc_y1", "g_LAI_y1", "g_agb_y1")
 
 
-def grass_frame(split, which, members, cells, frac=0.25):
+def grass_multi() -> bool:
+    return len(F.GRASS_TYPES) > 1
+
+
+def grass_state(t: int) -> list[str]:
+    own = [f"grass{t}_fpc_y", f"grass{t}_LAI_y", f"grass{t}_agb_y"]
+    return own + (["grass_other_fpc_y"] if grass_multi() else []) + _GRASS_REST
+
+
+def grass_head(t: int, tgt: str) -> str:
+    return f"grass{t}_{tgt}" if grass_multi() else f"grass_{tgt}"
+
+
+GRASS_STATE = grass_state(F.GRASS_TYPES[0])  # the single-grass (Germany) feature list, kept for importers
+
+
+def grass_frame(split, which, members, cells, frac=0.25, t=None):
     """Patch rows: next-year grass of the patch given its state at y, the tree cover change y -> y+1 (known
-    after the tree step in a rollout) and the climate of y+1. Patches thinned on a (Cell, Patch) hash."""
+    after the tree step in a rollout) and the climate of y+1. Patches thinned on a (Cell, Patch) hash.
+    t = the grass Type (default: the first of F.GRASS_TYPES = Germany's 8)."""
+    t = F.GRASS_TYPES[0] if t is None else t
     parts = []
     gcm_of = {}
     mem = tr.registry()[0]
@@ -381,13 +403,17 @@ def grass_frame(split, which, members, cells, frac=0.25):
         fs = sorted(glob.glob(os.path.join(F.PATCHT, F.CELLSET, m, "cb=*", "y*.parquet")))
         lf = pl.scan_parquet(fs).filter(pl.col("Cell").is_in(cells)).filter(
             ((pl.col("Cell").cast(pl.Int64) * 7919 + pl.col("Patch").cast(pl.Int64) * 104729) % 1000) < frac * 1000)
-        cols = ["member", "gcm", "traj", "seed", "Year", "Cell", "Patch", "grass8_fpc_y", "grass8_LAI_y",
-                "grass8_agb_y", "sum_fpc_y", "n_live_y", "sum_agb_y", "frac_loss_lag0", "frac_loss_lag1",
+        cols = ["member", "gcm", "traj", "seed", "Year", "Cell", "Patch", f"grass{t}_fpc_y", f"grass{t}_LAI_y",
+                f"grass{t}_agb_y", "sum_fpc_y", "n_live_y", "sum_agb_y", "frac_loss_lag0", "frac_loss_lag1",
                 "frac_loss_lag2"]
-        d = lf.select(cols).collect()
+        others = [f"grass{o}_fpc_y" for o in F.GRASS_TYPES if o != t]
+        d = lf.select(cols + others).collect()
+        if grass_multi():
+            d = d.with_columns(grass_other_fpc_y=pl.sum_horizontal([pl.col(c).fill_null(0.0) for c in others]))
+        d = d.drop(others)
         n1 = d.select("Cell", "Patch", (pl.col("Year") - 1).cast(pl.Int16).alias("Year"),
-                      pl.col("grass8_fpc_y").alias("g_fpc_y1"), pl.col("grass8_LAI_y").alias("g_LAI_y1"),
-                      pl.col("grass8_agb_y").alias("g_agb_y1"), pl.col("sum_fpc_y").alias("sum_fpc_y1"))
+                      pl.col(f"grass{t}_fpc_y").alias("g_fpc_y1"), pl.col(f"grass{t}_LAI_y").alias("g_LAI_y1"),
+                      pl.col(f"grass{t}_agb_y").alias("g_agb_y1"), pl.col("sum_fpc_y").alias("sum_fpc_y1"))
         d = d.join(n1, on=["Cell", "Patch", "Year"], how="inner")
         parts.append(d)
     D = pl.concat(parts).with_columns(d_sum_fpc=pl.col("sum_fpc_y1") - pl.col("sum_fpc_y"))
@@ -401,25 +427,28 @@ def grass_frame(split, which, members, cells, frac=0.25):
 def train_grass(split):
     import lightgbm as lgb
     spec = json.load(open(os.path.join(F.SAMPLES, split, "split.json")))
-    D = grass_frame(split, "train", spec["train"], spec["cells_train"])
     folds = pl.read_parquet(os.path.join(tr.REG, "folds.parquet")).select(pl.col("Cell").cast(pl.Int16), "fold")
-    D = D.join(folds, on="Cell", how="left")
-    va = D["fold"].to_numpy() == spec["val_fold"]
-    X0 = F.to_matrix(D, GRASS_STATE)
-    X1 = F.to_matrix(D, GRASS_CLIM + ["sum_fpc_y"])
-    meta = {"head": "grass", "n_rows": D.height, "targets": {}}
-    for tgt in ("g_fpc_y1", "g_LAI_y1", "g_agb_y1"):
-        y = D[tgt].to_numpy().astype(np.float64)
-        w = np.ones_like(y)
-        b0, b1, s0, info = fit_two_stage(GRASS_STATE, GRASS_CLIM + ["sum_fpc_y"], X0, X1, y, w, ~va, va,
-                                         "regression", (400, 100), small=False)
-        nm = f"grass_{tgt}"
-        save_head(split, nm, b0, b1, {"head": nm, "features_B0": GRASS_STATE,
-                                      "features_B1": GRASS_CLIM + ["sum_fpc_y"], **info,
-                                      "gain_B0": gains(b0, GRASS_STATE)})
-        meta["targets"][tgt] = info
+    meta = {"head": "grass", "types": F.GRASS_TYPES, "n_rows": {}, "targets": {}}
+    for t in F.GRASS_TYPES:
+        st = grass_state(t)
+        D = grass_frame(split, "train", spec["train"], spec["cells_train"], t=t)
+        D = D.join(folds, on="Cell", how="left")
+        va = D["fold"].to_numpy() == spec["val_fold"]
+        X0 = F.to_matrix(D, st)
+        X1 = F.to_matrix(D, GRASS_CLIM + ["sum_fpc_y"])
+        meta["n_rows"][str(t)] = D.height
+        for tgt in GRASS_TGT:
+            y = D[tgt].to_numpy().astype(np.float64)
+            w = np.ones_like(y)
+            b0, b1, s0, info = fit_two_stage(st, GRASS_CLIM + ["sum_fpc_y"], X0, X1, y, w, ~va, va,
+                                             "regression", (400, 100), small=False)
+            nm = grass_head(t, tgt)
+            save_head(split, nm, b0, b1, {"head": nm, "features_B0": st,
+                                          "features_B1": GRASS_CLIM + ["sum_fpc_y"], **info,
+                                          "gain_B0": gains(b0, st)})
+            meta["targets"][nm] = info
     vals = json.dumps({k: v["b0_val"] for k, v in meta["targets"].items()})
-    status("A3", f"train {split} grass: {D.height} patch rows; {vals}")
+    status("A3", f"train {split} grass {F.GRASS_TYPES}: {meta['n_rows']} patch rows; {vals}")
     _ = lgb
     return meta
 
@@ -472,7 +501,7 @@ class TabHeads:
         self.d = mdir(split)
         self.P = rl.load_params()
         self.m = {}
-        for name in heads or list(HEADS) + ["rtype", "grass_g_fpc_y1", "grass_g_LAI_y1", "grass_g_agb_y1"]:
+        for name in heads or list(HEADS) + ["rtype"] + [grass_head(g, x) for g in F.GRASS_TYPES for x in GRASS_TGT]:
             fb0 = os.path.join(self.d, f"{name}_B0.txt")
             if not os.path.exists(fb0):
                 continue
@@ -631,9 +660,9 @@ class TabHeads:
         'feb2026' (scalar or per recruit: the Dec-2025 bound quirk switch). Returns dict incl. Longevity, beta_root."""
         return sample_traits(typ, cell, standing, self.traits_fit, build, rng, self.P)
 
-    def grass(self, Pf: pl.DataFrame, kappa=None):
-        return {t: self.raw(f"grass_{t}", Pf, kappa) for t in ("g_fpc_y1", "g_LAI_y1", "g_agb_y1")
-                if f"grass_{t}" in self.m}
+    def grass(self, Pf: pl.DataFrame, kappa=None, gtype=None):
+        g = F.GRASS_TYPES[0] if gtype is None else gtype
+        return {t: self.raw(grass_head(g, t), Pf, kappa) for t in GRASS_TGT if grass_head(g, t) in self.m}
 
     # ---------------------------------------------------------------- one transition (tree part)
     def transition(self, X, state, rand, year, phys=False, kappa=None, height_ext=False):

@@ -132,13 +132,33 @@ no per-tree column the Oct layout lacks.
    Per-build retrains clean (§15.5): Feb pass 0.103 / slope 0.83, May 0.097 / 0.77 — §13's reading stands.
    **Rule from now on:** every recurrent arm uses `fill_causal`; price a leak with a retrain, never a re-prediction.
 2. Then the other recursive arms (A3, A4, A6) on this venue, same harness, each with its climate-blind twin.
-   ⚠ **All three sit on the Germany per-tree stepper (TAB), which has never run on global data — the PORT comes first.**
-   Map + blockers + the data root to build: `docs/notes/exploration_glob_tab_port.md` (2026-10-09). `XDE_ROOT` alone
-   does not port it: Int16 cell ids (renumber dev cells in the new root), the engine's 2070 horizon, recruit types 1–5
-   only, ONE grass type everywhere (global has 7/8/9 — a remodel), SH4 crashes at the first ssp-window year (no 2070
-   table), the margin arm's weather is built from truth (none for 2015–2070). Parameters: the Feb/May runs used the
-   LOCAL par set on every value checkable from output (longevity 400/125, k_root 0.02, mort_temp 5.0); Billing's live
-   files were edited after them (Oct). Order: build the root → SH2..A6 stages → plain TAB + its twin on GS370 → A3/A4/A6.
+   ⚠ **All three sit on the Germany per-tree stepper (TAB) — the PORT is IN PROGRESS (2026-10-09, ADR 0315 §16).**
+   Map + blockers: `docs/notes/exploration_glob_tab_port.md`. Data root (Germany format, Feb members 2,3,4,6,7,8, dev
+   cells renumbered 0..6419): `…/billing_global/xde`, built by `scripts/explore_glob_tabroot.py` (gates pass).
+   **Every stage needs these exported** (sbatch forwards the env): `XDE_ROOT=…/billing_global/xde XDE_GRASS_TYPES=7,8,9
+   XDE_RECR_TYPES=0,1,2,3,4,5,6 XDE_TRAIT_BUILD=feb2026 XDE_LAST_SIM_YEAR=2100`.
+   DONE + gated: SH2 params/allometry, SH3 transitions (24 member-windows; identity gates all pass), SH4 patches,
+   SH5 starts (s8 1985/2014, s7 2014; NOTE `sh_init submit` ignores `--start` — use `build --start` via
+   sbatch_python), A1 samples. Scorer `scripts/explore_glob_tabeval.py`; harness (frozen stepper) reproduces §7's
+   persist_2014 row EXACTLY (`eval/scores_TAB_frozen.csv`).
+   DONE too: SH13 heads, A1 recruits, all 20 TAB heads (one grass model per grass type), stepper prep.
+   **First free run SCORED (ADR 0315 §16.1): plain TAB FAILS badly** — GS370 pass 0.022 (below carrying 2014 forward,
+   0.057), trees 1.17, biomass per tree **0.505**; its climate-blind twin 0.026 / 0.90 / 0.90. Two failures: a slow
+   growth deficit in both (−23..−29 % biomass per tree by 2014 from 1985) and a CLIMATE-driven halving only in the arm
+   (on ssp126 too ⇒ not extrapolation). 0.17 core-s per cell-year.
+   **Attribution DONE (§16.3):** the growth-efficiency climate booster carries 60 % of the GS370 biomass collapse; the
+   growth-amount booster 0 %, survival 0 %, and the recruit booster was SUPPRESSING recruits (off ⇒ +8 % stems). The
+   sign head is calibrated on true stands (held-out, within 0.4–0.6 points); the excess bad years appear only in the
+   free run (drift compounds). **A4 DONE — fails DP-G1 (a), (b) (§16.5–16.7):** scalar calibration on member 2 /
+   ssp245 / fold 1 (`scripts/explore_glob_a4.py` cal|split|twin|pick|confirm; stepper gained `kappa_gsign`/`kappa_gmag`,
+   default 1). No scalar reaches (b): best κ_g = 0 → biomass per tree 0.596 (twin there 0.743); offset −0.5 → 0.587,
+   transfers to GS370 within 0.03 (0.614 / 1.174, pass 0.024). Growth-efficiency channel = 38 % of the climate gap on
+   the calibration basis (magnitude 27 %, how-often 13 %). The twin itself is 26 % short (trees never mature).
+   **NEXT for the per-tree route (decide, don't drift):** it is the weakest arm on this venue (pass ≤ 0.035 vs A7s 0.131,
+   A2g 0.119, 2014-persistence 0.057). A3 needs the original's response on the arm's own states — no C re-run harness
+   here; A6 needs B7 + four single-grass modules. Recommended to the owner: park A3/A4/A6 on TAB; the open per-tree
+   question worth one probe is the twin's slow growth deficit (a multi-step / rollout loss on the growth heads, as A2g's
+   gap-crossing loss did for the LSTM) — only if the owner wants the per-tree route kept alive.
 3. **Integration point (not done — line X does not edit the plan):** `EXECUTION_PLAN.md` DP-A1 → DP-G1; X ↔ S overlap.
 4. Germany tables + scorer stay a secondary venue; do not resubmit D2 without the owner.
 

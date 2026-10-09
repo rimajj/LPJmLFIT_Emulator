@@ -89,6 +89,8 @@ REG = tr.REG
 KEY = tr.KEY
 HIDDEN_MAX = 30
 LAST_SIM_YEAR = 2070  # owner decision 2026-10-01: nothing after 2070 is simulated (2071+ truth unusable)
+# The Germany decision does not apply to the global venue (ADR 0313/0315: its 2071-2100 truth is the scored window)
+LAST_SIM_YEAR = int(os.environ.get("XDE_LAST_SIM_YEAR", LAST_SIM_YEAR))
 NLAG = sp.NLAG
 TREE_F32 = ["SLA", "Wooddens", "D95max", "minwscal", "Longevity", "beta_root", "Height", "agb", "vegc", "LAI",
             "fpc_ind", "D95", "Age", "G", "W", "d_agb_prev", "npp", "transp", "wscal_mean", "mort_npp", "mort_age",
@@ -197,7 +199,7 @@ class Climate:
     def year(self, year: int) -> pl.DataFrame:
         year = int(year)
         if year > LAST_SIM_YEAR:
-            raise ValueError(f"year {year} > {LAST_SIM_YEAR}: owner decision 2026-10-01, nothing after 2070")
+            raise ValueError(f"year {year} > {LAST_SIM_YEAR}: owner decision 2026-10-01 (Germany), nothing after 2070")
         if year in self._cache:
             return self._cache[year]
         if self.mode == "frozen_mean":

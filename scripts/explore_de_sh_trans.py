@@ -263,6 +263,11 @@ def build_one(member: str, cellset: str, cb: str, force: bool = False) -> dict:
     hist_years = sorted(int(y) for y in hist["years_complete"])
     win_years = sorted(int(y) for y in row["years_complete"])
     chain_years = hist_years if is_hist else hist_years + [y for y in win_years if y > hist_years[-1]]
+    if not is_hist and win_years[0] > hist_years[-1] + 1:
+        # a window that does NOT continue the Historical table (global venue: 2071-2100 after a 2015-2070 gap)
+        # starts its own chain: its first year has no history (as 1985 has none), never the 2014 rows.
+        # Germany's windows are contiguous (w2015 follows 2014), so this never fires there.
+        chain_years = win_years
     out_years = [y for y in pair_years if (y in chain_years and y + 1 in chain_years)
                  and ((is_hist and y < hist_years[-1]) or (not is_hist and y >= hist_years[-1]))]
     if SMOKE:

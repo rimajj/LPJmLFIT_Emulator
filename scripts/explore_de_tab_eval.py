@@ -27,6 +27,8 @@ import explore_de_tab_heads as Hh  # noqa: E402
 
 SETS = ["F5", "GCM", "SCEN", "SEED2"]
 EPS = 1e-6
+# the build of the TRAINING recruits (Germany: Dec-2025 = "dec2025"; global venue: the Feb-2026 build = "feb2026")
+TRAIT_BUILD = os.environ.get("XDE_TRAIT_BUILD", "dec2025")
 SMOKE = Hh.SMOKE  # TAB_SMOKE=1: code-path check on tiny slices, written to *_smoke reports
 
 
@@ -472,7 +474,7 @@ def traits(split):
         for a_ in grid_a:
             for s_ in grid_s:
                 for w_ in grid_w:
-                    sim = Hh.mix_draw(D, {str(t): {"w": w_, "a": a_, "s": s_}}, "dec2025", U, P)
+                    sim = Hh.mix_draw(D, {str(t): {"w": w_, "a": a_, "s": s_}}, TRAIT_BUILD, U, P)
                     ks = {k: ks_stat(sim[k], obs[k]) for k, _ in Hh.TRAIT_AX}
                     tot = sum(ks.values())
                     rows.append({"w": w_, "a": a_, "s": s_, "ks_sum": tot, **ks})
@@ -486,7 +488,7 @@ def traits(split):
                                                         key=lambda r: r["ks_sum"])}
         print(t, tab[str(t)], flush=True)
     json.dump(fit, open(os.path.join(Hh.mdir(split), "traits_fit.json"), "w"), indent=1)
-    out = {"fit": fit, "fit_detail": tab, "fit_basis": f"training recruits, years {years}, folds 1-4, dec2025"}
+    out = {"fit": fit, "fit_detail": tab, "fit_basis": f"training recruits, years {years}, folds 1-4, {TRAIT_BUILD}"}
     out["gates"] = trait_gates(split, fit, P)
     rpt("A5", {"traits": out})
     Hh.status("A5", f"traits fit {fit}; gates written")

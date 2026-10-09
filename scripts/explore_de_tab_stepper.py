@@ -93,6 +93,8 @@ CAL_KEYS = [
     "logit_off_surv",
     "log_off_rec",
     "ar_sigma_mult",
+    "kappa_gsign",
+    "kappa_gmag",
 ]
 CAL_ID = {
     "kappa_g": 1.0,
@@ -103,6 +105,10 @@ CAL_ID = {
     "logit_off_surv": 0.0,
     "log_off_rec": 0.0,
     "ar_sigma_mult": 1.0,
+    # split of kappa_g (global venue, ADR 0315 sec. 16.5): the climate booster on the growth-efficiency SIGN and on
+    # its MAGNITUDE separately; both multiply kappa_g, default 1 = unchanged
+    "kappa_gsign": 1.0,
+    "kappa_gmag": 1.0,
 }
 DONOR_K = 20  # recruit donor: one of the DONOR_K same-Type training recruits nearest in Height
 STATE_F = ["Height", "agb", "vegc", "LAI", "fpc_ind", "D95", "G"]
@@ -286,9 +292,10 @@ class TabStepper:
 
     # ---------------------------------------------------------------------------------- pieces
     def _sample_G(self, X, u_s, u_r):
-        H, k = self.H, self.k_g
+        H = self.H
+        ks, k = self.k_g * self.cal["kappa_gsign"], self.k_g * self.cal["kappa_gmag"]
         kk = "k1" if k != 0.0 else "k0"
-        p = sigmoid(H.raw("gsign", X, k) + self.cal["logit_off_g"])
+        p = sigmoid(H.raw("gsign", X, ks) + self.cal["logit_off_g"])
         neg = u_s < p
         mag = np.zeros(X.height)
         for s, msk in (("neg", neg), ("pos", ~neg)):
@@ -718,37 +725,53 @@ class TabStepper:
 
     # ----------------------------------------------------------------------------------- grass
     def _grass(self, state, Xp, sum_fpc_y, fpc_next, clim_y1):
+        """Next-year grass of every patch, one head set per grass Type (Hh.grass_head). With one grass Type (Germany)
+        this is exactly the original single-grass step; with several, each type also sees the patch's other
+        grasses' cover, and the grass covers are scaled down together where their sum would exceed 1."""
         H = self.H
-        if "grass_g_fpc_y1" not in H.m:
+        types = [g for g in F.GRASS_TYPES if Hh.grass_head(g, "g_fpc_y1") in H.m]
+        if not types:
             return None
         ring = state.patch["loss_ring"]
-        G = Xp.select(
-            "Cell",
-            "grass8_fpc_y",
-            "grass8_LAI_y",
-            "grass8_agb_y",
-            "sum_fpc_y",
-            "n_live_y",
-            "sum_agb_y",
-        )
-        G = G.with_columns(
-            d_sum_fpc=pl.Series(fpc_next - sum_fpc_y),
-            **{f"frac_loss_lag{k}": pl.Series(ring[:, k].astype(np.float64)) for k in range(3)},
-        )
         cf = clim_y1.select(
             pl.col("Cell").cast(pl.Int16),
             *[pl.col(f"anom_{f}").alias(f"a_{f}_y1") for f in F.CLIM_F],
             *[pl.col(f).alias(f"{f}_y1") for f in F.ABS_Y1],
         )
-        G = G.join(cf, on="Cell", how="left", maintain_order="left").join(
-            F.statics(self.gcm), on="Cell", how="left", maintain_order="left"
-        )
-        p = H.grass(G, kappa=self.kappa)
-        return {
-            "grass8_fpc": np.clip(p["g_fpc_y1"], 0.0, 1.0),
-            "grass8_LAI": np.maximum(p["g_LAI_y1"], 0.0),
-            "grass8_agb": np.maximum(p["g_agb_y1"], 0.0),
-        }
+        out = {}
+        for g in types:
+            G = Xp.select(
+                "Cell",
+                f"grass{g}_fpc_y",
+                f"grass{g}_LAI_y",
+                f"grass{g}_agb_y",
+                "sum_fpc_y",
+                "n_live_y",
+                "sum_agb_y",
+            )
+            if Hh.grass_multi():
+                G = G.with_columns(
+                    grass_other_fpc_y=pl.sum_horizontal(
+                        [Xp[f"grass{o}_fpc_y"].fill_null(0.0) for o in F.GRASS_TYPES if o != g]
+                    )
+                )
+            G = G.with_columns(
+                d_sum_fpc=pl.Series(fpc_next - sum_fpc_y),
+                **{f"frac_loss_lag{k}": pl.Series(ring[:, k].astype(np.float64)) for k in range(3)},
+            )
+            G = G.join(cf, on="Cell", how="left", maintain_order="left").join(
+                F.statics(self.gcm), on="Cell", how="left", maintain_order="left"
+            )
+            p = H.grass(G, kappa=self.kappa, gtype=g)
+            out[f"grass{g}_fpc"] = np.clip(p["g_fpc_y1"], 0.0, 1.0)
+            out[f"grass{g}_LAI"] = np.maximum(p["g_LAI_y1"], 0.0)
+            out[f"grass{g}_agb"] = np.maximum(p["g_agb_y1"], 0.0)
+        if len(types) > 1:
+            tot = sum(out[f"grass{g}_fpc"] for g in types)
+            sc = np.where(tot > 1.0, 1.0 / np.maximum(tot, 1e-12), 1.0)
+            for g in types:
+                out[f"grass{g}_fpc"] = out[f"grass{g}_fpc"] * sc
+        return out
 
 
 class TabAL(TabStepper):
