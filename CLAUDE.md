@@ -4,9 +4,12 @@ The runbook every session reads **instead of re-deriving** the environment. Fact
 against the live PIK cluster unless marked otherwise. If a fact here contradicts what you observe, trust
 the observation and fix this file.
 
-**Onboarding order:** this file → `00_START_HERE.md` (short pointer) → `MEMORY.md` (durable state) →
-**`EXECUTION_PLAN.md` (the current order of work — revision 2, 2026-10-08: which tracks and arms your line runs) →**
-the relevant `docs/decisions/ADR-*`. Target: productive in < 15k tokens. `JOURNAL.md` / `CHANGELOG.md`
+**Onboarding order:** this file → **`STATE.md` (the goal, where each part stands, and the `## NEXT` handoff)** →
+`MEMORY.md` (durable cross-cutting facts) → **`EXECUTION_PLAN.md` (revision 3, 2026-10-10: one development stream,
+goal-first priorities; ADR 0319)** → the relevant `docs/decisions/ADR-*`.
+⚠ **The parallel work lines (S/M/E/O/X) were RETIRED on 2026-10-10 (owner decision, ADR 0319).** One developer
+works on `main` in this checkout and owns every path. Text below that speaks of lines, owned paths, integration
+points or per-line files is history; §9 is the current protocol. Target: productive in < 15k tokens. `JOURNAL.md` / `CHANGELOG.md`
 are append-only history — read them only when you need the story behind a specific decision.
 
 **Standing reflex — build skills (do not skip; agents here under-do this).** The moment you write a
@@ -863,14 +866,11 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
 
 ## 5. Git / CI
 
-- **BRANCH-PER-LINE workflow (ADR 0028, which SUPERSEDED ADR 0013's main-only rule on 2026-07-28).** Work on
-  your line's branch in its own worktree and **self-merge to `main` when that branch's CI is green** — the
-  exact ritual, and the five traps in it, are **§9** (read them: `git switch main` does not work from a line
-  worktree, and a plain push after the mandated rebase is rejected). Still **no PRs, no branch protection, no
-  review gate**, and still full autonomy per `STEERING_PROMPT.md` — no owner sign-off is needed or expected;
-  your safety net is the CI/conservation gates and ADRs, not a human gate. Retained from ADR 0013:
-  Conventional Commits, Keep-a-Changelog, one logical change per commit, no data/weights/secrets, and run the
-  CI-equivalent checks (CI-faithfully on SLURM) before pushing.
+- **ONE BRANCH, `main` (ADR 0319, 2026-10-10, restoring ADR 0013's single-branch rule; ADR 0028's line branches
+  are retired).** Commit on `main` in `/p/projects/open/Jamir/esm_land_emulator`, run the CI-equivalent checks your
+  diff triggers (path table below; CI-faithfully on SLURM), push, then check `main`'s own CI. **No PRs, no branch
+  protection, no review gate**, full autonomy — your safety net is the CI/conservation gates and ADRs, not a human
+  gate. Conventional Commits, Keep-a-Changelog, one logical change per commit, no data/weights/secrets.
 - **Commit trailer:** end every commit message with
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - **The 6 CI gates:** `CI` (Julia tests), `format` (Runic), `docs` (Documenter), `python` (ruff+pytest),
@@ -1022,8 +1022,8 @@ and capture whenever you: (a) write a script you'd run again; (b) do the same mu
 | A procedure / how-to for your own context | a **skill** (`.claude/skills/`) — prefer *updating* an existing one over adding a new one |
 | An environment fact / gotcha | **CLAUDE.md** (this file) |
 | A decision | an **ADR** (`docs/decisions/`) |
-| Current durable state | **`lines/<X>/STATE.md`** for line state (incl. the `## NEXT` handoff); **`MEMORY.md`** only for CROSS-CUTTING facts (§9) |
-| Session narrative / what-happened | **`lines/<X>/JOURNAL.md`** (your line; the root `JOURNAL.md` is history + the INTEGRATION journal — §9) |
+| Current durable state | **`STATE.md`** (root; incl. the `## NEXT` handoff); **`MEMORY.md`** for cross-cutting `[VERIFIED]` facts |
+| Session narrative / what-happened | **`JOURNAL.md`** (root, append; `lines/*/JOURNAL.md` are retired history) |
 
 **Capture minimally in the moment** — a 10-line `SKILL.md` pointing at your existing script beats nothing.
 Use the **`skill-creator`** skill for the mechanics (frontmatter, the trigger-rich description that makes a
@@ -1044,171 +1044,64 @@ invocations for the `consolidate-memory` dedup/prune pass.
 
 **Standing tasks:** (1) the commit-time gate above, every commit; (2) **consolidate MEMORY every ~5
 sessions** — reshape MEMORY.md back to durable-state-only under the cap, archive (don't delete) what you
-remove — use the **`consolidate-memory`** skill, which also covers the skill-set dedup/prune pass. With
-parallel lines (§9) this applies to the SHARED `MEMORY.md` as an **integrator** action, and to each
-`lines/<X>/STATE.md` as that line's own housekeeping.
+remove — use the **`consolidate-memory`** skill, which also covers the skill-set dedup/prune pass; apply the same
+to `STATE.md`.
 
 **Use subagents** for isolation, parallelism, a read-only reviewer, or independent verification — and note
 that subagents can invoke skills.
 
 ---
 
-## 9. Parallel work lines — the protocol (ADR 0028/0029; read this every session)
+## 9. One development stream — the protocol (ADR 0319, owner decision 2026-10-10)
 
-Work runs as **4 concurrent session lines**, each a long-lived branch checked out in its own **git worktree**.
-This exists because one serial session was too slow, and because two sessions in ONE checkout destroy each
-other (the mandated `rm -f test/Manifest.toml` before `Pkg.test()`, plus `.git/index.lock` and `*.cov` litter —
-none of it tracked, so git never warns).
+Owner: *"abandon this. I want you to deveop all, no seperation in different lines"*. The parallel lines of ADR
+0028/0029 (S slow demography, M coupled physics, E energy, O online coupling, X direction) are **retired**. Their
+branches (`line/*`) and worktrees (`/p/projects/open/Jamir/wt-{S,M,E,O,X}`) are frozen history — all were fully
+merged into `main` with nothing uncommitted when they were retired; do not develop there (the SessionStart hook
+warns if you launch in one). Removing them is the owner's call.
 
-| Line | Branch · worktree | Scope | State file |
-|---|---|---|---|
-| **S** | `line/S` · `/p/projects/open/Jamir/wt-S` | Component-S science | `lines/S/STATE.md` |
-| **M** | `line/M` · `/p/projects/open/Jamir/wt-M` | Multi-cell coupled S+F+E (P3) | `lines/M/STATE.md` |
-| **E** | `line/E` · `/p/projects/open/Jamir/wt-E` | Component E vs observations (P2) | `lines/E/STATE.md` |
-| **O** | `line/O` · `/p/projects/open/Jamir/wt-O` | Online coupling, Terrarium/SpeedyWeather (P4/P5) | `lines/O/STATE.md` |
-| **X** | `line/X` · `/p/projects/open/Jamir/wt-X` | **Project direction & exploration** — new ideas, architecture-level questions, the owner's direction conversations. **Explores and records; never implements, never writes into another line's state.** Created 2026-08-19 on owner instruction | `lines/X/STATE.md` |
-| — | `main` · `esm_land_emulator` | **Integration only** | — |
-
-**One session per line at a time.** Your line = the branch in the worktree you launched from; the
-`SessionStart` hook (`.claude/hooks/session-line-context.sh`) resolves it and injects your line's ownership
-rules + `## NEXT` action. Launching in the `main` worktree prints `LINE: none (integrator)`.
-
-### Where things are written (this is what keeps merges conflict-free)
-
-**Per-line FILES, not per-line sections** — sections in a shared file still conflict; different files never do.
-
-| Kind | Destination |
+| kind | destination |
 |---|---|
-| Narrative / what happened | `lines/<X>/JOURNAL.md` (append) |
-| Durable line state + the **NEXT handoff** | `lines/<X>/STATE.md` |
-| Changelog entry | a **NEW** `changelog.d/<X>-<slug>.md` fragment — **never edit `CHANGELOG.md` from a line**; whoever merges to `main` folds it in with `scripts/collate_changelog.py` (ADR 0095) |
-| A decision | an ADR from **your block** — TIER 1: S 0030–0049 · M 0050–0069 · E 0070–0079 · O 0080–0089 · integrator/cross-cutting 0090–0099 · **TIER 2**: S 0100–0119 · M 0120–0139 · E 0140–0149 · O 0150–0159 · integrator 0160–0169 · **TIER 3** (use when your tier-2 block is exhausted): **S 0170–0189** · M 0190–0209 · E 0210–0219 · O 0220–0229 · integrator 0230–0239. **TIER 4** (allocated 2026-08-13 by line S while holding the lock, same precedent, same widths): **S 0240–0259** · M 0260–0279 · E 0280–0289 · O 0290–0299 · integrator 0300–0309. **LINE X** (created 2026-08-19 on owner instruction; project direction & exploration) takes **TIER 1: 0310–0329**, opened by **ADR 0310**, with **TIER 2: 0330–0349** reserved at the same width — allocated under §9's standing rule that the lock-holder is the integrator for that moment, so no line has to convene anything to open a block. `0001–0029`, **S's `0030–0049`**, **S's `0100–0119`** and now **S's `0170–0189`** are EXHAUSTED (ADR 0049 closed tier 1, ADR 0100 opened tier 2, ADR 0119 closed it, ADR 0170 opened tier 3, **ADR 0189 closed it** ⇒ **line S is on 0240**). Tier 3 was allocated for ALL lines at once (2026-08-11, by line S while holding the integration lock — §9's rule that the lock-holder is the integrator), at tier-2 widths, precisely so the next line to exhaust its block does not have to convene anything either. Add the row to your line's subsection of `docs/decisions/README.md` |
-| Cross-cutting `[VERIFIED]` fact | `MEMORY.md` (shared, additive) |
-| A procedure / gotcha | a skill / this file (§8 routing unchanged) |
+| goal, where each part stands, the **`## NEXT` handoff** | **`STATE.md`** (root) — the SessionStart hook replays its NEXT block |
+| narrative | **`JOURNAL.md`** (root, append) |
+| cross-cutting `[VERIFIED]` fact | `MEMORY.md` |
+| a decision | an ADR with the **next free number** (one sequence; the per-line number blocks are retired) + a row in `docs/decisions/README.md` |
+| changelog | `CHANGELOG.md` directly, or a `changelog.d/` fragment collated with `scripts/collate_changelog.py` **before** pushing (the `changelog` gate reds `main` on an uncollated fragment) |
+| a procedure / gotcha | a skill / this file (§8) |
+| the order of work | `EXECUTION_PLAN.md` |
+| history of the retired lines | `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only; their gotchas and findings stay valid) |
 
-`CHANGELOG.md`, the shared `MEMORY.md`, `Project.toml`, and cross-cutting ADRs (0001–0029) are
-**integrator-owned**. The root `JOURNAL.md` is the **integration** journal (single-writer ⇒ conflict-free).
+**There is no ownership map any more** — every path, including the former integrator-only files (`Project.toml`,
+`.github/workflows/**`, `.claude/settings.json`, `scripts/sbatch_*.sh`, `EXECUTION_PLAN.md`), is yours to change,
+under the same discipline (runtime `[deps]` stays empty, ADR 0014; regenerate diagrams with an `src/interface.jl` /
+`registry.jl` change, ADR 0091; baselines move only deliberately, guardrail 4).
 
-⚠ **"Integrator-owned" names a ROLE, NOT A PERSON OR A SCHEDULE — and an integrator-owned chore with no
-event attached to it silently rots (ADR 0095).** There is **no orchestrator** in this repo: each line merges
-its *own* branch to `main` (the `flock`'d ritual below), so nothing ever convenes an "integration point" for
-someone to attend. Measured cost of leaving a chore triggerless: `changelog.d/` collation was specified as
-*"the integrator collates at an integration point"* and **56 fragments piled up over 13 days** while
-`CHANGELOG.md` was itself edited three times in the same window — no gate, no conflict, no complaint.
-So, for every integrator-owned chore, state **which event triggers it** and **what makes the residue visible**:
-
-| integrator chore | trigger (an event that provably happens) | visibility |
-|---|---|---|
-| `changelog.d/` → `CHANGELOG.md` | **every merge to `main`**, inside the same `flock` — `scripts/collate_changelog.py` | `changelog` CI gate on `main` (ADR 0095) |
-| shared `MEMORY.md` consolidation | every ~5 sessions (`consolidate-memory` skill) | the ≤400-line / ≤15k-token cap |
-| `[compat]` pin after a dep bump | a red required gate whose diff cannot explain it (§5) | `CI` on every branch |
-| cross-cutting ADR / `EXECUTION_PLAN.md` | an owner steer, or a line raising an integration point | both lines' `STATE.md` |
-
-**You hold the lock ⇒ you are the integrator for that moment.** Collating on `main` does not violate "never
-edit `CHANGELOG.md` from a line": you are editing it in the integration worktree, on `main`, not on your branch.
-
-### Ownership + contracts
-
-The per-path ownership map is **ADR 0029**, **extended here** for three gaps the adversarial review found
-(2026-07-28) — this section is the authoritative, complete map:
-
-| Path | Owner | Note |
-|---|---|---|
-| `src/components/slow.jl`, `src/drf.jl`, `src/climbuf.jl` | **S** | exclusive |
-| `src/run.jl`, `src/interface.jl` | **M** | the coupling seam |
-| `src/components/energy.jl` | **E** | exclusive |
-| `ext/**` | **O** | exclusive (new extension files) |
-| **`src/fdiff.jl`, `src/fdiff_smoothops.jl`, `src/components/fast.jl` — the F core** | **M**, by default | *Gap 1: 60% of `src/` was unowned.* M is the physics/coupling line, so it holds F. **S may not edit F directly** even though S4 (grass ownership) and S6 need it — that is an **integration point**: S specifies the change, M lands it (or M explicitly hands the file over for one milestone, recorded in both STATE.md files). The parked F-fidelity work (`sapwood_bg` growth, per-PFT water supply) is unstaffed — don't start it inside another milestone. |
-| **`src/state.jl`, `src/conservation.jl`, `src/allometry.jl`, `src/registry.jl`** | **shared, additive-only** | Cross-component libraries used across the interface. Add; never restructure. `registry.jl` additionally drives `docs/src/generated/*.mmd` — regenerate with `scripts/gen_diagrams.jl` in the SAME commit or the diagram-staleness gate reds **`CI` on your branch** (ADR 0091 made it real; it had been local-only). ⚠ **This also binds `src/interface.jl` (M-owned):** the full diagram labels edges with `fieldnames(T)`, so changing ONE field of `SToF`/`FToS`/`FToE`/`EToF`/`EToATM`/`SToE`/`AtmForcing` makes the committed diagram stale even with no registry edit. |
-| **`.claude/skills/<name>/SKILL.md`** | **primary owner by domain** | *Gap 2: 40 commits touch skills, and the §8 capture gate pushes EVERY session to edit one.* Primary: `slow-drf-pipeline` + `emulator-validation-figures` → **S**; `fdiff-validate` + `lpjmlfit-cbinary` → **M**; `python-env` → **E**. `julia-test`, `repo-commit`, `residual-diagnosis`, `skill-creator`, `consolidate-memory` are **shared, append-only** (add a bullet/gotcha at the end of the relevant section; do not reorganise, and do not rewrite another line's section). |
-| `test/testitems/**` | by subsystem (see ADR 0029) | `references/**` shared; regenerating an existing baseline is an integration point |
-| `Project.toml`, `test/Project.toml`, `CHANGELOG.md`, shared `MEMORY.md`, root `JOURNAL.md`, `.claude/settings.json`, `.github/workflows/**`, `.gitignore`, `config/**` (except E's energy keys), `scripts/sbatch_*.sh` + `run_tests_slurm.sh` | **integrator only** | *Gap 3: these were unassigned.* Request the change; the integrator lands it on `main`. |
-
-Rules:
-
-- **Never edit another line's exclusive path.** Need a change there? Raise an **integration point**: note it in
-  both lines' STATE.md and land both sides together.
-- **Shared files are additive-only**, inside your marked region where one exists —
-  `src/LPJmLFITEmulator.jl` has `# ── line S/M/E/O ──` regions in both the include and export blocks.
-- **`src/run.jl` + `src/interface.jl` (the coupling seam) belong to line M.** `src/components/energy.jl` to E,
-  `src/components/slow.jl`/`drf.jl`/`climbuf.jl` to S, `ext/` to O.
-- **Frozen cross-line contracts:** S→M (the `FluxDrivenSlowEmulator` kwargs, `flux_feature_vector` order,
-  `live_flux_cond`, the `.drf`/`.rcop` format, the `cell_meta.parquet` schema) and E→M (`SEBEnergyClosure` /
-  `solve!`). M **pins a versioned artifact**; S **bumps a version** rather than mutating an artifact in place.
-  Train/inference consistency is load-bearing (ADR 0023) ⇒ a conditioning change is a both-sides change.
-- **`test/testitems/references/` is shared:** new fixtures take a line-specific name; **regenerating an
-  existing baseline is an integration point** (guardrail 4 — opt-in, default byte-identical).
-- **`Project.toml` deps are integrator-only** and runtime `[deps]` stays EMPTY (ADR 0014) — request a weakdep.
-
-### The ritual (mechanics + gotchas in the `repo-commit` skill)
+### The ritual
 
 ```bash
-INT=/p/projects/open/Jamir/esm_land_emulator   # the integration worktree; `main` lives HERE
-
-git pull --rebase origin main        # at session START, and again before merging
-# ... work, commit (Conventional Commits, one logical change) ...
-git push --force-with-lease origin line/<X>    # NOT a plain push — see (2) below
-#   branch CI: test (lts), test (1), format, python — BUT ONLY THE ONES YOUR DIFF TRIGGERS (ADR 0090).
-#   Decide which to expect BEFORE polling, or you will wait for a check that never appears:
-#     git diff --name-only origin/main...HEAD     # → look up §5's path table
-#   Touched no .jl / no python/ / no docs/src/ ⇒ NO gate runs ⇒ nothing to wait for, merge now.
-#   `docs` deliberately does NOT run on branches (gh-pages deploy race) — build locally when you
-#   changed docs/src/**: DOCS_LINKCHECK=false julia --project=docs docs/make.jl
-# every EXPECTED gate green on THAT sha? integrate — never switch branches in your worktree:
-flock "$INT/.git/esm-integrate.lock" bash -eu -c '
-  git -C "$0" pull --ff-only origin main
-  git -C "$0" merge --no-ff --no-edit "origin/line/$1"
-  # COLLATE the changelog fragments now on main (ADR 0095) — you hold the lock, so you are the
-  # integrator for this moment. Skipping it reds the `changelog` gate on main; it is one command.
-  ( cd "$0" && python3 scripts/collate_changelog.py )
-  if ! git -C "$0" diff --quiet -- CHANGELOG.md changelog.d; then
-    git -C "$0" add CHANGELOG.md changelog.d
-    git -C "$0" commit -m "docs(changelog): collate changelog.d fragments into CHANGELOG.md"
-  fi
-  git -C "$0" push origin main
-' "$INT" <X>
-# then check main's OWN latest CI run (see (5)).
+cd /p/projects/open/Jamir/esm_land_emulator
+git pull --rebase origin main                  # session start, and before pushing
+# ... work; commit (Conventional Commits, one logical change, trailer per §5) ...
+git diff --name-only origin/main..HEAD         # which CI gates will run? (§5 path table)
+#   touched src/** test/** ext/** Project.toml -> run scripts/run_tests_slurm.sh <tag> first
+#   touched **/*.jl -> Runic 1.8.0 check;  python/** -> ruff + pytest;  src/** or docs/src/** -> local docs build
+python3 scripts/collate_changelog.py           # only if you added changelog.d/ fragments
+git push origin main
+# then check main's own CI for the pushed sha (§5) — only for gates your diff triggered
 ```
 
-Four things here are load-bearing — all three were **wrong in the first version of this protocol** and caught by
-an adversarial review on 2026-07-28 before any line ran them:
+Load-bearing details that survive from the old protocol: **verify `main`'s own CI after a push that triggered
+anything** (format/docs/python/Aqua/JET are whole-package gates, and `docs` runs only on `main`); **a script with a
+hard-coded absolute repo path** is now harmless only because there is one checkout — still derive the root from the
+script (`os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` / `@__DIR__`); **one session at a time in
+this checkout** (two sessions in one checkout destroy each other's `test/Manifest.toml`, `.git/index.lock` and
+`*.cov` litter — the reason worktrees were introduced; if the owner ever runs two sessions again, give the second
+one its own worktree on a branch and merge it back).
 
-1. **Never `git switch main` in a line worktree.** `main` is permanently checked out in `$INT`, so git refuses:
-   `fatal: 'main' is already used by worktree at …` (exit 128). Drive the integration worktree with `git -C`
-   instead; nothing ever leaves your own worktree, so there is no "switch back" step.
-2. **`--force-with-lease`, not a plain push.** The mandated `pull --rebase` *rewrites commits you already
-   pushed*, so a plain `git push` is rejected non-fast-forward — and git's own hint ("use 'git pull'") leads to
-   a `--no-rebase` merge that **duplicates every rebased commit**. The lease is safe because ADR 0028 mandates
-   one session per line. Never "fix" the rejection with `git pull --no-rebase`.
-3. **Merge `origin/line/<X>`, not the local branch.** That is the exact sha branch CI verified. A pre-rebase
-   green verdict does **not** carry over to a post-rebase sha, and branch CI takes ~10 min here — long enough
-   for a sibling's `main` push to force another rebase.
-4. **`flock` the integration worktree.** It is the one shared checkout left; without the lock four lines can
-   interleave `pull`/`merge`/`push` in it and reintroduce exactly the contention worktrees were adopted to
-   remove.
-5. **Then verify `main`'s own latest CI — when your diff triggered anything (ADR 0090).** Green branches do
-   **not** guarantee a green `main`: `format`, `docs`, `python`, Aqua and JET are **whole-package** gates, and
-   `docs` never runs on your branch at all. Also GitHub keeps only one *pending* run per branch, so a rapid
-   follow-up push can cancel an intermediate `main` run (observed twice) — the **newest** `main` sha is the one
-   that carries a verdict. **If the merge changed no gate-watched path, `main` runs nothing either** and there
-   is nothing to verify; the one case that still deserves a look is a merge that touched `src/**` or
-   `docs/src/**`, because that is when `docs` runs on `main` having never run on your branch.
+**BEFORE YOUR SESSION ENDS (or when context runs low): refresh the `## NEXT — start here` block in `STATE.md` and
+commit it.** That block is the entire handoff — the hook replays it verbatim into the next session.
 
-6. **A script with a hard-coded absolute repo path writes into the INTEGRATOR worktree.** Several older
-   scripts opened with `REPO = "/p/projects/open/Jamir/esm_land_emulator"`, so running one from a line
-   worktree silently emits its fixtures into `$INT`'s working tree — dirtying the one shared checkout and
-   losing the output from your own branch. Always derive the root from the script:
-   `os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` (Python) / `@__DIR__` (Julia). Fixed in
-   `extract_biome_forcing.py`; **grep any script you reuse** (`grep -n 'open/Jamir/esm_land_emulator' scripts/*`).
-
-`test (pre)` is `continue-on-error` and is currently red for unrelated Julia-prerelease churn — don't chase it.
-**Merge at every milestone, never hoard.** Rebase early; a stale branch is the only real conflict source left.
-
-**BEFORE YOUR SESSION ENDS (or when context runs low): refresh the `## NEXT — start here` block in
-`lines/<X>/STATE.md` and commit it.** That block is the entire handoff — the hook replays it verbatim into the
-next session. A session that ends without refreshing it has silently broken the chain.
-
-### SLURM + scratch under parallel lines
+### SLURM + scratch
 
 - **The `priority` partition is usually EMPTY and starts instantly — but it caps at `cpu=64` PER JOB
   (`[VERIFIED 2026-08-04]`).** `PARTITION=priority QOS=priority` (both — the partition alone is rejected)
@@ -1221,15 +1114,15 @@ next session. A session that ends without refreshing it has silently broken the 
   to `priority`. A pending job can be moved in place with
   `scontrol update job <id> Partition=priority QOS=priority` (keeps the job id and log path) — it fails with
   `Job violates accounting/QOS policy` if it asks for >64 cpus, which is the tell, not a permissions problem.
-- **Tag every job with your line prefix** (`S-`/`M-`/`E-`/`O-`), e.g.
-  `scripts/run_tests_slurm.sh S-suite`, `scripts/sbatch_python.sh M-soil scripts/....py` — so `squeue` and
-  `logs/<tag>.<jobid>.out` stay attributable. Each worktree has its own (gitignored) `logs/`.
-- **Write only to `/p/tmp` paths your line created**; another line's artifacts are **read-only**. Never
-  overwrite a shared artifact in place — version it.
+- **Tag every job descriptively** (e.g. `scripts/run_tests_slurm.sh suite`, `scripts/sbatch_python.sh
+  daily-learn scripts/....py`) so `squeue` and `logs/<tag>.<jobid>.out` stay attributable. Older logs carry the
+  retired line prefixes `S-`/`M-`/`E-`/`O-`/`X-`; the retired worktrees each kept their own `logs/`.
+- **Never overwrite an existing artifact in place — version it** (older results, ADRs and fixtures point at
+  the old paths).
 - **To CHAIN a job after another, write a raw `.jcf` — do NOT edit the wrappers.** `sbatch_python.sh` /
-  `sbatch_julia.sh` have **no** `DEPENDENCY` knob, and `scripts/sbatch_*.sh` are **integrator-owned** (§9 Gap 3),
-  so a line cannot add one. Emit your own job file with `#SBATCH --dependency=afterok:<jid>` (log to your
-  worktree's `logs/`, keep the `<line>-` tag) and `sbatch` it; confirm with
+  `sbatch_julia.sh` have **no** `DEPENDENCY` knob (adding one is now allowed — the wrappers are no longer
+  integrator-owned, ADR 0319 — but do it as its own commit). Emit your own job file with
+  `#SBATCH --dependency=afterok:<jid>` (log to `logs/`) and `sbatch` it; confirm with
   `scontrol show job <new> | grep -o 'Dependency=[^ ]*'`. Worth doing whenever a long job's *result* needs a
   follow-up analysis: the chained job measures itself instead of waiting for a session to notice
   (`[VERIFIED 2026-07-28]`, S chained the ADR-0030 gate onto its copula job this way). `afterok` means a failed
@@ -1243,7 +1136,7 @@ next session. A session that ends without refreshing it has silently broken the 
   variable names (`NCELLS SEED NO_DAILY OUT CELLS MODE SCENARIO …`), so a bare
   `MYKNOB=1 scripts/sbatch_python.sh …` reaches the *wrapper* but never the job, and the script silently
   runs with the knob's DEFAULT. It bit a `SMOKE=1` five-cell run that quietly became a full-grid one. The
-  wrappers are **integrator-owned** (§9 Gap 3) so a line cannot extend the list — `export MYKNOB=1` first
+  wrappers can be extended (ADR 0319), but until a knob is in the list, `export MYKNOB=1` first
   (SLURM's `--export=ALL` carries it), and `unset` it before the next submission or it leaks. The
   `env:` line the wrapper echoes shows only the FWD list, so an empty `env:` is not evidence of anything.
   ⚠ **AND THE MIRROR TRAP, WHICH IS WORSE BECAUSE `export` CAUSES IT: an env knob whose NAME COLLIDES with

@@ -1,5 +1,8 @@
 # LINE S — Component-S science (branch `line/S`, worktree `wt-S`)
 
+> 🗄 **RETIRED 2026-10-10 (ADR 0319): the parallel lines were abandoned on owner instruction. This file is read-only
+> history. Current state and the NEXT handoff: the root `STATE.md`.**
+
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/S/JOURNAL.md` (append-only). Decisions: tier-1 block
 > **0030–0049 is EXHAUSTED** and so is the **tier-2 block 0100–0119** (ADR 0119 spent the last number). Line

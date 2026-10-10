@@ -1,5 +1,10 @@
 # MEMORY.md — SHARED durable state for the LPJmL-FIT hybrid land-component emulator
 
+> ⚠ **2026-10-10 (ADR 0319): the parallel work lines are RETIRED — one developer, one branch (`main`).** Current
+> state + the NEXT handoff live in the root **`STATE.md`**; narrative in the root `JOURNAL.md`. Where the header
+> below speaks of lines, per-line files or integrator-only restructuring, read it as history; this file is now
+> simply the cross-cutting `[VERIFIED]` fact store, edited by the one developer.
+
 > **Shared, cross-cutting durable state only** (ADR 0029) — the facts and status every work line needs: what
 > this is, the `[VERIFIED]` facts, the load-bearing constraints, and the cross-line frontier.
 > **Any line may APPEND a cross-cutting `[VERIFIED]` fact here**; *restructuring* this file (the

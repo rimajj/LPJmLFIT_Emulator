@@ -1,7 +1,24 @@
-# EXECUTION_PLAN.md — the current program (revision 2, owner instruction 2026-10-08)
+# EXECUTION_PLAN.md — the current program (revision 3, owner instructions 2026-10-10)
 
-**Read this after `CLAUDE.md` and before `lines/<X>/STATE.md`.** It is the executable program: what each line
-works on, what decides which method survives, and what must not be started yet. `DEVELOPMENT_PLAN.md` stays the
+**Revision 3 (2026-10-10).** Two owner decisions change *who* works and *what counts as passing*, not the method
+inventory below:
+
+> *"change of plans. the otehr lines stem frmo the beginning of the project, where slow and fast part was deevlopte
+> in parralel, as well as the coupling etc. abandon this. I want you to deveop all, no seperation in different
+> lines"* (ADR 0319)
+
+> *"I think we have to relax the passing standarts a bit. as long as the dense ells are fine and the sparse cells
+> dont drift away completely we should go on. AS before the goal is to have a full LPJmL_FIT emulator that emulates
+> everything happening in the mode orders of magnitude faster thatn lpjmlfit and does not drift away in transient
+> runs"* — and: *"We also want to simulate teh fast physcs structure!!!"* (ADR 0318)
+
+So: **one development stream** (§9 is now a priority list, not per-line assignments; the "lines" columns below are
+history), **the daily exchange is learned** (F2 first; F1 parked unless F2 fails), and **the relaxed standard of
+ADR 0318 §2** replaces §0.1's per-cell 10 % rule as the working pass test. Previous version: `git show
+2d52f0eb:EXECUTION_PLAN.md`.
+
+**Read this after `CLAUDE.md` and `STATE.md`.** It is the executable program: what is worked on, what decides which
+method survives, and what must not be started yet. `DEVELOPMENT_PLAN.md` stays the
 stable phased architecture; `STEERING_PROMPT.md` is older and its ordering is superseded by this file.
 
 **Revision 2 replaces the 2026-08-07 error-attribution ladder as the order of work.** The ladder did its job (§11
@@ -18,17 +35,18 @@ Evidence and reasoning: **ADR 0096** (the decision) and **`docs/review_compariso
 
 **Track D status (2026-10-08):** launched — see §3 and ADR 0246; data under `/p/projects/open/Jamir/esm_land_emulator_data/trackD/` (README there).
 
-**Integrator-owned.** A line does not edit this file. It records progress in its own `STATE.md` and raises a change
-here as an integration point. Whoever holds the merge lock is the integrator for that moment (CLAUDE.md §9).
+**Ownership:** since revision 3 there is one developer; this file is edited like any other, with a revision note.
 
 ---
 
-## 0. The goal — unchanged (ADR 0094, 0106, 0107)
+## 0. The goal (ADR 0094, 0106, 0107; restated and the pass test relaxed 2026-10-10, ADR 0318)
 
-1. **Faithful.** Tree counts, trait distributions and trait medians within `max(10 %, the original's own two-run
-   spread)` on **all 54 020 tree-bearing cells**, both scenarios, **and the response between them** — "especially
-   under climate change" (ADR 0106).
-2. **Fast enough to live inside an ESM** — a first-class deliverable.
+1. **Faithful — everything the model does** (forest structure AND the daily carbon/water exchange), "especially under
+   climate change". **Working pass test (revision 3, ADR 0318):** dense cells as close as a second run of the
+   original (proposed: typical error ≤ 1.2×, worst 10 % ≤ 1.5×, area totals within 5 %), sparse cells must not run
+   away (typical ≤ 3×, totals within 25 %), and **no drift in transient runs**. Measured on all 54 020 tree-bearing
+   cells for the final verdict. (Superseded wording: `max(10 %, two-run spread)` on every cell, ADR 0106 / 0317.)
+2. **Orders of magnitude faster than LPJmL-FIT** — a first-class deliverable, measured end to end.
 3. **Coupled to the ESM.**
 
 **CO2: the emulator does not see CO2 and must not respond to it** (ADR 0004/0107; closed — do not re-litigate).
@@ -210,22 +228,18 @@ which statistic failed. Do not re-read a criterion after seeing its arm (the ADR
 
 ---
 
-## 9. What each line does now (all in parallel)
+## 9. Priorities now (revision 3: one stream, in this order; details and the live NEXT in `STATE.md`)
 
-| line | now | must NOT start yet |
-|---|---|---|
-| **S** | A1 (ADR 0245's water probe); **collect + verify Track D** (launched 2026-10-08, ADR 0246; procedure in skill `trackd-data`), then DP-0; global side of Track Y; A4 on the global model; U1 once the members have landed | no new one-step count-model work |
-| **X** | **(ADR 0313: now on Billing's global set — held-out member/scenario; DP-A1 to be re-defined)** Germany round 1 of A2–A7 on the Track-Y scorer (owner's Germany-first milestone), extended to 2071–2100 once the D2 re-run lands (`/p/projects/open/Jamir/esm_land_emulator_data/trackD/germany_rh/ind/`, window `w2045`); C3 | the global transfer of an arm before it passes DP-A1 |
-| **M** | F1 (kinetics wiring → analytic/implicit derivative → convergence test); C1 stability gate; C2 interface + soil respiration/fire; F3 | open-ended F residual hunts (paused until DP-F) |
-| **O** | F2 phase A (offline learnability of the daily water–carbon model); the speed harness as a CI gate (request to the integrator); threads across cells | online work beyond the C4 self-test until DP-S |
-| **E** | C2 energy-side exports + real wind/pressure in the coupled driver (with M); Experiment B (the closure scored with F's own LE); review F3 | — |
-| **integrator** | wire the speed harness as a required gate; keep this file and `MEMORY.md` current | — |
+| # | work | why first | done when |
+|---|---|---|---|
+| 1 | **F2 — learned daily water–carbon model, phase A offline** (§6) | the missing half of "everything", and the speed lever: the original spends 51–69 % of its runtime in leaf gas exchange + soil water (ADR 0312); nothing exists yet | DP-F bar (§6) on held-out spatial blocks and a held-out scenario, with nulls |
+| 2 | **Structure map (A7 family, ADR 0315–0318): dense-cell bias, then the global venue** | closest to passing; dense stem totals are low in 14/15 cases | relaxed standard (ADR 0318 §2) on the panel, then on the global venue |
+| 3 | **Transient no-drift test** of both halves, year by year | owner's explicit clause | error over 2020–2100 does not grow (number fixed before the run) |
+| 4 | **Speed**, end to end, each half and the whole | goal #2 | measured core-s per cell-year vs the original at its patch count, atmosphere named |
+| 5 | **Coupling** (C-track, §7) once 1–4 hold | goal #3 | — |
 
-**Integration points this creates (record in BOTH lines' STATE):** M ↔ O for F1/F2 (who edits `src/fdiff.jl`: M
-only, unless a hand-over is recorded); M ↔ E for F3 and C2; S ↔ X for the shared Track-Y statistics and D0; S ↔ M
-if A1's water integral needs F's per-tree roots (`per_tree_roots`).
-
----
+**Parked:** F1 (re-implementing the physics faster) — only if F2 fails DP-F. Open-ended F_diff fidelity hunts.
+Track A arms other than the structure map stay in the inventory; revive one only with a measured reason.
 
 ## 10. Standing rules
 
@@ -259,14 +273,7 @@ if A1's water integral needs F's per-tree roots (`per_tree_roots`).
 
 ---
 
-## 12. Where each line records what
+## 12. Where things are recorded
 
-| kind | destination |
-|---|---|
-| progress + the `## NEXT` handoff | `lines/<X>/STATE.md` (yours only) |
-| narrative | `lines/<X>/JOURNAL.md` (append) |
-| a decision | an ADR from **your current block** (see `docs/decisions/README.md`: S 0246+, M 0190–0209, E 0076–0079 then 0140–0149, O 0088–0089 then 0150–0159, X 0313+, integrator 0097–0099 then 0160–0169) |
-| an arm's result | one row per (arm, venue, statistic) in the Track-Y table of your venue, plus an ADR when it decides anything |
-| a cross-cutting `[VERIFIED]` fact | `MEMORY.md` (additive) |
-| changelog | a new `changelog.d/<X>-<slug>.md` |
-| a change to THIS file | an integration point — raise it, do not edit |
+See `CLAUDE.md` §9 (ADR 0319): `STATE.md` (state + NEXT), `JOURNAL.md` (narrative), ADRs with the next free number,
+`MEMORY.md` (cross-cutting facts), `CHANGELOG.md` / `changelog.d/`. The per-line files under `lines/` are history.

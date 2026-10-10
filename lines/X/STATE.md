@@ -1,5 +1,8 @@
 # LINE X — project direction & exploration (branch `line/X`, worktree `wt-X`)
 
+> 🗄 **RETIRED 2026-10-10 (ADR 0319): the parallel lines were abandoned on owner instruction. This file is read-only
+> history. Current state and the NEXT handoff: the root `STATE.md`.**
+
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/X/JOURNAL.md` (append-only). Decisions: tier-1 block
 > **0310–0329**, opened by **ADR 0310**. **Next free number: 0319.**

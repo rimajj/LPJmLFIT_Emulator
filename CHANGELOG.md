@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **One development stream (owner decision, ADR 0319):** the parallel work lines S/M/E/O/X are retired; all work
+  happens on `main` in one checkout. New root `STATE.md` (goal, where each part stands, the NEXT handoff the
+  SessionStart hook now replays), `CLAUDE.md` §9 rewritten, `00_START_HERE.md` rewritten, `EXECUTION_PLAN.md`
+  revision 3 (priorities: learned daily water–carbon model first, then the structure map's dense-cell bias, the
+  transient no-drift test, speed, coupling), the per-line ADR number blocks replaced by one sequence. The `wt-*`
+  worktrees and `line/*` branches are kept as frozen history.
+- **Goal restated and pass standard relaxed (owner, ADR 0318):** a full emulator of everything (forest structure and
+  the daily carbon/water exchange), orders of magnitude faster than LPJmL-FIT, drift-free in transient runs; dense
+  cells must be as close as a second run, sparse cells must not run away.
+
 ### Added
 
 - Line X: count-aware losses (Poisson, Tweedie) for the tree-count model of the anchored direct map

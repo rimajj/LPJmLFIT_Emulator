@@ -1228,3 +1228,14 @@ directory persisted, so a later `ls config/` and `git ls-files | wc -l` answered
 missing `config/` directory and a 17-file repository. Both were artifacts of the cwd, caught by listing the
 repo root before writing either into anything. **A relative-path check is only as good as the directory it
 runs in; `pwd` first when a result is surprising.**
+
+## 2026-10-10 — the parallel lines are retired; one development stream (ADR 0319)
+
+Owner: *"abandon this. I want you to deveop all, no seperation in different lines."* Verified first that all five
+line worktrees were clean and fully merged into `main` (nothing to lose). Then: decision record 0319; a root
+`STATE.md` holding the goal, the state of each part and the single NEXT handoff; the SessionStart hook rewritten to
+replay it (and to warn when launched in a retired `wt-*` worktree); `CLAUDE.md` §9 replaced by the one-stream
+protocol (the SLURM gotchas kept); `00_START_HERE.md` rewritten; `EXECUTION_PLAN.md` revision 3 with a single
+priority list (learned daily exchange first — nothing of it exists yet); retired banners on `lines/*/STATE.md`, the
+`repo-commit` skill and `MEMORY.md`; the owner's global `~/.claude/CLAUDE.md` updated for the paths, the plan
+revision and the relaxed standard. Worktrees and branches left in place pending the owner's word on removal.

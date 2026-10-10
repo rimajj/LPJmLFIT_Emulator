@@ -1,5 +1,8 @@
 # LINE E — Component E vs observations (branch `line/E`, worktree `wt-E`) — P2
 
+> 🗄 **RETIRED 2026-10-10 (ADR 0319): the parallel lines were abandoned on owner instruction. This file is read-only
+> history. Current state and the NEXT handoff: the root `STATE.md`.**
+
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/E/JOURNAL.md` (append-only). Decisions: ADR block **0070–0079**.
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
