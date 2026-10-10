@@ -336,3 +336,28 @@ is weighted over the typical cell — that weighting is the owner's call (ADR 03
 sensitivity features from the training legs (within-cell slope of tree count against the leg's climate across the 8
 training climate legs × 5 runs, leave-one-leg-out like the anchor). Sparse cells sit at range edges where the response
 is strongest and least shared with neighbours in feature space.
+
+## 13. Owner steer: dense cells first; the best arm's tree-count error in plain units (2026-10-10)
+
+**Owner, verbatim:** *"we should definetely focus on getting the dense cell as goos as possible. the sparse cells are
+not as important. tree count error of 1.9% sounds very good. how much is the 1.35 times second run deviation in total
+numbers? sounds pretty close to the model inherint noise to me..."* Recorded as a line-X priority. It touches ADR 0106's
+"all cells" clause; whether it becomes a formal amendment (e.g. second-run target on dense cells, sparse cells reported
+with a looser band) was asked, not assumed.
+
+**Measured** (`scripts/explore_panel_abs_err.py`, A7rH seed 1, the 15 held-out-model cases, second run = m1/m2/m3 each
+vs m4; dense = ≥ 5 trees per patch in the truth, ~80 % of tree-bearing cells, median 8.9 trees per patch):
+
+| per cell, tree count | emulator | second run |
+|---|---|---|
+| dense: typical error | 0.64 trees per patch = **7.1 %** | 0.52 = **5.8 %** |
+| dense: worst 10 % | 2.2 trees per patch = 23 % | 1.5 = 17 % |
+| dense: cells within 10 % | 64 % | 73 % |
+| sparse (< 5): typical / worst 10 % | 34 % / 191 % | 11 % / 49 % |
+| area total (median, ssp370) | 1.9 % | 0.4 % |
+| **dense-cell area total** | **LOW in all 15 cases, −0.5 to −5.1 %** (median 3.1 % on ssp370) | 0.5 % |
+
+⇒ the typical dense cell is ~1.2× a second run, close to the original's own noise; the tail is ~1.4×. The total is
+**not** near noise: a second run's total is within 0.4 %, because totals average the noise away, and the emulator's
+dense cells are biased low in every case, partly hidden in the total by over-predicted sparse cells. That systematic
+dense-cell deficit is the first target under the owner's steer.

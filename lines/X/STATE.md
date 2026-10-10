@@ -84,6 +84,21 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 0🌲 2026-10-10 (ADR 0316 §13) — OWNER STEER: DENSE CELLS FIRST; DENSE CELLS ARE BIASED LOW IN ALL 15 CASES — read first
+
+Owner, verbatim: *"we should definetely focus on getting the dense cell as goos as possible. the sparse cells are not as
+important."* (Asked back: should that become a formal amendment of the "all cells" finish criterion? — open.)
+Measured (`scripts/explore_panel_abs_err.py`, seconds): dense cells (≥ 5 trees per patch) typical error 7.1 % vs a second
+run's 5.8 % (0.64 vs 0.52 trees per patch), worst 10 % 23 % vs 17 %; but the **dense-cell area total is too LOW in all 15
+cases (−0.5 to −5.1 %)** vs 0.5 % for a second run — hidden in the all-cell 1.9 % by over-predicted sparse cells.
+**NEXT, in order (supersedes the §12 block's item 1):**
+1. **Find and remove the dense-cell low bias, one variable at a time.** First measure (no fitting): is it in the anchor
+   (training-run mean vs m4's own level in dense cells), in the learned shift (prediction − anchor vs truth − anchor), or
+   in the scenario (does it grow with warming)? Then one pre-registered treatment. Score dense cells on
+   `explore_panel_abs_err.py` + the second-run measure restricted to dense cells.
+2. The per-cell response features of §12 stay a candidate, scored on dense cells first.
+3. §11 items 2–4 unchanged (global venue port, UKESM extrapolation, owner questions).
+
 ### 0🧮 2026-10-10 (ADR 0316 §12) — COUNT-AWARE LOSS: SAME TRADE-OFF AS THE LOG TARGET; BEST ARM STILL A7rH — read first
 
 `explore_panel_a7.py cnt` (jobs 2458085–89, 5 seeds; score with `PRED_SET=cnt PRED_ARMS=A7rH,A7rP,A7rT python
