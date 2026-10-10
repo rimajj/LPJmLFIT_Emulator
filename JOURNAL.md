@@ -1272,3 +1272,11 @@ not a response statistic.
 
 Open: the deep/runoff split is biased (deep store 1.8–2.7 m over 81 years vs 0.22 m in the original); level errors
 are 2–4× the original's run-to-run noise even where the ±5 % bar passes; the stand still comes from the original.
+
+**Later the same day — two ensembles.** The five-seed ensemble (ADR 0322 protocol) failed narrowly on NPP only
+(ADR 0323); single seeds passed 1 of 5. In the original, daily respiration (GPP − NPP) is never negative in 31 M
+cell-days, so arm R predicted NPP as GPP minus a non-negative respiration, again five seeds averaged (ADR 0324). It now
+fails exactly one statistic: typical-cell NPP under the climate model it has never seen, 5.7 % vs 5 % (one-step 5.1 %).
+By the pre-registered comparison rule it is mixed against the direct head, not better. Also caught: a STATE.md edit that
+anchored on the header's mention of "NEXT — start here" and cut the file — restored from git before committing; anchor
+on the heading line (`\n## NEXT`), not on the phrase.
