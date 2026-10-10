@@ -225,7 +225,7 @@ def sample_rows(ml, cell_idx, n, rng):
 
 
 def train(args, mls, tr, va, dev, log):
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(args.seed)
     per = args.nsamp // len(mls)
     parts, vparts = [], []
     for ml in mls:
@@ -604,6 +604,7 @@ def main():
     ap.add_argument("--batch", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--hidden", type=int, default=64)
+    ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--layers", type=int, default=2)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
@@ -618,7 +619,7 @@ def main():
         logf.write(msg + "\n")
         logf.flush()
 
-    torch.manual_seed(0)
+    torch.manual_seed(a.seed)
     dev = torch.device(a.device)
     log(f"== f2_train tag={a.tag} device={dev} args={vars(a)}")
     cells_df = pl.read_parquet(os.path.join(DATA, "cells.parquet"))
