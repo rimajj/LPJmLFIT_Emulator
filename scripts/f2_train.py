@@ -43,6 +43,7 @@ ANNUAL = ["gpp", "et", "npp", "runoff"]
 NFORC = 12
 NIN = NFORC + 3 + 4 + 12
 NH, NL = 64, 2  # network width / depth (set from the command line)
+NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -172,12 +173,15 @@ class Net(nn.Module):
             layers += [nn.Linear(n, nh), nn.SiLU()]
             n = nh
         self.trunk = nn.Sequential(*layers, nn.Linear(n, 9))
+        self.npp_ra = NPP_HEAD == "ra"
 
     def forward(self, x, prec, S_prev):
         o = self.trunk((x - self.mu) / self.sd)
         sp = nn.functional.softplus
         f, m, i = torch.sigmoid(o[:, 0]), torch.sigmoid(o[:, 1]), torch.sigmoid(o[:, 2])
         ys = self.ysd
+        gpp = sp(o[:, 7]) * ys[6]
+        npp = gpp - sp(o[:, 8]) * ys[7] if self.npp_ra else o[:, 8] * ys[7]
         return torch.stack(
             [
                 prec * f - m * S_prev,
@@ -186,8 +190,8 @@ class Net(nn.Module):
                 sp(o[:, 4]) * ys[3],
                 sp(o[:, 5]) * ys[4],
                 o[:, 6] * ys[5],
-                sp(o[:, 7]) * ys[6],
-                o[:, 8] * ys[7],
+                gpp,
+                npp,
             ],
             -1,
         )
@@ -620,14 +624,15 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--hidden", type=int, default=64)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--npp-head", dest="npp_head", choices=["direct", "ra"], default="direct")
     ap.add_argument(
         "--ensemble", default="", help="comma-separated run tags to average (no training)"
     )
     ap.add_argument("--layers", type=int, default=2)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    global NH, NL
-    NH, NL = a.hidden, a.layers
+    global NH, NL, NPP_HEAD
+    NH, NL, NPP_HEAD = a.hidden, a.layers, a.npp_head
     out = os.path.join(DATA, "runs", a.tag)
     os.makedirs(out, exist_ok=True)
     logf = open(os.path.join(out, "log.txt"), "a")

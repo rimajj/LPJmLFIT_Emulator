@@ -1239,3 +1239,36 @@ protocol (the SLURM gotchas kept); `00_START_HERE.md` rewritten; `EXECUTION_PLAN
 priority list (learned daily exchange first — nothing of it exists yet); retired banners on `lines/*/STATE.md`, the
 `repo-commit` skill and `MEMORY.md`; the owner's global `~/.claude/CLAUDE.md` updated for the paths, the plan
 revision and the relaxed standard. Worktrees and branches left in place pending the owner's word on removal.
+
+## 2026-10-10 — the learned daily water–carbon model exists: phase A data, design, five arms (ADR 0320–0322)
+
+Started the handoff's item 1 with an inventory. The global daily run (186 GB) has no stand output from the same run,
+but the panel campaign does: 4 members × 6 legs with daily fluxes, each beside the annual stand, the per-PFT cover
+and the monthly soil water of the *same* run. Three facts measured before any design: the leg's own daily
+precipitation equals the forcing file at every cell and day (so the forcing join is exact); the observed-climate
+control shuffles its years with a different sequence per member, recoverable exactly by matching precipitation; the
+top-metre water tops out exactly at Σ whc_nat·dz over the first three layers and never goes negative, while the
+exchange with the soil below 1 m is ~420 mm/yr gross but ~0 net. And one trap: the `hist` leg runs with rising
+CO2, every other leg with constant CO2 — so `hist` is out (the emulator must not see CO2).
+
+Pre-registered the test (ADR 0320, pushed before training): one small network, snow / top-metre / deep stores
+closed by construction, 24 held-out blocks incl. the biome cells, two held-out legs (ssp585, an unseen climate
+model), free-run bar = annual GPP/ET/NPP within ±5 % (biome cells, typical held-out cell, area total), GPP change
+inside the original's member band at ≥ 4 of 5 biome cells, ≤ 0.01 core-s per cell-year. Built the arrays
+(`f2_build_daily_table.py`, 2 min, 35 GB) and the trainer (`f2_train.py`, ~15 min per arm on one GPU).
+
+Arm A (2 × 64) failed on NPP and on the biome response; arm A2 (3 × 256) failed only on NPP under the unseen model
+(5.7 %). A seed replicate of A2 passed everything (4.9 %) — so the configuration sits on the bar and the seed
+decides; neither run is claimed. 4× more training rows made validation *worse* and put NPP area totals 9 % low on
+every leg: the rows come from 730 cells, and the limit is places, not days. Pre-registered a five-seed ensemble
+(ADR 0322) and chained it after seeds 2–4.
+
+**One wrong reading caught before it spread.** I first read a "response ratio" (net area-summed change, emulator over
+original) as "the model under-responds even one-step". It was meaningless: tropical losses cancel boreal gains, so the
+true net change is 5–12 % of the summed per-cell change and the ratio swings from −2 to +3. Per cell, the response
+is captured (correlation 0.92–0.97, slope 0.84–0.99 for A2). The trainer now reports per-cell statistics; the
+withdrawn reading is named in ADR 0321 §3.1. Lesson for the skill: a ratio of net sums over cells of mixed sign is
+not a response statistic.
+
+Open: the deep/runoff split is biased (deep store 1.8–2.7 m over 81 years vs 0.22 m in the original); level errors
+are 2–4× the original's run-to-run noise even where the ±5 % bar passes; the stand still comes from the original.
