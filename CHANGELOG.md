@@ -20,6 +20,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Learned daily water–carbon model, phase A (ADR 0320–0323; skill `daily-model`):** panel arrays (`scripts/f2_build_daily_table.py`), trainer with closed snow / top-metre / deep water stores, free runs, nulls, pre-registered scoring and single-core timing (`scripts/f2_train.py`), arm comparison (`scripts/f2_compare.py`). Best arm so far (five-seed ensemble): GPP and ET pass the pre-registered bar everywhere; NPP fails narrowly; 6.4e-3 core-s per cell-year. `scripts/sbatch_python.sh` gains `GRES` and `DEPENDENCY` knobs.
 - Line X: count-aware losses (Poisson, Tweedie) for the tree-count model of the anchored direct map
   (`explore_panel_a7.py cnt`; ADR 0316 §12). Result: the same trade-off as the log target — the sparsest cells improve
   (3.45× → 2.19× a second run's error) while typical cells and the area total get slightly worse (1.35× → 1.39×; total
