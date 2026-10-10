@@ -11,7 +11,8 @@
 #     scripts/sbatch_python.sh count scripts/build_slow_count_table.py
 #
 # Env overrides: TIME (default 01:00:00), NCPUS (16), ACCOUNT (waldspektrum),
-# PARTITION (standard), QOS (short). Any VAR=... you export is forwarded.
+# PARTITION (standard), QOS (short), GRES (unset; e.g. GRES=gpu:1 with PARTITION=gpu QOS=gpushort).
+# Any VAR=... you export is forwarded.
 #
 # Watch / collect (from ANY later session):
 #   squeue -u "$USER"          tail -f logs/<TAG>.<jobid>.out
@@ -25,7 +26,8 @@ SCRIPT="${1:?usage: sbatch_python.sh <TAG> <script.py> [args...]}"; shift || tru
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="/home/jamirp/.conda/envs/py311_new/bin/python"
 ACCOUNT="${ACCOUNT:-waldspektrum}"; PARTITION="${PARTITION:-standard}"; QOS="${QOS:-short}"
-TIME="${TIME:-01:00:00}"; NCPUS="${NCPUS:-16}"
+TIME="${TIME:-01:00:00}"; NCPUS="${NCPUS:-16}"; GRES="${GRES:-}"
+GRES_LINE=""; [ -n "${GRES}" ] && GRES_LINE="#SBATCH --gres=${GRES}"
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 
 # forward the table-build env knobs explicitly (so they reach the batch shell). A knob NOT listed here is
@@ -50,6 +52,7 @@ cat > "${jcf}" <<EOF
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${NCPUS}
 #SBATCH --time=${TIME}
+${GRES_LINE}
 #SBATCH --output=${LOGDIR}/${TAG}.%j.out
 #SBATCH --error=${LOGDIR}/${TAG}.%j.out
 set -uo pipefail
