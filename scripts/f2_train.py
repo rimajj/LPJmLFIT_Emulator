@@ -41,6 +41,7 @@ TARGETS = ["dS", "interc", "transp", "evap", "runoff", "deep", "gpp", "npp"]
 ANNUAL = ["gpp", "et", "npp", "runoff"]
 NFORC = 12
 NIN = NFORC + 3 + 4 + 12
+NH, NL = 64, 2  # network width / depth (set from the command line)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -160,14 +161,16 @@ class MemberLeg:
 # model
 # ----------------------------------------------------------------------------------------------
 class Net(nn.Module):
-    def __init__(self, mu, sd, ysd, nh=64):
+    def __init__(self, mu, sd, ysd, nh=64, nl=2):
         super().__init__()
         self.register_buffer("mu", torch.as_tensor(mu))
         self.register_buffer("sd", torch.as_tensor(sd))
         self.register_buffer("ysd", torch.as_tensor(ysd))
-        self.trunk = nn.Sequential(
-            nn.Linear(NIN, nh), nn.SiLU(), nn.Linear(nh, nh), nn.SiLU(), nn.Linear(nh, 9)
-        )
+        layers, n = [], NIN
+        for _ in range(nl):
+            layers += [nn.Linear(n, nh), nn.SiLU()]
+            n = nh
+        self.trunk = nn.Sequential(*layers, nn.Linear(n, 9))
 
     def forward(self, x, prec, S_prev):
         o = self.trunk((x - self.mu) / self.sd)
@@ -233,7 +236,13 @@ def train(args, mls, tr, va, dev, log):
     mu, sd = X.mean(0), X.std(0) + 1e-6
     ysd = Y.std(0) + 1e-6
     log(f"train rows {len(X):,}  val rows {len(Xv):,}  target sd {np.round(ysd, 3).tolist()}")
-    net = Net(mu.astype(np.float32), sd.astype(np.float32), ysd.astype(np.float32)).to(dev)
+    net = Net(
+        mu.astype(np.float32),
+        sd.astype(np.float32),
+        ysd.astype(np.float32),
+        args.hidden,
+        args.layers,
+    ).to(dev)
     tX, tY, tP, tS = (torch.as_tensor(a, device=dev) for a in (X, Y, P, S))
     vX, vY, vP, vS = (torch.as_tensor(a, device=dev) for a in (Xv, Yv, Pv, Sv))
     w = 1.0 / torch.as_tensor(ysd, device=dev) ** 2
@@ -376,7 +385,7 @@ def truth_annual(ml):
 def bench_speed(net, ml, reps=3):
     """S1: one core, batch = all panel cells, incremental trailing windows, network + bucket."""
     torch.set_num_threads(1)
-    netc = Net(net.mu.cpu().numpy(), net.sd.cpu().numpy(), net.ysd.cpu().numpy())
+    netc = Net(net.mu.cpu().numpy(), net.sd.cpu().numpy(), net.ysd.cpu().numpy(), NH, NL)
     netc.load_state_dict({k: v.cpu() for k, v in net.state_dict().items()})
     netc.eval()
     nc = ml.daily.shape[0]
@@ -506,9 +515,18 @@ def score(ann, cells_df):
                 }
                 for b, i in bidx.items()
             }
-            S["reports"][f"agg_response_ratio|{kind}|{leg}|gpp"] = float(
-                (wts[ho] * dE[ho, j]).sum() / (wts[ho] * dT[:, ho, j].mean(0)).sum()
-            )
+            # per-cell response agreement (ADR 0321 section 3.1: a ratio of net area sums is
+            # ill-conditioned here because tropical losses cancel boreal gains)
+            if kind != "clim":
+                mk = ho & (cellmean(t)[:, j] >= 50)
+                x, yv = dT[:, mk, j].mean(0), dE[mk, j]
+                S["reports"][f"response_per_cell|{kind}|{leg}|gpp"] = {
+                    "r": float(np.corrcoef(x, yv)[0, 1]),
+                    "slope": float(np.polyfit(x, yv, 1)[0]),
+                    "rmse": float(np.sqrt(np.mean((yv - x) ** 2))),
+                    "member_se_median": float(np.median(dT[:, mk, j].std(0, ddof=1) / 2)),
+                    "net_over_abs": float((wts[mk] * x).sum() / (wts[mk] * np.abs(x)).sum()),
+                }
     # pass flags (free run only)
     f = "free"
     l1 = all(
@@ -585,8 +603,12 @@ def main():
     ap.add_argument("--patience", type=int, default=2)
     ap.add_argument("--batch", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=3e-3)
+    ap.add_argument("--hidden", type=int, default=64)
+    ap.add_argument("--layers", type=int, default=2)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
+    global NH, NL
+    NH, NL = a.hidden, a.layers
     out = os.path.join(DATA, "runs", a.tag)
     os.makedirs(out, exist_ok=True)
     logf = open(os.path.join(out, "log.txt"), "a")
@@ -607,7 +629,7 @@ def main():
     mpath = os.path.join(out, "model.pt")
     if os.path.exists(mpath):
         ck = torch.load(mpath, map_location=dev)
-        net = Net(ck["mu"].cpu().numpy(), ck["sd"].cpu().numpy(), ck["ysd"].cpu().numpy()).to(dev)
+        net = Net(*(ck[k].cpu().numpy() for k in ("mu", "sd", "ysd")), a.hidden, a.layers).to(dev)
         net.load_state_dict(ck)
         log("loaded existing model")
     else:
