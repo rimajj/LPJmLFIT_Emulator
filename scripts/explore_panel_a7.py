@@ -105,6 +105,26 @@ MODE `logt_mix` (no fitting; reads mode logt's saved predictions of seed LGB_SEE
 other five quantities (each quantity is its own model, so this IS the arm with the log target on biomass per tree only).
 Written before scoring: tree-count and trait ratios equal A7r's / biomass equals A7rL's by construction; pass rate on
 ssp370 >= A7r's; stems total as A7r's.
+
+MODE `cnt` (pre-registered 2026-10-10, BEFORE its run): ONE variable, the tree-count model's LOSS, on the `both` set.
+Every arm = A7rH (biomass per tree on the log target, the other four as A7r) with only the tree-count model swapped:
+  A7rH  tree count as A7r: squared error on (value - anchor)          relative-error weight per cell ~ anchor^2
+  A7rP  Poisson objective, target = value, offset init_score = log(anchor + e), prediction (anchor + e) * exp(raw)
+                                                                     weight ~ anchor^1
+  A7rT  Tweedie objective, variance power 1.5, same offset           weight ~ anchor^0.5
+(A7rL's log target had weight ~ anchor^0 but predicts a geometric mean => total 4 % low; both count objectives
+predict the arithmetic mean, so the total should stay unbiased.) e = 0.1 trees per patch as in `logt`; rows without an
+anchor keep the direct regression fallback. Harness: the in-process A7r and A7rL equal mode `logt`'s saved predictions
+of the same seed (max |diff| logged, expected 0.0).
+Expected (seed 1, second-run measure `PRED_SET=cnt`; class ratios = median over all 15 cases, A7r: < 2 3.45, 2-5 3.11,
+5-10 1.15, 10-20 1.36; typical / bad cell and stems total = ssp370 median over the 5 held-out models, A7r 1.35 / 2.08 /
+1.9 %):
+  A7rT: < 2 class <= 2.5 and 2-5 class <= 2.6; 10-20 class <= 1.41; typical cell <= 1.35; bad cells <= 1.95;
+        stems total within 2 %.
+  A7rP: sparse-class ratios between A7rT's and A7rH's (A7rT <= A7rP <= A7rH), same total condition.
+  Pass rate on ssp370 (5 seeds) >= A7rH's - 0.005 for both.
+  Falsifier: both count arms leave the < 2 class above 3.0 => an arithmetic-mean count loss does not reach sparse cells,
+  and A7rL's sparse gain came from the geometric-mean target itself (next: log target + bias correction).
 """
 
 from __future__ import annotations
@@ -132,6 +152,8 @@ PARAMS = dict(objective="regression", learning_rate=0.05, num_leaves=31, min_dat
               seed=int(os.environ.get("LGB_SEED", "1")))
 ROUNDS = 400
 LOG_EPS = {"n_per_patch": 0.1, "agb_per_stem": 1.0}  # mode `logt` only
+COUNT_OBJ = {"A7rP": dict(objective="poisson"),  # mode `cnt` only: tree-count loss, anchor as log offset
+             "A7rT": dict(objective="tweedie", tweedie_variance_power=1.5)}
 TRAIN_M, TRUTH, REPLICA = (1, 2, 3), 4, 3
 SCEN_LEGS = PP.SLEGS  # the first five models: every split of the modes core / seen / curves* is defined on these
 ALL_SLEGS = PP.SLEGS + PP.NEW_SLEGS  # + the five models of ADR 0316 sec. 7 (mode `more`)
@@ -314,7 +336,7 @@ def feats_r(variant):
             + ["lat", "lon", "soil_code"])
 
 
-def fit_predict_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.DataFrame:
+def fit_predict_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str, qs=PANEL) -> pl.DataFrame:
     """No fold: the cells are seen in training (only the run and the climate are held out)."""
     import lightgbm as lgb
 
@@ -322,19 +344,30 @@ def fit_predict_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.Dat
     logt = variant.startswith("A7rL")
     f = feats_r(variant) if resid else feats(variant.replace("-seen", ""))
     out = te.select("Cell", "leg")
-    for q in PANEL:
+    for q in qs:
         t = tr.filter(pl.col(q).is_not_null() & (pl.col(f"anc_{q}").is_not_null() if resid else pl.lit(True)))
         lq = logt and q in LOG_EPS
-        if lq:  # mode `logt`: relative target, so a sparse cell weighs as much as a dense one
+        cq = variant in COUNT_OBJ and q == "n_per_patch"
+        if cq:  # mode `cnt`: count loss on the value itself, the anchor enters as a log offset
             e = LOG_EPS[q]
-            y = np.log((t[q].to_numpy() + e) / (t[f"anc_{q}"].to_numpy() + e))
+            ds = lgb.Dataset(t.select(f).to_numpy(), t[q].to_numpy(),
+                             init_score=np.log(t[f"anc_{q}"].to_numpy() + e))
+            mdl = lgb.train({**PARAMS, **COUNT_OBJ[variant]}, ds, ROUNDS)
+            p = mdl.predict(te.select(f).to_numpy(), raw_score=True)
         else:
-            y = (t[q] - t[f"anc_{q}"]).to_numpy() if resid else t[q].to_numpy()
-        mdl = lgb.train(PARAMS, lgb.Dataset(t.select(f).to_numpy(), y), ROUNDS)
-        p = mdl.predict(te.select(f).to_numpy())
+            if lq:  # mode `logt`: relative target, so a sparse cell weighs as much as a dense one
+                e = LOG_EPS[q]
+                y = np.log((t[q].to_numpy() + e) / (t[f"anc_{q}"].to_numpy() + e))
+            else:
+                y = (t[q] - t[f"anc_{q}"]).to_numpy() if resid else t[q].to_numpy()
+            mdl = lgb.train(PARAMS, lgb.Dataset(t.select(f).to_numpy(), y), ROUNDS)
+            p = mdl.predict(te.select(f).to_numpy())
         if resid:  # where a cell has no anchor (no trees in any training run): the direct model of the same arm
             anc = te[f"anc_{q}"].to_numpy().astype(float)
-            p = (anc + LOG_EPS[q]) * np.exp(p) - LOG_EPS[q] if lq else p + anc
+            if cq:
+                p = (anc + LOG_EPS[q]) * np.exp(p)
+            else:
+                p = (anc + LOG_EPS[q]) * np.exp(p) - LOG_EPS[q] if lq else p + anc
             miss = ~np.isfinite(anc)
             if miss.any():
                 f0 = feats("A7scb" if variant.endswith("cb") else "A7s")
@@ -347,7 +380,8 @@ def fit_predict_seen(tr: pl.DataFrame, te: pl.DataFrame, variant: str) -> pl.Dat
     return out
 
 
-def run_split_seen(df, name, train_legs, test_legs, train_members=TRAIN_M, variants=("A7s-seen", "A7r", "A7rcb")):
+def run_split_seen(df, name, train_legs, test_legs, train_members=TRAIN_M,
+                   variants=("A7s-seen", "A7r", "A7rcb"), assemble=None):
     t0 = time.time()
     cells = PP.cells().select("Cell", "lat")
     an = anchored(df, train_legs, train_members)
@@ -359,6 +393,8 @@ def run_split_seen(df, name, train_legs, test_legs, train_members=TRAIN_M, varia
     T_h = lev(TRUTH, "hist", "h2000")
     preds = {v: fit_predict_seen(tr_s if v == "A7s-seen" else tr_r, te_s if v == "A7s-seen" else te_r, v)
              for v in variants}
+    if assemble is not None:
+        preds = assemble(preds, tr_r, te_r)
     pd = os.path.join(EVAL, "preds_seen", f"s{os.environ.get('LGB_SEED', '1')}")
     os.makedirs(pd, exist_ok=True)
     for v, p in preds.items():
@@ -442,6 +478,29 @@ def main():
             legs = [lg for lg in legs if df.filter(pl.col("leg") == lg).height > 0]
             rows += run_split_seen(df, f"logt:{g}", legs, [f"{g}_{s}" for s in PP.SCENS], (*TRAIN_M, *new_m),
                                    ("A7r", "A7rL"))
+    elif mode == "cnt":
+        new_m = [m for m in (5, 6) if lev(m, "hist", "h2000") is not None]
+        sd = os.path.join(EVAL, "preds_seen", f"s{os.environ.get('LGB_SEED', '1')}")
+
+        for g in G:
+            def assemble(preds, tr_r, te_r, g=g):
+                for v in ("A7r", "A7rL"):  # harness: identical to mode `logt`'s saved predictions of this seed
+                    old = pl.read_parquet(os.path.join(sd, f"logt_{g}_{v}.parquet"))
+                    j = preds[v].join(old, on=["Cell", "leg"], suffix="_old")
+                    dmax = max(float((j[q] - j[f"{q}_old"]).abs().max()) for q in PANEL)
+                    log(f"harness {g} {v}: {j.height}/{old.height} rows, max |diff| {dmax:.3g}")
+                base = preds["A7rL"].drop("n_per_patch")
+                out = {"A7rH": base.join(preds["A7r"].select("Cell", "leg", "n_per_patch"), on=["Cell", "leg"])}
+                for v in COUNT_OBJ:
+                    c = fit_predict_seen(tr_r, te_r, v, qs=("n_per_patch",))
+                    out[v] = base.join(c, on=["Cell", "leg"])
+                cols = preds["A7r"].columns
+                return {k: d.select(cols) for k, d in out.items()}
+
+            legs = [lg for lg in ALL_SLEGS if gcm_of(lg) != g] + ["ctl_obs"]
+            legs = [lg for lg in legs if df.filter(pl.col("leg") == lg).height > 0]
+            rows += run_split_seen(df, f"cnt:{g}", legs, [f"{g}_{s}" for s in PP.SCENS], (*TRAIN_M, *new_m),
+                                   ("A7r", "A7rL"), assemble=assemble)
     elif mode == "logt_mix":
         pd = os.path.join(EVAL, "preds_seen", f"s{os.environ.get('LGB_SEED', '1')}")
         cells = PP.cells().select("Cell", "lat")
