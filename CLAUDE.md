@@ -34,7 +34,7 @@ where the shorthand is precise and load-bearing.
 |---|---|
 | "ADR 0103 supersedes ADR 0102 §4" | "an earlier written decision said the fix needed changes in two places; it was wrong, and the corrected decision says it's one file" |
 | "Phase 3a / milestone S2 / item E7 / M4" | what the work actually *is*: "the part where the emulator learns which trees establish" |
-| "the DRF", "F_diff", "the AR recursion", "OOS R²", "the noise floor" | "the learned tree-count model", "the fast daily physics code", "each year's number is built from last year's, so errors pile up", "how well it does on data it never saw", "how much two identical runs of the original model differ from each other just by chance" |
+| "the DRF", "F_diff", "the AR recursion", "OOS R²", "the noise floor" | "the learned tree-count model", "the re-implemented daily physics code (4.62× SLOWER than the original — never call it fast)", "each year's number is built from last year's, so errors pile up", "how well it does on data it never saw", "how much two identical runs of the original model differ from each other just by chance" |
 | "retention 1.036 → 0.051" | "a starting error used to survive forever; now 95 % of it is gone" |
 | "guardrail 4", "opt-in, default byte-identical" | "new behaviour ships switched off, so nothing that already worked changes until we deliberately switch it on" |
 
@@ -49,12 +49,17 @@ Don't hide a null result or a failure behind a code name.
 
 ## 0. What this project is (one paragraph)
 
-A **hybrid, ESM-ready land component** derived from LPJmL-FIT: **S** = slow ML trait/size *distribution*
-emulator (annual, the novelty); **F/F_diff** = the fast, differentiable, conserving daily biophysical
-core (kept from LPJmL-FIT, reimplemented AD-friendly); **E** = a surface-energy-balance + skin-temperature
-closure LPJmL-FIT lacks. Goal: run offline emulating LPJmL-FIT faithfully **and** run online coupled to
-SpeedyWeather. Current phase status and the prioritized orders live in `MEMORY.md` §Status and
-`STEERING_PROMPT.md`; the reasoning is in `PROJECT_REVIEW_2026-07-22.md`.
+**The goal (owner, 2026-10-10, ADR 0318):** a full emulator of LPJmL-FIT that emulates **everything** — forest
+structure (tree counts, biomass, trait distributions) **and** the daily carbon/water exchange — **orders of magnitude
+faster** than LPJmL-FIT, **drift-free in transient runs**, then coupled to an ESM (SpeedyWeather). Current state and
+priorities: `STATE.md`, `EXECUTION_PLAN.md` revision 3.
+
+**What was built on the way (the original hybrid design):** **S** = an ML emulator of the per-cell tree/trait
+distribution (annual); **F/F_diff** = LPJmL-FIT's daily biophysics re-implemented differentiably in Julia
+(C-validated at five biome cells — but **4.62× SLOWER** than the original, ADR 0084, so it is the fidelity
+reference, **not** the fast path; the daily exchange is to be learned); **E** = a surface-energy-balance +
+skin-temperature closure LPJmL-FIT lacks. Older orders: `STEERING_PROMPT.md`, `PROJECT_REVIEW_2026-07-22.md`
+(history).
 
 ---
 
