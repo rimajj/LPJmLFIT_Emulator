@@ -649,3 +649,11 @@ Five seeds on the priority partition (~10 min). Result: the same trade-off as th
 lacks information about how sparse (range-edge) cells respond. The harness also showed LightGBM's multithreaded fits are
 not bit-reproducible across runs (one compared case off by ≤ 1 % at 3 cells); recorded, not switched mid-series.
 Next: per-cell response features. Jobs 2458085–89.
+
+## 2026-10-10 (late morning) — owner: dense cells first; the error in plain units (ADR 0316 §13)
+
+Owner asked whether the method could go into an ESM, said dense cells matter most and sparse cells less, and asked what
+1.35× a second run means in numbers. Wrote `scripts/explore_panel_abs_err.py`: dense cells 7.1 % per cell vs 5.8 % for a
+second run (≈1.2×), close to the original's noise; but the dense-cell total is low in all 15 cases (up to −5 %) while a
+second run's total is within 0.5 %. Next: locate that bias. Asked whether the dense-first steer should amend the finish
+criterion.
