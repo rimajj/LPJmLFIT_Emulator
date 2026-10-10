@@ -20,6 +20,10 @@ PARTITION=priority QOS=priority NCPUS=32 TIME=04:00:00 scripts/sbatch_python.sh 
 PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
   scripts/sbatch_python.sh f2-train-<tag> scripts/f2_train.py --tag <tag> [--hidden 256 --layers 3 --nsamp 40000000]
 #    160 M samples needs NCPUS=32 (host RAM). Rerunning a tag whose model.pt exists skips training (re-scores).
+#    --seed N for a replicate. Ensemble (ADR 0322, no training; averages the members' daily fluxes, one bucket):
+#    scripts/f2_train.py --tag <new> --hidden 256 --layers 3 --ensemble tagA,tagB,...
+#    Chain it after the member jobs with DEPENDENCY=afterok:<jid>:<jid> (wrapper knob).
+# 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from
@@ -48,5 +52,7 @@ held-out blocks = the five biome blocks + the lowest non-biome block of every st
   `rootmoist/cap` reaches 1.002 — a few mm/yr of overflow in a free run are this, not a model fault.
 - The deep store `D` is never an input (it has no known level); its drift is a diagnostic of the deep/runoff
   split, and the original's own is a median 0.22 m over 81 years.
+- **A single network's NPP level wanders by several % between seeds** (ADR 0322): never claim a pass from one
+  seed — replicate, or pre-register an ensemble. More rows from the same cells did not help (the limit is places).
 - Speed (S1) is measured on one CPU core with a batch over all panel cells and incrementally updated running
   windows. It is the daily half only; never quote it as an emulator-vs-original speed-up (skill `speed-gate`).

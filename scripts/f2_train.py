@@ -18,6 +18,7 @@ Usage: python scripts/f2_train.py [--tag A] [--nsamp 40000000] [--epochs 10] [--
 """
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -190,6 +191,22 @@ class Net(nn.Module):
             ],
             -1,
         )
+
+
+class Ensemble(nn.Module):
+    """ADR 0322 arm A2E: the mean of several networks' daily outputs (same inputs, one bucket)."""
+
+    def __init__(self, nets):
+        super().__init__()
+        self.nets = nn.ModuleList(nets)
+
+    def forward(self, x, prec, S_prev):
+        return torch.stack([n(x, prec, S_prev) for n in self.nets]).mean(0)
+
+
+def load_net(path, dev):
+    ck = torch.load(path, map_location=dev, weights_only=True)
+    return Net(*(ck[k].cpu().numpy() for k in ("mu", "sd", "ysd")), NH, NL).to(dev), ck
 
 
 def bucket_step(y, prec, W, S, D, cap):
@@ -385,9 +402,7 @@ def truth_annual(ml):
 def bench_speed(net, ml, reps=3):
     """S1: one core, batch = all panel cells, incremental trailing windows, network + bucket."""
     torch.set_num_threads(1)
-    netc = Net(net.mu.cpu().numpy(), net.sd.cpu().numpy(), net.ysd.cpu().numpy(), NH, NL)
-    netc.load_state_dict({k: v.cpu() for k, v in net.state_dict().items()})
-    netc.eval()
+    netc = copy.deepcopy(net).cpu().eval()
     nc = ml.daily.shape[0]
     forc = np.load(os.path.join(DATA, f"forc_{ml.tag}.npy"))
     lat_s = ml.slat
@@ -605,6 +620,9 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--hidden", type=int, default=64)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--ensemble", default="", help="comma-separated run tags to average (no training)"
+    )
     ap.add_argument("--layers", type=int, default=2)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
@@ -628,9 +646,16 @@ def main():
     log(f"cells: train {len(tr)} val {len(va)} held-out {len(te)}")
 
     mpath = os.path.join(out, "model.pt")
-    if os.path.exists(mpath):
-        ck = torch.load(mpath, map_location=dev)
-        net = Net(*(ck[k].cpu().numpy() for k in ("mu", "sd", "ysd")), a.hidden, a.layers).to(dev)
+    if a.ensemble:
+        nets = []
+        for t in a.ensemble.split(","):
+            n, ck = load_net(os.path.join(DATA, "runs", t, "model.pt"), dev)
+            n.load_state_dict(ck)
+            nets.append(n.eval())
+        net = Ensemble(nets).to(dev)
+        log(f"ensemble of {len(nets)}: {a.ensemble}")
+    elif os.path.exists(mpath):
+        net, ck = load_net(mpath, dev)
         net.load_state_dict(ck)
         log("loaded existing model")
     else:
