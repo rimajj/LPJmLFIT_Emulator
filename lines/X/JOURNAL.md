@@ -657,3 +657,13 @@ Owner asked whether the method could go into an ESM, said dense cells matter mos
 second run (≈1.2×), close to the original's noise; but the dense-cell total is low in all 15 cases (up to −5 %) while a
 second run's total is within 0.5 %. Next: locate that bias. Asked whether the dense-first steer should amend the finish
 criterion.
+
+## 2026-10-10 (midday) — relaxed standard, the full goal restated, and a correction (ADR 0318)
+
+Owner relaxed the pass standard (dense cells fine, sparse cells must not run away) and restated the goal: a full
+emulator of everything, orders of magnitude faster, drift-free in transient runs. Owner also corrected line X: I had
+written that the daily carbon/water exchange "would still come from the fast daily physics code" — wrong; that code is
+4.62× slower than the original, and the daily part must be emulated too. Wrote `scripts/explore_relaxed_standard.py`
+with proposed numbers pre-registered (ed54a98d), scored the best arm: passes all but dense typical-cell tree count /
+biomass per tree (on the case count) and the sparse stem total. Checked: the learned daily model is assigned to line O
+but no O/M session since 2026-10-08. Asked the owner how to start it.

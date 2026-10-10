@@ -15,9 +15,12 @@ climate model x scenario, truth = run 4, "second run" = runs 1-3 each against ru
     S2  area totals of stems and of biomass                       within 25 %
   A criterion PASSES when it holds in the median over the cases AND in >= 12 of the 15 cases.
   (The no-drift-in-transient-runs clause is a separate test: it needs a year-by-year run, see ADR 0318.)
-EXPECTED for the current best arm (A7rH, PRED_SET=cnt, seed 1), written before scoring: the four traits pass D1/D2/S1;
-tree count is borderline on D1 (~1.2) and passes D2 (~1.4); biomass per tree passes D2 but is borderline on D1; D3 passes
-(dense stems total ~3 % low); S1 fails for tree count (~3.0) and passes for the traits; S2 passes.
+EXPECTED for the current best arm (A7rH, PRED_SET=cnt, seed 1), written before scoring: the four traits pass
+D1/D2/S1; tree count is borderline on D1 (~1.2) and passes D2 (~1.4); biomass per tree passes D2 but is borderline
+on D1; D3 passes (dense stems total ~3 % low); S1 fails for tree count (~3.0) and passes for the traits; S2 passes.
+RESULT (2026-10-10, ADR 0318 sec. 3): as expected except S2 -- the sparse-cell STEM total is 19.5 % off (10 of 15
+cases within 25 %), so it fails. Tree count D1 1.23 (6/15 cases) and biomass per tree D1 1.18 (9/15) fail on the
+case count; everything else passes.
 Knobs: PRED_SET (default cnt), ARM (default A7rH). Seconds on the login node. Output: eval/relaxed_<set>_<arm>.csv.
 """
 
