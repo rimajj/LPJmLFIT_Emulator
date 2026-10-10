@@ -2,7 +2,7 @@
 
 > Durable state for THIS LINE only. Shared/cross-cutting facts: `MEMORY.md`. Runbook: `CLAUDE.md` (+ §9 for
 > the parallel-line protocol). Narrative: `lines/X/JOURNAL.md` (append-only). Decisions: tier-1 block
-> **0310–0329**, opened by **ADR 0310**. **Next free number: 0318.**
+> **0310–0329**, opened by **ADR 0310**. **Next free number: 0319.**
 > **The `## NEXT` block below is what the SessionStart hook prints — the ending session MUST refresh it.**
 
 ---
@@ -83,6 +83,26 @@ and caught only by adversarial review.
 ---
 
 ## NEXT — start here
+
+### 0🧭 2026-10-10 (ADR 0318) — OWNER: RELAXED STANDARD; GOAL = A FULL EMULATOR OF EVERYTHING, INCL. THE DAILY EXCHANGE — read first
+
+Owner, verbatim: *"I think we have to relax the passing standarts a bit. as long as the dense ells are fine and the
+sparse cells dont drift away completely we should go on. AS before the goal is to have a full LPJmL_FIT emulator that
+emulates everything happening in the mode orders of magnitude faster thatn lpjmlfit and does not drift away in transient
+runs"* — and, correcting line X: *"which fast dayly physics structure?!?!?! we established long a gao that the so called
+"fast physics strucutre" was not fast at all. We also want to simulate teh fast physcs structure!!!"*
+⚠ **Never again describe the re-implemented daily physics as the fast path** (it is 4.62× SLOWER than the original,
+ADR 0084). The structure map is half the emulator; the daily carbon/water exchange must be learned too.
+Relaxed standard (numbers proposed, ADR 0318 §2), scored by `scripts/explore_relaxed_standard.py` (seconds): best arm
+passes everything except dense typical-cell tree count (1.23×, 6/15 cases) and biomass per tree (1.18×, 9/15), and the
+sparse-cell stem total (19.5 %, 10/15). Dense stem total low in 14/15 cases.
+**NEXT, in order:**
+1. **Owner's call, asked 2026-10-10:** start the learned daily water–carbon model now — as a line-X learnability probe on
+   the existing daily dataset, or by launching line O (assigned there since 2026-10-08, no session since)?
+2. Dense-cell low bias (the §13 block's item 1) — the last dense-cell failures under the relaxed standard.
+3. **Year-by-year drift test of the structure map** on the panel (trailing-window climate each year, against the
+   original's yearly 2020–2100 output in `xpanel/yearly/`); pre-register T1 numerically first.
+4. Speed: time the structure map's prediction per cell-year (labelled "structure part only").
 
 ### 0🌲 2026-10-10 (ADR 0316 §13) — OWNER STEER: DENSE CELLS FIRST; DENSE CELLS ARE BIASED LOW IN ALL 15 CASES — read first
 
