@@ -282,3 +282,57 @@ last concentrated in cells with < 5 trees per patch (~20 % of tree-bearing cells
 the bar on ssp370/585. Tree count is now the binding quantity. Next one-variable candidates for it: a count-aware loss
 (Poisson / Tweedie objective on the count with the anchor as offset) instead of the log transform, or the log target
 with a bias correction; pre-register before running.
+
+## 12. A count-aware loss for tree count: the same trade-off as the log target (2026-10-10; `explore_panel_a7.py cnt`)
+
+**Question.** §11 left tree count binding and named a count-aware loss as the next one-variable test: does a loss that
+still predicts the *arithmetic* mean (so the area total stays unbiased) reach the sparse cells the way the log target
+did, without its cost in dense cells? Pre-registered in the script header (commit fd0b26c1) before the run.
+
+**Arms** (each = A7rH with only the tree-count model swapped; anchor enters as a log offset `init_score = log(anchor +
+0.1)`, prediction `(anchor + 0.1)·exp(raw)`): **A7rP** Poisson objective, **A7rT** Tweedie (variance power 1.5). Per-cell
+relative-error weight ~ anchor² (A7rH's squared error), ~ anchor (Poisson), ~ anchor^0.5 (Tweedie), ~ 1 (§11's A7rL).
+Jobs 2458085–89, 5 seeds, ~10 min each.
+
+**Harness.** The in-process reference arms were compared with §11's saved predictions of the same seed. Every quantity
+that enters a scored arm reproduced to rounding (≤ 6e-11) **except one case: seed 2, held-out MRI, tree count, 3 cells
+off by up to 1 %.** Seed 1 also failed to reproduce A7r's *absolute-target* biomass-per-tree / trait models (up to 119
+in wood density, values ~2·10⁵; 3 gC per tree), which no arm here uses. ⇒ **LightGBM's multithreaded training is not
+bit-reproducible run to run in this setup** (`deterministic` is not set); differences are rare and small here, but a
+future exact-reproduction harness needs `deterministic=True, force_row_wise=True` (which changes every number, so it
+is not switched on mid-series).
+
+**Result** (second-run measure, seed 1; class ratios = median over all 15 cases, the rest ssp370 median over the 5
+held-out models; pass rate = 5 seeds):
+
+| | A7rH (reference) | A7rP Poisson | A7rT Tweedie 1.5 | §11 A7rL (log target) |
+|---|---|---|---|---|
+| tree count, < 2 trees per patch class | 3.45 | 2.52 | **2.19** | 2.04 |
+| tree count, 2–5 class | 3.11 | 3.14 | 2.92 | 2.88 |
+| tree count, 5–10 / 10–20 classes | 1.15 / 1.36 | 1.14 / 1.39 | 1.14 / 1.42 | — / 1.38 |
+| tree count, typical / bad cells | **1.35** / 2.08 | 1.37 / 1.98 | 1.39 / **1.85** | 1.40 / 1.86 |
+| stems area total off (median) | **1.9 %** | 2.6 % | 3.2 % | 4.4 % |
+| pass rate ssp370 (5 seeds) | **0.207** | 0.204 | 0.204 | (0.197 with its biomass) |
+| bar passed, all 15 / ssp370 | 13 / 4 | 13 / 4 | 13 / 4 | — |
+
+(The > 20 class has 1–4 cells per case and is not interpreted.)
+
+**Against the expectations.** A7rT: < 2 class ≤ 2.5 **held** (2.19); 2–5 class ≤ 2.6 **failed** (2.92); 10–20 ≤ 1.41
+**failed** (1.42); typical cell ≤ 1.35 **failed** (1.39); bad cells ≤ 1.95 **held** (1.85); stems total within 2 %
+**failed** (3.2 %). A7rP: the ordering held in the < 2 class (2.19 ≤ 2.52 ≤ 3.45) and failed narrowly in the 2–5 class
+(3.14 > 3.11); total 2.6 % **failed**. Pass rate ≥ A7rH − 0.005 **held** for both (0.204). Falsifier (both arms leave
+the < 2 class above 3.0) **did not fire**.
+
+**Reading.** The count losses land almost exactly where the log target did, in proportion to how strongly they
+reweight: the sparsest class improves, the 10–20 class and the typical cell get slightly worse, the bad-cell tail
+improves (2.08 → 1.85), and the area total drifts (less than with the log target, but past 2 %, because down-weighting
+dense cells loses accuracy exactly where most stems are). **So the loss only moves error between sparse and dense cells;
+with these features no weighting brings tree count near a second run.** The limit is information about how sparse cells
+respond, not how they are weighted. The mean of three runs is 0.82× in every class, so the response is not random noise.
+A7rH stays the best arm on the typical-cell number and the totals; A7rT is the better choice only if the bad-cell tail
+is weighted over the typical cell — that weighting is the owner's call (ADR 0317 measures both and needs both ≤ 1.1–1.2).
+
+**Next candidate (not run):** give the model information about each cell's own *response*, not just its level: per-cell
+sensitivity features from the training legs (within-cell slope of tree count against the leg's climate across the 8
+training climate legs × 5 runs, leave-one-leg-out like the anchor). Sparse cells sit at range edges where the response
+is strongest and least shared with neighbours in feature space.

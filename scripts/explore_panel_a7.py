@@ -125,6 +125,11 @@ Expected (seed 1, second-run measure `PRED_SET=cnt`; class ratios = median over 
   Pass rate on ssp370 (5 seeds) >= A7rH's - 0.005 for both.
   Falsifier: both count arms leave the < 2 class above 3.0 => an arithmetic-mean count loss does not reach sparse cells,
   and A7rL's sparse gain came from the geometric-mean target itself (next: log target + bias correction).
+RESULT (jobs 2458085-89, 2026-10-10, ADR 0316 sec. 12): falsifier did not fire; MIXED, mostly FAILED. A7rT: < 2 class
+3.45 -> 2.19 (held), 2-5 2.92 (failed), 10-20 1.42 (failed by 0.01), typical 1.39 (failed), bad cells 2.08 -> 1.85
+(held), stems total 3.2 % (failed). A7rP between, total 2.6 %. Pass 0.204 / 0.204 vs A7rH 0.207. Same trade-off as the
+log target: reweighting moves error between sparse and dense cells. Harness: reproduced to <= 6e-11 except seed 2 / MRI
+tree count (3 cells, <= 1 %) -- LightGBM multithreaded training is not bit-reproducible (deterministic not set).
 """
 
 from __future__ import annotations

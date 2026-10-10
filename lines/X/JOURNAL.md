@@ -638,3 +638,14 @@ Afternoon: broke the remaining error down by tree density — sparse cells (< 5 
 mixed — biomass per tree improves everywhere (1.42 → 1.26, bad cells 1.71 → 1.26), tree count trades sparse for dense
 and its total drifts 4 % low. Combined (A7rH: log target for biomass per tree only) is the new best: pass 0.207. Tree
 count is now the binding gap; next one-variable test is a count-aware loss.
+
+## 2026-10-10 (morning) — count-aware loss for tree count (ADR 0316 §12)
+
+Continued from the §11 NEXT. Added mode `cnt` to `explore_panel_a7.py`: Poisson and Tweedie objectives on tree count
+with the per-cell anchor as a log offset, the rest of the arm as A7rH; expectations committed before the run (fd0b26c1).
+Five seeds on the priority partition (~10 min). Result: the same trade-off as the log target — the sparsest cells gain
+(3.45 → 2.19× a second run), typical cells and the stems total lose a little (1.35 → 1.39×; 1.9 % → 3.2 %). Pass rate
+0.204 vs 0.207. Most expectations failed, falsifier did not fire. Conclusion: weighting cannot fix tree count; the model
+lacks information about how sparse (range-edge) cells respond. The harness also showed LightGBM's multithreaded fits are
+not bit-reproducible across runs (one compared case off by ≤ 1 % at 3 cells); recorded, not switched mid-series.
+Next: per-cell response features. Jobs 2458085–89.

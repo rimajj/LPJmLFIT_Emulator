@@ -84,6 +84,24 @@ and caught only by adversarial review.
 
 ## NEXT — start here
 
+### 0🧮 2026-10-10 (ADR 0316 §12) — COUNT-AWARE LOSS: SAME TRADE-OFF AS THE LOG TARGET; BEST ARM STILL A7rH — read first
+
+`explore_panel_a7.py cnt` (jobs 2458085–89, 5 seeds; score with `PRED_SET=cnt PRED_ARMS=A7rH,A7rP,A7rT python
+scripts/explore_tolerance_measure.py`). Poisson (A7rP) / Tweedie 1.5 (A7rT) on tree count, anchor as log offset, rest =
+A7rH. A7rT: sparsest class 3.45 → 2.19, bad cells 2.08 → 1.85, but typical 1.35 → 1.39, 10–20 class 1.36 → 1.42, stems
+total 1.9 % → 3.2 %; pass 0.204 vs 0.207. Most pre-registered expectations failed; falsifier did not fire. ⇒ **re-weighting
+the loss only moves error between sparse and dense cells; the limit is information, not weighting.**
+⚠ **LightGBM here is not bit-reproducible across runs** (multithreaded, `deterministic` unset): seed 2 / MRI tree count
+differed at 3 cells (≤ 1 %), seed 1's unused absolute-target models by up to 119 in wood density. For any future
+exact-reproduction harness set `deterministic=True, force_row_wise=True` at the START of a new series (it changes every
+number). Treat "harness exact" claims from earlier sections as "exact for those runs", not as guaranteed determinism.
+**NEXT, in order:**
+1. **Information for sparse cells, one variable:** per-cell RESPONSE features from the training legs — within-cell slope
+   (and spread) of tree count against the leg's climate across the training climate legs × runs, leave-one-leg-out like
+   the anchor — added to A7rH. Pre-register (expect: < 2 and 2–5 classes each ≤ 2.5, typical ≤ 1.33, stems total ≤ 2 %).
+2. Then items 2–4 of the §11 block below (global venue port of A7rH, UKESM extrapolation, owner questions). Add to the
+   owner questions: typical cell vs bad-cell tail — A7rH is better on the first, A7rT on the second.
+
 ### 0🎯 2026-10-10 (ADR 0316 §11) — BEST ARM NOW A7rH: biomass per tree 1.26× a second run; TREE COUNT IS THE BINDING GAP
 
 Sparse cells (< 5 trees per patch, ~20 % of cells) carried most of the error: A7r's tree-count ratio 3.1–3.5 there vs
