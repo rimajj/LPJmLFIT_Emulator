@@ -1280,3 +1280,14 @@ fails exactly one statistic: typical-cell NPP under the climate model it has nev
 By the pre-registered comparison rule it is mixed against the direct head, not better. Also caught: a STATE.md edit that
 anchored on the header's mention of "NEXT — start here" and cut the file — restored from git before committing; anchor
 on the heading line (`\n## NEXT`), not on the phrase.
+
+## 2026-10-11 — the daily model re-read on the second-run yardstick (ADR 0325)
+
+The owner answered the two open questions and pointed out they had already been settled: the yardstick is error
+relative to a second run of the original (ADR 0317/0318), not a flat ±5 %. The ±5 % had been copied into ADR 0320 from
+the plan's F2 row, which revision 3 forgot to update. New scorer `scripts/f2_relative_score.py` (seconds, from saved
+annual totals; harness rows 1.0 and 0.82 as derived). Best arm: GPP/ET 2–3× a second run, NPP 2.9–3.6×, runoff 11–14×.
+Mid-turn the owner defined drift as the gap to the original growing (values may change in a transient climate); my
+first draft had called the unseen-climate-model case "no drift" because free and one-step grow alike — wrong by that
+definition: the GPP/NPP gap grows 1.3–1.4× over the century there. The free-vs-one-step comparison stays as the
+diagnosis (per-day carbon response, not the stores). Next: water split, then carbon outside the training climates.

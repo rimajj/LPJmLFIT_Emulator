@@ -1,6 +1,6 @@
 ---
 name: daily-model
-description: Build, train, free-run and score the LEARNED daily water-carbon model (EXECUTION_PLAN arm F2; ADR 0320 pre-registration, ADR 0321 results) — the network that replaces the original's daily GPP/NPP/transpiration/evaporation/interception/runoff/snow/soil-water step, with snow, top-metre and deep water stores closed by construction. Use whenever (re)building its training arrays from the panel runs of the original, training a new arm (network size, sample count, new inputs/targets), free-running it, scoring it against the pre-registered bar, timing its per-cell-year cost, or answering "how good is the learned daily exchange". Names scripts/f2_build_daily_table.py, scripts/f2_train.py, /p/projects/open/Jamir/esm_land_emulator_data/f2/ (forc_/daily_/stand_/cap_m<k>_<leg>.npy, cells.parquet, runs/<tag>/summary.md), the held-out blocks and legs, and the traps: the rising-CO2 hist leg, the shuffled control years, and the ill-conditioned area-summed response ratio.
+description: Build, train, free-run and score the LEARNED daily water-carbon model (EXECUTION_PLAN arm F2; ADR 0320 pre-registration, ADR 0321 results) — the network that replaces the original's daily GPP/NPP/transpiration/evaporation/interception/runoff/snow/soil-water step, with snow, top-metre and deep water stores closed by construction. Use whenever (re)building its training arrays from the panel runs of the original, training a new arm (network size, sample count, new inputs/targets), free-running it, scoring it against the bar (since ADR 0325: error RELATIVE TO A SECOND RUN of the original + no drift relative to the original, scripts/f2_relative_score.py; the old ±5 % of ADR 0320 is superseded), timing its per-cell-year cost, or answering "how good is the learned daily exchange". Names scripts/f2_build_daily_table.py, scripts/f2_train.py, /p/projects/open/Jamir/esm_land_emulator_data/f2/ (forc_/daily_/stand_/cap_m<k>_<leg>.npy, cells.parquet, runs/<tag>/summary.md), the held-out blocks and legs, and the traps: the rising-CO2 hist leg, the shuffled control years, and the ill-conditioned area-summed response ratio.
 ---
 
 # daily-model — the learned daily water–carbon model (phase A, offline)
@@ -23,7 +23,11 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #    --seed N for a replicate. Ensemble (ADR 0322, no training; averages the members' daily fluxes, one bucket):
 #    scripts/f2_train.py --tag <new> --hidden 256 --layers 3 --ensemble tagA,tagB,...
 #    Chain it after the member jobs with DEPENDENCY=afterok:<jid>:<jid> (wrapper knob).
-# 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]
+# 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]   (old ADR 0320 ±5 % bar)
+# 2c. THE CURRENT YARDSTICK (ADR 0325): python scripts/f2_relative_score.py [tags...]  -> per leg/flux the
+#     emulator error / second-run error (30-yr typical + worst-10 %, response, per-decade single-year),
+#     drift = last-20-yr / first-20-yr ratio (owner: drift is the gap to the original GROWING, not the values
+#     changing), area totals; harness rows must read ~1.0 (second run) and ~0.82 (mean of three runs).
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from
