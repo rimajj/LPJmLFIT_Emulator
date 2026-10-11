@@ -13,6 +13,8 @@ and a deep store D are closed by construction:
   W_t = W_{t-1} + prec - dS - interc - transp - evap - runoff - deep
   overflow above cap -> runoff, deficit below 0 -> taken from deep;  D_t = D_{t-1} + deep
 so prec - ET - runoff = d(S + W + D) holds every day.
+Optional deep release (--deep-tau T days, ADR 0326; 0 = off): D drains into runoff at D/T per day,
+as the original's deep layers drain to runoff, so the deep store cannot accumulate the split error.
 
 Usage: python scripts/f2_train.py [--tag A] [--nsamp 40000000] [--epochs 10] [--device cuda]
 """
@@ -44,6 +46,7 @@ NFORC = 12
 NIN = NFORC + 3 + 4 + 12
 NH, NL = 64, 2  # network width / depth (set from the command line)
 NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
+DEEP_TAU = 0.0  # days; > 0: deep store releases D/DEEP_TAU per day into runoff (ADR 0326)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -224,6 +227,10 @@ def bucket_step(y, prec, W, S, D, cap):
     runoff = runoff + over
     deep = deep - under
     D2 = D + deep
+    if DEEP_TAU > 0:
+        release = D2 / DEEP_TAU
+        D2 = D2 - release
+        runoff = runoff + release
     return W2, S2, D2, runoff, deep, over, under
 
 
@@ -365,8 +372,15 @@ def run_free(net, ml, dev):
     out["et"][:, 0] = t0[:, INTERC] + t0[:, TRANSP] + t0[:, EVAP]
     out["runoff"][:, 0] = t0[:, RUNOFF]
     w_err = np.abs(out["W"][:, 1:] - ml.daily[:, 1:, RM]).mean(1)
+    t = ml.daily
+    d_true = (  # the original's deep-store change over the run, by water balance
+        t[:, 1:, PREC].sum(1, dtype=np.float64)
+        - t[:, 1:, [INTERC, TRANSP, EVAP, RUNOFF]].sum((1, 2), dtype=np.float64)
+        - (t[:, -1, SWE] - t[:, 0, SWE]) - (t[:, -1, RM] - t[:, 0, RM])
+    )  # fmt: skip
     ann = annualise({k: out[k] for k in ANNUAL})
-    return ann, {"over": over_t, "under": under_t, "D_end": D, "W_mae": w_err}
+    return ann, {"over": over_t, "under": under_t, "D_end": D, "D_true": d_true, "W_mae": w_err,
+                 "runoff_min": float(out["runoff"][:, 1:].min())}  # fmt: skip
 
 
 def run_onestep(net, ml, dev):
@@ -629,10 +643,12 @@ def main():
         "--ensemble", default="", help="comma-separated run tags to average (no training)"
     )
     ap.add_argument("--layers", type=int, default=2)
+    ap.add_argument("--deep-tau", dest="deep_tau", type=float, default=0.0,
+                    help="days; > 0 drains the deep store into runoff (ADR 0326)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    global NH, NL, NPP_HEAD
-    NH, NL, NPP_HEAD = a.hidden, a.layers, a.npp_head
+    global NH, NL, NPP_HEAD, DEEP_TAU
+    NH, NL, NPP_HEAD, DEEP_TAU = a.hidden, a.layers, a.npp_head, a.deep_tau
     out = os.path.join(DATA, "runs", a.tag)
     os.makedirs(out, exist_ok=True)
     logf = open(os.path.join(out, "log.txt"), "a")
@@ -689,6 +705,10 @@ def main():
                 "deficit_mm_per_yr_median": float(np.median(dg["under"][:, 1:].mean(1))),
                 "deficit_mm_per_yr_max": float(dg["under"][:, 1:].mean(1).max()),
                 "D_end_abs_median_mm": float(np.median(np.abs(dg["D_end"]))),
+                "D_true_abs_median_mm": float(np.median(np.abs(dg["D_true"]))),
+                "D_end_abs_p90_mm": float(np.quantile(np.abs(dg["D_end"]), 0.9)),
+                "D_true_abs_p90_mm": float(np.quantile(np.abs(dg["D_true"]), 0.9)),
+                "runoff_daily_min_mm": dg["runoff_min"],
                 "W_mae_median_mm": float(np.median(dg["W_mae"])),
             }
             log(
