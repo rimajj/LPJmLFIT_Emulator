@@ -23,6 +23,13 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #    --seed N for a replicate. Ensemble (ADR 0322, no training; averages the members' daily fluxes, one bucket):
 #    scripts/f2_train.py --tag <new> --hidden 256 --layers 3 --ensemble tagA,tagB,...
 #    Chain it after the member jobs with DEPENDENCY=afterok:<jid>:<jid> (wrapper knob).
+#    --deep-tau 365 (ADR 0326, ADOPT for every new arm): the deep store drains D/365 per day into runoff; only
+#      runoff + the deep store change (re-score an existing tag/ensemble under a NEW tag, no retraining).
+#    --drop-inputs huss (ADR 0327): hold a raw forcing input at 0 (pass it again for the ensemble run).
+#    --train-only: save model.pt and stop — for ensemble members (the GPU QOS runs ~2 jobs at a time, and a
+#      member's own 20-min free runs are not needed when the verdict is on the ensemble).
+#    python scripts/f2_extrapolation_probe.py <tag>: per held-out cell, how far each leg's 2081-2100 climate is
+#      outside the training range vs where the carbon error grows (minutes; ADR 0327 §1).
 # 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]   (old ADR 0320 ±5 % bar)
 # 2c. THE CURRENT YARDSTICK (ADR 0325): python scripts/f2_relative_score.py [tags...]  -> per leg/flux the
 #     emulator error / second-run error (30-yr typical + worst-10 %, response, per-decade single-year),
@@ -60,3 +67,9 @@ held-out blocks = the five biome blocks + the lowest non-biome block of every st
   seed — replicate, or pre-register an ensemble. More rows from the same cells did not help (the limit is places).
 - Speed (S1) is measured on one CPU core with a batch over all panel cells and incrementally updated running
   windows. It is the daily half only; never quote it as an emulator-vs-original speed-up (skill `speed-gate`).
+- **Runoff is a small residual of rain minus ET** (ADR 0326 §4): in a typical cell runoff is 160–200 mm/yr, so an
+  ET error of 2–3× a second run is 4–7 % of runoff = 4–5× a second run's runoff spread. With the deep store
+  draining, the runoff error is the negative of the ET error (cell correlation +0.84–0.92). Fix ET to fix runoff.
+- **Humidity does not enter the original's daily exchange** (only `waterstress_tree.c:36`, the annual tree
+  mortality accumulator; `relative_humidity: false`, fire = the simple scheme). Under warming it leaves the
+  training range at every cell (UKESM 2081–2100: +1.45 g/kg beyond, ADR 0327).

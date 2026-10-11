@@ -651,6 +651,8 @@ def main():
     ap.add_argument("--layers", type=int, default=2)
     ap.add_argument("--drop-inputs", dest="drop_inputs", default="",
                     help="raw forcing inputs to remove, e.g. huss (ADR 0327)")  # fmt: skip
+    ap.add_argument("--train-only", dest="train_only", action="store_true",
+                    help="save model.pt and stop (ensemble members; no free runs)")  # fmt: skip
     ap.add_argument("--deep-tau", dest="deep_tau", type=float, default=0.0,
                     help="days; > 0 drains the deep store into runoff (ADR 0326)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -693,6 +695,9 @@ def main():
         net = train(a, mls, tr, va, dev, log)
         torch.save(net.state_dict(), mpath)
         del mls
+    if a.train_only:
+        log("== DONE (train only)")
+        return
     net.eval()
 
     ann, diag = {}, {}
