@@ -46,6 +46,8 @@ NFORC = 12
 NIN = NFORC + 3 + 4 + 12
 NH, NL = 64, 2  # network width / depth (set from the command line)
 NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
+FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4}  # raw daily forcing columns of x
+DROP = []  # input columns held at 0 (--drop-inputs, ADR 0327); the network then cannot use them
 DEEP_TAU = 0.0  # days; > 0: deep store releases D/DEEP_TAU per day into runoff (ADR 0326)
 
 
@@ -118,6 +120,8 @@ def assemble(ff, sinA, cosA, slat, st, cap_prev, W, S, cells, days):
     x[:, NFORC + 5] = np.log1p(S)
     x[:, NFORC + 6] = capv / 1000.0
     x[:, NFORC + 7 :] = st[cells, iy]
+    if DROP:
+        x[:, DROP] = 0.0
     return x
 
 
@@ -476,6 +480,8 @@ def bench_speed(net, ml, reps=3):
                 x[:, NFORC + 5] = np.log1p(S)
                 x[:, NFORC + 6] = cap / 1000.0
                 x[:, NFORC + 7 :] = st
+                if DROP:
+                    x[:, DROP] = 0.0
                 y = netc(torch.from_numpy(x), torch.from_numpy(pr), torch.from_numpy(S)).numpy()
                 W, S, D, *_ = bucket_step(y, pr, W, S, D, cap)
         times.append((time.perf_counter() - t0) / nc)
@@ -643,12 +649,15 @@ def main():
         "--ensemble", default="", help="comma-separated run tags to average (no training)"
     )
     ap.add_argument("--layers", type=int, default=2)
+    ap.add_argument("--drop-inputs", dest="drop_inputs", default="",
+                    help="raw forcing inputs to remove, e.g. huss (ADR 0327)")  # fmt: skip
     ap.add_argument("--deep-tau", dest="deep_tau", type=float, default=0.0,
                     help="days; > 0 drains the deep store into runoff (ADR 0326)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
     global NH, NL, NPP_HEAD, DEEP_TAU
     NH, NL, NPP_HEAD, DEEP_TAU = a.hidden, a.layers, a.npp_head, a.deep_tau
+    DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
     out = os.path.join(DATA, "runs", a.tag)
     os.makedirs(out, exist_ok=True)
     logf = open(os.path.join(out, "log.txt"), "a")
