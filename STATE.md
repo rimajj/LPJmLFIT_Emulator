@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0328**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0329**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -22,32 +22,38 @@
 * **No drift** in transient (year-by-year) runs.
 * Standing closures: no CO2 response (ADR 0004/0107); reuse is authorised, cite (ADR 0081).
 
-## Where things stand (2026-10-10)
+## Where things stand (2026-10-11)
 
 | part | state |
 |---|---|
 | forest structure, 30-year windows | best setup = per-cell anchor + gradient-boosted climate shift, log target on biomass per tree (ADR 0316 §11–13). On the 1 050-cell panel, held-out climate model: passes the relaxed standard except dense typical-cell tree count (1.23× a second run) / biomass per tree (1.18×) on the case count and the sparse stem total (19.5 %). Dense stem total low in 14/15 cases. Not yet run on the global venue with these changes, not yet year-by-year, not timed |
-| daily carbon/water exchange, learned | **exists (phase A, offline).** One small network + closed snow / top-metre / deep water stores, trained on the panel runs of the original (ADR 0320–0324; skill `daily-model`). Best arm, a five-seed ensemble with NPP = GPP − respiration: **on the second-run yardstick (ADR 0325):** GPP / ET typical error 2–3× a second run ✓, NPP 2.9–3.6× (3× proposed) ✗, runoff 11–14× ✗; area totals ≤ 1.7 % ✓ (runoff 5.1 %); no drift on the MPI climates ✓; **under the unseen climate model the GPP / NPP gap to the original grows 1.3× / 1.4× over the century ✗** (per-day carbon response outside the training climates — the one-step run grows identically, so not the stores); deep store walks away (2.0–2.8 m vs 0.22 m) ✗. Cost 6.4e-3 core-s per cell-year ✓. The stand still comes from the original (flatters the score) |
+| daily carbon/water exchange, learned | **exists (phase A, offline).** One small network + closed snow / top-metre / deep water stores, trained on the panel runs of the original (ADR 0320–0328; skill `daily-model`). Best setup: five-seed ensemble, NPP = GPP − respiration, no humidity input (the original's daily exchange never reads it, ADR 0327), deep store draining into runoff (ADR 0326). **On the second-run yardstick:** GPP / ET typical error 2–3× a second run ✓, NPP 2.7–3.5× (3× proposed) ✗, runoff 3.9–5.5× ✗ (the ET error carried through — runoff is a small residual of rain minus ET); area totals ≤ 1.8 % ✓; deep store stable ✓; no drift on the MPI climates ✓; **under the unseen climate model the GPP / NPP gap still grows 1.29× / 1.35× over the century ✗** (removing humidity was a null). Cost 6.4e-3 core-s per cell-year. The stand still comes from the original (flatters the score). **Running:** training on two more climate models (ADR 0328) |
 | re-implemented daily physics (F_diff) | C-validated at 5 biome cells with known residuals (ADR 0125–0139); 4.62× slower than the original. Parked as the fidelity oracle/reference, not the runtime path |
-| energy closure, online coupling | built for Hainich / harness level (ADR 0073–0085); not on the critical path until both halves above exist |
-
+| energy closure, online coupli
 ## NEXT — start here
 
-1. **Daily model, water split** — the deep store walks away from the original (2.0–2.8 m over 81 yr vs 0.22 m) and runoff is
-   11–14× a second run (ADR 0325). Fix the deep/runoff partition (e.g. make deep drainage a function of the stores
-   with the original's near-zero annual net, or learn runoff+deep jointly against the original's runoff); score with
-   `scripts/f2_relative_score.py`. Prerequisite for phase B anyway.
-2. **Daily model, carbon outside the training climates** — the GPP/NPP gap grows 1.3–1.4× over the century under the unseen
-   climate model, and NPP typical is 2.9–3.6× a second run on trained climates (3× proposed). Probably one problem;
-   pre-register one arm against both (candidates: more climate diversity in training — other legs/members of the
-   panel, spatial regularisation — or physically constrained carbon heads). Then, before phase B, build the map from the
-   structure emulator's outputs to the stand inputs (`lai_stand`, `vegc`, `fpc_stand` per PFT).
-3. **Structure: remove the dense-cell low bias** (anchor vs learned shift vs warming; measure first, then one
+1. **Collect the more-climate-models test (ADR 0328), all chained on SLURM — nothing to submit.** 36 new runs of the
+   original with daily output (`S-D-m*-*_daily`, standard queue, ~4 min each once started; ids in
+   `/p/tmp/jamirp/trackD/panel/jobs_gfdl-esm4_ssp126_daily.json`) → 36 collectors (`logs/f2col-*`) → array builder
+   (`logs/f2-build-new.2463904.out`) → members `f2-C-s0..4` → ensemble **`f2-CE.2463910`** (`runs/CE_5seed`) and the
+   control **`f2-HEdr-x.2463911`** (`runs/HEdr_x`). Check with `squeue -u $USER`; if anything sits in
+   `DependencyNeverSatisfied`, the step before it failed — read its log, fix, and resubmit the rest with
+   `scripts/f2_chain_new_legs.py` (edit it to skip done steps). Then
+   `python scripts/f2_relative_score.py HEdr_x CE_5seed` and judge **only** by ADR 0328 §3 (primary: GPP/NPP drift
+   ≤ 1.2 on UKESM ssp370 and each IPSL leg, and below the control). Append the result to ADR 0328, update its README
+   row, STATE, JOURNAL.
+2. If the drift does not fall (falsifier in ADR 0328 §3): pre-register a physically constrained carbon head
+   (e.g. GPP as light-use × learned non-negative limiters in temperature / water / stand, so it cannot extrapolate
+   into nonsense). Runoff (3.9–5.5×) only improves with ET — no separate water work needed.
+3. Before phase B: build the map from the structure emulator's outputs to the stand inputs (`lai_stand`, `vegc`,
+   `fpc_stand` per PFT).
+4. **Structure: remove the dense-cell low bias** (anchor vs learned shift vs warming; measure first, then one
    pre-registered treatment). Score with `explore_relaxed_standard.py` + `explore_panel_abs_err.py`.
-4. **Year-by-year drift test of the structure map** on the panel (trailing-window climate each year vs the original's
+5. **Year-by-year drift test of the structure map** on the panel (trailing-window climate each year vs the original's
    yearly 2020–2100 output in `…/xpanel/yearly/`); define the no-drift number before running.
-5. **Speed:** the daily half is measured (above); time the structure half and the whole per cell-year; never quote a
+6. **Speed:** the daily half is measured (above); time the structure half and the whole per cell-year; never quote a
    speed-up without the end-to-end number and the original's cost at its patch count.
-6. Open owner questions: removal of the retired `wt-*` worktrees; whether the relaxed numbers of ADR 0318 §2 are right;
-   whether the daily-model numbers proposed in ADR 0325 §3 are right (3× a second run on trained climates, no drift
-   = gap grows ≤ 1.2× over the century; both chosen after the scores were seen).
+7. Open owner questions: removal of the retired `wt-*` worktrees; whether the relaxed numbers of ADR 0318 §2 are right;
+   whether the daily-model numbers proposed in ADR 0325 §3 are right — and, new (ADR 0326 §4), whether runoff should
+   carry the same 3× limit as ET when runoff is a small residual of rain minus ET (an ET error of 2–3× a second run is
+   necessarily 4–5× in runoff terms).

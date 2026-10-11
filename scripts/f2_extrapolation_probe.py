@@ -22,6 +22,16 @@ import f2_train as F  # noqa: E402
 TAG = sys.argv[1] if len(sys.argv) > 1 else "RE_5seed"
 E, L = slice(1, 21), slice(61, 81)  # 2021-2040, 2081-2100 (annual index 0 = 2020)
 VAR = ("tas", "pr", "rsds", "lwnet", "huss")
+STAND = ("lai", "lvegc", "fpc")  # the stand inputs (fpc = sum of the 10 bands), members pooled
+
+
+def stand(leg):
+    """(4, nc, NY, 3) stand inputs for 2020..2100 (stand arrays start at 2019)."""
+    out = []
+    for k in F.MEMBERS:
+        st = F.stand_features(np.load(os.path.join(F.DATA, f"stand_m{k}_{leg}.npy")))[:, 1:]
+        out.append(np.stack([st[..., 0], st[..., 1], st[..., 2:].sum(-1)], -1))
+    return np.stack(out)
 
 
 def climate(leg, k=1):
@@ -57,6 +67,12 @@ def main():
                 w = np.stack([x[:, s : s + 20].mean(1) for s in range(1, F.NY - 19, 5)], 1)
                 lo[v] = w.min(1) if lo[v] is None else np.minimum(lo[v], w.min(1))
                 hi[v] = w.max(1) if hi[v] is None else np.maximum(hi[v], w.max(1))
+    for leg in F.TRAIN_LEGS:
+        st = stand(leg)
+        for j, v in enumerate(STAND):
+            w = np.stack([st[:, :, s : s + 20, j].mean(2) for s in range(1, F.NY - 19, 5)], -1)
+            lo[v] = w.min((0, 2)) if v not in lo else np.minimum(lo[v], w.min((0, 2)))
+            hi[v] = w.max((0, 2)) if v not in hi else np.maximum(hi[v], w.max((0, 2)))
     print(f"== tag {TAG}; held-out cells, GPP>=50; exceedance = late-window value beyond the")
     print("   cell's training range (0 inside); error growth = late - early |E-T|/mean(T)")
     for leg in F.TEST_LEGS + ["mpi-esm1-2-hr_ssp370"]:
@@ -68,8 +84,12 @@ def main():
         for j, v in enumerate((*VAR, "tmax")):
             x = win(mon if v == "tmax" else ann[:, :, j], L)
             ex[v] = np.maximum(x - hi[v], 0) + np.maximum(lo[v] - x, 0)
+        st = stand(leg)
+        for j, v in enumerate(STAND):
+            x = st[:, :, L, j].mean(2)  # (4, nc): every member's own stand
+            ex[v] = (np.maximum(x - hi[v], 0) + np.maximum(lo[v] - x, 0)).mean(0)
         print(f"\n-- {leg}: {m.sum()} cells")
-        for v in (*VAR, "tmax"):
+        for v in (*VAR, "tmax", *STAND):
             e = ex[v][m]
             print(
                 f"   exceedance {v:6s}: share of cells outside {np.mean(e > 0):.2f}  "
@@ -92,7 +112,7 @@ def main():
                     f"median {np.median(grow[~out]):+.4f} | "
                     f"outside tas/tmax/huss (n={out.sum()}) median {np.median(grow[out]):+.4f}"
                 )
-            for v in ("tas", "tmax", "huss", "pr", "rsds"):
+            for v in ("tas", "tmax", "huss", "pr", "rsds", *STAND):
                 print(f"      spearman(growth, exceedance {v}) = {spearman(grow, ex[v][m]):+.2f}")
             print(
                 f"      spearman(growth, late-minus-early tas) = "

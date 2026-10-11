@@ -1291,3 +1291,26 @@ Mid-turn the owner defined drift as the gap to the original growing (values may 
 first draft had called the unseen-climate-model case "no drift" because free and one-step grow alike — wrong by that
 definition: the GPP/NPP gap grows 1.3–1.4× over the century there. The free-vs-one-step comparison stays as the
 diagnosis (per-day carbon response, not the stores). Next: water split, then carbon outside the training climates.
+
+## 2026-10-11 (later) — the water split fixed; humidity found to be a spurious input (ADR 0326, 0327)
+
+The deep store had no outflow, so the network's 25–35 mm/yr split bias piled up in it. Draining it into runoff at
+D/365 per day (`--deep-tau 365`, no retraining) left carbon and ET bit-identical, kept the store at 45–68 mm over 81
+years (the original's own: 85–279 mm — ADR 0321's "0.22 m" was one leg) and cut runoff from 11–14× to 3.9–5.5× a
+second run. Still above the 3× limit; what remains is the ET error carried through (cell correlation +0.84–0.92),
+because runoff is a small residual of rain minus ET. T = 30 d gave the same 30-yr scores and worse single years.
+
+For the carbon drift under the unseen climate model, measured first (`scripts/f2_extrapolation_probe.py`): every held-
+out cell ends the century 2.5 °C warmer and 1.45 g/kg more humid than any training climate, and the cell-level error
+growth follows the humidity excess (Spearman +0.37–0.49), not the temperature excess (+0.15). Reading the C source,
+humidity is used only in the annual tree water-stress mortality — never in the daily exchange. Pre-registered a
+five-seed retrain without it (arm H). Its validation loss is unchanged (0.0600 vs 0.0596), as expected for an input
+the original ignores. Process note: the GPU QOS runs ~2 jobs per user, so five scored seeds would have queued an
+hour; `--train-only` members + one chained ensemble job avoid that.
+Arm H's ensemble (ADR 0327 §4): a null — the unseen-model GPP/NPP gap still grows 1.29×/1.35× (was 1.32×/1.42×);
+the falsifier fired. Re-running the probe on it, the error growth still follows the humidity excess (+0.50) although
+humidity is no longer an input, so humidity only marked the place; the stand handed to the network is also out of its
+training range at 66 % of cells under UKESM (leaf area), with error growth following it (+0.41/+0.46). Kept humidity
+out anyway (faithful). Next arm: more climate models in training (ADR 0328) — 36 new runs of the original with daily
+output (`<model>_<scen>_daily` legs, a `--no-chain` / `submit-legs` mode for `trackd_panel.py`), all chained through
+collection, arrays, training and scoring by `scripts/f2_chain_new_legs.py`. Waiting on the standard queue.

@@ -36,7 +36,11 @@ Usage:
   python scripts/trackd_panel.py check                                       # lpjcheck one block per (member, leg)
   python scripts/trackd_panel.py submit --forcing-job <jobid>                 # submit everything with dependencies
   python scripts/trackd_panel.py status                                      # completed blocks per (member, leg)
+  python scripts/trackd_panel.py make --legs gfdl-esm4_ssp370_daily --no-chain  # a DAILY re-run of an existing leg
+  python scripts/trackd_panel.py submit-legs --legs gfdl-esm4_ssp370_daily       # just those legs, no hist/spin-up
 Root: $TRACKD_ROOT/panel (default /p/tmp/jamirp/trackD/panel).
+A leg named <leg>_daily (ADR 0328) is <leg> with the daily outputs added, in its own directory, so the existing run
+is never overwritten; same climate, restart and physics.
 """
 
 from __future__ import annotations
@@ -86,6 +90,15 @@ VARKEY = {"temp": "tas", "prec": "pr", "lwnet": "lwnet", "swdown": "rsds", "humi
 CONTROLS = {"ctl_obs": (1990, 2019), "ctl_mpi370": (2015, 2034)}
 
 
+def base(leg):
+    """<leg>_daily -> <leg> (the same run with daily outputs, ADR 0328)."""
+    return leg[: -len("_daily")] if leg.endswith("_daily") else leg
+
+
+def is_daily(leg):
+    return leg in DAILY_LEGS or leg.endswith("_daily")
+
+
 def blocks():
     with open(BLOCKS_CSV) as f:
         return [(int(r["block"]), int(r["start"]), int(r["end"])) for r in csv.DictReader(f)]
@@ -99,6 +112,7 @@ def sub1(pat, rep, s, count=1, flags=0):
 
 # ---------------------------------------------------------------- inputs
 def forcing_files(leg):
+    leg = base(leg)
     if leg in ("hist", "spinup", "ctl_obs"):
         return {k: f"{GT}/{v}" for k, v in HIST_FILES.items()}
     gcm, scen = ("mpi-esm1-2-hr", "ssp370") if leg == "ctl_mpi370" else leg.split("_")
@@ -145,13 +159,11 @@ def output_list(leg):
         '    { "id" : "lai_stand",  "file" : { "fmt" : "cdf", "name" : "output/lai_stand.nc" }},',
         '    { "id" : "fpc_stand",  "file" : { "fmt" : "cdf", "name" : "output/fpc_stand.nc" }},',
     ]
-    if (
-        leg not in DAILY_LEGS
-    ):  # an output id may appear once: daily legs carry daily npp instead of monthly
+    if not is_daily(leg):  # an output id may appear once: daily legs carry daily npp, not monthly
         o.insert(
             3, '    { "id" : "npp",        "file" : { "fmt" : "cdf", "name" : "output/mnpp.nc" }},'
         )
-    if leg in DAILY_LEGS:
+    if is_daily(leg):
         for oid in [
             "prec",
             "transp",
@@ -202,8 +214,8 @@ def make_config(member, leg, b, s, e, inp):
     t = sub1(r'"random_seed"\s*:\s*\d+', f'"random_seed" : {member}', t)
     t = sub1(r'#include "[^"]*input_2000_2019\.js"', f'#include "{inp}"', t, count=2)
     t = sub1(r'"startgrid"\s*:\s*"all",', f'"startgrid" : {s}, "endgrid" : {e},', t)
-    if leg in CONTROLS:
-        y0, y1 = CONTROLS[leg]
+    if base(leg) in CONTROLS:
+        y0, y1 = CONTROLS[base(leg)]
         t = sub1(
             r'"fix_climate"\s*:\s*false,',
             f'"fix_climate" : true, "fix_climate_year" : 2019, "fix_climate_interval" : [{y0},{y1}], '
@@ -246,7 +258,7 @@ def leg_dir(member, leg):
     return os.path.join(PANEL, f"m{member}", leg)
 
 
-def make(members, legs):
+def make(members, legs, chain=True):
     snapshot()
     bl = blocks()
     for member in members:
@@ -255,6 +267,8 @@ def make(members, legs):
             + ["hist"]
             + [lg for lg in legs if lg not in ("hist", "spinup")]
         )
+        if not chain:  # only the named legs; their member's 2019 restart must already exist
+            mlegs = [lg for lg in legs if lg not in ("hist", "spinup")]
         for leg in mlegs:
             inp = write_input(leg)
             d = leg_dir(member, leg)
@@ -327,7 +341,22 @@ def snapshot():
         )
 
 
-def check():
+def submit_legs(members, legs):
+    """Submit only the named (member, leg) runs, without the spin-up / hist chain (restarts must exist)."""
+    jobs = {}
+    for member in members:
+        for leg in legs:
+            read, _ = restart_paths(member, leg, blocks()[0][0])
+            assert os.path.exists(read), f"m{member}/{leg}: restart {read} missing"
+            p = os.path.join(leg_dir(member, leg), "run.jcf")
+            out = subprocess.run(["sbatch", p], capture_output=True, text=True, check=True).stdout
+            jobs[f"m{member}/{leg}"] = out.split()[-1]
+    with open(os.path.join(PANEL, f"jobs_{legs[0]}.json"), "w") as fo:
+        json.dump(jobs, fo, indent=1)
+    print(json.dumps(jobs, indent=1))
+
+
+def check(legs=None):
     """lpjcheck every (member, leg) whose restart already exists (members 1/2, and the spin-ups); for the later legs
     of members 3/4 (their restarts do not exist yet) assert the config equals member 1's except the seed and the
     restart paths."""
@@ -344,6 +373,8 @@ def check():
         if not os.path.isdir(bd):
             continue
         leg, member = os.path.basename(d), int(os.path.basename(os.path.dirname(d))[1:])
+        if legs and leg not in legs:
+            continue
         if member in (1, 2) or leg == "spinup":
             args = [os.path.join(LPJROOT, "bin", "lpjcheck")] + (
                 [] if leg == "spinup" else ["-DFROM_RESTART"]
@@ -408,14 +439,16 @@ def status():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["make", "check", "submit", "status"])
+    ap.add_argument("stage", choices=["make", "check", "submit", "submit-legs", "status"])
     ap.add_argument("--members", type=int, nargs="+", default=[1, 2, 3, 4])
     ap.add_argument("--legs", nargs="+", default=LEGS)
     ap.add_argument("--forcing-job", default=None)
+    ap.add_argument("--no-chain", dest="chain", action="store_false")
     a = ap.parse_args()
     {
-        "make": lambda: make(a.members, a.legs),
-        "check": check,
+        "make": lambda: make(a.members, a.legs, a.chain),
+        "check": lambda: check(None if a.legs == LEGS else a.legs),
+        "submit-legs": lambda: submit_legs(a.members, a.legs),
         "submit": lambda: submit(a.forcing_job),
         "status": status,
     }[a.stage]()

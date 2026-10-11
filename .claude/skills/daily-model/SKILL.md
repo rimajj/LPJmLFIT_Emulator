@@ -30,6 +30,9 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #      member's own 20-min free runs are not needed when the verdict is on the ensemble).
 #    python scripts/f2_extrapolation_probe.py <tag>: per held-out cell, how far each leg's 2081-2100 climate is
 #      outside the training range vs where the carbon error grows (minutes; ADR 0327 §1).
+#    --train-legs / --test-legs a,b,c (ADR 0328): any legs with f2 arrays, e.g. the `<model>_<scen>_daily` re-runs
+#      (written to runs/<tag>/legs.json; f2_relative_score.py scores each run on its own legs).
+#    scripts/f2_chain_new_legs.py: after new daily runs of the original, chains collect -> build -> train -> score.
 # 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]   (old ADR 0320 ±5 % bar)
 # 2c. THE CURRENT YARDSTICK (ADR 0325): python scripts/f2_relative_score.py [tags...]  -> per leg/flux the
 #     emulator error / second-run error (30-yr typical + worst-10 %, response, per-decade single-year),
@@ -43,7 +46,9 @@ Re-score saved annual totals without a model: `import f2_train as F; F.score(ann
 ## Venue and splits (fixed by ADR 0320 — do not change for a new arm)
 
 Panel runs of the original (skill `trackd-data`): 1 050 cells, 4 members; legs with daily output used:
-`ctl_obs`, `mpi-esm1-2-hr_ssp126/370` (train), `mpi-esm1-2-hr_ssp585`, `ukesm1-0-ll_ssp370` (held out). 24
+`ctl_obs`, `mpi-esm1-2-hr_ssp126/370` (train), `mpi-esm1-2-hr_ssp585`, `ukesm1-0-ll_ssp370` (held out). Since ADR
+0328 also `{gfdl-esm4,ipsl-cm6a-lr,mri-esm2-0}_{ssp126,ssp370,ssp585}_daily` (arm C trains on GFDL + MRI; IPSL and
+UKESM are the unseen models). 24
 held-out blocks = the five biome blocks + the lowest non-biome block of every stratum with ≥ 2 blocks.
 
 ## Traps

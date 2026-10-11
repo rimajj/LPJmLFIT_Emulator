@@ -1,6 +1,6 @@
 # 0327 — Learned daily model without the humidity input (measurement + pre-registration)
 
-* **Status:** Measurement done and pre-registration written 2026-10-11, before any run of the arm. Result appended
+* **Status:** Measurement done and pre-registration written 2026-10-11, before any run of the arm. **Result (same day, §4): null — the falsifier fired (NPP drift 1.35 ≥ 1.3); humidity was not the channel.** Result appended
   below once measured.
 * Opt-in `scripts/f2_train.py --drop-inputs huss` (the column is held at 0; default unchanged).
 * Diagnostic: `scripts/f2_extrapolation_probe.py RE_5seed` (log `logs/f2-extrap.2463417.out`).
@@ -45,3 +45,28 @@ training range — which under warming it does at every cell.
   tropical ones, so the correlation of §1 may be confounded), and the temperature excess (+2.5 °C) is the next
   suspect.
 * **Expectation:** the drift falls but may not reach 1.2, because temperature is also out of range everywhere.
+
+## 4. Result (2026-10-11; ensemble `HE_5seed` of `H_3x256_seed0..4`; log `f2-HE.2463534`)
+
+Validation loss of a single member is unchanged by the removal (seed 0: 0.0600 vs 0.0596 with humidity) — inside
+the training climates humidity carried no information, as expected for an input the original ignores.
+
+| | RE_5seed (with humidity) | **HE_5seed (without)** | limit |
+|---|---|---|---|
+| UKESM drift, GPP / NPP | 1.32 / 1.42 | **1.29 / 1.35** | ≤ 1.2 ✗ |
+| UKESM drift, ET / runoff | 1.04 / 1.02 | 1.06 / 1.02 | ✓ |
+| NPP typical, MPI future legs, early/late | 3.31/2.94 · 3.13/3.60 · 3.14/3.52 | **3.38/2.70 · 3.51/3.12 · 3.14/2.86** | ≤ 3 ✗ |
+| GPP typical, MPI | 2.16–2.44 | 2.32–2.55 | ✓ |
+| ET typical, MPI | 2.01–2.90 | 1.99–2.70 | ✓ |
+| ET worst-10 %, MPI | 1.61–1.80 | 1.42–1.58 | ✓ |
+| drift, MPI legs (all fluxes) | 0.85–1.05 | 0.85–0.96 | ✓ |
+
+**Primary fails; the falsifier fires on NPP (1.35 ≥ 1.3).** The drift fell by a fifth of its excess for NPP and
+a tenth for GPP — within what a different set of five seeds could move. Humidity was not the channel; the §1
+correlation was most likely confounded (the most humid-excess cells are the hot tropical ones). Nothing got worse on
+the MPI legs. Runoff area totals (deep drainage off here, as in RE_5seed) are not comparable to ADR 0326's.
+
+**Decision:** keep `--drop-inputs huss` in later arms anyway — the original's daily exchange does not read
+humidity, so leaving it out is faithful by construction and removes one input that is guaranteed to go out of range
+under warming — but do not count it as the fix. Next suspect: per §1 the temperature excess (+2.5 °C at every cell)
+and the stand handed to the network (ADR 0327 follow-up in the probe log `f2-extrap2`).

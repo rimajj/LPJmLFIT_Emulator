@@ -19,6 +19,7 @@ Harness rows: "second run" (member j as the emulator; must be ~1.0) and "oracle"
 three other members; Gaussian expectation sqrt((1+1/3)/2) = 0.82). Derived before running.
 """
 
+import json
 import os
 import sys
 from itertools import permutations
@@ -96,6 +97,11 @@ def main():
     J = {v: i for i, v in enumerate(F.ANNUAL)}
     for tag in tags:
         z = np.load(os.path.join(F.DATA, "runs", tag, "annual.npz"))
+        lp = os.path.join(F.DATA, "runs", tag, "legs.json")  # a run's own legs (ADR 0328)
+        lg = {"train": F.TRAIN_LEGS, "test": F.TEST_LEGS}
+        if os.path.exists(lp):
+            lg = json.load(open(lp))
+        all_legs, test_legs = lg["train"] + lg["test"], lg["test"]
         print(f"\n## {tag}  (ratio = emulator error / second-run error; 1.00 = a second run)\n")
         print(
             "| leg | flux | kind | 30-yr p50 early/late | 30-yr p90 early/late "
@@ -103,7 +109,7 @@ def main():
             "| area total err (2nd run) | 2nd-run 30-yr p50 |"
         )
         print("|---|---|---|---|---|---|---|---|---|---|")
-        for leg in F.ALL_LEGS:
+        for leg in all_legs:
             t, fr = z[f"truth__{leg}"], z[f"free__{leg}"]
             mask = ho & (t[:, :, ALL, J["gpp"]].mean(2).mean(0) >= 50)
             for v in V:
@@ -112,7 +118,7 @@ def main():
                 kinds = ("free",)
                 if v == "gpp" and leg == "ctl_obs":
                     kinds += ("second run", "oracle")
-                if leg in F.TEST_LEGS:
+                if leg in test_legs:
                     kinds += ("onestep",)
                 for kind in kinds:
                     e = z[f"onestep__{leg}"] if kind == "onestep" else fr

@@ -40,6 +40,16 @@ python scripts/trackd_panel.py status
 A Germany member's build is READ from its production logs (`Version 5.6.004 (Feb  5 2026)` = ssp245 =
 `lpjml_feb2026`; `Dec 17 2025` = everything else = line X's `lpjml_dec2025`) — never assume it.
 
+**Daily re-run of an existing leg (ADR 0328):** a leg named `<leg>_daily` is `<leg>` with the daily outputs added,
+in its own directory (same climate file, restart, binary, physics; the config differs only in the output list):
+```bash
+python scripts/trackd_panel.py make --no-chain --legs gfdl-esm4_ssp370_daily ...   # no spin-up / hist rewrite
+python scripts/trackd_panel.py check --legs gfdl-esm4_ssp370_daily ...
+python scripts/trackd_panel.py submit-legs --legs gfdl-esm4_ssp370_daily ...       # ids -> PANEL/jobs_<leg>.json
+python scripts/f2_chain_new_legs.py      # collectors -> f2 arrays -> daily-model training (edit its NEW list)
+```
+A panel leg needs 105 cpus on ONE node, so it cannot run on `priority` (64 cpus per user); it queues on `standard`.
+
 **Traps (each cost a round trip):**
 - The production `lpjml_2100_*` Germany config also sets `fix_climate` with `fix_climate_year 2100`; in
   `iterate.c` that applies only to `year > fix_climate_year`, so 2071-2100 are plain transient years and the
