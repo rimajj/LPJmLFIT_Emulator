@@ -36,6 +36,7 @@ TRAIN_LEGS = ["ctl_obs", "mpi-esm1-2-hr_ssp126", "mpi-esm1-2-hr_ssp370"]
 TEST_LEGS = ["mpi-esm1-2-hr_ssp585", "ukesm1-0-ll_ssp370"]
 ALL_LEGS = TRAIN_LEGS + TEST_LEGS
 MEMBERS = [1, 2, 3, 4]
+STAND_DIR = ""  # --stand-dir: read stand_<tag>.npy from DATA/<dir> where present (default: the original's)
 NY = 81  # 2020..2100
 ND = NY * 365
 WARM = 365  # forcing arrays start with the 2019 warm-up year
@@ -134,7 +135,11 @@ class MemberLeg:
         self.daily = np.load(os.path.join(DATA, f"daily_{tag}.npy"))
         forc = np.load(os.path.join(DATA, f"forc_{tag}.npy"))
         self.ff = forcing_features(forc, lat)
-        self.st = stand_features(np.load(os.path.join(DATA, f"stand_{tag}.npy")))
+        sp = os.path.join(DATA, f"stand_{tag}.npy")
+        if STAND_DIR and os.path.exists(os.path.join(DATA, STAND_DIR, f"stand_{tag}.npy")):
+            sp = os.path.join(DATA, STAND_DIR, f"stand_{tag}.npy")  # phase B: another stand (ADR 0331)
+            print(f"{tag}: stand from {sp}", flush=True)
+        self.st = stand_features(np.load(sp))
         self.cap = np.load(os.path.join(DATA, f"cap_{tag}.npy"))  # index iy = year 2019+iy
         self.sinA, self.cosA, self.slat = calendar_features(lat)
 
@@ -658,10 +663,12 @@ def main():
                     help="save model.pt and stop (ensemble members; no free runs)")  # fmt: skip
     ap.add_argument("--deep-tau", dest="deep_tau", type=float, default=0.0,
                     help="days; > 0 drains the deep store into runoff (ADR 0326)")  # fmt: skip
+    ap.add_argument("--stand-dir", dest="stand_dir", default="",
+                    help="subdir of DATA whose stand_<tag>.npy replace the original's (phase B, ADR 0331)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    global NH, NL, NPP_HEAD, DEEP_TAU
-    NH, NL, NPP_HEAD, DEEP_TAU = a.hidden, a.layers, a.npp_head, a.deep_tau
+    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR
+    NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR = a.hidden, a.layers, a.npp_head, a.deep_tau, a.stand_dir
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
     TRAIN_LEGS[:] = a.train_legs.split(",")
     TEST_LEGS[:] = a.test_legs.split(",")

@@ -10,7 +10,9 @@ and that mean's offset from the training runs'. One LightGBM model per stand qua
 rounds), target = value - anchor. lai_stand and vegc: every run (m1,m2,m3,m5,m6 train). fpc_stand per plant type
 1..10 (ids 0-6 trees, 7-9 grasses): only runs m1-m4 on the first five climate models carry it, so those models train
 on m1-m3 x the 12 legs of the 4 other first-five models. The six structure models are NOT refitted here.
-Output: xpanel/eval/stand/preds_<g>.parquet (m4 and m5 on the held-out model's legs, every year 2020-2100).
+Output: xpanel/eval/stand/preds_<g>.parquet (m4 and m5 on the held-out model's legs, every year 2020-2100);
+`fit --hold k` (k = 1..3) refits with run k unseen -> preds_<g>_h<k>.parquet; `arrays` writes phase B's stand arrays
+into a subdir of the f2 data dir (ADR 0331).
 
 SCORE (stage `score`, the ADR 0330 measure): per case and year, the typical-cell (50th centile) and bad-cell (90th)
 relative error vs a second run (m1, m2, m3 vs m4), dense cells (structure anchor >= 5 trees per patch) and all cells;
@@ -88,6 +90,9 @@ def stage_fit(a) -> None:
     import lightgbm as lgb
 
     g = a.g
+    if a.hold != 4:  # leave-one-RUN-out for phase B: the unseen run is a.hold, every other run trains
+        YD.TRUTH, YD.TRAIN_M = a.hold, tuple(m for m in PP.MEMBERS if m != a.hold)
+    log(f"{g}: unseen run m{YD.TRUTH}, training runs {YD.TRAIN_M}")
     os.makedirs(OUT, exist_ok=True)
     test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
     train_legs = [lg for lg in A7.ALL_SLEGS if A7.gcm_of(lg) != g]
@@ -144,8 +149,42 @@ def stage_fit(a) -> None:
         p = mdl.predict(te.select(f).to_numpy()) + te[f"anc_{q}"].to_numpy().astype(float)
         out = out.with_columns(pl.Series(q, np.maximum(p, 0.0)))
         log(f"{g} {q}: {t.height} rows fitted ({time.time() - t0:.0f}s)")
-    out.write_parquet(os.path.join(OUT, f"preds_{g}.parquet"))
+    out.write_parquet(os.path.join(OUT, pred_name(g, a.hold)))
     log(f"{g}: wrote {out.height} predictions")
+
+
+def pred_name(g: str, hold: int) -> str:
+    return f"preds_{g}.parquet" if hold == 4 else f"preds_{g}_h{hold}.parquet"
+
+
+def stage_arrays(a) -> None:
+    """Phase B inputs: the daily model's stand_m<k>_<leg>.npy with years 2020-2100 (indices 1-81) replaced by the stand
+    map's prediction for run k (fitted with run k unseen, --hold k) and the held-out leg's climate model unseen; index 0
+    (end of 2019, the known start) stays the original's. Cells without a prediction keep the original's (counted)."""
+    f2 = "/p/projects/open/Jamir/esm_land_emulator_data/f2"
+    od = os.path.join(f2, a.stand_dir)
+    os.makedirs(od, exist_ok=True)
+    cells = pl.read_parquet(os.path.join(f2, "cells.parquet"))["Cell"].cast(pl.Int32)
+    for dleg in a.legs.split(","):
+        leg = dleg.removesuffix("_daily")
+        g = A7.gcm_of(leg)
+        for k in (1, 2, 3, 4):
+            src = np.load(os.path.join(f2, f"stand_m{k}_{dleg}.npy"))
+            if a.copy_only:  # harness: the original's stand through the same path
+                np.save(os.path.join(od, f"stand_m{k}_{dleg}.npy"), src)
+                continue
+            P = pl.read_parquet(os.path.join(OUT, pred_name(g, k))).filter(
+                (pl.col("member") == k) & (pl.col("leg") == leg))
+            grid = pl.DataFrame({"Cell": np.repeat(cells.to_numpy(), 81),
+                                 "Year": np.tile(np.arange(2020, 2101), len(cells)).astype(np.int32)})
+            j = grid.join(P.select("Cell", "Year", *SQ), on=["Cell", "Year"], how="left")
+            v = j.select(SQ).to_numpy().reshape(len(cells), 81, len(SQ))
+            miss = ~np.isfinite(v)
+            new = src.copy()
+            new[:, 1:, :] = np.where(miss, src[:, 1:, :], v).astype(np.float32)
+            np.save(os.path.join(od, f"stand_m{k}_{dleg}.npy"), new)
+            log(f"{dleg} m{k}: replaced {int((~miss).sum())} values, kept the original's in {int(miss.sum())}; "
+                f"leaf area mean {src[:, 1:, 0].mean():.3f} -> {new[:, 1:, 0].mean():.3f}")
 
 
 def scored(d: pl.DataFrame) -> pl.DataFrame:
@@ -232,10 +271,14 @@ def stage_score(a) -> None:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["fit", "score"])
+    ap.add_argument("stage", choices=["fit", "score", "arrays"])
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
+    ap.add_argument("--hold", type=int, default=4, choices=[1, 2, 3, 4], help="the unseen run (phase B: each in turn)")
+    ap.add_argument("--legs", default="mpi-esm1-2-hr_ssp585,ukesm1-0-ll_ssp370", help="arrays: daily-model leg names")
+    ap.add_argument("--stand-dir", dest="stand_dir", default="stand_emul", help="arrays: subdir of the f2 data dir")
+    ap.add_argument("--copy-only", dest="copy_only", action="store_true", help="arrays: harness, copy the original")
     a = ap.parse_args()
-    {"fit": stage_fit, "score": stage_score}[a.stage](a)
+    {"fit": stage_fit, "score": stage_score, "arrays": stage_arrays}[a.stage](a)
     log("=== DONE")
 
 

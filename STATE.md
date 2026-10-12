@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0331**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0332**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -47,10 +47,11 @@
 2. If the drift does not fall (falsifier in ADR 0328 §3): pre-register a physically constrained carbon head
    (e.g. GPP as light-use × learned non-negative limiters in temperature / water / stand, so it cannot extrapolate
    into nonsense). Runoff (3.9–5.5×) only improves with ET — no separate water work needed.
-3. Before phase B: build the map from the structure emulator's outputs to the stand inputs (`lai_stand`, `vegc`,
-   `fpc_stand` per PFT). Every panel run carries them yearly (`annual.parquet`, `fpc_stand.parquet` in each leg dir),
-   so the natural form is extra targets of the year-by-year arm (`explore_panel_yearly_drift.py`), then feed them to
-   the daily model on its held-out legs and score with `f2_relative_score.py`. Pre-register first.
+3. **Phase B (ADR 0331, pre-registered 2026-10-12):** the stand map exists (`explore_panel_stand_map.py`; leaf area
+   1.37× a second run on dense cells). Leave-one-run-out fits `logs/standh-*` (jobs 2467192–200) → `arrays` (writes
+   `f2/stand_emul/` and the harness copy `f2/stand_orig/`) → three CPU ensemble runs of `f2_train.py` (arm A original
+   stand, arm B `--stand-dir stand_emul`, harness `--stand-dir stand_orig`) on MPI ssp585 + UKESM ssp370 → 
+   `f2_relative_score.py`. Judge only by ADR 0331 §3. Then repeat on the IPSL legs once ADR 0328's arrays exist.
 4. ~~Structure: dense-cell low bias~~ — **done 2026-10-12, ADR 0329: no bias to treat** (a selection effect of
    defining dense cells by the held-out run's own outcome). Report the anchor-defined dense total beside ADR 0318's D3
    (`scripts/explore_panel_dense_bias.py`). The open structure question is how to explain more of each cell's response
