@@ -1361,3 +1361,17 @@ Phase B result (ADR 0331 §4): copy-through harness exact (0.0). The emulated st
 error relative to a second run — ET more than expected — and the pre-registered pass fails (increment, level and MPI
 drift); totals stay within 3 %. Full learned emulator: GPP/ET 2.6–3.9×, NPP 3.4–5.5× a second run. IPSL legs next,
 once ADR 0328's daily arrays exist.
+
+## 2026-10-12 (evening) — more climate models fail; structured carbon head pre-registered and running (ADR 0328, 0332)
+
+The ADR 0328 chain finished cleanly (36 daily runs collected with PASS, arrays, five members, both ensembles). Scored
+with `f2_relative_score.py HEdr_x CE_5seed`: training on GFDL + MRI as well lowers the daily model's level error
+10–20 % (MPI GPP 1.9–2.3×, ET 1.6–2.4× a second run) but the gap still grows on UKESM (GPP/NPP drift 1.30/1.41 vs
+1.29/1.35) and on IPSL; nowhere both ≤ 1.2 and below the control. Falsifier fired. New regression: NPP area totals 3–5 %
+off. Before designing the next arm I split the gap (`scripts/f2_carbon_split.py`, new): late-century GPP falls behind
+(UKESM 0.970, two thirds of cells low) and, separately, plant respiration is 1.5–3 % too high on every leg including
+observed weather; the warming fall of the carbon-use efficiency itself is tracked. Pre-registered arm P (ADR 0332):
+GPP = learned efficiency × radiation × the original's canopy light law × four bounded limiters with disjoint inputs
+(temperature-only, water, light/season, stand), NPP from the original's respiration form and temperature function.
+Opt-in `--carbon-head physical` in `f2_train.py` (default unchanged), chain `f2_chain_carbon_head.py`; running on GPU.
+Also launched phase B on the three IPSL legs with a copy-through harness (ADR 0331 rule).

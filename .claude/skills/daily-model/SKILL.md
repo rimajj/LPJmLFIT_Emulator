@@ -33,11 +33,17 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #    --train-legs / --test-legs a,b,c (ADR 0328): any legs with f2 arrays, e.g. the `<model>_<scen>_daily` re-runs
 #      (written to runs/<tag>/legs.json; f2_relative_score.py scores each run on its own legs).
 #    scripts/f2_chain_new_legs.py: after new daily runs of the original, chains collect -> build -> train -> score.
+#    --carbon-head physical (ADR 0332): GPP = eps * rsds * (1-exp(-0.5 LAI)) * four bounded limiters with
+#      disjoint inputs, NPP from the original's respiration form; chain scripts/f2_chain_carbon_head.py.
 # 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]   (old ADR 0320 ±5 % bar)
 # 2c. THE CURRENT YARDSTICK (ADR 0325): python scripts/f2_relative_score.py [tags...]  -> per leg/flux the
 #     emulator error / second-run error (30-yr typical + worst-10 %, response, per-decade single-year),
 #     drift = last-20-yr / first-20-yr ratio (owner: drift is the gap to the original GROWING, not the values
 #     changing), area totals; harness rows must read ~1.0 (second run) and ~0.82 (mean of three runs).
+# 2d. WHICH HALF OF THE CARBON GAP: python scripts/f2_carbon_split.py [tags...] -> per leg, emulator / original
+#     summed over held-out cells for GPP and plant respiration (GPP - NPP), early vs late, + share of cells low.
+#     Read it before designing a carbon fix: ADR 0332 found a late-century GPP shortfall (UKESM 0.970) AND a
+#     separate constant respiration excess (1.5-3 % on every leg, observed weather included).
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from
