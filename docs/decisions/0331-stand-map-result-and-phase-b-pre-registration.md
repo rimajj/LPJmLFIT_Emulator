@@ -66,3 +66,38 @@ UKESM drift (already 1.29 / 1.35 for GPP / NPP with the original's stand, ADR 03
 **Falsifier:** GPP's typical ratio rises by > 1.5 × on either leg ⇒ the stand error, not the daily model, would then
 dominate the full emulator's carbon error, and the next work is on the stand map (e.g. leaf area as its own learned
 quantity with a relative target), not on the daily model.
+
+## 4. Phase B result (2026-10-12; jobs 2467202–04, CPU; runs `PB_A`, `PB_B`, `PB_Bh`)
+
+**Harness exact:** the copy-through run reproduces arm A's annual totals with difference **0.0** on every leg and
+kind; the legs whose stand was not swapped are identical in all three runs. Stand arrays: every cell-year replaced
+(1 050 × 81 × 12), none kept from the original; mean leaf area moves < 1 %.
+
+Free runs, held-out cells (238), typical-cell error ÷ a second run's, 30-yr windows early / late:
+
+| leg | flux | arm A (original's stand) | arm B (emulated stand) | B ÷ A | drift A → B |
+|---|---|---|---|---|---|
+| MPI ssp585 | GPP | 2.46 / 2.55 | 2.70 / 3.23 | 1.10 / 1.27 | 0.93 → 1.06 |
+| | ET | 2.52 / 1.99 | 2.98 / 2.70 | 1.18 / **1.36** | 0.85 → 0.95 |
+| | NPP | 3.14 / 2.86 | 3.45 / 3.39 | 1.10 / 1.19 | 0.93 → 1.06 |
+| | runoff | 4.68 / 4.55 | 5.30 / 5.08 | 1.13 / 1.12 | 0.82 → 0.86 |
+| UKESM ssp370 | GPP | 2.44 / 3.20 | 2.91 / 3.85 | 1.19 / 1.20 | 1.29 → 1.32 |
+| | ET | 2.18 / 2.90 | 2.56 / 3.39 | 1.17 / 1.17 | 1.06 → 1.04 |
+| | NPP | 3.21 / 4.23 | 3.95 / 5.52 | 1.23 / **1.30** | 1.35 → 1.37 |
+| | runoff | 4.96 / 4.41 | 5.50 / 6.18 | 1.11 / **1.40** | 0.99 → 1.02 |
+
+Area totals, arm B: 0.4–3.0 % (second run 0.2–0.4 %).
+
+**Verdict as pre-registered: FAIL.** (1) increment ≤ 1.3×: fails for MPI ET late (1.36), UKESM NPP late (1.30) and
+UKESM runoff late (1.40); (2) GPP and ET ≤ 3× a second run: fails (MPI GPP late 3.23; UKESM GPP 2.91 / 3.85 and ET late
+3.39 — UKESM GPP late was already 3.20 with the original's stand); (3) totals within 5 %: **holds**; (4) drift ≤ arm A
++ 0.1: fails on MPI for GPP and NPP (+0.13 each, values still ≤ 1.06), holds on UKESM. Falsifier (GPP × > 1.5) did not
+fire. Against the expectations: GPP / NPP rose 1.10–1.30 (expected 1.05–1.25, roughly held); **ET rose 1.17–1.36,
+more than the 1.0–1.15 expected** — evaporation and transpiration lean on the stand more than assumed.
+
+**Reading.** With the stand emulated as well, the full learned emulator's daily fluxes are 2.6–3.9× (GPP, ET),
+3.4–5.5× (NPP) and 5–6× (runoff) a second run's typical error, area totals within 3 %. The emulated stand adds 10–40 %
+to the daily model's error; the daily model's own error (2–3×) still dominates, so the larger lever stays the daily
+model — but the stand is no longer negligible, and ET is where it bites most. Next: the IPSL legs under the same rule
+once ADR 0328's daily arrays exist; and, if the owner wants the stand's share cut, a stand map aimed at the daily
+model's inputs (e.g. leaf area per plant type rather than totals) — not pre-registered here.

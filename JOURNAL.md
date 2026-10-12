@@ -1357,3 +1357,7 @@ pre-registered and committed before running: the daily ensemble (no humidity, de
 with each run and each leg's climate model unseen by the stand map (nine leave-one-run-out fits), against the same
 ensemble on the original's stand, with a copy-through harness. Opt-in `--stand-dir` added to `f2_train.py` (default
 unchanged — the queued ADR 0328 jobs read the same file). Runs on CPU so they do not compete with that chain's GPUs.
+Phase B result (ADR 0331 §4): copy-through harness exact (0.0). The emulated stand adds 10–40 % to the daily model's
+error relative to a second run — ET more than expected — and the pre-registered pass fails (increment, level and MPI
+drift); totals stay within 3 %. Full learned emulator: GPP/ET 2.6–3.9×, NPP 3.4–5.5× a second run. IPSL legs next,
+once ADR 0328's daily arrays exist.
