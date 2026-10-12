@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0333**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0334**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -27,25 +27,25 @@
 | part | state |
 |---|---|
 | forest structure, 30-year windows | best setup = per-cell anchor + gradient-boosted climate shift, log target on biomass per tree (ADR 0316 §11–13). On the 1 050-cell panel, held-out climate model: passes the relaxed standard except dense typical-cell tree count (1.23× a second run) / biomass per tree (1.18×) on the case count and the sparse stem total (19.5 %). Dense stem total "low in 14–15/15 cases" is a selection effect, not a bias (ADR 0329: with dense cells defined before the run the total is −3.7 … +1.5 %, median 0.0 %); the real limit is that the learned shift explains only 27–49 % of how cells differ in their response to an unseen climate model. **Year by year (ADR 0330):** run each year from the trailing 30-yr climate, its error starts below a second run's (it knows the run's 2000–2019 state) and settles at about a second run's by the 2050s (biomass per tree ~1.0×, tree count ~1.1×), with a slow tree-count creep after that grows with warming; the pre-registered late/early drift rule fails as written (tree count 8/15, biomass per tree 2/15). **Cost 7.8e-5 core-s per cell-year** (the daily half is 6.4e-3, so the whole is ~6.5e-3 ≈ 41× less than the original at 25 patches, ~1 000× at 500; a sum of parts). Not yet on the global venue |
-| daily carbon/water exchange, learned | **exists (phase A, offline; phase B — fed the emulated stand — measured, ADR 0331: +10–40 % error).** One small network + closed snow / top-metre / deep water stores, trained on the panel runs of the original (ADR 0320–0328; skill `daily-model`). Best setup: five-seed ensemble, NPP = GPP − respiration, no humidity input (the original's daily exchange never reads it, ADR 0327), deep store draining into runoff (ADR 0326). **On the second-run yardstick:** GPP / ET typical error 2–3× a second run ✓, NPP 2.7–3.5× (3× proposed) ✗, runoff 3.9–5.5× ✗ (the ET error carried through — runoff is a small residual of rain minus ET); area totals ≤ 1.8 % ✓; deep store stable ✓; no drift on the MPI climates ✓; **under the unseen climate model the GPP / NPP gap still grows 1.29× / 1.35× over the century ✗** (removing humidity was a null). Cost 6.4e-3 core-s per cell-year. The stand still comes from the original (flatters the score). **More climate models in training (ADR 0328, 2026-10-12): fails, falsifier fired** — levels improve 10–20 %, the gap still grows on UKESM / IPSL, NPP totals now 3–5 % off (plant respiration 1.5–3 % too high everywhere). **Running:** arm P, a structured carbon head (ADR 0332) |
+| daily carbon/water exchange, learned | **exists (phase A, offline; phase B — fed the emulated stand — measured, ADR 0331: +10–40 % error).** One small network + closed snow / top-metre / deep water stores, trained on the panel runs of the original (ADR 0320–0328; skill `daily-model`). Best setup: five-seed ensemble, NPP = GPP − respiration, no humidity input (the original's daily exchange never reads it, ADR 0327), deep store draining into runoff (ADR 0326). **On the second-run yardstick:** GPP / ET typical error 2–3× a second run ✓, NPP 2.7–3.5× (3× proposed) ✗, runoff 3.9–5.5× ✗ (the ET error carried through — runoff is a small residual of rain minus ET); area totals ≤ 1.8 % ✓; deep store stable ✓; no drift on the MPI climates ✓; **under the unseen climate model the GPP / NPP gap still grows 1.29× / 1.35× over the century ✗** (removing humidity was a null). Cost 6.4e-3 core-s per cell-year. The stand still comes from the original (flatters the score). **More climate models in training (ADR 0328, 2026-10-12): fails, falsifier fired** — levels improve 10–20 %, the gap still grows on UKESM / IPSL, NPP totals now 3–5 % off (plant respiration 1.5–3 % too high everywhere). A structured carbon head (ADR 0332) was much worse (daily GPP fit 2.3× worse) — closed. **Running:** arm W, IPSL added to training so only UKESM stays unseen (ADR 0333) |
 | re-implemented daily physics (F_diff) | C-validated at 5 biome cells with known residuals (ADR 0125–0139); 4.62× slower than the original. Parked as the fidelity oracle/reference, not the runtime path |
 | energy closure, online coupli
 ## NEXT — start here
 
-1. **Collect arm P (ADR 0332, structured carbon head) — chained on SLURM, nothing to submit.** Five members
-   `f2-P-s0..4` (jobs 2474216–20, GPU, ~4 min each) → ensemble **`f2-PE.2474221`** (`runs/PE_5seed`). Then
-   `python scripts/f2_relative_score.py CE_5seed PE_5seed` and `python scripts/f2_carbon_split.py CE_5seed PE_5seed`
-   (photosynthesis vs plant respiration, emulator ÷ original, early vs late — the table in ADR 0332 §1). Judge **only** by
-   ADR 0332 §3. Append to ADR 0332, README row, STATE, JOURNAL. Chain script `scripts/f2_chain_carbon_head.py`.
-2. If arm P's falsifier fires (UKESM drift within 0.05 of arm C's): the growth is not the extrapolation form; next
-   test whether it is the stand input (phase B's emulated stand, or leaf area by plant type). If it passes: rerun
-   phase B (ADR 0331) on arm P's members.
-3. **Phase B done for MPI ssp585 + UKESM ssp370 (ADR 0331 §4): FAILS as written.** The emulated stand adds 10–40 %
-   to the daily model's error (ET most); full learned emulator GPP/ET 2.6–3.9×, NPP 3.4–5.5×, runoff 5–6× a second
-   run, totals within 3 %. **IPSL legs running** (2026-10-12): `PB_B_ipsl.2474186` (emulated stand) and
-   `PB_Bh_ipsl.2474187` (copy-through harness, must equal `HEdr_x`'s IPSL rows), jcfs `logs/PB_{B,Bh}_ipsl.jcf`.
-   Score with `f2_relative_score.py HEdr_x PB_B_ipsl PB_Bh_ipsl`, B ÷ A per ADR 0331's rule (A = `HEdr_x`), append
-   to ADR 0331 §4.
+1. **Collect arm W (ADR 0333: does covering the warm climates stop the gap growing?) — chained, nothing to submit.**
+   Members `f2-W-s0..4` (jobs 2475156–60) → ensemble **`f2-WE.2475161`** (`runs/WE_5seed`, ~4 h: it free-runs all
+   14 legs). Then `python scripts/f2_relative_score.py CE_5seed WE_5seed` + `scripts/f2_carbon_split.py CE_5seed
+   WE_5seed`; judge **only** by ADR 0333 §3 (UKESM GPP/NPP drift ≤ 1.2 and ≥ 0.05 below arm C's 1.30/1.41).
+   Append to ADR 0333, README row, STATE, JOURNAL.
+2. **If the falsifier fires** (drift within 0.05 of arm C): coverage is not the cause. The lead is the stand: in arm C
+   the error growth follows how far leaf area exceeds the training range (rank corr. +0.41), not temperature (+0.13),
+   and the one-step run drifts as much as the free run (it is the daily mapping, not store drift). Pre-register an
+   arm that trains on stands decoupled from their climate (e.g. pair each leg's climate with another leg's stand) so
+   the network must learn the stand's own effect. **If it passes:** for deployment, train on every climate model.
+3. **Closed this session:** more climate models in training (ADR 0328, falsifier fired; levels 10–20 % better but NPP
+   totals 3–5 % off from a 1.5–3 % plant-respiration excess on every leg); a structured carbon head (ADR 0332, much
+   worse); phase B on the IPSL legs (ADR 0331 §5, fails like MPI/UKESM: the emulated stand adds 2–36 %, ET most).
+   The respiration excess is still open (`f2_carbon_split.py` shows it).
 4. ~~Structure: dense-cell low bias~~ — **done 2026-10-12, ADR 0329: no bias to treat** (a selection effect of
    defining dense cells by the held-out run's own outcome). Report the anchor-defined dense total beside ADR 0318's D3
    (`scripts/explore_panel_dense_bias.py`). The open structure question is how to explain more of each cell's response

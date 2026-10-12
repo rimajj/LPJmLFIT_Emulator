@@ -34,7 +34,13 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #      (written to runs/<tag>/legs.json; f2_relative_score.py scores each run on its own legs).
 #    scripts/f2_chain_new_legs.py: after new daily runs of the original, chains collect -> build -> train -> score.
 #    --carbon-head physical (ADR 0332): GPP = eps * rsds * (1-exp(-0.5 LAI)) * four bounded limiters with
-#      disjoint inputs, NPP from the original's respiration form; chain scripts/f2_chain_carbon_head.py.
+#      disjoint inputs, NPP from the original's respiration form. CLOSED (ADR 0332): daily GPP fit 2.3x worse,
+#      under-responds to warming MORE — the original's photosynthesis is not separable. Keep default `free`.
+#    ANY NEW ARM: python scripts/f2_chain_arm.py <prefix> --train-legs a,b --test-legs c,d [-- extra f2_train args]
+#      (five --train-only members + the ensemble, afterok-chained, gpu). The ensemble free-runs EVERY train+test
+#      leg x 4 members: ~1 h for 5 legs, ~3.5 h for 14.
+#    python scripts/f2_extrapolation_probe.py <tag> [candidate_train_legs]: how far each test leg's late climate /
+#      leaf area lies outside the run's own training range (legs.json) — or a CANDIDATE set's, before training.
 # 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]   (old ADR 0320 ±5 % bar)
 # 2c. THE CURRENT YARDSTICK (ADR 0325): python scripts/f2_relative_score.py [tags...]  -> per leg/flux the
 #     emulator error / second-run error (30-yr typical + worst-10 %, response, per-decade single-year),

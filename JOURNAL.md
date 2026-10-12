@@ -1375,3 +1375,16 @@ GPP = learned efficiency × radiation × the original's canopy light law × four
 (temperature-only, water, light/season, stand), NPP from the original's respiration form and temperature function.
 Opt-in `--carbon-head physical` in `f2_train.py` (default unchanged), chain `f2_chain_carbon_head.py`; running on GPU.
 Also launched phase B on the three IPSL legs with a copy-through harness (ADR 0331 rule).
+
+## 2026-10-13 — structured carbon head fails; phase B on IPSL; warm-coverage test running (ADR 0331–0333)
+
+Arm P (ADR 0332) trained cleanly but its daily GPP / NPP fit on validation cells was 2.3× worse than arm C's on all
+five seeds; scored, typical GPP is 4.9–6.7× a second run (arm C 1.9–2.7×) and the UKESM drift is worse (1.42/1.73 vs
+1.30/1.41). It also under-responds to warming more than the free network, despite getting leaf area through the
+original's canopy law — so the late shortfall is not a learned leaf-area saturation. Closed; the option stays,
+default off. My first watch on the member log was silent for 15 min because `cut` does not flush in a pipe — the job
+was fine. Phase B on the three IPSL legs (ADR 0331 §5): harness exact; the emulated stand adds 2–36 %, ET most;
+fails the same way as MPI/UKESM. Then measured coverage before training anything: with IPSL added, UKESM's late
+climate goes from 96 % to 31 % of cells outside the training temperature range, and arm C's error growth follows the
+leaf-area exceedance, not temperature. Pre-registered arm W (ADR 0333: arm C + IPSL, UKESM unseen) and launched it
+with a new generic chain (`f2_chain_arm.py`). `f2_extrapolation_probe.py` now reads each run's own training legs.
