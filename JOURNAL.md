@@ -1331,3 +1331,18 @@ linear temperature/water response explains less (`scripts/explore_panel_lin_resp
 sensitivity-feature arm of ADR 0316 §12 is dropped. No bias treatment; next on structure is the year-by-year drift test.
 Mistake caught: the lin-probe header's pre-run baseline said A7rH is within 1.5 % in "4 of 15"; it is 7 (I had counted
 the cases not below −1 %). Noted in the RESULT line, header left as written.
+
+## 2026-10-12 (later) — structure map year by year; the structure half timed (ADR 0330)
+
+Built the missing yearly per-cell tables (runs m5/m6 and the five newer climate models; `explore_panel_lstm.py yearly`,
+2.5 min). Pre-registered and committed the year-by-year test before fitting (`explore_panel_yearly_drift.py`, a0f2fb37):
+the best structure arm emits each year's state from the trailing 30-yr climate and a per-year anchor. The smoke test
+caught that the observed climate table starts in 2000, not 1981 (the first nine windows were empty); fixed with ≥ 20-yr
+windows, verified to 0.0. Fits took 3 min each; I ran the scorer on the login node after the chained job sat in the
+queue. Harness, oracle and persistence nulls landed where derived. The proposed pass (late/early ≤ 1.2) FAILED as
+written, because the early error is below a second run's (the run's own start state is an input) and rises to a
+plateau by the 2050s; drift is the same across scenarios, so it is mostly fading memory. A slow tree-count creep after
+2050 grows with warming — the only candidate for real drift. Did not move the bar; proposed a mid-vs-late rule to the
+owner. Speed (`bench_structure_speed.py`, single core, arm check exact): structure half 7.8e-5 core-s per cell-year,
+so the daily half (6.4e-3) is 99 % of the emulator's cost; sum ≈ 41× less than the original at 25 patches, ~1 000× at
+500 — a sum of parts, not a coupled run.

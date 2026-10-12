@@ -41,6 +41,12 @@ WRITTEN BEFORE THE RUN (2026-10-12; ADR 0184 -- what each null must return):
            run's own error is larger and the ratio may come out lower).
   PROPOSED PASS (ADR 0318's T1 "not yet defined numerically", mirrored from the daily model's 1.2): tree count AND
            biomass per tree, dense cells: DRIFT <= 1.2 in >= 13 of 15 cases and > 1.5 in none. The owner may move it.
+RESULT 2026-10-12 (jobs 2467154-58, ADR 0330): harness and nulls as derived (second run drift 0.96-1.04, oracle ratio
+0.79 / drift 1.00, persistence drift 1.9-3.0 = power). PROPOSED PASS FAILED as written: tree count drift median 1.17
+(8/15 <= 1.2), biomass per tree 1.32 (2/15). The early ratio starts BELOW a second run (0.46-0.93: the run's own
+2000-2019 state is known); it rises to a plateau by the 2050s (biomass per tree ~1.0, tree count ~1.1) with a slow
+tree-count creep after (+0.01 / +0.07 / +0.12 ssp126 / 370 / 585); drift is scenario-independent -> mostly the fading
+start state.
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
