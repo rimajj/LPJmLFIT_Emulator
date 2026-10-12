@@ -38,3 +38,41 @@ Both: 3 × 256 network, NPP = GPP − respiration, humidity removed (ADR 0327), 
   problem, and the next arm is a physically constrained carbon head.
 * **Expectation:** the drift falls on IPSL more than on UKESM (UKESM's late-century climate is outside even the
   widened range at most cells); MPI-leg scores move little or worsen slightly (fewer samples per leg).
+
+## 4. Result (2026-10-12; chain 2463859 → 2463911, all steps exit 0)
+
+Data: all 36 daily runs collected with PASS; arrays built; five members `C_3x256_seed0..4` trained; both ensembles
+scored by `scripts/f2_relative_score.py HEdr_x CE_5seed` (full table:
+`DATA/f2/runs/relative_score_HEdr_x_CE.md`). Harness rows as derived (second run 0.95–1.01, mean of three 0.80–0.85).
+238 held-out cells per leg. Free runs.
+
+**Primary — drift of GPP / NPP (2081–2100 ÷ 2021–2040 single-year error ratio), arm C vs control:**
+
+| leg | GPP C (control) | NPP C (control) | ≤ 1.2 and below control? |
+|---|---|---|---|
+| UKESM ssp370 | 1.30 (1.29) | 1.41 (1.35) | no / no |
+| IPSL ssp126 | 1.08 (1.06) | 1.14 (1.04) | ≤ 1.2 yes, below control no |
+| IPSL ssp370 | 0.92 (1.00) | 1.08 (1.08) | GPP yes; NPP not below |
+| IPSL ssp585 | 1.22 (1.26) | 1.27 (1.29) | no (> 1.2) |
+
+**Primary FAILS on every leg.** **Falsifier fires:** on UKESM the GPP drift is within 0.01 of the control's and the
+NPP drift is 0.06 *worse* (the falsifier was written as "within 0.05"; a worse result meets its intent — more climate
+models did not reach the problem).
+
+**Secondary — NPP typical ≤ 3× on MPI ssp126/370/585, both windows:** 2.99/3.03, 3.54/3.10, 2.87/3.24 — **fails**
+(the control fails too: 3.38/2.70, 3.51/3.12, 3.14/2.86).
+
+**Must not get worse — holds, and improves:** MPI GPP typical 1.89–2.26 (control 2.32–2.55), ET 1.55–2.36 (control
+1.99–2.70); MPI drift 0.86–0.97.
+
+**Against the expectations.** The MPI-leg scores did not worsen with 3× fewer samples per leg; GPP and ET levels
+improved by ~10–20 % there and on UKESM late (GPP 3.20 → 2.73, ET 2.90 → 2.29) — but the early window improved as much,
+so the drift ratio did not move. IPSL drift fell only for GPP on ssp370/585 (−0.08/−0.04). Two regressions not
+pre-registered as tests, recorded: **NPP area totals worsened** from 0.3–2.5 % to 2.9–4.8 % (second run 0.2–0.5 %),
+i.e. arm C has a systematic NPP bias of a few per cent on every leg, including the observed-weather control
+(0.6 → 3.3 %); and the worst-10 % runoff error rose (≈ 6× → 8–11× a second run).
+
+**Reading.** Widening the training climates lowers the daily model's level error everywhere but does not stop the gap
+to the original growing under the two warmest unseen models, and on NPP it adds a small global bias. The growth is not
+a coverage problem the data can fix at this network size; per §3 the next arm is a physically constrained carbon head
+(GPP as light use × learned non-negative limiters), pre-registered separately.
