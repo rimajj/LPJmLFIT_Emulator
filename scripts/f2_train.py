@@ -50,6 +50,22 @@ NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
 FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4}  # raw daily forcing columns of x
 DROP = []  # input columns held at 0 (--drop-inputs, ADR 0327); the network then cannot use them
 DEEP_TAU = 0.0  # days; > 0: deep store releases D/DEEP_TAU per day into runoff (ADR 0326)
+CARBON_HEAD = "free"  # "physical": structured GPP/NPP head (ADR 0332); "free" = the trunk's
+# ADR 0332 limiter inputs (columns of x): 0 tas 1 log-rain 2 rsds 3 lwnet 5/6 10/30-day tas
+# 7 30-day rsds 8-10 30/90/365-day log-rain 11 day length 12/13 day of year 14 sin(lat)
+# 15-18 stores 19 lai 20 log-vegc 21-30 cover by plant type
+STAND_COLS = list(range(19, 31))
+SEASON_COLS = [11, 12, 13, 14]
+PHYS_COLS = {
+    "fT": [0, 5, 6],
+    "fW": [15, 16, 17, 18, 1, 8, 9, 10, 3],
+    "fL": [2, 7] + SEASON_COLS,
+    "fS": STAND_COLS,
+    "Bw": STAND_COLS,
+    "Br": STAND_COLS + SEASON_COLS,
+}
+K_LAMBERT = 0.5  # the original's layered-canopy light extinction (getfpar.c)
+R_GROWTH = 0.25  # param_lpjmlfit.js "r_growth" (npp_tree.c:52)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -186,14 +202,58 @@ class Net(nn.Module):
             n = nh
         self.trunk = nn.Sequential(*layers, nn.Linear(n, 9))
         self.npp_ra = NPP_HEAD == "ra"
+        self.phys = CARBON_HEAD == "physical"
+        if self.phys:  # ADR 0332: each limiter / biomass term a small network of its own inputs
+            self.sub = nn.ModuleDict(
+                {
+                    k: nn.Sequential(
+                        nn.Linear(len(c), 64),
+                        nn.SiLU(),
+                        nn.Linear(64, 64),
+                        nn.SiLU(),
+                        nn.Linear(64, 1),
+                    )
+                    for k, c in PHYS_COLS.items()
+                }
+            )
+            self.log_eps = nn.Parameter(torch.zeros(()))  # set from the data in train()
+            # leaf dark respiration share 0.3 * sigmoid(p_cd), starts at 0.1; the root term's
+            # temperature is a blend sigmoid(p_mix) of today's and the 30-day air temperature
+            self.p_cd = nn.Parameter(torch.tensor(-0.693))
+            self.p_mix = nn.Parameter(torch.zeros(()))
+
+    def carbon(self, x, xn):
+        """ADR 0332: GPP = eps * rsds * (1 - exp(-k LAI)) * fT fW fL fS; NPP as npp_tree.c:52."""
+        sub = {k: self.sub[k](xn[:, c]).squeeze(1) for k, c in PHYS_COLS.items()}
+        sig, sp = torch.sigmoid, nn.functional.softplus
+        rsds = torch.clamp(x[:, 2], min=0.0) / 100.0
+        fapar = 1.0 - torch.exp(-K_LAMBERT * torch.clamp(x[:, 19], min=0.0))
+        lim = sig(sub["fT"]) * sig(sub["fW"]) * sig(sub["fL"]) * sig(sub["fS"])
+        gpp = torch.exp(self.log_eps) * rsds * fapar * lim
+
+        def g(t):  # temp_response.c:33
+            tc = torch.clamp(t, min=-40.0)
+            return torch.where(
+                t >= -40.0, torch.exp(308.56 * (1.0 / 56.02 - 1.0 / (tc + 46.02))), 0.0 * t
+            )
+
+        w = sig(self.p_mix)
+        t_root = w * x[:, 0] + (1 - w) * x[:, 6]
+        rm = self.ysd[7] * (sp(sub["Bw"]) * g(x[:, 0]) + sp(sub["Br"]) * g(t_root))
+        a = (1.0 - 0.3 * sig(self.p_cd)) * gpp - rm
+        return gpp, a - R_GROWTH * torch.relu(a)
 
     def forward(self, x, prec, S_prev):
-        o = self.trunk((x - self.mu) / self.sd)
+        xn = (x - self.mu) / self.sd
+        o = self.trunk(xn)
         sp = nn.functional.softplus
         f, m, i = torch.sigmoid(o[:, 0]), torch.sigmoid(o[:, 1]), torch.sigmoid(o[:, 2])
         ys = self.ysd
-        gpp = sp(o[:, 7]) * ys[6]
-        npp = gpp - sp(o[:, 8]) * ys[7] if self.npp_ra else o[:, 8] * ys[7]
+        if self.phys:
+            gpp, npp = self.carbon(x, xn)
+        else:
+            gpp = sp(o[:, 7]) * ys[6]
+            npp = gpp - sp(o[:, 8]) * ys[7] if self.npp_ra else o[:, 8] * ys[7]
         return torch.stack(
             [
                 prec * f - m * S_prev,
@@ -280,6 +340,12 @@ def train(args, mls, tr, va, dev, log):
         args.hidden,
         args.layers,
     ).to(dev)
+    if net.phys:  # start the light-use efficiency where four limiters at 0.5 give the mean GPP
+        lai = np.clip(X[:, 19], 0, None)
+        apar = np.clip(X[:, 2], 0, None) / 100.0 * (1.0 - np.exp(-K_LAMBERT * lai))
+        eps0 = float(Y[:, 6].mean() / max(apar.mean(), 1e-9) * 16.0)
+        net.log_eps.data.fill_(math.log(eps0))
+        log(f"physical carbon head: eps0 {eps0:.4g}")
     tX, tY, tP, tS = (torch.as_tensor(a, device=dev) for a in (X, Y, P, S))
     vX, vY, vP, vS = (torch.as_tensor(a, device=dev) for a in (Xv, Yv, Pv, Sv))
     w = 1.0 / torch.as_tensor(ysd, device=dev) ** 2
@@ -665,10 +731,13 @@ def main():
                     help="days; > 0 drains the deep store into runoff (ADR 0326)")  # fmt: skip
     ap.add_argument("--stand-dir", dest="stand_dir", default="",
                     help="subdir of DATA whose stand_<tag>.npy replace the original's (phase B, ADR 0331)")  # fmt: skip
+    ap.add_argument("--carbon-head", dest="carbon_head", default="free",
+                    choices=["free", "physical"], help="structured GPP/NPP, ADR 0332")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR
+    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD
     NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR = a.hidden, a.layers, a.npp_head, a.deep_tau, a.stand_dir
+    CARBON_HEAD = a.carbon_head
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
     TRAIN_LEGS[:] = a.train_legs.split(",")
     TEST_LEGS[:] = a.test_legs.split(",")
