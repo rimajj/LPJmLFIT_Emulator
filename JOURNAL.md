@@ -1346,3 +1346,14 @@ plateau by the 2050s; drift is the same across scenarios, so it is mostly fading
 owner. Speed (`bench_structure_speed.py`, single core, arm check exact): structure half 7.8e-5 core-s per cell-year,
 so the daily half (6.4e-3) is 99 % of the emulator's cost; sum ≈ 41× less than the original at 25 patches, ~1 000× at
 500 — a sum of parts, not a coupled run.
+
+## 2026-10-12 (later) — the stand map; phase B pre-registered (ADR 0331)
+
+The structure emulator now also emits the daily model's stand inputs (`explore_panel_stand_map.py`): extra yearly
+targets of the year-by-year arm. Cover by plant type exists only for runs m1–m4 on the first five climate models, so
+those models train on fewer rows. On dense cells: leaf area 1.37×, vegetation carbon 1.24×, tree cover 1.55×, grass
+cover 1.27× a second run's typical error, no drift after the start fades; worst-case area totals 2.6–5.7 %. Phase B
+pre-registered and committed before running: the daily ensemble (no humidity, deep drainage) fed the emulated stand,
+with each run and each leg's climate model unseen by the stand map (nine leave-one-run-out fits), against the same
+ensemble on the original's stand, with a copy-through harness. Opt-in `--stand-dir` added to `f2_train.py` (default
+unchanged — the queued ADR 0328 jobs read the same file). Runs on CPU so they do not compete with that chain's GPUs.
