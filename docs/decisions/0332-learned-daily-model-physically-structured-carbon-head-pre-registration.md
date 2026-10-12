@@ -62,3 +62,39 @@ fluxes still come from the trunk as before.
 * **Expectation:** UKESM 2081–2100 GPP emulator ÷ original moves from 0.970 to ≥ 0.985; respiration bias falls below
   1 %; typical-cell levels worsen by 0–15 % (the structure costs flexibility), most on GPP in the tropics, where light
   is not limiting and f_W carries the signal.
+
+## 4. Result (2026-10-13; jobs 2474216–21, GPU; run `PE_5seed`)
+
+Training: every member's validation error on daily GPP / NPP is **2.3× / 2.2× arm C's** (normalised squared error
+0.165–0.177 vs 0.070–0.077 GPP, 0.227–0.245 vs 0.108–0.116 NPP), consistently over five seeds; the water fluxes
+match arm C's (the trunk is unchanged). Scored with `f2_relative_score.py CE_5seed PE_5seed`
+(`DATA/f2/runs/relative_score_CE_PE.md`) and `f2_carbon_split.py`.
+
+| leg | GPP typical early/late, P (C) | NPP typical, P (C) | GPP drift P (C) | NPP drift P (C) |
+|---|---|---|---|---|
+| UKESM ssp370 | 5.48/6.72 (2.08/2.73) | 6.89/12.69 (3.31/4.57) | **1.42** (1.30) | **1.73** (1.41) |
+| IPSL ssp126 | 6.03/5.86 (2.31/2.72) | 5.79/5.80 (3.43/4.06) | 1.01 (1.08) | 1.05 (1.14) |
+| IPSL ssp370 | 5.23/5.84 (1.86/2.07) | 6.03/9.06 (3.20/3.37) | 1.03 (0.92) | 1.27 (1.08) |
+| IPSL ssp585 | 5.57/6.74 (2.11/2.48) | 6.76/9.70 (3.94/3.88) | 1.30 (1.22) | 1.77 (1.27) |
+| MPI ssp126/370/585 | 4.86–5.91 (1.89–2.26) | 6.46–8.25 (2.87–3.54) | 0.87–1.09 | 0.93–1.21 |
+
+**Verdict: FAILS on every pre-registered count.** Primary: drift ≤ 1.2 and below arm C only for GPP on IPSL ssp126
+(1.01 vs 1.08; its NPP 1.05 vs 1.14 likewise) — UKESM and IPSL ssp585 are worse than arm C on both fluxes.
+Secondary: NPP area totals 1.2–4.9 % (≤ 2 % on 8 of 14 legs, not all); respiration on observed weather **1.053**
+(arm C 1.014–1.019, target within 1 %) — worse. Must-not-worsen: MPI GPP typical 4.9–5.9× a second run (bar ≤ 1.15 ×
+arm C and ≤ 3×) — **fails by 2.5×**; ET unchanged (1.8–2.6×) ✓; MPI drift ≤ 1.21 (NPP ssp585 1.21, just over) ✗;
+cost 9.3e-3 core-s per cell-year ✓ (≤ 0.01, but 45 % above arm C's 6.4e-3). The falsifier as written ("within 0.05 of
+arm C") did not fire, because the effect was large **in the wrong direction** (UKESM +0.12 GPP, +0.32 NPP).
+
+**Against the expectations.** The level loss was 2.5–3×, not 0–15 %. The expected mechanism did not appear either:
+UKESM GPP emulator ÷ original went 1.021 → 0.976 between 2021–40 and 2081–00 (a fall of 0.045, against arm C's 0.026),
+i.e. **the structured head under-responds to warming more than the free network**, although it gets more leaf area
+through the original's own canopy law and a temperature limiter that sees temperature only.
+
+**Reading.** The original's daily GPP is not a product of separable limiters: its photosynthesis co-limits light and
+Rubisco and couples water stress to temperature and light through the stomatal solve, so a separable form loses
+most of the daily skill. The late-century shortfall survives — larger — with leaf area entering through the
+canopy law, so it is not a learned saturation in leaf area; and a temperature-only limiter learned across all cells
+(space for time) does not transfer the response either. This form is closed; `--carbon-head physical` stays as an
+opt-in record, default off. A constrained head would need the co-limitation itself (a light × capacity minimum), which
+is close to re-implementing the original's photosynthesis — not pre-registered here.

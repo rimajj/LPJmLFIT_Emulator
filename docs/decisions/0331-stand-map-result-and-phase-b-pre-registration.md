@@ -101,3 +101,25 @@ to the daily model's error; the daily model's own error (2–3×) still dominate
 model — but the stand is no longer negligible, and ET is where it bites most. Next: the IPSL legs under the same rule
 once ADR 0328's daily arrays exist; and, if the owner wants the stand's share cut, a stand map aimed at the daily
 model's inputs (e.g. leaf area per plant type rather than totals) — not pre-registered here.
+
+## 5. Phase B on the IPSL legs (2026-10-13; jobs 2474185–87, CPU; runs `PB_B_ipsl`, `PB_Bh_ipsl`)
+
+Same rule as §4: the control ensemble (H members) fed the emulated stand (stand map fitted with each run and IPSL
+unseen) vs the original's stand (arm A = `HEdr_x`). **Harness exact:** the copy-through run reproduces `HEdr_x`'s IPSL
+rows digit for digit on every flux and statistic.
+
+Typical-cell error ÷ a second run's, 30-yr windows early / late, arm A → arm B (B ÷ A):
+
+| leg | GPP | ET | NPP | runoff |
+|---|---|---|---|---|
+| IPSL ssp126 | 2.29/2.69 → 2.87/2.93 (1.25/1.09) | 3.07/2.73 → 4.18/3.42 (**1.36**/1.25) | 3.30/3.43 → 3.36/3.51 (1.02/1.02) | 6.67/4.36 → 7.11/5.16 (1.07/1.18) |
+| IPSL ssp370 | 2.18/2.52 → 2.64/3.00 (1.21/1.19) | 3.04/2.37 → 3.97/2.75 (**1.31**/1.16) | 3.21/3.63 → 3.60/3.72 (1.12/1.02) | 5.73/4.70 → 5.52/5.15 (0.96/1.10) |
+| IPSL ssp585 | 2.25/2.73 → 2.64/3.58 (1.17/**1.31**) | 3.02/2.98 → 3.80/3.54 (1.26/1.19) | 3.17/3.77 → 3.55/4.45 (1.12/1.18) | 5.11/6.53 → 5.70/7.64 (1.12/1.17) |
+
+Drift A → B: GPP 1.06/1.00/1.26 → 1.08/1.07/**1.38**; NPP 1.04/1.08/1.29 → 1.07/1.08/1.32; ET 0.89/0.88/1.08 →
+0.98/0.89/1.17. Area totals, arm B: 0.2–2.8 % (second run 0.2–0.5 %).
+
+**Verdict as pre-registered: FAIL, same shape as §4.** (1) increment ≤ 1.3×: fails for ET early on ssp126 (1.36) and
+ssp370 (1.31) and GPP late on ssp585 (1.31); (2) GPP and ET ≤ 3×: fails for ET on all three (3.42–4.18) and GPP late
+on ssp585 (3.58); (3) totals within 5 %: holds; (4) drift ≤ arm A + 0.1: fails for GPP on ssp585 (+0.12), holds
+elsewhere. Across all five unseen-model legs the emulated stand adds 2–36 % to the daily error, most in ET.

@@ -7,9 +7,12 @@ climate lies outside what the network trained on at that cell (the max/min over 
 NPP/GPP error from 2021-2040 to
 2081-2100 (relative to the cell's 2021-2100 mean, members pooled; runs/<tag>/annual.npz).
 
-Usage: python scripts/f2_extrapolation_probe.py [tag]   (default RE_5seed). Minutes, ~8 GB.
+Usage: python scripts/f2_extrapolation_probe.py [tag] [train_legs] (default RE_5seed); minutes, 8 GB
+Training/test legs come from runs/<tag>/legs.json when it exists (ADR 0328); a comma-separated
+second argument replaces the training legs (how far would a CANDIDATE training set cover the tests).
 """
 
+import json
 import os
 import sys
 
@@ -56,6 +59,13 @@ def main():
     cells = pl.read_parquet(os.path.join(F.DATA, "cells.parquet"))
     ho = cells["heldout"].to_numpy()
     z = np.load(os.path.join(F.DATA, "runs", TAG, "annual.npz"))
+    lj = os.path.join(F.DATA, "runs", TAG, "legs.json")
+    if os.path.exists(lj):
+        legs = json.load(open(lj))
+        F.TRAIN_LEGS[:], F.TEST_LEGS[:] = legs["train"], legs["test"]
+    if len(sys.argv) > 2:
+        F.TRAIN_LEGS[:] = sys.argv[2].split(",")
+    print(f"training legs: {F.TRAIN_LEGS}")
     # training range per cell: all 20-yr windows of every training leg (ctl_obs differs by member)
     lo = {v: None for v in (*VAR, "tmax")}
     hi = {v: None for v in (*VAR, "tmax")}
