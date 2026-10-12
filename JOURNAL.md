@@ -1388,3 +1388,10 @@ fails the same way as MPI/UKESM. Then measured coverage before training anything
 climate goes from 96 % to 31 % of cells outside the training temperature range, and arm C's error growth follows the
 leaf-area exceedance, not temperature. Pre-registered arm W (ADR 0333: arm C + IPSL, UKESM unseen) and launched it
 with a new generic chain (`f2_chain_arm.py`). `f2_extrapolation_probe.py` now reads each run's own training legs.
+
+## 2026-10-13 (later) — warm-climate coverage halves the gap growth (ADR 0333)
+
+Arm W (arm C + IPSL in training, UKESM unseen) trained as arm C did. UKESM GPP gap growth 1.30 → 1.15 (passes),
+NPP 1.41 → 1.25 (over the 1.2 cap), NPP area totals 4.7 → 2.4 %, no flux or leg worse. Falsifier did not fire: coverage
+is a real cause, about half of the excess growth. The constant plant-respiration excess is untouched. Because that is
+one unseen model, pre-registered a swapped-role confirmation (train on UKESM, test the three IPSL legs) and launched it.
