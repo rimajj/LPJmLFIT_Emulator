@@ -233,7 +233,7 @@ which statistic failed. Do not re-read a criterion after seeing its arm (the ADR
 | # | work | why first | done when |
 |---|---|---|---|
 | 1 | **F2 — learned daily water–carbon model, phase A offline** (§6) | the missing half of "everything", and the speed lever: the original spends 51–69 % of its runtime in leaf gas exchange + soil water (ADR 0312); nothing exists yet | DP-F bar (§6) on held-out spatial blocks and a held-out scenario, with nulls |
-| 2 | **Structure map (A7 family, ADR 0315–0318): dense-cell bias, then the global venue** | closest to passing; dense stem totals are low in 14/15 cases | relaxed standard (ADR 0318 §2) on the panel, then on the global venue |
+| 2 | **Structure map (A7 family, ADR 0315–0318): ~~dense-cell bias~~ (ADR 0329: a selection effect, no bias to treat), then the year-by-year drift test and the global venue** | closest to passing; the limit is the per-cell response to an unseen climate (27–49 % explained), not a dense-cell bias | relaxed standard (ADR 0318 §2) on the panel, then on the global venue; report the anchor-defined dense total beside D3 |
 | 3 | **Transient no-drift test** of both halves, year by year | owner's explicit clause | error over 2020–2100 does not grow (number fixed before the run) |
 | 4 | **Speed**, end to end, each half and the whole | goal #2 | measured core-s per cell-year vs the original at its patch count, atmosphere named |
 | 5 | **Coupling** (C-track, §7) once 1–4 hold | goal #3 | — |

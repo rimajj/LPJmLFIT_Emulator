@@ -1118,7 +1118,12 @@ commit it.** That block is the entire handoff — the hook replays it verbatim i
   half-node cap, not weaker hardware. ⇒ send anything needing >350 GB to `standard`; send everything else
   to `priority`. A pending job can be moved in place with
   `scontrol update job <id> Partition=priority QOS=priority` (keeps the job id and log path) — it fails with
-  `Job violates accounting/QOS policy` if it asks for >64 cpus, which is the tell, not a permissions problem.
+  `Job violates accounting/QOS policy` if it asks for >64 cpus, which is the tell, not a permissions problem. ⚠ **A pending job that asks for >64 cpus can still be moved by shrinking it in the same
+  command** — `scontrol update job <id> Partition=priority QOS=priority NumTasks=64 NumCPUs=64` (`[VERIFIED 2026-10-12]`,
+  the 36 daily panel runs of ADR 0328: 105 tasks each, estimated start the next day on `standard`, started at once). Only
+  safe when the tasks are INDEPENDENT processes (the Track-D panel jcfs launch 105 single-process `srun -n1 -c1 --exact`
+  blocks): the surplus steps wait for a free cpu (two waves, ~11 min instead of ~4) and every block's output is
+  unchanged. Never do it to an MPI run — a different `--ntasks` is a different trajectory (§3, ADR 0041).
 - **Tag every job descriptively** (e.g. `scripts/run_tests_slurm.sh suite`, `scripts/sbatch_python.sh
   daily-learn scripts/....py`) so `squeue` and `logs/<tag>.<jobid>.out` stay attributable. Older logs carry the
   retired line prefixes `S-`/`M-`/`E-`/`O-`/`X-`; the retired worktrees each kept their own `logs/`.

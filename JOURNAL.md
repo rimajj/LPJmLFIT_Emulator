@@ -1314,3 +1314,20 @@ training range at 66 % of cells under UKESM (leaf area), with error growth follo
 out anyway (faithful). Next arm: more climate models in training (ADR 0328) — 36 new runs of the original with daily
 output (`<model>_<scen>_daily` legs, a `--no-chain` / `submit-legs` mode for `trackd_panel.py`), all chained through
 collection, arrays, training and scoring by `scripts/f2_chain_new_legs.py`. Waiting on the standard queue.
+
+## 2026-10-12 — the dense-cell deficit is selection, not bias (ADR 0329); daily runs moved to the priority queue
+
+The 36 daily runs of the original for ADR 0328 were still pending on `standard` (estimated start 2026-10-13 09:16).
+Each is 105 independent single-process blocks, so I moved all 36 in place to `priority` at 64 cores (`scontrol update
+… NumTasks=64 NumCPUs=64`, same ids, chain intact): surplus blocks wait as job steps, ~11 min per run, ~6–7 h total.
+While they run: NEXT item 4, the structure emulator's dense-cell deficit (`scripts/explore_panel_dense_bias.py`).
+Decomposed against the anchor and an oracle (the mean of the five training runs on the same held-out climate). The
+unseen run's own deviation is < 1 % and there is no growth with warming. The "low in all 15 cases" is a selection
+effect: dense cells were defined by the held-out run's own outcome, which picks cells this climate pushed up — the ones
+the emulator under-predicts. Defined by the anchor instead, the dense total is −3.7 … +1.5 %, 8 low / 7 high, median
+0.0 %, on all five seeds. What is actually limiting: the learned shift explains 27–49 % of how cells differ in their
+response to an unseen climate model, while that response is 96 % signal and the shift is calibrated in scale. A per-cell
+linear temperature/water response explains less (`scripts/explore_panel_lin_response.py`; falsifier fired), so the
+sensitivity-feature arm of ADR 0316 §12 is dropped. No bias treatment; next on structure is the year-by-year drift test.
+Mistake caught: the lin-probe header's pre-run baseline said A7rH is within 1.5 % in "4 of 15"; it is 7 (I had counted
+the cases not below −1 %). Noted in the RESULT line, header left as written.
