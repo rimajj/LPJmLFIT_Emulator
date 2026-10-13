@@ -70,3 +70,7 @@ Raw: shared-leg medians vs arm W GPP / NPP / ET / runoff 1.073 / 1.090 / 1.054 /
 member seed2 stopped at epoch 7 (validation loss 0.0602 vs 0.053–0.055) under the old early-stopping default, which
 ADR 0336 found in seven ensembles. **No verdict is drawn from this run**; the repaired ensemble `D47Ef_5seed` is
 scored against §4 instead.
+
+**Repaired D47 (ADR 0336 §4):** fails §4 (worst ET 1.28, medians GPP 1.07 / ET 1.09); falsifier holds on two of
+three legs ⇒ **arm D is the deployment model**, with its early-window ET cost (×1.16–1.28 on three legs) quoted
+beside it until the run-to-run noise measurement (ADR 0336 §5) says whether that cost is real.

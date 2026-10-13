@@ -118,3 +118,8 @@ consistent with "the limit is places, not rows". **Keep 40 M.**
 remains is generalisation to places unlike the training cells, which only more training places can fix. Per §3,
 go to the deployment model (all five climate models in training); a larger or differently placed cell panel is the
 lever if the excess must be reduced further.
+
+## Amendment 2026-10-13 (ADR 0336)
+
+Arms L and V each had early-stopped members. Re-scored with repaired ensembles (ADR 0336 §4): both nulls stand
+(southern excess 0.099 / 0.071 / 0.096, GPP swing 42.6 / 47.6; arm V NPP within 4 % of arm W).

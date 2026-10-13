@@ -99,3 +99,11 @@ at no cost to the late-century fit. ⇒ the deployed daily model trains on **eve
 sample budget should grow with the number of legs — the early-window losses above suggest 40 M is now thin). What
 coverage does not fix: a constant 1.5–2.7 % plant-respiration excess (NPP ~0.01 low in carbon-use efficiency in every
 window and on observed weather), the next target.
+
+## Amendment 2026-10-13 (ADR 0336)
+
+Arm C had two early-stopped members (seed1 at epoch 6, val 0.066) and arm U two (seed1 at epoch 6, val 0.088).
+Re-scored with repaired ensembles: §4's verdict changes — UKESM drift arm C 1.19 / 1.27 (not 1.30 / 1.41), so arm W is
+only 0.04 / 0.02 below and the coverage criterion FAILS; §6 still passes narrowly (IPSL ssp585 U 1.06 / 1.14 vs C 1.13 /
+1.20). The size of the coverage effect stated in this record's conclusion (about half of the gap growth) is withdrawn
+pending the run-to-run noise measurement of ADR 0336 §5.

@@ -1444,3 +1444,12 @@ member logs: 11 members in 7 ensembles (C, H, L, P, U, V, D47) stopped at epoch 
 budget thins early fits" remark rested on U, the worst member (val 0.088). Default patience → 0 (never stop). New
 `f2_repair_stopped.py` retrains only the stopped members from their own logged args and re-runs each ensemble under a
 new tag; submitted for D47, V, L, C, U (jobs 2481050–62). Re-scores pre-registered against each record's own criteria.
+
+## 2026-10-13 (later) — repaired ensembles re-scored; replicate of arm W launched (ADR 0336 §4–5)
+
+All eight re-trained members ran 10 epochs (val 0.055–0.056). One stopped member had moved an ensemble's median by up
+to 15 % (arm U's ET). Verdicts: repaired D47 still fails ⇒ arm D is the deployment model; L and V nulls stand; ADR
+0333's coverage effect was overstated by arm C's stopped members — UKESM drift margin W vs repaired C is 0.04 / 0.02
+(criterion fails), IPSL 0.07 / 0.06 (passes narrowly). Amended 0333/0334/0335. Since the margins are now 2–7 % and the
+spread between two identically trained ensembles was never measured, launched W2 = arm W with seeds 5–9 (new
+`f2_chain_arm.py --seeds`), with a reading rule fixed before training.
