@@ -738,7 +738,8 @@ def main():
                     help="raw forcing inputs to remove, e.g. huss (ADR 0327)")  # fmt: skip
     ap.add_argument("--train-legs", dest="train_legs", default=",".join(TRAIN_LEGS))
     ap.add_argument("--test-legs", dest="test_legs", default=",".join(TEST_LEGS),
-                    help="legs only free-run and scored (ADR 0328)")  # fmt: skip
+                    help="legs only free-run and scored (ADR 0328); "
+                    "none = hold none out (ADR 0335)")  # fmt: skip
     ap.add_argument("--train-only", dest="train_only", action="store_true",
                     help="save model.pt and stop (ensemble members; no free runs)")  # fmt: skip
     ap.add_argument("--deep-tau", dest="deep_tau", type=float, default=0.0,
@@ -756,7 +757,7 @@ def main():
     CARBON_HEAD, SEASON_PHASE = a.carbon_head, a.season_phase
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
     TRAIN_LEGS[:] = a.train_legs.split(",")
-    TEST_LEGS[:] = a.test_legs.split(",")
+    TEST_LEGS[:] = [x for x in a.test_legs.split(",") if x and x != "none"]
     ALL_LEGS[:] = TRAIN_LEGS + TEST_LEGS
     out = os.path.join(DATA, "runs", a.tag)
     os.makedirs(out, exist_ok=True)

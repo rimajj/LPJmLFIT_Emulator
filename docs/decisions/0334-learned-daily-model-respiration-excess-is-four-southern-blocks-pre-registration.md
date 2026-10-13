@@ -1,7 +1,7 @@
 # 0334 — Learned daily model: the "constant respiration excess" is four southern blocks (measurement + two arms pre-registered)
 
-* **Status:** Measurement 2026-10-13; arms L and V pre-registered the same day, before any training. Results appended
-  below.
+* **Status:** Measurement 2026-10-13; arms L and V pre-registered the same day, before any training. Results in §4
+  (2026-10-13): both falsifiers fired.
 * **Follows:** ADR 0333 (warm-climate coverage; it named a "constant 1.5–2.7 % plant-respiration excess on every leg"
   as the next target) and the STATE handoff, which proposed (a) an annual-NPP-sum loss term against it and (b) a
   larger sample budget. Tools: `scripts/f2_carbon_split.py --blocks=` (new filter),
@@ -75,6 +75,46 @@ but a global run has 54 020, so generalisation to places is what matters.
 * **Expectation: null.** ADR 0322 found more rows from the same cells did not help, and arm W's members end with a
   training loss (0.043) well under the loss on validation blocks it never trained on (0.055): the limit is places, not rows.
 
-## 4. Result
+## 4. Result (2026-10-13; jobs 2476675–86 all completed; season job 2480784)
 
-(to be appended)
+Scored with `f2_relative_score.py WE_5seed LE_5seed VE_5seed`, `f2_carbon_split.py … --blocks=0,1,2,4` and
+`--blocks=-0,1,2,4`, `f2_season_residual.py LE_5seed`. The carbon split reports two 20-year windows (2021–40,
+2081–2100); their mean reproduces arm W's 81-year figures of §1 to within 0.003, so it is used for both arms below.
+
+**Arm L (hemisphere-aware season input): falsifier fires — the calendar input is not the cause.**
+
+| | arm W | arm L | required |
+|---|---|---|---|
+| southern respiration excess, observed weather / UKESM / MPI ssp585 | 0.095 / 0.074 / 0.096 | 0.091 / 0.063 / 0.089 | ≤ half on 2 of 3 |
+| July − September GPP swing, block 2 / block 4 (gC/m² per cell-yr) | 40.9 / 46.4 | **44.6 / 49.8** | ≤ half |
+| other 200 held-out cells, respiration ratio (both windows, 3 legs) | 0.993–1.014 | 0.993–1.011 | 1.000 ± 0.015 ✓ |
+| UKESM GPP / NPP drift | 1.15 / 1.25 | 1.18 / 1.24 | ≤ 1.20 / 1.30 ✓ |
+| typical GPP error early/late, UKESM | 1.96 / 2.10 | **2.22 / 2.32** (1.13× / 1.10×) | ≤ 1.1× ✗ |
+| typical GPP error early/late, MPI ssp585 | 2.08 / 1.87 | 2.06 / **2.23** (0.99× / 1.19×) | ≤ 1.1× ✗ |
+| typical NPP error early, UKESM / MPI ssp585 | 3.16 / 3.37 | 2.82 / 2.91 | — |
+
+The respiration excess fell by 0.004–0.011 (< 0.02 on all three legs) and both GPP swings *grew* by 7–9 %, so both
+halves of the falsifier hold. The June–July GPP excess of blocks 2 and 4 (33–36° S) persists when the network is
+told the local season ⇒ it is not a mis-phased calendar; most likely these places' own seasonality (winter-rain
+climates) is unlike anything in training — coverage. One side effect is real and recorded: the southern blocks'
+median per-cell NPP error moved from −7 … −11 % to −1 … −5 % (fraction of cells low 0.72–0.84 → 0.53–0.82), but
+the typical GPP error on the two test climates got worse by more than the allowed 10 %. **Not adopted; the default
+(`calendar`) stays.**
+
+**Arm V (80 M samples instead of 40 M): falsifier fires — the sample budget is not the limit.**
+
+| | arm W | arm V | required |
+|---|---|---|---|
+| typical NPP error early, UKESM / MPI ssp585 | 3.16 / 3.37 | 3.02 / 3.25 (−4.4 % / −3.6 %) | ≤ 2.84 / ≤ 3.03 ✗ |
+| UKESM GPP / NPP drift | 1.15 / 1.25 | 1.16 / 1.27 | ≤ 1.20 / 1.30 ✓ |
+| typical GPP error early, UKESM / MPI ssp585 | 1.96 / 2.08 | 1.91 / 2.18 (1.05×) | ≤ 1.05× (borderline) |
+| typical ET error early, UKESM / MPI ssp585 | 1.92 / 2.00 | 1.91 / **2.14** (1.07×) | ≤ 1.05× ✗ |
+| southern respiration excess (3 legs) | 0.095 / 0.074 / 0.096 | **0.134 / 0.100 / 0.124** | — |
+
+Both NPP numbers are within ±5 % of arm W's, as expected. More rows made the southern excess worse, not better,
+consistent with "the limit is places, not rows". **Keep 40 M.**
+
+**Consequence.** Both of the handoff's remaining levers on the respiration excess are now measured null. What
+remains is generalisation to places unlike the training cells, which only more training places can fix. Per §3,
+go to the deployment model (all five climate models in training); a larger or differently placed cell panel is the
+lever if the excess must be reduced further.
