@@ -50,6 +50,11 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #     summed over held-out cells for GPP and plant respiration (GPP - NPP), early vs late, + share of cells low.
 #     Read it before designing a carbon fix: ADR 0332 found a late-century GPP shortfall (UKESM 0.970) AND a
 #     separate constant respiration excess (1.5-3 % on every leg, observed weather included).
+#     --blocks=0,1,2,4 restricts to those panel blocks' held-out cells (--blocks=-0,1,2,4 = all others).
+# 2e. WHERE IN THE YEAR: python scripts/f2_season_residual.py <ensemble_tag> [leg] [member] -> per held-out
+#     block and calendar month, one-step emulator - original GPP and respiration (gC/m2/cell/yr; SLURM, ~5 min).
+#     --season-phase local (f2_train.py, ADR 0334 arm L): hemisphere-local day-of-year input (south of the
+#     equator sin/cos of the day are negated = half a year); default `calendar` reproduces every older run.
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from
@@ -87,6 +92,11 @@ held-out blocks = the five biome blocks + the lowest non-biome block of every st
 - **Runoff is a small residual of rain minus ET** (ADR 0326 §4): in a typical cell runoff is 160–200 mm/yr, so an
   ET error of 2–3× a second run is 4–7 % of runoff = 4–5× a second run's runoff spread. With the deep store
   draining, the runoff error is the negative of the ET error (cell correlation +0.84–0.92). Fix ET to fix runoff.
+- **A held-out "constant bias" can be a few places** (ADR 0334). The split holds out the lowest non-biome
+  block of each stratum, and blocks are ordered by latitude, so 4 of the 5 blocks south of 33° S are held out.
+  ADR 0333's "respiration 1.5–2.7 % too high on every leg" was ~80 % those 40 cells (NPP −7 … −11 %); the
+  other 200 held-out cells and every training cell show none. Before treating any held-out bias, split it
+  training vs held-out and by block (`f2_carbon_split.py --blocks=`).
 - **Humidity does not enter the original's daily exchange** (only `waterstress_tree.c:36`, the annual tree
   mortality accumulator; `relative_humidity: false`, fire = the simple scheme). Under warming it leaves the
   training range at every cell (UKESM 2081–2100: +1.45 g/kg beyond, ADR 0327).

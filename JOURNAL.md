@@ -1402,3 +1402,15 @@ Arm U (arm C + UKESM in training, IPSL unseen): IPSL ssp585 GPP/NPP drift 1.22/1
 pre-registered confirmation. So on two unseen models, both directions, warm-climate coverage removes about half the
 gap growth. Side effect: one more leg on the fixed 40 M-sample budget worsened some early-window fits (MPI ssp585
 NPP 2.87 → 3.81). Respiration excess unchanged. Next: respiration-excess arm and a larger sample budget.
+
+## 2026-10-13 (later) — the respiration excess is four southern blocks; arms L and V launched (ADR 0334)
+
+Before building the planned annual-NPP loss term I split arm W's respiration excess by training vs held-out cells:
+training cells show none (≤ 0.8 %), held-out cells 1.7–3 %, one-step as much as free — so not a loss bias. By block,
+~80 % comes from four held-out blocks at 33–47° S (the split holds out the lowest block of each stratum, and blocks run
+by latitude, so 4 of 5 southernmost blocks are held out); the other 200 held-out cells have no bias. Two of the four
+are at the edge of training coverage. New probe `f2_season_residual.py`: their respiration is high in every month (a
+level offset), but blocks 2 / 4 also carry a seasonal GPP error, and the day-of-year input is not hemisphere-aware.
+Dropped the loss-term idea; pre-registered arm L (`--season-phase local`, new opt-in flag in `f2_train.py`) and arm V
+(80 M samples), each one change against arm W, and launched both via `f2_chain_arm.py`. `f2_carbon_split.py` gained a
+`--blocks=` filter.

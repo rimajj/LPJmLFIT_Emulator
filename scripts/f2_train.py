@@ -51,6 +51,10 @@ FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4}  # raw daily forcin
 DROP = []  # input columns held at 0 (--drop-inputs, ADR 0327); the network then cannot use them
 DEEP_TAU = 0.0  # days; > 0: deep store releases D/DEEP_TAU per day into runoff (ADR 0326)
 CARBON_HEAD = "free"  # "physical": structured GPP/NPP head (ADR 0332); "free" = the trunk's
+# "local": south of the equator the day-of-year input is shifted by half a year (sin, cos -> -sin,
+# -cos), so it measures each hemisphere's own season, as the original's annual resets do
+# (COLDEST_DAY 14 north / 195 south, lat >= 0 north); ADR 0334
+SEASON_PHASE = "calendar"
 # ADR 0332 limiter inputs (columns of x): 0 tas 1 log-rain 2 rsds 3 lwnet 5/6 10/30-day tas
 # 7 30-day rsds 8-10 30/90/365-day log-rain 11 day length 12/13 day of year 14 sin(lat)
 # 15-18 stores 19 lai 20 log-vegc 21-30 cover by plant type
@@ -123,14 +127,22 @@ def stand_features(stand):
     return s
 
 
+def hemisphere_sign(slat):
+    """+1, or -1 south of the equator under SEASON_PHASE == "local" (half a year = a sign flip)."""
+    if SEASON_PHASE != "local":
+        return np.ones_like(slat)
+    return np.where(slat < 0, -1.0, 1.0).astype(np.float32)
+
+
 def assemble(ff, sinA, cosA, slat, st, cap_prev, W, S, cells, days):
     """Input matrix for (cells[i], days[i]) given yesterday's stores W, S (1-D, per row)."""
     iy = days // 365
     capv = cap_prev[cells, iy]
+    hs = hemisphere_sign(slat[cells])
     x = np.empty((len(cells), NIN), dtype=np.float32)
     x[:, :NFORC] = ff[cells, days]
-    x[:, NFORC] = sinA[days]
-    x[:, NFORC + 1] = cosA[days]
+    x[:, NFORC] = sinA[days] * hs
+    x[:, NFORC + 1] = cosA[days] * hs
     x[:, NFORC + 2] = slat[cells]
     x[:, NFORC + 3] = W / np.maximum(capv, 1.0)
     x[:, NFORC + 4] = W / 1000.0
@@ -499,6 +511,7 @@ def bench_speed(net, ml, reps=3):
     nc = ml.daily.shape[0]
     forc = np.load(os.path.join(DATA, f"forc_{ml.tag}.npy"))
     lat_s = ml.slat
+    hs = hemisphere_sign(lat_s)
     times = []
     for _ in range(reps):
         buf = {n: np.array(forc[:, WARM - n : WARM, j]) for n, j in ((10, 0), (30, 0), (30, 2))}
@@ -545,7 +558,8 @@ def bench_speed(net, ml, reps=3):
                 x[:, 8], x[:, 9] = np.log1p(sums["p30"]), np.log1p(sums["p90"])
                 x[:, 10] = np.log1p(sums["p365"])
                 x[:, 11] = ml.ff[:, d, 11]  # day length: a per-cell table in deployment
-                x[:, NFORC], x[:, NFORC + 1], x[:, NFORC + 2] = ml.sinA[d], ml.cosA[d], lat_s
+                x[:, NFORC], x[:, NFORC + 1] = ml.sinA[d] * hs, ml.cosA[d] * hs
+                x[:, NFORC + 2] = lat_s
                 x[:, NFORC + 3] = W / np.maximum(cap, 1.0)
                 x[:, NFORC + 4] = W / 1000.0
                 x[:, NFORC + 5] = np.log1p(S)
@@ -733,11 +747,13 @@ def main():
                     help="subdir of DATA whose stand_<tag>.npy replace the original's (phase B, ADR 0331)")  # fmt: skip
     ap.add_argument("--carbon-head", dest="carbon_head", default="free",
                     choices=["free", "physical"], help="structured GPP/NPP, ADR 0332")  # fmt: skip
+    ap.add_argument("--season-phase", dest="season_phase", choices=["calendar", "local"],
+                    default="calendar", help="local: hemisphere-local day of year, ADR 0334")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD
+    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
     NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR = a.hidden, a.layers, a.npp_head, a.deep_tau, a.stand_dir
-    CARBON_HEAD = a.carbon_head
+    CARBON_HEAD, SEASON_PHASE = a.carbon_head, a.season_phase
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
     TRAIN_LEGS[:] = a.train_legs.split(",")
     TEST_LEGS[:] = a.test_legs.split(",")
