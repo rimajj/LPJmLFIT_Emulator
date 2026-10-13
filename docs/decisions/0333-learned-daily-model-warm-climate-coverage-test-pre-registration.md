@@ -73,3 +73,29 @@ ssp585). If coverage is the cause, the warmest IPSL leg must improve as UKESM di
 and ≥ 0.05 below arm C's (1.22), and its NPP drift ≥ 0.05 below arm C's (1.27). Falsifier: both within 0.05 of arm C's
 ⇒ the UKESM improvement was specific to that model pairing, not coverage. Expectation: smaller gain than §4 —
 UKESM is one leg (not three) and its climate differs from IPSL's in pattern, not only in warmth.
+
+## 6. Confirmation result (2026-10-13; jobs 2475336–41; run `UE_5seed`)
+
+Members trained as arm C's (validation GPP 0.069–0.079, NPP 0.103–0.116). `relative_score_CE_UE.md`.
+
+| leg | GPP drift U (C) | NPP drift U (C) | GPP typical early/late U (C) | NPP typical U (C) |
+|---|---|---|---|---|
+| IPSL ssp585 | **1.12** (1.22) | **1.13** (1.27) | 2.09/2.04 (2.11/2.48) | 3.90/3.52 (3.94/3.88) |
+| IPSL ssp370 | 0.87 (0.92) | 1.00 (1.08) | 1.90/2.13 (1.86/2.07) | 3.60/3.29 (3.20/3.37) |
+| IPSL ssp126 | 1.08 (1.08) | 1.11 (1.14) | 2.42/2.61 (2.31/2.72) | 3.91/4.22 (3.43/4.06) |
+| MPI ssp585 | 0.94 (0.95) | 0.93 (0.97) | 2.39/1.86 (2.14/2.26) | 3.81/3.36 (2.87/3.24) |
+
+IPSL ssp585 GPP emulator ÷ original, summed: 0.993 → 0.992 between 2021–40 and 2081–00 (arm C 0.996 → 0.984).
+
+**Verdict as pre-registered: PASSES.** IPSL ssp585 GPP drift 1.12 (≤ 1.2, 0.10 below arm C), NPP 1.13 (0.14 below).
+Falsifier did not fire. Expectation (a smaller gain than §4) held for GPP (0.10 vs 0.15), roughly for NPP (0.14 vs
+0.16). Not pre-registered, recorded: the early-window typical error rose on some legs with one more training leg
+sharing the fixed sample budget (MPI ssp585 NPP 2.87 → 3.81, ET 2.26 → 2.93; IPSL ssp126 NPP 3.43 → 3.91); the late
+windows mostly improved. The respiration excess is unchanged (observed weather 1.012–1.017).
+
+**Conclusion of this record.** Shown on two unseen climate models with the roles swapped: training on warmer climates
+removes about half of the growth of the daily model's carbon gap under warming (GPP to 1.12–1.15, NPP to 1.13–1.25),
+at no cost to the late-century fit. ⇒ the deployed daily model trains on **every** climate model available (the
+sample budget should grow with the number of legs — the early-window losses above suggest 40 M is now thin). What
+coverage does not fix: a constant 1.5–2.7 % plant-respiration excess (NPP ~0.01 low in carbon-use efficiency in every
+window and on observed weather), the next target.

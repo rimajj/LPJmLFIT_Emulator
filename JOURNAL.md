@@ -1395,3 +1395,10 @@ Arm W (arm C + IPSL in training, UKESM unseen) trained as arm C did. UKESM GPP g
 NPP 1.41 → 1.25 (over the 1.2 cap), NPP area totals 4.7 → 2.4 %, no flux or leg worse. Falsifier did not fire: coverage
 is a real cause, about half of the excess growth. The constant plant-respiration excess is untouched. Because that is
 one unseen model, pre-registered a swapped-role confirmation (train on UKESM, test the three IPSL legs) and launched it.
+
+## 2026-10-13 (later) — coverage confirmed with the roles swapped (ADR 0333 §6)
+
+Arm U (arm C + UKESM in training, IPSL unseen): IPSL ssp585 GPP/NPP drift 1.22/1.27 → 1.12/1.13, passes the
+pre-registered confirmation. So on two unseen models, both directions, warm-climate coverage removes about half the
+gap growth. Side effect: one more leg on the fixed 40 M-sample budget worsened some early-window fits (MPI ssp585
+NPP 2.87 → 3.81). Respiration excess unchanged. Next: respiration-excess arm and a larger sample budget.
