@@ -1,6 +1,7 @@
 # 0335 — Learned daily model: deployment candidate trained on all five climate models (pre-registration)
 
-* **Status:** Pre-registered 2026-10-13, before training. Result appended below.
+* **Status:** Pre-registered 2026-10-13, before training. Result §3 (not passed: early-window ET worse on three
+  legs); follow-up arm D47 pre-registered §4.
 * **Follows:** ADR 0334 §4 (arms L and V both null; the remaining respiration excess is generalisation to places, not
   a calendar input or the sample budget), STATE item 2 ("once arms L / V settle, train on all five climate models").
   Tool change: `scripts/f2_train.py --test-legs none` (no climate model held out; the default is unchanged).
@@ -29,6 +30,34 @@ never be quoted as skill on an unseen climate model; ADR 0333's arms W/U remain 
   ~1.10–1.20); shared legs unchanged within ±5 %; the southern-block respiration excess (ADR 0334) unchanged, since it
   is about places, not climates.
 
-## 3. Result
+## 3. Result (2026-10-13; jobs 2480788–93 completed)
 
-(to be appended)
+`f2_relative_score.py WE_5seed DE_5seed`, free runs, 238 held-out cells with GPP ≥ 50 (out of sample by place only).
+
+| criterion | arm W | arm D | required | |
+|---|---|---|---|---|
+| NPP typical error early, UKESM ssp370 | 3.16 | 3.00 | ≤ 3.16 | ✓ |
+| NPP typical error early, MPI ssp585 | 3.37 | 3.41 | ≤ 3.37 | ✗ (+1.2 %) |
+| UKESM GPP / NPP drift | 1.15 / 1.25 | 1.13 / 1.17 | ≤ 1.15 / 1.25 | ✓ |
+| 12 shared legs, median ratio D / W, GPP / NPP / ET (early + late) | — | 1.012 / 1.008 / 1.011 | ≤ 1.05 | ✓ |
+| 12 shared legs, worst single ratio, GPP / NPP / ET | — | 1.14 / 1.11 / **1.28** | ≤ 1.15 | ✗ (ET) |
+
+The ET failures are all in the EARLY window (2021–50) on MPI / GFDL legs: GFDL ssp585 2.16 → 2.76 (×1.28), MPI ssp126
+2.15 → 2.55 (×1.19), GFDL ssp126 2.09 → 2.43 (×1.16); late-window ET is ≤ 1.11× everywhere. Runoff (the residual of
+ET) follows: median ×1.06, worst ×1.21. Southern-block respiration excess unchanged, as expected (0.094 / 0.070 /
+0.092 vs arm W 0.095 / 0.074 / 0.096). **Verdict: not passed as pre-registered** — the added climate model helps
+where it was added (UKESM drift 1.25 → 1.17) and costs early-window ET on three other legs. Same shape as arm U
+(ADR 0333 §6): one more leg on a fixed 40 M-sample budget worsened early-window fits.
+
+## 4. Follow-up, pre-registered 2026-10-13 before training: arm D47 (samples per leg as in arm W)
+
+* **Arm D47** (`D47_3x256_seed0..4`, ensemble `D47E_5seed`): arm D with `--nsamp 46666667` = 40 M × 14 / 12, i.e.
+  the same rows per leg as arm W. One change against arm D.
+* **Pass (D47 becomes the deployment model):** worst single-leg ET ratio vs arm W on the 12 shared legs ≤ 1.15
+  (arm D 1.28), the medians of §2 still ≤ 1.05, and UKESM GPP / NPP drift ≤ 1.15 / 1.25.
+* **Falsifier:** the three early-window ET ratios (GFDL ssp585, MPI ssp126, GFDL ssp126) each fall by less than a
+  third of their excess over 1 ⇒ it is not the per-leg budget but a trade-off between climate models in one network.
+  Then **arm D is still adopted as the deployment model** (coverage of every climate model is the stated priority,
+  ADR 0333; its median cost is 1 %), and the early-window ET cost is quoted beside it.
+* **Expectation:** null or partial. Arm V (ADR 0334) found 80 M rows did not help at 12 legs, so the budget is
+  probably not the limit; arm U's early-window losses are the only evidence that it is.
