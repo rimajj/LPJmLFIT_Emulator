@@ -1414,3 +1414,15 @@ level offset), but blocks 2 / 4 also carry a seasonal GPP error, and the day-of-
 Dropped the loss-term idea; pre-registered arm L (`--season-phase local`, new opt-in flag in `f2_train.py`) and arm V
 (80 M samples), each one change against arm W, and launched both via `f2_chain_arm.py`. `f2_carbon_split.py` gained a
 `--blocks=` filter.
+
+## 2026-10-13 (later) — arms L and V both null; deployment candidate launched (ADR 0334 §4, ADR 0335)
+
+Scored arms L and V against arm W. Arm L (hemisphere-aware season input): southern respiration excess 0.095 / 0.074 /
+0.096 → 0.091 / 0.063 / 0.089, the July − September GPP swing of blocks 2 / 4 grew (40.9 / 46.4 → 44.6 / 49.8), and the
+typical GPP error on the two test climates got 10–19 % worse; the southern median-cell NPP error did improve
+(−7 … −11 % → −1 … −5 %). Falsifier fired: the calendar input is not the cause. Arm V (80 M samples): NPP −4 %, inside
+the ±5 % null band; southern excess worse. Both levers closed; the excess is generalisation to places. Patched
+`f2_train.py --test-legs none` and launched arm D (arm W on all 14 legs; jobs 2480788–93) as the deployment
+candidate, pre-registered in ADR 0335. Process note: a Python `str.index` on the NEXT heading first matched its quote
+on line 3 of STATE.md and deleted the block in between — caught by the diff, restored from git, redone anchored on
+`"\n## NEXT"`.
