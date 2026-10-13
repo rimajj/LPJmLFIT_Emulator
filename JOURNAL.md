@@ -1426,3 +1426,11 @@ the ±5 % null band; southern excess worse. Both levers closed; the excess is ge
 candidate, pre-registered in ADR 0335. Process note: a Python `str.index` on the NEXT heading first matched its quote
 on line 3 of STATE.md and deleted the block in between — caught by the diff, restored from git, redone anchored on
 `"\n## NEXT"`.
+
+## 2026-10-13 (later) — deployment candidate arm D: not passed; arm D47 launched (ADR 0335)
+
+Arm D (arm W + UKESM ssp370 + MPI ssp585 in training, 14 legs, 40 M samples) on the 238 held-out cells: UKESM drift
+1.15/1.25 → 1.13/1.17, UKESM NPP 3.16 → 3.00, shared-leg medians ×1.01 — but MPI ssp585 early NPP 3.37 → 3.41 and
+early-window ET 16–28 % worse on GFDL ssp585 / MPI ssp126 / GFDL ssp126. Not passed as pre-registered. Same shape as
+arm U's fixed-budget loss, so pre-registered arm D47 (46.7 M samples = same rows per leg as arm W) and launched it
+(jobs 2480924–29); if it is null, arm D is adopted anyway (pre-registered).
