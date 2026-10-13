@@ -95,6 +95,10 @@ held-out blocks = the five biome blocks + the lowest non-biome block of every st
 - **Runoff is a small residual of rain minus ET** (ADR 0326 §4): in a typical cell runoff is 160–200 mm/yr, so an
   ET error of 2–3× a second run is 4–7 % of runoff = 4–5× a second run's runoff spread. With the deep store
   draining, the runoff error is the negative of the ET error (cell correlation +0.84–0.92). Fix ET to fix runoff.
+- **Run-to-run noise of ONE five-member ensemble** (ADR 0336 §6, arm W vs replicate W2, seeds 5–9): typical error
+  90th percentile ±18 % GPP / ±9 % NPP / ±14 % ET / ±20 % runoff per leg (median whole-ensemble GPP offset 7 %);
+  drift ±0.05 / 0.06 / 0.08 / 0.05. State arm criteria against these, never as a bare 5 % margin; for a decisive
+  comparison train a replicate (`f2_chain_arm.py <prefix> --seeds 5-9 …`).
 - **Check every member ran all its epochs before comparing ensembles** (ADR 0336). Until 2026-10-13 the default
   `--patience 2` stopped members mid one-cycle schedule (epoch 6–9, val loss up to 0.088 vs ~0.054) in 7 of 9
   ensembles; one such member moved arm D47's medians 5–9 %. `grep -c '^epoch' runs/<member>/log.txt` must equal

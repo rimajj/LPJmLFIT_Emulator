@@ -107,3 +107,5 @@ Re-scored with repaired ensembles: §4's verdict changes — UKESM drift arm C 1
 only 0.04 / 0.02 below and the coverage criterion FAILS; §6 still passes narrowly (IPSL ssp585 U 1.06 / 1.14 vs C 1.13 /
 1.20). The size of the coverage effect stated in this record's conclusion (about half of the gap growth) is withdrawn
 pending the run-to-run noise measurement of ADR 0336 §5.
+Run-to-run noise measured (ADR 0336 §6, 2026-10-14): the UKESM margin (0.04 / 0.02) is within noise (90th percentile
+0.047 / 0.064) — no coverage effect is measurable on UKESM; the IPSL GPP margin (0.07) exceeds it, NPP (0.06) does not.

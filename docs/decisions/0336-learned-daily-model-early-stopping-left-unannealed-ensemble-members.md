@@ -1,7 +1,8 @@
 # 0336 — Learned daily model: early stopping left un-annealed members in seven ensembles (defect, repair, re-scores pre-registered)
 
 * **Status:** Defect found and fixed 2026-10-13; repair jobs 2481050–62 submitted; re-scores pre-registered below,
-  before any result. Results §4 (2026-10-13); replicate measurement pre-registered §5.
+  before any result. Results §4 (2026-10-13); replicate measurement pre-registered §5, result §6
+  (2026-10-14): run-to-run noise ±9–20 % per leg; UKESM coverage effect within noise.
 * **Found by:** arm D47 (ADR 0335 §4) scoring 5–9 % worse than arm D in the medians with 17 % *more* samples.
 
 ## 1. The defect
@@ -97,6 +98,38 @@ measured**, so none of them, nor arm D's 16–28 % early-window ET cost, can yet
 * **Expectation:** typical-error noise ±5–10 % (90th percentile), drift noise ~0.03–0.05 ⇒ the UKESM coverage margin
   is within noise, IPSL's at the edge, arm D's worst ET costs (1.28, 1.19) above it.
 
-## 6. Result of the replicate
+## 6. Result of the replicate (2026-10-14; jobs 2481246–51; `DATA/f2/runs/relative_score_noise_ADR0336.md`)
 
-(to be appended)
+All five W2 members ran 10 epochs (validation loss 0.0542–0.0559; arm W 0.0543–0.0554). W2 ÷ W over 14 legs × 2
+windows (typical errors) and W2 − W over 14 legs (drift):
+
+| | GPP | NPP | ET | runoff |
+|---|---|---|---|---|
+| typical error: median |W2 ÷ W − 1| / **90th percentile** / max | 0.074 / **0.177** / 0.311 | 0.047 / **0.086** / 0.106 | 0.044 / **0.135** / 0.195 | 0.051 / **0.202** / 0.239 |
+| typical error: median W2 ÷ W (a whole-ensemble offset) | 1.074 | 1.021 | 1.031 | 1.033 |
+| drift: median |W2 − W| / **90th percentile** / max | 0.020 / **0.047** / 0.050 | 0.030 / **0.064** / 0.070 | 0.030 / **0.077** / 0.090 | 0.010 / **0.047** / 0.060 |
+
+UKESM drift W 1.15 / 1.25, W2 1.19 / 1.22; IPSL ssp585 W 1.07 / 1.07, W2 1.02 / 1.00.
+
+**The reading rule of §5 applied:**
+
+* **Coverage, UKESM** (W vs repaired C: 0.04 / 0.02) — **within noise** on both (0.047 / 0.064). W2 alone is
+  1.19 / 1.22, i.e. equal to repaired C's 1.19 / 1.27. No coverage effect is measurable on UKESM.
+* **Coverage, IPSL ssp585** (U vs repaired C: 0.07 / 0.06) — GPP **beyond noise** (0.047), NPP **within** (0.064).
+* **Arm D's early-window ET cost** (×1.28 / ×1.19 / ×1.16 on GFDL ssp585 / MPI ssp126 / GFDL ssp126) — each exceeds
+  0.135, so it counts; but over all 24 shared-leg ET values only 4 are worse beyond noise and 1 better (by chance ≈ 2.4 of 24
+  fall beyond the 90th percentile in total, ≈ 1.2 per side) ⇒ a mild real cost, concentrated in the early window. GPP: 0 of 24 beyond noise;
+  NPP 3 worse / 1 better.
+* **D47Ef vs D** — worse beyond noise in 9 of 28 runoff, 8 NPP, 7 ET, 2 GPP values, better in ≤ 1 ⇒ **genuinely worse**;
+  arm D stays the deployment model.
+* **L / V nulls** — unaffected (nulls; their largest effects, L's 1.17–1.20 GPP, sit at the edge of the GPP noise).
+* **Expectation** (noise ±5–10 %, drift 0.03–0.05): too low for GPP and runoff (±18 / ±20 %), right for NPP; drift as
+  expected. UKESM within noise ✓, IPSL at the edge ✓, arm D's ET above it ✓.
+
+**Consequences for method (binding from now).** (1) A single five-member ensemble's typical error carries a ~7 %
+whole-ensemble offset in GPP and ±9–20 % per-leg noise; **every arm comparison in ADR 0320–0335 with a margin below
+these numbers is not evidence** and should be read as such where it is cited. (2) Future arm-vs-arm criteria are
+stated against this table (or against a replicate of the arm itself), not as fixed per-cent margins. (3) The
+ensemble's noise is part of the deliverable's error: averaging more members would reduce it but multiplies the daily
+model's cost (6.4e-3 core-s per cell-year for five members), which collides with the speed goal — an owner trade-off,
+not decided here.

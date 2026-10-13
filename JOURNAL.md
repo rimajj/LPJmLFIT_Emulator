@@ -1453,3 +1453,12 @@ to 15 % (arm U's ET). Verdicts: repaired D47 still fails ⇒ arm D is the deploy
 (criterion fails), IPSL 0.07 / 0.06 (passes narrowly). Amended 0333/0334/0335. Since the margins are now 2–7 % and the
 spread between two identically trained ensembles was never measured, launched W2 = arm W with seeds 5–9 (new
 `f2_chain_arm.py --seeds`), with a reading rule fixed before training.
+
+## 2026-10-14 — run-to-run noise of the daily-model ensemble measured (ADR 0336 §6)
+
+Replicate W2 (arm W, seeds 5–9) against arm W: typical-error 90th percentile ±18 / 9 / 14 / 20 % per leg (GPP / NPP /
+ET / runoff), a 7 % whole-ensemble GPP offset, drift ±0.05–0.08. Larger than expected for GPP and runoff. Applied the
+pre-registered rule: UKESM coverage effect within noise (W2 alone equals the repaired no-IPSL arm), IPSL GPP effect
+beyond it, arm D's early-ET cost real but mild (4 of 24 values worse beyond noise, 1 better), D47 genuinely worse than
+D. Arm D is the deployment model. Most margins in ADR 0320–0335 are inside this noise. Open owner trade-off: more
+members (less noise) vs the daily model's cost.
