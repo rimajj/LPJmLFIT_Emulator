@@ -400,7 +400,7 @@ def train(args, mls, tr, va, dev, log):
             best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
         else:
             bad += 1
-            if bad >= args.patience:
+            if args.patience and bad >= args.patience:  # 0 = never stop (ADR 0336)
                 break
     net.load_state_dict(best_state)
     return net
@@ -724,7 +724,9 @@ def main():
     ap.add_argument("--tag", default="A")
     ap.add_argument("--nsamp", type=int, default=40_000_000)
     ap.add_argument("--epochs", type=int, default=10)
-    ap.add_argument("--patience", type=int, default=2)
+    # 0 = train every epoch: the one-cycle schedule spans all epochs, and stopping on a mid-cycle
+    # validation bump (old default 2) kept un-annealed members in 7 ensembles (ADR 0336)
+    ap.add_argument("--patience", type=int, default=0)
     ap.add_argument("--batch", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--hidden", type=int, default=64)

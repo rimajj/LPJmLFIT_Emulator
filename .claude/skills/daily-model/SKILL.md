@@ -95,6 +95,11 @@ held-out blocks = the five biome blocks + the lowest non-biome block of every st
 - **Runoff is a small residual of rain minus ET** (ADR 0326 §4): in a typical cell runoff is 160–200 mm/yr, so an
   ET error of 2–3× a second run is 4–7 % of runoff = 4–5× a second run's runoff spread. With the deep store
   draining, the runoff error is the negative of the ET error (cell correlation +0.84–0.92). Fix ET to fix runoff.
+- **Check every member ran all its epochs before comparing ensembles** (ADR 0336). Until 2026-10-13 the default
+  `--patience 2` stopped members mid one-cycle schedule (epoch 6–9, val loss up to 0.088 vs ~0.054) in 7 of 9
+  ensembles; one such member moved arm D47's medians 5–9 %. `grep -c '^epoch' runs/<member>/log.txt` must equal
+  `epochs`. Default is now 0 (never stop); `python scripts/f2_repair_stopped.py <prefix>…` retrains the stopped
+  members of an old arm (`<member>_full`) and re-runs its ensemble as `<prefix>Ef_5seed`.
 - **A held-out "constant bias" can be a few places** (ADR 0334). The split holds out the lowest non-biome
   block of each stratum, and blocks are ordered by latitude, so 4 of the 5 blocks south of 33° S are held out.
   ADR 0333's "respiration 1.5–2.7 % too high on every leg" was ~80 % those 40 cells (NPP −7 … −11 %); the

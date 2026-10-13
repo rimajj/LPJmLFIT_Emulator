@@ -1434,3 +1434,13 @@ Arm D (arm W + UKESM ssp370 + MPI ssp585 in training, 14 legs, 40 M samples) on 
 early-window ET 16–28 % worse on GFDL ssp585 / MPI ssp126 / GFDL ssp126. Not passed as pre-registered. Same shape as
 arm U's fixed-budget loss, so pre-registered arm D47 (46.7 M samples = same rows per leg as arm W) and launched it
 (jobs 2480924–29); if it is null, arm D is adopted anyway (pre-registered).
+
+## 2026-10-13 (later) — early stopping left un-annealed ensemble members (ADR 0336)
+
+Arm D47 (arm D + 17 % more samples) scored 5–9 % worse than arm D in the medians. Cause: its seed-2 member stopped at
+epoch 7 under `--patience 2` while the one-cycle learning rate was still high (val 0.0602 vs 0.053–0.055). Scanning all
+member logs: 11 members in 7 ensembles (C, H, L, P, U, V, D47) stopped at epoch 6–9; only W and D are clean. So ADR
+0333's W-vs-C and U-vs-C comparisons, ADR 0334's L/V nulls and D47 are confounded by an unknown amount; the "fixed
+budget thins early fits" remark rested on U, the worst member (val 0.088). Default patience → 0 (never stop). New
+`f2_repair_stopped.py` retrains only the stopped members from their own logged args and re-runs each ensemble under a
+new tag; submitted for D47, V, L, C, U (jobs 2481050–62). Re-scores pre-registered against each record's own criteria.

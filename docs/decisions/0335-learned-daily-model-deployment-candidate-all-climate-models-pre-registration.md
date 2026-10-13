@@ -1,7 +1,8 @@
 # 0335 — Learned daily model: deployment candidate trained on all five climate models (pre-registration)
 
 * **Status:** Pre-registered 2026-10-13, before training. Result §3 (not passed: early-window ET worse on three
-  legs); follow-up arm D47 pre-registered §4.
+  legs); follow-up arm D47 pre-registered §4; its first run was confounded (§5,
+  ADR 0336).
 * **Follows:** ADR 0334 §4 (arms L and V both null; the remaining respiration excess is generalisation to places, not
   a calendar input or the sample budget), STATE item 2 ("once arms L / V settle, train on all five climate models").
   Tool change: `scripts/f2_train.py --test-legs none` (no climate model held out; the default is unchanged).
@@ -61,3 +62,11 @@ where it was added (UKESM drift 1.25 → 1.17) and costs early-window ET on thre
   ADR 0333; its median cost is 1 %), and the early-window ET cost is quoted beside it.
 * **Expectation:** null or partial. Arm V (ADR 0334) found 80 M rows did not help at 12 legs, so the budget is
   probably not the limit; arm U's early-window losses are the only evidence that it is.
+
+## 5. Arm D47 result (2026-10-13; jobs 2480924–29) — CONFOUNDED, superseded by the repaired run (ADR 0336)
+
+Raw: shared-leg medians vs arm W GPP / NPP / ET / runoff 1.073 / 1.090 / 1.054 / 1.223 (arm D 1.012 / 1.008 / 1.011 /
+1.066); worst ET 1.25; UKESM drift 1.13 / 1.16. Worse than arm D almost everywhere with 17 % more samples — because
+member seed2 stopped at epoch 7 (validation loss 0.0602 vs 0.053–0.055) under the old early-stopping default, which
+ADR 0336 found in seven ensembles. **No verdict is drawn from this run**; the repaired ensemble `D47Ef_5seed` is
+scored against §4 instead.
