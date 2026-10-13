@@ -38,7 +38,8 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #      under-responds to warming MORE — the original's photosynthesis is not separable. Keep default `free`.
 #    ANY NEW ARM: python scripts/f2_chain_arm.py <prefix> --train-legs a,b --test-legs c,d [-- extra f2_train args]
 #      (five --train-only members + the ensemble, afterok-chained, gpu). The ensemble free-runs EVERY train+test
-#      leg x 4 members: ~1 h for 5 legs, ~3.5 h for 14.
+#      leg x 4 members: ~1 h for 14 legs (arms W/L/V, 2026-10-13). `--test-legs none` = no climate model
+#      held out (ADR 0335 deployment candidate); the scorer then shows free runs only, held-out CELLS only.
 #    python scripts/f2_extrapolation_probe.py <tag> [candidate_train_legs]: how far each test leg's late climate /
 #      leaf area lies outside the run's own training range (legs.json) — or a CANDIDATE set's, before training.
 # 2b. compare arms in one table:  python scripts/f2_compare.py [tags...]   (old ADR 0320 ±5 % bar)
@@ -55,6 +56,8 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #     block and calendar month, one-step emulator - original GPP and respiration (gC/m2/cell/yr; SLURM, ~5 min).
 #     --season-phase local (f2_train.py, ADR 0334 arm L): hemisphere-local day-of-year input (south of the
 #     equator sin/cos of the day are negated = half a year); default `calendar` reproduces every older run.
+#     CLOSED as null (ADR 0334 §4): the southern GPP swing persists with it, test-climate GPP 10-19 % worse.
+#     So is --nsamp 80000000 (NPP -4 %, inside the null band). Keep `calendar`, 40 M.
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from
