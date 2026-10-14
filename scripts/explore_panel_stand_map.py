@@ -147,27 +147,68 @@ def stand_feats() -> list[str]:
     return YD.feats() + [f"{k}_{q}" for q in SQ for k in ("anc", "s0", "memoff")]
 
 
+EPS_COVER = 1e-3  # cover-mode "relative": floor before log, so a near-zero cover doesn't blow up the ratio
+
+
 def stage_fit(a) -> None:
+    """ADR 0339: --cover-mode picks how the 10 per-type covers (FPC) are fit; lai_stand/vegc are always additive
+    (unchanged, so `additive` reproduces the pre-ADR-0339 files byte for byte). `relative`: the per-type target is a
+    LOG-RATIO to its anchor (value/anchor - 1 in log space) instead of an absolute difference, so the loss weights a
+    small cover's error the same as a large one's. `sumconstrained`: per-type covers are fit additively as before,
+    then RESCALED so tree covers (1-7) sum to a separately fit tree-total and grass covers (8-10) to a grass-total
+    (each total's own anchor is the sum of the per-type anchors, exact when the per-type null pattern agrees, which
+    it does -- cover by type is all-or-nothing per run)."""
     import lightgbm as lgb
 
     g = a.g
+    mode = a.cover_mode
     os.makedirs(OUT, exist_ok=True)
     tr, te = build_rows(g, a.hold)
     t0 = time.time()
     f = stand_feats()
     out = te.select("member", "leg", "Cell", "Year", pl.col("anc_n_per_patch"), *[pl.col(f"anc_{q}") for q in SQ])
-    for q in SQ:
+
+    def fit_one(q: str, qmode: str) -> np.ndarray:
         t = tr.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
-        mdl = lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), (t[q] - t[f"anc_{q}"]).to_numpy()), A7.ROUNDS)
-        p = mdl.predict(te.select(f).to_numpy()) + te[f"anc_{q}"].to_numpy().astype(float)
-        out = out.with_columns(pl.Series(q, np.maximum(p, 0.0)))
-        log(f"{g} {q}: {t.height} rows fitted ({time.time() - t0:.0f}s)")
-    out.write_parquet(os.path.join(OUT, pred_name(g, a.hold)))
-    log(f"{g}: wrote {out.height} predictions")
+        anc_tr = t[f"anc_{q}"].to_numpy().astype(float)
+        anc_te = te[f"anc_{q}"].to_numpy().astype(float)
+        if qmode == "relative":
+            y = np.log(np.maximum(t[q].to_numpy().astype(float), EPS_COVER)) - np.log(np.maximum(anc_tr, EPS_COVER))
+        else:
+            y = (t[q] - t[f"anc_{q}"]).to_numpy()
+        mdl = lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), y), A7.ROUNDS)
+        raw = mdl.predict(te.select(f).to_numpy())
+        p = np.maximum(anc_te, EPS_COVER) * np.exp(raw) if qmode == "relative" else raw + anc_te
+        log(f"{g} {q} [{qmode}]: {t.height} rows fitted ({time.time() - t0:.0f}s)")
+        return np.maximum(p, 0.0)
+
+    preds = {q: fit_one(q, mode if q in FPC else "additive") for q in SQ}
+
+    if mode == "sumconstrained":
+        for cols in (FPC[:7], FPC[7:]):  # tree (1-7), grass (8-10)
+            t = tr.filter(pl.col(cols[0]).is_not_null())
+            total_val = t.select(cols).sum_horizontal().to_numpy().astype(float)
+            anc_total_tr = t.select([f"anc_{c}" for c in cols]).sum_horizontal().to_numpy().astype(float)
+            anc_total_te = te.select([f"anc_{c}" for c in cols]).sum_horizontal().to_numpy().astype(float)
+            mdl = lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), total_val - anc_total_tr), A7.ROUNDS)
+            total_pred = np.maximum(mdl.predict(te.select(f).to_numpy()) + anc_total_te, 0.0)
+            cur_sum = sum(preds[c] for c in cols)
+            scale = np.where(cur_sum > EPS_COVER, total_pred / np.maximum(cur_sum, EPS_COVER), 1.0)
+            for c in cols:
+                preds[c] = preds[c] * scale
+            log(f"{g} total({cols[0]}..{cols[-1]}): rescaled, total pred mean {total_pred.mean():.3f}"
+                f" vs raw sum mean {cur_sum.mean():.3f}")
+
+    for q in SQ:
+        out = out.with_columns(pl.Series(q, preds[q]))
+    out.write_parquet(os.path.join(OUT, pred_name(g, a.hold, mode)))
+    log(f"{g}: wrote {out.height} predictions [{mode}]")
 
 
-def pred_name(g: str, hold: int) -> str:
-    return f"preds_{g}.parquet" if hold == 4 else f"preds_{g}_h{hold}.parquet"
+def pred_name(g: str, hold: int, mode: str = "additive") -> str:
+    suf = "" if hold == 4 else f"_h{hold}"
+    msuf = "" if mode == "additive" else f"_{mode}"
+    return f"preds_{g}{suf}{msuf}.parquet"
 
 
 def stage_arrays(a) -> None:
@@ -186,7 +227,7 @@ def stage_arrays(a) -> None:
             if a.copy_only:  # harness: the original's stand through the same path
                 np.save(os.path.join(od, f"stand_m{k}_{dleg}.npy"), src)
                 continue
-            P = pl.read_parquet(os.path.join(OUT, pred_name(g, k))).filter(
+            P = pl.read_parquet(os.path.join(OUT, pred_name(g, k, a.cover_mode))).filter(
                 (pl.col("member") == k) & (pl.col("leg") == leg))
             grid = pl.DataFrame({"Cell": np.repeat(cells.to_numpy(), 81),
                                  "Year": np.tile(np.arange(2020, 2101), len(cells)).astype(np.int32)})
@@ -216,7 +257,7 @@ def stage_score(a) -> None:
         np.cos(np.deg2rad(pl.col("lat"))).alias("w")).drop("lat")
     yr, cs = [], []
     for g in PP.GCMS:
-        pf = os.path.join(OUT, f"preds_{g}.parquet")
+        pf = os.path.join(OUT, pred_name(g, 4, a.cover_mode))
         if not os.path.exists(pf):
             log(f"skip {g}: no predictions")
             continue
@@ -295,6 +336,9 @@ def main():
     ap.add_argument("--stand-dir", dest="stand_dir", default="stand_emul", help="arrays: subdir of the f2 data dir")
     ap.add_argument("--copy-only", dest="copy_only", action="store_true", help="arrays: harness, copy the original")
     ap.add_argument("--only", default="", help="arrays: comma list of stand quantities (SQ names) taken from the map")
+    ap.add_argument("--cover-mode", dest="cover_mode", default="additive",
+                    choices=["additive", "relative", "sumconstrained"],
+                    help="ADR 0339: how the 10 per-type covers are fit (fit/arrays/score; lai_stand/vegc unaffected)")
     a = ap.parse_args()
     {"fit": stage_fit, "score": stage_score, "arrays": stage_arrays}[a.stage](a)
     log("=== DONE")
