@@ -1462,3 +1462,16 @@ pre-registered rule: UKESM coverage effect within noise (W2 alone equals the rep
 beyond it, arm D's early-ET cost real but mild (4 of 24 values worse beyond noise, 1 better), D47 genuinely worse than
 D. Arm D is the deployment model. Most margins in ADR 0320–0335 are inside this noise. Open owner trade-off: more
 members (less noise) vs the daily model's cost.
+
+## 2026-10-14 — phase B with the deployment model, and the first end-to-end timing (ADR 0337); attribution launched (ADR 0338)
+
+Pre-registered, then ran arm D fed the stand map's prediction on all 13 climate-model legs (six new stand fits for
+GFDL/MRI with runs 1–3 unseen). Harness exact (arm A = `DE_5seed` digit for digit). FAIL as written: the stand adds a
+median ×1.13 GPP / ×1.15 NPP / ×1.35 ET / ×1.20 runoff; the falsifier (GPP ×1.5) fired on IPSL ssp370/585 late —
+arm D's own error is lower than the control ensemble's, so the same stand error is now a larger share. Totals ≤ 2.5 %.
+New `scripts/bench_coupled_speed.py`: structure + stand + daily ensemble in one year-by-year loop on one core:
+6.55e-3 core-s per cell-year, equal to the sum of parts; fluxes reproduce the scored GPU run to 1e-6. A refit check
+on near-zero plant covers first failed on a too-small denominator (relative error per row); now judged against each
+quantity's 90th-percentile size. Side check: the original's soil capacity, which the daily model reads, changes by a
+median 0.1–0.2 % over the century. Restored a STATE table row truncated since ad20c27a. Launched three one-input arms
+(leaf area / vegetation carbon / cover from the map, rest original) to attribute the increment.
