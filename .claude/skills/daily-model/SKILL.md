@@ -65,6 +65,10 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #     takes only those quantities from the map (ADR 0338 attribution). Deployment model with the emulated stand
 #     (ADR 0337): GPP 2.0-2.9x, ET 2.1-3.9x, NPP 3.3-4.6x, runoff 3.9-7.7x a second run; the stand adds 13-35 %.
 #     Pairwise verdict arithmetic: python scripts/f2_relscore_compare.py <score.md> REF CAND [--exclude=ctl_obs].
+#     Attribution by input (ADR 0338): python scripts/f2_stand_attribution.py <score.md> [A=PD_A] [B=PD_B]
+#     [ARMS=PD_L,PD_V,PD_C] -> per-flux median share s_X = (X/A-1)/(B/A-1) where B/A-1 >= 0.10. Result: COVER
+#     carries the largest share on EVERY flux (0.57-0.89), not only ET as guessed -- leaf area is secondary
+#     (0.10-0.45), vegetation carbon minor everywhere (0.08-0.16). Improve cover in the stand map first.
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from

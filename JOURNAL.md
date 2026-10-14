@@ -1475,3 +1475,13 @@ on near-zero plant covers first failed on a too-small denominator (relative erro
 quantity's 90th-percentile size. Side check: the original's soil capacity, which the daily model reads, changes by a
 median 0.1–0.2 % over the century. Restored a STATE table row truncated since ad20c27a. Launched three one-input arms
 (leaf area / vegetation carbon / cover from the map, rest original) to attribute the increment.
+
+## 2026-10-14 (later) — stand-map attribution: cover dominates every flux, not only ET (ADR 0338)
+
+Jobs 2483470–72 (`PD_L`/`PD_V`/`PD_C`) completed; scored with `scripts/f2_relative_score.py` then the new
+`scripts/f2_stand_attribution.py`. Median share of ADR 0337's added error: cover 0.70/0.89/0.87/0.57 (GPP/NPP/ET/
+runoff), leaf area 0.34/0.10/0.20/0.45, vegetation carbon 0.16/0.12/0.08/0.13 — under the pre-registered 0.2 ceiling
+everywhere, and additivity holds (pooled median sum 1.19). The ET guess (cover dominates) was right; the GPP/NPP guess
+(leaf area dominates) was wrong — cover dominates those too. Falsifier (`s_V` ≥ 0.3, read as the median) did not fire,
+though individual (leg, window) values reach 0.60. Decision: improve the per-type cover component of the stand map
+first, before leaf area or vegetation carbon.

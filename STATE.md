@@ -38,15 +38,15 @@
    place only. Its scores and the run-to-run noise they carry: ADR 0336 §6 (one ensemble's typical error moves
    ±9–20 % per leg between seeds). **Owner question (ADR 0336 §6):** more members would cut that noise but multiply
    the daily model's cost (6.4e-3 core-s per cell-year at five members), against the speed goal.
-2. **Running now (ADR 0338, pre-registered): which stand input carries the emulated stand's added error.** Arm D with
-   ONE stand group from the stand map, the rest from the original: `PD_L` (leaf area), `PD_V` (vegetation carbon),
-   `PD_C` (cover of the 10 plant types); jobs 2483470–72 (GPU, ~80 min each; C starts after L/V). Harness (all twelve
-   through `--only` = the full emulated stand) exact. **To collect:**
-   `python scripts/f2_relative_score.py PD_A PD_B PD_L PD_V PD_C > DATA/f2/runs/relative_score_PDattr_ADR0338.md`, then
-   the shares `s_X = (X÷A − 1)/(B÷A − 1)` where `B÷A − 1 ≥ 0.10` (ADR 0338 §2; `f2_relscore_compare.py` gives the
-   ratios), apply the decision rule of §3, append the result to ADR 0338. Then: improve the stand map on the group that
-   carries ET's increment (ADR 0337 §4: ET adds ×1.35 median, the worst).
-   **Done 2026-10-14:** phase B with arm D (ADR 0337 §4, FAIL as pre-registered, falsifier fired on IPSL ssp370/585
+2. **Done 2026-10-14 (ADR 0338): cover carries most of the emulated stand's added error — on every flux, not only
+   ET.** Jobs 2483470–72 (`PD_L`/`PD_V`/`PD_C`) scored with `scripts/f2_stand_attribution.py`: median share `s_C` =
+   0.70 (GPP) / 0.89 (NPP) / 0.87 (ET) / 0.57 (runoff); leaf area secondary (0.10–0.45); vegetation carbon minor
+   everywhere (0.08–0.16, under the pre-registered 0.2 ceiling); additivity holds (pooled median sum 1.19); the
+   `s_V ≥ 0.3` falsifier did not fire. The pre-registered guess that leaf area would dominate GPP/NPP was wrong — cover
+   dominates those too. **Next:** improve the per-type cover component of the stand map (e.g. learn it as its own
+   target with a relative error measure, or constrain the ten covers to sum to the stand total), then re-run phase B
+   (ADR 0337's harness) to see whether it narrows the FAIL from item 1's deployment check.
+   **Also done 2026-10-14:** phase B with arm D (ADR 0337 §4, FAIL as pre-registered, falsifier fired on IPSL ssp370/585
    late GPP ×1.58/×1.74) and the end-to-end timing (§5, `scripts/bench_coupled_speed.py`, 6.55e-3).
 3. **Closed 2026-10-13 (ADR 0334 §4): arms L and V both null.** The hemisphere-aware season input did not move the
    southern respiration excess or the June–September GPP swing (it grew 7–9 %) and worsened test-climate GPP by
