@@ -58,6 +58,13 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #     equator sin/cos of the day are negated = half a year); default `calendar` reproduces every older run.
 #     CLOSED as null (ADR 0334 §4): the southern GPP swing persists with it, test-climate GPP 10-19 % worse.
 #     So is --nsamp 80000000 (NPP -4 %, inside the null band). Keep `calendar`, 40 M.
+# 2f. PHASE B (the daily model fed the structure emulator's stand, ADR 0331/0337): stand fits per held-out climate
+#     model and unseen run (`explore_panel_stand_map.py fit --g <model> --hold k`, k=1..3; hold 4 = default) ->
+#     `arrays --legs ... --stand-dir stand_emul` (+ `--copy-only --stand-dir stand_orig` = the harness arm) ->
+#     `f2_train.py --ensemble <members> ... --stand-dir stand_emul`. `arrays --only lai_stand` (or vegc, fpc1..fpc10)
+#     takes only those quantities from the map (ADR 0338 attribution). Deployment model with the emulated stand
+#     (ADR 0337): GPP 2.0-2.9x, ET 2.1-3.9x, NPP 3.3-4.6x, runoff 3.9-7.7x a second run; the stand adds 13-35 %.
+#     Pairwise verdict arithmetic: python scripts/f2_relscore_compare.py <score.md> REF CAND [--exclude=ctl_obs].
 # 3. read DATA/runs/<tag>/summary.md (+ summary.json: pass flags, per-cell response, bucket diagnostics)
 ```
 Re-score saved annual totals without a model: `import f2_train as F; F.score(ann, cells_df)` with `ann` from

@@ -86,14 +86,13 @@ def stand_s0() -> pl.DataFrame:
         [(pl.col(f"s0_{q}") - pl.col(f"hm_{q}")).alias(f"memoff_{q}") for q in SQ]).drop([f"hm_{q}" for q in SQ])
 
 
-def stage_fit(a) -> None:
-    import lightgbm as lgb
-
-    g = a.g
-    if a.hold != 4:  # leave-one-RUN-out for phase B: the unseen run is a.hold, every other run trains
-        YD.TRUTH, YD.TRAIN_M = a.hold, tuple(m for m in PP.MEMBERS if m != a.hold)
+def build_rows(g: str, hold: int = 4) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The training rows (runs YD.TRAIN_M x the other climate models' legs x YD.TRAIN_YEARS) and the test rows (runs
+    YD.TRUTH and YD.SECOND x model g's three legs x every year) with every feature and anchor of the structure map
+    (YD.QS) AND the stand map (SQ). Shared by stage_fit and scripts/bench_coupled_speed.py."""
+    if hold != 4:  # leave-one-RUN-out for phase B: the unseen run is `hold`, every other run trains
+        YD.TRUTH, YD.TRAIN_M = hold, tuple(m for m in PP.MEMBERS if m != hold)
     log(f"{g}: unseen run m{YD.TRUTH}, training runs {YD.TRAIN_M}")
-    os.makedirs(OUT, exist_ok=True)
     test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
     train_legs = [lg for lg in A7.ALL_SLEGS if A7.gcm_of(lg) != g]
     t0 = time.time()
@@ -141,7 +140,21 @@ def stage_fit(a) -> None:
     tr = rows.filter(pl.col("member").is_in(YD.TRAIN_M))
     te = rows.filter(pl.col("member").is_in([YD.TRUTH, YD.SECOND]))
     log(f"{g}: train rows {tr.height}, test rows {te.height} ({time.time() - t0:.0f}s)")
-    f = YD.feats() + [f"{k}_{q}" for q in SQ for k in ("anc", "s0", "memoff")]
+    return tr, te
+
+
+def stand_feats() -> list[str]:
+    return YD.feats() + [f"{k}_{q}" for q in SQ for k in ("anc", "s0", "memoff")]
+
+
+def stage_fit(a) -> None:
+    import lightgbm as lgb
+
+    g = a.g
+    os.makedirs(OUT, exist_ok=True)
+    tr, te = build_rows(g, a.hold)
+    t0 = time.time()
+    f = stand_feats()
     out = te.select("member", "leg", "Cell", "Year", pl.col("anc_n_per_patch"), *[pl.col(f"anc_{q}") for q in SQ])
     for q in SQ:
         t = tr.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
@@ -180,11 +193,15 @@ def stage_arrays(a) -> None:
             j = grid.join(P.select("Cell", "Year", *SQ), on=["Cell", "Year"], how="left")
             v = j.select(SQ).to_numpy().reshape(len(cells), 81, len(SQ))
             miss = ~np.isfinite(v)
+            if a.only:  # attribution (ADR 0338): only these stand quantities from the map, the rest the original's
+                keep = np.array([q not in a.only.split(",") for q in SQ])
+                miss = miss | keep[None, None, :]
             new = src.copy()
             new[:, 1:, :] = np.where(miss, src[:, 1:, :], v).astype(np.float32)
             np.save(os.path.join(od, f"stand_m{k}_{dleg}.npy"), new)
-            log(f"{dleg} m{k}: replaced {int((~miss).sum())} values, kept the original's in {int(miss.sum())}; "
-                f"leaf area mean {src[:, 1:, 0].mean():.3f} -> {new[:, 1:, 0].mean():.3f}")
+            log(f"{dleg} m{k} [{a.only or 'all'}]: replaced {int((~miss).sum())} values, "
+                f"kept the original's in {int(miss.sum())};"
+                f" leaf area mean {src[:, 1:, 0].mean():.3f} -> {new[:, 1:, 0].mean():.3f}")
 
 
 def scored(d: pl.DataFrame) -> pl.DataFrame:
@@ -277,6 +294,7 @@ def main():
     ap.add_argument("--legs", default="mpi-esm1-2-hr_ssp585,ukesm1-0-ll_ssp370", help="arrays: daily-model leg names")
     ap.add_argument("--stand-dir", dest="stand_dir", default="stand_emul", help="arrays: subdir of the f2 data dir")
     ap.add_argument("--copy-only", dest="copy_only", action="store_true", help="arrays: harness, copy the original")
+    ap.add_argument("--only", default="", help="arrays: comma list of stand quantities (SQ names) taken from the map")
     a = ap.parse_args()
     {"fit": stage_fit, "score": stage_score, "arrays": stage_arrays}[a.stage](a)
     log("=== DONE")
