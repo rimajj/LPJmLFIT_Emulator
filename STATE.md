@@ -44,6 +44,17 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-15 (evening) — why the emulated stand responds too evenly on unseen cells (ADR 0343): sample size.**
+On cells it trained on, the stand map follows the original's leaf-area / tree-cover response nearly as well under
+an unseen climate model as a seen one; on the 20 % held-out cells its error is 1.82× / 2.20× a second run's.
+Four one-change arms (larger leaves, no coordinates, the cell's own historical sensitivity, its own 1990–2019
+trend) all null (±5 %). Learning curve 135 → 269 → 539 training cells: error falls ~6–12 % per doubling, so
+the clustered design (674 regions) is the limit; a full-grid training set (as ADR 0341) never meets an unseen
+cell. Scripts: `clu_emu_maps.py` arms `m2_*`, `summarize_clu_arms.py`.
+**Next (owner to choose):** repeat the warming-response proof with training on many more cells (full-grid
+nitrogen-on run, or the distributed 1-patch clustering); the damping of the largest warming losses (ADR 0342 §8);
+or deploy (CO2 input in the `landemu` package does not exist yet).
+
 **2026-10-15 — warming-response proof on clustered nitrogen-on runs: DONE, not passed as pre-registered (ADR 0342
 §7–8).** Original = merged LPJmL-FIT nitrogen on, transient CO2, 674 cells × 25 patches; 10 climate models × 3 SSPs
 + CO2-fixed twins; held out MPI-ESM1-2-HR + IPSL-CM6A-LR and 20 % of cells; seed 3 = second run (skill

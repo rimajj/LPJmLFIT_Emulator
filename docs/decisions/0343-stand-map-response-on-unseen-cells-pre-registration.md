@@ -100,6 +100,31 @@ runs; extrapolate the step per doubling. If half → full gains < 5 %, more cell
 and the information is missing from the inputs (e.g. soil / state detail a region-mean cell does not carry).
 **Expectation:** quarter → half −10 to −15 %, half → full −5 to −10 % (diminishing).
 
-## 8. Results of §7
+## 8. Results of §7 (jobs 2510785–91)
 
-(added after the run)
+Held-out-cell error relative to a second run (median of the 8 test legs), by number of training cells:
+
+| training cells | leaf area | tree cover | veg. carbon |
+|---|---|---|---|
+| 135 (`m2_quarter`) | 2.22 | 2.60 | 1.03 |
+| 269 (`m2_half`) | 2.07 (−6.9 %) | 2.34 (−10.0 %) | 1.01 (−2.7 %) |
+| 539 (`main2`) | 1.82 (−11.9 %) | 2.20 (−6.3 %) | 0.90 (−10.4 %) |
+
+**Reading against §7:** in between the two stated outcomes. Error still falls with every doubling (−6 to −12 %,
+not diminishing for leaf area), so more training cells DO help; but neither quantity fell ≥ 10 % on both steps.
+Extrapolating ~−9 % per doubling, reaching 1.2× a second run for leaf area (1.5× for tree cover) needs ~4.5 more
+doublings, i.e. ~12 000 training regions — the scale of a full-grid training set, not of a denser clustering
+(one split, one seed: the per-step numbers carry a few per cent of noise). Expectation (quarter → half −10 to
+−15 %, half → full −5 to −10 %): partly wrong — the gain did not diminish for leaf area.
+
+## 9. Conclusion
+
+1. The stand map's weak response on unseen cells is not memorisation (`m2_leaf`), not coordinates (`m2_nogeo`), and
+   not fixable from the cell's own historical behaviour (`m2_sens`, `m2_trend`) — all within ±5 %.
+2. It is a sample-size effect: 539 region-cells are too few examples of how a place responds; the error falls
+   ~6–12 % per doubling of training cells.
+3. Consequence for deployment: an emulator trained on a full-grid run of the original (as ADR 0341, every land cell
+   in training, scenarios held out) never meets an unseen cell on that grid, so this miss does not apply to it;
+   it applies to an emulator trained on clustered runs and then run on the full grid. The warming-response proof of
+   ADR 0342 should therefore be repeated with training on many more cells (a full-grid nitrogen-on run, or the
+   distributed 1-patch clustering with thousands of cells) if it is to support a global deployment.

@@ -1521,3 +1521,13 @@ per-cell slope (also failed by the original's second run for vegetation carbon; 
 stand). Added after seeing results, pre-registered each time: a warming-only test on the held-out models (IPSL loss
 0.57–0.67 of the original's) and arm `main2` with CO2-fixed twins of every scenario (0.72; expectation ≥ 0.75 not
 met). Skill `response-proof-clustered`.
+
+## 2026-10-15 (evening) — stand map on unseen cells: four null arms, then a learning curve (ADR 0343)
+
+Owner: "continue". Wrote up the post-test finding of the results page (damping is a cell effect, not a
+climate-model effect) as ADR 0343 and pre-registered four one-change arms off `main2`: min 20 000 rows per leaf,
+no lat/lon/soil, per-cell historical sensitivity (detrended regression on temperature / water balance), per-cell
+1990–2019 trend. Features checked reproducible across seeds before training (r 0.67–0.95 for leaf area / cover).
+All four null (held-out error −3 … +5 %); falsifier fired. Amendment before running: learning curve with half
+and a quarter of the training cells — error falls 6–12 % per doubling, i.e. a sample-size limit of the 674-region
+design; extrapolation ~12 000 regions for 1.2× a second run. New `scripts/summarize_clu_arms.py`.

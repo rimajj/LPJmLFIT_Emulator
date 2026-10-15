@@ -24,6 +24,13 @@ Results: `clu_non/eval/response_maps.csv` (maps; cand main / wrong / second / pe
 Every stage skips outputs that exist, so adding legs = submit legs, then re-chain targets/build/predict/score
 (move `preds.parquet` / `response_maps.csv` to a `_v<n>` name first — never overwrite).
 
+## Map arms (ADR 0343)
+`clu_emu_maps.py` `ARM_CFG`: per-arm LightGBM params, dropped / added features (`SENS_F`, `TREND_F` from
+`hist_response()` = the cell's own 1990–2019 historical behaviour) and `cell_mod` (train on every k-th training
+cell). Add an arm there, `train --arm X` → `predict --arm X` → move `response_maps.csv` to `_v<n>` → `score` →
+`python scripts/summarize_clu_arms.py` (median held-out / all-cell error vs the second run + the 0343 decision).
+Held-out cells, not held-out climate models, set the stand error (ADR 0343): judge any map change there.
+
 ## Traps
 * **Scratch-test the chain on the first finished leg before trusting it** (monkeypatch `M.OUT`/`F.F2N` to `/p/tmp`,
   `M.all_legs` to one leg). It caught three bugs on 2026-10-15 that would each have killed the chain silently —
