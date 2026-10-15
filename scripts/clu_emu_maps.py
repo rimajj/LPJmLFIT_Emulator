@@ -293,14 +293,56 @@ def anchors(seed):
 
 
 # ------------------------------------------------------------------------------------------------ train / predict
-def feats_struct():
+HR_Q = ["lai_stand", "fpc_tree", "vegc"]  # ADR 0343: quantities whose historical behaviour is a feature
+
+
+def hist_response(seed):
+    """Per-cell features from the seed's OWN 1990-2019 historical run (ADR 0343 sec. 2): for each HR_Q quantity the
+    regression coefficients of the detrended yearly value on detrended yearly tmean_ann and cwb_ann (sens_*), the
+    detrended standard deviation (sd_*) and the linear trend per year (trend_*)."""
+    h = with_derived(targets(seed, "hist")).filter(pl.col("Year").is_between(H0, H1)).sort("Cell", "Year")
+    cl = pl.read_parquet(f"{OUT}/climate/hist.parquet").filter(pl.col("Year").is_between(H0, H1)) \
+        .select("Cell", "Year", "tmean_ann", "cwb_ann")
+    d = h.join(cl, on=["Cell", "Year"], how="left").sort("Cell", "Year")
+    n, ny = cells().height, H1 - H0 + 1
+    assert d.height == n * ny, (d.height, n * ny)
+    t = np.arange(ny, dtype=np.float64) - (ny - 1) / 2.0
+    P = np.column_stack([np.ones(ny), t])  # detrend basis
+
+    def resid(a):  # (n, ny) -> residual of a per-cell linear fit, and the slope
+        a = np.where(np.isfinite(a), a, np.nanmean(a, axis=1, keepdims=True))
+        a = np.nan_to_num(a)
+        coef = np.linalg.lstsq(P, a.T, rcond=None)[0]  # (2, n)
+        return a - (P @ coef).T, coef[1]
+
+    xt, _ = resid(d["tmean_ann"].to_numpy().reshape(n, ny))
+    xw, _ = resid(d["cwb_ann"].to_numpy().reshape(n, ny))
+    out = {"Cell": d["Cell"].to_numpy().reshape(n, ny)[:, 0]}
+    for q in HR_Q:
+        r, tr = resid(d[q].cast(pl.Float64).to_numpy().reshape(n, ny))
+        bt, bw = np.zeros(n), np.zeros(n)
+        for i in range(n):
+            X = np.column_stack([xt[i], xw[i]])
+            if np.all(np.std(X, axis=0) > 0):
+                bt[i], bw[i] = np.linalg.lstsq(X, r[i], rcond=None)[0]
+        out.update({f"sens_{q}_t": bt, f"sens_{q}_w": bw, f"sd_{q}": r.std(axis=1), f"trend_{q}": tr})
+    return pl.DataFrame(out).with_columns(pl.col("Cell").cast(pl.Int32))
+
+
+SENS_F = [f"{k}_{q}{s}" for q in HR_Q for k, s in (("sens", "_t"), ("sens", "_w"), ("sd", ""))]
+TREND_F = [f"trend_{q}" for q in HR_Q]
+
+
+def feats_struct(arm="main"):
     c = clim_cols()
-    return (c + [f"dclim_{x}" for x in c] + ["co2_win", "dco2_win"] + [f"anc_{q}" for q in struct_q()]
-            + ["lat", "lon", "soil_code"])
+    cfg = ARM_CFG.get(arm, {})
+    f = (c + [f"dclim_{x}" for x in c] + ["co2_win", "dco2_win"] + [f"anc_{q}" for q in struct_q()]
+         + ["lat", "lon", "soil_code"] + cfg.get("add", []))
+    return [x for x in f if x not in cfg.get("drop", [])]
 
 
-def feats_stand():
-    return feats_struct() + [f"anc_{q}" for q in stand_q()]
+def feats_stand(arm="main"):
+    return feats_struct(arm) + [f"anc_{q}" for q in stand_q()]
 
 
 def rows_for(seed, legs, years_hist, years_fut, with_targets=True):
@@ -322,7 +364,8 @@ def rows_for(seed, legs, years_hist, years_fut, with_targets=True):
             w = w.join(tg.filter(pl.col("Year").is_in(yrs)), on=["Cell", "Year"], how="left")
         parts.append(w.with_columns(pl.lit(name).alias("leg")))
     d = pl.concat(parts, how="diagonal_relaxed")
-    d = d.join(anc, on="Cell", how="left").join(acl, on="Cell", how="left").join(st, on="Cell", how="left")
+    d = d.join(anc, on="Cell", how="left").join(acl, on="Cell", how="left").join(st, on="Cell", how="left") \
+        .join(hist_response(seed), on="Cell", how="left")
     d = d.with_columns([(pl.col(x) - pl.col(f"aclim_{x}")).alias(f"dclim_{x}") for x in c]
                        + [(pl.col("co2_win") - pl.col("aco2")).alias("dco2_win")])
     return d.drop([f"aclim_{x}" for x in c] + ["aco2"])
@@ -332,6 +375,13 @@ ARMS = {"main": [(g, t) for g in TRAIN_GCMS for t in SSPS + ["ssp370co2fix"]],
         "wrong": [(g, "ssp126") for g in TRAIN_GCMS],
         # ADR 0342 sec. 6b: + the CO2-fixed twins of every scenario (warming separated from CO2)
         "main2": [(g, t) for g in TRAIN_GCMS for s in SSPS for t in (s, f"{s}co2fix")]}
+# ADR 0343: one change each from main2 (why the response is worse on unseen cells)
+ARM_CFG = {"m2_leaf": dict(params=dict(min_data_in_leaf=20000)),
+           "m2_nogeo": dict(drop=["lat", "lon", "soil_code"]),
+           "m2_sens": dict(add=SENS_F),
+           "m2_trend": dict(add=TREND_F)}
+for _a in ARM_CFG:
+    ARMS[_a] = ARMS["main2"]
 
 
 def stage_train(a):
@@ -348,7 +398,9 @@ def stage_train(a):
     tr = tr.filter(~pl.col("Cell").is_in(ho))
     log(f"arm {a.arm}: {tr.height} rows, legs {tr['leg'].n_unique()} ({time.time() - t0:.0f}s)")
     params = dict(A7.PARAMS, num_threads=int(os.environ.get("SLURM_CPUS_PER_TASK", "16")))
-    fs, fx = feats_struct(), feats_stand()
+    params.update(ARM_CFG.get(a.arm, {}).get("params", {}))
+    fs, fx = feats_struct(a.arm), feats_stand(a.arm)
+    log(f"arm {a.arm}: {len(fs)} structure / {len(fx)} stand features; params {params}")
     log_eps = {"agb_per_stem": 1.0}
     nrows = {}
     for q in struct_q() + stand_q():
@@ -426,7 +478,7 @@ def stage_score(a):
     dense = anc2["anc_n_per_patch"].to_numpy() >= 5.0
     h2, h3 = with_derived(targets(2, "hist")), targets(3, "hist")
     h3 = with_derived(h3) if h3 is not None else None
-    arms = [x for x in ("main", "main2", "wrong") if os.path.exists(f"{OUT}/maps/{x}/preds.parquet")]
+    arms = [x for x in ARMS if os.path.exists(f"{OUT}/maps/{x}/preds.parquet")]
     preds = {x: with_derived(pl.read_parquet(f"{OUT}/maps/{x}/preds.parquet")) for x in arms}
     rows = []
     for g in TEST_GCMS:
