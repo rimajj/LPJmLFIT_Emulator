@@ -68,6 +68,38 @@ Per arm, over the 8 test legs (MPI-ESM1-2-HR, IPSL-CM6A-LR × ssp370, ssp585, ss
 The daily model, the structure-map quantities' scoring, ADR 0342's results and verdict. If an arm helps, its stand
 is fed through the daily model (as ADR 0342 §7.3 `NC_B3`) in a separate, stated step.
 
-## 6. Results
+## 6. Results (2026-10-15, jobs 2510636–44; `scripts/summarize_clu_arms.py`)
+
+Median over the 8 test legs of the per-cell error relative to a second run:
+
+| arm | leaf area, held-out cells | tree cover, held-out | veg. carbon, held-out | leaf area / tree cover / veg. carbon, all cells |
+|---|---|---|---|---|
+| `main2` (baseline) | 1.82 | 2.20 | 0.90 | 1.11 / 1.24 / 0.70 |
+| `m2_leaf` | 1.86 (+2.0 %) | 2.13 (−2.8 %) | 0.93 | 1.24 / 1.37 / 0.78 |
+| `m2_nogeo` | 1.78 (−2.4 %) | 2.13 (−2.9 %) | 0.92 | 1.09 / 1.22 / 0.71 |
+| `m2_sens` | 1.91 (+4.9 %) | 2.27 (+3.4 %) | 0.92 | 1.13 / 1.27 / 0.70 |
+| `m2_trend` | 1.90 (+4.3 %) | 2.19 (−0.4 %) | 0.91 | 1.13 / 1.24 / 0.70 |
+| second run | 1 | 1 | 1 | 1 |
+
+Held-out per-cell r (leaf area): `main2` 0.79, arms 0.74–0.81; second run 0.94.
+
+**No arm helps** (none reaches −15 %, none even −5 %). `m2_leaf` makes the training cells worse (+0.13 all-cell)
+without helping unseen ones, so memorisation is not the cause; coordinates neither help nor hurt; the expectations
+for `m2_sens` (−10 to −20 %) and `m2_trend` (≥ −15 %) were wrong. **The §4 falsifier fired:** the per-cell
+information that sets the response is not in the historical run's yearly behaviour either (the features themselves
+are reproducible: r 0.67–0.95 between seeds 2 and 3 for leaf area / tree cover). Per §4 the next lever is more
+training cells — §7 checks whether that can work before any new run of the original is made.
+
+## 7. Amendment (2026-10-15, written after §6, before the runs it governs): learning curve in training cells
+
+Arms `m2_half` and `m2_quarter` = `main2` trained on the training cells with `Cell % 2 == 0` (≈ 270) and
+`Cell % 4 == 0` (≈ 135); everything else identical; scored on the same 135 held-out cells.
+**Reading, stated before:** if held-out error falls by ≥ 10 % from quarter → half AND from half → full (539 cells),
+error is still falling with cell count and a denser clustering (more training regions) is worth new original-model
+runs; extrapolate the step per doubling. If half → full gains < 5 %, more cells of this kind will not close the gap
+and the information is missing from the inputs (e.g. soil / state detail a region-mean cell does not carry).
+**Expectation:** quarter → half −10 to −15 %, half → full −5 to −10 % (diminishing).
+
+## 8. Results of §7
 
 (added after the run)

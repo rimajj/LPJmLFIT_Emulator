@@ -379,7 +379,9 @@ ARMS = {"main": [(g, t) for g in TRAIN_GCMS for t in SSPS + ["ssp370co2fix"]],
 ARM_CFG = {"m2_leaf": dict(params=dict(min_data_in_leaf=20000)),
            "m2_nogeo": dict(drop=["lat", "lon", "soil_code"]),
            "m2_sens": dict(add=SENS_F),
-           "m2_trend": dict(add=TREND_F)}
+           "m2_trend": dict(add=TREND_F),
+           # ADR 0343 sec. 7: learning curve in the number of training cells
+           "m2_half": dict(cell_mod=2), "m2_quarter": dict(cell_mod=4)}
 for _a in ARM_CFG:
     ARMS[_a] = ARMS["main2"]
 
@@ -396,6 +398,9 @@ def stage_train(a):
     tr = rows_for(2, ARMS[a.arm], list(range(H0, H1 + 1, 2)), list(range(F0, F1 + 1, 2)))
     ho = cells().filter(pl.col("heldout"))["Cell"].to_list()
     tr = tr.filter(~pl.col("Cell").is_in(ho))
+    k = ARM_CFG.get(a.arm, {}).get("cell_mod", 1)
+    tr = tr.filter(pl.col("Cell") % k == 0)
+    log(f"arm {a.arm}: {tr['Cell'].n_unique()} training cells")
     log(f"arm {a.arm}: {tr.height} rows, legs {tr['leg'].n_unique()} ({time.time() - t0:.0f}s)")
     params = dict(A7.PARAMS, num_threads=int(os.environ.get("SLURM_CPUS_PER_TASK", "16")))
     params.update(ARM_CFG.get(a.arm, {}).get("params", {}))
