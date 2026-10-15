@@ -89,6 +89,21 @@ climate); the "wrong-data" control fails as stated; GPP's CO2 response is the ri
 it is identified separately from warming; the daily model's typical-cell fluxes will still be 2–4× a second run
 (ADR 0340) without spoiling the response.
 
+## 6a. Amendment before the result it governs (2026-10-15, 16:40): the warming-only held-out test
+
+Written after §7's rising-CO2 results were seen, **before** the runs below existed. Reason: with rising CO2 the
+original's vegetation-carbon change is dominated by CO2 fertilisation (+22 … +45 %), while the owner's motivating
+failure (Billing's runs, ADR 0341) is a constant-CO2 warming LOSS. The CO2-fixed twins of §1 exist only for the 8
+training climate models, where the original loses −9 … −15 % (GFDL, UKESM, CanESM5, both CNRM) under ssp370 — so the
+warming-only response has so far been seen only in-sample.
+
+* **Runs:** MPI-ESM1-2-HR and IPSL-CM6A-LR × ssp370 and ssp585, CO2 fixed at 2019 (409.63 ppm), seeds 2 and 3 (8
+  legs, `clu_emu_runs.sh legs <seed> "<gcm>" "<ssp>" fixed`). Nothing is retrained: the §3 models predict them.
+* **Measures:** §4 on these four legs, for vegetation carbon (maps) and GPP (daily model, original stand AND emulated
+  stand), and the wrong-data control.
+* **Rule:** the §6 rule applied unchanged, reported as its own verdict. Expectation: the global loss is reproduced
+  within ±25 % on ssp370 (the case Billing's emulator got at one third of the original's loss).
+
 ## 7. Results
 
 (added after the run)
