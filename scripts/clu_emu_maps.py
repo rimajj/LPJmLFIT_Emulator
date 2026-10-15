@@ -89,7 +89,7 @@ FIX_TEST = ["ssp370co2fix", "ssp585co2fix"]  # ADR 0342 sec. 6a: warming-only le
 
 
 def all_legs():
-    return ([(g, s) for g in GCMS for s in SSPS] + [(g, "ssp370co2fix") for g in TRAIN_GCMS]
+    return ([(g, s) for g in GCMS for s in SSPS] + [(g, f"{s}co2fix") for g in TRAIN_GCMS for s in SSPS]
             + [(g, t) for g in TEST_GCMS for t in FIX_TEST])
 
 
@@ -329,7 +329,9 @@ def rows_for(seed, legs, years_hist, years_fut, with_targets=True):
 
 
 ARMS = {"main": [(g, t) for g in TRAIN_GCMS for t in SSPS + ["ssp370co2fix"]],
-        "wrong": [(g, "ssp126") for g in TRAIN_GCMS]}
+        "wrong": [(g, "ssp126") for g in TRAIN_GCMS],
+        # ADR 0342 sec. 6b: + the CO2-fixed twins of every scenario (warming separated from CO2)
+        "main2": [(g, t) for g in TRAIN_GCMS for s in SSPS for t in (s, f"{s}co2fix")]}
 
 
 def stage_train(a):
@@ -424,7 +426,7 @@ def stage_score(a):
     dense = anc2["anc_n_per_patch"].to_numpy() >= 5.0
     h2, h3 = with_derived(targets(2, "hist")), targets(3, "hist")
     h3 = with_derived(h3) if h3 is not None else None
-    arms = [x for x in ("main", "wrong") if os.path.exists(f"{OUT}/maps/{x}/preds.parquet")]
+    arms = [x for x in ("main", "main2", "wrong") if os.path.exists(f"{OUT}/maps/{x}/preds.parquet")]
     preds = {x: with_derived(pl.read_parquet(f"{OUT}/maps/{x}/preds.parquet")) for x in arms}
     rows = []
     for g in TEST_GCMS:
