@@ -21,10 +21,20 @@ python scripts/run_emulator.py --release <dir> --run 1 --leg ukesm1-0-ll_ssp370 
 ```
 Legs are the f2 array names (`*_daily` for GFDL/IPSL/MRI). Measured: 7.5e-3 core-s per cell-year.
 
+## Global (full-grid) retrain + run on Billing's runs (ADR 0341)
+`scripts/glob_emu.py` stages `static → yearly/stand <scen> → train --fold {none,ssp126,ssp245,ssp370} → prep →
+runall --scen historical (then each ssp) → assemble --scen → layout → score`; data
+`/p/projects/open/Jamir/esm_land_emulator_data/global_emu/`. Anchor = the cell's own 1985–2014 state (constant),
+leave-one-scenario-out folds; daily model = release v1's (these runs have no daily output). `runall` = 64 one-core
+chunk processes on one `priority` node (~6 min historical, ~12 min per 86-yr leg). Benchmark with the lpjml-fit tools
+UNCHANGED: `scripts/glob_emu_bench.sh prep|lpjmlstats|ilamb|join` (converter `chunks:` source + `--unreduced`).
+
 ## Traps
 * A gate scaled by a 90th-percentile size fails falsely on snow change (~0 on most days): scale by the column's max.
 * `--check` structure/stand differences in rare cell-years are the training table's float32 0.1 °C scale counting
   exactly-30.0 °C days as hot (ADR 0340 §3), not a package error; daily fluxes must agree to ~1e-3.
+* **Set the one-thread BLAS limit BEFORE numpy is imported** when running many chunk processes on one node: set
+  inside `main()` it is too late and each process starts ~200 threads (load 1 000+ on 128 cores, 2× slower).
 * The anchors limit where it runs: setups exist only for the 1 050 panel cells and years 2020–2100.
 * Score the YEAR-BY-YEAR map (what ships) with `final_structure_score.py`, not the 30-yr window map's
   `explore_relaxed_standard.py` numbers.

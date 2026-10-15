@@ -57,6 +57,10 @@ OUT = "/p/projects/open/Jamir/esm_land_emulator_data/billing_global"
 GCM_MEMBERS = (2, 3, 4, 6, 7, 8, 9, 10)
 GCM_LEGS = (("historical", "h1985"), ("ssp126", "w2071"), ("ssp245", "w2071"), ("ssp370", "w2071"))
 REAN_MEMBERS = (1, 2, 3, 5, 6, 7)
+# The Oct-2026 re-run of GFDL-ESM4 r1_1 (all four legs, build "Oct  8 2026", 30-column `ind` layout; Billing moved
+# every earlier GFDL-ESM4 run into GCM/<scen>/GFDL-ESM4/old/ on 2026-10-09/12). Seed 1 is free: the earlier r1_1 was
+# excluded and never converted. Appended AFTER the reanalysis entries so every earlier array index stays valid.
+OCT_MEMBERS = (1,)
 
 cv.OUT_ROOT = f"{OUT}/ind"
 cv.DEV_ROOT = f"{OUT}/ind_dev"
@@ -93,11 +97,19 @@ def _entry(out: list, gcm: str, scen: str, seed: int, win: str, src: str) -> Non
 def manifest() -> list[dict]:
     out: list[dict] = []
     for m in GCM_MEMBERS:
-        for scen, win in GCM_LEGS:
-            _entry(out, "GFDL-ESM4", scen, m, win, f"{SRC}/GCM/{scen}/GFDL-ESM4/r1_{m}/output/ind.csv")
+        for scen, win in GCM_LEGS:  # moved by Billing to old/ (converted before the move)
+            _entry(out, "GFDL-ESM4", scen, m, win, f"{SRC}/GCM/{scen}/GFDL-ESM4/old/r1_{m}/output/ind.csv")
     for m in REAN_MEMBERS:
         _entry(out, "GSWP3-W5E5", "obsclim", m, "h1990", f"{SRC}/reanalysis/r1_{m}/output/ind.csv")
+    for m in OCT_MEMBERS:
+        for scen, win in GCM_LEGS:
+            _entry(out, "GFDL-ESM4", scen, m, win, f"{SRC}/GCM/{scen}/GFDL-ESM4/r1_{m}/output/ind.csv")
     return out
+
+
+def oct_layout(entry: dict) -> bool:
+    """True for members written by an Oct-2026 build (30-column `ind`)."""
+    return entry["gcm"] == "GSWP3-W5E5" or (entry["gcm"] == "GFDL-ESM4" and entry["seed"] in OCT_MEMBERS)
 
 
 cv.manifest = manifest
@@ -173,7 +185,7 @@ if __name__ == "__main__":
             print(m["idx"], m["member"], m["src"])
     elif stage == "run":
         idx = int(sys.argv[2])
-        if manifest()[idx]["gcm"] == "GSWP3-W5E5":
+        if oct_layout(manifest()[idx]):
             use_layout(COLS_OCT2026)
         sys.exit(cv.run(idx))
     elif stage == "collect":
