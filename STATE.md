@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0342**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0343**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -44,7 +44,20 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
-**2026-10-15: the emulator now runs GLOBALLY (ADR 0341).** Retrained (structure + stand maps) on Billing's Oct-2026
+**2026-10-15 (afternoon) — MAIN TASK (owner): prove the emulator learns + reproduces the warming response when trained
+on the right data (ADR 0342, pre-registered).** Original = merged LPJmL-FIT, nitrogen ON, no phosphorus, transient CO2
+(frozen snapshot `lpjml-fit-clustered/trees/nitrogen-on-ef38b509e`), 674-cell representative grid with 25 patches
+(`grids/k674_lowrank_hist_rep1_seed1`). Runs under `lpjml-fit-clustered/runs/emu-non-rep-s{2,3}[__<gcm>]`
+(`scripts/clu_emu_runs.sh`): both historical runs DONE (no balance errors); 38 seed-2 legs + 6 seed-3 legs submitted
+(~6 min each). Processing chain (`scripts/clu_emu_chain.sh`, jobs 2507097–2507113, logs `logs/emu-clu-*`) starts
+automatically: targets → maps train main/wrong → predict → emulated-stand arrays; f2 build → 5 GPU daily members (CO2
+input) → free runs NC_A (original stand) / NC_B (emulated stand) → `f2_non/runs/NC_{A,B}/response.csv`; maps score →
+`clu_non/eval/response_maps.csv`. Every stage was scratch-tested end to end on the first finished leg (three bugs
+fixed: NetCDF first year, per-tree dtypes, f2_train global SyntaxError). **Next: when NC_B + score-maps finish, apply
+the ADR 0342 §6 pass rule (vegc + GPP, MPI + IPSL, ssp370 + ssp585), fill §7, tell the owner in plain words.** Caveat
+to state: one Greenland ice cell (Cell 286, 1.7 % of the area weight) carries the model's 20 m snow cap.
+
+**Earlier on 2026-10-15: the emulator now runs GLOBALLY (ADR 0341).** Retrained (structure + stand maps) on Billing's Oct-2026
 GFDL-ESM4 r1_1 runs, anchored on each cell's own 1985–2014 state, leave-one-scenario-out; run on all 64 240 land cells
 (1985–2014 + three futures to 2100, 7.65e-3 core-s per cell-year); benchmarked with the lpjml-fit ILAMB + lpjmlstats
 tools on the full grid (`scripts/glob_emu.py`, `scripts/glob_emu_bench.sh`; data `esm_land_emulator_data/global_emu/`).
