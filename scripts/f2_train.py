@@ -729,6 +729,8 @@ def to_markdown(S, s1):
 
 
 def main():
+    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
+    global DATA, CO2_INPUT, NIN
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="A")
     ap.add_argument("--nsamp", type=int, default=40_000_000)
@@ -769,8 +771,6 @@ def main():
                     help="the year's CO2 as an input (ADR 0342; co2_<tag>.npy)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
-    global DATA, CO2_INPUT, NIN
     DATA, CO2_INPUT = a.data_dir, a.co2
     MEMBERS[:] = [int(k) for k in a.members.split(",")]
     if CO2_INPUT:
