@@ -309,9 +309,10 @@ def stage_score(a) -> None:
                                        drift_0330=mean_in(2081, 2100) / mean_in(2021, 2040),
                                        tot_late=mean_in(2071, 2100, "tot") * 100))
     Y = pl.concat(yr)
-    Y.write_csv(os.path.join(OUT, "stand_years.csv"))
+    msuf = "" if a.cover_mode == "additive" else f"_{a.cover_mode}"  # never overwrite the additive files
+    Y.write_csv(os.path.join(OUT, f"stand_years{msuf}.csv"))
     C = pl.DataFrame(cs)
-    C.write_csv(os.path.join(OUT, "stand_cases.csv"))
+    C.write_csv(os.path.join(OUT, f"stand_cases{msuf}.csv"))
     pl.Config.set_tbl_rows(100)
     pl.Config.set_tbl_cols(14)
     pl.Config.set_tbl_width_chars(220)

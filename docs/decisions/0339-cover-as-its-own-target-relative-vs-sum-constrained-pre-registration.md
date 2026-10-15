@@ -1,6 +1,6 @@
 # 0339 — Cover as its own target: relative error vs sum-constrained to a total (pre-registration)
 
-* **Status:** pre-registered 2026-10-14, before the runs.
+* **Status:** pre-registered 2026-10-14, before the runs. **Result recorded 2026-10-15 (§4): both methods null — the additive cover fit stays.**
 * **Depends on:** ADR 0338 (cover of the 10 plant types carries the largest median share of the stand map's added
   error on every flux — GPP 0.70, NPP 0.89, ET 0.87, runoff 0.57 — not only ET; the decision there was to improve
   cover next). ADR 0331 (the stand map; cover's own error on dense cells: tree 1.55×, grass 1.27× a second run).
@@ -70,6 +70,50 @@ References: `PD_A` (everything from the original), `PD_C` (cover additive, the c
 * **Falsifier:** either arm making a flux worse than `PD_C`'s by more than 1.1× (median) on half the legs ⇒ that
   cover-fitting method is actively harmful and should not be adopted, independent of the other arm's result.
 
-## 4. Result
+## 4. Result (recorded 2026-10-15)
 
-Pending.
+**Provenance.** All runs were made on 2026-10-14 by the session that wrote this record, but the result was never
+written down: stand fits `pc-<model>-h<k>-{rel,sum}` (40 jobs), arrays `PC_rel-arrays.2487182` /
+`PC_sum-arrays.2487183` into `f2/stand_cover_rel` / `f2/stand_cover_sum`, stand-level scores
+`logs/PC_{rel,sum}-standscore.out`, phase B `f2-PC_R.2487185` / `f2-PC_S.2487186` (`f2/runs/PC_R`, `PC_S`). ⚠ On
+2026-10-15 a later session, not knowing this, re-ran the 20 `relative` fits (jobs 2502421–40), which **overwrote
+`xpanel/eval/stand/preds_<g>[_h<k>]_relative.parquet` with refits** (multithreaded LightGBM is not bit-reproducible,
+so they are replicates, not the files phase B read; `stand_cover_rel/` still holds the arrays phase B read). The
+`sumconstrained` prediction files are the originals. Scored 2026-10-15 with `f2_relative_score.py PD_A PD_C PC_R
+PC_S` + `f2_relscore_compare.py` (13 climate-model legs, the observed-climate control leg excluded — it is
+identical in every arm).
+
+**Reading 1, stand map, dense cells, typical-cell cover error vs a second run (2071–2100, median of 15 cases):**
+
+| cover fit | tree cover | grass cover | tree drift mid→late | grass drift |
+|---|---|---|---|---|
+| additive (`PD_C`, ADR 0331) | **1.55** | **1.27** | 1.07 | 1.05 |
+| relative (`PC_R`) | 1.85 | 1.49 | 1.12 | 1.06 |
+| sum-constrained (`PC_S`) | 1.58 | 1.29 | 1.12 | 1.06 |
+
+Neither mode is below the additive fit on the stand-level filter (the log-ratio target is clearly worse: weighting
+small covers equally costs the large covers that carry the fluxes).
+
+**Reading 2, phase B (the decisive one), median over the 13 legs × 2 windows of the typical-cell flux error ratio:**
+
+| | GPP | NPP | ET | runoff |
+|---|---|---|---|---|
+| `PC_R` / `PD_C` | 1.026 | 1.015 | 1.060 | 1.048 |
+| `PC_S` / `PD_C` | 1.017 | 0.990 | 1.000 | 1.000 |
+| `PD_A` / `PD_C` (the floor: cover from the original) | 0.925 | 0.902 | 0.774 | 0.898 |
+| `PC_S` / `PD_A` | 1.109 | 1.139 | 1.295 | **1.093** |
+| `PD_C` / `PD_A` | 1.081 | 1.109 | 1.292 | 1.114 |
+
+Against the rule of §3:
+* **Improves cover** (below `PD_C` on ≥ 3 of 4 fluxes): `PC_R` 0 of 4, `PC_S` 1 of 4 (NPP 0.990) → **neither**.
+* **Closes the cover gap** (within 1.1× of `PD_A` on a flux): `PC_S` on runoff (1.093) — but `PD_C` itself is at
+  1.114 there and at 1.081 on GPP, so this is the existing fit's margin moved by 0.02, far inside the run-to-run
+  noise of ADR 0336 §6 (±9–20 % per leg). Not read as a closure.
+* **Falsifier** (worse than `PD_C` by > 1.1× on half the legs): `PC_R` exceeds 1.1 in ET on 7 of 26 (leg, window)
+  values and runoff on 6 of 26 — under half → **did not fire**; `PC_S` never.
+
+**Decision.** Keep the additive cover fit. The cover error remains the main share of what the emulated stand adds
+(ADR 0338), and neither changing the loss weighting nor constraining the type covers to a fitted total moves it.
+Both levers were cheap re-weightings of the same features; what the cover model lacks is information, not loss
+shape — the same limit as the structure map's (27–49 % of the per-cell response to an unseen climate explained,
+ADR 0329). Not pursued further in this round.
