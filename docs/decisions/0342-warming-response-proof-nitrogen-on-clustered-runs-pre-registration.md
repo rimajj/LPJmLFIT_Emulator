@@ -207,7 +207,7 @@ emulator trained on Billing's constant-CO2 runs (ADR 0341) got 0.30 of the ssp37
 | the four rising-CO2 legs | +32 … +45 % | ratio 0.81–0.97 | 0.79–0.98 | | ±0.01 | ±0.01 |
 
 Leaf area on IPSL ssp585 fixed CO2: −30.6 → −35.8 % against the original's −41.9 % (second run −35.4 %); per-cell
-slopes of leaf area and tree cover +0.02 … +0.05 on the fixed-CO2 legs, unchanged on rising CO2. GPP with
+slopes of leaf area and tree cover +0.01 … +0.05 on the fixed-CO2 legs, unchanged on rising CO2. GPP with
 `main2`'s stand (`NC_B3`): global changes within 0.01 of `main`'s, slope 0.66–0.78, RMSE ratio 1.08–1.39.
 
 **Pre-stated expectation NOT met** (IPSL ratio 0.72 / 0.72 < 0.75) ⇒ by §6b the hypothesis is rejected as the whole

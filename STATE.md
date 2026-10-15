@@ -44,18 +44,17 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
-**2026-10-15 (afternoon) — MAIN TASK (owner): prove the emulator learns + reproduces the warming response when trained
-on the right data (ADR 0342, pre-registered).** Original = merged LPJmL-FIT, nitrogen ON, no phosphorus, transient CO2
-(frozen snapshot `lpjml-fit-clustered/trees/nitrogen-on-ef38b509e`), 674-cell representative grid with 25 patches
-(`grids/k674_lowrank_hist_rep1_seed1`). Runs under `lpjml-fit-clustered/runs/emu-non-rep-s{2,3}[__<gcm>]`
-(`scripts/clu_emu_runs.sh`): both historical runs DONE (no balance errors); 38 seed-2 legs + 6 seed-3 legs submitted
-(~6 min each). Processing chain (`scripts/clu_emu_chain.sh`, jobs 2507097–2507113, logs `logs/emu-clu-*`) starts
-automatically: targets → maps train main/wrong → predict → emulated-stand arrays; f2 build → 5 GPU daily members (CO2
-input) → free runs NC_A (original stand) / NC_B (emulated stand) → `f2_non/runs/NC_{A,B}/response.csv`; maps score →
-`clu_non/eval/response_maps.csv`. Every stage was scratch-tested end to end on the first finished leg (three bugs
-fixed: NetCDF first year, per-tree dtypes, f2_train global SyntaxError). **Next: when NC_B + score-maps finish, apply
-the ADR 0342 §6 pass rule (vegc + GPP, MPI + IPSL, ssp370 + ssp585), fill §7, tell the owner in plain words.** Caveat
-to state: one Greenland ice cell (Cell 286, 1.7 % of the area weight) carries the model's 20 m snow cap.
+**2026-10-15 — warming-response proof on clustered nitrogen-on runs: DONE, not passed as pre-registered (ADR 0342
+§7–8).** Original = merged LPJmL-FIT nitrogen on, transient CO2, 674 cells × 25 patches; 10 climate models × 3 SSPs
++ CO2-fixed twins; held out MPI-ESM1-2-HR + IPSL-CM6A-LR and 20 % of cells; seed 3 = second run (skill
+`response-proof-clustered`). Findings: warm-trained maps get 0.79–0.98 of the original's vegetation-carbon change
+(second run 0.61–0.89), ssp126-only maps 0.37–0.43 (Billing failure reproduced); per cell as close as a second run.
+Daily model with the original's stand: GPP change ±4 %, slope 0.92–0.99. Misses: emulated leaf area / cover respond
+too uniformly across cells (slope 0.73–0.83 vs 0.89–0.96) → GPP slope 0.66–0.79; warming-only (CO2-fixed) IPSL
+vegetation-carbon LOSS 0.72 of the original's even with CO2-fixed twins in training (arm `main2`; was 0.57–0.67).
+The slope ≥ 0.8 criterion is failed by the original's own second run (regression dilution) — fix the criterion.
+**Next (owner to choose):** stand map per-cell response; the damping of the largest losses; or deploy (CO2 input in
+the `landemu` package does not exist yet).
 
 **Earlier on 2026-10-15: the emulator now runs GLOBALLY (ADR 0341).** Retrained (structure + stand maps) on Billing's Oct-2026
 GFDL-ESM4 r1_1 runs, anchored on each cell's own 1985–2014 state, leave-one-scenario-out; run on all 64 240 land cells

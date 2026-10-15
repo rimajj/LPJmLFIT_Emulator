@@ -1510,3 +1510,14 @@ threads must be limited before numpy loads (200 threads per process), and slab-b
 chunks rewrote ~60× the file size. A pre-registered "second realisation" (output_transient vs output 2071–2100)
 turned out identical on 92 % of cells — withdrawn. Results in ADR 0341 §6. Owner also asked for an output wish list
 for Billing's next runs (given in chat).
+
+## 2026-10-15 (late afternoon) — warming-response proof, nitrogen-on clustered runs (ADR 0342)
+
+Both historical runs (seeds 2/3) and 44 + 8 + 16 legs ran (~7 min each, 128 tasks). A scratch end-to-end test on the
+first finished leg caught three bugs the chain would have hit (NetCDF `days since` first year; per-tree dtype
+inference; an f2_train `global` SyntaxError from the CO2 change). Rising CO2: global vegetation-carbon change
+0.81–0.97 of the original, the ssp126-only control 0.37–0.43; GPP with the original's stand within ±4 %. Not passed:
+per-cell slope (also failed by the original's second run for vegetation carbon; real for GPP through the emulated
+stand). Added after seeing results, pre-registered each time: a warming-only test on the held-out models (IPSL loss
+0.57–0.67 of the original's) and arm `main2` with CO2-fixed twins of every scenario (0.72; expectation ≥ 0.75 not
+met). Skill `response-proof-clustered`.
