@@ -47,6 +47,8 @@ NFORC = 12
 NIN = NFORC + 3 + 4 + 12
 # --co2 (ADR 0342, nitrogen-on model only): + the year's CO2 / 1000 as the LAST input column
 CO2_INPUT = False
+# --all-cells (ADR 0344, deployment): the held-out cells train too (validation stays 10 % of the blocks)
+ALL_CELLS = False
 NH, NL = 64, 2  # network width / depth (set from the command line)
 NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
 FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4}  # raw daily forcing columns of x
@@ -325,6 +327,8 @@ def bucket_step(y, prec, W, S, D, cap):
 # ----------------------------------------------------------------------------------------------
 def split_cells(cells_df):
     ho = cells_df["heldout"].to_numpy()
+    if ALL_CELLS:
+        ho = np.zeros_like(ho)
     blocks = cells_df["block"].to_numpy()
     train_blocks = sorted(set(blocks[~ho].tolist()))
     val_blocks = set(train_blocks[3::10])  # 10 % of training blocks, never a held-out one
@@ -730,7 +734,7 @@ def to_markdown(S, s1):
 
 def main():
     global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
-    global DATA, CO2_INPUT, NIN
+    global DATA, CO2_INPUT, NIN, ALL_CELLS
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="A")
     ap.add_argument("--nsamp", type=int, default=40_000_000)
@@ -769,9 +773,11 @@ def main():
                     help="runs of the original, e.g. 2")  # fmt: skip
     ap.add_argument("--co2", action="store_true",
                     help="the year's CO2 as an input (ADR 0342; co2_<tag>.npy)")  # fmt: skip
+    ap.add_argument("--all-cells", dest="all_cells", action="store_true",
+                    help="no held-out cells: a deployment model (ADR 0344)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
-    DATA, CO2_INPUT = a.data_dir, a.co2
+    DATA, CO2_INPUT, ALL_CELLS = a.data_dir, a.co2, a.all_cells
     MEMBERS[:] = [int(k) for k in a.members.split(",")]
     if CO2_INPUT:
         NIN = NFORC + 3 + 4 + 12 + 1

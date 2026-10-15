@@ -384,6 +384,10 @@ ARM_CFG = {"m2_leaf": dict(params=dict(min_data_in_leaf=20000)),
            "m2_half": dict(cell_mod=2), "m2_quarter": dict(cell_mod=4)}
 for _a in ARM_CFG:
     ARMS[_a] = ARMS["main2"]
+# ADR 0344: the DEPLOYMENT maps -- main2's set-up on every climate model's every leg (rising + fixed CO2) and every
+# cell (no held-out cells); not scoreable out of sample by construction, its skill is main2's
+ARMS["deploy"] = all_legs()
+ARM_CFG["deploy"] = dict(all_cells=True)
 
 
 def stage_train(a):
@@ -396,8 +400,9 @@ def stage_train(a):
     os.makedirs(out, exist_ok=True)
     t0 = time.time()
     tr = rows_for(2, ARMS[a.arm], list(range(H0, H1 + 1, 2)), list(range(F0, F1 + 1, 2)))
-    ho = cells().filter(pl.col("heldout"))["Cell"].to_list()
-    tr = tr.filter(~pl.col("Cell").is_in(ho))
+    if not ARM_CFG.get(a.arm, {}).get("all_cells", False):
+        ho = cells().filter(pl.col("heldout"))["Cell"].to_list()
+        tr = tr.filter(~pl.col("Cell").is_in(ho))
     k = ARM_CFG.get(a.arm, {}).get("cell_mod", 1)
     tr = tr.filter(pl.col("Cell") % k == 0)
     log(f"arm {a.arm}: {tr['Cell'].n_unique()} training cells")

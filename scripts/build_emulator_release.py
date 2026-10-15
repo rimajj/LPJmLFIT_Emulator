@@ -63,15 +63,20 @@ def git_sha():
 
 
 # ------------------------------------------------------------------------------------------------ daily model
-def export_daily(out):
+def export_daily(out, members=MEMBERS, data=F2, gate_run=1, gate_leg="gfdl-esm4_ssp370_daily", co2=False):
+    """Export the PyTorch ensemble `members` (runs under data/runs) to out/daily.npz and run GATE (1) on real rows of
+    (gate_run, gate_leg). co2: the members read the year's CO2 (f2_train --co2, nitrogen-on model; ADR 0344)."""
     import f2_train as F
     import torch
 
+    F.DATA, F.CO2_INPUT = data, co2
+    F.NIN = F.NFORC + 3 + 4 + 12 + int(co2)
     F.NH, F.NL, F.NPP_HEAD, F.DEEP_TAU = 256, 3, "ra", 365.0
     F.DROP[:] = [F.FEAT["huss"]]
-    arrs = {"n_members": np.int64(len(MEMBERS)), "drop": np.array(F.DROP, np.int64), "deep_tau": np.float64(365.0)}
+    arrs = {"n_members": np.int64(len(members)), "drop": np.array(F.DROP, np.int64), "deep_tau": np.float64(365.0),
+            "co2_input": np.bool_(co2)}
     nets = []
-    for i, t in enumerate(MEMBERS):
+    for i, t in enumerate(members):
         n, ck = F.load_net(os.path.join(F.DATA, "runs", t, "model.pt"), torch.device("cpu"))
         n.load_state_dict(ck)
         n.eval()
@@ -86,8 +91,8 @@ def export_daily(out):
     path = os.path.join(out, "daily.npz")
     np.savez(path, **arrs)
     # GATE (1): real inputs (teacher-forced rows of one leg, run 1), torch vs numpy
-    lat = pl.read_parquet(os.path.join(F2, "cells.parquet"))["lat"].to_numpy().astype(np.float32)
-    ml = F.MemberLeg(1, "gfdl-esm4_ssp370_daily", lat)
+    lat = pl.read_parquet(os.path.join(data, "cells.parquet"))["lat"].to_numpy().astype(np.float32)
+    ml = F.MemberLeg(gate_run, gate_leg, lat)
     rng = np.random.default_rng(0)
     cells = rng.integers(0, ml.daily.shape[0], 20000)
     days = rng.integers(1, F.ND, 20000)

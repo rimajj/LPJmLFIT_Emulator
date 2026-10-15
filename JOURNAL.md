@@ -1531,3 +1531,15 @@ no lat/lon/soil, per-cell historical sensitivity (detrended regression on temper
 All four null (held-out error −3 … +5 %); falsifier fired. Amendment before running: learning curve with half
 and a quarter of the training cells — error falls 6–12 % per doubling, i.e. a sample-size limit of the 674-region
 design; extrapolation ~12 000 regions for 1.2× a second run. New `scripts/summarize_clu_arms.py`.
+
+## 2026-10-15 (night) — deploy: the nitrogen-on emulator with a CO2 input (ADR 0344)
+
+Owner: "continue / Deploy. The emulator package has no CO2 input yet." Added the CO2 input to the package (daily
+model: the year's CO2 as last input column; maps: `co2_win` / `dco2_win`; refused by nitrogen-off releases) and
+per-cell fixed anchors. Built the 16 missing daily arrays (fixed-CO2 ssp126/585 legs), trained the deployment maps
+(`deploy`, 58 legs, all cells, 2 min) and five deployment daily members (`NCD_s0-4`, 3 min each on GPU,
+`--all-cells`). Fold release `non_fold_v1` (`main2` + `NC_s0-4`) on MPI-ESM1-2-HR ssp370: all 18 yearly quantities
+bit-identical to the scored predictions, daily fluxes vs `NC_B3` to 5e-8 – 8e-8. Deployment release `non_v1`: gates
+pass, bit-identical to its own pipeline predictions on IPSL ssp585 with fixed capacity. Speed 7.3e-3 core-s per
+cell-year; the original on the same cells 0.84–0.95 (381–462 s × 128 tasks per leg) ⇒ ~115–130×.
+

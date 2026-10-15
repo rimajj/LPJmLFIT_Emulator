@@ -38,9 +38,9 @@ def _weather(rng, n):
     ).astype(np.float32)
 
 
-def _member(rng, nh=16, nl=2):
-    z = {"mu": np.zeros(NIN), "sd": np.ones(NIN), "ysd": np.ones(8), "n_layers": nl}
-    n_in = NIN
+def _member(rng, nh=16, nl=2, nin=NIN):
+    z = {"mu": np.zeros(nin), "sd": np.ones(nin), "ysd": np.ones(8), "n_layers": nl}
+    n_in = nin
     for i in range(nl):
         z[f"W{i}"], z[f"b{i}"] = rng.normal(0, 0.2, (nh, n_in)), np.zeros(nh)
         n_in = nh
@@ -89,34 +89,36 @@ def test_daily_bucket_closes_water_exactly():
     assert np.allclose(w[:, :, 1].sum(1, dtype=np.float64), storage + flux, atol=1e-6)
 
 
-def _tiny_release(tmp_path, rng, n):
+def _tiny_release(tmp_path, rng, n, co2=False):
     lgb = pytest.importorskip("lightgbm")
     fs = (
         CLIM_COLS
         + [f"dclim_{c}" for c in CLIM_COLS]
+        + (["co2_win", "dco2_win"] if co2 else [])
         + [f"{k}_{q}" for k in ("anc", "s0", "memoff") for q in STRUCT_Q]
         + ["lat", "lon", "soil_code"]
     )
     fx = fs + [f"{k}_{q}" for q in STAND_Q for k in ("anc", "s0", "memoff")]
     X = rng.normal(size=(200, len(fx)))
     params = {"objective": "regression", "verbose": -1, "num_leaves": 4, "min_data_in_leaf": 5}
+    if co2:  # the maps must respond to the CO2 window for the test below to see it
+        X[:, fx.index("co2_win")] = rng.uniform(300, 900, 200)
     for q in STRUCT_Q + STAND_Q:
         cols = fs if q in STRUCT_Q else fx
         Xq = X[:, : len(cols)]
-        lgb.train(params, lgb.Dataset(Xq, rng.normal(0, 0.01, 200)), 5).save_model(
-            str(tmp_path / f"lgb_{q}.txt")
-        )
+        y = rng.normal(0, 0.01, 200) + (1e-3 * Xq[:, cols.index("co2_win")] if co2 else 0.0)
+        lgb.train(params, lgb.Dataset(Xq, y), 5).save_model(str(tmp_path / f"lgb_{q}.txt"))
     cfg = {"features_structure": fs, "features_stand": fx, "log_eps": {"agb_per_stem": 1.0}}
     (tmp_path / "annual.json").write_text(json.dumps(cfg))
-    z = {"n_members": 2, "drop": np.array([4]), "deep_tau": 365.0}
+    z = {"n_members": 2, "drop": np.array([4]), "deep_tau": 365.0, "co2_input": co2}
     for i in range(2):
-        m = _member(rng)
+        m = _member(rng, nin=NIN + co2)
         z[f"m{i}/n_layers"] = 2
         for j in range(3):
             z[f"m{i}/W{j}"], z[f"m{i}/b{j}"] = m.W[j], m.b[j]
         z[f"m{i}/mu"], z[f"m{i}/sd"], z[f"m{i}/ysd"] = m.mu, m.sd, m.ysd
     np.savez(tmp_path / "daily.npz", **z)
-    rel = {"version": "test", "kind": "fold", "hold_gcm": None}
+    rel = {"version": "test", "kind": "fold", "hold_gcm": None, "co2_input": co2}
     rel["pft_temp_stress"] = {"low": LOW, "high": HIGH}
     (tmp_path / "release.json").write_text(json.dumps(rel))
     Y = 3
@@ -127,8 +129,8 @@ def _tiny_release(tmp_path, rng, n):
         lon=np.linspace(-100, 100, n),
         soil_code=np.ones(n),
         year0=2020,
-        anc={q: np.full((n, Y), 1.0) for q in qs},
-        aclim=np.zeros((n, Y, len(CLIM_COLS))),
+        anc={q: np.full(n, 1.0) if co2 else np.full((n, Y), 1.0) for q in qs},  # fixed / per year
+        aclim=np.zeros((n, len(CLIM_COLS))) if co2 else np.zeros((n, Y, len(CLIM_COLS))),
         s0={q: np.full(n, 1.0) for q in qs},
         memoff={q: np.zeros(n) for q in qs},
         clim_hist=np.zeros((20, n, len(CLIM_COLS))),
@@ -138,6 +140,8 @@ def _tiny_release(tmp_path, rng, n):
         D0=np.zeros(n),
         stand0=np.full((n, 12), 0.1),
         warm=_weather(rng, n),
+        co2_hist=np.full(29, 400.0) if co2 else None,
+        aco2=380.0 if co2 else None,
     )
 
 
@@ -154,3 +158,34 @@ def test_land_emulator_runs_years(tmp_path):
         assert daily["gpp"].shape == (n, 365) and np.all(np.isfinite(daily["runoff"]))
         assert np.all(ann["n_per_patch"] >= 0) and np.all(ann["lai_stand"] >= 0)
     assert st["iy"] == 3
+
+
+def test_co2_release_needs_and_uses_co2(tmp_path):
+    rng = np.random.default_rng(SEED)
+    n = 5
+    su = _tiny_release(tmp_path, rng, n, co2=True)
+    emu = LandEmulator.load(tmp_path)
+    assert emu.co2_input and emu.daily.co2_input
+    w = _weather(rng, n)
+    with pytest.raises(ValueError, match="CO2"):
+        emu.step_year(emu.start(su), w)
+    outs = []
+    for ppm in (400.0, 900.0):
+        st = emu.start(su)
+        daily, ann = emu.step_year(st, w, co2=ppm)
+        assert all(np.all(np.isfinite(v)) for v in ann.values())
+        assert np.isclose(np.mean(st["co2buf"]), (29 * 400.0 + ppm) / 30)
+        outs.append((daily["gpp"], ann["vegc"]))
+    assert not np.allclose(outs[0][0], outs[1][0])  # the daily model reads the year's CO2
+    assert not np.allclose(outs[0][1], outs[1][1])  # the maps read the CO2 window
+    su.co2_hist = None
+    with pytest.raises(ValueError, match="co2_hist"):
+        emu.start(su)
+
+
+def test_release_without_co2_refuses_it(tmp_path):
+    rng = np.random.default_rng(SEED)
+    su = _tiny_release(tmp_path, rng, 4)
+    emu = LandEmulator.load(tmp_path)
+    with pytest.raises(ValueError, match="no CO2 input"):
+        emu.step_year(emu.start(su), _weather(rng, 4), co2=400.0)

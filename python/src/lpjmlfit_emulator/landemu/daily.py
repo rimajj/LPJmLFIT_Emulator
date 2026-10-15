@@ -13,6 +13,10 @@ bucket), GPP, NPP;
 state: snow water equivalent ``S``, plant-available water of the top metre ``W`` (closed bucket,
 capacity ``cap``) and
 a deep store ``D`` that drains into runoff with time constant ``deep_tau`` days.
+
+A model trained with ``f2_train.py --co2`` (ADR 0342; the nitrogen-on LPJmL-FIT only) reads one
+more input, the year's atmospheric CO2 in ppm / 1000, as its last column
+(``DailyModel.co2_input``; ADR 0344).
 """
 
 from __future__ import annotations
@@ -79,10 +83,11 @@ class Member:
 class DailyModel:
     """The ensemble (mean of the members' outputs) and the closed water bucket."""
 
-    def __init__(self, members, drop=(FEAT_HUSS,), deep_tau=365.0):
+    def __init__(self, members, drop=(FEAT_HUSS,), deep_tau=365.0, co2_input=False):
         self.members = members
         self.drop = list(drop)
         self.deep_tau = float(deep_tau)
+        self.co2_input = bool(co2_input)
 
     @classmethod
     def load(cls, path):
@@ -92,7 +97,8 @@ class DailyModel:
             Member({k.split("/", 1)[1]: z[k] for k in z.files if k.startswith(f"m{i}/")})
             for i in range(n)
         ]
-        return cls(members, drop=list(z["drop"]), deep_tau=float(z["deep_tau"]))
+        co2 = bool(z["co2_input"]) if "co2_input" in z.files else False
+        return cls(members, drop=list(z["drop"]), deep_tau=float(z["deep_tau"]), co2_input=co2)
 
     def predict(self, x, prec, S_prev):
         return np.mean([m(x, prec, S_prev) for m in self.members], 0)
@@ -159,12 +165,13 @@ class DailyState:
         self.bp[:, i365] = pr
         self.k += 1
 
-    def inputs(self, f, doy0, cap, stand, drop):
+    def inputs(self, f, doy0, cap, stand, drop, co2=None):
         """The network input (N, NIN) for today's weather f, 0-based day of year doy0, soil
         capacity cap (N,) and the
-        stand vector (N, 12: leaf area, log1p vegetation carbon, cover of the 10 plant types)."""
+        stand vector (N, 12: leaf area, log1p vegetation carbon, cover of the 10 plant types);
+        with ``co2`` (the year's CO2, ppm, scalar or (N,)) one more column, (N, NIN + 1)."""
         n = f.shape[0]
-        x = np.empty((n, NIN), np.float32)
+        x = np.empty((n, NIN + (co2 is not None)), np.float32)
         s = self.s
         x[:, 0], x[:, 1], x[:, 2], x[:, 3], x[:, 4] = (
             f[:, 0],
@@ -185,7 +192,9 @@ class DailyState:
         x[:, NFORC + 4] = Wf / 1000.0
         x[:, NFORC + 5] = np.log1p(self.S.astype(np.float32))
         x[:, NFORC + 6] = capf / 1000.0
-        x[:, NFORC + 7 :] = stand
+        x[:, NFORC + 7 : NIN] = stand
+        if co2 is not None:  # as f2_train.assemble: float32 ppm / 1000
+            x[:, NIN] = np.asarray(co2, np.float32) / np.float32(1000.0)
         if drop:
             x[:, drop] = 0.0
         return x

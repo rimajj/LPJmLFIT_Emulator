@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Nitrogen-on emulator release with a CO2 input (ADR 0344):** `LandEmulator.step_year(..., co2=ppm)` (daily model:
+  the year's CO2; yearly maps: its 30-year mean and offset from 1990–2019), required by a CO2 release and refused by
+  the nitrogen-off ones; per-cell fixed anchors (no last year). New `scripts/build_emulator_release_non.py`,
+  `scripts/run_emulator_non.py`; `clu_emu_maps.py` arm `deploy`, `f2_train.py --all-cells`. Releases
+  `release/non_fold_v1` (reproduces the scored pipeline: maps bit-identical, daily fluxes to 1e-7) and
+  `release/non_v1` (deployment: all 58 legs, all 674 cells); 7.3e-3 core-s per cell-year.
+
 ### Changed
 
 - **One development stream (owner decision, ADR 0319):** the parallel work lines S/M/E/O/X are retired; all work

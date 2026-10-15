@@ -15,6 +15,12 @@ window and the
 cell's fixed setup), so their errors cannot accumulate; the daily model carries its water stores
 day to day.
 
+A release trained on the nitrogen-on LPJmL-FIT (ADR 0342/0344, ``release.json`` ``co2_input``)
+also reads the year's atmospheric CO2 (ppm): the daily model takes the year's value, the maps its
+trailing 30-year mean and that mean's offset from the anchor period's. Pass it as
+``step_year(..., co2=ppm)``; a release without the input refuses one (nitrogen off: CO2 is
+deliberately not an input, ADR 0004/0107).
+
 Inputs per cell are documented in ``Setup``; ``scripts/build_emulator_release.py`` writes a release
 (trained models +
 a setup for the panel cells) and ``scripts/run_emulator.py`` runs one.
@@ -32,6 +38,7 @@ from .annual import STAND_Q, STRUCT_Q, AnnualMaps
 from .climate import CLIM_COLS, TrailingWindow, YearClimate
 from .daily import DailyModel, DailyState
 
+CO2_WINDOW = 30  # years in the maps' trailing CO2 mean (clu_emu_maps.window)
 DAILY_OUT = ["gpp", "npp", "interc", "transp", "evap", "runoff", "swe", "soilw", "deep"]
 
 
@@ -53,7 +60,12 @@ class Setup:
     the year before
     (leaf area, vegetation carbon gC/m2, cover of 10 plant types); warm (N, 365, 5): the 365 days
     of weather before
-    the first emulated day (tas degC, pr mm, rsds W/m2, lwnet W/m2, huss kg/kg)."""
+    the first emulated day (tas degC, pr mm, rsds W/m2, lwnet W/m2, huss kg/kg).
+
+    CO2 releases only: co2_hist (H,) the yearly CO2 (ppm) of the years before year0, oldest
+    first (>= 29 years); aco2: the anchor period's 30-year CO2 mean (scalar or (N,)).
+    A fixed anchor (the cell's own historical state, ADR 0341/0342) may be given as anc (N,) and
+    aclim (N, 25): then the run has no last year."""
 
     cell: np.ndarray
     lat: np.ndarray
@@ -71,6 +83,8 @@ class Setup:
     D0: np.ndarray
     stand0: np.ndarray
     warm: np.ndarray
+    co2_hist: np.ndarray | None = None
+    aco2: np.ndarray | float | None = None
 
     @classmethod
     def load(cls, path):
@@ -95,12 +109,18 @@ class Setup:
             D0=z["D0"],
             stand0=z["stand0"],
             warm=z["warm"],
+            co2_hist=z["co2_hist"] if "co2_hist" in z.files else None,
+            aco2=z["aco2"] if "aco2" in z.files else None,
         )
 
 
 class LandEmulator:
     def __init__(self, daily: DailyModel, annual: AnnualMaps, cfg: dict):
         self.daily, self.annual, self.cfg = daily, annual, cfg
+        self.co2_input = bool(cfg.get("co2_input", False))
+        assert self.co2_input == daily.co2_input, (
+            "release.json and daily.npz disagree on the CO2 input"
+        )
 
     @classmethod
     def load(cls, release_dir):
@@ -115,6 +135,15 @@ class LandEmulator:
     def start(self, setup: Setup):
         st = DailyState(setup.lat, setup.W0, setup.S0, setup.D0, setup.warm)
         t = self.cfg["pft_temp_stress"]
+        co2buf = None
+        if self.co2_input:
+            h = setup.co2_hist
+            if h is None or len(h) < CO2_WINDOW - 1 or setup.aco2 is None:
+                raise ValueError(
+                    f"this release reads CO2: the setup needs co2_hist (>= {CO2_WINDOW - 1}"
+                    " years) and aco2"
+                )
+            co2buf = [float(v) for v in np.asarray(h, np.float64)[-(CO2_WINDOW - 1) :]]
         return {
             "setup": setup,
             "daily": st,
@@ -122,6 +151,7 @@ class LandEmulator:
             "window": TrailingWindow(setup.clim_hist),
             "stand": self.stand_input(setup.stand0),
             "iy": 0,
+            "co2buf": co2buf,
         }
 
     @staticmethod
@@ -130,11 +160,25 @@ class LandEmulator:
         s[:, 1] = np.log1p(np.maximum(s[:, 1], 0))
         return s
 
-    def step_year(self, state, forcing, first_day=0, cap=None):
-        """forcing (N, 365, 5) for the next year. Returns (daily dict name -> (N, 365), annual dict
-        q -> (N,))."""
+    def step_year(self, state, forcing, first_day=0, cap=None, co2=None):
+        """forcing (N, 365, 5) for the next year; co2: the year's atmospheric CO2 in ppm (CO2
+        releases only; scalar, as LPJmL's CO2 input, or (N,)). Returns (daily dict name ->
+        (N, 365), annual dict q -> (N,))."""
         su, ds, iy = state["setup"], state["daily"], state["iy"]
         n = forcing.shape[0]
+        if self.co2_input and co2 is None:
+            raise ValueError(
+                "this release reads the year's CO2 (ppm): pass step_year(..., co2=...)"
+            )
+        if not self.co2_input and co2 is not None:
+            raise ValueError("this release has no CO2 input (nitrogen-off model, ADR 0004/0107)")
+        co2_win = None
+        if co2 is not None:
+            buf = state["co2buf"]
+            buf.append(co2)
+            if len(buf) > CO2_WINDOW:
+                buf.pop(0)
+            co2_win = np.mean(np.asarray(buf, np.float64), axis=0)
         if cap is None:
             cap = su.cap if su.cap.ndim == 1 else su.cap[:, iy]
         capd = np.asarray(cap, np.float64)
@@ -145,7 +189,7 @@ class LandEmulator:
             ds.push(f)
             if d < first_day:
                 continue
-            x = ds.inputs(f, d, capd, state["stand"], dm.drop)
+            x = ds.inputs(f, d, capd, state["stand"], dm.drop, co2)
             S32 = ds.S.astype(np.float32)
             y = dm.predict(x, f[:, 1], S32).astype(np.float64)
             ds.W, ds.S, ds.D, runoff = dm.bucket(
@@ -158,7 +202,13 @@ class LandEmulator:
             forcing[:, :, 0], forcing[:, :, 1], forcing[:, :, 4], forcing[:, :, 2], forcing[:, :, 3]
         )
         win = state["window"].push(clim)
-        ann = self.annual.predict(self.features(su, iy, win))
+        feat = self.features(su, iy, win)
+        if co2_win is not None:  # as clu_emu_maps.window / rows_for
+            feat["co2_win"] = np.broadcast_to(co2_win, (n,)).astype(np.float64)
+            feat["dco2_win"] = feat["co2_win"] - np.broadcast_to(
+                np.asarray(su.aco2, np.float64), (n,)
+            )
+        ann = self.annual.predict(feat)
         new = self.stand_input(np.column_stack([ann[q] for q in STAND_Q]))
         state["stand"] = np.where(
             np.isfinite(new), new, state["stand"]
@@ -169,11 +219,13 @@ class LandEmulator:
     @staticmethod
     def features(su: Setup, iy, win):
         feat = {"lat": su.lat, "lon": su.lon, "soil_code": su.soil_code}
+        acl = su.aclim if su.aclim.ndim == 2 else su.aclim[:, iy]
         for j, c in enumerate(CLIM_COLS):
             feat[c] = win[:, j]
-            feat[f"dclim_{c}"] = win[:, j] - su.aclim[:, iy, j]
+            feat[f"dclim_{c}"] = win[:, j] - acl[:, j]
         for q in STRUCT_Q + STAND_Q:
-            feat[f"anc_{q}"] = su.anc[q][:, iy]
+            a = su.anc[q]
+            feat[f"anc_{q}"] = a if a.ndim == 1 else a[:, iy]
             feat[f"s0_{q}"] = su.s0[q]
             feat[f"memoff_{q}"] = su.memoff[q]
         return feat

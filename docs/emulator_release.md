@@ -80,3 +80,32 @@ validated test rows' exactly.
 
 See ADR 0340 §4 for the full verdict against the goal (structure on the relaxed standard, daily fluxes against a
 second run of the original, drift, speed) and §5 for what does not pass.
+
+## Nitrogen-on releases with a CO2 input (ADR 0344)
+
+Emulator of the **merged LPJmL-FIT with nitrogen on (no phosphorus) and transient CO2**, 25 patches, trained on the
+clustered runs of ADR 0342 (674 representative cells, one per climate region; 10 climate models × ssp126/370/585,
+rising and fixed CO2). Same package; the release says `"co2_input": true` and every year needs the year's CO2:
+
+```python
+emu = LandEmulator.load(".../release/non_v1")
+su = Setup.load(".../release/non_v1/setup_s2.npz")      # 674 cells, start = end of 2019
+state = emu.start(su)
+for year in range(2020, 2101):     # anchors are per cell: runs past 2100 work but leave the training climate
+    daily, annual = emu.step_year(state, forcing, co2=ppm[year])   # ppm: global yearly mean
+```
+
+The daily model reads the year's CO2; the yearly maps read its trailing 30-year mean and that mean's offset from
+1990–2019 (378.42 ppm). A release without the input (v1, the global Billing-trained ones: nitrogen off) refuses
+`co2=`; a CO2 release refuses a call without it.
+
+| directory | trained on | purpose |
+|---|---|---|
+| `non_fold_v1/` | 8 climate models (MPI-ESM1-2-HR, IPSL-CM6A-LR held out), 80 % of cells | reproduces the scored results exactly |
+| `non_v1/` | all 10 climate models' 58 legs, all 674 cells | **deployment** |
+
+Build: `scripts/build_emulator_release_non.py --kind fold|deploy --out DIR` (seconds; three gates). Run, time and
+check: `scripts/run_emulator_non.py --release DIR --leg mpi-esm1-2-hr_ssp370 [--cap fixed] --check`. Measured:
+7.3e-3 core-s per cell-year on one core, ≈ 115–130× fewer core-seconds than the original on the same cells.
+Skill = ADR 0342 §7–8 / 0343. Limits: setups exist for the 674 cells only (a new cell needs the original's
+1990–2019 state there); the top-metre water capacity stays at its 2019 value.

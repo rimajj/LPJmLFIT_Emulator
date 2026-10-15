@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0343**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0345**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,15 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | built for Hainich / harness level (ADR 0073–0085); not on the critical path until both halves above exist |
 
 ## NEXT — start here
+
+**2026-10-15 (night) — DEPLOYED: the nitrogen-on emulator with a CO2 input (ADR 0344).** The package takes
+`step_year(..., co2=ppm)`; releases `release/non_v1` (deployment: all 10 climate models, all 674 cells) and
+`release/non_fold_v1` (validated set-up; reproduces the scored maps bit-identically and the daily fluxes to 1e-7 on
+a held-out climate model). 7.3e-3 core-s per cell-year ≈ 115–130× fewer than the original on the same cells.
+Build/run: `scripts/build_emulator_release_non.py`, `scripts/run_emulator_non.py` (skill `emulator-release`).
+Limits: setups for the 674 representative cells only; capacity fixed at 2019; not coupled.
+**Next (owner to choose):** coupling to SpeedyWeather via `step_year` (goal #3); a full-grid nitrogen-on training
+run (removes the unseen-cell limit, ADR 0343, and gives setups for every cell); the damping of the largest losses.
 
 **2026-10-15 (evening) — why the emulated stand responds too evenly on unseen cells (ADR 0343): sample size.**
 On cells it trained on, the stand map follows the original's leaf-area / tree-cover response nearly as well under
