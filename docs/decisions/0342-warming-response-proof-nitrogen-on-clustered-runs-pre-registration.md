@@ -196,3 +196,39 @@ predicts a GAIN on every warming-only leg (its training legs all carry rising CO
 original's stand gets the warming-only loss (IPSL ssp585 −11.1 vs −10.3 %; slope 0.92–0.95; RMSE ratio 0.55–0.72);
 fed the emulated stand it over-predicts the small MPI losses and the per-cell slope drops to 0.66–0.74. Context: the
 emulator trained on Billing's constant-CO2 runs (ADR 0341) got 0.30 of the ssp370 loss.
+
+### 7.3 Arm `main2` — CO2-fixed twins of every scenario in training (§6b)
+
+| vegetation carbon | original | `main` | `main2` | second run | slope main → main2 (second) | RMSE ratio main → main2 |
+|---|---|---|---|---|---|---|
+| IPSL ssp370, CO2 fixed | −9.7 % | −6.5 % (0.67) | −7.0 % (0.72) | −11.1 % | 0.68 → 0.73 (0.72) | 0.72 → 0.67 |
+| IPSL ssp585, CO2 fixed | −20.7 % | −11.8 % (0.57) | −14.8 % (0.72) | −26.3 % | 0.67 → 0.73 (0.75) | 0.80 → 0.73 |
+| MPI ssp370 / ssp585, CO2 fixed | −0.2 / −2.2 % | +0.2 / −2.2 % | +1.4 / −0.8 % | −4.7 / −6.4 % | 0.58 / 0.65 → 0.61 / 0.70 | 0.69 / 0.70 → 0.67 / 0.65 |
+| the four rising-CO2 legs | +32 … +45 % | ratio 0.81–0.97 | 0.79–0.98 | | ±0.01 | ±0.01 |
+
+Leaf area on IPSL ssp585 fixed CO2: −30.6 → −35.8 % against the original's −41.9 % (second run −35.4 %); per-cell
+slopes of leaf area and tree cover +0.02 … +0.05 on the fixed-CO2 legs, unchanged on rising CO2. GPP with
+`main2`'s stand (`NC_B3`): global changes within 0.01 of `main`'s, slope 0.66–0.78, RMSE ratio 1.08–1.39.
+
+**Pre-stated expectation NOT met** (IPSL ratio 0.72 / 0.72 < 0.75) ⇒ by §6b the hypothesis is rejected as the whole
+explanation: separating CO2 from warming in training closes about a third of the ssp585 gap (0.57 → 0.72) and the
+per-cell slope reaches the second run's, but the largest warming losses stay damped by ~30 %. Read with the second
+run in view: the original itself gives −20.7 % and −26.3 % for the same leg.
+
+## 8. Conclusion (2026-10-15)
+
+1. **Trained on data that covers the test climate, the emulator reproduces the warming response far better than
+   when it is not.** Same maps, same held-out models: trained on warm scenarios they get 0.81–0.97 of the original's
+   vegetation-carbon change (second run 0.61–0.89); trained on ssp126 only they get 0.37–0.43 — the ADR 0341
+   failure, reproduced on purpose. Per cell the warm-trained maps are at least as close to the original as its own
+   second run (RMSE ratio 0.65–0.80). GPP from the daily model fed the original's stand: global change within ±4 %,
+   per-cell slope 0.92–0.99, RMSE ratio 0.55–0.72, with rising AND with fixed CO2.
+2. **Not passed as pre-registered**, for three stated reasons: (i) the per-cell slope criterion is failed by the
+   original's own second run for vegetation carbon (criterion defect, §7.1); (ii) the emulated stand's per-cell
+   leaf-area / cover response is damped (slope 0.73–0.83 vs 0.89–0.96), which carries into GPP (slope 0.66–0.79);
+   (iii) the warming-only vegetation-carbon LOSS under the strongest held-out warming is under-predicted by ~30 %
+   (0.72 with `main2`; Billing-trained ADR 0341: 0.30).
+3. **Next levers, in order:** the stand map's per-cell response (leaf area / cover — it is what costs GPP its slope);
+   the damping of the largest losses (candidates: a map target that is the year's state rather than a 30-yr window,
+   or a per-cell response scale learned from the CO2-fixed twins); a pass criterion that uses the slope of the
+   second run as its reference rather than 1.
