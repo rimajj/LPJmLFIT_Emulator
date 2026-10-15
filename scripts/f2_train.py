@@ -45,6 +45,8 @@ TARGETS = ["dS", "interc", "transp", "evap", "runoff", "deep", "gpp", "npp"]
 ANNUAL = ["gpp", "et", "npp", "runoff"]
 NFORC = 12
 NIN = NFORC + 3 + 4 + 12
+# --co2 (ADR 0342, nitrogen-on model only): + the year's CO2 / 1000 as the LAST input column
+CO2_INPUT = False
 NH, NL = 64, 2  # network width / depth (set from the command line)
 NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
 FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4}  # raw daily forcing columns of x
@@ -134,7 +136,7 @@ def hemisphere_sign(slat):
     return np.where(slat < 0, -1.0, 1.0).astype(np.float32)
 
 
-def assemble(ff, sinA, cosA, slat, st, cap_prev, W, S, cells, days):
+def assemble(ff, sinA, cosA, slat, st, cap_prev, W, S, cells, days, co2=None):
     """Input matrix for (cells[i], days[i]) given yesterday's stores W, S (1-D, per row)."""
     iy = days // 365
     capv = cap_prev[cells, iy]
@@ -148,7 +150,9 @@ def assemble(ff, sinA, cosA, slat, st, cap_prev, W, S, cells, days):
     x[:, NFORC + 4] = W / 1000.0
     x[:, NFORC + 5] = np.log1p(S)
     x[:, NFORC + 6] = capv / 1000.0
-    x[:, NFORC + 7 :] = st[cells, iy]
+    x[:, NFORC + 7 : NFORC + 19] = st[cells, iy]
+    if CO2_INPUT:  # co2[k] = year 2019 + k; day d of year 2020 + iy reads the current year's value
+        x[:, NFORC + 19] = co2[iy + 1] / 1000.0
     if DROP:
         x[:, DROP] = 0.0
     return x
@@ -169,6 +173,8 @@ class MemberLeg:
             print(f"{tag}: stand from {sp}", flush=True)
         self.st = stand_features(np.load(sp))
         self.cap = np.load(os.path.join(DATA, f"cap_{tag}.npy"))  # index iy = year 2019+iy
+        # CO2 per year 2019..2100 (ADR 0342)
+        self.co2 = np.load(os.path.join(DATA, f"co2_{tag}.npy")) if CO2_INPUT else None
         self.sinA, self.cosA, self.slat = calendar_features(lat)
 
     def targets(self, cells, days):
@@ -196,6 +202,7 @@ class MemberLeg:
             p[:, SWE],
             cells,
             days,
+            co2=self.co2,
         )
 
 
@@ -440,7 +447,7 @@ def run_free(net, ml, dev):
         days = np.full(nc, d)
         x = assemble(
             ml.ff, ml.sinA, ml.cosA, ml.slat, ml.st, ml.cap, W.astype(np.float32),
-            S.astype(np.float32), cells, days,
+            S.astype(np.float32), cells, days, co2=ml.co2,
         )  # fmt: skip
         prec = ml.daily[:, d, PREC].astype(np.float32)
         y = predict(net, x, prec, S.astype(np.float32), dev).astype(np.float64)
@@ -564,7 +571,9 @@ def bench_speed(net, ml, reps=3):
                 x[:, NFORC + 4] = W / 1000.0
                 x[:, NFORC + 5] = np.log1p(S)
                 x[:, NFORC + 6] = cap / 1000.0
-                x[:, NFORC + 7 :] = st
+                x[:, NFORC + 7 : NFORC + 19] = st
+                if CO2_INPUT:
+                    x[:, NFORC + 19] = ml.co2[1] / 1000.0
                 if DROP:
                     x[:, DROP] = 0.0
                 y = netc(torch.from_numpy(x), torch.from_numpy(pr), torch.from_numpy(S)).numpy()
@@ -752,9 +761,20 @@ def main():
                     choices=["free", "physical"], help="structured GPP/NPP, ADR 0332")  # fmt: skip
     ap.add_argument("--season-phase", dest="season_phase", choices=["calendar", "local"],
                     default="calendar", help="local: hemisphere-local day of year, ADR 0334")  # fmt: skip
+    ap.add_argument("--data-dir", dest="data_dir", default=DATA,
+                    help="array directory (ADR 0342: f2_non)")  # fmt: skip
+    ap.add_argument("--members", default=",".join(map(str, MEMBERS)),
+                    help="runs of the original, e.g. 2")  # fmt: skip
+    ap.add_argument("--co2", action="store_true",
+                    help="the year's CO2 as an input (ADR 0342; co2_<tag>.npy)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
     global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
+    global DATA, CO2_INPUT, NIN
+    DATA, CO2_INPUT = a.data_dir, a.co2
+    MEMBERS[:] = [int(k) for k in a.members.split(",")]
+    if CO2_INPUT:
+        NIN = NFORC + 3 + 4 + 12 + 1
     NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR = a.hidden, a.layers, a.npp_head, a.deep_tau, a.stand_dir
     CARBON_HEAD, SEASON_PHASE = a.carbon_head, a.season_phase
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]

@@ -46,9 +46,9 @@ legs)
         --qos=standby --nodes=1 --ntasks=128 --cpus-per-task=1 --mem=300G --time=02:00:00 $(dep "$D") \
         --output="$REPO/logs/emu-clu-leg-$s-$gl-s$SEED-$CO2.%j.out" --wrap "set -e
         mkdir -p $B/output $B/restart
-        [ -e $B/restart/restart_2019_nv.lpj ] || ln -s $BASE/restart/restart_2019_nv.lpj $B/restart/
-        [ -e $B/historical.stdout ] || ln -s $BASE/historical.stdout $B/historical.stdout
-        [ -e $B/lpjmlfit_config.cjson ] || cp $BASE/lpjmlfit_config.cjson $B/
+        ln -sfn $BASE/restart/restart_2019_nv.lpj $B/restart/restart_2019_nv.lpj
+        ln -sfn $BASE/historical.stdout $B/historical.stdout
+        [ -e $B/lpjmlfit_config.cjson ] || cp $BASE/lpjmlfit_config.cjson $B/ || true
         TREE=$TREE CO2=$CO2 bash $LF/scenario_run.sh $G $B $s $g"
     done
   done ;;
