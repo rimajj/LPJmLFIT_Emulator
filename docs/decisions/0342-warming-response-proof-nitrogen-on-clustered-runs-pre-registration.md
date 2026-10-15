@@ -106,4 +106,53 @@ warming-only response has so far been seen only in-sample.
 
 ## 7. Results
 
-(added after the run)
+### 7.0 What ran (2026-10-15)
+
+All 2 historical runs + 44 legs of §1 finished (no carbon / nitrogen balance errors; daily precipitation equals the
+forcing to 0.0 mm on every leg). Chain `scripts/clu_emu_chain.sh` (jobs 2507097–2507113); the five daily-model
+members trained all 10 epochs. Three pipeline bugs were caught by a scratch end-to-end test on the first finished leg
+before the chain reached them (NetCDF first year; per-tree dtypes; an f2_train SyntaxError). Outputs:
+`esm_land_emulator_data/clu_non/eval/response_maps.csv` (maps; the rising-CO2-only first scoring is
+`response_maps_v1.csv`), `f2_non/runs/NC_A|NC_B/response.csv` (daily model, original / emulated stand; with the §6a
+legs: `NC_A2|NC_B2`). "Change" = 2071–2100 minus 1990–2019 (daily: minus 2021–2050), area-weighted, all 674 cells.
+
+### 7.1 Rising CO2 (the §6 pass rule)
+
+Ratios are emulator / original global change; the second run's ratio is the original against itself.
+
+| quantity | case | global ratio emu (second run) | per-cell slope emu (second run) | RMSE ratio |
+|---|---|---|---|---|
+| vegetation carbon | IPSL ssp370 | 0.82 (0.88) | 0.78 (0.78) | 0.70 |
+| | IPSL ssp585 | 0.97 (0.89) | 0.82 (0.83) | 0.70 |
+| | MPI ssp370 | 0.81 (0.61) | 0.71 (0.72) | 0.71 |
+| | MPI ssp585 | 0.86 (0.79) | 0.79 (0.84) | 0.76 |
+| GPP, emulated stand (phase B) | IPSL ssp370 | 0.96 (0.95) | 0.74 (0.96) | 1.19 |
+| | IPSL ssp585 | 1.04 (0.97) | 0.75 (0.95) | 1.29 |
+| | MPI ssp370 | 0.95 (1.03) | 0.70 (0.88) | 1.07 |
+| | MPI ssp585 | 0.94 (0.87) | 0.79 (0.95) | 1.13 |
+| GPP, original stand (phase A) | the four cases | 0.96–1.04 | 0.94–0.99 | 0.55–0.64 |
+
+Original's change: vegetation carbon +32 … +45 %, GPP +19 … +27 % (CO2 fertilisation dominates; nitrogen limits it).
+
+**Verdict as pre-registered: NOT PASSED.** (a) global change within ±25 %: 8/8 ✓. (c) RMSE ratio ≤ 1.5: 8/8 ✓.
+(b) per-cell slope 0.8–1.2: vegetation carbon 1/4, GPP (phase B) 0/4 ✗.
+
+Two different things are behind (b):
+1. **For vegetation carbon the criterion is failed by the original against itself.** The second run's slope is
+   0.72–0.84 (2 of 4 inside 0.8–1.2) and the emulator's equals it to within 0.05. Cause: regression dilution — the
+   original's per-cell change contains run-to-run noise, which flattens the fitted slope of ANY predictor (a perfect
+   emulator of the expected response included). §5 did not foresee it (it checked only the second run's RMSE ratio).
+   It is a defect of the criterion, recorded here; the verdict above is not changed after the fact.
+2. **For GPP with the emulated stand it is real.** The second run's GPP slope is 0.88–0.96 and the daily model fed
+   the ORIGINAL's stand reaches 0.94–0.99, but with the emulated stand 0.70–0.79. The stand map's per-cell response is
+   damped: leaf area slope 0.74–0.78 vs the second run's 0.89–0.91; tree cover 0.77–0.82 vs 0.90–0.95. The global
+   totals are right (leaf area 0.80–0.93, cover 0.92–1.05); the cell-to-cell spread of the response is too small.
+
+**Controls (§5) all returned what was written:** second run RMSE ratio 1 (by construction), its global vegetation-
+carbon change 0.61–0.89 of seed 2's (wider than "a few %": the original's own global response varies by up to ~40 %
+between two runs on this 674-cell grid, because single cells stand for large regions); persistence slope 0, RMSE
+ratio 1.71–2.21; **the wrong-data arm (ssp126-only training) reproduces the ADR 0341 failure: 0.37–0.43 of the
+vegetation-carbon change, slope 0.47–0.53, RMSE ratio 1.00–1.38** — the same maps trained on warm scenarios get
+0.81–0.97, slope 0.71–0.82, RMSE ratio 0.70–0.76.
+
+Held-out cells only (135): vegetation carbon slope 0.57–0.71 (second run 0.64–0.82), RMSE ratio 0.82–0.95.
