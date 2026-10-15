@@ -1,0 +1,191 @@
+"""The learned daily water-carbon model in plain numpy (no deep-learning framework at run time).
+
+Port of ``scripts/f2_train.py`` (``Net`` with ``npp_head="ra"``, ``carbon_head="free"``,
+``Ensemble``,
+``bucket_step`` with a draining deep store, the input assembly of
+``assemble``/``forcing_features``). The weights are
+exported from the trained PyTorch members by ``scripts/build_emulator_release.py``, which gates
+this port against the
+PyTorch forward pass before a release is written.
+
+Outputs per day (mm or gC/m2): interception, transpiration, soil evaporation, runoff (after the
+bucket), GPP, NPP;
+state: snow water equivalent ``S``, plant-available water of the top metre ``W`` (closed bucket,
+capacity ``cap``) and
+a deep store ``D`` that drains into runoff with time constant ``deep_tau`` days.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+NFORC = 12
+NIN = NFORC + 3 + 4 + 12
+FEAT_HUSS = 4
+
+
+def _softplus(x):
+    return np.where(x > 20.0, x, np.log1p(np.exp(np.minimum(x, 20.0))))
+
+
+def _sigmoid(x):
+    with np.errstate(over="ignore"):  # exp(-x) -> inf for x << 0 gives the exact limit 0
+        return 1.0 / (1.0 + np.exp(-x))
+
+
+def daylength_decl(lat_deg):
+    """The daily model's own day-length input (f2_train.daylength): (N,) lat -> (N, 365) hours,
+    float32."""
+    doy = np.arange(1, 366)
+    decl = -0.4093 * np.cos(2 * np.pi * (doy + 10) / 365.0)
+    t = -np.tan(np.radians(lat_deg))[:, None] * np.tan(decl)[None, :]
+    return (24.0 / np.pi * np.arccos(np.clip(t, -1, 1))).astype(np.float32)
+
+
+class Member:
+    """One network: normalisation, an MLP trunk with SiLU activations, 9 raw outputs."""
+
+    def __init__(self, z):
+        self.mu, self.sd, self.ysd = (np.asarray(z[k], np.float32) for k in ("mu", "sd", "ysd"))
+        nl = int(z["n_layers"])
+        self.W = [np.asarray(z[f"W{i}"], np.float32) for i in range(nl + 1)]  # (out, in) like torch
+        self.b = [np.asarray(z[f"b{i}"], np.float32) for i in range(nl + 1)]
+
+    def __call__(self, x, prec, S_prev):
+        h = (x - self.mu) / self.sd
+        for W, b in zip(self.W[:-1], self.b[:-1], strict=True):
+            h = h @ W.T + b
+            h = h * _sigmoid(h)
+        o = h @ self.W[-1].T + self.b[-1]
+        ys = self.ysd
+        f, m, i = _sigmoid(o[:, 0]), _sigmoid(o[:, 1]), _sigmoid(o[:, 2])
+        gpp = _softplus(o[:, 7]) * ys[6]
+        npp = gpp - _softplus(o[:, 8]) * ys[7]
+        return np.stack(
+            [
+                prec * f - m * S_prev,
+                prec * i,
+                _softplus(o[:, 3]) * ys[2],
+                _softplus(o[:, 4]) * ys[3],
+                _softplus(o[:, 5]) * ys[4],
+                o[:, 6] * ys[5],
+                gpp,
+                npp,
+            ],
+            -1,
+        )
+
+
+class DailyModel:
+    """The ensemble (mean of the members' outputs) and the closed water bucket."""
+
+    def __init__(self, members, drop=(FEAT_HUSS,), deep_tau=365.0):
+        self.members = members
+        self.drop = list(drop)
+        self.deep_tau = float(deep_tau)
+
+    @classmethod
+    def load(cls, path):
+        z = np.load(path)
+        n = int(z["n_members"])
+        members = [
+            Member({k.split("/", 1)[1]: z[k] for k in z.files if k.startswith(f"m{i}/")})
+            for i in range(n)
+        ]
+        return cls(members, drop=list(z["drop"]), deep_tau=float(z["deep_tau"]))
+
+    def predict(self, x, prec, S_prev):
+        return np.mean([m(x, prec, S_prev) for m in self.members], 0)
+
+    def bucket(self, y, prec, W, S, D, cap):
+        dS, interc, transp, evap, runoff, deep = (y[:, j] for j in range(6))
+        S2 = S + dS
+        W2 = W + prec - dS - interc - transp - evap - runoff - deep
+        over = np.maximum(W2 - cap, 0.0)
+        under = np.maximum(-W2, 0.0)
+        W2 = W2 - over + under
+        runoff = runoff + over
+        deep = deep - under
+        D2 = D + deep
+        if self.deep_tau > 0:
+            release = D2 / self.deep_tau
+            D2 = D2 - release
+            runoff = runoff + release
+        return W2, S2, D2, runoff
+
+
+class DailyState:
+    """Everything the daily model carries from one day to the next for N cells: the stores and the
+    trailing weather
+    sums of the last 365 days (rain), 30 days (air temperature, shortwave) and 10 days (air
+    temperature)."""
+
+    def __init__(self, lat, W, S, D, warm):
+        """warm: (N, 365, 5) the 365 days before the first emulated day (tas, pr, rsds, lwnet,
+        huss)."""
+        lat = np.asarray(lat, np.float64)
+        self.slat = np.sin(np.radians(lat)).astype(np.float32)
+        self.dl = daylength_decl(lat)
+        self.W, self.S, self.D = (np.asarray(v, np.float64).copy() for v in (W, S, D))
+        warm = np.asarray(warm, np.float32)
+        self.b10 = warm[:, -10:, 0].copy()
+        self.b30t = warm[:, -30:, 0].copy()
+        self.b30r = warm[:, -30:, 2].copy()
+        self.bp = warm[:, :, 1].copy()
+        self.s = {
+            "t10": self.b10.sum(1, dtype=np.float64),
+            "t30": self.b30t.sum(1, dtype=np.float64),
+            "r30": self.b30r.sum(1, dtype=np.float64),
+            "p30": self.bp[:, -30:].sum(1, dtype=np.float64),
+            "p90": self.bp[:, -90:].sum(1, dtype=np.float64),
+            "p365": self.bp.sum(1, dtype=np.float64),
+        }
+        self.k = 0  # days pushed so far (ring-buffer position)
+
+    def push(self, f):
+        """Advance the trailing sums by one day of weather f (N, 5)."""
+        tas, pr, rs = f[:, 0], f[:, 1], f[:, 2]
+        i10, i30, i365 = self.k % 10, self.k % 30, self.k % 365
+        s = self.s
+        s["t10"] += tas - self.b10[:, i10]
+        self.b10[:, i10] = tas
+        s["t30"] += tas - self.b30t[:, i30]
+        self.b30t[:, i30] = tas
+        s["r30"] += rs - self.b30r[:, i30]
+        self.b30r[:, i30] = rs
+        s["p365"] += pr - self.bp[:, i365]
+        s["p90"] += pr - self.bp[:, (i365 - 90) % 365]
+        s["p30"] += pr - self.bp[:, (i365 - 30) % 365]
+        self.bp[:, i365] = pr
+        self.k += 1
+
+    def inputs(self, f, doy0, cap, stand, drop):
+        """The network input (N, NIN) for today's weather f, 0-based day of year doy0, soil
+        capacity cap (N,) and the
+        stand vector (N, 12: leaf area, log1p vegetation carbon, cover of the 10 plant types)."""
+        n = f.shape[0]
+        x = np.empty((n, NIN), np.float32)
+        s = self.s
+        x[:, 0], x[:, 1], x[:, 2], x[:, 3], x[:, 4] = (
+            f[:, 0],
+            np.log1p(f[:, 1]),
+            f[:, 2],
+            f[:, 3],
+            f[:, 4] * 1000.0,
+        )
+        x[:, 5], x[:, 6], x[:, 7] = s["t10"] / 10, s["t30"] / 30, s["r30"] / 30
+        x[:, 8], x[:, 9], x[:, 10] = np.log1p(s["p30"]), np.log1p(s["p90"]), np.log1p(s["p365"])
+        x[:, 11] = self.dl[:, doy0]
+        a = (
+            2 * np.pi * (doy0 + 1) / 365.0
+        )  # float64, cast on assignment (as f2_train.calendar_features)
+        x[:, NFORC], x[:, NFORC + 1], x[:, NFORC + 2] = np.sin(a), np.cos(a), self.slat
+        Wf, capf = self.W.astype(np.float32), np.asarray(cap, np.float32)
+        x[:, NFORC + 3] = Wf / np.maximum(capf, 1.0)
+        x[:, NFORC + 4] = Wf / 1000.0
+        x[:, NFORC + 5] = np.log1p(self.S.astype(np.float32))
+        x[:, NFORC + 6] = capf / 1000.0
+        x[:, NFORC + 7 :] = stand
+        if drop:
+            x[:, drop] = 0.0
+        return x

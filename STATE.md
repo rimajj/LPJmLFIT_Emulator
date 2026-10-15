@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0339**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0341**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -22,7 +22,18 @@
 * **No drift** in transient (year-by-year) runs.
 * Standing closures: no CO2 response (ADR 0004/0107); reuse is authorised, cite (ADR 0081).
 
-## Where things stand (2026-10-11)
+## Where things stand (2026-10-15) — RELEASE v1 EXISTS (ADR 0340)
+
+**The whole emulator is one package**, `python/src/lpjmlfit_emulator/landemu` (`LandEmulator`; numpy + LightGBM only):
+daily weather in → daily GPP/NPP/interception/transpiration/evaporation/runoff/snow/soil water + yearly tree count,
+biomass per tree, four trait medians, leaf area, vegetation carbon, cover of 10 plant types out. Releases under
+`/p/projects/open/Jamir/esm_land_emulator_data/release/` (`v1` = deployment; `fold_gfdl-esm4_v1` = proves package ==
+scored pipeline). Guide `docs/emulator_release.md`. Verdict (ADR 0340 §4): structure on the panel 21/22 relaxed
+criteria (dense tree count one case short); all 57 726 global cells under an unseen scenario fails tree count /
+biomass per tree / sparse stems (traits pass); daily GPP + totals pass, NPP 3.9×, ET 3.1×, runoff 5.2×, responses
+1.8–2.5× a second run; no structure drift after the start state fades (×1.05); 7.6e-3 core-s per cell-year = 35× /
+~900× cheaper than the original at 25 / 500 patches; setups only for the 1 050 panel cells; NOT coupled to an ESM.
+The table below is the per-part history up to 2026-10-14.
 
 | part | state |
 |---|---|
@@ -33,43 +44,19 @@
 
 ## NEXT — start here
 
-1. **Daily model — decided (ADR 0335/0336): the deployment model is arm D** (`D_3x256_seed0..4`, ensemble
-   `DE_5seed`: all 14 legs, 40 M samples, five members, calendar season input, deep store draining). Out of sample by
-   place only. Its scores and the run-to-run noise they carry: ADR 0336 §6 (one ensemble's typical error moves
-   ±9–20 % per leg between seeds). **Owner question (ADR 0336 §6):** more members would cut that noise but multiply
-   the daily model's cost (6.4e-3 core-s per cell-year at five members), against the speed goal.
-2. **Done 2026-10-14 (ADR 0338): cover carries most of the emulated stand's added error — on every flux, not only
-   ET.** Jobs 2483470–72 (`PD_L`/`PD_V`/`PD_C`) scored with `scripts/f2_stand_attribution.py`: median share `s_C` =
-   0.70 (GPP) / 0.89 (NPP) / 0.87 (ET) / 0.57 (runoff); leaf area secondary (0.10–0.45); vegetation carbon minor
-   everywhere (0.08–0.16, under the pre-registered 0.2 ceiling); additivity holds (pooled median sum 1.19); the
-   `s_V ≥ 0.3` falsifier did not fire. The pre-registered guess that leaf area would dominate GPP/NPP was wrong — cover
-   dominates those too. **Next:** improve the per-type cover component of the stand map (e.g. learn it as its own
-   target with a relative error measure, or constrain the ten covers to sum to the stand total), then re-run phase B
-   (ADR 0337's harness) to see whether it narrows the FAIL from item 1's deployment check.
-   **Also done 2026-10-14:** phase B with arm D (ADR 0337 §4, FAIL as pre-registered, falsifier fired on IPSL ssp370/585
-   late GPP ×1.58/×1.74) and the end-to-end timing (§5, `scripts/bench_coupled_speed.py`, 6.55e-3).
-3. **Closed 2026-10-13 (ADR 0334 §4): arms L and V both null.** The hemisphere-aware season input did not move the
-   southern respiration excess or the June–September GPP swing (it grew 7–9 %) and worsened test-climate GPP by
-   10–19 %; 80 M samples moved NPP < 5 %. The excess is generalisation to places unlike the training cells
-   (likely winter-rain grassland at 33–47° S — not tested). Only more / differently placed training cells can address it — a candidate
-   next data step if the excess matters for coupling.
-3b. **Closed 2026-10-12/13:** more climate models in training (ADR 0328, falsifier fired; levels 10–20 % better but NPP
-   totals 3–5 % off from a 1.5–3 % plant-respiration excess on every leg); a structured carbon head (ADR 0332, much
-   worse); phase B on the IPSL legs (ADR 0331 §5, fails like MPI/UKESM: the emulated stand adds 2–36 %, ET most).
-   The respiration excess is still open (`f2_carbon_split.py` shows it).
-4. ~~Structure: dense-cell low bias~~ — **done 2026-10-12, ADR 0329: no bias to treat** (a selection effect of
-   defining dense cells by the held-out run's own outcome). Report the anchor-defined dense total beside ADR 0318's D3
-   (`scripts/explore_panel_dense_bias.py`). The open structure question is how to explain more of each cell's response
-   to an unseen climate (27–49 % now; a per-cell linear temperature/water response explains less — not that).
-5. ~~Year-by-year drift test~~ — **done, ADR 0330** (`scripts/explore_panel_yearly_drift.py`). Open from it: the
-   slow tree-count creep after 2050 that grows with warming (+0.01 / +0.07 / +0.12 for ssp126 / 370 / 585) — the
-   only candidate for real drift; a run without the start state would separate memory from climate.
-6. **Speed: measured end to end (ADR 0337 §5)** — 6.55e-3 core-s per cell-year, one core, all parts in one loop; inside
-   the T31 / T63 allowances of EXECUTION_PLAN §0 (a convention, 0.0135 / 0.030) by 2.1× / 4.6×. The five-network
-   ensemble is 97 % (≈ 1.3e-3 per network), so the owner question in item 1 is linear in members. Speed work belongs in
-   the daily network (fewer / smaller members, batching on a GPU), not in the structure or stand maps (2 %).
-7. Open owner questions: removal of the retired `wt-*` worktrees; whether the relaxed numbers of ADR 0318 §2 are right;
-   whether the daily-model numbers proposed in ADR 0325 §3 are right — and, new (ADR 0326 §4), whether runoff should
-   carry the same 3× limit as ET when runoff is a small residual of rain minus ET (an ET error of 2–3× a second run is
-   necessarily 4–5× in runoff terms). New (ADR 0330 §1): whether the structure map's drift should be judged after
-   the start state has faded (2081–2100 vs 2051–2070) rather than against 2021–2040, where it is better than a second run.
+**Release v1 is done (ADR 0340).** What remains is a choice among its §5 misses — ask the owner which, do not start
+another open-ended arm:
+1. **Coupling to SpeedyWeather** (goal #3; nothing exists in the package). The package's `step_year` is the call an
+   ESM would make; the coupler needs daily ET/runoff/snow back to the atmosphere and the energy closure (ADR
+   0073–0085), and forcing per land column.
+2. **A global release:** the anchors need the original's yearly 2020–2100 output on every cell; Billing's runs store
+   per-tree output only for 1985–2014 / 2071–2100. Either run the original yearly on all cells, or design an anchor
+   from those windows (and an anchor rule past 2100). Global all-cells structure score (window map, unseen
+   scenario): ADR 0340 §4.1, `scripts/explore_glob_allcells.py`, outputs `billing_global/eval/allcells/`.
+3. **Daily NPP / ET / runoff and the climate response** (ADR 0340 §4.2): the stand's plant-type cover carries most of
+   the added error (ADR 0338); two loss re-weightings did nothing (ADR 0339).
+4. **Speed:** a GPU or batched numpy daily step; the daily model is 97 % of the cost.
+Owner questions still open: the relaxed numbers (ADR 0318 §2), the daily numbers (ADR 0325 §3; runoff is a residual),
+dense cells defined by the anchor (ADR 0329 — the fair reading) rather than the held-out run, removal of `wt-*`.
+⚠ Known: panel forcing is 0.1 °C-quantised and the training table counted exactly-30.0 °C days as hot (float32 scale);
+the package does not (ADR 0340 §3) — harmless for continuous forcing.

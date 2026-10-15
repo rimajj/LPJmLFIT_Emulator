@@ -1485,3 +1485,18 @@ everywhere, and additivity holds (pooled median sum 1.19). The ET guess (cover d
 (leaf area dominates) was wrong — cover dominates those too. Falsifier (`s_V` ≥ 0.3, read as the median) did not fire,
 though individual (leg, window) values reach 0.60. Decision: improve the per-type cover component of the stand map
 first, before leaf area or vegetation carbon.
+
+## 2026-10-15 — release v1: the whole emulator as one package, and the final verdict (ADR 0339 result, ADR 0340)
+
+Owner: "finally finish the emulator". Found ADR 0339's runs complete but unrecorded (a re-run of the relative fits
+overwrote their prediction files with refits before I noticed; stand arrays and phase-B results intact): both cover
+methods null, additive stays. Built `python/src/lpjmlfit_emulator/landemu` (numpy port of the daily ensemble, the 25
+climate statistics, the 18 LightGBM maps, `LandEmulator`), `build_emulator_release.py` (gates: numpy == PyTorch to
+1e-6 of range — a first gate scaled by ~0 snow change failed falsely; climate == pipeline exactly; anchors exact) and
+`run_emulator.py`. Fold release reproduces the scored daily fluxes to 2–3e-4; structure/stand median diff 0, rare
+differences traced to the training table's float32 0.1 °C scale counting exactly-30.0 °C days as hot. Deployment
+release v1 trained on all runs and legs; runs 81 years at 7.5e-3 core-s per cell-year (35× / ~900×). New
+`final_structure_score.py`: the year-by-year map the emulator actually runs passes 21/22 relaxed criteria with dense
+cells defined before the run (window-map numbers on record were worse). A subagent scored all 57 726 global cells
+(`explore_glob_allcells.py`): fails under an unseen scenario, passes with the scenario seen. `final_daily_score.py`:
+GPP passes, NPP/ET/runoff and climate responses do not. Not coupled to an ESM.

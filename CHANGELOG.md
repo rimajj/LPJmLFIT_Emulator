@@ -20,6 +20,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Emulator release v1 (ADR 0340):** the whole learned emulator as one package, `python/src/lpjmlfit_emulator/landemu`
+  (`LandEmulator`: daily weather in; daily GPP/NPP/interception/transpiration/evaporation/runoff/snow/soil water and
+  yearly tree count, biomass per tree, four trait medians, leaf area, vegetation carbon, cover of 10 plant types out),
+  numpy + LightGBM only (the daily networks are ported from PyTorch). Builder `scripts/build_emulator_release.py`
+  (three gates: numpy == PyTorch, climate statistics == the training pipeline's, anchors == the validated test
+  rows'), runner `scripts/run_emulator.py`, guide `docs/emulator_release.md`, tests `python/tests/test_landemu.py`.
+  Final scorers `scripts/final_structure_score.py` (the relaxed standard on the year-by-year map the emulator runs)
+  and `scripts/final_daily_score.py`.
 - **Learned daily water–carbon model, phase A (ADR 0320–0323; skill `daily-model`):** panel arrays (`scripts/f2_build_daily_table.py`), trainer with closed snow / top-metre / deep water stores, free runs, nulls, pre-registered scoring and single-core timing (`scripts/f2_train.py`), arm comparison (`scripts/f2_compare.py`). Best arm (five-seed ensemble, NPP = GPP − respiration, ADR 0324) passes the pre-registered bar except typical-cell NPP under the unseen climate model (5.7 % vs 5 %); 6.4e-3 core-s per cell-year. `scripts/sbatch_python.sh` gains `GRES` and `DEPENDENCY` knobs.
 - Line X: count-aware losses (Poisson, Tweedie) for the tree-count model of the anchored direct map
   (`explore_panel_a7.py cnt`; ADR 0316 §12). Result: the same trade-off as the log target — the sparsest cells improve
