@@ -104,6 +104,21 @@ warming-only response has so far been seen only in-sample.
 * **Rule:** the §6 rule applied unchanged, reported as its own verdict. Expectation: the global loss is reproduced
   within ±25 % on ssp370 (the case Billing's emulator got at one third of the original's loss).
 
+## 6b. Amendment (2026-10-15, 17:05, written after §6a's result, before the runs below): more CO2-fixed training data
+
+§6a's result (§7.2): the held-out warming-only vegetation-carbon LOSS is under-predicted on IPSL (0.67 / 0.57 of the
+original's on ssp370 / ssp585). Hypothesis: in training, warming and CO2 rise together on 24 of 32 legs and only
+ssp370 has a CO2-fixed twin, so the maps cannot separate them where warming is strong. **Disclosed: this step was
+chosen after seeing held-out results**; the held-out models and cells are unchanged and nothing else is tuned.
+
+* **Data:** ssp126 and ssp585 with CO2 fixed at 2019 for the 8 training climate models, seed 2 (16 legs).
+* **Arm `main2`:** the §3 maps retrained on 8 × {ssp126, ssp370, ssp585} × {rising, fixed CO2} (48 legs), training
+  cells only; the daily model is NOT retrained (it reproduced the warming-only GPP change with the original's stand,
+  §7.2); phase B is re-run with `main2`'s stand.
+* **Rule:** §6 unchanged on all 8 held-out legs (rising + fixed). **Pre-stated expectation:** IPSL fixed-CO2
+  vegetation-carbon ratio ≥ 0.75 on both scenarios, rising-CO2 results no worse than `main` beyond ±0.05 in ratio /
+  slope. If the IPSL ratio stays < 0.75, the hypothesis is rejected and the gap is a property of the map design.
+
 ## 7. Results
 
 ### 7.0 What ran (2026-10-15)
