@@ -14,8 +14,8 @@ His shell history is not readable; `run/FD_EF/simulation_protocol.txt` is the ru
 `Oct  8 2026`, 30-column `ind`) and MOVED every earlier GFDL-ESM4 run into `GCM/<scen>/GFDL-ESM4/old/r1_<m>/`.
 Converted as member **s1** (`explore_glob_convert.py` indices 38–41; the old members' manifest paths now point at
 `old/`). In these runs `output_transient/` (2015–2100, continuous, no `lai.nc`) and `output/` (2071–2100, re-run from
-the 2070 restart, with `ind`) are **two realisations of 2071–2100** that differ from 2071 on — a free second-run
-yardstick for gridded quantities. `pft_lai_weighted` does NOT sum to `lai_stand` (~8×). Natural stand fraction
+the 2070 restart, with `ind`) hold 2071–2100 twice, but they are IDENTICAL on ~92 % of cells (only ~5 200 cells diverge
+after the 2070 restart) — NOT a second-run yardstick (ADR 0341 §1). `pft_lai_weighted` does NOT sum to `lai_stand` (~8×). Natural stand fraction
 (`fpc` band 0) is 1 on every cell. Historical CO2 rises (TRENDY); futures constant from 2014.
 
 **Runs:** `/p/projects/pbscience/billing/LPJmLFIT/global/`

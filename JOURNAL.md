@@ -1500,3 +1500,13 @@ release v1 trained on all runs and legs; runs 81 years at 7.5e-3 core-s per cell
 cells defined before the run (window-map numbers on record were worse). A subagent scored all 57 726 global cells
 (`explore_glob_allcells.py`): fails under an unseen scenario, passes with the scenario seen. `final_daily_score.py`:
 GPP passes, NPP/ET/runoff and climate responses do not. Not coupled to an ESM.
+
+## 2026-10-15 (afternoon) — global run on Billing's Oct-2026 r1_1 runs, ILAMB + lpjmlstats (ADR 0341)
+Owner asked to retrain on Billing's new GFDL-ESM4 r1_1 runs (hist + ssp126/245/370), run globally and benchmark with
+the lpjml-fit tools on the full grid. Audited the runs (Oct-8 build, complete, correct restart parentage; earlier runs
+moved to old/), converted the per-tree tables (member s1), built all-cell structure/stand targets, retrained with the
+cell's own 1985–2014 state as anchor (leave-one-scenario-out), ran 64 240 cells. Two traps cost a resubmit each: BLAS
+threads must be limited before numpy loads (200 threads per process), and slab-by-slab NetCDF writes into default
+chunks rewrote ~60× the file size. A pre-registered "second realisation" (output_transient vs output 2071–2100)
+turned out identical on 92 % of cells — withdrawn. Results in ADR 0341 §6. Owner also asked for an output wish list
+for Billing's next runs (given in chat).

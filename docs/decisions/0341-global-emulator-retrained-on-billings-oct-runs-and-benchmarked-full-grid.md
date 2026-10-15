@@ -20,11 +20,13 @@ layout): historical 1985–2014, futures 2071–2100. Gridded annual/monthly out
 futures 2015–2100 in `output_transient/` (a subset: no stand leaf area, which `pft_lai_weighted` does NOT reproduce —
 its sum is ~8× `lai_stand`), and 2071–2100 again in `output/`.
 
-**The futures contain a second run.** `output/` is a re-run of 2071–2100 restarted from the continuous run's 2070
-state; the two disagree from 2071 on (vegetation carbon up to 4 700 gC/m² in a cell, the original's own chaotic noise,
-ADR 0041). The per-tree table belongs to `output/`, so that is the benchmark truth; `output_transient/`'s 2071–2100 is
-a **second realisation** for the gridded quantities. It shares the 2070 state, so its distance to the truth is a
-LOWER bound on two independent runs' distance for the slow pools — ratios against it are conservative.
+**The futures contain a second copy of 2071–2100 — but NOT a second run (corrected after scoring, see §6).**
+`output/` is a re-run of 2071–2100 restarted from the continuous run's 2070 state. As written before the run, this
+section called it a second realisation, from one cell's 4 700 gC/m² vegetation-carbon difference. Measured on all
+cells: the two are **identical on ~92 % of cells** (GPP differs in 5 259 of 67 420 cells under ssp126, 5 016 under
+ssp370); the restart reproduces the continuous run except a minority that diverges. So it is no second-run
+yardstick, and the `second` columns of `eval/scores.csv` (typical error 0.000) carry no information. The benchmark
+truth is `output/` (it holds the per-tree table).
 
 Historical CO2 rises (TRENDY, 345 → 397 ppm over 1985–2014); the futures hold it at the 2014 level. The emulator has
 no CO2 input (ADR 0004/0107, standing) and its daily model was trained at 409.63 ppm constant. Validity-envelope
@@ -72,7 +74,7 @@ anchor ≥ 5 trees per patch (defined before the run).
 
 | comparison | expectation |
 |---|---|
-| harness: S scored as the emulator | ratio 1 by construction; S's own typical error on GPP/ET 0.5–3 %, vegetation carbon 1–5 % (shares the 2070 state) |
+| ~~harness: S scored as the emulator~~ | withdrawn — S is not an independent run (§1) |
 | null `persist` (1985–2014 state carried forward) | the emulator must beat it on vegetation carbon and tree count in ≥ 2 of 3 future legs; if not, the stand/structure maps add nothing over the anchor |
 | GPP, ET, runoff, NPP (typical-cell ratio) | GPP/ET 2–6× the second realisation (it shares the 2070 state, so its error is small); runoff and NPP worse; area totals within 5 % for GPP/ET, futures. Historical GPP total HIGH by +3 … +15 % (no CO2 input; trained at 410 ppm) |
 | structure, unseen scenario | dense tree count / biomass per tree typical error 10–30 %; ssp370 (the warmest, extrapolated) the worst fold |
@@ -83,6 +85,62 @@ No pass/fail is attached to the ILAMB or lpjmlstats numbers: they are the compar
 measures are reported against ADR 0318/0325's numbers (≤ 3× typical for fluxes, relaxed structure standard) for
 orientation, with the second-realisation caveat of §1.
 
-## 6. Results
+## 6. Results (2026-10-15; jobs 2503866–69 train, 2504319/2504385–87 run, 2506464 score, 2504793/2506483–85 lpjmlstats, 2504794 ILAMB)
 
-(added after the run)
+**Run.** 64 240 land cells; historical 1975–2014 (output 1985–2014) + each future 2015–2100; 64 one-core chunks per
+leg. Cost **7.65e-3 core-s per cell-year** (as release v1); the package's yearly climate equals the training table's
+exactly on every chunk (gate max 0). Output: `global_emu/bench/models/Emu/` (LPJmL-style NetCDF), `global_emu/emu/`.
+
+**Historical 1985–2014 (structure and stand IN SAMPLE — anchored; fluxes out of sample), lpjmlstats global totals:**
+GPP 156.3 vs 156.3 PgC/yr (+0.04 %), NPP +1.1 %, transpiration **−8.5 %**, soil evaporation +0.9 %, interception
++1.7 %, runoff **+5.8 %**; vegetation carbon, leaf area, every plant-type cover within 0.8 %. **The original's GPP
+rises 151 → 162 PgC/yr over 1985–2014 (rising CO2); the emulator's is flat** — the pre-registered +3…+15 % level bias
+did not appear; the missing CO2 effect shows as a missing TREND instead (validity envelope, ADR 0004/0107). The
+transpiration deficit is the daily model (not retrained; panel build), water going to runoff instead.
+
+**ILAMB (historical, against observations, global overall scores):** emulator − original within **±0.03 on all 27
+dataset comparisons** (pre-registered ±0.05 ✓): GPP +0.003…+0.017 (8 datasets), biomass −0.002…+0.005, leaf area
+0.000…+0.002, ET −0.002…−0.010, tree cover −0.004/−0.012, runoff −0.004 (LORA) / **−0.027 (Dai)**, the largest gap,
+from the runoff excess. Build: `global_emu/bench/ilamb/_build/`.
+
+**Futures, each scenario UNSEEN in training, 2071–2100 cell means vs the original** (typical = median over cells of
+|E − T|/T; persist = the 1985–2014 state carried forward; full table `global_emu/eval/scores.csv`):
+
+| | ssp126 emu / persist | ssp245 emu / persist | ssp370 emu / persist |
+|---|---|---|---|
+| GPP typical | 6.0 % / 11.2 % | 6.0 % / 13.2 % | 6.4 % / 15.1 % |
+| NPP | 7.4 / 8.4 | 7.7 / 10.1 | 10.0 / 13.9 |
+| ET | 4.8 / 7.3 | 4.4 / 9.4 | 4.4 / 11.7 |
+| runoff | 9.4 / 12.7 | 9.1 / 16.6 | 9.9 / 20.2 |
+| vegetation carbon | 11.4 / 18.0 | 11.5 / 20.5 | 15.4 / 25.5 |
+| tree count, dense cells | 6.7 / 10.2 | 6.6 / 10.5 | 7.8 / 11.4 |
+| tree count, sparse | 24.5 / 41.6 | 24.0 / 48.6 | 29.5 / 57.5 |
+| biomass per tree, dense | 14.6 / 25.4 | 14.2 / 25.2 | 18.2 / 29.6 |
+| four trait medians, dense | 1.6–7.4 / 1.7–7.9 | 1.6–7.2 / 1.7–7.6 | 1.7–7.4 / 1.8–7.9 |
+
+The emulator beats persistence on every flux, stand and structure quantity in all three legs (pre-registered: vegetation
+carbon and tree count in ≥ 2 of 3 ✓), but on the trait medians only marginally (traits barely change in the original
+either). Structure under an unseen scenario: dense tree count 7–8 %, biomass per tree 14–18 % (pre-registered 10–30 %);
+ssp370 the worst fold, as expected.
+
+**Climate response, global totals, change 1985–2014 → 2071–2100 (original / emulator):**
+
+| | GPP | NPP | ET | runoff | vegetation carbon |
+|---|---|---|---|---|---|
+| ssp126 | +5.6 / +2.3 % | +3.3 / −0.9 % | +2.7 / +3.2 % | +3.9 / +3.2 % | +8.9 / +5.8 % |
+| ssp245 | +3.2 / +0.1 % | −1.2 / −5.5 % | +1.4 / +2.1 % | +6.5 / +5.3 % | +2.7 / +0.8 % |
+| ssp370 | −3.5 / −4.9 % | −10.2 / −14.9 % | −4.3 / −1.5 % | +2.3 / −1.6 % | **−9.2 / −2.8 %** |
+
+Signs agree in 13 of 15. The carbon responses are biased low by ~3–5 points (GPP/NPP) — partly the historical
+baseline, where the original's GPP still carries the end of the CO2 rise and the emulator's does not. Under ssp370 —
+the warmest, extrapolated fold — the emulator **misses two thirds of the original's vegetation-carbon loss** (−2.8 vs
+−9.2 %; late-century level +7.1 %): a tree model trained on two milder scenarios cannot extrapolate the climate
+departure. Late-century area totals: GPP −1…−3 %, ET −3…−5 %, runoff +2…+5 %, vegetation carbon −3…+7 %.
+
+**lpjmlstats reports** (FIT = original baseline, Emu under test): `global_emu/bench/lpjmlstats/report_<period>.pdf`.
+
+**Not done / limits:** the daily model is not retrained (no daily output in these runs); no second run of this build
+exists, so no ratio to the original's own noise can be formed (§1); cells that gain trees after 2014 (~3 000 by
+2100) get a tree count but no biomass-per-tree or trait values (no historical anchor); top-metre capacity from another
+run's `whc_nat` (same soil map); the historical stand is anchored, so ILAMB's biomass/LAI/cover scores test the
+original, not the emulator.

@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0341**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0342**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -44,15 +44,25 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-15: the emulator now runs GLOBALLY (ADR 0341).** Retrained (structure + stand maps) on Billing's Oct-2026
+GFDL-ESM4 r1_1 runs, anchored on each cell's own 1985–2014 state, leave-one-scenario-out; run on all 64 240 land cells
+(1985–2014 + three futures to 2100, 7.65e-3 core-s per cell-year); benchmarked with the lpjml-fit ILAMB + lpjmlstats
+tools on the full grid (`scripts/glob_emu.py`, `scripts/glob_emu_bench.sh`; data `esm_land_emulator_data/global_emu/`).
+Headlines: ILAMB within ±0.03 of the original on all 27 datasets; historical GPP total right but the CO2-driven trend
+missing; transpiration −8.5 % / runoff +5.8 % (daily model not retrained — the runs write no daily output); unseen
+futures beat "1985–2014 state carried forward" everywhere; ssp370 misses two thirds of the vegetation-carbon loss.
+Open from it: (a) Billing's next runs need the outputs listed in ADR 0341 / the owner message of 2026-10-15
+(yearly `ind`, `lai_stand` every year, `whc_nat`, daily fluxes, a second member) — then retrain the daily model on
+them; (b) top-metre capacity could be recomputed from texture + `soilc_layer` instead of another run's `whc_nat`.
+⚠ The futures' `output_transient` 2071–2100 is NOT a second run (identical on ~92 % of cells).
+
 **Release v1 is done (ADR 0340).** What remains is a choice among its §5 misses — ask the owner which, do not start
 another open-ended arm:
 1. **Coupling to SpeedyWeather** (goal #3; nothing exists in the package). The package's `step_year` is the call an
    ESM would make; the coupler needs daily ET/runoff/snow back to the atmosphere and the energy closure (ADR
    0073–0085), and forcing per land column.
-2. **A global release:** the anchors need the original's yearly 2020–2100 output on every cell; Billing's runs store
-   per-tree output only for 1985–2014 / 2071–2100. Either run the original yearly on all cells, or design an anchor
-   from those windows (and an anchor rule past 2100). Global all-cells structure score (window map, unseen
-   scenario): ADR 0340 §4.1, `scripts/explore_glob_allcells.py`, outputs `billing_global/eval/allcells/`.
+2. ~~A global release~~ — done with a historical-state anchor (ADR 0341); the per-year anchor of release v1 remains
+   panel-only.
 3. **Daily NPP / ET / runoff and the climate response** (ADR 0340 §4.2): the stand's plant-type cover carries most of
    the added error (ADR 0338); two loss re-weightings did nothing (ADR 0339).
 4. **Speed:** a GPU or batched numpy daily step; the daily model is 97 % of the cost.

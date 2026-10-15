@@ -7,8 +7,8 @@ Training/benchmark runs (all Oct-8-2026 build, 67 420 cells, 25 patches, audited
   GCM/historical/GFDL-ESM4/r1_1   1901-2014 (gridded + per-tree output 1985-2014; rising CO2)
   GCM/ssp<126|245|370>/GFDL-ESM4/r1_1   2015-2100 from the historical run's restart_2014_nv.lpj (CO2 const from 2014);
       output_transient/ = one continuous 2015-2100 run (gridded subset, no per-tree table, no stand leaf area);
-      output/ = a SECOND run of 2071-2100 restarted from the first's 2070 restart (all outputs + per-tree table).
-      The two disagree from 2071 on (the original's own chaotic noise) -> `second` is a second-run yardstick.
+      output/ = a re-run of 2071-2100 from the first's 2070 restart (all outputs + per-tree table) = the truth.
+      The two are IDENTICAL on ~92 % of cells (ADR 0341 sec. 1): the `second` score columns carry no information.
 
 Stages (data under DATA; nothing in $HOME):
   static            cells (grid.bin order), lat/lon -> 0.5 deg grid index, soil code, area, top-metre water capacity
