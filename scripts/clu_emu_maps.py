@@ -206,8 +206,10 @@ def window(tag_or_none, gcm=None):
 def reduce_ind(path, y0, y1):
     import explore_de_reference as R
 
-    lf = pl.scan_csv(path, schema_overrides={"Cell": pl.Int32, "Year": pl.Int32, "Type": pl.Int32,
-                                             "isdead": pl.Int32, "Patch": pl.Int32})
+    ints = {"Cell", "Year", "Type", "isdead", "Patch", "ID", "Age", "NFixing"}
+    with open(path) as fh:  # pin every dtype: inference reads whole-number trait/mortality values as integers
+        hdr = fh.readline().strip().split(",")
+    lf = pl.scan_csv(path, schema_overrides={c: pl.Int32 if c in ints else pl.Float64 for c in hdr})
     lf = lf.filter(pl.col("Year").is_between(y0, y1)).select(
         "Year", "Cell", "Type", "isdead", pl.col("Height").cast(pl.Float64), pl.col("agb").cast(pl.Float64),
         *[pl.col(v).cast(pl.Float64) for v in TRAITS])
@@ -225,6 +227,13 @@ def reduce_ind(path, y0, y1):
                           .otherwise(None).alias("agb_per_stem")).drop("n_living", "agb_sum")
 
 
+def first_year(ds):
+    """First year of an LPJmL NetCDF: units are 'years since Y' or 'days since Y-1-1' (noleap, 365-day years)."""
+    u = str(ds["time"].units)
+    base, t0 = int(u.split("since ")[1][:4]), float(ds["time"][0])
+    return base + int(t0 // 365) if u.startswith("days") else base + int(t0)
+
+
 def read_stand(odir, tag, y0, y1):
     import netCDF4 as nc
     from glob_emu import axis_index
@@ -235,12 +244,12 @@ def read_stand(odir, tag, y0, y1):
     for q, (f, v) in STAND_FILES.items():
         ds = nc.Dataset(f"{odir}/{f}_{tag}.nc")
         x = np.asarray(ds[v][:].filled(np.nan) if hasattr(ds[v][:], "filled") else ds[v][:], np.float64)
-        fy = int(str(ds["time"].units).split("since ")[1][:4])
+        fy = first_year(ds)
         il, io = axis_index(ds["lat"][:], lat), axis_index(ds["lon"][:], lon)
         cols[q] = x[y0 - fy: y1 - fy + 1][:, il, io]
     ds = nc.Dataset(f"{odir}/fpc_{tag}.nc")
     x = np.asarray(ds["FPC"][:].filled(np.nan) if hasattr(ds["FPC"][:], "filled") else ds["FPC"][:], np.float64)
-    fy = int(str(ds["time"].units).split("since ")[1][:4])
+    fy = first_year(ds)
     il, io = axis_index(ds["lat"][:], lat), axis_index(ds["lon"][:], lon)
     for p in range(1, 11):
         cols[f"fpc{p}"] = x[y0 - fy: y1 - fy + 1, p][:, il, io]
