@@ -116,7 +116,7 @@ from the runoff excess. Build: `global_emu/bench/ilamb/_build/`.
 | tree count, dense cells | 6.7 / 10.2 | 6.6 / 10.5 | 7.8 / 11.4 |
 | tree count, sparse | 24.5 / 41.6 | 24.0 / 48.6 | 29.5 / 57.5 |
 | biomass per tree, dense | 14.6 / 25.4 | 14.2 / 25.2 | 18.2 / 29.6 |
-| four trait medians, dense | 1.6–7.4 / 1.7–7.9 | 1.6–7.2 / 1.7–7.6 | 1.7–7.4 / 1.8–7.9 |
+| four trait medians, dense | 1.6–7.1 / 1.7–7.5 | 1.6–7.2 / 1.7–7.6 | 1.7–7.4 / 1.8–7.9 |
 
 The emulator beats persistence on every flux, stand and structure quantity in all three legs (pre-registered: vegetation
 carbon and tree count in ≥ 2 of 3 ✓), but on the trait medians only marginally (traits barely change in the original
