@@ -171,3 +171,28 @@ vegetation-carbon change, slope 0.47–0.53, RMSE ratio 1.00–1.38** — the sa
 0.81–0.97, slope 0.71–0.82, RMSE ratio 0.70–0.76.
 
 Held-out cells only (135): vegetation carbon slope 0.57–0.71 (second run 0.64–0.82), RMSE ratio 0.82–0.95.
+
+### 7.2 CO2 fixed at 2019 — the warming-only held-out test (§6a)
+
+Original's vegetation-carbon change, warming only: MPI −0.2 % (ssp370) / −2.2 % (ssp585), IPSL −9.7 % / −20.7 %
+(second run −4.7 / −6.4 / −11.1 / −26.3 %). For comparison, with rising CO2 the same legs gain +32 … +45 %.
+
+| quantity | case | original | emulator | second run | slope emu (second) | RMSE ratio |
+|---|---|---|---|---|---|---|
+| vegetation carbon | MPI ssp370 | −0.2 % | +0.2 % | −4.7 % | 0.58 (0.70) | 0.69 |
+| | MPI ssp585 | −2.2 % | −2.2 % | −6.4 % | 0.65 (0.72) | 0.70 |
+| | IPSL ssp370 | −9.7 % | −6.5 % | −11.1 % | 0.68 (0.72) | 0.72 |
+| | IPSL ssp585 | −20.7 % | −11.8 % | −26.3 % | 0.67 (0.75) | 0.80 |
+| GPP, emulated stand | MPI ssp370 / ssp585 | −2.1 / −1.4 % | −4.3 / −4.1 % | −1.5 / −1.6 % | 0.66 / 0.71 | 1.15 / 1.42 |
+| | IPSL ssp370 / ssp585 | −4.5 / −10.3 % | −6.0 / −9.9 % | −4.6 / −9.2 % | 0.70 / 0.74 | 1.21 / 1.47 |
+| GPP, original stand | MPI ssp370 / ssp585 | −2.1 / −1.4 % | −2.8 / −2.3 % | | 0.93 / 0.95 | 0.55 / 0.68 |
+| | IPSL ssp370 / ssp585 | −4.5 / −10.3 % | −5.3 / −11.1 % | | 0.92 / 0.93 | 0.63 / 0.72 |
+
+**Verdict (§6 rule): NOT PASSED.** Vegetation carbon: the per-cell pattern is as close to the original as a second
+run (RMSE ratio 0.69–0.80, slope within 0.04–0.12 of the second run's), but the IPSL global LOSS is under-predicted
+(0.67 / 0.57 of the original's; the second run gets 1.15 / 1.27). On MPI the original's change is ~0 and the ±25 %
+criterion is undefined in practice (the second run misses it by more than the emulator). The ssp126-only arm
+predicts a GAIN on every warming-only leg (its training legs all carry rising CO2). GPP: the daily model fed the
+original's stand gets the warming-only loss (IPSL ssp585 −11.1 vs −10.3 %; slope 0.92–0.95; RMSE ratio 0.55–0.72);
+fed the emulated stand it over-predicts the small MPI losses and the per-cell slope drops to 0.66–0.74. Context: the
+emulator trained on Billing's constant-CO2 runs (ADR 0341) got 0.30 of the ssp370 loss.
