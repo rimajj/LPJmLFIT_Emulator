@@ -109,7 +109,7 @@ def stage_build(a):
         assert err < 1e-3, f"{tag}: daily precipitation differs from the forcing by {err} mm"
         stand = np.concatenate([h_stand, stand_arr(M.read_stand(od, t, 2020, 2100), 2020, 2100)], 1)
         cap = np.concatenate([h_cap, cap_of(od, t, 2020, 2100)], 1)
-        cser = np.array([co2[t if "co2fix" in t else t][str(y)] for y in range(2019, 2101)], np.float32)
+        cser = np.array([co2["ssp370co2fix" if "co2fix" in t else t][str(y)] for y in range(2019, 2101)], np.float32)
         over = float(np.nanmax(daily[:, :, 6] / np.repeat(np.maximum(cap[:, 1:], 1.0), 365, 1)))
         for k, arr in (("forc", forc), ("daily", daily), ("stand", stand), ("cap", cap), ("co2", cser)):
             np.save(f"{F2N}/{k}_{tag}.npy", np.asarray(arr, np.float32))
@@ -163,7 +163,7 @@ def stage_run(a):
     rows, ann = [], {}
     early, late = slice(1, 31), slice(51, 81)  # 2021-2050, 2071-2100
     for g in M.TEST_GCMS:
-        for s in M.SSPS:
+        for s in M.SSPS + M.FIX_TEST:
             leg = M.leg_name(g, s)
             if not os.path.exists(f"{F2N}/daily_m2_{leg}.npy"):
                 continue

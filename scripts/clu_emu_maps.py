@@ -85,8 +85,12 @@ def leg_name(gcm, tag):
     return f"{gcm}_{tag}"
 
 
+FIX_TEST = ["ssp370co2fix", "ssp585co2fix"]  # ADR 0342 sec. 6a: warming-only legs of the held-out climate models
+
+
 def all_legs():
-    return [(g, s) for g in GCMS for s in SSPS] + [(g, "ssp370co2fix") for g in TRAIN_GCMS]
+    return ([(g, s) for g in GCMS for s in SSPS] + [(g, "ssp370co2fix") for g in TRAIN_GCMS]
+            + [(g, t) for g in TEST_GCMS for t in FIX_TEST])
 
 
 def input_list():
@@ -183,6 +187,8 @@ def stage_climate(_a):
 
 def co2_series(tag):
     d = json.load(open(f"{OUT}/climate/co2.json"))
+    if tag.endswith("co2fix"):  # every CO2-fixed series is the same (2019 held from 2020)
+        tag = "ssp370co2fix"
     return {int(y): v for y, v in d[tag].items()}
 
 
@@ -422,7 +428,7 @@ def stage_score(a):
     preds = {x: with_derived(pl.read_parquet(f"{OUT}/maps/{x}/preds.parquet")) for x in arms}
     rows = []
     for g in TEST_GCMS:
-        for s in SSPS:
+        for s in SSPS + FIX_TEST:
             name = leg_name(g, s)
             t2, t3 = targets(2, name), targets(3, name)
             if t2 is None:
