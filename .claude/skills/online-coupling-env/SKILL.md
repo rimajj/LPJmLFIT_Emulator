@@ -128,6 +128,22 @@ cd /p/tmp/jamirp/esm_online_coupling
    the measured quantity is not saturated at its own clamps** — no statistic computed on a clipped field can
    tell the two apart, only the structural ladder test or a cross-run bit-identity count.
 
+## Newer environment + speed numbers (2026-10-16)
+
+- **SpeedyWeather 0.23.0 + Terrarium 0.1.8** live in a SEPARATE project `/p/tmp/jamirp/esm_online_coupling_sw023`
+  (setup.jl, warmed T31/T63 assets). The old project above stays on 0.21.1 / 0.1.3. 0.23 changes that matter:
+  radiation is one component `model.radiation = Radiation(sw, lw)` (BREAKING), land/ocean/sea ice are Euler-forward
+  stepped with their own time steppers, soil temperature + moisture are time stepped, and
+  `model.land_sea_mask.mask` is now **`.land_fraction`**. Source clone: `/p/tmp/jamirp/esm_reference_repos/SpeedyWeather.jl`.
+- **Measured single-core cost** (`scripts/online_coupling/bench_speedyweather_speed.jl`, job 2516413, AMD EPYC 9554,
+  PrimitiveWetModel, default physics, no output): **T31 L8 126 core-s per simulated year (685 SYPD), 912 land
+  columns**; **T63 L8 1012 core-s/yr (85 SYPD), 3115 land columns**.
+- **POEM 1.2's atmosphere for comparison** (AM2 physics, FV core, 3.75°x3° x 24 levels, hourly step; unpublished,
+  builds under `/p/projects/poem/data/tuning-1.2/POEM_PROGRAM/`): its own FMS `Atmosphere` clock is 37 502 s on 20
+  ranks per 50 years (`.../POEM_RUNS/0.2/spinup_6layers_maxsnowheight-20m/fms.out-1-28-0-2467238-1801`) =
+  **15 000 core-s per simulated year**, ~120x SpeedyWeather T31 L8. Its land (standard LPJmL 5.9 at 0.5°, a C
+  library called hourly through `src/land_atlantes/lpj_driver.F90`) is a separate `Land` clock.
+
 ## The coupling architecture (verified from source, not docs)
 
 - **SpeedyWeather owns the adapter**: it ships `SpeedyWeatherTerrariumExt = "Terrarium"` in `[extensions]`,
