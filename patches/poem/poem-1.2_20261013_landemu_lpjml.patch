@@ -1,0 +1,481 @@
+diff --git a/include/landemu.h b/include/landemu.h
+new file mode 100644
+index 000000000..26dbf8d77
+--- /dev/null
++++ b/include/landemu.h
+@@ -0,0 +1,26 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**                l  a  n  d  e  m  u  .  h                                       \n**/
++/**                                                                                \n**/
++/**     Plain-C interface to the embedded learned land emulator (landemu_py.c).    \n**/
++/**     Switched on at run time by LANDEMU=1; otherwise the model is stock POEM.   \n**/
++/**                                                                                \n**/
++/**     Per cell and day the emulator reads LANDEMU_NF forcing columns:            \n**/
++/**       2-m air temperature (degC), precipitation (mm/day), downward shortwave   \n**/
++/**       (W/m2), net longwave (W/m2), 2-m specific humidity (kg/kg)               \n**/
++/**     and returns LANDEMU_NOUT columns, NaN where a cell is not emulated:        \n**/
++/**       evapotranspiration (mm/day), runoff (mm/day), per unit land area.        \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#ifndef LANDEMU_H
++#define LANDEMU_H
++
++#define LANDEMU_NF 5
++#define LANDEMU_NOUT 2
++
++extern int landemu_py_init(int ncell, const double *lat, const double *lon, int rank, int *mask);
++extern void landemu_py_day(int ncell, const double *F, const double *X, int nx, double *out);
++extern void landemu_py_finish(void);
++
++#endif
+diff --git a/include/lpj_fms.h b/include/lpj_fms.h
+index c6b3ee0c7..18318fadf 100644
+--- a/include/lpj_fms.h
++++ b/include/lpj_fms.h
+@@ -79,7 +79,9 @@ extern void lpj_update_(const int *const , const int *const , const int *const ,
+                         const double *, const double *, const double *, const double *,
+                         const double *, const double *, const double *, const double *,
+                         const double *, const double *, const double *, const double *,
+-                        const double *, const double *, double *, double *, 
++                        const double *, const double *,
++                        const double *, const double *, /* t_ref, q_ref (learned land emulator) */
++                        double *, double *, 
+                         double *, double *, double *,
+                         double *, double *, double *, double *, double *, const int *const);
+ 
+diff --git a/src/Makefile b/src/Makefile
+index 08a3e7392..8e180e258 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -96,7 +96,13 @@ clean:
+ 
+ $(OBJ): $(HDRS)
+ 
+-lpj_climber4.$O lpjfmstest.$O: $(HDRS) $(INC)/lpj_fms.h
++lpj_climber4.$O lpjfmstest.$O: $(HDRS) $(INC)/lpj_fms.h $(INC)/landemu.h
++
++# Bridge to the learned land emulator (esm_land_emulator ADR 0347): the only file that
++# includes Python.h; linked with -lpython3.11 of LANDEMU_PYTHON by exp/POEM_compile.csh.
++LANDEMU_PYTHON ?= /home/jamirp/.conda/envs/py311_new
++landemu_py.$O: landemu_py.c $(INC)/landemu.h
++	$(CC) $(CFLAGS) -I$(LANDEMU_PYTHON)/include/python3.11 -I$(INC) -c landemu_py.c
+ 
+ .c.$O: 
+ 	$(CC) $(CFLAGS) -I$(INC) -c $*.c
+diff --git a/src/landemu_py.c b/src/landemu_py.c
+new file mode 100644
+index 000000000..826a07b39
+--- /dev/null
++++ b/src/landemu_py.c
+@@ -0,0 +1,146 @@
++/**************************************************************************************/
++/**                                                                                \n**/
++/**                l  a  n  d  e  m  u  _  p  y  .  c                              \n**/
++/**                                                                                \n**/
++/**     Embedded-Python bridge to the learned LPJmL-FIT land emulator              \n**/
++/**     (esm_land_emulator, ADR 0347). Only this file includes Python.h; the       \n**/
++/**     glue in lpj_climber4.c sees plain C arrays through landemu.h.              \n**/
++/**                                                                                \n**/
++/**     Python runs in an ISOLATED interpreter (PYTHON* environment ignored),      \n**/
++/**     home LANDEMU_PYHOME, module poem_landemu.py from LANDEMU_DIR. Around every \n**/
++/**     call the floating-point traps LPJmL enables are switched off and the       \n**/
++/**     flush-to-zero / denormals-are-zero bits of the Intel build are cleared,    \n**/
++/**     so the emulator computes exactly what it computes offline; both are        \n**/
++/**     restored afterwards. A Python error aborts the run (MPI_Abort): a coupled  \n**/
++/**     run must never fall back silently to LPJmL's own fluxes.                   \n**/
++/**                                                                                \n**/
++/**************************************************************************************/
++
++#define PY_SSIZE_T_CLEAN
++#include <Python.h>
++
++#include <fenv.h>
++#include <xmmintrin.h>
++#include <stdlib.h>
++#include <string.h>
++#include <mpi.h>
++#include "landemu.h"
++
++#ifndef LANDEMU_DEFAULT_PYHOME
++#define LANDEMU_DEFAULT_PYHOME "/home/jamirp/.conda/envs/py311_new"
++#endif
++#ifndef LANDEMU_DEFAULT_DIR
++#define LANDEMU_DEFAULT_DIR "/p/projects/open/Jamir/esm_land_emulator/scripts/online_coupling"
++#endif
++
++static PyObject *mod = NULL;
++static int saved_exc;
++static unsigned int saved_csr;
++
++static void enter(void)
++{
++  saved_csr = _mm_getcsr();
++  saved_exc = fegetexcept();
++  fedisableexcept(FE_ALL_EXCEPT);
++  _mm_setcsr((_mm_getcsr() & ~0x8040u)); /* clear FTZ (bit 15) and DAZ (bit 6) */
++} /* of 'enter' */
++
++static void leave(void)
++{
++  feclearexcept(FE_ALL_EXCEPT);
++  _mm_setcsr(saved_csr & ~0x3fu); /* restore masks, FTZ, DAZ; drop sticky flags */
++  feenableexcept(saved_exc);
++} /* of 'leave' */
++
++static void die(const char *where)
++{
++  fprintf(stderr, "landemu: Python error in %s\n", where);
++  if (PyErr_Occurred())
++    PyErr_Print();
++  fflush(stderr);
++  fflush(stdout);
++  MPI_Abort(MPI_COMM_WORLD, 77);
++} /* of 'die' */
++
++static PyObject *bytes_of(const double *a, size_t n)
++{
++  return PyBytes_FromStringAndSize((const char *)a, (Py_ssize_t)(n * sizeof(double)));
++} /* of 'bytes_of' */
++
++int landemu_py_init(int ncell, const double *lat, const double *lon, int rank, int *mask)
++{
++  const char *home = getenv("LANDEMU_PYHOME");
++  const char *dir = getenv("LANDEMU_DIR");
++  PyConfig cfg;
++  PyStatus st;
++  PyObject *sys_path, *p, *r, *m;
++  int i, n = 0;
++  enter();
++  PyConfig_InitIsolatedConfig(&cfg);
++  cfg.install_signal_handlers = 0;
++  st = PyConfig_SetBytesString(&cfg, &cfg.home, home != NULL ? home : LANDEMU_DEFAULT_PYHOME);
++  if (PyStatus_Exception(st))
++  {
++    fprintf(stderr, "landemu: cannot set Python home\n");
++    MPI_Abort(MPI_COMM_WORLD, 77);
++  }
++  st = Py_InitializeFromConfig(&cfg);
++  PyConfig_Clear(&cfg);
++  if (PyStatus_Exception(st))
++  {
++    fprintf(stderr, "landemu: Py_InitializeFromConfig failed: %s\n", st.err_msg ? st.err_msg : "?");
++    MPI_Abort(MPI_COMM_WORLD, 77);
++  }
++  sys_path = PySys_GetObject("path"); /* borrowed */
++  p = PyUnicode_FromString(dir != NULL ? dir : LANDEMU_DEFAULT_DIR);
++  if (sys_path == NULL || p == NULL || PyList_Insert(sys_path, 0, p))
++    die("sys.path");
++  Py_DECREF(p);
++  mod = PyImport_ImportModule("poem_landemu");
++  if (mod == NULL)
++    die("import poem_landemu");
++  r = PyObject_CallMethod(mod, "start", "NNi", bytes_of(lat, ncell), bytes_of(lon, ncell), rank);
++  if (r == NULL)
++    die("poem_landemu.start");
++  Py_DECREF(r);
++  m = PyObject_CallMethod(mod, "mask", NULL);
++  if (m == NULL || !PyBytes_Check(m) || PyBytes_Size(m) != ncell)
++    die("poem_landemu.mask");
++  for (i = 0; i < ncell; i++)
++  {
++    mask[i] = PyBytes_AsString(m)[i] != 0;
++    n += mask[i];
++  }
++  Py_DECREF(m);
++  leave();
++  return n;
++} /* of 'landemu_py_init' */
++
++void landemu_py_day(int ncell, const double *F, const double *X, int nx, double *out)
++{
++  PyObject *r;
++  enter();
++  r = PyObject_CallMethod(mod, "day", "NNi", bytes_of(F, (size_t)ncell * LANDEMU_NF),
++                          bytes_of(X, (size_t)ncell * nx), nx);
++  if (r == NULL || !PyBytes_Check(r) ||
++      PyBytes_Size(r) != (Py_ssize_t)(ncell * LANDEMU_NOUT * sizeof(double)))
++    die("poem_landemu.day");
++  memcpy(out, PyBytes_AsString(r), ncell * LANDEMU_NOUT * sizeof(double));
++  Py_DECREF(r);
++  leave();
++} /* of 'landemu_py_day' */
++
++void landemu_py_finish(void)
++{
++  PyObject *r;
++  if (mod == NULL)
++    return;
++  enter();
++  r = PyObject_CallMethod(mod, "finish", NULL);
++  if (r == NULL)
++    die("poem_landemu.finish");
++  Py_DECREF(r);
++  Py_DECREF(mod);
++  mod = NULL;
++  leave();
++} /* of 'landemu_py_finish' */
+diff --git a/src/lpj_climber4.c b/src/lpj_climber4.c
+index ae9fe0826..d23689466 100644
+--- a/src/lpj_climber4.c
++++ b/src/lpj_climber4.c
+@@ -127,6 +127,183 @@ static void *getmem(size_t size)
+   return ptr;
+ }
+ 
++/*
++ * Learned LPJmL-FIT land emulator (esm_land_emulator, ADR 0347). Off unless the
++ * environment sets LANDEMU=1; then, for every cell the emulator covers:
++ *  - every fast step the 2-m air temperature and humidity, precipitation,
++ *    downward shortwave and net longwave are accumulated into daily means;
++ *  - at the last step of the day the emulator runs that day (landemu_py.c) and
++ *    its runoff replaces LPJmL's in the river routing (so it reaches the ocean);
++ *  - its evapotranspiration becomes the land part of the moisture flux handed
++ *    to the atmosphere through the whole next day (spread over the fast steps
++ *    flat or with the sun, LANDEMU_DIURNAL=flat|sun, exactly the day's total),
++ *    and the latent heat in LPJmL's surface energy balance (cell->evap1, which
++ *    the next step's ground heat flux reads; its derivative cell->dedt is 0,
++ *    since the flux no longer responds to surface temperature).
++ * Lake evaporation stays LPJmL's. Everything else (surface temperature, albedo,
++ * roughness, canopy humidity, snow) stays LPJmL's.
++ * LANDEMU=shadow runs and records the emulator the same way but hands nothing
++ * back: the model is stock POEM (the control run, and the one-way result).
++ */
++#include "landemu.h"
++#define LE_NACC 8 /* t_ref, prec, swdown, lwnet, q_ref, LPJmL land ET, skin temp, steps */
++#define LE_NX 3   /* recorded beside the forcing: LPJmL's own land ET and runoff (mm/day), skin temp (degC) */
++static int le_on = 0, le_apply = 0, le_sun = 1, le_nsd = 0;
++static int *le_mask = NULL;
++static double *le_acc = NULL, *le_F = NULL, *le_X = NULL, *le_out = NULL, *le_et = NULL, *le_wt = NULL;
++
++static int le_doy(int month0, int day1) /* noleap day of year, 1..365 */
++{
++  static const int cum[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
++  return cum[month0] + day1;
++} /* of 'le_doy' */
++
++static Real le_landfrac(const Cell *c)
++{
++  return 1 - c->lakefrac - c->ml.reservoirfrac;
++} /* of 'le_landfrac' */
++
++/* weights of the le_nsd fast steps of day doy (1..365), summing to 1 per cell:
++ * proportional to max(cos solar zenith, 0) at the step midpoint (UTC), uniform
++ * in polar night; as run_speedy_landemu.jl::day_weights! (ADR 0345) */
++static void le_weights(int doy)
++{
++  int cell, j;
++  const double dec = -23.44 * M_PI / 180 * cos(2 * M_PI * (doy + 10) / 365.0);
++  for (cell = 0; cell < config.ngridcell; cell++)
++  {
++    double s = 0, *w = le_wt + (size_t)le_nsd * cell;
++    if (!le_mask[cell])
++      continue;
++    const double la = grid[cell].coord.lat * M_PI / 180, lo = grid[cell].coord.lon * M_PI / 180;
++    for (j = 0; j < le_nsd; j++)
++    {
++      const double h = 2 * M_PI * (j + 0.5) / le_nsd + lo - M_PI;
++      const double cz = sin(la) * sin(dec) + cos(la) * cos(dec) * cos(h);
++      w[j] = le_sun ? (cz > 0 ? cz : 0) : 1;
++      s += w[j];
++    }
++    for (j = 0; j < le_nsd; j++)
++      w[j] = s > 0 ? w[j] / s : 1.0 / le_nsd;
++  }
++} /* of 'le_weights' */
++
++static void le_init(void)
++{
++  const char *on = getenv("LANDEMU"), *d = getenv("LANDEMU_DIURNAL");
++  int cell, n;
++  double *lat, *lon;
++  if (on == NULL || (strcmp(on, "1") && strcmp(on, "shadow")))
++    return;
++  if (d != NULL && strcmp(d, "sun") && strcmp(d, "flat"))
++  {
++    fprintf(stderr, "landemu: LANDEMU_DIURNAL must be sun or flat, not '%s'\n", d);
++    MPI_Abort(MPI_COMM_WORLD, 77);
++  }
++  le_on = 1;
++  le_apply = !strcmp(on, "1");
++  le_sun = d == NULL || !strcmp(d, "sun");
++  le_nsd = NSECONDSDAY / dt_fast;
++  if (le_nsd * dt_fast != NSECONDSDAY)
++  {
++    fprintf(stderr, "landemu: fast step %d s does not divide the day\n", dt_fast);
++    MPI_Abort(MPI_COMM_WORLD, 77);
++  }
++  le_mask = getmem(sizeof(int) * config.ngridcell);
++  le_acc = calloc((size_t)LE_NACC * config.ngridcell, sizeof(double));
++  le_F = calloc((size_t)LANDEMU_NF * config.ngridcell, sizeof(double));
++  le_X = calloc((size_t)LE_NX * config.ngridcell, sizeof(double));
++  le_out = getmem(sizeof(double) * LANDEMU_NOUT * config.ngridcell);
++  le_et = getmem(sizeof(double) * config.ngridcell);
++  le_wt = getmem(sizeof(double) * le_nsd * config.ngridcell);
++  lat = getmem(sizeof(double) * config.ngridcell);
++  lon = getmem(sizeof(double) * config.ngridcell);
++  check(le_acc);
++  check(le_F);
++  check(le_X);
++  for (cell = 0; cell < config.ngridcell; cell++)
++  {
++    lat[cell] = grid[cell].skip ? NAN : grid[cell].coord.lat; /* NaN: never matched */
++    lon[cell] = grid[cell].skip ? NAN : grid[cell].coord.lon;
++    le_et[cell] = NAN; /* the first day hands over LPJmL's own flux */
++  }
++  n = landemu_py_init(config.ngridcell, lat, lon, pe, le_mask);
++  free(lat);
++  free(lon);
++  printf("landemu: rank %d emulates %d of %d LPJmL cells, %d steps per day, diurnal %s, %s\n",
++         pe, n, config.ngridcell, le_nsd, le_sun ? "sun" : "flat",
++         le_apply ? "COUPLED (fluxes handed to the atmosphere)" : "SHADOW (recorded only, stock POEM)");
++  fflush(stdout);
++} /* of 'le_init' */
++
++/* after update_fast() of one cell and step: accumulate, then hand over the emulator's flux */
++static void le_fast(int cell, Real lake_flux, Real t_ref, Real q_ref, const Dailyclimate *fast, int jstep)
++{
++  double *a = le_acc + (size_t)LE_NACC * cell;
++  Cell *c = grid + cell;
++  a[0] += t_ref - 273.15;
++  a[1] += fast->prec;
++  a[2] += fast->swdown;
++  a[3] += fast->lwnet;
++  a[4] += q_ref;
++  a[5] += (c->evap1 - lake_flux) * dt_fast_real; /* LPJmL's own land ET this step, mm over the cell */
++  a[6] += fast->temp;
++  a[7] += 1;
++  if (le_apply && isfinite(le_et[cell]))
++  {
++    c->evap1 = le_landfrac(c) * le_et[cell] / NSECONDSDAY * le_nsd * le_wt[(size_t)le_nsd * cell + jstep] + lake_flux;
++    c->dedt = 0;
++  }
++} /* of 'le_fast' */
++
++/* last fast step of the day, after update_daily() and before drain() */
++static void le_goodnight(int doy)
++{
++  int cell;
++  for (cell = 0; cell < config.ngridcell; cell++)
++  {
++    double *a = le_acc + (size_t)LE_NACC * cell, *F = le_F + (size_t)LANDEMU_NF * cell, *X = le_X + (size_t)LE_NX * cell;
++    if (!le_mask[cell])
++      continue;
++    const Real lf = le_landfrac(grid + cell);
++    if ((int)a[7] != le_nsd)
++    {
++      fprintf(stderr, "landemu: cell %d saw %g fast steps on day %d, expected %d\n", cell, a[7], doy, le_nsd);
++      MPI_Abort(MPI_COMM_WORLD, 77);
++    }
++    F[0] = a[0] / a[7];
++    F[1] = a[1];
++    F[2] = a[2] / a[7];
++    F[3] = a[3] / a[7];
++    F[4] = a[4] / a[7];
++    /* per unit land area; an all-lake cell (lf 0) gets the emulator's flux times 0 anyway */
++    X[0] = lf > 0 ? a[5] / lf : 0;
++    X[1] = lf > 0 ? grid[cell].discharge.drunoff / lf : 0;
++    X[2] = a[6] / a[7];
++    if (!isfinite(F[0]) || !isfinite(F[1]) || !isfinite(F[2]) || !isfinite(F[3]) || !isfinite(F[4]))
++    {
++      fprintf(stderr, "landemu: non-finite forcing at cell %d (lat %g lon %g) day %d: %g %g %g %g %g\n",
++              cell, grid[cell].coord.lat, grid[cell].coord.lon, doy, F[0], F[1], F[2], F[3], F[4]);
++      MPI_Abort(MPI_COMM_WORLD, 77);
++    }
++  }
++  landemu_py_day(config.ngridcell, le_F, le_X, LE_NX, le_out);
++  for (cell = 0; cell < config.ngridcell; cell++)
++  {
++    if (!le_mask[cell] || !le_apply)
++      continue;
++    const Real ro = le_landfrac(grid + cell) * le_out[LANDEMU_NOUT * cell + 1];
++    /* the rivers now carry the emulator's runoff, LPJmL's soil kept its own: the difference
++       enters the cell from outside, i.e. a negative outflux in LPJmL's cell water balance
++       (check_fluxes: balance = change of storage - prec + awater_flux), which so still closes */
++    grid[cell].balance.awater_flux -= ro - grid[cell].discharge.drunoff;
++    grid[cell].discharge.drunoff = ro;
++    le_et[cell] = le_out[LANDEMU_NOUT * cell];
++  }
++  memset(le_acc, 0, sizeof(double) * LE_NACC * config.ngridcell);
++  le_weights(doy % 365 + 1);
++} /* of 'le_goodnight' */
++
+ int write_array_to_file(
+     const char *filename,
+     const void *data,
+@@ -901,6 +1078,8 @@ void lpj_init_
+ 
+   *global_number_lpj_cells = config.nall;
+ 
++  le_init(); /* learned land emulator, off unless LANDEMU=1 */
++
+   // initialize enth by taking the temperature of restart file
+   #ifdef RESTART_BELOW_5_9
+     Soil_thermal_prop therm; /* thermal properties of soil for calculation of enthalpy */
+@@ -1518,6 +1697,8 @@ void lpj_update_
+    const double *wind_in,
+    const double *co2_in,
+    const double *q_ca_old_in,
++   const double *t_ref_in,   /* 2-m air temperature [K] (read only by the learned land emulator, LANDEMU=1) */
++   const double *q_ref_in,   /* 2-m specific humidity [kg/kg] (likewise) */
+    /*! pass back results from LPJ */
+    double *carbon_flux_out, /* daily carbon flux from LPJ to atmosphere (gC/m2/day) */
+    double *q_ca_out,
+@@ -1928,6 +2109,8 @@ void lpj_update_
+       double *tmp_drag_q    = getmem(sizeof(double) * config.ngridcell);
+       double *tmp_q_atm     = getmem(sizeof(double) * config.ngridcell);
+       double *tmp_p_surf    = getmem(sizeof(double) * config.ngridcell);
++      double *tmp_t_ref     = getmem(sizeof(double) * config.ngridcell); /* learned land emulator */
++      double *tmp_q_ref     = getmem(sizeof(double) * config.ngridcell);
+       double *tmp_co2       = NULL;
+ 
+       double *tmp_carbon_flux_out = getmem(sizeof(double) * config.ngridcell);
+@@ -2010,6 +2193,8 @@ void lpj_update_
+       cpl_fms_to_lpj(q_atm_in, tmp_q_atm);
+ 
+       cpl_fms_to_lpj(p_surf_in, tmp_p_surf);
++      cpl_fms_to_lpj(t_ref_in, tmp_t_ref);
++      cpl_fms_to_lpj(q_ref_in, tmp_q_ref);
+ 
+       // Get current CO2 value from LPJ_COUPLER / land_lad
+       // When receiving data from FMS, we get daily per-cell CO2 values.
+@@ -2134,7 +2319,11 @@ void lpj_update_
+ 
+  //             tmp_diff[cell]=grid[cell].output.daily.temp-tmp_temp_mean[cell];
+           grid[cell].output.evapotrans_flux_fast=0;
++          const Real le_lake0 = grid[cell].balance.aevap_lake;
+           update_fast(grid+cell,fast,dt_fast_real,dayofyear,month,&config,use_spinup);
++          if (le_on && le_mask[cell])
++            le_fast(cell, (grid[cell].balance.aevap_lake - le_lake0) / dt_fast_real, tmp_t_ref[cell], tmp_q_ref[cell], &fast,
++                    (*Time_hour*3600 + *Time_minute*60 + *Time_seconds) / dt_fast);
+           grid[cell].daily.prec += fast.prec;
+ 
+           getoutput(&grid[cell].output, TFLUX, &config) += fast.t_flux * dt_fast_real / NSECONDSDAY;
+@@ -2370,6 +2559,8 @@ void lpj_update_
+         } /* of for(cell=0;cell<config.ngridcell;cell++) */
+         printf(" temp: %-.2f  prec: %-.3f  albedo: %-.3f  q_ca: %-.3f  \n",temp_mean/(global_area),prec_mean/(global_area),albedo_mean/(global_area),qca_mean/(global_area));
+ 
++        if (le_on) /* learned land emulator: its day, its runoff into the rivers */
++          le_goodnight(le_doy(month, *Time_day));
+         if(config.river_routing)
+         {
+           if(input.landuse!=NULL || input.wateruse!=NULL)
+@@ -2693,6 +2884,8 @@ void lpj_update_
+       free(tmp_t_flux);
+       free(tmp_qflux);
+       free(tmp_q_ca_old);
++      free(tmp_t_ref);
++      free(tmp_q_ref);
+       free(tmp_dedq);
+       free(tmp_dhdt);
+       free(tmp_drdt);
+@@ -2798,6 +2991,8 @@ void lpj_end_(void)
+ {
+ 
+   /* Simulation has finished */
++  if (le_on)
++    landemu_py_finish(); /* learned land emulator: write its record */
+   fcloseoutput(output,&config);
+   if(isroot(config))
+     puts((year>config.lastyear) ? "Simulation ended." : "Simulation stopped.");

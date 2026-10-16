@@ -184,6 +184,7 @@ class Coupler:
             self.cover[ok] = new[ok]  # no anchor -> keep last year's, as the emulator's own stand
             self.doy, self.year = 0, self.year + 1
         self.swe = np.asarray(out["swe"], np.float64).copy()
+        self.last = out  # the whole day's output (POEM also takes the runoff, poem_landemu.py)
         self.t_emu += time.time() - t0
         return out["interc"] + out["transp"] + out["evap"]
 

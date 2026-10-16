@@ -1,0 +1,204 @@
+diff --git a/exp/POEM_compile.csh b/exp/POEM_compile.csh
+index 4d01929..0961064 100755
+--- a/exp/POEM_compile.csh
++++ b/exp/POEM_compile.csh
+@@ -334,6 +334,14 @@ else
+ endif
+ 
+ 
++# Learned land emulator bridge in LPJmL (src/land_atlantes/LPJmL/src/landemu_py.c; esm_land_emulator
++# ADR 0347): embedded Python of LANDEMU_PYTHON, switched on at run time by LANDEMU=1.
++# LANDEMU_PYLIB holds ONLY libpython3.11.so(.1.0) (symlinks into the Python environment): putting the
++# environment's own lib/ on the search path makes -lnetcdf/-lhdf5 resolve to ITS shared libraries
++# instead of the static ones POEM uses, and the run aborts in NC4_open (HDF5 version mismatch).
++if ( ! $?LANDEMU_PYLIB ) setenv LANDEMU_PYLIB /p/projects/open/Jamir/poem_landemu/pylib
++set landemu_libs = "-L$LANDEMU_PYLIB -lpython3.11 -Wl,-rpath,$LANDEMU_PYLIB"
++
+ # Build the executable
+ set mkmf_exec = "$mkmf -f -m Makefile -a $code_dir -t $mkmfTemplate -p $executable:t"
+ mkdir -p $executable:h
+@@ -382,7 +390,7 @@ else if ( $type == MOM_ATLANTES_LPJ_CM2 ) then
+     set srcList = ( coupler )
+     #set cppDefs = ( $cppDefs -DPIK_COUPLER_COSZEN_TO_LAND )
+     set includes = "-I$executable:h:h/lib_FMS -I$executable:h:h/lib_ocean -I$executable:h:h/lib_ice -I$executable:h:h/lib_atmos_fv -I$executable:h:h/lib_atmos_phys -I$executable:h:h/lib_land_atlantes+lpj"
+-    set libs = "-L$executable:h:h/lib_ocean -l_ocean -L$executable:h:h/lib_ice -l_ice -L$executable:h:h/lib_atmos_fv -l_atmos_fv -L$executable:h:h/lib_atmos_phys -l_atmos_phys -L$executable:h:h/lib_land_atlantes+lpj -l_land_atlantes+lpj -L$executable:h:h/lib_lpj -l_lpj -L$executable:h:h/lib_version -l_version -L$executable:h:h/lib_FMS -l_FMS $lpjreqlibs"
++    set libs = "-L$executable:h:h/lib_ocean -l_ocean -L$executable:h:h/lib_ice -l_ice -L$executable:h:h/lib_atmos_fv -l_atmos_fv -L$executable:h:h/lib_atmos_phys -l_atmos_phys -L$executable:h:h/lib_land_atlantes+lpj -l_land_atlantes+lpj -L$executable:h:h/lib_lpj -l_lpj -L$executable:h:h/lib_version -l_version -L$executable:h:h/lib_FMS -l_FMS $lpjreqlibs $landemu_libs"
+ else if ( $type == MOM_ATLANTES2_LPJ_CM2 ) then
+ #    set srcList = ( coupler )
+ #    set cppDefs = ( $cppDefs -DPIK_COUPLER_COSZEN_TO_LAND )
+diff --git a/exp/lpj_compile.csh b/exp/lpj_compile.csh
+index 9f95d72..80c5287 100755
+--- a/exp/lpj_compile.csh
++++ b/exp/lpj_compile.csh
+@@ -17,7 +17,7 @@ if ( ! -f $code_dir/land_atlantes/$LPJSRC/Makefile.inc ) then
+ endif
+ 
+ # Autumn 2020: compile without -DDAILY_ESTABLISHMENT but with -DPERMUTE
+-(cd $code_dir/land_atlantes/$LPJSRC/src ; make -B -n libs getbuild.o lpj_climber4.o) |& \
++(cd $code_dir/land_atlantes/$LPJSRC/src ; make -B -n libs getbuild.o lpj_climber4.o landemu_py.o) |& \
+   awk 'BEGIN { lpjsrc="'$code_dir/land_atlantes/$LPJSRC'"; dir=lpjsrc "/src"; } \
+ 	/Entering directory/ { dir=gensub("'\''","","g",$NF); } \
+ 	/Leaving directory/ { dir=lpjsrc "/src"; } \
+diff --git a/src/coupler/flux_exchange.F90 b/src/coupler/flux_exchange.F90
+index 8e954aa..7df77a1 100644
+--- a/src/coupler/flux_exchange.F90
++++ b/src/coupler/flux_exchange.F90
+@@ -381,6 +381,8 @@ real, allocatable, dimension(:) :: &
+      ex_drag_q,    &   ! q drag.coeff.
+ #ifdef USE_LPJ_FLUX_OVERWRITE
+      ex_q_atm,     &   ! specific humidity at lowest atmos. model level [kg/kg]; paired with ex_drag_q
++     ex_t_ref2m,   &   ! 2-m air temperature [K], for the land (learned land emulator, esm_land_emulator ADR 0347)
++     ex_q_ref2m,   &   ! 2-m specific humidity [kg/kg], likewise
+ #endif
+      ex_cd_t,      &
+      ex_cd_m,      &
+@@ -1260,6 +1262,9 @@ subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Land_Ice_Atmos_Boundar
+   real, dimension(size(Ice%t_surf,1),size(Ice%t_surf,2),size(Ice%t_surf,3)) :: sea
+   real, dimension(size(Ice%albedo,1),size(Ice%albedo,2),size(Ice%albedo,3)) ::  tmp_open_sea
+   real    :: zrefm, zrefh
++#ifdef USE_LPJ_FLUX_OVERWRITE
++  real, dimension(n_xgrid_sfc) :: ex_del_m_2m, ex_del_h_2m, ex_del_q_2m ! 2-m profile for the land
++#endif
+   logical :: used
+   character(32) :: tr_name ! tracer name
+   integer :: tr, n, m ! tracer indices
+@@ -1291,6 +1296,8 @@ subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Land_Ice_Atmos_Boundar
+        ex_drag_q   (n_xgrid_sfc),  &
+ #ifdef USE_LPJ_FLUX_OVERWRITE
+        ex_q_atm    (n_xgrid_sfc),  &
++       ex_t_ref2m  (n_xgrid_sfc),  &
++       ex_q_ref2m  (n_xgrid_sfc),  &
+ #endif
+        ex_avail    (n_xgrid_sfc),  &
+        ex_f_t_delt_n(n_xgrid_sfc), &
+@@ -2093,6 +2100,24 @@ subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Land_Ice_Atmos_Boundar
+      used = send_data ( id_slp, diag_atm, Time )
+   endif
+ 
++#ifdef USE_LPJ_FLUX_OVERWRITE
++  !-----------------------------------------------------------------------
++  !--------- 2-m air temperature and humidity handed to the land ---------
++  ! Always computed at z_ref_heat (the diagnostics below compute them only when
++  ! requested, and at z_ref_mom when t_ref is not). Read by LPJmL only when the
++  ! learned land emulator is switched on (LANDEMU=1; esm_land_emulator ADR 0347).
++  call mo_profile ( z_ref_heat, z_ref_heat, ex_z_atm, ex_rough_mom, &
++       ex_rough_heat, ex_rough_moist,          &
++       ex_u_star, ex_b_star, ex_q_star,        &
++       ex_del_m_2m, ex_del_h_2m, ex_del_q_2m, ex_avail )
++  ex_t_ref2m = 0.0
++  ex_q_ref2m = 0.0
++  where (ex_avail)
++     ex_t_ref2m = ex_t_ca + (ex_t_atm-ex_t_ca) * ex_del_h_2m
++     ex_q_ref2m = ex_tr_surf(:,isphum) + (ex_tr_atm(:,isphum)-ex_tr_surf(:,isphum)) * ex_del_q_2m
++  endwhere
++#endif
++
+   !-----------------------------------------------------------------------
+   !--------- diagnostics for fields at reference level ---------
+   
+@@ -2606,6 +2631,12 @@ subroutine flux_down_from_atmos (Time, Atm, Land, Ice, &
+   if(associated(Land_boundary%q_atm)) then
+      call get_from_xgrid (Land_boundary%q_atm, 'LND', ex_q_atm, xmap_sfc)
+   endif
++  if(associated(Land_boundary%t_ref)) then
++     call get_from_xgrid (Land_boundary%t_ref, 'LND', ex_t_ref2m, xmap_sfc)
++  endif
++  if(associated(Land_boundary%q_ref)) then
++     call get_from_xgrid (Land_boundary%q_ref, 'LND', ex_q_ref2m, xmap_sfc)
++  endif
+ #endif
+   if(associated(Land_boundary%lwdn_flux)) then
+      call get_from_xgrid (Land_boundary%lwdn_flux, 'LND', ex_flux_lwd, xmap_sfc)
+@@ -3884,6 +3915,8 @@ subroutine flux_up_to_atmos ( Time, Land, Ice, Land_Ice_Atmos_Boundary, Land_bou
+        ex_drag_q   ,  &
+ #ifdef USE_LPJ_FLUX_OVERWRITE
+        ex_q_atm    ,  &
++       ex_t_ref2m  ,  &
++       ex_q_ref2m  ,  &
+ #endif
+        ex_avail    ,  &
+        ex_f_t_delt_n, &
+diff --git a/src/land_atlantes/land_model.F90 b/src/land_atlantes/land_model.F90
+index 1996aed..743859c 100644
+--- a/src/land_atlantes/land_model.F90
++++ b/src/land_atlantes/land_model.F90
+@@ -823,6 +823,8 @@ subroutine update_land_model_fast ( atmos2land, bnd )
+           atmos2land%drag_q(:,:,1),                 &
+           atmos2land%q_atm(:,:,1),                  &  ! [kg/kg] specific humidity at lowest atmos. level
+           atmos2land%p_surf(:,:,1),                 &
++          atmos2land%t_ref(:,:,1),                  &  ! [K] 2-m air temperature (learned land emulator)
++          atmos2land%q_ref(:,:,1),                  &  ! [kg/kg] 2-m specific humidity (likewise)
+ !! moved here from call lpj_driver_update_slow
+           atmos2land%lprec(:,:,1),   & ! [kg/m2/s]
+           atmos2land%fprec(:,:,1),   & ! [kg/m2/s]
+@@ -856,6 +858,8 @@ subroutine update_land_model_fast ( atmos2land, bnd )
+           atmos2land%drag_q(:,:,1),                 &
+           atmos2land%q_atm(:,:,1),                  &  ! [kg/kg] specific humidity at lowest atmos. level
+           atmos2land%p_surf(:,:,1),                 &
++          atmos2land%t_ref(:,:,1),                  &  ! [K] 2-m air temperature (learned land emulator)
++          atmos2land%q_ref(:,:,1),                  &  ! [kg/kg] 2-m specific humidity (likewise)
+ !! moved here from call lpj_driver_update_slow
+           atmos2land%lprec(:,:,1),   & ! [kg/m2/s]
+           atmos2land%fprec(:,:,1),   & ! [kg/m2/s]
+diff --git a/src/land_atlantes/land_types.F90 b/src/land_atlantes/land_types.F90
+index 2ae3938..5be5f75 100644
+--- a/src/land_atlantes/land_types.F90
++++ b/src/land_atlantes/land_types.F90
+@@ -147,6 +147,8 @@ type :: atmos_land_boundary_type
+         z_bot => NULL(),     &   ! height of the bottom atmos. layer above surface, m
+         drag_q =>NULL(),     &   ! product of cd_q by wind
+         q_atm  =>NULL(),     &   ! specific humidity at lowest atmos. model level [kg/kg]; paired with drag_q for surface flux
++        t_ref  =>NULL(),     &   ! 2-m air temperature [K] (learned land emulator, esm_land_emulator ADR 0347)
++        q_ref  =>NULL(),     &   ! 2-m specific humidity [kg/kg] (likewise)
+         p_surf =>NULL()          ! surface pressure
+ 
+ #ifdef LAND_BND_TRACERS
+@@ -419,6 +421,8 @@ subroutine allocate_boundary_data (a2l, bnd, domain, n_tiles, n_tracers)
+   allocate( a2l % drdt    (is:ie,js:je,n_tiles) )
+   allocate( a2l % drag_q  (is:ie,js:je,n_tiles) )
+   allocate( a2l % q_atm   (is:ie,js:je,n_tiles) )
++  allocate( a2l % t_ref   (is:ie,js:je,n_tiles) )
++  allocate( a2l % q_ref   (is:ie,js:je,n_tiles) )
+   allocate( a2l % p_surf  (is:ie,js:je,n_tiles) )
+   allocate( a2l % sw_flux_down_vis_dir   (is:ie,js:je,n_tiles) )
+   allocate( a2l % sw_flux_down_total_dir (is:ie,js:je,n_tiles) )
+@@ -509,6 +513,8 @@ subroutine deallocate_boundary_data ( a2l, bnd )
+   deallocate( a2l % drdt     )
+   deallocate( a2l % drag_q   )
+   deallocate( a2l % q_atm    )
++  deallocate( a2l % t_ref    )
++  deallocate( a2l % q_ref    )
+   deallocate( a2l % p_surf   )
+   deallocate( a2l % sw_flux_down_vis_dir    )
+   deallocate( a2l % sw_flux_down_total_dir  )
+diff --git a/src/land_atlantes/lpj_driver.F90 b/src/land_atlantes/lpj_driver.F90
+index 9dc9f91..eb42284 100644
+--- a/src/land_atlantes/lpj_driver.F90
++++ b/src/land_atlantes/lpj_driver.F90
+@@ -1276,6 +1276,7 @@ contains
+        drag_q, &                ! mandatory
+        q_atm, &                 ! mandatory
+        p_surf, &                ! mandatory
++       t_ref, q_ref, &          ! mandatory; read only by the learned land emulator (LANDEMU=1)
+        lprec, fprec, temp, swdown, lwnet, t_flux, wind, &
+        tr_flux_co2, dfdtr_co2 & ! optional
+        ! no output variables here
+@@ -1296,7 +1297,9 @@ contains
+          drdt, &            ! derivative of LW radiation over T
+          drag_q, &          ! [m/s] Product of drag coefficient for water vapor by wind
+          q_atm, &           ! [kg/kg] specific humidity at lowest atmos. model level
+-         p_surf             ! [N/m2] == [Pa] == [kg/m/s2] Surface pressure
++         p_surf, &          ! [N/m2] == [Pa] == [kg/m/s2] Surface pressure
++         t_ref, &           ! [K] 2-m air temperature (learned land emulator, esm_land_emulator ADR 0347)
++         q_ref              ! [kg/kg] 2-m specific humidity (likewise)
+     real, dimension(:,:), intent(in) :: &
+          lprec,     & ! [kg/m2/s] liquid precipitation; LPJ needs daily sum [mm] == [kg/m2]
+          fprec,     & ! [kg/m2/s] frozen precipitation; LPJ needs daily sum [mm] == [kg/m2]
+@@ -1415,6 +1418,7 @@ contains
+             wind, &
+             co2_ppmv, &
+             q_ca, &
++            t_ref, q_ref, &
+             ! get back output from LPJ
+             lpj_state%co2_flux_out, & ! returned as carbon flux in [g C/ (m^2/day)], must be converted to [kg CO2/(m^2 sec)]
+             lpj_state%q_ca_out, &
