@@ -1,6 +1,6 @@
 ---
 name: online-coupling-env
-description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the nine traps that each cost a failed job or a wrong verdict: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job.
+description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the nine traps that each cost a failed job or a wrong verdict: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job. ALSO the COUPLING OF THE LEARNED EMULATOR to SpeedyWeather 0.23 (ADR 0345): scripts/online_coupling/run_speedy_landemu.jl (+ landemu_coupler.py, score_speedy_landemu.py, sbatch_speedy_landemu.sh) — daily weather per land column into LandEmulator.step_day through PythonCall, daily ET back as the land moisture flux via EmulatorLandHumidityFlux, MODE=coupled|control, DIURNAL=flat|sun, the offline replay gate, the water/leap-day accounting, and the PythonCall/0.23 API traps (get_londlatds, truncation = trunc+1, sys.path.insert, JULIA_CONDAPKG_BACKEND=Null).
 ---
 
 # online-coupling-env — SpeedyWeather + Terrarium on this cluster
@@ -143,6 +143,34 @@ cd /p/tmp/jamirp/esm_online_coupling
   ranks per 50 years (`.../POEM_RUNS/0.2/spinup_6layers_maxsnowheight-20m/fms.out-1-28-0-2467238-1801`) =
   **15 000 core-s per simulated year**, ~120x SpeedyWeather T31 L8. Its land (standard LPJmL 5.9 at 0.5°, a C
   library called hourly through `src/land_atlantes/lpj_driver.F90`) is a separate `Land` clock.
+
+## The learned emulator coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16)
+
+Direct, NOT through Terrarium (Terrarium is a 300-s process socket; the emulator is daily).
+```bash
+MODE=coupled DIURNAL=flat YEARS=10 scripts/online_coupling/sbatch_speedy_landemu.sh cpl-coupled-10y   # ~20 min, 1 core
+MODE=control YEARS=10 scripts/online_coupling/sbatch_speedy_landemu.sh cpl-control-10y                # same diagnostics, SpeedyWeather's own land ET
+PARTITION=priority QOS=priority scripts/sbatch_python.sh cpl-score scripts/online_coupling/score_speedy_landemu.py <coupled_dir> <control_dir>
+```
+Records go to `/p/projects/open/Jamir/esm_land_emulator_data/coupled/<run>/` (~600 MB per 10-yr coupled run).
+* **Wiring:** `PrimitiveWetModel(sg; surface_humidity_flux = SurfaceHumidityFlux(sg; land = EmulatorLandHumidityFlux(sg)))`
+  (prescribed flux where `use[ij]`, the bulk `SurfaceLandHumidityFlux` elsewhere) + a callback (`add!(model, :landemu => cb)`,
+  called after EVERY step) that sums surface air temperature, `rain_rate + snow_rate`, `surface_shortwave_down`,
+  `surface_longwave_down − land.surface_longwave_up`, lowest-level humidity per land column and calls
+  `Coupler.day(F)` at each midnight (sample assigned to the day of `time − Δt/2`; 29 Feb folded into 28 Feb).
+  SpeedyWeather's `LandBucketTemperature` takes latent heat from `land.surface_humidity_flux`, so energy follows.
+* **Gates (score_speedy_landemu.py):** offline replay through `step_year` must be IDENTICAL (it was, 0.0); water
+  applied/produced must differ only by the leap days (+0.082 % in 10 yr) and the last day's 1/36 end effect.
+* **Python side:** `landemu_coupler.Coupler` = nearest 0.5° emulator cell per column (≤ `MAXDEG` 3°), start from
+  `global_emu/emu/historical/chunks/c*_end.npz` (end-of-2014 state), release `global_emu/release/fold_none`.
+* **Traps hit (each one cost a job):** `RingGrids.get_londlatds` returns **(lon, lat)** (there is no `get_latdlonds`);
+  `SpectralGrid(trunc=31)` is deprecated → `truncation = 32`; Python's path is `pyimport("sys").path.insert(0, dir)`
+  (not `pushfirst!`); PythonCall needs `JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=<py311_new python>` (no
+  network on nodes) and `OMP_NUM_THREADS=1`. Test the Julia↔Python calls on the LOGIN node with a 20-line script
+  (no SpeedyWeather) before spending a 2-min SLURM start on each — that is what finally worked.
+* ⚠ **SpeedyWeather's own land is ~7 °C colder than GFDL-ESM4** (control run 10.5 °C over the emulated columns vs
+  17.1 °C) — it is the atmosphere, not the coupling (coupled 10.55 °C). The emulator reads it as climate change.
+* Measured: emulator 8.8 s per simulated year at T31 (1 197 columns, 7 % of the run); atmosphere ~110–130 s.
 
 ## The coupling architecture (verified from source, not docs)
 

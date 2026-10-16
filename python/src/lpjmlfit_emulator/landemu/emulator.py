@@ -163,9 +163,26 @@ class LandEmulator:
     def step_year(self, state, forcing, first_day=0, cap=None, co2=None):
         """forcing (N, 365, 5) for the next year; co2: the year's atmospheric CO2 in ppm (CO2
         releases only; scalar, as LPJmL's CO2 input, or (N,)). Returns (daily dict name ->
-        (N, 365), annual dict q -> (N,))."""
-        su, ds, iy = state["setup"], state["daily"], state["iy"]
+        (N, 365), annual dict q -> (N,)). Days before ``first_day`` only advance the weather
+        windows. Identical to ``begin_year`` + 365 x ``step_day`` + ``end_year``, which is how
+        an atmosphere model drives the emulator one day at a time."""
+        self.begin_year(state, cap=cap, co2=co2)
         n = forcing.shape[0]
+        out = {k: np.zeros((n, 365), np.float32) for k in DAILY_OUT}
+        for d in range(365):
+            day = self.step_day(state, forcing[:, d], run=d >= first_day)
+            if day is not None:
+                for k in DAILY_OUT:
+                    out[k][:, d] = day[k]
+        return out, self.end_year(state)
+
+    def begin_year(self, state, cap=None, co2=None):
+        """Open a year: take the year's CO2 (CO2 releases only; ppm) and top-metre capacity
+        (mm; default the setup's), and start collecting the year's weather for the yearly
+        statistics."""
+        su, iy = state["setup"], state["iy"]
+        if state.get("year") is not None:
+            raise RuntimeError("begin_year called twice without end_year")
         if self.co2_input and co2 is None:
             raise ValueError(
                 "this release reads the year's CO2 (ppm): pass step_year(..., co2=...)"
@@ -181,30 +198,65 @@ class LandEmulator:
             co2_win = np.mean(np.asarray(buf, np.float64), axis=0)
         if cap is None:
             cap = su.cap if su.cap.ndim == 1 else su.cap[:, iy]
-        capd = np.asarray(cap, np.float64)
-        dm = self.daily
-        out = {k: np.zeros((n, 365), np.float32) for k in DAILY_OUT}
-        for d in range(365):
-            f = np.asarray(forcing[:, d], np.float32)
-            ds.push(f)
-            if d < first_day:
-                continue
-            x = ds.inputs(f, d, capd, state["stand"], dm.drop, co2)
-            S32 = ds.S.astype(np.float32)
-            y = dm.predict(x, f[:, 1], S32).astype(np.float64)
-            ds.W, ds.S, ds.D, runoff = dm.bucket(
-                y, f[:, 1].astype(np.float64), ds.W, ds.S, ds.D, capd
-            )
-            out["interc"][:, d], out["transp"][:, d], out["evap"][:, d] = y[:, 1], y[:, 2], y[:, 3]
-            out["gpp"][:, d], out["npp"][:, d], out["runoff"][:, d] = y[:, 6], y[:, 7], runoff
-            out["swe"][:, d], out["soilw"][:, d], out["deep"][:, d] = ds.S, ds.W, ds.D
+        state["year"] = {
+            "d": 0,
+            "co2": co2,
+            "co2_win": co2_win,
+            "cap": np.asarray(cap, np.float64),
+            # float64 holds float32 or float64 weather exactly, so the statistics are unchanged
+            "forcing": np.zeros((len(su.cell), 365, 5), np.float64),
+        }
+
+    def step_day(self, state, f, run=True):
+        """One day of weather f (N, 5: tas degC, pr mm/day, rsds W/m2, lwnet W/m2, huss kg/kg)
+        inside an open year. Returns the day's outputs, name -> (N,): fluxes in mm/day and
+        gC/m2/day, the stores ``swe``, ``soilw``, ``deep`` in mm at the end of the day. With
+        ``run=False`` the day only advances the weather windows and None is returned."""
+        yr, ds, dm = state.get("year"), state["daily"], self.daily
+        if yr is None:
+            raise RuntimeError("step_day outside a year: call begin_year first")
+        d = yr["d"]
+        if d >= 365:
+            raise RuntimeError("a year has 365 days: call end_year")
+        yr["forcing"][:, d] = f
+        yr["d"] = d + 1
+        f = np.asarray(f, np.float32)
+        ds.push(f)
+        if not run:
+            return None
+        x = ds.inputs(f, d, yr["cap"], state["stand"], dm.drop, yr["co2"])
+        S32 = ds.S.astype(np.float32)
+        y = dm.predict(x, f[:, 1], S32).astype(np.float64)
+        ds.W, ds.S, ds.D, runoff = dm.bucket(
+            y, f[:, 1].astype(np.float64), ds.W, ds.S, ds.D, yr["cap"]
+        )
+        return {
+            "interc": y[:, 1],
+            "transp": y[:, 2],
+            "evap": y[:, 3],
+            "gpp": y[:, 6],
+            "npp": y[:, 7],
+            "runoff": runoff,
+            "swe": ds.S,
+            "soilw": ds.W,
+            "deep": ds.D,
+        }
+
+    def end_year(self, state):
+        """Close a year of exactly 365 days: yearly climate statistics, structure and stand maps;
+        the stand becomes next year's daily-model input. Returns dict q -> (N,)."""
+        su, iy, yr = state["setup"], state["iy"], state.get("year")
+        if yr is None or yr["d"] != 365:
+            raise RuntimeError("end_year needs exactly 365 step_day calls since begin_year")
+        forcing = yr["forcing"]
+        n = forcing.shape[0]
         clim = state["clim"](
             forcing[:, :, 0], forcing[:, :, 1], forcing[:, :, 4], forcing[:, :, 2], forcing[:, :, 3]
         )
         win = state["window"].push(clim)
         feat = self.features(su, iy, win)
-        if co2_win is not None:  # as clu_emu_maps.window / rows_for
-            feat["co2_win"] = np.broadcast_to(co2_win, (n,)).astype(np.float64)
+        if yr["co2_win"] is not None:  # as clu_emu_maps.window / rows_for
+            feat["co2_win"] = np.broadcast_to(yr["co2_win"], (n,)).astype(np.float64)
             feat["dco2_win"] = feat["co2_win"] - np.broadcast_to(
                 np.asarray(su.aco2, np.float64), (n,)
             )
@@ -214,7 +266,8 @@ class LandEmulator:
             np.isfinite(new), new, state["stand"]
         )  # no anchor -> keep last year's stand
         state["iy"] = iy + 1
-        return out, ann
+        state["year"] = None
+        return ann
 
     @staticmethod
     def features(su: Setup, iy, win):

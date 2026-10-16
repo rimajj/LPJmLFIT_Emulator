@@ -8,6 +8,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Two-way coupling of the learned emulator to SpeedyWeather (ADR 0345):** `LandEmulator.begin_year` / `step_day` /
+  `end_year` (an atmosphere drives the emulator one day at a time; `step_year` is now their loop, bit-identical) and
+  `scripts/online_coupling/run_speedy_landemu.jl` (SpeedyWeather 0.23 T31 + the global nitrogen-off emulator through
+  PythonCall: daily weather per land column in, daily evapotranspiration back as the land moisture flux via a new
+  `EmulatorLandHumidityFlux`), `landemu_coupler.py` (start state, record, offline replay gate),
+  `score_speedy_landemu.py`, `sbatch_speedy_landemu.sh`. 10-year runs: replay identical, water closes to the leap
+  days, emulator 8.8 s per simulated year.
 - **Nitrogen-on emulator release with a CO2 input (ADR 0344):** `LandEmulator.step_year(..., co2=ppm)` (daily model:
   the year's CO2; yearly maps: its 30-year mean and offset from 1990–2019), required by a CO2 release and refused by
   the nitrogen-off ones; per-cell fixed anchors (no last year). New `scripts/build_emulator_release_non.py`,

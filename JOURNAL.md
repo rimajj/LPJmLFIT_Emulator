@@ -1543,3 +1543,15 @@ bit-identical to the scored predictions, daily fluxes vs `NC_B3` to 5e-8 – 8e-
 pass, bit-identical to its own pipeline predictions on IPSL ssp585 with fixed capacity. Speed 7.3e-3 core-s per
 cell-year; the original on the same cells 0.84–0.95 (381–462 s × 128 tasks per leg) ⇒ ~115–130×.
 
+
+## 2026-10-16 — the learned emulator coupled to SpeedyWeather (ADR 0345)
+
+Owner: "couple the emulator to speedyweather". Chose the direct route (SpeedyWeather 0.23's prescribed-land-humidity
+socket + a per-step callback) over Terrarium, because the emulator is a daily model and Terrarium a 300-s process
+socket; chose PythonCall over a Julia port so the coupled emulator is the released package (no second implementation;
+the replay gate proves it). Package refactor `step_year` → `begin_year`/`step_day`/`end_year` checked bit-identical on
+1 046 global cells × 2 years before anything else. Three failed smoke submissions on small API names
+(`get_londlatds` order, `pushfirst!` on a Python list) — fixed by testing the Julia↔Python calls on the login node
+with no atmosphere. First 1-yr run showed an 8 °C cold land; added a sun-weighted flux option suspecting the
+night-time constant flux, but the control run showed the cold is SpeedyWeather's own climate (10.50 vs 10.55 °C).
+Coupling raises land ET 47 % and land rain 16 %. Spreading the flux with the sun changes almost nothing.

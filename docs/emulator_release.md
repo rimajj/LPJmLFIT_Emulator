@@ -61,6 +61,18 @@ for year in range(2020, 2101):
     #         lai_stand, vegc, fpc1..fpc10 -> (cells,)
 ```
 
+**Day by day (for an atmosphere model, ADR 0345):** `step_year` is exactly
+
+```python
+emu.begin_year(state)                    # (co2=ppm for a CO2 release; cap=... optional)
+for d in range(365):
+    day = emu.step_day(state, f_d)       # f_d (cells, 5) one day's weather -> dict name -> (cells,)
+ann = emu.end_year(state)                # yearly climate statistics, structure and stand maps
+```
+
+so an ESM calls `step_day` once per simulated day (365-day years) and `end_year` on 31 December. The
+SpeedyWeather coupling built on it: `scripts/online_coupling/run_speedy_landemu.jl` (skill `online-coupling-env`).
+
 `scripts/run_emulator.py --release DIR --run k --leg <leg> [--check]` does this over the panel forcing, times it on
 one core and, for a fold release, checks the outputs against the scored predictions.
 

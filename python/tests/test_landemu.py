@@ -189,3 +189,30 @@ def test_release_without_co2_refuses_it(tmp_path):
     emu = LandEmulator.load(tmp_path)
     with pytest.raises(ValueError, match="no CO2 input"):
         emu.step_year(emu.start(su), _weather(rng, 4), co2=400.0)
+
+
+def test_day_by_day_equals_step_year(tmp_path):
+    """An atmosphere model drives the emulator one day at a time (begin_year / step_day /
+    end_year); that must be the same computation as step_year, bit for bit."""
+    rng = np.random.default_rng(SEED)
+    n = 5
+    su = _tiny_release(tmp_path, rng, n)
+    emu = LandEmulator.load(tmp_path)
+    years = [_weather(rng, n) for _ in range(2)]
+    a, b = emu.start(su), emu.start(su)
+    for w in years:
+        daily, ann = emu.step_year(a, w)
+        emu.begin_year(b)
+        days = [emu.step_day(b, w[:, d]) for d in range(365)]
+        with pytest.raises(RuntimeError, match="365"):
+            emu.step_day(b, w[:, 0])
+        ann_b = emu.end_year(b)
+        for k, v in daily.items():
+            assert np.array_equal(v, np.stack([np.float32(x[k]) for x in days], 1)), k
+        for q in ann:
+            assert np.array_equal(ann[q], ann_b[q]), q
+    with pytest.raises(RuntimeError, match="begin_year"):
+        emu.step_day(b, years[0][:, 0])
+    emu.begin_year(b)
+    with pytest.raises(RuntimeError, match="365"):
+        emu.end_year(b)
