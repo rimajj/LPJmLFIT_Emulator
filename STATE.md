@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0346**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0348**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,24 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-16 (evening) — COUPLED TO POEM 1.2: the emulator runs inside POEM's LPJmL (ADR 0347).** Build
+`/p/projects/open/Jamir/poem_landemu/POEM-1.2_20261013_6-layers_landemu` (patches `patches/poem/`, skill `poem-landemu`);
+switch `LANDEMU` (unset = stock, `shadow` = record only, `1` = coupled: emulator ET → next day's land moisture flux +
+LPJmL's latent heat, emulator runoff → rivers). Same 0.5° grid as the emulator (58 436 cells). Gates: stock / off /
+shadow identical to stock (1 050 variables), replay identical, water closes, LPJmL's water check 0 errors. 10-yr
+preindustrial runs (1851–60): **POEM is not cold** (+0.04 °C vs GFDL-ESM4 1850–79, −0.5 °C vs W5E5 1985–2014; 15 % too
+dry). Coupled with sun-shaped hours: land +0.1 °C, evap +5 %, rain +2 %. Flat hours: nights −2.2 °C, convective rain
+−30 %, land −1.1 °C (the hour shape matters). Vegetation carbon −4 %/decade even one-way (emulator memory starts in
+1985–2014 GFDL climate). **Not faster than POEM-with-LPJmL** (LPJmL still runs; emulator 2–3 %; the whole land is 28 %
+of POEM's time ⇒ ≤ ~1.3× even if replaced). Defect: zeroing LPJmL's evaporation derivative let ~6 per million
+cell-hours overheat past 80 °C → fixed (`LANDEMU_DEDT=lpj`); **corrected 10-yr runs `poem_coupled_{sun,flat}_dedtlpj_10y`
+(jobs 2527979/80) were running at handoff — score them** (`score_poem_landemu.py replay <dir>`, then the scorer with
+`poem_shadow_10y`) **and append ADR 0347 §8; check `grep -c "soiltemp too large"` is 0.** Shadow re-gate on the final
+binary: `gate_shadow2_1m` (job 2527981) vs `gate_stock_1m` with `poem/compare_poem_runs.py`.
+**Next (owner to choose):** spin the emulator up on POEM's own climate (shadow mode) before coupling; more channels
+(albedo/roughness/surface temperature, i.e. drop LPJmL's vegetation); a speed arm that skips LPJmL's daily vegetation;
+a second POEM member for internal variability.
 
 **2026-10-16 (later) — the cold bias explained, two more coupled channels (ADR 0346).** `run_speedy_landemu.jl`
 now takes `ALBEDO=emulator` (land albedo from the emulator's tree cover, grass cover, snow), `ROUGH=emulator` (land

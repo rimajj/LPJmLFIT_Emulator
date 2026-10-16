@@ -67,3 +67,16 @@ model output is there. Starts from the POEM group's `spinup_6layers_maxsnowheigh
    `z_ref_heat` in `sfc_boundary_layer`; POEM's own diagnostic block computes them only on request and at
    `z_ref_mom` when `t_ref` is not requested).
 7. `lpj_fms.h`'s `lpj_update_` prototype must match the definition (two new `const double *`).
+8. **Do NOT zero LPJmL's evaporation derivative `cell->dedt` when handing over a prescribed flux**
+   (`LANDEMU_DEDT=zero`, the first 10-yr runs): it removes the damping of LPJmL's hourly implicit
+   surface-temperature step, and ~6 per million cell-hours (tropics/subtropics, growing from year 2) run past
+   80 degC (log line `ERR_CLIMBER: final soiltemp too large`; stock: 0). Default `lpj` keeps it. Check every
+   coupled run with `cat fms.out-* | grep -o "soiltemp too large" | wc -l`.
+9. **The hour shape of the handed-over ET changes the climate**: flat (night = day) cut land convective rain
+   30 % and cooled the land 1.1 degC in 10 years; use `sun`.
+
+## Cost (measured)
+POEM-1.2 stock: 1 322 s wall per simulated year; atmosphere 57 %, whole land 28 % (LPJmL hourly step 21 %,
+regridding 3 %), land-ice-atmosphere coupler 13 % (FMS clock table at the end of `fms.out-1-28-0-*`). The
+coupling adds the emulator (30-40 s per rank-year, 2-3 %) on top of LPJmL: it is NOT faster. Removing LPJmL
+entirely would save at most ~25 % (and needs a replacement hourly surface energy balance).

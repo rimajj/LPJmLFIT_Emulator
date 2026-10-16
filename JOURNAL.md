@@ -1568,3 +1568,20 @@ longwave, latitude-only grey longwave in SpeedyWeather 0.23, and a 9 K soil–ai
 wired as SpeedyWeather components (`EmulatorLandAlbedo`, `EmulatorSurfaceRoughness`), replay identical; their effect
 is inside the yearly spread. Also found ADR 0345's offline totals (GPP 143, vegC 876) are not what the committed
 scorer produces (it sums the whole 0.5° grid: 174 / 1 020) — corrected in ADR 0346 §5.
+
+
+## 2026-10-16 — the learned emulator inside POEM 1.2 (ADR 0347)
+
+Owner: "since speedyweather is too cold, couple the emulator to POEM's atmosphere". POEM's land is LPJmL called hourly
+(not a daily slot), but its build already overwrites the atmosphere's land moisture flux with LPJmL's — the hook.
+Chose embedding Python inside LPJmL (an isolated interpreter per land rank) over a side-car process; a 4-rank MPI
+probe loaded numpy/LightGBM/the release in 5 s (first probe died in MPI_Init because tasks spanned two nodes). Found
+POEM feeds LPJmL the SKIN temperature as air temperature → added 2-m T/q coupler fields. Added a shadow mode so the
+control run carries the same record. Failures on the way: `-L$PY/lib` on the link line pulled the env's shared
+netCDF/HDF5 → HDF5 abort even with the emulator off (fixed with a libpython-only link dir); rank 0–4 = Antarctica only
+(no cells); all-lake cells 0/0 under LPJmL's FP traps; my first runoff booking had the wrong sign (caught before a
+run). Gates all identical. Results: POEM's climate is fine (unlike SpeedyWeather); sun-shaped coupling benign; flat
+hours cut land convective rain 30 %. Then found ~30 000 cell-hours > 80 °C in both coupled runs (0 in control): my
+zeroing of LPJmL's evaporation derivative. Fixed as `LANDEMU_DEDT=lpj`; corrected runs launched. Owner asked how much
+faster POEM gets: it does not (LPJmL still runs); land is 28 % of POEM's time.
+

@@ -217,10 +217,10 @@ index 000000000..826a07b39
 +  leave();
 +} /* of 'landemu_py_finish' */
 diff --git a/src/lpj_climber4.c b/src/lpj_climber4.c
-index ae9fe0826..d23689466 100644
+index ae9fe0826..b1ee602c4 100644
 --- a/src/lpj_climber4.c
 +++ b/src/lpj_climber4.c
-@@ -127,6 +127,183 @@ static void *getmem(size_t size)
+@@ -127,6 +127,193 @@ static void *getmem(size_t size)
    return ptr;
  }
  
@@ -235,8 +235,11 @@ index ae9fe0826..d23689466 100644
 + *    to the atmosphere through the whole next day (spread over the fast steps
 + *    flat or with the sun, LANDEMU_DIURNAL=flat|sun, exactly the day's total),
 + *    and the latent heat in LPJmL's surface energy balance (cell->evap1, which
-+ *    the next step's ground heat flux reads; its derivative cell->dedt is 0,
-+ *    since the flux no longer responds to surface temperature).
++ *    the next step's ground heat flux reads). LPJmL's own derivative cell->dedt
++ *    stays in its implicit surface-temperature step (LANDEMU_DEDT=lpj, default):
++ *    it only shapes how the step converges, the balance itself uses the emulator's
++ *    latent heat. LANDEMU_DEDT=zero (the first 10-year runs) removed that damping
++ *    and let single-hour surface temperatures run past 80 degC (ADR 0347).
 + * Lake evaporation stays LPJmL's. Everything else (surface temperature, albedo,
 + * roughness, canopy humidity, snow) stays LPJmL's.
 + * LANDEMU=shadow runs and records the emulator the same way but hands nothing
@@ -245,7 +248,7 @@ index ae9fe0826..d23689466 100644
 +#include "landemu.h"
 +#define LE_NACC 8 /* t_ref, prec, swdown, lwnet, q_ref, LPJmL land ET, skin temp, steps */
 +#define LE_NX 3   /* recorded beside the forcing: LPJmL's own land ET and runoff (mm/day), skin temp (degC) */
-+static int le_on = 0, le_apply = 0, le_sun = 1, le_nsd = 0;
++static int le_on = 0, le_apply = 0, le_sun = 1, le_nsd = 0, le_dedt_zero = 0;
 +static int *le_mask = NULL;
 +static double *le_acc = NULL, *le_F = NULL, *le_X = NULL, *le_out = NULL, *le_et = NULL, *le_wt = NULL;
 +
@@ -287,7 +290,7 @@ index ae9fe0826..d23689466 100644
 +
 +static void le_init(void)
 +{
-+  const char *on = getenv("LANDEMU"), *d = getenv("LANDEMU_DIURNAL");
++  const char *on = getenv("LANDEMU"), *d = getenv("LANDEMU_DIURNAL"), *dd = getenv("LANDEMU_DEDT");
 +  int cell, n;
 +  double *lat, *lon;
 +  if (on == NULL || (strcmp(on, "1") && strcmp(on, "shadow")))
@@ -297,6 +300,12 @@ index ae9fe0826..d23689466 100644
 +    fprintf(stderr, "landemu: LANDEMU_DIURNAL must be sun or flat, not '%s'\n", d);
 +    MPI_Abort(MPI_COMM_WORLD, 77);
 +  }
++  if (dd != NULL && strcmp(dd, "lpj") && strcmp(dd, "zero"))
++  {
++    fprintf(stderr, "landemu: LANDEMU_DEDT must be lpj or zero, not '%s'\n", dd);
++    MPI_Abort(MPI_COMM_WORLD, 77);
++  }
++  le_dedt_zero = dd != NULL && !strcmp(dd, "zero");
 +  le_on = 1;
 +  le_apply = !strcmp(on, "1");
 +  le_sun = d == NULL || !strcmp(d, "sun");
@@ -327,8 +336,8 @@ index ae9fe0826..d23689466 100644
 +  n = landemu_py_init(config.ngridcell, lat, lon, pe, le_mask);
 +  free(lat);
 +  free(lon);
-+  printf("landemu: rank %d emulates %d of %d LPJmL cells, %d steps per day, diurnal %s, %s\n",
-+         pe, n, config.ngridcell, le_nsd, le_sun ? "sun" : "flat",
++  printf("landemu: rank %d emulates %d of %d LPJmL cells, %d steps per day, diurnal %s, dedt %s, %s\n",
++         pe, n, config.ngridcell, le_nsd, le_sun ? "sun" : "flat", le_dedt_zero ? "zero" : "lpj",
 +         le_apply ? "COUPLED (fluxes handed to the atmosphere)" : "SHADOW (recorded only, stock POEM)");
 +  fflush(stdout);
 +} /* of 'le_init' */
@@ -349,7 +358,8 @@ index ae9fe0826..d23689466 100644
 +  if (le_apply && isfinite(le_et[cell]))
 +  {
 +    c->evap1 = le_landfrac(c) * le_et[cell] / NSECONDSDAY * le_nsd * le_wt[(size_t)le_nsd * cell + jstep] + lake_flux;
-+    c->dedt = 0;
++    if (le_dedt_zero)
++      c->dedt = 0;
 +  }
 +} /* of 'le_fast' */
 +
@@ -404,7 +414,7 @@ index ae9fe0826..d23689466 100644
  int write_array_to_file(
      const char *filename,
      const void *data,
-@@ -901,6 +1078,8 @@ void lpj_init_
+@@ -901,6 +1088,8 @@ void lpj_init_
  
    *global_number_lpj_cells = config.nall;
  
@@ -413,7 +423,7 @@ index ae9fe0826..d23689466 100644
    // initialize enth by taking the temperature of restart file
    #ifdef RESTART_BELOW_5_9
      Soil_thermal_prop therm; /* thermal properties of soil for calculation of enthalpy */
-@@ -1518,6 +1697,8 @@ void lpj_update_
+@@ -1518,6 +1707,8 @@ void lpj_update_
     const double *wind_in,
     const double *co2_in,
     const double *q_ca_old_in,
@@ -422,7 +432,7 @@ index ae9fe0826..d23689466 100644
     /*! pass back results from LPJ */
     double *carbon_flux_out, /* daily carbon flux from LPJ to atmosphere (gC/m2/day) */
     double *q_ca_out,
-@@ -1928,6 +2109,8 @@ void lpj_update_
+@@ -1928,6 +2119,8 @@ void lpj_update_
        double *tmp_drag_q    = getmem(sizeof(double) * config.ngridcell);
        double *tmp_q_atm     = getmem(sizeof(double) * config.ngridcell);
        double *tmp_p_surf    = getmem(sizeof(double) * config.ngridcell);
@@ -431,7 +441,7 @@ index ae9fe0826..d23689466 100644
        double *tmp_co2       = NULL;
  
        double *tmp_carbon_flux_out = getmem(sizeof(double) * config.ngridcell);
-@@ -2010,6 +2193,8 @@ void lpj_update_
+@@ -2010,6 +2203,8 @@ void lpj_update_
        cpl_fms_to_lpj(q_atm_in, tmp_q_atm);
  
        cpl_fms_to_lpj(p_surf_in, tmp_p_surf);
@@ -440,7 +450,7 @@ index ae9fe0826..d23689466 100644
  
        // Get current CO2 value from LPJ_COUPLER / land_lad
        // When receiving data from FMS, we get daily per-cell CO2 values.
-@@ -2134,7 +2319,11 @@ void lpj_update_
+@@ -2134,7 +2329,11 @@ void lpj_update_
  
   //             tmp_diff[cell]=grid[cell].output.daily.temp-tmp_temp_mean[cell];
            grid[cell].output.evapotrans_flux_fast=0;
@@ -452,7 +462,7 @@ index ae9fe0826..d23689466 100644
            grid[cell].daily.prec += fast.prec;
  
            getoutput(&grid[cell].output, TFLUX, &config) += fast.t_flux * dt_fast_real / NSECONDSDAY;
-@@ -2370,6 +2559,8 @@ void lpj_update_
+@@ -2370,6 +2569,8 @@ void lpj_update_
          } /* of for(cell=0;cell<config.ngridcell;cell++) */
          printf(" temp: %-.2f  prec: %-.3f  albedo: %-.3f  q_ca: %-.3f  \n",temp_mean/(global_area),prec_mean/(global_area),albedo_mean/(global_area),qca_mean/(global_area));
  
@@ -461,7 +471,7 @@ index ae9fe0826..d23689466 100644
          if(config.river_routing)
          {
            if(input.landuse!=NULL || input.wateruse!=NULL)
-@@ -2693,6 +2884,8 @@ void lpj_update_
+@@ -2693,6 +2894,8 @@ void lpj_update_
        free(tmp_t_flux);
        free(tmp_qflux);
        free(tmp_q_ca_old);
@@ -470,7 +480,7 @@ index ae9fe0826..d23689466 100644
        free(tmp_dedq);
        free(tmp_dhdt);
        free(tmp_drdt);
-@@ -2798,6 +2991,8 @@ void lpj_end_(void)
+@@ -2798,6 +3001,8 @@ void lpj_end_(void)
  {
  
    /* Simulation has finished */

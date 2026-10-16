@@ -8,6 +8,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **The learned emulator coupled to POEM 1.2's atmosphere (ADR 0347):** POEM (AM2/FV, MOM5, LPJmL 5.9 at 0.5°) with the
+  global nitrogen-off emulator embedded in every land rank through an isolated Python interpreter (`patches/poem/`;
+  build `/p/projects/open/Jamir/poem_landemu/...`). Run-time switch `LANDEMU`: unset = stock, `shadow` = record only,
+  `1` = coupled (emulator ET → land moisture flux and LPJmL's latent heat, `LANDEMU_DIURNAL=sun|flat`; emulator runoff →
+  rivers → ocean; `LANDEMU_DEDT=lpj|zero`). New coupler fields carry the 2-m air temperature and humidity to the land.
+  `scripts/online_coupling/poem_landemu.py`, `score_poem_landemu.py`, `poem/{setup_poem_run.sh,compile_poem_landemu.sh,
+  compare_poem_runs.py}`; skill `poem-landemu`. Gates: stock/off/shadow identical (1 050 variables), replay identical.
+
 - **More land → atmosphere channels in the SpeedyWeather coupling, and the cold bias explained (ADR 0346):**
   `run_speedy_landemu.jl` switches `ALBEDO=emulator` (SpeedyWeather's land albedo formula fed the emulator's tree
   cover, grass cover and snow), `ROUGH=emulator` (land roughness length from the emulator's cover; `Z0_HIGH/LOW/BARE`)
