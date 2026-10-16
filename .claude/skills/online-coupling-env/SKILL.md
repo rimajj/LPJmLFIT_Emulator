@@ -1,6 +1,6 @@
 ---
 name: online-coupling-env
-description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the nine traps that each cost a failed job or a wrong verdict: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job. ALSO the COUPLING OF THE LEARNED EMULATOR to SpeedyWeather 0.23 (ADR 0345): scripts/online_coupling/run_speedy_landemu.jl (+ landemu_coupler.py, score_speedy_landemu.py, sbatch_speedy_landemu.sh) — daily weather per land column into LandEmulator.step_day through PythonCall, daily ET back as the land moisture flux via EmulatorLandHumidityFlux, MODE=coupled|control, DIURNAL=flat|sun, the offline replay gate, the water/leap-day accounting, and the PythonCall/0.23 API traps (get_londlatds, truncation = trunc+1, sys.path.insert, JULIA_CONDAPKG_BACKEND=Null).
+description: Build and run the SpeedyWeather.jl + Terrarium.jl online-coupling environment on the PIK cluster (line O, P4) — the working project at /p/tmp/jamirp/esm_online_coupling, its sbatch wrapper, and the nine traps that each cost a failed job or a wrong verdict: Julia 1.10.0 CANNOT precompile these packages (use 1.10.10), SpeedyWeather's EarthOrography DOWNLOADS an artifact inside initialize! so assets must be warmed on the login node, Terrarium state is in °C not Kelvin, and Pkg.status() throws KeyError "Dates", Terrarium's DEFAULT vegetation crashes a coupled run on a VPD=0 assertion, its DEFAULT SOIL is pure sand which SILENTLY deletes all water stress (plant_available_water == 1 everywhere), its DEFAULT hydrology is NoFlow so the soil water NEVER MOVES (any soil-moisture distribution you measure is the initializer, not a model result), and SpeedyWeather's Terrarium adapter DROPS InputSources so prescribed input fields must be passed as `fields`. Use whenever running, debugging or extending the online coupled model, prescribing soil texture or any Terrarium input, adding a Terrarium/SpeedyWeather dependency, writing a Terrarium process (AbstractPhotosynthesis / AbstractVegetation), or hitting a curl RequestError or KeyError from a coupling job. ALSO the COUPLING OF THE LEARNED EMULATOR to SpeedyWeather 0.23 (ADR 0345): scripts/online_coupling/run_speedy_landemu.jl (+ landemu_coupler.py, score_speedy_landemu.py, sbatch_speedy_landemu.sh) — daily weather per land column into LandEmulator.step_day through PythonCall, daily ET back as the land moisture flux via EmulatorLandHumidityFlux, MODE=coupled|control, DIURNAL=flat|sun, the offline replay gate, the water/leap-day accounting, and the PythonCall/0.23 API traps (get_londlatds, truncation = trunc+1, sys.path.insert, JULIA_CONDAPKG_BACKEND=Null). ALSO the ALBEDO / ROUGH / OCEAN=prescribed switches and the emulator land albedo + roughness channels (ADR 0346), diagnose_speedy_climate.py, and WHY SpeedyWeather 0.23 land is ~7 °C too cold (latitude-only grey longwave, free slab ocean; GFDL-ESM4 = W5E5 observations; the orderA vs grid.bin trap on the W5E5 files).
 ---
 
 # online-coupling-env — SpeedyWeather + Terrarium on this cluster
@@ -171,6 +171,27 @@ Records go to `/p/projects/open/Jamir/esm_land_emulator_data/coupled/<run>/` (~6
 * ⚠ **SpeedyWeather's own land is ~7 °C colder than GFDL-ESM4** (control run 10.5 °C over the emulated columns vs
   17.1 °C) — it is the atmosphere, not the coupling (coupled 10.55 °C). The emulator reads it as climate change.
 * Measured: emulator 8.8 s per simulated year at T31 (1 197 columns, 7 % of the run); atmosphere ~110–130 s.
+* **More channels + climate diagnostics (ADR 0346):** `ALBEDO=emulator` (`EmulatorLandAlbedo`: SpeedyWeather's
+  `LandSnowAlbedo` formula fed `Coupler.surface()` = tree cover (fpc1–7), grass cover (fpc8–10), snow water m),
+  `ROUGH=emulator` (`EmulatorSurfaceRoughness`, log-blend of `Z0_HIGH/LOW/BARE` = 2.0/0.2/0.013 m),
+  `OCEAN=prescribed` (`SeasonalOceanClimatology`; `ThermodynamicSeaIce` then just follows the SST). Every run now also
+  writes land albedo, land sensible heat, top soil T, SpeedyWeather snow (`daily_means` columns 8–11, appended so the
+  scorer's 0–6 are unchanged), column orography, `global_daily` and `yearly_fields`. Score with
+  `diagnose_speedy_climate.py <run_dir>...` (SLURM, 16 cpus, ~5 min: reads 70 years of daily weather).
+  Custom components: subtype `SpeedyWeather.AbstractAlbedo` and extend `SpeedyWeather.albedo!(ij, albedo, vars, a, model)`;
+  for roughness subtype `AbstractSurfaceRoughness` and extend `surface_roughness!(ij, vars, r, land_sea_mask)` (it is
+  called with the MASK, not the model) and define the ONE-argument `initialize!(r)` (`BoundaryLayer` calls that).
+  A stepped prognostic (snow, slab SST) is read with `get_prognostic_step(v, SpeedyWeather.time_stepper(model.time_stepping, :land|:ocean), cb)`.
+* ⚠ **Why SpeedyWeather 0.23's land is cold (ADR 0346) — check before blaming the coupling or the reference:**
+  its defaults are a FREE 50 m slab ocean with no ocean heat transport (drifts +2 K warm, more sea ice), and a
+  Frierson grey longwave whose optical depth depends on LATITUDE ONLY (no water vapour, clouds, CO2; clouds act on
+  shortwave only). Land air −6.6 °C vs W5E5 with +8–15 W/m² sun and −18–28 W/m² net longwave; top soil 9 K warmer
+  than the air. GFDL-ESM4 (ISIMIP3b) equals W5E5 at the cells to 0.01 °C.
+* ⚠ **The W5E5 forcing under `.../clustering/global/*_test.clm` is orderA; the emulator's cells and the GFDL-ESM4
+  ISIMIP files are grid.bin order.** Indexing one with the other's cell numbers gave "W5E5 9.6 vs GFDL 17.1 °C" — match
+  on coordinates (`diagnose_speedy_climate.py::orderA_index`). `input_VERSION2/elevation.bin` is grid.bin order.
+* ⚠ `score_speedy_landemu.py`'s "offline" totals sum the WHOLE 0.5° grid, not the emulated cells — not comparable
+  with the coupled totals (ADR 0346 §5).
 
 ## The coupling architecture (verified from source, not docs)
 

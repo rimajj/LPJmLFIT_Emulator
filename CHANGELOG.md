@@ -8,6 +8,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **More land → atmosphere channels in the SpeedyWeather coupling, and the cold bias explained (ADR 0346):**
+  `run_speedy_landemu.jl` switches `ALBEDO=emulator` (SpeedyWeather's land albedo formula fed the emulator's tree
+  cover, grass cover and snow), `ROUGH=emulator` (land roughness length from the emulator's cover; `Z0_HIGH/LOW/BARE`)
+  and `OCEAN=prescribed` (SST climatology instead of the free slab ocean); every run now records land albedo,
+  sensible heat, top soil temperature, SpeedyWeather's snow, column orography and global air/sea-surface temperature
+  and sea ice. `Coupler.surface()` in `landemu_coupler.py`; new `diagnose_speedy_climate.py` scores runs against
+  W5E5 observations and GFDL-ESM4 at the same cells (observations matched on coordinates — the file is orderA).
+  Finding: GFDL-ESM4 = observations at these cells; SpeedyWeather's land air is 6.6 °C too cold because of its
+  atmosphere (latitude-only grey longwave), not the ocean or the mountains; the new channels change land
+  temperature by < 0.1 °C. ADR 0345's offline-comparison numbers corrected.
 - **Two-way coupling of the learned emulator to SpeedyWeather (ADR 0345):** `LandEmulator.begin_year` / `step_day` /
   `end_year` (an atmosphere drives the emulator one day at a time; `step_year` is now their loop, bit-identical) and
   `scripts/online_coupling/run_speedy_landemu.jl` (SpeedyWeather 0.23 T31 + the global nitrogen-off emulator through

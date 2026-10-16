@@ -16,6 +16,10 @@ Julia side folds 29 February into 28 February) and returns the day's evapotransp
 (interception + transpiration + soil evaporation, mm/day). Everything the emulator saw and
 produced is recorded, so ``replay`` can re-run the same weather through ``step_year`` offline and
 prove the coupled emulator is the released one, bit for bit.
+
+``Coupler.surface()`` hands the atmosphere the land surface it needs beyond the moisture flux (ADR
+0346): tree cover (plant types 1-7 of the stand map) and grass cover (types 8-10), as of the last
+completed year, and the snow water equivalent at the end of the latest day (m).
 """
 
 from __future__ import annotations
@@ -33,6 +37,15 @@ sys.path[:0] = [os.path.join(REPO, "python", "src"), os.path.join(REPO, "scripts
 DATA = "/p/projects/open/Jamir/esm_land_emulator_data/global_emu"
 RELEASE = os.path.join(DATA, "release", "fold_none")
 REC_DAILY = ["interc", "transp", "evap", "gpp", "npp", "runoff", "swe", "soilw", "deep"]
+N_TREE = 7  # fpc1..fpc7 are the seven tree plant types, fpc8..fpc10 the three grasses
+
+
+def covers(fpc):
+    """(n, 10) per-plant-type cover -> (n, 2) tree and grass cover, each in [0, 1], summing <= 1."""
+    fpc = np.clip(np.nan_to_num(np.asarray(fpc, np.float64)), 0, None)
+    high = np.clip(fpc[:, :N_TREE].sum(1), 0, 1)
+    low = np.minimum(fpc[:, N_TREE:].sum(1), 1 - high)
+    return np.column_stack([high, low])
 
 
 def nearest_cells(lat, lon, clat, clon, chunk=256):
@@ -136,6 +149,11 @@ class Coupler:
         self.n = len(self.cell)
         self.doy, self.year = 0, start_year
         self.rec_forc, self.rec_day, self.rec_ann = [], {k: [] for k in REC_DAILY}, []
+        from lpjmlfit_emulator.landemu.annual import STAND_Q
+
+        self.fpc_q = [f"fpc{p}" for p in range(1, 11)]
+        self.cover = covers(self.su.stand0[:, [STAND_Q.index(q) for q in self.fpc_q]])
+        self.swe = np.asarray(self.su.S0, np.float64).copy()  # mm
         self.t_emu = 0.0
         self.t_setup = time.time() - t0
         print(
@@ -161,9 +179,17 @@ class Coupler:
         if self.doy == 365:
             ann = self.emu.end_year(self.state)
             self.rec_ann.append({q: np.asarray(v, np.float64) for q, v in ann.items()})
+            new = covers(np.column_stack([ann[q] for q in self.fpc_q]))
+            ok = np.isfinite(np.column_stack([ann[q] for q in self.fpc_q])).all(1)
+            self.cover[ok] = new[ok]  # no anchor -> keep last year's, as the emulator's own stand
             self.doy, self.year = 0, self.year + 1
+        self.swe = np.asarray(out["swe"], np.float64).copy()
         self.t_emu += time.time() - t0
         return out["interc"] + out["transp"] + out["evap"]
+
+    def surface(self):
+        """(n, 3): tree cover, grass cover [1] (last completed year), snow water equivalent [m]."""
+        return np.column_stack([self.cover, self.swe / 1000.0])
 
     def finish(self, extra=None):
         """Write the record (complete years only are replayable)."""

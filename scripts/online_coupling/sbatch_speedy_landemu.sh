@@ -1,6 +1,7 @@
 #!/bin/bash
 # Submit scripts/online_coupling/run_speedy_landemu.jl (SpeedyWeather 0.23 + the learned emulator) on ONE core.
-#   sbatch_speedy_landemu.sh <tag>        env knobs forwarded: MODE YEARS TRUNC NLAYERS MAXDEG DIURNAL OUT TIME
+#   sbatch_speedy_landemu.sh <tag>        env knobs forwarded: MODE YEARS TRUNC NLAYERS MAXDEG DIURNAL OCEAN ALBEDO
+#                                         ROUGH Z0_HIGH Z0_LOW Z0_BARE OUT TIME
 # Project /p/tmp/jamirp/esm_online_coupling_sw023 (SpeedyWeather 0.23.0, PythonCall; assets warmed on the login node).
 # Logs -> logs/<tag>.<jobid>.out in this repo. PythonCall uses the conda env py311_new (no CondaPkg, no network).
 set -eu
@@ -9,7 +10,7 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PROJ=/p/tmp/jamirp/esm_online_coupling_sw023
 RUNTIME="${TIME:-04:00:00}"
 EXP=""
-for v in MODE YEARS TRUNC NLAYERS MAXDEG DIURNAL OUT; do
+for v in MODE YEARS TRUNC NLAYERS MAXDEG DIURNAL OCEAN ALBEDO ROUGH Z0_HIGH Z0_LOW Z0_BARE OUT; do
   [ -n "${!v:-}" ] && EXP="$EXP export $v='${!v}';"
 done
 JOB=$(sbatch --parsable --job-name="$TAG" --account=waldspektrum --partition=priority --qos=priority \

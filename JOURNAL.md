@@ -1555,3 +1555,16 @@ the replay gate proves it). Package refactor `step_year` → `begin_year`/`step_
 with no atmosphere. First 1-yr run showed an 8 °C cold land; added a sun-weighted flux option suspecting the
 night-time constant flux, but the control run showed the cold is SpeedyWeather's own climate (10.50 vs 10.55 °C).
 Coupling raises land ET 47 % and land rain 16 %. Spreading the flux with the sun changes almost nothing.
+
+
+## 2026-10-16 — why SpeedyWeather's land is cold; albedo + roughness channels (ADR 0346)
+
+Owner: "clarify [the cold claim] and couple more channels". The repo had only asserted the cold bias (control run).
+First hypothesis — the free slab ocean drifting cold — was wrong: its SST drifts WARM (+2 K) and prescribing observed
+SST makes the land colder. First reference run also looked wrong: W5E5 9.6 °C vs GFDL 17.1 °C at "the same cells" —
+the W5E5 file is orderA while the emulator cells are grid.bin order (the CLAUDE.md §1 trap); matched on coordinates
+they agree to 0.01 °C. Mountains +0.4 °C (wrong sign). What is left is radiation: +8–15 W/m² sun, −18–28 W/m² net
+longwave, latitude-only grey longwave in SpeedyWeather 0.23, and a 9 K soil–air gap (cold lowest air layer). Channels
+wired as SpeedyWeather components (`EmulatorLandAlbedo`, `EmulatorSurfaceRoughness`), replay identical; their effect
+is inside the yearly spread. Also found ADR 0345's offline totals (GPP 143, vegC 876) are not what the committed
+scorer produces (it sums the whole 0.5° grid: 174 / 1 020) — corrected in ADR 0346 §5.
