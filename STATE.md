@@ -49,9 +49,12 @@ died at year 4.8 (project disk quota full) and, up to there, were identical to t
 POEM already sets `cell->dedt = 0` every step, so `LANDEMU_DEDT=zero|lpj` are the same model (runs deleted). The
 single-hour > 80 °C overheating (from year 1, ~6 per million cell-hours, 0 in shadow) is real and unexplained; §5's
 monthly climate and speed numbers stand. Shadow re-gate on the final binary: identical (1 050 / 1 050).
-Disk: freed 86 GB (crashed runs + a 74 GB core dump in `wt-X`); `/p/projects/open/Jamir` holds ~12 TB
-(`lpjml-fit-clustered` 5.7 TB incl. ~1.6 TB exploratory `phosD-*`/`phosX-*` runs; `esm_land_emulator_data` 2.3 TB) —
-survey `/p/tmp/jamirp/logs/space_survey_2587196/`. The quota itself is not readable; check with a `dd` write.
+Disk (owner decisions 2026-10-19): **all merged LPJmL-FIT run data moved to `/p/projects/reformit/Jamir/`** (same
+folder names; the emulator's nitrogen-on runs and grids are now `/p/projects/reformit/Jamir/lpjml-fit-clustered/...`,
+scripts `clu_emu*.py/.sh` repointed); superseded runs trimmed to configs/logs/totals (2.9 TB); core dumps deleted;
+`billing_global` is NOT a copy of Billing's data (converted tables, 8 of them now the only copy — keep), only its
+leftovers removed; `xde` and the 720 GB re-convertible tables kept for now. `/p/projects/open/Jamir` ≈ 2.4 TB.
+The open quota is visible with `df -h /p/projects/open` (fileset view), not `mmlsquota`.
 **Next (owner to choose):** find the overheating cause from the existing records (emulator ET vs LPJmL's own ET at
 the overheated cells/hours, `landemu_record.npz`, no new run — the suggested first step); or the earlier options below.
 

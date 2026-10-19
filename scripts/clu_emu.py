@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-CLU = Path("/p/projects/open/Jamir/lpjml-fit-clustered")
+CLU = Path("/p/projects/reformit/Jamir/lpjml-fit-clustered")
 DIST = CLU / "grids" / "k674_lowrank_hist_dist25_seed1"
 REP = CLU / "grids" / "k674_lowrank_hist_rep1_seed1"
 

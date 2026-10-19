@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 sys.path.insert(0, os.path.join(REPO, "python", "src"))
 sys.path.insert(0, "/home/jamirp/lpjml-fit/scripts/clustered")
 
-CLU = "/p/projects/open/Jamir/lpjml-fit-clustered"
+CLU = "/p/projects/reformit/Jamir/lpjml-fit-clustered"
 G = f"{CLU}/grids/k674_lowrank_hist_rep1_seed1"
 DIST = f"{CLU}/grids/k674_lowrank_hist_dist25_seed1"
 RUNS = f"{CLU}/runs"

@@ -5,7 +5,7 @@ description: Train and score the emulator on clustered (representative, 25-patch
 
 # Warming-response proof on clustered nitrogen-on runs (ADR 0342)
 
-**Data:** runs `/p/projects/open/Jamir/lpjml-fit-clustered/runs/emu-non-rep-s<seed>[__<gcm>]`; maps
+**Data:** runs `/p/projects/reformit/Jamir/lpjml-fit-clustered/runs/emu-non-rep-s<seed>[__<gcm>]`; maps
 `esm_land_emulator_data/clu_non/`; daily arrays + daily-model runs `esm_land_emulator_data/f2_non/`.
 Model snapshot `lpjml-fit-clustered/trees/nitrogen-on-ef38b509e`; grid `grids/k674_lowrank_hist_rep1_seed1`
 (674 cells = one per region, 25 patches; built by `scripts/clu_emu.py grid`).

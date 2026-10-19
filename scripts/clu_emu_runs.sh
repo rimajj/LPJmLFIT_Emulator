@@ -13,9 +13,9 @@
 set -euo pipefail
 LF=/home/jamirp/lpjml-fit/scripts/clustered
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-G=/p/projects/open/Jamir/lpjml-fit-clustered/grids/k674_lowrank_hist_rep1_seed1
-TREE=/p/projects/open/Jamir/lpjml-fit-clustered/trees/nitrogen-on-ef38b509e
-RUNS=/p/projects/open/Jamir/lpjml-fit-clustered/runs
+G=/p/projects/reformit/Jamir/lpjml-fit-clustered/grids/k674_lowrank_hist_rep1_seed1
+TREE=/p/projects/reformit/Jamir/lpjml-fit-clustered/trees/nitrogen-on-ef38b509e
+RUNS=/p/projects/reformit/Jamir/lpjml-fit-clustered/runs
 PY311=/home/jamirp/.conda/envs/py311/bin/python3
 GCMS_ALL="GFDL-ESM4 IPSL-CM6A-LR MPI-ESM1-2-HR MRI-ESM2-0 UKESM1-0-LL CanESM5 CNRM-CM6-1 CNRM-ESM2-1 EC-Earth3 MIROC6"
 SSPS_ALL="ssp126 ssp370 ssp585"

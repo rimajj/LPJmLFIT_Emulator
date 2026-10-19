@@ -1598,3 +1598,16 @@ exit 120): identical. Owner then had the crashed runs and a 74 GB core dump (`wt
 real core in the folder — named `core-<node>-<pid>`, which a `core.[0-9]*` pattern misses) deleted, and a storage
 survey made of `/p/projects/open/Jamir` only (owner: do not analyse other people's folders; I had started a per-folder
 du of all of /p/projects/open and cancelled it after ~3 min).
+
+## 2026-10-19 (later) — storage clean-up and move (owner decisions)
+
+Survey of `/p/projects/open/Jamir` (12 TB of the 60 TB shared fileset, 93 % full). Two read-only audits: the
+`billing_global` data are conversions/derivations, not copies (content spot-check 100 %; 8 tables are now the only
+copy because Billing re-ran or deleted the originals) — kept, only 33 GB of leftovers + 18 GB of finished-experiment
+outputs deleted. The merged LPJmL-FIT runs were classified final / owner's call / on-the-way; the on-the-way set was
+trimmed to configs, logs, totals and reports (2.93 TB), the rest (6.7 TB, 9 top folders) copied to
+`/p/projects/reformit/Jamir` (35 min, verified path/type/size + checksum sample), links and configs re-pointed in the
+copy, paths rewritten in the merged-model repo (`port` 08374a281, `phosphorus` 19d18e847 incl. the provenance
+register, `core-phosphorus` 428dc644c; detached `core-wt-phos-spitfire` edited but left uncommitted), `~/portjobs`
+and the emulator's `clu_emu*` scripts, then the originals removed. Owner chose rewriting paths over compatibility
+links. Also deleted 40 core dumps in home (36 GB; 23 GB in a clustering worktree).
