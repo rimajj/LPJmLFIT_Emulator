@@ -6,6 +6,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ADR 0347 §6 corrected (§8):** the single-hour > 80 °C surface overheating in the POEM coupling is NOT caused by
+  zeroing LPJmL's evaporation derivative — stock LPJmL already sets it to zero, and `LANDEMU_DEDT=zero|lpj` are
+  bit-identical. Cause open. Code comment (`patches/poem/`) and skill `poem-landemu` (trap 8, new trap 10 on the disk
+  quota) corrected. Shadow re-gate on the final binary: identical.
+
 ### Added
 
 - **The learned emulator coupled to POEM 1.2's atmosphere (ADR 0347):** POEM (AM2/FV, MOM5, LPJmL 5.9 at 0.5°) with the

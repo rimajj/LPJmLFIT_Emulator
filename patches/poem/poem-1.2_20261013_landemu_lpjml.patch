@@ -235,11 +235,11 @@ index ae9fe0826..b1ee602c4 100644
 + *    to the atmosphere through the whole next day (spread over the fast steps
 + *    flat or with the sun, LANDEMU_DIURNAL=flat|sun, exactly the day's total),
 + *    and the latent heat in LPJmL's surface energy balance (cell->evap1, which
-+ *    the next step's ground heat flux reads). LPJmL's own derivative cell->dedt
-+ *    stays in its implicit surface-temperature step (LANDEMU_DEDT=lpj, default):
-+ *    it only shapes how the step converges, the balance itself uses the emulator's
-+ *    latent heat. LANDEMU_DEDT=zero (the first 10-year runs) removed that damping
-+ *    and let single-hour surface temperatures run past 80 degC (ADR 0347).
++ *    the next step's ground heat flux reads). LANDEMU_DEDT=zero also sets
++ *    cell->dedt = 0 on handed-over steps, but stock LPJmL already sets it to 0
++ *    every step (lpj/humidity.c), so zero and lpj (default) are the same model,
++ *    bit-identical over 4.8 coupled years (ADR 0347 sec. 8). It is NOT the cause
++ *    of the single-hour surface overheating; that cause is still open.
 + * Lake evaporation stays LPJmL's. Everything else (surface temperature, albedo,
 + * roughness, canopy humidity, snow) stays LPJmL's.
 + * LANDEMU=shadow runs and records the emulator the same way but hands nothing

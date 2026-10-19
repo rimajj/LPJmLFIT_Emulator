@@ -1585,3 +1585,16 @@ hours cut land convective rain 30 %. Then found ~30 000 cell-hours > 80 °C in b
 zeroing of LPJmL's evaporation derivative. Fixed as `LANDEMU_DEDT=lpj`; corrected runs launched. Owner asked how much
 faster POEM gets: it does not (LPJmL still runs); land is 28 % of POEM's time.
 
+
+## 2026-10-19 — the POEM overheating fix was a no-op (ADR 0347 §8)
+
+Owner: "all runs are finished. report". All three jobs read FAILED. The gate run's failure was the expected
+post-processing one; the two corrected 10-yr runs died at 1855-10-31 on a full `/p/projects/open` quota. Up to there
+they were identical to the first coupled runs — globalflux, dedt checksums and the per-year overheating counts — even
+though the log confirmed `dedt lpj`. Reason: stock LPJmL in POEM hardcodes `cell->dedt = 0` (`lpj/humidity.c:445`), so
+my "fix" re-zeroed a zero. §6's elimination argument had never checked the stock value. The cause of the > 80 °C
+hours is open. Shadow re-gate (job resubmitted with its log on /p/tmp, because the quota killed the first one with
+exit 120): identical. Owner then had the crashed runs and a 74 GB core dump (`wt-X/core-cso14c105-2799474`, the only
+real core in the folder — named `core-<node>-<pid>`, which a `core.[0-9]*` pattern misses) deleted, and a storage
+survey made of `/p/projects/open/Jamir` only (owner: do not analyse other people's folders; I had started a per-folder
+du of all of /p/projects/open and cancelled it after ~3 min).

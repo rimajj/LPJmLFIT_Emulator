@@ -25,7 +25,7 @@ ranks (layout 1x20 = latitude bands; rank 0 holds only Antarctica). ~22 min wall
   net LW. Last step of the day: the emulator runs that day; its **runoff replaces LPJmL's in the river
   routing** (difference booked in `balance.awater_flux` so LPJmL's cell water check still closes); its
   **ET becomes the land moisture flux of the next day** (`LANDEMU_DIURNAL=sun|flat`, exact daily total)
-  and the latent heat in LPJmL's surface energy balance (`cell->evap1`; `cell->dedt = 0`). Lakes, surface
+  and the latent heat in LPJmL's surface energy balance (`cell->evap1`; `cell->dedt` is 0 in stock LPJmL anyway). Lakes, surface
   temperature, albedo, roughness, canopy humidity, snow stay LPJmL's.
 - `LANDEMU=shadow`: same, but nothing handed back -> stock POEM + a full emulator record (control run and
   the one-way result in one). Unset: stock.
@@ -67,13 +67,23 @@ model output is there. Starts from the POEM group's `spinup_6layers_maxsnowheigh
    `z_ref_heat` in `sfc_boundary_layer`; POEM's own diagnostic block computes them only on request and at
    `z_ref_mom` when `t_ref` is not requested).
 7. `lpj_fms.h`'s `lpj_update_` prototype must match the definition (two new `const double *`).
-8. **Do NOT zero LPJmL's evaporation derivative `cell->dedt` when handing over a prescribed flux**
-   (`LANDEMU_DEDT=zero`, the first 10-yr runs): it removes the damping of LPJmL's hourly implicit
-   surface-temperature step, and ~6 per million cell-hours (tropics/subtropics, growing from year 2) run past
-   80 degC (log line `ERR_CLIMBER: final soiltemp too large`; stock: 0). Default `lpj` keeps it. Check every
-   coupled run with `cat fms.out-* | grep -o "soiltemp too large" | wc -l`.
+8. **The coupled runs overheat single hours past 80 degC, cause OPEN — and `LANDEMU_DEDT` is NOT the fix**
+   (ADR 0347 sec. 8, 2026-10-19). ~6 per million cell-hours, tropics/subtropics, from year 1 (log line
+   `ERR_CLIMBER: final soiltemp too large`; shadow/stock: 0). It was blamed on zeroing `cell->dedt`, but stock
+   LPJmL in POEM sets `cell->dedt = 0` itself every step (`lpj/humidity.c:445`), so `LANDEMU_DEDT=zero|lpj`
+   are bit-identical (4.8 coupled years, every global total and every overheating count). **Before blaming any
+   LPJmL term, check the stock code does not already set it** — `grep -rn "<field>\s*=" src/lpj`. Count it in
+   every coupled run with `cat fms.out-* | grep -o "soiltemp too large" | wc -l`, and compare per year with
+   `Date:`-line binning (the shadow run is the zero reference).
 9. **The hour shape of the handed-over ET changes the climate**: flat (night = day) cut land convective rain
    30 % and cooled the land 1.1 degC in 10 years; use `sun`.
+
+10. **Disk: a 10-yr run is ~39 GB in the run dir; the `/p/projects/open` quota can fill mid-run** (2026-10-16:
+   both 10-yr runs died at year 4.8 with `nc__enddef failed with 122: Disk quota exceeded` in
+   `sbatch.64.<jobid>.out`; SLURM just says FAILED 1:0, like a gate run's harmless post-processing failure, so
+   always grep that log for `quota`). The quota is not readable here (`mmlsquota`: no quota-enabled fs); a
+   50 MB `dd` write test is the only check. A full quota also kills `sbatch_python.sh` jobs (their log is in
+   the repo's `logs/`): exit 120, `OSError: [Errno 122]` — write such a job's log to `/p/tmp`.
 
 ## Cost (measured)
 POEM-1.2 stock: 1 322 s wall per simulated year; atmosphere 57 %, whole land 28 % (LPJmL hourly step 21 %,

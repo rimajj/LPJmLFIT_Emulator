@@ -112,7 +112,7 @@ its regridding 3 %), the land–ice–atmosphere coupler 13 %. **The coupling is
 LPJmL still runs.** Replacing LPJmL entirely could save at most ~25 % of POEM's time (≈1.3× faster), and only
 if its hourly surface physics were replaced too — the emulator has no hourly energy balance.
 
-## 6. Defect found and fixed: single-hour surface overheating
+## 6. Defect found: single-hour surface overheating (the fix below is REFUTED — §8)
 
 Both coupled runs logged LPJmL surface temperatures above 80 °C (POEM's clamp) — 29 999 (sun) and 23 442 (flat)
 cell-hours in 10 years, ~6 per million, in the tropics and subtropics (19 °S – 35 °N), from year 2 on and
@@ -137,3 +137,29 @@ only shapes how the step converges; the energy balance itself still uses the emu
 5. 2-m humidity over land is interpolated towards LPJmL's canopy-air humidity (the coupler's surface value).
 
 ## 8. The corrected runs (LANDEMU_DEDT=lpj) — appended on completion
+
+[VERIFIED 2026-10-19] **The §6 cause is refuted and the fix was a no-op; the overheating is still there and its
+cause is open.**
+
+1. **The corrected runs did not finish.** `poem_coupled_{sun,flat}_dedtlpj_10y` (jobs 2527979/80) stopped on
+   1855-10-31 (4.8 of 10 years) with `nc__enddef failed with 122: Disk quota exceeded` on `/p/projects/open`.
+   They were deleted afterwards (2026-10-19) because of point 2: they duplicate the §4 runs.
+2. **They are the §4 runs.** Both logged `dedt lpj` (the switch reached the model), yet up to their crash
+   they are identical to `poem_coupled_{sun,flat}_10y`: LPJmL's yearly global totals (`globalflux.csv`, 30
+   quantities, 1851–1854) agree to every printed digit for both hour shapes, LPJmL's hourly `dedt` checksums
+   agree, and the overheating log matches year by year (sun: 251 / 1 212 / 1 409 / 520 cell-hours above
+   80 °C in 1851–1854, peak 125 °C; flat: 751 / 164 / 628 / 1 517).
+3. **Why:** stock LPJmL inside POEM sets `cell->dedt = 0` on every fast step itself
+   (`lpj/humidity.c:445`, the derivative formula is commented out). Zeroing it again changes nothing, so
+   `LANDEMU_DEDT=zero` and `=lpj` are the same model. §6's elimination argument was wrong: the damping it
+   assumed does not exist in this LPJmL. The switch is kept (harmless) but documented as inert.
+4. **Correction to §6's description:** the overheating starts in year 1, not year 2 (251 sun / 751 flat
+   cell-hours in 1851). Shadow control: 0, as before. LPJmL's `t_surf > 333 K` warnings, which stock POEM also
+   emits, are 3× (sun) / 2× (flat) the control's over the same 4.8 years (89 693 / 59 534 vs 29 942).
+5. **Shadow re-gate on the final binary passes:** `gate_shadow2_1m` vs `gate_stock_1m`, 1 050 of 1 050 decoded
+   variables in 99 files identical. The emulator inside POEM, recording only, still leaves POEM unchanged.
+6. **What stands:** §3 gates, §5 climate and speed numbers (they came from the §4 runs, which these
+   reproduce). **What is open:** the cause of the overheating. Next suspect (untested): the emulator's latent
+   heat replacing LPJmL's in the hourly surface energy balance, where the emulator's daily ET, spread over
+   the hours, is smaller than LPJmL's own in the affected hot, dry hours. Testable from the existing daily
+   records (`landemu_record.npz` carries LPJmL's own ET beside the emulator's) without a new run.

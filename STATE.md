@@ -44,6 +44,17 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-19 — POEM: the overheating "fix" was a no-op; cause still open (ADR 0347 §8).** The corrected 10-yr runs
+died at year 4.8 (project disk quota full) and, up to there, were identical to the first coupled runs: stock LPJmL in
+POEM already sets `cell->dedt = 0` every step, so `LANDEMU_DEDT=zero|lpj` are the same model (runs deleted). The
+single-hour > 80 °C overheating (from year 1, ~6 per million cell-hours, 0 in shadow) is real and unexplained; §5's
+monthly climate and speed numbers stand. Shadow re-gate on the final binary: identical (1 050 / 1 050).
+Disk: freed 86 GB (crashed runs + a 74 GB core dump in `wt-X`); `/p/projects/open/Jamir` holds ~12 TB
+(`lpjml-fit-clustered` 5.7 TB incl. ~1.6 TB exploratory `phosD-*`/`phosX-*` runs; `esm_land_emulator_data` 2.3 TB) —
+survey `/p/tmp/jamirp/logs/space_survey_2587196/`. The quota itself is not readable; check with a `dd` write.
+**Next (owner to choose):** find the overheating cause from the existing records (emulator ET vs LPJmL's own ET at
+the overheated cells/hours, `landemu_record.npz`, no new run — the suggested first step); or the earlier options below.
+
 **2026-10-16 (evening) — COUPLED TO POEM 1.2: the emulator runs inside POEM's LPJmL (ADR 0347).** Build
 `/p/projects/open/Jamir/poem_landemu/POEM-1.2_20261013_6-layers_landemu` (patches `patches/poem/`, skill `poem-landemu`);
 switch `LANDEMU` (unset = stock, `shadow` = record only, `1` = coupled: emulator ET → next day's land moisture flux +
@@ -54,8 +65,8 @@ dry). Coupled with sun-shaped hours: land +0.1 °C, evap +5 %, rain +2 %. Flat h
 −30 %, land −1.1 °C (the hour shape matters). Vegetation carbon −4 %/decade even one-way (emulator memory starts in
 1985–2014 GFDL climate). **Not faster than POEM-with-LPJmL** (LPJmL still runs; emulator 2–3 %; the whole land is 28 %
 of POEM's time ⇒ ≤ ~1.3× even if replaced). Defect: zeroing LPJmL's evaporation derivative let ~6 per million
-cell-hours overheat past 80 °C → fixed (`LANDEMU_DEDT=lpj`); **corrected 10-yr runs `poem_coupled_{sun,flat}_dedtlpj_10y`
-(jobs 2527979/80) were running at handoff — score them** (`score_poem_landemu.py replay <dir>`, then the scorer with
+cell-hours overheat past 80 °C → fixed (`LANDEMU_DEDT=lpj`); ~~corrected 10-yr runs `poem_coupled_{sun,flat}_dedtlpj_10y`
+(jobs 2527979/80)~~ → done 2026-10-19, see above (`score_poem_landemu.py replay <dir>`, then the scorer with
 `poem_shadow_10y`) **and append ADR 0347 §8; check `grep -c "soiltemp too large"` is 0.** Shadow re-gate on the final
 binary: `gate_shadow2_1m` (job 2527981) vs `gate_stock_1m` with `poem/compare_poem_runs.py`.
 **Next (owner to choose):** spin the emulator up on POEM's own climate (shadow mode) before coupling; more channels
