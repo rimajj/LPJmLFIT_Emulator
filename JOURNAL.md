@@ -1611,3 +1611,13 @@ copy, paths rewritten in the merged-model repo (`port` 08374a281, `phosphorus` 1
 register, `core-phosphorus` 428dc644c; detached `core-wt-phos-spitfire` edited but left uncommitted), `~/portjobs`
 and the emulator's `clu_emu*` scripts, then the originals removed. Owner chose rewriting paths over compatibility
 links. Also deleted 40 core dumps in home (36 GB; 23 GB in a clustering worktree).
+
+## 2026-10-20 — SpeedyWeather cold bias reported upstream (issue SpeedyWeather/SpeedyWeather.jl#1333)
+
+Filed as rimajj on owner request, about SpeedyWeather only (not the coupling). New evidence beyond ADR 0346:
+`scripts/online_coupling/speedy_cold_bias_repro.jl`, the default PrimitiveWetModel T31 L8 plus a read-only callback, 3 years,
+exact grid area weights. Ice-free open ocean air − SST, prescribed SST: v0.23.0 −11.7 K (tropics) / −8.8…−7.5 elsewhere;
+upstream main adf0d61 (#1286, full-temperature vertical advection) −4.8…−3.4 K. Global mean air T: v0.23.0 8.2 (slab) / 7.1
+(prescribed) °C; main 6.1 / 12.0 °C, so main's slab ocean now drifts COLD (tropical SST 26.3 vs 34.7 °C). ⚠ The cos-lat
+weights in run_speedy_landemu.jl's global means are not area weights on the octahedral grid (11.7 °C there vs 7.8 °C
+area-weighted); the per-column land comparisons are unaffected (same weights on both sides).
