@@ -82,4 +82,23 @@ settled.
 
 ## 4. Results
 
-(to be added after the runs)
+### 4.1 Arm T — soil texture (2026-10-21; ensembles `TE_5seed`, `T2E_5seed`, `D2E_5seed`; score job 2643623,
+`logs/f2-armT-relscore.md`; every member ran 10 of 10 epochs)
+
+Median over the 14 legs × 2 windows of CAND / REF typical-cell error (30-yr means; < 1 = texture helps):
+
+| | GPP | NPP | ET | runoff | worst leg (flux) | drift rise > 0.08 |
+|---|---|---|---|---|---|---|
+| pair a `TE_5seed` / `DE_5seed` | **1.056 ✗** | 0.868 | 0.988 ✗ | 0.949 ✗ | **1.335 ✗** (GPP, IPSL ssp585 late) | none (max +0.07, NPP) |
+| pair b `T2E_5seed` / `D2E_5seed` | 1.009 | 0.841 | 0.988 ✗ | 0.886 ✓ | 1.180 (GPP, IPSL ssp126 early) | **1 ✗** (ET IPSL ssp585 0.90 → 1.00) |
+| pre-registered | ≤ 1.05 | ≤ 1.05 | ≤ 0.95 | ≤ 0.90 | ≤ 1.25 | none |
+
+**Verdict: NOT adopted (null reading).** The primary (runoff ≤ 0.90 AND ET ≤ 0.95) fails in both pairs on ET
+(0.988 in each) and in pair a on runoff too; pair a also fails must-not-worsen on GPP and on its worst leg. Against
+the expectation (runoff 0.85–0.95 ✓ on the edge, ET 0.93–1.00 ✓, carbon within ±3 % ✗): **NPP is 13–16 % better in
+both pairs** — consistent over legs (pair b: every one of 28 leg-windows below 0.94; pair a: 24 of 28 below 1) and
+larger than one ensemble's run-to-run noise at the median (±9 % per leg at the 90th percentile, ADR 0336 §6) — while
+GPP is unchanged or worse, so the gain is in the respiration side of the NPP head, not in production. That was not
+predicted and is not an adoption criterion here; following it up would need its own pre-registration (owner's call).
+As pre-registered, the water item is closed: at the panel's 11 soil types texture adds nothing for ET that the
+top-metre capacity does not already carry.
