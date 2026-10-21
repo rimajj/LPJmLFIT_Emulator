@@ -56,6 +56,12 @@ files exactly as the training climate table did, and overrides the setup's Jan-1
   (`SUFFIX=_fx`); quote structure accuracy only from those. Sanity check on any fit log: training rows must equal
   runs × training legs × training years × 1 050 cells. All scores of one variant:
   `scripts/score_yearly_map_variant.sh <suffix> [fit args]`.
+* **Drought die-off arms (ADR 0354/0355, none adopted):** `explore_panel_yearly_drift.py fit --state dep|depnw|depw`
+  keeps the map as the level and adds a departure model run forward year by year (`dep` 20 of 22, capture 0.18;
+  `depw` adds the daily bucket statistics of `scripts/build_panel_bucket_stress.py calib|build|check|events`,
+  capture 0.25). Their fit log prints a LEVEL HARNESS line that says FAIL on max difference — read it as ADR 0354
+  §5a (median 0, ≥ 99.5 % of rows ≤ 1e-6; LightGBM rerun noise). Score with
+  `scripts/score_yearly_map_variant.sh _statedep_fx --state dep` (or `_statedepw_fx --state depw`).
   ⇒ the validated fold release is **`fold_gfdl-esm4_v2`** (leak-free, ADR 0353); its `release.json` carries
   `pred_suffix: "_fx"`, which `--check` reads. Its check flags `fpc7`/`fpc8` "DIFFERS" exactly as v1's did (the hot-day
   threshold trap above) — that is the expected result, not a regression. Leak-free stand-map files end `_fx` too
