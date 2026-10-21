@@ -44,6 +44,21 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (late night) — forest map: a weather-driven departure model for drought die-offs (ADR 0354), not
+adopted on its target, but a general gain.** Owner: "continue with the emulator" ⇒ option (b) of the block below.
+The leak-free map stays the level; a second small model per quantity learns the forest's year-to-year departure from
+that level (tree count, biomass per tree) from this and last year's weather anomaly, run forward year by year
+(`explore_panel_yearly_drift.py fit --state dep`; null `depnw` without weather).
+* Drop capture of the original's drought die-offs **0.03 → 0.18** (bar 0.30; the null stays 0.03), 10-year aftermath
+  gap **4.5× → 3.75×** a second run's (bar 2.0×). The year's 25 annual climate statistics explain about a quarter of a
+  die-off the original's other runs reproduce at 94 %.
+* Everything else passes: **20 of 22 criteria** (from 18; + dense tree count worst 10 %, + sparse tree count typical),
+  nothing lost, drift 1.20 / 1.41 (unchanged), late tree-count level ×0.97. After a 30 % start cut the recovery
+  overshoots (+40–47 % of the cut above the uncut run in 2040–2060, fading).
+**Next (owner to choose):** (b1) a daily-resolved stress input for the departure model (the year's water-stress
+integral on the original's own calendar — the record's pre-registered next candidate); (b2) ship `dep` for its general
+gain (two numbers per cell carried year to year) — or `fx10`, smaller (19 of 22); (d)/(e) from the block below.
+
 **2026-10-21 (late) — SpeedyWeather cold-bias side track: retuning its longwave to a reference radiation code makes it WORSE** (TOA imbalance +6 → +10/+15 W/m², slab ocean runs away +1.6–2.4 K/yr); the four-band longwave was already close to the reference on clear sky. Remaining error is the model atmosphere (tropical upper troposphere too moist and too warm) + clouds. JOURNAL 2026-10-21 (late). Next there, if pursued: humidity/convection, not radiation.
 
 **2026-10-21 (night) — the leak-free restatement is done (ADR 0353), and the two daily-network arms are closed

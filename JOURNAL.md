@@ -1689,3 +1689,16 @@ at 18.4. Reading: the gas radiation was not the error; a correct radiation code 
 clear-sky OLR 249–250 vs ~266 observed (CERES clear-sky, from memory) ⇒ the excess greenhouse is in the model
 atmosphere (too moist, too warm upper troposphere: convection / large-scale condensation / humidity transport), plus
 clouds. Not adopted. Logs logs/speedy-{lwref,calib,H1..H4,prof,G1..G3}-*.out.
+
+## 2026-10-21 (late night) — forest map: weather-driven departure model for drought die-offs (ADR 0354)
+Owner "continue with the emulator" ⇒ NEXT option (b). Design: keep the leak-free map as the level; learn the forced
+departure ln((T+1)/(M+1)) of tree count and biomass per tree (mean of the 5 training runs on a leg against 3-fold
+cross-fitted level predictions, de-meaned per leg × cell) with LightGBM from this/last year's z-anomalies of the 25
+climate statistics, last year's departure and the level; free-run 2020–2100. Two code fixes on the way (NaN level where
+the anchor is missing → null). Level harness pre-registered at ≤ 1e-6 on the worst row failed on LightGBM rerun noise
+(0.02–0.15 % of rows, max 2–7 %); amended before reading any score to "median 0, ≥ 99.5 % of rows within 1e-6" —
+passes all five models. Results: capture 0.18 (one-step 0.22–0.25; null 0.03), gap 3.75×, 20 of 22 criteria, drift
+unchanged, start-cut recovery overshoots. Not adopted (capture < 0.30, gap > 2.0×). Note: the scoring jcf's
+dependency line broke (job ids captured with newlines), which silently dropped every later #SBATCH line, so the log
+went to slurm-<id>.out in the repo root (moved to logs/). Another session was working in this checkout at the same
+time (SpeedyWeather side track); I committed only my own files.

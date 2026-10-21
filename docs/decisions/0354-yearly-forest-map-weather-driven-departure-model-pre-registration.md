@@ -1,6 +1,6 @@
 # 0354 — Yearly forest map: a weather-driven departure model on top of the level map, for drought die-offs (pre-registration)
 
-* **Status:** pre-registered 2026-10-21, before any fit of this record.
+* **Status:** pre-registered 2026-10-21, before any fit of this record. **Result (§7): not adopted** — drop capture 0.03 → 0.18 (bar 0.30), aftermath gap 4.5× → 3.75× (bar 2.0×); the null without weather stays at 0.03; general scores 18 → 20 of 22 criteria with nothing lost and drift unchanged.
 * **Owner instruction (2026-10-21):** "continue with the emulator"; the NEXT handoff listed this as option (b), the
   forest map's biggest known miss (ADR 0352 §6.3).
 * **Follows:** ADR 0350 (94 % of the original's big one-year tree-count drops are drought years its other runs share;
@@ -96,3 +96,45 @@ the one-year change 0.53, median 0.25 of the 7 824 drops ≥ 0.15 captured — r
 The package (`landemu`) would carry two numbers per cell from year to year (the departures) and a 30-year mean and
 standard deviation of its yearly climate statistics (it already keeps the 30-year window); the release gates gain a
 year-by-year replay. The stand map (leaf area, cover) would get the same treatment in a separate step.
+
+## 7. Results (2026-10-21; fits 2651330, 2651337–45, score 2651346, `logs/yst-dep*.out`)
+
+Level harness (§5a reading): median difference 0 and 99.85–100 % of rows within 1e-6 on every quantity, all five
+held-out models (tree count and biomass per tree rebuilt from the output and the saved departure) — passes; every
+difference below is the departure model's.
+
+| median over 15 cases, dense cells | `fix` | `dep` | `depnw` (null) | pre-registered |
+|---|---|---|---|---|
+| die-off drop capture, shared tree-count events (second runs 0.939) | 0.027 | **0.183** | 0.027 | ≥ 0.30 ✗; null ≤ 0.05 ✓ |
+| aftermath gap / second runs' | 4.53× | **3.75×** | 4.53× | ≤ 2.0× ✗ |
+| stand-biomass events: capture / gap | 0.070 / 3.2× | 0.162 / 2.98× | 0.064 / 3.34× | reported |
+| event-window error / the cells' other years (vs second runs) | 3.48 / 1.99 | 3.00 / 1.98 | 3.63 / 2.10 | reported |
+| one-step capture on held-out legs (true last-year departure, §5a) | — | 0.22–0.25 | 0.045–0.051 | reported |
+| dense tree count / biomass per tree, ratio to `fix` | — | 1.009 / 1.002 | 1.001 / 1.008 | ≤ 1.02 ✓ |
+| sparse tree count / biomass per tree, ratio to `fix` | — | 0.986 / 0.998 | 0.974 / 1.012 | ≤ 1.02 ✓ |
+| criteria passing (of 22) | 18 | **20** (+ dense tree count worst 10 %, + sparse tree count typical), none lost | 18 | none lost ✓ |
+| drift tree count / biomass per tree | 1.219 / 1.407 | 1.201 / 1.412 | 1.234 / 1.405 | ≤ 1.269 / 1.457 ✓ |
+| late level tree count / biomass per tree | 1.204 / 1.108 | 1.165 / 1.119 | 1.206 / 1.113 | ≤ 1.05× ✓ |
+| start cut retained 2021 / 2025 / 2030 / 2050 / late | — | 0.94 / 0.45 / −0.04 / −0.47 / −0.14 | — | max ≤ 1.1, late ≤ 0.5 ✓ |
+
+**Verdict (§4): not adopted.** Every condition passes except the two the arm was built for: capture 0.18 < 0.30 and
+aftermath gap 3.75× > 2.0×. By §4 this is the "capture < 0.30" branch.
+
+Reading:
+* **The weather does carry part of the drop, and it is the weather:** capture rises 0.03 → 0.18 (the best of every
+  arm since ADR 0350; ADR 0351/0352 reached 0.13–0.19 only with errors worse elsewhere), the null without weather stays
+  at 0.03, and the year-to-year change correlation on held-out legs is 0.50–0.53 with weather against 0.22–0.24
+  without. But 25 annual statistics explain about a quarter of a drought die-off; the original's other runs reproduce
+  94 % of it, so most of what decides the drop is not in those annual numbers.
+* **Free-running loses some:** 0.22–0.25 of the drop with the true last-year departure, 0.18 when the model carries its
+  own.
+* **The recovery overshoots:** after a 30 % start cut the model's tree count is back by 2030 and then 40–47 % of the
+  cut ABOVE the uncut run in 2040–2060, fading to 14 % late. The original's own response to a start cut was not
+  measured, so whether a post-die-off surge is real is open; the start-error test passes as written.
+* **A general gain without the die-off:** 20 of 22 criteria (from 18), nothing lost, drift unchanged, late tree-count
+  level ×0.97. Larger than `fx10`'s (19 of 22) and from the same kind of input (the recent weather), but by a model
+  that only moves the year-to-year course. Not adopted under this record; shipping it for the general gain is a
+  separate decision (it adds two numbers per cell carried from year to year and the 30-year mean and spread of the
+  climate statistics).
+* §4's next candidate: a daily-resolved stress input (e.g. the year's water-stress integral on the original's own
+  calendar, CLAUDE.md §3) — owner's call.
