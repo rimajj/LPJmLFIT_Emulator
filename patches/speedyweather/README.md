@@ -1,0 +1,13 @@
+# SpeedyWeather cold-bias work (2026-10-21)
+
+Diffs against SpeedyWeather.jl `main` d6e3286d (CHANGELOG.md excluded). Apply in a clean checkout with
+`git apply <file>`. The working branches live in worktrees of `/p/tmp/jamirp/speedy_main_src` (scratch).
+
+| file | branch | contents, in order |
+|---|---|---|
+| `coldfix-E_vs_main-d6e3286d.diff` | `coldfix-E` | upstream PR #1332 (implicit-solver reference temperature reinitialized) + #1284 (balanced initial state, initial snow) + #1283 (surface Richardson number with the surface temperature, working vertical diffusion) + #1262 (TwoBandShortwave following speedy.f90, DiagnosticClouds bug fixes) + the #1279 glue fix (TwoBandShortwave allocates cloud variables) + **new `FourBandLongwave`** (port of speedy.f90's longwave, water vapour and cloud absorption) + **new opt-in `SurfaceCondition(actual_lapse_rate = true)`** (speedy.f90's surface air temperature) |
+| `coldfix-all_vs_main-d6e3286d.diff` | `coldfix-all` | the same, plus the provisional cold-bias tuning commits of #1279 (b267f018, 54736e2c, 2dcefb0f, 45af26cf: shortwave absorptivities, ozone, ocean roughness, Frierson fₗ = 0.25, ByrneOGormanLongwaveTransmissivity) |
+
+Measure with `scripts/online_coupling/speedy_cold_bias_repro.jl` (submit: `sbatch_speedy_cold_repro.sh`; env
+`LW=fourband`, `T0=speedy`, `LWKW=` / `CLOUDKW=` parameter lists, `LANDREF=` the observed land table from
+`build_speedy_land_reference.py`), tabulate with `summarize_speedy_cold_runs.py`. Results: JOURNAL 2026-10-21.

@@ -1646,3 +1646,27 @@ the held-out legs, because m5 is both a training run and the test-side harness. 
 (jobs 2641029–48). `lag`: teacher-forced memory, gap unchanged at ~4×, drift 1.55/1.86. `lagd`: cross-fitted
 lags, the map learns to ignore its state, gap 3.77×. Neither adopted. Lesson: check training/test row counts
 against the design arithmetic; a run that serves on both sides must be filtered by leg as well as by member.
+
+## 2026-10-21 — fixing SpeedyWeather's cold bias: upstream fixes combined, SPEEDY longwave ported
+
+Owner: "fix the cold bias in speedyweather.jl", then (after I had missed most of the upstream work): "take all the
+knowledge and branches with parts of the solution. then continue". Upstream state read first this time: #1281/#1282
+→ draft PR #1283 (surface Ri with the surface temperature, working vertical diffusion), #1279 (maintainers' integration
+branch with a cold-bias flux analysis and provisional tuning), #1262 (speedy.f90 two-band shortwave, cloud bugs incl.
+#1273's rain-unit bug), #1284 (balanced initial state, initial snow), #1332 (implicit-solver stability), #1335 (thin
+bottom layer). Stages built on main d6e3286d (worktrees of /p/tmp/jamirp/speedy_main_src, diffs in
+patches/speedyweather/): A0 = #1332+#1284; A = +#1283; B = +#1262; C = +#1279 tuning; D = C + new FourBandLongwave;
+E = B + FourBandLongwave (branch coldfix-E). FourBandLongwave = port of speedy.f90's longwave (window/CO2/2 water vapour
+bands, cloud absorption from DiagnosticClouds, black PBL band, gradient correction, stratospheric emission, polar
+night); column energy closes to 1e-4 W/m². Also an opt-in SurfaceCondition(actual_lapse_rate) = speedy.f90's surface air
+temperature (actual lapse rate, lowermost layer in inversions) instead of the dry adiabat.
+Scorer: speedy_cold_bias_repro.jl + LANDREF (build_speedy_land_reference.py: W5E5 1985–2014 at ADR 0346's 1 197 T31
+land columns; reproduces 17.11 / 24.97 / 8.30 °C, 941 mm) + summarize_speedy_cold_runs.py. One realisation each.
+Prescribed SST, 3 yr (years 2–3): TOA net main −26, A −39, B −49, C −24, E +4.6 W/m²; land annual / warm / cold − obs:
+main −2.2/−4.1/+0.8, A 0.0/−2.0/+3.3, B −1.0/−3.5/+2.5, C +2.6/+1.1/+5.7, E +3.7/+2.6/+6.0. Slab ocean, year 5: main
+4.4 °C still cooling (−5 W/m²), A 2.6, B 2.4, C 9.5 (all still cooling), D runs away warm (+1.5 K/yr), **E 18.4 °C and
+steady (+0.8 W/m²)** — first stable free-ocean climate, but ~4 K warm. E's excess greenhouse is tropical (OLR 225 vs
+~255; reflected SW 134 vs ~100); halving thick-cloud LW absorption +6 W/m² only; weaker weak water-vapour band balances
+TOA (−3…−5) but cuts land rain 290–330 mm/yr. Every version has a too-flat high-latitude land seasonal cycle
+(>50°: main warm −7.2/cold +5.0; E1 +1.7/+14.5) with surface net LW not the cause — checking near-surface inversion /
+diagnostic next. AnalyticBandLongwave (NumericalRadiation) freezes the slab (−0.7 °C) — not a fix.

@@ -229,3 +229,23 @@ Field access is `fields.name[i, j]`; outputs go to `out.name[i, j, 1]`.
 **daily** and S is **annual**. A *rate* process (photosynthesis) has no mismatch — compute it from
 instantaneous forcing. Anything with daily/annual state must buffer forcing and hold a **piecewise-constant
 tendency** over the interval, which ForwardEuler then integrates to exactly the daily total (conserving).
+
+## SpeedyWeather cold-bias experiments (stand-alone, no emulator) — 2026-10-21
+
+- **Search upstream first**: SpeedyWeather issues/PRs (#1279, #1283, #1262, #1284, #1332, #1335, #1333) already hold
+  most fixes; the maintainers' agent account is `milankl-claude`.
+- Branch builds: worktrees of `/p/tmp/jamirp/speedy_main_src` (`git fetch origin pull/<n>/head:pr<n>`; the clone was
+  shallow — `git fetch --unshallow` before any merge-base). Durable copies: `patches/speedyweather/*.diff` + README.
+  Each worktree needs `RingGrids/Artifacts.toml` copied from `speedy_main_src` (git-ignored; without it
+  `initialize!` tries to download orography on the compute node and dies). Env per worktree: copy
+  `/p/tmp/jamirp/speedy_armE_env` and `sed` the Manifest paths; a stale registry entry pinning ProgressMeter
+  needs `Pkg.update("ProgressMeter")`, not `Pkg.resolve()`.
+- Run: `scripts/online_coupling/sbatch_speedy_cold_repro.sh <tag> <env> prescribed|slab <years>` with env knobs
+  `LW=fourband|analytic`, `T0=speedy`, `LWKW="name=value,..."` (FourBandLongwave), `CLOUDKW=...` (DiagnosticClouds),
+  `LANDREF=/p/projects/open/Jamir/esm_land_emulator_data/coupled/speedy_t31_land_reference_w5e5.csv` (observed
+  land at the 1 197 T31 columns; rebuild with `build_speedy_land_reference.py`). ~8 min per 3-yr run, ×3 with
+  FourBandLongwave/AnalyticBandLongwave. Table: `summarize_speedy_cold_runs.py logs/speedy-*.out`.
+- Read **both** oceans: prescribed SST hides a top-of-atmosphere imbalance (the ocean silently supplies it); a 3-yr
+  slab run is not in equilibrium — run 5+ years and read the per-year TOA net.
+- SpeedyWeather's `surface_air_temperature` is the lowermost layer (~500 m at L8) brought down the dry adiabat, not
+  a 2 m temperature — in winter inversions it is several K warmer than a 2 m observation.
