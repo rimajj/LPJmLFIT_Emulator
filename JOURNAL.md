@@ -1817,3 +1817,45 @@ definition. (ii) A real excess: the lower troposphere +5–8 K and the soil +4 K
 prescribed SST, 3 yr): W0 control; W1 surface drag critical Richardson number 1 → 3 (stable surface exchange as in the
 "long-tail" functions of operational models); W2 = W1 + the same in the vertical diffusion. Pass: coldest-month >50°
 lowermost-layer bias halved (≤ +3.8 K) with the annual land air bias at < 50° not worse by > 0.5 K.
+**Cloud arms (E3ent50 base, prescribed SST, yrs 2–3; reflected / clear-sky reflected / SW cloud effect | OLR / clear
+OLR / LW cloud effect | net TOA, W/m²; CERES 99.1 / 53.3 / −45.8 | 240.1 / 268.1 / 27.9):** C0 = base rerun, identical
+to E3ent50 digit for digit (option off ⇒ unchanged ✓). Base 111.8/33.3/−78.5 | 223.2/253.8/30.5 | +5.8. R1 Rayleigh
+0.647: 133.0/62.2/−70.8 | 221.1/251.7/30.6 | −13.1 (the full Lacis–Hansen strength overshoots clear-sky by 9). R2 + cloud
+albedos ×0.6: 103.4/61.6/**−41.9** | 224.0/254.3/30.3 | +13.4. R3 ×0.75: 114.6/61.8/−52.8 | 222.7/253.3/30.6 | +3.5. R4
+Rayleigh 0.32 + ×0.7: **98.7**/47.2/−51.5 | 224.5/254.7/30.2 | +17.6. U1 Betts–Miller RH 0.6: 108.0/33.5/−74.5 |
+224.5/254.7/30.1 | +8.1 — drying the convection barely moves the clear-sky OLR (+0.9), and the 308 hPa RH stays 72.5 %:
+that moisture does not come from convection. Verdict by the pre-registered rule: **no arm passes** — the shortwave can be
+matched (between R2 and R4: Rayleigh ≈ 0.45, albedos ≈ ×0.65 should land all three SW numbers), but the clear-sky OLR is
+~14 W/m² low in every arm, and matching the shortwave alone leaves +13 to +18 W/m² going in (the slab would run away).
+The blocker is the clear-sky longwave. Attribution run (`speedy_clearsky_olr_attribution.jl`): clear-sky OLR from the
+four-band code and ecCKD on the spun-up columns, and with T and/or q replaced by GFDL-ESM4's band profiles.
+Slab with MSE entrainment to the top (E3-slab, 5 yr): 308/431/555 hPa −4.0/−2.9/−1.1 K (too cold), +0.37 K/yr in year 5.
+**Clear-sky OLR attribution (120-day spin-up, E3ent50-like host, prescribed SST; global / tropics, four-band | ecCKD):**
+model T, model q 255.7/271.6 | 250.6/268.0 · GFDL T 255.4/269.3 | 250.3/264.2 · GFDL q 258.7/276.2 | 253.4/271.3 · GFDL T
+and q 257.9/273.1 | 252.9/267.7. ⇒ even the reference atmosphere (band means) gives a clear-sky OLR ~10–15 W/m² below
+CERES (268.1 global; tropical clear-sky ~285–290 from memory) with BOTH codes; the model's humidity costs only ~3 W/m².
+So the shortfall is not mainly the model state or the four-band code. Candidates: the 8-layer vertical discretisation
+(the tropopause region is two thick layers), and band-mean profiles losing the humidity variance (OLR(mean q) < mean
+OLR). Test: ecCKD and four-band on the GFDL-ESM4 profiles at 8 vs 32 layers (spin-up 0, same surface).
+**Winter arms (prescribed SST, coldest month, 322 columns >50°; lowest layer / near-surface air / 2 m diagnostic / soil
+vs GFDL-ESM4):** W0 +7.6 / +13.0 / **+4.4** / +4.0 K · W1 (surface drag Ri_c 3) +6.8 / +11.7 / +6.1 / +5.7 · W2 (+ diffusion
+Ri_c 3) +7.3 / +12.5 / +6.6 / +6.1. ⇒ two-thirds of the +13 K is the definition (the lowest layer's temperature reported
+as near-surface air in an inversion); stronger stable mixing fails the pre-registered test (lowest layer not halved, soil
+and 2 m warmer) — not adopted. The 2 m diagnostic as first written leaned to the hot ground in unstable air (warmest month
++5.6 K vs +2.3 for the model air) ⇒ now applied only when the air is warmer than the ground. The remaining excess: a
+high-latitude lower troposphere warm all year (>50° annual +7.3 K, also +1.2 K above the prescribed SST over ice-free
+ocean ≥50°), i.e. the atmosphere, not the land surface. Plausibly the same missing longwave cooling.
+**Vertical-resolution test (GFDL-ESM4 band profiles, 1-day host, clear-sky OLR global/tropics):** four-band L8 253.6/275.0,
+ecCKD L8 249.2/269.2, four-band L32 261.7/286.9, **ecCKD L32 255.2/278.5**. ⇒ 8 layers cost ~6 (global) to ~9 (tropics)
+W/m² of clear-sky OLR at fixed code and atmosphere, and the four-band code at L8 already sits within 2 W/m² of ecCKD at
+L32 — it compensates. So the model's ~12 W/m² clear-sky OLR shortfall vs CERES is neither its longwave code nor
+(mostly) its state: the rest is the reference comparison (band-mean profiles lose the dry-subsidence humidity variance;
+CERES clear-sky samples cloud-free, drier scenes — Loeb et al. discuss a few W/m²) and is not closable inside an L8 model.
+Consequence for the clouds: OLR cannot honestly be raised, so total reflection has to stay near the base's ~111 W/m² for
+the budget to close; what can be fixed is the SPLIT (realistic clear sky, less exaggerated clouds) and with it the
+surface sunshine. Land surface SW down (vs W5E5 obs, all / 23.5–50° / >50°): base +8.8/+18.9/+12.6, R1 −11.0/−5.5/−3.0,
+R2 +16.1/+17.6/+21.1, **R3 +6.4/+9.2/+12.4** (land air +1.93 K vs base +2.23, mid-latitude +1.22 vs +1.94), R4
++20.7/+24.9/+25.2. **Pre-registered R5** = Rayleigh 0.5 + cloud and stratocumulus albedo ×0.75 (0.3225/0.375), E3ent50
+convection: passes if clear-sky reflected within 5 W/m² of 53.3, SW cloud effect error at most half the base's (|−78.5 +
+45.8| = 32.7 ⇒ ≤ 16.4), net TOA within ±2 W/m² of the base (+5.8, prescribed SST), land SW down error smaller than the
+base's; slab 5 yr reported alongside E3ent50-slab (drift).

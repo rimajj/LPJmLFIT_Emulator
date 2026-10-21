@@ -73,7 +73,8 @@ const WVARS = 24                                  # 1-8 layer T, 9-16 layer p, a
 # temperature and the model's surface air temperature (what its sensible heat flux uses, at the lowermost layer's height
 # z₁), log-linear Monin-Obukhov form ln(z/z₀) + β z/L with the stability z₁/L matched to the model's own Frierson (2006)
 # drag C = C_neutral (1 - Ri/Ri_c)², i.e. β z₁/L = ln(z₁/z₀) r/(1 - r) with r = 1 - sqrt(C/C_neutral). Neutral or
-# unstable: the log profile; strongly stable: close to linear in z, i.e. close to the soil temperature.
+# unstable: the model's own surface air temperature (see below); strongly stable: close to linear in z, i.e. close to the
+# soil temperature.
 function air_2m(ij, vars, model, soilT)
     p = vars.parameterizations
     g, κ = model.planet.gravity, 0.4
@@ -84,8 +85,10 @@ function air_2m(ij, vars, model, soilT)
     X = log(z₁ / z₀) * r / (1 - r)                   # β z₁/L
     z₀ₕ = z₀ / 10                                     # heat roughness, ln(z₀/z₀ₕ) ≈ 2.3
     F = (log(2 / z₀ₕ) + 2 / z₁ * X) / (log(z₁ / z₀ₕ) + X)
-    Tₛ = soilT[ij, 1]
-    return Tₛ + F * (p.surface_air_temperature[ij] - Tₛ)
+    Tₛ, Tₐ = soilT[ij, 1], p.surface_air_temperature[ij]
+    # unstable or neutral (air not warmer than the ground): the mixed layer keeps the near-surface air close to the
+    # model's surface air temperature (a neutral log profile would lean towards the hot ground: +3 K in the warmest month)
+    return Tₐ <= Tₛ ? Tₐ : Tₛ + F * (Tₐ - Tₛ)
 end
 const WACC = Ref(zeros(0, 12, WVARS))
 const WN = zeros(Int, 12)
