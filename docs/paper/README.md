@@ -20,6 +20,29 @@ coupling experiments are deliberately left out (owner, 2026-10-20).
   and the forest-structure drift baseline were chosen after first results (with the pre-registered outcomes beside
   them), and the 500-patch cost is the measured 7.06 core-s (not the extrapolated 6.7). Open before submission: the
   owner's own read, author list / affiliations, a Zenodo DOI for code and release, target-journal formatting.
+* **Owner's questions, 2026-10-21 → text to-dos (none done yet).** Answers were checked against the code and ADRs.
+  1. *Daily inputs, the capacity sentence* ("read from the original each year in the evaluation runs"): say that
+     "original" = LPJmL-FIT; in the tests the capacity came each year from the held-out run itself (a small leak,
+     harmless: 0.1–0.2 % median change); the release uses a fixed per-cell 2019 value (`build_emulator_release.py`).
+  2. *What a deployment needs*: state plainly that every emulated cell needs a historical LPJmL-FIT run (anchors,
+     2000–2019 state, start stores and stand, capacity), and that the panel anchor uses the training runs' FUTURE
+     output at that cell (other runs and climate models, not the predicted run); the global and nitrogen-on versions
+     use only the historical state.
+  3. *Forest maps, Sect. 4.3*: say where year-to-year development comes from — the panel anchor is the original's
+     own year-by-year trajectory, and the 30-yr window moves slowly; consequence: a one-year extreme event leaves no
+     legacy beyond 1/30 of the window. In the global version the anchor is constant, so only the climate carries time.
+  4. *Limitations, "cells seen in training"*: rewrite. "Clearly worse" came from an earlier map WITHOUT an anchor
+     (agreed with the unseen run on 5–9 % of cells vs a ~13 % target, below a lookup; ADR 0316 §3). With the anchor,
+     unseen cells give 1.8–2.2× a second run for leaf area / cover; dropping lat/lon/soil code or blocking memorisation
+     changed < 5 %; the error falls 6–12 % per doubling of training cells (ADR 0343). Say "seen" = "the original was
+     run there", and that coordinates are not what the map relies on.
+  5. *Soil*: state that the daily networks get no soil texture, only the top-metre capacity (how fast water moves is
+     not represented — relevant to runoff), and that the soil code enters the maps as a number (or fix it first —
+     STATE.md NEXT item 2). Candidate limitation/outlook line.
+  6. *Ensemble, Sect. 4.1*: give the reason — a single network's NPP level shifts by several % with the random seed
+     (ADR 0322); five is set by cost, not tuned; the member spread is not used as uncertainty.
+  7. *Gradient-boosted trees*: one sentence that tree models cannot extrapolate (outputs stay within values seen in
+     training), linking it to the damped response beyond the training scenarios (Sect. 6.5/6.6, Discussion).
 * Gotchas: the `ind` biomass per tree is density-weighted gC m⁻² (nind = 1/patcharea, patcharea 225 m²), so
   kgC per tree = value × 0.225; the second-run yardstick of the structure scores is runs m1–m3 under the held-out
   climate model (m5 is the harness check), not m5.

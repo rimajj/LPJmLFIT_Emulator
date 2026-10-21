@@ -44,6 +44,24 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 — to-dos from the owner's questions on the paper draft (none started).** Paper wording to-dos are in
+`docs/paper/README.md` ("Owner's questions, 2026-10-21"). Emulator to-dos, each a one-variable arm, pre-registered:
+1. **Soil texture is not a daily-network input** — only the top-metre capacity (`cap`, mm). Texture sets how fast water
+   moves (infiltration, percolation), which `cap` does not carry; runoff (5.2× a second run) and top-metre water are
+   the worst daily variables. Arm: add texture (sand/silt/clay or saturated conductivity from the soil code via the
+   live soil par file) to the daily inputs; score runoff, ET, top-metre water as ADR 0325. Never tested so far.
+2. **Soil code enters the yearly maps as a plain number** (no `categorical_feature` in `explore_panel_yearly_drift.py`
+   / `explore_panel_stand_map.py` / the release), so LightGBM splits on code ranges with no physical meaning. Arm:
+   categorical, or replace by physical soil properties. Expect a small effect (dropping lat/lon/soil changed < 5 %,
+   ADR 0343).
+3. **Ensemble size is not tuned** — five members were chosen for cost (ADR 0322: a single net's NPP level wanders by
+   several % with the seed). Measure 1/3/5/10 members: score vs cost (the daily nets are 97 % of run time).
+4. **Legacy of single extreme years** — the forest maps are non-recursive, so a die-off after one extreme drought
+   cannot carry into later years except via 1/30 of the climate window. Diagnostic first: score the years after the
+   original's largest one-year drops; if missed, try lagged-extreme climate features (e.g. worst year of the last
+   5), not recursion.
+5. Unseen cells stay a sample-size problem (ADR 0343) → full-grid training, already in the options below.
+
 **2026-10-21 — the emulator paper is drafted and fact-checked (`docs/paper/`, README there).** Model-description
 manuscript of release v1 (25 pages, 11 figures, rebuild `scripts/paper/make_all.sh`); every number traced to a record,
 an independent fact-check applied in full (`docs/paper/FACTCHECK.md`). Open: the owner's read, author list, Zenodo
