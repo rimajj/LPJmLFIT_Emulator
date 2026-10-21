@@ -11,7 +11,7 @@ OCN="${3:-slab}"
 YRS="${4:-3}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 EXP=""
-for v in LW LANDREF PROFREF WINTERREF LWKW CLOUDKW CONVKW T0 SIGMA CLEARSKY DAYS; do
+for v in LW LANDREF PROFREF WINTERREF LWKW SWKW CLOUDKW DRAGKW VDKW CONVKW T0 SIGMA CLEARSKY DAYS; do
   [ -n "${!v:-}" ] && EXP="$EXP export $v='${!v}';"
 done
 JOB=$(sbatch --parsable --job-name="$TAG" --account=waldspektrum --partition=${PARTITION:-priority} --qos=${QOS:-priority} \

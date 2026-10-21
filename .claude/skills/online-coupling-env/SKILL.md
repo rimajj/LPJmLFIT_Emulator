@@ -265,5 +265,18 @@ tendency** over the interval, which ForwardEuler then integrates to exactly the 
   evaporative cooling (dry air never cools the parcel). With both fixed (`ascent_substeps=10, entrainment_mse=1,
   σ_entrainment=0`) the tropical 300–550 hPa profile is within 1.5 K of GFDL-ESM4 on both oceans. Lowering the
   target `relative_humidity` dries the column but barely cools it — a humidity knob is not a temperature fix.
+- **Parcel check without a model run:** `scripts/online_coupling/speedy_parcel_ascent_check.jl` (any env; seconds after
+  loading — fine on the login node) runs `pseudo_adiabat!` on one tropical column against a 2000-sub-step integration of
+  the same equations, and the branch's `ascent_substeps=10` if the method exists. ⚠ **The layer in which the parcel
+  saturates is the bigger half of the warm parcel on `main`**: the dry trial over the whole layer decides "saturated" and
+  the parcel then rises moist from the layer's BOTTOM (+3 K one layer up, fanning out to +11.7 K at 309 hPa). An offline
+  check that starts from a saturated parcel misses it. Fixed on coldfix-E ≥ 969c8897 (dry to the saturating sub-step).
+- **More reproducer knobs:** `CLEARSKY=1` (every 7th step, radiation recomputed on a `deepcopy` of the state with and
+  without clouds ⇒ cloud radiative effects by band vs CERES EBAF Ed4.0 global means — the only TOA reference available:
+  no `rsut`/`rlut` on the cluster, CERES downloads need an account); `WINTERREF=.../speedy_winter_reference_gfdl-esm4_1985-2014.csv`
+  (`build_speedy_winter_reference.py`, ~5 min on SLURM: GFDL-ESM4 coldest-month profile, ts, tas, rlds, rsds at the 322
+  land columns poleward of 50°) ⇒ model layer T vs GFDL at the same pressure, air, soil, LW/SW down; `DAYS=n` for a quick
+  test (pass years = 1); `PARTITION=standard QOS=short` when `priority` is full (it caps 64 cpus per USER, so another
+  campaign there blocks you; the `gpu` partition's qos caps jobs per user too).
 - Byte-identity of a new default-off option: rerun the control with the option at its default and `diff` the log
   from `global mean near-surface` on — the scorer prints enough digits to catch any change.

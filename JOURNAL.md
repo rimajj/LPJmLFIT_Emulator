@@ -1786,3 +1786,34 @@ effects within 5 W/m², clear-sky OLR within 5 W/m², global cloud cover within 
 300–550 hPa temperature not worse than the base by more than 0.5 K; then on the slab (5 yr) year-5 net TOA within
 ±1 W/m². A setting that fixes the totals only by trading one cloud effect against the other (one cloud effect outside
 its band) does not pass.
+**Convection re-run with the corrected sub-steps (prescribed SST, yrs 2–3, tropical T bias 308/431/555 hPa, column
+water vapour vs 40.3):** control E1 +9.0/+6.6/+4.1, 50.6 · sub-steps only (E3sub) +1.0/+2.5/+2.0, 42.2 · + MSE
+entrainment at the default depth σ 0.5 (E3ent50) −1.8/+0.1/+0.6, 38.0 · + MSE to the top (E3) −3.8/−1.9/−0.3, 35.4
+(overshoots: too cold, too dry). ⇒ with the condensation level placed correctly, sub-stepping does most of the work and
+entraining to the top is no longer needed; **new base = E3ent50** (`ascent_substeps=10, entrainment_mse=1`). 185 hPa
+still +6.7 K. **First cloud split (all four runs alike, E3ent50):** reflected SW 111.8 = clear-sky 33.3 + cloud −78.5
+(CERES 99.1 = 53.3 − 45.8): clouds reflect ~33 W/m² too much and the clear sky ~20 too little — compensating; OLR 223.2 =
+clear 253.8 − cloud 30.5 (CERES 240.1 = 268.1 − 27.9): the LW cloud effect is right, the clear-sky OLR is ~14 low (the
+four-band code matches ecCKD on identical columns, so it is the state: 300 hPa RH 73 % vs 40 %, polar column water
+9.5 vs 5.8). Caveat: CERES clear-sky is for cloud-free scenes (drier), the model's is the whole column with clouds
+removed; the 2005–2015 Ed4.0 total-region definition differs by a few W/m² (Loeb et al. 2018 discuss it).
+SpeedyWeather has **no clear-sky scattering** (no Rayleigh, no aerosol) — the ~20 W/m² clear-sky deficit — so its
+cloud albedo (SPEEDY's 0.43/0.5) was tuned to make up for it. New opt-in on coldfix-E 6ae14204:
+`TwoBandShortwaveRadiativeTransfer(rayleigh_fraction = 0.647, rayleigh_a = 0.219, rayleigh_b = 0.816)` (Lacis & Hansen
+1974 Rayleigh reflectance of the visible part, applied at the top), default 0 = off.
+**Cloud arms (pre-registered, base E3ent50, prescribed SST, 3 yr, scored by the criteria above):** C0 = base rerun on the
+new code (must equal 2653495 digit for digit); R1 = Rayleigh 0.647; R2/R3 = R1 + cloud and stratocumulus albedo ×0.6 /
+×0.75; R4 = Rayleigh 0.32 + albedos ×0.7; U1 = base + Betts–Miller target RH 0.6 (does a drier upper troposphere raise
+clear-sky OLR without killing the profile?). Expected: R1 overshoots total reflection; one of R2–R4 brackets CERES.
+**High-latitude winter (322 land columns poleward of 50°, each column's GFDL-ESM4 coldest month; E3ent50, prescribed
+SST):** model − GFDL-ESM4 at the model's layer pressures: +0.0 K at 414 hPa, +0.8 at 532, +2.9 at 650, +4.9 at 768,
+**+7.6 at 889 hPa**; near-surface air **+13.0 K**; top soil vs skin ts **+4.0 K**; downward LW +3.0, SW +4.7 W/m²;
+model air − own soil **+9.0 K** (GFDL-ESM4 tas − ts: +0.1 K). Same in all four convection variants (±1 K). Reading:
+two parts. (i) In an inversion SpeedyWeather's surface air temperature is the lowermost layer's (`actual_lapse_rate`
+keeps T₈ when T₈ > T₇), ~550 m up — not a 2 m temperature. A diagnostic 2 m air temperature now goes into the
+reproducer (surface-layer profile between top soil and that air temperature, log-linear Monin–Obukhov with z₁/L matched
+to the model's own Frierson drag, heat roughness z₀/10; not used by the model) — it measures how much of the +13 K is
+definition. (ii) A real excess: the lower troposphere +5–8 K and the soil +4 K. Pre-registered arms (E3ent50 base,
+prescribed SST, 3 yr): W0 control; W1 surface drag critical Richardson number 1 → 3 (stable surface exchange as in the
+"long-tail" functions of operational models); W2 = W1 + the same in the vertical diffusion. Pass: coldest-month >50°
+lowermost-layer bias halved (≤ +3.8 K) with the annual land air bias at < 50° not worse by > 0.5 K.

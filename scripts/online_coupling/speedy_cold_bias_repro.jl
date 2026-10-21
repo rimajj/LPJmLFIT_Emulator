@@ -28,10 +28,11 @@ mutable struct ColdDiag <: SpeedyWeather.AbstractCallback
     pr_sum::Vector{Float64}              # model precipitation rate summed over scored steps
     rad_sum::Matrix{Float64}             # model downward SW, net LW at the land columns, summed
     soil_mon::Matrix{Float64}            # model top-soil temperature at the land columns, per calendar month
+    mon2_sum::Matrix{Float64}            # diagnostic 2 m air temperature (air_2m), per calendar month
 end
 ColdDiag() = ColdDiag(
     Float64[], Float64[], Float64[], Dict{Symbol, Vector{Float64}}(), Float64[],
-    Dict{String, Vector{Float64}}(), zeros(0, 12), zeros(Int, 12), Float64[], zeros(0, 2), zeros(0, 12)
+    Dict{String, Vector{Float64}}(), zeros(0, 12), zeros(Int, 12), Float64[], zeros(0, 2), zeros(0, 12), zeros(0, 12)
 )
 
 function read_landref!(cb, path)
@@ -42,7 +43,7 @@ function read_landref!(cb, path)
         cb.ref[n] = [c[i] for c in cols]
     end
     n = length(cols)
-    cb.mon_sum, cb.pr_sum, cb.rad_sum, cb.soil_mon = zeros(n, 12), zeros(n), zeros(n, 2), zeros(n, 12)
+    cb.mon_sum, cb.pr_sum, cb.rad_sum, cb.soil_mon, cb.mon2_sum = zeros(n, 12), zeros(n), zeros(n, 2), zeros(n, 12), zeros(n, 12)
     return nothing
 end
 
@@ -66,7 +67,26 @@ acc!(cb, k, x, w) = (a = get!(cb.acc, k, zeros(2)); a[1] += w * x; a[2] += w; no
 # calendar month the model's layer temperatures and pressures, near-surface air, top soil, surface downward longwave and
 # shortwave, land sensible heat flux and snow; finalize! compares them in each column's GFDL-ESM4 coldest month.
 const WREF = Dict{String, Vector{Float64}}()
-const WVARS = 23                                  # 1-8 layer T, 9-16 layer p, then air, soil, LWdown, SWdown, snow, SH, LWup
+const WVARS = 24                                  # 1-8 layer T, 9-16 layer p, air, soil, LWdown, SWdown, snow, SH, LWup, 2 m air
+
+# Diagnostic 2 m air temperature over land [K] (not used by the model): the surface-layer profile (heat roughness z₀/10) between the top soil
+# temperature and the model's surface air temperature (what its sensible heat flux uses, at the lowermost layer's height
+# z₁), log-linear Monin-Obukhov form ln(z/z₀) + β z/L with the stability z₁/L matched to the model's own Frierson (2006)
+# drag C = C_neutral (1 - Ri/Ri_c)², i.e. β z₁/L = ln(z₁/z₀) r/(1 - r) with r = 1 - sqrt(C/C_neutral). Neutral or
+# unstable: the log profile; strongly stable: close to linear in z, i.e. close to the soil temperature.
+function air_2m(ij, vars, model, soilT)
+    p = vars.parameterizations
+    g, κ = model.planet.gravity, 0.4
+    z₀ = max(p.land.surface_roughness[ij], 1.0e-3)   # momentum roughness, as in the model's drag
+    z₁ = max(vars.dynamics.geopotential[ij, size(vars.dynamics.geopotential, 2)] / g - model.orography.orography[ij], 10z₀)
+    C_n = (κ / log(z₁ / z₀))^2
+    r = clamp(1 - sqrt(max(p.boundary_layer_drag[ij], 0) / C_n), 0.0, 0.999)
+    X = log(z₁ / z₀) * r / (1 - r)                   # β z₁/L
+    z₀ₕ = z₀ / 10                                     # heat roughness, ln(z₀/z₀ₕ) ≈ 2.3
+    F = (log(2 / z₀ₕ) + 2 / z₁ * X) / (log(z₁ / z₀ₕ) + X)
+    Tₛ = soilT[ij, 1]
+    return Tₛ + F * (p.surface_air_temperature[ij] - Tₛ)
+end
 const WACC = Ref(zeros(0, 12, WVARS))
 const WN = zeros(Int, 12)
 function read_winterref!(path)
@@ -103,6 +123,7 @@ function winter_acc!(cb, vars, model, t)
         A[c, m, 21] += snow[ij]
         A[c, m, 22] += p.land.sensible_heat_flux[ij]
         A[c, m, 23] += p.land.surface_longwave_up[ij]
+        A[c, m, 24] += air_2m(ij, vars, model, soilT)
     end
     return nothing
 end
@@ -134,7 +155,8 @@ function winter_report()
     end
     all_ = trues(n)
     for (name, i, ref, off) in (
-            ("near-surface air vs tas °C", 17, "tas_K", 273.15), ("top soil vs skin ts °C   ", 18, "ts_K", 273.15),
+            ("near-surface air vs tas °C", 17, "tas_K", 273.15), ("2 m air (diag.) vs tas °C", 24, "tas_K", 273.15),
+            ("top soil vs skin ts °C   ", 18, "ts_K", 273.15),
             ("LW down W/m²             ", 19, "rlds", 0.0), ("SW down W/m²             ", 20, "rsds", 0.0),
         )
         @printf("  %s  %8.2f  %8.2f  %+7.2f\n", name, wm(X[:, i], all_) - off, wm(WREF[ref], all_) - off, wm(X[:, i] .- WREF[ref], all_))
@@ -268,6 +290,7 @@ function callback!(cb::ColdDiag, vars, model)
         for (c, ij) in enumerate(cb.ref["ij"])
             ij = Int(ij)
             cb.mon_sum[c, m] += p.surface_air_temperature[ij] - 273.15
+            cb.mon2_sum[c, m] += air_2m(ij, vars, model, soilT) - 273.15
             cb.pr_sum[c] += p.rain_rate[ij] + (haskey(p, :snow_rate) ? p.snow_rate[ij] : 0.0)
             cb.soil_mon[c, m] += soilT[ij, 1] - 273.15
             cb.rad_sum[c, 1] += p.surface_shortwave_down[ij]
@@ -391,6 +414,15 @@ function finalize!(cb::ColdDiag, vars, model)
             )
             @printf("  %s %7.2f %7.2f %7.2f\n", name, wm(x), wm(o), wm(x) - wm(o))
         end
+        mon2 = cb.mon2_sum ./ cb.mon_n'
+        tas2 = vec(sum(cb.mon2_sum, dims = 2)) ./ sum(cb.mon_n)
+        for (name, x, o) in (
+                ("2 m air (diag.) annual °C ", tas2, cb.ref["tas"]), ("2 m air warmest month °C  ", vec(maximum(mon2, dims = 2)), cb.ref["t_warm"]),
+                ("2 m air coldest month °C  ", vec(minimum(mon2, dims = 2)), cb.ref["t_cold"]),
+            )
+            @printf("  %s %7.2f %7.2f %7.2f\n", name, wm(x), wm(o), wm(x) - wm(o))
+            @printf("      by latitude |lat| < 23.5 / 23.5-50 / > 50: %+6.2f %+6.2f %+6.2f\n", (wm(x, sel) - wm(o, sel) for sel in (lat .< 23.5, 23.5 .<= lat .< 50, lat .>= 50))...)
+        end
         if haskey(cb.ref, "rsds")
             rsds, lwnet = cb.rad_sum[:, 1] ./ sum(cb.mon_n), cb.rad_sum[:, 2] ./ sum(cb.mon_n)
             @printf("  SW down W/m²     %7.2f %7.2f %7.2f\n", wm(rsds), wm(cb.ref["rsds"]), wm(rsds) - wm(cb.ref["rsds"]))
@@ -438,6 +470,8 @@ parsekw(s) = isempty(s) ? (;) : NamedTuple(
         for (k, v) in (split(x, '=') for x in split(s, ','))
     )
 const LWKW, CLOUDKW = parsekw(get(ENV, "LWKW", "")), parsekw(get(ENV, "CLOUDKW", ""))
+# env SWKW="name=value,...": TwoBandShortwaveRadiativeTransfer (e.g. rayleigh_fraction, cold-bias branch only)
+const SWKW = parsekw(get(ENV, "SWKW", ""))
 # env CONVKW="name=value,...": BettsMillerConvection parameters (relative_humidity, time_scale_hours, ascent_substeps
 # = sub-steps of the moist parcel ascent per layer, entrainment_mse = 1 to entrain moist static energy; both cold-bias
 # branch only) and of its
@@ -455,19 +489,26 @@ LW == :fourband && (
     kw = (;
         kw..., radiation = Radiation(
             spectral_grid;
-            shortwave = TwoBandShortwave(spectral_grid; clouds = DiagnosticClouds(spectral_grid; CLOUDKW...)),
+            shortwave = TwoBandShortwave(
+                spectral_grid; clouds = DiagnosticClouds(spectral_grid; CLOUDKW...),
+                radiative_transfer = TwoBandShortwaveRadiativeTransfer(spectral_grid; SWKW...)
+            ),
             longwave = FourBandLongwave(spectral_grid; LWKW...)
         ),
     )
 )
-get(ENV, "T0", "") == "speedy" && (
+# env DRAGKW="name=value,...": BulkRichardsonDrag (surface exchange; e.g. critical_Richardson), VDKW: BulkRichardsonDiffusion
+const DRAGKW, VDKW = parsekw(get(ENV, "DRAGKW", "")), parsekw(get(ENV, "VDKW", ""))
+(get(ENV, "T0", "") == "speedy" || !isempty(DRAGKW)) && (
     kw = (;
         kw..., boundary_layer = BoundaryLayer(
             spectral_grid;
-            surface_condition = SurfaceCondition(spectral_grid; actual_lapse_rate = true)
+            surface_condition = SurfaceCondition(spectral_grid; actual_lapse_rate = get(ENV, "T0", "") == "speedy"),
+            drag = BulkRichardsonDrag(spectral_grid; DRAGKW...)
         ),
     )
 )
+isempty(VDKW) || (kw = (; kw..., vertical_diffusion = BulkRichardsonDiffusion(spectral_grid; VDKW...)))
 get(ENV, "SIGMA", "") == "speedy" && (
     kw = (;
         kw..., geometry = Geometry(
@@ -476,7 +517,7 @@ get(ENV, "SIGMA", "") == "speedy" && (
         ),
     )
 )
-println("knobs: CONVKW = $CONVKW, LWKW = $LWKW, CLOUDKW = $CLOUDKW, T0 = $(get(ENV, "T0", "dry adiabat")), SIGMA = $(get(ENV, "SIGMA", "equal"))")
+println("knobs: CONVKW = $CONVKW, LWKW = $LWKW, CLOUDKW = $CLOUDKW, SWKW = $SWKW, DRAGKW = $DRAGKW, VDKW = $VDKW, T0 = $(get(ENV, "T0", "dry adiabat")), SIGMA = $(get(ENV, "SIGMA", "equal"))")
 println("ocean = $OCEAN, longwave = $LW")
 model = PrimitiveWetModel(spectral_grid; kw...)
 add!(model, :cold_diag => ColdDiag())

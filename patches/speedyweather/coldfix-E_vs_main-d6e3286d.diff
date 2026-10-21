@@ -1324,7 +1324,7 @@ index 276ca572..8b502e70 100644
      parameterization!(ij, vars, radiation.shortwave, model)     # shortwave first,
      parameterization!(ij, vars, radiation.longwave, model)      # then longwave, as before
 diff --git a/SpeedyWeather/src/parameterizations/radiation/shortwave_radiation.jl b/SpeedyWeather/src/parameterizations/radiation/shortwave_radiation.jl
-index 5db21a57..39fa6e6b 100644
+index 5db21a57..8cf617db 100644
 --- a/SpeedyWeather/src/parameterizations/radiation/shortwave_radiation.jl
 +++ b/SpeedyWeather/src/parameterizations/radiation/shortwave_radiation.jl
 @@ -7,11 +7,12 @@ struct TransparentShortwave <: AbstractShortwave end
@@ -1361,7 +1361,7 @@ index 5db21a57..39fa6e6b 100644
  
      # Surface albedo reflections
      up_ocean = albedo_ocean * D_surface
-@@ -237,3 +234,167 @@ One-band shortwave radiative transfer with cloud reflection and ozone absorption
+@@ -237,3 +234,181 @@ One-band shortwave radiative transfer with cloud reflection and ozone absorption
      vars.parameterizations.outgoing_shortwave[ij] = U
      return nothing
  end
@@ -1440,6 +1440,15 @@ index 5db21a57..39fa6e6b 100644
 +@parameterized @kwdef struct TwoBandShortwaveRadiativeTransfer{NF} <: AbstractShortwaveRadiativeTransfer
 +    "[OPTION] Fraction of incoming solar radiation in the near-infrared band (SPEEDY fband2) [1]"
 +    @param near_infrared_fraction::NF = 0.05 (bounds = 0 .. 1,)
++
++    "[OPTION] Fraction of incoming solar radiation subject to clear-sky (Rayleigh) backscatter at the top of the atmosphere, 0 = off (Lacis and Hansen, 1974: 0.647) [1]"
++    @param rayleigh_fraction::NF = 0 (bounds = 0 .. 1,)
++
++    "[OPTION] Rayleigh reflectance R(μ) = rayleigh_a / (1 + rayleigh_b μ) with μ the cosine of the solar zenith angle, coefficient a (Lacis and Hansen, 1974) [1]"
++    @param rayleigh_a::NF = 0.219 (bounds = 0 .. 1,)
++
++    "[OPTION] Rayleigh reflectance coefficient b, see `rayleigh_a` [1]"
++    @param rayleigh_b::NF = 0.816 (bounds = Nonnegative,)
 +end
 +Adapt.@adapt_structure TwoBandShortwaveRadiativeTransfer
 +TwoBandShortwaveRadiativeTransfer(SG::SpectralGrid; kwargs...) = TwoBandShortwaveRadiativeTransfer{SG.NF}(; kwargs...)
@@ -1477,6 +1486,11 @@ index 5db21a57..39fa6e6b 100644
 +    D_toa = model.planet.solar_constant * cos_zenith
 +    D_nir = radiation.near_infrared_fraction * D_toa
 +    D = D_toa - D_nir
++
++    # clear-sky (Rayleigh) backscatter of the visible band, applied at the top of the atmosphere
++    # (Lacis and Hansen, 1974); zero with the default rayleigh_fraction = 0
++    U_rayleigh = D_toa * radiation.rayleigh_fraction * radiation.rayleigh_a / (1 + radiation.rayleigh_b * cos_zenith)
++    D -= U_rayleigh
 +
 +    # DOWNWARD BEAM
 +    U_cloud = zero(D)               # reflected by clouds at top of cloud-top layer
@@ -1526,7 +1540,7 @@ index 5db21a57..39fa6e6b 100644
 +        U = U_out
 +    end
 +
-+    vars.parameterizations.outgoing_shortwave[ij] = U
++    vars.parameterizations.outgoing_shortwave[ij] = U + U_rayleigh
 +    return nothing
 +end
 diff --git a/SpeedyWeather/src/parameterizations/radiation/shortwave_transmissivity.jl b/SpeedyWeather/src/parameterizations/radiation/shortwave_transmissivity.jl
