@@ -1749,3 +1749,13 @@ and OLR 226 W/m² (CERES ~100/~240, from memory) ⇒ the remaining imbalance loo
 much longwave trapping). Not adopted by the rule; the best candidate base so far is E1 + `ascent_substeps=10,
 entrainment_mse=1, σ_entrainment=0` ("E2"). Logs logs/speedy-{rh*,sub*,ident2,convdiag-*}-*.out; branch coldfix-E
 684c181c, patch refreshed (it had also missed c62f5bc3).
+
+## 2026-10-21 (night, addendum) — SpeedyWeather: the second slab run (moist-static-energy mixing at the default depth)
+The σ_entrainment = 0 slab run (2653061) is the one quoted in the entry above. Its sibling at the default entrainment
+depth (2653062, `ascent_substeps=10, entrainment_mse=1`, σ_ent 0.5) also finished, 5 yr, slab ocean: tropical
+T bias at 185/308/431/555 hPa **+9.5/+5.9/+5.4/+4.1 K** (σ_ent 0: +5.9/−0.2/+1.1/+1.5; sub-steps only: +13.8/+11.6/
++9.0/+6.8), tropical column water vapour **48.8** vs 40.3 (σ_ent 0: 40.5; sub-steps only: 59.9), land annual +1.74 K
+(σ_ent 0: +1.48), land rain −312 mm/yr, global 16.5 °C year 5 with TOA +1.7 W/m² (same drift as σ_ent 0). ⇒ on the
+slab too, the profile fix needs the mixing all the way up; at the default depth it removes only about half of the
+warm bias. Both runs keep the 185 hPa layer ~6–10 K too warm (and 0.71–2.2× the reference humidity there), which
+neither option touches. Log logs/speedy-sub10-mse-E1-slab.2653062.out.
