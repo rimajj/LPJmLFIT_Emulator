@@ -765,6 +765,14 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   the panel's 3 291 shared die-off years there are none (dead 0.342 vs `mort` 0.343). The die-offs are HARD kills
   (`mortality_tree_ind.c:135-140`: 5 bad years in a row, or leaf carbon below the sapling's), 23 % of trees vs 11 %.
   Checker: `scripts/diagnose_dieoff_excess_deaths.py`.
+- ⚠ **THE DROUGHT DIE-OFFS ARE THE LEAF-CARBON HARD KILL, AND LEAF CARBON PER TREE IS EXACT FROM THE `ind` TABLE
+  (`[VERIFIED 2026-10-21]`, ADR 0357).** `mortality_tree_ind.c:63-65,139-140` kills any tree whose leaf carbon is below
+  the sapling's, `((lai_sapl·allom1·wood_sapl^(kpr/2)·(4·sla/π/k_latosa)^(kpr/2))/sla)^(2/(2−kpr))` with the tree's own
+  SLA. Rebuild: crown area = 225·fpc_ind/(1−e^(−k·LAI)) (k = the PFT's `lightextcoeff`), leaf carbon = LAI·crown
+  area/SLA. In die-off years 95 % of hard-killed trees are below it (median 0.58), 0 % of chance deaths. ⚠ The year's
+  RECRUITS are established after the mortality call at exactly the sapling leaf carbon, so ~70 % of age-0 rows read
+  r < 1 by the writer's 6 digits — exclude age 0 before calling any survivor "below the threshold". Script
+  `scripts/diagnose_hardkill_cause.py` (+ `_harness.py`).
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative

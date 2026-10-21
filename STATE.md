@@ -44,6 +44,24 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (late night, 4) — what kills the trees in a drought die-off: the leaf-carbon threshold (ADR 0357).**
+Owner: "continue as recommended" (b5).
+* Leaf carbon per tree rebuilt exactly from the tree table: 95–98 % of hard-killed trees had less leaf carbon than a
+  sapling (median 0.58 of it in the die-off year), 0 % of chance deaths ⇒ the original's "ghost tree" rule, not the
+  five-bad-years counter. (The check's self-test flagged 10–14 % of survivors below the line — all of them the year's
+  new saplings sitting exactly at it; 2 of 33.6 M older trees.)
+* Last year's share of trees close to the threshold does NOT predict die-off years (AUC ~0.5) ⇒ the planned
+  vulnerability arm was not run. Best single yearly signal is the original's own NPP crash (AUC 0.90); the bucket the
+  emulator already computes gets 0.88.
+* Reading: a die-off is a per-tree threshold crossed by a one-year carbon crash; stand-level inputs top out near what
+  the departure model already has (a quarter of the drop). More needs a per-tree/cohort leaf-carbon quantity in the
+  emulator.
+**Next (owner to choose):** (c1) close the die-off line and ship the departure model for its general gain — `dep`
+(20 of 22, everything else passes) or `depv` (20 of 22, die-off share 25 %, sparse biomass per tree +4.9 %); (c2) a
+cohort sub-model that tracks the trees' leaf carbon against their threshold and moves it with the emulated yearly NPP
+(a real new component; pre-register before building); (c3) the emulated NPP anomaly as departure input (expected small:
+0.90 vs 0.88; needs the daily networks run on the 27 training legs); or (d)/(e) further below.
+
 **2026-10-21 (late night, 3) — forest map: runs of bad years as vulnerability input (ADR 0356), not adopted; and
 what the die-offs actually are.** Owner: "continue with b3".
 * In the original, a dry year's tree-count drop does NOT deepen when it follows other bad years (−0.4 % in every bin,
