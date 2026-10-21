@@ -44,6 +44,23 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-22 (night) — departure model SHIPPED (release v2 / fold v3, ADR 0358), paper REWRITTEN, design-choice
+campaign RUNNING (ADR 0359).** Owner: "c1" (ship), remember c2/c3 as future candidates (memory
+`dieoff-future-candidates`), rewrite the paper without the earlier hybrid design, without citing the unpublished review,
+performance only (no pass/fail; memory `paper-no-pass-fail`), and justify every architecture / size choice with
+experiments.
+* **Release:** `release/v2` (deployment) and `release/fold_gfdl-esm4_v3` (`build_emulator_release.py --departure dep`);
+  gate (4) z-scores 3.7e-11; `--check` reproduces `preds_gfdl-esm4_statedep_fx` (tree count median 2.3e-4); 7.0e-3
+  core-s per cell-year. Shipping trade-off: dense tree count 1.26 → 1.22×, die-off share 3 → 18 %, but dense stem total
+  −0.2 → −2.6 %, sparse biomass per tree 1.47 → 1.55×.
+* **Paper** (`docs/paper/main.tex`, 29 pp., builds clean): new literature introduction; Sect. 4.6 "Choice of
+  architecture and settings" holds the already-measured evidence and a **[To be completed]** marker for ADR 0359.
+* **ADR 0359 campaign (73 jobs):** `scripts/run_design_sensitivity.sh` (map arms moved to `priority` at 16 cpus;
+  daily screen on `gpu`). Read with `python scripts/summarise_design_sensitivity.py [daily|map]`; then apply ADR 0359's
+  reading, run stage-2 ensembles if any daily arm qualifies (`f2_chain_arm.py`), rebuild the release if a map setting
+  is better, write ADR 0359's results, fill Sect. 4.6 of the paper, rebuild the PDF (`scripts/paper/make_all.sh`).
+  First result: without the precipitation windows the daily validation loss rises ~55 %.
+
 **2026-10-21 (late night, 4) — what kills the trees in a drought die-off: the leaf-carbon threshold (ADR 0357).**
 Owner: "continue as recommended" (b5).
 * Leaf carbon per tree rebuilt exactly from the tree table: 95–98 % of hard-killed trees had less leaf carbon than a
