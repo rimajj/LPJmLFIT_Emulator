@@ -1,6 +1,6 @@
 # 0355 — Yearly forest map: a daily soil-water stress input for the departure model (pre-registration)
 
-* **Status:** pre-registered 2026-10-21, before the bucket is built or any fit of this record.
+* **Status:** pre-registered 2026-10-21, before the bucket is built or any fit of this record. **Result (§7): not adopted** — capture 0.18 → 0.25, aftermath gap 3.75× → 3.50×, sparse biomass per tree 2.5 % worse than `fix`.
 * **Owner instruction (2026-10-21):** "continue with b1" = ADR 0354 §4's next candidate, a daily-resolved stress
   input for the departure model.
 * **Follows:** ADR 0354 (weather-driven departure model `dep`: drought die-off capture 0.03 → 0.18, aftermath gap
@@ -81,3 +81,55 @@ same departure target, same rows, same run-time forward loop). Compared with `fi
 * `depw`: capture 0.22–0.35 (above `dep`, probably short of 0.30), gap 3.2–3.7×, criteria 20 of 22 as `dep`, drift
   unchanged. My best guess is "a gain, not adopted". I am not confident: ADR 0350 found the event years already
   extreme in the yearly water balance (−1.2 SD), so the daily timing may add less than hoped.
+
+## 7. Results (2026-10-21; calib 2652785, build 2652786, checks 2652787/88, fits 2652791–95, score 2652796,
+`logs/bk-*.out`, `logs/yst-depw*.out`; four of these jobs wrote their log to the repo root as `slurm-<id>.out`
+although their job files name `logs/` — moved, cause not found)
+
+**Bucket.** `E_b` = **3 mm/day** (daily correlation with the original's top-metre water on `ctl_obs`, median over
+cells: 0.633 / **0.663** / 0.657 / 0.642 for 2 / 3 / 5 / 8; mean W/C 0.585 vs the original's 0.597).
+
+**C1** (13 held-out-model legs, run m1, median over cells, then over legs): daily W/C correlation **0.693** (expected
+0.6–0.85 ✓); year-to-year correlation of `bk_s50` from the bucket vs from the original's own soil water **0.298**
+(expected 0.4–0.7 ✗; **below §3's 0.3 ⇒ this record's result is read as a test of a crude index**); `bk_wscal`
+0.520 (expected 0.5–0.8 ✓); `bk_wmin30` 0.237.
+
+**C2** (3 291 shared tree-count events): event-year median z / AUC event vs other years — `bk_aetpet` −1.77 / **0.870**,
+`bk_wscal` −1.54 / **0.827**, `cwb_ann` −1.43 / 0.806, `prec_ann` −1.28 / 0.795, `bk_dry` +1.01 / 0.765, `bk_s50`
++1.17 / 0.757, `bk_wmin30` −0.88 / 0.745, `bk_s30` +0.61 / 0.719. Expectation (`bk_s50` z ≥ +1.5, AUC above
+`cwb_ann`) ✗ for `bk_s50`; two bucket statistics (actual/potential evaporation, mean supply/demand ratio) single out
+the die-off years better than the yearly water balance.
+
+| median over 15 cases, dense cells | `fix` | `dep` | `depw` | pre-registered |
+|---|---|---|---|---|
+| drop capture, shared tree-count events (second runs 0.939) | 0.027 | 0.183 | **0.247** | ≥ 0.30 ✗ |
+| aftermath gap / second runs' | 4.53× | 3.75× | **3.50×** | ≤ 2.0× ✗ |
+| stand-biomass events: capture / gap | 0.070 / 3.2× | 0.162 / 2.98× | 0.189 / 2.83× | reported |
+| event-window error / other years (vs second runs) | 3.48 / 1.99 | 3.00 / 1.98 | 2.89 / 1.88 | reported |
+| one-step capture, held-out legs (gfdl-esm4) | — | 0.245 | 0.305 | reported |
+| ratio to `fix`: dense tree count / biomass per tree | — | 1.009 / 1.002 | 0.975 / 1.002 | ≤ 1.02 ✓ |
+| ratio to `fix`: sparse tree count / biomass per tree | — | 0.986 / 0.998 | 0.946 / **1.025** | ≤ 1.02 ✗ (sparse biomass per tree) |
+| criteria passing (of 22) | 18 | 20 | 19 (+ dense tree count worst 10 %) | none lost vs `fix` ✓ |
+| sparse tree count: cases ≤ 3.0 (criterion needs 12 of 15) | 7 | 12 | 10 (median 2.71, best of the three) | — |
+| drift tree count / biomass per tree | 1.219 / 1.407 | 1.201 / 1.412 | 1.185 / 1.421 | ≤ 1.269 / 1.457 ✓ |
+| late level tree count / biomass per tree | 1.204 / 1.108 | 1.165 / 1.119 | 1.152 / 1.104 | ≤ 1.05× `fix` ✓ |
+| start cut retained 2021 / 2025 / 2030 / 2050 / late | — | 0.94 / 0.45 / −0.04 / −0.47 / −0.14 | 0.97 / 0.50 / 0.01 / −0.50 / −0.11 | max ≤ 1.1 ✓, late ≤ 0.5 ✓ |
+
+**Verdict (§5): not adopted, and not a "gain" as pre-registered.** Capture rises by 0.064 over `dep` (≥ 0.05 ✓) but a
+criterion `dep` passes is lost (sparse tree count typical: 10 instead of 12 of 15 cases under 3.0, although its
+median is the best of the three, 2.71 vs 2.90), and sparse biomass per tree is 2.5 % worse than `fix` (bar 2 %).
+And by C1 this was a test of a crude index (its stress integral follows the original's from year to year at 0.30).
+
+Reading:
+* **The daily water budget adds to the yearly weather, but little:** the die-off capture 0.18 → 0.25 and the gap
+  3.75× → 3.50× — the best of every arm since ADR 0350, still a quarter of the drop. On the held-out legs, given the
+  true last-year departure, it reaches 0.31 one year ahead.
+* **What singled out the die-off years was the bucket's actual-to-potential evaporation and its mean supply/demand
+  ratio,** not the VPD-weighted stress integral that mirrors the C's formula — the integral is the statistic the
+  forcing-only bucket reproduces worst (0.30), plausibly because the C's integral runs on its own leaf phenology,
+  its root-weighted water down to 20 m and each tree's own threshold, none of which a top-metre bucket has.
+* **The overshoot after a start cut is unchanged** (−0.50 of the cut above the uncut run in 2050): it belongs to the
+  departure model, not to the weather inputs.
+* The remaining three quarters of a die-off are not in the weather a bucket can see. What is left: the stand's own
+  vulnerability (the C's consecutive-bad-years counter multiplies every hazard and kills at 5), or a learned daily
+  model's soil water (the emulator's own daily networks; needs the daily model run on all 27 training legs).

@@ -44,6 +44,22 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (late night, 2) — forest map: a daily soil-water stress input for the departure model (ADR 0355), not
+adopted.** Owner: "continue with b1". A forcing-only daily top-metre bucket (`scripts/build_panel_bucket_stress.py`,
+data `xpanel/climate_bucket/`; evaporation rate 3 mm/day chosen on observed weather only) gives six yearly stress
+statistics on the original's own stress window; arm `depw` = ADR 0354's `dep` + these.
+* Die-off capture **0.18 → 0.25**, aftermath gap **3.75× → 3.50×** (best of every arm; bars 0.30 / 2.0×). Drift,
+  late level, start-cut test pass. But sparse biomass per tree 2.5 % worse than `fix` (bar 2 %) and the sparse
+  tree-count criterion drops to 10 of 15 cases (needs 12) although its median is the best yet (2.71) ⇒ 19 of 22.
+* The bucket's daily soil water tracks the original's at 0.69, but its VPD-weighted stress integral follows the
+  original's year to year at only 0.30 (pre-registered: read as a crude index). What singles out die-off years best is
+  the bucket's actual/potential evaporation (AUC 0.87 vs the yearly water balance's 0.81).
+* Still open from ADR 0354: the recovery after a start cut overshoots (+50 % of the cut above the uncut run in 2050).
+**Next (owner to choose):** (b3) the stand's own vulnerability as departure input (consecutive bad years — the
+original's counter multiplies every hazard and kills at 5); (b4) the emulator's own learned daily soil water instead
+of the bucket (needs its daily networks run on the 27 training legs); (b2) ship `dep` (20 of 22) for its general
+gain; or (d)/(e) from the blocks below.
+
 **2026-10-21 (late night) — forest map: a weather-driven departure model for drought die-offs (ADR 0354), not
 adopted on its target, but a general gain.** Owner: "continue with the emulator" ⇒ option (b) of the block below.
 The leak-free map stays the level; a second small model per quantity learns the forest's year-to-year departure from
