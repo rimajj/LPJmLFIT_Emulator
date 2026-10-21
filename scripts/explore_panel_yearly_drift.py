@@ -69,6 +69,11 @@ forward year by year. `--state depnw` = the same without the weather (null). Fil
 DAILY STRESS (ADR 0355): `--state depw` = `dep` + six yearly statistics of a forcing-only daily soil-water bucket
 (scripts/build_panel_bucket_stress.py -> xpanel/climate_bucket/<leg>.parquet), as this and last year's value and
 their z-scores against the 30 years before. File _statedepw_fx.
+VULNERABILITY (ADR 0356): `--state depv` = `depw` + runs of bad years from the weather (years in a row with the bucket's
+actual/potential evaporation or supply/demand ratio > 0.5 SD below normal, their count over the last 3 / 5 years, and
+the anomaly two years back); `--state depvs` = `depv` + the forest's own recent history (departures two and three years
+back, and the years in a row its biomass per tree has fallen), fed back from the model's own run. Files
+_statedepv_fx / _statedepvs_fx.
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
@@ -107,13 +112,18 @@ MAX10 = ["pet_ann", "days_gt30", "dry_spell_max", "vpd_hs", "vpd_win10_sum", "tm
 STATE_Q = ("n_per_patch", "agb_per_stem")
 CUT = 0.30
 # ADR 0354: the departure model's arms, its log offset, and this / last year's weather anomaly columns
-DEP_ARMS = ("dep", "depnw", "depw")
+DEP_ARMS = ("dep", "depnw", "depw", "depv", "depvs")
+BK_ARMS = ("depw", "depv", "depvs")  # the arms that read the daily bucket (ADR 0355)
 DEP_EPS = 1.0
 DEP_W = [f"z0_{c}" for c in CLIM] + [f"z1_{c}" for c in CLIM]
 # ADR 0355: the daily bucket's yearly statistics (build_panel_bucket_stress.STATS), raw and z, this and last year
 BK_STATS = ["bk_s50", "bk_s30", "bk_wscal", "bk_dry", "bk_wmin30", "bk_aetpet"]
 BK_COLS = [f"{k}_{c}" for c in BK_STATS for k in ("bk0", "bk1", "bkz0", "bkz1")]
 BK_DIR = os.path.join(PP.OUT, "climate_bucket")
+# ADR 0356: runs of bad years from the weather, and the forest's own recent history
+VUL_W = ["rl_aet", "rl_wscal", "n3_aet", "n5_aet", "bkz2_bk_aetpet", "bkz2_bk_wscal"]
+VUL_S = [f"{k}_{q}" for k in ("dlag2", "dlag3") for q in ("n_per_patch", "agb_per_stem")] + ["rlfall"]
+BAD_Z = -0.5
 
 
 def log(*a):
@@ -173,7 +183,37 @@ def state_cols(state: str) -> list[str]:
 def dep_cols(state: str) -> list[str]:
     """ADR 0354: the departure model's inputs (last year's departures, the level, the 30-year climate, the weather)."""
     return ([f"dlag_{q}" for q in STATE_Q] + [f"lvl_{q}" for q in STATE_Q] + CLIM
-            + (DEP_W if state in ("dep", "depw") else []) + (BK_COLS if state == "depw" else []))
+            + ([] if state == "depnw" else DEP_W) + (BK_COLS if state in BK_ARMS else [])
+            + (VUL_W if state in ("depv", "depvs") else []) + (VUL_S if state == "depvs" else []))
+
+
+def run_length(bad: np.ndarray) -> np.ndarray:
+    """(nseries, nyears) bool -> years in a row ending at each year with `bad` true (0 where false)."""
+    out = np.zeros(bad.shape)
+    for j in range(bad.shape[1]):
+        out[:, j] = np.where(bad[:, j], (out[:, j - 1] if j else 0.0) + 1.0, 0.0)
+    return out
+
+
+def stand_history(d: pl.DataFrame, D: str = "D_") -> pl.DataFrame:
+    """ADR 0356: per (leg, Cell) series sorted by Year with 81 years: last year's departures (dlag_), two and three
+    years back (dlag2_, dlag3_; 0 before 2020), and `rlfall` = the years in a row up to last year in which the
+    biomass per tree (level x departure) fell (0 in 2020)."""
+    ny = Y1 - Y0 + 1
+    assert d.height % ny == 0
+    ex = []
+    for q in STATE_Q:
+        for k, n in (("dlag", 1), ("dlag2", 2), ("dlag3", 3)):
+            ex.append(pl.col(f"{D}{q}").shift(n).over("leg", "Cell").fill_null(0.0).alias(f"{k}_{q}"))
+    d = d.with_columns(ex)
+    xa = ((d["lvl_agb_per_stem"].fill_nan(None).clip(lower_bound=0.0) + DEP_EPS)
+          * d[f"{D}agb_per_stem"].exp()).to_numpy().astype(np.float64).reshape(-1, ny)
+    with np.errstate(invalid="ignore"):
+        fall = np.zeros(xa.shape, dtype=bool)
+        fall[:, 1:] = xa[:, 1:] < xa[:, :-1]  # NaN compares False
+    rl = run_length(fall)
+    prev = np.concatenate([np.zeros((rl.shape[0], 1)), rl[:, :-1]], axis=1)
+    return d.with_columns(pl.Series("rlfall", prev.ravel()))
 
 
 def bucket_anomaly(leg: str) -> pl.DataFrame:
@@ -187,8 +227,21 @@ def bucket_anomaly(leg: str) -> pl.DataFrame:
         ex += [pl.col(c).alias(f"bk0_{c}"), pl.col(c).shift(1).over("Cell").alias(f"bk1_{c}"),
                pl.when(sd > 1e-6 * (mu.abs() + 1.0)).then((pl.col(c) - mu) / sd).otherwise(0.0).alias(f"bkz0_{c}")]
     d = d.with_columns(ex)
-    d = d.with_columns([pl.col(f"bkz0_{c}").shift(1).over("Cell").alias(f"bkz1_{c}") for c in BK_STATS])
-    d = d.filter(pl.col("Year") >= Y0).select("Cell", "Year", *BK_COLS)
+    d = d.with_columns([pl.col(f"bkz0_{c}").shift(1).over("Cell").alias(f"bkz1_{c}") for c in BK_STATS]
+                       + [pl.col(f"bkz0_{c}").shift(2).over("Cell").fill_null(0.0).alias(f"bkz2_{c}")
+                          for c in ("bk_aetpet", "bk_wscal")])
+    # ADR 0356: runs of bad years over the whole 2000-2100 series (0 where the 30-year window is too short)
+    ny = d.group_by("Cell").len()["len"]
+    assert ny.min() == ny.max(), f"{leg}: unequal series"
+    n = int(ny[0])
+    ba = (d["bkz0_bk_aetpet"].to_numpy() < BAD_Z).reshape(-1, n)
+    bw = (d["bkz0_bk_wscal"].to_numpy() < BAD_Z).reshape(-1, n)
+    c3 = np.cumsum(np.concatenate([np.zeros((ba.shape[0], 1)), ba], 1), 1)
+    n3 = c3[:, 1:] - c3[:, np.maximum(np.arange(1, n + 1) - 3, 0)]
+    n5 = c3[:, 1:] - c3[:, np.maximum(np.arange(1, n + 1) - 5, 0)]
+    d = d.with_columns(pl.Series("rl_aet", run_length(ba).ravel()), pl.Series("rl_wscal", run_length(bw).ravel()),
+                       pl.Series("n3_aet", n3.ravel()), pl.Series("n5_aet", n5.ravel()))
+    d = d.filter(pl.col("Year") >= Y0).select("Cell", "Year", *BK_COLS, *VUL_W)
     assert d.null_count().sum_horizontal().item() == 0, f"{leg}: bucket statistics have nulls"
     return d.with_columns(pl.lit(leg).alias("leg"))
 
@@ -369,6 +422,12 @@ def dep_free_run(fm: dict, d: pl.DataFrame, fd: list[str], start_n: float = 0.0)
     cur = {q: np.zeros(keys.height) for q in STATE_Q}
     cur["n_per_patch"][:] = start_n
     D = {q: np.full(d.height, np.nan) for q in STATE_Q}
+    hist = "rlfall" in fd  # ADR 0356 depvs: the forest's own recent history, carried from the model's own run
+    if hist:
+        jh = {c: fd.index(c) for c in VUL_S}
+        h2, h3 = ({q: np.zeros(keys.height) for q in STATE_Q} for _ in range(2))
+        rl, xprev = np.zeros(keys.height), np.full(keys.height, np.nan)
+        ja = fd.index("lvl_agb_per_stem")
     bounds = np.searchsorted(yrs, np.arange(Y0, Y1 + 2))
     for i, y in enumerate(range(Y0, Y1 + 1)):
         idx = np.arange(bounds[i], bounds[i + 1])
@@ -376,8 +435,20 @@ def dep_free_run(fm: dict, d: pl.DataFrame, fd: list[str], start_n: float = 0.0)
         k = kid[idx]
         for q in STATE_Q:
             X[idx, jl[q]] = cur[q][k]
+        if hist:
+            for q in STATE_Q:
+                X[idx, jh[f"dlag2_{q}"]], X[idx, jh[f"dlag3_{q}"]] = h2[q][k], h3[q][k]
+            X[idx, jh["rlfall"]] = rl[k]
         for q in STATE_Q:
             D[q][idx] = fm[q].predict(X[idx])
+        if hist:
+            for q in STATE_Q:
+                h3[q][k], h2[q][k] = h2[q][k], cur[q][k]
+            xa = (np.maximum(X[idx, ja], 0.0) + DEP_EPS) * np.exp(D["agb_per_stem"][idx])  # NaN level -> no fall
+            with np.errstate(invalid="ignore"):
+                fall = xa < xprev[k]
+            rl[k] = np.where(fall, rl[k] + 1.0, 0.0)
+            xprev[k] = xa
         for q in STATE_Q:
             cur[q][k] = D[q][idx]
     return d.drop("kid").with_columns([pl.Series(f"D_{q}", D[q]) for q in STATE_Q])
@@ -421,14 +492,14 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     fz = fz.with_columns([(pl.col(f"D_{q}") - pl.col(f"D_{q}").mean().over("leg", "Cell")).alias(f"D_{q}")
                           for q in STATE_Q]).sort("leg", "Cell", "Year")
     assert fz.group_by("leg", "Cell").len()["len"].min() == Y1 - Y0 + 1, "a training series misses years"
-    fz = fz.with_columns([pl.col(f"D_{q}").shift(1).over("leg", "Cell").fill_null(0.0).alias(f"dlag_{q}")
-                          for q in STATE_Q])
+    fz = stand_history(fz)  # dlag_ (every arm) + dlag2_/dlag3_/rlfall (read by depvs only)
     wz = pl.concat([weather_anomaly(lg) for lg in train_legs + test_legs])
-    if a.state == "depw":
+    if a.state in BK_ARMS:
         bz = pl.concat([bucket_anomaly(lg) for lg in train_legs + test_legs])
         bz = bz.with_columns([pl.col(c).cast(wz[c].dtype) for c in ("Cell", "Year")])
         wz = wz.join(bz, on=["leg", "Cell", "Year"], how="left")
-        assert wz.select(BK_COLS).null_count().sum_horizontal().item() == 0, "a leg's bucket statistics are missing"
+        assert wz.select(BK_COLS + VUL_W).null_count().sum_horizontal().item() == 0, \
+            "a leg's bucket statistics are missing"
     ctx = tr.select("leg", "Cell", "Year", *CLIM).unique(subset=["leg", "Cell", "Year"], keep="first")
     key = {c: fz[c].dtype for c in ("Cell", "Year")}
     wz = wz.with_columns([pl.col(c).cast(t) for c, t in key.items()])
@@ -437,6 +508,15 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     fd = dep_cols(a.state)
     must = [c for c in fd if not c.startswith("lvl_")]  # the level may be missing (no anchor); LightGBM takes it
     assert fz.select(must).null_count().sum_horizontal().item() == 0, "departure inputs have nulls"
+    if "rl_aet" in fz.columns:  # ADR 0356 sec. 3 C1: does a run of bad years deepen the original's drop?
+        dz = fz.filter(pl.col("D_n_per_patch").is_not_null()).with_columns(
+            (pl.col("D_n_per_patch") - pl.col("dlag_n_per_patch")).alias("chg"))
+        dry = dz.filter(pl.col("bkz0_bk_aetpet") < -1.0)
+        for nm, col in (("weather run of bad years", "rl_aet"), ("years of falling biomass per tree", "rlfall")):
+            t = dry.with_columns(pl.col(col).clip(upper_bound=3).alias("b")).group_by("b").agg(
+                pl.col("chg").median().round(4).alias("median_change"), pl.len().alias("n")).sort("b")
+            log(f"C1 dry years (actual/potential evaporation z < -1), tree-count change by {nm} (3 = 3+): "
+                + "; ".join(f"{int(r['b'])}: {r['median_change']} (n {r['n']})" for r in t.iter_rows(named=True)))
     for q in STATE_Q:
         Dq = fz[f"D_{q}"].drop_nulls().to_numpy()
         r1 = np.corrcoef(fz[f"D_{q}"].fill_null(0.0), fz[f"dlag_{q}"])[0, 1]
@@ -457,7 +537,7 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     td = te.select("member", "leg", "Cell", "Year", *[f"anc_{q}" for q in QS], *CLIM).with_columns(
         [pl.Series(f"lvl_{q}", lvl[q]) for q in QS])
     td = td.join(wz, on=["leg", "Cell", "Year"], how="left").with_columns(
-        [pl.lit(0.0).alias(f"dlag_{q}") for q in STATE_Q])
+        [pl.lit(0.0).alias(f"dlag_{q}") for q in STATE_Q] + [pl.lit(0.0).alias(c) for c in VUL_S])
     must = [c for c in fd if not c.startswith("lvl_")]  # the level may be missing (no anchor); LightGBM takes it
     assert td.select(must).null_count().sum_horizontal().item() == 0, "test departure inputs have nulls"
 
@@ -489,11 +569,11 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     dt = td.join(te.select("member", "leg", "Cell", "Year", *STATE_Q), on=["member", "leg", "Cell", "Year"])
     dt = dt.with_columns([((pl.col(q) + E) / (pl.col(f"lvl_{q}").clip(lower_bound=0.0) + E)).log().fill_nan(None)
                           .alias(f"d_{q}") for q in STATE_Q]).group_by("leg", "Cell", "Year").agg(
-        [pl.col(f"d_{q}").mean() for q in STATE_Q] + [pl.col(c).first() for c in fd if not c.startswith("dlag_")])
+        [pl.col(f"d_{q}").mean() for q in STATE_Q]
+        + [pl.col(c).first() for c in fd if not c.startswith("dlag") and c != "rlfall"])
     dt = dt.with_columns([(pl.col(f"d_{q}") - pl.col(f"d_{q}").mean().over("leg", "Cell")).alias(f"d_{q}")
                           for q in STATE_Q]).sort("leg", "Cell", "Year")
-    dt = dt.with_columns([pl.col(f"d_{q}").shift(1).over("leg", "Cell").fill_null(0.0).alias(f"dlag_{q}")
-                          for q in STATE_Q]).filter(pl.col("d_n_per_patch").is_not_null())
+    dt = stand_history(dt, "d_").filter(pl.col("d_n_per_patch").is_not_null())
     p1 = fm["n_per_patch"].predict(dt.select(fd).to_numpy())
     dn, dl = dt["d_n_per_patch"].to_numpy(), dt["dlag_n_per_patch"].to_numpy()
     big = (dl - dn) >= 0.15
@@ -730,7 +810,7 @@ def main():
                     help="single-year / 10-year-extreme climate inputs (ADR 0351)")
     ap.add_argument("--train-step", dest="train_step", type=int, default=4,
                     help="training rows every n-th year 2020-2100 (default 4; ADR 0351 sec. 5)")
-    ap.add_argument("--state", default="none", choices=["none", "lag", "lagd", *DEP_ARMS],
+    ap.add_argument("--state", default="none", choices=["none", "lag", "lagd", *DEP_ARMS],  # depv/depvs: ADR 0356
                     help="last year's state as an input, run forward year by year (ADR 0352); dep/depnw = the "
                          "weather-driven departure model on top of the level map (ADR 0354)")
     ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
