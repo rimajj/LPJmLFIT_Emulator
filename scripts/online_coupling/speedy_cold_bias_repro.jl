@@ -100,6 +100,14 @@ function callback!(cb::ColdDiag, vars, model)
         end
         acc!(cb, :air_global, ta, w)
         acc!(cb, :olr, p.outgoing_longwave[ij], w)
+        if abs(cb.lat[ij]) < 15                                  # tropical profiles: p, T, q per layer
+            Tg = SpeedyWeather.get_prognostic_step(vars.grid.temperature, model.time_stepping, cb)
+            for k in 1:nlayers
+                acc!(cb, Symbol(:prof_p_, k), SpeedyWeather.pressure(k, pₛ, coord) / 100, w)
+                acc!(cb, Symbol(:prof_T_, k), Tg[ij, k], w)
+                acc!(cb, Symbol(:prof_q_, k), 1000 * q[ij, k], w)
+            end
+        end
         l > 0 && acc!(cb, :air_land, ta, w * l)
         if l > 0.99
             acc!(cb, :soil_land, soilT[ij, 1] - 273.15, w)
@@ -167,6 +175,11 @@ function finalize!(cb::ColdDiag, vars, model)
     for (b, name) in ((:zall, "global     "), (:ztrop, "|lat| < 15 "), (:zsub, "|lat| 15-30"), (:zmid, "|lat| 30-60"), (:zpol, "|lat| >= 60"))
         @printf("  %s  %7.1f  %7.1f    %7.3f      %7.1f          %6.2f\n", name, (mean_of(cb, Symbol(k, b)) for k in (:olr, :osr, :clc, :pw, :cth))...)
     end
+    println("tropical mean profile (|lat| < 15): layer, pressure hPa, temperature K, humidity g/kg")
+    for k in 1:100
+        haskey(cb.acc, Symbol(:prof_p_, k)) || break
+        @printf("  %2d %7.1f %7.2f %8.4f\n", k, (mean_of(cb, Symbol(:prof_, v, :_, k)) for v in (:p, :T, :q))...)
+    end
     S4 = model.planet.solar_constant / 4
     println("per year: global air °C, reflected SW, OLR, net down at top (S₀/4 - both) [W/m²]")
     for y in 1:YEARS
@@ -216,6 +229,7 @@ function finalize!(cb::ColdDiag, vars, model)
 end
 
 spectral_grid = SpectralGrid(truncation = 32, nlayers = 8)   # T31 L8 (the 0.23 defaults)
+# env SIGMA=speedy: speedy.f90's 8 sigma levels (2 thin stratospheric layers) instead of 8 equal layers
 # env LW=analytic: NumericalRadiation's water-vapour/CO2 AnalyticBandLongwave instead of the default grey
 # Frierson longwave (needs SpeedyWeather main + NumericalRadiation in the project); LW=fourband see below; default = grey
 const LW = Symbol(get(ENV, "LW", "grey"))
@@ -250,7 +264,15 @@ get(ENV, "T0", "") == "speedy" && (
         ),
     )
 )
-println("knobs: LWKW = $LWKW, CLOUDKW = $CLOUDKW, T0 = $(get(ENV, "T0", "dry adiabat"))")
+get(ENV, "SIGMA", "") == "speedy" && (
+    kw = (;
+        kw..., geometry = Geometry(
+            spectral_grid;
+            vertical_coordinates = SigmaCoordinates(spectral_grid, [0, 0.05, 0.14, 0.26, 0.42, 0.6, 0.77, 0.9, 1])
+        ),
+    )
+)
+println("knobs: LWKW = $LWKW, CLOUDKW = $CLOUDKW, T0 = $(get(ENV, "T0", "dry adiabat")), SIGMA = $(get(ENV, "SIGMA", "equal"))")
 println("ocean = $OCEAN, longwave = $LW")
 model = PrimitiveWetModel(spectral_grid; kw...)
 add!(model, :cold_diag => ColdDiag())

@@ -44,6 +44,8 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (late) — SpeedyWeather cold-bias side track: retuning its longwave to a reference radiation code makes it WORSE** (TOA imbalance +6 → +10/+15 W/m², slab ocean runs away +1.6–2.4 K/yr); the four-band longwave was already close to the reference on clear sky. Remaining error is the model atmosphere (tropical upper troposphere too moist and too warm) + clouds. JOURNAL 2026-10-21 (late). Next there, if pursued: humidity/convection, not radiation.
+
 **2026-10-21 (night) — the leak-free restatement is done (ADR 0353), and the two daily-network arms are closed
 (ADR 0348 §4).** Owner: "continue in the recommended way" ⇒ option (a) below.
 * **Restated (leak-free; quote these, not ADR 0340 §4.1–4.3):** structure **18 of 22** criteria (was 21): dense tree

@@ -1670,3 +1670,22 @@ steady (+0.8 W/m²)** — first stable free-ocean climate, but ~4 K warm. E's ex
 TOA (−3…−5) but cuts land rain 290–330 mm/yr. Every version has a too-flat high-latitude land seasonal cycle
 (>50°: main warm −7.2/cold +5.0; E1 +1.7/+14.5) with surface net LW not the cause — checking near-surface inversion /
 diagnostic next. AnalyticBandLongwave (NumericalRadiation) freezes the slab (−0.7 °C) — not a fix.
+
+## 2026-10-21 (late) — SpeedyWeather cold bias: the longwave scheme is not the remaining problem
+Runs after the entry above (all one realisation, T31 L8, version E = upstream fixes + ported SPEEDY four-band longwave,
+E1 = E + speedy.f90 surface air temperature). (1) speedy.f90's 8 sigma levels (G1–G3): warmer, slab runs away
+(+1 K/yr), not adopted. (2) Tropical mean profile (prof-E1, prescribed SST): near-surface fine (924 hPa 295.8 K,
+801 hPa 289.7 K), aloft too warm and too moist vs typical reanalysis values (from memory, no reference file computed:
+~+4 K at 555 hPa, ~+8 K at 308 hPa, ~+12 K at 185 hPa; humidity ~2× at 300–430 hPa). Grey-longwave version B: 61 hPa
+at 244 K — a broken stratosphere. (3) Clear-sky longwave on identical columns vs ecCKD (NumericalRadiation, 32 g-points;
+speedy_longwave_vs_ecckd.jl): four-band OLR 252.5 vs ecCKD 249.0 global, 265.7 vs 263.1 tropics — already close; surface
+LW down 30 W/m² low; grey OLR 276.5 (+28) with heating in the wrong layers. (4) Calibrated the five four-band gas
+parameters against ecCKD by Nelder-Mead (calibrate_fourband_vs_ecckd.jl; cost 42 → 11 on an E host, 56 → 9 on a grey
+host): E-host fit window 1.08 (default 0.3), CO2 18.7 (6), weak water vapour 0.79 (0.7), strong 19.7 (50), black band
+0 (0.05). (5) Calibrated sets in the full model (H1–H4): prescribed SST top-of-atmosphere net down +10.4 / +15.0 W/m²
+vs +6.3 uncalibrated (E1); land −obs +2.1 / +2.4 K (E1 +2.1); land rain −132 / −142 mm/yr (E1 −182). Slab ocean: runs
+away warm (global air 16.4 → 23.1 °C and 17.0 → 26.7 °C in 5 years, still +9 / +7 W/m² at year 5) where E was steady
+at 18.4. Reading: the gas radiation was not the error; a correct radiation code on the model's own columns gives
+clear-sky OLR 249–250 vs ~266 observed (CERES clear-sky, from memory) ⇒ the excess greenhouse is in the model
+atmosphere (too moist, too warm upper troposphere: convection / large-scale condensation / humidity transport), plus
+clouds. Not adopted. Logs logs/speedy-{lwref,calib,H1..H4,prof,G1..G3}-*.out.
