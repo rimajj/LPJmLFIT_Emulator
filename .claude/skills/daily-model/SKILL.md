@@ -1,6 +1,6 @@
 ---
 name: daily-model
-description: Build, train, free-run and score the LEARNED daily water-carbon model (EXECUTION_PLAN arm F2; ADR 0320 pre-registration, ADR 0321 results) — the network that replaces the original's daily GPP/NPP/transpiration/evaporation/interception/runoff/snow/soil-water step, with snow, top-metre and deep water stores closed by construction. Use whenever (re)building its training arrays from the panel runs of the original, training a new arm (network size, sample count, new inputs/targets), free-running it, scoring it against the bar (since ADR 0325: error RELATIVE TO A SECOND RUN of the original + no drift relative to the original, scripts/f2_relative_score.py; the old ±5 % of ADR 0320 is superseded), timing its per-cell-year cost, or answering "how good is the learned daily exchange". Names scripts/f2_build_daily_table.py, scripts/f2_train.py, /p/projects/open/Jamir/esm_land_emulator_data/f2/ (forc_/daily_/stand_/cap_m<k>_<leg>.npy, cells.parquet, runs/<tag>/summary.md), the held-out blocks and legs, and the traps: the rising-CO2 hist leg, the shuffled control years, and the ill-conditioned area-summed response ratio.
+description: Build, train, free-run and score the LEARNED daily water-carbon model (EXECUTION_PLAN arm F2; ADR 0320 pre-registration, ADR 0321 results) — the network that replaces the original's daily GPP/NPP/transpiration/evaporation/interception/runoff/snow/soil-water step, with snow, top-metre and deep water stores closed by construction. Use whenever (re)building its training arrays from the panel runs of the original, training a new arm (network size, sample count, new inputs/targets), free-running it, scoring it against the bar (since ADR 0325: error RELATIVE TO A SECOND RUN of the original + no drift relative to the original, scripts/f2_relative_score.py; the old ±5 % of ADR 0320 is superseded), timing its per-cell-year cost, or answering "how good is the learned daily exchange". Names scripts/f2_build_daily_table.py, scripts/f2_train.py, /p/projects/reformit/Jamir/esm_land_emulator_data/f2/ (moved from /p/projects/open on 2026-10-21; old path is a link) (forc_/daily_/stand_/cap_m<k>_<leg>.npy, cells.parquet, runs/<tag>/summary.md), the held-out blocks and legs, and the traps: the rising-CO2 hist leg, the shuffled control years, and the ill-conditioned area-summed response ratio.
 ---
 
 # daily-model — the learned daily water–carbon model (phase A, offline)
@@ -36,6 +36,16 @@ PARTITION=gpu QOS=gpushort GRES=gpu:1 NCPUS=16 TIME=04:00:00 \
 #    --carbon-head physical (ADR 0332): GPP = eps * rsds * (1-exp(-0.5 LAI)) * four bounded limiters with
 #      disjoint inputs, NPP from the original's respiration form. CLOSED (ADR 0332): daily GPP fit 2.3x worse,
 #      under-responds to warming MORE — the original's photosynthesis is not separable. Keep default `free`.
+#    --soil-texture (ADR 0348): + sand, clay, ln Ks, ln Sf of the cell's soil type as 4 inputs after all others
+#      (config/soil_texture_by_code.csv, built by scripts/build_soil_texture_reference.py with cpp -P from the
+#      panel build's par/soil_20m.js; soil codes map onto soilpar BY NAME -- soilpar has an extra unmapped
+#      "clay (light)" row, so row k-1 is wrong from code 13 on). Pass it to the ensemble run too.
+#    DATA lives in /p/projects/reformit/Jamir/esm_land_emulator_data/f2 since 2026-10-21 (owner: daily data in
+#      reformit, not open); the old /p/projects/open/... path is a link.
+#    ENSEMBLES OF EXISTING MEMBERS (any size, ADR 0348 arm N): python scripts/f2_ensemble_sizes.py
+#      DE_3seed=D_3x256_seed0,D_3x256_seed1,D_3x256_seed2 [...] [--after JID] -- --train-legs ... --test-legs none
+#    ⚠ f2_chain_arm.py names its ensemble <prefix>E_5seed: never reuse a prefix (a replicate of arm D is prefix
+#      D2 --seeds 5-9; prefix D would overwrite DE_5seed). --after JID makes the members wait for a job.
 #    ANY NEW ARM: python scripts/f2_chain_arm.py <prefix> --train-legs a,b --test-legs c,d [-- extra f2_train args]
 #      (five --train-only members + the ensemble, afterok-chained, gpu). The ensemble free-runs EVERY train+test
 #      leg x 4 members: ~1 h for 14 legs (arms W/L/V, 2026-10-13). `--test-legs none` = no climate model

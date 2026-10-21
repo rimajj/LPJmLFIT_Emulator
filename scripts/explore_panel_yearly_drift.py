@@ -50,6 +50,9 @@ start state.
 SOIL (ADR 0349): `fit --soil code` (default, every earlier result) feeds the soil code as a plain number; `--soil cat`
 as a LightGBM categorical feature; `--soil phys` replaces it by sand, clay, ln Ks, ln Sf of the soil type
 (config/soil_texture_by_code.csv). Non-default variants write preds_<g>_soil<cat|phys>.parquet (or --suffix).
+RECENT (ADR 0351): `--recent y1` adds this and last year's 25 climate statistics as single-year values; `--recent x10`
+adds to that the 10-year extremes of the water / heat statistics and the years since the driest of those 10 years (the
+original's drought die-offs, ADR 0350). Files get suffix _recent<y1|x10>; `score --recent ...` scores that variant.
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
@@ -81,6 +84,9 @@ Y0, Y1 = 2020, 2100
 TRAIN_YEARS = list(range(Y0, Y1 + 1, 4))
 DENSE = 5.0
 SOIL_PHYS = ["soil_sand", "soil_clay", "soil_lnKs", "soil_lnSf"]
+# ADR 0351: 10-year minima of the water statistics, maxima of the heat / dryness statistics, years since the driest year
+MIN10 = ["prec_ann", "prec_hs", "cwb_ann", "cwb_hs", "cwb_min3", "rh_mean"]
+MAX10 = ["pet_ann", "days_gt30", "dry_spell_max", "vpd_hs", "vpd_win10_sum", "tmean_ann"]
 
 
 def log(*a):
@@ -124,10 +130,45 @@ def s0_table() -> pl.DataFrame:
         [(pl.col(f"s0_{q}") - pl.col(f"hm_{q}")).alias(f"memoff_{q}") for q in QS]).drop([f"hm_{q}" for q in QS])
 
 
-def feats(soil: str = "code") -> list[str]:
+def recent_cols(recent: str) -> list[str]:
+    if recent == "none":
+        return []
+    cols = [f"y0_{c}" for c in CLIM] + [f"y1_{c}" for c in CLIM]
+    if recent == "x10":
+        cols += [f"mn10_{c}" for c in MIN10] + [f"mx10_{c}" for c in MAX10] + ["since10_cwb"]
+    return cols
+
+
+def feats(soil: str = "code", recent: str = "none") -> list[str]:
     tail = SOIL_PHYS if soil == "phys" else ["soil_code"]
     return (CLIM + [f"dclim_{c}" for c in CLIM] + [f"anc_{q}" for q in QS] + [f"s0_{q}" for q in QS]
-            + [f"memoff_{q}" for q in QS] + ["lat", "lon", *tail])
+            + [f"memoff_{q}" for q in QS] + ["lat", "lon", *tail] + recent_cols(recent))
+
+
+def recent_climate(leg: str, recent: str) -> pl.DataFrame:
+    """Single-year and 10-year-extreme climate per (Cell, Year) 2020-2100 of one leg (ADR 0351), from the same yearly
+    statistics window_climate averages: observed 2000-2019 in front of the leg's 2020-2100."""
+    h = pl.read_parquet(os.path.join(PP.CLIM_DIR, "hist.parquet")).select("Cell", "Year", *CLIM)
+    s = pl.read_parquet(os.path.join(PP.CLIM_DIR, f"{leg}.parquet")).select("Cell", "Year", *CLIM)
+    d = pl.concat([h.filter(pl.col("Year") < Y0), s]).with_columns([pl.col(c).cast(pl.Float64) for c in CLIM])
+    d = d.sort("Cell", "Year")
+    ex = [pl.col(c).alias(f"y0_{c}") for c in CLIM] + [pl.col(c).shift(1).over("Cell").alias(f"y1_{c}") for c in CLIM]
+    if recent == "x10":
+        ex += [pl.col(c).rolling_min(window_size=10, min_samples=1).over("Cell").alias(f"mn10_{c}") for c in MIN10]
+        ex += [pl.col(c).rolling_max(window_size=10, min_samples=1).over("Cell").alias(f"mx10_{c}") for c in MAX10]
+    d = d.with_columns(ex)
+    if recent == "x10":  # years since the lowest annual water balance of the last 10 years (0 = this year)
+        since = []
+        for (_cell,), g in d.group_by("Cell", maintain_order=True):
+            v = g["cwb_ann"].to_numpy()
+            out = np.zeros(len(v))
+            for i in range(len(v)):
+                w = v[max(0, i - 9): i + 1]
+                out[i] = (len(w) - 1) - int(np.nanargmin(w)) if np.isfinite(w).any() else np.nan
+            since.append(out)
+        d = d.with_columns(pl.Series("since10_cwb", np.concatenate(since)))
+    return (d.filter(pl.col("Year") >= Y0).select("Cell", "Year", *recent_cols(recent))
+            .with_columns(pl.lit(leg).alias("leg")))
 
 
 def soil_table() -> pl.DataFrame:
@@ -182,13 +223,17 @@ def stage_fit(a) -> None:
         cells = cells.join(soil_table(), on="soil_code", how="left")
         assert cells["soil_sand"].null_count() == 0, "a cell's soil code is not in the soil table"
     rows = rows.join(s0_table(), on=["Cell", "member"], how="left").join(cells, on="Cell", how="left")
+    if a.recent != "none":
+        rc = pl.concat([recent_climate(lg, a.recent) for lg in A7.ALL_SLEGS])
+        rows = rows.join(rc, on=["Cell", "Year", "leg"], how="left")
+        assert rows[f"y0_{CLIM[0]}"].null_count() == 0, "recent climate missing for some rows"
     rows = rows.sort("member", "leg", "Year", "Cell")  # deterministic row order (LightGBM bagging depends on it)
     tr = rows.filter(pl.col("member").is_in(TRAIN_M))
     te = rows.filter(pl.col("member").is_in([TRUTH, SECOND]))
     log(f"{g}: train rows {tr.height}, test rows {te.height} ({time.time() - t0:.0f}s)")
-    f = feats(a.soil)
+    f = feats(a.soil, a.recent)
     cat = [f.index("soil_code")] if a.soil == "cat" else "auto"
-    log(f"{g}: soil={a.soil}, {len(f)} features, categorical {cat}")
+    log(f"{g}: soil={a.soil}, recent={a.recent}, {len(f)} features, categorical {cat}")
     out = te.select("member", "leg", "Cell", "Year", *[pl.col(f"anc_{q}") for q in QS])
     for q in QS:
         t = tr.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
@@ -212,7 +257,7 @@ def stage_fit(a) -> None:
 def suffix(a) -> str:
     if a.suffix is not None:
         return a.suffix
-    return "" if a.soil == "code" else f"_soil{a.soil}"
+    return ("" if a.soil == "code" else f"_soil{a.soil}") + ("" if a.recent == "none" else f"_recent{a.recent}")
 
 
 def stage_score(a) -> None:
@@ -220,7 +265,7 @@ def stage_score(a) -> None:
     hist = {m: pl.read_parquet(os.path.join(YEARLY, f"m{m}_hist.parquet")).filter(pl.col("Year") == 2019) for m in (4,)}
     yr, cs = [], []
     for g in PP.GCMS:
-        pf = os.path.join(OUT, f"preds_{g}.parquet")
+        pf = os.path.join(OUT, f"preds_{g}{suffix(a)}.parquet")
         if not os.path.exists(pf):
             log(f"skip {g}: no predictions")
             continue
@@ -273,9 +318,9 @@ def stage_score(a) -> None:
                                        n_cells=int(e["n"].median())))
     os.makedirs(OUT, exist_ok=True)
     Y = pl.concat(yr)
-    Y.write_csv(os.path.join(OUT, "drift_years.csv"))
+    Y.write_csv(os.path.join(OUT, f"drift_years{suffix(a)}.csv"))
     C = pl.DataFrame(cs)
-    C.write_csv(os.path.join(OUT, "drift_cases.csv"))
+    C.write_csv(os.path.join(OUT, f"drift_cases{suffix(a)}.csv"))
     pl.Config.set_tbl_rows(200)
     pl.Config.set_tbl_cols(14)
     pl.Config.set_tbl_width_chars(220)
@@ -302,6 +347,8 @@ def main():
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
     ap.add_argument("--soil", default="code", choices=["code", "cat", "phys"],
                     help="soil code as a number (default), a category, or texture values (ADR 0349)")
+    ap.add_argument("--recent", default="none", choices=["none", "y1", "x10"],
+                    help="single-year / 10-year-extreme climate inputs (ADR 0351)")
     ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
     a = ap.parse_args()
     {"fit": stage_fit, "score": stage_score}[a.stage](a)
