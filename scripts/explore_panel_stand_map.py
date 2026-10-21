@@ -137,8 +137,10 @@ def build_rows(g: str, hold: int = 4) -> tuple[pl.DataFrame, pl.DataFrame]:
             .join(stand_s0().with_columns(pl.col("Cell").cast(pl.Int32)), on=["Cell", "member"], how="left")
             .join(cells, on="Cell", how="left"))
     rows = rows.sort("member", "leg", "Year", "Cell")
-    tr = rows.filter(pl.col("member").is_in(YD.TRAIN_M))
-    te = rows.filter(pl.col("member").is_in([YD.TRUTH, YD.SECOND]))
+    # ADR 0352 sec. 0: training runs on TRAINING legs only -- before 2026-10-21 this also took run m5 (a training run
+    # AND a test-side run) on the held-out model's legs; stand-map results before then carry that leak
+    tr = rows.filter(pl.col("member").is_in(YD.TRAIN_M) & pl.col("leg").is_in(train_legs))
+    te = rows.filter(pl.col("member").is_in([YD.TRUTH, YD.SECOND]) & pl.col("leg").is_in(test_legs))
     log(f"{g}: train rows {tr.height}, test rows {te.height} ({time.time() - t0:.0f}s)")
     return tr, te
 

@@ -53,6 +53,14 @@ as a LightGBM categorical feature; `--soil phys` replaces it by sand, clay, ln K
 RECENT (ADR 0351): `--recent y1` adds this and last year's 25 climate statistics as single-year values; `--recent x10`
 adds to that the 10-year extremes of the water / heat statistics and the years since the driest of those 10 years (the
 original's drought die-offs, ADR 0350). Files get suffix _recent<y1|x10>; `score --recent ...` scores that variant.
+LEAK FIX (ADR 0352 sec. 0): before 2026-10-21 the training rows also held run m5 on the HELD-OUT model's three legs
+(m5 is in TRAIN_M and is the test-side harness run), 7.9 % of the rows. Fixed; every new prediction file carries the
+suffix _fx, so no stored (leaky) file is overwritten.
+STATE (ADR 0352): `fit --state lag` adds the run's own tree count and biomass per tree of the year before (raw and as
+deviation from this year's anchor) and runs the map FORWARD year by year (2020's lag = the run's own 2019 state, later
+lags = the map's own prediction); `--state lagd` trains on cross-fitted free-run lags instead of the true ones (3 folds
+by training climate model). State arms also write preds_<g><sfx>_cut.parquet (the same run from a 2019 tree count cut
+by 30 %); `retention` scores how much of that start error survives.
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
@@ -87,6 +95,9 @@ SOIL_PHYS = ["soil_sand", "soil_clay", "soil_lnKs", "soil_lnSf"]
 # ADR 0351: 10-year minima of the water statistics, maxima of the heat / dryness statistics, years since the driest year
 MIN10 = ["prec_ann", "prec_hs", "cwb_ann", "cwb_hs", "cwb_min3", "rh_mean"]
 MAX10 = ["pet_ann", "days_gt30", "dry_spell_max", "vpd_hs", "vpd_win10_sum", "tmean_ann"]
+# ADR 0352: the quantities fed back from year to year, and the start cut of the start-error test
+STATE_Q = ("n_per_patch", "agb_per_stem")
+CUT = 0.30
 
 
 def log(*a):
@@ -139,10 +150,127 @@ def recent_cols(recent: str) -> list[str]:
     return cols
 
 
-def feats(soil: str = "code", recent: str = "none") -> list[str]:
+def state_cols(state: str) -> list[str]:
+    return [] if state == "none" else [f"{k}_{q}" for q in STATE_Q for k in ("lag", "lagdev")]
+
+
+def feats(soil: str = "code", recent: str = "none", state: str = "none") -> list[str]:
     tail = SOIL_PHYS if soil == "phys" else ["soil_code"]
     return (CLIM + [f"dclim_{c}" for c in CLIM] + [f"anc_{q}" for q in QS] + [f"s0_{q}" for q in QS]
-            + [f"memoff_{q}" for q in QS] + ["lat", "lon", *tail] + recent_cols(recent))
+            + [f"memoff_{q}" for q in QS] + ["lat", "lon", *tail] + recent_cols(recent) + state_cols(state))
+
+
+def agb_per_stem(d: pl.DataFrame) -> pl.DataFrame:
+    return d.with_columns(pl.when(pl.col("n_living") > 0).then(pl.col("agb_sum") / pl.col("n_living"))
+                          .otherwise(None).alias("agb_per_stem"))
+
+
+def lag_table(states: pl.DataFrame) -> pl.DataFrame:
+    """(Cell, Year=y, member, leg) -> lag_<q> = the run's own state in y-1: 2019 from its historical run (shared by all
+    its legs), later years from the leg's yearly states (ADR 0352)."""
+    kt = {c: states[c].dtype for c in ("Cell", "Year", "member")}
+    h = []
+    for m in PP.MEMBERS:
+        d = agb_per_stem(pl.read_parquet(os.path.join(YEARLY, f"m{m}_hist.parquet")).filter(pl.col("Year") == Y0 - 1))
+        d = d.select("Cell", *STATE_Q)
+        h += [d.with_columns(pl.lit(Y0).alias("Year"), pl.lit(m).alias("member"), pl.lit(lg).alias("leg"))
+              for lg in A7.ALL_SLEGS]
+    s = states.filter(pl.col("Year") < Y1).select("Cell", (pl.col("Year") + 1).alias("Year"), "member", "leg",
+                                                  *STATE_Q)
+    cols = ["Cell", "Year", "member", "leg", *STATE_Q]
+    d = pl.concat([x.select(cols).with_columns([pl.col(c).cast(t) for c, t in kt.items()]) for x in [*h, s]])
+    return d.rename({q: f"lag_{q}" for q in STATE_Q})
+
+
+def with_lagdev(d: pl.DataFrame) -> pl.DataFrame:
+    """lagdev = last year's state against THIS year's anchor, in the target's own space (free_run repeats this)."""
+    e = LOG_EPS["agb_per_stem"]
+    return d.with_columns(
+        (pl.col("lag_n_per_patch") - pl.col("anc_n_per_patch")).alias("lagdev_n_per_patch"),
+        ((pl.col("lag_agb_per_stem") + e) / (pl.col("anc_agb_per_stem") + e)).log().alias("lagdev_agb_per_stem"))
+
+
+def target(t: pl.DataFrame, q: str) -> np.ndarray:
+    if q in LOG_EPS:
+        e = LOG_EPS[q]
+        return np.log((t[q].to_numpy() + e) / (t[f"anc_{q}"].to_numpy() + e))
+    return (t[q] - t[f"anc_{q}"]).to_numpy()
+
+
+def untarget(q: str, p: np.ndarray, anc: np.ndarray) -> np.ndarray:
+    p = (anc + LOG_EPS[q]) * np.exp(p) - LOG_EPS[q] if q in LOG_EPS else p + anc
+    return np.maximum(p, 0.0) if q == "n_per_patch" else p
+
+
+def fit_q(t: pl.DataFrame, q: str, f: list[str], cat):
+    import lightgbm as lgb
+
+    t = t.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
+    return lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), target(t, q), categorical_feature=cat),
+                     A7.ROUNDS), t.height
+
+
+def free_run(models: dict, d: pl.DataFrame, f: list[str], scale: float = 1.0) -> pl.DataFrame:
+    """Run the map forward 2020-2100 per (member, leg, Cell): 2020's lag = the row's lag_* (the run's own 2019 state;
+    tree count x `scale`), every later year's lag = the map's own prediction for the year before. Returns the keys,
+    the anchors and the predictions of every quantity in `models` (ADR 0352)."""
+    d = d.sort("Year", "member", "leg", "Cell")
+    keys = d.select("member", "leg", "Cell").unique().sort("member", "leg", "Cell").with_row_index("kid")
+    d = d.join(keys, on=["member", "leg", "Cell"], how="left").sort("Year", "member", "leg", "Cell")
+    X = d.select(f).to_numpy().astype(np.float64)
+    yrs, kid, nk = d["Year"].to_numpy(), d["kid"].to_numpy(), keys.height
+    jc = {c: f.index(c) for c in state_cols("lag")}
+    anc = {q: d[f"anc_{q}"].to_numpy().astype(float) for q in QS}
+    first = yrs == Y0
+    cur = {q: np.full(nk, np.nan) for q in STATE_Q}
+    cur["n_per_patch"][kid[first]] = d["lag_n_per_patch"].to_numpy().astype(float)[first] * scale
+    cur["agb_per_stem"][kid[first]] = d["lag_agb_per_stem"].to_numpy().astype(float)[first]
+    pred = {q: np.full(d.height, np.nan) for q in models}
+    e = LOG_EPS["agb_per_stem"]
+    bounds = np.searchsorted(yrs, np.arange(Y0, Y1 + 2))
+    for i, y in enumerate(range(Y0, Y1 + 1)):
+        idx = np.arange(bounds[i], bounds[i + 1])
+        assert (yrs[idx] == y).all()
+        k = kid[idx]
+        ln, la = cur["n_per_patch"][k], cur["agb_per_stem"][k]
+        la = np.where(ln > 0, la, np.nan)  # as in the original's tables: no stems -> no biomass per tree
+        X[idx, jc["lag_n_per_patch"]] = ln
+        X[idx, jc["lagdev_n_per_patch"]] = ln - anc["n_per_patch"][idx]
+        X[idx, jc["lag_agb_per_stem"]] = la
+        with np.errstate(invalid="ignore", divide="ignore"):
+            X[idx, jc["lagdev_agb_per_stem"]] = np.log((la + e) / (anc["agb_per_stem"][idx] + e))
+        for q, mdl in models.items():
+            pred[q][idx] = untarget(q, mdl.predict(X[idx]), anc[q][idx])
+        for q in STATE_Q:
+            cur[q][k] = pred[q][idx]
+    return d.select("member", "leg", "Cell", "Year", *[f"anc_{q}" for q in QS]).with_columns(
+        [pl.Series(q, pred[q]) for q in models])
+
+
+def crossfit_lags(trall: pl.DataFrame, train_legs: list[str], train_years: list[int], f: list[str], cat,
+                  t0: float) -> pl.DataFrame:
+    """ADR 0352 arm lagd: per fold of 3 training climate models, fit the fed-back quantities teacher-forced on the
+    other folds' training years, free-run the fold's legs 2020-2100 from the true 2019 state; return (Cell, Year,
+    member, leg, lag_*) with those free-run values as next year's lag (2020 keeps the true 2019 state)."""
+    gcm = {lg: A7.gcm_of(lg) for lg in train_legs}
+    gs = sorted(set(gcm.values()))
+    folds = [gs[i::3] for i in range(3)]
+    out = []
+    for fo in folds:
+        legs_in = [lg for lg in train_legs if gcm[lg] in fo]
+        inn = trall.filter(~pl.col("leg").is_in(legs_in) & pl.col("Year").is_in(train_years))
+        models = {q: fit_q(inn, q, f, cat)[0] for q in STATE_Q}
+        fr = free_run(models, trall.filter(pl.col("leg").is_in(legs_in)), f)
+        nxt = fr.filter(pl.col("Year") < Y1).select("Cell", (pl.col("Year") + 1).alias("Year"), "member", "leg",
+                                                    *[pl.col(q).alias(f"lag_{q}") for q in STATE_Q])
+        out.append(nxt)
+        log(f"cross-fit fold {fo}: {inn.height} fit rows, {fr.height} free-run rows ({time.time() - t0:.0f}s)")
+    first = trall.filter(pl.col("Year") == Y0).select("Cell", "Year", "member", "leg",
+                                                      *[f"lag_{q}" for q in STATE_Q])
+    d = pl.concat([first, *[o.with_columns([pl.col(c).cast(first[c].dtype) for c in ("Cell", "Year", "member")])
+                            for o in out]])
+    assert d.select("Cell", "Year", "member", "leg").n_unique() == d.height == trall.height
+    return d
 
 
 def recent_climate(leg: str, recent: str) -> pl.DataFrame:
@@ -180,8 +308,6 @@ def soil_table() -> pl.DataFrame:
 
 
 def stage_fit(a) -> None:
-    import lightgbm as lgb
-
     g = a.g
     os.makedirs(OUT, exist_ok=True)
     test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
@@ -199,8 +325,9 @@ def stage_fit(a) -> None:
     cb = clim.filter(pl.col("leg").is_in(train_legs))
     ctot = cb.group_by("Cell", "Year").agg([pl.col(c).sum().alias(f"S_{c}") for c in CLIM] + [pl.len().alias("N_c")])
     train_years = list(range(Y0, Y1 + 1, a.train_step))  # ADR 0351 sec. 5: step 1 = every year (default 4)
+    fit_years = list(range(Y0, Y1 + 1)) if a.state == "lagd" else train_years  # lagd free-runs the training legs
     rows = states.filter((pl.col("member").is_in(TRAIN_M) & pl.col("leg").is_in(train_legs)
-                          & pl.col("Year").is_in(train_years))
+                          & pl.col("Year").is_in(fit_years))
                          | (pl.col("member").is_in([TRUTH, SECOND]) & pl.col("leg").is_in(test_legs)))
     rows = (rows.join(tot, on=["Cell", "Year"], how="left").join(per, on=["Cell", "Year", "leg"], how="left")
             .join(clim, on=["Cell", "Year", "leg"], how="left")
@@ -228,30 +355,40 @@ def stage_fit(a) -> None:
         rc = pl.concat([recent_climate(lg, a.recent) for lg in A7.ALL_SLEGS])
         rows = rows.join(rc, on=["Cell", "Year", "leg"], how="left")
         assert rows[f"y0_{CLIM[0]}"].null_count() == 0, "recent climate missing for some rows"
+    if a.state != "none":
+        rows = with_lagdev(rows.join(lag_table(states), on=["Cell", "Year", "member", "leg"], how="left"))
+        assert rows["lag_n_per_patch"].null_count() == 0, "a row has no state of the year before"
     rows = rows.sort("member", "leg", "Year", "Cell")  # deterministic row order (LightGBM bagging depends on it)
-    tr = rows.filter(pl.col("member").is_in(TRAIN_M))
-    te = rows.filter(pl.col("member").is_in([TRUTH, SECOND]))
+    # ADR 0352 sec. 0: training rows = training runs on TRAINING legs only (m5 is also a test-side run)
+    tr = rows.filter(pl.col("member").is_in(TRAIN_M) & pl.col("leg").is_in(train_legs))
+    te = rows.filter(pl.col("member").is_in([TRUTH, SECOND]) & pl.col("leg").is_in(test_legs))
+    assert tr.height == len(TRAIN_M) * len(train_legs) * len(fit_years) * tr["Cell"].n_unique(), "training rows"
     log(f"{g}: train rows {tr.height}, test rows {te.height} ({time.time() - t0:.0f}s)")
-    f = feats(a.soil, a.recent)
+    f = feats(a.soil, a.recent, a.state)
     cat = [f.index("soil_code")] if a.soil == "cat" else "auto"
-    log(f"{g}: soil={a.soil}, recent={a.recent}, {len(f)} features, categorical {cat}")
-    out = te.select("member", "leg", "Cell", "Year", *[pl.col(f"anc_{q}") for q in QS])
+    log(f"{g}: soil={a.soil}, recent={a.recent}, state={a.state}, {len(f)} features, categorical {cat}")
+    if a.state == "lagd":
+        lags = crossfit_lags(tr, train_legs, train_years, f, cat, t0)
+        tr = with_lagdev(tr.drop([f"lag_{q}" for q in STATE_Q]).join(lags, on=["Cell", "Year", "member", "leg"],
+                                                                     how="left"))
+        tr = tr.filter(pl.col("Year").is_in(train_years)).sort("member", "leg", "Year", "Cell")
+        log(f"{g}: training lags replaced by cross-fitted free-run values; {tr.height} rows")
+    models = {}
     for q in QS:
-        t = tr.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
-        if q in LOG_EPS:
-            e = LOG_EPS[q]
-            y = np.log((t[q].to_numpy() + e) / (t[f"anc_{q}"].to_numpy() + e))
-        else:
-            y = (t[q] - t[f"anc_{q}"]).to_numpy()
-        mdl = lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), y, categorical_feature=cat), A7.ROUNDS)
-        p = mdl.predict(te.select(f).to_numpy())
-        anc = te[f"anc_{q}"].to_numpy().astype(float)
-        p = (anc + LOG_EPS[q]) * np.exp(p) - LOG_EPS[q] if q in LOG_EPS else p + anc
-        if q == "n_per_patch":
-            p = np.maximum(p, 0.0)
-        out = out.with_columns(pl.Series(q, p))
-        log(f"{g} {q}: {t.height} rows fitted ({time.time() - t0:.0f}s)")
+        models[q], nfit = fit_q(tr, q, f, cat)
+        log(f"{g} {q}: {nfit} rows fitted ({time.time() - t0:.0f}s)")
+    if a.state == "none":
+        out = te.select("member", "leg", "Cell", "Year", *[pl.col(f"anc_{q}") for q in QS]).with_columns(
+            [pl.Series(q, untarget(q, models[q].predict(te.select(f).to_numpy()), te[f"anc_{q}"].to_numpy()
+                                   .astype(float))) for q in QS])
+        cut = out  # no state input: a start error cannot reach any year (the start-error harness must read 0)
+    else:
+        out = free_run(models, te, f).sort("member", "leg", "Year", "Cell")
+        cut = free_run(models, te.filter(pl.col("member") == TRUTH), f, 1.0 - CUT).sort("member", "leg", "Year",
+                                                                                        "Cell")
+        log(f"{g}: free-run 2020-{Y1} done, with and without the start cut ({time.time() - t0:.0f}s)")
     out.write_parquet(os.path.join(OUT, f"preds_{g}{suffix(a)}.parquet"))
+    cut.filter(pl.col("member") == TRUTH).write_parquet(os.path.join(OUT, f"preds_{g}{suffix(a)}_cut.parquet"))
     log(f"{g}: wrote {out.height} predictions")
 
 
@@ -259,7 +396,39 @@ def suffix(a) -> str:
     if a.suffix is not None:
         return a.suffix
     return (("" if a.soil == "code" else f"_soil{a.soil}") + ("" if a.recent == "none" else f"_recent{a.recent}")
-            + ("" if a.train_step == 4 else f"_step{a.train_step}"))
+            + ("" if a.train_step == 4 else f"_step{a.train_step}") + ("" if a.state == "none" else f"_state{a.state}")
+            + "_fx")  # ADR 0352 sec. 0: leak-free fits never overwrite the stored (leaky) files
+
+
+def stage_retention(a) -> None:
+    """ADR 0352 sec. 2: share of a 30 % start cut in tree count still present in year y, per case, dense cells."""
+    rows = []
+    for g in PP.GCMS:
+        f0, f1 = (os.path.join(OUT, f"preds_{g}{suffix(a)}{x}.parquet") for x in ("", "_cut"))
+        if not (os.path.exists(f0) and os.path.exists(f1)):
+            log(f"skip {g}: no predictions")
+            continue
+        X = pl.read_parquet(f0).filter(pl.col("member") == TRUTH)
+        C = pl.read_parquet(f1).select("leg", "Cell", "Year", *[pl.col(q).alias(f"c_{q}") for q in STATE_Q])
+        j = X.join(C, on=["leg", "Cell", "Year"]).filter(pl.col("anc_n_per_patch") >= DENSE)
+        for q in STATE_Q:
+            jq = j.filter(pl.col(q) > 0)
+            r = jq.group_by("leg", "Year").agg(((pl.col(q) - pl.col(f"c_{q}")) / pl.col(q)).median().alias("r"))
+            rows.append(r.with_columns(pl.lit(q).alias("q"), (pl.col("r") / CUT).alias("r")))
+    R = pl.concat(rows)
+    R.write_csv(os.path.join(OUT, f"retention{suffix(a)}.csv"))
+    for q in STATE_Q:
+        Rq = R.filter(pl.col("q") == q)
+        med = Rq.group_by("Year").agg(pl.col("r").median()).sort("Year")
+        show = med.filter(pl.col("Year").is_in([2020, 2021, 2025, 2030, 2040, 2050, 2060, 2080, 2100]))
+        print(f"\n== {q}: retained share of the start cut (median over {Rq['leg'].n_unique()} cases)")
+        print(show)
+        mx, late = med["r"].max(), med.filter(pl.col("Year") >= 2081)["r"].mean()
+        per = Rq.filter(pl.col("Year") >= 2081).group_by("leg").agg(pl.col("r").mean()).sort("leg")
+        print(per)
+        if q == "n_per_patch":
+            print(f"START-ERROR TEST (max r <= 1.1 and mean r 2081-2100 <= 0.5): max {mx:.3f}, late {late:.3f} -> "
+                  f"{'PASS' if (mx <= 1.1 and late <= 0.5) else 'FAIL'}")
 
 
 def stage_score(a) -> None:
@@ -345,7 +514,7 @@ def stage_score(a) -> None:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["fit", "score"])
+    ap.add_argument("stage", choices=["fit", "score", "retention"])
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
     ap.add_argument("--soil", default="code", choices=["code", "cat", "phys"],
                     help="soil code as a number (default), a category, or texture values (ADR 0349)")
@@ -353,9 +522,11 @@ def main():
                     help="single-year / 10-year-extreme climate inputs (ADR 0351)")
     ap.add_argument("--train-step", dest="train_step", type=int, default=4,
                     help="training rows every n-th year 2020-2100 (default 4; ADR 0351 sec. 5)")
+    ap.add_argument("--state", default="none", choices=["none", "lag", "lagd"],
+                    help="last year's state as an input, run forward year by year (ADR 0352)")
     ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
     a = ap.parse_args()
-    {"fit": stage_fit, "score": stage_score}[a.stage](a)
+    {"fit": stage_fit, "score": stage_score, "retention": stage_retention}[a.stage](a)
     log("=== DONE")
 
 
