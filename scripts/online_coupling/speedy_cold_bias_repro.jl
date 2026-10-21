@@ -7,6 +7,8 @@
 #   and NH land 55-73 N (Greenland excluded) still snow-covered on 31 August of the last year.
 # env LANDREF=<csv from build_speedy_land_reference.py>: also land air temperature and precipitation at the 1 197
 #   T31 land columns of ADR 0346 against GSWP3-W5E5 observations 1985-2014 (same columns and weights).
+# env PROFREF=<csv from build_speedy_profile_reference.py>: also the GFDL-ESM4 1985-2014 tropical profile (T, q, RH)
+#   interpolated in log pressure to the model's own mean layer pressures, and band column water vapour / cloud cover.
 using SpeedyWeather, Dates, Printf
 import SpeedyWeather: initialize!, callback!, finalize!
 
@@ -99,6 +101,12 @@ function callback!(cb::ColdDiag, vars, model)
             acc!(cb, Symbol(k, :zall), x, w)
         end
         acc!(cb, :air_global, ta, w)
+        for (k, x) in (
+                (:pr_conv, :rain_rate_convection), (:sn_conv, :snow_rate_convection),
+                (:pr_ls, :rain_rate_large_scale), (:sn_ls, :snow_rate_large_scale),
+            )
+            haskey(p, x) && acc!(cb, k, p[x][ij] * 1000 * 86400, w)     # m/s -> mm/day
+        end
         acc!(cb, :olr, p.outgoing_longwave[ij], w)
         if abs(cb.lat[ij]) < 15                                  # tropical profiles: p, T, q per layer
             Tg = SpeedyWeather.get_prognostic_step(vars.grid.temperature, model.time_stepping, cb)
@@ -106,6 +114,8 @@ function callback!(cb::ColdDiag, vars, model)
                 acc!(cb, Symbol(:prof_p_, k), SpeedyWeather.pressure(k, pₛ, coord) / 100, w)
                 acc!(cb, Symbol(:prof_T_, k), Tg[ij, k], w)
                 acc!(cb, Symbol(:prof_q_, k), 1000 * q[ij, k], w)
+                pk = SpeedyWeather.pressure(k, pₛ, coord)
+                acc!(cb, Symbol(:prof_rh_, k), 100 * q[ij, k] / SpeedyWeather.saturation_humidity(Tg[ij, k], pk, model.atmosphere), w)
             end
         end
         l > 0 && acc!(cb, :air_land, ta, w * l)
@@ -152,6 +162,25 @@ end
 
 mean_of(cb, k) = cb.acc[k][1] / cb.acc[k][2]
 
+# GFDL-ESM4 reference profiles (env PROFREF): Dict (band, var, plev_hPa) => value
+function profref()
+    ref = Dict{Tuple{String, String, Float64}, Float64}()
+    haskey(ENV, "PROFREF") || return ref
+    for l in readlines(ENV["PROFREF"])[2:end]
+        b, v, p, x = split(l, ',')
+        ref[(String(b), String(v), parse(Float64, p))] = parse(Float64, x)
+    end
+    return ref
+end
+# linear in log pressure between the two bracketing reference levels (NaN levels skipped)
+function refat(ref, band, var, p)
+    lev = sort([k[3] for k in keys(ref) if k[1] == band && k[2] == var && k[3] > 0 && isfinite(ref[k])])
+    i = clamp(searchsortedfirst(lev, p), 2, length(lev))
+    p0, p1 = lev[i - 1], lev[i]
+    a = (log(p) - log(p0)) / (log(p1) - log(p0))
+    return (1 - a) * ref[(band, var, p0)] + a * ref[(band, var, p1)]
+end
+
 function finalize!(cb::ColdDiag, vars, model)
     @printf(
         "\nSpeedyWeather %s, T31 L8 default PrimitiveWetModel, ocean = %s, years 2-%d\n",
@@ -175,10 +204,34 @@ function finalize!(cb::ColdDiag, vars, model)
     for (b, name) in ((:zall, "global     "), (:ztrop, "|lat| < 15 "), (:zsub, "|lat| 15-30"), (:zmid, "|lat| 30-60"), (:zpol, "|lat| >= 60"))
         @printf("  %s  %7.1f  %7.1f    %7.3f      %7.1f          %6.2f\n", name, (mean_of(cb, Symbol(k, b)) for k in (:olr, :osr, :clc, :pw, :cth))...)
     end
-    println("tropical mean profile (|lat| < 15): layer, pressure hPa, temperature K, humidity g/kg")
+    prm(k) = haskey(cb.acc, k) ? mean_of(cb, k) : 0.0
+    @printf(
+        "global precipitation %.3f mm/day: convective %.3f, large-scale %.3f (incl. snow)\n",
+        prm(:pr_conv) + prm(:sn_conv) + prm(:pr_ls) + prm(:sn_ls), prm(:pr_conv) + prm(:sn_conv), prm(:pr_ls) + prm(:sn_ls)
+    )
+    ref = profref()
+    println(
+        "tropical mean profile (|lat| < 15): layer, pressure hPa, temperature K, humidity g/kg, rel. humidity %",
+        isempty(ref) ? "" : "  | GFDL-ESM4 1985-2014 at the same pressure: T, q, RH | model - ref: T, q ratio, RH"
+    )
     for k in 1:100
         haskey(cb.acc, Symbol(:prof_p_, k)) || break
-        @printf("  %2d %7.1f %7.2f %8.4f\n", k, (mean_of(cb, Symbol(:prof_, v, :_, k)) for v in (:p, :T, :q))...)
+        pk, T, q, rh = (mean_of(cb, Symbol(:prof_, v, :_, k)) for v in (:p, :T, :q, :rh))
+        @printf("  %2d %7.1f %7.2f %8.4f %6.1f", k, pk, T, q, rh)
+        if !isempty(ref)
+            Tr, qr, rhr = (refat(ref, "trop", v, pk) for v in ("T_K", "q_gkg", "rh_pct"))
+            @printf("  | %7.2f %8.4f %6.1f | %+6.2f %6.2f %+6.1f", Tr, qr, rhr, T - Tr, q / qr, rh - rhr)
+        end
+        println()
+    end
+    if !isempty(ref)
+        println("column water vapour kg/m² and cloud cover, model vs GFDL-ESM4:")
+        for (b, z) in (("all", :zall), ("trop", :ztrop), ("sub", :zsub), ("mid", :zmid), ("pol", :zpol))
+            @printf(
+                "  %-5s pw %6.1f vs %6.1f   cloud %6.3f vs %6.3f\n", b, mean_of(cb, Symbol(:pw, z)),
+                ref[(b, "pw_kgm2", 0.0)], mean_of(cb, Symbol(:clc, z)), ref[(b, "cloud_cover", 0.0)]
+            )
+        end
     end
     S4 = model.planet.solar_constant / 4
     println("per year: global air °C, reflected SW, OLR, net down at top (S₀/4 - both) [W/m²]")
@@ -247,6 +300,19 @@ parsekw(s) = isempty(s) ? (;) : NamedTuple(
         for (k, v) in (split(x, '=') for x in split(s, ','))
     )
 const LWKW, CLOUDKW = parsekw(get(ENV, "LWKW", "")), parsekw(get(ENV, "CLOUDKW", ""))
+# env CONVKW="name=value,...": BettsMillerConvection parameters (relative_humidity, time_scale_hours, ascent_substeps
+# = sub-steps of the moist parcel ascent per layer, entrainment_mse = 1 to entrain moist static energy; both cold-bias
+# branch only) and of its
+# LinearEntrainment (surface_entrainment, σ_entrainment); any version
+const CONVKW = parsekw(get(ENV, "CONVKW", ""))
+if !isempty(CONVKW)
+    ent = (; (k => v for (k, v) in pairs(CONVKW) if k in (:surface_entrainment, :σ_entrainment))...)
+    bm = (; (k => v for (k, v) in pairs(CONVKW) if k == :relative_humidity)...)
+    haskey(CONVKW, :ascent_substeps) && (bm = (; bm..., ascent_substeps = round(Int, CONVKW.ascent_substeps)))
+    haskey(CONVKW, :entrainment_mse) && (bm = (; bm..., entrainment_mse = CONVKW.entrainment_mse == 1))
+    haskey(CONVKW, :time_scale_hours) && (bm = (; bm..., time_scale = Second(round(Int, 3600 * CONVKW.time_scale_hours))))
+    kw = (; kw..., convection = BettsMillerConvection(spectral_grid; entrainment = LinearEntrainment(spectral_grid; ent...), bm...))
+end
 LW == :fourband && (
     kw = (;
         kw..., radiation = Radiation(
@@ -272,7 +338,7 @@ get(ENV, "SIGMA", "") == "speedy" && (
         ),
     )
 )
-println("knobs: LWKW = $LWKW, CLOUDKW = $CLOUDKW, T0 = $(get(ENV, "T0", "dry adiabat")), SIGMA = $(get(ENV, "SIGMA", "equal"))")
+println("knobs: CONVKW = $CONVKW, LWKW = $LWKW, CLOUDKW = $CLOUDKW, T0 = $(get(ENV, "T0", "dry adiabat")), SIGMA = $(get(ENV, "SIGMA", "equal"))")
 println("ocean = $OCEAN, longwave = $LW")
 model = PrimitiveWetModel(spectral_grid; kw...)
 add!(model, :cold_diag => ColdDiag())

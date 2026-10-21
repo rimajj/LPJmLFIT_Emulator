@@ -3,7 +3,7 @@
 #   sbatch_speedy_cold_repro.sh <tag> <julia project> [slab|prescribed] [years=3]
 # Projects: /p/tmp/jamirp/esm_online_coupling_sw023 (v0.23.0), /p/tmp/jamirp/speedy_main_env (main adf0d61),
 #           /p/tmp/jamirp/speedy_coldfix_env (adf0d61 + the cold-bias fix branch, worktree speedy_coldfix_src).
-# Env knobs forwarded if set: LW=analytic|fourband, LANDREF=<land reference csv>, LWKW / CLOUDKW="name=value,...", T0=speedy, SIGMA=speedy. Log -> logs/<tag>.<jobid>.out.
+# Env knobs forwarded if set: LW=analytic|fourband, LANDREF=<land reference csv>, PROFREF=<profile reference csv>, LWKW / CLOUDKW / CONVKW="name=value,...", T0=speedy, SIGMA=speedy. Log -> logs/<tag>.<jobid>.out.
 set -eu
 TAG="${1:?usage: sbatch_speedy_cold_repro.sh <tag> <project> [slab|prescribed] [years]}"
 PROJ="${2:?julia project}"
@@ -11,7 +11,7 @@ OCN="${3:-slab}"
 YRS="${4:-3}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 EXP=""
-for v in LW LANDREF LWKW CLOUDKW T0 SIGMA; do
+for v in LW LANDREF PROFREF LWKW CLOUDKW CONVKW T0 SIGMA; do
   [ -n "${!v:-}" ] && EXP="$EXP export $v='${!v}';"
 done
 JOB=$(sbatch --parsable --job-name="$TAG" --account=waldspektrum --partition=priority --qos=priority \

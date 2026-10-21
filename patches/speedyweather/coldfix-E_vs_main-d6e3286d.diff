@@ -1,3 +1,16 @@
+diff --git a/SpeedyWeather/ext/SpeedyWeatherNumericalRadiationExt/ecckd_radiation.jl b/SpeedyWeather/ext/SpeedyWeatherNumericalRadiationExt/ecckd_radiation.jl
+index 24050c2b..5254d356 100644
+--- a/SpeedyWeather/ext/SpeedyWeatherNumericalRadiationExt/ecckd_radiation.jl
++++ b/SpeedyWeather/ext/SpeedyWeatherNumericalRadiationExt/ecckd_radiation.jl
+@@ -334,8 +334,6 @@ Base.@propagate_inbounds function ecckd_shortwave!(ij, vars, fluxes, shortwave,
+     surface_down = fluxes.shortwave_down[nlayers + 1]
+     vars.parameterizations.outgoing_shortwave[ij] = fluxes.shortwave_up[1]
+     vars.parameterizations.surface_shortwave_down[ij] = surface_down
+-    vars.parameterizations.ocean.surface_shortwave_down[ij] = surface_down
+-    vars.parameterizations.land.surface_shortwave_down[ij] = surface_down
+     vars.parameterizations.surface_shortwave_up[ij] = fluxes.shortwave_up[nlayers + 1]
+     vars.parameterizations.ocean.surface_shortwave_up[ij] = albedo_ocean * surface_down
+     vars.parameterizations.land.surface_shortwave_up[ij] = albedo_land * surface_down
 diff --git a/SpeedyWeather/src/SpeedyWeather.jl b/SpeedyWeather/src/SpeedyWeather.jl
 index 108d5979..07f45755 100644
 --- a/SpeedyWeather/src/SpeedyWeather.jl
@@ -404,6 +417,101 @@ index ef288fba..e3bf2e0c 100644
  
      # calculate mean sea-level pressure on model grid
      mslp = simulation.variables.scratch.grid.b_2D
+diff --git a/SpeedyWeather/src/parameterizations/convection.jl b/SpeedyWeather/src/parameterizations/convection.jl
+index 8dd0ec9b..ee6aeed4 100644
+--- a/SpeedyWeather/src/parameterizations/convection.jl
++++ b/SpeedyWeather/src/parameterizations/convection.jl
+@@ -15,6 +15,12 @@ in their paper. Fields and options are $(TYPEDFIELDS)"""
+     "[OPTION] Entrainment profile mixing environmental air into the rising parcel"
+     @component entrainment::Entrainment = LinearEntrainment(DEFAULT_NF)
+ 
++    "[OPTION] Sub-steps of the saturated parcel ascent per layer (1 = one explicit step with the lapse rate of the lower level)"
++    ascent_substeps::Int = 1
++
++    "[OPTION] Entrain by mixing moist static energy and keep the parcel saturated (true), instead of mixing T and q and resetting q to saturation at the next level without evaporative cooling (false)"
++    entrainment_mse::Bool = false
++
+     "[OPTION] Convert convective rain below freezing to snow?"
+     snow::Bool = true
+ 
+@@ -78,6 +84,7 @@ and relaxes current vertical profiles to the adjusted references."""
+     level_zero_buoyancy = pseudo_adiabat!(
+         ij, temp_ref_profile, humid_ref_profile, temp, humid,
+         geopotential, pₛ, σ, atmosphere, convection.relative_humidity, convection.entrainment,
++        convection.ascent_substeps, convection.entrainment_mse,
+     )
+ 
+     Pq::NF = 0        # precipitation due to drying
+@@ -213,6 +220,8 @@ column then need no branch to skip those levels, they contribute zero on their o
+         atmosphere,
+         relative_humidity,
+         entrainment,
++        substeps::Int = 1,
++        entrainment_mse::Bool = false,
+     )
+     NF = eltype(temp_ref_profile)             # number format
+     nlayers = length(σ)                       # number of vertical layers
+@@ -252,18 +261,25 @@ column then need no branch to skip those levels, they contribute zero on their o
+             end
+ 
+             if saturated
+-                # calculate moist/pseudo adiabatic lapse rate, dT/dΦ = -Γ/cp
+-                T, Tᵥ, q = temp_parcel, temp_virt_parcel, humid_parcel  # for brevity
+-                A = q * Lᵥ / ((1 - q)^2 * R_dry)
+-                B = q * Lᵥ^2 / ((1 - q)^2 * cₚ * R_vapor)
+-                Γ = (1 + A / Tᵥ) / (1 + B / T^2)
+-
+-                ΔΦ = geopotential[ij, k] - geopotential[ij, k + 1]        # vertical gradient in geopotential
+-                temp_parcel = temp_parcel - ΔΦ / cₚ * Γ                     # new temperature of parcel at k
+-
+-                # at new (lower) temperature condensation occurs immediately
+-                # new humidity equals to that saturation humidity
+-                humid_parcel = saturation_humidity(temp_parcel, σ[k] * pres, atmosphere)
++                # moist/pseudo adiabatic ascent from layer k+1 to k in `substeps` explicit steps of equal
++                # geopotential, each with the lapse rate at its start (substeps = 1: one step with the lapse
++                # rate of the lower level, which under-cools the parcel over thick layers)
++                ΔΦ = (geopotential[ij, k] - geopotential[ij, k + 1]) / substeps   # geopotential step
++                for i in 1:substeps
++                    # calculate moist/pseudo adiabatic lapse rate, dT/dΦ = -Γ/cp
++                    T, Tᵥ, q = temp_parcel, temp_virt_parcel, humid_parcel  # for brevity
++                    A = q * Lᵥ / ((1 - q)^2 * R_dry)
++                    B = q * Lᵥ^2 / ((1 - q)^2 * cₚ * R_vapor)
++                    Γ = (1 + A / Tᵥ) / (1 + B / T^2)
++                    temp_parcel = temp_parcel - ΔΦ / cₚ * Γ                 # new temperature of parcel
++
++                    # at new (lower) temperature condensation occurs immediately
++                    # new humidity equals to that saturation humidity, at the sub-step's pressure
++                    # (log-linear between the layers; exactly σ[k] * pres at the last sub-step)
++                    pᵢ = i == substeps ? σ[k] * pres : σ[k + 1] * pres * (σ[k] / σ[k + 1])^(NF(i) / substeps)
++                    humid_parcel = saturation_humidity(temp_parcel, pᵢ, atmosphere)
++                    temp_virt_parcel = virtual_temperature(temp_parcel, humid_parcel, atmosphere)
++                end
+                 sat_humid = humid_parcel               # reused below for the reference humidity
+ 
+                 if entraining(entrainment)             # compiled away entirely for NoEntrainment
+@@ -271,8 +287,20 @@ column then need no branch to skip those levels, they contribute zero on their o
+                     # buoyancy and moisture; sat_humid is recomputed at the mixed temperature so
+                     # the reference humidity below stays consistent with the (now mixed) T_ref
+                     ε = entrainment(σ[k])
+-                    temp_parcel = (1 - ε) * temp_parcel + ε * temp_env
+-                    humid_parcel = (1 - ε) * humid_parcel + ε * humid_env
++                    if entrainment_mse
++                        # mix moist static energy cₚT + Lᵥq (same level, geopotential cancels) and keep the
++                        # parcel saturated: solve cₚT + Lᵥ q⋆(T) = h by Newton, so entrained dry air cools it
++                        h = (1 - ε) * (cₚ * temp_parcel + Lᵥ * humid_parcel) + ε * (cₚ * temp_env + Lᵥ * humid_env)
++                        for _ in 1:4
++                            qs = saturation_humidity(temp_parcel, σ[k] * pres, atmosphere)
++                            dqsdT = qs * Lᵥ / (R_vapor * temp_parcel^2)
++                            temp_parcel -= (cₚ * temp_parcel + Lᵥ * qs - h) / (cₚ + Lᵥ * dqsdT)
++                        end
++                        humid_parcel = saturation_humidity(temp_parcel, σ[k] * pres, atmosphere)
++                    else
++                        temp_parcel = (1 - ε) * temp_parcel + ε * temp_env
++                        humid_parcel = (1 - ε) * humid_parcel + ε * humid_env
++                    end
+                     sat_humid = saturation_humidity(temp_parcel, σ[k] * pres, atmosphere)
+                 end
+             else
 diff --git a/SpeedyWeather/src/parameterizations/land/land.jl b/SpeedyWeather/src/parameterizations/land/land.jl
 index 88608d14..ca389786 100644
 --- a/SpeedyWeather/src/parameterizations/land/land.jl
@@ -2428,10 +2536,18 @@ index e16de378..ee2ef0ec 100644
      SG = SpectralGrid(truncation = 22, nlayers = 2)
      geom = LandGeometry(SG)
 diff --git a/SpeedyWeather/test/parameterizations/longwave_radiation.jl b/SpeedyWeather/test/parameterizations/longwave_radiation.jl
-index 146f3627..20a797b5 100644
+index 146f3627..1e4de3da 100644
 --- a/SpeedyWeather/test/parameterizations/longwave_radiation.jl
 +++ b/SpeedyWeather/test/parameterizations/longwave_radiation.jl
-@@ -35,3 +35,42 @@ end
+@@ -1,6 +1,6 @@
+ @testset "Longwave radiation" begin
+     spectral_grid = SpectralGrid(truncation = 32, nlayers = 8)
+-    @testset for LW in (Nothing, UniformCooling, JeevanjeeRadiation, OneBandGreyLongwave, OneBandLongwave)
++    @testset for LW in (Nothing, UniformCooling, JeevanjeeRadiation, OneBandGreyLongwave, OneBandLongwave, FourBandLongwave)
+         longwave = LW(spectral_grid)
+         model = PrimitiveWetModel(spectral_grid; radiation = Radiation(spectral_grid; longwave))
+ 
+@@ -35,3 +35,119 @@ end
          @test all(0 .< t .<= 1)
      end
  end
@@ -2473,6 +2589,83 @@ index 146f3627..20a797b5 100644
 +    g = model.planet.gravity
 +    Δp = [SpeedyWeather.pressure_thickness(k, 1.0e5, coordinates) for k in 1:spectral_grid.nlayers]
 +    @test sum((dTdt0 .- dTdt1) .* Δp) * cₚ / g ≈ olr1 - olr0 rtol = 1.0e-3
++end
++
++# Reference values from speedy.f90 (radset, get_shortwave_rad_fluxes for the longwave transmissivities,
++# get_downward/upward_longwave_rad_fluxes) on its 8 σ levels in double precision, for columns with
++# integer temperatures (speedy.f90 tabulates the band fractions on integer K), no polar night cooling.
++@testset "FourBandLongwave reproduces speedy.f90" begin
++    σ_half = [0.0, 0.05, 0.14, 0.26, 0.42, 0.6, 0.77, 0.9, 1.0]
++    spectral_grid = SpectralGrid(NF = Float64, truncation = 32, nlayers = 8)
++    geometry = Geometry(spectral_grid; vertical_coordinates = SigmaCoordinates(spectral_grid, σ_half))
++    longwave = FourBandLongwave(spectral_grid)
++    model = PrimitiveWetModel(spectral_grid; geometry, radiation = Radiation(spectral_grid; longwave))
++    initialize!(model.radiation, model)
++    @test longwave.stratosphere_bottom[] == 2      # speedy.f90: layers 1, 2 stratosphere
++    @test longwave.cloud_base[] == 7               # clouds in layers 3 to 7
++    vars = Variables(model)
++    p = vars.parameterizations
++    ij = 1
++    model.land_sea_mask.land_fraction[ij] = 0
++    T = SpeedyWeather.get_prognostic_step(vars.grid.temperature, model.time_stepping, longwave)
++    q = SpeedyWeather.get_prognostic_step(vars.grid.humidity, model.time_stepping, longwave)
++    ocean_stepper = SpeedyWeather.time_stepper(model.time_stepping, :ocean)
++    sst = SpeedyWeather.get_prognostic_step(vars.prognostic.ocean.sea_surface_temperature, ocean_stepper, longwave)
++    # surface temperature, surface pressure / 10⁵ Pa, cloud cover, cloud top, temperature [K], humidity [g/kg]
++    columns = (
++        (
++            300.0, 1.0, 0.6, 3, [205.0, 215.0, 235.0, 255.0, 270.0, 282.0, 291.0, 297.0],
++            [0.003, 0.03, 0.4, 1.5, 4.0, 8.0, 13.0, 17.0],
++        ),
++        (
++            288.0, 0.95, 0.3, 5, [215.0, 218.0, 225.0, 240.0, 255.0, 266.0, 276.0, 283.0],
++            [0.003, 0.01, 0.1, 0.5, 1.5, 3.5, 6.0, 8.0],
++        ),
++        (
++            250.0, 1.0, 0.0, 9, [220.0, 222.0, 225.0, 232.0, 240.0, 245.0, 248.0, 251.0],
++            [0.002, 0.005, 0.02, 0.08, 0.2, 0.4, 0.6, 0.8],
++        ),
++        (
++            260.0, 0.85, 0.8, 4, [212.0, 216.0, 228.0, 242.0, 252.0, 258.0, 262.0, 258.0],
++            [0.002, 0.01, 0.1, 0.4, 1.0, 1.8, 2.5, 2.2],
++        ),
++    )
++    # speedy.f90: surface longwave down (absorbed), outgoing longwave, surface emission; absorbed per layer
++    reference = (
++        (
++            [418.9894216934964, 211.8422823683464, 450.0846],
++            [-2.778715979040555, -10.28630138779735, -50.90419370551595, -23.18724961745527, -28.24162661804291, -33.55525345487521, -21.77118043820275, -10.02258286091291],
++        ),
++        (
++            [309.0073332605409, 222.571905343115, 382.277806718976],
++            [-4.863870937575927, -8.538703784892167, -21.6076676309837, -36.96791509406655, -18.2136027937799, -18.97303605552992, -25.39205665027114, -14.74457893758058],
++        ),
++        (
++            [134.7346006809437, 187.092317009264, 217.0546875],
++            [-6.617140657797964, -10.40813841318361, -8.449346106409898, -25.67754460539319, -30.07159900497597, -11.06894140112502, -4.528491572193872, -7.951028429128272],
++        ),
++        (
++            [207.2015223336645, 191.088479822498, 253.92328416],
++            [-3.890744330684839, -7.241944981756003, -23.67677934085655, -55.69976855292191, -18.4505739569688, -13.28000514462292, -23.53612610832944, 1.409224419977932],
++        ),
++    )
++    for ((Tₛ, pₛ, cloud_cover, cloud_top, Tcol, qcol), (fluxes, absorbed)) in zip(columns, reference)
++        sst[ij] = Tₛ
++        p.surface_pressure[ij] = pₛ * 1.0e5
++        p.cloud_cover[ij] = cloud_cover
++        p.cloud_top[ij] = cloud_top
++        p.polar_night_cooling[ij] = 0
++        T[ij, :] .= Tcol
++        q[ij, :] .= qcol ./ 1000
++        SpeedyWeather.parameterization!(ij, vars, longwave, model)
++        @test p.surface_longwave_down[ij] ≈ fluxes[1] rtol = 1.0e-10
++        @test p.outgoing_longwave[ij] ≈ fluxes[2] rtol = 1.0e-10
++        @test p.surface_longwave_up[ij] ≈ fluxes[3] rtol = 1.0e-10
++        A = vars.scratch.grid.longwave_absorbed[ij, :]
++        @test A ≈ absorbed rtol = 1.0e-10
++        # energy: absorbed by the column = surface emission - surface absorption - outgoing longwave
++        @test sum(A) ≈ p.surface_longwave_up[ij] - p.surface_longwave_down[ij] - p.outgoing_longwave[ij] rtol = 1.0e-10
++    end
 +end
 diff --git a/SpeedyWeather/test/parameterizations/radiation.jl b/SpeedyWeather/test/parameterizations/radiation.jl
 index 7530a110..a5bef938 100644

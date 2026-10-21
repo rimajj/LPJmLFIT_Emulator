@@ -249,3 +249,21 @@ tendency** over the interval, which ForwardEuler then integrates to exactly the 
   slab run is not in equilibrium — run 5+ years and read the per-year TOA net.
 - SpeedyWeather's `surface_air_temperature` is the lowermost layer (~500 m at L8) brought down the dry adiabat, not
   a 2 m temperature — in winter inversions it is several K warmer than a 2 m observation.
+- **Score the atmosphere against a measured profile, not remembered values:** `PROFREF=/p/projects/open/Jamir/
+  esm_land_emulator_data/coupled/speedy_profile_reference_gfdl-esm4_1985-2014.csv` (GFDL-ESM4 band-mean T/q/RH on
+  pressure levels + column water vapour + cloud cover; rebuild `build_speedy_profile_reference.py` on SLURM, ~2 min)
+  makes the reproducer print the tropical profile against it at the model's own layer pressures, plus the
+  convective / large-scale precipitation split. No TOA longwave exists in the CMIP6 data on disk.
+- **Convection knobs:** `CONVKW="relative_humidity=..,σ_entrainment=..,surface_entrainment=..,ascent_substeps=N,
+  entrainment_mse=1"` (last two: branch coldfix-E ≥ 684c181c only). `speedy_convection_diag.jl` (same knobs; raw
+  `sbatch --wrap`, ~10 min) recomputes the Betts–Miller internals on tropical columns: deep/shallow fractions, the
+  energy shift ΔT, the LZB, and the parcel adiabat vs the environment per layer.
+- ⚠ **Before blaming radiation for a warm upper troposphere, compare the environment to the scheme's OWN parcel
+  adiabat** (`speedy_convection_diag.jl`): Betts–Miller relaxes the column to it, so if it is warm the column is warm.
+  Two defects found that way (JOURNAL 2026-10-21 night): one explicit step per 125-hPa layer with the lower level's
+  lapse rate (+2.7 K at σ 0.31, +8.8 K at σ 0.19), and entrainment that mixes T and q then re-saturates without
+  evaporative cooling (dry air never cools the parcel). With both fixed (`ascent_substeps=10, entrainment_mse=1,
+  σ_entrainment=0`) the tropical 300–550 hPa profile is within 1.5 K of GFDL-ESM4 on both oceans. Lowering the
+  target `relative_humidity` dries the column but barely cools it — a humidity knob is not a temperature fix.
+- Byte-identity of a new default-off option: rerun the control with the option at its default and `diff` the log
+  from `global mean near-surface` on — the scorer prints enough digits to catch any change.

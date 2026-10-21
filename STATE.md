@@ -126,6 +126,21 @@ that level (tree count, biomass per tree) from this and last year's weather anom
 integral on the original's own calendar — the record's pre-registered next candidate); (b2) ship `dep` for its general
 gain (two numbers per cell carried year to year) — or `fx10`, smaller (19 of 22); (d)/(e) from the block below.
 
+**2026-10-21 (night) — SpeedyWeather cold-bias side track: the warm, moist tropical upper troposphere was the
+convection scheme, now fixed (opt-in); the remaining errors are clouds and high-latitude winter.** Owner: "continue
+the speedy wheater fix". Reference built from GFDL-ESM4 1985–2014 profiles (`build_speedy_profile_reference.py`,
+reproducer env `PROFREF`). Two defects in SpeedyWeather's Betts–Miller convection found with
+`speedy_convection_diag.jl`: one coarse step per layer for the rising parcel (too warm aloft) and mixing that never
+lets dry outside air cool the parcel. Both are new default-off options on branch coldfix-E (684c181c,
+`patches/speedyweather/`): `BettsMillerConvection(ascent_substeps = 10, entrainment_mse = true)` + `σ_entrainment = 0`.
+With them the tropical 300–550 hPa profile is within 1.5 K of GFDL-ESM4 (was +4…+9 K) and column water vapour right
+(40.5 vs 40.3) on both ocean modes; tropical ocean evaporation 88 → 126 W/m². NOT fixed: free-ocean drift (+0.2 K/yr
+at year 5, TOA +1.9 W/m²), land rain −300 mm/yr on the slab, high-latitude land winters +15 K, too-reflective clouds
+(reflected SW 113, OLR 226 W/m²). Lowering the convection's target humidity: dries, does not cool — not adopted.
+JOURNAL 2026-10-21 (night). **Next there, if pursued:** clouds (DiagnosticClouds cover/top and their SW/LW
+optical properties, scored on reflected SW + OLR + cloud cover vs GFDL-ESM4 `clt`), then the high-latitude winter
+inversion; upstream: report the two convection defects (search the SpeedyWeather issues first).
+
 **2026-10-21 (late) — SpeedyWeather cold-bias side track: retuning its longwave to a reference radiation code makes it WORSE** (TOA imbalance +6 → +10/+15 W/m², slab ocean runs away +1.6–2.4 K/yr); the four-band longwave was already close to the reference on clear sky. Remaining error is the model atmosphere (tropical upper troposphere too moist and too warm) + clouds. JOURNAL 2026-10-21 (late). Next there, if pursued: humidity/convection, not radiation.
 
 **2026-10-21 (night) — the leak-free restatement is done (ADR 0353), and the two daily-network arms are closed

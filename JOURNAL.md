@@ -1702,3 +1702,50 @@ unchanged, start-cut recovery overshoots. Not adopted (capture < 0.30, gap > 2.0
 dependency line broke (job ids captured with newlines), which silently dropped every later #SBATCH line, so the log
 went to slurm-<id>.out in the repo root (moved to logs/). Another session was working in this checkout at the same
 time (SpeedyWeather side track); I committed only my own files.
+
+## 2026-10-21 (night) — SpeedyWeather cold-bias side track: a measured reference, the convection's own adiabat is too warm
+Owner: "continue the speedy wheater fix". Reference first this time: `build_speedy_profile_reference.py` → GFDL-ESM4
+r1i1p1f1 1985–2014 band-mean T / q / RH on pressure levels + column water vapour + cloud cover
+(`esm_land_emulator_data/coupled/speedy_profile_reference_gfdl-esm4_1985-2014.csv`; a model, not observations, but the
+emulator's training climate and = W5E5 land T to 0.01 K). No TOA longwave on disk (no `rlut` in any CMIP6 Amon dir here).
+Tropics (|lat|<15): 240.8 K at 300 hPa, RH 35–47 % at 300–600 hPa, column water vapour 40.3 kg/m². The reproducer now
+prints the model profile against it (env PROFREF), RH, and the convective / large-scale precipitation split.
+(1) Convection target humidity (Betts–Miller `relative_humidity` 0.7 → 0.6/0.5/0.4, version E1, prescribed SST,
+yrs 2–3). Pre-registered: falsified unless 0.7 → 0.5 removes ≥ half the tropical 300–550 hPa warm bias. Result:
+humidity fixed (column water vapour 50.6 → 37.7 vs 40.3; RH bias +20 → +3 points at 431–555 hPa), land rain −182 →
+−39 mm/yr, global precipitation 2.37 → 2.58 mm/day — but T bias at 308/431/555 hPa only +9.0/+6.6/+4.1 →
++7.2/+5.7/+3.5 K, TOA net still +8 W/m², cloud cover 0.67 → 0.48 (ref 0.65), land annual +2.1 → +3.0 K. **Falsified
+for temperature**; not adopted. Stock main for contrast: 1–5 K too COLD aloft, TOA −26 W/m².
+(2) The version with the new shortwave but the grey longwave (B) has a near-right tropical profile (+2 K at 308 hPa,
+−2 to −3 K below), so the four-band longwave run is what adds ~+7 K aloft. Its clear-sky heating on E's own columns
+matches ecCKD within 0.1–0.5 K/day per layer (lwref-hostE log; the +0.28 K/day at σ 0.31 is on the grey host's
+columns only) ⇒ not a clear-sky profile error, as the previous entry concluded.
+(3) `speedy_convection_diag.jl` recomputes the Betts–Miller internals on tropical columns (120-day spin-up, 40
+snapshots). E1: 46 % of columns deep, mean energy shift ΔT = +0.16 K (lowers the reference — my "moisture excess
+lifts T_ref above the adiabat" guess is FALSE), LZB layer 2.4, but the scheme's own parcel adiabat is 254.1 K at σ
+0.31 / 230.0 K at σ 0.19 — the environment follows it. Reproduced offline (Python, same formulas): the scheme takes ONE
+explicit step per layer with the lapse rate of the lower (warmest, least steep) level; vs a 200-sub-step integration
+of the same parcel it is +0.6/+2.7/+8.8/+14.8 K too warm at σ 0.44/0.31/0.19/0.06 (stock main: +1.6/+4.6/+8.4/+9.3).
+The remainder of the warm upper troposphere is the deep columns' warm, moist feed layer (296.4 K, 14.2 g/kg vs
+mean 295.8 / 12.7): upper-level T is very sensitive to it. Fix under test: opt-in
+`BettsMillerConvection(ascent_substeps = N)` on branch coldfix-E (default 1 = unchanged code path).
+Results (E1 + options, one realisation each; byte-identity of both options at their defaults verified by diffing
+the full scorer output against the control):
+(4) `ascent_substeps=10`, prescribed SST: tropical OLR 224.9 → 233.8 W/m², TOA net +6.3 → +3.4, T bias at
+185/308 hPa +13.8/+9.0 → +11.8/+7.4 K (the feed layer warmed and moistened, 296.4/14.2 → 297.0 K/14.7 g/kg, so less
+than the offline +2.7/+8.8). Slab 5 yr: warms faster than the E1 control (year 5 17.1 vs 16.6 °C, TOA +1.9 vs +1.0,
++0.2 vs +0.07 K/yr), but the control's slab run convects into the top layer (+22 K, q ×240 at 62 hPa) and the
+sub-stepped one does not (+4 K, ×18). Correct numerics, not the climate fix; fails the pre-registered rule.
+(5) Entrainment depth (`σ_entrainment` 0.5 → 0.25 / 0 with sub-steps): null (308 hPa +7.4 → +6.9 / +6.5 K) — mixing
+the environment's T into a parcel that equals it does nothing, and the q deficit is discarded.
+(6) `entrainment_mse=1` (mix cₚT + Lq, keep the parcel saturated, Newton for T) + sub-steps, prescribed SST,
+default depth / to the top (σ_ent 0): 308/431/555 hPa +2.8/+3.6/+2.8 / **−1.4/+0.5/+1.4 K**; tropical column water
+vapour 42.6 / **38.5** vs 40.3; cloud 0.63 vs 0.65; TOA net +3.2 / +3.0; land annual +1.8 / +2.4 K; land rain −189 /
+−175. Rule for σ_ent 0: profile ✓ (1.1 K ≤ 3), TOA ✓, rain ✓, **land T ✗ (+2.4 > 1.5)** — the land miss is the
+high-latitude winter (coldest month > 50°: +15 K), untouched. Slab 5 yr (exploratory, outside the rule): the profile
+holds (−0.2/+1.1/+1.5 K, column water vapour 40.5), tropical ocean evaporation 126 W/m² (E1: 88), land annual
++1.5 K, but global 16.5 °C still warming (+0.2 K/yr year 5, TOA +1.9 W/m²), land rain −296 mm/yr, reflected SW 113
+and OLR 226 W/m² (CERES ~100/~240, from memory) ⇒ the remaining imbalance looks like clouds (too reflective AND too
+much longwave trapping). Not adopted by the rule; the best candidate base so far is E1 + `ascent_substeps=10,
+entrainment_mse=1, σ_entrainment=0` ("E2"). Logs logs/speedy-{rh*,sub*,ident2,convdiag-*}-*.out; branch coldfix-E
+684c181c, patch refreshed (it had also missed c62f5bc3).
