@@ -61,8 +61,12 @@ PANEL_CELLS = "/p/projects/open/Jamir/esm_land_emulator_data/xpanel/cells.parque
 # --all-cells (ADR 0344, deployment): the held-out cells train too (validation stays 10 % of the blocks)
 ALL_CELLS = False
 NH, NL = 64, 2  # network width / depth (set from the command line)
+ACT = "silu"  # hidden activation (ADR 0359 screen: --act); every release network is SiLU
+ACTS = {"silu": nn.SiLU, "relu": nn.ReLU, "gelu": nn.GELU, "tanh": nn.Tanh}
 NPP_HEAD = "direct"  # "ra": npp = gpp - ra, ra >= 0 (ADR 0323 arm R)
-FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4}  # raw daily forcing columns of x
+FEAT = {"tas": 0, "pr": 1, "rsds": 2, "lwnet": 3, "huss": 4,  # raw daily forcing columns of x
+        # the trailing windows of forcing_features (ADR 0359: droppable to test what they carry)
+        "tas10": 5, "tas30": 6, "rsds30": 7, "pr30": 8, "pr90": 9, "pr365": 10}
 DROP = []  # input columns held at 0 (--drop-inputs, ADR 0327); the network then cannot use them
 DEEP_TAU = 0.0  # days; > 0: deep store releases D/DEEP_TAU per day into runoff (ADR 0326)
 CARBON_HEAD = "free"  # "physical": structured GPP/NPP head (ADR 0332); "free" = the trunk's
@@ -244,7 +248,7 @@ class Net(nn.Module):
         self.register_buffer("ysd", torch.as_tensor(ysd))
         layers, n = [], NIN
         for _ in range(nl):
-            layers += [nn.Linear(n, nh), nn.SiLU()]
+            layers += [nn.Linear(n, nh), ACTS[ACT]()]
             n = nh
         self.trunk = nn.Sequential(*layers, nn.Linear(n, 9))
         self.npp_ra = NPP_HEAD == "ra"
@@ -760,7 +764,7 @@ def to_markdown(S, s1):
 
 
 def main():
-    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
+    global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE, ACT
     global DATA, CO2_INPUT, NIN, ALL_CELLS, SOIL_INPUT, SOIL, SOIL_COL
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="A")
@@ -778,6 +782,8 @@ def main():
         "--ensemble", default="", help="comma-separated run tags to average (no training)"
     )
     ap.add_argument("--layers", type=int, default=2)
+    ap.add_argument("--act", default="silu", choices=["silu", "relu", "gelu", "tanh"],
+                    help="hidden activation (ADR 0359 screen; the package exports SiLU only)")
     ap.add_argument("--drop-inputs", dest="drop_inputs", default="",
                     help="raw forcing inputs to remove, e.g. huss (ADR 0327)")  # fmt: skip
     ap.add_argument("--train-legs", dest="train_legs", default=",".join(TRAIN_LEGS))
@@ -814,7 +820,7 @@ def main():
     if SOIL_INPUT:
         SOIL_COL, NIN = NIN, NIN + 4
     NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR = a.hidden, a.layers, a.npp_head, a.deep_tau, a.stand_dir
-    CARBON_HEAD, SEASON_PHASE = a.carbon_head, a.season_phase
+    CARBON_HEAD, SEASON_PHASE, ACT = a.carbon_head, a.season_phase, a.act
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
     TRAIN_LEGS[:] = a.train_legs.split(",")
     TEST_LEGS[:] = [x for x in a.test_legs.split(",") if x and x != "none"]

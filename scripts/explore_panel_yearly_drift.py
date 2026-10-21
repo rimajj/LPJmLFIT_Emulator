@@ -124,6 +124,12 @@ BK_DIR = os.path.join(PP.OUT, "climate_bucket")
 VUL_W = ["rl_aet", "rl_wscal", "n3_aet", "n5_aet", "bkz2_bk_aetpet", "bkz2_bk_wscal"]
 VUL_S = [f"{k}_{q}" for k in ("dlag2", "dlag3") for q in ("n_per_patch", "agb_per_stem")] + ["rlfall"]
 BAD_Z = -0.5
+# ADR 0359 (design-choice sensitivity): every learning setting of the map and the departure model, overridable from the
+# command line (--lgb, --rounds, --dep-lgb, --dep-rounds, --clim-window, --z-window, --drop-feats); defaults = release
+LGB_PARAMS, LGB_ROUNDS = dict(A7.PARAMS), A7.ROUNDS
+DEP_PARAMS, DEP_ROUNDS = dict(A7.PARAMS), A7.ROUNDS
+CLIM_WIN, Z_WIN = 30, 30
+DROP_FEATS: set = set()  # groups: s0, memoff, dclim, anc, latlon, soil
 
 
 def log(*a):
@@ -148,7 +154,8 @@ def window_climate(leg: str) -> pl.DataFrame:
     d = pl.concat([h.filter(pl.col("Year") < Y0), s]).with_columns([pl.col(c).cast(pl.Float64) for c in CLIM])
     d = d.sort("Cell", "Year")
     assert d.group_by("Cell").agg(pl.col("Year").diff().max())["Year"].max() == 1, f"{leg}: gap in years"
-    d = d.with_columns([pl.col(c).rolling_mean(window_size=30, min_samples=20).over("Cell") for c in CLIM])
+    d = d.with_columns([pl.col(c).rolling_mean(window_size=CLIM_WIN, min_samples=min(20, CLIM_WIN)).over("Cell")
+                        for c in CLIM])
     return d.filter(pl.col("Year") >= Y0).with_columns(pl.lit(leg).alias("leg"))
 
 
@@ -248,8 +255,12 @@ def bucket_anomaly(leg: str) -> pl.DataFrame:
 
 def feats(soil: str = "code", recent: str = "none", state: str = "none") -> list[str]:
     tail = SOIL_PHYS if soil == "phys" else ["soil_code"]
-    return (CLIM + [f"dclim_{c}" for c in CLIM] + [f"anc_{q}" for q in QS] + [f"s0_{q}" for q in QS]
-            + [f"memoff_{q}" for q in QS] + ["lat", "lon", *tail] + recent_cols(recent) + state_cols(state))
+    grp = {"dclim": [f"dclim_{c}" for c in CLIM], "anc": [f"anc_{q}" for q in QS], "s0": [f"s0_{q}" for q in QS],
+           "memoff": [f"memoff_{q}" for q in QS], "latlon": ["lat", "lon"], "soil": tail}
+    f = (CLIM + grp["dclim"] + grp["anc"] + grp["s0"] + grp["memoff"] + grp["latlon"] + grp["soil"]
+         + recent_cols(recent) + state_cols(state))
+    gone = {c for g in DROP_FEATS for c in grp[g]}
+    return [c for c in f if c not in gone]
 
 
 def agb_per_stem(d: pl.DataFrame) -> pl.DataFrame:
@@ -298,8 +309,8 @@ def fit_q(t: pl.DataFrame, q: str, f: list[str], cat):
     import lightgbm as lgb
 
     t = t.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
-    return lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), target(t, q), categorical_feature=cat),
-                     A7.ROUNDS), t.height
+    return lgb.train(LGB_PARAMS, lgb.Dataset(t.select(f).to_numpy(), target(t, q), categorical_feature=cat),
+                     LGB_ROUNDS), t.height
 
 
 def free_run(models: dict, d: pl.DataFrame, f: list[str], scale: float = 1.0) -> pl.DataFrame:
@@ -400,8 +411,8 @@ def weather_anomaly(leg: str) -> pl.DataFrame:
     d = d.sort("Cell", "Year")
     ex = []
     for c in CLIM:
-        mu = pl.col(c).shift(1).rolling_mean(window_size=30, min_samples=15).over("Cell")
-        sd = pl.col(c).shift(1).rolling_std(window_size=30, min_samples=15).over("Cell")
+        mu = pl.col(c).shift(1).rolling_mean(window_size=Z_WIN, min_samples=min(15, Z_WIN)).over("Cell")
+        sd = pl.col(c).shift(1).rolling_std(window_size=Z_WIN, min_samples=min(15, Z_WIN)).over("Cell")
         ex.append(pl.when(sd > 1e-6 * (mu.abs() + 1.0)).then((pl.col(c) - mu) / sd).otherwise(0.0).alias(f"z0_{c}"))
     d = d.with_columns(ex)
     d = d.with_columns([pl.col(f"z0_{c}").shift(1).over("Cell").alias(f"z1_{c}") for c in CLIM])
@@ -454,14 +465,15 @@ def dep_free_run(fm: dict, d: pl.DataFrame, fd: list[str], start_n: float = 0.0)
     return d.drop("kid").with_columns([pl.Series(f"D_{q}", D[q]) for q in STATE_Q])
 
 
-def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list[str], cat, train_legs: list[str],
-                    train_years: list[int], t0: float) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """ADR 0354: the level map `models` (fitted as `fix`) plus a departure model per fed-back quantity. Returns the
-    test predictions and the start-cut run (unseen run only)."""
+def fit_departure(g: str | None, state: str, tr: pl.DataFrame, f: list[str], cat, train_legs: list[str],
+                  train_years: list[int], t0: float,
+                  extra_legs: list[str] = ()) -> tuple[dict, list[str], pl.DataFrame]:
+    """ADR 0354: the training half of the departure model -- cross-fitted level, forced departure, the departure
+    models. Returns (models q -> booster, their feature list, the weather/bucket input table of train_legs +
+    extra_legs). Used by departure_stage and by the release build (scripts/build_emulator_release.py)."""
     import lightgbm as lgb
 
-    g, E = a.g, DEP_EPS
-    test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
+    E = DEP_EPS
     # 1. cross-fitted level on the training legs (3 folds by training climate model, as crossfit_lags)
     gcm = {lg: A7.gcm_of(lg) for lg in train_legs}
     gs = sorted(set(gcm.values()))
@@ -493,9 +505,9 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
                           for q in STATE_Q]).sort("leg", "Cell", "Year")
     assert fz.group_by("leg", "Cell").len()["len"].min() == Y1 - Y0 + 1, "a training series misses years"
     fz = stand_history(fz)  # dlag_ (every arm) + dlag2_/dlag3_/rlfall (read by depvs only)
-    wz = pl.concat([weather_anomaly(lg) for lg in train_legs + test_legs])
-    if a.state in BK_ARMS:
-        bz = pl.concat([bucket_anomaly(lg) for lg in train_legs + test_legs])
+    wz = pl.concat([weather_anomaly(lg) for lg in train_legs + list(extra_legs)])
+    if state in BK_ARMS:
+        bz = pl.concat([bucket_anomaly(lg) for lg in train_legs + list(extra_legs)])
         bz = bz.with_columns([pl.col(c).cast(wz[c].dtype) for c in ("Cell", "Year")])
         wz = wz.join(bz, on=["leg", "Cell", "Year"], how="left")
         assert wz.select(BK_COLS + VUL_W).null_count().sum_horizontal().item() == 0, \
@@ -505,7 +517,7 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     wz = wz.with_columns([pl.col(c).cast(t) for c, t in key.items()])
     fz = fz.join(ctx, on=["leg", "Cell", "Year"], how="left").join(wz, on=["leg", "Cell", "Year"], how="left")
     fz = fz.sort("leg", "Cell", "Year")
-    fd = dep_cols(a.state)
+    fd = dep_cols(state)
     must = [c for c in fd if not c.startswith("lvl_")]  # the level may be missing (no anchor); LightGBM takes it
     assert fz.select(must).null_count().sum_horizontal().item() == 0, "departure inputs have nulls"
     if "rl_aet" in fz.columns:  # ADR 0356 sec. 3 C1: does a run of bad years deepen the original's drop?
@@ -526,11 +538,21 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     fm = {}
     for q in STATE_Q:
         t = fz.filter(pl.col(f"D_{q}").is_not_null())
-        fm[q] = lgb.train(A7.PARAMS, lgb.Dataset(t.select(fd).to_numpy(), t[f"D_{q}"].to_numpy()), A7.ROUNDS)
+        fm[q] = lgb.train(DEP_PARAMS, lgb.Dataset(t.select(fd).to_numpy(), t[f"D_{q}"].to_numpy()), DEP_ROUNDS)
         imp = sorted(zip(fd, fm[q].feature_importance("gain"), strict=True), key=lambda x: -x[1])
         tot = sum(v for _, v in imp)
         log(f"{g} departure {q}: {t.height} rows fitted ({time.time() - t0:.0f}s); top gain "
             + ", ".join(f"{n} {v / tot:.2f}" for n, v in imp[:8]))
+    return fm, fd, wz
+
+
+def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list[str], cat, train_legs: list[str],
+                    train_years: list[int], t0: float) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """ADR 0354: the level map `models` (fitted as `fix`) plus a departure model per fed-back quantity. Returns the
+    test predictions and the start-cut run (unseen run only)."""
+    g, E = a.g, DEP_EPS
+    test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
+    fm, fd, wz = fit_departure(g, a.state, tr, f, cat, train_legs, train_years, t0, test_legs)
     # 4. the test legs: the level from the full map, the departure run forward from 2020
     Xt = te.select(f).to_numpy()
     lvl = {q: untarget(q, models[q].predict(Xt), te[f"anc_{q}"].to_numpy().astype(float)) for q in QS}
@@ -591,12 +613,14 @@ def soil_table() -> pl.DataFrame:
                     pl.col("Sf").log().alias("soil_lnSf"))
 
 
-def stage_fit(a) -> None:
-    g = a.g
-    os.makedirs(OUT, exist_ok=True)
-    test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
+def build_rows(g: str | None, soil: str = "code", recent: str = "none", state: str = "none", train_step: int = 4,
+               t0: float | None = None) -> dict:
+    """The map's training rows (training runs x training legs x fit years) and test rows (runs m4, m5 x the held-out
+    model's legs x every year); g = None builds a DEPLOYMENT table: every leg trains, no test rows (the release,
+    scripts/build_emulator_release.py, with TRAIN_M set to every run)."""
+    t0 = time.time() if t0 is None else t0
+    test_legs = [] if g is None else [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
     train_legs = [lg for lg in A7.ALL_SLEGS if A7.gcm_of(lg) != g]
-    t0 = time.time()
     states = pl.concat([d for m in PP.MEMBERS for lg in A7.ALL_SLEGS if (d := yearly(m, lg)) is not None])
     clim = pl.concat([window_climate(lg) for lg in A7.ALL_SLEGS])
     log(f"{g}: states {states.height}, climate {clim.height} ({time.time() - t0:.0f}s)")
@@ -608,9 +632,9 @@ def stage_fit(a) -> None:
                                                   + [pl.col(q).count().alias(f"n_{q}") for q in QS])
     cb = clim.filter(pl.col("leg").is_in(train_legs))
     ctot = cb.group_by("Cell", "Year").agg([pl.col(c).sum().alias(f"S_{c}") for c in CLIM] + [pl.len().alias("N_c")])
-    train_years = list(range(Y0, Y1 + 1, a.train_step))  # ADR 0351 sec. 5: step 1 = every year (default 4)
+    train_years = list(range(Y0, Y1 + 1, train_step))  # ADR 0351 sec. 5: step 1 = every year (default 4)
     # lagd free-runs the training legs; the departure arms learn from every year (ADR 0354)
-    fit_years = list(range(Y0, Y1 + 1)) if a.state in ("lagd", *DEP_ARMS) else train_years
+    fit_years = list(range(Y0, Y1 + 1)) if state in ("lagd", *DEP_ARMS) else train_years
     rows = states.filter((pl.col("member").is_in(TRAIN_M) & pl.col("leg").is_in(train_legs)
                           & pl.col("Year").is_in(fit_years))
                          | (pl.col("member").is_in([TRUTH, SECOND]) & pl.col("leg").is_in(test_legs)))
@@ -632,15 +656,15 @@ def stage_fit(a) -> None:
     rows = rows.with_columns(ex)
     rows = rows.drop([x for x in rows.columns if x[:2] in ("S_", "N_", "s_", "n_", "c_") and x != "n_per_patch"])
     cells = PP.cells().select("Cell", "lat", "lon", "soil_code")
-    if a.soil == "phys":
+    if soil == "phys":
         cells = cells.join(soil_table(), on="soil_code", how="left")
         assert cells["soil_sand"].null_count() == 0, "a cell's soil code is not in the soil table"
     rows = rows.join(s0_table(), on=["Cell", "member"], how="left").join(cells, on="Cell", how="left")
-    if a.recent != "none":
-        rc = pl.concat([recent_climate(lg, a.recent) for lg in A7.ALL_SLEGS])
+    if recent != "none":
+        rc = pl.concat([recent_climate(lg, recent) for lg in A7.ALL_SLEGS])
         rows = rows.join(rc, on=["Cell", "Year", "leg"], how="left")
         assert rows[f"y0_{CLIM[0]}"].null_count() == 0, "recent climate missing for some rows"
-    if a.state not in ("none", *DEP_ARMS):
+    if state not in ("none", *DEP_ARMS):
         rows = with_lagdev(rows.join(lag_table(states), on=["Cell", "Year", "member", "leg"], how="left"))
         assert rows["lag_n_per_patch"].null_count() == 0, "a row has no state of the year before"
     rows = rows.sort("member", "leg", "Year", "Cell")  # deterministic row order (LightGBM bagging depends on it)
@@ -649,6 +673,15 @@ def stage_fit(a) -> None:
     te = rows.filter(pl.col("member").is_in([TRUTH, SECOND]) & pl.col("leg").is_in(test_legs))
     assert tr.height == len(TRAIN_M) * len(train_legs) * len(fit_years) * tr["Cell"].n_unique(), "training rows"
     log(f"{g}: train rows {tr.height}, test rows {te.height} ({time.time() - t0:.0f}s)")
+    return dict(tr=tr, te=te, train_legs=train_legs, test_legs=test_legs, train_years=train_years, states=states)
+
+
+def stage_fit(a) -> None:
+    g = a.g
+    os.makedirs(OUT, exist_ok=True)
+    t0 = time.time()
+    R = build_rows(g, a.soil, a.recent, a.state, a.train_step, t0)
+    tr, te, train_legs, train_years = R["tr"], R["te"], R["train_legs"], R["train_years"]
     f = feats(a.soil, a.recent, a.state)
     cat = [f.index("soil_code")] if a.soil == "cat" else "auto"
     log(f"{g}: soil={a.soil}, recent={a.recent}, state={a.state}, {len(f)} features, categorical {cat}")
@@ -814,7 +847,35 @@ def main():
                     help="last year's state as an input, run forward year by year (ADR 0352); dep/depnw = the "
                          "weather-driven departure model on top of the level map (ADR 0354)")
     ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
+    # ADR 0359: design-choice sensitivity (defaults = the release); name each variant with --suffix
+    ap.add_argument("--lgb", default="", help="map LightGBM overrides, e.g. num_leaves=63,learning_rate=0.1")
+    ap.add_argument("--rounds", type=int, default=None, help="map boosting rounds (default 400)")
+    ap.add_argument("--dep-lgb", dest="dep_lgb", default="", help="departure-model LightGBM overrides")
+    ap.add_argument("--dep-rounds", dest="dep_rounds", type=int, default=None)
+    ap.add_argument("--clim-window", dest="clim_window", type=int, default=30, help="years in the climate window")
+    ap.add_argument("--z-window", dest="z_window", type=int, default=30, help="years behind the weather z-scores")
+    ap.add_argument("--drop-feats", dest="drop_feats", default="",
+                    help="input groups left out of the map: s0,memoff,dclim,anc,latlon,soil")
     a = ap.parse_args()
+    global LGB_ROUNDS, DEP_ROUNDS, CLIM_WIN, Z_WIN
+
+    def kv(x):
+        out = {}
+        for item in filter(None, x.split(",")):
+            k, v = item.split("=")
+            out[k] = int(v) if v.lstrip("-").isdigit() else float(v)
+        return out
+
+    LGB_PARAMS.update(kv(a.lgb))
+    DEP_PARAMS.update(kv(a.dep_lgb))
+    LGB_ROUNDS = a.rounds or LGB_ROUNDS
+    DEP_ROUNDS = a.dep_rounds or DEP_ROUNDS
+    CLIM_WIN, Z_WIN = a.clim_window, a.z_window
+    DROP_FEATS.update(filter(None, a.drop_feats.split(",")))
+    if a.lgb or a.rounds or a.dep_lgb or a.dep_rounds or CLIM_WIN != 30 or Z_WIN != 30 or DROP_FEATS:
+        assert a.suffix, "a design-choice variant needs its own --suffix (never overwrite the release's files)"
+        log(f"variant: map {LGB_PARAMS} x {LGB_ROUNDS}; departure {DEP_PARAMS} x {DEP_ROUNDS}; climate window "
+            f"{CLIM_WIN}; z window {Z_WIN}; dropped {sorted(DROP_FEATS)}")
     {"fit": stage_fit, "score": stage_score, "retention": stage_retention}[a.stage](a)
     log("=== DONE")
 

@@ -13,7 +13,9 @@ Each emulated year:
 Nothing is recursive in the structure or stand maps (a year's state is a function of the climate
 window and the
 cell's fixed setup), so their errors cannot accumulate; the daily model carries its water stores
-day to day.
+day to day. A release with a departure model (ADR 0354/0358) also carries, per cell, last year's
+departure of tree count and biomass per tree from the structure map, driven by the year's weather
+anomaly; it only changes those two outputs (the stand, hence the daily model, is not affected).
 
 A release trained on the nitrogen-on LPJmL-FIT (ADR 0342/0344, ``release.json`` ``co2_input``)
 also reads the year's atmospheric CO2 (ppm): the daily model takes the year's value, the maps its
@@ -152,7 +154,37 @@ class LandEmulator:
             "stand": self.stand_input(setup.stand0),
             "iy": 0,
             "co2buf": co2buf,
+            **self._dep_start(setup),
         }
+
+    def _dep_start(self, setup):
+        """Departure-model state (ADR 0358): last year's departures (0 in the first emulated year,
+        as in training), the raw yearly climate statistics of the years before (for the z-scores),
+        and last year's z-scores (of the year before year0, from clim_hist)."""
+        dep = self.annual.dep
+        if not dep:
+            return {}
+        n = len(setup.cell)
+        hist = [np.asarray(v, np.float64) for v in np.asarray(setup.clim_hist, np.float64)]
+        w, k = int(dep["z_window"]), int(dep["z_min"])
+        if len(hist) < k + 1:
+            raise ValueError(f"the departure model needs >= {k + 1} years of clim_hist")
+        return {
+            "dlag": {q: np.zeros(n) for q in dep["quantities"]},
+            "zbuf": hist[-w:],
+            "zprev": self.zscore(hist[-1], hist[-1 - w : -1], k),
+        }
+
+    @staticmethod
+    def zscore(x, past, kmin):
+        """z of this year's statistics against the years before (ddof 1, as the training table's
+        polars rolling_std); 0 where fewer than kmin years or the statistic does not vary."""
+        past = np.stack(past) if len(past) else np.zeros((0,) + np.shape(x))
+        if len(past) < kmin:
+            return np.zeros_like(x)
+        mu, sd = past.mean(0), past.std(0, ddof=1)
+        ok = sd > 1e-6 * (np.abs(mu) + 1.0)
+        return np.where(ok, (x - mu) / np.where(ok, sd, 1.0), 0.0)
 
     @staticmethod
     def stand_input(stand):
@@ -261,6 +293,8 @@ class LandEmulator:
                 np.asarray(su.aco2, np.float64), (n,)
             )
         ann = self.annual.predict(feat)
+        if self.annual.dep:
+            self._apply_departure(state, clim, win, ann)
         new = self.stand_input(np.column_stack([ann[q] for q in STAND_Q]))
         state["stand"] = np.where(
             np.isfinite(new), new, state["stand"]
@@ -268,6 +302,24 @@ class LandEmulator:
         state["iy"] = iy + 1
         state["year"] = None
         return ann
+
+    def _apply_departure(self, state, clim, win, ann):
+        dep, e = self.annual.dep, float(self.annual.dep["eps"])
+        clim = np.asarray(clim, np.float64)
+        z0 = self.zscore(clim, state["zbuf"][-int(dep["z_window"]) :], int(dep["z_min"]))
+        f = {f"dlag_{q}": state["dlag"][q] for q in dep["quantities"]}
+        f.update({f"lvl_{q}": np.asarray(ann[q], np.float64) for q in dep["quantities"]})
+        for j, c in enumerate(CLIM_COLS):
+            f[c], f[f"z0_{c}"], f[f"z1_{c}"] = win[:, j], z0[:, j], state["zprev"][:, j]
+        D = self.annual.departure(f)
+        for q in dep["quantities"]:
+            v = (np.maximum(ann[q], 0.0) + e) * np.exp(D[q]) - e
+            ann[q] = np.maximum(v, 0.0) if q == "n_per_patch" else v
+            state["dlag"][q] = D[q]
+        state["zbuf"].append(clim)
+        if len(state["zbuf"]) > int(dep["z_window"]):
+            state["zbuf"].pop(0)
+        state["zprev"] = z0
 
     @staticmethod
     def features(su: Setup, iy, win):

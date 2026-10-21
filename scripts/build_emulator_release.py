@@ -9,12 +9,17 @@ SETUP file per continued run of the original for the 1 050 panel cells. ADR 0340
   (default)        DEPLOYMENT release: every run (m1-m6) x every leg of all ten climate models trains; anchors over
                    all of them. Not scoreable out of sample by construction -- its skill is the fold releases'.
   --cover-mode     how the 10 plant-type covers are fit (ADR 0339): additive (default) | relative | sumconstrained.
+  --departure dep  add the weather-driven departure model for tree count and biomass per tree (ADR 0354, shipped
+                   by ADR 0358), trained by explore_panel_yearly_drift.fit_departure on every year of the same runs
+                   and legs; its fold release reproduces preds_<g>_statedep_fx.parquet.
 
 Gates before anything is written (a label is not evidence):
   (1) the numpy daily ensemble equals the PyTorch one on 20 000 real input rows (max |diff| / largest output < 1e-5);
   (2) the package's yearly climate statistics equal scripts/explore_glob_climate.year_features on the same daily
       weather (one leg, years 2020 + 2060, all 25 columns, exact);
-  (3) the setup's anchors reproduce the training table's test-row anchors (fold release only, exact).
+  (3) the setup's anchors reproduce the training table's test-row anchors (fold release only, exact);
+  (4) --departure only: the package's z-scores of the yearly statistics equal the training table's
+      (explore_panel_yearly_drift.weather_anomaly) on one leg, fed the same statistics (< 1e-9).
 Run on SLURM (~120 GB for the training table):
   PARTITION=priority QOS=priority NCPUS=32 TIME=02:00:00 scripts/sbatch_python.sh release-<tag> \
       scripts/build_emulator_release.py --out <dir> [--hold-gcm g]
@@ -208,6 +213,38 @@ def fit_annual(tr, out, cover_mode):
     assert fs == [c for c in fx if c in fs], "structure features must be the stand features' leading subset"
 
 
+# ------------------------------------------------------------------------------------------------ departure
+def fit_departure_models(out, hold_gcm, arm="dep"):
+    """ADR 0358: the departure model of ADR 0354 on top of the structure map, with the research code itself."""
+    from lpjmlfit_emulator.landemu.emulator import LandEmulator
+
+    t0 = time.time()
+    R = YD.build_rows(hold_gcm, state=arm, t0=t0)
+    f = YD.feats()
+    fm, fd, _ = YD.fit_departure(hold_gcm, arm, R["tr"], f, "auto", R["train_legs"], R["train_years"], t0)
+    for q, m in fm.items():
+        m.save_model(os.path.join(out, f"lgb_dep_{q}.txt"))
+    # GATE (4): the package's z-score == the training table's, on the same yearly statistics
+    leg = R["train_legs"][0]
+    ref = YD.weather_anomaly(leg).sort("Cell", "Year")
+    h = pl.read_parquet(os.path.join(PP.CLIM_DIR, "hist.parquet")).filter(pl.col("Year") < YD.Y0)
+    sc = pl.read_parquet(os.path.join(PP.CLIM_DIR, f"{leg}.parquet"))
+    stats = (pl.concat([h.select("Cell", "Year", *YD.CLIM), sc.select("Cell", "Year", *YD.CLIM)])
+             .with_columns([pl.col(c).cast(pl.Float64) for c in YD.CLIM]).sort("Year", "Cell"))
+    years = sorted(stats["Year"].unique().to_list())
+    cube = np.stack([stats.filter(pl.col("Year") == y).sort("Cell").select(YD.CLIM).to_numpy() for y in years])
+    worst = 0.0
+    for y in (YD.Y0, 2050, YD.Y1):
+        i = years.index(y)
+        z = LandEmulator.zscore(cube[i], list(cube[max(0, i - 30):i]), 15)
+        r = ref.filter(pl.col("Year") == y).sort("Cell").select([f"z0_{c}" for c in YD.CLIM]).to_numpy()
+        worst = max(worst, float(np.abs(z - r).max()))
+    log(f"GATE (4) departure z-scores: package == training table on {leg} (2020/2050/2100), max |diff| {worst:.2e}")
+    assert worst < 1e-9, "the package's weather anomaly differs from the training table's"
+    return {"arm": arm, "features": fd, "eps": YD.DEP_EPS, "quantities": list(YD.STATE_Q), "z_window": 30,
+            "z_min": 15}, worst
+
+
 # ------------------------------------------------------------------------------------------------ setups
 def write_setups(out, anc, aclim):
     cdf = pl.read_parquet(os.path.join(F2, "cells.parquet")).with_columns(pl.col("Cell").cast(pl.Int32))
@@ -257,6 +294,8 @@ def main():
     ap.add_argument("--hold-gcm", dest="hold_gcm", default=None, choices=[None, *PP.GCMS])
     ap.add_argument("--cover-mode", dest="cover_mode", default="additive",
                     choices=["additive", "relative", "sumconstrained"])
+    ap.add_argument("--departure", default=None, choices=[None, "dep"],
+                    help="add the weather-driven departure model (ADR 0354/0358)")
     a = ap.parse_args()
     if os.path.exists(os.path.join(a.out, "release.json")):
         sys.exit(f"{a.out} already holds a release; never overwrite one in place")
@@ -267,6 +306,15 @@ def main():
     tr, anc, aclim = build_tables(a.hold_gcm)
     fit_annual(tr, a.out, a.cover_mode)
     del tr
+    dep, zgate = (None, None)
+    if a.departure:
+        dep, zgate = fit_departure_models(a.out, a.hold_gcm, a.departure)
+        ap_ = os.path.join(a.out, "annual.json")
+        with open(ap_) as fh:
+            acfg = json.load(fh)
+        acfg["departure"] = dep
+        with open(ap_, "w") as fh:
+            json.dump(acfg, fh, indent=1)
     setups = write_setups(a.out, anc, aclim)
     cfg = {"version": os.path.basename(os.path.normpath(a.out)), "git_sha": git_sha(),
            "built": time.strftime("%Y-%m-%d %H:%M"), "kind": "deployment" if a.hold_gcm is None else "fold",
@@ -275,11 +323,14 @@ def main():
            "daily_members": MEMBERS, "cover_mode": a.cover_mode, "pft_temp_stress": {"low": pft["temp_low"],
                                                                                     "high": pft["temp_high"]},
            "gates": {"daily_numpy_vs_torch_max_rel": rel, "climate_exact": True,
-                     "setup_anchors_exact": a.hold_gcm is not None},
+                     "setup_anchors_exact": a.hold_gcm is not None, "departure_z_max_abs": zgate},
+           "departure": a.departure,
            "setups": [os.path.basename(p) for p in setups], "years": [2020, 2100],
            # ADR 0352 sec. 0 / 0353: built after the held-out-leg leak fix; `run_emulator.py --check` compares with
            # the leak-free scored predictions (file suffix below). Releases without the key predate the fix.
-           "pred_suffix": SM.FX}
+           "pred_suffix": SM.FX,
+           # ADR 0358: the structure check of a release with a departure model reads that arm's predictions
+           "struct_pred_suffix": f"_state{a.departure}{SM.FX}" if a.departure else SM.FX}
     with open(os.path.join(a.out, "release.json"), "w") as fh:
         json.dump(cfg, fh, indent=1)
     log(f"release written to {a.out} ({time.time() - t0:.0f}s)")

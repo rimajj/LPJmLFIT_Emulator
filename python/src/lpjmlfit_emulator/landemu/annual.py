@@ -10,6 +10,12 @@ the original's training runs for that cell and year), from the trailing 30-year 
 from the
 anchor runs' climate, the run's own 2000-2019 levels and their offset from the training runs', and
 lat/lon/soil.
+
+Optional (annual.json ``departure``, ADR 0354/0358): a DEPARTURE model on top of the structure
+map for tree count and biomass per tree -- ln((X + 1) / (M + 1)) from last year's departures, the
+map's own value M, the 30-year climate and this and last year's weather anomaly (z-score of the 25
+yearly statistics against the 30 years before). It is the only part carried from year to year (two
+numbers per cell); see ``LandEmulator``.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ class AnnualMaps:
         self.log_eps = cfg["log_eps"]  # quantity -> e: target log((v + e) / (anchor + e))
         self.cover_mode = cfg.get("cover_mode", "additive")
         self.totals = cfg.get("cover_totals", {})  # sumconstrained: name -> member quantities
+        self.dep = cfg.get("departure")  # None = no departure model (releases before ADR 0358)
 
     @classmethod
     def load(cls, d):
@@ -40,6 +47,7 @@ class AnnualMaps:
         with open(os.path.join(d, "annual.json")) as fh:
             cfg = json.load(fh)
         names = STRUCT_Q + STAND_Q + list(cfg.get("cover_totals", {}))
+        names += [f"dep_{q}" for q in (cfg.get("departure") or {}).get("quantities", [])]
         return cls(cfg, {q: lgb.Booster(model_file=os.path.join(d, f"lgb_{q}.txt")) for q in names})
 
     def _pred(self, q, X, anc, mode):
@@ -77,3 +85,9 @@ class AnnualMaps:
             for c in members:
                 out[c] = out[c] * scale
         return out
+
+    def departure(self, feat):
+        """feat: dict name -> (N,) for every departure-model input (``dlag_<q>``, ``lvl_<q>``, the
+        30-year climate, ``z0_<c>`` / ``z1_<c>``). Returns q -> (N,) this year's departure (log)."""
+        X = np.column_stack([feat[c] for c in self.dep["features"]])
+        return {q: self.b[f"dep_{q}"].predict(X, num_threads=1) for q in self.dep["quantities"]}
