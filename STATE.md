@@ -44,7 +44,26 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
-**2026-10-21 — to-dos from the owner's questions on the paper draft (none started).** Paper wording to-dos are in
+**2026-10-21 (afternoon) — model fixes on the available data (owner: *"do the model fixes first … we produce more
+full grid training data only when we are sure which model version we want to emulate"*; daily data now in
+`/p/projects/reformit/Jamir/esm_land_emulator_data/f2`, old path a link).** Status of the four to-dos below:
+* **Soil texture into the daily network (ADR 0348 arm T) — RUNNING.** 15 members trained (all 10 epochs). One-day
+  validation loss −7.5 % in both seed pairs (runoff −20…−24 %, deep −12 %, transpiration/GPP/NPP −4…−6 %, snow change
+  +11 % of a tiny value). The verdict is the free-run score: ensembles `TE_5seed`, `T2E_5seed`, `D2E_5seed` (jobs
+  2638473/79/85, gpu queue). When done: `python scripts/f2_relative_score.py DE_5seed TE_5seed D2E_5seed T2E_5seed >
+  $SCRATCH/s.md`, then `python scripts/f2_relscore_compare.py $SCRATCH/s.md DE_5seed TE_5seed` and the same for
+  `D2E_5seed T2E_5seed`; adopt if BOTH pairs give runoff ≤ 0.90 and ET ≤ 0.95 (median over legs), GPP/NPP ≤ 1.05,
+  worst leg ≤ 1.25, drift ≤ +0.08 (ADR 0348 §1). If adopted: the package `landemu` needs the four columns
+  (`Setup.soil_code` exists).
+* **Ensemble size (ADR 0348 arm N) — RUNNING:** `DE_1seed`, `DE_3seed`, `D2E_1seed`, `D2E_3seed`, `DE_10seed` (jobs
+  2638488–92); rule in ADR 0348 §2 (read each run's one-core timing from its summary.md).
+* **Soil code in the forest map (ADR 0349): NULL, closed** (±2 %).
+* **Drought die-offs (ADR 0350/0351): the forest map MISSES them; climate inputs do not fix it.** 94 % of the
+  original's big one-year tree-count drops are drought years shared by its other runs; the map captures 3 % of the
+  drop (14 % with recent-climate inputs) and is 3.8–4.4× a second run's error in the 10 years after. A fix needs the
+  forest's own state as input (recursive map) — **ask the owner** before starting it.
+
+**2026-10-21 — to-dos from the owner's questions on the paper draft (items 1–4 now being worked, see above).** Paper wording to-dos are in
 `docs/paper/README.md` ("Owner's questions, 2026-10-21"). Emulator to-dos, each a one-variable arm, pre-registered:
 1. **Soil texture is not a daily-network input** — only the top-metre capacity (`cap`, mm). Texture sets how fast water
    moves (infiltration, percolation), which `cap` does not carry; runoff (5.2× a second run) and top-metre water are
