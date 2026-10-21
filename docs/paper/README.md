@@ -20,6 +20,12 @@ coupling experiments are deliberately left out (owner, 2026-10-20).
   and the forest-structure drift baseline were chosen after first results (with the pre-registered outcomes beside
   them), and the 500-patch cost is the measured 7.06 core-s (not the extrapolated 6.7). Open before submission: the
   owner's own read, author list / affiliations, a Zenodo DOI for code and release, target-journal formatting.
+* **Restated 2026-10-21 (ADR 0353): every held-out-model number now comes from leak-free fits** (ADR 0352 §0 found the
+  structure and stand maps had trained on a sibling of the test run under the held-out climate model). Changed in the
+  text: abstract, Sect. structure (21 → 18 of 22 criteria; dense tree density 1.16 → 1.26, biomass per tree 1.07 → 1.18),
+  drift, daily fluxes (ET 5 → 4 of 13 legs, totals ≤ 2.9 %, stand adds 12 % / 37 %), limitations, requirements table,
+  conclusions. Figure scripts read the `_fx` / `PD_B_fx` / `fold_gfdl-esm4_v2` inputs (`daily_example_v2.npz`).
+  `FACTCHECK.md` checked the pre-restatement numbers and is kept as it was.
 * **Owner's questions, 2026-10-21 → text to-dos (none done yet).** Answers were checked against the code and ADRs.
   1. *Daily inputs, the capacity sentence* ("read from the original each year in the evaluation runs"): say that
      "original" = LPJmL-FIT; in the tests the capacity came each year from the held-out run itself (a small leak,

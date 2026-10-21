@@ -1,6 +1,7 @@
 # 0348 — Learned daily model: soil texture as an input, and how many networks the ensemble needs (pre-registration)
 
-* **Status:** pre-registered 2026-10-21, before any training. Results: §4, added after the runs.
+* **Status:** pre-registered 2026-10-21, before any training. **Results §4 (2026-10-21): neither change adopted** —
+  texture fails its ET bar in both seed pairs (NPP improves 13–16 %, unexpected); five networks stay.
 * **Owner instruction (2026-10-21):** *"do the model fixes first and train on the wvaialbeldata to see how they help.
   we produce more full grid trainig data only when we are sure whic model verisn we want to emulate"* — and *"store
   the daly data in teh refomrt folder, not in open"*.
@@ -127,3 +128,27 @@ member count (1.3e-3 per network); ten would put the whole emulator at ~1.4e-2 c
 T31-class allowance of 0.0135 (`EXECUTION_PLAN.md` §0) — a speed cost for a gain mostly in ET / runoff.
 **Reading:** the five-member choice of ADR 0322 was close to the knee; the replicate-to-replicate spread at three
 members (ET 1.11 vs 1.02) is itself the run-to-run noise ADR 0336 §6 warned about.
+
+### 4.2 Arm N — ensemble size (2026-10-21; score job 2650194, `logs/f2-armN-relscore.md`)
+
+Median over 14 legs × 2 windows of SIZE / FIVE typical-cell error (< 1 = better than five networks); one-core cost of
+the daily step per cell-year from each run's own timing:
+
+| ensemble | vs | GPP | NPP | ET | runoff | worst | cost (core-s / cell-year) |
+|---|---|---|---|---|---|---|---|
+| 1 network, seed 0 | `DE_5seed` | 1.276 | 1.173 | 1.169 | 1.228 | 1.72 | 1.32e-3 |
+| 1 network, seed 5 | `D2E_5seed` | 1.125 | 1.013 | 1.283 | 1.100 | 1.59 | 1.32e-3 |
+| 3 networks, seeds 0–2 | `DE_5seed` | 1.004 | 1.015 | **1.114** | **1.101** | 1.28 | 3.85e-3 |
+| 3 networks, seeds 5–7 | `D2E_5seed` | 0.951 | 1.040 | 1.022 | 1.040 | 1.27 | 3.88e-3 |
+| 10 networks, seeds 0–9 | `DE_5seed` | **1.018** | 1.000 | 0.938 | 0.942 | 1.11 | 1.28e-2 |
+| 10 networks, seeds 0–9 | `D2E_5seed` | 0.979 | 0.928 | 0.913 | 0.869 | 1.05 | 1.28e-2 |
+| (5 networks) | | | | | | | 6.40e-3 |
+
+**Verdict: five stays.** Smaller: one network fails both replicates (+1–28 %); three fails replicate a on ET (1.11) and
+runoff (1.10), so no size below five has both replicates ≤ 1.05 on every flux. Larger: ten passes against `D2E_5seed`
+(every flux ≤ 1.00, runoff 0.87) but not against `DE_5seed` (GPP 1.018 > 1.00), and the rule needs both. Against the
+expectation: one network clearly worse ✓ (but by ET and runoff as much as NPP); three borderline ✓ (fails on water,
+not carbon); ten gains ≤ 5 % — ✓ against `DE_5seed` (ET / runoff −6 %), more against `D2E_5seed` (−7 to −13 %).
+Caveat: `DE_10seed` contains `DE_5seed`'s five networks, so the first comparison is not independent; read the ten-
+network result as "gains 2–13 % on water and NPP at twice the cost, GPP unchanged", a choice the cost allowance makes
+(1.28e-2 is at the T31-class allowance of 0.0135, ADR 0340 §4.4). Cost is linear in members: 1.28e-3 per network.

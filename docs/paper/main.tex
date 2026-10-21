@@ -43,11 +43,11 @@ entire daily step, with snow, top-metre and deep soil water carried as explicit 
 exactly. Once a year, gradient-boosted tree models predict tree density, biomass per tree, four trait medians, leaf
 area, vegetation carbon and plant-type cover as a departure from a per-cell anchor, driven by the trailing 30-year
 climate; this part is not recursive, so its errors cannot accumulate. Tested on a climate model and an independent run
-of LPJmL-FIT withheld from their training, the yearly maps' error in dense forests is 1.16 (tree density) and 1.07
+of LPJmL-FIT withheld from their training, the yearly maps' error in dense forests is 1.26 (tree density) and 1.18
 (biomass per tree) times that of a further run of the stochastic original, and smaller for the trait medians. Tested on
 cells withheld from their training, under climate models they had seen, the daily networks' 30-year mean fluxes are 2.4
 (gross primary production) to 5.2 (runoff) times further from the original than a further run is --- about 3--6\,\%
-per cell for production and evapotranspiration, more for runoff --- with area totals within 2.5\,\%. After the start
+per cell for production and evapotranspiration, more for runoff --- with area totals within 3\,\%. After the start
 state has faded the structure error grows only slowly, with a creep in tree density under strong warming, and the flux
 error grows only for gross production under the two warmest climates. For a nitrogen-limited configuration of
 LPJmL-FIT with rising CO$_2$, the emulator reproduces 81--97\,\% of the change in vegetation carbon under two unseen
@@ -460,17 +460,19 @@ not predictable from climate.
 \subsection{Forest structure}\label{sec:structure}
 
 Over all 15 held-out cases (Fig.~\ref{fig:structure}), the dense forests' typical error of tree density is
-1.16 times that of a further run (limit 1.2; met in 11 of 15 cases, one short of the required 12), and that of biomass
-per tree 1.07 times (14 of 15). The four trait medians are closer to the unseen run than a further run is
-(0.60--0.83 times): the emulator predicts the expectation, while a further run is itself a random draw. In the worst
-tenth of dense cells tree density reaches 1.29 times and biomass per tree 1.01 times a further run (limit 1.5). Area
-totals over dense cells are off by a median of $-0.1$\,\% for stems (cases $-2.0$ to $+1.2$\,\%) and $-1.5$\,\% for
-biomass ($-5.0$ to $+3.4$\,\%; one case just past the 5\,\% limit). Sparse stands are harder: tree density 2.74 times a
-further run (limit 3), biomass per tree 1.34 times, stem and biomass totals a median $-2.3$\,\% ($-13$ to $+12$\,\%)
-and $-5.7$\,\% ($-18.5$ to $+6.6$\,\%; limit 25\,\%). Of the 22 criteria of the pass standard, 21 are met. With dense
-cells classed by the held-out run, as the standard was first written, 19 of 22 are met: tree density then fails in
-typical dense cells (1.12, 9 of 15 cases) and typical sparse cells (2.95, 8 of 15), and the sparse stem total is
-$+17.7$\,\% (11 of 15).
+1.26 times that of a further run (limit 1.2; met in 5 of 15 cases, where 12 are required), and that of biomass per tree
+1.18 times (met in 9 of 15). The four trait medians are closer to the unseen run than a further run is
+(0.59--0.86 times): the emulator predicts the expectation, while a further run is itself a random draw. In the worst
+tenth of dense cells tree density reaches 1.47 times (limit 1.5, met in 10 of 15 cases) and biomass per tree 1.10 times
+a further run. Area totals over dense cells are off by a median of $-0.2$\,\% for stems (cases $-2.9$ to $+1.2$\,\%) and
+$-1.5$\,\% for biomass ($-7.6$ to $+4.4$\,\%; three cases past the 5\,\% limit). Sparse stands are harder: tree density
+3.00 times a further run (limit 3, met in 7 of 15), biomass per tree 1.47 times, stem and biomass totals a median
+$-5.2$\,\% ($-15$ to $+14$\,\%) and $-4.5$\,\% ($-23$ to $+9$\,\%; limit 25\,\%). Of the 22 criteria of the pass
+standard, 18 are met: tree density fails in typical and worst-tenth dense cells and in typical sparse cells, biomass
+per tree in typical dense cells. With dense cells classed by the held-out run, as the standard was first written, 18 of
+22 are also met: tree density then fails in typical dense cells (1.20, 7 of 15 cases) and typical sparse cells (3.15,
+6 of 15), biomass per tree in typical dense cells (1.16, 9 of 15), and the sparse stem total is $+20.0$\,\% (11 of
+15).
 
 \begin{figure}[!tbp]
   \centering
@@ -486,17 +488,17 @@ $+17.7$\,\% (11 of 15).
 
 Run year by year from 2020 to 2100 (Fig.~\ref{fig:drift}), the emulator's error starts below that of a further run,
 because it knows the run's own 2000--2019 state, and rises over about three decades as that knowledge fades. It then
-levels off: biomass per tree at about one further run's error from the 2050s on, tree density at 1.10--1.12 in the
-2050s and 1.13--1.21 in the 2090s. From 2051--2070 to 2081--2100 --- the baseline chosen after the pre-registered one
-failed, see below --- the typical error grows by a factor of 1.05 for both quantities (all 15 cases below the limit of
-1.2); the trait medians grow by 1.10--1.19 while remaining at 0.62--0.85
-times a further run. The rise in the first decades does not depend on the scenario (tree density 1.17 under SSP1-2.6,
-1.20 under SSP5-8.5), which identifies it as the fading start state rather than climate extrapolation. What remains is
-a slow creep of tree density in the second half of the century that increases with warming (+0.01, +0.07 and +0.12
+levels off: biomass per tree at 1.02--1.06 times a further run's error in the 2050s and 1.09--1.14 in the 2090s,
+tree density at 1.12--1.15 in the 2050s and 1.20--1.24 in the 2090s. From 2051--2070 to 2081--2100 --- the baseline
+chosen after the pre-registered one failed, see below --- the typical error grows by a factor of 1.06 for tree density
+(all 15 cases below the limit of 1.2) and 1.05 for biomass per tree (13 of 15); the trait medians grow by 1.11--1.20
+while remaining at 0.63--0.88 times a further run. The rise in the first decades does not depend on the scenario (tree
+density 1.22 under SSP1-2.6, 1.23 under SSP5-8.5), which identifies it as the fading start state rather than climate extrapolation. What remains is
+a slow creep of tree density in the second half of the century that increases with warming (+0.05, +0.10 and +0.12
 from the 2050s to the 2090s for SSP1-2.6, SSP3-7.0 and SSP5-8.5). The reference arms behave as they should: a further
 run stays at 1.0, the mean of other runs at 0.8, the anchor alone rises steadily to 1.3--1.6, and the carried-forward
 2019 state rises to more than twice a further run's error, so the measure does detect drift. The pre-registered drift
-rule, which compares 2081--2100 with 2021--2040, fails (1.17 for tree density, 1.32 for biomass per tree; 8 and 2 of 15
+rule, which compares 2081--2100 with 2021--2040, fails (1.22 for tree density, 1.41 for biomass per tree; 7 and 1 of 15
 cases within the limit). We attribute this to the artificially low early error, which the scenario-independence of the
 early rise supports, but the rule as written is failed, and the late creep of tree density under strong warming is a
 real, if slow, growth of the gap.
@@ -528,20 +530,20 @@ prediction target.
 
 Over the 238 held-out cells and 13 legs (Fig.~\ref{fig:dailyscores}), the typical error of 30-year mean
 GPP is 2.4 times a further run's (median over legs; limit 3, met on 13 of 13 legs), evapotranspiration 3.1 times
-(5 of 13), NPP 3.9 times (0 of 13) and runoff 5.2 times. Since two runs of the original differ by only 1.0--1.6\,\% in
+(4 of 13), NPP 3.9 times (0 of 13) and runoff 5.2 times. Since two runs of the original differ by only 1.0--1.6\,\% in
 a cell's 30-year GPP, evapotranspiration or NPP, this means typical per-cell errors of about 3--6\,\% for GPP and
 evapotranspiration and 5--6\,\% for NPP. Area totals are off by a median of 1\,\% for GPP, NPP and evapotranspiration
-and 2\,\% for runoff, and by at most 2.5\,\% on any leg. The climate response (2071--2100 minus 2021--2050) is 1.8--2.5 times a further run's error, above
+and 2\,\% for runoff, and by at most 2.9\,\% on any leg. The climate response (2071--2100 minus 2021--2050) is 1.8--2.4 times a further run's error, above
 the proposed 1.5. Runoff is hardest because it is a small residual of precipitation minus evapotranspiration, so the
 evapotranspiration error passes into it amplified; NPP is hard because it is a small difference of two large terms in
 the most productive cells.
 
 The emulated stand costs accuracy. Fed the original's own stand instead, the same daily networks reach 2.2 (GPP), 2.6
 (evapotranspiration), 3.4 (NPP) and 4.5 (runoff) times a further run's error. Compared leg by leg and period by
-period, the emulated stand adds a median 13\,\% to the GPP error and 35\,\% to the evapotranspiration error, most of it
+period, the emulated stand adds a median 12\,\% to the GPP error and 37\,\% to the evapotranspiration error, most of it
 through the cover of the plant types. On these legs no flux drifts away from the original: the late-to-early ratio of
-single-year errors is 0.90--1.03 for the medians of all four fluxes, and only GPP on the two warmest legs
-(UKESM1-0-LL SSP3-7.0, IPSL-CM6A-LR SSP5-8.5) exceeds the limit (1.26).
+single-year errors is 0.90--1.04 for the medians of all four fluxes, and only GPP on the two warmest legs
+(UKESM1-0-LL SSP3-7.0, IPSL-CM6A-LR SSP5-8.5) exceeds the limit (1.26 and 1.28).
 The deep water store stays within the range of the original's change, and over 81 years the across-cell mean of the
 top-metre store stays between 80 and 91\,mm.
 
@@ -726,7 +728,7 @@ GPP and NPP; leaf area and plant-type cover from which albedo and roughness can 
 surface temperature (LPJmL-FIT computes none), heterotrophic respiration and fire, hence the net CO$_2$ flux. \\
 Conservation & water closed exactly every day by construction. Carbon is not tracked between NPP and vegetation carbon,
 which are predicted separately. \\
-Stability under feedback & structure error grows by a factor of 1.05 after the start state fades, with a slow creep of
+Stability under feedback & structure error grows by a factor of 1.05--1.06 after the start state fades, with a slow creep of
 tree density under strong warming (the pre-registered drift rule fails); no flux drift on climate models seen in
 training except GPP on the two warmest legs; day-by-day interface identical to the yearly call. No feedback with a
 host model tested here. \\
@@ -766,7 +768,7 @@ evapotranspiration and in the cell-to-cell spread of the climate response.
         place. This mirrors deployment on the cells the original was run on; with cells held out as well, the panel
         scores were clearly worse.
   \item \textbf{Daily NPP and runoff} miss the proposed limit (3.9 and 5.2 times a further run), and the climate
-        response of every flux is 1.8--2.5 times a further run's error.
+        response of every flux is 1.8--2.4 times a further run's error.
   \item \textbf{The daily networks have seen every climate model they were scored on.} With a climate model withheld,
         their GPP and NPP gap to the original grew 1.3--1.4-fold over the century.
   \item \textbf{Some evaluation choices were made with results known}: classing dense cells by the anchor, the
@@ -796,8 +798,8 @@ forest structure, trait composition and stand, from daily weather alone, with wa
 learn the whole daily step, predict the expectation over the patch ensemble, keep the forest state non-recursive,
 train on climate contrast and judge against the original's own variability --- followed from measurements that ruled
 out a hybrid of learned demography and re-implemented physics. Under a held-out climate model and run, dense forests
-are reproduced close to the original's run-to-run variability (tree density 1.16, biomass per tree 1.07 times a further
-run; trait medians better than a further run), and the structure error grows only slowly once the start state has
+are reproduced near the original's run-to-run variability but just outside the limit set for them (tree density 1.26,
+biomass per tree 1.18 times a further run, limit 1.2; trait medians better than a further run), and the structure error grows only slowly once the start state has
 faded. On places held out from their training, the daily networks reproduce GPP and evapotranspiration to a few per
 cent per cell, without drift on the climate models they were trained on; under an unseen climate model their carbon
 fluxes drift. Trained on climates that cover the test climate, the emulator reproduces the change in vegetation carbon

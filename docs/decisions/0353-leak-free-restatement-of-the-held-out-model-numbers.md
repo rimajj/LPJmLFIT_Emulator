@@ -72,7 +72,7 @@ check 2643603; logs `logs/smfx-*`, `logs/f2-PD_B_fx.*`, `logs/relfx-*`; scores `
 | D3 dense totals stems / biomass (signed median, case range) | −0.1 % / −1.5 % ✓ → −0.2 % (−2.9…+1.2) / −1.5 % (−7.6…+4.4; 3 cases > 5 %) ✓ | −2.2 % / −1.6 % ✓ |
 | S1 sparse tree count / biomass | 2.74 ✓ / 1.34 ✓ → **3.00, 7/15 ✗** / 1.47 ✓ | 3.15, 6/15 ✗ / 1.45 ✓ |
 | S2 sparse totals stems / biomass | −2.3 % / −5.7 % ✓ → −5.2 % (−15…+14) / −4.5 % (−23…+9) ✓ | **+20.0 %, 11/15 ✗** / +4.9 % ✓ |
-| **criteria passing** | **21 → 18 of 22** | **19 → 17 of 22** |
+| **criteria passing** | **21 → 18 of 22** | **19 → 18 of 22** (fail: D1 tree count and biomass, S1 tree count, S2 stems) |
 
 Harness (run m5 scored as the emulator, leak-free): 0.95–1.03 on every criterion ✓.
 
