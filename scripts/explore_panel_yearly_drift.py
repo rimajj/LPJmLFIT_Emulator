@@ -66,6 +66,9 @@ year-to-year departure from it, ln((T+1)/(M+1)) for tree count and biomass per t
 runs' mean departure (against cross-fitted level predictions, de-meaned per leg and cell) from this and last year's
 weather anomaly (z-score of the 25 statistics against the 30 years before), last year's departure and the level; run
 forward year by year. `--state depnw` = the same without the weather (null). Files _statedep_fx / _statedepnw_fx.
+DAILY STRESS (ADR 0355): `--state depw` = `dep` + six yearly statistics of a forcing-only daily soil-water bucket
+(scripts/build_panel_bucket_stress.py -> xpanel/climate_bucket/<leg>.parquet), as this and last year's value and
+their z-scores against the 30 years before. File _statedepw_fx.
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
@@ -104,9 +107,13 @@ MAX10 = ["pet_ann", "days_gt30", "dry_spell_max", "vpd_hs", "vpd_win10_sum", "tm
 STATE_Q = ("n_per_patch", "agb_per_stem")
 CUT = 0.30
 # ADR 0354: the departure model's arms, its log offset, and this / last year's weather anomaly columns
-DEP_ARMS = ("dep", "depnw")
+DEP_ARMS = ("dep", "depnw", "depw")
 DEP_EPS = 1.0
 DEP_W = [f"z0_{c}" for c in CLIM] + [f"z1_{c}" for c in CLIM]
+# ADR 0355: the daily bucket's yearly statistics (build_panel_bucket_stress.STATS), raw and z, this and last year
+BK_STATS = ["bk_s50", "bk_s30", "bk_wscal", "bk_dry", "bk_wmin30", "bk_aetpet"]
+BK_COLS = [f"{k}_{c}" for c in BK_STATS for k in ("bk0", "bk1", "bkz0", "bkz1")]
+BK_DIR = os.path.join(PP.OUT, "climate_bucket")
 
 
 def log(*a):
@@ -166,7 +173,24 @@ def state_cols(state: str) -> list[str]:
 def dep_cols(state: str) -> list[str]:
     """ADR 0354: the departure model's inputs (last year's departures, the level, the 30-year climate, the weather)."""
     return ([f"dlag_{q}" for q in STATE_Q] + [f"lvl_{q}" for q in STATE_Q] + CLIM
-            + (DEP_W if state == "dep" else []))
+            + (DEP_W if state in ("dep", "depw") else []) + (BK_COLS if state == "depw" else []))
+
+
+def bucket_anomaly(leg: str) -> pl.DataFrame:
+    """ADR 0355: the daily bucket's six yearly statistics of this year (bk0_) and last year (bk1_), and their z-scores
+    against the 30 years before (bkz0_, bkz1_; >= 15 years, observed 2000-2019 in front; 0 where constant)."""
+    d = pl.read_parquet(os.path.join(BK_DIR, f"{leg}.parquet")).sort("Cell", "Year")
+    ex = []
+    for c in BK_STATS:
+        mu = pl.col(c).shift(1).rolling_mean(window_size=30, min_samples=15).over("Cell")
+        sd = pl.col(c).shift(1).rolling_std(window_size=30, min_samples=15).over("Cell")
+        ex += [pl.col(c).alias(f"bk0_{c}"), pl.col(c).shift(1).over("Cell").alias(f"bk1_{c}"),
+               pl.when(sd > 1e-6 * (mu.abs() + 1.0)).then((pl.col(c) - mu) / sd).otherwise(0.0).alias(f"bkz0_{c}")]
+    d = d.with_columns(ex)
+    d = d.with_columns([pl.col(f"bkz0_{c}").shift(1).over("Cell").alias(f"bkz1_{c}") for c in BK_STATS])
+    d = d.filter(pl.col("Year") >= Y0).select("Cell", "Year", *BK_COLS)
+    assert d.null_count().sum_horizontal().item() == 0, f"{leg}: bucket statistics have nulls"
+    return d.with_columns(pl.lit(leg).alias("leg"))
 
 
 def feats(soil: str = "code", recent: str = "none", state: str = "none") -> list[str]:
@@ -400,6 +424,11 @@ def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list
     fz = fz.with_columns([pl.col(f"D_{q}").shift(1).over("leg", "Cell").fill_null(0.0).alias(f"dlag_{q}")
                           for q in STATE_Q])
     wz = pl.concat([weather_anomaly(lg) for lg in train_legs + test_legs])
+    if a.state == "depw":
+        bz = pl.concat([bucket_anomaly(lg) for lg in train_legs + test_legs])
+        bz = bz.with_columns([pl.col(c).cast(wz[c].dtype) for c in ("Cell", "Year")])
+        wz = wz.join(bz, on=["leg", "Cell", "Year"], how="left")
+        assert wz.select(BK_COLS).null_count().sum_horizontal().item() == 0, "a leg's bucket statistics are missing"
     ctx = tr.select("leg", "Cell", "Year", *CLIM).unique(subset=["leg", "Cell", "Year"], keep="first")
     key = {c: fz[c].dtype for c in ("Cell", "Year")}
     wz = wz.with_columns([pl.col(c).cast(t) for c, t in key.items()])
