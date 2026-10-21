@@ -198,8 +198,9 @@ def stage_fit(a) -> None:
                                                   + [pl.col(q).count().alias(f"n_{q}") for q in QS])
     cb = clim.filter(pl.col("leg").is_in(train_legs))
     ctot = cb.group_by("Cell", "Year").agg([pl.col(c).sum().alias(f"S_{c}") for c in CLIM] + [pl.len().alias("N_c")])
+    train_years = list(range(Y0, Y1 + 1, a.train_step))  # ADR 0351 sec. 5: step 1 = every year (default 4)
     rows = states.filter((pl.col("member").is_in(TRAIN_M) & pl.col("leg").is_in(train_legs)
-                          & pl.col("Year").is_in(TRAIN_YEARS))
+                          & pl.col("Year").is_in(train_years))
                          | (pl.col("member").is_in([TRUTH, SECOND]) & pl.col("leg").is_in(test_legs)))
     rows = (rows.join(tot, on=["Cell", "Year"], how="left").join(per, on=["Cell", "Year", "leg"], how="left")
             .join(clim, on=["Cell", "Year", "leg"], how="left")
@@ -257,7 +258,8 @@ def stage_fit(a) -> None:
 def suffix(a) -> str:
     if a.suffix is not None:
         return a.suffix
-    return ("" if a.soil == "code" else f"_soil{a.soil}") + ("" if a.recent == "none" else f"_recent{a.recent}")
+    return (("" if a.soil == "code" else f"_soil{a.soil}") + ("" if a.recent == "none" else f"_recent{a.recent}")
+            + ("" if a.train_step == 4 else f"_step{a.train_step}"))
 
 
 def stage_score(a) -> None:
@@ -349,6 +351,8 @@ def main():
                     help="soil code as a number (default), a category, or texture values (ADR 0349)")
     ap.add_argument("--recent", default="none", choices=["none", "y1", "x10"],
                     help="single-year / 10-year-extreme climate inputs (ADR 0351)")
+    ap.add_argument("--train-step", dest="train_step", type=int, default=4,
+                    help="training rows every n-th year 2020-2100 (default 4; ADR 0351 sec. 5)")
     ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
     a = ap.parse_args()
     {"fit": stage_fit, "score": stage_score}[a.stage](a)
