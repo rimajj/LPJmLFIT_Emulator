@@ -50,5 +50,11 @@ files exactly as the training climate table did, and overrides the setup's Jan-1
   inside `main()` it is too late and each process starts ~200 threads (load 1 000+ on 128 cores, 2× slower).
 * The anchors limit where it runs: release v1 setups exist only for the 1 050 panel cells and years 2020–2100;
   the nitrogen-on setups only for the 674 clustered cells (fixed anchors, any year).
+* ⚠ **Held-out-leg leak, fixed 2026-10-21 (ADR 0352 §0):** before then the yearly structure map and the stand map
+  trained on run m5 ON THE HELD-OUT LEGS (m5 is a training run AND the test-side harness), flattering held-out-model
+  errors by 7–12 % (relaxed standard 21 → 18 of 22 once fixed). Leak-free predictions end `_fx`
+  (`SUFFIX=_fx`); quote structure accuracy only from those. Sanity check on any fit log: training rows must equal
+  runs × training legs × training years × 1 050 cells. All scores of one variant:
+  `scripts/score_yearly_map_variant.sh <suffix> [fit args]`.
 * Score the YEAR-BY-YEAR map (what ships) with `final_structure_score.py`, not the 30-yr window map's
   `explore_relaxed_standard.py` numbers.

@@ -1637,3 +1637,12 @@ loss; with the step 0.72); "more climate models reduced the unseen-model drift t
 model in training); dense cells and the 2051–2070 drift baseline were chosen after first results (pre-registered:
 19/22 criteria, drift rule failed); 500-patch cost 7.06 measured, not 6.7. One fact-check claim was itself corrected
 (the release's residual yearly differences come from threshold-counted climate statistics, not tree splits).
+
+## 2026-10-21 (evening) — recursive forest map (ADR 0352) + held-out-leg leak
+Owner approved trying the forest map with its own last-year state. While writing the arm, the fit logs' row counts
+(3 231 900 vs a design of 2 976 750) exposed a leak: `tr = rows.filter(member in TRAIN_M)` also took m5's rows on
+the held-out legs, because m5 is both a training run and the test-side harness. Same line in the stand map. Fixed
+(`_fx` files). Leak cost: structure errors +7–12 %, criteria 21 → 18 of 22. Arms `fix`/`fx10`/`lag`/`lagd`, 20 fits
+(jobs 2641029–48). `lag`: teacher-forced memory, gap unchanged at ~4×, drift 1.55/1.86. `lagd`: cross-fitted
+lags, the map learns to ignore its state, gap 3.77×. Neither adopted. Lesson: check training/test row counts
+against the design arithmetic; a run that serves on both sides must be filtered by leg as well as by member.

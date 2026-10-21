@@ -44,6 +44,25 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (evening) — the forest map fed its own last-year state: does NOT follow die-offs; and a training leak
+found and fixed (ADR 0352).** Owner said "yes try it" to the recursive map.
+* **Leak:** the yearly structure map's (and the stand map's) training rows held run m5 on the HELD-OUT climate model's
+  legs (m5 is a training run and the test-side harness; 7.9 % of rows). Fixed in `explore_panel_yearly_drift.py` and
+  `explore_panel_stand_map.build_rows`; new prediction files end `_fx`. Size on the structure map: errors +7–12 %
+  (dense tree count 1.16 → 1.26, biomass per tree 1.07 → 1.18 a second run's), relaxed standard 21 → **18 of 22**,
+  drift 1.17/1.32 → 1.22/1.41. The deployment release `v1` is unaffected (no test legs), but **ADR 0330 / 0340's
+  held-out-model structure numbers, the stand map and the fold release must be restated** — not done yet.
+* **Recursive arms:** `lag` (true last-year state) remembers a start error for ~10–20 yr but reproduces only 19 % of
+  a drought drop → aftermath gap 3.98× (unchanged), errors +24–30 %, drift 1.55/1.86 (fails). `lagd` (trained on
+  its own free-run lags) learns to ignore the state (start error gone by 2025) → gap 3.77×, errors +2–10 %. Neither
+  adopted. The bottleneck is the drought year's drop itself, not the memory.
+* `fx10` (recent-climate inputs, leak-free) is a small consistent gain (dense tree count ×0.98, sparse ×0.93,
+  19 of 22) — ship-or-not is open.
+* Rerun / score any variant: `scripts/score_yearly_map_variant.sh <suffix> [fit args]`.
+**Next (owner to choose):** (a) restate the release's structure accuracy and re-score the stand map + fold release
+leak-free (recommended first: it corrects published numbers); (b) a die-off model of the one-year change
+`n(y)/n(y−1)` from the year's drought anomaly + the stand; (c) ship `fx10`.
+
 **2026-10-21 (afternoon) — model fixes on the available data (owner: *"do the model fixes first … we produce more
 full grid training data only when we are sure which model version we want to emulate"*; daily data now in
 `/p/projects/reformit/Jamir/esm_land_emulator_data/f2`, old path a link).** Status of the four to-dos below:

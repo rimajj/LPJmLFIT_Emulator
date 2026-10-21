@@ -1,6 +1,7 @@
 # 0352 — Yearly forest map: the forest's own last-year state as an input (recursive map), with a drift test (pre-registration)
 
-* **Status:** pre-registered 2026-10-21, before any fit of this record. Results §6.
+* **Status:** pre-registered 2026-10-21, before any fit of this record. **Result (§6): neither state arm adopted;
+  the held-out-leg leak (§0) was real and flattered the map by 7–12 %.**
 * **Owner decision (2026-10-21):** asked whether to feed the forest map its own previous state so it knows what a
   drought hit — knowing that this makes the map year-to-year dependent and that its no-drift property came from not
   doing so — with a drift test pre-registered alongside: *"yes try it"*.
@@ -85,6 +86,57 @@ The package (`landemu`) would carry the forest's tree count and biomass per tree
 carries a 30-year climate window); the map's year step becomes y−1 → y; the release gates (numpy == pipeline)
 gain the year-by-year replay. The stand map (leaf area, cover) is a separate follow-up.
 
-## 6. Results
+## 6. Results (2026-10-21; fits 2641029–48, scores 2641142 / 2641178 / 2641050, `logs/yst-*.out`)
 
-(pending)
+### 6.1 The leak's size (`fix` vs the stored `_rerun`, relaxed standard, median over 15 cases)
+
+| error vs a second run | dense, leaky → fixed | sparse, leaky → fixed |
+|---|---|---|
+| tree count | 1.161 → 1.256 (×1.072) | 2.736 → 3.001 (×1.102) |
+| biomass per tree | 1.074 → 1.180 (×1.095) | 1.342 → 1.474 (×1.119) |
+| trait medians | ×1.008–1.035 | ×1.002–1.047 |
+
+Criteria passing **21 → 18 of 22** (lost: dense biomass per tree typical, dense tree count worst 10 %, sparse tree
+count typical). Drift (dense, median of 15): tree count 1.168 → 1.219, biomass per tree 1.322 → 1.407. 0–2 of 15
+cases improve on every quantity, so it is systematic, not noise. ⇒ §3's restatement trigger (> 2 %) fires: the
+held-out-model structure numbers of ADR 0330 and ADR 0340 were flattered by the leak and are restated from `_fx`
+in a follow-up, together with the stand map and the fold release (same line, fixed in code, not yet re-run).
+
+### 6.2 The arms
+
+| median over 15 cases | `fix` | `fx10` | `lag` | `lagd` | pre-registered |
+|---|---|---|---|---|---|
+| die-off drop capture (second runs 0.939) | 0.027 | 0.133 | 0.187 | 0.140 | reported |
+| aftermath gap / second runs' | 4.53× | 3.94× | 3.98× | 3.77× | ≤ 2.0× ✗ all |
+| stand-biomass events: capture / gap | — | — | 0.122 / 3.13× | 0.127 / 2.89× | — |
+| dense tree count / biomass per tree, ratio to `fix` | — | 0.982 / 0.988 | **1.237 / 1.295** | 1.024 / 1.028 | ≤ 1.02 ✗ `lag`, `lagd` |
+| sparse tree count / biomass per tree, ratio to `fix` | — | 0.933 / 0.988 | 1.113 / 1.253 | 1.102 / 1.043 | ≤ 1.02 |
+| criteria passing (of 22) | 18 | 19 (+ dense tree count worst 10 %) | 17 | 17 (− sparse biomass total) | none lost ✗ |
+| drift dense tree count / biomass per tree | 1.219 / 1.407 | 1.208 / 1.385 | **1.554 / 1.863** | 1.224 / 1.437 | ≤ 1.269 / 1.457 ✓ `lagd` only |
+| late level tree count, ratio to `fix` | — | 0.98 | 1.12 | 1.015 | ≤ 1.05 |
+| start cut retained 2020 / 2025 / 2030 / 2040 / late | 0 (harness ✓) | 0 | 0.94 / 0.66 / 0.45 / 0.16 / −0.005 | 0.31 / 0 / 0 / 0 / 0 | max ≤ 1.1, late ≤ 0.5 ✓ |
+
+**Verdict: neither `lag` nor `lagd` adopted** (aftermath gap fails for both; `lag` also fails must-not-worsen and
+drift; `lagd` fails must-not-worsen narrowly). Expectations (§4): `fix` errors up 0–5 % — wrong, 7–12 %; `fx10`
+capture 0.06–0.14 — 0.133, so the leak did not supply ADR 0351's capture; `lag` "improves the aftermath and fails
+drift" — half right, it fails drift (12 of 15 cases above 1.5) but does NOT improve the aftermath; `lagd` passes
+drift, does not reach 2.0× — right.
+
+### 6.3 Reading
+
+* **The state input has nothing to carry.** Taught on the original's true lags (`lag`), the map does remember: a
+  30 % start cut fades over ~10–20 years, close to the original's own decade-scale memory (ADR 0350: ~0.8 of a
+  die-off still there after 10 years). But it reproduces only 19 % of the drop in the drought year, so the memory
+  carries a small error forward — the aftermath gap is unchanged (3.98× vs `fx10`'s 3.94×) — and fed its own
+  predictions it lets errors build up (typical error +24–30 %, drift 1.55 / 1.86).
+* **Taught on its own lags (`lagd`), the map learns to ignore them**: a start cut is 31 % left in 2020 and gone by
+  2025, i.e. it is non-recursive again in effect, with drift equal to `fix` and errors 2–10 % worse. The aftermath
+  gap 3.77× is the best of all arms but far from 2.0×.
+* So the bottleneck is the **drop year itself**: neither climate inputs (ADR 0351) nor the forest's own state
+  produce more than ~0.14–0.19 of a drought die-off that the original's other runs reproduce at 0.94. What the other
+  runs have and the map lacks is the stand-level mortality response to that specific drought. A next step, if any,
+  would target the one-year change directly (a die-off model of `n(y)/n(y−1)` from the year's drought anomaly and the
+  stand), not the level — not pre-registered here.
+* `fx10` (recent-climate inputs, leak-free) is a small, consistent gain over `fix` (dense tree count 15 of 15 cases
+  better, ×0.98; sparse ×0.93; +1 criterion; drift unchanged). It still fails ADR 0351's die-off primary, so it is
+  not adopted under that record; whether to ship it for its general gain is a separate decision.
