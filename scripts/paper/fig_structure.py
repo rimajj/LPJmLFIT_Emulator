@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Figure: forest structure on the 1 050-cell panel, climate model AND run held out (15 cases), relaxed standard of
-ADR 0318 on the year-by-year map the release runs (ADR 0340 sec. 4.1). Source: xpanel/eval/final_structure_anchor.csv
+ADR 0318 on the year-by-year map the release runs (ADR 0340 sec. 4.1). Source: xpanel/eval/final_structure_anchor_fx.csv (leak-free, ADR 0352/0353)
 (scripts/final_structure_score.py; dense cells defined by the anchor before the run)."""
 
 import matplotlib.pyplot as plt
@@ -32,7 +32,7 @@ def strip(ax, d, grp, col, lim, title, letter):
 
 def main():
     S.setup()
-    d = pl.read_csv(f"{S.DATA}/xpanel/eval/final_structure_anchor.csv")
+    d = pl.read_csv(f"{S.DATA}/xpanel/eval/final_structure_anchor_fx.csv")
     fig, axs = plt.subplots(2, 2, figsize=(S.FULL, 4.9), gridspec_kw=dict(wspace=0.22, hspace=0.42))
     axs = axs.ravel()
     strip(axs[0], d, "dense", "rho50", 1.2, "Dense, typical cell", "a")

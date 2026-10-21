@@ -16,7 +16,7 @@ Refuses an existing directory (never overwrite). Gates abort the build before an
 
 ## Run / reproduce / time (one core, ~11 min for 1 050 cells x 81 years)
 ```bash
-python scripts/run_emulator.py --release <dir> --run 4 --leg gfdl-esm4_ssp370_daily --check   # fold release
+python scripts/run_emulator.py --release <dir> --run 4 --leg gfdl-esm4_ssp370_daily --check --check-tag PD_B_fx  # fold release
 python scripts/run_emulator.py --release <dir> --run 1 --leg ukesm1-0-ll_ssp370 --cap fixed    # deployment
 ```
 Legs are the f2 array names (`*_daily` for GFDL/IPSL/MRI). Measured: 7.5e-3 core-s per cell-year.
@@ -56,5 +56,9 @@ files exactly as the training climate table did, and overrides the setup's Jan-1
   (`SUFFIX=_fx`); quote structure accuracy only from those. Sanity check on any fit log: training rows must equal
   runs × training legs × training years × 1 050 cells. All scores of one variant:
   `scripts/score_yearly_map_variant.sh <suffix> [fit args]`.
+  ⇒ the validated fold release is **`fold_gfdl-esm4_v2`** (leak-free, ADR 0353); its `release.json` carries
+  `pred_suffix: "_fx"`, which `--check` reads. Its check flags `fpc7`/`fpc8` "DIFFERS" exactly as v1's did (the hot-day
+  threshold trap above) — that is the expected result, not a regression. Leak-free stand-map files end `_fx` too
+  (`explore_panel_stand_map.FX`), the leak-free whole-emulator daily run is `PD_B_fx` (`f2/runs/relative_score_PD_ADR0353.md`).
 * Score the YEAR-BY-YEAR map (what ships) with `final_structure_score.py`, not the 30-yr window map's
   `explore_relaxed_standard.py` numbers.

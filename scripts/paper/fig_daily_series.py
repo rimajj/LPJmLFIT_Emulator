@@ -2,7 +2,7 @@
 """Figure: daily output of the full emulator (validated fold release: maps never saw GFDL-ESM4 or run m4; daily
 networks never saw these cells) at three biome cells, GFDL-ESM4 SSP3-7.0, against the unseen run m4 of LPJmL-FIT and
 an independent run m1. Top three rows: one late-century year, daily. Bottom row: annual GPP 2021-2100.
-Source: esm_land_emulator_data/paper/daily_example.npz (scripts/paper/run_daily_example.py)."""
+Source: esm_land_emulator_data/paper/daily_example_v2.npz (scripts/paper/run_daily_example.py)."""
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +25,7 @@ def pick(z, biome, cell):
 
 def main():
     S.setup()
-    z = np.load(f"{S.DATA}/paper/daily_example.npz", allow_pickle=True)
+    z = np.load(f"{S.DATA}/paper/daily_example_v2.npz", allow_pickle=True)
     iy = YEAR - 2020
     sl = slice(365 * iy, 365 * (iy + 1))
     days = np.arange(1, 366)

@@ -81,7 +81,8 @@ one core and, for a fold release, checks the outputs against the scored predicti
 | directory (under `/p/projects/open/Jamir/esm_land_emulator_data/release/`) | what |
 |---|---|
 | `v1/` | **deployment**: every run (m1–m6) × every leg of all ten climate models trains the structure and stand maps |
-| `fold_gfdl-esm4_v1/` | the validated setup with GFDL-ESM4 held out — exists to prove the package equals the scored pipeline |
+| `fold_gfdl-esm4_v2/` | the validated setup with GFDL-ESM4 held out, built on the leak-free training rows (ADR 0352 §0, 0353) — exists to prove the package equals the scored pipeline; `run_emulator.py --check --check-tag PD_B_fx` |
+| `fold_gfdl-esm4_v1/` | superseded: the same, built before the leak fix (its maps trained on a sibling of the test run under the held-out model); kept, not for new numbers |
 
 A release is never overwritten (`build_emulator_release.py` refuses an existing directory). Every build runs three
 gates first: the numpy daily ensemble equals the PyTorch one (max |diff| ≈ 1e-6 of each output's range), the
@@ -92,6 +93,11 @@ validated test rows' exactly.
 
 See ADR 0340 §4 for the full verdict against the goal (structure on the relaxed standard, daily fluxes against a
 second run of the original, drift, speed) and §5 for what does not pass.
+
+⚠ **Restated 2026-10-21 (ADR 0353 §5):** ADR 0340's held-out-model structure and stand numbers were flattered by a
+training leak. Leak-free: structure 18 of 22 criteria (dense tree count 1.26× and biomass per tree 1.18× a second
+run's error, both failing the 1.2 limit; sparse tree count 3.00×), stand leaf area 1.45×, vegetation carbon 1.31×;
+daily fluxes unchanged within 1 % (GPP 2.36×, NPP 3.94×, ET 3.09×, runoff 5.22×). Quote those, not ADR 0340 §4.1–4.3.
 
 ## Nitrogen-on releases with a CO2 input (ADR 0344)
 

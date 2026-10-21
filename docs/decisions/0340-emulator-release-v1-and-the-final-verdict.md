@@ -2,6 +2,8 @@
 
 * **Status:** accepted 2026-10-15 (the package, the release and the measurements). The verdict in §4 is a measurement;
   which of the open items in §5 to pursue is the owner's call.
+* ⚠ **Restated by ADR 0353 (2026-10-21):** the held-out-model numbers of §4.1 (panel), §4.2 and §4.3 were flattered by
+  a training leak (ADR 0352 §0); leak-free structure passes 18, not 21, of 22 criteria. Read ADR 0353 §5 for the numbers.
 * **Owner instruction (2026-10-15):** *"continue and finally finish the emulator!! you have been working for weeks on
   this now. its time to finish"*.
 * **Depends on:** ADR 0318 (goal and relaxed standard), 0325 (daily-flux numbers), 0330 (year-by-year structure map),

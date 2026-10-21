@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Figure: the structure map run year by year, 2020-2100 (ADR 0330): typical-cell error relative to a further run of
 the original, dense cells, median over the 15 held-out cases, for the emulator and four reference arms.
-Source: xpanel/eval/yearly/drift_years.csv (scripts/explore_panel_yearly_drift.py score)."""
+Source: xpanel/eval/yearly/drift_years_fx.csv (leak-free, ADR 0352/0353; scripts/explore_panel_yearly_drift.py score)."""
 
 import matplotlib.pyplot as plt
 import polars as pl
@@ -17,7 +17,7 @@ Q = [("n_per_patch", "Tree count"), ("agb_per_stem", "Biomass per tree"), ("Wood
 
 def main():
     S.setup()
-    d = pl.read_csv(f"{S.DATA}/xpanel/eval/yearly/drift_years.csv").filter(pl.col("grp") == "dense")
+    d = pl.read_csv(f"{S.DATA}/xpanel/eval/yearly/drift_years_fx.csv").filter(pl.col("grp") == "dense")
     fig, axs = plt.subplots(1, 3, figsize=(S.FULL, 2.35), sharey=True, gridspec_kw=dict(wspace=0.12))
     for ax, (q, lab), letter in zip(axs, Q, "abc", strict=True):
         for cand, name, col, ls in CANDS:

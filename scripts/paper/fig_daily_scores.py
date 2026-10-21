@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Figure: the daily water-carbon fluxes of the full emulator against the second-run yardstick (ADR 0325 sec. 3),
 238 held-out cells, 13 climate-model legs. Two arms differing in one thing: the daily model fed the ORIGINAL's stand
-(PD_A) or the stand the emulator's own maps produce (PD_B = the whole emulator; ADR 0337/0340 sec. 4.2).
-Source: f2/runs/relative_score_PD_ADR0337.md (scripts/f2_relative_score.py)."""
+(PD_A) or the stand the emulator's own maps produce (PD_B_fx = the whole emulator, leak-free stand map; ADR 0337/0353).
+Source: f2/runs/relative_score_PD_ADR0353.md (scripts/f2_relative_score.py PD_A PD_B PD_B_fx)."""
 
 import re
 
@@ -31,7 +31,7 @@ def parse(path):
 
 def main():
     S.setup()
-    rows = parse(f"{S.DATA}/f2/runs/relative_score_PD_ADR0337.md")
+    rows = parse(f"{S.DATA}/f2/runs/relative_score_PD_ADR0353.md")
     stats = [("typ", "Typical cell, 30-year means", 3.0, (0, 8.5)), ("resp", "Climate response, typical cell", 1.5, (0, 3.2)),
              ("drift", "Drift relative to LPJmL-FIT", 1.2, (0.6, 1.4)), ("tot", "Area totals", 5, (0, 5.6))]
     fig, axs = plt.subplots(2, 2, figsize=(S.FULL, 4.2), gridspec_kw=dict(wspace=0.25, hspace=0.4))
@@ -39,7 +39,7 @@ def main():
     rng = np.random.default_rng(3)
     for ax, (k, title, lim, yl), letter in zip(axs, stats, "abcd", strict=True):
         for i, (f, _) in enumerate(FLUX):
-            for arm, col, dx in (("PD_A", S.NULL1, -0.18), ("PD_B", S.EMU, 0.18)):
+            for arm, col, dx in (("PD_A", S.NULL1, -0.18), ("PD_B_fx", S.EMU, 0.18)):
                 v = np.array([r[k] for r in rows if r["arm"] == arm and r["flux"] == f])
                 if k == "tot":
                     v = 100 * v
