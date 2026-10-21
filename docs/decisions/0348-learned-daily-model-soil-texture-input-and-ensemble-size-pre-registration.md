@@ -102,3 +102,28 @@ GPP is unchanged or worse, so the gain is in the respiration side of the NPP hea
 predicted and is not an adoption criterion here; following it up would need its own pre-registration (owner's call).
 As pre-registered, the water item is closed: at the panel's 11 soil types texture adds nothing for ET that the
 top-metre capacity does not already carry.
+
+### 4.2 Arm N — ensemble size (2026-10-21; jobs 2638485, 2638488–92; every member 10 of 10 epochs; scored with
+`f2_relative_score.py` + `f2_relscore_compare.py`, free runs, 14 legs, 238 held-out cells)
+
+Median over legs × windows of size-n / five-member typical-cell error (< 1 = better), and the one-core cost of the
+daily half (`bench_speed`, same job):
+
+| ensemble | GPP | NPP | ET | runoff | worst (flux, leg) | core-s per cell-year |
+|---|---|---|---|---|---|---|
+| 1 net, seed 0 / `DE_5seed` | 1.276 | 1.173 | 1.169 | 1.228 | 1.723 (GPP, IPSL ssp370 late) | 1.32e-3 |
+| 1 net, seed 5 / `D2E_5seed` | 1.125 | 1.013 | 1.283 | 1.100 | 1.591 (ET, UKESM ssp370 late) | 1.32e-3 |
+| 3 nets, seeds 0–2 / `DE_5seed` | 1.004 | 1.015 | **1.114** | **1.101** | 1.280 (runoff, GFDL ssp370 early) | 3.85e-3 |
+| 3 nets, seeds 5–7 / `D2E_5seed` | 0.951 | 1.040 | 1.022 | 1.040 | 1.271 (ET, IPSL ssp585 late) | 3.88e-3 |
+| 5 nets (reference) | 1 | 1 | 1 | 1 | — | 6.40e-3 |
+| 10 nets, seeds 0–9 / `DE_5seed` | **1.018** | 1.000 | 0.938 | 0.942 | 1.109 (GPP, IPSL ssp370 late) | 1.28e-2 |
+| 10 nets, seeds 0–9 / `D2E_5seed` | 0.979 | 0.928 | 0.913 | 0.869 | 1.046 (GPP, MPI ssp126 early) | 1.28e-2 |
+
+**Verdict (pre-registered §2): five stays.** Smaller: one network fails in both replicates (10–28 % worse); three
+passes in replicate b (≤ 1.04) but not in replicate a (ET 1.114, runoff 1.101) — both were required. Larger: ten
+improves ET by 6–9 % and runoff by 6–13 % against both five-member ensembles, NPP 0–7 %, but GPP is 1.8 % worse
+against `DE_5seed` (whose five members it contains), failing "≤ 1.00 on every flux". The cost is linear in the
+member count (1.3e-3 per network); ten would put the whole emulator at ~1.4e-2 core-s per cell-year, just above the
+T31-class allowance of 0.0135 (`EXECUTION_PLAN.md` §0) — a speed cost for a gain mostly in ET / runoff.
+**Reading:** the five-member choice of ADR 0322 was close to the knee; the replicate-to-replicate spread at three
+members (ET 1.11 vs 1.02) is itself the run-to-run noise ADR 0336 §6 warned about.

@@ -74,7 +74,7 @@ full grid training data only when we are sure which model version we want to emu
   `D2E_5seed T2E_5seed`; adopt if BOTH pairs give runoff ≤ 0.90 and ET ≤ 0.95 (median over legs), GPP/NPP ≤ 1.05,
   worst leg ≤ 1.25, drift ≤ +0.08 (ADR 0348 §1). If adopted: the package `landemu` needs the four columns
   (`Setup.soil_code` exists).
-* **Ensemble size (ADR 0348 arm N) — RUNNING:** `DE_1seed`, `DE_3seed`, `D2E_1seed`, `D2E_3seed`, `DE_10seed` (jobs
+* **Ensemble size (ADR 0348 §4.2): FIVE STAYS** — one net 10–28 % worse; three passes in one replicate only (ET/runoff +10 % in the other); ten is 6–13 % better on ET/runoff but GPP +1.8 % vs one reference and doubles the daily cost (whole emulator ~1.4e-2 core-s, just over the T31 allowance). Was: (jobs
   2638488–92); rule in ADR 0348 §2 (read each run's one-core timing from its summary.md).
 * **Soil code in the forest map (ADR 0349): NULL, closed** (±2 %).
 * **Drought die-offs (ADR 0350/0351): the forest map MISSES them; climate inputs do not fix it.** 94 % of the
