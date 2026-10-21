@@ -44,6 +44,25 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (night) — the leak-free restatement is done (ADR 0353), and the two daily-network arms are closed
+(ADR 0348 §4).** Owner: "continue in the recommended way" ⇒ option (a) below.
+* **Restated (leak-free; quote these, not ADR 0340 §4.1–4.3):** structure **18 of 22** criteria (was 21): dense tree
+  count 1.26× and biomass per tree 1.18× a second run (both now fail the 1.2 limit), dense worst-10 % tree count 1.47
+  (10/15 ✗), sparse tree count 3.00 (7/15 ✗); drift mid → late ×1.06 / ×1.05 (pre-registered rule 1.22 / 1.41, fails);
+  stand map leaf area 1.45×, vegetation carbon 1.31× (+5–6 %); plant-type cover untouched (the leaked run never had
+  it); **the whole emulator's daily fluxes within 1 % of before** (`PD_B_fx`: GPP 2.36, NPP 3.94, ET 3.09, runoff 5.22;
+  ET typical 5 → 4 of 13 legs). Validated fold release is now **`release/fold_gfdl-esm4_v2`** (check equals v1's).
+  `release/v1` (deployment) unchanged. Paper text + figure scripts updated (`docs/paper/README.md` notes it).
+* **Soil texture into the daily networks: not adopted** (ET 0.99 in both seed pairs, bar 0.95; runoff 0.95 / 0.89).
+  Unexpected: NPP 13–16 % better in both pairs with GPP unchanged — a follow-up needs its own pre-registration.
+* **Ensemble size: five stays.** Three networks lose 10–11 % on ET/runoff in one replicate; ten gain 2–13 % on water
+  and NPP at twice the cost (1.28e-2 core-s per cell-year, at the T31 allowance) but fail GPP ≤ 1.00 against one of
+  the two five-network ensembles.
+**Next (owner to choose):** (b) a die-off model of the one-year tree-count change from the year's drought anomaly +
+the stand (the forest map's biggest known miss, ADR 0352 §6.3); (c) ship `fx10` (recent-climate inputs, small gain:
+dense tree count ×0.98, 19 of 22); (d) the NPP gain from soil texture as a pre-registered NPP arm; (e) a ten-network
+ensemble for deployment if the cost is acceptable.
+
 **2026-10-21 (evening) — the forest map fed its own last-year state: does NOT follow die-offs; and a training leak
 found and fixed (ADR 0352).** Owner said "yes try it" to the recursive map.
 * **Leak:** the yearly structure map's (and the stand map's) training rows held run m5 on the HELD-OUT climate model's
