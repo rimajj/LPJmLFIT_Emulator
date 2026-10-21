@@ -11,10 +11,10 @@ OCN="${3:-slab}"
 YRS="${4:-3}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 EXP=""
-for v in LW LANDREF PROFREF LWKW CLOUDKW CONVKW T0 SIGMA; do
+for v in LW LANDREF PROFREF WINTERREF LWKW CLOUDKW CONVKW T0 SIGMA CLEARSKY DAYS; do
   [ -n "${!v:-}" ] && EXP="$EXP export $v='${!v}';"
 done
-JOB=$(sbatch --parsable --job-name="$TAG" --account=waldspektrum --partition=priority --qos=priority \
+JOB=$(sbatch --parsable --job-name="$TAG" --account=waldspektrum --partition=${PARTITION:-priority} --qos=${QOS:-priority} \
   --nodes=1 --ntasks=1 --cpus-per-task=1 --time="${RUNTIME:-02:00:00}" --output="$REPO/logs/${TAG}.%j.out" \
   --wrap "set -eu; $EXP
     export JULIA_DEPOT_PATH=\$HOME/.julia JULIA_NUM_THREADS=1

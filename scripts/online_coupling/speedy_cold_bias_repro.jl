@@ -56,10 +56,130 @@ function initialize!(cb::ColdDiag, vars, model)
         cb.w[ring] .= Ω[j]
     end
     haskey(ENV, "LANDREF") && read_landref!(cb, ENV["LANDREF"])
+    haskey(ENV, "WINTERREF") && read_winterref!(ENV["WINTERREF"])
     return nothing
 end
 
 acc!(cb, k, x, w) = (a = get!(cb.acc, k, zeros(2)); a[1] += w * x; a[2] += w; nothing)
+
+# env WINTERREF=<csv from build_speedy_winter_reference.py>: at its land columns poleward of 50 degrees, accumulate per
+# calendar month the model's layer temperatures and pressures, near-surface air, top soil, surface downward longwave and
+# shortwave, land sensible heat flux and snow; finalize! compares them in each column's GFDL-ESM4 coldest month.
+const WREF = Dict{String, Vector{Float64}}()
+const WVARS = 23                                  # 1-8 layer T, 9-16 layer p, then air, soil, LWdown, SWdown, snow, SH, LWup
+const WACC = Ref(zeros(0, 12, WVARS))
+const WN = zeros(Int, 12)
+function read_winterref!(path)
+    lines = readlines(path)
+    names = split(lines[1], ',')
+    cols = [parse.(Float64, split(l, ',')) for l in lines[2:end]]
+    for (i, n) in enumerate(names)
+        WREF[n] = [c[i] for c in cols]
+    end
+    WACC[] = zeros(length(cols), 12, WVARS)
+    return nothing
+end
+function winter_acc!(cb, vars, model, t)
+    p = vars.parameterizations
+    m = month(t)
+    WN[m] += 1
+    Tg = SpeedyWeather.get_prognostic_step(vars.grid.temperature, model.time_stepping, cb)
+    lstep = SpeedyWeather.time_stepper(model.time_stepping, :land)
+    soilT = SpeedyWeather.get_prognostic_step(vars.prognostic.land.soil_temperature, lstep, cb)
+    snow = SpeedyWeather.get_prognostic_step(vars.prognostic.land.snow_depth, lstep, cb)
+    coord = model.geometry.vertical_coordinates
+    A = WACC[]
+    for (c, ij) in enumerate(WREF["ij"])
+        ij = Int(ij)
+        pₛ = p.surface_pressure[ij]
+        for k in 1:8
+            A[c, m, k] += Tg[ij, k]
+            A[c, m, 8 + k] += SpeedyWeather.pressure(k, pₛ, coord) / 100
+        end
+        A[c, m, 17] += p.surface_air_temperature[ij]
+        A[c, m, 18] += soilT[ij, 1]
+        A[c, m, 19] += p.surface_longwave_down[ij]
+        A[c, m, 20] += p.surface_shortwave_down[ij]
+        A[c, m, 21] += snow[ij]
+        A[c, m, 22] += p.land.sensible_heat_flux[ij]
+        A[c, m, 23] += p.land.surface_longwave_up[ij]
+    end
+    return nothing
+end
+function winter_report()
+    isempty(WREF) && return nothing
+    A, w = WACC[], WREF["weight"]
+    n = length(w)
+    mon = Int.(WREF["cold_month"])
+    X = [A[c, mon[c], v] / WN[mon[c]] for c in 1:n, v in 1:WVARS]
+    plev = [1000, 925, 850, 700, 600, 500, 400, 300]
+    function gfdl_at(c, pk)                       # GFDL-ESM4 ta, linear in log p, NaN below its ground
+        ta = [WREF["ta_$(q)_K"][c] for q in plev]
+        pk >= plev[1] && return NaN
+        i = findfirst(q -> q <= pk, plev)
+        (i === nothing || i == 1) && return NaN
+        a = (log(pk) - log(plev[i - 1])) / (log(plev[i]) - log(plev[i - 1]))
+        return (1 - a) * ta[i - 1] + a * ta[i]
+    end
+    wm(x, sel) = sum(w[sel] .* x[sel]) / sum(w[sel])
+    println("high-latitude land (|lat| >= 50, $n columns) in each column's GFDL-ESM4 coldest month (GFDL-ESM4 1985-2014):")
+    println("  layer  model p hPa  model T °C  GFDL-ESM4 T °C  model - GFDL   (columns with GFDL above ground)")
+    for k in 4:8
+        g = [gfdl_at(c, X[c, 8 + k]) for c in 1:n]
+        sel = isfinite.(g)
+        any(sel) && @printf(
+            "   %d      %7.1f    %8.2f     %8.2f      %+6.2f       %d\n", k, wm(X[:, 8 + k], sel), wm(X[:, k], sel) - 273.15,
+            wm(g, sel) - 273.15, wm(X[:, k] .- g, sel), count(sel)
+        )
+    end
+    all_ = trues(n)
+    for (name, i, ref, off) in (
+            ("near-surface air vs tas °C", 17, "tas_K", 273.15), ("top soil vs skin ts °C   ", 18, "ts_K", 273.15),
+            ("LW down W/m²             ", 19, "rlds", 0.0), ("SW down W/m²             ", 20, "rsds", 0.0),
+        )
+        @printf("  %s  %8.2f  %8.2f  %+7.2f\n", name, wm(X[:, i], all_) - off, wm(WREF[ref], all_) - off, wm(X[:, i] .- WREF[ref], all_))
+    end
+    @printf("  model only: land LW up %.1f W/m², land sensible heat %.1f W/m², snow %.3f m water equiv., air - top soil %+.2f K\n",
+        wm(X[:, 23], all_), wm(X[:, 22], all_), wm(X[:, 21], all_), wm(X[:, 17] .- X[:, 18], all_))
+    return nothing
+end
+
+# env CLEARSKY=1: every 7th step (7 and the 36 steps of a day share no factor, so the samples sweep the diurnal
+# cycle) recompute every column's radiation on a COPY of the model state twice, as diagnosed and with the clouds
+# removed (shortwave: no cloud or stratocumulus reflection, no cloud absorption; longwave: cloud cover 0), and
+# accumulate top-of-atmosphere and surface fluxes => cloud radiative effects. The copy keeps the run untouched.
+const CLEARSKY = get(ENV, "CLEARSKY", "") == "1"
+const STEP = Ref(0)
+function clearsky!(cb, vars, model)
+    sw, lw = model.radiation.shortwave, model.radiation.longwave
+    v = deepcopy(vars)
+    p = v.parameterizations
+    NF = eltype(p.outgoing_shortwave)
+    nlay = size(SpeedyWeather.get_prognostic_step(v.grid.humidity, model.time_stepping, cb), 2)
+    clear = (
+        cloud_cover = zero(NF), cloud_albedo = zero(NF), cloud_top = NF(nlay + 1), cloud_base = sw.clouds.cloud_base[],
+        stratocumulus_cover = zero(NF), stratocumulus_albedo = zero(NF),
+    )
+    for ij in eachindex(cb.w)
+        w = cb.w[ij]
+        zb = abs(cb.lat[ij]) < 15 ? :ztrop : abs(cb.lat[ij]) < 30 ? :zsub : abs(cb.lat[ij]) < 60 ? :zmid : :zpol
+        SpeedyWeather.parameterization!(ij, v, sw, model)        # all-sky, clouds diagnosed as in the run
+        SpeedyWeather.parameterization!(ij, v, lw, model)
+        all = (p.outgoing_shortwave[ij], p.outgoing_longwave[ij], p.surface_shortwave_down[ij], p.surface_longwave_down[ij])
+        t = SpeedyWeather.transmissivity!(ij, v, clear, sw.transmissivity, model)
+        SpeedyWeather.shortwave_radiative_transfer!(ij, v, t, clear, sw.ozone, sw.radiative_transfer, model)
+        p.cloud_cover[ij] = zero(NF)
+        SpeedyWeather.parameterization!(ij, v, lw, model)
+        clr = (p.outgoing_shortwave[ij], p.outgoing_longwave[ij], p.surface_shortwave_down[ij], p.surface_longwave_down[ij])
+        for (i, k) in enumerate((:osr, :olr, :ssd, :sld))
+            for b in (zb, :zall)
+                acc!(cb, Symbol(:cs_, k, :_all_, b), all[i], w)
+                acc!(cb, Symbol(:cs_, k, :_clr_, b), clr[i], w)
+            end
+        end
+    end
+    return nothing
+end
 
 function callback!(cb::ColdDiag, vars, model)
     t = vars.prognostic.clock.time
@@ -70,7 +190,10 @@ function callback!(cb::ColdDiag, vars, model)
         acc!(cb, Symbol(:yosr_, y), p.outgoing_shortwave[ij], cb.w[ij])
         acc!(cb, Symbol(:yolr_, y), p.outgoing_longwave[ij], cb.w[ij])
     end
-    y < 2 && return nothing                                      # year 1 = spin-up
+    STEP[] += 1
+    CLEARSKY && (y >= 2 || YEARS == 1) && STEP[] % 7 == 0 && clearsky!(cb, vars, model)
+    y < 2 && YEARS > 1 && return nothing                         # year 1 = spin-up (scored only if it is all there is)
+    isempty(WREF) || winter_acc!(cb, vars, model, t)
     lf = model.land_sea_mask.land_fraction
     sst = SpeedyWeather.get_prognostic_step(
         vars.prognostic.ocean.sea_surface_temperature,
@@ -233,6 +356,20 @@ function finalize!(cb::ColdDiag, vars, model)
             )
         end
     end
+    if haskey(cb.acc, :cs_osr_all_zall)
+        println("cloud radiative effect (clear-sky recomputed on a copy every 7th step), W/m²:")
+        println("                refl.SW all  clear   CRE_SW |   OLR all  clear   CRE_LW | net CRE | surface: SW down CRE, LW down CRE")
+        for (b, name) in ((:zall, "global     "), (:ztrop, "|lat| < 15 "), (:zsub, "|lat| 15-30"), (:zmid, "|lat| 30-60"), (:zpol, "|lat| >= 60"))
+            m(k, s) = mean_of(cb, Symbol(:cs_, k, :_, s, :_, b))
+            cs, cl = m(:osr, :clr) - m(:osr, :all), m(:olr, :clr) - m(:olr, :all)
+            @printf(
+                "  %s  %7.1f %7.1f %7.1f  | %7.1f %7.1f %7.1f  | %7.1f | %7.1f %7.1f\n", name, m(:osr, :all), m(:osr, :clr), cs,
+                m(:olr, :all), m(:olr, :clr), cl, cs + cl, m(:ssd, :all) - m(:ssd, :clr), m(:sld, :all) - m(:sld, :clr)
+            )
+        end
+        println("  CERES EBAF Ed4.0 global, Jul 2005-Jun 2015 (Loeb et al. 2018, J. Climate, Table 5):")
+        println("  global        99.1    53.3   -45.8  |   240.1   268.1    27.9  |   -17.9")
+    end
     S4 = model.planet.solar_constant / 4
     println("per year: global air °C, reflected SW, OLR, net down at top (S₀/4 - both) [W/m²]")
     for y in 1:YEARS
@@ -273,6 +410,7 @@ function finalize!(cb::ColdDiag, vars, model)
             println()
         end
     end
+    winter_report()
     isempty(cb.snow_aug) || @printf(
         "31 Aug of year %d: %.0f %% of land 55-73 N (Greenland excluded) snow-covered, max snow %.2f m water equiv.\n",
         YEARS, 100cb.snow_aug[1], cb.snow_aug[2]
@@ -343,4 +481,5 @@ println("ocean = $OCEAN, longwave = $LW")
 model = PrimitiveWetModel(spectral_grid; kw...)
 add!(model, :cold_diag => ColdDiag())
 simulation = initialize!(model; time = START)
-run!(simulation, period = Day(Dates.value(Date(START + Year(YEARS)) - Date(START))))
+# env DAYS=n: run n days instead of YEARS years (quick tests of the diagnostics; scored as year 1)
+run!(simulation, period = Day(haskey(ENV, "DAYS") ? parse(Int, ENV["DAYS"]) : Dates.value(Date(START + Year(YEARS)) - Date(START))))

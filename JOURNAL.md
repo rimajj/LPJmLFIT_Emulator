@@ -1759,3 +1759,30 @@ T bias at 185/308/431/555 hPa **+9.5/+5.9/+5.4/+4.1 K** (σ_ent 0: +5.9/−0.2/+
 slab too, the profile fix needs the mixing all the way up; at the default depth it removes only about half of the
 warm bias. Both runs keep the 185 hPa layer ~6–10 K too warm (and 0.71–2.2× the reference humidity there), which
 neither option touches. Log logs/speedy-sub10-mse-E1-slab.2653062.out.
+
+## 2026-10-22 (night) — SpeedyWeather side track: upstream report, clouds, high-latitude winter (owner: "yes, do all that")
+**Upstream search first** (memory `search-upstream-before-fixing`): SpeedyWeather issues/PRs searched for BettsMiller /
+convection / entrainment / adiabat. Nothing reports either convection defect. #1221 (merged 2026-10-06) restructured the
+ascent and added `LinearEntrainment` (the T-and-q mixing of defect 2); #1275 = convective water budget (fixed in #1221);
+the owner's own #1333 (cold near-surface air) is open with no replies. `convection.jl` unchanged on main since #1221.
+**Parcel check against upstream's own function** (`scripts/online_coupling/speedy_parcel_ascent_check.jl`, no model run:
+`pseudo_adiabat!` on one tropical column, parcel kept buoyant, vs a 2000-sub-step integration of the same equations):
+main is +2.96/+3.65/+4.83/+7.09/+11.70/+18.97 K at 802/679/555/432/309/185 hPa. The earlier offline estimate
+(+2.7/+8.8 at σ 0.31/0.19) started from a saturated parcel and missed half of it: the layer in which the parcel
+saturates is ascended MOIST FROM ITS BOTTOM (the dry trial over the whole layer decides "saturated"), which leaves the
+parcel ~3 K too warm one layer up, and moist adiabats fan out with height. The branch's `ascent_substeps=10` as of
+684c181c had the same gap (+3.37/…/+9.08/+11.73 K). Fixed on coldfix-E 969c8897: with sub-steps, the parcel rises dry
+to the sub-step at which it saturates ⇒ +0.39/+0.48/+0.65/+0.97/+1.56/+2.09 K, identical to the 10-sub-step fine
+integration. `substeps = 1` unchanged by construction. ⇒ every "E2" number above was run with the incomplete sub-step
+fix; the configuration is re-run as "E3" (same knobs, corrected sub-stepping).
+**Clouds — reference and pre-registered reading (written before any cloud run).** No top-of-atmosphere radiation on the
+cluster (no `rsut`/`rlut` in any CMIP6 dir here, CERES via NASA/ICDC needs an account), so the reference is CERES EBAF
+Ed4.0, Jul 2005–Jun 2015, global means with the net-flux constraint (Loeb et al. 2018, J. Climate 31, Table 5):
+reflected SW 99.1, OLR 240.1, clear-sky SW 53.3, clear-sky OLR 268.1, SW cloud effect −45.8, LW cloud effect +27.9,
+net −17.9 W/m²; cloud cover per band from GFDL-ESM4 `clt` (already in PROFREF). The reproducer now recomputes every
+column's radiation without clouds on a copy of the state every 7th step (env CLEARSKY=1) ⇒ model cloud effects.
+Pass for a cloud setting (prescribed SST, years 2–3): reflected SW and OLR each within 3 W/m² of CERES, both cloud
+effects within 5 W/m², clear-sky OLR within 5 W/m², global cloud cover within 0.05 of GFDL-ESM4 (0.667), tropical
+300–550 hPa temperature not worse than the base by more than 0.5 K; then on the slab (5 yr) year-5 net TOA within
+±1 W/m². A setting that fixes the totals only by trading one cloud effect against the other (one cloud effect outside
+its band) does not pass.

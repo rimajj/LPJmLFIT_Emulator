@@ -418,14 +418,14 @@ index ef288fba..e3bf2e0c 100644
      # calculate mean sea-level pressure on model grid
      mslp = simulation.variables.scratch.grid.b_2D
 diff --git a/SpeedyWeather/src/parameterizations/convection.jl b/SpeedyWeather/src/parameterizations/convection.jl
-index 8dd0ec9b..ee6aeed4 100644
+index 8dd0ec9b..2a54d0d7 100644
 --- a/SpeedyWeather/src/parameterizations/convection.jl
 +++ b/SpeedyWeather/src/parameterizations/convection.jl
 @@ -15,6 +15,12 @@ in their paper. Fields and options are $(TYPEDFIELDS)"""
      "[OPTION] Entrainment profile mixing environmental air into the rising parcel"
      @component entrainment::Entrainment = LinearEntrainment(DEFAULT_NF)
  
-+    "[OPTION] Sub-steps of the saturated parcel ascent per layer (1 = one explicit step with the lapse rate of the lower level)"
++    "[OPTION] Sub-steps of the parcel ascent per layer (1 = one explicit step with the lapse rate of the lower level, and moist over the whole layer in which the parcel saturates; > 1 also places the condensation level to the sub-step)"
 +    ascent_substeps::Int = 1
 +
 +    "[OPTION] Entrain by mixing moist static energy and keep the parcel saturated (true), instead of mixing T and q and resetting q to saturation at the next level without evaporative cooling (false)"
@@ -451,7 +451,17 @@ index 8dd0ec9b..ee6aeed4 100644
      )
      NF = eltype(temp_ref_profile)             # number format
      nlayers = length(σ)                       # number of vertical layers
-@@ -252,18 +261,25 @@ column then need no branch to skip those levels, they contribute zero on their o
+@@ -241,6 +250,9 @@ column then need no branch to skip those levels, they contribute zero on their o
+         humid_env = humid_environment[ij, k]
+ 
+         if buoyant                          # calculate moist adiabat while buoyant till top
++            # with sub-steps, a parcel that saturates within this layer rises dry up to the sub-step at which
++            # it saturates (its condensation level), not moist from the bottom of the layer
++            dry_start = !saturated && substeps > 1
+             if !saturated                   # if not saturated yet follow dry adiabat
+                 # dry adiabatic ascent and saturation humidity of that temperature
+                 temp_parcel_dry = temp_parcel * (σ[k] / σ[k + 1])^κ
+@@ -252,18 +264,36 @@ column then need no branch to skip those levels, they contribute zero on their o
              end
  
              if saturated
@@ -472,6 +482,18 @@ index 8dd0ec9b..ee6aeed4 100644
 +                # rate of the lower level, which under-cools the parcel over thick layers)
 +                ΔΦ = (geopotential[ij, k] - geopotential[ij, k + 1]) / substeps   # geopotential step
 +                for i in 1:substeps
++                    # sub-step start and end pressure, log-linear between the layers
++                    pₐ = σ[k + 1] * pres * (σ[k] / σ[k + 1])^(NF(i - 1) / substeps)
++                    pᵢ = i == substeps ? σ[k] * pres : σ[k + 1] * pres * (σ[k] / σ[k + 1])^(NF(i) / substeps)
++                    if dry_start                # below the condensation level within this layer: dry adiabat
++                        temp_dry = temp_parcel * (pᵢ / pₐ)^κ
++                        if humid_parcel < saturation_humidity(temp_dry, pᵢ, atmosphere)
++                            temp_parcel = temp_dry
++                            temp_virt_parcel = virtual_temperature(temp_parcel, humid_parcel, atmosphere)
++                            continue
++                        end
++                        dry_start = false       # saturates during this sub-step: moist from its start
++                    end
 +                    # calculate moist/pseudo adiabatic lapse rate, dT/dΦ = -Γ/cp
 +                    T, Tᵥ, q = temp_parcel, temp_virt_parcel, humid_parcel  # for brevity
 +                    A = q * Lᵥ / ((1 - q)^2 * R_dry)
@@ -480,16 +502,15 @@ index 8dd0ec9b..ee6aeed4 100644
 +                    temp_parcel = temp_parcel - ΔΦ / cₚ * Γ                 # new temperature of parcel
 +
 +                    # at new (lower) temperature condensation occurs immediately
-+                    # new humidity equals to that saturation humidity, at the sub-step's pressure
-+                    # (log-linear between the layers; exactly σ[k] * pres at the last sub-step)
-+                    pᵢ = i == substeps ? σ[k] * pres : σ[k + 1] * pres * (σ[k] / σ[k + 1])^(NF(i) / substeps)
++                    # new humidity equals to that saturation humidity, at the sub-step's end pressure
++                    # (exactly σ[k] * pres at the last sub-step)
 +                    humid_parcel = saturation_humidity(temp_parcel, pᵢ, atmosphere)
 +                    temp_virt_parcel = virtual_temperature(temp_parcel, humid_parcel, atmosphere)
 +                end
                  sat_humid = humid_parcel               # reused below for the reference humidity
  
                  if entraining(entrainment)             # compiled away entirely for NoEntrainment
-@@ -271,8 +287,20 @@ column then need no branch to skip those levels, they contribute zero on their o
+@@ -271,8 +301,20 @@ column then need no branch to skip those levels, they contribute zero on their o
                      # buoyancy and moisture; sat_humid is recomputed at the mixed temperature so
                      # the reference humidity below stays consistent with the (now mixed) T_ref
                      ε = entrainment(σ[k])
