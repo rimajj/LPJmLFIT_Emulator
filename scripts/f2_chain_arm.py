@@ -6,7 +6,8 @@
 Network size and inputs as arm C (f2_chain_new_legs.COMMON); anything after `--` is passed to both steps
 (e.g. `-- --carbon-head physical`). Then: python scripts/f2_relative_score.py <control> <prefix>E_5seed
 
-Usage: python scripts/f2_chain_arm.py <prefix> --train-legs a,b --test-legs c,d [--dry-run] [-- extra args]
+Usage: python scripts/f2_chain_arm.py <prefix> --train-legs a,b --test-legs c,d [--seeds 5-9]
+       [--after JID] [--dry-run] [-- extra args]
 """
 
 import argparse
@@ -25,6 +26,7 @@ def main():
     ap.add_argument("--train-legs", required=True)
     ap.add_argument("--test-legs", required=True)
     ap.add_argument("--seeds", default="0-4", help="member seeds a-b; a replicate ensemble uses e.g. 5-9 (ADR 0336)")
+    ap.add_argument("--after", default="", help="job ids the members wait for (afterok), e.g. 123:456")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
     lo, hi = map(int, a.seeds.split("-"))
@@ -34,7 +36,8 @@ def main():
     mem = [
         sbatch_python(f"f2-{a.prefix}-s{s}", "scripts/f2_train.py",
                       ["--tag", f"{a.prefix}_3x256_seed{s}", "--seed", str(s), "--train-only", *legs, *COMMON,
-                       *extra], [], time="01:30:00", **gpu)  # fmt: skip
+                       *extra], [j for j in a.after.split(":") if j], time="01:30:00",
+                      **gpu)  # fmt: skip
         for s in seeds
     ]
     ens = ",".join(f"{a.prefix}_3x256_seed{s}" for s in seeds)

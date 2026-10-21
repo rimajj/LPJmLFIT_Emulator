@@ -3,7 +3,7 @@
 
 For every panel member m1-m4 and every constant-CO2 leg with daily output (ctl_obs,
 mpi-esm1-2-hr_ssp126/370/585, ukesm1-0-ll_ssp370) this writes, under OUT
-(default /p/projects/open/Jamir/esm_land_emulator_data/f2):
+(default /p/projects/reformit/Jamir/esm_land_emulator_data/f2):
 
   cells.parquet         Cell, block, lat, heldout (ADR 0320 section 4), biome name or ""
   forc_m<k>_<leg>.npy   (ncell, 82*365, 5) float32 tas pr rsds lwnet huss, days of 2019..2100;
@@ -139,9 +139,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--members", default="1,2,3,4")
     ap.add_argument("--legs", default=",".join(LEGS))
-    ap.add_argument(
-        "--out", default=os.environ.get("OUT", "/p/projects/open/Jamir/esm_land_emulator_data/f2")
-    )
+    out_default = "/p/projects/reformit/Jamir/esm_land_emulator_data/f2"  # moved 2026-10-21
+    ap.add_argument("--out", default=os.environ.get("OUT", out_default))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
 

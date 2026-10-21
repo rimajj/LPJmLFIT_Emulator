@@ -31,7 +31,7 @@ import polars as pl
 import torch
 from torch import nn
 
-DATA = "/p/projects/open/Jamir/esm_land_emulator_data/f2"
+DATA = "/p/projects/reformit/Jamir/esm_land_emulator_data/f2"  # moved 2026-10-21 (ADR 0348)
 TRAIN_LEGS = ["ctl_obs", "mpi-esm1-2-hr_ssp126", "mpi-esm1-2-hr_ssp370"]
 TEST_LEGS = ["mpi-esm1-2-hr_ssp585", "ukesm1-0-ll_ssp370"]
 ALL_LEGS = TRAIN_LEGS + TEST_LEGS
@@ -47,6 +47,17 @@ NFORC = 12
 NIN = NFORC + 3 + 4 + 12
 # --co2 (ADR 0342, nitrogen-on model only): + the year's CO2 / 1000 as the LAST input column
 CO2_INPUT = False
+# --soil-texture (ADR 0348): + 4 per-cell columns after everything else: sand, clay, log Ks (mm/h),
+# log Sf (mm) of the cell's soil type, from the panel build's par/soil_20m.js
+# (config/soil_texture_by_code.csv). The capacity input carries how much water
+# the top metre holds; these carry how fast water enters and moves through it.
+SOIL_INPUT = False
+SOIL = None  # (ncell, 4) float32, rows in cells.parquet order
+SOIL_COL = 0
+SOIL_CSV = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "soil_texture_by_code.csv"
+)
+PANEL_CELLS = "/p/projects/open/Jamir/esm_land_emulator_data/xpanel/cells.parquet"  # soil_code
 # --all-cells (ADR 0344, deployment): the held-out cells train too (validation stays 10 % of the blocks)
 ALL_CELLS = False
 NH, NL = 64, 2  # network width / depth (set from the command line)
@@ -131,6 +142,18 @@ def stand_features(stand):
     return s
 
 
+def soil_columns(cells_df):
+    """(ncell, 4) sand, clay, log Ks, log Sf of each cell's soil type, in cells_df row order."""
+    tex = pl.read_csv(SOIL_CSV)
+    codes = pl.read_parquet(PANEL_CELLS).select(pl.col("Cell").cast(pl.Int64), "soil_code")
+    d = cells_df.select(pl.col("Cell").cast(pl.Int64)).join(codes, on="Cell", how="left")
+    d = d.join(tex, left_on="soil_code", right_on="code", how="left")
+    assert d.height == cells_df.height and d["sand"].null_count() == 0, "a cell has no soil type"
+    assert (d["Cell"] == cells_df["Cell"].cast(pl.Int64)).all(), "join changed the row order"
+    cols = [d["sand"], d["clay"], np.log(d["Ks"].to_numpy()), np.log(d["Sf"].to_numpy())]
+    return np.stack([np.asarray(c, dtype=np.float32) for c in cols], -1)
+
+
 def hemisphere_sign(slat):
     """+1, or -1 south of the equator under SEASON_PHASE == "local" (half a year = a sign flip)."""
     if SEASON_PHASE != "local":
@@ -155,6 +178,8 @@ def assemble(ff, sinA, cosA, slat, st, cap_prev, W, S, cells, days, co2=None):
     x[:, NFORC + 7 : NFORC + 19] = st[cells, iy]
     if CO2_INPUT:  # co2[k] = year 2019 + k; day d of year 2020 + iy reads the current year's value
         x[:, NFORC + 19] = co2[iy + 1] / 1000.0
+    if SOIL_INPUT:
+        x[:, SOIL_COL : SOIL_COL + 4] = SOIL[cells]
     if DROP:
         x[:, DROP] = 0.0
     return x
@@ -578,6 +603,8 @@ def bench_speed(net, ml, reps=3):
                 x[:, NFORC + 7 : NFORC + 19] = st
                 if CO2_INPUT:
                     x[:, NFORC + 19] = ml.co2[1] / 1000.0
+                if SOIL_INPUT:
+                    x[:, SOIL_COL : SOIL_COL + 4] = SOIL
                 if DROP:
                     x[:, DROP] = 0.0
                 y = netc(torch.from_numpy(x), torch.from_numpy(pr), torch.from_numpy(S)).numpy()
@@ -734,7 +761,7 @@ def to_markdown(S, s1):
 
 def main():
     global NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR, CARBON_HEAD, SEASON_PHASE
-    global DATA, CO2_INPUT, NIN, ALL_CELLS
+    global DATA, CO2_INPUT, NIN, ALL_CELLS, SOIL_INPUT, SOIL, SOIL_COL
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="A")
     ap.add_argument("--nsamp", type=int, default=40_000_000)
@@ -775,12 +802,17 @@ def main():
                     help="the year's CO2 as an input (ADR 0342; co2_<tag>.npy)")  # fmt: skip
     ap.add_argument("--all-cells", dest="all_cells", action="store_true",
                     help="no held-out cells: a deployment model (ADR 0344)")  # fmt: skip
+    ap.add_argument("--soil-texture", dest="soil_texture", action="store_true",
+                    help="+ sand, clay, log Ks, log Sf of the soil type (ADR 0348)")  # fmt: skip
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
     DATA, CO2_INPUT, ALL_CELLS = a.data_dir, a.co2, a.all_cells
     MEMBERS[:] = [int(k) for k in a.members.split(",")]
     if CO2_INPUT:
         NIN = NFORC + 3 + 4 + 12 + 1
+    SOIL_INPUT = a.soil_texture
+    if SOIL_INPUT:
+        SOIL_COL, NIN = NIN, NIN + 4
     NH, NL, NPP_HEAD, DEEP_TAU, STAND_DIR = a.hidden, a.layers, a.npp_head, a.deep_tau, a.stand_dir
     CARBON_HEAD, SEASON_PHASE = a.carbon_head, a.season_phase
     DROP[:] = [FEAT[v] for v in a.drop_inputs.split(",") if v]
@@ -802,6 +834,12 @@ def main():
     log(f"== f2_train tag={a.tag} device={dev} args={vars(a)}")
     cells_df = pl.read_parquet(os.path.join(DATA, "cells.parquet"))
     lat = cells_df["lat"].to_numpy().astype(np.float32)
+    if SOIL_INPUT:
+        SOIL = soil_columns(cells_df)
+        log(
+            f"soil input: columns {SOIL_COL}..{SOIL_COL + 3}, "
+            f"per-cell min {SOIL.min(0)} max {SOIL.max(0)}"
+        )
     tr, va, te = split_cells(cells_df)
     log(f"cells: train {len(tr)} val {len(va)} held-out {len(te)}")
 

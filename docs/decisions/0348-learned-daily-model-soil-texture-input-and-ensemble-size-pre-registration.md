@@ -1,0 +1,85 @@
+# 0348 — Learned daily model: soil texture as an input, and how many networks the ensemble needs (pre-registration)
+
+* **Status:** pre-registered 2026-10-21, before any training. Results: §4, added after the runs.
+* **Owner instruction (2026-10-21):** *"do the model fixes first and train on the wvaialbeldata to see how they help.
+  we produce more full grid trainig data only when we are sure whic model verisn we want to emulate"* — and *"store
+  the daly data in teh refomrt folder, not in open"*.
+* **Follows:** STATE.md to-dos of 2026-10-21 (items 1 and 3: soil texture is not a daily-network input; the
+  ensemble size was chosen for cost and never tuned), ADR 0335/0336 (arm D = the deployment daily model, and the
+  run-to-run noise of one five-member ensemble), ADR 0322 (a single network's NPP level wanders by several %).
+* **Storage (owner, 2026-10-21):** the daily arrays and runs moved from `/p/projects/open/Jamir/esm_land_emulator_data/f2`
+  to **`/p/projects/reformit/Jamir/esm_land_emulator_data/f2`** (rsync + checksum dry-run = 0 differences, job
+  2638455); the old path is a symbolic link, so every older record and script still resolves.
+* **Code:** `scripts/f2_train.py --soil-texture` (new, off by default ⇒ every earlier run unchanged);
+  `scripts/build_soil_texture_reference.py` → `config/soil_texture_by_code.csv`;
+  `scripts/f2_chain_arm.py --after` (new); `scripts/f2_ensemble_sizes.py` (new).
+
+## 1. Arm T — soil texture as four per-cell inputs
+
+**What the network sees today about the soil:** only the top-metre capacity `cap` (= Σ_{l<3} whc_nat·dz, mm, yearly)
+and the stores. `cap` carries how much water the top metre holds (field capacity minus wilting point), not how fast
+water enters or moves through it. In the original the infiltration / percolation step uses the soil type's saturated
+conductivity `Ks` and suction `Sf` (`par/soil_20m.js`). Runoff (5.2× a second run) and ET (3.1×) are the worst daily
+fluxes on the release (ADR 0340 §4.2), and runoff error is the negative of the ET error (ADR 0326 §4).
+
+**The change (one variable):** arm D's exact recipe (3 × 256 network, NPP = GPP − respiration head, humidity input
+dropped, 40 M samples, all 14 climate legs, deep store draining over 365 days, five members) **plus** four per-cell
+columns appended after every other input: sand fraction, clay fraction, ln Ks (mm/h), ln Sf (mm) of the cell's soil
+type. Values are read from the panel binary snapshot's `par/soil_20m.js` with `cpp -P`, and the input soil code is
+mapped onto it by the run's own `soilmap` (code k = the k-th name, looked up in `soilpar` by name; `soilpar` also has
+an unmapped "clay (light)" row). The panel's 1 050 cells carry 11 of the 13 codes (none of codes 2, 10). Silt is
+`1 − sand − clay` and is left out as redundant.
+
+**Runs.** Members `T_3x256_seed0..4` → ensemble `TE_5seed`; replicate `T2_3x256_seed5..9` → `T2E_5seed`. Controls:
+`DE_5seed` (arm D, seeds 0–4, existing) and a new arm-D replicate `D2_3x256_seed5..9` → `D2E_5seed`. Two pairs with
+different seeds (TE vs DE, T2E vs D2E), because one ensemble's run-to-run noise is ±9–20 % per leg (ADR 0336 §6).
+
+**Venue:** free runs of all 14 legs, the 238 held-out cells with GPP ≥ 50 (ADR 0325 yardstick,
+`f2_relative_score.py`), compared with `f2_relscore_compare.py <scores> REF CAND`. ⚠ Arm D trains on every climate
+leg, so this is **out of sample by place only** — which is the axis a soil property can help.
+
+**Pre-registered verdict (both pairs must agree):**
+
+* **Primary (adopt):** median over legs of CAND / REF typical (30-yr p50, early and late pooled) **runoff ≤ 0.90 and
+  ET ≤ 0.95**.
+* **Must not get worse:** median GPP and NPP ratio ≤ 1.05; no flux's worst leg > 1.25; no leg's drift more than
+  0.08 above REF's (drift noise ±0.05–0.08, ADR 0336 §6).
+* **Null reading:** primary fails in either pair ⇒ at the panel's soil types texture carries nothing the capacity
+  input does not; close the item (no larger arm).
+* **Expectation:** runoff 0.85–0.95, ET 0.93–1.00, carbon unchanged within ±3 %. Modest, because `cap` already
+  encodes the texture's water-holding part and there are only 11 types.
+* **If adopted:** the package (`landemu`) gets the same four columns — `Setup` already carries `soil_code`.
+
+## 2. Arm N — ensemble size 1 / 3 / 5 / 10
+
+No new training beyond the arm-D replicate of §1. Ensembles of arm-D members (each a free-run + score job,
+`--deep-tau 365`):
+
+| size | replicate a | replicate b |
+|---|---|---|
+| 1 | `DE_1seed` (seed 0) | `D2E_1seed` (seed 5) |
+| 3 | `DE_3seed` (seeds 0–2) | `D2E_3seed` (seeds 5–7) |
+| 5 | `DE_5seed` (existing) | `D2E_5seed` (§1) |
+| 10 | `DE_10seed` (seeds 0–9) | — |
+
+The one-core cost per cell-year of each ensemble is measured inside the same job (`bench_speed`).
+
+**Pre-registered decision.** Reference = `DE_5seed` for the a-replicates and `D2E_5seed` for the b-replicates.
+
+* **Smaller deployment ensemble:** the smallest size whose BOTH replicates have median ratio ≤ 1.05 on every flux
+  (GPP, NPP, ET, runoff) becomes the deployment size.
+* **Larger:** 10 is adopted only if `DE_10seed` against BOTH five-member ensembles has median ≤ 0.95 on NPP or
+  runoff and ≤ 1.00 on every flux.
+* Otherwise five stays.
+* **Expectation:** 1 member clearly worse (1.1–1.3 on NPP, ADR 0322); 3 within ~5 % of 5 (borderline); 10 gains
+  ≤ 5 %. Cost scales roughly with the member count (the daily networks are 97 % of the emulator's time).
+
+## 3. Not in this record
+
+Soil code as a category in the yearly forest maps, and memory of single extreme years (STATE to-dos 2 and 4), are
+separate records. More full-grid training data is deferred by the owner until the model version to emulate is
+settled.
+
+## 4. Results
+
+(to be added after the runs)
