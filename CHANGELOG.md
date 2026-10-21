@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **The emulator paper (`docs/paper/`, figures `scripts/paper/`):** a model-description manuscript of the learned
+  emulator (release v1) for an external audience — design reasoning from the emulator review and the measurements that
+  ruled out the hybrid design, how it works, accuracy against a second run of the original, drift, the warming
+  response, a full-grid run and cost. Eleven figures (two TikZ schematics), every number traced to a decision record
+  or scored table; an independent fact-check (`docs/paper/FACTCHECK.md`) applied in full. Rebuild:
+  `scripts/paper/make_all.sh`.
+
 ### Fixed
 
 - **ADR 0347 §6 corrected (§8):** the single-hour > 80 °C surface overheating in the POEM coupling is NOT caused by

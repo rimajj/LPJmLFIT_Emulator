@@ -1,0 +1,831 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath,amssymb}
+\usepackage[round,authoryear]{natbib}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[section]{placeins}
+\captionsetup{font=small,labelfont=bf,labelsep=period}
+\setlist{nosep,leftmargin=1.4em}
+\renewcommand{\arraystretch}{1.15}
+\newcommand{\figpath}{figs}
+\newcommand{\x}{\ensuremath{\times}}
+
+\title{\textbf{LandEmu v1: a learned emulator of the trait-based,\\ individual-tree vegetation model LPJmL-FIT}\\[4pt]\large Daily carbon and water exchange and forest structure at a fraction of the cost}
+\author{Jamir Priesner\\[2pt]
+\small Potsdam Institute for Climate Impact Research (PIK), Member of the Leibniz Association,\\
+\small Potsdam, Germany\\
+\small Correspondence: jamir.priesner@chance-international.org}
+\date{Manuscript draft, 21 October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Individual-based, trait-based vegetation models resolve how forests of differently adapted trees grow, compete and
+die, but they are too expensive to run inside Earth system models. We present LandEmu v1, a learned emulator of the
+dynamic global vegetation model LPJmL-FIT that reproduces both its daily carbon and water exchange and its yearly
+forest structure and trait composition, driven by daily weather alone. Its design follows from a systematic review of
+115 emulator and hybrid-model studies of land models and from measurements that ruled out an earlier hybrid design:
+re-implementing the original's daily physics made it 4.6 times slower, and no single process of the original takes
+enough run time to give even a twofold speed-up. A five-member ensemble of small neural networks therefore replaces the
+entire daily step, with snow, top-metre and deep soil water carried as explicit stores that close the water balance
+exactly. Once a year, gradient-boosted tree models predict tree density, biomass per tree, four trait medians, leaf
+area, vegetation carbon and plant-type cover as a departure from a per-cell anchor, driven by the trailing 30-year
+climate; this part is not recursive, so its errors cannot accumulate. Tested on a climate model and an independent run
+of LPJmL-FIT withheld from their training, the yearly maps' error in dense forests is 1.16 (tree density) and 1.07
+(biomass per tree) times that of a further run of the stochastic original, and smaller for the trait medians. Tested on
+cells withheld from their training, under climate models they had seen, the daily networks' 30-year mean fluxes are 2.4
+(gross primary production) to 5.2 (runoff) times further from the original than a further run is --- about 3--6\,\%
+per cell for production and evapotranspiration, more for runoff --- with area totals within 2.5\,\%. After the start
+state has faded the structure error grows only slowly, with a creep in tree density under strong warming, and the flux
+error grows only for gross production under the two warmest climates. For a nitrogen-limited configuration of
+LPJmL-FIT with rising CO$_2$, the emulator reproduces 81--97\,\% of the change in vegetation carbon under two unseen
+climate models (a second run of the original: 61--89\,\%), but damps the largest warming-only loss (57--72\,\% of it)
+and the cell-to-cell spread of the response; the pre-registered test was not passed. The emulator costs
+$7.6\times10^{-3}$ core-seconds per cell-year, about 35 and 900 times less than LPJmL-FIT at 25 and 500 patches.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+
+Terrestrial ecosystems take up about a third of anthropogenic CO$_2$ emissions \citep{Friedlingstein2023GCB}, and
+the vegetation that does so is not a fixed surface but a population of plants that grow, compete, die and are
+replaced. Dynamic global vegetation models (DGVMs) represent this population in Earth system models (ESMs), usually
+through a few plant functional types with fixed properties. A growing body of work argues that this is not enough:
+the size structure and the functional diversity of forests shape how they respond to drought and warming, and
+models that resolve individuals, cohorts and traits behave differently from those that do not
+\citep{Fisher2018,Fisher2020}. LPJmL-FIT, a version of the LPJmL model with individual trees and variable traits
+\citep{Sakschewski2015,Sakschewski2016,Thonicke2020}, is one of these models: each tree carries its own specific leaf
+area, wood density, rooting depth and drought threshold, drawn when it establishes, and the forest's trait
+composition shifts as trees with poorly suited traits die. Amazon forests with more trait diversity recover better
+from drought in this model than forests without it \citep{Sakschewski2016}.
+
+The price of this realism is cost. LPJmL-FIT simulates every tree every day, and because establishment and mortality
+are random it averages over many replicate patches per grid cell: 25 in the runs used here, around 500 in published
+applications. Its run time grows in proportion to the number of patches, which puts it orders of magnitude beyond
+what an ESM can afford for its land surface. Emulation --- replacing the expensive model with a fast statistical or
+machine-learned approximation --- is the obvious route, and the land-modelling literature contains many emulators.
+A systematic review of 115 emulator and hybrid studies of DGVMs and land surface models \citep{PriesnerReview}
+shows, however, that most of them serve calibration and sensitivity analysis: 89 emulate only one or two variables,
+a single domain or a single site, or a summary statistic. Only seven emulate a land model broadly enough to stand in
+for part of it, and each covers only part of the model: prognostic soil states and turbulent fluxes of a
+weather-prediction land scheme \citep{R00067,R00593}, carbon and stand structure of a demographic model
+\citep{R01133,R00514}, biome-level carbon for integrated assessment \citep{R00661}, equilibrium carbon pools for
+spin-up \citep{R01211} or steady-state parameter responses \citep{R00004}. None emulates size or trait distributions
+or individual mortality; the closest is a state-transition network for the landscape model iLand
+\citep{Rammer2019}. None of the seven has been coupled to an ESM, only 12 of the 115 studies test climates outside the
+training range, and only 25 check conservation.
+
+The review also distils what goes wrong, and these lessons shaped the emulator described here. Tree ensembles trained
+to predict one step ahead drift when run freely at long lead times (up to about a year in the cited tests), while
+networks trained on their own multi-step rollouts do not \citep{R00067,R00593}. Agreement in the present climate says little about agreement under a changed
+climate: an emulator of the ecosystem model ecosys matched present-day net primary production almost exactly yet
+underestimated it by 204\,gC\,m$^{-2}$\,yr$^{-1}$ by 2100 \citep{R00289}, and an LPJ-GUESS emulator trained on
+stylised climate perturbations failed to transfer to realistic scenarios \citep{R00430}. Offline skill can collapse
+once feedbacks act, as for a machine-learned fire model in a land surface model whose spatial correlation fell from
+0.96--0.98 to 0.59--0.70 \citep{R00911,R00342}. Water and carbon budgets should be closed by construction rather than
+encouraged by a loss term \citep{R00755}. From this evidence the review derives six requirements for emulators that
+are to be used inside ESMs: prognostic state and memory, closure of the coupling interface, conservation, stability
+under feedback, credibility under out-of-distribution climate, and quantified uncertainty with usable software
+interfaces.
+
+This paper describes LandEmu v1, an emulator of LPJmL-FIT built against these requirements. Its contributions are:
+\begin{enumerate}
+  \item a complete emulator of an individual-tree, trait-based DGVM (Fig.~\ref{fig:overview}) --- daily gross and net primary production,
+        interception, transpiration, soil evaporation, runoff, snow and soil water, together with yearly tree density,
+        biomass per tree, four trait medians, leaf area, vegetation carbon and plant-type cover --- that runs from
+        daily weather alone and conserves water exactly;
+  \item an account of how its design followed from measurements that ruled out a hybrid design (Sect.~\ref{sec:path});
+  \item an evaluation that holds out a whole climate model and an independent run of the original (yearly maps) or
+        whole blocks of cells (daily networks), and that judges every error against the original's own run-to-run
+        variability (Sect.~\ref{sec:eval});
+  \item a test of whether the emulator learns the warming response when the training data cover the test climate,
+        and a full-grid application (Sect.~\ref{sec:results});
+  \item an end-to-end cost measurement on one core against the original at its training and publication settings.
+\end{enumerate}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig01_overview.pdf}
+  \caption{How LandEmu advances one year. (A) The daily water--carbon model: the inputs of day $t$ pass through an
+  ensemble of five neural networks whose bounded outputs drive a closed three-store water bucket; the stores are
+  carried to the next day. (B) The yearly forest maps: 25 climate statistics of the year enter a trailing 30-year
+  window, and 18 gradient-boosted tree models predict the forest structure and stand as a departure from a per-cell
+  anchor. The stand (leaf area, vegetation carbon, cover of ten plant types) is the daily model's input in the
+  following year (dashed). Every other quantity is predicted afresh each year.}
+  \label{fig:overview}
+\end{figure}
+
+\section{The model to be emulated: LPJmL-FIT}\label{sec:target}
+
+LPJmL-FIT couples the water, carbon and vegetation dynamics of LPJmL \citep{Schaphoff2018} with an individual-tree
+forest module \citep{Sakschewski2015,Thonicke2020}. On each 0.5$^\circ$ grid cell the forest grows on a set of
+replicate patches (225\,m$^2$ each). Trees of seven woody plant types establish with traits drawn within type-specific
+ranges, or inherited with small variations from large trees of the same patch; they compete for light in a layered
+canopy and for water in a 23-layer soil, allocate carbon each year, and die from carbon starvation, age, heat and
+drought stress. Three grass types fill the remaining space. The daily step computes photosynthesis and stomatal
+conductance per tree, interception, transpiration, soil evaporation, snow, infiltration, percolation and runoff; the
+yearly step allocates carbon, applies mortality and establishes new trees. We use the configuration with natural
+vegetation only. For most of this paper nitrogen limitation is switched off and atmospheric CO$_2$ is held constant
+in the future runs (at its 2019 level; 2014 in the runs of Sect.~\ref{sec:global}); this is how LPJmL-FIT is usually run, because without nitrogen limitation its CO$_2$
+fertilisation is unbounded. The emulator of this configuration therefore takes no CO$_2$ input, which is faithful to
+the original rather than a gap. Section~\ref{sec:resp} uses a second configuration, with nitrogen limitation
+\citep{vonBloh2018} and rising CO$_2$, for which the emulator receives CO$_2$ as an input.
+
+\paragraph{Where the run time goes.} We profiled the unmodified production binary at five contrasting cells
+(temperate, tropical, semi-arid, Mediterranean, boreal; 25 patches, one core) and attributed the exclusive run time
+to processes, assigning the statically linked mathematical library calls (21--27\,\% of all time) to the routines that
+call them (Fig.~\ref{fig:runtime}a). Leaf gas exchange takes 36--46\,\% of the run time and soil water another
+15--27\,\%. The yearly demography --- allocation, mortality, establishment and turnover --- takes only 0.4--1.1\,\%,
+and the daily loop as a whole 97--98\,\%. The marginal cost is 0.20--0.33 core-seconds per cell-year at 25 patches,
+and it grows linearly with the number of patches. Even if the eight most expensive processes were free of cost, the
+model would speed up at most 30-fold at the temperate cell (Fig.~\ref{fig:runtime}b), whereas an intermediate-resolution atmosphere
+leaves an allowance of about 0.0135--0.030 core-seconds per land cell-year (10\,\% of a measured coupled
+atmosphere's cost at T31 and T63 resolution). Removing the 25-patch ensemble alone is worth a factor of 25, and of
+about 500 at the publication setting.
+
+\paragraph{The original is stochastic.} Two independent runs of LPJmL-FIT --- each with its own 1000-year spin-up and
+random seed, under identical climate --- disagree on a typical cell by about 6\,\% in the number of trees taller than
+5\,m, 12\,\% in biomass per tree, 2--10\,\% in the trait medians and 1.0--1.6\,\% in 30-year mean fluxes. In sparse
+stands the disagreement is far larger. Any emulator can at best predict the expectation over such runs; this sets
+both the target and the yardstick of the evaluation (Sect.~\ref{sec:eval}).
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig02_runtime.pdf}
+  \caption{Where LPJmL-FIT spends its time. (a) Exclusive run time by process at five biome cells (25 patches, one
+  core; mathematical library calls attributed to their callers). (b) The largest speed-up obtainable at the temperate
+  cell if processes were made free of cost one after another, against the speed-up needed for an intermediate-resolution
+  (T31) atmosphere, the gain from dropping the 25-patch ensemble, and the speed-up needed at 500 patches.}
+  \label{fig:runtime}
+\end{figure}
+
+\section{From a hybrid to a fully learned emulator}\label{sec:path}
+
+LandEmu is the second architecture we built for LPJmL-FIT. The first was a hybrid, the design favoured by much of the
+hybrid-modelling literature \citep{Reichstein2019,Shen2023}: learn the slow, poorly constrained part and keep the
+physics. It had three components (Fig.~\ref{fig:path}, left). A learned yearly demography predicted the number of
+trees per patch with a distributional random forest, sampled new trees' traits from a Gaussian copula, and applied the
+original's mortality rules, ported from its source code. The daily physics --- photosynthesis, the stomatal solve, the layered
+canopy, soil water, phenology, allocation and growth --- was re-implemented as differentiable code, validated
+process by process against the original at five biome cells. An energy closure supplied the skin temperature and
+sensible heat that LPJmL-FIT does not compute. The training data were two runs of the original under one historical
+and one future climate. Five findings --- four measurements and one from the literature --- ruled this design out
+(Fig.~\ref{fig:path}, middle).
+
+\emph{(i) It was not faster.} The differentiable re-implementation cost 1.23 core-seconds per cell-year at 25 patches,
+4.6 times more than the original. Per tree, its daily step cost 51--58 times the original's (83\,\% of it in the
+iterative stomatal solve with a finite-difference derivative); only because it carried an order of magnitude fewer
+trees (those taller than 5\,m) was the overall factor as small as 4.6. Measured solver improvements would have reached
+parity at best.
+
+\emph{(ii) The original's cost is the daily step and the patch ensemble} (Sect.~\ref{sec:target}). Any substantial
+speed-up must replace the daily step as a whole and must predict the expectation over patches instead of simulating
+replicates.
+
+\emph{(iii) One-step learning drifts when run freely.} The tree-count model reached an out-of-sample coefficient of
+determination of 0.982 one year ahead --- but carrying the previous year's count forward already reached 0.962. Fed
+its own output, its area-weighted warming response turned from +0.71 to $-0.23$ of the original's within decades,
+because it followed 96\,\% of large increases but only 87\,\% of large decreases: a small, state-dependent asymmetry
+that accumulates. This is the failure the review documents for one-step tree ensembles \citep{R00067}.
+
+\emph{(iv) One climate per place cannot teach a response.} Across the global grid, 76\,\% of a cell's warming is
+predictable from its present climate, so with one historical and one future run the climate response is confounded
+with geography --- the identification problem behind the out-of-distribution failures in the literature
+\citep{R00289,R00430}.
+
+\emph{(v) The literature points the same way}: conservation by construction, out-of-range climate tests and explicit
+state are what the published emulators most often lack \citep{PriesnerReview}.
+
+From these findings follow five design principles (Fig.~\ref{fig:path}, right). \textbf{P1}: learn the whole daily
+step with one small network per cell and day, keeping water stores explicit and closed. \textbf{P2}: predict the
+expectation over the patch ensemble, so that the number of patches drops out of the cost. \textbf{P3}: do not make the
+forest state recursive; predict each year's state as a departure from a per-cell anchor, driven by climate, so that
+errors cannot accumulate. \textbf{P4}: train on climate contrast --- many climate models and scenarios and several
+independent runs --- and test on a climate model and a run never seen. \textbf{P5}: measure every error against the
+original's own run-to-run variability.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_designpath.pdf}
+  \caption{How the design was arrived at. Left: the components of the first, hybrid emulator. Middle: five findings
+  that ruled it out, each a measurement on LPJmL-FIT or on the hybrid, or a result of the literature review. Right: the
+  design principles of LandEmu that answer them.}
+  \label{fig:path}
+\end{figure}
+
+\section{Emulator description}\label{sec:model}
+
+LandEmu advances one year at a time in two blocks (Fig.~\ref{fig:overview}; Table~\ref{tab:io}). Block A, the daily
+water--carbon model, runs 365 daily steps from the day's weather and last year's stand. Block B, the yearly forest
+maps, runs once at the end of the year from climate statistics of the same weather and predicts the forest structure
+and the stand, which becomes the daily model's input for the next year. Everything is driven by daily weather on the
+0.5$^\circ$ grid: air temperature, precipitation, downward shortwave radiation and net longwave radiation; specific
+humidity enters only the yearly climate statistics. All years have 365 days.
+
+
+
+\begin{table}[!tbp]
+\centering
+\caption{What LandEmu reads, carries and returns.}\label{tab:io}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Daily input} & air temperature, precipitation, downward shortwave, net longwave (all days); specific humidity
+(yearly statistics only); CO$_2$ in the nitrogen-on variant \\
+\textbf{Per-cell set-up} & latitude, longitude, soil code, top-metre plant-available water capacity; anchors of every
+yearly quantity; the climate of the anchor runs; the run's own 2000--2019 state and its offset from the anchor; initial
+stores, stand and weather windows \\
+\textbf{State carried} & snow, top-metre water, deep water; trailing weather sums and means (10, 30, 90, 365 days);
+30-year window of yearly climate statistics; last year's stand \\
+\textbf{Daily output} & gross primary production (GPP), net primary production (NPP), interception, transpiration, soil
+evaporation, runoff, snow water equivalent, top-metre soil water, deep store \\
+\textbf{Yearly output} & trees taller than 5\,m per patch, above-ground biomass per tree, medians of specific leaf area,
+wood density, maximum rooting depth and drought threshold; stand leaf area index, vegetation carbon, fractional cover
+of ten plant types \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Daily water--carbon model}\label{sec:daily}
+
+\paragraph{Inputs.} For cell $c$ and day $t$ the network sees today's weather; trailing means of temperature (10 and
+30 days) and shortwave radiation (30 days) and trailing sums of precipitation (30, 90 and 365 days), which stand in for
+the memory of the deep soil without carrying it as a state; the day of year (as sine and cosine), the sine of latitude
+and the day length; yesterday's snow $S_{t-1}$ and top-metre water $W_{t-1}$, $W_{t-1}$ divided by the capacity, and
+the capacity itself; and the stand at the end of the previous year (leaf area index, vegetation carbon and the cover of
+the ten plant types). No input is taken from the fluxes of the run being emulated. The top-metre water capacity, which
+the original recomputes from its evolving soil carbon, is read from the original each year in the evaluation runs; it
+changes over the century by a median 0.1--0.2\,\% (at most 4--6\,\% in single cells), so a fixed per-cell value would
+serve.
+
+\paragraph{Network.} Each of five ensemble members is a multilayer perceptron with three hidden layers of 256 units
+and SiLU activations; all outputs share one trunk. The outputs are mapped to bounded rates: an interception fraction
+$i\in[0,1]$, a snowfall fraction $f\in[0,1]$ and a melt fraction $m\in[0,1]$, non-negative transpiration $E_T$, soil
+evaporation $E_S$ and runoff $R$, a signed exchange $Q$ between the top metre and the deep soil, non-negative GPP and
+plant respiration $R_a$, so that $\mathrm{NPP} = \mathrm{GPP} - R_a$. The ensemble mean of the five members is used.
+
+\paragraph{Closed water bucket.} With precipitation $P_t$, the stores are updated as
+\begin{align}
+  S_t &= S_{t-1}(1-m) + f P_t, \qquad E_{I,t} = i P_t, \\
+  W_t &= W_{t-1} + P_t - (S_t - S_{t-1}) - E_{I,t} - E_{T,t} - E_{S,t} - R_t - Q_t, \\
+  D_t &= \left(D_{t-1} + Q_t\right)\left(1 - 1/\tau\right) ,
+\end{align}
+where $D$ is a deep store that drains the amount $(D_{t-1}+Q_t)/\tau$ into runoff each day, with a time constant
+$\tau = 365$\,days. Water above the top-metre capacity is added to runoff and a deficit below zero is taken from the
+deep store. Hence, every day and to rounding precision,
+\begin{equation}
+  P_t = \Delta(S + W + D)_t + E_{I,t} + E_{T,t} + E_{S,t} + R^{\mathrm{tot}}_t ,
+\end{equation}
+with $R^{\mathrm{tot}}$ the total runoff. The bounds restrict nothing the original does: on eight million cell-days
+interception and snow accumulation never exceeded precipitation and no flux turned negative. Because the deep store can
+be drawn below zero, its drainage term, and with it total runoff, turns slightly negative on a few days (minimum
+$-2.5$ to $-10$\,mm per day in the cells tested). The deep store's drainage was added after a first version let it accumulate 2--3\,m of water
+over 81 years, ten times the original's change.
+
+\paragraph{Training.} The networks are trained one step ahead (yesterday's stores from the original) on 40 million
+sampled cell-days of 730 training cells, with 80 further cells for early stopping, minimising the sum over the eight
+targets of the squared errors standardised by each target's spread (Adam with a one-cycle learning-rate schedule peaking at $3\times10^{-3}$, batches of
+16\,384, ten epochs; about 15 minutes per member on one GPU). They are then run freely: the stores are carried by the
+model over 81 years. A free run whose error grew to twice the one-step error would have triggered rollout training; it
+never did. Specific humidity was dropped as an input because the original's daily exchange does not read it; removing
+it changed no score beyond run-to-run noise.
+
+\subsection{Yearly climate statistics}
+
+At the end of each year, LandEmu computes 25 statistics of the year's daily weather: mean, coldest-month and
+warmest-month temperature; degree days above 5\,$^\circ$C; frost days and days above 30\,$^\circ$C; annual and
+summer precipitation; potential evaporation; the annual, summer and driest three-month climatic water balance; the
+longest dry spell; mean relative humidity; summer vapour pressure deficit and its 10-day extremes; mean shortwave
+and net longwave radiation; and, for each of the seven tree types, the number of days outside its temperature-stress
+range. These enter a trailing 30-year window, whose means are the climate the forest maps see.
+
+\subsection{Yearly forest maps}\label{sec:maps}
+
+For each yearly quantity $q$ (six structure quantities and twelve stand quantities) a separate gradient-boosted tree
+model \citep{Ke2017} predicts
+\begin{equation}
+  q_{c,y} = A^{q}_{c,y} + g_q\!\left(\bar{x}_{c,y},\; \bar{x}_{c,y} - \bar{x}^{A}_{c,y},\; A_{c,y},\;
+  s^{0}_{c},\; \Delta s^{0}_{c},\; \phi_c,\lambda_c,\sigma_c\right),
+\end{equation}
+where $A^{q}_{c,y}$ is the \emph{anchor}: the original's mean of $q$ at cell $c$ in year $y$ over its training runs
+and climates; $\bar{x}_{c,y}$ is the trailing 30-year climate and $\bar{x}^{A}_{c,y}$ the corresponding climate of the
+anchor runs, so that their difference measures how far this climate departs from what the anchor represents;
+$A_{c,y}$ collects all anchors of the cell; $s^{0}_{c}$ is the run's own 2000--2019 state and $\Delta s^{0}_{c}$ its
+offset from the training runs' mean (the known start state); and $\phi$, $\lambda$, $\sigma$ are latitude, longitude
+and soil code. Biomass per tree is predicted as a logarithmic ratio to its anchor, which weights relative errors
+equally across dense and sparse stands; the other quantities as differences. Each model has 400 trees with 31 leaves,
+learning rate 0.05 and 80\,\% row and column subsampling, and is trained on every fourth year of the training runs:
+five runs under nine climate models in the test folds (about three million cell-years), all six runs under all ten
+climate models in the deployment release (about four million).
+
+Two properties of this form matter. First, the map is not recursive: no prediction is fed back into the forest
+maps, so a year's error cannot carry into the next (P3). The only quantity passed from the maps to the daily model is
+the stand, which affects next year's fluxes but not next year's maps. Second, the anchor carries what is specific to a
+cell --- its soil, its history, the composition the original grew there --- so the learned part only has to explain how
+a cell departs from it under a different climate. The price is that the anchor must exist: the original must have
+been run on every cell the emulator is to run on (Sect.~\ref{sec:limits}). For the full-grid application
+(Sect.~\ref{sec:global}) the anchor is instead the cell's own simulated 1985--2014 state, constant in time.
+
+\subsection{Implementation}\label{sec:impl}
+
+LandEmu is a Python package whose only run-time dependencies are numpy and LightGBM; the networks are ported from
+PyTorch to numpy (maximum difference $10^{-6}$ of each output's range on 20\,000 real input rows). The yearly climate
+statistics of the package equal those of the training pipeline exactly, and a validation release reproduces the
+scored daily fluxes of the evaluation to rounding (median per-cell difference of 30-year means 1.6--2.9$\times10^{-4}$)
+and the yearly quantities with a median difference of zero (99th percentile 0.1--7\,\%). The remaining yearly
+differences have one cause: the training table converted the forcing, stored in 0.1\,$^\circ$C steps, in single
+precision, so days at exactly 30.0\,$^\circ$C counted as hot days; continuous forcing from a host model never sits
+exactly on such a threshold. A release (models plus per-cell set-ups for 1\,050 cells) occupies 183\,MB. The interface
+offers a whole year (\texttt{step\_year}) or a day at a time (\texttt{begin\_year}, 365\,\x\,\texttt{step\_day},
+\texttt{end\_year}, bit-identical to the yearly call), so that a host model can exchange fluxes daily.
+
+\subsection{Variant with a \texorpdfstring{CO$_2$}{CO2} input}\label{sec:co2var}
+
+For LPJmL-FIT with nitrogen limitation and rising CO$_2$, the same architecture receives the year's CO$_2$
+concentration as an additional daily-network input, and the forest maps receive the trailing 30-year mean CO$_2$ and
+its change since 1990--2019. It is trained on runs of that model (Sect.~\ref{sec:resp}).
+
+\section{Training data and evaluation}\label{sec:eval}
+
+\subsection{Simulations of the original}
+
+The main data set is a panel of 1\,050 cells: 105 blocks of ten contiguous 0.5$^\circ$ cells, chosen to balance 20
+climate strata (Fig.~\ref{fig:design}a). Each block was spun up for 1000 years and run over 2000--2019 under observed
+weather (GSWP3-W5E5; \citealt{Lange2021W5E5}) and over 2020--2100 under bias-adjusted output \citep{Lange2019} of ten
+CMIP6 climate models (GFDL-ESM4, IPSL-CM6A-LR, MPI-ESM1-2-HR, MRI-ESM2-0, UKESM1-0-LL, CanESM5, CNRM-CM6-1, CNRM-ESM2-1,
+EC-Earth3, MIROC6) for three scenarios (SSP1-2.6, SSP3-7.0, SSP5-8.5; \citealt{ONeill2016}), plus a control with
+observed 1990--2019 years resampled. We call each combination of climate model and scenario a \emph{leg}. Six
+independent runs exist, each with its own spin-up and random seed, all with 25 patches, nitrogen limitation off and
+CO$_2$ constant after 2019. Per-tree output is written every year (trees taller than 5\,m, as in the original's
+standard output); daily fluxes are written for 13 legs of five climate models and for the control, in runs 1--4.
+
+\subsection{Held-out tests}
+
+The forest maps are tested in folds that hold out one of five climate models entirely, together with run 4: they are
+trained on the other nine climate models and runs 1, 2, 3, 5 and 6, and run 4 under the held-out model is the truth
+(Fig.~\ref{fig:design}b). With three scenarios this gives 15 test cases. The cells themselves are seen in training,
+as they would be in deployment; this choice is discussed in Sect.~\ref{sec:limits}. The daily networks are trained on
+runs 1--4 under all 14 legs with daily output and tested on 24 blocks (240 cells, 238 with GPP of at least
+50\,gC\,m$^{-2}$\,yr$^{-1}$) never used in their training, including the five biome blocks of Fig.~\ref{fig:runtime}.
+For them, therefore, only the place is new: they have seen every climate model they are scored on. In the full
+emulator the daily networks read the stand predicted by forest maps that never saw the test run or the test climate
+model. Earlier tests with a climate model withheld from the daily networks are summarised in Sect.~\ref{sec:fluxes}.
+
+\subsection{Measuring error against the original's own variability}
+
+Because a second run of LPJmL-FIT differs from the first, a fixed tolerance such as ``within 10\,\%'' is uninformative:
+two runs of the original agree on all six structure quantities within 10\,\% (or within the typical two-run spread of
+the cell's density class, where that is larger) in only 17--21\,\% of cells. Following
+practice in climate-model emulation and model verification
+\citep{WatsonParris2022,Baker2015,Lutjens2025}, we instead compare the distribution of errors over cells with that of
+a further run. For cell $c$ and quantity $q$ against the unseen truth run $T$, the emulator's error is
+$e_E(c)=|E(c)-T(c)|/|T(c)|$ and a further run $R$'s error is $e_R(c)=|R(c)-T(c)|/|T(c)|$, pooled over the available
+further runs. The \emph{error ratio} at centile $k$ is
+\begin{equation}
+  \rho_k = \frac{P_k\left[e_E\right]}{P_k\left[e_R\right]},
+\end{equation}
+with $k=50$ (the typical cell) and $k=90$ (the worst tenth of cells). A further run of the original scores
+$\rho\approx1$ by construction; the mean of three runs scores about 0.82, and a perfect predictor of the expectation
+about 0.71, because an average beats a single random realisation. Values below one are therefore possible and, for a model that predicts the expectation, expected. We
+apply the ratio to 30-year means (2071--2100 for structure; 2021--2050 and 2071--2100 for fluxes), to the climate
+response (late minus early period), and to single years (for drift). Area totals (cosine-latitude weighted) are
+reported as signed relative errors, because a coherent bias of a few per cent passes every per-cell test yet does not
+average out in a sum.
+
+\paragraph{Pass standard.} Forests with at least five trees per patch (``dense''; about 80\,\% of tree-bearing cells)
+must have a typical error ratio of at most 1.2, a worst-tenth ratio of at most 1.5 and area totals within 5\,\%;
+sparse stands must stay within 3 times a further run and their totals within 25\,\%. A criterion passes when its
+median over cases meets the limit and at least 12 of 15 cases do. The standard as first written classed a cell as dense
+by the held-out run itself. That selects cells on the outcome being predicted --- a cell whose truth run happens to
+lose trees moves into the sparse class --- so we class cells by the anchor instead, before the run, and report the
+original definition beside it (Sect.~\ref{sec:structure}). The daily fluxes need not be as close to the original as a
+second run is; for them we propose a typical and worst-tenth ratio of at most 3 (the sparse-stand limit above), a
+climate-response ratio of at most 1.5 and area totals within 5\,\%, numbers set after the first daily scores were
+known. \emph{Drift} means the gap to the original growing, not the values changing; we measure it as the ratio of the
+single-year typical error ratio in 2081--2100 to that in 2021--2040, with a limit of 1.2. For the forest structure,
+whose early years benefit from the known start state, the pre-registered form of this rule failed for that reason, and
+we additionally report the ratio to 2051--2070, a baseline chosen after that result (Sect.~\ref{sec:drift}). Because
+several of these choices were made with some scores known, we report every value so that readers can apply their own
+limits.
+
+\paragraph{Reference arms.} Every score is reported beside (i) a further run scored as if it were the emulator,
+which must give about 1 and checks the scorer; (ii) the mean of other runs, a reference for a near-ideal predictor of
+the expectation; (iii) the anchor alone, without the learned departure; and (iv) the run's 2019 state carried
+forward, which shows whether the measure can detect drift.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_design.pdf}
+  \caption{Training and test design. (a) The 1\,050 panel cells (105 blocks of ten cells), the 24 blocks never used to
+  train the daily networks, and the five biome blocks. (b) One of the five test folds of the yearly forest maps: one
+  climate model (here GFDL-ESM4) and one independent run are held out; further runs under the held-out climate model
+  give the yardstick, and one of them is scored as if it were the emulator to check the scorer.}
+  \label{fig:design}
+\end{figure}
+
+\section{Results}\label{sec:results}
+
+\subsection{How the forest maps behave at a single cell}
+
+Figure~\ref{fig:cell} shows what the yearly maps do. At the temperate and the boreal cell the original's runs scatter
+widely: its unseen run and a further run of the same climate wander apart by up to two trees per patch and by 50\,\%
+in biomass per tree for decades, because a few deaths or recruitments in 25 patches change the stand. The anchor ---
+the mean of the training runs under other climates --- smooths this noise but knows nothing about the held-out
+climate. The emulator follows the anchor where the climate resembles the training climates and departs from it where
+it does not: at the temperate cell it keeps biomass per tree above the declining anchor in the second half of the
+century, as the unseen run does. It does not reproduce the excursions of the single run, and it should not: they are
+not predictable from climate.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_cell_example.pdf}
+  \caption{The yearly forest maps at two single cells under a held-out climate model (GFDL-ESM4, SSP3-7.0): (a, b)
+  trees taller than 5\,m per patch and (c, d) above-ground biomass per tree. Grey: training runs under the nine other
+  climate models; violet: their mean, the anchor; black: the unseen run of LPJmL-FIT; orange: a further run under the
+  same climate; blue: the emulator.}
+  \label{fig:cell}
+\end{figure}
+
+\subsection{Forest structure}\label{sec:structure}
+
+Over all 15 held-out cases (Fig.~\ref{fig:structure}), the dense forests' typical error of tree density is
+1.16 times that of a further run (limit 1.2; met in 11 of 15 cases, one short of the required 12), and that of biomass
+per tree 1.07 times (14 of 15). The four trait medians are closer to the unseen run than a further run is
+(0.60--0.83 times): the emulator predicts the expectation, while a further run is itself a random draw. In the worst
+tenth of dense cells tree density reaches 1.29 times and biomass per tree 1.01 times a further run (limit 1.5). Area
+totals over dense cells are off by a median of $-0.1$\,\% for stems (cases $-2.0$ to $+1.2$\,\%) and $-1.5$\,\% for
+biomass ($-5.0$ to $+3.4$\,\%; one case just past the 5\,\% limit). Sparse stands are harder: tree density 2.74 times a
+further run (limit 3), biomass per tree 1.34 times, stem and biomass totals a median $-2.3$\,\% ($-13$ to $+12$\,\%)
+and $-5.7$\,\% ($-18.5$ to $+6.6$\,\%; limit 25\,\%). Of the 22 criteria of the pass standard, 21 are met. With dense
+cells classed by the held-out run, as the standard was first written, 19 of 22 are met: tree density then fails in
+typical dense cells (1.12, 9 of 15 cases) and typical sparse cells (2.95, 8 of 15), and the sparse stem total is
+$+17.7$\,\% (11 of 15).
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig05_structure.pdf}
+  \caption{Forest structure in 2071--2100 under a held-out climate model and run (15 cases: five climate models
+  $\times$ three scenarios). (a--c) Error ratio for six quantities: typical dense cell, worst tenth of dense cells and
+  typical sparse cell; dots are cases, bars medians. Orange: a further run of LPJmL-FIT scored the same way, which must
+  give about 1. (d) Signed area-total errors of stems and biomass. Dashed: limits of the pass standard.}
+  \label{fig:structure}
+\end{figure}
+
+\subsection{No drift in the forest state}\label{sec:drift}
+
+Run year by year from 2020 to 2100 (Fig.~\ref{fig:drift}), the emulator's error starts below that of a further run,
+because it knows the run's own 2000--2019 state, and rises over about three decades as that knowledge fades. It then
+levels off: biomass per tree at about one further run's error from the 2050s on, tree density at 1.10--1.12 in the
+2050s and 1.13--1.21 in the 2090s. From 2051--2070 to 2081--2100 --- the baseline chosen after the pre-registered one
+failed, see below --- the typical error grows by a factor of 1.05 for both quantities (all 15 cases below the limit of
+1.2); the trait medians grow by 1.10--1.19 while remaining at 0.62--0.85
+times a further run. The rise in the first decades does not depend on the scenario (tree density 1.17 under SSP1-2.6,
+1.20 under SSP5-8.5), which identifies it as the fading start state rather than climate extrapolation. What remains is
+a slow creep of tree density in the second half of the century that increases with warming (+0.01, +0.07 and +0.12
+from the 2050s to the 2090s for SSP1-2.6, SSP3-7.0 and SSP5-8.5). The reference arms behave as they should: a further
+run stays at 1.0, the mean of other runs at 0.8, the anchor alone rises steadily to 1.3--1.6, and the carried-forward
+2019 state rises to more than twice a further run's error, so the measure does detect drift. The pre-registered drift
+rule, which compares 2081--2100 with 2021--2040, fails (1.17 for tree density, 1.32 for biomass per tree; 8 and 2 of 15
+cases within the limit). We attribute this to the artificially low early error, which the scenario-independence of the
+early rise supports, but the rule as written is failed, and the late creep of tree density under strong warming is a
+real, if slow, growth of the gap.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig07_drift.pdf}
+  \caption{The forest maps run year by year: typical-cell error ratio of dense cells per year, median over the 15
+  held-out cases (shading: 10th--90th percentile of cases for the emulator), for (a) tree density, (b) biomass per tree
+  and (c) median wood density. Reference arms: a further run (orange), the mean of five other runs (green), the anchor
+  without the learned departure (violet) and the 2019 state carried forward (grey dashed).}
+  \label{fig:drift}
+\end{figure}
+
+\subsection{Daily carbon and water exchange}\label{sec:fluxes}
+
+At the three biome cells of Fig.~\ref{fig:daily} the full emulator --- daily networks never trained on these cells,
+fed a stand from forest maps that never saw the climate model or the run --- reproduces the seasonal course and the
+day-to-day variability of GPP and evapotranspiration: the spring onset in the temperate and boreal forests, the short
+wet season at the semi-arid cell, the response to individual dry spells. Year-to-year variations of annual GPP follow
+the original's at the temperate and semi-arid cells (correlation 0.93 and 0.94; a further run: 0.91 and 0.96), less so
+at the boreal cell (0.66; a further run: 0.99). The 2021--2100 means differ by +0.8\,\% at the temperate and
+$-0.6$\,\% at the boreal cell, but by +12\,\% at the semi-arid cell, where the original's own two runs differ by
+3\,\%. The top-metre water store is the
+least faithful daily variable: at the temperate cell it dries 20\,mm too deep in summer, and at the boreal cell it
+holds up to 50\,mm more water in summer than the original, while the fluxes stay close. This is expected: the
+networks are trained on fluxes and store changes, and the store is a state integrated by the bucket, not a
+prediction target.
+
+Over the 238 held-out cells and 13 legs (Fig.~\ref{fig:dailyscores}), the typical error of 30-year mean
+GPP is 2.4 times a further run's (median over legs; limit 3, met on 13 of 13 legs), evapotranspiration 3.1 times
+(5 of 13), NPP 3.9 times (0 of 13) and runoff 5.2 times. Since two runs of the original differ by only 1.0--1.6\,\% in
+a cell's 30-year GPP, evapotranspiration or NPP, this means typical per-cell errors of about 3--6\,\% for GPP and
+evapotranspiration and 5--6\,\% for NPP. Area totals are off by a median of 1\,\% for GPP, NPP and evapotranspiration
+and 2\,\% for runoff, and by at most 2.5\,\% on any leg. The climate response (2071--2100 minus 2021--2050) is 1.8--2.5 times a further run's error, above
+the proposed 1.5. Runoff is hardest because it is a small residual of precipitation minus evapotranspiration, so the
+evapotranspiration error passes into it amplified; NPP is hard because it is a small difference of two large terms in
+the most productive cells.
+
+The emulated stand costs accuracy. Fed the original's own stand instead, the same daily networks reach 2.2 (GPP), 2.6
+(evapotranspiration), 3.4 (NPP) and 4.5 (runoff) times a further run's error. Compared leg by leg and period by
+period, the emulated stand adds a median 13\,\% to the GPP error and 35\,\% to the evapotranspiration error, most of it
+through the cover of the plant types. On these legs no flux drifts away from the original: the late-to-early ratio of
+single-year errors is 0.90--1.03 for the medians of all four fluxes, and only GPP on the two warmest legs
+(UKESM1-0-LL SSP3-7.0, IPSL-CM6A-LR SSP5-8.5) exceeds the limit (1.26).
+The deep water store stays within the range of the original's change, and over 81 years the across-cell mean of the
+top-metre store stays between 80 and 91\,mm.
+
+In this evaluation the climate models are seen by the daily networks; only the cells are new. That matters: in
+earlier tests with a climate model withheld from daily-network training entirely, the gap to the original in GPP and
+NPP grew by a factor of 1.3--1.4 over the century. The cause was the daily carbon response degrading as the climate
+moved away from the training climates, not the water stores, since a run with the stores reset daily from the original
+drifted identically. Adding further climate models to training did not reduce this growth beyond run-to-run noise for
+UKESM1-0-LL; it falls (to 1.17 for NPP) only when that model itself is in training, and even then the full emulator's
+GPP gap grows by 1.26 on that model's warmest leg. The daily networks therefore have not been shown to hold their
+accuracy under a climate model they have not seen.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_daily_series.pdf}
+  \caption{Daily output of the full emulator at three biome cells never used to train the daily networks
+  (GFDL-ESM4, SSP3-7.0; forest maps with this climate model and run held out). (a--c) Daily GPP, (d--f)
+  evapotranspiration and (g--i) top-metre soil water in 2085; (j--l) annual GPP 2021--2100. Black: the unseen run of
+  LPJmL-FIT; orange: a further run; blue: the emulator.}
+  \label{fig:daily}
+\end{figure}
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_daily_scores.pdf}
+  \caption{Daily fluxes over 238 held-out cells and 13 climate-model legs (dots: legs; bars: medians). (a) Typical-cell
+  error ratio of 30-year means (larger of 2021--2050 and 2071--2100); (b) error ratio of the climate response; (c)
+  drift, the late-to-early ratio of single-year errors (1 = no change in the gap to the original); (d) area-total
+  errors. Blue: the full emulator; green: the same daily networks fed the original's stand. Orange line: a further run
+  of the original; dashed: proposed limits.}
+  \label{fig:dailyscores}
+\end{figure}
+
+\subsection{Learning the warming response}\label{sec:resp}
+
+The warming response is the property an ESM needs most and the one most emulators never test. We tested it on
+LPJmL-FIT with nitrogen limitation and rising CO$_2$, run on 674 cells that each represent one region of a 674-region
+climate classification of the land surface (25 patches each), under the ten climate models and three scenarios, with
+CO$_2$-fixed twins of SSP3-7.0 for the training climate models. Two climate models of low and high climate sensitivity,
+MPI-ESM1-2-HR and IPSL-CM6A-LR, were held out entirely, together with 20\,\% of the cells; both lie within the warming
+range of the eight training models, of which CanESM5 and UKESM1-0-LL warm more, so the test climate is covered by the
+training climates. An independent second run of the
+original exists for the held-out legs. Here the forest maps are anchored on each cell's own 1990--2019 state, so no
+future output of the original enters the prediction. The pass criteria were registered before the runs: on every
+held-out leg a global change of the same sign as and within $\pm25$\,\% of the original's, a per-cell regression slope between 0.8 and 1.2,
+and a per-cell root-mean-square error at most 1.5 times the second run's.
+
+With rising CO$_2$, the original's vegetation carbon increases by 32--45\,\% by 2071--2100 on the held-out legs
+(Fig.~\ref{fig:resp}a), mostly through CO$_2$ fertilisation. The emulator reproduces 81--97\,\% of this change, while
+the original's independent second run reproduces 61--89\,\%: the original's own global response varies by up to
+40\,\% between runs on this grid, because single cells stand for whole regions. Trained only on SSP1-2.6, the same maps
+reproduce 37--43\,\% --- the failure seen when an emulator meets a climate warmer than its training climates.
+
+With CO$_2$ fixed at its 2019 level, the original loses vegetation carbon under warming, by up to 20.7\,\% for
+IPSL-CM6A-LR under SSP5-8.5 (second run: 26.3\,\%). The maps as registered reproduce 67\,\% of the IPSL-CM6A-LR loss
+under SSP3-7.0 and 57\,\% under SSP5-8.5. After seeing this result we added CO$_2$-fixed twins of SSP1-2.6 and SSP5-8.5
+to training, so that warming and CO$_2$ rise could be told apart for strong warming; the held-out models and cells were
+unchanged and nothing else was tuned. This raised both fractions to 72\,\%, short of the 75\,\% we had stated as the
+expectation for this step, and left the rising-CO$_2$ results unchanged within 0.01. Figure~\ref{fig:resp} shows this
+second version. The SSP1-2.6-only maps predict gains on all four warming-only legs, because all their training legs
+carry rising CO$_2$. Per cell (Fig.~\ref{fig:resp}b) the emulator's change is as close to the original's as the second
+run's is (root-mean-square error 0.65--0.80 times the second run's), and the slopes of both against the original are
+below one (0.73 and 0.75): the original's per-cell change contains run-to-run noise, which flattens the regression slope
+of any predictor, including a perfect estimate of the expected response.
+
+For GPP the picture splits. The daily networks fed the original's stand reproduce the global GPP change within 4\,\%
+and the per-cell change with slopes of 0.92--0.99, with rising and with fixed CO$_2$. Fed the emulated stand, the
+global change with rising CO$_2$ is still within 6\,\%, but the per-cell slope falls to 0.66--0.79, because the forest
+maps' response of leaf area and tree cover is too uniform across cells (slopes 0.73--0.83, against 0.89--0.96 for the
+second run). The global totals are right; the cell-to-cell spread of the response is too small. On the held-out cells,
+a learning curve over 135, 269 and 539 training cells reduced this error by 6--12\,\% per doubling, which points to the
+number of training cells rather than the model form as the limit; extrapolated, reaching 1.2 times a second run for leaf
+area would take about 12\,000 training cells, the scale of a full-grid training set.
+
+Judged by the registered criteria, the test was \emph{not passed}. The global changes and the root-mean-square errors
+pass on every leg. The slope criterion fails for vegetation carbon on three of four rising-CO$_2$ legs --- a criterion
+that the original's own second run also fails (slopes 0.72--0.84), for the reason given above --- and for GPP fed the
+emulated stand on all four, which is a real defect. With CO$_2$ fixed, the largest warming-only loss stays damped by
+about 30\,\%.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_response.pdf}
+  \caption{The warming response under two climate models never seen in training (LPJmL-FIT with nitrogen limitation,
+  674 representative cells). (a) Area-weighted change of vegetation carbon from 1990--2019 to 2071--2100 with rising
+  CO$_2$ and with CO$_2$ fixed at 2019: the original, its independent second run, the emulator (the version with
+  CO$_2$-fixed twins of every training scenario, added after the first held-out results; see text), and the same
+  emulator trained on SSP1-2.6 only. (b) Per-cell change for IPSL-CM6A-LR, SSP5-8.5, fixed CO$_2$: emulator (blue) and second
+  run (orange) against the original; dashed lines are least-squares slopes, the solid line is the 1:1 line.}
+  \label{fig:resp}
+\end{figure}
+
+\subsection{Full-grid application}\label{sec:global}
+
+To show that the emulator runs globally, we retrained the forest maps on four runs of LPJmL-FIT (nitrogen off) under
+GFDL-ESM4 --- historical, SSP1-2.6, SSP2-4.5, SSP3-7.0 --- made with a different build of the model, anchored each cell
+on its own simulated 1985--2014 state, and emulated each future scenario with maps that never saw it. The daily
+networks were not retrained (these runs store no daily output). LandEmu then ran on all 64\,240 land cells from 1975 to
+2100 (Fig.~\ref{fig:global}). Over 1985--2014 the emulated global GPP equals the original's (+0.04\,\%), NPP is
+1.1\,\% high, transpiration 8.5\,\% low and runoff 5.8\,\% high. Benchmarked against observations with the ILAMB
+system, the emulator's overall scores are within 0.03 of the original's on all 27 data-set comparisons; for biomass,
+leaf area and cover this is not a test of the emulator, because its historical forest state is anchored on the
+original's. Over the same
+period the original's GPP rises from 151 to 162\,PgC\,yr$^{-1}$ because CO$_2$ rises in its historical forcing, while the
+emulator's stays flat: the nitrogen-off emulator has no CO$_2$ input by design (Sect.~\ref{sec:target}), so it
+reproduces the level but not this trend.
+
+Under the unseen scenarios, the typical per-cell error in 2071--2100 is 6.0--6.4\,\% for GPP, 4.4--4.8\,\% for
+evapotranspiration, 11--15\,\% for vegetation carbon and 7--8\,\% for dense-cell tree density, always smaller than when
+the 1985--2014 state is carried forward (11--15\,\%, 7--12\,\%, 18--26\,\% and 10--11\,\%). The global responses agree
+in sign in 13 of 15 cases (five quantities, three scenarios), but the carbon responses are 3--5 percentage points too
+low, and under SSP3-7.0, the warmest scenario and the only one outside the training range, the emulator captures only
+a third of the original's vegetation-carbon loss ($-2.8$ against $-9.2$\,\%). This is the extrapolation failure of
+Sect.~\ref{sec:resp} reproduced on the full grid: with only milder scenarios in training, the strongest response is
+damped. On an earlier set of eight independent runs of this model under GFDL-ESM4, scored over all 57\,726 tree-bearing cells against a further run, an earlier form of the forest maps that
+predicts 30-year windows rather than single years passes the dense-cell standard when only the run is held out (tree
+density and biomass per tree 0.92 times a further run) but not when the scenario is held out as well (1.24 and 1.47
+times).
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_global.pdf}
+  \caption{LandEmu on the full 0.5$^\circ$ grid. Vegetation carbon in 2071--2100 under SSP3-7.0 in (a) LPJmL-FIT and
+  (b) the emulator, whose forest maps never saw SSP3-7.0, and (c) their difference (cells with at least
+  0.5\,kgC\,m$^{-2}$). (d) Global vegetation carbon and (e) global GPP as change relative to the original's 1985--2014
+  mean (5-year running means): LPJmL-FIT solid, emulator dashed. The historical forest state is anchored and therefore
+  not a test.}
+  \label{fig:global}
+\end{figure}
+
+\subsection{Cost}\label{sec:cost}
+
+Measured end to end on one core over 1\,050 cells and 81 years, the whole emulator costs
+$7.6\times10^{-3}$ core-seconds per cell-year (Fig.~\ref{fig:speed}), 97\,\% of it in the daily networks. LPJmL-FIT,
+timed on one core of the same computing cluster at the temperate cell (marginal rate), costs 0.267 core-seconds at 25
+patches and 7.06 at 500 patches, so the emulator needs 35 times fewer core-seconds than the original at its training
+setting and about 900 times fewer than at the publication setting. The original's cost depends on how many trees a
+cell carries: across the five biome cells it is 0.20--0.33 core-seconds at 25 patches, which gives factors of 26--44. The re-implemented differentiable physics of the first design cost
+1.23 core-seconds. The emulator lies inside the allowance for an intermediate-resolution atmosphere by a factor of 1.8
+(T31) to 4 (T63). The nitrogen-on variant costs $7.3\times10^{-3}$ core-seconds, 115--130 times less than that model
+on the same cells. Training is cheap as well: about 15 GPU-minutes per network and seconds to minutes per forest map.
+The cost is dominated by one matrix product per day and network, so batching over years or a GPU would reduce it
+further; neither is used here.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=0.66\textwidth]{\figpath/fig_speed.pdf}
+  \caption{Cost per cell-year on one core (marginal rate). LPJmL-FIT at its training and publication settings, the
+  differentiable re-implementation of its daily physics, and LandEmu (dark blue: daily networks, 97\,\%; light blue:
+  yearly statistics and forest maps). Dashed: land allowances for T31 and T63 atmospheres (10\,\% of a coupled atmosphere's cost).}
+  \label{fig:speed}
+\end{figure}
+
+\section{Discussion}\label{sec:disc}
+
+\subsection{LandEmu against the requirements for ESM-ready land emulators}
+
+Table~\ref{tab:req} compares LandEmu with the six requirements derived in the review \citep{PriesnerReview}. Three
+design choices carry most of the result. \emph{Learning the whole daily step} is what makes the emulator fast: the
+literature's large speed-ups come from replacing an expensive iterative solver or a whole model step
+\citep{R00067,R02497,R00568}, and our profile of LPJmL-FIT shows that nothing short of this can give an order of
+magnitude. Re-implementing physics can be faster than legacy code when the code is a column model without a
+per-individual loop \citep{R00975}; for an individual-tree model it was not. \emph{Predicting the expectation} removes
+the patch ensemble, which is a variance-reduction device of the original, not a process; at the publication setting it
+is worth more than every process combined. \emph{Keeping the forest state non-recursive} sidesteps the error
+accumulation that made our one-step demography model unusable and that rollout losses \citep{R00593,R01133} or
+trajectory fitting \citep{R00661} address in other emulators. The daily stores are recursive, but they are closed
+physical stores rather than a learned latent state, and they did not walk away from the original in 81-year free runs.
+
+\begin{table}[!tbp]
+\centering
+\caption{LandEmu against the six requirements for ESM-ready land emulators of \citet{PriesnerReview}.}\label{tab:req}
+\small
+\begin{tabularx}{\textwidth}{@{}p{3.3cm}X@{}}
+\toprule
+\textbf{Requirement} & \textbf{LandEmu v1} \\
+\midrule
+Prognostic state and memory & explicit snow, top-metre and deep water stores; trailing weather windows; 30-year
+climate window; stand carried yearly. No learned latent state. Forest state not recursive by design. \\
+Coupling interface & daily latent-heat-relevant fluxes (interception, transpiration, soil evaporation), runoff, snow;
+GPP and NPP; leaf area and plant-type cover from which albedo and roughness can be derived. Missing: energy fluxes and
+surface temperature (LPJmL-FIT computes none), heterotrophic respiration and fire, hence the net CO$_2$ flux. \\
+Conservation & water closed exactly every day by construction. Carbon is not tracked between NPP and vegetation carbon,
+which are predicted separately. \\
+Stability under feedback & structure error grows by a factor of 1.05 after the start state fades, with a slow creep of
+tree density under strong warming (the pre-registered drift rule fails); no flux drift on climate models seen in
+training except GPP on the two warmest legs; day-by-day interface identical to the yearly call. No feedback with a
+host model tested here. \\
+Out-of-distribution climate & yearly maps: climate model and independent run held out; daily networks: places held out,
+climate models seen (with one withheld, the GPP and NPP gap grew 1.3--1.4-fold); warming response tested on unseen
+climate models with and without CO$_2$ rise, not passed as pre-registered; extrapolation beyond the training scenarios
+fails (one third of the loss). \\
+Uncertainty, interfaces, openness & errors expressed relative to the original's run-to-run variability; deterministic
+prediction of the expectation, no predictive distribution; numpy + LightGBM package with daily and yearly calls. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{What limits the fidelity}
+
+Three findings locate the remaining error. First, the emulator is \emph{data-limited in the space of climates, not in
+the number of runs}. On the panel, adding five climate models to training raised the share of cells close to the
+unseen run by 0.023 and lowered the biomass-per-tree error ratio from 1.64 to 1.42, while adding two runs of the
+original raised it by only 0.005. The warming-response test makes the same point from the other side: with training
+climates that cover the test climate the response is reproduced, with only milder climates it is damped by more than
+half. Second, \emph{sparse stands} carry most of the structure error. Reweighting the loss towards them (logarithmic
+targets, Poisson and Tweedie objectives) only moved error between sparse and dense cells, while the mean of three runs
+is 0.82 times a further run in every density class --- so their response is predictable in principle, and what is
+missing is information about how sparse cells respond. Third, the daily networks' own error, two to three times a
+further run, still exceeds the 10--40\,\% that the emulated stand adds, but the stand's share is concentrated in
+evapotranspiration and in the cell-to-cell spread of the climate response.
+
+\subsection{Limitations}\label{sec:limits}
+
+\begin{itemize}
+  \item \textbf{The original must have been run on every emulated cell.} The forest maps depart from a per-cell
+        anchor. In the panel version the anchor is the original's mean over its training runs for each year to 2100;
+        in the global version it is the cell's simulated 1985--2014 state. Either way, a cell never simulated by
+        LPJmL-FIT cannot be emulated, and on the response test the error on the 20\,\% of held-out cells is 1.8--2.2
+        times a second run's for leaf area and cover, compared with near-parity on training cells.
+  \item \textbf{The cells are seen in training.} The structure tests hold out the climate model and the run, not the
+        place. This mirrors deployment on the cells the original was run on; with cells held out as well, the panel
+        scores were clearly worse.
+  \item \textbf{Daily NPP and runoff} miss the proposed limit (3.9 and 5.2 times a further run), and the climate
+        response of every flux is 1.8--2.5 times a further run's error.
+  \item \textbf{The daily networks have seen every climate model they were scored on.} With a climate model withheld,
+        their GPP and NPP gap to the original grew 1.3--1.4-fold over the century.
+  \item \textbf{Some evaluation choices were made with results known}: classing dense cells by the anchor, the
+        2051--2070 drift baseline for the forest structure, the limits for the daily fluxes, and the CO$_2$-fixed
+        training runs of the response test. We report the outcome under the pre-registered choices beside each.
+  \item \textbf{Extrapolation.} Under a scenario warmer than all training scenarios the response is damped
+        (Sect.~\ref{sec:global}); deployment should keep the training climates broader than the target climate.
+  \item \textbf{Scope of the outputs.} The structure targets cover trees taller than 5\,m, as the original's standard
+        output does, and the traits are represented by their medians, not their full distributions. There are no
+        energy fluxes and no net CO$_2$ flux.
+  \item \textbf{Scale of the evaluation.} The detailed evaluation uses 1\,050 of 54\,020 tree-bearing cells; the
+        full-grid application has one run per scenario, so its errors cannot be set against a further run.
+\end{itemize}
+
+\subsection{Outlook}
+
+The day-by-day interface makes LandEmu callable from an atmosphere model; experiments with Earth system models will be
+reported separately. The most direct improvements are training on a full-grid set of runs that covers warmer
+climates (which removes the unseen-cell limit and the extrapolation problem together), a stand map aimed directly at
+the daily networks' inputs, explicit litter and soil carbon pools so that the net CO$_2$ flux is complete, and a
+calibrated predictive spread scored against several independent runs of the original.
+
+\section{Conclusions}\label{sec:concl}
+
+LandEmu v1 emulates an individual-tree, trait-based DGVM as a whole: its daily carbon and water exchange and its yearly
+forest structure, trait composition and stand, from daily weather alone, with water conserved exactly. Its design ---
+learn the whole daily step, predict the expectation over the patch ensemble, keep the forest state non-recursive,
+train on climate contrast and judge against the original's own variability --- followed from measurements that ruled
+out a hybrid of learned demography and re-implemented physics. Under a held-out climate model and run, dense forests
+are reproduced close to the original's run-to-run variability (tree density 1.16, biomass per tree 1.07 times a further
+run; trait medians better than a further run), and the structure error grows only slowly once the start state has
+faded. On places held out from their training, the daily networks reproduce GPP and evapotranspiration to a few per
+cent per cell, without drift on the climate models they were trained on; under an unseen climate model their carbon
+fluxes drift. Trained on climates that cover the test climate, the emulator reproduces the change in vegetation carbon
+under rising CO$_2$ as well as a second run of the original does on the global total, but it damps the largest
+warming-only losses, the cell-to-cell spread of the response and the response of sparse stands, and it did not pass
+the test as pre-registered. At $7.6\times10^{-3}$ core-seconds per cell-year it costs 35--900 times less than the
+original and fits the land budget of an intermediate-resolution Earth system model.
+
+\section*{Code and data availability}
+The emulator package (\texttt{python/src/lpjmlfit\_emulator/landemu}), the training, scoring and release scripts, the
+scripts that produce every figure of this paper (\texttt{scripts/paper}) and the decision records behind every number
+are in the project repository \url{https://github.com/rimajj/LPJmLFIT_Emulator} (to be archived on Zenodo on
+acceptance). The LPJmL-FIT simulations and the released emulator (models and per-cell set-ups) are stored at the
+Potsdam Institute for Climate Impact Research and will be archived with the code.
+
+\section*{Author contributions}
+JP conceived the study, defined its goals and acceptance standards, and made the design decisions. The implementation,
+simulations, analysis, figures and drafting were carried out by an AI research assistant (Claude, Anthropic) under JP's
+direction, with every decision recorded in the repository; JP is responsible for the final content.
+
+\section*{Competing interests}
+The author declares no competing interests.
+
+\section*{Acknowledgements}
+Computations used the PIK high-performance computing cluster. We thank Maik Billing for the global LPJmL-FIT
+simulations used in Sect.~\ref{sec:global}, and the LPJmL-FIT developers for the model.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

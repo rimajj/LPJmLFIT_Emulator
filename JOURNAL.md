@@ -1621,3 +1621,19 @@ upstream main adf0d61 (#1286, full-temperature vertical advection) −4.8…−3
 (prescribed) °C; main 6.1 / 12.0 °C, so main's slab ocean now drifts COLD (tropical SST 26.3 vs 34.7 °C). ⚠ The cos-lat
 weights in run_speedy_landemu.jl's global means are not area weights on the octahedral grid (11.7 °C there vs 7.8 °C
 area-weighted); the per-column land comparisons are unaffected (same weights on both sides).
+
+## 2026-10-20/21 — the emulator paper (docs/paper)
+
+Owner (2026-10-20): write a publication about the emulator — the emulator review as the basis of the introduction and
+of the design reasoning, how it works, how good it is, all figures incl. schematics; ESM coupling left out. Drafted
+`docs/paper/main.tex` (GMD-style model description, 25 pages) with nine data figures (`scripts/paper/fig_*.py`, one
+new computation: `run_daily_example.py`, daily output of the validated fold release at the biome cells) and two TikZ
+schematics. A read-only agent fact-checked every number against the records; its report arrived after that session
+ended and was applied on 2026-10-21 after re-verifying each item (`docs/paper/FACTCHECK.md`). The substantive
+corrections were framing, not numbers: the daily networks' test holds out places only (they saw every climate model
+they are scored on); the warming-response test did not pass as pre-registered and its CO2-fixed training step was
+added after seeing results (pre-registered arm: 0.81–0.97 of the rising-CO2 change, 0.57 of the largest warming-only
+loss; with the step 0.72); "more climate models reduced the unseen-model drift to 1.17" was wrong (1.17 is with that
+model in training); dense cells and the 2051–2070 drift baseline were chosen after first results (pre-registered:
+19/22 criteria, drift rule failed); 500-patch cost 7.06 measured, not 6.7. One fact-check claim was itself corrected
+(the release's residual yearly differences come from threshold-counted climate statistics, not tree splits).

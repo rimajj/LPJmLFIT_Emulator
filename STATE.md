@@ -44,6 +44,11 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 — the emulator paper is drafted and fact-checked (`docs/paper/`, README there).** Model-description
+manuscript of release v1 (25 pages, 11 figures, rebuild `scripts/paper/make_all.sh`); every number traced to a record,
+an independent fact-check applied in full (`docs/paper/FACTCHECK.md`). Open: the owner's read, author list, Zenodo
+DOI, journal formatting. ESM coupling deliberately not in it (owner, 2026-10-20).
+
 **2026-10-19 — POEM: the overheating "fix" was a no-op; cause still open (ADR 0347 §8).** The corrected 10-yr runs
 died at year 4.8 (project disk quota full) and, up to there, were identical to the first coupled runs: stock LPJmL in
 POEM already sets `cell->dedt = 0` every step, so `LANDEMU_DEDT=zero|lpj` are the same model (runs deleted). The
