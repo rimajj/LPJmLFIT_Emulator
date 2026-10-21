@@ -61,6 +61,11 @@ deviation from this year's anchor) and runs the map FORWARD year by year (2020's
 lags = the map's own prediction); `--state lagd` trains on cross-fitted free-run lags instead of the true ones (3 folds
 by training climate model). State arms also write preds_<g><sfx>_cut.parquet (the same run from a 2019 tree count cut
 by 30 %); `retention` scores how much of that start error survives.
+DEPARTURE (ADR 0354): `fit --state dep` keeps the map above as the LEVEL and adds a second model of the forest's
+year-to-year departure from it, ln((T+1)/(M+1)) for tree count and biomass per tree, learned from the five training
+runs' mean departure (against cross-fitted level predictions, de-meaned per leg and cell) from this and last year's
+weather anomaly (z-score of the 25 statistics against the 30 years before), last year's departure and the level; run
+forward year by year. `--state depnw` = the same without the weather (null). Files _statedep_fx / _statedepnw_fx.
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
@@ -98,6 +103,10 @@ MAX10 = ["pet_ann", "days_gt30", "dry_spell_max", "vpd_hs", "vpd_win10_sum", "tm
 # ADR 0352: the quantities fed back from year to year, and the start cut of the start-error test
 STATE_Q = ("n_per_patch", "agb_per_stem")
 CUT = 0.30
+# ADR 0354: the departure model's arms, its log offset, and this / last year's weather anomaly columns
+DEP_ARMS = ("dep", "depnw")
+DEP_EPS = 1.0
+DEP_W = [f"z0_{c}" for c in CLIM] + [f"z1_{c}" for c in CLIM]
 
 
 def log(*a):
@@ -151,7 +160,13 @@ def recent_cols(recent: str) -> list[str]:
 
 
 def state_cols(state: str) -> list[str]:
-    return [] if state == "none" else [f"{k}_{q}" for q in STATE_Q for k in ("lag", "lagdev")]
+    return [] if state in ("none", *DEP_ARMS) else [f"{k}_{q}" for q in STATE_Q for k in ("lag", "lagdev")]
+
+
+def dep_cols(state: str) -> list[str]:
+    """ADR 0354: the departure model's inputs (last year's departures, the level, the 30-year climate, the weather)."""
+    return ([f"dlag_{q}" for q in STATE_Q] + [f"lvl_{q}" for q in STATE_Q] + CLIM
+            + (DEP_W if state == "dep" else []))
 
 
 def feats(soil: str = "code", recent: str = "none", state: str = "none") -> list[str]:
@@ -299,6 +314,166 @@ def recent_climate(leg: str, recent: str) -> pl.DataFrame:
             .with_columns(pl.lit(leg).alias("leg")))
 
 
+def weather_anomaly(leg: str) -> pl.DataFrame:
+    """ADR 0354: z-score of each yearly climate statistic against the 30 years before (>= 15; observed 2000-2019 in
+    front of the leg, as window_climate), this year (z0_) and last year (z1_); 0 where the statistic does not vary."""
+    h = pl.read_parquet(os.path.join(PP.CLIM_DIR, "hist.parquet")).select("Cell", "Year", *CLIM)
+    s = pl.read_parquet(os.path.join(PP.CLIM_DIR, f"{leg}.parquet")).select("Cell", "Year", *CLIM)
+    d = pl.concat([h.filter(pl.col("Year") < Y0), s]).with_columns([pl.col(c).cast(pl.Float64) for c in CLIM])
+    d = d.sort("Cell", "Year")
+    ex = []
+    for c in CLIM:
+        mu = pl.col(c).shift(1).rolling_mean(window_size=30, min_samples=15).over("Cell")
+        sd = pl.col(c).shift(1).rolling_std(window_size=30, min_samples=15).over("Cell")
+        ex.append(pl.when(sd > 1e-6 * (mu.abs() + 1.0)).then((pl.col(c) - mu) / sd).otherwise(0.0).alias(f"z0_{c}"))
+    d = d.with_columns(ex)
+    d = d.with_columns([pl.col(f"z0_{c}").shift(1).over("Cell").alias(f"z1_{c}") for c in CLIM])
+    d = d.filter(pl.col("Year") >= Y0).select("Cell", "Year", *DEP_W)
+    assert d.null_count().sum_horizontal().item() == 0, f"{leg}: weather anomaly has nulls"
+    return d.with_columns(pl.lit(leg).alias("leg"))
+
+
+def dep_free_run(fm: dict, d: pl.DataFrame, fd: list[str], start_n: float = 0.0) -> pl.DataFrame:
+    """ADR 0354: run the departure models forward 2020-2100 per (member, leg, Cell); 2020's last-year departure =
+    `start_n` for tree count (0 = none; ln 0.7 = the start-cut test) and 0 for biomass per tree."""
+    d = d.sort("Year", "member", "leg", "Cell")
+    keys = d.select("member", "leg", "Cell").unique().sort("member", "leg", "Cell").with_row_index("kid")
+    d = d.join(keys, on=["member", "leg", "Cell"], how="left").sort("Year", "member", "leg", "Cell")
+    X = d.select(fd).to_numpy().astype(np.float64)
+    yrs, kid = d["Year"].to_numpy(), d["kid"].to_numpy()
+    jl = {q: fd.index(f"dlag_{q}") for q in STATE_Q}
+    cur = {q: np.zeros(keys.height) for q in STATE_Q}
+    cur["n_per_patch"][:] = start_n
+    D = {q: np.full(d.height, np.nan) for q in STATE_Q}
+    bounds = np.searchsorted(yrs, np.arange(Y0, Y1 + 2))
+    for i, y in enumerate(range(Y0, Y1 + 1)):
+        idx = np.arange(bounds[i], bounds[i + 1])
+        assert (yrs[idx] == y).all()
+        k = kid[idx]
+        for q in STATE_Q:
+            X[idx, jl[q]] = cur[q][k]
+        for q in STATE_Q:
+            D[q][idx] = fm[q].predict(X[idx])
+        for q in STATE_Q:
+            cur[q][k] = D[q][idx]
+    return d.drop("kid").with_columns([pl.Series(f"D_{q}", D[q]) for q in STATE_Q])
+
+
+def departure_stage(a, tr: pl.DataFrame, te: pl.DataFrame, models: dict, f: list[str], cat, train_legs: list[str],
+                    train_years: list[int], t0: float) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """ADR 0354: the level map `models` (fitted as `fix`) plus a departure model per fed-back quantity. Returns the
+    test predictions and the start-cut run (unseen run only)."""
+    import lightgbm as lgb
+
+    g, E = a.g, DEP_EPS
+    test_legs = [f"{g}_{s}" for s in ("ssp126", "ssp370", "ssp585")]
+    # 1. cross-fitted level on the training legs (3 folds by training climate model, as crossfit_lags)
+    gcm = {lg: A7.gcm_of(lg) for lg in train_legs}
+    gs = sorted(set(gcm.values()))
+    parts = []
+    for fo in [gs[i::3] for i in range(3)]:
+        legs_in = [lg for lg in train_legs if gcm[lg] in fo]
+        inn = tr.filter(~pl.col("leg").is_in(legs_in) & pl.col("Year").is_in(train_years))
+        mo = {q: fit_q(inn, q, f, cat)[0] for q in STATE_Q}
+        fold = tr.filter(pl.col("leg").is_in(legs_in))
+        Xf = fold.select(f).to_numpy()
+        parts.append(fold.select("member", "leg", "Cell", "Year", *STATE_Q).with_columns(
+            [pl.Series(f"lvl_{q}", untarget(q, mo[q].predict(Xf), fold[f"anc_{q}"].to_numpy().astype(float)))
+             for q in STATE_Q]))
+        log(f"{g} departure: level cross-fit fold {fo}: {inn.height} fit rows, {fold.height} predicted "
+            f"({time.time() - t0:.0f}s)")
+    oof = pl.concat(parts)
+    assert oof.height == tr.height
+    # 2. forced departure = mean over the training runs of ln((T+1)/(M+1)), de-meaned per (leg, Cell)
+    # NaN -> null: the level is NaN where the anchor is missing (no stems in the training runs that year)
+    lr = [((pl.col(q) + E) / (pl.col(f"lvl_{q}").clip(lower_bound=0.0) + E)).log().fill_nan(None).alias(f"d_{q}")
+          for q in STATE_Q]
+    fz = oof.with_columns(lr).group_by("leg", "Cell", "Year").agg(
+        [pl.col(f"d_{q}").mean().alias(f"D_{q}") for q in STATE_Q]
+        + [pl.col(f"d_{q}").count().alias(f"k_{q}") for q in STATE_Q]
+        + [pl.col(f"lvl_{q}").fill_nan(None).mean() for q in STATE_Q])
+    fz = fz.with_columns([pl.when(pl.col(f"k_{q}") >= 3).then(pl.col(f"D_{q}")).otherwise(None).alias(f"D_{q}")
+                          for q in STATE_Q])
+    fz = fz.with_columns([(pl.col(f"D_{q}") - pl.col(f"D_{q}").mean().over("leg", "Cell")).alias(f"D_{q}")
+                          for q in STATE_Q]).sort("leg", "Cell", "Year")
+    assert fz.group_by("leg", "Cell").len()["len"].min() == Y1 - Y0 + 1, "a training series misses years"
+    fz = fz.with_columns([pl.col(f"D_{q}").shift(1).over("leg", "Cell").fill_null(0.0).alias(f"dlag_{q}")
+                          for q in STATE_Q])
+    wz = pl.concat([weather_anomaly(lg) for lg in train_legs + test_legs])
+    ctx = tr.select("leg", "Cell", "Year", *CLIM).unique(subset=["leg", "Cell", "Year"], keep="first")
+    key = {c: fz[c].dtype for c in ("Cell", "Year")}
+    wz = wz.with_columns([pl.col(c).cast(t) for c, t in key.items()])
+    fz = fz.join(ctx, on=["leg", "Cell", "Year"], how="left").join(wz, on=["leg", "Cell", "Year"], how="left")
+    fz = fz.sort("leg", "Cell", "Year")
+    fd = dep_cols(a.state)
+    must = [c for c in fd if not c.startswith("lvl_")]  # the level may be missing (no anchor); LightGBM takes it
+    assert fz.select(must).null_count().sum_horizontal().item() == 0, "departure inputs have nulls"
+    for q in STATE_Q:
+        Dq = fz[f"D_{q}"].drop_nulls().to_numpy()
+        r1 = np.corrcoef(fz[f"D_{q}"].fill_null(0.0), fz[f"dlag_{q}"])[0, 1]
+        log(f"{g} departure {q}: sd {Dq.std():.4f}, 1st/99th centile {np.quantile(Dq, 0.01):.3f} / "
+            f"{np.quantile(Dq, 0.99):.3f}, lag-1 corr {r1:.3f}")
+    # 3. departure models, teacher-forced on the true last-year departure
+    fm = {}
+    for q in STATE_Q:
+        t = fz.filter(pl.col(f"D_{q}").is_not_null())
+        fm[q] = lgb.train(A7.PARAMS, lgb.Dataset(t.select(fd).to_numpy(), t[f"D_{q}"].to_numpy()), A7.ROUNDS)
+        imp = sorted(zip(fd, fm[q].feature_importance("gain"), strict=True), key=lambda x: -x[1])
+        tot = sum(v for _, v in imp)
+        log(f"{g} departure {q}: {t.height} rows fitted ({time.time() - t0:.0f}s); top gain "
+            + ", ".join(f"{n} {v / tot:.2f}" for n, v in imp[:8]))
+    # 4. the test legs: the level from the full map, the departure run forward from 2020
+    Xt = te.select(f).to_numpy()
+    lvl = {q: untarget(q, models[q].predict(Xt), te[f"anc_{q}"].to_numpy().astype(float)) for q in QS}
+    td = te.select("member", "leg", "Cell", "Year", *[f"anc_{q}" for q in QS], *CLIM).with_columns(
+        [pl.Series(f"lvl_{q}", lvl[q]) for q in QS])
+    td = td.join(wz, on=["leg", "Cell", "Year"], how="left").with_columns(
+        [pl.lit(0.0).alias(f"dlag_{q}") for q in STATE_Q])
+    must = [c for c in fd if not c.startswith("lvl_")]  # the level may be missing (no anchor); LightGBM takes it
+    assert td.select(must).null_count().sum_horizontal().item() == 0, "test departure inputs have nulls"
+
+    def assemble(r: pl.DataFrame) -> pl.DataFrame:
+        ex = [pl.col(f"lvl_{q}").alias(q) for q in QS if q not in STATE_Q]
+        ex += [((pl.col(f"lvl_{q}").clip(lower_bound=0.0) + E) * pl.col(f"D_{q}").exp() - E).alias(q)
+               for q in STATE_Q]
+        r = r.with_columns(ex).with_columns(pl.col("n_per_patch").clip(lower_bound=0.0))
+        return r.select("member", "leg", "Cell", "Year", *[f"anc_{q}" for q in QS], *QS,
+                        *[f"D_{q}" for q in STATE_Q]).sort("member", "leg", "Year", "Cell")
+
+    out = assemble(dep_free_run(fm, td, fd))
+    cut = assemble(dep_free_run(fm, td.filter(pl.col("member") == TRUTH), fd, float(np.log(1.0 - CUT))))
+    log(f"{g}: departure free-run 2020-{Y1} done, with and without the start cut ({time.time() - t0:.0f}s)")
+    # harness (ADR 0354 sec. 2): the level must equal the stored leak-free map
+    fx = os.path.join(OUT, f"preds_{g}_fx.parquet")
+    if os.path.exists(fx):
+        ref = pl.read_parquet(fx)
+        j = td.select("member", "leg", "Cell", "Year", *[f"lvl_{q}" for q in QS]).join(
+            ref.select("member", "leg", "Cell", "Year", *QS), on=["member", "leg", "Cell", "Year"])
+        rel = [j.select(((pl.col(f"lvl_{q}") - pl.col(q)).abs() / (pl.col(q).abs() + 1e-9)).max()).item()
+               for q in QS]
+        worst = max(0.0 if v is None else float(v) for v in rel)
+        log(f"LEVEL HARNESS vs preds_{g}_fx: {j.height} of {td.height} rows matched, max relative difference "
+            f"{worst:.2e} -> {'PASS' if (worst <= 1e-6 and j.height == td.height) else 'FAIL'}")
+    else:
+        log(f"LEVEL HARNESS: {fx} not found -> not checked")
+    # one-step diagnostic on the test legs (true last-year departure of the unseen run + m5; reported, not scored)
+    dt = td.join(te.select("member", "leg", "Cell", "Year", *STATE_Q), on=["member", "leg", "Cell", "Year"])
+    dt = dt.with_columns([((pl.col(q) + E) / (pl.col(f"lvl_{q}").clip(lower_bound=0.0) + E)).log().fill_nan(None)
+                          .alias(f"d_{q}") for q in STATE_Q]).group_by("leg", "Cell", "Year").agg(
+        [pl.col(f"d_{q}").mean() for q in STATE_Q] + [pl.col(c).first() for c in fd if not c.startswith("dlag_")])
+    dt = dt.with_columns([(pl.col(f"d_{q}") - pl.col(f"d_{q}").mean().over("leg", "Cell")).alias(f"d_{q}")
+                          for q in STATE_Q]).sort("leg", "Cell", "Year")
+    dt = dt.with_columns([pl.col(f"d_{q}").shift(1).over("leg", "Cell").fill_null(0.0).alias(f"dlag_{q}")
+                          for q in STATE_Q]).filter(pl.col("d_n_per_patch").is_not_null())
+    p1 = fm["n_per_patch"].predict(dt.select(fd).to_numpy())
+    dn, dl = dt["d_n_per_patch"].to_numpy(), dt["dlag_n_per_patch"].to_numpy()
+    big = (dl - dn) >= 0.15
+    log(f"ONE-STEP (test legs, mean of m4+m5, tree count): corr(pred, true) {np.corrcoef(p1, dn)[0, 1]:.3f}; "
+        f"one-year change corr {np.corrcoef(p1 - dl, dn - dl)[0, 1]:.3f}; {big.sum()} drops >= 0.15 in log, "
+        f"median captured share {np.median((dl[big] - p1[big]) / (dl[big] - dn[big])):.3f}")
+    return out, cut
+
+
 def soil_table() -> pl.DataFrame:
     """soil_code -> sand, clay, ln Ks, ln Sf (config/soil_texture_by_code.csv, the panel build's soil file)."""
     t = pl.read_csv(os.path.join(REPO, "config", "soil_texture_by_code.csv"))
@@ -325,7 +500,8 @@ def stage_fit(a) -> None:
     cb = clim.filter(pl.col("leg").is_in(train_legs))
     ctot = cb.group_by("Cell", "Year").agg([pl.col(c).sum().alias(f"S_{c}") for c in CLIM] + [pl.len().alias("N_c")])
     train_years = list(range(Y0, Y1 + 1, a.train_step))  # ADR 0351 sec. 5: step 1 = every year (default 4)
-    fit_years = list(range(Y0, Y1 + 1)) if a.state == "lagd" else train_years  # lagd free-runs the training legs
+    # lagd free-runs the training legs; the departure arms learn from every year (ADR 0354)
+    fit_years = list(range(Y0, Y1 + 1)) if a.state in ("lagd", *DEP_ARMS) else train_years
     rows = states.filter((pl.col("member").is_in(TRAIN_M) & pl.col("leg").is_in(train_legs)
                           & pl.col("Year").is_in(fit_years))
                          | (pl.col("member").is_in([TRUTH, SECOND]) & pl.col("leg").is_in(test_legs)))
@@ -355,7 +531,7 @@ def stage_fit(a) -> None:
         rc = pl.concat([recent_climate(lg, a.recent) for lg in A7.ALL_SLEGS])
         rows = rows.join(rc, on=["Cell", "Year", "leg"], how="left")
         assert rows[f"y0_{CLIM[0]}"].null_count() == 0, "recent climate missing for some rows"
-    if a.state != "none":
+    if a.state not in ("none", *DEP_ARMS):
         rows = with_lagdev(rows.join(lag_table(states), on=["Cell", "Year", "member", "leg"], how="left"))
         assert rows["lag_n_per_patch"].null_count() == 0, "a row has no state of the year before"
     rows = rows.sort("member", "leg", "Year", "Cell")  # deterministic row order (LightGBM bagging depends on it)
@@ -374,10 +550,13 @@ def stage_fit(a) -> None:
         tr = tr.filter(pl.col("Year").is_in(train_years)).sort("member", "leg", "Year", "Cell")
         log(f"{g}: training lags replaced by cross-fitted free-run values; {tr.height} rows")
     models = {}
+    trf = tr.filter(pl.col("Year").is_in(train_years)) if a.state in DEP_ARMS else tr  # the level = `fix`'s rows
     for q in QS:
-        models[q], nfit = fit_q(tr, q, f, cat)
+        models[q], nfit = fit_q(trf, q, f, cat)
         log(f"{g} {q}: {nfit} rows fitted ({time.time() - t0:.0f}s)")
-    if a.state == "none":
+    if a.state in DEP_ARMS:
+        out, cut = departure_stage(a, tr, te, models, f, cat, train_legs, train_years, t0)
+    elif a.state == "none":
         out = te.select("member", "leg", "Cell", "Year", *[pl.col(f"anc_{q}") for q in QS]).with_columns(
             [pl.Series(q, untarget(q, models[q].predict(te.select(f).to_numpy()), te[f"anc_{q}"].to_numpy()
                                    .astype(float))) for q in QS])
@@ -522,8 +701,9 @@ def main():
                     help="single-year / 10-year-extreme climate inputs (ADR 0351)")
     ap.add_argument("--train-step", dest="train_step", type=int, default=4,
                     help="training rows every n-th year 2020-2100 (default 4; ADR 0351 sec. 5)")
-    ap.add_argument("--state", default="none", choices=["none", "lag", "lagd"],
-                    help="last year's state as an input, run forward year by year (ADR 0352)")
+    ap.add_argument("--state", default="none", choices=["none", "lag", "lagd", *DEP_ARMS],
+                    help="last year's state as an input, run forward year by year (ADR 0352); dep/depnw = the "
+                         "weather-driven departure model on top of the level map (ADR 0354)")
     ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
     a = ap.parse_args()
     {"fit": stage_fit, "score": stage_score, "retention": stage_retention}[a.stage](a)
