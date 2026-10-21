@@ -61,7 +61,7 @@ def main():
         print(f"OK: {OUT} matches {LPJROOT}/par/soil_20m.js")
         return
     with open(OUT, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["code", "name", *COLS])
+        w = csv.DictWriter(f, fieldnames=["code", "name", *COLS], lineterminator="\n")
         w.writeheader()
         w.writerows(rs)
     print(f"wrote {OUT} ({len(rs)} soil codes)")

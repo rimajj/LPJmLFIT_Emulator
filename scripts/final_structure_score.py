@@ -24,6 +24,7 @@ WRITTEN BEFORE THE RUN (2026-10-15; ADR 0184):
            years), biomass per tree D1 1.0-1.3, traits < 1; sparse tree count S1 2.5-4 (fails, as the window map);
            dense totals within 5 % (anchor-defined), sparse stem total 10-25 %.
 Output: xpanel/eval/final_structure_<dense-def>.csv and the verdict table on stdout. Seconds-to-minutes; SLURM.
+SUFFIX=<s> (env) scores preds_<g><s>.parquet instead and writes final_structure_<dense-def><s>.csv (ADR 0349).
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ import explore_panel_yearly_drift as YD  # noqa: E402
 QS = YD.QS
 LIM = {"D1": 1.2, "D2": 1.5, "D3": 0.05, "S1": 3.0, "S2": 0.25}
 W0, W1 = 2071, 2100
+SUFFIX = os.environ.get("SUFFIX", "")
 
 
 def wmean(d: pl.DataFrame) -> pl.DataFrame:
@@ -71,7 +73,7 @@ def main():
     for dense_def in ("anchor", "truth"):
         rows = []
         for g in PP.GCMS:
-            P = pl.read_parquet(os.path.join(YD.OUT, f"preds_{g}.parquet")).filter(pl.col("member") == YD.TRUTH)
+            P = pl.read_parquet(os.path.join(YD.OUT, f"preds_{g}{SUFFIX}.parquet")).filter(pl.col("member") == YD.TRUTH)
             for s in ("ssp126", "ssp370", "ssp585"):
                 leg = f"{g}_{s}"
                 T = YD.yearly(YD.TRUTH, leg)
@@ -102,7 +104,7 @@ def main():
                                              rep_tot_stems=float(np.median([abs(x[0]) for x in rs])),
                                              rep_tot_biomass=float(np.median([abs(x[1]) for x in rs]))))
         d = pl.DataFrame(rows)
-        d.write_csv(os.path.join(PP.OUT, "eval", f"final_structure_{dense_def}.csv"))
+        d.write_csv(os.path.join(PP.OUT, "eval", f"final_structure_{dense_def}{SUFFIX}.csv"))
         for nm in ("harness_m5", "emulator"):
             x = d.filter(pl.col("cand") == nm)
             ncase = x["leg"].n_unique()
@@ -127,7 +129,7 @@ def main():
                 .alias("cases"))
             o = o.with_columns(((pl.col("median") <= pl.col("limit")) & (pl.col("cases_ok") >= need)).alias("PASS"))
             with pl.Config(tbl_rows=60, fmt_str_lengths=70, tbl_width_chars=200, float_precision=3):
-                print(f"\n== {nm}, dense defined by the {dense_def}: {ncase} cases; pass = median <= limit AND "
+                print(f"\n== {nm}{SUFFIX}, dense defined by the {dense_def}: {ncase} cases; pass = median <= limit AND "
                       f">= {need} cases")
                 print(o.sort("crit", "what"))
     print("=== DONE")

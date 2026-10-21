@@ -47,6 +47,9 @@ RESULT 2026-10-12 (jobs 2467154-58, ADR 0330): harness and nulls as derived (sec
 2000-2019 state is known); it rises to a plateau by the 2050s (biomass per tree ~1.0, tree count ~1.1) with a slow
 tree-count creep after (+0.01 / +0.07 / +0.12 ssp126 / 370 / 585); drift is scenario-independent -> mostly the fading
 start state.
+SOIL (ADR 0349): `fit --soil code` (default, every earlier result) feeds the soil code as a plain number; `--soil cat`
+as a LightGBM categorical feature; `--soil phys` replaces it by sand, clay, ln Ks, ln Sf of the soil type
+(config/soil_texture_by_code.csv). Non-default variants write preds_<g>_soil<cat|phys>.parquet (or --suffix).
 Stages: `fit --g <model>` (SLURM, ~20-40 min) -> xpanel/eval/yearly/preds_<g>.parquet ; `score` (seconds) ->
 xpanel/eval/yearly/drift_cases.csv, drift_years.csv.
 """
@@ -77,6 +80,7 @@ LOG_EPS = {"agb_per_stem": 1.0}  # A7rH: log target on biomass per tree only
 Y0, Y1 = 2020, 2100
 TRAIN_YEARS = list(range(Y0, Y1 + 1, 4))
 DENSE = 5.0
+SOIL_PHYS = ["soil_sand", "soil_clay", "soil_lnKs", "soil_lnSf"]
 
 
 def log(*a):
@@ -120,9 +124,18 @@ def s0_table() -> pl.DataFrame:
         [(pl.col(f"s0_{q}") - pl.col(f"hm_{q}")).alias(f"memoff_{q}") for q in QS]).drop([f"hm_{q}" for q in QS])
 
 
-def feats() -> list[str]:
+def feats(soil: str = "code") -> list[str]:
+    tail = SOIL_PHYS if soil == "phys" else ["soil_code"]
     return (CLIM + [f"dclim_{c}" for c in CLIM] + [f"anc_{q}" for q in QS] + [f"s0_{q}" for q in QS]
-            + [f"memoff_{q}" for q in QS] + ["lat", "lon", "soil_code"])
+            + [f"memoff_{q}" for q in QS] + ["lat", "lon", *tail])
+
+
+def soil_table() -> pl.DataFrame:
+    """soil_code -> sand, clay, ln Ks, ln Sf (config/soil_texture_by_code.csv, the panel build's soil file)."""
+    t = pl.read_csv(os.path.join(REPO, "config", "soil_texture_by_code.csv"))
+    return t.select(pl.col("code").alias("soil_code"), pl.col("sand").alias("soil_sand"),
+                    pl.col("clay").alias("soil_clay"), pl.col("Ks").log().alias("soil_lnKs"),
+                    pl.col("Sf").log().alias("soil_lnSf"))
 
 
 def stage_fit(a) -> None:
@@ -165,12 +178,17 @@ def stage_fit(a) -> None:
     rows = rows.with_columns(ex)
     rows = rows.drop([x for x in rows.columns if x[:2] in ("S_", "N_", "s_", "n_", "c_") and x != "n_per_patch"])
     cells = PP.cells().select("Cell", "lat", "lon", "soil_code")
+    if a.soil == "phys":
+        cells = cells.join(soil_table(), on="soil_code", how="left")
+        assert cells["soil_sand"].null_count() == 0, "a cell's soil code is not in the soil table"
     rows = rows.join(s0_table(), on=["Cell", "member"], how="left").join(cells, on="Cell", how="left")
     rows = rows.sort("member", "leg", "Year", "Cell")  # deterministic row order (LightGBM bagging depends on it)
     tr = rows.filter(pl.col("member").is_in(TRAIN_M))
     te = rows.filter(pl.col("member").is_in([TRUTH, SECOND]))
     log(f"{g}: train rows {tr.height}, test rows {te.height} ({time.time() - t0:.0f}s)")
-    f = feats()
+    f = feats(a.soil)
+    cat = [f.index("soil_code")] if a.soil == "cat" else "auto"
+    log(f"{g}: soil={a.soil}, {len(f)} features, categorical {cat}")
     out = te.select("member", "leg", "Cell", "Year", *[pl.col(f"anc_{q}") for q in QS])
     for q in QS:
         t = tr.filter(pl.col(q).is_not_null() & pl.col(f"anc_{q}").is_not_null())
@@ -179,7 +197,7 @@ def stage_fit(a) -> None:
             y = np.log((t[q].to_numpy() + e) / (t[f"anc_{q}"].to_numpy() + e))
         else:
             y = (t[q] - t[f"anc_{q}"]).to_numpy()
-        mdl = lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), y), A7.ROUNDS)
+        mdl = lgb.train(A7.PARAMS, lgb.Dataset(t.select(f).to_numpy(), y, categorical_feature=cat), A7.ROUNDS)
         p = mdl.predict(te.select(f).to_numpy())
         anc = te[f"anc_{q}"].to_numpy().astype(float)
         p = (anc + LOG_EPS[q]) * np.exp(p) - LOG_EPS[q] if q in LOG_EPS else p + anc
@@ -187,8 +205,14 @@ def stage_fit(a) -> None:
             p = np.maximum(p, 0.0)
         out = out.with_columns(pl.Series(q, p))
         log(f"{g} {q}: {t.height} rows fitted ({time.time() - t0:.0f}s)")
-    out.write_parquet(os.path.join(OUT, f"preds_{g}.parquet"))
+    out.write_parquet(os.path.join(OUT, f"preds_{g}{suffix(a)}.parquet"))
     log(f"{g}: wrote {out.height} predictions")
+
+
+def suffix(a) -> str:
+    if a.suffix is not None:
+        return a.suffix
+    return "" if a.soil == "code" else f"_soil{a.soil}"
 
 
 def stage_score(a) -> None:
@@ -276,6 +300,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["fit", "score"])
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
+    ap.add_argument("--soil", default="code", choices=["code", "cat", "phys"],
+                    help="soil code as a number (default), a category, or texture values (ADR 0349)")
+    ap.add_argument("--suffix", default=None, help="prediction file suffix (default from --soil)")
     a = ap.parse_args()
     {"fit": stage_fit, "score": stage_score}[a.stage](a)
     log("=== DONE")
