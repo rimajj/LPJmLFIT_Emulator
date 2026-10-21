@@ -276,7 +276,10 @@ def main():
                                                                                     "high": pft["temp_high"]},
            "gates": {"daily_numpy_vs_torch_max_rel": rel, "climate_exact": True,
                      "setup_anchors_exact": a.hold_gcm is not None},
-           "setups": [os.path.basename(p) for p in setups], "years": [2020, 2100]}
+           "setups": [os.path.basename(p) for p in setups], "years": [2020, 2100],
+           # ADR 0352 sec. 0 / 0353: built after the held-out-leg leak fix; `run_emulator.py --check` compares with
+           # the leak-free scored predictions (file suffix below). Releases without the key predate the fix.
+           "pred_suffix": SM.FX}
     with open(os.path.join(a.out, "release.json"), "w") as fh:
         json.dump(cfg, fh, indent=1)
     log(f"release written to {a.out} ({time.time() - t0:.0f}s)")

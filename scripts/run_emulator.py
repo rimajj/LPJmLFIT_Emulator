@@ -5,8 +5,9 @@ predictions. ADR 0340.
 
   --release DIR --run k --leg <daily leg>   e.g. --run 4 --leg gfdl-esm4_ssp370_daily
   --check     fold release only: compare with the validated predictions of the same models and run --
-              structure (xpanel/eval/yearly/preds_<g>.parquet), stand (xpanel/eval/stand/preds_<g>.parquet) and the
-              daily model's annual fluxes in the scored phase-B run (f2/runs/<CHECK_TAG>/annual.npz, default PD_B).
+              structure (xpanel/eval/yearly/preds_<g><sfx>.parquet), stand (xpanel/eval/stand/preds_<g><sfx>.parquet;
+              <sfx> = release.json's pred_suffix, "_fx" since the leak fix) and the daily model's annual fluxes in
+              the scored phase-B run (f2/runs/<CHECK_TAG>/annual.npz, default PD_B; leak-free: PD_B_fx).
               The scored runs read the climate statistics from the training table; the package computes them from
               the daily weather itself, so this check is also the one that closes ADR 0337 sec. 5's stated
               simplification.
@@ -112,8 +113,10 @@ def main():
         grid = pl.DataFrame({"Cell": np.repeat(cells, ny), "Year": np.tile(np.arange(2020, 2020 + ny), n)
                              .astype(np.int32)})
         ok = True
-        for kind, pf in (("structure", os.path.join(XP, "yearly", f"preds_{g}.parquet")),
-                         ("stand", os.path.join(XP, "stand", f"preds_{g}.parquet"))):
+        sfx = emu.cfg.get("pred_suffix", "")  # "_fx" for releases built after the leak fix (ADR 0352 sec. 0)
+        log(f"CHECK against the scored predictions preds_{g}{sfx}.parquet and the daily run {a.check_tag}")
+        for kind, pf in (("structure", os.path.join(XP, "yearly", f"preds_{g}{sfx}.parquet")),
+                         ("stand", os.path.join(XP, "stand", f"preds_{g}{sfx}.parquet"))):
             P = pl.read_parquet(pf).filter((pl.col("member") == a.run) & (pl.col("leg") == leg)).with_columns(
                 pl.col("Cell").cast(pl.Int32), pl.col("Year").cast(pl.Int32))
             P = grid.join(P, on=["Cell", "Year"], how="left")

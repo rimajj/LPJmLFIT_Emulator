@@ -48,6 +48,7 @@ OUT = os.path.join(PP.OUT, "eval", "stand")
 FPC = [f"fpc{p}" for p in range(1, 11)]
 SQ = ["lai_stand", "vegc", *FPC]
 SCORED = {"lai_stand": "lai_stand", "vegc": "vegc", "fpc_tree": FPC[:7], "fpc_grass": FPC[7:]}
+FX = "_fx"  # ADR 0352 sec. 0 / ADR 0353: every leak-free prediction and score file carries it; the leaky ones stay
 
 
 def log(*a):
@@ -210,7 +211,7 @@ def stage_fit(a) -> None:
 def pred_name(g: str, hold: int, mode: str = "additive") -> str:
     suf = "" if hold == 4 else f"_h{hold}"
     msuf = "" if mode == "additive" else f"_{mode}"
-    return f"preds_{g}{suf}{msuf}.parquet"
+    return f"preds_{g}{suf}{msuf}{FX}.parquet"
 
 
 def stage_arrays(a) -> None:
@@ -311,7 +312,7 @@ def stage_score(a) -> None:
                                        drift_0330=mean_in(2081, 2100) / mean_in(2021, 2040),
                                        tot_late=mean_in(2071, 2100, "tot") * 100))
     Y = pl.concat(yr)
-    msuf = "" if a.cover_mode == "additive" else f"_{a.cover_mode}"  # never overwrite the additive files
+    msuf = ("" if a.cover_mode == "additive" else f"_{a.cover_mode}") + FX  # never overwrite the additive files
     Y.write_csv(os.path.join(OUT, f"stand_years{msuf}.csv"))
     C = pl.DataFrame(cs)
     C.write_csv(os.path.join(OUT, f"stand_cases{msuf}.csv"))
