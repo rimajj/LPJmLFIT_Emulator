@@ -13,6 +13,10 @@ NCPUS=48 TIME=04:00:00 scripts/sbatch_python.sh release-<tag> scripts/build_emul
     --out /p/projects/open/Jamir/esm_land_emulator_data/release/<name> [--hold-gcm gfdl-esm4] [--cover-mode additive]
 ```
 Refuses an existing directory (never overwrite). Gates abort the build before anything else is written.
+`--departure dep` (ADR 0358, the current releases `v2` and `fold_gfdl-esm4_v3`): adds the weather-driven
+departure model of tree count and biomass per tree (trained by `explore_panel_yearly_drift.fit_departure`, GATE (4)
+z-scores package == training table); `--check` then compares the structure with `preds_<g>_statedep_fx`
+(`release.json` `struct_pred_suffix`). Measured: check OK except the known fpc7/fpc8; 7.0e-3 core-s per cell-year.
 
 ## Run / reproduce / time (one core, ~11 min for 1 050 cells x 81 years)
 ```bash

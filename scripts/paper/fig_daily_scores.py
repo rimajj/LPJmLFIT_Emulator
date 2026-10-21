@@ -32,12 +32,12 @@ def parse(path):
 def main():
     S.setup()
     rows = parse(f"{S.DATA}/f2/runs/relative_score_PD_ADR0353.md")
-    stats = [("typ", "Typical cell, 30-year means", 3.0, (0, 8.5)), ("resp", "Climate response, typical cell", 1.5, (0, 3.2)),
-             ("drift", "Drift relative to LPJmL-FIT", 1.2, (0.6, 1.4)), ("tot", "Area totals", 5, (0, 5.6))]
+    stats = [("typ", "Typical cell, 30-year means", (0, 8.5)), ("resp", "Climate response, typical cell", (0, 3.2)),
+             ("drift", "Drift relative to LPJmL-FIT", (0.6, 1.4)), ("tot", "Area totals", (0, 5.6))]
     fig, axs = plt.subplots(2, 2, figsize=(S.FULL, 4.2), gridspec_kw=dict(wspace=0.25, hspace=0.4))
     axs = axs.ravel()
     rng = np.random.default_rng(3)
-    for ax, (k, title, lim, yl), letter in zip(axs, stats, "abcd", strict=True):
+    for ax, (k, title, yl), letter in zip(axs, stats, "abcd", strict=True):
         for i, (f, _) in enumerate(FLUX):
             for arm, col, dx in (("PD_A", S.NULL1, -0.18), ("PD_B_fx", S.EMU, 0.18)):
                 v = np.array([r[k] for r in rows if r["arm"] == arm and r["flux"] == f])
@@ -45,7 +45,6 @@ def main():
                     v = 100 * v
                 ax.scatter(i + dx + rng.uniform(-0.07, 0.07, len(v)), v, s=8, color=col, alpha=0.75, lw=0, zorder=3)
                 ax.plot([i + dx - 0.13, i + dx + 0.13], [np.median(v)] * 2, color=col, lw=2, zorder=4)
-        ax.axhline(lim, color=S.RED, lw=0.9, ls="--")
         if k != "tot":
             ax.axhline(1.0, color=S.SECOND, lw=0.9)
         ax.set_ylim(*yl)
@@ -59,9 +58,8 @@ def main():
     axs[3].set_ylabel("Area-total error (%)")
     h = [plt.Line2D([], [], marker="o", ls="", color=S.EMU, ms=4, label="Full emulator (emulated stand)"),
          plt.Line2D([], [], marker="o", ls="", color=S.NULL1, ms=4, label="Daily model on LPJmL-FIT's stand"),
-         plt.Line2D([], [], color=S.SECOND, lw=0.9, label="A further run of LPJmL-FIT"),
-         plt.Line2D([], [], color=S.RED, ls="--", lw=0.9, label="Proposed limit")]
-    fig.legend(handles=h, loc="lower center", ncol=4, bbox_to_anchor=(0.5, -0.04), fontsize=6.5)
+         plt.Line2D([], [], color=S.SECOND, lw=0.9, label="A further run of LPJmL-FIT")]
+    fig.legend(handles=h, loc="lower center", ncol=3, bbox_to_anchor=(0.5, -0.04), fontsize=6.5)
     S.save(fig, "fig_daily_scores")
 
 

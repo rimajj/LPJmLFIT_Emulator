@@ -69,7 +69,7 @@
 \node[box=viol, right=4mm of win, minimum width=25mm, minimum height=20mm, text width=24mm] (anc)
   {\textbf{Per-cell anchor}\\[1pt] LPJmL-FIT's own state\\ of this cell (mean over runs)\\ + offset of this run's\\ 2000--2019 state};
 \node[box=viol, right=4mm of anc, minimum width=28mm, minimum height=20mm, text width=27mm] (gbm)
-  {\textbf{18 gradient-boosted\\ tree models}\\[1pt] predict the departure\\ from the anchor\\ (not recursive: no error\\ can accumulate)};
+  {\textbf{18 gradient-boosted\\ tree models}\\[1pt] predict the level as a\\ departure from the anchor;\\ a weather-anomaly model\\ adds the year-to-year\\ departure of tree count\\ and biomass per tree};
 \draw[arr] (stats) -- (win);
 \draw[arr] (win) -- (anc);
 \draw[arr] (anc) -- (gbm);
@@ -91,8 +91,8 @@
 
 % legend / state carried
 \node[note, below=4mm of yearblk.south west, anchor=north west, text width=150mm] (st)
-  {\textbf{State carried from year to year:} the three water stores, the trailing weather windows, the 30-year climate window
-  and the stand vector. \quad \textbf{Run-time dependencies:} numpy and LightGBM. \quad
-  \textbf{Cost:} $7.6{\times}10^{-3}$ core-s per cell-year, 97\,\% in block A.};
+  {\textbf{State carried from year to year:} the three water stores, the trailing weather windows, the 30-year climate window,
+  the stand vector and last year's departures of tree count and biomass per tree. \quad \textbf{Run-time dependencies:} numpy and LightGBM. \quad
+  \textbf{Cost:} $7.0{\times}10^{-3}$ core-s per cell-year, 97\,\% in block A.};
 \end{tikzpicture}
 \end{document}

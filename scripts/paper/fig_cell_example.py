@@ -26,7 +26,7 @@ Q = [("n_per_patch", "Trees > 5 m per patch", 1.0), ("agb_per_stem", "Above-grou
 def main():
     S.setup()
     cells = [c for c, _ in CELLS]
-    pred = pl.read_parquet(f"{S.DATA}/xpanel/eval/yearly/preds_gfdl-esm4_fx.parquet").filter(
+    pred = pl.read_parquet(f"{S.DATA}/xpanel/eval/yearly/preds_gfdl-esm4{S.STRUCT_SFX}.parquet").filter(
         (pl.col("member") == 4) & (pl.col("leg") == LEG) & pl.col("Cell").is_in(cells)).sort("Year")
     train = [YD.yearly(m, f"{g}_ssp370") for m in YD.TRAIN_M for g in OTHERS]
     train = pl.concat([t for t in train if t is not None]).filter(pl.col("Cell").is_in(cells))

@@ -114,8 +114,9 @@ def main():
                              .astype(np.int32)})
         ok = True
         sfx = emu.cfg.get("pred_suffix", "")  # "_fx" for releases built after the leak fix (ADR 0352 sec. 0)
-        log(f"CHECK against the scored predictions preds_{g}{sfx}.parquet and the daily run {a.check_tag}")
         ssfx = emu.cfg.get("struct_pred_suffix", sfx)  # a departure release (ADR 0358): its own arm's file
+        log(f"CHECK against the scored predictions preds_{g}{ssfx}.parquet (structure), preds_{g}{sfx}.parquet "
+            f"(stand) and the daily run {a.check_tag}")
         for kind, pf in (("structure", os.path.join(XP, "yearly", f"preds_{g}{ssfx}.parquet")),
                          ("stand", os.path.join(XP, "stand", f"preds_{g}{sfx}.parquet"))):
             P = pl.read_parquet(pf).filter((pl.col("member") == a.run) & (pl.col("leg") == leg)).with_columns(

@@ -17,6 +17,9 @@ import matplotlib.pyplot as plt
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIGDIR = os.path.join(REPO, "docs", "paper", "figs")
 DATA = "/p/projects/open/Jamir/esm_land_emulator_data"
+# the forest-structure predictions of the shipped emulator: the leak-free map + the weather-driven departure model
+# (ADR 0354, shipped by ADR 0358); "_fx" = the map alone
+STRUCT_SFX = "_statedep_fx"
 
 ORIG = "#222220"
 EMU = "#2a78d6"

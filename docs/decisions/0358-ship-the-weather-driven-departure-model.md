@@ -35,4 +35,16 @@ stand map and the daily networks are untouched, so every daily flux and the stan
 * Build: `fit_departure_models` calls `explore_panel_yearly_drift.build_rows` + `fit_departure` (the scored code);
   GATE (4): the package's z-scores equal the training table's on one leg (< 1e-9). `run_emulator.py --check` compares
   the structure with `preds_<g>_statedep_fx` (`release.json` `struct_pred_suffix`).
-* Results of the build and the check: §3 (appended when run).
+* Results of the build and the check: §3.
+
+## 3. Builds and check (2026-10-21; jobs 2653114, 2653115, 2653214)
+
+* `fold_gfdl-esm4_v3`: gates (1) 1.04e-6, (2) exact, (3) exact, (4) **3.69e-11**; built in 363 s. `v2` (deployment):
+  (1) 1.04e-6, (2) exact, (4) 3.13e-11; 430 s.
+* `run_emulator.py --release fold_gfdl-esm4_v3 --run 4 --leg gfdl-esm4_ssp370_daily --check --check-tag PD_B_fx`:
+  structure against `preds_gfdl-esm4_statedep_fx` — tree count median |diff| 2.3e-4 of the 90th-percentile size (99th
+  pct 2.2e-2), biomass per tree 4.4e-5 (2.0e-2), trait medians 0; stand 0 except `fpc7` / `fpc8` "DIFFERS" exactly as
+  v1/v2 did (the 30.0 °C single-precision hot-day count, ADR 0340 §3); daily fluxes 1.5–2.8e-4. **The package with the
+  departure model reproduces the scored arm.**
+* One-core timing: **7.01e-3 core-s per cell-year** (v1: 7.57e-3 on another node; the departure model adds two
+  LightGBM calls per year, not measurable) — 38× below the original at 25 patches, ~1 000× at 500.
