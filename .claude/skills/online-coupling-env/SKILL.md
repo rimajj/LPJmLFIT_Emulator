@@ -233,7 +233,8 @@ tendency** over the interval, which ForwardEuler then integrates to exactly the 
 ## SpeedyWeather cold-bias experiments (stand-alone, no emulator) — 2026-10-21
 
 - **Search upstream first**: SpeedyWeather issues/PRs (#1279, #1283, #1262, #1284, #1332, #1335, #1333) already hold
-  most fixes; the maintainers' agent account is `milankl-claude`.
+  most fixes; the maintainers' agent account is `milankl-claude`. Ours: #1333 (cold near-surface air), #1339 (the
+  two convection defects, 2026-10-22; text in `patches/speedyweather/upstream_issue_1339_convection.md`).
 - Branch builds: worktrees of `/p/tmp/jamirp/speedy_main_src` (`git fetch origin pull/<n>/head:pr<n>`; the clone was
   shallow — `git fetch --unshallow` before any merge-base). Durable copies: `patches/speedyweather/*.diff` + README.
   Each worktree needs `RingGrids/Artifacts.toml` copied from `speedy_main_src` (git-ignored; without it

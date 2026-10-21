@@ -1859,3 +1859,7 @@ R2 +16.1/+17.6/+21.1, **R3 +6.4/+9.2/+12.4** (land air +1.93 K vs base +2.23, mi
 convection: passes if clear-sky reflected within 5 W/m² of 53.3, SW cloud effect error at most half the base's (|−78.5 +
 45.8| = 32.7 ⇒ ≤ 16.4), net TOA within ±2 W/m² of the base (+5.8, prescribed SST), land SW down error smaller than the
 base's; slab 5 yr reported alongside E3ent50-slab (drift).
+**New-base slab (E3ent50, 5 yr):** 308/431/555 hPa +1.8/+2.7/+2.1 K (tropical SST 30.1 °C, warmer than the prescribed
+climatology's 27.5), column water vapour 42.4 vs 40.3, +0.35 K/yr in year 5, TOA +2.2 W/m². **Upstream report filed:**
+SpeedyWeather #1339 (the two convection defects with the parcel check against `main`, the prescribed/slab table and the
+convection.jl diff; text kept at `patches/speedyweather/upstream_issue_1339_convection.md`).
