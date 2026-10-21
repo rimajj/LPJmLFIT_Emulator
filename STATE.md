@@ -44,6 +44,22 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-21 (late night, 3) — forest map: runs of bad years as vulnerability input (ADR 0356), not adopted; and
+what the die-offs actually are.** Owner: "continue with b3".
+* In the original, a dry year's tree-count drop does NOT deepen when it follows other bad years (−0.4 % in every bin,
+  tail flat too) ⇒ arm `depv` (weather runs of bad years) ≈ `depw` (capture 0.25, gap 3.47×, 20 of 22, sparse biomass
+  per tree 4.9 % worse than `fix`); `depvs` (+ the forest's own history) worse, and its start cut grows (1.14).
+* **Post-hoc findings (ADR 0356 §7):** even the driest years (z < −2) cause a ≥ 15 % drop in only 7 % of dense
+  cell-years; **not fire** (deaths in die-off years equal the trees' own death probability, 0.342 vs 0.343; the live
+  fire path is per tree, `fire_tree_ind`); die-off years are mostly **hard kills** — 23 % of trees vs 11 % normally,
+  with the hazards below 1: leaf carbon below a sapling's ("ghost tree fix") or 5 bad years in a row. The flat
+  run-length result points to the leaf-carbon threshold, a one-year per-tree trigger — not measured yet.
+**Next (owner to choose):** (b5) confirm which hard kill (rebuild each dying tree's leaf carbon from the tree table vs
+its sapling threshold, no new run) and, if it is the leaf threshold, give the departure model the share of trees
+close to it (needs a within-stand leaf-carbon statistic the emulator does not carry yet); (b2) ship `dep` (20 of 22,
+capture 0.18) or `depv` (20 of 22, capture 0.25, but sparse biomass per tree +4.9 %) for the general gain; (d)/(e)
+below.
+
 **2026-10-21 (late night, 2) — forest map: a daily soil-water stress input for the departure model (ADR 0355), not
 adopted.** Owner: "continue with b1". A forcing-only daily top-metre bucket (`scripts/build_panel_bucket_stress.py`,
 data `xpanel/climate_bucket/`; evaporation rate 3 mm/day chosen on observed weather only) gives six yearly stress

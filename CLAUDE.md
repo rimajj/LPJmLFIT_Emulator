@@ -757,6 +757,14 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   reproduced the dumps. Same family as ADR 0135's `/* test: */` dead-expression trap, one step worse: here
   the comment is attached to *live* code and describes the wrong semantics, so nothing but the measurement
   distinguishes them.
+- ⚠ **FIRE IS ON AND IT IS PER TREE, NOT PER PATCH — AND IT DOES NOT CAUSE THE DROUGHT DIE-OFFS
+  (`[VERIFIED 2026-10-21]`, ADR 0356 §7).** `lpjmlfit.js:48` `"fire": "fire"` (GlobFIRM). The live call is
+  `annual_natural.c:170-172` → `firepft.c` (its whole-patch `delpft` branch is `#if 0`) → `fire_tree_ind.c:25`: each
+  living tree dies with probability `(1 − resist) · fire_frac`, AFTER the demographic mortality. `firepft_ind.c` (burn
+  the whole patch) exists but is NOT called. Fire deaths therefore show up as deaths beyond the `ind` column `mort`; in
+  the panel's 3 291 shared die-off years there are none (dead 0.342 vs `mort` 0.343). The die-offs are HARD kills
+  (`mortality_tree_ind.c:135-140`: 5 bad years in a row, or leaf carbon below the sapling's), 23 % of trees vs 11 %.
+  Checker: `scripts/diagnose_dieoff_excess_deaths.py`.
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative
