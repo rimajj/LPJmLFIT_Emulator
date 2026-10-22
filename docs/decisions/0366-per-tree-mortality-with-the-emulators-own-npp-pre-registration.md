@@ -1,6 +1,6 @@
 # 0366 — The per-tree mortality model fed the emulator's OWN yearly NPP (pre-registration)
 
-* **Status:** pre-registered 2026-10-22, before any emulator run or fit of this record.
+* **Status:** pre-registered 2026-10-22, before any emulator run or fit of this record. **Result (§5): not adopted — die-off capture 0.43 (bar 0.5; without NPP 0.36), 30-year death rate 1.52 (bar 1.2). The emulated NPP carries part of the signal: +0.07 on all cells, +0.10 on the cells the daily networks never saw; outright-kill capture 0.45 → 0.61.**
 * **Owner instruction (2026-10-22):** "(m1) Give the mortality model the emulator's own NPP … do both!"
 * **Follows:** ADR 0364 §6 — the per-tree model `BC` captures 0.36 of the die-off jump (bar 0.5) and misses the
   30-year death rate (1.51, bar 1.2); with the run's OWN tree-NPP statistics (`BCN`, not deployable) capture is 0.74.
@@ -74,6 +74,43 @@ capacity. Then the standard 2020–2100 run starts fresh from the setup, so the 
   and its typical yearly error is ~3.9× a second run's); 30-year rate unchanged (1.4–1.5); the bars are not expected
   to pass.
 
-## 5. Results
+## 5. Results (2026-10-22; forcing 2670984, setups 2671014, runs 2671019 + 2671197, table 2671198, fits 2671199–207,
+predictions 2671200–208, scores 2671209/10 → `xpanel/eval/treemort/score_treemort{,_clean}.csv`)
 
-(to be filled)
+**Gates.** G1: the weather arrays of two existing legs re-derived bit for bit. G3: run m1's setup rebuilt from m2's file
++ m1's own fields equals `v2/setup_m1.npz` in all 67 fields (first attempt failed on `memoff/*`: the deployment release
+measures the run offset against the mean of ALL six runs, not the five training runs; fixed). G2: the runner reproduces
+`v2`'s own run bit for bit (checked twice). The four fold releases built with every gate passed. 150 + 15 run-legs,
+~775 core-s each (81 years + the 20-year history) ⇒ 35.5 core-hours. Emulated NPP over 1 050 cells: history 2000–2019
+484 gC/m²/yr, 2020–2100 459–471 (fold releases) / 462 (v2). Training rows of `BCE` = `BC`'s exactly (11 074 323 trees
+for the GFDL-ESM4 fold), so the only difference between the two arms is the 12 emulated-NPP inputs.
+
+All ratios to the pooled second runs, dense cells, 15 held-out cases (E2 = virtual trees, deployable):
+
+| arm | yearly death rate (≤ 1.5) | 30-yr death rate (≤ 1.2) | total deaths ±5 % (≥ 12/15) | die-off capture death rate (≥ 0.5) | capture hard-kill rate | hard-kill calibration E1 (±10 %) |
+|---|---|---|---|---|---|---|
+| `BC` E2 (ADR 0364) | 0.97 | 1.51 | 15 | 0.36 | 0.45 | 0.82 (0 of 15) |
+| **`BCE` E1** | 0.95 | 1.39 | 15 | 0.44 | 0.64 | 0.87 (1 of 15) |
+| **`BCE` E2 (deployable)** | **0.97 ✓** | **1.52 ✗** | **15 ✓** | **0.43 ✗** | 0.61 | — |
+| `BCN` E2 (bound, ADR 0364) | 0.93 | 1.48 | 15 | 0.74 | 1.16 | 0.95 (13 of 15) |
+| `BMW3` (cell map) | 1.01 | 1.34 | 14 | 0.28 | 0.27 | — |
+
+**Clean cells** (the 240 cells the daily networks never saw; 943 die-off events): `BC` E2 capture 0.44, **`BCE` E2 0.54**
+(hard-kill rate 0.57 → 0.78), `BMW3` 0.29; 30-year death rate `BCE` E2 1.68, `BC` E2 1.59, `BMW3` 1.48; hard-kill
+calibration `BCE` E1 0.91 (8 of 15 within 10 %).
+
+**Diagnostic.** The emulated stand-NPP z-score correlates 0.60–0.66 with the original's tree-NPP z-score over dense
+cell-years (every test leg; 0.60–0.65 on the clean cells); in the die-off years the emulated z averages −1.3 to −2.6.
+
+**Reading (§4, applied as written):**
+* `BCE` E2 fails the 30-year death rate (1.52), the die-off capture (0.43) and the hard-kill calibration (0.87) ⇒ **not
+  adopted**. The "better than the map" clause: capture +0.15 over `BMW3` (≥ 0.1 ✓) but the 30-year rate is 13 % worse
+  (1.52 vs 1.34, allowed 10 %) ⇒ fails, as `BC` did. The release keeps no mortality output.
+* Gain over `BC`: +0.067 on all cells ⇒ the "small, reported as such" band (0.05–0.10). On the clean cells +0.103,
+  i.e. more than half the all-cell gain ⇒ the gain is not the in-sample daily model and counts.
+* Expectations: capture 0.40–0.50 ✓ (0.43); 30-year rate unchanged ✓ (1.51 → 1.52).
+* The emulated NPP closes about a fifth of the gap to the bound on the death rate ((0.43 − 0.36)/(0.74 − 0.36) = 0.18)
+  and more on the outright kills ((0.61 − 0.45)/(1.16 − 0.45) = 0.23). What separates it from the bound is the NPP
+  itself: a stand sum from a daily model whose 30-year NPP error is ~3.9× a second run's, against the original's own
+  per-tree NPP, and their yearly anomalies agree at r ≈ 0.63. Better emulated NPP is therefore the lever for this route,
+  and no input change fixes the 30-year death-rate level, which no arm reaches (best 1.48, the bound).

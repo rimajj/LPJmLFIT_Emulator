@@ -8,6 +8,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Per-tree mortality fed the emulator's own NPP (ADR 0366, not adopted):** `scripts/build_emulator_forcing.py`
+  (weather arrays for every scenario leg), `scripts/run_emulator_npp.py` (start files for runs m5/m6, emulator runs
+  with a 2000–2019 emulated-NPP history, the emulated-NPP table), arm `BCE` + clean-cell score in
+  `explore_panel_treemort.py`; fold releases for the four other held-out climate models. Die-off capture 0.43 (0.36
+  without NPP), 30-year death rate 1.52.
 - **Paper: the tree-population outputs (owner "p1").** Sect. 4.5 (quantile maps, virtual trees by the Schaake shuffle
   with the no-repeat donor draw, functional-diversity indices, learned vs computed rooting depth and biomass, cost),
   Sect. 6.4 + Fig. `fig_population` (`scripts/paper/fig_population.py`), abstract, outputs table, limitations,

@@ -56,7 +56,7 @@ coupling experiments are deliberately left out (owner, 2026-10-20).
   scorer keeps no per-case values), abstract / table of outputs / limitations / conclusions / availability (release
   v4). Numbers: ADR 0363 sec. 9 and 12, ADR 0365. Also corrected in Sect. 6.5 (die-offs): the leaf-carbon share is for
   trees > 5 m in die-off years (92 %, median 0.51; ADR 0364 sec. 2a), and a paragraph on why no death rates are
-  returned (ADR 0363 sec. 9, ADR 0364 sec. 6; the emulator's-own-NPP result of ADR 0366 to be added).
+  returned (ADR 0363 sec. 9, ADR 0364 sec. 6, ADR 0366 sec. 5 — the emulator's own NPP: 43 % of the die-off rise).
 * Gotchas: the `ind` biomass per tree is density-weighted gC m⁻² (nind = 1/patcharea, patcharea 225 m²), so
   kgC per tree = value × 0.225; the second-run yardstick of the structure scores is runs m1–m3 under the held-out
   climate model (m5 is the harness check), not m5.

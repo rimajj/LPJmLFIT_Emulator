@@ -1957,3 +1957,12 @@ sbatch_python.sh). Smoke leg showed only 32 % of ≥ 5 m hard kills below the le
 own gate (duplicate column), second failed the Age gate: two refits of the scored Age model differ as much (LightGBM
 not reproducible for Age) → gate = within 2× refit spread. First v4 on/off comparison FAILED: unprefixed population
 outputs overwrote the four trait medians → `pop_` prefix; re-run identical. v4, fold v5 built and checked.
+
+## 2026-10-22 (night) — m1 + p1 (owner: "do both!")
+
+* Paper: population method/results/figure added; die-off paragraph corrected (92 % of outright removals of trees > 5 m
+  below the sapling leaf carbon in die-off years, not 94–98 % of all removals) and extended by the mortality attempts.
+* m1: pre-registered as ADR 0366 before any run. First setup gate failed on the run-offset fields (deployment release
+  uses all six runs as the offset basis); fixed, then bit-exact. 165 emulator runs at ~775 core-s each. Result: capture
+  0.36 → 0.43 (clean cells 0.44 → 0.54), 30-yr level unchanged 1.52 ⇒ not adopted. The daily networks were trained on
+  runs m1–m4 at 810 cells, hence the clean-cell variant; the gain is larger there, so it is not the in-sample leak.

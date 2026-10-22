@@ -796,7 +796,10 @@ sapling threshold and applying the original's rule to it, together with models o
 hazards, applied to the emulator's virtual trees, matches the yearly rates (0.97) and totals (15 of 15) and follows
 36\,\% of the die-off rise, but the 2071--2100 rate is further off (1.51). Given the original's own yearly NPP of its
 trees, which an emulator does not have, the same per-tree model follows 74\,\% of the rise: the year's carbon balance
-is the missing information.
+is the missing information. Given instead the emulator's own yearly NPP, whose year-to-year anomalies correlate with
+those of the original's trees at 0.60--0.66, it follows 43\,\% of the rise (on the cells the daily networks never saw,
+54 against 44\,\% without NPP) and 61\,\% of the rise in outright removals (45\,\% without), while the 2071--2100
+rate stays 1.52 times a further run's error. The route works, and its limit is the accuracy of the emulated NPP.
 
 \begin{figure}[!tbp]
   \centering
@@ -1072,8 +1075,8 @@ reported separately. The most direct improvements are training on a full-grid se
 (which removes the unseen-cell limit and the extrapolation problem together), soil texture as a daily input, explicit
 litter and soil carbon pools so that the net CO$_2$ flux is complete, and a calibrated predictive spread scored against
 several independent runs of the original. Following the original's die-offs further needs a representation of how the
-year's carbon balance moves the leaf carbon of groups of trees against their threshold, for example a small cohort
-model driven by the emulated NPP.
+year's carbon balance moves the leaf carbon of trees against their threshold; with the emulator's own NPP as input a
+per-tree model already follows 43\,\% of the die-off rise, so a more accurate emulated NPP is the direct lever.
 
 \section{Conclusions}\label{sec:concl}
 

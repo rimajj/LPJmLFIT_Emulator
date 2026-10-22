@@ -18,6 +18,16 @@ VDRAW=unique python scripts/explore_panel_popjoint.py truth|virtual --g <gcm>; V
 python scripts/diagnose_popjoint_agb_evenness.py run --g <gcm>; ... score       # computed-vs-learned biomass, evenness
 python scripts/explore_panel_treemort.py fit|pred --g <gcm> --arm BC|BCN; ... score   # VDRAW=unique for pred
 ```
+Emulator's own NPP as a mortality input (ADR 0366, arm `BCE`):
+```bash
+python scripts/build_emulator_forcing.py            # weather arrays f2/forc_leg/<leg>.npy for legs without f2 forcing
+python scripts/run_emulator_npp.py setups            # v2 start files for runs m5/m6 (fields m5/m6 lack = m1-m4 mean)
+NCPUS=64 PARTITION=priority QOS=priority scripts/sbatch_python.sh ... run_emulator_npp.py run --which train|test
+python scripts/run_emulator_npp.py table             # -> eval/treemort/enpp/enpp.parquet (2000-2019 = emulated history)
+python scripts/explore_panel_treemort.py fit|pred --g <gcm> --arm BCE; ... score [--cells clean]
+```
+Training legs use release v2, test legs (run m4) the held-out model's `fold_<g>_v3`. The daily networks saw runs m1-m4
+on 810 cells, so `--cells clean` (the 240 cells they never saw) is the honest variant.
 `export` knobs (VDRAW, POPMAP_SFX) — the wrapper forwards only a fixed list. `POPMAP_SFX=_x` writes
 `preds_<g>_<group>_x.parquet` so a refit never overwrites a scored file. Scores are ratios to the pooled second runs
 m1–m3 against the truth m4 (dense = anchor ≥ 5 trees per patch); the harness (run m5) must read 0.98–1.02.
@@ -30,4 +40,5 @@ Traps:
 * Virtual trees: a repeated donor gives near-identical trees and biases evenness (−0.04) — use `draw_unique`.
 * The second-run bar has little power for distributions (the anchor alone scores 0.83–1.01).
 * Results: ADR 0363 §9–12 (distributions/indices pass; learned > computed for biomass and rooting depth), ADR 0364 §6
-  (per-tree mortality not adopted: capture 0.36, 30-yr rate 1.51; with the run's own NPP 0.74).
+  (per-tree mortality not adopted: capture 0.36, 30-yr rate 1.51; with the run's own NPP 0.74), ADR 0366 §5 (with the
+  emulator's own NPP 0.43, clean cells 0.54; 30-yr rate 1.52 — not adopted).

@@ -44,6 +44,21 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-22 (night) — owner "do both" (m1 + p1): emulated NPP into the per-tree mortality model (ADR 0366, NOT
+adopted); population outputs written into the paper.**
+* **(m1)** Weather arrays for the 17 legs without them (`build_emulator_forcing.py`, f2/forc_leg/), v2 start files for
+  runs m5/m6 (`run_emulator_npp.py setups`; fields m5/m6 never wrote = the m1–m4 mean), fold releases
+  `fold_{ipsl-cm6a-lr,mpi-esm1-2-hr,mri-esm2-0,ukesm1-0-ll}_v3` (same build as fold_gfdl-esm4_v3), 165 emulator
+  run-legs (35.5 core-h) → `xpanel/eval/treemort/enpp/enpp.parquet`. Every gate bit-exact. Arm `BCE` (virtual trees):
+  die-off capture **0.43** (BC 0.36, bound with the original's NPP 0.74; clean cells 0.44 → 0.54), outright-kill capture
+  0.45 → 0.61, 30-yr death rate 1.52 (bar 1.2) ⇒ not adopted; no mortality output. Emulated vs original NPP anomaly
+  r = 0.60–0.66. Reading: the route works; its limit is the emulated NPP's accuracy; no arm reaches the 30-yr level.
+* **(p1)** Paper Sect. 4.5 (population method), 6.4 + Fig. `fig_population`, abstract/table/limitations/conclusions,
+  die-off section corrected to ADR 0364 and given the mortality results incl. ADR 0366. 33 pp., builds clean.
+**Next (owner to choose):** (n1) improve the daily model's NPP (the lever for mortality: soil texture as input
+gave NPP −13…−16 %, ADR 0348, not in the release) and re-score `BCE` with it; (n2) accept no mortality output;
+(n3) the 30-yr death-rate level (1.5× everywhere) needs its own diagnosis — which hazard is off late in the century.
+
 **2026-10-22 (late evening) — owner "do a-c, all of it": tree population SHIPPED (release v4 / fold v5, ADR 0365);
 per-tree mortality NOT adopted (ADR 0364); evenness fixed (ADR 0363 §12).**
 * **(a) Release `v4`** = v2 + 79 population models (9-level distributions of height, biomass per tree, the four traits,
