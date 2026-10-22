@@ -144,8 +144,10 @@ function winter_report()
         )
         @printf("  %s  %8.2f  %8.2f  %+7.2f\n", name, wm(X[:, i], all_) - off, wm(WREF[ref], all_) - off, wm(X[:, i] .- WREF[ref], all_))
     end
-    @printf("  model only: land LW up %.1f W/m², land sensible heat %.1f W/m², snow %.3f m water equiv., air - top soil %+.2f K\n",
-        wm(X[:, 23], all_), wm(X[:, 22], all_), wm(X[:, 21], all_), wm(X[:, 17] .- X[:, 18], all_))
+    @printf(
+        "  model only: land LW up %.1f W/m², land sensible heat %.1f W/m², snow %.3f m water equiv., air - top soil %+.2f K\n",
+        wm(X[:, 23], all_), wm(X[:, 22], all_), wm(X[:, 21], all_), wm(X[:, 17] .- X[:, 18], all_)
+    )
     return nothing
 end
 
