@@ -5,7 +5,8 @@
 #   departure arms  the same with --state dep; suffix _dc_<ARM>_statedep_fx
 #   daily screen    one GPU job per arm and seed: scripts/f2_train.py --train-only as the release members (arm D),
 #                   tag DC_<ARM>_s<seed>; read with scripts/summarise_design_sensitivity.py
-# Usage: scripts/run_design_sensitivity.sh [map|dep|daily|all] [--dry-run]
+#   capacity arm    63 leaves + 800 rounds, level map alone and with the departure model (ADR 0361)
+# Usage: scripts/run_design_sensitivity.sh [map|dep|daily|capacity|all] [--dry-run]
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
@@ -46,7 +47,8 @@ map_arm() {  # ARM state "fit args"
     body+="$PY scripts/explore_panel_yearly_drift.py fit --g $g --state $state $args --suffix $sfx"$'\n'
   done
   body+="scripts/score_yearly_map_variant.sh $sfx --state $state $args --suffix $sfx"
-  submit "dc-$arm" 32 06:00:00 standard short "" "$body"
+  local name="dc-$arm"; [ "$state" = dep ] && [ "${arm#D}" = "$arm" ] && name+="-dep"
+  submit "$name" 32 06:00:00 standard short "" "$body"
 }
 
 if [ "$WHAT" = map ] || [ "$WHAT" = all ]; then
@@ -74,6 +76,10 @@ if [ "$WHAT" = dep ] || [ "$WHAT" = all ]; then
   map_arm DR800 dep "--dep-rounds 800"
   map_arm DZ15 dep "--z-window 15"
   map_arm DZ20 dep "--z-window 20"
+fi
+if [ "$WHAT" = capacity ]; then  # ADR 0361 (not part of "all": run after ADR 0359)
+  map_arm L63R800 none "--lgb num_leaves=63 --rounds 800"
+  map_arm L63R800 dep "--lgb num_leaves=63 --rounds 800"
 fi
 if [ "$WHAT" = daily ] || [ "$WHAT" = all ]; then
   LEGS="ctl_obs,mpi-esm1-2-hr_ssp126,mpi-esm1-2-hr_ssp370,mpi-esm1-2-hr_ssp585,gfdl-esm4_ssp126_daily"

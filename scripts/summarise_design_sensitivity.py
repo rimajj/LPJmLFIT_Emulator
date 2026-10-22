@@ -24,8 +24,8 @@ EV = "/p/projects/open/Jamir/esm_land_emulator_data/xpanel/eval"
 DAILY = ["BASE", "H128", "H512", "L2", "L4", "RELU", "GELU", "TANH", "E5", "E20", "LR1", "LR10", "B4K", "B64K",
          "NOWIN", "NOPWIN", "NOTWIN"]
 MAP = ["L15", "L63", "R200", "R800", "LR025", "LR10", "F10", "MD100", "W10", "W20", "W50", "S2", "S8", "NOS0", "NODC",
-       "NOANC"]
-DEP = ["DL15", "DL63", "DR200", "DR800", "DZ15", "DZ20"]
+       "NOANC", "L63R800"]
+DEP = ["DL15", "DL63", "DR200", "DR800", "DZ15", "DZ20", "L63R800"]
 TGT = ["gpp", "npp", "transp", "evap", "runoff"]
 
 
