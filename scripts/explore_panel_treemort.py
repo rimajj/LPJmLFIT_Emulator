@@ -8,14 +8,17 @@ Per tree (inputs = what a virtual tree of y-1 carries + BMW's cell inputs of yea
   mu     E[ln r_y]                       sigma  E|ln r_y - mu| * sqrt(pi/2) on cross-fitted residuals (halves by cell)
   P_h    Phi(-mu / sigma)                P_c    P(hard kill with r >= 1) (binary)       hz   E[min(1, hazards)]
   P_k = 1 - (1 - P_h)(1 - P_c);  p_death = P_k + (1 - P_k) hz
-Arms: BC (deployable inputs), BCN (+ the run's own tree-NPP statistics; a bound).
+Arms: BC (deployable inputs), BCN (+ the run's own tree-NPP statistics; a bound), BCE (+ the EMULATOR's own yearly
+stand NPP and GPP statistics, ADR 0366; scripts/run_emulator_npp.py -> eval/treemort/enpp/enpp.parquet).
 Stages:
   fit   --g G --arm A   train on runs m1 m2 m3 m5 m6 x the 27 legs of the other nine climate models (tree_pairs/)
                         -> eval/treemort/<g>_<arm>/{mu,muA,muB,sig,pc,hz}.txt
   pred  --g G --arm A   E1: run m4's own at-risk trees; E2: the emulator's virtual trees of y-1 (ADR 0363 AQ quantiles,
                         donor = run m4's 2019 roster, no-repeat draw) -> eval/treemort/pred_<g>_<arm>.parquet
                         (per leg, Cell, Year: rates E1_* / E2_*, calibration sums)
-  score                 every ADR 0364 sec. 4-5 measure over the held-out models present -> stdout + score_treemort.csv
+  score [--cells clean]  every ADR 0364 sec. 4-5 measure over the held-out models present -> stdout +
+                        score_treemort.csv (clean: only the 240 cells the daily networks never saw, ADR 0366
+                        sec. 2 -> score_treemort_clean.csv)
 """
 
 from __future__ import annotations
@@ -46,6 +49,11 @@ CELL_F = ["lat", "lon", "soil_code", *YD.CLIM, *YD.DEP_W, *YD.BK_COLS]
 LNR_FLOOR = -7.0  # a leafless tree (LAI 0: leaf carbon 0, ln r = -inf); far below any threshold
 NP = int(os.environ.get("NPROC", "16"))
 SCENS = ["ssp126", "ssp370", "ssp585"]
+ENPP = os.path.join(OUT, "enpp", "enpp.parquet")
+F2 = "/p/projects/reformit/Jamir/esm_land_emulator_data/f2"
+ENPP_V = ["enpp", "egpp"]
+ENPP_COLS = [f"{k}_{v}" for v in ENPP_V for k in ("n0", "n1", "nr0", "nr1", "nz0", "nz1")]
+OWN_RUN = ("BCN", "BCE")  # arms whose cell inputs depend on the run (member)
 
 
 def log(*a):
@@ -53,10 +61,32 @@ def log(*a):
 
 
 def feats(arm: str) -> list[str]:
-    return TREE_F + CELL_F + (PM.NPP_COLS if arm == "BCN" else [])
+    return TREE_F + CELL_F + {"BCN": PM.NPP_COLS, "BCE": ENPP_COLS}.get(arm, [])
 
 
-def cell_inputs(legs: list[str], members: list[int] | None = None) -> pl.DataFrame:
+def enpp_anomaly(members: list[int], legs: list[str]) -> pl.DataFrame:
+    """ADR 0366 sec. 1: the emulator's yearly stand NPP / GPP this (n0_) and last year (n1_), the ratio to the trailing
+    30-year mean (nr) and the z-score against the 30 years before (nz; >= 15 years; the emulated 2000-2019 history in
+    front) -- the construction of explore_panel_popmap.npp_anomaly."""
+    d = (pl.scan_parquet(ENPP).filter(pl.col("member").is_in(members) & pl.col("leg").is_in(legs))
+         .select("member", "leg", "Cell", "Year", *ENPP_V).collect().sort("member", "leg", "Cell", "Year"))
+    g = ["member", "leg", "Cell"]
+    ex = []
+    for v in ENPP_V:
+        mu = pl.col(v).shift(1).rolling_mean(window_size=30, min_samples=15).over(g)
+        sd = pl.col(v).shift(1).rolling_std(window_size=30, min_samples=15).over(g)
+        ex += [pl.col(v).alias(f"n0_{v}"),
+               pl.when(mu.abs() > 1e-9).then(pl.col(v) / mu).otherwise(1.0).alias(f"nr0_{v}"),
+               pl.when(sd > 1e-6 * (mu.abs() + 1.0)).then((pl.col(v) - mu) / sd).otherwise(0.0).alias(f"nz0_{v}")]
+    d = d.with_columns(ex)
+    d = d.with_columns([pl.col(f"{k}0_{v}").shift(1).over(g).alias(f"{k}1_{v}") for v in ENPP_V
+                        for k in ("n", "nr", "nz")])
+    d = d.filter(pl.col("Year") >= YD.Y0).select("Cell", "Year", "member", "leg", *ENPP_COLS)
+    assert d.height == d.select("member", "leg", "Cell", "Year").n_unique(), "duplicate emulated-NPP keys"
+    return d
+
+
+def cell_inputs(legs: list[str], members: list[int] | None = None, arm: str = "BCN") -> pl.DataFrame:
     """(Cell, Year, leg) -> the 30-year climate, this / last year's weather z-scores, the bucket statistics,
     lat / lon / soil. members given: also (member) -> the run's own tree-NPP statistics (BCN)."""
     cells = PP.cells().select(pl.col("Cell").cast(pl.Int32), "lat", "lon", "soil_code")
@@ -67,7 +97,10 @@ def cell_inputs(legs: list[str], members: list[int] | None = None) -> pl.DataFra
         parts.append(d.with_columns(pl.col("Cell").cast(pl.Int32), pl.col("Year").cast(pl.Int32)))
     d = pl.concat(parts, how="diagonal").join(cells, on="Cell", how="left")
     if members is not None:
-        n = pl.concat([x for m in members for lg in legs if (x := PM.npp_anomaly(m, lg)) is not None])
+        if arm == "BCE":
+            n = enpp_anomaly(members, legs)
+        else:
+            n = pl.concat([x for m in members for lg in legs if (x := PM.npp_anomaly(m, lg)) is not None])
         n = n.with_columns(pl.col("Cell").cast(pl.Int32), pl.col("Year").cast(pl.Int32),
                            pl.col("member").cast(pl.Int8))
         d = n.join(d, on=["Cell", "Year", "leg"], how="left")
@@ -93,13 +126,15 @@ def stage_fit(a) -> None:
     nf = sum(os.path.exists(os.path.join(PAIRS, f"m{m}_{lg}.parquet")) for m in YD.TRAIN_M for lg in legs)
     log(f"{a.g} {a.arm}: {P.height} training trees from {nf} of {len(YD.TRAIN_M) * len(legs)} run-legs "
         f"({time.time() - t0:.0f}s)")
-    C = cell_inputs(legs, list(YD.TRAIN_M) if a.arm == "BCN" else None)
-    on = ["Cell", "Year", "leg"] + (["member"] if a.arm == "BCN" else [])
-    if a.arm == "BCN":
+    C = cell_inputs(legs, list(YD.TRAIN_M) if a.arm in OWN_RUN else None, a.arm)
+    on = ["Cell", "Year", "leg"] + (["member"] if a.arm in OWN_RUN else [])
+    if a.arm in OWN_RUN:
         P = P.with_columns(pl.col("member").cast(pl.Int8))
     P = P.join(C, on=on, how="left").sort("member", "leg", "Year", "Cell", "Patch", "ID")
     f = feats(a.arm)
     assert P.select(CELL_F[3]).null_count().item() == 0, "cell inputs missing for some trees"
+    if a.arm == "BCE":
+        assert P.select(ENPP_COLS[0]).null_count().item() == 0, "emulated NPP missing for some trees"
     X = P.select(f).to_numpy().astype(np.float32)
     y = lnr_target(P["lnr"])
     half = (P["Cell"].to_numpy() % 2) == 0
@@ -168,7 +203,7 @@ def _e1_task(args):
                  & (pl.col("Height") >= 5.0))
          .select(pl.col("Cell").cast(pl.Int32), (pl.col("Year").cast(pl.Int32) + 1).alias("Year"),
                  *[pl.col(v).cast(pl.Float64).alias(k) for k, v in VT_MAP.items()]).collect())
-    C = cell_inputs([leg], [YD.TRUTH] if arm == "BCN" else None).drop("leg", "member", strict=False)
+    C = cell_inputs([leg], [YD.TRUTH] if arm in OWN_RUN else None, arm).drop("leg", "member", strict=False)
     d = d.join(C, on=["Cell", "Year"], how="left")
     out = []
     for y in range(YD.Y0 + 1, YD.Y1 + 1):
@@ -195,7 +230,8 @@ def _e2_task(args):
     g, arm, leg, y = args
     M, V = _models(g, arm), _e2_inputs(g, arm)
     if leg not in V["C"]:
-        V["C"] = {leg: cell_inputs([leg], [YD.TRUTH] if arm == "BCN" else None).drop("leg", "member", strict=False)}
+        V["C"] = {leg: cell_inputs([leg], [YD.TRUTH] if arm in OWN_RUN else None, arm).drop("leg", "member",
+                                                                                           strict=False)}
     C = V["C"][leg].filter(pl.col("Year") == y)
     P = V["P"].filter((pl.col("leg") == leg) & (pl.col("Year") == y - 1))
     cells, rows = [], []
@@ -254,7 +290,7 @@ def stage_score(a) -> None:
             P = P.join(pl.read_parquet(fn).filter(pl.col("member") == YD.TRUTH).select("leg", "Cell", "Year",
                                                                                       "^BMN_.*$"),
                        on=["leg", "Cell", "Year"], how="left")
-        for arm in ("BC", "BCN"):
+        for arm in ("BC", "BCN", "BCE"):
             fp = os.path.join(OUT, f"pred_{g}_{arm}.parquet")
             if not os.path.exists(fp):
                 continue
@@ -277,9 +313,14 @@ def stage_score(a) -> None:
                            on=["Cell", "Year"], how="left")
             parts.append(d.with_columns(pl.lit(leg).alias("case")))
     M = pl.concat(parts, how="diagonal").filter(pl.col("Year") > YD.Y0)
+    if a.cells == "clean":  # ADR 0366 sec. 2: only the cells the daily networks never saw
+        ho = pl.read_parquet(os.path.join(F2, "cells.parquet")).filter(pl.col("heldout"))["Cell"]
+        M = M.filter(pl.col("Cell").is_in(ho.cast(M["Cell"].dtype).implode()))
+        print(f"clean cells: {M['Cell'].n_unique()} cells")
     w = PP.cells().select(pl.col("Cell").cast(M["Cell"].dtype), np.cos(np.deg2rad(pl.col("lat"))).alias("w"))
     M = M.join(w, on="Cell")
-    arms = [x for x in ("BCE1", "BCE2", "BCNE1", "BCNE2", "BM", "BMW", "BMN", "T5") if f"{x}_death3" in M.columns]
+    arms = [x for x in ("BCE1", "BCE2", "BCNE1", "BCNE2", "BCEE1", "BCEE2", "BM", "BMW", "BMN", "T5")
+            if f"{x}_death3" in M.columns]
     dense = pl.col("anc_n_per_patch") >= J.DENSE
     for q in PM.MORT3[:3]:
         for arm in arms:
@@ -329,7 +370,7 @@ def stage_score(a) -> None:
             res.append({"what": f"die-off capture {q} {k} ({int(ok.sum())} events)", "cases": int(ok.sum()),
                         "typ_median": float(dX[ok].sum() / dT[ok].sum()), "worst_median": None, "n_typ_ok": None})
     # calibration (E1): predicted / observed hard kills and hazard sums, per case
-    for arm in ("BC", "BCN"):
+    for arm in ("BC", "BCN", "BCE"):
         if f"{arm}E1_hard_rate" not in M.columns:
             continue
         c = M.filter(pl.col(f"{arm}E1_hard_rate").is_not_null()).group_by("case").agg(
@@ -342,8 +383,30 @@ def stage_score(a) -> None:
             res.append({"what": f"calibration E1 {arm} {lab}: predicted / observed", "cases": c.height,
                         "typ_median": float(c[k].median()), "worst_median": float((c[k] - 1).abs().max()),
                         "n_typ_ok": int(((c[k] - 1).abs() <= 0.1).sum())})
+    # ADR 0366 sec. 4 diagnostic: does the emulated NPP anomaly follow the original's tree-NPP anomaly?
+    if "BCEE1_death3" in M.columns:
+        dn = M.filter(dense).select("case", "Cell", "Year").unique()
+        for g in PP.GCMS:
+            legs = [f"{g}_{s}" for s in SCENS]
+            if not os.path.exists(os.path.join(OUT, f"pred_{g}_BCE.parquet")):
+                continue
+            E = enpp_anomaly([YD.TRUTH], legs).select("leg", "Cell", "Year", "nz0_enpp")
+            On = pl.concat([x for lg in legs if (x := PM.npp_anomaly(YD.TRUTH, lg)) is not None]).select(
+                "leg", "Cell", "Year", pl.col(f"nz0_{PM.NPP_V[0]}").alias("nz_orig"))
+            J2 = (E.join(On, on=["leg", "Cell", "Year"]).with_columns(pl.col("Cell").cast(M["Cell"].dtype),
+                                                                    pl.col("Year").cast(M["Year"].dtype))
+                  .join(dn, left_on=["leg", "Cell", "Year"], right_on=["case", "Cell", "Year"]))
+            for lg in legs:
+                x = J2.filter(pl.col("leg") == lg)
+                r = (float(np.corrcoef(x["nz0_enpp"].to_numpy(), x["nz_orig"].to_numpy())[0, 1])
+                     if x.height > 2 else None)
+                xe = x.join(ev.rename({"year": "Year", "case": "leg"}), on=["leg", "Cell", "Year"])
+                res.append({"what": f"NPP z: emulated vs original, corr over dense cell-years {lg} (events: mean "
+                                    f"emulated / original z)", "cases": x.height, "typ_median": r,
+                            "worst_median": float(xe["nz0_enpp"].mean()) if xe.height else None,
+                            "n_typ_ok": None, "orig_event_z": float(xe["nz_orig"].mean()) if xe.height else None})
     R = pl.DataFrame(res)
-    R.write_csv(os.path.join(OUT, "score_treemort.csv"))
+    R.write_csv(os.path.join(OUT, f"score_treemort{'_clean' if a.cells == 'clean' else ''}.csv"))
     with pl.Config(tbl_rows=-1, tbl_width_chars=200, fmt_str_lengths=80):
         print(R)
 
@@ -352,7 +415,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["fit", "pred", "score"])
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
-    ap.add_argument("--arm", default="BC", choices=["BC", "BCN"])
+    ap.add_argument("--arm", default="BC", choices=["BC", "BCN", "BCE"])
+    ap.add_argument("--cells", default="all", choices=["all", "clean"])
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     {"fit": stage_fit, "pred": stage_pred, "score": stage_score}[a.stage](a)
