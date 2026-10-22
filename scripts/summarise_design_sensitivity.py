@@ -53,10 +53,14 @@ def daily():
         print(d)
         return
     b = d.filter(pl.col("arm") == "BASE").row(0, named=True)
-    sd = np.sqrt(np.nanmean(d["sd"].to_numpy() ** 2))
+    # pooled seed sd over stably trained arms only: an arm whose sd exceeds 10x the median sd diverged in a seed
+    # (LR10), which is not seed noise and would make the gate unpassable (ADR 0359 §5)
+    sds = d["sd"].to_numpy()
+    sd = np.sqrt(np.nanmean(sds[sds <= 10 * np.nanmedian(sds)] ** 2))
     d = d.with_columns((pl.col("val") / b["val"]).round(3).alias("ratio"),
                        *[(pl.col(t) / b[t]).round(3).alias(f"r_{t}") for t in TGT])
-    d = d.with_columns(((pl.col("val") < 0.98 * b["val"]) & (b["val"] - pl.col("val") > 2 * sd)).alias("stage2"))
+    d = d.with_columns((((pl.col("val") < 0.98 * b["val"]) & (b["val"] - pl.col("val") > 2 * sd))
+                        | ((pl.col("val") > 1.10 * b["val"]) & (pl.col("arm") == "NOWIN"))).alias("stage2"))
     pl.Config.set_tbl_rows(30)
     pl.Config.set_tbl_cols(16)
     pl.Config.set_tbl_width_chars(220)

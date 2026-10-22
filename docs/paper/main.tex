@@ -379,8 +379,49 @@ cell, it is the only recursive part of the forest maps; Sect.~\ref{sec:dieoff} s
 
 \subsection{Choice of architecture and settings}\label{sec:choices}
 
-\textbf{[To be completed when the design-choice experiments of ADR 0359 have run: one paragraph per component with the
-measured comparison behind each setting.]}
+\emph{Forest maps and departure model.} Each setting of the gradient-boosted maps was varied on its own around the
+release, refitted for all five held-out climate models and scored on the 15 held-out cases as the ratio of its error
+to the release's (median over cases; Table~\ref{tab:choices_map}). An alternative would have replaced a release
+setting had it reduced the error of both dense-stand tree density and biomass per tree by at least 2\,\% without
+worsening any quantity by more than 2\,\%; none did. The release sits on a plateau: fewer leaves (15), fewer trees
+(200) or a lower learning rate (0.025) each raise the dense-stand biomass-per-tree error by 2.6--3.0\,\%; more leaves
+(63), more trees (800) or a higher rate (0.1) each lower the dense tree-density error by 1.4--3.1\,\% but not the
+biomass error by 2\,\% (63 leaves: $-3.1$ and $-1.8$\,\%, and no quantity worse). Without subsampling, or with at
+least 100 rows per leaf, the errors change by less than 2.5\,\%. A 50-year climate window is worse (biomass per tree
++3.6\,\%), 10 and 20 years are equivalent to 30; training rows every second or eighth year instead of every fourth
+are equivalent. Every input group is needed: without the climate offset from the anchor runs the biomass error rises
+by 11\,\% and the sparse-stand density error by 14\,\%, and the late-century drift of biomass grows (1.56 instead of
+1.41); without the anchors as inputs the errors rise by 1--2\,\%; without the run's own 2000--2019 state the density
+and biomass errors are unchanged but the dense-stand trait medians are 13--41\,\% worse. For the departure model,
+15 or 63 leaves, 200 or 800 trees and a 15- or 20-year anomaly window all changed the errors by less than 3\,\%;
+the share of a die-off it reproduces moved between 0.15 and 0.21 (release 0.18).
+
+\begin{table}[t]
+  \centering\small
+  \caption{Forest maps: error of each alternative setting relative to the release (median over 15 held-out cases;
+  below 1 is better). Dense and sparse: stands with at least and fewer than five trees per patch.}
+  \label{tab:choices_map}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llcccc}
+    \hline
+    setting & release & dense density & dense biomass/tree & sparse density & dense trait medians\\
+    \hline
+    leaves 15 / 63 & 31 & 1.010 / 0.969 & 1.028 / 0.982 & 1.067 / 0.925 & 1.018 / 0.986\\
+    trees 200 / 800 & 400 & 1.010 / 0.986 & 1.030 / 0.981 & 1.047 / 0.937 & 1.013 / 0.986\\
+    learning rate 0.025 / 0.1 & 0.05 & 1.006 / 0.982 & 1.026 / 0.988 & 1.030 / 0.923 & 1.013 / 0.993\\
+    no subsampling & 0.8 & 0.985 & 0.995 & 0.985 & 1.006\\
+    min.\ 100 rows per leaf & 20 & 0.975 & 1.003 & 0.995 & 1.001\\
+    climate window 10 / 20 / 50\,yr & 30\,yr & 0.988 / 0.991 / 0.999 & 1.017 / 1.002 / 1.036 & 0.874 / 0.966 / 1.008 & 1.005 / 1.005 / 1.004\\
+    training rows every 2nd / 8th yr & 4th & 0.980 / 1.000 & 1.003 / 0.997 & 0.974 / 1.009 & 1.007 / 1.003\\
+    without start state & with & 1.005 & 1.011 & 0.973 & 1.294\\
+    without climate offset & with & 1.012 & 1.112 & 1.136 & 1.026\\
+    without anchors as inputs & with & 1.003 & 1.021 & 1.012 & 1.014\\
+    \hline
+  \end{tabular}}
+\end{table}
+
+\textbf{[Daily networks: to be completed when the five-network tests of the two qualifying settings (four layers;
+batch 4\,096) have run.]}
 
 Evidence already measured:
 \begin{itemize}

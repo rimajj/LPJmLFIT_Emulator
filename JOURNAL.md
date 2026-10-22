@@ -1883,3 +1883,12 @@ air − W5E5 +3.20 vs +2.48 K (2 m diagnostic +2.03), land precip −150 vs −1
 but lets in ~1 W/m² more in year 5 and runs ~1 K warmer by then, with the tropical upper troposphere back to +3–4 K.
 Confirms the prescribed-SST verdict: **R5 not adopted**; base stays E3ent50 with the stock cloud settings. All
 SpeedyWeather side-track runs of 2026-10-21/22 are now scored (none pending).
+
+## 2026-10-22 (night, 2) — ADR 0359 design-choice campaign read
+All 73 jobs finished. Map/departure: 22 arms, none BETTER by the pre-registered rule; WORSE: L15, R200, LR025, W50, NODC,
+NOANC; NOS0 "equivalent" on counts but dense trait medians 1.29 (rooting depth 1.41, worst tenth 1.73). Capacity arms
+(L63, R800, LR10) all point the same way, L63 best (dense count 0.969, biomass/tree 0.982 — misses 0.98 by 0.002).
+Departure capture 0.15–0.21 (release 0.18). Daily screen: summariser's pooled sd 0.0207 was the RMS incl. LR10's
+diverged seed (sd 0.085) ⇒ gate unpassable; recomputed over stable arms 0.00078 ⇒ L4 (3.0 sd) and B4K (2.8 sd) to
+stage 2; E20 1.9 sd, H512 1.7 sd do not. NOWIN 1.89× to stage 2 (report). Submitted via f2_chain_arm.py, scorer
+chained. ADR 0359 §4–5, paper map paragraph + table.

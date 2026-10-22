@@ -44,6 +44,23 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-22 (night, 2) — design-choice campaign (ADR 0359): forest map DONE, daily stage 2 RUNNING.** Owner: "all
+emulator runs are done".
+* **Forest map + departure model (22 arms):** no alternative beats the release ⇒ no setting changes, no rebuild. Plateau:
+  fewer leaves/trees/lower rate 2.6–3.0 % worse on dense biomass per tree; more capacity 1.4–3.1 % better on dense tree
+  count but misses the biomass bar (L63 0.982 vs 0.98, every quantity ≤ 1.004). Every input group needed (no climate
+  offset: biomass +11 %, sparse count +14 %; no start state: trait medians +13–41 %). Departure settings all equivalent.
+  Results in ADR 0359 §4; paper Sect. 4.6 map paragraph + Table `tab:choices_map` written, PDF rebuilt.
+* **Daily screen:** L4 0.957, B4K 0.960 of BASE loss; E20/H512 −2.4…−2.7 % but under two seed sds. **Deviation recorded
+  before results (ADR 0359 §5):** pooled seed sd excludes the diverged LR10 (0.0207 → 0.00078; summariser fixed).
+* **Stage 2 queued (gpu):** `DCL4E_5seed` (2661152), `DCB4KE_5seed` (2661159), `DCNOWINE_5seed` (2661165, report only);
+  chained scorer 2661168 (`afterany`) → `logs/f2-dc-stage2-relscore.md` + compare blocks in its .out.
+**Next:** read the scorer output; adopt L4 / B4K only if it beats BOTH `DE_5seed` and `D2E_5seed` by ≥ 5 % on ≥ 2 of
+GPP/ET/NPP/runoff, none worse > 5 %, cost within T31 (release 6.4e-3 core-s per cell-year; L4 adds a layer). Then write
+ADR 0359 §6, replace the paper's "[Daily networks: to be completed …]" marker (one paragraph + screen table), rebuild
+(`scripts/paper/make_all.sh` or latexmk). If adopted: rebuild the release (new ADR). Optional, needs pre-registration:
+combined map capacity arm (63 leaves + 800 rounds).
+
 **2026-10-22 (late night) — SpeedyWeather side track: convection reported upstream (#1339), clouds measured, winter
 split.** Owner: "yes, do all that" (clouds, high-latitude winter, upstream report). Branch coldfix-E 6ae14204 (patch
 refreshed). JOURNAL 2026-10-22 (night) has every number.

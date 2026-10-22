@@ -62,3 +62,66 @@ what the windows carry in free runs) — reported, not adopted.
 * Daily: H128 2–5 % worse, H512 within ±2 %, L2 worse, L4 equivalent; RELU / GELU / TANH within ±3 %; E5 worse, E20
   slightly better on loss (risk of overfit on free runs); LR1 worse, LR10 unstable; batch within ±3 %; NOWIN > 10 %
   worse (the deep-water memory), NOPWIN worse, NOTWIN slightly worse. Most likely no arm reaches stage 2 except NOWIN.
+
+## 4. Results — forest map and departure model (2026-10-22; all 22 arms finished)
+
+Median over the 15 held-out cases of (arm's ratio to a second run) / (release's), from
+`python scripts/summarise_design_sensitivity.py map`; < 1 is better than the release. Drift = late (2081–2100) over
+early (2021–2040) dense ratio; release 1.22 (tree count) / 1.41 (biomass per tree).
+
+| arm | dense count | dense biomass/tree | dense count worst 10 % | sparse count | dense trait medians | verdict |
+|---|---|---|---|---|---|---|
+| L15 | 1.010 | 1.028 | 1.031 | 1.067 | 1.018 | worse |
+| **L63** | **0.969** | **0.982** | 0.970 | 0.925 | 0.986 | equivalent (every one of 12 quantity/group pairs ≤ 1.004) |
+| R200 | 1.010 | 1.030 | 1.019 | 1.047 | 1.013 | worse |
+| R800 | 0.986 | 0.981 | 0.988 | 0.937 | 0.986 | equivalent |
+| LR025 | 1.006 | 1.026 | 1.024 | 1.030 | 1.013 | worse |
+| LR10 | 0.982 | 0.988 | 0.976 | 0.923 | 0.993 | equivalent |
+| F10 | 0.985 | 0.995 | 0.998 | 0.985 | 1.006 | equivalent |
+| MD100 | 0.975 | 1.003 | 0.999 | 0.995 | 1.001 | equivalent |
+| W10 | 0.988 | 1.017 | 0.981 | 0.874 | 1.005 | equivalent |
+| W20 | 0.991 | 1.002 | 0.985 | 0.966 | 1.005 | equivalent |
+| W50 | 0.999 | 1.036 | 1.039 | 1.008 | 1.004 | worse |
+| S2 | 0.980 | 1.003 | 0.996 | 0.974 | 1.007 | equivalent |
+| S8 | 1.000 | 0.997 | 0.989 | 1.009 | 1.003 | equivalent (half the training rows) |
+| NOS0 | 1.005 | 1.011 | 0.996 | 0.973 | **1.294** | equivalent by the rule — but dense trait medians 1.13–1.41 (rooting depth worst, 1.73 in the worst tenth) |
+| NODC | 1.012 | 1.112 | 1.036 | 1.136 | 1.026 | worse; late biomass drift 1.56 |
+| NOANC | 1.003 | 1.021 | 1.016 | 1.012 | 1.014 | worse |
+| DL15 | 1.016 | 0.999 | 1.026 | 0.995 | — | equivalent; die-off capture 0.16 (release 0.18) |
+| DL63 | 0.969 | 1.004 | 0.988 | 1.007 | — | equivalent; capture 0.20 |
+| DR200 | 1.015 | 1.006 | 0.993 | 1.014 | — | equivalent; capture 0.15 |
+| DR800 | 0.974 | 0.998 | 0.993 | 0.982 | — | equivalent; capture 0.21 |
+| DZ15 | 1.006 | 0.992 | 1.000 | 0.990 | — | equivalent; capture 0.18 |
+| DZ20 | 0.995 | 0.993 | 0.997 | 0.982 | — | equivalent; capture 0.18 |
+
+**Reading.** No alternative is *better* under §1's rule, so **no release setting changes and the release is not
+rebuilt**. Each release setting is justified as "no tested alternative does better", and the release sits on a
+plateau: fewer leaves, fewer rounds and a lower learning rate are each worse by 2–3 % on dense biomass per tree; more
+leaves, more rounds and a higher rate are each 1–3 % better on dense tree count but miss the biomass-per-tree bar
+(closest: L63, 0.982 against 0.98, better on every quantity). The 30-year climate window is justified against 50
+(worse) and is equivalent to 10/20 (10 is better for sparse tree count, worse for dense biomass per tree). Training
+rows every 8th year are equivalent at half the rows. Every input group is needed: the climate offset from the anchors
+(NODC) costs 11 % on dense biomass per tree and 14 % on sparse tree count; the anchors as inputs cost 2 %; the start
+state does not affect tree count or biomass but **carries the trait medians** (+13 to +41 %) — the two-quantity verdict
+calls NOS0 equivalent, which understates it. Departure model: all six equivalent; more capacity (DL63, DR800) raises die-off
+capture 0.18 → 0.20–0.21, far from the 0.30 bar of ADR 0354.
+Expectations of §3 that held: plateau near the defaults, W50 worse, S8 not worse, NODC/NOANC worse. That did not:
+W10 not worse; NOS0 not worse on counts (only on traits); L15/R200/LR025 worse rather than equivalent.
+
+**Follow-up worth a pre-registration, not run:** a combined capacity arm (63 leaves + 800 rounds) — the three
+capacity arms point the same way and L63 misses the bar by 0.002.
+
+## 5. Daily screen (2026-10-22; 17 arms × 3 seeds) and the stage-2 selection
+
+Validation loss over 3 seeds, ratio to BASE (0.05373): L4 0.957 · B4K 0.960 · E20 0.973 · H512 0.976 · GELU 1.010 ·
+RELU 1.017 · TANH 1.027 · H128 1.062 · LR1 1.100 · E5 1.105 · L2 1.118 · NOTWIN 1.146 · B64K 1.288 · NOPWIN 1.570 ·
+NOWIN 1.890 · LR10 2.195 (one seed diverged: sd 0.085).
+
+**Deviation, recorded before any stage-2 result exists.** §2's "two pooled seed standard deviations" was implemented
+in `summarise_design_sensitivity.py` as the RMS of every arm's seed sd. LR10's sd is a diverged training, not seed
+noise, and inflates the pooled value to 0.0207 = 39 % of BASE's loss, which no arm could ever clear (the rule would be
+void by construction). Pooled over the 16 arms that trained stably it is **0.00078**. On that basis **L4 (−4.3 %, 3.0
+sd) and B4K (−4.0 %, 2.8 sd) qualify; E20 (−2.7 %, 1.9 sd) and H512 (−2.4 %, 1.7 sd) do not.** NOWIN is > 10 % worse
+and goes to stage 2 for reporting only. Ensembles `DCL4E_5seed`, `DCB4KE_5seed`, `DCNOWINE_5seed` (members seeds 0–4,
+`f2_chain_arm.py`, release flags + the arm's flag), scored by the chained job `logs/f2-dc-stage2-score.jcf`
+→ `logs/f2-dc-stage2-relscore.md` against `DE_5seed` and `D2E_5seed` with §2's adoption rule unchanged.
