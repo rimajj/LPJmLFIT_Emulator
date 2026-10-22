@@ -281,3 +281,22 @@ tendency** over the interval, which ForwardEuler then integrates to exactly the 
   campaign there blocks you; the `gpu` partition's qos caps jobs per user too).
 - Byte-identity of a new default-off option: rerun the control with the option at its default and `diff` the log
   from `global mean near-surface` on — the scorer prints enough digits to catch any change.
+
+## The emulator coupled to the FIXED atmosphere, fed a 2 m air temperature (ADR 0360, 2026-10-22)
+
+```bash
+PROJ=/p/tmp/jamirp/speedy_landemu_fix_env MODE=coupled YEARS=10 OCEAN=prescribed ALBEDO=emulator ROUGH=emulator \
+  LW=fourband T0=speedy CONVKW="ascent_substeps=10,entrainment_mse=1" AIR=2m \
+  scripts/online_coupling/sbatch_speedy_landemu.sh cpl-fix-t2m          # 263 core-s per simulated year (stock 157)
+```
+- `speedy_landemu_fix_env` = a copy of `speedy_armE_env` (dev'd `/p/tmp/jamirp/speedy_armE_src`, branch coldfix-E) +
+  PythonCall 0.9.37 (added on the login node with `JULIA_CONDAPKG_BACKEND=Null`). Rebuild the same way if the branch
+  moves; the run log prints `pkgdir(SpeedyWeather)` and the record stores it (`speedy_dir`).
+- `AIR=2m` feeds `air_2m` (`speedy_air2m.jl`, ONE copy shared with `speedy_cold_bias_repro.jl`); the 2 m value is
+  recorded in every run as `daily_means` column 12 (index 11), and the coupler's own `forcing` record holds what the
+  emulator actually got — the replay gate uses that, so it stays valid.
+- Same knob names as the reproducer (`LW`, `LWKW`, `CLOUDKW`, `SWKW`, `CONVKW`, `T0`); `T0=speedy` and `ROUGH=emulator`
+  are merged into one `BoundaryLayer`. All unset = stock: a 1-yr stock run reproduced year 1 of
+  `speedy_t31_coupled_sst_alb_z0_10y` bit for bit (columns 1–11 and the forcing).
+- Score: `diagnose_speedy_climate.py <runs...> --out=<json>` (adds `*_2m` keys; never let it default-overwrite the
+  2026-10-16 `coupled/climate_diagnosis.json`) and `score_speedy_landemu.py <coupled> <control>`.

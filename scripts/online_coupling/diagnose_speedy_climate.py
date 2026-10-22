@@ -1,8 +1,8 @@
 """Why is SpeedyWeather's land cold, and what do the extra land -> atmosphere channels change?
 (ADR 0346)
 
-    python diagnose_speedy_climate.py <run_dir> [<run_dir> ...]
-        -> <parent of the first run_dir>/climate_diagnosis.json
+    python diagnose_speedy_climate.py <run_dir> [<run_dir> ...] [--out=<json>]
+        -> <json>, default <parent of the first run_dir>/climate_diagnosis.json
 
 Each run_dir is a run of run_speedy_landemu.jl made with the climate diagnostics (control or
 coupled, any OCEAN / ALBEDO / ROUGH). For every run, over the land columns the emulator represents
@@ -22,6 +22,9 @@ score_speedy_landemu.py):
    temperature and sea ice area, per year.
 5. LAND SURFACE (per year): land albedo, absorbed shortwave, sensible heat flux,
    evapotranspiration, top soil temperature, SpeedyWeather's own snow.
+6. Runs that recorded the diagnostic 2 m air temperature (daily_means column 12, speedy_air2m.jl)
+   get the same temperature scores for it under the keys suffixed ``_2m``; ``meta.air`` says which
+   of the two the emulator was fed.
 """
 
 from __future__ import annotations
@@ -51,7 +54,7 @@ MB = np.concatenate([[0], np.cumsum(DPM)])
 LAPSE = 6.5e-3  # K/m
 BANDS = {"tropics |lat|<23.5": (0, 23.5), "mid 23.5-50": (23.5, 50), "high >50": (50, 91)}
 # daily_means columns of run_speedy_landemu.jl
-TAS, PR, RSDS, LWNET, HUSS, ET, LF, ALB, SH, TSOIL, SNOW = range(11)
+TAS, PR, RSDS, LWNET, HUSS, ET, LF, ALB, SH, TSOIL, SNOW, T2M = range(12)
 
 
 def load(run):
@@ -126,7 +129,8 @@ def main():
     import glob_emu as g
     import polars as pl
 
-    runs = sys.argv[1:]
+    runs = [a for a in sys.argv[1:] if not a.startswith("--out=")]
+    outs = [a[6:] for a in sys.argv[1:] if a.startswith("--out=")]
     recs = {os.path.basename(os.path.normpath(r)): load(r) for r in runs}
     r0 = next(iter(recs.values()))
     cols = r0["cols"]
@@ -207,6 +211,20 @@ def main():
                 q: wm((S[q][:, yrs].mean(1) - R[q].mean(1))[sel], w[sel])
                 for q in ("tas", "t_warm", "t_cold")
             }
+        if dm.shape[1] > T2M:  # the diagnostic 2 m air temperature, scored like the model's air
+            S2 = stats(D[:, T2M], D[:, PR], D[:, RSDS], D[:, LWNET])
+            tq = ("tas", "t_warm", "t_cold")
+            out["per_year"].update({q + "_2m": [wm(S2[q][:, i], w) for i in range(ny)] for q in tq})
+            for n, R in refs.items():
+                out["minus_reference_years2toN"][n].update(
+                    {q + "_2m": wm(S2[q][:, yrs].mean(1) - R[q].mean(1), w) for q in tq}
+                )
+            for b, (lo, hi) in BANDS.items():
+                sel = (np.abs(lat) >= lo) & (np.abs(lat) < hi)
+                R = refs["W5E5 obs 1985-2014"]
+                out["minus_w5e5_by_band_tas"][b].update(
+                    {q + "_2m": wm((S2[q][:, yrs].mean(1) - R[q].mean(1))[sel], w[sel]) for q in tq}
+                )
         if "global_daily" in z:
             G = z["global_daily"]  # (5, days)
             gy = G[:, : 365 * (G.shape[1] // 365)].reshape(5, -1, 365).mean(2)
@@ -214,10 +232,18 @@ def main():
                 q: gy[i].tolist()
                 for i, q in enumerate(("tas_all", "tas_land", "tas_ocean", "sst", "sea_ice_frac"))
             }
-        out["meta"] = {k2_: str(z[k2_]) for k2_ in ("ocean", "albedo", "rough") if k2_ in z}
+        out["meta"] = {
+            k2_: str(z[k2_])
+            for k2_ in ("ocean", "albedo", "rough", "air", "lw", "atmos_knobs", "speedy_dir")
+            if k2_ in z
+        }
         rep["by_run"][name] = out
 
-    path = os.path.join(os.path.dirname(os.path.normpath(runs[0])), "climate_diagnosis.json")
+    path = (
+        outs[0]
+        if outs
+        else os.path.join(os.path.dirname(os.path.normpath(runs[0])), "climate_diagnosis.json")
+    )
     with open(path, "w") as fh:
         json.dump(rep, fh, indent=1)
     print(json.dumps(rep, indent=1))

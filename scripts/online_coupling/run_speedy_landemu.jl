@@ -20,7 +20,15 @@
 #            OCEAN = slab | prescribed (SpeedyWeather's default free-running 50 m slab ocean, or its seasonal
 #            sea-surface-temperature climatology: the test of how much of its cold land comes from the ocean) ·
 #            ALBEDO = speedy | emulator · ROUGH = speedy | emulator (coupled only; ADR 0346) ·
-#            Z0_HIGH / Z0_LOW / Z0_BARE (roughness lengths of tree, grass and bare cover, m; 2.0 / 0.2 / 0.013).
+#            Z0_HIGH / Z0_LOW / Z0_BARE (roughness lengths of tree, grass and bare cover, m; 2.0 / 0.2 / 0.013) ·
+#            AIR = model | 2m (the air temperature the emulator is fed: SpeedyWeather's surface air temperature, which in
+#            an inversion is the lowermost layer's ~550 m up, or the diagnostic 2 m air temperature of speedy_air2m.jl;
+#            the 2 m value is recorded either way, daily_means column 12) ·
+#            the atmosphere fixes of the SpeedyWeather cold-bias side track (branch coldfix-E; run with
+#            PROJ=/p/tmp/jamirp/speedy_landemu_fix_env, see sbatch_speedy_landemu.sh), same knobs as
+#            speedy_cold_bias_repro.jl: LW = grey | fourband (+ LWKW, CLOUDKW, SWKW = "name=value,..."),
+#            CONVKW (BettsMillerConvection / LinearEntrainment parameters, e.g. "ascent_substeps=10,entrainment_mse=1"),
+#            T0 = speedy (surface air temperature from the actual lapse rate). All unset = the stock model.
 # Every run also records per land column the land albedo, sensible heat flux, top soil temperature, SpeedyWeather's
 # own snow and the column's orography, and global daily means + yearly fields of air and sea-surface temperature and
 # sea ice, so a run can be scored for SpeedyWeather's own climate drift (scripts/online_coupling/diagnose_speedy_climate.py).
@@ -42,20 +50,32 @@ const Z0 = (
     high = parse(Float64, get(ENV, "Z0_HIGH", "2.0")), low = parse(Float64, get(ENV, "Z0_LOW", "0.2")),
     bare = parse(Float64, get(ENV, "Z0_BARE", "0.013")),
 )
+const AIR = Symbol(get(ENV, "AIR", "model"))
+const LW = Symbol(get(ENV, "LW", "grey"))
+parsekw(s) = isempty(s) ? (;) : NamedTuple(
+        Symbol(k) => (v in ("true", "false") ? v == "true" : parse(Float64, v))
+        for (k, v) in (split(x, '=') for x in split(s, ','))
+    )
+const LWKW, CLOUDKW, SWKW, CONVKW = (parsekw(get(ENV, k, "")) for k in ("LWKW", "CLOUDKW", "SWKW", "CONVKW"))
+const T0 = get(ENV, "T0", "")
 const START = DateTime(2015, 1, 1)
 const SUFFIX = string(
     DIURNAL == :sun && MODE == :coupled ? "_sun" : "", OCEAN == :prescribed ? "_sst" : "",
-    ALBEDO == :emulator ? "_alb" : "", ROUGH == :emulator ? "_z0" : ""
+    ALBEDO == :emulator ? "_alb" : "", ROUGH == :emulator ? "_z0" : "", AIR == Symbol("2m") ? "_t2m" : "",
+    LW == :fourband ? "_lw4" : "", isempty(CONVKW) ? "" : "_conv"
 )
 const OUT = get(ENV, "OUT", "/p/projects/open/Jamir/esm_land_emulator_data/coupled/speedy_t$(TRUNC)_$(MODE)$(SUFFIX)_$(YEARS)y")
 @assert MODE in (:coupled, :control) && DIURNAL in (:flat, :sun) && OCEAN in (:slab, :prescribed)
 @assert ALBEDO in (:speedy, :emulator) && ROUGH in (:speedy, :emulator)
+@assert AIR in (:model, Symbol("2m")) && LW in (:grey, :fourband) && T0 in ("", "speedy")
 @assert MODE == :coupled || (ALBEDO == :speedy && ROUGH == :speedy) "the emulator channels need MODE=coupled"
 println(
     "run_speedy_landemu: MODE=$MODE YEARS=$YEARS TRUNC=$TRUNC NLAYERS=$NLAYERS MAXDEG=$MAXDEG DIURNAL=$DIURNAL ",
-    "OCEAN=$OCEAN ALBEDO=$ALBEDO ROUGH=$ROUGH Z0=$Z0 OUT=$OUT"
+    "OCEAN=$OCEAN ALBEDO=$ALBEDO ROUGH=$ROUGH Z0=$Z0 AIR=$AIR LW=$LW LWKW=$LWKW CLOUDKW=$CLOUDKW SWKW=$SWKW ",
+    "CONVKW=$CONVKW T0=$(isempty(T0) ? "dry adiabat" : T0) OUT=$OUT"
 )
-println("SpeedyWeather ", pkgversion(SpeedyWeather), "  threads=", Threads.nthreads()); flush(stdout)
+println("SpeedyWeather ", pkgversion(SpeedyWeather), " at ", pkgdir(SpeedyWeather), "  threads=", Threads.nthreads()); flush(stdout)
+include(joinpath(@__DIR__, "speedy_air2m.jl"))   # air_2m(ij, vars, model, soilT) [K]
 
 # ---------------------------------------------------------------------------------------------- land evaporation
 """Land surface humidity flux: the emulator's daily evapotranspiration where `use[ij]`, SpeedyWeather's own bulk
@@ -150,8 +170,8 @@ end
 
 # accumulated per land column: tas, pr, rsds, lwnet, huss, humidity flux used, land fraction (the first 7 are what
 # score_speedy_landemu.py reads), then land albedo, land sensible heat flux [W/m²], top soil temperature [°C] and
-# SpeedyWeather's own snow [m water equivalent]
-const NV = 11
+# SpeedyWeather's own snow [m water equivalent], diagnostic 2 m air temperature [°C] (speedy_air2m.jl)
+const NV = 12
 const NG = 5   # global daily means: air temperature (all / land / ocean points), sea-surface temperature, sea ice area
 
 mutable struct LandEmuCallback <: SpeedyWeather.AbstractCallback
@@ -283,6 +303,7 @@ function callback!(cb::LandEmuCallback, vars, model)
         cb.acc[k, 9] += p.land.sensible_heat_flux[ij]
         cb.acc[k, 10] += soilT[ij, 1] - 273.15
         cb.acc[k, 11] += snow[ij]
+        cb.acc[k, 12] += air_2m(ij, vars, model, soilT) - 273.15
     end
     cb.nacc += 1
     return nothing
@@ -292,7 +313,7 @@ function finish_day!(cb::LandEmuCallback, t_now::DateTime)
     m = Float32.(cb.acc ./ cb.nacc)
     push!(cb.rec, m)
     if cb.py !== nothing
-        F = Float64.(cb.acc[cb.emu, 1:5] ./ cb.nacc)
+        F = Float64.(cb.acc[cb.emu, [AIR == :model ? 1 : 12, 2, 3, 4, 5]] ./ cb.nacc)
         t0 = time()
         et = pyconvert(Vector{Float64}, cb.py.day(F))                 # mm/day = kg/m²/day
         cb.t_py += time() - t0
@@ -352,7 +373,9 @@ function finalize!(cb::LandEmuCallback, vars, model)
         "diurnal" => string(DIURNAL), "ocean" => string(OCEAN), "albedo" => string(ALBEDO), "rough" => string(ROUGH),
         "global_daily" => reduce(hcat, cb.grec), "yearly_fields" => cb.yfld ./ reshape(max.(cb.ny, 1), 1, 1, :),
         "grid_lat" => cb.latall, "grid_lon" => cb.lonall, "grid_landfrac" => cb.lfall, "col_orog" => cb.orog,
-        "z0" => [Z0.high, Z0.low, Z0.bare]
+        "z0" => [Z0.high, Z0.low, Z0.bare], "air" => string(AIR), "lw" => string(LW),
+        "atmos_knobs" => "LWKW=$LWKW CLOUDKW=$CLOUDKW SWKW=$SWKW CONVKW=$CONVKW T0=$T0",
+        "speedy_dir" => pkgdir(SpeedyWeather)
     )
     if cb.py !== nothing
         cb.py.finish(pydict(Dict(k => (v isa AbstractArray ? pyimport("numpy").asarray(v) : v) for (k, v) in extra)))
@@ -375,11 +398,32 @@ kw = Dict{Symbol, Any}()
 hf !== nothing && (kw[:surface_humidity_flux] = SurfaceHumidityFlux(sg; land = hf))
 OCEAN == :prescribed && (kw[:ocean] = SeasonalOceanClimatology(sg))   # sea ice then follows the prescribed SST
 alb !== nothing && (kw[:albedo] = OceanLandAlbedo(sg; land = alb))
-rough !== nothing && (kw[:boundary_layer] = BoundaryLayer(sg; surface_roughness = rough))
+blkw = Dict{Symbol, Any}()
+rough !== nothing && (blkw[:surface_roughness] = rough)
+T0 == "speedy" && (blkw[:surface_condition] = SurfaceCondition(sg; actual_lapse_rate = true))
+isempty(blkw) || (kw[:boundary_layer] = BoundaryLayer(sg; blkw...))
+if !isempty(CONVKW)    # as in speedy_cold_bias_repro.jl
+    ent = (; (k => v for (k, v) in pairs(CONVKW) if k in (:surface_entrainment, :σ_entrainment))...)
+    bm = (; (k => v for (k, v) in pairs(CONVKW) if k == :relative_humidity)...)
+    haskey(CONVKW, :ascent_substeps) && (bm = (; bm..., ascent_substeps = round(Int, CONVKW.ascent_substeps)))
+    haskey(CONVKW, :entrainment_mse) && (bm = (; bm..., entrainment_mse = CONVKW.entrainment_mse == 1))
+    haskey(CONVKW, :time_scale_hours) && (bm = (; bm..., time_scale = Second(round(Int, 3600 * CONVKW.time_scale_hours))))
+    kw[:convection] = BettsMillerConvection(sg; entrainment = LinearEntrainment(sg; ent...), bm...)
+end
+LW == :fourband && (
+    kw[:radiation] = Radiation(
+        sg;
+        shortwave = TwoBandShortwave(
+            sg; clouds = DiagnosticClouds(sg; CLOUDKW...), radiative_transfer = TwoBandShortwaveRadiativeTransfer(sg; SWKW...)
+        ),
+        longwave = FourBandLongwave(sg; LWKW...)
+    )
+)
 model = PrimitiveWetModel(sg; kw...)
 println(
     "ocean: ", typeof(model.ocean).name.name, ", albedo: ", typeof(model.albedo.land).name.name,
-    ", roughness: ", typeof(model.boundary_layer.surface_roughness).name.name
+    ", roughness: ", typeof(model.boundary_layer.surface_roughness).name.name,
+    ", radiation: ", typeof(model.radiation.longwave).name.name, ", convection: ", typeof(model.convection).name.name
 ); flush(stdout)
 sim = initialize!(model; time = START)
 

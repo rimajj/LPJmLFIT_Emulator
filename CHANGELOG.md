@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Coupled emulator on the fixed SpeedyWeather atmosphere, with a 2 m air temperature option (ADR 0360):**
+  `run_speedy_landemu.jl` gains `AIR=model|2m` (what the emulator is fed; the 2 m value is always recorded as
+  `daily_means` column 12) and the cold-bias-fix knobs `LW`, `CONVKW`, `T0`, `LWKW`/`CLOUDKW`/`SWKW`; run them with
+  `PROJ=/p/tmp/jamirp/speedy_landemu_fix_env` (`sbatch_speedy_landemu.sh`). The 2 m formula now lives in one file,
+  `scripts/online_coupling/speedy_air2m.jl`, shared with the reproducer. All knobs unset reproduces the earlier stock
+  run's first year exactly. `diagnose_speedy_climate.py` scores the 2 m temperature too and takes `--out=`.
 - **The emulator paper (`docs/paper/`, figures `scripts/paper/`):** a model-description manuscript of the learned
   emulator (release v1) for an external audience — design reasoning from the emulator review and the measurements that
   ruled out the hybrid design, how it works, accuracy against a second run of the original, drift, the warming
