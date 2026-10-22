@@ -386,7 +386,10 @@ setting had it reduced the error of both dense-stand tree density and biomass pe
 worsening any quantity by more than 2\,\%; none did. The release sits on a plateau: fewer leaves (15), fewer trees
 (200) or a lower learning rate (0.025) each raise the dense-stand biomass-per-tree error by 2.6--3.0\,\%; more leaves
 (63), more trees (800) or a higher rate (0.1) each lower the dense tree-density error by 1.4--3.1\,\% but not the
-biomass error by 2\,\% (63 leaves: $-3.1$ and $-1.8$\,\%, and no quantity worse). Without subsampling, or with at
+biomass error by 2\,\% (63 leaves: $-3.1$ and $-1.8$\,\%, and no quantity worse). Combining 63 leaves with 800 trees
+lowers both errors by 3.0 and 4.8\,\% and the sparse-stand density error by 10\,\%, but the gain is largest in
+2021--2040 (about 4\,\%) and fades to 1--3\,\% by 2081--2100, and with the departure model it shrinks to 1.4 and
+3.9\,\%; at four times the model size it was not adopted. Without subsampling, or with at
 least 100 rows per leaf, the errors change by less than 2.5\,\%. A 50-year climate window is worse (biomass per tree
 +3.6\,\%), 10 and 20 years are equivalent to 30; training rows every second or eighth year instead of every fourth
 are equivalent. Every input group is needed: without the climate offset from the anchor runs the biomass error rises
@@ -413,6 +416,7 @@ the share of a die-off it reproduces moved between 0.15 and 0.21 (release 0.18).
     min.\ 100 rows per leaf & 20 & 0.975 & 1.003 & 0.995 & 1.001\\
     climate window 10 / 20 / 50\,yr & 30\,yr & 0.988 / 0.991 / 0.999 & 1.017 / 1.002 / 1.036 & 0.874 / 0.966 / 1.008 & 1.005 / 1.005 / 1.004\\
     training rows every 2nd / 8th yr & 4th & 0.980 / 1.000 & 1.003 / 0.997 & 0.974 / 1.009 & 1.007 / 1.003\\
+    63 leaves and 800 trees & 31, 400 & 0.970 & 0.952 & 0.901 & 0.981\\
     without start state & with & 1.005 & 1.011 & 0.973 & 1.294\\
     without climate offset & with & 1.012 & 1.112 & 1.136 & 1.026\\
     without anchors as inputs & with & 1.003 & 1.021 & 1.012 & 1.014\\

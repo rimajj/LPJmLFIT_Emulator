@@ -67,10 +67,9 @@ emulator runs are done".
   before results (ADR 0359 §5):** pooled seed sd excludes the diverged LR10 (0.0207 → 0.00078; summariser fixed).
 * **Stage 2 queued (gpu):** `DCL4E_5seed` (2661152), `DCB4KE_5seed` (2661159), `DCNOWINE_5seed` (2661165, report only);
   chained scorer 2661168 (`afterany`) → `logs/f2-dc-stage2-relscore.md` + compare blocks in its .out.
-* **Combined forest-map capacity arm (ADR 0361, owner "yes"):** 63 leaves + 800 rounds, `dc-L63R800` (2661366, level map)
-  and `dc-L63R800-dep` (2661367, with departure model), priority, ~15 min. Read: `summarise_design_sensitivity.py map`
-  (rows L63R800 in both blocks) against ADR 0361's three conditions; adopt ⇒ release v3 rebuild + new record; either way
-  add a row to the paper's `tab:choices_map`.
+* **Combined forest-map capacity arm (ADR 0361): NOT ADOPTED.** 63 leaves + 800 rounds: dense count 0.970, biomass/tree
+  0.952 of the release, but a sparse trait pair at 1.022 and drift +0.04 (the gain is ~4 % early, ~1 % late; with the
+  departure model 0.986 / 0.961). Paper table row + sentence added. Release keeps 31 / 400.
 **Next:** read the scorer output; adopt L4 / B4K only if it beats BOTH `DE_5seed` and `D2E_5seed` by ≥ 5 % on ≥ 2 of
 GPP/ET/NPP/runoff, none worse > 5 %, cost within T31 (release 6.4e-3 core-s per cell-year; L4 adds a layer). Then write
 ADR 0359 §6, replace the paper's "[Daily networks: to be completed …]" marker (one paragraph + screen table), rebuild
