@@ -47,6 +47,8 @@ QVARS = ["Height", "agb", "SLA", "Wooddens", "D95max", "minwscal", "D95", "Age"]
 COMBOS = [("AQ", "D0"), ("AQ", "DA"), ("ALS", "D0"), ("ALS", "DA"), ("A0", "D0")]
 DENSE = 5.0
 NP = int(os.environ.get("NPROC", "16"))
+DRAW = os.environ.get("VDRAW", "rep")  # rep (ADR 0363 sec. 9) | unique (sec. 12)
+SFX = "" if DRAW == "rep" else f"_{DRAW}"  # virtual-stage outputs of another draw never overwrite the scored ones
 
 
 def log(*a):
@@ -105,6 +107,34 @@ def largest_remainder(n: int, s: np.ndarray) -> np.ndarray:
     return k
 
 
+def draw_unique(k: np.ndarray, types: np.ndarray, rng) -> tuple[np.ndarray, np.ndarray]:
+    """ADR 0363 sec. 12: donor indices with NO tree drawn twice while the roster lasts. Each type t takes k[t] of its
+    own donor trees; a shortfall is filled from the unused donor trees of the other types (the virtual tree keeps
+    type t, its ranks come from that donor); repeats only once N exceeds the whole roster. A repeated donor gives a
+    near-identical virtual tree (same rank in every variable) -- the cause of the evenness bias."""
+    used = np.zeros(len(types), bool)
+    idx, typ = [], []
+    for t in range(7):
+        pool = np.flatnonzero((types == t) & ~used)
+        take = rng.choice(pool, min(k[t], len(pool)), replace=False) if k[t] else np.array([], int)
+        used[take] = True
+        idx.append(take)
+        typ.append(np.full(len(take), t))
+    got = [len(x) for x in idx]
+    for t in range(7):
+        short = k[t] - got[t]
+        if short <= 0:
+            continue
+        rest = np.flatnonzero(~used)
+        take = rng.choice(rest, min(short, len(rest)), replace=False)
+        used[take] = True
+        if short > len(take):
+            take = np.concatenate([take, rng.choice(len(types), short - len(take), replace=True)])
+        idx.append(take)
+        typ.append(np.full(len(take), t))
+    return np.concatenate(idx), np.concatenate(typ)
+
+
 def virtual_trees(N: int, shares: np.ndarray, Q: dict[str, np.ndarray], donor: dict[str, np.ndarray],
                   seed: int) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(seed)
@@ -112,16 +142,19 @@ def virtual_trees(N: int, shares: np.ndarray, Q: dict[str, np.ndarray], donor: d
         return {}
     k = largest_remainder(N, shares if shares.sum() > 0 else np.bincount(donor["Type"], minlength=7) / len(
         donor["Type"]))
-    idx, typ = [], []
-    for t in range(7):
-        if k[t] == 0:
-            continue
-        pool = np.flatnonzero(donor["Type"] == t)
-        if len(pool) == 0:
-            pool = np.arange(len(donor["Type"]))
-        idx.append(rng.choice(pool, k[t], replace=k[t] > len(pool)))
-        typ.append(np.full(k[t], t))
-    idx, typ = np.concatenate(idx), np.concatenate(typ)
+    if DRAW == "unique":
+        idx, typ = draw_unique(k, donor["Type"], rng)
+    else:  # the scored ADR 0363 sec. 9 draw: repeats a donor tree once a type's pool is used up
+        idx, typ = [], []
+        for t in range(7):
+            if k[t] == 0:
+                continue
+            pool = np.flatnonzero(donor["Type"] == t)
+            if len(pool) == 0:
+                pool = np.arange(len(donor["Type"]))
+            idx.append(rng.choice(pool, k[t], replace=k[t] > len(pool)))
+            typ.append(np.full(k[t], t))
+        idx, typ = np.concatenate(idx), np.concatenate(typ)
     out = {"Type": typ}
     for v, q in Q.items():
         out[v] = qfun(q, ranks01(donor[v][idx], rng))
@@ -241,8 +274,8 @@ def stage_virtual(a) -> None:
             rows += r
             drows += d
             log(f"  {len(rows)} virtual communities")
-    pl.DataFrame(rows).write_parquet(os.path.join(OUT, f"idx_emu_{a.g}.parquet"))
-    pl.DataFrame(drows).write_parquet(os.path.join(OUT, f"d95der_{a.g}.parquet"))
+    pl.DataFrame(rows).write_parquet(os.path.join(OUT, f"idx_emu_{a.g}{SFX}.parquet"))
+    pl.DataFrame(drows).write_parquet(os.path.join(OUT, f"d95der_{a.g}{SFX}.parquet"))
     log(f"virtual {a.g}: {len(rows)} communities, {len(drows)} derived rooting-depth rows")
 
 
@@ -314,7 +347,7 @@ def stage_score(a) -> None:
     # ---- derived rooting depth vs learned (roster years)
     dparts = []
     for g in PP.GCMS:
-        f = os.path.join(OUT, f"d95der_{g}.parquet")
+        f = os.path.join(OUT, f"d95der_{g}{SFX}.parquet")
         if os.path.exists(f):
             dparts.append(pl.read_parquet(f))
     if dparts:
@@ -347,7 +380,7 @@ def stage_score(a) -> None:
     # ---- indices
     ip, tp = [], []
     for g in PP.GCMS:
-        fe, ft = (os.path.join(OUT, f"idx_{k}_{g}.parquet") for k in ("emu", "truth"))
+        fe, ft = os.path.join(OUT, f"idx_emu_{g}{SFX}.parquet"), os.path.join(OUT, f"idx_truth_{g}.parquet")
         if os.path.exists(fe) and os.path.exists(ft):
             ip.append(pl.read_parquet(fe))
             tp.append(pl.read_parquet(ft))
@@ -455,7 +488,7 @@ def stage_score(a) -> None:
                             "n_typ_ok": int(np.mean(dT[ok]) * 1e4)})
         log("scored mortality")
     R = pl.DataFrame(res)
-    R.write_csv(os.path.join(OUT, "score_popmap.csv"))
+    R.write_csv(os.path.join(OUT, f"score_popmap{SFX}.csv"))
     with pl.Config(tbl_rows=-1, tbl_width_chars=200, fmt_str_lengths=80):
         print(R)
 

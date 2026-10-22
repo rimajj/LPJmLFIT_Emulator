@@ -207,3 +207,30 @@ alone 13–29 %; adding age gains ≤ 0.4 points. (Mechanism: pipe-model height 
 models) and consistent with height and traits by construction. Not yet compared with `AQ`'s learned biomass (0.85);
 §9's rooting-depth result warns that the computed path compounds the errors of its inputs. The four traits themselves
 are drawn independently at establishment (no formula links them); leaf longevity is a noisy function of SLA.
+
+## 12. Results of §11 and of the evenness diagnosis (2026-10-22, owner: "do a-c, all of it")
+
+`scripts/diagnose_popjoint_agb_evenness.py` (jobs 2669192–96, scorer 2669219; `score_diag_agb_feve.csv`).
+
+**Computed vs learned biomass per tree.** Allometry fitted per tree type on run m1's trees (hist + canesm5, a
+training leg in every fold): ln biomass = a + b ln height + c ln wood density + d ln SLA, b = 3.9–4.5, c = 0.86–0.94,
+d = −0.05…−0.10. Applied to each `AQ` virtual tree (roster years, dense cells, all nine levels): **computed 0.95, learned
+0.86** of a second run's error; learned better at every level (5 %: 1.11 vs 0.81; median 1.13 vs 1.01; 95 %: 1.02 vs
+0.94) and in sparse cells (1.18 vs 1.04). Computed is 10.3 % worse — just outside the 10 % margin §7 set for the
+rooting-depth choice ⇒ **learned ships**; the two disagree by a median 5 % on the same virtual trees (learned lower),
+which the release documents as a known inconsistency.
+
+**Functional evenness.** Variants on the original's own trees (dense, roster years): its own trees pushed through
+the nine-level quantile function +0.010 (the interpolation is not the cause); the emulator's construction with the
+TRUE quantiles but donors drawn as scored (a donor tree repeated once its type's pool is used up) **−0.039**; the same
+with no donor repeated while the roster lasts +0.0003. 13.7 % of the scored virtual trees came from a repeated donor
+(in 45 % of dense cell-years the original has more trees than the 2019 roster); a repeated donor has the same rank in
+every variable, so its virtual trees are near-identical and shorten the spanning tree. **Fix:** draw without repeats
+while the roster lasts, a shortfall of one type filled from the other types' unused donors (the tree keeps its own
+type) (`explore_panel_popjoint.draw_unique`, `VDRAW=unique`; the scored rep draw is kept for reproducibility).
+Re-scored (`score_popmap_unique.csv`, job 2670001): evenness 3.32 → **1.82** (bias −0.020 → +0.004 GFDL-ESM4, −0.059 →
+−0.001 UKESM1; the rest is scatter, 0.026–0.031 vs a second run's 0.015), richness 1.28 → **1.06**, the derived rooting
+depth 1.09 → 1.07 (learned 0.78, still better), every other index unchanged to two decimals. The no-repeat draw ships.
+
+**Also found (ADR 0364 §1):** the emitted `mort` already holds the hard kills (= 1), so §6/§9/§10's "chance-death rate"
+includes them and "excess deaths" are fire, `isneg` and luck — §9–§10's mortality readings are relabelled there.

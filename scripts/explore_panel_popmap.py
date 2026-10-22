@@ -45,6 +45,10 @@ VARS = ["Height", "agb", "SLA", "Wooddens", "D95max", "minwscal", "D95", "Age"]
 LOGV = {"agb": 1.0}  # log-ratio target, as the release's biomass per tree
 SHARES = [f"share_{t}" for t in range(7)]
 MORT = ["death_rate", "chance_rate", "excess_rate"]
+# ADR 0364: the same deaths on corrected definitions (xpanel/yearly3, build_panel_tree_pairs.py): at risk = trees alive
+# and >= 5 m at the end of y-1; hard kills counted directly (the `mort` column already holds them as 1)
+YEARLY3 = os.path.join(PP.OUT, "yearly3")
+MORT3 = ["death3", "hard_rate", "hazard_rate", "other_rate"]
 NPP_DIR = os.path.join(PP.OUT, "yearly2_npp")
 NPP_V = ["npp_per_tree", "share_npp_neg"]
 NPP_COLS = [f"{k}_{v}" for v in NPP_V for k in ("n0", "n1", "nr0", "nr1", "nz0", "nz1")]
@@ -57,10 +61,14 @@ def log(*a):
 def group_quantities(group: str) -> list[str]:
     if group in VARS:
         return [f"{group}_{pn}" for pn in PN]
+    if group.startswith("mort3"):
+        return MORT3
     return SHARES if group == "shares" else MORT  # mort and mortn
 
 
 def yearly2(m: int, leg: str, qs: list[str]) -> pl.DataFrame | None:
+    if any(q in MORT3 for q in qs):
+        return yearly3(m, leg, qs)
     f = os.path.join(YEARLY2, f"m{m}_{leg}.parquet")
     if not os.path.exists(f):
         return None
@@ -72,6 +80,21 @@ def yearly2(m: int, leg: str, qs: list[str]) -> pl.DataFrame | None:
         pl.when(risk > 0).then(pl.col("n_dead") / risk).otherwise(None).alias("death_rate"),
         pl.when(risk > 0).then(pl.col("exp_dead") / risk).otherwise(None).alias("chance_rate"),
         pl.when(risk > 0).then((pl.col("n_dead") - pl.col("exp_dead")) / risk).otherwise(None).alias("excess_rate"))
+    return d.select("Cell", "Year", *qs).with_columns(pl.lit(m).alias("member"), pl.lit(leg).alias("leg"))
+
+
+def yearly3(m: int, leg: str, qs: list[str]) -> pl.DataFrame | None:
+    f = os.path.join(YEARLY3, f"m{m}_{leg}.parquet")
+    if not os.path.exists(f):
+        return None
+    d = pl.read_parquet(f)
+    r = pl.col("n_risk")
+    d = d.with_columns(
+        pl.when(r > 0).then(pl.col("n_dead") / r).otherwise(None).alias("death3"),
+        pl.when(r > 0).then(pl.col("n_hard") / r).otherwise(None).alias("hard_rate"),
+        pl.when(r > 0).then(pl.col("sum_hz") / r).otherwise(None).alias("hazard_rate"),
+        pl.when(r > 0).then((pl.col("n_dead") - pl.col("sum_mort")) / r).otherwise(None).alias("other_rate"))
+    d = d.with_columns(pl.col("Cell").cast(pl.Int32), pl.col("Year").cast(pl.Int32))
     return d.select("Cell", "Year", *qs).with_columns(pl.lit(m).alias("member"), pl.lit(leg).alias("leg"))
 
 
@@ -231,7 +254,7 @@ def stage_fit(a) -> None:
         tew = te.join(wx, on=["Cell", "Year", "leg"], how="left").join(bk, on=["Cell", "Year", "leg"], how="left")
         assert trw.height == tr.height and tew.height == te.height
         arms = {"BM": (tr, te, []), "BMW": (trw, tew, wcols)}
-        if group == "mortn":
+        if group in ("mortn", "mort3n"):
             npp = pl.concat([d for m in PP.MEMBERS for lg in A7.ALL_SLEGS if (d := npp_anomaly(m, lg)) is not None])
             npp = npp.with_columns(pl.col("member").cast(tr["member"].dtype), pl.col("Cell").cast(tr["Cell"].dtype),
                                    pl.col("Year").cast(tr["Year"].dtype))
@@ -255,7 +278,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["fit"])
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
-    ap.add_argument("--group", default="Height", choices=[*VARS, "shares", "mort", "mortn"])
+    ap.add_argument("--group", default="Height", choices=[*VARS, "shares", "mort", "mortn", "mort3", "mort3n"])
     a = ap.parse_args()
     {"fit": stage_fit}[a.stage](a)
     log("=== DONE")
