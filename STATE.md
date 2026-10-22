@@ -44,6 +44,18 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-22 (midday) — SpeedyWeather: emulator coupling PAUSED (owner), every finding reported upstream.** Owner: *"I do
+not want to do any coupling with the emulator as long as the climate model does not work correctly yet. All solutions
+and valuable tests for the speedyweather developers should be reported as issues."* ⇒ the coupled follow-ups (t1)–(t3)
+in the block below are **off** until the owner says the atmosphere is good enough; stand-alone SpeedyWeather work is
+allowed. Filed as rimajj: #1342 (four-band longwave, source in the issue), #1343 (near-surface air in inversions + 2 m
+diagnostic), #1344 (no clear-sky Rayleigh scattering), #1345 (clear-sky OLR at L8 vs L32; slab drift); follow-up comments
+on #1333 (stage table of the open PRs) and #1339 (three more convection tests). Texts in `patches/speedyweather/`.
+Nothing upstream has replied yet. **Next there:** watch the six threads; answer questions; open PRs only when a
+maintainer asks (no fork exists yet). Still open on the atmosphere: high-latitude lower troposphere warm (+3–8 K in
+winter at 650–890 hPa), slab drift +0.35 K/yr, cloud/clear-sky split. Terrarium default-setting traps (sand soil,
+NoFlow hydrology, VPD = 0 assertion) are NOT reported — they belong to Terrarium's repository; ask the owner.
+
 **2026-10-22 (morning) — the coupled emulator now runs on the fixed SpeedyWeather atmosphere; the 2 m air feed was
 NOT adopted (ADR 0360).** Owner: "continue" (s1 below). `run_speedy_landemu.jl` + `PROJ=/p/tmp/jamirp/speedy_landemu_fix_env`
 with `LW=fourband T0=speedy CONVKW="ascent_substeps=10,entrainment_mse=1"` (skill online-coupling-env). 10-yr runs,

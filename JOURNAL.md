@@ -1909,3 +1909,16 @@ fires on 55 % of tropical days and the 2 m value drops 2.4 K below the air; the 
 +8), vegetation carbon still −2.8 % over 10 yr (stock flat on prescribed SST), NPP 64–70 vs 81–84 PgC/yr stock.
 Side fix: the `format` gate on `main` had been red since 7209a267 (speedy_cold_bias_repro.jl), reformatted (48ef2e66,
 green). Another session ran the forest-map design campaign in this checkout at the same time — commits by explicit path.
+
+## 2026-10-22 (midday) — SpeedyWeather findings reported upstream; emulator coupling paused (owner)
+Owner: "all speedy weather runs are done" — they were (ADR 0360 runs scored at 08:45; no job pending). Then: is the
+temperature problem fixed? (cold bias removed on our branch only; high latitudes warm, slab drifts), did you fix the
+convection? (yes on coldfix-E, reported as #1339, no reply), and: *no coupling with the emulator until the climate model
+works; report all solutions and valuable tests as issues*. Searched upstream first (longwave, OLR, Rayleigh, clear-sky,
+cloud albedo, 2 m / surface air temperature, inversion, lapse rate, slab, vertical resolution, energy budget,
+Terrarium): nothing covers our findings; #1279's comments (maintainer agent) had found the upper-troposphere moistening
+runaway with grey/B&O'G longwave. Filed #1342 (FourBandLongwave), #1343 (surface air in inversions), #1344 (clear-sky
+Rayleigh), #1345 (L8 clear-sky OLR, slab drift); comments on #1333 (cumulative stage table main → +#1332/#1284 → +#1283
+→ +#1262 → tuning / four-band → surface air → #1339 options) and #1339 (RH target, entrainment depth null with T–q
+mixing, slab top-layer convection). Every number re-read from the run logs before posting (two draft sentences mixed
+runs and were corrected). Memory `no-coupling-until-climate-model-works`.
