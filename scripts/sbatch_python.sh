@@ -12,7 +12,8 @@
 #
 # Env overrides: TIME (default 01:00:00), NCPUS (16), ACCOUNT (waldspektrum),
 # PARTITION (standard), QOS (short), GRES (unset; e.g. GRES=gpu:1 with PARTITION=gpu QOS=gpushort),
-# DEPENDENCY (unset; e.g. DEPENDENCY=afterok:123:124 — written as an #SBATCH line, so it takes effect).
+# DEPENDENCY (unset; e.g. DEPENDENCY=afterok:123:124 — written as an #SBATCH line, so it takes effect),
+# EXCLUDE (unset; e.g. EXCLUDE=cso14c65 — nodes to avoid, also written as an #SBATCH line).
 # Any VAR=... you export is forwarded.
 #
 # Watch / collect (from ANY later session):
@@ -31,6 +32,8 @@ TIME="${TIME:-01:00:00}"; NCPUS="${NCPUS:-16}"; GRES="${GRES:-}"
 GRES_LINE=""; [ -n "${GRES}" ] && GRES_LINE="#SBATCH --gres=${GRES}"
 DEPENDENCY="${DEPENDENCY:-}"
 DEP_LINE=""; [ -n "${DEPENDENCY}" ] && DEP_LINE="#SBATCH --dependency=${DEPENDENCY}"
+EXCLUDE="${EXCLUDE:-}"  # nodes to avoid, e.g. EXCLUDE=cso14c65 (a node that fails jobs in 0 s)
+EXC_LINE=""; [ -n "${EXCLUDE}" ] && EXC_LINE="#SBATCH --exclude=${EXCLUDE}"
 LOGDIR="${REPO}/logs"; mkdir -p "${LOGDIR}"
 
 # forward the table-build env knobs explicitly (so they reach the batch shell). A knob NOT listed here is
@@ -57,6 +60,7 @@ cat > "${jcf}" <<EOF
 #SBATCH --time=${TIME}
 ${GRES_LINE}
 ${DEP_LINE}
+${EXC_LINE}
 #SBATCH --output=${LOGDIR}/${TAG}.%j.out
 #SBATCH --error=${LOGDIR}/${TAG}.%j.out
 set -uo pipefail

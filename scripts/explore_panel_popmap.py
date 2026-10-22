@@ -269,7 +269,8 @@ def stage_fit(a) -> None:
                                 lambda p, d, q=q: p + d[f"anc_{q}"].to_numpy().astype(float), t0)
                 cols.append(pl.Series(f"{arm}_{q}", p))
     out = out.with_columns(cols)
-    fo = os.path.join(OUT, f"preds_{g}_{group}.parquet")
+    fo = os.path.join(OUT, f"preds_{g}_{group}{os.environ.get('POPMAP_SFX', '')}.parquet")  # suffix: a refit never
+    # overwrites the scored file
     out.write_parquet(fo)
     log(f"{g} {group}: wrote {out.height} rows -> {fo} ({time.time() - t0:.0f}s)")
 

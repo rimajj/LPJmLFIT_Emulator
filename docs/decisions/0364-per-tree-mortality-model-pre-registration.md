@@ -1,6 +1,6 @@
 # 0364 — A per-tree mortality model: learn each tree's leaf carbon against its sapling threshold and its chance hazard (pre-registration)
 
-* **Status:** pre-registered 2026-10-22, before any fit of this record (the training tables were being built).
+* **Status:** pre-registered 2026-10-22, before any fit of this record (the training tables were being built). **Result (§6): not adopted — die-off capture 0.36 (bar 0.5), 30-year death rate 1.51 (bar 1.2); the run's own NPP lifts capture to 0.74.**
 * **Owner instruction (2026-10-22):** "do a-c, all of it" — (b) = the cohort / per-tree leaf-carbon model that ADR
   0363 §6 (`BC`) and §10 named as the next mortality step.
 * **Follows:** ADR 0357 (die-offs are the leaf-carbon hard kill), ADR 0363 §6–§10 (cell-level death-rate maps:
@@ -97,3 +97,43 @@ test: run m4 (truth) and m5 (harness) on the held-out model's three legs; held-o
 * **Expected:** E1 `BC` capture 0.35–0.55, `BCN` 0.6–0.8; E2 ~0.05–0.1 below E1; 30-year rate 1.1–1.3; `BMW3`
   capture of the hard-kill rate ≤ 0.3. If E1 `BCN` stays below 0.5, the per-tree structure is not what is missing
   and the next lever is the daily water–carbon model's own NPP as input (ADR 0363 §8, c3).
+
+## 6. Results (2026-10-22; tables job 2670238/39, fits 2670267–79, predictions 2670364–73, score 2670403 →
+`xpanel/eval/treemort/score_treemort.csv`)
+
+Data: 186 run-legs, 14.8 M sampled at-risk trees (11.1 M per fold); identity gate 1.0000 everywhere, 0 ambiguous
+tree-years after adding SLA, ≤ 0.08 % vanishing. Per year 4.4–5.0 % of at-risk trees die; hard kills are 14–21 % of
+the deaths (0.78 % of trees), and 33 % of those have r < 1 (the rest: the counter, §2a). Harness (run m5 as the
+emulator) 0.98–1.02 everywhere.
+
+All ratios to the pooled second runs, dense cells, 15 held-out cases:
+
+| arm | yearly death rate (≤ 1.5) | 30-yr death rate (≤ 1.2) | total deaths ±5 % (≥ 12/15) | die-off capture death rate (≥ 0.5) | capture hard-kill rate | hard-kill calibration E1 (±10 %) |
+|---|---|---|---|---|---|---|
+| `BC` E1 (original's trees) | 0.96 | 1.37 | 15 | 0.37 | 0.46 | 0.82 (0 of 15) |
+| **`BC` E2 (virtual trees, deployable)** | **0.97 ✓** | **1.51 ✗** | **15 ✓** | **0.36 ✗** | 0.45 | — |
+| `BCN` E1 (bound) | 0.91 | 1.25 | 15 | 0.74 | 1.17 | 0.95 (13 of 15) |
+| `BCN` E2 (bound) | 0.93 | 1.48 | 15 | 0.74 | 1.16 | — |
+| `BM3` (cell map, climate) | 1.10 | 1.39 | 13 | 0.00 | 0.00 | — |
+| `BMW3` (cell map, + weather) | 1.01 | 1.34 | 14 | 0.28 | 0.27 | — |
+| `BMN3` (cell map, + NPP, bound) | 0.94 | 1.25 | 15 | 0.60 | 0.77 | — |
+
+Hazard-sum calibration (E1) 1.01 for both arms. The 30-year hard-kill rate is 1.46 (`BC`) / 1.23–1.27 (`BCN`).
+
+**Reading (§5, applied as written):**
+* `BC` on E2 fails the 30-year death rate (1.51), the die-off capture (0.36) and the hard-kill calibration (0.82) ⇒
+  **not adopted**. The "better than the map" clause also fails: capture +0.085 over `BMW3` (needs ≥ 0.1) and its
+  30-year rate is 12 % worse (1.51 vs 1.34; allowed 10 %). The release keeps no mortality output.
+* Expectations: E1 `BC` capture 0.35–0.55 ✓ (0.37); `BCN` 0.6–0.8 ✓ (0.74); E2 0.05–0.1 below E1 ✗ — E2 equals E1
+  (0.36 vs 0.37): building the at-risk trees from the emulated distributions costs nothing on capture, but costs on
+  the 30-year level (1.51 vs 1.37). `BMW3` hard-kill capture ≤ 0.3 ✓ (0.27).
+* `BCN` ≥ 0.5 ⇒ per §5 the per-tree structure is NOT the missing piece alone: with the run's own carbon balance the
+  per-tree model captures 0.74 of the die-off jump against the cell map's 0.60 with the same input, and without it
+  only 0.36. **The binding lever is the year's carbon signal.** The deployable version of it is the emulator's own
+  daily NPP (ADR 0363 §8, c3). Cost of trying it: forcing arrays exist for runs m1–m4 on the first five climate models
+  only; training needs the full emulator run on the 135 training run-legs (runs m1, m2, m3, m5, m6 × 27 legs), i.e.
+  forcing for the five newer climate models and setups for runs m5/m6, ~25 core-hours of emulator runs. Not started
+  (owner's call); and the emulated NPP is the daily model's weakest flux (3.9× a second run, ADR 0353), so the
+  bound 0.74 is an upper limit for that route.
+* No arm passes the 30-year death-rate bar (best 1.25, both NPP bounds). The year-to-year rate is easy (every arm
+  ≤ 1.1); the long-term level under the late-century climate is not.

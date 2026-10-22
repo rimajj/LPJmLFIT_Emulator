@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0364**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0366**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,29 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-22 (late evening) — owner "do a-c, all of it": tree population SHIPPED (release v4 / fold v5, ADR 0365);
+per-tree mortality NOT adopted (ADR 0364); evenness fixed (ADR 0363 §12).**
+* **(a) Release `v4`** = v2 + 79 population models (9-level distributions of height, biomass per tree, the four traits,
+  ACTUAL rooting depth, age; 7 type shares) + virtual trees + diversity indices on request
+  (`LandEmulator.start(setup, PopSetup)`, outputs `pop_*`). Additive: v2 files byte-identical, all 20 existing outputs
+  identical with the population on, v2 with the new code == v4 without it. Cost +7 % (7.67e-3 vs 7.14e-3 core-s per
+  cell-year); virtual trees + indices 6.7e-3 each time. `fold_gfdl-esm4_v5` reproduces the scored pipeline from daily
+  weather except Age (its LightGBM fit is not reproducible run to run — two refits differ as much) and the known
+  larch/hot-day artefact; functional richness's 99th pct 0.058 (limit 0.05).
+* **(c)** Computed biomass per tree (allometry, ~1 % per tree in the original) 0.95 vs learned 0.86 ⇒ learned ships
+  (5 % inconsistency documented). Evenness bias = repeated donor trees; no-repeat draw ⇒ evenness 3.32 → 1.82 (no
+  bias left), richness 1.28 → 1.06.
+* **(b)** Per-tree model (leaf carbon vs sapling threshold + bad-years counter + hazard, applied to virtual trees):
+  yearly rate 0.97 ✓, totals 15/15 ✓, 30-yr rate 1.51 ✗ (bar 1.2), die-off capture 0.36 ✗ (bar 0.5; cell map 0.28).
+  With the run's own NPP 0.74 ⇒ the carbon signal is the lever. Not shipped; no mortality output.
+* **Corrections found:** the `ind` `mort` column already holds the hard kills (ADR 0363's "excess deaths" = fire /
+  isneg / luck); tree identity = (Cell, Patch, Type, ID) + SLA; for trees ≥ 5 m outside die-offs most hard kills are
+  the bad-years counter (ADR 0357 mixed heights). In CLAUDE.md.
+**Next (owner to choose):** (m1) mortality with the emulator's OWN NPP (build forcing for the 5 newer climate models
++ setups for runs m5/m6, run the full emulator on 135 training run-legs ~25 core-h, retrain the per-tree model; bound
+0.74); (m2) accept no mortality output for now; (p1) make the population outputs part of the paper (Sect. 4/5:
+distributions + indices, with the "second-run bar has little power" caveat); open threads below.
 
 **2026-10-22 (evening) — whole-tree-population emulation scored (ADR 0363 §9–11).** Owner: "the emulator runs finished".
 * **Distributions** (9 quantile levels, one model each, `AQ`): every variable passes in dense cells — height 0.86,

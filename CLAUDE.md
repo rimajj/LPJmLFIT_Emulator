@@ -482,8 +482,13 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   statistics incomparable (id 0's minwscal spans `[0.05,0.75]`, measured median 0.497, vs the truncated
   tables' whole `[0.025,0.30]`). Hainich (42490) has only ids 1–5 + grass 8, which is why every single-cell
   gate stayed green.
+- ⚠ **CORRECTION (`[VERIFIED 2026-10-22]`, ADR 0364 §1): `(Cell, Patch, ID)` is NOT unique at scale — key a tree on
+  `(Cell, Patch, Type, ID)` plus its `SLA`.** IDs are counted per plant type (two types in one patch share an ID), and
+  rarely two trees of the SAME type share one too (37 of 685 k trees in one year, different ages and SLA). With type and
+  SLA (immutable, bit-identical across years) 0 ambiguous tree-years remained over 186 run-legs and every matched tree
+  aged by exactly 1 (`scripts/build_panel_tree_pairs.py`). Assert uniqueness of the key before any year-to-year join.
 - **`(Cell, Patch, ID)` IS A STABLE CROSS-YEAR INDIVIDUAL IDENTITY in the annual `ind` output
-  (`[VERIFIED 2026-08-12]`, ADR 0125).** The `ID` column follows ONE tree through time, so a per-stem,
+  (`[VERIFIED 2026-08-12]`, ADR 0125; five cells only — see the correction above).** The `ID` column follows ONE tree through time, so a per-stem,
   year-paired comparison is possible and does not need a simulation. Over 13 152 tree stem-years at the five
   biome cells: `Age` increments by **exactly 1** on all 10 323 pairs; `SLA`/`Wooddens` are **bit-identical**
   across each pair (the independent check — traits are immutable after `new_tree`, so a shuffled identity
@@ -765,8 +770,15 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   the panel's 3 291 shared die-off years there are none (dead 0.342 vs `mort` 0.343). The die-offs are HARD kills
   (`mortality_tree_ind.c:135-140`: 5 bad years in a row, or leaf carbon below the sapling's), 23 % of trees vs 11 %.
   Checker: `scripts/diagnose_dieoff_excess_deaths.py`.
+- ⚠ **THE `ind` COLUMN `mort` ALREADY CONTAINS THE HARD KILLS — it is `mort_prob`, set to 1 when leaf carbon is below
+  a sapling's or the bad-year counter reached 5 (`mortality_tree_ind.c:131-139`) (`[VERIFIED 2026-10-22]`, ADR 0364
+  §1).** So `Σ mort` = expected deaths INCLUDING hard kills, and deaths beyond it are fire (`fire_tree_ind`, after the
+  draw), `isneg_tree` and luck — never "hard kills". Count hard kills directly: `isdead & mort ≥ 1 & min(1, the four
+  hazards) < 1` (`xpanel/yearly3/`). ⚠ **And which hard kill depends on height:** trees < 5 m — 98 % leaf-carbon kills
+  (saplings, median age 1); trees ≥ 5 m in ordinary years — mostly the five-bad-years counter (35 % leaf-carbon at
+  5–10 m, 13 % at ≥ 10 m); trees ≥ 5 m in die-off years — 92 % leaf-carbon. ADR 0357's 95–98 % mixed all heights.
 - ⚠ **THE DROUGHT DIE-OFFS ARE THE LEAF-CARBON HARD KILL, AND LEAF CARBON PER TREE IS EXACT FROM THE `ind` TABLE
-  (`[VERIFIED 2026-10-21]`, ADR 0357).** `mortality_tree_ind.c:63-65,139-140` kills any tree whose leaf carbon is below
+  (`[VERIFIED 2026-10-21]`, ADR 0357; for trees ≥ 5 m true in die-off years only — see the entry above).** `mortality_tree_ind.c:63-65,139-140` kills any tree whose leaf carbon is below
   the sapling's, `((lai_sapl·allom1·wood_sapl^(kpr/2)·(4·sla/π/k_latosa)^(kpr/2))/sla)^(2/(2−kpr))` with the tree's own
   SLA. Rebuild: crown area = 225·fpc_ind/(1−e^(−k·LAI)) (k = the PFT's `lightextcoeff`), leaf carbon = LAI·crown
   area/SLA. In die-off years 95 % of hard-killed trees are below it (median 0.58), 0 % of chance deaths. ⚠ The year's
@@ -846,6 +858,11 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   is fine only as long as it is called inside the same iteration and breaks silently the day it isn't. Bind
   the value as a default (`def col(c, rows=rs):`) instead. Existing `scripts/*.py` carry ~11 default-rule
   findings, so "the repo does it too" is not a reason to skip this on a NEW file.
+- ⚠ **A LightGBM fit can be non-reproducible run to run with identical code, data and settings (`[VERIFIED
+  2026-10-22]`, ADR 0365):** the population map's tree-AGE quantile models differ between two refits by a median 0.18
+  years at the median level (every other variable reproduced to ~1e-15). A gate "the package reproduces the scored
+  predictions" must then compare against the measured refit-to-refit spread, not demand equality — refit twice
+  (`POPMAP_SFX=_refit / _refit2`) before concluding the package is wrong.
 - Baseline S = **LightGBM + Gaussian copula** ("DirectEmulator"); no NN in the baseline. torch/lightning/
   sdv are intentionally out of the core deps until the metric panel escalates.
 

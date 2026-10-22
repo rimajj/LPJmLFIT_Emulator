@@ -1942,3 +1942,18 @@ virt2/popn2 jobs 2668545–54 all exit 0. Scorer 2669107 (priority, 2 min). Resu
 referenced by §8 but never written; written now. Owner asked mid-session whether related quantities could be computed
 instead of learned: per-tree regression on the m1 canesm5 ssp370 roster (3.6 M trees) gives biomass per tree from
 height + wood density + SLA to 0.6–1.9 % (§11). Script fixes (spawn pool, NPP census join) committed with this.
+
+## 2026-10-22 (late evening) — "do a-c, all of it": population release v4 / fold v5, per-tree mortality, evenness
+
+(c) `diagnose_popjoint_agb_evenness.py`: allometric biomass per tree 0.95 vs learned 0.86 (learned ships); evenness
+bias from repeated donor trees (true quantiles + scored draw −0.039, + no-repeat draw +0.0003); `VDRAW=unique` re-score:
+evenness 3.32 → 1.82, richness 1.28 → 1.06. (b) Designing the per-tree model found `mort` = probability after the hard
+kills (= 1), so ADR 0363's chance/excess split was mislabelled; tree IDs collide (key on type + SLA; 0 ambiguous after);
+`build_panel_tree_pairs.py` (186 run-legs, 10 s each; flaky node cso14c65 failed 4 jobs in 0 s → new `EXCLUDE` knob in
+sbatch_python.sh). Smoke leg showed only 32 % of ≥ 5 m hard kills below the leaf threshold → by height: < 5 m 98 %,
+5–10 m 35 %, ≥ 10 m 13 %; die-off years 92 % ⇒ ADR 0364 §2a amendment (counter-kill model) before any fit. Fits 10 ×
+~7 min, predictions 10 × ~5 min. Result: capture 0.36 (map 0.28), 30-yr 1.51; NPP bound 0.74. Not adopted.
+(a) `population.py` + `build_population_release.py` + `run_emulator.py --population`. First fold build crashed in its
+own gate (duplicate column), second failed the Age gate: two refits of the scored Age model differ as much (LightGBM
+not reproducible for Age) → gate = within 2× refit spread. First v4 on/off comparison FAILED: unprefixed population
+outputs overwrote the four trait medians → `pop_` prefix; re-run identical. v4, fold v5 built and checked.
