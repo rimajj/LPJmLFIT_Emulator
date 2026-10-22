@@ -115,7 +115,10 @@ def npp_anomaly(m: int, leg: str) -> pl.DataFrame | None:
     fh, fl = (os.path.join(NPP_DIR, f"m{m}_{x}.parquet") for x in ("hist", leg))
     if not (os.path.exists(fh) and os.path.exists(fl)):
         return None
-    d = pl.concat([pl.read_parquet(fh), pl.read_parquet(fl)]).sort("Cell", "Year")
+    census = pl.concat([pl.read_parquet(os.path.join(YEARLY2, f"m{m}_{x}.parquet"), columns=["Cell", "Year"])
+                        for x in ("hist", leg)])  # cell-years with no tree >= 5 m have no NPP row: NPP 0
+    d = pl.concat([pl.read_parquet(fh), pl.read_parquet(fl)])
+    d = census.join(d, on=["Cell", "Year"], how="left").sort("Cell", "Year")
     d = d.with_columns(pl.col("npp_per_tree").fill_null(0.0), pl.col("share_npp_neg").fill_null(0.0))
     ex = []
     for v in NPP_V:

@@ -155,3 +155,55 @@ the cohort model `BC`, one diagnostic arm bounds what a carbon input can give:
   that next. If `BMN` stays below 0.5 capture, a stand-level carbon signal is not enough and the cohort leaf-carbon
   model `BC` is next. Expected: capture 0.5–0.7 (ADR 0357: the original's NPP crash singles out die-off years at AUC
   0.90).
+
+## 9. Results of stages A, B and C (scored 2026-10-22, `explore_panel_popjoint.py score` job 2669107 →
+`xpanel/eval/popmap/score_popmap.csv`; 5 held-out climate models × 3 scenarios = 15 cases, years 2021–2100)
+
+All numbers are the median over cells of the emulator's error divided by a second run's error (1.0 = as close as a
+second run of the original); "worst" = the worst tenth. Harness (run m5 scored as the emulator) is 0.98–1.02 in every
+row, so the scorer is sound.
+
+**Distributions (§3), dense cells, all nine levels.** `AQ` (one model per quantile level) passes every bar and beats
+`ALS` everywhere: height 0.86, biomass per tree 0.85, SLA 0.80, wood density 0.70, `D95max` 0.60, `minwscal` 0.66,
+actual `D95` 0.76, age 0.87 (worst tenth 0.63–0.90; 15 of 15 cases each). Sparse: 0.93–1.23. ⚠ **The bar has little
+power here:** the anchor alone (`A0`) already scores 0.83–1.01 dense, because a smooth prediction of the expected
+quantile is compared with a second run that carries its own chance variation. Expectation (§7: `A0` 1.3–1.6) was
+wrong. `ALS` is worst on `D95max` (1.04) and sparse cells.
+
+**Rooting depth (§4).** `learned` 0.78 (AQ) vs `derived` 1.09–1.13 (AQ donors D0/DA) and 1.25–1.29 (ALS) ⇒ `derived`
+is ~40 % worse, outside §7's 10 % ⇒ **`learned` ships**. Reason (not measured separately): `derived` applies the exact
+formula to two emulated quantities (`D95max`, last year's height) paired through the donor ranks, so their errors
+compound; the learned map is fitted to the target directly.
+
+**Virtual trees and indices (§4–5), dense, `AQ`.** Donors D0 and DA are indistinguishable (expectation "DA better late"
+not borne out) ⇒ D0 (deployable from the run's own 2019 roster). Bars (≤ 1.5) passed: community-weighted means
+0.58–0.81, variances 0.56–0.79, richness 1.28 (worst tenth 1.43), dispersion 0.71, Rao's Q 0.72, divergence 0.85,
+type Shannon/Simpson 0.91/0.85, height Shannon/Gini 0.96/0.94. **Functional evenness fails (3.3×, every arm incl.
+`A0`)**: virtual communities are a median 0.79 vs 0.82 in the original, a 4 % bias, while two runs differ by 1.5 %.
+Not diagnosed; candidate: the piecewise-linear quantile function between nine levels clumps the virtual trees.
+
+**Mortality (§6), dense.** `BMW`: yearly death rate 1.01 (bar 1.5, passes), area-weighted total deaths within 2.0 %
+(15 of 15 within 5 %, passes), **30-year-mean death rate 1.32 (bar 1.2, FAILS; chance part 1.41)**, **die-off capture
+0.28 of the death-rate jump, 0.43 of the excess-death jump (bar 0.5, FAILS)**. `BM` (no weather): capture 0.003.
+⇒ by §7's adoption rule, no mortality arm ships yet.
+
+## 10. Result of the NPP upper bound (§8, arm `BMN`, jobs 2668546–54)
+
+`BMN` (the original's own NPP as input, not deployable): death-rate die-off capture **0.59** (BMW 0.28), yearly death
+rate 0.95, 30-year death rate 1.23 (BMW 1.32), 30-year chance-death rate **1.25** (bar 1.2), **excess-death capture
+0.42 (BMW 0.43, unchanged)**. §8's reading, applied as written: excess capture stays below 0.5 ⇒ a stand-level
+carbon signal is not enough for the hard kills ⇒ **the cohort leaf-carbon model `BC` is next** (own addendum before its
+fit). Carbon input does carry the chance-death part (capture doubles, the 30-year chance rate nearly reaches its bar),
+so `BC` should take the emulated NPP too.
+
+## 11. Note (2026-10-22, after §9, owner question): compute a dependent quantity, or learn it?
+
+Owner: *"many traits have a direct mathematical relationship … learned quite well … but it might also be cheap to
+calculate these. did you consider both cases?"* Only for actual rooting depth (§9: learned won). Measured since, on
+3.6 M living trees ≥ 5 m (run m1, canesm5 ssp370 rosters): within a plant type, ln(biomass per tree) is a linear
+function of ln height, ln wood density and ln SLA to **0.6–1.9 % median per-tree error (R² 0.998–0.999)**; height
+alone 13–29 %; adding age gains ≤ 0.4 points. (Mechanism: pipe-model height `k_latosa·sapwood/(leaf·SLA·wooddens)`,
+`allometry_tree.c:39`.) So biomass per tree could be computed per virtual tree instead of learned — cheaper (no nine
+models) and consistent with height and traits by construction. Not yet compared with `AQ`'s learned biomass (0.85);
+§9's rooting-depth result warns that the computed path compounds the errors of its inputs. The four traits themselves
+are drawn independently at establishment (no formula links them); leaf longevity is a noisy function of SLA.

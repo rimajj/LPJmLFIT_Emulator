@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0363**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0364**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,23 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-22 (evening) — whole-tree-population emulation scored (ADR 0363 §9–11).** Owner: "the emulator runs finished".
+* **Distributions** (9 quantile levels, one model each, `AQ`): every variable passes in dense cells — height 0.86,
+  biomass/tree 0.85, the four traits 0.60–0.80, actual rooting depth 0.76, age 0.87 of a second run's error. Caveat:
+  the anchor alone already scores 0.83–1.01, so this bar has little power.
+* **Rooting depth:** learned (0.78) beats computing it from `D95max` + emulated height (1.09) ⇒ learned ships.
+* **Virtual trees / diversity indices** (donor = the run's own 2019 roster): all barred indices pass (richness 1.28,
+  dispersion 0.71, Rao's Q 0.72, CWMs/CWVs ≤ 0.81); **functional evenness 3.3× (a 4 % bias, 0.79 vs 0.82), undiagnosed**.
+* **Mortality:** with weather (`BMW`) yearly rate and totals pass; 30-year rate 1.32 (bar 1.2) and die-off capture
+  0.28 / 0.43 (bar 0.5) fail. Oracle with the original's own NPP (`BMN`): death-rate capture 0.59 but excess
+  (hard-kill) capture unchanged at 0.42 ⇒ per the pre-registered reading, the cohort leaf-carbon model `BC` is next.
+* **Owner question (compute vs learn related quantities):** biomass per tree is a power law of height, wood density
+  and SLA to 0.6–1.9 % per tree ⇒ candidate: compute it per virtual tree instead of learning it (§11). Not tested.
+* Nothing added to the release package yet. Outputs: `xpanel/eval/popmap/` (score_popmap.csv).
+**Next (owner to choose):** (a) package the passing parts (distributions, learned rooting depth, virtual trees +
+indices) as new outputs of the release (additive); (b) pre-register + build `BC`; (c) compare computed vs learned
+biomass per tree (and the evenness bias); (d) open threads below.
 
 **2026-10-22 (afternoon) — daily-network design check finished; four-layer networks NOT shipped (owner, ADR 0362).**
 Owner: "all emulator runs finished", then "ok lets do it that way" (stay on v2).

@@ -1933,3 +1933,12 @@ the L4 ensemble, emulated stand): medians vs PD_B_fx GPP 1.004, NPP 0.942, ET 1.
 swamps most of the network gain. Fold v4 --check vs PD_L4_fx OK (fpc7/fpc8 flags as always). One-core cost 9.80e-3
 (deploy) / 9.82e-3 (fold). Release choice left to the owner (speed is goal 2).
 Owner decision (same day): stay on v2 / fold v3 for ESM use; v3 / fold v4 recorded, not current (ADR 0362 accepted).
+
+## 2026-10-22 (evening) — ADR 0363 scored: population map, virtual trees, mortality, NPP upper bound
+
+Owner: "the emulator runs finished". Previous session had fixed two bugs and resubmitted (virtual stage deadlocked in a
+forked Pool on polars' thread pool → spawn context; NPP anomaly asserted on cell-years with no tree ≥ 5 m → NPP 0);
+virt2/popn2 jobs 2668545–54 all exit 0. Scorer 2669107 (priority, 2 min). Results in ADR 0363 §9–10. §9 had been
+referenced by §8 but never written; written now. Owner asked mid-session whether related quantities could be computed
+instead of learned: per-tree regression on the m1 canesm5 ssp370 roster (3.6 M trees) gives biomass per tree from
+height + wood density + SLA to 0.6–1.9 % (§11). Script fixes (spawn pool, NPP census join) committed with this.

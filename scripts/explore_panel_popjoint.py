@@ -22,10 +22,10 @@ Stages:
 from __future__ import annotations
 
 import argparse
+import multiprocessing as mp
 import os
 import sys
 import time
-from multiprocessing import Pool
 
 import numpy as np
 import polars as pl
@@ -168,28 +168,30 @@ def _truth_task(args):
 
 def stage_truth(a) -> None:
     tasks = [(m, f"{a.g}_{s}", y) for m in (1, 2, 3, 4, 5) for s in SCENS for y in YEARS]
-    with Pool(NP) as pool:
+    with mp.get_context("spawn").Pool(NP) as pool:
         rows = [r for part in pool.imap_unordered(_truth_task, tasks) for r in part]
     out = pl.DataFrame(rows)
     out.write_parquet(os.path.join(OUT, f"idx_truth_{a.g}.parquet"))
     log(f"truth {a.g}: {out.height} cell-years")
 
 
-_P: pl.DataFrame | None = None
-_H19: pl.DataFrame | None = None
-
-
 def _virtual_task(args):
+    """One (leg, year). Runs in a SPAWNED worker (a forked one deadlocks on polars' thread pool), so it loads its
+    own inputs."""
     g, leg, year = args
     c = F.load_constants()
     scen = leg.rsplit("_", 1)[1]
     donors = {"D0": by_cell(roster(4, "hist", 2019)), "DA": by_cell(roster(6, f"{next_gcm(g)}_{scen}", year))}
-    P = _P.filter((pl.col("leg") == leg) & (pl.col("Year") == year))
-    Pp = (_P.filter((pl.col("leg") == leg) & (pl.col("Year") == year - 1)) if year > 2020 else None)
+    Pall = preds(g).filter((pl.col("leg") == leg) & pl.col("Year").is_in([year - 1, year]))
+    P = Pall.filter(pl.col("Year") == year)
+    if os.environ.get("CELL_LIMIT"):  # smoke test only
+        P = P.head(int(os.environ["CELL_LIMIT"]))
+    Pp = Pall.filter(pl.col("Year") == year - 1) if year > 2020 else None
+    h19 = pl.read_parquet(os.path.join(PM.YEARLY2, "m4_hist.parquet")).filter(pl.col("Year") == 2019)
     prev = {}
     for arm in ("AQ", "ALS", "A0"):
         if Pp is None:
-            src = _H19
+            src = h19
             cols = [f"Height_{pn}" for pn in PM.PN]
         else:
             src = Pp
@@ -232,13 +234,9 @@ def _virtual_task(args):
 
 
 def stage_virtual(a) -> None:
-    global _P, _H19
-    _P = preds(a.g)
-    h = pl.read_parquet(os.path.join(PM.YEARLY2, "m4_hist.parquet")).filter(pl.col("Year") == 2019)
-    _H19 = h.select("Cell", *[f"Height_{pn}" for pn in PM.PN])
     tasks = [(a.g, f"{a.g}_{s}", y) for s in SCENS for y in YEARS]
     rows, drows = [], []
-    with Pool(NP) as pool:
+    with mp.get_context("spawn").Pool(NP) as pool:
         for r, d in pool.imap_unordered(_virtual_task, tasks):
             rows += r
             drows += d
