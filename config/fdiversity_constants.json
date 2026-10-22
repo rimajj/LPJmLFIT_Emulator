@@ -1,0 +1,24 @@
+{
+ "SLA": {
+  "mean": -3.7598205724186786,
+  "sd": 0.4816972994512293,
+  "log": true
+ },
+ "Wooddens": {
+  "mean": 256669.4785693366,
+  "sd": 93822.18894704891,
+  "log": false
+ },
+ "D95max": {
+  "mean": 5.248546763545226,
+  "sd": 0.9078130765541679,
+  "log": true
+ },
+ "minwscal": {
+  "mean": 0.24330162607583775,
+  "sd": 0.19011717523879035,
+  "log": false
+ },
+ "_source": "every living tree (types 0-6, height >= 5 m) of panel run m1 in 2019; ADR 0363 sec. 5",
+ "_n_trees": 199852
+}
