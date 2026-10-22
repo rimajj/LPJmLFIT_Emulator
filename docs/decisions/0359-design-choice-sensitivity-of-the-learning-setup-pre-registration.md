@@ -161,5 +161,6 @@ emulator).
 with `--layers 4`; the tag's "3x256" is the inherited prefix, not the depth). Releases `v3` (deployment) and
 `fold_gfdl-esm4_v4` were built (ADR 0362). **Post-hoc check, not part of §2's rule:** in the complete emulator (networks
 fed the emulated stand) the gain shrinks to NPP −6 %, runoff −3 %, GPP / ET unchanged, at +31–40 % one-core cost
-(ADR 0362 §3–4); whether v3 becomes the current release is left to the owner there. Status: accepted (the campaign);
-the release choice is ADR 0362's.
+(ADR 0362 §3–4); the owner kept v2 as the current release (ADR 0362 §5). **Lesson for the next pre-registration:**
+score a daily-network candidate in the complete emulator (fed the emulated stand), not only on the original's stand.
+Status: accepted.

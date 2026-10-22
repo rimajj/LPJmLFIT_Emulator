@@ -19,7 +19,7 @@ z-scores package == training table); `--check` then compares the structure with 
 (`release.json` `struct_pred_suffix`). Measured: check OK except the known fpc7/fpc8; 7.0e-3 core-s per cell-year.
 `--daily-members <prefix>` (default `D_3x256_seed`, ADR 0362): which five f2 networks ship; depth is read from each
 saved network. `DCL4_3x256_seed` = the 4-layer ensemble (ADR 0359) → `release/v3` + `fold_gfdl-esm4_v4`, 9.8e-3 core-s
-per cell-year; check its fold with `--check-tag PD_L4_fx`. Which release is current: see ADR 0362 / STATE.
+per cell-year; check its fold with `--check-tag PD_L4_fx`. NOT current: v2 / fold v3 stay the releases (owner, ADR 0362 — same accuracy in the complete emulator, 40 % slower).
 
 ## Run / reproduce / time (one core, ~11 min for 1 050 cells x 81 years)
 ```bash

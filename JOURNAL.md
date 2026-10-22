@@ -1932,3 +1932,4 @@ map_location on a CPU node). Releases v3 / fold v4 built (gates 5.1e-7, exact, e
 the L4 ensemble, emulated stand): medians vs PD_B_fx GPP 1.004, NPP 0.942, ET 1.004, runoff 0.974 — the stand error
 swamps most of the network gain. Fold v4 --check vs PD_L4_fx OK (fpc7/fpc8 flags as always). One-core cost 9.80e-3
 (deploy) / 9.82e-3 (fold). Release choice left to the owner (speed is goal 2).
+Owner decision (same day): stay on v2 / fold v3 for ESM use; v3 / fold v4 recorded, not current (ADR 0362 accepted).

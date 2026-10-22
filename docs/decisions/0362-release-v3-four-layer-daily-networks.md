@@ -1,8 +1,12 @@
-# 0362 — Release v3 / fold v4: the four-layer daily networks (built; whole-emulator gain small — owner to confirm)
+# 0362 — Release v3 / fold v4: the four-layer daily networks built, NOT made current (owner decision)
 
-* **Status:** proposed 2026-10-22. Both releases built and gated; which one is the CURRENT release (v3 or v2) is left to
-  the owner, because the measured gain in the complete emulator is much smaller than in the test that adopted it (§3)
-  while the cost rises 31 % (§4), and speed is the project's second goal.
+* **Status:** accepted 2026-10-22 (owner: "ok lets do it that way", on the recommendation to stay on v2).
+* **Decision:** `release/v2` and `release/fold_gfdl-esm4_v3` (three-layer daily networks) stay the CURRENT releases for
+  ESM use. `release/v3` / `fold_gfdl-esm4_v4` are kept as a tested, recorded alternative. Why: in the complete emulator
+  the two are equally accurate on what an atmosphere receives (evaporation unchanged, runoff −3 % within the replicates'
+  2–8 % noise, §3), and the four-layer release costs 40 % more (§4). Only NPP improves clearly (−6 %).
+* **Re-open when:** the carbon cycle is coupled (NPP then matters to the host model), or the emulated stand's own error
+  falls enough that the network gain shows in the complete emulator (re-run `PD_L4_fx` vs `PD_B_fx` on the new stand).
 * **What:** ADR 0359 §6 adopted 4 × 256 daily networks (`DCL4_3x256_seed0–4`, trained exactly as `D_3x256_seed0–4`
   with `--layers 4`) by its pre-registered rule. New releases, both `--departure dep`, everything else as v2 / fold v3:
   `release/v3` (deployment) and `release/fold_gfdl-esm4_v4` (validated fold), built by
@@ -47,8 +51,8 @@ Deployment v3, UKESM1-0-LL ssp370 (job 2665302): **9.80e-3 core-s per cell-year*
 9.82e-3 (fold v2 7.49e-3). +31–40 %; still within the T31-class allowance 0.0135, and 27× / ~680× below the original
 at 25 / 500 patches.
 
-## 5. Decision needed
+## 5. Decision
 
-(a) make v3 / fold v4 current (ADR 0359's rule; better NPP and climate response, +31–40 % cost), or (b) keep v2 /
-fold v3 current and record that the gain does not survive into the complete emulator. Until decided, the docs, the
-paper's results and the coupling runs stay on v2.
+Option (b): v2 / fold v3 stay current; docs, the paper's results and the coupling runs need no change. This overrides
+ADR 0359 §2's adoption for the release only: its rule judged the networks on the original's own stand, which the
+complete emulator never sees — a rule to pre-register on the complete emulator next time (ADR 0359 §6).

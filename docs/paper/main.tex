@@ -438,8 +438,9 @@ and so passed the test. In the complete emulator, where the networks read the em
 original's, most of this gain disappears, because the error of the emulated forest dominates: NPP improves by 6\,\%
 and runoff by 3\,\%, GPP and evapotranspiration are unchanged (typical evapotranspiration error 6\,\% higher, worst
 tenth 7\,\% lower), the error of the climate response falls by 2--9\,\% for all four, and the whole emulator costs
-$9.8\times10^{-3}$ instead of $7.0\times10^{-3}$ core-seconds per cell-year. \textbf{[Release choice pending: the
-results in Sect.~\ref{sec:results} are for three layers.]} A batch of 4\,096 lowered the validation loss as much (4.0\,\%) but not the free-run errors (runoff
+$9.8\times10^{-3}$ instead of $7.0\times10^{-3}$ core-seconds per cell-year. Since an atmosphere receives mainly
+evaporation and runoff, which do not change beyond run-to-run noise, the released emulator keeps three layers; all
+results in Sect.~\ref{sec:results} are for it. A batch of 4\,096 lowered the validation loss as much (4.0\,\%) but not the free-run errors (runoff
 12.5\,\% worse against one reference ensemble): the validation loss scores single days with the true previous state,
 while the free run accumulates the water stores. Narrower networks (128 units), two layers, five epochs, a lower
 learning rate and a larger batch were 6--29\,\% worse; other activations within 3\,\%; a learning rate of

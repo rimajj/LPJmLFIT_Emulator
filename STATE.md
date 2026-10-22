@@ -44,23 +44,16 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
-**2026-10-22 (afternoon) — daily-network design check finished; four-layer networks pass the pre-registered test;
-release v3 / fold v4 BUILT, owner to choose v3 or stay on v2 (ADR 0359 §6, ADR 0362).** Owner: "all emulator runs
-finished".
-* **Stage 2 (networks fed the original's stand, vs two baseline replicates):** 4 × 256 lowers typical 30-yr error of
-  GPP 6–8 %, NPP 6–13 %, runoff 10–17 %, ET 1–6 %, drift unchanged ⇒ adopted by the rule. Batch 4 096 not (runoff
-  +12.5 % vs one replicate). No trailing windows: 1.2–1.6× worse (report only).
-* **Releases:** `release/v3` + `release/fold_gfdl-esm4_v4` (`build_emulator_release.py --daily-members
-  DCL4_3x256_seed --departure dep`). All gates pass; fold check reproduces `PD_L4_fx` (daily 1.5–2.7e-4; known
-  fpc7/fpc8 flags only).
-* **Complete emulator (`PD_L4_fx` vs `PD_B_fx`, emulated stand):** gain mostly gone — NPP −6 %, runoff −3 %, GPP/ET
-  unchanged, climate response −2…−9 %, typical ET +6 %. Cost **9.8e-3** vs 7.0e-3 core-s per cell-year (+31–40 %).
-* Paper Sect. 4.6 daily paragraph + Table `tab:choices_daily` written, PDF rebuilt (30 pp.), with a
-  "[Release choice pending]" marker; Sect. 6 results still the three-layer release.
-**Next:** owner chooses (a) v3 current — then repoint docs/emulator_release.md, the coupling runs' release path, and
-re-derive the paper's daily results from `PD_L4_fx` (`logs/f2-PD_L4_fx-relscore.md`, `final_daily_score.py`) and speed
-from ADR 0362 §4; or (b) stay on v2 — remove the marker, keep v3 as a recorded alternative. Earlier side tracks below
-(t1–t3, s2/s3) unchanged.
+**2026-10-22 (afternoon) — daily-network design check finished; four-layer networks NOT shipped (owner, ADR 0362).**
+Owner: "all emulator runs finished", then "ok lets do it that way" (stay on v2).
+* Stage 2 (networks fed the original's stand): 4 × 256 passed ADR 0359's rule (GPP −6…−8 %, NPP −6…−13 %, runoff
+  −10…−17 %, ET −1…−6 %); batch 4 096 failed; no trailing windows 1.2–1.6× worse.
+* Built anyway: `release/v3` + `fold_gfdl-esm4_v4` (`--daily-members DCL4_3x256_seed`), gated, fold reproduces
+  `PD_L4_fx`. In the complete emulator (emulated stand) the gain is mostly gone (NPP −6 %, runoff −3 %, GPP/ET
+  unchanged) at 9.8e-3 vs 7.0e-3 core-s per cell-year ⇒ **current releases stay `v2` / `fold_gfdl-esm4_v3`**.
+  Re-open if the carbon cycle is coupled or the emulated stand improves.
+* Paper Sect. 4.6 daily paragraph + Table `tab:choices_daily` done; the ADR 0359 campaign is fully written up.
+**Next:** the design-choice work is closed. Open threads: SpeedyWeather coupling (t1–t3 above, s2/s3 below).
 
 **2026-10-22 (midday) — SpeedyWeather: emulator coupling PAUSED (owner), every finding reported upstream.** Owner: *"I do
 not want to do any coupling with the emulator as long as the climate model does not work correctly yet. All solutions
