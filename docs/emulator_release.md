@@ -82,12 +82,51 @@ one core and, for a fold release, checks the outputs against the scored predicti
 |---|---|
 | `v1/` | **deployment**: every run (m1–m6) × every leg of all ten climate models trains the structure and stand maps |
 | `fold_gfdl-esm4_v2/` | the validated setup with GFDL-ESM4 held out, built on the leak-free training rows (ADR 0352 §0, 0353) — exists to prove the package equals the scored pipeline; `run_emulator.py --check --check-tag PD_B_fx` |
+| `v4/` | **= `v2` + the tree-population outputs** (ADR 0365): every file of v2 byte-identical, plus `population.json`, 79 `lgb_pop_*.txt`, `popsetup_m1..m4.npz` |
+| `fold_gfdl-esm4_v5/` | = `fold_gfdl-esm4_v3` + the tree-population outputs; `run_emulator.py --population --check` compares them with the scored ADR 0363 predictions |
 | `fold_gfdl-esm4_v1/` | superseded: the same, built before the leak fix (its maps trained on a sibling of the test run under the held-out model); kept, not for new numbers |
 
 A release is never overwritten (`build_emulator_release.py` refuses an existing directory). Every build runs three
 gates first: the numpy daily ensemble equals the PyTorch one (max |diff| ≈ 1e-6 of each output's range), the
 package's climate statistics equal the training pipeline's exactly, and (fold) the setup's anchors equal the
 validated test rows' exactly.
+
+## Tree population (optional; release v4 / fold v5, ADR 0363 + 0365)
+
+A release that carries `population.json` can also emit, each year, the **distribution of the trees** (living trees
+of types 0–6, ≥ 5 m — the population of every other structure output) and **virtual trees** for biodiversity
+indices. It is switched on per run by passing a population setup; without one the run is exactly the base release,
+and with one every existing output is unchanged too (the new outputs carry a `pop_` prefix).
+
+```python
+from lpjmlfit_emulator.landemu import LandEmulator, PopSetup, Setup
+
+emu = LandEmulator.load(".../release/v4")
+state = emu.start(Setup.load(".../release/v4/setup_m1.npz"), PopSetup.load(".../release/v4/popsetup_m1.npz"))
+daily, ann = emu.step_year(state, forcing)
+# new in ann: pop_<var>_<p> for var in Height, agb (biomass per tree), SLA, Wooddens, D95max (maximum rooting depth,
+#   a trait), minwscal (drought threshold), D95 (the ACTUAL 95 % rooting depth), Age and p in p01 p05 p10 p25 p50 p75
+#   p90 p95 p99; pop_share_0 .. pop_share_6 (tree-type shares)
+trees = emu.virtual_trees(state, ann, year)          # cell index -> dict Type, Height, agb, ... (N trees)
+idx = emu.diversity(trees[i])                         # cwm_/cwv_ of 4 traits, fric, fdiv, feve, fdis, raoq,
+                                                      # type_shannon, type_simpson, h_shannon, h_gini
+```
+
+* **Distributions:** one gradient-boosted model per variable and level (79 models with the shares), same inputs as the
+  structure map plus each quantity's own anchor and start level. Learned beats computed for the actual rooting depth
+  (from the trait and last year's height through the original's formula: 1.07 vs 0.78 of a second run's error) and for
+  biomass per tree (from height, wood density and SLA: 0.95 vs 0.86), so both are learned; on the same virtual trees the
+  learned biomass is a median 5 % below the allometric one.
+* **Virtual trees:** N = round(25 × tree count per patch); each variable's value is the emulated quantile function at a
+  real donor tree's rank (the run's own 2019 trees, drawn without repeats while the roster lasts), so the joint structure
+  between height, size and traits is the donors'. 3 % of panel cells have no donor tree in 2019 and get none.
+* **Cost:** the distributions add ~7 % (7.67e-3 vs 7.14e-3 core-s per cell-year, one core); virtual trees + all indices
+  cost 6.8e-3 core-s per cell-year each time they are requested (`run_emulator.py --population` does it every 10th year).
+* **Accuracy** (held-out climate models, dense cells, ratio to a second run of the original; ADR 0363 §9, §12): every
+  distribution 0.60–0.87, indices 0.58–1.06 except functional evenness 1.82 (scatter, no bias). These ratios are below 1
+  because a smooth prediction is compared with a second run that has its own chance variation — the long-term anchor
+  alone already scores 0.83–1.01, so read them as "as good as the original's own spread", not as better than it.
+* **Mortality is not emitted:** no death-rate model passed its bars (ADR 0363 §9, 0364 §6).
 
 ## How good it is
 

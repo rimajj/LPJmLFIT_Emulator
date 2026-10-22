@@ -21,6 +21,21 @@ z-scores package == training table); `--check` then compares the structure with 
 saved network. `DCL4_3x256_seed` = the 4-layer ensemble (ADR 0359) → `release/v3` + `fold_gfdl-esm4_v4`, 9.8e-3 core-s
 per cell-year; check its fold with `--check-tag PD_L4_fx`. NOT current: v2 / fold v3 stay the releases (owner, ADR 0362 — same accuracy in the complete emulator, 40 % slower).
 
+## Tree-population outputs (ADR 0363 + 0365): release `v4` = v2 + population, `fold_gfdl-esm4_v5` = fold v3 + it
+```bash
+NCPUS=32 TIME=02:00:00 scripts/sbatch_python.sh poprel-<tag> scripts/build_population_release.py \
+    --base .../release/<base> --out .../release/<new>      # copies the base unchanged, adds 79 lgb_pop_* + popsetups
+python scripts/run_emulator.py --release <dir> --run 1 --leg ukesm1-0-ll_ssp370 --cap fixed --population
+python scripts/run_emulator.py --release .../fold_gfdl-esm4_v5 --run 4 --leg gfdl-esm4_ssp370_daily --population \
+    --check --check-tag PD_B_fx     # + pop_* vs eval/popmap/preds_<g>_<var>.parquet AQ, indices vs idx_emu_<g>_unique
+```
+Outputs are prefixed `pop_` (the four trait medians also exist as structure outputs — an unprefixed first version
+overwrote them). Gates: fold anchors exact; 7 of 8 variables reproduce the scored models to ~1e-15; **Age's LightGBM
+fit is not reproducible run to run** (two refits differ, median 0.18 yr) ⇒ its gate is ≤ 2× the refit-to-refit spread
+(needs `POPMAP_SFX=_refit` and `_refit2` refits of `explore_panel_popmap.py fit --g <g> --group Age`). Cost +7 %
+(7.67e-3 vs 7.14e-3 core-s per cell-year); virtual trees + indices 6.8e-3 each time requested. Pipelines behind it:
+skill `tree-population`.
+
 ## Run / reproduce / time (one core, ~11 min for 1 050 cells x 81 years)
 ```bash
 python scripts/run_emulator.py --release <dir> --run 4 --leg gfdl-esm4_ssp370_daily --check --check-tag PD_B_fx  # fold release

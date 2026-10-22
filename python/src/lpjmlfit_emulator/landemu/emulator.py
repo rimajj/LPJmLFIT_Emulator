@@ -39,6 +39,7 @@ import numpy as np
 from .annual import STAND_Q, STRUCT_Q, AnnualMaps
 from .climate import CLIM_COLS, TrailingWindow, YearClimate
 from .daily import DailyModel, DailyState
+from .population import POP_Q, POP_VARS, PopSetup, PopulationMaps, diversity_indices, virtual_trees
 
 CO2_WINDOW = 30  # years in the maps' trailing CO2 mean (clu_emu_maps.window)
 DAILY_OUT = ["gpp", "npp", "interc", "transp", "evap", "runoff", "swe", "soilw", "deep"]
@@ -117,8 +118,11 @@ class Setup:
 
 
 class LandEmulator:
-    def __init__(self, daily: DailyModel, annual: AnnualMaps, cfg: dict):
+    def __init__(self, daily: DailyModel, annual: AnnualMaps, cfg: dict, population=None):
         self.daily, self.annual, self.cfg = daily, annual, cfg
+        self.pop: PopulationMaps | None = (
+            population  # optional (ADR 0365): None = release without it
+        )
         self.co2_input = bool(cfg.get("co2_input", False))
         assert self.co2_input == daily.co2_input, (
             "release.json and daily.npz disagree on the CO2 input"
@@ -132,9 +136,19 @@ class LandEmulator:
             DailyModel.load(os.path.join(release_dir, "daily.npz")),
             AnnualMaps.load(release_dir),
             cfg,
+            PopulationMaps.load(release_dir),
         )
 
-    def start(self, setup: Setup):
+    def start(self, setup: Setup, popsetup: PopSetup | None = None):
+        """popsetup (a release with population maps only, ADR 0365) switches on the yearly
+        distributions and type shares (``pop_<var>_<pn>``, ``pop_share_<t>`` in end_year's output)
+        and ``virtual_trees``. Without it the run is exactly the release's structure + stand +
+        daily model; with it every existing output is unchanged too (only ``pop_*`` are added)."""
+        if popsetup is not None:
+            if self.pop is None:
+                raise ValueError("this release has no population maps (population.json)")
+            if not np.array_equal(popsetup.cell, setup.cell):
+                raise ValueError("population setup and setup have different cells")
         st = DailyState(setup.lat, setup.W0, setup.S0, setup.D0, setup.warm)
         t = self.cfg["pft_temp_stress"]
         co2buf = None
@@ -154,6 +168,7 @@ class LandEmulator:
             "stand": self.stand_input(setup.stand0),
             "iy": 0,
             "co2buf": co2buf,
+            "pop": popsetup,
             **self._dep_start(setup),
         }
 
@@ -295,6 +310,16 @@ class LandEmulator:
         ann = self.annual.predict(feat)
         if self.annual.dep:
             self._apply_departure(state, clim, win, ann)
+        ps = state.get("pop")
+        if (
+            ps is not None
+        ):  # the population maps read the structure map's inputs (no departure), ADR 0363 sec. 3
+            for q in POP_Q:
+                a = ps.anc[q]
+                feat[f"anc_{q}"] = a if a.ndim == 1 else a[:, iy]
+                feat[f"s0_{q}"], feat[f"memoff_{q}"] = ps.s0[q], ps.memoff[q]
+            # "pop_" prefix: the four trait medians are structure-map outputs too (must not change)
+            ann.update({f"pop_{k}": x for k, x in self.pop.predict(feat).items()})
         new = self.stand_input(np.column_stack([ann[q] for q in STAND_Q]))
         state["stand"] = np.where(
             np.isfinite(new), new, state["stand"]
@@ -302,6 +327,36 @@ class LandEmulator:
         state["iy"] = iy + 1
         state["year"] = None
         return ann
+
+    def virtual_trees(self, state, ann, year, cells=None):
+        """The year's virtual trees (ADR 0363 sec. 4, 12) from end_year's output ``ann`` of that
+        year: index of the
+        cell in the setup -> name -> (N,) (``Type`` and POP_VARS), for ``cells`` (indices; default
+        all). Needs the
+        run started with a population setup."""
+        ps = state.get("pop")
+        if ps is None:
+            raise ValueError("start the run with a population setup to get virtual trees")
+        out = {}
+        for i in range(len(ps.cell)) if cells is None else cells:
+            Q = {
+                v: np.array([ann[f"pop_{v}_{pn}"][i] for pn in self.pop.cfg["levels"]])
+                for v in POP_VARS
+            }
+            if not all(np.isfinite(q).all() for q in Q.values()):
+                continue
+            sh = np.nan_to_num(np.array([ann[f"pop_share_{t}"][i] for t in range(7)]))
+            vt = virtual_trees(
+                ann["n_per_patch"][i], sh, Q, ps.donor(i), seed=int(ps.cell[i]) * 7919 + int(year)
+            )
+            if vt is not None:
+                out[i] = vt
+        return out
+
+    def diversity(self, vt):
+        """Functional-diversity indices of one cell's virtual trees
+        (``population.diversity_indices``)."""
+        return diversity_indices(vt, self.pop.cfg["diversity_constants"])
 
     def _apply_departure(self, state, clim, win, ann):
         dep, e = self.annual.dep, float(self.annual.dep["eps"])

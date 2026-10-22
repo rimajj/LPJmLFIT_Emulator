@@ -216,3 +216,49 @@ def test_day_by_day_equals_step_year(tmp_path):
     emu.begin_year(b)
     with pytest.raises(RuntimeError, match="365"):
         emu.end_year(b)
+
+
+def test_virtual_trees_draw_without_repeats_and_follow_the_quantiles():
+    from lpjmlfit_emulator.landemu.population import POP_VARS, PS, qfun, virtual_trees
+
+    rng = np.random.default_rng(SEED)
+    t = 60
+    donor = {"Type": np.repeat([0, 3, 4], 20)}
+    for v in POP_VARS:
+        donor[v] = rng.uniform(1.0, 10.0, t)
+    Q = {v: np.sort(rng.uniform(1.0, 30.0, 9)) for v in POP_VARS}
+    shares = np.array([0.5, 0, 0, 0.5, 0, 0, 0])
+    # 40 trees, 20 of each type: exactly type 0's pool
+    vt = virtual_trees(1.6, shares, Q, donor, seed=7)
+    assert len(vt["Type"]) == 40
+    assert np.bincount(vt["Type"], minlength=7).tolist() == [20, 0, 0, 20, 0, 0, 0]
+    # no donor used twice: 40 distinct ranks per variable -> 40 distinct values
+    assert len(np.unique(vt["Height"])) == 40
+    # values lie on the quantile function: their own ranks map back through it
+    u = (np.argsort(np.argsort(vt["SLA"])) + 0.5) / 40
+    assert np.allclose(np.sort(vt["SLA"]), np.sort(qfun(Q["SLA"], u)))
+    # 50 type-0 trees > 20 type-0 donors: filled from other types' unused donors, no repeat
+    big = virtual_trees(2.0, np.array([1.0, 0, 0, 0, 0, 0, 0]), Q, donor, seed=7)
+    assert len(big["Type"]) == 50 and (big["Type"] == 0).all()
+    assert len(np.unique(big["Height"])) == 50
+    assert virtual_trees(0.0, shares, Q, donor, seed=1) is None
+    assert np.isclose(qfun(np.arange(9.0), np.array([PS[4]]))[0], 4.0)
+
+
+def test_diversity_indices_known_values():
+    from lpjmlfit_emulator.landemu.population import diversity_indices
+
+    traits = ("SLA", "Wooddens", "D95max", "minwscal")
+    const = {t: {"mean": 0.0, "sd": 1.0, "log": False} for t in traits}
+    n = 12
+    vt = {"Type": np.array([0] * 6 + [3] * 6), "Height": np.full(n, 12.0)}
+    grid = np.linspace(0.0, 1.0, n)
+    for k, t in enumerate(traits):
+        vt[t] = np.roll(grid, 3 * k) + 0.01 * k
+    r = diversity_indices(vt, const)
+    assert np.isclose(r["type_shannon"], np.log(2)) and np.isclose(r["type_simpson"], 0.5)
+    assert r["h_gini"] == 0.0 and r["h_shannon"] == 0.0
+    assert np.isclose(r["cwm_SLA"], grid.mean())
+    assert 0.0 <= r["feve"] <= 1.0 and r["raoq"] > 0 and r["fdis"] > 0
+    same = {k: (np.full(n, 0.5) if k not in ("Type", "Height") else v) for k, v in vt.items()}
+    assert diversity_indices(same, const)["fdis"] == 0.0

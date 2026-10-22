@@ -2,5 +2,6 @@
 ``emulator.py``."""
 
 from .emulator import LandEmulator, Setup
+from .population import PopSetup
 
-__all__ = ["LandEmulator", "Setup"]
+__all__ = ["LandEmulator", "PopSetup", "Setup"]
