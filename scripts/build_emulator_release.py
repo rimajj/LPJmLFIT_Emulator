@@ -82,7 +82,10 @@ def export_daily(out, members=MEMBERS, data=F2, gate_run=1, gate_leg="gfdl-esm4_
             "co2_input": np.bool_(co2)}
     nets = []
     for i, t in enumerate(members):
-        n, ck = F.load_net(os.path.join(F.DATA, "runs", t, "model.pt"), torch.device("cpu"))
+        mp = os.path.join(F.DATA, "runs", t, "model.pt")
+        # depth from the saved trunk (hidden layers = Linear layers - 1): ADR 0359 adopted a 4-layer arm, ADR 0362
+        F.NL = sum(k.startswith("trunk.") and k.endswith(".weight") for k in torch.load(mp, weights_only=True)) - 1
+        n, ck = F.load_net(mp, torch.device("cpu"))
         n.load_state_dict(ck)
         n.eval()
         nets.append(n)
@@ -296,12 +299,16 @@ def main():
                     choices=["additive", "relative", "sumconstrained"])
     ap.add_argument("--departure", default=None, choices=[None, "dep"],
                     help="add the weather-driven departure model (ADR 0354/0358)")
+    ap.add_argument("--daily-members", dest="daily_members", default="D_3x256_seed",
+                    help="f2 run-tag prefix of the five daily networks (<prefix>0..4); DCL4_3x256_seed = the "
+                         "4-layer arm adopted by ADR 0359 (release v3 / fold v4, ADR 0362)")
     a = ap.parse_args()
     if os.path.exists(os.path.join(a.out, "release.json")):
         sys.exit(f"{a.out} already holds a release; never overwrite one in place")
     os.makedirs(a.out, exist_ok=True)
     t0 = time.time()
-    _, rel = export_daily(a.out)
+    members = [f"{a.daily_members}{i}" for i in range(5)]
+    _, rel = export_daily(a.out, members=members)
     pft = gate_climate()
     tr, anc, aclim = build_tables(a.hold_gcm)
     fit_annual(tr, a.out, a.cover_mode)
@@ -320,7 +327,7 @@ def main():
            "built": time.strftime("%Y-%m-%d %H:%M"), "kind": "deployment" if a.hold_gcm is None else "fold",
            "hold_gcm": a.hold_gcm, "train_runs": list(YD.TRAIN_M),
            "train_legs": [lg for lg in A7.ALL_SLEGS if a.hold_gcm is None or A7.gcm_of(lg) != a.hold_gcm],
-           "daily_members": MEMBERS, "cover_mode": a.cover_mode, "pft_temp_stress": {"low": pft["temp_low"],
+           "daily_members": members, "cover_mode": a.cover_mode, "pft_temp_stress": {"low": pft["temp_low"],
                                                                                     "high": pft["temp_high"]},
            "gates": {"daily_numpy_vs_torch_max_rel": rel, "climate_exact": True,
                      "setup_anchors_exact": a.hold_gcm is not None, "departure_z_max_abs": zgate},
