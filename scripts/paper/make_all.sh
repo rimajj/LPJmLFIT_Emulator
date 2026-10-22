@@ -7,7 +7,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PY=/home/jamirp/.conda/envs/py311_new/bin/python
 cd "$REPO/scripts/paper"
 for f in fig_runtime fig_design fig_cell_example fig_structure fig_drift fig_daily_series fig_daily_scores \
-         fig_response fig_global fig_speed fig_dieoff; do
+         fig_response fig_global fig_speed fig_dieoff fig_population; do
   "$PY" "$f.py"
 done
 source /etc/profile.d/00-modulepath.sh; source /etc/profile.d/modules.sh; module load texlive/2026

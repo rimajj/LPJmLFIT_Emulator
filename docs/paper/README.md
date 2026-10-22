@@ -49,6 +49,14 @@ coupling experiments are deliberately left out (owner, 2026-10-20).
      (ADR 0322); five is set by cost, not tuned; the member spread is not used as uncertainty.
   7. *Gradient-boosted trees*: one sentence that tree models cannot extrapolate (outputs stay within values seen in
      training), linking it to the damped response beyond the training scenarios (Sect. 6.5/6.6, Discussion).
+* **Added 2026-10-22 (owner: "p1, add the distributions and indices to the paper"):** Sect. 4.5 "Tree population and
+  functional diversity" (method: quantile maps, virtual trees by the Schaake shuffle with the no-repeat donor draw,
+  indices, learned-vs-computed choice, cost), Sect. 6.4 "Tree population and diversity" with Fig. `fig_population`
+  (`scripts/paper/fig_population.py`, from `xpanel/eval/popmap/score_popmap_unique.csv`; medians over cases only — the
+  scorer keeps no per-case values), abstract / table of outputs / limitations / conclusions / availability (release
+  v4). Numbers: ADR 0363 sec. 9 and 12, ADR 0365. Also corrected in Sect. 6.5 (die-offs): the leaf-carbon share is for
+  trees > 5 m in die-off years (92 %, median 0.51; ADR 0364 sec. 2a), and a paragraph on why no death rates are
+  returned (ADR 0363 sec. 9, ADR 0364 sec. 6; the emulator's-own-NPP result of ADR 0366 to be added).
 * Gotchas: the `ind` biomass per tree is density-weighted gC m⁻² (nind = 1/patcharea, patcharea 225 m²), so
   kgC per tree = value × 0.225; the second-run yardstick of the structure scores is runs m1–m3 under the held-out
   climate model (m5 is the harness check), not m5.

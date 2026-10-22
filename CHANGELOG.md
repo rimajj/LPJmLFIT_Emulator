@@ -8,6 +8,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Paper: the tree-population outputs (owner "p1").** Sect. 4.5 (quantile maps, virtual trees by the Schaake shuffle
+  with the no-repeat donor draw, functional-diversity indices, learned vs computed rooting depth and biomass, cost),
+  Sect. 6.4 + Fig. `fig_population` (`scripts/paper/fig_population.py`), abstract, outputs table, limitations,
+  conclusions; the die-off section corrected to ADR 0364 (leaf-carbon share is for trees > 5 m in die-off years) and
+  extended by why no death rates are returned.
 - **Coupled emulator on the fixed SpeedyWeather atmosphere, with a 2 m air temperature option (ADR 0360):**
   `run_speedy_landemu.jl` gains `AIR=model|2m` (what the emulator is fed; the 2 m value is always recorded as
   `daily_means` column 12) and the cold-bias-fix knobs `LW`, `CONVKW`, `T0`, `LWKW`/`CLOUDKW`/`SWKW`; run them with

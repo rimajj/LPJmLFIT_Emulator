@@ -46,7 +46,10 @@ driven by the year's weather anomaly. Tested on a climate model and an independe
 training, the yearly model's error in dense forests is 1.22 (tree density) and 1.18 (biomass per tree) times that of
 a further run of the stochastic original, and 0.59--0.86 times for the trait medians. The error grows by a factor of
 1.05 between the 2050s and the 2090s. In the original's drought die-offs, which are threshold kills of individual
-trees, the emulator follows 18\,\% of the tree loss. Tested on cells withheld from training, the daily networks' 30-year mean fluxes
+trees, the emulator follows 18\,\% of the tree loss. On request it also returns the within-cell distributions of tree
+height, biomass per tree, the four traits, the actual rooting depth and age, and a sample of virtual trees from which
+functional-diversity indices are computed; their errors are 0.60--0.87 (distributions) and 0.56--1.06 (indices) times
+a further run's, except functional evenness (1.8). Tested on cells withheld from training, the daily networks' 30-year mean fluxes
 are 2.4 (gross primary production) to 5.2 (runoff) times further from the original than a further run is --- about
 3--6\,\% per cell for production and evapotranspiration --- with area totals within 3\,\%. For a nitrogen-limited
 configuration of LPJmL-FIT with rising CO$_2$, the emulator reproduces 81--97\,\% of the change in vegetation carbon
@@ -271,6 +274,9 @@ evaporation, runoff, snow water equivalent, top-metre soil water, deep store \\
 \textbf{Yearly output} & trees taller than 5\,m per patch, above-ground biomass per tree, medians of specific leaf area,
 wood density, maximum rooting depth and drought threshold; stand leaf area index, vegetation carbon, fractional cover
 of ten plant types \\
+\textbf{On request} & yearly within-cell distributions (nine quantiles) of tree height, biomass per tree, the four
+traits, the actual rooting depth and age, and the shares of seven tree types; virtual trees and functional-diversity
+indices (Sect.~\ref{sec:pop}) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -334,7 +340,7 @@ For each yearly quantity $q$ (six structure quantities and twelve stand quantiti
 model \citep{Ke2017} predicts
 \begin{equation}
   M^{q}_{c,y} = A^{q}_{c,y} + g_q\!\left(\bar{x}_{c,y},\; \bar{x}_{c,y} - \bar{x}^{A}_{c,y},\; A_{c,y},\;
-  s^{0}_{c},\; \Delta s^{0}_{c},\; \phi_c,\lambda_c,\sigma_c\right),
+  s^{0}_{c},\; \Delta s^{0}_{c},\; \phi_c,\lambda_c,\sigma_c\right),\label{eq:map}
 \end{equation}
 where $A^{q}_{c,y}$ is the \emph{anchor}: the original's mean of $q$ at cell $c$ in year $y$ over its training runs
 and climates; $\bar{x}_{c,y}$ is the trailing 30-year climate and $\bar{x}^{A}_{c,y}$ the corresponding climate of the
@@ -376,6 +382,48 @@ deviations). It is trained on the departures of the original's training runs fro
 weather-forced part --- and with each series' long-term mean removed, so that it changes the year-to-year course but
 not the long-run level. It runs forward year by year from zero in the first emulated year. Carrying two numbers per
 cell, it is the only recursive part of the forest maps; Sect.~\ref{sec:dieoff} shows what it does.
+
+\subsection{Tree population and functional diversity}\label{sec:pop}
+
+Medians do not describe a forest of individually different trees, and diversity indices need the trees themselves.
+LandEmu therefore predicts, on request, the within-cell distribution of eight variables of the living trees taller
+than 5\,m: height, above-ground biomass per tree, the four traits, the actual rooting depth and age. The traits are
+drawn or inherited when a tree establishes and do not change afterwards; the maximum rooting depth is one of them. The
+\emph{actual} rooting depth is the depth that holds 95\,\% of the roots the tree has: the root front grows with
+height, so for trees taller than 5\,m it is a median 0.77 of the maximum, and it is the depth from which the tree draws
+water. Each variable is described by nine quantile levels (1, 5, 10, 25, 50, 75, 90, 95 and 99\,\%), and each level has
+its own gradient-boosted model of the same form as the forest maps (Eq.~\ref{eq:map}, with the anchor, start state and offset of
+that quantile). Where predicted levels cross they are sorted, which can only reduce their error
+\citep{Chernozhukov2010}. Seven further models predict the shares of the seven tree types, clipped at zero and
+normalised. Like the forest maps, these 79 models are not recursive.
+
+\emph{Virtual trees.} Diversity indices are computed from individual trees, and some of them depend on how many trees
+there are, so LandEmu returns a sample rather than moments. For each cell and year it draws as many virtual trees as the
+original holds in 25 patches (25 times the emulated tree density) from \emph{donor} trees: the cell's own trees of
+2019, which the set-up already contains. Donors are drawn by type according to the emulated shares, without repeating a
+donor while the roster lasts. Each variable of a virtual tree is then the emulated quantile at the donor's rank in
+that variable. The distributions come from the maps; the dependence between the variables comes from real trees. This
+is the Schaake shuffle \citep{Clark2004Schaake}, or ensemble copula coupling \citep{Schefzik2013ECC}. Drawing donors
+with repetition gave near-identical virtual trees, which made functional evenness 0.04 too low; the draw without
+repetition removed this bias.
+
+\emph{Indices.} From the virtual trees LandEmu computes, on four standardised traits (logarithms of specific leaf area
+and maximum rooting depth, wood density, drought threshold), the community-weighted mean and variance of each trait,
+functional richness (the volume of their convex hull), evenness and divergence \citep{Villeger2008}, dispersion
+\citep{Laliberte2010} and Rao's quadratic entropy \citep{Rao1982}; and the Shannon and Simpson diversity of tree types,
+the Shannon diversity of 5\,m height classes and the Gini coefficient of height.
+
+\emph{Learned or computed.} Two of the variables follow from others in the original: the actual rooting depth from the
+maximum rooting depth and last year's height, and biomass per tree, within a tree type, from height, wood density and
+specific leaf area (a power law that fits single trees to 0.6--1.9\,\%). Computing them for each virtual tree from the
+emulated quantities would make them consistent by construction, but it was less accurate than learning their
+distributions directly: 1.07 against 0.78 times a further run's error for rooting depth, 0.95 against 0.86 for biomass
+per tree, because the computed values combine the errors of their inputs. LandEmu learns both; its biomass per tree is
+a median 5\,\% below the power law applied to the same virtual trees.
+
+The distributions and type shares add 7\,\% to the cost of a run ($7.7\times10^{-3}$ instead of $7.1\times10^{-3}$
+core-seconds per cell-year); virtual trees and all indices cost $6.7\times10^{-3}$ core-seconds per cell-year each time
+they are requested. Without a request, the release runs exactly as without these models.
 
 \subsection{Choice of architecture and settings}\label{sec:choices}
 
@@ -674,6 +722,42 @@ run's error, so the measure does detect drift.
   \label{fig:drift}
 \end{figure}
 
+\subsection{Tree population and diversity}\label{sec:popres}
+
+The within-cell distributions are scored like the structure: for each cell and year the error is the mean over the nine
+levels of the absolute difference to the unseen run, divided by the unseen run's median, and it is set against the same
+error of the further runs (all years 2021--2100, 15 held-out cases). In dense forests the emulator's typical error is
+0.86 times a further run's for height, 0.85 for biomass per tree, 0.80 for specific leaf area, 0.70 for wood density,
+0.60 for maximum rooting depth, 0.66 for the drought threshold, 0.76 for the actual rooting depth and 0.87 for age;
+in the worst tenth of dense cells 0.63--0.90 (Fig.~\ref{fig:pop}a). In sparse stands it is 0.93--1.23. These ratios
+need care. The anchor alone scores 0.83--1.01: as for the traits' medians (Sect.~\ref{sec:structure}), a smooth
+estimate of the expected quantile is compared with a further run that carries its own chance variation, so a ratio near
+one is easy to reach. The learned part is the improvement over the anchor: 8\,\% for age, 11--16\,\% for height,
+biomass per tree, specific leaf area, wood density and actual rooting depth, and 22--31\,\% for the drought threshold
+and maximum rooting depth.
+
+The diversity indices of the virtual trees (Fig.~\ref{fig:pop}b; every tenth year) are about as close to the unseen
+run's as a further run's, or closer: community-weighted means of the four traits 0.58--0.81 times a further run's error,
+community-weighted variances 0.56--0.79, dispersion 0.71, Rao's quadratic entropy 0.72, divergence 0.85, type
+diversity 0.85--0.91, height diversity 0.94--0.96, and functional richness 1.06 (worst tenth 1.20). Functional evenness
+is the exception at 1.82 times a further run's error: it is not biased, but it scatters (between virtual and
+original communities by 0.026--0.031, between two runs of the original by 0.015). With the anchor's quantiles instead
+of the learned ones, the trait and richness indices are worse (community-weighted means 0.87--1.01, richness 1.16,
+evenness 1.98). Using as donors the trees of a training run under another climate model instead of the cell's own 2019
+trees changes the index scores by at most 8\,\%, so within this century the donor roster does not limit the joint structure.
+
+\begin{figure}[!tbp]
+  \centering
+  \includegraphics[width=\textwidth]{\figpath/fig_population.pdf}
+  \caption{The tree population under a held-out climate model and run (dense cells, 15 held-out cases; median over
+  cases). (a) Within-cell distributions of eight variables of the trees taller than 5\,m (nine quantile levels,
+  2021--2100). (b) Indices computed from the virtual trees (every tenth year; CWM and CWV: community-weighted mean and
+  variance; WD: wood density; root: maximum rooting depth; drought: drought threshold). Filled: typical cell; open: worst
+  tenth of cells. Blue: the emulator; violet: the anchor alone (its quantiles, virtual trees drawn the same way); orange:
+  a further run of LPJmL-FIT scored the same way.}
+  \label{fig:pop}
+\end{figure}
+
 \subsection{Drought die-offs}\label{sec:dieoff}
 
 Year by year, the original's forests do not change smoothly. Over the 15 test cases, 3\,483 dense cells of the
@@ -689,17 +773,30 @@ departure model the emulator follows 18\,\%, and its error in the ten years afte
 that of a further run (stand biomass: 7 to 16\,\% of the drop). The same model without the weather inputs follows no more than the maps alone (3\,\%), so the gain comes from
 the weather anomaly.
 
-What limits it is the mechanism of the die-offs. Reconstructing each tree's leaf carbon from the original's per-tree
-output shows that 94--98\,\% of the trees removed in these years had less leaf carbon than a sapling of their own
-specific leaf area --- the threshold below which LPJmL-FIT removes a tree --- and sat at a median 0.58 of it, while no
-tree that died by the random mortality draw did. The deaths in event years equal those expected from the trees' own
-mortality probabilities (34.2 against 34.3\,\%), so fire, which is active in these runs, does not cause them. A
-die-off is therefore many trees crossing an individual threshold in the same year, driven by a one-year collapse of
-their carbon balance. Neither the weather nor the stand describes this well: the original's own yearly NPP anomaly
+What limits it is the mechanism of the die-offs. LPJmL-FIT removes a tree outright when its leaf carbon falls below
+that of a sapling of its own specific leaf area or after five consecutive years of poor growth, and otherwise lets it
+die at random with a probability built from four hazards. Reconstructing each tree's leaf carbon from the original's
+per-tree output shows that in the die-off years 92\,\% of the trees taller than 5\,m that were removed outright had
+less leaf carbon than the sapling threshold, at a median 0.51 of it; in other years most outright removals of trees
+of this size follow the five-year rule. The deaths in event years equal those expected from the trees' own death
+probabilities, which include the outright removals (34.2 against 34.3\,\%), so fire, which is active in these runs,
+does not cause them. A die-off is therefore many trees crossing an individual threshold in the same year, driven by a
+one-year collapse of their carbon balance. Neither the weather nor the stand describes this well: the original's own yearly NPP anomaly
 separates event years from other years with an area under the receiver-operating curve of 0.90, a forcing-only daily
 soil-water index 0.88, and the share of trees close to the threshold the year before 0.49--0.57. Adding the daily
 soil-water index and runs of consecutive dry years to the departure model raised the share of the drop it follows only
 to 25\,\%, at the price of worse sparse-stand biomass.
+
+LandEmu does not return death rates, because no tested model reproduced both their late-century level and their
+die-off years (dense cells, 15 held-out cases, trees taller than 5\,m). A gradient-boosted map of the yearly death rate
+from the climate, the weather anomalies and the soil-water index matches the original's year-to-year rates (1.01 times
+a further run's error) and its total deaths (within 5\,\% in 14 of 15 cases), but not the 2071--2100 mean rate (1.34)
+and only 28\,\% of the rise in the death rate in die-off years. Learning instead each tree's leaf carbon relative to its
+sapling threshold and applying the original's rule to it, together with models of the five-year rule and of the random
+hazards, applied to the emulator's virtual trees, matches the yearly rates (0.97) and totals (15 of 15) and follows
+36\,\% of the die-off rise, but the 2071--2100 rate is further off (1.51). Given the original's own yearly NPP of its
+trees, which an emulator does not have, the same per-tree model follows 74\,\% of the rise: the year's carbon balance
+is the missing information.
 
 \begin{figure}[!tbp]
   \centering
@@ -957,10 +1054,13 @@ cell-to-cell spread of the climate response.
   \item \textbf{Extrapolation.} Gradient-boosted trees cannot predict outside the range of their training targets, and
         under a scenario warmer than all training scenarios the response is damped (Sect.~\ref{sec:global});
         deployment should keep the training climates broader than the target climate.
-  \item \textbf{Die-offs.} The emulator follows 18\,\% of the original's drought die-offs.
-  \item \textbf{Scope of the outputs.} The structure targets cover trees taller than 5\,m, as the original's standard
-        output does, and the traits are represented by their medians, not their full distributions. There are no
-        energy fluxes and no net CO$_2$ flux.
+  \item \textbf{Die-offs and deaths.} The emulator follows 18\,\% of the original's drought die-offs and returns no
+        death rates (Sect.~\ref{sec:dieoff}).
+  \item \textbf{Scope of the outputs.} The structure and population outputs cover trees taller than 5\,m, as the
+        original's standard output does. The within-cell distributions are learned per quantity, so a virtual tree's
+        biomass is not computed from its height and traits (it is a median 5\,\% below the allometry), and
+        functional evenness scatters twice as much as between two runs of the original. There are no energy fluxes and
+        no net CO$_2$ flux.
   \item \textbf{Scale of the evaluation.} The detailed evaluation uses 1\,050 of 54\,020 tree-bearing cells; the
         full-grid application has one run per scenario, so its errors cannot be set against a further run.
 \end{itemize}
@@ -985,7 +1085,9 @@ follows from where the original spends its run time and from what the literature
 climate model and run, dense forests are reproduced close to the original's run-to-run variability (tree density 1.22,
 biomass per tree 1.18 times a further run's error; trait medians better than a further run), and the structure error
 grows only slowly once the start state has faded. The original's drought die-offs are threshold kills of individual
-trees, of which the emulator follows a fifth. On places held out from their training, the daily networks reproduce GPP
+trees, of which the emulator follows a fifth. On request it returns the within-cell distributions of tree size,
+traits, rooting depth and age, and virtual trees whose functional-diversity indices are, except evenness, about as close
+to the original as a further run is, or closer. On places held out from their training, the daily networks reproduce GPP
 and evapotranspiration to a few per cent per cell; under an unseen climate model their carbon fluxes drift. Trained on
 climates that cover the test climate, the emulator reproduces the change in vegetation carbon under rising CO$_2$ as
 well as a second run of the original does on the global total, but it damps the largest warming-only losses, the
@@ -997,7 +1099,8 @@ system model.
 The emulator package (\texttt{python/src/lpjmlfit\_emulator/landemu}), the training, scoring and release scripts, the
 scripts that produce every figure of this paper (\texttt{scripts/paper}) and the records behind every number are in the
 project repository \url{https://github.com/rimajj/LPJmLFIT_Emulator} (to be archived on Zenodo on acceptance); this
-paper describes release v2. The LPJmL-FIT simulations and the released emulator (models and per-cell set-ups) are
+paper describes release v2 and, for the tree-population outputs, release v4 (release v2 with the population models
+added). The LPJmL-FIT simulations and the released emulator (models and per-cell set-ups) are
 stored at the Potsdam Institute for Climate Impact Research and will be archived with the code.
 
 \section*{Author contributions}
