@@ -125,3 +125,38 @@ sd) and B4K (−4.0 %, 2.8 sd) qualify; E20 (−2.7 %, 1.9 sd) and H512 (−2.4 
 and goes to stage 2 for reporting only. Ensembles `DCL4E_5seed`, `DCB4KE_5seed`, `DCNOWINE_5seed` (members seeds 0–4,
 `f2_chain_arm.py`, release flags + the arm's flag), scored by the chained job `logs/f2-dc-stage2-score.jcf`
 → `logs/f2-dc-stage2-relscore.md` against `DE_5seed` and `D2E_5seed` with §2's adoption rule unchanged.
+
+## 6. Stage 2 results (2026-10-22; three five-network ensembles, free runs on all 14 legs)
+
+Scored by `logs/f2-dc-stage2-score.jcf` (job 2661168) → `logs/f2-dc-stage2-relscore.md` +
+`logs/f2-dc-stage2-score.2661168.out`. Each entry: median over the 14 legs × 2 windows of (arm's typical 30-yr error /
+baseline's), against both baseline replicates (`f2_relscore_compare.py`). §2's rule: adopt if ≤ 0.95 against BOTH on
+≥ 2 of GPP / NPP / ET / runoff, none > 1.05, cost within the T31-class allowance (0.0135 core-s per cell-year, whole
+emulator).
+
+| arm | vs | GPP | NPP | ET | runoff | daily cost (core-s / cell-year) | verdict |
+|---|---|---|---|---|---|---|---|
+| L4 (4 × 256) | DE_5seed | **0.938** | **0.940** | 0.993 | **0.904** | 8.98e-3 (base 6.40e-3) | |
+| L4 (4 × 256) | D2E_5seed | **0.917** | **0.869** | **0.943** | **0.835** | | **ADOPTED** (3 of 4 vs both) |
+| B4K (batch 4 096) | DE_5seed | 0.991 | 0.983 | 0.960 | 1.125 | 6.41e-3 | |
+| B4K (batch 4 096) | D2E_5seed | 0.939 | 0.915 | 0.951 | 1.030 | | not adopted (runoff 12.5 % worse vs DE; ≤ 0.95 on only GPP/NPP vs D2E) |
+| NOWIN (no trailing windows) | DE_5seed | 1.608 | 1.218 | 1.507 | 1.468 | 6.44e-3 | report only |
+| NOWIN | D2E_5seed | 1.531 | 1.168 | 1.507 | 1.269 | | |
+
+* **L4:** the gain is broad, not a few legs: of the 112 leg × window × flux ratios, 84 are < 1 against `DE_5seed` and 103 against `D2E_5seed`. Its worst
+  single ratios are late-century GPP on IPSL-CM6A-LR ssp370 / ssp585 against `DE_5seed` (1.19 / 1.18), but 0.92 / 1.01
+  against `D2E_5seed` — i.e. within the two baseline replicates' own disagreement (DE's IPSL ssp370 late GPP error is
+  1.37, D2E's 1.78 a second run's). Drift (late / early error) within ±0.07 of `DE_5seed`'s on every leg and flux (largest moves
+  0.98 → 0.91 UKESM ET, 0.81 → 0.76 GFDL ssp126 ET, 0.94 → 0.99 IPSL ssp370 NPP); the five above 1.05 were already
+  above it (IPSL ssp126 GPP/NPP 1.10/1.11 → 1.08/1.08, UKESM GPP/NPP 1.13/1.17 → 1.12/1.18, IPSL ssp585 GPP 1.07 → 1.06). Cost +2.6e-3 core-s per cell-year (40 % more for the daily part);
+  the whole emulator goes from ~7.0e-3 to ~9.6e-3 (to be measured on the release, ADR 0362), within 0.0135.
+* **B4K** helped on the screen's loss (−4.0 %) but not in free runs: runoff is worse against one replicate — the
+  screen's validation loss is a one-step (teacher-forced) measure and does not see the bucket's accumulation.
+* **NOWIN** (report only): without the trailing weather windows the free-run errors are 1.2–1.6× the release's —
+  the windows carry the slow soil-water memory the bucket alone cannot.
+* Expectation check (§3): L4 was expected "equivalent" and came out 6–17 % better in free runs; NOWIN > 10 % worse as
+  expected; B4K "within ±3 %" — true for loss direction but runoff moved more.
+
+**Consequence:** the deployment daily ensemble becomes `DCL4_3x256_seed0–4` (trained exactly as `D_3x256_seed0–4`
+with `--layers 4`; the tag's "3x256" is the inherited prefix, not the depth). New releases `v3` (deployment) and
+`fold_gfdl-esm4_v4`, recorded in ADR 0362. Status: accepted.

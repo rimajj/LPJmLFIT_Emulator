@@ -424,8 +424,50 @@ the share of a die-off it reproduces moved between 0.15 and 0.21 (release 0.18).
   \end{tabular}}
 \end{table}
 
-\textbf{[Daily networks: to be completed when the five-network tests of the two qualifying settings (four layers;
-batch 4\,096) have run.]}
+\emph{Daily networks.} Each setting was varied on its own around the release (three layers of 256 units, SiLU
+activation, ten epochs, peak learning rate $3\times10^{-3}$, batch 16\,384) and trained with three random seeds; the
+measure was the validation loss on 80 cells never trained on (Table~\ref{tab:choices_daily}). A setting that lowered
+the loss by more than 2\,\% and by more than twice the seed-to-seed spread was then trained as a five-network
+ensemble, run freely for 81 years on all 14 legs and compared with two independent ensembles of the release setting.
+It would be adopted if its typical 30-year error was at least 5\,\% lower than both on at least two of GPP, NPP,
+evapotranspiration and runoff, none worse by more than 5\,\%. Two settings qualified for this test. Four layers
+instead of three lowered the free-run error of GPP by 6--8\,\%, NPP by 6--13\,\%, runoff by 10--17\,\% and
+evapotranspiration by 1--6\,\% against the two reference ensembles, without changing the late-century drift, at
+40\,\% more cost for the daily part ($9.0\times10^{-3}$ instead of $6.4\times10^{-3}$ core-seconds per cell-year);
+it was adopted. A batch of 4\,096 lowered the validation loss as much (4.0\,\%) but not the free-run errors (runoff
+12.5\,\% worse against one reference ensemble): the validation loss scores single days with the true previous state,
+while the free run accumulates the water stores. Narrower networks (128 units), two layers, five epochs, a lower
+learning rate and a larger batch were 6--29\,\% worse; other activations within 3\,\%; a learning rate of
+$10^{-2}$ diverged in one of three seeds. The trailing weather windows matter most: without the precipitation windows
+the loss rises by 57\,\%, without all windows by 89\,\% and the free-run errors by 17--61\,\%.
+
+\begin{table}[t]
+  \centering\small
+  \caption{Daily networks: validation loss of each alternative setting relative to the release setting (mean of three
+  seeds; below 1 is better; seed-to-seed spread 1.5\,\% of the loss), and for the settings tested in free runs the
+  typical 30-year error relative to two reference ensembles (median over 14 legs and two windows).}
+  \label{tab:choices_daily}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llccccc}
+    \hline
+    setting & release & loss & free run GPP & NPP & ET & runoff\\
+    \hline
+    four layers & three & 0.957 & 0.938 / 0.917 & 0.940 / 0.869 & 0.993 / 0.943 & 0.904 / 0.835\\
+    batch 4\,096 & 16\,384 & 0.960 & 0.991 / 0.939 & 0.983 / 0.915 & 0.960 / 0.951 & 1.125 / 1.030\\
+    20 epochs & 10 & 0.973 & & & & \\
+    512 units & 256 & 0.976 & & & & \\
+    GELU / ReLU / tanh & SiLU & 1.010 / 1.017 / 1.027 & & & & \\
+    128 units & 256 & 1.062 & & & & \\
+    learning rate $10^{-3}$ / $10^{-2}$ & $3\times10^{-3}$ & 1.100 / 2.195 & & & & \\
+    5 epochs & 10 & 1.105 & & & & \\
+    two layers & three & 1.118 & & & & \\
+    batch 65\,536 & 16\,384 & 1.288 & & & & \\
+    no temperature / radiation windows & with & 1.146 & & & & \\
+    no precipitation windows & with & 1.570 & & & & \\
+    no trailing windows & with & 1.890 & 1.608 / 1.531 & 1.218 / 1.168 & 1.507 / 1.507 & 1.468 / 1.269\\
+    \hline
+  \end{tabular}}
+\end{table}
 
 Evidence already measured:
 \begin{itemize}
