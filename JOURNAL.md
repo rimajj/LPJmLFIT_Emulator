@@ -1892,3 +1892,20 @@ Departure capture 0.15–0.21 (release 0.18). Daily screen: summariser's pooled 
 diverged seed (sd 0.085) ⇒ gate unpassable; recomputed over stable arms 0.00078 ⇒ L4 (3.0 sd) and B4K (2.8 sd) to
 stage 2; E20 1.9 sd, H512 1.7 sd do not. NOWIN 1.89× to stage 2 (report). Submitted via f2_chain_arm.py, scorer
 chained. ADR 0359 §4–5, paper map paragraph + table.
+
+## 2026-10-22 (morning) — the coupled emulator on the fixed SpeedyWeather atmosphere; 2 m air feed not adopted (ADR 0360)
+
+Owner: "continue" (step s1 of the side-track handoff: feed the emulator a 2 m air temperature). The coupled driver could
+only run stock SpeedyWeather 0.23, which is 7.7 K too cold at the emulated cells, so s1 needed the coupling on the fixed
+atmosphere first: new env `/p/tmp/jamirp/speedy_landemu_fix_env` (coldfix-E source + PythonCall), knobs `AIR`, `LW`,
+`CONVKW`, `T0` in `run_speedy_landemu.jl`, the 2 m formula moved to `speedy_air2m.jl` (one copy). Stock check: knobs
+unset reproduces year 1 of `speedy_t31_coupled_sst_alb_z0_10y` bit for bit. Pre-registered ADR 0360 (commit 49d857f2)
+before the 10-yr runs (prescribed SST, emulator albedo + roughness): A fixed + surface air, B fixed + 2 m, C fixed
+control. Result: fed temperature vs W5E5 annual A +1.44 / B −1.21 K, > 50° coldest month +14.65 / +4.26, tropics
+−0.73 / −2.83 ⇒ rule fails on (1) and (3): not adopted. Post hoc: the emulator's ET (tropics 2.34 vs 0.72 mm/day in
+the control) cools the ground to the air temperature (air − soil −0.25 vs −3.61 K), so the formula's stable branch
+fires on 55 % of tropical days and the 2 m value drops 2.4 K below the air; the emulator's forest roughness (≤ 2 m, vs
+0.5) adds to it — not separated. Also: coupled land +1.4 K vs W5E5 (stock −7.7), precipitation +182 mm/yr (control
++8), vegetation carbon still −2.8 % over 10 yr (stock flat on prescribed SST), NPP 64–70 vs 81–84 PgC/yr stock.
+Side fix: the `format` gate on `main` had been red since 7209a267 (speedy_cold_bias_repro.jl), reformatted (48ef2e66,
+green). Another session ran the forest-map design campaign in this checkout at the same time — commits by explicit path.

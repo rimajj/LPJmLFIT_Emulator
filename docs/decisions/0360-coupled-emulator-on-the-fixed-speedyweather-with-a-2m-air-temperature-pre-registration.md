@@ -1,6 +1,6 @@
 # ADR 0360 — The coupled emulator on the fixed SpeedyWeather atmosphere, fed a 2 m air temperature (pre-registration)
 
-- Status: Proposed (pre-registration; results section to be appended)
+- Status: Accepted — the 2 m feed is NOT adopted (results below, 2026-10-22)
 - Date: 2026-10-22
 - Context: ADR 0345 (coupling), ADR 0346 (SpeedyWeather's cold land), JOURNAL 2026-10-21/22 (cold-bias side track:
   convection fix on branch coldfix-E, upstream SpeedyWeather #1339; clouds; high-latitude winter)
@@ -50,6 +50,42 @@ Reported without a rule: whether the fixed atmosphere (A, C) is closer to the re
 emulator's vegetation carbon, GPP and ET trajectories in S, A, B (does the drift of ADR 0345 shrink?); the coupling's
 effect on the atmosphere (A or B vs C).
 
-## Results
+## Results (2026-10-22; jobs 2661272–4, scored by 2662733–5; `coupled/climate_diagnosis_adr0360.json`)
 
-(to be appended)
+Gates: stock check passed (1-yr stock run = year 1 of S, bit for bit); replay identical and water closed to the leap days
+in A and B (relative 7.7e-4 / 7.6e-4, as S's 7.9e-4).
+
+**Temperature the emulator is fed, minus W5E5 1985–2014, years 2–10 (K):**
+
+| | annual | warmest month | coldest month | < 23.5° annual / warmest | 23.5–50° annual / warmest | > 50° annual / coldest |
+|---|---|---|---|---|---|---|
+| S stock (surface air) | −7.69 | −9.94 | −4.06 | −10.94 / −12.02 | −5.70 / −9.20 | −3.29 / +2.74 |
+| A fixed, surface air | **+1.44** | +2.41 | +1.80 | −0.73 / +0.20 | +1.05 / +3.20 | +8.51 / +14.65 |
+| B fixed, 2 m air | **−1.21** | +1.25 | −2.40 | −2.83 / −1.34 | −1.34 / +2.19 | +3.69 / +4.26 |
+| C fixed control (surface air; 2 m) | +2.31; +1.04 | +2.29; +1.99 | +3.19; +0.55 | +0.69; +0.23 | +2.10; +1.00 | +7.36; +3.46 / +14.12; +4.94 |
+
+Rule: (1) annual |bias| 1.44 → 1.21, smaller by 0.23 K < 0.5 ✗; (2) > 50° coldest month 14.65 → 4.26 ≤ half ✓;
+(3) tropics annual worse by 2.10 K and warmest month by 1.14 K ✗ (mid-latitudes annual +0.29, inside). **Not adopted.**
+
+**Why it fails where it passed stand-alone (post hoc, not separated by a run):** the stable-air branch of the 2 m
+formula pulls the 2 m value towards the ground whenever the air is warmer than the top soil. With the emulator's
+evapotranspiration (tropics 2.34 mm/day vs SpeedyWeather's own land 0.72) the ground is evaporatively cooled to about
+the air temperature (tropics air − soil −0.25 K vs −3.61 K in the control), so the daily-mean air is warmer than the
+ground on 55 % of tropical days (control 16 %) and the 2 m value falls 2.4 K below the air (control 0.5 K). The
+emulator's forest roughness (up to 2.0 m vs SpeedyWeather's constant 0.5 m) puts "2 m" inside the canopy of the
+log profile and strengthens the same pull. Which of the two dominates is not measured (a run with `AIR=2m` and stock
+roughness would separate them). The formula has no displacement height, so it is not valid over tall canopies as is.
+
+**Reported without a rule:**
+- The fixed atmosphere puts the coupled land within +1.4 K of the real climate (stock −7.7 K): the emulator is no
+  longer driven by a 7–8 K cold signal. High-latitude land stays +8.5 K warm in the annual mean (+14.7 K coldest month)
+  — the inversion definition plus the warm lower troposphere found stand-alone.
+- The coupling cools the land air by 0.9 K (A vs C) and makes it wet: precipitation +182 mm/yr above W5E5 in A (+141 in
+  B) against +8 in the control; the emulator's ET is 590–616 mm/yr against SpeedyWeather's own ~180.
+- Emulator: vegetation carbon over the T31 land falls 866 → 842 PgC in A and 859 → 835 in B over the 10 years (−2.8 %,
+  −2.9 %), while stock S is flat (831 → 831); NPP is 64–70 PgC/yr in A and 68–73 in B vs 81–84 in S, GPP similar
+  (150–161). So the warmer, wetter fixed atmosphere does not stop the vegetation-carbon decline; the cause (warmer
+  respiration, high-latitude warmth, too much rain) is not diagnosed here.
+- Cost: 225 core-s per simulated year coupled on the fixed atmosphere (stock 157; emulator 8.7 s of it), 201 control.
+
+**Defaults unchanged:** `AIR=model`. The 2 m value stays recorded in every run.

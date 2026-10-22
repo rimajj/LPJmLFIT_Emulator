@@ -300,3 +300,8 @@ PROJ=/p/tmp/jamirp/speedy_landemu_fix_env MODE=coupled YEARS=10 OCEAN=prescribed
   `speedy_t31_coupled_sst_alb_z0_10y` bit for bit (columns 1–11 and the forcing).
 - Score: `diagnose_speedy_climate.py <runs...> --out=<json>` (adds `*_2m` keys; never let it default-overwrite the
   2026-10-16 `coupled/climate_diagnosis.json`) and `score_speedy_landemu.py <coupled> <control>`.
+- ⚠ **The 2 m formula is NOT valid in the coupled run (ADR 0360 result):** stand-alone (SpeedyWeather's own dry land,
+  constant z₀ 0.5 m) it lowered the land bias from +2.3 to +1.0 K; coupled, the emulator's evaporation cools the ground
+  to the air temperature, the stable branch fires on 55 % of tropical days and the tropics end up 2.8 K too cold, and the
+  emulator's forest z₀ (≤ 2 m) puts "2 m" inside the canopy (no displacement height). Keep `AIR=model` unless a revised
+  formula passes its own pre-registration.

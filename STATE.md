@@ -44,6 +44,18 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-22 (morning) — the coupled emulator now runs on the fixed SpeedyWeather atmosphere; the 2 m air feed was
+NOT adopted (ADR 0360).** Owner: "continue" (s1 below). `run_speedy_landemu.jl` + `PROJ=/p/tmp/jamirp/speedy_landemu_fix_env`
+with `LW=fourband T0=speedy CONVKW="ascent_substeps=10,entrainment_mse=1"` (skill online-coupling-env). 10-yr runs,
+prescribed SST: coupled land +1.4 K vs W5E5 (stock −7.7 K); `AIR=2m` fixes the high-latitude winter (+14.7 → +4.3 K) but
+makes the tropics 2.1 K too cold — the emulator's evaporation cools the ground to the air temperature, so the formula's
+stable branch pulls the 2 m value down; the formula has no displacement height for the emulator's forest roughness.
+Also: coupled precipitation +182 mm/yr too wet; vegetation carbon still −2.8 % in 10 yr; 225 core-s per simulated year.
+**Next there, if pursued:** (t1) separate the two causes with one run `AIR=2m ROUGH=speedy` (~40 min); (t2) a 2 m
+formula with a displacement height, applied only at night-time stable steps (pre-register); (t3) why the coupled
+fixed atmosphere rains 180 mm/yr too much and why vegetation carbon falls (NPP 64–70 vs 81–84 PgC/yr stock);
+(s2)/(s3) below unchanged.
+
 **2026-10-22 (night, 2) — design-choice campaign (ADR 0359): forest map DONE, daily stage 2 RUNNING.** Owner: "all
 emulator runs are done".
 * **Forest map + departure model (22 arms):** no alternative beats the release ⇒ no setting changes, no rebuild. Plateau:
