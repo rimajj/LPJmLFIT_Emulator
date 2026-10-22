@@ -44,6 +44,25 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-22 (late night) — SpeedyWeather side track: convection reported upstream (#1339), clouds measured, winter
+split.** Owner: "yes, do all that" (clouds, high-latitude winter, upstream report). Branch coldfix-E 6ae14204 (patch
+refreshed). JOURNAL 2026-10-22 (night) has every number.
+* **Convection:** most of the warm parcel was the layer in which it saturates (ascended moist from its bottom); fixed on
+  the branch (sub-steps rise dry to the saturating sub-step). New base E3ent50 = `ascent_substeps=10, entrainment_mse=1`
+  (default entrainment depth): tropical 308/431/555 hPa −1.8/+0.1/+0.6 K prescribed, +1.8/+2.7/+2.1 K slab. Reported
+  upstream with a stand-alone parcel check: SpeedyWeather #1339.
+* **Clouds:** vs CERES the clouds reflect ~33 W/m² too much and the clear sky ~20 too little (no Rayleigh in
+  SpeedyWeather; new opt-in `rayleigh_fraction`). Clear-sky OLR ~12 W/m² low in every arm, NOT the longwave code (8 vs
+  32 layers costs 6–9 W/m²; the four-band code at L8 ≈ ecCKD at L32) ⇒ the budget cannot close through clouds. No cloud
+  setting passed the pre-registered rule (R5 = Rayleigh 0.5 + albedos ×0.75 fixes the split but worsens budget and land
+  sunshine). Defaults unchanged.
+* **High-latitude winter:** of the +13 K coldest-month bias, two thirds is the definition (SpeedyWeather reports the
+  lowermost layer as near-surface air in an inversion); a diagnostic 2 m air temperature (reproducer) gives +3.5 K vs
+  GFDL-ESM4, land annual +1.1 K. Stronger stable mixing fails. Remaining: a warm high-latitude lower troposphere.
+**Next there, if pursued:** (s1) feed the emulator a 2 m air temperature in `run_speedy_landemu.jl` (same formula as
+`air_2m` in the reproducer) — the biggest gain for the coupling; (s2) the slab drift (+0.35 K/yr): it needs either more
+vertical layers (L16, cost ×2) or an explicit clear-sky OLR compensation; (s3) wait for #1339's reply before a PR.
+
 **2026-10-22 (night) — departure model SHIPPED (release v2 / fold v3, ADR 0358), paper REWRITTEN, design-choice
 campaign RUNNING (ADR 0359).** Owner: "c1" (ship), remember c2/c3 as future candidates (memory
 `dieoff-future-candidates`), rewrite the paper without the earlier hybrid design, without citing the unpublished review,

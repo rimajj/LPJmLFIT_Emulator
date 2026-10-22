@@ -1863,3 +1863,13 @@ base's; slab 5 yr reported alongside E3ent50-slab (drift).
 climatology's 27.5), column water vapour 42.4 vs 40.3, +0.35 K/yr in year 5, TOA +2.2 W/m². **Upstream report filed:**
 SpeedyWeather #1339 (the two convection defects with the parcel check against `main`, the prescribed/slab table and the
 convection.jl diff; text kept at `patches/speedyweather/upstream_issue_1339_convection.md`).
+**R5 (Rayleigh 0.5 + cloud albedos ×0.75, prescribed SST) vs its pre-registration:** clear-sky reflected 55.2 ✓ (53.3),
+SW cloud effect −54.0 ✓ (error 8.2 ≤ 16.4), net TOA +8.4 vs base +5.8 ✗ (+2.6 > 2), land SW down +11.5 vs base +8.8 ✗ ⇒
+**not adopted**. The shortwave split becomes realistic (clear-sky error 20 → 2, cloud error 33 → 8 W/m²), but the
+budget and the land sunshine move the wrong way; R3 (full Rayleigh, ×0.75) had the best land sunshine (+6.4) with
+clear-sky 8.5 too high. No cloud setting tested fixes the budget, because the ~12 W/m² clear-sky OLR shortfall is
+outside the cloud scheme (see the resolution test). Profile with R5 unchanged (308/431/555 −1.7/+0.2/+0.6 K).
+**2 m diagnostic, stable-only (R5 run, land vs W5E5):** annual +1.08 K (the model's surface air +2.36), warmest month
++1.84, coldest +1.07; >50° annual +3.5, coldest +5.0; high-latitude coldest month vs GFDL-ESM4 tas **+3.5 K** (model air
++12.5; soil +3.2). ⇒ For the emulator coupling the land should be fed a 2 m temperature, not SpeedyWeather's
+surface-air value (the lowermost layer in an inversion). Not yet wired into `run_speedy_landemu.jl`.
