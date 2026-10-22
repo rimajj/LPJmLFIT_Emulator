@@ -1922,3 +1922,13 @@ Rayleigh), #1345 (L8 clear-sky OLR, slab drift); comments on #1333 (cumulative s
 → +#1262 → tuning / four-band → surface air → #1339 options) and #1339 (RH target, entrainment depth null with T–q
 mixing, slab top-layer convection). Every number re-read from the run logs before posting (two draft sentences mixed
 runs and were corrected). Memory `no-coupling-until-climate-model-works`.
+
+## 2026-10-22 (afternoon) — daily-network stage 2, release v3 / fold v4 (ADR 0359 §6, ADR 0362)
+
+Stage-2 scorer 2661168: L4 passes ADR 0359's rule against both baseline replicates (GPP 0.938/0.917, NPP 0.940/0.869,
+ET 0.993/0.943, runoff 0.904/0.835; 84 / 103 of 112 leg×window×flux ratios < 1); B4K fails (runoff 1.125 vs DE);
+NOWIN 1.17–1.61. Builder got `--daily-members` + depth-from-checkpoint (first submission died: torch.load without
+map_location on a CPU node). Releases v3 / fold v4 built (gates 5.1e-7, exact, exact, 3e-11). PD_L4_fx (= PD_B_fx with
+the L4 ensemble, emulated stand): medians vs PD_B_fx GPP 1.004, NPP 0.942, ET 1.004, runoff 0.974 — the stand error
+swamps most of the network gain. Fold v4 --check vs PD_L4_fx OK (fpc7/fpc8 flags as always). One-core cost 9.80e-3
+(deploy) / 9.82e-3 (fold). Release choice left to the owner (speed is goal 2).

@@ -149,7 +149,7 @@ emulator).
   1.37, D2E's 1.78 a second run's). Drift (late / early error) within ±0.07 of `DE_5seed`'s on every leg and flux (largest moves
   0.98 → 0.91 UKESM ET, 0.81 → 0.76 GFDL ssp126 ET, 0.94 → 0.99 IPSL ssp370 NPP); the five above 1.05 were already
   above it (IPSL ssp126 GPP/NPP 1.10/1.11 → 1.08/1.08, UKESM GPP/NPP 1.13/1.17 → 1.12/1.18, IPSL ssp585 GPP 1.07 → 1.06). Cost +2.6e-3 core-s per cell-year (40 % more for the daily part);
-  the whole emulator goes from ~7.0e-3 to ~9.6e-3 (to be measured on the release, ADR 0362), within 0.0135.
+  the whole emulator measured 9.8e-3 (v2 7.0e-3; ADR 0362 §4), within 0.0135.
 * **B4K** helped on the screen's loss (−4.0 %) but not in free runs: runoff is worse against one replicate — the
   screen's validation loss is a one-step (teacher-forced) measure and does not see the bucket's accumulation.
 * **NOWIN** (report only): without the trailing weather windows the free-run errors are 1.2–1.6× the release's —
@@ -157,6 +157,9 @@ emulator).
 * Expectation check (§3): L4 was expected "equivalent" and came out 6–17 % better in free runs; NOWIN > 10 % worse as
   expected; B4K "within ±3 %" — true for loss direction but runoff moved more.
 
-**Consequence:** the deployment daily ensemble becomes `DCL4_3x256_seed0–4` (trained exactly as `D_3x256_seed0–4`
-with `--layers 4`; the tag's "3x256" is the inherited prefix, not the depth). New releases `v3` (deployment) and
-`fold_gfdl-esm4_v4`, recorded in ADR 0362. Status: accepted.
+**Consequence:** by §2's rule L4 is adopted: ensemble `DCL4_3x256_seed0–4` (trained exactly as `D_3x256_seed0–4`
+with `--layers 4`; the tag's "3x256" is the inherited prefix, not the depth). Releases `v3` (deployment) and
+`fold_gfdl-esm4_v4` were built (ADR 0362). **Post-hoc check, not part of §2's rule:** in the complete emulator (networks
+fed the emulated stand) the gain shrinks to NPP −6 %, runoff −3 %, GPP / ET unchanged, at +31–40 % one-core cost
+(ADR 0362 §3–4); whether v3 becomes the current release is left to the owner there. Status: accepted (the campaign);
+the release choice is ADR 0362's.
