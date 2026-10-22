@@ -55,7 +55,8 @@ refreshed). JOURNAL 2026-10-22 (night) has every number.
   SpeedyWeather; new opt-in `rayleigh_fraction`). Clear-sky OLR ~12 W/m² low in every arm, NOT the longwave code (8 vs
   32 layers costs 6–9 W/m²; the four-band code at L8 ≈ ecCKD at L32) ⇒ the budget cannot close through clouds. No cloud
   setting passed the pre-registered rule (R5 = Rayleigh 0.5 + albedos ×0.75 fixes the split but worsens budget and land
-  sunshine). Defaults unchanged.
+  sunshine). Defaults unchanged. R5 on the free ocean (5 yr) confirms it: ~1 K warmer than the base by year 5, net
+  TOA +3.5 vs +2.2 W/m², tropical upper troposphere back to +3–4 K. All side-track runs are scored; none pending.
 * **High-latitude winter:** of the +13 K coldest-month bias, two thirds is the definition (SpeedyWeather reports the
   lowermost layer as near-surface air in an inversion); a diagnostic 2 m air temperature (reproducer) gives +3.5 K vs
   GFDL-ESM4, land annual +1.1 K. Stronger stable mixing fails. Remaining: a warm high-latitude lower troposphere.

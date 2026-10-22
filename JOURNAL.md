@@ -1873,3 +1873,13 @@ outside the cloud scheme (see the resolution test). Profile with R5 unchanged (3
 +1.84, coldest +1.07; >50° annual +3.5, coldest +5.0; high-latitude coldest month vs GFDL-ESM4 tas **+3.5 K** (model air
 +12.5; soil +3.2). ⇒ For the emulator coupling the land should be fed a 2 m temperature, not SpeedyWeather's
 surface-air value (the lowermost layer in an inversion). Not yet wired into `run_speedy_landemu.jl`.
+**R5 slab (Rayleigh 0.5 + cloud albedos ×0.75, E3ent50 convection, 5 yr; job 2655086) vs E3ent50-slab (2653729), yrs
+2–5 unless noted:** global air 17.89 vs 17.10 °C; per-year global air 16.57 → 18.72 (+2.15 K over 5 yr; base 16.53 →
+17.64, +1.11 K); year-5 warming rate +0.33 vs +0.37 K/yr; year-5 net TOA +3.5 vs +2.2 W/m²; reflected SW 109.3 vs
+112.7, clear-sky reflected 53.8 vs 32.4, SW cloud effect −55.5 vs −80.3 (CERES 99.1 / 53.3 / −45.8); OLR 227.5 vs 225.5;
+tropical 308/431/555 hPa +3.6/+4.1/+3.3 vs +1.8/+2.7/+2.1 K, tropical column water 44.3 vs 42.4 (GFDL-ESM4 40.3); land
+air − W5E5 +3.20 vs +2.48 K (2 m diagnostic +2.03), land precip −150 vs −190 mm/yr, land SW down +11.4 vs +9.6 W/m²;
+>50° coldest-month 2 m diagnostic vs GFDL-ESM4 tas +7.4 K. ⇒ on the free ocean R5 keeps the realistic shortwave split
+but lets in ~1 W/m² more in year 5 and runs ~1 K warmer by then, with the tropical upper troposphere back to +3–4 K.
+Confirms the prescribed-SST verdict: **R5 not adopted**; base stays E3ent50 with the stock cloud settings. All
+SpeedyWeather side-track runs of 2026-10-21/22 are now scored (none pending).
