@@ -84,7 +84,8 @@ def export_daily(out, members=MEMBERS, data=F2, gate_run=1, gate_leg="gfdl-esm4_
     for i, t in enumerate(members):
         mp = os.path.join(F.DATA, "runs", t, "model.pt")
         # depth from the saved trunk (hidden layers = Linear layers - 1): ADR 0359 adopted a 4-layer arm, ADR 0362
-        F.NL = sum(k.startswith("trunk.") and k.endswith(".weight") for k in torch.load(mp, weights_only=True)) - 1
+        sd_ = torch.load(mp, map_location="cpu", weights_only=True)
+        F.NL = sum(k.startswith("trunk.") and k.endswith(".weight") for k in sd_) - 1
         n, ck = F.load_net(mp, torch.device("cpu"))
         n.load_state_dict(ck)
         n.eval()
