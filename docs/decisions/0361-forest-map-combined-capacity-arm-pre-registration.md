@@ -35,3 +35,24 @@ Both via `scripts/run_design_sensitivity.sh capacity` (driver extended), summari
 
 Dense tree count ~0.96, dense biomass per tree ~0.975–0.985 — i.e. close to the bar on the second quantity; the
 sparse groups gain most (L63 0.925, R800 0.937). Probability of clearing all of 1–3: roughly one in three.
+
+## Result (2026-10-22; jobs 2661366 18 min, 2661367 38 min)
+
+Median over 15 held-out cases of arm / release (ratio to a second run), worst tenth in brackets:
+
+| | dense count | dense biomass/tree | dense trait medians | sparse count | sparse biomass/tree | worst pair | drift count / biomass (release) | die-off capture |
+|---|---|---|---|---|---|---|---|---|
+| level map | **0.970** (0.968) | **0.952** (0.968) | 0.979–0.984 | 0.901 (0.893) | 0.945 (0.985) | **1.022** (sparse SLA, worst tenth) | 1.242 / 1.411 (1.219 / 1.407) | — |
+| with departure model | 0.986 (0.971) | 0.961 (0.982) | 0.979–0.984 | 0.932 (0.930) | 1.004 (0.967) | **1.022** (same) | **1.243 / 1.444** (1.201 / 1.412) | 0.184 (0.183) |
+
+**Against the pre-registered reading:** (1) better — dense count and biomass ≤ 0.98 ✓, but one pair at 1.022 > 1.02 ✗;
+(2) shipped configuration — the same 1.022 ✗, capture ✓, drift +0.042 (count) and +0.032 (biomass) > 0.03 ✗;
+(3) cost not measured (no rebuild). ⇒ **NOT ADOPTED; the release keeps 31 leaves / 400 rounds.**
+
+**What the drift failure actually is (post hoc, does not change the verdict):** the bigger map's error is LOWER than the
+release's in every period — dense tree count 0.962 / 0.982 / 0.987 (2021–40 / 2051–70 / 2081–2100), biomass per tree
+0.956 / 0.978 / 0.972 (level map; with the departure model 0.963 / 0.982 / 0.991 and 0.957 / 0.977 / 0.977). The
+late/early ratio rises because the gain is largest at the start and fades to ~1 % by the end of the century. So the
+extra capacity mostly fits the present-day better — the period that is already the best — and buys little where the
+emulator is weakest (late-century, under the strongest climate change). That is a substantive reason not to adopt it
+beyond the letter of the rule. Read as: the release sits on a plateau; four times the model size gives 1–4 %.
