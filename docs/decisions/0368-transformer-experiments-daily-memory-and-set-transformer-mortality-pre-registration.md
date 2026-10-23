@@ -1,6 +1,6 @@
 # 0368 — Two transformer experiments: does the daily model lack long weather memory, and does a model that sees the whole patch predict tree deaths better? (pre-registration, SEPARATE EXPERIMENT)
 
-* **Status:** pre-registered 2026-10-23, before any fit of this record. Results: §7, added after the runs.
+* **Status:** pre-registered 2026-10-23, before any fit of this record. Results: §7, added after the runs. **Exp 1: weather memory helps (daily errors −20–30 %), but that transformer costs 350× the deployed network. Exp 2: a per-tree network beats LightGBM; seeing the patch adds a little; die-offs stay mostly missed (best deployable capture 0.27, bound 0.46, ceiling 0.70).**
 * **SEPARATE EXPERIMENT — nothing of it enters the paper or the release package** (owner 2026-10-23: *"treat it as a
   seperate experiment. nothing enters the paper."*). Code lives under `scripts/xtf_*.py`, data under
   `esm_land_emulator_data/xtf/`.
@@ -173,6 +173,32 @@ offline and use the original's own stand / trees as inputs, so they bound what e
 not show it ships.
 
 ## 7. Results
+
+### 7.1 Experiment 1 — daily weather memory (2026-10-23)
+
+Free runs of every network on members 2 and 3 of the 30 rising-CO2 legs (+ 4 CO2-fixed legs reported apart, §1a);
+`xtf/daily/score_summary.csv`, `logs/xtf-d-score.2672365.out`. Ratio = typical error ÷ a second run's (1 = as close as
+a second run). Held-out cells × held-out climate models (IPSL, MPI), seed means (B 5 single networks, TC/TW 3 each):
+
+| flux | single-year B / TC / **TW** | 30-yr 2071–2100 B / TC / **TW** | response B / TC / TW | drift B / TC / TW | B seed spread single-year / 30-yr |
+|---|---|---|---|---|---|
+| GPP | 1.30 / 1.19 / **1.01** | 1.35 / 1.24 / **1.07** | 0.79 / 0.70 / 0.63 | 0.86 / 0.90 / 0.92 | 0.08 / 0.26 |
+| NPP | 1.82 / 1.64 / **1.31** | 2.05 / 1.79 / **1.47** | 1.08 / 0.93 / 0.78 | 0.91 / 0.91 / 0.95 | 0.13 / 0.34 |
+| ET | 1.71 / 1.46 / **1.18** | 2.39 / 2.05 / **1.63** | 1.30 / 1.09 / 0.98 | 0.93 / 0.91 / 0.98 | 0.10 / 0.29 |
+| runoff | 8.28 / 7.53 / **6.95** | 5.41 / 5.02 / **4.37** | 3.27 / 2.88 / 2.76 | 0.96 / 0.97 / 0.97 | 0.39 / 0.63 |
+
+Area totals within 0.3–2.1 % for every arm. Held-out cells × training climate models and the training cells show the
+same order (TW < TC < B for every flux; training cells NPP single-year 1.49 / 1.13 / 1.00).
+
+**Pre-registered decision (scorer of §1a):** memory (TW vs TC) **HELPS** — wins on ET and runoff; NPP wins the
+single-year test (−0.33 vs spread 0.13) but misses the 30-year one narrowly (−0.32 vs spread 0.34). Capacity (TC vs B)
+**no measurable gain** (ET only). So the raw past year of weather carries information the six hand-made running means
+do not: with it the daily errors fall by 20–30 % (GPP to about a second run's), and no drift appears.
+
+**Cost (one core, network step only, `xtf-d-bench`):** B 1.29e-3, TC 1.12e-2, **TW 0.45 core-s per cell-year —
+350× the deployed network and slower than the original model itself** (0.27 core-s per cell-year at 25 patches,
+nitrogen-off, ADR 0084). TW is a measurement of what memory is worth, not a candidate. Per §1 the next step would be
+a new record: carry that memory cheaply (more / learned running means, or a small recurrent state), then re-score.
 
 ### 7.2 Experiment 2 — tree deaths (2026-10-23)
 
