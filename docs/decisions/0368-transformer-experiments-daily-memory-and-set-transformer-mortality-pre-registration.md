@@ -194,3 +194,23 @@ the die-off year and no arm does is the year's own carbon balance (all arms see 
 and the year's climate), consistent with ADR 0364's bound (0.74 with the run's own NPP). (4) All of this is
 teacher-forced (each year starts from the original's own trees); nothing here shows a free-running forest works.
 
+### 7.2b The year's carbon balance as input (§2b, 2026-10-23)
+
+| arm (2 seeds, spread ≤ 0.004) | skill held-out cells × held-out models | die-off capture | 30-yr rate vs 2nd run | × training models: skill / capture |
+|---|---|---|---|---|
+| ST (no carbon input, from 7.2) | 0.531 | 0.235 | 0.89 | 0.536 / 0.313 |
+| **STCe** + cell NPP/GPP from the emulator's own daily model | 0.539 | 0.265 | 0.90 | 0.544 / 0.323 |
+| **STCt** + cell NPP/GPP from the original (bound) | 0.566 | 0.350 | 0.88 | 0.566 / 0.390 |
+| **STTt** + each tree's own NPP from the original (bound) | 0.652 | 0.458 | 0.83 | 0.646 / 0.487 |
+| ORACLE (ceiling) | 1 | 0.697 | 0.68 | 1 / 0.714 |
+
+**Pre-registered readings.** (1) Hypothesis "the year's carbon balance is what the models lack": the best bound
+reaches 0.458 < 0.5 ⇒ **refuted as stated.** The carbon balance explains about half of the missing die-off signal
+(the tree's own NPP closes (0.458 − 0.235)/(0.697 − 0.235) = 48 % of the gap to the ceiling; the cell's NPP 25 %);
+the rest is what the original tracks per tree beyond one year's NPP (leaf carbon against the sapling threshold, the
+five-bad-years counter) and chance. (2) STCe: capture +0.030 < 0.05 ⇒ **not worth a free-running test.** It keeps
+(0.265 − 0.235)/(0.350 − 0.235) = **26 %** of the cell-carbon bound's gain — the same limit as ADR 0366 on the panel:
+the emulated year-to-year NPP departures track the original's only at r = 0.673 (all cells; lower on held-out ones).
+**So the lever for die-offs is a better daily NPP (its departures from normal), and beyond that a per-tree carbon
+state; a better tree-death network alone cannot get there.**
+
