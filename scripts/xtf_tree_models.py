@@ -134,12 +134,13 @@ def transform(d, cols):
     return np.nan_to_num(x).astype(np.float32)
 
 
-def patch_batches(d, tree_cols, cc, nt, nc):
-    """Sort a frame into patch-year sets: arrays in sorted order + each set's [start, end) and the original row."""
+def patch_batches(d, tree_cols, cc, nt, nc, solo=False):
+    """Sort a frame into patch-year sets: arrays in sorted order + each set's [start, end) and the original row.
+    solo (arm ST1, post-hoc control of ADR 0368 section 7): every tree is a set of its own."""
     pk = ["seed", "gcm", "ssp", "Cell", "Patch", "Year"]
     d = d.with_row_index("_r").sort(pk)
     new = d.select(pl.any_horizontal([pl.col(c) != pl.col(c).shift(1) for c in pk]).fill_null(True))
-    starts = np.flatnonzero(new.to_series().to_numpy())
+    starts = np.arange(d.height) if solo else np.flatnonzero(new.to_series().to_numpy())
     ends = np.r_[starts[1:], d.height]
     X = (transform(d, tree_cols) - nt[0]) / nt[1]
     C = (transform(d, cc) - nc[0]) / nc[1]
@@ -199,10 +200,11 @@ def train_st(a):
     tr, va = train_frame()
     tc, cc = [c for c in TREE_F if c != "Type"], cell_cols()
     nt, nc = _norm_stats(tr, tc), _norm_stats(tr, cc)
-    Xt, Ct, Tt, Yt, _, st, en = patch_batches(tr, tc, cc, nt, nc)
-    Xv, Cv, Tv, Yv, _, sv, ev = patch_batches(va, tc, cc, nt, nc)
+    solo = a.arm == "ST1"
+    Xt, Ct, Tt, Yt, _, st, en = patch_batches(tr, tc, cc, nt, nc, solo)
+    Xv, Cv, Tv, Yv, _, sv, ev = patch_batches(va, tc, cc, nt, nc, solo)
     big = int(((en - st) > 128).sum())
-    log(f"ST s{a.seed}: train {len(st):,} patch-years / {len(Xt):,} trees, val {len(sv):,}; "
+    log(f"{a.arm} s{a.seed}: train {len(st):,} patch-years / {len(Xt):,} trees, val {len(sv):,}; "
         f"patch-years with > 128 trees (only the first 128 scored): {big}")  # fmt: skip
     net = build_set_model(len(tc), len(cc)).to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=a.lr, weight_decay=0.01)
@@ -235,10 +237,10 @@ def train_st(a):
             best = vl
             best_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
     net.load_state_dict(best_state)
-    os.makedirs(f"{DATA}/ST_s{a.seed}", exist_ok=True)
-    torch.save({"state": net.state_dict(), "nt": nt, "nc": nc, "tc": tc, "cc": cc, "val": best},
-               f"{DATA}/ST_s{a.seed}/model.pt")  # fmt: skip
-    log(f"saved ST_s{a.seed} (best val log loss {best:.5f})")
+    os.makedirs(f"{DATA}/{a.arm}_s{a.seed}", exist_ok=True)
+    torch.save({"state": net.state_dict(), "nt": nt, "nc": nc, "tc": tc, "cc": cc, "val": best, "solo": solo},
+               f"{DATA}/{a.arm}_s{a.seed}/model.pt")  # fmt: skip
+    log(f"saved {a.arm}_s{a.seed} (best val log loss {best:.5f})")
 
 
 def st_predict(net, X, C, T, starts, ends, dev, batch=2048):
@@ -280,10 +282,13 @@ def pred_frames():
 
 
 def stage_predict(a):
-    name = a.arm if a.arm in ("P0", "P1") else f"ST_s{a.seed}"
+    name = a.arm if a.arm in ("P0", "P1", "ORACLE") else f"{a.arm}_s{a.seed}"
     os.makedirs(f"{DATA}/{name}", exist_ok=True)
     out = []
-    if a.arm in ("P0", "P1"):
+    if a.arm == "ORACLE":  # the original's own probability as a "prediction": the ceiling of every score
+        for d in pred_frames():
+            out.append(d.select(KEYS_OUT).with_columns(pl.col("oracle").fill_null(1.0).alias("p")))
+    elif a.arm in ("P0", "P1"):
         import lightgbm as lgb
 
         b = lgb.Booster(model_file=f"{DATA}/{a.arm}/model.txt")
@@ -299,7 +304,7 @@ def stage_predict(a):
         net = build_set_model(len(ck["tc"]), len(ck["cc"])).to(dev)
         net.load_state_dict(ck["state"])
         for d in pred_frames():
-            X, C, T, _, R, st, en = patch_batches(d, ck["tc"], ck["cc"], ck["nt"], ck["nc"])
+            X, C, T, _, R, st, en = patch_batches(d, ck["tc"], ck["cc"], ck["nt"], ck["nc"], ck.get("solo", False))
             p = np.empty(d.height, np.float32)
             p[R] = st_predict(net, X, C, T, st, en, dev)
             out.append(d.select(KEYS_OUT).with_columns(pl.Series("p", p)))
@@ -425,14 +430,14 @@ def decide(df):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["train", "predict", "score"])
-    ap.add_argument("--arm", default="P0", choices=["P0", "P1", "ST"])
+    ap.add_argument("--arm", default="P0", choices=["P0", "P1", "ST", "ST1", "ORACLE"])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--lr", type=float, default=1e-3)
     a = ap.parse_args()
     if a.stage == "train":
-        (train_lgb if a.arm in ("P0", "P1") else train_st)(a)
+        (train_lgb if a.arm in ("P0", "P1") else train_st)(a)  # ST1 = ST with one tree per set
     else:
         {"predict": stage_predict, "score": stage_score}[a.stage](a)
     log("=== DONE")
