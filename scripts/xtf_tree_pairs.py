@@ -7,9 +7,10 @@ one clustered nitrogen-on leg (ADR 0342).
 
 At-risk tree of year y (2021-2100): a tree of types 0-6 alive at the end of y-1 (the table carries trees >= 5 m).
 Identity (Cell, Patch, Type, ID, SLA), asserted unique per year; every tree found in y must be exactly one year older.
-Outcome died = a row in y with isdead = 1, or no row in y. patch_loss = no tree of the patch-year has a row in y
-(a whole-patch kill; measured 2026-10-23 to be the ONLY way a tree goes missing). oracle = 1 - (1 - mort)(1 -
-mort_fire) of the tree's year-y row (the original's own probability; null without a row).
+Outcome died = a row in y with isdead = 1, or no row in y (0-1 trees per leg; patch_loss flags a patch-year where
+no tree has a row in y -- none were found). oracle = clip(mort, 0, 1) of the tree's year-y row, the original's own
+death probability, which in the merged nitrogen-on model ALREADY includes fire (trees with mort_fire 0.29 have mort
+0.32 and die at 0.32; sum mort / deaths 0.93). Null without a row.
 Kept: every patch-year of the held-out cells; a fixed 15 % of the other patch-years (hash of Cell, Patch, Year).
 Inputs are the y-1 state (never the mort* columns) + patch summaries at y-1; the cell's climate is joined later
 (xtf_tree_models.py) from clu_non/climate.
@@ -64,7 +65,7 @@ def build(seed, gcm, ssp):
     j = j.with_columns(
         (pl.col("dead_y").is_null() | (pl.col("dead_y") == 1)).alias("died"),
         pl.col("dead_y").is_null().all().over(pk).alias("patch_loss"),
-        (1 - (1 - pl.col("mort").clip(0, 1)) * (1 - pl.col("mort_fire").clip(0, 1))).alias("oracle"),
+        pl.col("mort").clip(0, 1).alias("oracle"),  # already includes fire in this model (measured, ADR 0368 2a)
     )
     gone = j.filter(pl.col("dead_y").is_null() & ~pl.col("patch_loss")).height  # counted as deaths, reported
     assert gone <= 1e-5 * j.height, f"{gone} trees missing in y outside a whole-patch loss"

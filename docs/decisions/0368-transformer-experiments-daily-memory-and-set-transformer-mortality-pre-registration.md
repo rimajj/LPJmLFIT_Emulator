@@ -66,9 +66,10 @@ model with hand-made patch summaries may already carry it.
 **Data** (`scripts/xtf_tree_pairs.py`, new): from the clustered `ind_<scen>.csv` of seeds 2 and 3, every leg with
 both members. At-risk tree of year y = a tree of types 0–6, alive at the end of y−1 (the table carries trees ≥ 5 m).
 Identity (Cell, Patch, Type, ID, SLA), asserted unique; every found tree must be exactly one year older (asserted).
-**Outcome** = dies in y: a row with `isdead = 1`, or no row in y. Measured on 60 cells of one leg: every tree without
-a row in y belongs to a patch that lost ALL its trees that year (1 467 of 119 992 patch-years, 1.2 % of at-risk
-trees) — a whole-patch kill. Counted as deaths, and reported apart (`patch_loss`). **Inputs per tree (state at the
+**Outcome** = dies in y: a row with `isdead = 1`, or no row in y. ~~Measured on 60 cells of one leg: every tree
+without a row in y belongs to a patch that lost ALL its trees that year (1 467 of 119 992 patch-years, 1.2 % of
+at-risk trees) — a whole-patch kill.~~ **Struck (§2a): that check paired the year-2100 trees with a year 2101 that does
+not exist; the 1 467 patch-years are those. Trees missing without a row are 0–1 per leg.** **Inputs per tree (state at the
 end of y−1):** Type, height, maximum height, age, aboveground biomass, vegetation carbon, NPP, transpiration, SLA,
 longevity, wood density, LAI, stem diameter, bark thickness, crown cover (`fpc_ind`), `minwscal`, D95, D95max,
 NFixing. **Per cell and year:** latitude, CO2 of y, and from the daily weather of y and y−1: mean temperature,
@@ -84,7 +85,8 @@ oracle below).
 * **ST** — set transformer: tokens = the patch's trees (the P0 tree inputs, type embedding) + one context token (the
   cell inputs); width 128, 4 layers, 4 heads, no positional encoding (a set); per-tree output = logit of death.
   BCE loss, AdamW, 3 seeds.
-* **Oracle (bound, not a model):** the original's own probability p = 1 − (1 − `mort`)(1 − `mort_fire`) of year y.
+* **Oracle (bound, not a model):** the original's own death probability of year y, ~~p = 1 − (1 − `mort`)(1 −
+  `mort_fire`)~~ **p = min(1, `mort`)** (§2a).
   **Climatology:** the training-set death rate per tree type.
 
 Training: seed 2, the 8 training climate models × 3 scenarios, training cells, 2021–2100 (every at-risk tree for ST;
@@ -120,11 +122,14 @@ it is not a free run):**
   their trailing 30-year means (`clu_emu_maps.window`), + CO2 of y + latitude. Same for every arm.
 * **Experiment 2, sample:** the tables keep every patch-year of the held-out cells and a fixed 15 % of the other
   patch-years (hash of cell, patch, year). All three arms train on the same kept training-cell trees.
-* **Experiment 2, whole-patch losses:** trees of a whole-patch loss have no year-y row, hence no oracle probability.
-  Skill, Brier and calibration are computed WITHOUT them; their log loss is reported apart (`ll_patch_loss`). The
-  climatology is fitted on the training trees without them. The builder found 1 tree in one full leg missing
-  outside a whole-patch loss; such trees count as deaths and are reported (`lone missing trees`), and the build
-  fails if they exceed 1e-5 of the at-risk trees.
+* **Experiment 2, no whole-patch losses:** the 1.2 % "whole-patch kill" of §2 was my check's error (year-2100 trees
+  looked up in a non-existent 2101). In the real tables 0–1 trees per leg go missing without a row; they count as
+  deaths and, having no oracle, are left out of skill / Brier / calibration (the build fails above 1e-5 of the
+  at-risk trees). `patch_loss` is kept as a flag and is empty.
+* **Experiment 2, oracle:** in the merged nitrogen-on model the per-tree `mort` ALREADY includes fire (trees with
+  `mort_fire` 0.29 have `mort` 0.32 and die at 0.32; 120 cells of one leg). The pre-registered 1 − (1 − `mort`)(1 −
+  `mort_fire`) counted fire twice (Σ p / deaths 1.11–1.26); **the oracle is min(1, `mort`)** (Σ / deaths 0.93, the
+  rest is chance). Found from the first builds' calibration print, before any model was fitted; tables rebuilt.
 * **Experiment 2, set size:** a patch-year with more than 128 at-risk trees is fed its first 128; the rest get the
   patch's mean prediction (their number is logged at training).
 
