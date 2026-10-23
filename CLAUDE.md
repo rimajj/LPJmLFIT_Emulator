@@ -785,6 +785,14 @@ and the daily training-data generator. It is **not** the coupling path (ADR 0014
   RECRUITS are established after the mortality call at exactly the sapling leaf carbon, so ~70 % of age-0 rows read
   r < 1 by the writer's 6 digits — exclude age 0 before calling any survivor "below the threshold". Script
   `scripts/diagnose_hardkill_cause.py` (+ `_harness.py`).
+- ⚠ **THE BAD-YEARS COUNTER IS RECOVERABLE FROM THE `ind` TABLE, BUT NOT FROM ONE ROW (`[VERIFIED 2026-10-23]`, ADR
+  0369; merged nitrogen-on model, `/home/jamirp/lpjml-fit/src/tree/mortality_tree_ind.c`, `BM_INC_COUNTER_MAX` = **10**
+  there, not 5).** `mort_npp = mort_max/(1+0.2·exp(k_mort·dB/leafarea))·(1+c)`, so q = mort_npp/mort_max > 1/1.2 marks a
+  bad year (dB < 0) EXACTLY, and c ∈ [q−1, 1.2q−1) — one integer only up to c = 4. Reconstruct c as the run of bad
+  years along the tree's own history (key Cell, Patch, Type, ID, SLA), a run already going at the tree's first row
+  starting at the smallest value its rows allow: then 100 % of bad-year rows are consistent and leaf margin < 1 or
+  c ≥ 10 explains 98.6 % of hard kills, and every tree flagged by them dies (`scripts/xtf_tree_pairs.py::with_state`).
+  The one-row inversion called c = 9 for 3 617 trees whose real counter hit 10.
 - **READ A `.js` PARAMETER VALUE WITH `cpp -P`, NEVER BY EYE — and check for DUPLICATE KEYS
   (`[VERIFIED 2026-08-04]`, ADR 0047).** LPJmL parses its own parameter files by piping them through the C
   preprocessor (`src/lpj/openconfig.c:28` `#define cpp_cmd "cpp"`, `popen` at `:467`), so the authoritative

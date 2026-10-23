@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0369**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0370**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,23 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-23 (afternoon) — owner: "place test, cheap memory, per-tree carbon state … Stop here" (ADR 0369, separate
+experiment, nothing into the paper).** All runs finished, results in ADR 0369 §6.
+* **Place test:** the no-memory transformer + a fixed 52-number description of the cell's climate (TP) recovers
+  56–91 % of what the past year of weather gave (NPP single-year 1.64 → 1.41, TW 1.31) ⇒ "partly". TP costs 1.15e-2
+  core-s per cell-year (9× the deployed network, 1/40 of TW).
+* **Cheap memory in the deployed MLP** (`xtf_daily.py` arms MR/MP/ME/MM/MEP/MMP, 3 seeds): single-year errors −10 %
+  (MEP NPP 1.81 → 1.63, ET 1.71 → 1.53), NPP departure r 0.71 → 0.81, cost 1.4–1.75e-3 (≤ 1.35× B) — but no 30-yr gain
+  beyond seed noise ⇒ no arm qualifies. Die-offs with MEP's NPP unchanged (capture 0.265 = STCe).
+* **Per-tree carbon state** (tables `xtf/trees_v2`: leaf-carbon margin + bad-years counter, exact from `ind`; the
+  counter must be followed along each tree's history — a one-row inversion is ambiguous above 5): true state of the
+  year ⇒ die-off capture 0.508 (bound, skill 0.80); deployable (carbon-state model + emulated NPP) 0.283–0.291; with the
+  original's NPP 0.385 ⇒ not worth a free-running test; the lever stays the NPP of the extreme years.
+**Next (owner to choose; owner said stop here):** (y1) a release candidate from MEP for its −10 % daily errors at ~1.2×
+cost (scored in the complete emulator on the emulated stand, as ADR 0367); (y2) aim the daily NPP at the extreme
+years (score by die-off capture with STKe as the judge); (y3) the transformer + place as a daily model (9× cost, still
+far below the original); (y4) stop.
 
 **2026-10-23 — owner "n1": soil texture in the daily model + mortality re-score (ADR 0367): neither adopted.**
 * Package `landemu` now accepts an optional soil-texture table in `daily.npz` (texture-free releases unchanged, gated

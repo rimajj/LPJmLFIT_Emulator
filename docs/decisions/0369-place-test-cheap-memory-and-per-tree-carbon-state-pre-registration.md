@@ -1,6 +1,6 @@
 # 0369 — Three follow-ups of the transformer experiments: is the memory gain just a description of the place, can the deployed daily network carry the memory cheaply, and does a per-tree carbon state catch the die-offs? (pre-registration, SEPARATE EXPERIMENT)
 
-* **Status:** pre-registered 2026-10-23, before any fit of this record. Results: §6, added after the runs.
+* **Status:** pre-registered 2026-10-23, before any fit of this record. Results: §6, added after the runs. **A: the place explains PART of the memory gain (56–91 %). B: no cheap-memory network passes (single-year errors −10 %, 30-yr gains within seed noise), cost 1.4–1.7e-3 core-s/cell-year; die-offs unchanged. C: the true per-tree carbon state reaches die-off capture 0.51 (bound), the deployable route 0.28–0.29 — not worth a free-running test.**
 * **SEPARATE EXPERIMENT — nothing of it enters the paper or the release package** (owner 2026-10-23 for the
   transformer experiments of ADR 0368, which this record continues). Code: `scripts/xtf_daily.py` (new arms),
   `scripts/xtf_tree_pairs.py` (tables v2 with the carbon state), `scripts/xtf_tree_models.py` (new arms),
@@ -100,10 +100,89 @@ this record.)
 No change to any release, no free-running tree model, no full-grid run, nothing in the paper. Experiment C is
 teacher-forced: each year starts from the original's own trees and their true state at y−1.
 
-## 5. Amendments
+## 5. Amendments (all before any score of the arm they touch)
 
-(none yet)
+* **Tables v2, zero-leaf trees:** 671 rows per leg have LAI 0 in the death year (leaf margin 0/0 = NaN); the loader
+  sets their log margin to the floor log(1e-3) instead of letting `nan_to_num` turn it into margin 1. Found on the
+  first built table, before any carbon-state fit.
+* **Bench:** the smoke-test costs (MMP 6.5e-3, MEP 4.3e-3) timed the one-off set-up of the online extras (30-year
+  place description, warm-up of the running means) inside the timed loop, and the 12-month blocks were re-averaged
+  over the whole ring each day. Fixed before the real bench: set-up outside the loop, 12 running block sums
+  (2 × 48 additions per cell per day), checked against the free-run inputs. The first real bench failed (`taskset`
+  to a core outside the allocation) and was rerun with one thread.
+* **Smoke-test outputs** (`*_s99` daily runs, `STKe_s9` / `STKt_s9`) deleted before scoring.
 
-## 6. Results
+## 6. Results (2026-10-23)
 
-(to be added after the runs)
+Decision group = held-out cells × held-out climate models (IPSL, MPI), seed means; ratio = typical error ÷ a second
+run's. Files: `xtf/daily/score_summary.csv`, `anomaly.csv`, `logs/xtf-369bench.2696298.out`,
+`xtf/treemort/score.csv`, `logs/xtf-369tscore.2693630.out`, `logs/xtf-369mep.score.2696305.out`;
+`scripts/xtf_0369_decide.py` applies §1–3.
+
+### 6.1 Daily networks
+
+| arm | NPP single-yr | NPP 30-yr late | ET single-yr | ET 30-yr | runoff single-yr | runoff 30-yr | GPP single-yr | NPP departure r | one-core cost (core-s / cell-yr) |
+|---|---|---|---|---|---|---|---|---|---|
+| B deployed (5 seeds) | 1.82 | 2.05 | 1.71 | 2.39 | 8.28 | 5.41 | 1.30 | 0.72 | 1.30e-3 |
+| MR retrained control | 1.81 | 2.06 | 1.71 | 2.35 | 8.18 | 5.29 | 1.31 | 0.71 | 1.50e-3 |
+| MP + place | 1.71 | 1.83 | 1.78 | 2.55 | 8.03 | 5.54 | 1.26 | 0.75 | 1.42e-3 |
+| ME + running-mean bank | 1.64 | 1.75 | 1.50 | 2.08 | 7.74 | 4.90 | 1.22 | 0.77 | 1.57e-3 |
+| MM + past 12 months | 1.63 | 1.75 | 1.60 | 2.19 | 7.92 | 4.96 | 1.20 | 0.75 | 1.75e-3 |
+| **MEP** bank + place | **1.63** | 1.89 | 1.53 | 2.10 | 7.72 | 4.94 | 1.17 | **0.81** | 1.53e-3 |
+| MMP 12 months + place | 1.66 | 1.83 | 1.67 | 2.32 | 7.87 | 5.43 | 1.22 | 0.74 | 1.73e-3 |
+| TC transformer, no memory | 1.64 | 1.79 | 1.46 | 2.05 | 7.53 | 5.02 | 1.19 | 0.80 | 1.12e-2 (ADR 0368) |
+| **TP** TC + place | **1.41** | **1.55** | **1.27** | **1.70** | 7.00 | 4.65 | 1.08 | **0.82** | 1.15e-2 |
+| TW transformer, past year | 1.31 | 1.47 | 1.18 | 1.63 | 6.95 | 4.37 | 1.01 | 0.81 | 0.45 (ADR 0368) |
+
+(Seed spreads, single-year / 30-yr: NPP 0.16 / 0.34, ET 0.10 / 0.29, runoff 0.39 / 0.63 — max of B's and MR's.
+Drift 0.90–0.96 for every arm, none worse than MR beyond the spread; area totals within 0.2–2 %. The held-out cells ×
+training climate models give the same order: NPP single-year B 1.77, MR 1.77, MEP 1.54, TC 1.56, TP 1.37, TW 1.28.)
+
+**A, place test — PARTLY.** Gain share (TC − TP)/(TC − TW), single-year / 30-yr: NPP 0.69 / 0.76, ET 0.67 / 0.83,
+runoff 0.91 / 0.56. No flux reaches 0.75 on both, none is within the spread, so by the rule: partly. In words: a fixed
+52-number description of the place's climate recovers roughly two thirds to three quarters of what the past year of
+raw weather gave the transformer; the rest is genuine memory. TP's year-to-year NPP departures track the original
+as well as TW's (0.82 vs 0.81) at 1/40 of its cost.
+
+**B, cheap memory — no arm qualifies.** Every memory arm beats MR on single-year errors by more than the spread for
+at least one flux (ME and MEP for NPP, ET and runoff), but no arm's late 30-year gain exceeds the 30-year seed spread
+(0.29–0.63), so the "both statistics" rule fails everywhere. All are cheap (1.4–1.75e-3, ≤ 1.35× B). They keep about
+a third of the transformer-with-memory's gain (MEP: NPP 0.37, ET 0.34, runoff 0.37). The place description helps the
+MLP much less than it helps the transformer (MP 1.71 vs TP 1.41 NPP single-year). Chosen for the die-off re-score
+(lowest NPP single-year): **MEP, not qualifying**. Its NPP departures r = 0.81 (B 0.72; all cells 0.740 vs 0.673).
+
+### 6.2 Tree deaths with the per-tree carbon state (teacher-forced one year ahead)
+
+| arm (2 seeds; spread ≤ 0.004 skill, ≤ 0.013 capture) | skill | die-off capture | 30-yr rate vs 2nd run | × training models: skill / capture |
+|---|---|---|---|---|
+| ST (ADR 0368) | 0.531 | 0.235 | 0.89 | 0.536 / 0.313 |
+| STCe (ADR 0368) | 0.539 | 0.265 | 0.90 | 0.544 / 0.323 |
+| STK + margin & counter at y−1 | 0.602 | 0.253 | 0.84 | 0.612 / 0.324 |
+| STKCe + the deployed networks' cell carbon | 0.612 | 0.282 | 0.81 | 0.621 / 0.334 |
+| STKe + carbon-state model (deployed networks' carbon) | 0.624 | 0.283 | 0.84 | 0.634 / 0.341 |
+| STKc + carbon-state model (the original's cell carbon) | 0.651 | 0.385 | 0.78 | 0.657 / 0.428 |
+| STKt + the TRUE state of year y (bound) | **0.804** | **0.508** | 0.76 | 0.803 / 0.533 |
+| STCmep = STCe with MEP's carbon | 0.543 | 0.265 | 0.92 | — |
+| STKmep = STKe with MEP's carbon | 0.626 | 0.291 | 0.85 | — |
+| ORACLE (the original's own probability) | 1 | 0.697 | 0.68 | 1 / 0.714 |
+
+Carbon-state model, held-out × held-out models: next year's log margin r = 0.994; bad-year log loss 0.196 (deployed
+networks' carbon) / 0.177 (original's) / 0.195 (MEP's) vs 0.441 for the base rate 0.161.
+
+**Pre-registered readings.** (1) The true per-tree state carries the die-off signal: STKt 0.508 ≥ 0.5 — **yes** (and
+skill 0.80, the largest of any arm); even a perfect state leaves 0.19 of the oracle's capture, which is chance and the
+hazards' own dependence on the counter. (2) State alone: STK − ST = +0.018 capture (< 0.03) but +0.07 skill. (3) Worth
+a free-running test: STKe 0.283 vs STCe + 0.05 = 0.315 — **no**. (4) The carbon-state model adds beyond feeding its
+inputs: STKe − STKCe = +0.001 — **no**. (5) Share of the bound kept (STKe − ST)/(STKt − ST) = **0.18**; with a
+perfect daily NPP the same route reaches 0.385 (the daily model's limit is 0.10 of capture). (6) The cheaper memory
+does not help the die-offs: STCmep − STCe = +0.001, STKmep − STKe = +0.007, although its NPP departures are better
+(r 0.74 vs 0.67).
+
+**Reading.** The die-offs are decided by the per-tree carbon state (the leaf-carbon margin and the run of bad years),
+and the state's year-y value follows the year's carbon balance almost deterministically (r 0.994 for the margin). What
+breaks the deployable chain is the year's NPP: the emulated cell NPP — from the deployed networks or the cheaper
+memory ones — is not accurate enough in the bad years to move trees across the two thresholds (capture 0.28–0.29
+vs 0.385 with the original's NPP and 0.51 with the true state). Improving the daily NPP's typical error (MEP: −10 %)
+or its departure correlation (0.67 → 0.74) did not move the die-off capture; what matters is the NPP of the few
+extreme years.
+

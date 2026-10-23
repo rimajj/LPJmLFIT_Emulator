@@ -1988,3 +1988,18 @@ Part B (jobs 2672161–7): 165 emulator run-legs (G2 gates bit-exact), arm `BCET
 capture 0.433 vs 0.430, 30-yr 1.517 both, anomaly correlation +0.002. Reading: texture improves the NPP level per cell;
 the die-off signal lives in the yearly anomaly, which did not change. Suggested next: the perfect-stand-NPP bound.
 Other sessions' jobs (`emu-clu-*`, `xtf-*`) appeared in the queue meanwhile; left alone.
+
+## 2026-10-23 (afternoon) — ADR 0369: place test, cheap memory, per-tree carbon state (separate experiment)
+Owner: "Place test … Cheap memory … Per-tree carbon state … Stop here." Pre-registered ADR 0369 (commit 76d3ac42)
+before any fit. Daily: `xtf_daily.py` gained arms TP (TC + place), MR/MP/ME/MM/MEP/MMP (MLP + place / exponential
+running-mean bank / past-12-month means); jobs 2693205 (train, 41 min), 2693213 (21 free runs, 2 h 12 min), 2693214
+(score), 2696298 (bench; the first bench in 2693214 failed on `taskset`). Trees: `xtf_tree_pairs.py` v2 (60 legs,
+2692989) with leaf-carbon margin and bad-years counter; the first counter inversion (one row) was ambiguous above 5 —
+switched to the run of bad years along each tree's history, then 100 % of bad-year rows consistent, 98.6 % of hard
+kills explained, all flagged trees die. `xtf_tree_models.py` gained the cross-fitted carbon-state model and the STK
+arms; jobs 2693220, 2693630, 2696305 (MEP re-score). Smoke tests 2693043 / 2693181 caught a bench timing error
+(set-up inside the timed loop) and a NaN margin for leafless trees; both fixed before the real runs, smoke outputs
+deleted. Results: place explains part (56–91 %) of the memory gain; no cheap-memory arm qualifies (single-year −10 %,
+30-yr within noise); true state → capture 0.51, deployable 0.28–0.29. Other sessions' jobs (`gi-*`) seen in the queue;
+left alone.
+
