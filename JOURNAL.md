@@ -1975,3 +1975,16 @@ judge on the clustered runs, more data allowed but no full grid. Ran 24 seed-3 l
 second run; pre-registered; caught two of my own errors before any fit (a year-2101 artefact posing as whole-patch
 kills; fire double-counted in the oracle because the merged model's `mort` already contains it) and a code bug (an
 embedding named `type` shadows `nn.Module.type`).
+
+## 2026-10-23 — soil texture in the complete emulator's daily model; mortality re-scored (ADR 0367)
+
+Owner: improve the daily NPP (the mortality lever), using soil texture (ADR 0348: −13…−16 % NPP error, not shipped),
+then re-score the per-tree mortality model. Pre-registered ADR 0367 before any run. No retraining: the ten texture
+networks of ADR 0348 already existed. Added an optional soil table to the package, a release-swap script (copy a
+release, replace only `daily.npz`), built `v2tex` + five fold copies (all gates pass). Part A (complete emulator,
+emulated stand, two seed pairs; GPU jobs 2672155–7): NPP 0.884 / 0.844, all 28 leg-windows better in both pairs, cost
+unchanged; fails on the hottest leg (IPSL ssp585 late: ET drift +0.10, GPP 1.13–1.15) and pair a's GPP median = 1.050.
+Part B (jobs 2672161–7): 165 emulator run-legs (G2 gates bit-exact), arm `BCET` fits with identical rows to `BCE`;
+capture 0.433 vs 0.430, 30-yr 1.517 both, anomaly correlation +0.002. Reading: texture improves the NPP level per cell;
+the die-off signal lives in the yearly anomaly, which did not change. Suggested next: the perfect-stand-NPP bound.
+Other sessions' jobs (`emu-clu-*`, `xtf-*`) appeared in the queue meanwhile; left alone.

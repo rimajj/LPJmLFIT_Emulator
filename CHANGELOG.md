@@ -12,7 +12,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (`landemu`) reads an optional soil-texture table from `daily.npz` (four columns after every other input; releases
   without it unchanged, unit test added); `scripts/build_release_daily_swap.py` (copy a release with only its daily
   networks replaced, three gates) → releases `v2tex`, `fold_<g>_v3tex`; `run_emulator_npp.py --variant tex`;
-  arm `BCET` and `--out-suffix` in `explore_panel_treemort.py`.
+  arm `BCET` and `--out-suffix` in `explore_panel_treemort.py`. Result: neither adopted — complete-emulator NPP error −12/−16 %
+  but the hottest leg drifts; mortality die-off capture 0.433 vs 0.430.
 - **Per-tree mortality fed the emulator's own NPP (ADR 0366, not adopted):** `scripts/build_emulator_forcing.py`
   (weather arrays for every scenario leg), `scripts/run_emulator_npp.py` (start files for runs m5/m6, emulator runs
   with a 2000–2019 emulated-NPP history, the emulated-NPP table), arm `BCE` + clean-cell score in

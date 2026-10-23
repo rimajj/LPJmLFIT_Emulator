@@ -44,6 +44,23 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-23 — owner "n1": soil texture in the daily model + mortality re-score (ADR 0367): neither adopted.**
+* Package `landemu` now accepts an optional soil-texture table in `daily.npz` (texture-free releases unchanged, gated
+  bit for bit). `scripts/build_release_daily_swap.py` copies a release with only its daily networks replaced → built
+  `v2tex`, `fold_<g>_v3tex` (5 models) with ADR 0348's texture networks; all gates pass.
+* **Complete emulator (emulated stand), two seed pairs:** NPP error 0.884 / 0.844 of the release's (all 28 leg-windows
+  better in both — the whole gain survives, unlike ADR 0362), ET 0.96/0.97, runoff 0.97/0.91, cost unchanged. Fails
+  the pre-registered rule: hottest leg (IPSL ssp585, late) gets worse in both pairs — ET drift +0.10 in pair b (limit
+  0.08), GPP 1.13/1.15 — and pair a's GPP median sits on the 1.05 limit. Release stays `v4`.
+* **Mortality `BCET`** (165 emulator run-legs, 5 fits): capture 0.433 vs `BCE` 0.430, 30-yr rate 1.517 vs 1.517, anomaly
+  correlation +0.002. Texture fixes each cell's NPP LEVEL; the die-off inputs are anomalies, where a level cancels.
+**Next (owner to choose):** (q1) measure capture with a PERFECT stand-level NPP (the original's stand NPP fed as `BCE`'s
+inputs; ~1 h, no emulator runs) — decides whether any daily model can reach the 0.5 bar on this route; (q2) if yes,
+aim the daily model at the yearly NPP anomaly (score it by the anomaly correlation, now 0.63) instead of its 30-yr
+error; (q3) ship texture anyway for its NPP gain, accepting the hot-leg drift (owner's call); (n2)/(n3) of the block
+below still open.
+Note: other jobs under the account (`emu-clu-*`, `xtf-*`) were running at the same time — not this session's.
+
 **2026-10-23 (morning) — owner: transformer experiments, SEPARATE, NOTHING INTO THE PAPER (ADR 0368).** Owner also:
 *"for now we should only judge how well the emulator reproduces the clustered runs it was trained on"* (held-out cells
 of those runs, training-cell fit beside it) and *"produce more data if you need it, just dont do full grid runs"*.
