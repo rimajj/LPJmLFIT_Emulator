@@ -7,6 +7,11 @@ Arms on the clustered nitrogen-on runs (ADR 0342), everything but the network id
   TC  transformer, state token = B's whole input vector + ONE token of today's raw weather   (capacity control)
   TW  transformer, state token = B's inputs WITHOUT the six running means + the past 364 days of raw weather
       (14 daily tokens + 50 weekly-mean tokens)                                                  (memory arm)
+ADR 0369 (same experiment family, also not for the paper):
+  TP  TC + a fixed description of the place in the state token (place test)
+  MR  the deployed MLP 256x3 retrained in this script (pipeline control for the M* arms)
+  MP / ME / MM / MEP / MMP   MLP + place / + learned running averages (exponential bank) / + the past 12 months'
+      30-day means / combinations                                                             (cheap memory)
 
   train --arm TC|TW --seed s        -> DATA/runs/<arm>_s<s>/model.pt
   run   --arm B|TC|TW --seed s      free runs, members 2 and 3, every leg with both -> annual.npz
@@ -42,6 +47,13 @@ TRAIN_LEGS = [f"{g}_{t}" for g in TRAIN_GCMS for t in ("ssp126", "ssp370", "ssp5
 WIN_COLS = [F.FEAT[k] for k in ("tas10", "tas30", "rsds30", "pr30", "pr90", "pr365")]
 ND_TOK, NW_TOK = 14, 50  # TW: daily tokens t..t-13, weekly-mean tokens ending t-14-7k
 NV = 4  # token variables: tas, log1p(rain), rsds, lwnet
+# ADR 0369: arm -> (network, extra input groups appended to B's input vector)
+ARMS = {"B": ("B", ()), "TC": ("T", ()), "TW": ("T", ()), "TP": ("T", ("place",)), "MR": ("M", ()),
+        "MP": ("M", ("place",)), "ME": ("M", ("ema",)), "MM": ("M", ("mon",)), "MEP": ("M", ("ema", "place")),
+        "MMP": ("M", ("mon", "place"))}  # fmt: skip
+EMA_TAU = (3, 7, 15, 30, 60, 120, 240, 480)  # days
+NMON = 12  # 30-day blocks of the past 360 days
+PLACE_YEARS = 30  # the place description: 2020-2049 of the leg's own forcing (fixed for the whole run)
 
 
 def log(*a):
@@ -97,7 +109,7 @@ class TokenStore:
         """Tokens for (leg[i], cell[i], model day[i]) -> (B, L, 4); model day d = forcing day WARM + d."""
         s = self.all if src is None else src
         t = day + F.WARM
-        if arm == "TC":
+        if arm in ("TC", "TP"):
             return s[leg, 0, cell, t][:, None, :]
         jd = torch.arange(ND_TOK, device=t.device)
         jw = torch.arange(NW_TOK, device=t.device)
@@ -110,6 +122,78 @@ def token_norm(forc):
     raw, wk = token_sources(forc)
     return (np.stack([raw.reshape(-1, NV).mean(0), wk.reshape(-1, NV).mean(0)]),
             np.stack([raw.reshape(-1, NV).std(0), wk.reshape(-1, NV).std(0)]) + 1e-6)  # fmt: skip
+
+
+# ----------------------------------------------------------------------------------------------
+# ADR 0369 extra inputs: place description, exponential running-mean bank, past 12 months
+# ----------------------------------------------------------------------------------------------
+def raw_vars(forc):
+    """forc (nc, T, 5) -> (nc, T, 4) float64: tas, rain (mm/d, NOT logged), rsds, lwnet."""
+    return np.stack([forc[:, :, i].astype(np.float64) for i in range(4)], -1)
+
+
+def place_desc(forc):
+    """(nc, 52): mean seasonal cycle (12 bins of the year) of tas, log1p(rain), rsds, lwnet over 2020-2049 +
+    the SD of their daily values over the same 30 years. Fixed for the whole run."""
+    v = raw_vars(forc)[:, F.WARM : F.WARM + PLACE_YEARS * 365]
+    v[..., 1] = np.log1p(v[..., 1])
+    nc = v.shape[0]
+    mon = (np.arange(365) * 12) // 365
+    cyc = v.reshape(nc, PLACE_YEARS, 365, 4).mean(1)  # (nc, 365, 4)
+    m = np.stack([cyc[:, mon == j].mean(1) for j in range(12)], 1)  # (nc, 12, 4)
+    return np.concatenate([m.reshape(nc, 48), v.std(1)], -1).astype(np.float32)
+
+
+def ema_bank(forc):
+    """(nc, T, 32): exponential running means m_t = m_(t-1) + (x_t - m_(t-1)) / tau for the four variables and
+    the 8 time scales EMA_TAU; started at the mean of the warm-up year (2019). Rain enters as mm/d and is
+    reported as log1p(mean). The network learns how to combine the bank (a learned running average)."""
+    v = raw_vars(forc)
+    nc, T, _ = v.shape
+    K = len(EMA_TAU)
+    tau = np.tile(np.asarray(EMA_TAU, np.float64), 4)  # column var * K + k has time scale EMA_TAU[k]
+    out = np.empty((nc, T, 4 * K), np.float32)
+    m = np.repeat(v[:, : F.WARM].mean(1), K, axis=1)
+    for t in range(T):
+        m = m + (np.repeat(v[:, t], K, axis=1) - m) / tau
+        out[:, t] = m
+    rain = slice(len(EMA_TAU), 2 * len(EMA_TAU))
+    out[:, :, rain] = np.log1p(np.maximum(out[:, :, rain], 0))
+    return out
+
+
+class Extras:
+    """The extra input columns of one (member, leg) for an arm: at(d) -> (nc, k), take(c, d) -> (n, k)."""
+
+    def __init__(self, kinds, forc):
+        self.kinds = kinds
+        self.place = place_desc(forc) if "place" in kinds else None
+        self.ema = ema_bank(forc) if "ema" in kinds else None
+        if "mon" in kinds:
+            v = raw_vars(forc)
+            v[..., 1] = np.log1p(v[..., 1])
+            self.cum = np.concatenate([np.zeros_like(v[:, :1]), np.cumsum(v, 1)], 1)  # cum[:, t] = sum of days < t
+
+    def take(self, c, d):
+        t = d + F.WARM
+        parts = []
+        for k in self.kinds:
+            if k == "place":
+                parts.append(self.place[c])
+            elif k == "ema":
+                parts.append(self.ema[c, t])
+            else:  # block j = days t-30j-29 .. t-30j
+                hi = t[:, None] - 30 * np.arange(NMON)[None, :] + 1
+                blk = (self.cum[c[:, None], hi] - self.cum[c[:, None], hi - 30]) / 30.0  # (n, 12, 4)
+                parts.append(blk.reshape(len(c), NMON * NV).astype(np.float32))
+        return np.concatenate(parts, -1) if parts else np.zeros((len(c), 0), np.float32)
+
+    def at(self, d, nc):
+        return self.take(np.arange(nc), np.full(nc, d))
+
+
+def n_extra(kinds):
+    return sum({"place": 52, "ema": 4 * len(EMA_TAU), "mon": NMON * NV}[k] for k in kinds)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -136,7 +220,7 @@ class XNet(nn.Module):
         if arm == "TW":
             keep[WIN_COLS] = 0.0
         self.register_buffer("keep", keep)
-        L = 1 if arm == "TC" else ND_TOK + NW_TOK
+        L = 1 if arm in ("TC", "TP") else ND_TOK + NW_TOK
         self.inp = nn.Linear(len(mu), d)
         self.tok = nn.Linear(NV, d)
         self.pos = nn.Parameter(torch.randn(L, d) * 0.02)
@@ -156,6 +240,30 @@ class XNet(nn.Module):
         return head(o, prec, S_prev, self.ysd)
 
 
+class MNet(nn.Module):
+    """ADR 0369: the deployed MLP (256 x 3, SiLU, the f2_train.Net trunk) on B's inputs + the arm's extras."""
+
+    def __init__(self, mu, sd, ysd, arm, nh=256, nl=3):
+        super().__init__()
+        self.arm = arm
+        self.register_buffer("mu", torch.as_tensor(mu))
+        self.register_buffer("sd", torch.as_tensor(sd))
+        self.register_buffer("ysd", torch.as_tensor(ysd))
+        layers, n = [], len(mu)
+        for _ in range(nl):
+            layers += [nn.Linear(n, nh), nn.SiLU()]
+            n = nh
+        self.trunk = nn.Sequential(*layers, nn.Linear(n, 9))
+
+    def forward(self, x, seq, prec, S_prev):
+        return head(self.trunk((x - self.mu) / self.sd), prec, S_prev, self.ysd)
+
+
+def build_net(mu, sd, ysd, arm):
+    cls = MNet if ARMS[arm][0] == "M" else XNet
+    return cls(mu, sd, ysd, arm)
+
+
 def save(net, norm, path, extra):
     torch.save({"state": net.state_dict(), "tok_mu": norm[0], "tok_sd": norm[1], "arm": net.arm, **extra}, path)
 
@@ -163,7 +271,7 @@ def save(net, norm, path, extra):
 def load(path, dev):
     ck = torch.load(path, map_location=dev, weights_only=False)
     st = ck["state"]
-    net = XNet(*(st[k].cpu().numpy() for k in ("mu", "sd", "ysd")), ck["arm"]).to(dev)
+    net = build_net(*(st[k].cpu().numpy() for k in ("mu", "sd", "ysd")), ck["arm"]).to(dev)
     net.load_state_dict(st)
     return net.eval(), (ck["tok_mu"], ck["tok_sd"])
 
@@ -186,27 +294,34 @@ def stage_train(a):
     legs = TRAIN_LEGS[: a.nlegs] if a.nlegs else TRAIN_LEGS  # --nlegs: smoke tests only
     per = a.nsamp // len(legs)
     norm = token_norm(np.load(f"{F2N}/forc_m2_{TRAIN_LEGS[0]}.npy"))
-    store = TokenStore(norm, dev)
+    kind, kinds = ARMS[a.arm]
+    store = TokenStore(norm, dev) if kind == "T" else None
     parts, vparts = [], []
-    for leg in legs:
+    for li, leg in enumerate(legs):
         ml = F.MemberLeg(2, leg, lat)
-        li = store.add(np.load(f"{F2N}/forc_m2_{leg}.npy"))
+        forc = np.load(f"{F2N}/forc_m2_{leg}.npy")
+        if store is not None:
+            store.add(forc)
+        ex = Extras(kinds, forc)
         for idx, n, dst in ((tr, per, parts), (va, max(per // 10, 1000), vparts)):
             c = rng.choice(idx, n)
             d = rng.integers(1, F.ND, n)
-            x = ml.inputs_teacher(c, d)
+            x = np.concatenate([ml.inputs_teacher(c, d), ex.take(c, d)], -1)
             y, prec, S_prev, _ = ml.targets(c, d)
             dst.append((x, y, prec, S_prev, np.full(n, li), c, d))
-        del ml
+        del ml, ex, forc
         log(f"{leg}: sampled")
-    store.stack()
+    if store is not None:
+        store.stack()
+    gather = (lambda li, c, d: store.gather(a.arm, li, c, d)) if store is not None else (lambda li, c, d: None)
+    mlp = kind == "M"  # the MLP arms train exactly as f2_train.train: fp32, no gradient clipping
     cat = lambda ps, i: np.concatenate([p[i] for p in ps])  # noqa: E731
     X, Y = cat(parts, 0), cat(parts, 1)
     mu, sd, ysd = X.mean(0), X.std(0) + 1e-6, Y.std(0) + 1e-6
     T = [torch.as_tensor(cat(parts, i), device=dev) for i in range(7)]
     V = [torch.as_tensor(cat(vparts, i), device=dev) for i in range(7)]
     del parts, vparts, X, Y
-    net = XNet(mu.astype(np.float32), sd.astype(np.float32), ysd.astype(np.float32), a.arm).to(dev)
+    net = build_net(mu.astype(np.float32), sd.astype(np.float32), ysd.astype(np.float32), a.arm).to(dev)
     log(f"parameters {sum(p.numel() for p in net.parameters()):,}  rows {len(T[0]):,}")
     w = 1.0 / torch.as_tensor(ysd, device=dev) ** 2
     opt = torch.optim.Adam(net.parameters(), lr=a.lr)
@@ -221,13 +336,14 @@ def stage_train(a):
         for b in range(nb):
             ix = perm[b * a.batch : (b + 1) * a.batch]
             x, y, pr, S, li, c, d = (t[ix] for t in T)
-            seq = store.gather(a.arm, li, c, d)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            seq = gather(li, c, d)
+            with torch.autocast("cuda", dtype=torch.bfloat16, enabled=not mlp):
                 pred = net(x, seq, pr, S)
             loss = (((pred.float() - y) ** 2) * w).mean()
             opt.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+            if not mlp:
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
             opt.step()
             sched.step()
             tot += loss.item()
@@ -236,7 +352,7 @@ def stage_train(a):
             vl, per_t = 0.0, torch.zeros(len(F.TARGETS), device=dev)
             for b in range(0, len(V[0]), 8192):
                 x, y, pr, S, li, c, d = (t[b : b + 8192] for t in V)
-                e = ((net(x, store.gather(a.arm, li, c, d), pr, S) - y) ** 2) * w
+                e = ((net(x, gather(li, c, d), pr, S) - y) ** 2) * w
                 per_t += e.sum(0)
                 vl += e.mean(1).sum().item()
             vl /= len(V[0])
@@ -299,16 +415,21 @@ def make_step(a, dev, nc):
 
         return step, None
     net, norm = load(f"{OUT}/runs/{a.arm}_s{a.seed}/model.pt", dev)
-    store = TokenStore(norm, dev)
+    store = TokenStore(norm, dev) if ARMS[a.arm][0] == "T" else None
     zero = torch.zeros(nc, dtype=torch.long, device=dev)
     cells = torch.arange(nc, device=dev)
 
     @torch.no_grad()
     def step(x, prec, S, d, src=None):
-        seq = store.gather(a.arm, zero, cells, torch.full((nc,), d, device=dev), src=step.src)
+        if step.ex is not None:  # ADR 0369 extras: a callable (online state, bench) or an Extras (free runs)
+            x = np.concatenate([x, step.ex(d) if callable(step.ex) else step.ex.at(d, nc)], -1)
+        seq = None
+        if store is not None:
+            seq = store.gather(a.arm, zero, cells, torch.full((nc,), d, device=dev), src=step.src)
         t = lambda v: torch.as_tensor(v, device=dev)  # noqa: E731
         return net(t(x), seq, t(prec), t(S)).cpu().numpy()
 
+    step.ex = None
     return step, store
 
 
@@ -329,11 +450,14 @@ def stage_run(a):
                 continue
             t0 = time.time()
             ml = F.MemberLeg(k, leg, lat)
+            forc = np.load(f"{F2N}/forc_m{k}_{leg}.npy")
             if store is not None:
                 store.src = []
-                store.add(np.load(f"{F2N}/forc_m{k}_{leg}.npy"))
+                store.add(forc)
                 store.stack()
                 step.src = store.all
+            if ARMS[a.arm][1]:
+                step.ex = Extras(ARMS[a.arm][1], forc)
             fr = run_free(step, ml)
             tr = F.truth_annual(ml)
             for v in F.ANNUAL:
@@ -458,6 +582,49 @@ def decide(summ):
     print(json.dumps(res, indent=1))
 
 
+class OnlineExtras:
+    """The extras carried as a running state, updated once a day from that day's weather (bench, ADR 0369):
+    the exponential bank (32 numbers), a 360-day ring of the four variables for the 12 30-day blocks, the fixed
+    place description. Called in day order d = 1, 2, ... (model day d = forcing day WARM + d)."""
+
+    def __init__(self, kinds, forc):
+        self.kinds = kinds
+        self.v = raw_vars(forc)
+        self.place = place_desc(forc) if "place" in kinds else None
+        K = len(EMA_TAU)
+        self.tau = np.tile(np.asarray(EMA_TAU, np.float64), 4)
+        self.m = np.repeat(self.v[:, : F.WARM].mean(1), K, axis=1)
+        for t in range(F.WARM + 1):  # history up to forcing day WARM (= model day 0)
+            self.m = self.m + (np.repeat(self.v[:, t], K, axis=1) - self.m) / self.tau
+        lv = self.v.copy()
+        lv[..., 1] = np.log1p(lv[..., 1])
+        self.lv = lv
+        self.ring = lv[:, F.WARM - 359 : F.WARM + 1].copy()  # (nc, 360, 4), oldest first
+        self.pos, self.t = 0, F.WARM
+
+    def __call__(self, d):
+        self.t += 1
+        assert self.t == F.WARM + d
+        today = self.v[:, self.t]
+        parts = []
+        if "ema" in self.kinds:
+            self.m = self.m + (np.repeat(today, len(EMA_TAU), axis=1) - self.m) / self.tau
+        self.ring[:, self.pos] = self.lv[:, self.t]
+        self.pos = (self.pos + 1) % 360
+        for k in self.kinds:
+            if k == "place":
+                parts.append(self.place)
+            elif k == "ema":
+                e = self.m.astype(np.float32).copy()
+                r = slice(len(EMA_TAU), 2 * len(EMA_TAU))
+                e[:, r] = np.log1p(np.maximum(e[:, r], 0))
+                parts.append(e)
+            else:  # newest block first
+                ordered = np.roll(self.ring, -self.pos, axis=1)[:, ::-1]
+                parts.append(ordered.reshape(len(ordered), NMON, 30, NV).mean(2).reshape(len(ordered), -1))
+        return np.concatenate(parts, -1).astype(np.float32)
+
+
 # ----------------------------------------------------------------------------------------------
 def stage_bench(a):
     """One core: network + bucket for all 674 cells over 365 days, per cell-year (the gather included)."""
@@ -469,11 +636,19 @@ def stage_bench(a):
     leg = "ipsl-cm6a-lr_ssp370"
     ml = F.MemberLeg(2, leg, lat)
     step, store = make_step(a, dev, cells.height)
+    forc = np.load(f"{F2N}/forc_m2_{leg}.npy")
     if store is not None:
-        store.add(np.load(f"{F2N}/forc_m2_{leg}.npy"))
+        store.add(forc)
         store.stack()
         step.src = store.all.float()
     nc = cells.height
+    kinds = ARMS[a.arm][1] if a.arm in ARMS else ()
+    if kinds:  # the extras' own daily update (online, as an ESM would carry it), checked against the free-run arrays
+        on = OnlineExtras(kinds, forc)
+        ref = Extras(kinds, forc)
+        for d in range(1, 40):
+            assert np.allclose(on(d), ref.at(d, nc), rtol=1e-4, atol=1e-4), f"online extras differ on day {d}"
+        step.ex = OnlineExtras(kinds, forc)
     W = ml.daily[:, 0, F.RM].astype(np.float32)
     S = ml.daily[:, 0, F.SWE].astype(np.float32)
     x = F.assemble(ml.ff, ml.sinA, ml.cosA, ml.slat, ml.st, ml.cap, W, S, np.arange(nc), np.full(nc, 1), co2=ml.co2)
@@ -481,6 +656,8 @@ def stage_bench(a):
     times = []
     for _ in range(3):
         t0 = time.perf_counter()
+        if kinds:
+            step.ex = OnlineExtras(kinds, forc)
         for d in range(1, 366):
             step(x, prec, S, d)
         times.append((time.perf_counter() - t0) / nc)
@@ -490,7 +667,7 @@ def stage_bench(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["train", "run", "score", "bench"])
-    ap.add_argument("--arm", default="TW", choices=["B", "TC", "TW"])
+    ap.add_argument("--arm", default="TW", choices=list(ARMS))
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--nsamp", type=int, default=40_000_000)
     ap.add_argument("--epochs", type=int, default=10)
