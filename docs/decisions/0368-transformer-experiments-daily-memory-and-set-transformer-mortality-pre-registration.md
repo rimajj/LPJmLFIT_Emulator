@@ -141,4 +141,37 @@ not show it ships.
 
 ## 7. Results
 
-(added after the runs)
+### 7.2 Experiment 2 — tree deaths (2026-10-23)
+
+Data: 60 legs (seeds 2 and 3 × 10 climate models × 3 scenarios); training 22.8 M at-risk trees (2.9 M patch-years,
+none with > 128 trees), held-out cells 20.9 M trees under the held-out climate models, 84.5 M under the training ones.
+`xtf/treemort/score.csv`. Seed means; seed spread of the skill ≤ 0.002 for every network arm.
+
+| arm | skill held-out cells × held-out models | × training models | training cells | calibration | 30-yr death rate vs 2nd run | die-off capture (8 111 events) |
+|---|---|---|---|---|---|---|
+| P0 per-tree LightGBM | 0.421 | 0.425 | 0.466 | 1.027 | 1.10 | 0.157 |
+| P1 + hand-made patch summaries | 0.437 | 0.441 | 0.479 | 1.013 | 1.11 | 0.144 |
+| **ST1** same network, one tree per set (post-hoc control) | 0.503 | 0.511 | 0.559 | 1.024 | 0.98 | 0.225 |
+| **ST** set transformer (3 seeds) | **0.531** | 0.536 | 0.592 | 1.002 | **0.89** | **0.235** |
+| ORACLE the original's own `mort` (post-hoc ceiling) | 1 | 1 | 1 | 0.957 | 0.68 | 0.697 |
+
+(log loss held-out × held-out models: climatology 0.1863, P0 0.1646, P1 0.1638, ST 0.1590, oracle 0.1348.)
+
+**Pre-registered decision:** neighbours matter (P1 − P0 ≥ 0.05)? +0.015 ⇒ **no**. Set transformer worth pursuing?
+skill +0.094 over P1 (> 0.05 and > spread 0.002), die-off capture +0.091 (≥ 0.05), 30-yr ratio 0.89 vs 1.11 ⇒
+**WORTH PURSUING** by the rule as written.
+
+**Post-hoc controls (added after the result above, labelled as such):** the rule compared a neural network that sees
+the patch with boosted trees that do not, i.e. two changes at once. **ST1** (the same network, every tree alone)
+splits them: of ST's +0.094 skill over P1, **+0.066 is the network itself and +0.028 is seeing the other trees**; of
+the +0.091 die-off capture, +0.081 vs +0.010; of the 30-yr rate gain (1.11 → 0.89), 1.11 → 0.98 vs 0.98 → 0.89. The
+neighbour part is real (14× the seed spread) but small, and alone it would not have passed the pre-registered 0.05
+bars. **The ceiling:** the original's own probability catches 0.70 of the die-off jumps; every arm catches ≤ 0.24.
+
+**Reading.** (1) A per-tree neural network is a better per-tree death model than LightGBM on the same inputs; most of
+the "transformer" gain is that. (2) Seeing the patch adds a little more and is the only arm whose 30-year death rate
+is closer to the run than a second run is. (3) Die-offs stay mostly missed by every arm: what the original knows in
+the die-off year and no arm does is the year's own carbon balance (all arms see only the end-of-previous-year state
+and the year's climate), consistent with ADR 0364's bound (0.74 with the run's own NPP). (4) All of this is
+teacher-forced (each year starts from the original's own trees); nothing here shows a free-running forest works.
+
