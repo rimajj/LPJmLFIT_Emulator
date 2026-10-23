@@ -129,11 +129,17 @@ def load(seed, gcm, ssp, where=None, cs=None):
     d = pl.read_parquet(p)
     if where is not None:
         d = d.filter(where)
+    if "lr_y" in d.columns:  # ADR 0369: a tree with no leaves (LAI 0) has margin 0 -> the log floor, not NaN
+        d = d.with_columns(pl.col("lr_y", "lr_prev").fill_nan(float(np.log(1e-3))))
     d = d.join(climate(gcm, ssp), on=["Cell", "Year"], how="left")
     d = d.with_columns(pl.lit(seed, pl.Int32).alias("seed"), pl.lit(gcm).alias("gcm"), pl.lit(ssp).alias("ssp"))
     if os.path.exists(CARBON_P):
         c = pl.scan_parquet(CARBON_P).filter((pl.col("seed") == seed) & (pl.col("gcm") == gcm)
                                              & (pl.col("ssp") == ssp)).collect()  # fmt: skip
+        d = d.join(c, on=["seed", "gcm", "ssp", "Cell", "Year"], how="left")
+    for tag in [t for t in os.environ.get("XTF_DAILY_TAGS", "").split(",") if t]:  # ADR 0369: other daily arms
+        c = pl.scan_parquet(f"{DATA}/carbon_{tag}.parquet").filter(
+            (pl.col("seed") == seed) & (pl.col("gcm") == gcm) & (pl.col("ssp") == ssp)).collect()  # fmt: skip
         d = d.join(c, on=["seed", "gcm", "ssp", "Cell", "Year"], how="left")
     if cs is not None:  # ADR 0369: the carbon-state model's cross-fitted predictions
         c = pl.scan_parquet(f"{DATA}/cs_{cs}.parquet").filter((pl.col("seed") == seed) & (pl.col("gcm") == gcm)

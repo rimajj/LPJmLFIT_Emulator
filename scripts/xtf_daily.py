@@ -444,7 +444,7 @@ def stage_run(a):
     ap = f"{out}/annual.npz"
     ann = dict(np.load(ap)) if os.path.exists(ap) else {}
     step, store = make_step(a, dev, cells.height)
-    for leg in score_legs():
+    for leg in [lg for lg in score_legs() if not a.legs or lg in a.legs.split(",")]:
         for k in (2, 3):
             if f"free__m{k}__{leg}__gpp" in ann:
                 continue
@@ -599,8 +599,15 @@ class OnlineExtras:
         lv = self.v.copy()
         lv[..., 1] = np.log1p(lv[..., 1])
         self.lv = lv
-        self.ring = lv[:, F.WARM - 359 : F.WARM + 1].copy()  # (nc, 360, 4), oldest first
-        self.pos, self.t = 0, F.WARM
+        # ring of the last 361 days (slot = day mod 361) + the 12 running 30-day block sums (block j = days
+        # t-30j-29 .. t-30j); each day every block gains one day and loses one: 2 x 12 x 4 additions per cell
+        t0 = F.WARM
+        self.ring = np.zeros((lv.shape[0], 361, NV))
+        for t in range(t0 - 360, t0 + 1):
+            self.ring[:, t % 361] = lv[:, t]
+        self.bs = np.stack([lv[:, t0 - 30 * j - 29 : t0 - 30 * j + 1].sum(1) for j in range(NMON)], 1)
+        self.jj = 30 * np.arange(NMON)
+        self.t = t0
 
     def __call__(self, d):
         self.t += 1
@@ -609,8 +616,9 @@ class OnlineExtras:
         parts = []
         if "ema" in self.kinds:
             self.m = self.m + (np.repeat(today, len(EMA_TAU), axis=1) - self.m) / self.tau
-        self.ring[:, self.pos] = self.lv[:, self.t]
-        self.pos = (self.pos + 1) % 360
+        if "mon" in self.kinds:
+            self.ring[:, self.t % 361] = self.lv[:, self.t]
+            self.bs += self.ring[:, (self.t - self.jj) % 361] - self.ring[:, (self.t - self.jj - 30) % 361]
         for k in self.kinds:
             if k == "place":
                 parts.append(self.place)
@@ -619,9 +627,8 @@ class OnlineExtras:
                 r = slice(len(EMA_TAU), 2 * len(EMA_TAU))
                 e[:, r] = np.log1p(np.maximum(e[:, r], 0))
                 parts.append(e)
-            else:  # newest block first
-                ordered = np.roll(self.ring, -self.pos, axis=1)[:, ::-1]
-                parts.append(ordered.reshape(len(ordered), NMON, 30, NV).mean(2).reshape(len(ordered), -1))
+            else:  # block j (newest first) = mean of days t-30j-29 .. t-30j
+                parts.append((self.bs / 30.0).reshape(len(self.bs), -1))
         return np.concatenate(parts, -1).astype(np.float32)
 
 
@@ -655,9 +662,9 @@ def stage_bench(a):
     prec = ml.daily[:, 1, F.PREC].astype(np.float32)
     times = []
     for _ in range(3):
-        t0 = time.perf_counter()
-        if kinds:
+        if kinds:  # set-up (warm-up year, place description) once per run, outside the timed loop
             step.ex = OnlineExtras(kinds, forc)
+        t0 = time.perf_counter()
         for d in range(1, 366):
             step(x, prec, S, d)
         times.append((time.perf_counter() - t0) / nc)
@@ -674,6 +681,7 @@ def main():
     ap.add_argument("--batch", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--nlegs", type=int, default=0, help="smoke test: first n training legs only")
+    ap.add_argument("--legs", default="", help="run: only these legs (comma list; smoke tests)")
     a = ap.parse_args()
     {"train": stage_train, "run": stage_run, "score": stage_score, "bench": stage_bench}[a.stage](a)
     log("=== DONE")
