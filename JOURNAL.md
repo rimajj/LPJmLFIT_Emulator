@@ -1966,3 +1966,12 @@ outputs overwrote the four trait medians → `pop_` prefix; re-run identical. v4
   uses all six runs as the offset basis); fixed, then bit-exact. 165 emulator runs at ~775 core-s each. Result: capture
   0.36 → 0.43 (clean cells 0.44 → 0.54), 30-yr level unchanged 1.52 ⇒ not adopted. The daily networks were trained on
   runs m1–m4 at 810 cells, hence the clean-cell variant; the gain is larger there, so it is not the in-sample leak.
+
+## 2026-10-23 — transformer experiments (ADR 0368, separate, not for the paper)
+Owner asked whether a transformer emulator had been considered. Proposed two tests: (1) is long weather memory
+missing in the daily model (transformer over the raw past year vs a no-memory transformer vs the deployed MLP), (2)
+does a set transformer over a patch's trees predict deaths better than per-tree models. Owner: try both, separate,
+judge on the clustered runs, more data allowed but no full grid. Ran 24 seed-3 legs so every climate model has a
+second run; pre-registered; caught two of my own errors before any fit (a year-2101 artefact posing as whole-patch
+kills; fire double-counted in the oracle because the merged model's `mort` already contains it) and a code bug (an
+embedding named `type` shadows `nn.Module.type`).

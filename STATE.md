@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0366**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0369**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,25 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-23 (morning) — owner: transformer experiments, SEPARATE, NOTHING INTO THE PAPER (ADR 0368).** Owner also:
+*"for now we should only judge how well the emulator reproduces the clustered runs it was trained on"* (held-out cells
+of those runs, training-cell fit beside it) and *"produce more data if you need it, just dont do full grid runs"*.
+* **New data:** 24 seed-3 legs (rising CO2) of the clustered nitrogen-on runs for the 8 climate models that had none
+  (all 30 terminated cleanly) + their f2 arrays (`clu_emu_f2.py build --seed 3`, done) ⇒ a second run exists for all
+  10 climate models × 3 scenarios.
+* **Exp 1 (daily memory), `scripts/xtf_daily.py`, data `esm_land_emulator_data/xtf/daily/`:** arms B (NC_s0–4 as
+  is), TC (transformer, no memory), TW (transformer over the past 364 days of raw weather), 3 seeds each. Jobs:
+  packed 4-GPU `xtf-dtrain` 2672360 → `xtf-drunT` 2672362; `xtf-drunB` 2672361; score `xtf-d-score` 2672365
+  (`score.md`-style table in the log, decision printed); one-core cost `xtf-d-bench` 2672368. Per-GPU logs
+  `logs/xtf-<tag>.gpu<i>.<jobid>.out`.
+* **Exp 2 (set transformer for tree deaths), `scripts/xtf_tree_pairs.py` + `xtf_tree_models.py`, data
+  `xtf/trees/` + `xtf/treemort/`:** tables array 2672319 (60 legs) → P0 2672330, P1 2672331 (CPU), ST ×3 packed
+  2672363 → score 2672364. Two corrections found before any fit (ADR 0368 §2a): no whole-patch losses (my check's
+  2101 artefact); the merged model's `mort` already includes fire ⇒ oracle = min(1, mort).
+* GPU gotcha: `gpushort` allows 2 running jobs per user ⇒ pack (one job, 4 GPUs, one process each; `pack()` in the
+  shell history of this session = the `logs/xtf-*.jcf` files are the template).
+**Next:** collect both scores, write ADR 0368 §7, report to the owner in plain language (nothing into the paper).
 
 **2026-10-22 (night) — owner "do both" (m1 + p1): emulated NPP into the per-tree mortality model (ADR 0366, NOT
 adopted); population outputs written into the paper.**
