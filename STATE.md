@@ -78,7 +78,15 @@ of those runs, training-cell fit beside it) and *"produce more data if you need 
   2101 artefact); the merged model's `mort` already includes fire ⇒ oracle = min(1, mort).
 * GPU gotcha: `gpushort` allows 2 running jobs per user ⇒ pack (one job, 4 GPUs, one process each; `pack()` in the
   shell history of this session = the `logs/xtf-*.jcf` files are the template).
-**Next:** collect both scores, write ADR 0368 §7, report to the owner in plain language (nothing into the paper).
+**RESULTS (ADR 0368 §7):** exp 1 — weather memory HELPS: the transformer over the past year cuts the daily errors
+20–30 % vs the no-memory transformer and the deployed network (held-out cells × held-out models, single-year GPP 1.01 /
+NPP 1.31 / ET 1.18 / runoff 6.95 × a second run, vs B 1.30 / 1.82 / 1.71 / 8.28), no drift; but it costs 0.45 core-s
+per cell-year (350× B, slower than the original) ⇒ not a candidate. Exp 2 — per-tree neural net beats LightGBM (skill
+0.44 → 0.50), seeing the patch adds +0.03 (0.53); die-off capture 0.24; + the year's carbon from the emulator 0.27,
+from the original 0.35, the tree's own NPP 0.46, ceiling 0.70 ⇒ the lever is the daily NPP + a per-tree carbon state.
+**Next (owner to choose):** (x1) carry the weather memory cheaply in the deployed daily network (more or learned
+running means / a small recurrent state; new record) and re-score NPP + die-off capture with it; (x2) the per-tree
+leaf-carbon / bad-year state (the parked "c2" candidate); (x3) stop here.
 
 **2026-10-22 (night) — owner "do both" (m1 + p1): emulated NPP into the per-tree mortality model (ADR 0366, NOT
 adopted); population outputs written into the paper.**
