@@ -33,7 +33,7 @@ DATA = "/p/projects/open/Jamir/esm_land_emulator_data/xtf/treemort"
 TRAIN_GCMS = [g for g in M.GCMS if g not in M.TEST_GCMS]
 TREE_F = ["Type"] + [c for c in TP.TREE_F]
 PATCH_F = ["pt_n", "pt_fpc", "pt_agb", "pt_npp", "pt_hrank", "pt_fpc_taller", "pt_npp_rel"]
-SLOG = ["agb", "vegc", "npp", "transp", "stemdiam", "barkthickness", "Age", "D95", "D95max", "Wooddens"]
+SLOG = ["agb", "vegc", "npp", "npp_y", "transp", "stemdiam", "barkthickness", "Age", "D95", "D95max", "Wooddens"]
 LGB = dict(objective="binary", learning_rate=0.05, num_leaves=31, min_data_in_leaf=20, feature_fraction=0.8,
            bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1, num_threads=32, seed=1)  # fmt: skip
 ROUNDS = 400
@@ -65,9 +65,19 @@ def climate(gcm, ssp):
     return d
 
 
-def cell_cols():
+CARBON = {"STCt": "true", "STCe": "emu"}  # ADR 0368 section 2b: + the year's cell carbon balance
+
+
+def cell_cols(arm=None):
     cc = M.clim_cols()
-    return ["lat", "co2"] + [f"{p}_{c}" for p in ("c", "p", "w") for c in cc]
+    base = ["lat", "co2"] + [f"{p}_{c}" for p in ("c", "p", "w") for c in cc]
+    if arm in CARBON:
+        base += [f"{v}_{CARBON[arm]}{a}" for v in ("npp", "gpp") for a in ("", "_anom")]
+    return base
+
+
+def tree_cols(arm=None):
+    return [c for c in TREE_F if c != "Type"] + (["npp_y"] if arm == "STTt" else [])
 
 
 def load(seed, gcm, ssp, where=None):
@@ -78,7 +88,15 @@ def load(seed, gcm, ssp, where=None):
     if where is not None:
         d = d.filter(where)
     d = d.join(climate(gcm, ssp), on=["Cell", "Year"], how="left")
-    return d.with_columns(pl.lit(seed).alias("seed"), pl.lit(gcm).alias("gcm"), pl.lit(ssp).alias("ssp"))
+    d = d.with_columns(pl.lit(seed, pl.Int32).alias("seed"), pl.lit(gcm).alias("gcm"), pl.lit(ssp).alias("ssp"))
+    if os.path.exists(CARBON_P):
+        c = pl.scan_parquet(CARBON_P).filter((pl.col("seed") == seed) & (pl.col("gcm") == gcm)
+                                             & (pl.col("ssp") == ssp)).collect()  # fmt: skip
+        d = d.join(c, on=["seed", "gcm", "ssp", "Cell", "Year"], how="left")
+    return d
+
+
+CARBON_P = f"{DATA}/carbon.parquet"  # xtf_tree_carbon.py
 
 
 def split():
@@ -198,9 +216,11 @@ def train_st(a):
     rng = np.random.default_rng(a.seed)
     dev = torch.device("cuda")
     tr, va = train_frame()
-    tc, cc = [c for c in TREE_F if c != "Type"], cell_cols()
+    tc, cc = tree_cols(a.arm), cell_cols(a.arm)
     nt, nc = _norm_stats(tr, tc), _norm_stats(tr, cc)
     solo = a.arm == "ST1"
+    miss = tr.select([pl.col(c).null_count() for c in tc + cc]).to_numpy().sum()
+    assert miss <= 1e-5 * tr.height, f"{miss} missing input values (carbon table / npp_y not built?)"
     Xt, Ct, Tt, Yt, _, st, en = patch_batches(tr, tc, cc, nt, nc, solo)
     Xv, Cv, Tv, Yv, _, sv, ev = patch_batches(va, tc, cc, nt, nc, solo)
     big = int(((en - st) > 128).sum())
@@ -430,7 +450,7 @@ def decide(df):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["train", "predict", "score"])
-    ap.add_argument("--arm", default="P0", choices=["P0", "P1", "ST", "ST1", "ORACLE"])
+    ap.add_argument("--arm", default="P0", choices=["P0", "P1", "ST", "ST1", "ORACLE", "STCt", "STCe", "STTt"])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch", type=int, default=512)

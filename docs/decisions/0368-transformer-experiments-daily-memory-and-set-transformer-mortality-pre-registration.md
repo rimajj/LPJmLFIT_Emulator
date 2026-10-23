@@ -110,6 +110,25 @@ it is not a free run):**
   death-rate ratio is not worse than P1's by more than 10 %.
 * Otherwise: hand-made summaries carry what the patch has to say; stop.
 
+## 2b. Addition after the experiment-2 result (owner 2026-10-23, pre-registered before these fits)
+
+Owner, on "die-offs stay mostly missed … what the models lack is the year's own carbon balance": *"and why dont you
+fix that?"*. That reading was a hypothesis, not a measurement. Three set-transformer arms (ST architecture and
+training, 2 seeds each) test it:
+* **STCt (bound):** + the cell's year-y NPP and GPP from the original, and their departures from the previous 5
+  years (÷ the cell's 2021–2100 mean |value|), `scripts/xtf_tree_carbon.py`.
+* **STCe (deployable):** the same four inputs from the emulator's own free-running daily model (the mean of the five
+  deployed clustered networks NC_s0–4, run on the original's stand — `xtf_daily.py run --arm B`). Train AND test on
+  the emulated values. Caveat stated before the fit: on training cells the daily networks are in-sample, so the
+  emulated inputs are better there than on held-out cells (NPP departure r(true, emulated) = 0.673 over all cells).
+* **STTt (tightest bound):** + each tree's own year-y NPP from the original (per tree; not producible by the
+  emulator).
+
+**Reading rules (held-out cells × held-out climate models, against ST = 0.531 skill / 0.235 die-off capture):**
+* the hypothesis holds if STCt or STTt reaches die-off capture ≥ 0.5; otherwise it is refuted and stated so.
+* STCe is worth a free-running test if its die-off capture ≥ ST + 0.05 with skill not lower; the share of the bound's
+  gain it keeps, (STCe − ST) / (STCt − ST), is reported either way.
+
 ## 2a. Amendments before any result (2026-10-23, written while the first fits were queued)
 
 * **Experiment 1:** the transformer arms train in bf16 autocast with gradient-norm clipping at 1.0 (B has neither;

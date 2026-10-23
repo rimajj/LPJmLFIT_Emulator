@@ -55,7 +55,7 @@ def build(seed, gcm, ssp):
     prev = d.filter(pl.col("isdead") == 0).drop("isdead", "mort", "mort_fire")
     prev = prev.with_columns((pl.col("Year") + 1).alias("Year")).filter(pl.col("Year") <= 2100)
     cur = d.select(KEY + ["Year", pl.col("isdead").alias("dead_y"), pl.col("Age").alias("age_y"), "mort",
-                          "mort_fire"])  # fmt: skip
+                          "mort_fire", pl.col("npp").alias("npp_y")])  # fmt: skip
     j = prev.join(cur, on=KEY + ["Year"], how="left")
     assert j.height == prev.height
     found = j.filter(pl.col("dead_y").is_not_null())
@@ -85,7 +85,7 @@ def build(seed, gcm, ssp):
          + pl.col("Year").cast(pl.UInt64)).hash(seed=368) % 1000  # fmt: skip
     j = j.filter(pl.col("heldout") | (h < int(KEEP_FRAC * 1000)))
     cols = ["Year"] + KEY[:-1] + TREE_F + [c for c in j.columns if c.startswith("pt_")] + [
-        "heldout", "died", "patch_loss", "oracle"]
+        "heldout", "died", "patch_loss", "oracle", "npp_y"]  # npp_y: the tree's own year-y NPP (bound input, 2b)
     j = j.select(cols).with_columns(pl.col(pl.Float64).cast(pl.Float32))
     os.makedirs(OUT, exist_ok=True)
     j.write_parquet(f"{OUT}/s{seed}_{gcm}_{ssp}.parquet")
