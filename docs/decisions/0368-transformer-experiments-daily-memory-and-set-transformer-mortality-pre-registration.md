@@ -108,6 +108,26 @@ it is not a free run):**
   death-rate ratio is not worse than P1's by more than 10 %.
 * Otherwise: hand-made summaries carry what the patch has to say; stop.
 
+## 2a. Amendments before any result (2026-10-23, written while the first fits were queued)
+
+* **Experiment 1:** the transformer arms train in bf16 autocast with gradient-norm clipping at 1.0 (B has neither;
+  a smoke fit on 2 legs / 2 M samples was stable at the pre-registered 3e-3 without needing a change of learning
+  rate). Free runs are full fp32 for every arm.
+* **Experiment 2, cell inputs:** instead of the six hand-picked statistics, the 25 yearly climate statistics the
+  clustered maps already use (`clu_emu_maps.clim_cols`: mean / coldest / warmest month temperature, GDD5, frost days,
+  hot days, rain and its half-year sum, PET, climatic water balance and its driest 3 months, longest dry spell,
+  humidity, VPD, shortwave, net longwave, the seven per-type temperature-stress counts) for year y, year y−1 and
+  their trailing 30-year means (`clu_emu_maps.window`), + CO2 of y + latitude. Same for every arm.
+* **Experiment 2, sample:** the tables keep every patch-year of the held-out cells and a fixed 15 % of the other
+  patch-years (hash of cell, patch, year). All three arms train on the same kept training-cell trees.
+* **Experiment 2, whole-patch losses:** trees of a whole-patch loss have no year-y row, hence no oracle probability.
+  Skill, Brier and calibration are computed WITHOUT them; their log loss is reported apart (`ll_patch_loss`). The
+  climatology is fitted on the training trees without them. The builder found 1 tree in one full leg missing
+  outside a whole-patch loss; such trees count as deaths and are reported (`lone missing trees`), and the build
+  fails if they exceed 1e-5 of the at-risk trees.
+* **Experiment 2, set size:** a patch-year with more than 128 at-risk trees is fed its first 128; the rest get the
+  patch's mean prediction (their number is logged at training).
+
 ## 3. What this record does not do
 
 No free-running tree model, no change to any release, no full-grid run, nothing in the paper. Both experiments are
