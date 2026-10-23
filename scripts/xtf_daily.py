@@ -50,7 +50,21 @@ NV = 4  # token variables: tas, log1p(rain), rsds, lwnet
 # ADR 0369: arm -> (network, extra input groups appended to B's input vector)
 ARMS = {"B": ("B", ()), "TC": ("T", ()), "TW": ("T", ()), "TP": ("T", ("place",)), "MR": ("M", ()),
         "MP": ("M", ("place",)), "ME": ("M", ("ema",)), "MM": ("M", ("mon",)), "MEP": ("M", ("ema", "place")),
-        "MMP": ("M", ("mon", "place"))}  # fmt: skip
+        "MMP": ("M", ("mon", "place")), "MEPx": ("M", ("ema", "place"))}  # fmt: skip
+# ADR 0370: arm -> sample weight of the days of extreme NPP years (the cell's top 10 % of |true NPP departure|)
+EXTREME = {"MEPx": 5.0}
+
+
+def extreme_years(ml):
+    """(nc, NY) bool: the cell-years whose true annual NPP departure (minus the mean of the 5 previous years, over the
+    cell's mean |NPP|, >= 10 gC) is in the cell's top 10 % by absolute value (as xtf_tree_carbon.anom)."""
+    a = ml.daily[:, :, F.NPP].astype(np.float64).reshape(ml.daily.shape[0], F.NY, 365).sum(-1)
+    dep = np.zeros_like(a)
+    for j in range(1, F.NY):
+        dep[:, j] = a[:, j] - a[:, max(0, j - 5) : j].mean(1)
+    dep = np.abs(dep) / np.maximum(np.abs(a).mean(1, keepdims=True), 10.0)
+    dep[:, 0] = 0.0
+    return dep >= np.quantile(dep[:, 1:], 0.9, axis=1, keepdims=True)
 EMA_TAU = (3, 7, 15, 30, 60, 120, 240, 480)  # days
 NMON = 12  # 30-day blocks of the past 360 days
 PLACE_YEARS = 30  # the place description: 2020-2049 of the leg's own forcing (fixed for the whole run)
@@ -303,12 +317,14 @@ def stage_train(a):
         if store is not None:
             store.add(forc)
         ex = Extras(kinds, forc)
+        ext = extreme_years(ml) if a.arm in EXTREME else None
         for idx, n, dst in ((tr, per, parts), (va, max(per // 10, 1000), vparts)):
             c = rng.choice(idx, n)
             d = rng.integers(1, F.ND, n)
             x = np.concatenate([ml.inputs_teacher(c, d), ex.take(c, d)], -1)
             y, prec, S_prev, _ = ml.targets(c, d)
-            dst.append((x, y, prec, S_prev, np.full(n, li), c, d))
+            ws = np.ones(n, np.float32) if ext is None else np.where(ext[c, d // 365], EXTREME[a.arm], 1.0)
+            dst.append((x, y, prec, S_prev, np.full(n, li), c, d, ws.astype(np.float32)))
         del ml, ex, forc
         log(f"{leg}: sampled")
     if store is not None:
@@ -318,8 +334,8 @@ def stage_train(a):
     cat = lambda ps, i: np.concatenate([p[i] for p in ps])  # noqa: E731
     X, Y = cat(parts, 0), cat(parts, 1)
     mu, sd, ysd = X.mean(0), X.std(0) + 1e-6, Y.std(0) + 1e-6
-    T = [torch.as_tensor(cat(parts, i), device=dev) for i in range(7)]
-    V = [torch.as_tensor(cat(vparts, i), device=dev) for i in range(7)]
+    T = [torch.as_tensor(cat(parts, i), device=dev) for i in range(8)]
+    V = [torch.as_tensor(cat(vparts, i), device=dev) for i in range(8)]
     del parts, vparts, X, Y
     net = build_net(mu.astype(np.float32), sd.astype(np.float32), ysd.astype(np.float32), a.arm).to(dev)
     log(f"parameters {sum(p.numel() for p in net.parameters()):,}  rows {len(T[0]):,}")
@@ -335,11 +351,11 @@ def stage_train(a):
         tot = 0.0
         for b in range(nb):
             ix = perm[b * a.batch : (b + 1) * a.batch]
-            x, y, pr, S, li, c, d = (t[ix] for t in T)
+            x, y, pr, S, li, c, d, ws = (t[ix] for t in T)
             seq = gather(li, c, d)
             with torch.autocast("cuda", dtype=torch.bfloat16, enabled=not mlp):
                 pred = net(x, seq, pr, S)
-            loss = (((pred.float() - y) ** 2) * w).mean()
+            loss = ((((pred.float() - y) ** 2) * w).mean(1) * ws).sum() / ws.sum()  # ws = 1 except ADR 0370
             opt.zero_grad(set_to_none=True)
             loss.backward()
             if not mlp:
@@ -351,11 +367,11 @@ def stage_train(a):
         with torch.no_grad():
             vl, per_t = 0.0, torch.zeros(len(F.TARGETS), device=dev)
             for b in range(0, len(V[0]), 8192):
-                x, y, pr, S, li, c, d = (t[b : b + 8192] for t in V)
+                x, y, pr, S, li, c, d, ws = (t[b : b + 8192] for t in V)
                 e = ((net(x, gather(li, c, d), pr, S) - y) ** 2) * w
                 per_t += e.sum(0)
-                vl += e.mean(1).sum().item()
-            vl /= len(V[0])
+                vl += (e.mean(1) * ws).sum().item()
+            vl /= V[7].sum().item()
             per_t = (per_t / len(V[0])).cpu().numpy()
         log(f"epoch {ep}: train {tot / nb:.4f} val {vl:.4f} per-target "
             f"{dict(zip(F.TARGETS, np.round(per_t, 4).tolist(), strict=True))} {time.time() - t0:.0f}s")  # fmt: skip
@@ -465,6 +481,110 @@ def stage_run(a):
             np.savez(ap, **ann)
             log(f"{a.arm}_s{a.seed} m{k} {leg}: {time.time() - t0:.0f}s")
     log(f"annual -> {ap}")
+
+
+def stage_runens(a):
+    """ADR 0370: the ENSEMBLE (mean of the seeds' daily outputs, one bucket, as the release) run on member 2 with
+    the stand of --stand-dir (the emulated stand of the fold release's maps) -> OUT/ens/<arm>__<stand-dir>/annual.npz
+    with free__m2__<leg>__<v>, truth__m2__..., truth__m3__... (the second run)."""
+    configure()
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.backends.cuda.matmul.allow_tf32 = False
+    cells = pl.read_parquet(f"{F2N}/cells.parquet")
+    lat = cells["lat"].to_numpy().astype(np.float32)
+    nc = cells.height
+    out = f"{OUT}/ens/{a.arm}__{a.stand_dir or 'orig'}"
+    os.makedirs(out, exist_ok=True)
+    ap = f"{out}/annual.npz"
+    ann = dict(np.load(ap)) if os.path.exists(ap) else {}
+    seeds = [int(x) for x in a.seeds.split(",")]
+    steps = []
+    for sd in seeds:
+        b = argparse.Namespace(**{**vars(a), "seed": sd})
+        steps.append(make_step(b, dev, nc))
+    kinds = ARMS[a.arm][1]
+
+    def ens(x, prec, S, d):
+        return np.mean([st(x, prec, S, d) for st, _ in steps], 0)
+
+    for leg in [lg for lg in score_legs() if not a.legs or lg in a.legs.split(",")]:
+        if f"free__m2__{leg}__gpp" in ann or not os.path.exists(f"{F2N}/{a.stand_dir}/stand_m2_{leg}.npy"):
+            continue
+        t0 = time.time()
+        F.STAND_DIR = a.stand_dir
+        ml = F.MemberLeg(2, leg, lat)
+        forc = np.load(f"{F2N}/forc_m2_{leg}.npy")
+        ex = Extras(kinds, forc) if kinds else None
+        for st, store in steps:
+            if store is not None:
+                store.src = []
+                store.add(forc)
+                store.stack()
+                st.src = store.all
+            st.ex = ex
+        fr = run_free(ens, ml)
+        F.STAND_DIR = ""
+        tr, tr3 = F.truth_annual(ml), F.truth_annual(F.MemberLeg(3, leg, lat))
+        for v in F.ANNUAL:
+            ann[f"free__m2__{leg}__{v}"], ann[f"truth__m2__{leg}__{v}"] = fr[v], tr[v]
+            ann[f"truth__m3__{leg}__{v}"] = tr3[v]
+        np.savez(ap, **ann)
+        log(f"{a.arm} ensemble {seeds} on {a.stand_dir}: {leg} {time.time() - t0:.0f}s")
+    log(f"annual -> {ap}")
+
+
+def stage_scoreens(a):
+    """ADR 0370 section 2: each candidate ensemble against the deployed one (B), held-out cells, member 2 vs its
+    second run (member 3). Per leg x window x flux: typical error = median over cells of |E / T - 1| of the 30-yr
+    means; ratio CAND / REF; drift = (late / second run's late) / (early / second run's early)."""
+    cells = pl.read_parquet(f"{F2N}/cells.parquet")
+    ho = cells["heldout"].to_numpy()
+    root = f"{OUT}/ens"
+    runs = sorted(r for r in os.listdir(root) if r.endswith(f"__{a.stand_dir}") and
+                  os.path.exists(f"{root}/{r}/annual.npz"))  # fmt: skip
+    Z = {r.split("__")[0]: np.load(f"{root}/{r}/annual.npz") for r in runs}
+    md = np.nanmedian
+    rows = []
+    for arm, z in Z.items():
+        for leg in sorted({k.split("__")[2] for k in z.files if k.startswith("free__m2__")}):
+            for v in F.ANNUAL:
+                T, E, R = (z[f"{p}__{leg}__{v}"].astype(np.float64) for p in ("truth__m2", "free__m2", "truth__m3"))
+                g = (z[f"truth__m2__{leg}__gpp"][:, ALL].mean(1) + z[f"truth__m3__{leg}__gpp"][:, ALL].mean(1)) / 2
+                m = ho & (g >= 50)
+                row = dict(arm=arm, leg=leg, flux=v, co2fix="co2fix" in leg)
+                for nm, sl in (("early", EARLY), ("late", LATE)):
+                    row[f"e_{nm}"] = md(_rel(E[m, sl].mean(1), T[m, sl].mean(1)))
+                    row[f"r2_{nm}"] = md(_rel(R[m, sl].mean(1), T[m, sl].mean(1)))
+                row["drift"] = (row["e_late"] / row["r2_late"]) / (row["e_early"] / row["r2_early"])
+                rows.append(row)
+    df = pl.DataFrame(rows)
+    df.write_csv(f"{root}/score_{a.stand_dir}.csv")
+    ref = df.filter(pl.col("arm") == "B").select("leg", "flux", pl.col("e_early").alias("R_early"),
+                                                 pl.col("e_late").alias("R_late"), pl.col("drift").alias("R_drift"))
+    j = df.filter(pl.col("arm") != "B").join(ref, on=["leg", "flux"])
+    j = j.with_columns((pl.col("e_early") / pl.col("R_early")).alias("q_early"),
+                       (pl.col("e_late") / pl.col("R_late")).alias("q_late"),
+                       (pl.col("drift") - pl.col("R_drift")).alias("d_drift"))  # fmt: skip
+    j.write_csv(f"{root}/ratios_{a.stand_dir}.csv")
+    res = {}
+    for arm in sorted(j["arm"].unique().to_list()):
+        x = j.filter((pl.col("arm") == arm) & ~pl.col("co2fix"))
+        o, ok = {}, True
+        for v in F.ANNUAL:
+            y = x.filter(pl.col("flux") == v)
+            q = np.concatenate([y["q_early"].to_numpy(), y["q_late"].to_numpy()])
+            med, worst, dd = float(np.median(q)), float(np.max(q)), float(y["d_drift"].max())
+            lim = 0.95 if v == "npp" else 1.05
+            o[v] = dict(median=round(med, 3), worst_leg=round(worst, 3), worst_drift_excess=round(dd, 3),
+                        vs_second_run_late=round(float(np.median(y["e_late"] / y["r2_late"])), 2))
+            ok &= med <= lim and worst <= 1.25 and dd <= 0.08
+        o["passes accuracy (NPP <= 0.95, others <= 1.05, worst leg <= 1.25, drift excess <= 0.08)"] = bool(ok)
+        res[arm] = o
+    b = df.filter((pl.col("arm") == "B") & ~pl.col("co2fix"))
+    res["B vs second run, late (median over legs)"] = {
+        v: round(float(np.median((b.filter(pl.col("flux") == v)["e_late"]
+                                  / b.filter(pl.col("flux") == v)["r2_late"]).to_numpy())), 2) for v in F.ANNUAL}
+    print(json.dumps(res, indent=1))
 
 
 # ----------------------------------------------------------------------------------------------
@@ -673,7 +793,7 @@ def stage_bench(a):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["train", "run", "score", "bench"])
+    ap.add_argument("stage", choices=["train", "run", "score", "bench", "runens", "scoreens"])
     ap.add_argument("--arm", default="TW", choices=list(ARMS))
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--nsamp", type=int, default=40_000_000)
@@ -682,8 +802,11 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-3)
     ap.add_argument("--nlegs", type=int, default=0, help="smoke test: first n training legs only")
     ap.add_argument("--legs", default="", help="run: only these legs (comma list; smoke tests)")
+    ap.add_argument("--seeds", default="0,1,2,3,4", help="runens: the ensemble's seeds")
+    ap.add_argument("--stand-dir", dest="stand_dir", default="stand_emul_main2", help="runens/scoreens")
     a = ap.parse_args()
-    {"train": stage_train, "run": stage_run, "score": stage_score, "bench": stage_bench}[a.stage](a)
+    {"train": stage_train, "run": stage_run, "score": stage_score, "bench": stage_bench, "runens": stage_runens,
+     "scoreens": stage_scoreens}[a.stage](a)  # fmt: skip
     log("=== DONE")
 
 
