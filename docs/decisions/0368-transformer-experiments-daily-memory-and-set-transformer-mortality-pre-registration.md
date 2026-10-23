@@ -57,6 +57,20 @@ held-out climate models (IPSL, MPI — the strictest), held-out cells × trainin
 * **Neither** ⇒ architecture is not the lever for the daily model; stop, nothing else is built.
 * A score within s is called "no measurable difference", never a gain.
 
+### 1a. Amendments to the experiment-1 scorer (2026-10-23 ~10:15, before the transformer free runs finished and before any score of TC/TW existed)
+
+Two places where `scripts/xtf_daily.py score` did not implement §1 as written; fixed before the chained score job
+(2672365) started:
+* **Legs.** The free runs also cover the four CO2-fixed legs of the two held-out climate models (ssp370/585
+  `co2fix`), and the scorer pooled them into "held-out cells × held-out climate models" — 4 of that group's 10 legs.
+  §1 scores 10 climate models × 3 rising-CO2 scenarios, so the decision groups now use only those; the CO2-fixed legs
+  are reported as an extra group (`heldout x heldout-GCM co2fix (extra)`) that does not enter the decision.
+* **Drift "not worse".** The code compared the raw drift ratios (larger = worse). The baseline's drift is below 1 in
+  every group (0.86–0.96: its error shrinks slightly over the century), so that test would call an arm closer to "no
+  drift" worse. Now: |drift − 1| of the arm minus that of the comparison ≤ the baseline's seed spread.
+A dry run of the fixed scorer on the five baseline seeds alone (scratch output, decision "no gain" trivially) checked
+that it runs.
+
 ## 2. Experiment 2 — does a model that sees the whole patch predict tree deaths better?
 
 **Hypothesis.** A tree's death depends on its neighbours (light competition sets its NPP, and its leaf carbon

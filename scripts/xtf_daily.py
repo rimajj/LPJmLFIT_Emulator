@@ -391,9 +391,15 @@ def stage_score(a):
         z = np.load(f"{OUT}/runs/{r}/annual.npz")
         arm, seed = r.rsplit("_s", 1)
         legs = sorted({k.split("__")[2] for k in z.files if k.startswith("free__m3__")})
-        for grp, gl, cm in (("heldout x heldout-GCM", TEST_GCMS, ho), ("heldout x train-GCM", TRAIN_GCMS, ho),
-                            ("train cells x all", TRAIN_GCMS + TEST_GCMS, ~ho)):  # fmt: skip
-            gl_legs = [lg for lg in legs if lg.rsplit("_", 1)[0] in gl]
+        # ADR 0368 section 1 scores the 3 rising-CO2 scenarios; the CO2-fixed legs (2 held-out models) are reported
+        # as their own group and never enter the decision (amendment written before the score ran)
+        std = [lg for lg in legs if "co2fix" not in lg]
+        for grp, gl, cm, lp in (("heldout x heldout-GCM", TEST_GCMS, ho, std),
+                                ("heldout x train-GCM", TRAIN_GCMS, ho, std),
+                                ("train cells x all", TRAIN_GCMS + TEST_GCMS, ~ho, std),
+                                ("heldout x heldout-GCM co2fix (extra)", TEST_GCMS, ho,
+                                 [lg for lg in legs if "co2fix" in lg])):  # fmt: skip
+            gl_legs = [lg for lg in lp if lg.rsplit("_", 1)[0] in gl]
             if not gl_legs:
                 continue
             for v in F.ANNUAL:
@@ -445,7 +451,8 @@ def decide(summ):
                 d1, d0 = get(a1, flux, "drift")[0], get(a0, flux, "drift")[0]
             except IndexError:
                 continue
-            if (y0 - y1 > s_y) and (l0 - l1 > s_l) and (d1 - d0 <= s_d):
+            # "drift not worse": distance from no drift (ratio 1), so an error that shrinks is not counted as worse
+            if (y0 - y1 > s_y) and (l0 - l1 > s_l) and (abs(d1 - 1) - abs(d0 - 1) <= s_d):
                 wins.append(flux)
         res[cmp_] = f"{'HELPS' if len(wins) >= 2 else 'no measurable gain'} (wins: {wins or 'none'})"
     print(json.dumps(res, indent=1))
