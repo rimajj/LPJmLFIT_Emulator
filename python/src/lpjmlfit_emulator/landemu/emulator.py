@@ -127,6 +127,9 @@ class LandEmulator:
         assert self.co2_input == daily.co2_input, (
             "release.json and daily.npz disagree on the CO2 input"
         )
+        assert bool(cfg.get("soil_texture", False)) == daily.soil_input, (
+            "release.json and daily.npz disagree on the soil-texture input"
+        )
 
     @classmethod
     def load(cls, release_dir):
@@ -149,7 +152,14 @@ class LandEmulator:
                 raise ValueError("this release has no population maps (population.json)")
             if not np.array_equal(popsetup.cell, setup.cell):
                 raise ValueError("population setup and setup have different cells")
-        st = DailyState(setup.lat, setup.W0, setup.S0, setup.D0, setup.warm)
+        st = DailyState(
+            setup.lat,
+            setup.W0,
+            setup.S0,
+            setup.D0,
+            setup.warm,
+            soil=self.daily.soil_columns(setup.soil_code),
+        )
         t = self.cfg["pft_temp_stress"]
         co2buf = None
         if self.co2_input:

@@ -9,7 +9,8 @@ Per tree (inputs = what a virtual tree of y-1 carries + BMW's cell inputs of yea
   P_h    Phi(-mu / sigma)                P_c    P(hard kill with r >= 1) (binary)       hz   E[min(1, hazards)]
   P_k = 1 - (1 - P_h)(1 - P_c);  p_death = P_k + (1 - P_k) hz
 Arms: BC (deployable inputs), BCN (+ the run's own tree-NPP statistics; a bound), BCE (+ the EMULATOR's own yearly
-stand NPP and GPP statistics, ADR 0366; scripts/run_emulator_npp.py -> eval/treemort/enpp/enpp.parquet).
+stand NPP and GPP statistics, ADR 0366; scripts/run_emulator_npp.py -> eval/treemort/enpp/enpp.parquet), BCET (the
+same with the soil-texture daily networks, ADR 0367; run_emulator_npp.py --variant tex -> enpp_tex/enpp.parquet).
 Stages:
   fit   --g G --arm A   train on runs m1 m2 m3 m5 m6 x the 27 legs of the other nine climate models (tree_pairs/)
                         -> eval/treemort/<g>_<arm>/{mu,muA,muB,sig,pc,hz}.txt
@@ -49,11 +50,12 @@ CELL_F = ["lat", "lon", "soil_code", *YD.CLIM, *YD.DEP_W, *YD.BK_COLS]
 LNR_FLOOR = -7.0  # a leafless tree (LAI 0: leaf carbon 0, ln r = -inf); far below any threshold
 NP = int(os.environ.get("NPROC", "16"))
 SCENS = ["ssp126", "ssp370", "ssp585"]
-ENPP = os.path.join(OUT, "enpp", "enpp.parquet")
+ENPP = {"BCE": os.path.join(OUT, "enpp", "enpp.parquet"), "BCET": os.path.join(OUT, "enpp_tex", "enpp.parquet")}
+EARMS = ("BCE", "BCET")  # arms fed the emulator's own NPP
 F2 = "/p/projects/reformit/Jamir/esm_land_emulator_data/f2"
 ENPP_V = ["enpp", "egpp"]
 ENPP_COLS = [f"{k}_{v}" for v in ENPP_V for k in ("n0", "n1", "nr0", "nr1", "nz0", "nz1")]
-OWN_RUN = ("BCN", "BCE")  # arms whose cell inputs depend on the run (member)
+OWN_RUN = ("BCN", *EARMS)  # arms whose cell inputs depend on the run (member)
 
 
 def log(*a):
@@ -61,14 +63,14 @@ def log(*a):
 
 
 def feats(arm: str) -> list[str]:
-    return TREE_F + CELL_F + {"BCN": PM.NPP_COLS, "BCE": ENPP_COLS}.get(arm, [])
+    return TREE_F + CELL_F + {"BCN": PM.NPP_COLS, "BCE": ENPP_COLS, "BCET": ENPP_COLS}.get(arm, [])
 
 
-def enpp_anomaly(members: list[int], legs: list[str]) -> pl.DataFrame:
+def enpp_anomaly(members: list[int], legs: list[str], arm: str = "BCE") -> pl.DataFrame:
     """ADR 0366 sec. 1: the emulator's yearly stand NPP / GPP this (n0_) and last year (n1_), the ratio to the trailing
     30-year mean (nr) and the z-score against the 30 years before (nz; >= 15 years; the emulated 2000-2019 history in
     front) -- the construction of explore_panel_popmap.npp_anomaly."""
-    d = (pl.scan_parquet(ENPP).filter(pl.col("member").is_in(members) & pl.col("leg").is_in(legs))
+    d = (pl.scan_parquet(ENPP[arm]).filter(pl.col("member").is_in(members) & pl.col("leg").is_in(legs))
          .select("member", "leg", "Cell", "Year", *ENPP_V).collect().sort("member", "leg", "Cell", "Year"))
     g = ["member", "leg", "Cell"]
     ex = []
@@ -97,8 +99,8 @@ def cell_inputs(legs: list[str], members: list[int] | None = None, arm: str = "B
         parts.append(d.with_columns(pl.col("Cell").cast(pl.Int32), pl.col("Year").cast(pl.Int32)))
     d = pl.concat(parts, how="diagonal").join(cells, on="Cell", how="left")
     if members is not None:
-        if arm == "BCE":
-            n = enpp_anomaly(members, legs)
+        if arm in EARMS:
+            n = enpp_anomaly(members, legs, arm)
         else:
             n = pl.concat([x for m in members for lg in legs if (x := PM.npp_anomaly(m, lg)) is not None])
         n = n.with_columns(pl.col("Cell").cast(pl.Int32), pl.col("Year").cast(pl.Int32),
@@ -133,7 +135,7 @@ def stage_fit(a) -> None:
     P = P.join(C, on=on, how="left").sort("member", "leg", "Year", "Cell", "Patch", "ID")
     f = feats(a.arm)
     assert P.select(CELL_F[3]).null_count().item() == 0, "cell inputs missing for some trees"
-    if a.arm == "BCE":
+    if a.arm in EARMS:
         assert P.select(ENPP_COLS[0]).null_count().item() == 0, "emulated NPP missing for some trees"
     X = P.select(f).to_numpy().astype(np.float32)
     y = lnr_target(P["lnr"])
@@ -290,7 +292,7 @@ def stage_score(a) -> None:
             P = P.join(pl.read_parquet(fn).filter(pl.col("member") == YD.TRUTH).select("leg", "Cell", "Year",
                                                                                       "^BMN_.*$"),
                        on=["leg", "Cell", "Year"], how="left")
-        for arm in ("BC", "BCN", "BCE"):
+        for arm in ("BC", "BCN", *EARMS):
             fp = os.path.join(OUT, f"pred_{g}_{arm}.parquet")
             if not os.path.exists(fp):
                 continue
@@ -319,7 +321,8 @@ def stage_score(a) -> None:
         print(f"clean cells: {M['Cell'].n_unique()} cells")
     w = PP.cells().select(pl.col("Cell").cast(M["Cell"].dtype), np.cos(np.deg2rad(pl.col("lat"))).alias("w"))
     M = M.join(w, on="Cell")
-    arms = [x for x in ("BCE1", "BCE2", "BCNE1", "BCNE2", "BCEE1", "BCEE2", "BM", "BMW", "BMN", "T5")
+    arms = [x for x in ("BCE1", "BCE2", "BCNE1", "BCNE2", "BCEE1", "BCEE2", "BCETE1", "BCETE2", "BM", "BMW", "BMN",
+                        "T5")
             if f"{x}_death3" in M.columns]
     dense = pl.col("anc_n_per_patch") >= J.DENSE
     for q in PM.MORT3[:3]:
@@ -370,7 +373,7 @@ def stage_score(a) -> None:
             res.append({"what": f"die-off capture {q} {k} ({int(ok.sum())} events)", "cases": int(ok.sum()),
                         "typ_median": float(dX[ok].sum() / dT[ok].sum()), "worst_median": None, "n_typ_ok": None})
     # calibration (E1): predicted / observed hard kills and hazard sums, per case
-    for arm in ("BC", "BCN", "BCE"):
+    for arm in ("BC", "BCN", *EARMS):
         if f"{arm}E1_hard_rate" not in M.columns:
             continue
         c = M.filter(pl.col(f"{arm}E1_hard_rate").is_not_null()).group_by("case").agg(
@@ -384,29 +387,28 @@ def stage_score(a) -> None:
                         "typ_median": float(c[k].median()), "worst_median": float((c[k] - 1).abs().max()),
                         "n_typ_ok": int(((c[k] - 1).abs() <= 0.1).sum())})
     # ADR 0366 sec. 4 diagnostic: does the emulated NPP anomaly follow the original's tree-NPP anomaly?
-    if "BCEE1_death3" in M.columns:
-        dn = M.filter(dense).select("case", "Cell", "Year").unique()
-        for g in PP.GCMS:
-            legs = [f"{g}_{s}" for s in SCENS]
-            if not os.path.exists(os.path.join(OUT, f"pred_{g}_BCE.parquet")):
-                continue
-            E = enpp_anomaly([YD.TRUTH], legs).select("leg", "Cell", "Year", "nz0_enpp")
-            On = pl.concat([x for lg in legs if (x := PM.npp_anomaly(YD.TRUTH, lg)) is not None]).select(
-                "leg", "Cell", "Year", pl.col(f"nz0_{PM.NPP_V[0]}").alias("nz_orig"))
-            J2 = (E.join(On, on=["leg", "Cell", "Year"]).with_columns(pl.col("Cell").cast(M["Cell"].dtype),
-                                                                    pl.col("Year").cast(M["Year"].dtype))
-                  .join(dn, left_on=["leg", "Cell", "Year"], right_on=["case", "Cell", "Year"]))
-            for lg in legs:
-                x = J2.filter(pl.col("leg") == lg)
-                r = (float(np.corrcoef(x["nz0_enpp"].to_numpy(), x["nz_orig"].to_numpy())[0, 1])
-                     if x.height > 2 else None)
-                xe = x.join(ev.rename({"year": "Year", "case": "leg"}), on=["leg", "Cell", "Year"])
-                res.append({"what": f"NPP z: emulated vs original, corr over dense cell-years {lg} (events: mean "
-                                    f"emulated / original z)", "cases": x.height, "typ_median": r,
-                            "worst_median": float(xe["nz0_enpp"].mean()) if xe.height else None,
-                            "n_typ_ok": None, "orig_event_z": float(xe["nz_orig"].mean()) if xe.height else None})
+    dn = M.filter(dense).select("case", "Cell", "Year").unique()
+    for earm, g in [(e, g) for e in EARMS if f"{e}E1_death3" in M.columns for g in PP.GCMS]:
+        legs = [f"{g}_{s}" for s in SCENS]
+        if not os.path.exists(os.path.join(OUT, f"pred_{g}_{earm}.parquet")):
+            continue
+        E = enpp_anomaly([YD.TRUTH], legs, earm).select("leg", "Cell", "Year", "nz0_enpp")
+        On = pl.concat([x for lg in legs if (x := PM.npp_anomaly(YD.TRUTH, lg)) is not None]).select(
+            "leg", "Cell", "Year", pl.col(f"nz0_{PM.NPP_V[0]}").alias("nz_orig"))
+        J2 = (E.join(On, on=["leg", "Cell", "Year"]).with_columns(pl.col("Cell").cast(M["Cell"].dtype),
+                                                                pl.col("Year").cast(M["Year"].dtype))
+              .join(dn, left_on=["leg", "Cell", "Year"], right_on=["case", "Cell", "Year"]))
+        for lg in legs:
+            x = J2.filter(pl.col("leg") == lg)
+            r = (float(np.corrcoef(x["nz0_enpp"].to_numpy(), x["nz_orig"].to_numpy())[0, 1])
+                 if x.height > 2 else None)
+            xe = x.join(ev.rename({"year": "Year", "case": "leg"}), on=["leg", "Cell", "Year"])
+            res.append({"what": f"NPP z ({earm}): emulated vs original, corr over dense cell-years {lg} "
+                                f"(events: mean emulated / original z)", "cases": x.height, "typ_median": r,
+                        "worst_median": float(xe["nz0_enpp"].mean()) if xe.height else None,
+                        "n_typ_ok": None, "orig_event_z": float(xe["nz_orig"].mean()) if xe.height else None})
     R = pl.DataFrame(res)
-    R.write_csv(os.path.join(OUT, f"score_treemort{'_clean' if a.cells == 'clean' else ''}.csv"))
+    R.write_csv(os.path.join(OUT, f"score_treemort{'_clean' if a.cells == 'clean' else ''}{a.out_suffix}.csv"))
     with pl.Config(tbl_rows=-1, tbl_width_chars=200, fmt_str_lengths=80):
         print(R)
 
@@ -415,8 +417,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["fit", "pred", "score"])
     ap.add_argument("--g", default="gfdl-esm4", choices=PP.GCMS)
-    ap.add_argument("--arm", default="BC", choices=["BC", "BCN", "BCE"])
+    ap.add_argument("--arm", default="BC", choices=["BC", "BCN", *EARMS])
     ap.add_argument("--cells", default="all", choices=["all", "clean"])
+    ap.add_argument("--out-suffix", dest="out_suffix", default="",
+                    help="score file suffix (ADR 0367: _0367, so ADR 0366's score files stay as they were)")
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     {"fit": stage_fit, "pred": stage_pred, "score": stage_score}[a.stage](a)

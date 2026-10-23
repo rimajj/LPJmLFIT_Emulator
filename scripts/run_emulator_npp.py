@@ -13,6 +13,13 @@ Stages:
           GATE G2 first: (v2, m1, ukesm1-0-ll_ssp370) reproduces v2/runs/ukesm1-0-ll_ssp370_m1_capfixed.npz.
   table   -> <OUT>/enpp.parquet: member, leg, src (release), Cell, Year 2000-2100, enpp, egpp (gC/m2/yr). Every
           training leg from v2, every test leg (run m4, first five models) from its fold release.
+
+--variant tex (ADR 0367): the same with the soil-texture daily networks, releases v2tex / fold_<g>_v3tex (copies of
+v2 / fold_<g>_v3 with only daily.npz replaced, scripts/build_release_daily_swap.py) -> eval/treemort/enpp_tex/. The
+m5/m6 start files are v2's (the copies' setups are byte-identical). Gates of the run stage: G2 (v2 reproduces its own
+stored run -- the package change leaves a texture-free release alone; written to a new file) and G2t (v2tex
+reproduces scripts/run_emulator.py's run of v2tex, which must exist: run_emulator.py --release .../v2tex --run 1
+--leg ukesm1-0-ll_ssp370 --cap fixed).
 """
 
 from __future__ import annotations
@@ -39,6 +46,8 @@ import explore_panel_prep as PP  # noqa: E402
 
 REL = "/p/projects/open/Jamir/esm_land_emulator_data/release"
 OUT = os.path.join(PP.OUT, "eval", "treemort", "enpp")
+SETUPS = os.path.join(OUT, "setups")  # the m5/m6 start files of v2 (shared by every variant)
+VARIANT = ""  # "" = ADR 0366 (v2, fold_<g>_v3); "tex" = ADR 0367 (v2tex, fold_<g>_v3tex)
 F2 = BF.F2
 TRAIN_RUNS = (1, 2, 3, 5, 6)
 TEST_RUN = 4
@@ -51,12 +60,22 @@ def log(*a):
 
 
 def fold_release(g: str) -> str:
-    return os.path.join(REL, f"fold_{g}_v3")
+    return os.path.join(REL, f"fold_{g}_v3{VARIANT}")
+
+
+def deploy_release() -> str:
+    return os.path.join(REL, f"v2{VARIANT}")
 
 
 def setup_path(release: str, k: int) -> str:
     p = os.path.join(release, f"setup_m{k}.npz")
-    return p if os.path.exists(p) else os.path.join(OUT, "setups", f"{os.path.basename(release)}_setup_m{k}.npz")
+    if os.path.exists(p):
+        return p
+    import json
+
+    with open(os.path.join(release, "release.json")) as fh:
+        base = json.load(fh).get("base_release", os.path.basename(release))
+    return os.path.join(SETUPS, f"{base}_setup_m{k}.npz")
 
 
 # ------------------------------------------------------------------------------------------------ setups
@@ -99,7 +118,7 @@ def stage_setups(_a) -> None:
     bad = [q for q in ref.files if not np.array_equal(ref[q], x[q], equal_nan=True)]
     log(f"GATE G3 run m1 rebuilt from setup_m2 + m1's own fields: {len(ref.files)} fields, differ: {bad}")
     assert not bad, "the setup procedure does not reproduce v2/setup_m1"
-    od = os.path.join(OUT, "setups")
+    od = SETUPS
     os.makedirs(od, exist_ok=True)
     for k in (5, 6):
         z = dict(base, **run_fields(k, cells, own_daily=False))
@@ -117,7 +136,7 @@ def history(emu, su, obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     from lpjmlfit_emulator.landemu.daily import DailyState
 
     st = emu.start(su)
-    st["daily"] = DailyState(su.lat, su.W0, su.S0, su.D0, obs[:, :365])
+    st["daily"] = DailyState(su.lat, su.W0, su.S0, su.D0, obs[:, :365], soil=st["daily"].soil)
     gpp, npp = np.zeros((len(su.cell), H1 - H0 + 1)), np.zeros((len(su.cell), H1 - H0 + 1))
     for iy in range(H1 - H0 + 1):
         f = np.asarray(obs[:, 365 * (iy + 1): 365 * (iy + 2)], np.float32)
@@ -161,9 +180,10 @@ def run_task(t) -> str:
 
 def tasks() -> list[tuple]:
     out = []
-    for leg in A7.ALL_SLEGS:  # training legs: release v2
+    dr = deploy_release()
+    for leg in A7.ALL_SLEGS:  # training legs: release v2 (v2tex)
         for k in TRAIN_RUNS:
-            out.append((os.path.join(REL, "v2"), k, leg, os.path.join(OUT, "runs", "v2", f"m{k}_{leg}.npz")))
+            out.append((dr, k, leg, os.path.join(OUT, "runs", os.path.basename(dr), f"m{k}_{leg}.npz")))
     for g in PP.GCMS:  # test legs: the held-out model's fold release, run m4
         for s in PP.SCENS:
             r = fold_release(g)
@@ -175,21 +195,30 @@ def tasks() -> list[tuple]:
 def stage_run(a) -> None:
     """GATE G2 runs in the same pool as the others (it costs one run-leg) and is checked before anything is reported
     as done; --which train|test|all (test needs the fold releases)."""
-    gp = os.path.join(OUT, "gate", "v2_m1_ukesm1-0-ll_ssp370.npz")
-    T = [t for t in tasks() if a.which == "all" or (a.which == "train") == t[0].endswith("/v2")]
-    T = [(os.path.join(REL, "v2"), 1, "ukesm1-0-ll_ssp370", gp)] + [t for t in T if not os.path.exists(t[3])]
+    dr = deploy_release()
+    leg0 = "ukesm1-0-ll_ssp370"
+    # (gate output, release, the release's own stored run it must equal)
+    gates = [(os.path.join(OUT, "gate", f"v2_m1_{leg0}.npz"), os.path.join(REL, "v2"))]
+    if VARIANT:
+        gates = [(os.path.join(OUT, "gate", f"v2_m1_{leg0}_pkg{VARIANT}.npz"), os.path.join(REL, "v2")),
+                 (os.path.join(OUT, "gate", f"v2{VARIANT}_m1_{leg0}.npz"), dr)]
+    for _, r in gates:
+        assert os.path.exists(os.path.join(r, "runs", f"{leg0}_m1_capfixed.npz")), f"no stored run in {r}/runs"
+    T = [t for t in tasks() if a.which == "all" or (a.which == "train") == (t[0] == dr)]
+    T = [(r, 1, leg0, gp) for gp, r in gates] + [t for t in T if not os.path.exists(t[3])]
     missing = sorted({t[0] for t in T if not os.path.exists(os.path.join(t[0], "release.json"))})
     assert not missing, f"releases not built: {missing}"
     log(f"{len(T)} run-legs (incl. the gate) on {NPROC} processes")
     with mp.get_context("spawn").Pool(NPROC) as pool:
         for i, msg in enumerate(pool.imap_unordered(run_task, T)):
             log(f"[{i + 1}/{len(T)}] {msg}")
-    g, r = np.load(gp), np.load(os.path.join(REL, "v2", "runs", "ukesm1-0-ll_ssp370_m1_capfixed.npz"))
-    eq = np.array_equal(g["ann"], r["ann"])
-    log(f"GATE G2 v2 m1 ukesm1-0-ll_ssp370 vs the release's own run: bit-identical {eq}, max |diff| "
-        f"{float(np.abs(g['ann'] - r['ann']).max()):.2e}; history NPP 2000-2019 mean {g['npp'][:, :20].mean():.1f}, "
-        f"2020-2039 {g['npp'][:, 20:40].mean():.1f} gC/m2/yr")
-    assert eq, "the runner does not reproduce the release's run: every output of this stage is invalid"
+    for gp, rel in gates:
+        g, r = np.load(gp), np.load(os.path.join(rel, "runs", f"{leg0}_m1_capfixed.npz"))
+        eq = np.array_equal(g["ann"], r["ann"])
+        log(f"GATE G2 {os.path.basename(rel)} m1 {leg0} vs the release's own run: bit-identical {eq}, max |diff| "
+            f"{float(np.abs(g['ann'] - r['ann']).max()):.2e}; history NPP 2000-2019 mean "
+            f"{g['npp'][:, :20].mean():.1f}, 2020-2039 {g['npp'][:, 20:40].mean():.1f} gC/m2/yr")
+        assert eq, "the runner does not reproduce the release's run: every output of this stage is invalid"
 
 
 # ------------------------------------------------------------------------------------------------ table
@@ -217,7 +246,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["setups", "run", "table"])
     ap.add_argument("--which", default="all", choices=["train", "test", "all"])
+    ap.add_argument("--variant", default="", choices=["", "tex"])
     a = ap.parse_args()
+    global OUT, VARIANT
+    VARIANT = a.variant
+    if VARIANT:
+        OUT = os.path.join(PP.OUT, "eval", "treemort", f"enpp_{VARIANT}")
+    log(f"variant '{VARIANT}': deployment release {deploy_release()}, output {OUT}")
     {"setups": stage_setups, "run": stage_run, "table": stage_table}[a.stage](a)
     log("=== DONE")
 

@@ -89,6 +89,36 @@ def test_daily_bucket_closes_water_exactly():
     assert np.allclose(w[:, :, 1].sum(1, dtype=np.float64), storage + flux, atol=1e-6)
 
 
+def test_daily_soil_texture_columns(tmp_path):
+    """ADR 0367: a texture model reads the four soil columns after every other input; a model
+    without a soil table builds exactly the old input."""
+    rng = np.random.default_rng(SEED)
+    n = 5
+    table = rng.normal(size=(13, 4)).astype(np.float32)
+    code = np.array([1, 4, 13, 7, 4])
+    m = _member(rng, nin=NIN + 4)
+    z = {"n_members": 1, "drop": np.array([4]), "deep_tau": 365.0, "soil_table": table}
+    z["m0/n_layers"] = 2
+    for j in range(3):
+        z[f"m0/W{j}"], z[f"m0/b{j}"] = m.W[j], m.b[j]
+    z["m0/mu"], z["m0/sd"], z["m0/ysd"] = m.mu, m.sd, m.ysd
+    np.savez(tmp_path / "daily.npz", **z)
+    model = DailyModel.load(tmp_path / "daily.npz")
+    assert model.soil_input and np.array_equal(model.soil_columns(code), table[code - 1])
+    with pytest.raises(ValueError):
+        model.soil_columns(np.array([0]))
+    w = _weather(rng, n)
+    args = (np.linspace(-60, 70, n), np.full(n, 50.0), np.zeros(n), np.zeros(n), w)
+    st, st0 = DailyState(*args, soil=model.soil_columns(code)), DailyState(*args)
+    st.push(w[:, 0])
+    st0.push(w[:, 0])
+    cap, stand = np.full(n, 150.0), np.zeros((n, 12), np.float32)
+    x, x0 = st.inputs(w[:, 0], 0, cap, stand, model.drop), st0.inputs(w[:, 0], 0, cap, stand, [4])
+    assert x.shape == (n, NIN + 4) and x0.shape == (n, NIN)
+    assert np.array_equal(x[:, :NIN], x0) and np.array_equal(x[:, NIN:], table[code - 1])
+    assert DailyModel([m]).soil_columns(code) is None
+
+
 def _tiny_release(tmp_path, rng, n, co2=False):
     lgb = pytest.importorskip("lightgbm")
     fs = (

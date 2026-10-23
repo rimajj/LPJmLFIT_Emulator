@@ -68,18 +68,36 @@ def git_sha():
 
 
 # ------------------------------------------------------------------------------------------------ daily model
-def export_daily(out, members=MEMBERS, data=F2, gate_run=1, gate_leg="gfdl-esm4_ssp370_daily", co2=False):
+def soil_table():
+    """(13, 4) float32: sand, clay, ln Ks, ln Sf of soil codes 1..13, computed as f2_train.soil_columns (ADR 0367)."""
+    import f2_train as F
+
+    tex = pl.read_csv(F.SOIL_CSV).sort("code")
+    assert tex["code"].to_list() == list(range(1, 14)), "soil table must hold codes 1..13 in order"
+    cols = [tex["sand"], tex["clay"], np.log(tex["Ks"].to_numpy()), np.log(tex["Sf"].to_numpy())]
+    return np.stack([np.asarray(c, dtype=np.float32) for c in cols], -1)
+
+
+def export_daily(out, members=MEMBERS, data=F2, gate_run=1, gate_leg="gfdl-esm4_ssp370_daily", co2=False,
+                 soil=False):
     """Export the PyTorch ensemble `members` (runs under data/runs) to out/daily.npz and run GATE (1) on real rows of
-    (gate_run, gate_leg). co2: the members read the year's CO2 (f2_train --co2, nitrogen-on model; ADR 0344)."""
+    (gate_run, gate_leg). co2: the members read the year's CO2 (f2_train --co2, nitrogen-on model; ADR 0344).
+    soil: the members read the soil texture (f2_train --soil-texture, ADR 0348) -> daily.npz carries soil_table."""
     import f2_train as F
     import torch
 
     F.DATA, F.CO2_INPUT = data, co2
     F.NIN = F.NFORC + 3 + 4 + 12 + int(co2)
+    F.SOIL_INPUT, F.SOIL = soil, None
+    if soil:
+        F.SOIL_COL, F.NIN = F.NIN, F.NIN + 4
+        F.SOIL = F.soil_columns(pl.read_parquet(os.path.join(data, "cells.parquet")))
     F.NH, F.NL, F.NPP_HEAD, F.DEEP_TAU = 256, 3, "ra", 365.0
     F.DROP[:] = [F.FEAT["huss"]]
     arrs = {"n_members": np.int64(len(members)), "drop": np.array(F.DROP, np.int64), "deep_tau": np.float64(365.0),
             "co2_input": np.bool_(co2)}
+    if soil:
+        arrs["soil_table"] = soil_table()
     nets = []
     for i, t in enumerate(members):
         mp = os.path.join(F.DATA, "runs", t, "model.pt")

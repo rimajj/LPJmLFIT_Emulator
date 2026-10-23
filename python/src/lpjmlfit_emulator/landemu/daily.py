@@ -17,6 +17,12 @@ a deep store ``D`` that drains into runoff with time constant ``deep_tau`` days.
 A model trained with ``f2_train.py --co2`` (ADR 0342; the nitrogen-on LPJmL-FIT only) reads one
 more input, the year's atmospheric CO2 in ppm / 1000, as its last column
 (``DailyModel.co2_input``; ADR 0344).
+
+A model trained with ``f2_train.py --soil-texture`` (ADR 0348) reads four per-cell columns after
+every other input (after CO2): sand and clay fraction, ln Ks (mm/h) and ln Sf (mm) of the cell's
+soil type. The release carries them as ``soil_table`` (one row per soil code 1..13, float32,
+computed as ``f2_train.soil_columns``); ``DailyModel.soil_columns`` looks a setup's codes up in it
+(ADR 0367). A release without the table runs exactly as before.
 """
 
 from __future__ import annotations
@@ -83,11 +89,28 @@ class Member:
 class DailyModel:
     """The ensemble (mean of the members' outputs) and the closed water bucket."""
 
-    def __init__(self, members, drop=(FEAT_HUSS,), deep_tau=365.0, co2_input=False):
+    def __init__(
+        self, members, drop=(FEAT_HUSS,), deep_tau=365.0, co2_input=False, soil_table=None
+    ):
         self.members = members
         self.drop = list(drop)
         self.deep_tau = float(deep_tau)
         self.co2_input = bool(co2_input)
+        self.soil_table = None if soil_table is None else np.asarray(soil_table, np.float32)
+
+    @property
+    def soil_input(self):
+        return self.soil_table is not None
+
+    def soil_columns(self, soil_code):
+        """(N,) soil codes 1..13 -> (N, 4) float32 sand, clay, ln Ks, ln Sf (None without
+        texture)."""
+        if self.soil_table is None:
+            return None
+        code = np.asarray(soil_code).astype(np.int64)
+        if code.min() < 1 or code.max() > len(self.soil_table):
+            raise ValueError(f"soil code outside 1..{len(self.soil_table)}")
+        return self.soil_table[code - 1]
 
     @classmethod
     def load(cls, path):
@@ -98,7 +121,9 @@ class DailyModel:
             for i in range(n)
         ]
         co2 = bool(z["co2_input"]) if "co2_input" in z.files else False
-        return cls(members, drop=list(z["drop"]), deep_tau=float(z["deep_tau"]), co2_input=co2)
+        soil = z["soil_table"] if "soil_table" in z.files else None
+        drop, tau = list(z["drop"]), float(z["deep_tau"])
+        return cls(members, drop=drop, deep_tau=tau, co2_input=co2, soil_table=soil)
 
     def predict(self, x, prec, S_prev):
         return np.mean([m(x, prec, S_prev) for m in self.members], 0)
@@ -126,10 +151,11 @@ class DailyState:
     sums of the last 365 days (rain), 30 days (air temperature, shortwave) and 10 days (air
     temperature)."""
 
-    def __init__(self, lat, W, S, D, warm):
+    def __init__(self, lat, W, S, D, warm, soil=None):
         """warm: (N, 365, 5) the 365 days before the first emulated day (tas, pr, rsds, lwnet,
-        huss)."""
+        huss); soil: (N, 4) the texture columns of a texture model (``DailyModel.soil_columns``)."""
         lat = np.asarray(lat, np.float64)
+        self.soil = None if soil is None else np.asarray(soil, np.float32)
         self.slat = np.sin(np.radians(lat)).astype(np.float32)
         self.dl = daylength_decl(lat)
         self.W, self.S, self.D = (np.asarray(v, np.float64).copy() for v in (W, S, D))
@@ -169,9 +195,11 @@ class DailyState:
         """The network input (N, NIN) for today's weather f, 0-based day of year doy0, soil
         capacity cap (N,) and the
         stand vector (N, 12: leaf area, log1p vegetation carbon, cover of the 10 plant types);
-        with ``co2`` (the year's CO2, ppm, scalar or (N,)) one more column, (N, NIN + 1)."""
+        with ``co2`` (the year's CO2, ppm, scalar or (N,)) one more column, (N, NIN + 1); with
+        texture (``self.soil``) four more after it."""
         n = f.shape[0]
-        x = np.empty((n, NIN + (co2 is not None)), np.float32)
+        nc = NIN + (co2 is not None)
+        x = np.empty((n, nc + 4 * (self.soil is not None)), np.float32)
         s = self.s
         x[:, 0], x[:, 1], x[:, 2], x[:, 3], x[:, 4] = (
             f[:, 0],
@@ -195,6 +223,8 @@ class DailyState:
         x[:, NFORC + 7 : NIN] = stand
         if co2 is not None:  # as f2_train.assemble: float32 ppm / 1000
             x[:, NIN] = np.asarray(co2, np.float32) / np.float32(1000.0)
+        if self.soil is not None:  # as f2_train.assemble: after every other column
+            x[:, nc:] = self.soil
         if drop:
             x[:, drop] = 0.0
         return x

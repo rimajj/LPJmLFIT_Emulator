@@ -21,6 +21,19 @@ z-scores package == training table); `--check` then compares the structure with 
 saved network. `DCL4_3x256_seed` = the 4-layer ensemble (ADR 0359) → `release/v3` + `fold_gfdl-esm4_v4`, 9.8e-3 core-s
 per cell-year; check its fold with `--check-tag PD_L4_fx`. NOT current: v2 / fold v3 stay the releases (owner, ADR 0362 — same accuracy in the complete emulator, 40 % slower).
 
+## Swap ONLY the daily networks of an existing release (ADR 0367; seconds per release, no retraining)
+```bash
+python scripts/build_release_daily_swap.py --base .../release/v2 --out .../release/v2tex \
+    --daily-members T_3x256_seed --soil-texture        # texture networks of ADR 0348
+```
+Copies every file but `daily.npz` / `release.json` (not `runs/`), exports `<prefix>0..4`; gates (1) numpy==torch,
+(T) package soil columns == `f2_train.soil_columns` for every setup's cells, (C) copies byte-identical. Texture
+releases: `daily.npz` carries `soil_table` (13 codes x sand, clay, ln Ks, ln Sf; float32 as the trainer computes them)
+and `release.json` `soil_texture: true` — `LandEmulator` asserts the two agree and looks the setup's `soil_code` up;
+releases without the table run exactly as before. Built: `v2tex`, `fold_<g>_v3tex` (5 models). Not deployment
+releases unless ADR 0367 Part A adopts texture. `run_emulator_npp.py --variant tex` runs them for the mortality model
+(arm `BCET` of `explore_panel_treemort.py`; score with `--out-suffix` so earlier score files stay).
+
 ## Tree-population outputs (ADR 0363 + 0365): release `v4` = v2 + population, `fold_gfdl-esm4_v5` = fold v3 + it
 ```bash
 NCPUS=32 TIME=02:00:00 scripts/sbatch_python.sh poprel-<tag> scripts/build_population_release.py \
