@@ -2003,3 +2003,12 @@ deleted. Results: place explains part (56–91 %) of the memory gain; no cheap-m
 30-yr within noise); true state → capture 0.51, deployable 0.28–0.29. Other sessions' jobs (`gi-*`) seen in the queue;
 left alone.
 
+
+
+## 2026-10-23 (evening) — ADR 0370: MEP / TP in the complete emulator, NPP aimed at extreme years
+Owner "continue with 1-4". Pre-registered ADR 0370 (b2f46a2a). Jobs: 2696966 (MEP s3-4, TP s3-4, MEPx s0-4 training),
+2696967 (ensemble smoke, outputs deleted), 2696968 (yearly NPP corrections corb / cormep), 2696979 (STKcorb,
+STKcormep, STCcorb), 2696982 (4 ensembles on stand_emul_main2 + MEPx free runs), 2696983 (carbon_mepx, STKmepx,
+scoreens), 2696984 (tree score), 2701283 (STKmepx s1 prediction the chain skipped + rescore), 2701284 (post-hoc
+B3/ME3/MEP3). Result: no daily candidate passes (drift clause; median errors -11...-19 %), so the package step was not
+run; no extreme-year NPP version helps the die-offs (best MEPx +0.025). Stopped as instructed.

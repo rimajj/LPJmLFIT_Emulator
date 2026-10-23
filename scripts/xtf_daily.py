@@ -493,7 +493,7 @@ def stage_runens(a):
     cells = pl.read_parquet(f"{F2N}/cells.parquet")
     lat = cells["lat"].to_numpy().astype(np.float32)
     nc = cells.height
-    out = f"{OUT}/ens/{a.arm}__{a.stand_dir or 'orig'}"
+    out = f"{OUT}/ens/{a.name or a.arm}__{a.stand_dir or 'orig'}"
     os.makedirs(out, exist_ok=True)
     ap = f"{out}/annual.npz"
     ann = dict(np.load(ap)) if os.path.exists(ap) else {}
@@ -558,14 +558,16 @@ def stage_scoreens(a):
                 row["drift"] = (row["e_late"] / row["r2_late"]) / (row["e_early"] / row["r2_early"])
                 rows.append(row)
     df = pl.DataFrame(rows)
-    df.write_csv(f"{root}/score_{a.stand_dir}.csv")
-    ref = df.filter(pl.col("arm") == "B").select("leg", "flux", pl.col("e_early").alias("R_early"),
+    df.write_csv(f"{root}/score_{a.stand_dir}{a.out_suffix}.csv")
+    ref = df.filter(pl.col("arm") == a.ref).select("leg", "flux", pl.col("e_early").alias("R_early"),
                                                  pl.col("e_late").alias("R_late"), pl.col("drift").alias("R_drift"))
-    j = df.filter(pl.col("arm") != "B").join(ref, on=["leg", "flux"])
+    j = df.filter(pl.col("arm") != a.ref).join(ref, on=["leg", "flux"])
+    if a.only:  # post-hoc comparisons on a subset of the ensembles (ADR 0370 section 6)
+        j = j.filter(pl.col("arm").is_in(a.only.split(",")))
     j = j.with_columns((pl.col("e_early") / pl.col("R_early")).alias("q_early"),
                        (pl.col("e_late") / pl.col("R_late")).alias("q_late"),
                        (pl.col("drift") - pl.col("R_drift")).alias("d_drift"))  # fmt: skip
-    j.write_csv(f"{root}/ratios_{a.stand_dir}.csv")
+    j.write_csv(f"{root}/ratios_{a.stand_dir}{a.out_suffix}.csv")
     res = {}
     for arm in sorted(j["arm"].unique().to_list()):
         x = j.filter((pl.col("arm") == arm) & ~pl.col("co2fix"))
@@ -803,6 +805,10 @@ def main():
     ap.add_argument("--nlegs", type=int, default=0, help="smoke test: first n training legs only")
     ap.add_argument("--legs", default="", help="run: only these legs (comma list; smoke tests)")
     ap.add_argument("--seeds", default="0,1,2,3,4", help="runens: the ensemble's seeds")
+    ap.add_argument("--name", default="", help="runens: output label instead of the arm name")
+    ap.add_argument("--ref", default="B", help="scoreens: reference ensemble")
+    ap.add_argument("--only", default="", help="scoreens: candidates to score (comma list)")
+    ap.add_argument("--out-suffix", dest="out_suffix", default="", help="scoreens: suffix of the csv names")
     ap.add_argument("--stand-dir", dest="stand_dir", default="stand_emul_main2", help="runens/scoreens")
     a = ap.parse_args()
     {"train": stage_train, "run": stage_run, "score": stage_score, "bench": stage_bench, "runens": stage_runens,

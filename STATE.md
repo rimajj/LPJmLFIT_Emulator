@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0370**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0371**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,21 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-23 (evening) — owner "continue with 1-4" (ADR 0370, separate experiment): nothing passes; stopped.**
+* **Complete emulator** (5-network daily ensembles on the emulated stand, `xtf_daily.py runens/scoreens`): running
+  means + place (MEP), MEP with extreme-year weights (MEPx) and the transformer + place (TP) cut the median error
+  11–19 % vs the deployed networks (TP NPP 0.81) but all fail the per-leg drift clause (no leg > +0.08 drift above the
+  deployed) on many legs; TP also has one runoff leg at 1.52 ⇒ no package change, no release copy, no end-to-end
+  timing. Post-hoc: the running-mean network WITHOUT the place description fails the clause as often ⇒ the fixed
+  place description is not the cause. TP's cost by summed parts ≈ 5.8e-2 core-s per cell-year (≈ 16× fewer than the
+  original, vs ≈ 130× for the release) — not measured end to end.
+* **NPP aimed at extreme years:** a yearly LightGBM correction (`xtf_npp_corrector.py`) lifts the deployed networks'
+  year-to-year NPP agreement 0.55 → 0.69 (held-out × held-out) but die-off capture only 0.283 → 0.288; MEPx 0.308;
+  bar 0.313, bound with the original's NPP 0.385 ⇒ none helps.
+**Next (owner to choose):** (z1) measure the drift clause's own noise (two ensembles of the deployed network against
+each other, ~1 h GPU) — decides whether MEP/TP's failure means anything; (z2) if it is noise, build MEP into the
+package as a release candidate (its error −15 % at ~1.2× cost); (z3) stop the daily/die-off line here.
 
 **2026-10-23 (afternoon) — owner: "place test, cheap memory, per-tree carbon state … Stop here" (ADR 0369, separate
 experiment, nothing into the paper).** All runs finished, results in ADR 0369 §6.
