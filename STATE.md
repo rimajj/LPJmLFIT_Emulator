@@ -84,6 +84,9 @@ NPP 1.31 / ET 1.18 / runoff 6.95 × a second run, vs B 1.30 / 1.82 / 1.71 / 8.28
 per cell-year (350× B, slower than the original) ⇒ not a candidate. Exp 2 — per-tree neural net beats LightGBM (skill
 0.44 → 0.50), seeing the patch adds +0.03 (0.53); die-off capture 0.24; + the year's carbon from the emulator 0.27,
 from the original 0.35, the tree's own NPP 0.46, ceiling 0.70 ⇒ the lever is the daily NPP + a per-tree carbon state.
+**Post-hoc (§7.1a):** memory does NOT improve the year-to-year NPP departures (B 0.72 → no-memory transformer 0.80 →
+memory 0.81; ET 0.87 → 0.82), so for die-offs the gain is the bigger network, not memory; memory fixes each cell's
+level — possibly just a better description of the place (test: no-memory transformer + per-cell seasonal climate).
 **Next (owner to choose):** (x1) carry the weather memory cheaply in the deployed daily network (more or learned
 running means / a small recurrent state; new record) and re-score NPP + die-off capture with it; (x2) the per-tree
 leaf-carbon / bad-year state (the parked "c2" candidate); (x3) stop here.

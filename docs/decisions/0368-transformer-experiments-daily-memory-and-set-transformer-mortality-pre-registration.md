@@ -200,6 +200,29 @@ do not: with it the daily errors fall by 20–30 % (GPP to about a second run's)
 nitrogen-off, ADR 0084). TW is a measurement of what memory is worth, not a candidate. Per §1 the next step would be
 a new record: carry that memory cheaply (more / learned running means, or a small recurrent state), then re-score.
 
+### 7.1a Post-hoc (not pre-registered): does memory track the year-to-year departures? (2026-10-23)
+
+Added after §7.1 because tree deaths depend on a year's NPP DEPARTURE from normal, not its level (ADR 0366, §7.2b).
+`scripts/xtf_daily_anomaly.py` → `xtf/daily/anomaly.csv`: departure = annual value minus the cell's 2021–2100 linear
+trend; correlation of the network's departures with the original's, pooled over cells and years, median over legs,
+seed mean. Held-out cells × held-out climate models, B / TC / TW (second run of the original, for scale only — the
+networks run on the original's own stand, the second run does not share it):
+
+| flux | B | TC | TW | TW seed spread | second run |
+|---|---|---|---|---|---|
+| NPP | 0.72 | 0.80 | 0.81 | 0.01 | 0.87 |
+| GPP | 0.77 | 0.84 | 0.85 | 0.00 | 0.82 |
+| ET | 0.77 | **0.87** | 0.82 | 0.11 | 0.92 |
+| runoff | 0.87 | 0.89 | 0.90 | 0.01 | 0.99 |
+
+(The other two groups give the same picture.) **Reading:** for the NPP departures that matter for die-offs, the gain is
+the network (B → TC +0.08), not memory (+0.01); for ET, memory is worse and unstable across seeds. Memory's §7.1 gain
+is in each cell's LEVEL (30-yr means, single-year error), not in the year-to-year ups and downs. One untested
+explanation: 364 days of raw weather describe the PLACE (seasonal cycle, variability) better than six running means —
+the coverage-of-places limit of ADR 0334 — rather than supplying memory of past weather. Cheap test, if pursued: TC
+plus a fixed per-cell description of its climate (mean seasonal cycle of the four weather variables); if it matches
+TW, no daily memory is needed and the cost stays near today's network.
+
 ### 7.2 Experiment 2 — tree deaths (2026-10-23)
 
 Data: 60 legs (seeds 2 and 3 × 10 climate models × 3 scenarios); training 22.8 M at-risk trees (2.9 M patch-years,
