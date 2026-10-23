@@ -1,0 +1,119 @@
+# 0368 — Two transformer experiments: does the daily model lack long weather memory, and does a model that sees the whole patch predict tree deaths better? (pre-registration, SEPARATE EXPERIMENT)
+
+* **Status:** pre-registered 2026-10-23, before any fit of this record. Results: §7, added after the runs.
+* **SEPARATE EXPERIMENT — nothing of it enters the paper or the release package** (owner 2026-10-23: *"treat it as a
+  seperate experiment. nothing enters the paper."*). Code lives under `scripts/xtf_*.py`, data under
+  `esm_land_emulator_data/xtf/`.
+* **Owner instructions (2026-10-23):** *"have you considerd building an transformer based emulator?"* → the two tests
+  proposed in reply: *"yes, try 1 and 2"*; *"take the data you thik is best for the purpose and produce more data if
+  you need it, just dont do full grid runs for now"*; *"for now we should only judge how well teh emulator reproduces
+  the clusterd runs it was trained on"* (scored on the held-out cells of those runs, with the training-cell fit
+  reported beside it — a training-cell score alone rewards memorising).
+* **Data:** the clustered nitrogen-on runs of ADR 0342 (674 representative cells, 25 patches, transient CO2; 135
+  held-out cells = `cells.parquet:heldout`). **New data made for this record:** the seed-3 2020–2100 legs (rising CO2)
+  of the 8 climate models that had none (24 legs, jobs 2672244–67, `scripts/clu_emu_runs.sh legs 3 …`), so that a
+  second run of the original exists for all 10 climate models × 3 scenarios. No full-grid run.
+* **Follows:** ADR 0334/0336 (the daily model's remaining error is coverage of places; more samples null), ADR
+  0364/0366 (per-tree mortality: die-off capture 0.36–0.43, bar 0.5).
+
+## 1. Experiment 1 — does the daily model lack long weather memory?
+
+**Hypothesis.** The deployed daily network sees today's weather, six hand-made running means (temperature 10/30 d,
+radiation 30 d, rain 30/90/365 d), yesterday's water stores and the stand. If its error on held-out cells comes
+from memory those means do not carry, a model that reads the raw past year of weather does better. If not, the
+architecture is not the lever.
+
+**Arms** (everything but the network identical to the clustered daily members `NC_s0–s4` of ADR 0342: 8 training
+climate models × 4 legs of seed 2, the 485 training cells, 40 M samples, 10 epochs, batch 16 384, one-cycle Adam at
+3e-3, the same 8 targets, loss, closed snow / top-metre / deep stores with the 365-day deep release, NPP = GPP − Ra,
+humidity held at 0, CO2 input, the original's stand):
+
+* **B** — the existing MLP (256 × 3), the five trained seeds `NC_s0–s4` as they are (no retraining). Their spread
+  is the seed-noise yardstick.
+* **TC (capacity control)** — a transformer encoder (width 128, 4 layers, 4 heads, feed-forward 256, pre-norm)
+  whose input is ONE state token carrying exactly B's input vector, plus ONE token of today's raw weather. Same
+  information as B; only the network differs.
+* **TW (memory arm)** — the same transformer; the state token carries B's inputs WITHOUT the six running means; the
+  weather sequence is the past 364 days of raw weather (temperature, log rain, shortwave, net longwave): the last 14
+  days one token each + 50 weekly-mean tokens before that (64 tokens). Weekly rain token = log(1 + 7-day sum).
+* 3 seeds each of TC and TW (0, 1, 2).
+
+**Scores** (free run of the whole 2020–2100 leg, as `clu_emu_f2.py run`; per member k ∈ {2, 3} the network runs on
+member k's own stand and starting stores, and is scored against member k; the second run is the other member):
+held-out cells with 2021–2100 mean GPP ≥ 50 gC m⁻² yr⁻¹, every leg with both members (10 climate models × 3
+scenarios). Per flux (GPP, ET, NPP, runoff): typical (median) error of the 30-year means 2021–2050 and 2071–2100
+divided by the second run's; the same for single years (normalised by the cell's 2021–2100 mean); drift = the
+2081–2100 over the 2021–2040 single-year ratio; area-total relative error. Reported in three groups: held-out cells ×
+held-out climate models (IPSL, MPI — the strictest), held-out cells × training climate models, training cells
+(in-sample reference). Cost: one core, the whole daily step for one cell-year (`f2_train.bench_speed` method).
+
+**Decision (written before any fit):**
+* *Seed spread* s = max − min over B's five seeds of the statistic, per flux and group.
+* **Memory helps** if the TW seed mean beats the TC seed mean on the typical single-year ratio AND the late 30-year
+  ratio by more than s for at least two of NPP, ET, runoff on held-out cells × held-out climate models, with drift
+  not worse by more than s. ⇒ next step (a new record): carry that memory cheaply (learned running means or a
+  distilled small network); the transformer itself is not a deployable candidate until its one-core cost is measured.
+* **Transformer capacity helps** if TC beats B's seed mean by the same rule.
+* **Neither** ⇒ architecture is not the lever for the daily model; stop, nothing else is built.
+* A score within s is called "no measurable difference", never a gain.
+
+## 2. Experiment 2 — does a model that sees the whole patch predict tree deaths better?
+
+**Hypothesis.** A tree's death depends on its neighbours (light competition sets its NPP, and its leaf carbon
+against the sapling threshold). A set transformer over all trees of a patch can learn that interaction; a per-tree
+model with hand-made patch summaries may already carry it.
+
+**Data** (`scripts/xtf_tree_pairs.py`, new): from the clustered `ind_<scen>.csv` of seeds 2 and 3, every leg with
+both members. At-risk tree of year y = a tree of types 0–6, alive at the end of y−1 (the table carries trees ≥ 5 m).
+Identity (Cell, Patch, Type, ID, SLA), asserted unique; every found tree must be exactly one year older (asserted).
+**Outcome** = dies in y: a row with `isdead = 1`, or no row in y. Measured on 60 cells of one leg: every tree without
+a row in y belongs to a patch that lost ALL its trees that year (1 467 of 119 992 patch-years, 1.2 % of at-risk
+trees) — a whole-patch kill. Counted as deaths, and reported apart (`patch_loss`). **Inputs per tree (state at the
+end of y−1):** Type, height, maximum height, age, aboveground biomass, vegetation carbon, NPP, transpiration, SLA,
+longevity, wood density, LAI, stem diameter, bark thickness, crown cover (`fpc_ind`), `minwscal`, D95, D95max,
+NFixing. **Per cell and year:** latitude, CO2 of y, and from the daily weather of y and y−1: mean temperature,
+warmest-month and coldest-month temperature, rain sum, driest-90-day rain sum, mean shortwave; the 30-year trailing
+means of the same. Never the `mort*` columns (they are the original's own probabilities of year y — used only as the
+oracle below).
+
+**Arms:**
+* **P0** — per-tree LightGBM (binary log loss, 400 rounds, the release parameters `explore_panel_a7.PARAMS`): tree +
+  cell inputs.
+* **P1** — P0 + hand-made patch summaries at y−1: number of trees, Σ crown cover, Σ biomass, the tree's height rank
+  (0–1), crown cover of trees taller than it, the patch's mean and the tree's own NPP relative to the patch mean.
+* **ST** — set transformer: tokens = the patch's trees (the P0 tree inputs, type embedding) + one context token (the
+  cell inputs); width 128, 4 layers, 4 heads, no positional encoding (a set); per-tree output = logit of death.
+  BCE loss, AdamW, 3 seeds.
+* **Oracle (bound, not a model):** the original's own probability p = 1 − (1 − `mort`)(1 − `mort_fire`) of year y.
+  **Climatology:** the training-set death rate per tree type.
+
+Training: seed 2, the 8 training climate models × 3 scenarios, training cells, 2021–2100 (every at-risk tree for ST;
+the same trees for P0/P1). Test: held-out cells, seeds 2 and 3, all 10 climate models × 3 scenarios.
+
+**Scores (teacher-forced one-year-ahead: each year starts from the original's own trees — this isolates the model,
+it is not a free run):**
+* **Skill** = (LL_clim − LL_arm) / (LL_clim − LL_oracle), LL = mean per-tree log loss on held-out cells; the share of
+  the gap between knowing nothing and knowing the original's own probability that the arm closes. Also Brier and
+  calibration (Σ p / deaths) per climate model.
+* **30-year death rate** per cell (2071–2100, dense cells = ≥ 5 trees per patch at 2020): typical error vs member k,
+  divided by the second run's (the other member).
+* **Die-off capture** as ADR 0364 §4 (Σ jump of predicted rate / Σ jump of the truth; jump = event year − mean of the
+  5 years before; events = cell-years whose death rate exceeds the cell's 2021–2100 median by more than 3× the
+  cell's median absolute deviation and is ≥ 0.05, defined on member k's truth before any prediction).
+
+**Decision:**
+* **Neighbours matter** if P1's skill exceeds P0's by ≥ 0.05.
+* **The set transformer is worth pursuing** (a free-running test in a new record) if ST's seed-mean skill exceeds
+  P1's by ≥ 0.05 and by more than ST's seed spread, AND its die-off capture exceeds P1's by ≥ 0.05, AND its 30-year
+  death-rate ratio is not worse than P1's by more than 10 %.
+* Otherwise: hand-made summaries carry what the patch has to say; stop.
+
+## 3. What this record does not do
+
+No free-running tree model, no change to any release, no full-grid run, nothing in the paper. Both experiments are
+offline and use the original's own stand / trees as inputs, so they bound what each architecture could add; they do
+not show it ships.
+
+## 7. Results
+
+(added after the runs)
