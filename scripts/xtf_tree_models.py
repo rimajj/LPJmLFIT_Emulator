@@ -157,7 +157,7 @@ def build_set_model(nin, ncell, d=128, nl=4, nh=4, ff=256):
         def __init__(self):
             super().__init__()
             self.tree = nn.Linear(nin, d)
-            self.type = nn.Embedding(7, d)
+            self.ptype = nn.Embedding(7, d)
             self.cell = nn.Linear(ncell, d)
             self.ctx = nn.Parameter(torch.randn(d) * 0.02)
             layer = nn.TransformerEncoderLayer(d, nh, ff, dropout=0.0, activation="gelu", batch_first=True,
@@ -167,7 +167,7 @@ def build_set_model(nin, ncell, d=128, nl=4, nh=4, ff=256):
             self.out = nn.Linear(d, 1)
 
         def forward(self, xt, ty, xc, pad):
-            h = self.tree(xt) + self.type(ty)
+            h = self.tree(xt) + self.ptype(ty)
             c = (self.cell(xc) + self.ctx)[:, None]
             h = torch.cat([c, h], 1)
             m = torch.cat([torch.zeros_like(pad[:, :1]), pad], 1)
