@@ -44,6 +44,14 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-24 — owner "continue with the recommended next steps" = (z1): IN PROGRESS (ADR 0371, separate experiment).**
+* Pre-registered ADR 0371: is the drift clause that rejected MEP/MEPx/TP just noise? Nulls: MRb (MR s5–9) vs MRa (MR
+  s0–4) and MRa vs B, on ADR 0370's venue. If a null breaks the clause, candidates are re-judged with the
+  noise-calibrated clause (§3 ii); MEP is packaged (§3 iii) only if it passes.
+* Jobs: `xtf-371train` 2705430 (MR s3–9) → `xtf-371run` 2705431 (afterok: ensembles MRa/MRb, three `scoreens`,
+  `scripts/xtf_drift_noise.py` prints the decision → `xtf/daily/ens/drift_noise.json`). If 2705431 is missing, the
+  training job failed. **To do when it finishes:** write ADR 0371 §5 results, then (z2) if MEP passes.
+
 **2026-10-23 (evening) — owner "continue with 1-4" (ADR 0370, separate experiment): nothing passes; stopped.**
 * **Complete emulator** (5-network daily ensembles on the emulated stand, `xtf_daily.py runens/scoreens`): running
   means + place (MEP), MEP with extreme-year weights (MEPx) and the transformer + place (TP) cut the median error
