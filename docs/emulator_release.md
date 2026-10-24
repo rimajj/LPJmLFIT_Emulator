@@ -145,8 +145,8 @@ clustered runs of ADR 0342 (674 representative cells, one per climate region; 10
 rising and fixed CO2). Same package; the release says `"co2_input": true` and every year needs the year's CO2:
 
 ```python
-emu = LandEmulator.load(".../release/non_v1")
-su = Setup.load(".../release/non_v1/setup_s2.npz")      # 674 cells, start = end of 2019
+emu = LandEmulator.load(".../release/non_v2mept")      # the CURRENT nitrogen-on release (ADR 0373)
+su = Setup.load(".../release/non_v2mept/setup_s2.npz")  # 674 cells, start = end of 2019
 state = emu.start(su)
 for year in range(2020, 2101):     # anchors are per cell: runs past 2100 work but leave the training climate
     daily, annual = emu.step_year(state, forcing, co2=ppm[year])   # ppm: global yearly mean
@@ -159,7 +159,18 @@ The daily model reads the year's CO2; the yearly maps read its trailing 30-year 
 | directory | trained on | purpose |
 |---|---|---|
 | `non_fold_v1/` | 8 climate models (MPI-ESM1-2-HR, IPSL-CM6A-LR held out), 80 % of cells | reproduces the scored results exactly |
-| `non_v1/` | all 10 climate models' 58 legs, all 674 cells | **deployment** |
+| `non_v1/` | all 10 climate models' 58 legs, all 674 cells | previous deployment (ADR 0344), kept unchanged |
+| `non_fold_v2mept/` | as `non_fold_v1`, daily networks with weather memory (ADR 0372) | reproduces the scored results of the new daily networks |
+| `non_v2mept/` | as `non_v1`, daily networks with weather memory retrained on all 58 legs and all cells | **current deployment** (ADR 0373) |
+
+**Weather memory (the `*_v2mept` releases, ADR 0372/0373).** The daily network additionally reads 32 running means
+of the weather (time scales 3–480 days) and a description of the place: the mean seasonal cycle and day-to-day spread
+of the 30 years before each year, rebuilt once a year from the weather the emulator has been given (1990–2018
+observed weather + 2019 are stored in the setup, so a run starting in 2020 needs nothing extra). The package keeps
+both up to date itself; the call is unchanged. Compared with the previous daily networks on held-out cells and
+held-out climate models (complete emulator): typical error GPP −12.5 %, NPP −17 %, ET −10 %, runoff −9.5 %, still
+better in 2071–2100 for every flux; cost 8.0e-3 instead of 7.1e-3 core-s per cell-year (1.12×). The deployment
+release has no held-out data, so its skill is the fold release's.
 
 Build: `scripts/build_emulator_release_non.py --kind fold|deploy --out DIR` (seconds; three gates). Run, time and
 check: `scripts/run_emulator_non.py --release DIR --leg mpi-esm1-2-hr_ssp370 [--cap fixed] --check`. Measured:

@@ -17,6 +17,8 @@ ADR 0369 (same experiment family, also not for the paper):
   run   --arm B|TC|TW --seed s      free runs, members 2 and 3, every leg with both -> annual.npz
   score [--arms ...]                ratios to the second run -> DATA/score.md, score.csv
   bench --arm ... --seed s          one-core cost of the daily step per cell-year
+  train --arm MEPt --seed s --deploy   ADR 0373: a DEPLOYMENT network -> DATA/runs/<arm>D_s<s>: every cell and the 58
+                                    legs of all 10 climate models (exactly the deployed NCD_s0-4's legs.json)
 
 DATA = esm_land_emulator_data/xtf/daily; arrays read from f2_non (clu_emu_f2.py build).
 """
@@ -44,6 +46,7 @@ OUT = "/p/projects/open/Jamir/esm_land_emulator_data/xtf/daily"
 TRAIN_GCMS = ["gfdl-esm4", "mri-esm2-0", "ukesm1-0-ll", "canesm5", "cnrm-cm6-1", "cnrm-esm2-1", "ec-earth3", "miroc6"]
 TEST_GCMS = ["ipsl-cm6a-lr", "mpi-esm1-2-hr"]
 TRAIN_LEGS = [f"{g}_{t}" for g in TRAIN_GCMS for t in ("ssp126", "ssp370", "ssp585", "ssp370co2fix")]
+DEPLOY_REF = f"{F2N}/runs/NCD_s0/legs.json"  # ADR 0373: --deploy trains on these legs (the deployed networks')
 WIN_COLS = [F.FEAT[k] for k in ("tas10", "tas30", "rsds30", "pr30", "pr90", "pr365")]
 ND_TOK, NW_TOK = 14, 50  # TW: daily tokens t..t-13, weekly-mean tokens ending t-14-7k
 NV = 4  # token variables: tas, log1p(rain), rsds, lwnet
@@ -343,14 +346,20 @@ def stage_train(a):
     torch.manual_seed(a.seed)
     dev = torch.device("cuda")
     torch.backends.cuda.matmul.allow_tf32 = True
-    out = f"{OUT}/runs/{a.arm}_s{a.seed}"
+    if a.deploy:  # ADR 0373: no held-out cells (validation stays 10 % of the blocks), every climate model
+        F.ALL_CELLS = True
+        with open(DEPLOY_REF) as fh:
+            deploy_legs = json.load(fh)["train"]
+    out = f"{OUT}/runs/{a.arm}{'D' if a.deploy else ''}_s{a.seed}"
     os.makedirs(out, exist_ok=True)
     cells = pl.read_parquet(f"{F2N}/cells.parquet")
     lat = cells["lat"].to_numpy().astype(np.float32)
     tr, va, ho = F.split_cells(cells)
-    log(f"arm {a.arm} seed {a.seed}: cells train {len(tr)} val {len(va)} held-out {len(ho)}")
+    log(f"arm {a.arm} seed {a.seed}{' DEPLOY' if a.deploy else ''}: cells train {len(tr)} val {len(va)} "
+        f"held-out {len(ho)}")
     rng = np.random.default_rng(a.seed)
-    legs = TRAIN_LEGS[: a.nlegs] if a.nlegs else TRAIN_LEGS  # --nlegs: smoke tests only
+    legs = deploy_legs if a.deploy else TRAIN_LEGS
+    legs = legs[: a.nlegs] if a.nlegs else legs  # --nlegs: smoke tests only
     per = a.nsamp // len(legs)
     norm = token_norm(np.load(f"{F2N}/forc_m2_{TRAIN_LEGS[0]}.npy"))
     kind, kinds = ARMS[a.arm]
@@ -857,6 +866,7 @@ def main():
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=3e-3)
+    ap.add_argument("--deploy", action="store_true", help="train: all cells + all 58 legs (ADR 0373)")
     ap.add_argument("--nlegs", type=int, default=0, help="smoke test: first n training legs only")
     ap.add_argument("--legs", default="", help="run: only these legs (comma list; smoke tests)")
     ap.add_argument("--seeds", default="0,1,2,3,4", help="runens: the ensemble's seeds")

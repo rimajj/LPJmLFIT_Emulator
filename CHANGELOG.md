@@ -8,6 +8,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Current nitrogen-on release `release/non_v2mept` (ADR 0373, owner):** the weather-memory daily networks of ADR
+  0372 retrained on all 10 climate models and every cell (`xtf_daily.py train --deploy` → `MEPtD_s0–4`) and swapped
+  into `non_v1` (`build_release_daily_mep.py --deploy`; all four gates pass). In-sample on a training leg closer to
+  the original than `non_v1` in every flux; 8.12e-3 vs 7.17e-3 core-s per cell-year. `non_v1` kept unchanged.
 - **Soil texture in the complete emulator's daily model + mortality re-score (ADR 0367, owner "n1"):** the package
   (`landemu`) reads an optional soil-texture table from `daily.npz` (four columns after every other input; releases
   without it unchanged, unit test added); `scripts/build_release_daily_swap.py` (copy a release with only its daily

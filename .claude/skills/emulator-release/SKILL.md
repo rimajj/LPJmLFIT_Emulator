@@ -1,6 +1,6 @@
 ---
 name: emulator-release
-description: Build, gate, run and time a RELEASE of the whole learned LPJmL-FIT emulator (ADR 0340) — the numpy + LightGBM package python/src/lpjmlfit_emulator/landemu (LandEmulator, Setup), scripts/build_emulator_release.py (deployment `v1` or a `--hold-gcm` fold release; three gates numpy==PyTorch, climate stats==pipeline, anchors==test rows), scripts/run_emulator.py (81-year run from daily weather, one-core timing, `--check` reproduction against the scored predictions), and the final scorers scripts/final_structure_score.py (relaxed standard on the year-by-year map the emulator runs) and scripts/final_daily_score.py (ADR 0325 numbers from f2_relative_score output). ALSO the nitrogen-on releases with a CO2 input (ADR 0344: scripts/build_emulator_release_non.py, scripts/run_emulator_non.py, step_year(..., co2=ppm), release/non_v1 + non_fold_v1). Use whenever retraining/rebuilding the emulator, changing any of its parts (daily networks, structure/stand maps, cover mode), quoting its accuracy or speed, or wiring it into an ESM.
+description: Build, gate, run and time a RELEASE of the whole learned LPJmL-FIT emulator (ADR 0340) — the numpy + LightGBM package python/src/lpjmlfit_emulator/landemu (LandEmulator, Setup), scripts/build_emulator_release.py (deployment `v1` or a `--hold-gcm` fold release; three gates numpy==PyTorch, climate stats==pipeline, anchors==test rows), scripts/run_emulator.py (81-year run from daily weather, one-core timing, `--check` reproduction against the scored predictions), and the final scorers scripts/final_structure_score.py (relaxed standard on the year-by-year map the emulator runs) and scripts/final_daily_score.py (ADR 0325 numbers from f2_relative_score output). ALSO the nitrogen-on releases with a CO2 input (ADR 0344: scripts/build_emulator_release_non.py, scripts/run_emulator_non.py, step_year(..., co2=ppm), release/non_v1 + non_fold_v1; CURRENT nitrogen-on release = release/non_v2mept, ADR 0373). Use whenever retraining/rebuilding the emulator, changing any of its parts (daily networks, structure/stand maps, cover mode), quoting its accuracy or speed, or wiring it into an ESM.
 ---
 
 # Emulator release
@@ -48,8 +48,17 @@ means of the weather + a 52-number place description of the 30 years before EACH
 description. Releases without those keys run bit for bit as before. Gates in the builder: (1) numpy==torch with the
 extras, (E) online extras == `xtf_daily.Extras` over 3 years, (S) setup arrays unchanged — compare NaN-aware, the
 anchors carry NaN for treeless cells — (C) copies. Measured: error vs `non_fold_v1`'s networks GPP −12.5 %, NPP −17 %,
-ET −10 %, runoff −9.5 %; end-to-end 8.03e-3 vs 7.14e-3 core-s per cell-year. A deployment build on all 10 climate
-models does not exist yet (retrain MEPt on all legs first).
+ET −10 %, runoff −9.5 %; end-to-end 8.03e-3 vs 7.14e-3 core-s per cell-year.
+
+**Deployment = `release/non_v2mept`, the CURRENT nitrogen-on release (ADR 0373):**
+```bash
+python scripts/xtf_daily.py train --arm MEPt --deploy --seed s      # s = 0..4 -> xtf/daily/runs/MEPtD_s<s>; all cells,
+                                                                     # the 58 legs of f2_non/runs/NCD_s0/legs.json
+python scripts/build_release_daily_mep.py --base .../release/non_v1 --out .../release/non_v2mept --arm MEPt --deploy
+```
+~10 min per network on one GPU (one packed 4-GPU job: `logs/xtf-373train.jcf`, build + runs `logs/xtf-373release.jcf`).
+Not scoreable out of sample: its skill is `non_fold_v2mept`'s. The deep store's cell mean sits near 0 mm (slightly
+negative at times) with these networks, fold and deployment alike — it is allowed to go negative by construction.
 
 ## Tree-population outputs (ADR 0363 + 0365): release `v4` = v2 + population, `fold_gfdl-esm4_v5` = fold v3 + it
 ```bash

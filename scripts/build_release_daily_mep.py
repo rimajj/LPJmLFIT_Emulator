@@ -15,6 +15,9 @@ Gates (abort before release.json is written):
   (C) every copied file byte-identical to the base's.
 
   python scripts/build_release_daily_mep.py --base .../release/non_fold_v1 --out .../release/non_fold_v2meph --arm MEPh
+  python scripts/build_release_daily_mep.py --base .../release/non_v1 --out .../release/non_v2mept --arm MEPt --deploy
+      (ADR 0373: the deployment networks xtf_daily.py train --deploy -> runs/MEPtD_s0..4; gate (1)'s leg is then a
+      training leg, which a numpy-vs-PyTorch identity does not care about)
 """
 
 from __future__ import annotations
@@ -51,7 +54,7 @@ def place_parts(warm):
     return tuple(np.stack([p[i] for p in ps]) for i in range(3))
 
 
-def export(out, arm):
+def export(out, arm, run):
     import f2_train as F
     import torch
 
@@ -60,7 +63,8 @@ def export(out, arm):
                       "co2_input": np.bool_(True), "ema_tau": np.array(X.EMA_TAU, np.float64),
                       "place_mode": np.str_(MODE[arm])}  # fmt: skip
     for i in range(5):
-        net, _ = X.load(f"{X.OUT}/runs/{arm}_s{i}/model.pt", torch.device("cpu"))
+        net, _ = X.load(f"{X.OUT}/runs/{run}_s{i}/model.pt", torch.device("cpu"))
+        assert net.arm == arm, f"{run}_s{i} is arm {net.arm}, not {arm}"
         net.eval()
         nets.append(net)
         lin = [m for m in net.trunk if isinstance(m, torch.nn.Linear)]
@@ -118,8 +122,11 @@ def main():
     ap.add_argument("--base", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--arm", required=True, choices=list(MODE))
-    ap.add_argument("--adr", default="0372")
+    ap.add_argument("--deploy", action="store_true", help="networks <arm>D_s0..4 (ADR 0373)")
+    ap.add_argument("--adr", default="")
     a = ap.parse_args()
+    run = f"{a.arm}D" if a.deploy else a.arm
+    a.adr = a.adr or ("0373" if a.deploy else "0372")
     if os.path.exists(a.out):
         sys.exit(f"refusing to overwrite {a.out}")
     os.makedirs(a.out)
@@ -129,7 +136,7 @@ def main():
         src = os.path.join(a.base, n)
         assert os.path.isfile(src), f"unexpected directory in the base release: {src}"
         shutil.copy2(src, os.path.join(a.out, n))
-    dm, forc, ex, rel = export(a.out, a.arm)
+    dm, forc, ex, rel = export(a.out, a.arm, run)
 
     worst_e = None
     for n in sorted(set(names) - set(copied)):
@@ -151,7 +158,7 @@ def main():
     with open(os.path.join(a.base, "release.json")) as fh:
         cfg = json.load(fh)
     base_name = os.path.basename(os.path.normpath(a.base))
-    members = [f"xtf/daily/runs/{a.arm}_s{i}" for i in range(5)]
+    members = [f"xtf/daily/runs/{run}_s{i}" for i in range(5)]
     cfg.update({
         "version": os.path.basename(os.path.normpath(a.out)), "base_release": base_name,
         "base_daily_members": cfg.get("daily_members"), "daily_members": members,
@@ -163,7 +170,7 @@ def main():
                         extras_online_vs_training_max_rel=worst_e, copies_identical=True)  # fmt: skip
     with open(os.path.join(a.out, "release.json"), "w") as fh:
         json.dump(cfg, fh, indent=1)
-    BR.log(f"wrote {a.out} (base {base_name}, daily {a.arm} s0..4, place {MODE[a.arm]})")
+    BR.log(f"wrote {a.out} (base {base_name}, daily {run} s0..4, place {MODE[a.arm]})")
 
 
 if __name__ == "__main__":

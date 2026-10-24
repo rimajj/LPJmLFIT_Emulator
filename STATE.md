@@ -2,7 +2,7 @@
 
 > The `## NEXT — start here` block is what the SessionStart hook replays. **Refresh it before a session ends.**
 > Narrative → `JOURNAL.md` (append). Durable cross-cutting facts → `MEMORY.md`. Decisions → next free ADR number
-> (**0371**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
+> (**0374**). History of the retired parallel lines: `lines/{S,M,E,O,X}/STATE.md` + `JOURNAL.md` (read-only).
 
 ## The goal (owner, 2026-10-10, ADR 0318)
 
@@ -43,6 +43,19 @@ The table below is the per-part history up to 2026-10-14.
 | energy closure, online coupling | **the learned emulator is two-way coupled to SpeedyWeather 0.23 (ADR 0345, 2026-10-16):** daily weather in, daily ET back as the land moisture flux, T31, 10-yr runs; offline replay identical, water closes; land ET +47 %, land rain +16 %; SpeedyWeather's own land is ~7 °C colder than the emulator's training climate. **ADR 0346:** the cold is SpeedyWeather's atmosphere (GFDL-ESM4 = W5E5 observations at these cells; not mountains, not the slab ocean; its latitude-only grey longwave + a cold lowest air layer); **albedo (emulator tree/grass cover + snow) and roughness channels added**, replay identical, < 0.1 °C effect. No runoff routing; energy closure of ADR 0073–0085 not used |
 
 ## NEXT — start here
+
+**2026-10-24 (evening) — owner: "Retrain on all 10 climate models and make it the current nitrogen-on release"
+⇒ ADR 0373: DONE — `release/non_v2mept` is the CURRENT nitrogen-on release.** The weather-memory daily networks
+(MEPt) retrained on every cell and all 58 legs (`xtf_daily.py train --arm MEPt --deploy` → `xtf/daily/runs/MEPtD_s0–4`,
+job 2705973, ~10 min per network) and swapped into `non_v1` (`build_release_daily_mep.py --deploy`, job 2705974).
+* All four build gates pass (numpy == PyTorch 5.4e-7, online extras == training 9e-8, setup unchanged, 19 copied
+  files byte-identical — the yearly maps are `non_v1`'s).
+* In-sample sanity on MPI ssp370 (a training leg for both deployments): error ÷ a second run's, 2021–2050, GPP / ET /
+  NPP / runoff `non_v1` 1.65 / 2.63 / 1.78 / 4.53 → `non_v2mept` 1.21 / 1.86 / 1.29 / 3.71; better in 2071–2100 too.
+  Skill out of sample = the fold release's (ADR 0372). Cost 8.12e-3 vs 7.17e-3 core-s per cell-year (1.13×).
+* User guide, skill `emulator-release` updated; `non_v1` kept unchanged as the previous deployment.
+**Next (owner to choose):** (v2) port the weather memory to the nitrogen-off releases (`v4`); (v3) look at the
+CO2-fixed late-century runoff (1.06× the previous networks' error on 4 held-out legs); open threads below.
 
 **2026-10-24 (later) — owner: "the goal is the best possible emulator … 15 % better at 1.2× cost is a good candidate"
 ⇒ ADR 0372: DONE — the running-means daily network is packaged as `release/non_fold_v2mept`.** The per-leg drift

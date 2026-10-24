@@ -2032,3 +2032,12 @@ extras in `landemu.daily`; gate job 2705611 (committed vs new package on non_fol
 `build_release_daily_mep.py`: first test 2705620 failed on a NaN-unaware setup comparison (anchors are NaN for
 treeless cells), fixed (85f46fe4), 2705624 green. 2705770: `release/non_fold_v2mept` built, end-to-end 8.03e-3 vs
 7.14e-3 core-s per cell-year on the same node, `--check-ens` 4e-8 on two held-out models. + skill: emulator-release.
+
+## 2026-10-24 (evening) — ADR 0373: deployment release `non_v2mept`
+
+Owner: "Retrain on all 10 climate models and make it the current nitrogen-on release." Added `--deploy` to
+`xtf_daily.py train` (all cells via `f2_train.ALL_CELLS`, legs read from `f2_non/runs/NCD_s0/legs.json` so they are
+exactly the deployed networks') and `--deploy` to `build_release_daily_mep.py` (networks `<arm>D_s*`). One packed 4-GPU
+job (gpumedium was at the account's GPU-CPU cap → moved to gpushort with `scontrol update`, started at once); the
+build + three timed runs chained `afterok`. Gates pass; on MPI ssp370 (in-sample for both deployments) the new release
+beats `non_v1` in every flux and window. Deep store near 0 mm, as in the fold version. Docs, skill, STATE updated.
