@@ -50,7 +50,8 @@ NV = 4  # token variables: tas, log1p(rain), rsds, lwnet
 # ADR 0369: arm -> (network, extra input groups appended to B's input vector)
 ARMS = {"B": ("B", ()), "TC": ("T", ()), "TW": ("T", ()), "TP": ("T", ("place",)), "MR": ("M", ()),
         "MP": ("M", ("place",)), "ME": ("M", ("ema",)), "MM": ("M", ("mon",)), "MEP": ("M", ("ema", "place")),
-        "MMP": ("M", ("mon", "place")), "MEPx": ("M", ("ema", "place"))}  # fmt: skip
+        "MMP": ("M", ("mon", "place")), "MEPx": ("M", ("ema", "place")),
+        "MEPh": ("M", ("ema", "placeh")), "MEPt": ("M", ("ema", "placet"))}  # fmt: skip
 # ADR 0370: arm -> sample weight of the days of extreme NPP years (the cell's top 10 % of |true NPP departure|)
 EXTREME = {"MEPx": 5.0}
 
@@ -68,6 +69,7 @@ def extreme_years(ml):
 EMA_TAU = (3, 7, 15, 30, 60, 120, 240, 480)  # days
 NMON = 12  # 30-day blocks of the past 360 days
 PLACE_YEARS = 30  # the place description: 2020-2049 of the leg's own forcing (fixed for the whole run)
+HIST_Y0 = 1990  # ADR 0372: observed GSWP3-W5E5 weather 1990-2018 + the arrays' 2019 = the 30 years before the run
 
 
 def log(*a):
@@ -158,6 +160,44 @@ def place_desc(forc):
     return np.concatenate([m.reshape(nc, 48), v.std(1)], -1).astype(np.float32)
 
 
+def hist_raw():
+    """(nc, 29 * 365, 5) observed weather 1990-2018 (GSWP3-W5E5, the history every leg shares; the arrays start with
+    its 2019), cached as OUT/hist_forc_1990_2018.npy."""
+    p = f"{OUT}/hist_forc_{HIST_Y0}_2018.npy"
+    if not os.path.exists(p):
+        import clu_emu_f2 as C
+
+        h = C.forcing("hist", HIST_Y0, 2018)  # (Y, N, 365, 5)
+        np.save(p, h.transpose(1, 0, 2, 3).reshape(h.shape[1], -1, 5).astype(np.float32))
+    return np.load(p)
+
+
+def trailing_place(forc):
+    """ADR 0372: (nc, NYF, 52) the place description (as place_desc) of the 30 years BEFORE each year of the
+    forcing arrays (year index yi = forcing day // 365, 0 = 2019): years yi-30 .. yi-1, the part before 2019 from the
+    observed 1990-2018 weather. Index 1 (2020) = 1990-2019 = the fixed description of arm MEPh. Index 0 repeats 1."""
+    h = hist_raw()
+    v = np.concatenate([raw_vars(h), raw_vars(forc)], 1)
+    v[..., 1] = np.log1p(v[..., 1])
+    nc, nh = v.shape[0], h.shape[1] // 365
+    y = v.reshape(nc, -1, 365, 4)  # (nc, nh + NYF, 365, 4)
+    mon = (np.arange(365) * 12) // 365
+    m = np.stack([y[:, :, mon == j].mean(2) for j in range(12)], 2)  # (nc, Y, 12, 4) monthly means
+    s1, s2 = y.sum(2), (y * y).sum(2)  # (nc, Y, 4)
+    cum = lambda a: np.concatenate([np.zeros_like(a[:, :1]), np.cumsum(a, 1)], 1)  # noqa: E731
+    cm, c1, c2 = cum(m), cum(s1), cum(s2)
+    nyf = forc.shape[1] // 365
+    out = np.empty((nc, nyf, 52), np.float32)
+    for yi in range(nyf):
+        hi = nh + max(yi, 1)  # window = full years hi-30 .. hi-1
+        lo = hi - PLACE_YEARS
+        mm = (cm[:, hi] - cm[:, lo]) / PLACE_YEARS
+        n = PLACE_YEARS * 365
+        mu, ex2 = (c1[:, hi] - c1[:, lo]) / n, (c2[:, hi] - c2[:, lo]) / n
+        out[:, yi] = np.concatenate([mm.reshape(nc, 48), np.sqrt(np.maximum(ex2 - mu * mu, 0))], -1)
+    return out
+
+
 def ema_bank(forc):
     """(nc, T, 32): exponential running means m_t = m_(t-1) + (x_t - m_(t-1)) / tau for the four variables and
     the 8 time scales EMA_TAU; started at the mean of the warm-up year (2019). Rain enters as mm/d and is
@@ -183,6 +223,7 @@ class Extras:
         self.kinds = kinds
         self.place = place_desc(forc) if "place" in kinds else None
         self.ema = ema_bank(forc) if "ema" in kinds else None
+        self.tplace = trailing_place(forc) if {"placeh", "placet"} & set(kinds) else None
         if "mon" in kinds:
             v = raw_vars(forc)
             v[..., 1] = np.log1p(v[..., 1])
@@ -194,6 +235,10 @@ class Extras:
         for k in self.kinds:
             if k == "place":
                 parts.append(self.place[c])
+            elif k == "placeh":
+                parts.append(self.tplace[c, 1])
+            elif k == "placet":
+                parts.append(self.tplace[c, t // 365])
             elif k == "ema":
                 parts.append(self.ema[c, t])
             else:  # block j = days t-30j-29 .. t-30j
@@ -207,7 +252,7 @@ class Extras:
 
 
 def n_extra(kinds):
-    return sum({"place": 52, "ema": 4 * len(EMA_TAU), "mon": NMON * NV}[k] for k in kinds)
+    return sum({"place": 52, "placeh": 52, "placet": 52, "ema": 4 * len(EMA_TAU), "mon": NMON * NV}[k] for k in kinds)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -713,6 +758,9 @@ class OnlineExtras:
         self.kinds = kinds
         self.v = raw_vars(forc)
         self.place = place_desc(forc) if "place" in kinds else None
+        # ADR 0372: an ESM keeps 30 years x 56 numbers per cell and rebuilds the description once a year; the bench
+        # reads the precomputed table (a once-a-year update of 52 numbers is not part of the daily cost)
+        self.tplace = trailing_place(forc) if {"placeh", "placet"} & set(kinds) else None
         K = len(EMA_TAU)
         self.tau = np.tile(np.asarray(EMA_TAU, np.float64), 4)
         self.m = np.repeat(self.v[:, : F.WARM].mean(1), K, axis=1)
@@ -744,6 +792,10 @@ class OnlineExtras:
         for k in self.kinds:
             if k == "place":
                 parts.append(self.place)
+            elif k == "placeh":
+                parts.append(self.tplace[:, 1])
+            elif k == "placet":
+                parts.append(self.tplace[:, self.t // 365])
             elif k == "ema":
                 e = self.m.astype(np.float32).copy()
                 r = slice(len(EMA_TAU), 2 * len(EMA_TAU))
@@ -791,6 +843,9 @@ def stage_bench(a):
             step(x, prec, S, d)
         times.append((time.perf_counter() - t0) / nc)
     log(f"{a.arm}_s{a.seed}: {np.median(times):.3e} core-s per cell-year (network + token gather, one core)")
+    os.makedirs(f"{OUT}/runs/{a.arm}_s{a.seed}", exist_ok=True)
+    with open(f"{OUT}/runs/{a.arm}_s{a.seed}/bench.json", "w") as f:
+        json.dump({"core_s_per_cell_year": float(np.median(times)), "times": times}, f)
 
 
 def main():
