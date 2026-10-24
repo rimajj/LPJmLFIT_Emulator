@@ -44,13 +44,19 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
-**2026-10-24 — owner "continue with the recommended next steps" = (z1): IN PROGRESS (ADR 0371, separate experiment).**
-* Pre-registered ADR 0371: is the drift clause that rejected MEP/MEPx/TP just noise? Nulls: MRb (MR s5–9) vs MRa (MR
-  s0–4) and MRa vs B, on ADR 0370's venue. If a null breaks the clause, candidates are re-judged with the
-  noise-calibrated clause (§3 ii); MEP is packaged (§3 iii) only if it passes.
-* Jobs: `xtf-371train` 2705430 (MR s3–9) → `xtf-371run` 2705431 (afterok: ensembles MRa/MRb, three `scoreens`,
-  `scripts/xtf_drift_noise.py` prints the decision → `xtf/daily/ens/drift_noise.json`). If 2705431 is missing, the
-  training job failed. **To do when it finishes:** write ADR 0371 §5 results, then (z2) if MEP passes.
+**2026-10-24 — owner "continue with the recommended next steps" = (z1): done (ADR 0371, separate experiment).
+Nothing packaged; the daily/die-off line is stopped as pre-registered.**
+* Two 5-network ensembles of the deployed design (MR s0–4 vs s5–9, jobs 2705430 / 2705431) break ADR 0367's "drift
+  ≤ 0.08 above the reference" clause on 4–10 of 30 legs per flux (worst 0.22–0.31) ⇒ the clause is noise at 0.08.
+  (MR s0–4 vs the deployed NC s0–4 is NOT an independent null — same seeds and sampling, 0.1 % apart.)
+* Re-judged with the noise-calibrated limits, MEP, MEPx and TP still fail in every flux. Their NPP gain holds through
+  the century; their ET/runoff gain fades (TP ET q 0.80 → 0.93, all 30 legs drift up). They stay better than the
+  deployed networks late on 20–30 of 30 legs — the clause rejects error that GROWS faster from a lower start.
+  `scripts/xtf_drift_noise.py`, `xtf/daily/ens/drift_noise.json`.
+**Next (owner to choose):** (w1) accept the stop (release stays `v4` / the nitrogen-on `non_*_v1`); (w2) decide whether
+"better in both windows but the gain shrinks" should count as drift — if not, MEP (error −15 %, ~1.2× cost) could
+become a candidate, but its place description must first be rebuilt from PAST weather (it now uses the run's own
+2020–2049) and re-scored; (w3) open threads below (SpeedyWeather paused until the atmosphere works).
 
 **2026-10-23 (evening) — owner "continue with 1-4" (ADR 0370, separate experiment): nothing passes; stopped.**
 * **Complete emulator** (5-network daily ensembles on the emulated stand, `xtf_daily.py runens/scoreens`): running

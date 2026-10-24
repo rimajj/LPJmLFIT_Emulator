@@ -1,6 +1,6 @@
 # 0371 — How noisy is the complete-emulator drift clause? Two ensembles of the same daily network against each other (pre-registration, SEPARATE EXPERIMENT)
 
-* **Status:** pre-registered 2026-10-24, before any fit or run of this record. Results: §5, added after the runs.
+* **Status:** pre-registered 2026-10-24, before any fit or run of this record. Results: §5, added after the runs. **The clause IS noisy (two ensembles of the same design break it on 4–10 of 30 legs per flux), but all three candidates still fail the noise-calibrated clause in every flux ⇒ nothing packaged; stop (z3).**
 * **SEPARATE EXPERIMENT — nothing of it enters the paper** (continues ADR 0368–0370).
 * **Owner instruction (2026-10-24):** *"continue with the recommended next steps"* = option (z1) of the ADR 0370
   handoff (measure the drift clause's own noise), then (z2) only if the result says MEP's failure was noise.
@@ -56,3 +56,44 @@ not replace any current release without the owner's word. If only **TP** or **ME
 
 No change to any existing release; no full-grid run; no paper text; no new rule for other venues (the calibrated rule
 is for this venue and these candidates only).
+
+## 5. Results (2026-10-24; jobs 2705430 train 5 min, 2705431 ensembles + scoring 1 h 32 min)
+
+`xtf/daily/ens/drift_noise.json`, `ratios_stand_emul_main2{_n1,_n2,_vsMR}.csv`. The seven new MR networks end at the
+same validation loss as MR s0–2 (0.078–0.084 vs 0.080–0.083).
+
+**The nulls (30 rising-CO2 legs; legs with drift excess > +0.08 / largest |drift excess| / largest max(q, 1/q)):**
+
+| | GPP | NPP | ET | runoff |
+|---|---|---|---|---|
+| N1 MRb vs MRa (disjoint seeds) | 4 / 0.31 / 1.27 | 4 / 0.25 / 1.19 | 9 / 0.26 / 1.26 | 10 / 0.22 / 1.28 |
+| N2 MRa vs B | 0 / 0.07 / 1.04 | 0 / 0.07 / 1.07 | 1 / 0.09 / 1.06 | 2 / 0.16 / 1.14 |
+| MEP vs B | 12 / 0.51 | 7 / 0.53 | 11 / 0.34 | 16 / 0.36 |
+| MEPx vs B | 8 / 0.43 | 6 / 0.16 (|·| 0.31) | 12 / 0.38 | 12 / 0.24 |
+| TP vs B | 9 / 0.20 | 4 / 0.26 | 21 / 0.42 | 17 / 0.86 |
+
+N1's median q is 0.96–1.00 (seed noise of the typical error ≈ 2–5 %, far below the candidates' 11–19 % gains).
+**N2 is not an independent null:** MR s<k> is trained by the same sampling with the same seed as NC_s<k>, and the two
+ensembles differ by 0.1 % of the 30-yr means (vs 1.3–1.8 % between MRa and MRb). So the calibration rests on N1.
+Not foreseen in §2; it does not change the decision (the rule takes the larger null, which is N1 everywhere).
+
+**Decision (§3):** (i) N1 breaks the clause in every flux ⇒ the clause as written would reject the deployed design
+against itself; it is noise at 0.08. (ii) Calibrated limits (N1): worst drift excess GPP 0.31, NPP 0.25, ET 0.26,
+runoff 0.22; legs over 0.08 at most 4 / 4 / 9 / 10. **MEP, MEPx and TP fail all the same** — every candidate exceeds
+the calibrated count or worst excess in every flux it was checked on (MEP: all four fluxes on both; TP also its
+runoff worst leg-window q 1.52 > 1.28). Against MRa (same training script) the picture is the same. ⇒ (iii) nothing is
+built; stop.
+
+**What the failure is (descriptive, not part of the rule):** median drift excess over legs, candidates vs N1:
+
+| | GPP | NPP | ET | runoff |
+|---|---|---|---|---|
+| N1 (MRb) | +0.01 | −0.03 | +0.03 | +0.07 |
+| MEP | +0.05 | −0.03 | +0.05 | +0.10 |
+| TP | +0.01 | −0.05 | +0.15 (30 of 30 legs > 0) | +0.15 |
+
+The NPP gain does not fade (candidates' median q early → late: MEP 0.85 → 0.84, TP 0.84 → 0.79); the WATER-flux gain
+does (TP ET 0.80 → 0.93, runoff 0.80 → 0.94; MEP runoff 0.86 → 0.91). The candidates stay better than the deployed
+networks late in the century on most legs (MEP: 22–28 of 30 per flux; TP 20–30): the clause rejects them because
+their error GROWS faster over the century, from a lower start, not because they end up worse. Whether that should
+disqualify a network is a choice about the drift criterion, not settled here — the per-leg drift clause is ADR 0367's.

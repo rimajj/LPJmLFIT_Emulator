@@ -2012,3 +2012,12 @@ STKcormep, STCcorb), 2696982 (4 ensembles on stand_emul_main2 + MEPx free runs),
 scoreens), 2696984 (tree score), 2701283 (STKmepx s1 prediction the chain skipped + rescore), 2701284 (post-hoc
 B3/ME3/MEP3). Result: no daily candidate passes (drift clause; median errors -11...-19 %), so the package step was not
 run; no extreme-year NPP version helps the die-offs (best MEPx +0.025). Stopped as instructed.
+
+## 2026-10-24 — ADR 0371: noise of the complete-emulator drift clause
+Owner "continue with the recommended next steps" (= z1). Pre-registered ADR 0371 (160ac7ed) + decision script
+`scripts/xtf_drift_noise.py` (979e1179; dry-tested on ADR 0370's tables with stand-in nulls). Jobs 2705430 (MR s3–9,
+5 min, val loss 0.078–0.084 like s0–2) → 2705431 (ensembles MRa = MR s0–4, MRb = MR s5–9 on stand_emul_main2, three
+scoreens, decision; 1 h 32 min). Result: MRb vs MRa breaks the 0.08 drift clause on 4–10 of 30 legs ⇒ noise; with the
+calibrated limits MEP/MEPx/TP still fail every flux (ET/runoff gain fades over the century, NPP's does not; candidates
+still better late on most legs). Found: MR s<k> ≈ NC_s<k> (same seed and sampling, 0.1 % apart), so the "retrained vs
+deployed" null is not independent — the calibration rests on the disjoint-seed null. Nothing packaged; stopped.
