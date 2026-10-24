@@ -9,6 +9,8 @@ reproduces the scored pipeline.
   --check             compare with the pipeline's predictions of the same models: structure + stand vs
                       clu_non/maps/<maps_arm>/preds.parquet, and (fold release) the daily model's annual fluxes vs
                       the scored phase-B free run f2_non/runs/<--check-tag, default NC_B3>/annual.npz
+  --check-ens NPZ     (ADR 0372) also compare the daily model's annual fluxes with an xtf_daily.py runens ensemble
+                      run on the emulated stand (xtf/daily/ens/<arm>__stand_emul_main2/annual.npz, key free__m2__)
 The forcing is read from the runs' own .clm files exactly as the training table's climate statistics were
 (clu_emu_maps.read_forcing_year); the first day (Jan 1 2020) is the original's state, as in the scored runs.
 Output: <release>/runs/<leg>_cap<cap>.npz (annual GPP / ET / NPP / runoff, structure and stand per cell-year).
@@ -52,6 +54,7 @@ def main():
     ap.add_argument("--cap", choices=["yearly", "fixed"], default="yearly")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--check-tag", dest="check_tag", default="NC_B3")
+    ap.add_argument("--check-ens", dest="check_ens", default="")
     a = ap.parse_args()
 
     emu = LandEmulator.load(a.release)
@@ -122,6 +125,17 @@ def main():
                 good = np.median(rel) < 1e-2
                 ok &= bool(good)
                 log(f"CHECK daily {v} (2021-2100 mean per cell vs {a.check_tag}): median |rel diff| "
+                    f"{np.median(rel):.1e}, 90th pct {np.quantile(rel, 0.9):.1e}, total "
+                    f"{x[m].sum() / r[m].sum() - 1:+.1e} -> {'OK' if good else 'DIFFERS'}")
+        if a.check_ens and a.cap == "yearly" and ny == 81:
+            z = np.load(a.check_ens)
+            for j, v in enumerate(("gpp", "et", "npp", "runoff")):
+                x, r = ann_f[:, 1:, j].mean(1), z[f"free__m2__{a.leg}__{v}"][:, 1:].mean(1)
+                m = np.abs(r) > 1.0
+                rel = np.abs(x[m] / r[m] - 1)
+                good = np.median(rel) < 1e-2
+                ok &= bool(good)
+                log(f"CHECK daily {v} (2021-2100 mean per cell vs the scored ensemble run): median |rel diff| "
                     f"{np.median(rel):.1e}, 90th pct {np.quantile(rel, 0.9):.1e}, total "
                     f"{x[m].sum() / r[m].sum() - 1:+.1e} -> {'OK' if good else 'DIFFERS'}")
         log(f"CHECKS: {'ALL OK' if ok else 'SOME DIFFER (see above)'}")

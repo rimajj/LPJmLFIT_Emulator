@@ -68,7 +68,11 @@ class Setup:
     CO2 releases only: co2_hist (H,) the yearly CO2 (ppm) of the years before year0, oldest
     first (>= 29 years); aco2: the anchor period's 30-year CO2 mean (scalar or (N,)).
     A fixed anchor (the cell's own historical state, ADR 0341/0342) may be given as anc (N,) and
-    aclim (N, 25): then the run has no last year."""
+    aclim (N, 25): then the run has no last year.
+
+    Daily models with a place description only (ADR 0372): place_mon (30, N, 12, 4), place_s1,
+    place_s2 (30, N, 4), the yearly summaries (``daily.place_year_parts``) of the 30 years before
+    year0, oldest first."""
 
     cell: np.ndarray
     lat: np.ndarray
@@ -88,6 +92,9 @@ class Setup:
     warm: np.ndarray
     co2_hist: np.ndarray | None = None
     aco2: np.ndarray | float | None = None
+    place_mon: np.ndarray | None = None
+    place_s1: np.ndarray | None = None
+    place_s2: np.ndarray | None = None
 
     @classmethod
     def load(cls, path):
@@ -114,6 +121,7 @@ class Setup:
             warm=z["warm"],
             co2_hist=z["co2_hist"] if "co2_hist" in z.files else None,
             aco2=z["aco2"] if "aco2" in z.files else None,
+            **{k: z[k] for k in ("place_mon", "place_s1", "place_s2") if k in z.files},
         )
 
 
@@ -152,13 +160,22 @@ class LandEmulator:
                 raise ValueError("this release has no population maps (population.json)")
             if not np.array_equal(popsetup.cell, setup.cell):
                 raise ValueError("population setup and setup have different cells")
+        dm = self.daily
+        place = None
+        if dm.place_mode is not None:
+            if setup.place_mon is None:
+                raise ValueError("this release reads a place description: the setup needs place_*")
+            place = (setup.place_mon, setup.place_s1, setup.place_s2)
         st = DailyState(
             setup.lat,
             setup.W0,
             setup.S0,
             setup.D0,
             setup.warm,
-            soil=self.daily.soil_columns(setup.soil_code),
+            soil=dm.soil_columns(setup.soil_code),
+            ema_tau=dm.ema_tau,
+            place=place,
+            place_mode=dm.place_mode,
         )
         t = self.cfg["pft_temp_stress"]
         co2buf = None
@@ -317,6 +334,7 @@ class LandEmulator:
             feat["dco2_win"] = feat["co2_win"] - np.broadcast_to(
                 np.asarray(su.aco2, np.float64), (n,)
             )
+        state["daily"].end_year(forcing)  # a trailing place description moves on (ADR 0372)
         ann = self.annual.predict(feat)
         if self.annual.dep:
             self._apply_departure(state, clim, win, ann)

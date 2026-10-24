@@ -292,3 +292,38 @@ def test_diversity_indices_known_values():
     assert 0.0 <= r["feve"] <= 1.0 and r["raoq"] > 0 and r["fdis"] > 0
     same = {k: (np.full(n, 0.5) if k not in ("Type", "Height") else v) for k, v in vt.items()}
     assert diversity_indices(same, const)["fdis"] == 0.0
+
+
+def test_weather_memory_extras():
+    """ADR 0372: the running means and the place description are opt-in columns after every
+    other input; after a year end the trailing description equals the direct one of the
+    shifted 30 years."""
+    from lpjmlfit_emulator.landemu.daily import place_description, place_year_parts
+
+    rng = np.random.default_rng(SEED)
+    n, tau = 5, (3, 30, 480)
+    years = [_weather(rng, n) for _ in range(31)]
+    parts = [place_year_parts(y) for y in years]
+    stack = lambda ps: tuple(np.stack([p[i] for p in ps]) for i in range(3))  # noqa: E731
+    lat = np.linspace(-40, 60, n)
+    st = DailyState(lat, np.zeros(n), np.zeros(n), np.zeros(n), years[29], ema_tau=tau,
+                    place=stack(parts[:30]), place_mode="trailing")  # fmt: skip
+    assert st.extras().shape == (n, 4 * len(tau) + 52)
+    assert np.allclose(st.place, place_description(*stack(parts[:30])))
+    st.end_year(years[30])
+    assert np.allclose(st.place, place_description(*stack(parts[1:31])), rtol=1e-6, atol=1e-6)
+    # running means: constant weather leaves them at that value
+    const = np.repeat(years[0][:, :1], 365, axis=1)
+    st2 = DailyState(lat, np.zeros(n), np.zeros(n), np.zeros(n), const, ema_tau=tau)
+    st2.push(const[:, 0])
+    e = st2.extras()
+    K = len(tau)
+    assert np.allclose(e[:, :K], const[:, 0, :1], atol=1e-5)
+    assert np.allclose(e[:, K : 2 * K], np.log1p(const[:, 0, 1:2]), atol=1e-5)
+    # without extras the input vector is unchanged
+    plain = DailyState(lat, np.zeros(n), np.zeros(n), np.zeros(n), years[0])
+    assert plain.extras() is None
+    x = plain.inputs(years[0][:, 0], 0, np.full(n, 100.0), np.zeros((n, 12), np.float32), [4])
+    assert x.shape == (n, NIN)
+    model = DailyModel([_member(rng)], ema_tau=tau, place_mode="fixed")
+    assert model.n_extra == 4 * len(tau) + 52 and DailyModel([_member(rng)]).n_extra == 0
