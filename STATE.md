@@ -44,6 +44,15 @@ The table below is the per-part history up to 2026-10-14.
 
 ## NEXT — start here
 
+**2026-10-24 (later) — owner: "the goal is the best possible emulator … 15 % better at 1.2× cost is a good candidate"
+⇒ ADR 0372 (owner decision + pre-registration): IN PROGRESS.** The per-leg drift clause is replaced for the
+daily-network choice by "not worse than the deployed networks late in the century" + a noise-calibrated worst-leg
+limit. MEP looked 30 yr ahead for its place description ⇒ two deployable versions: MEPh (fixed, observed 1990–2019)
+and MEPt (trailing 30 yr, yearly). Jobs: `xtf-372train` 2705597 → `xtf-372bench` 2705598 + `xtf-372run` 2705599
+(ensembles, `scoreens --out-suffix _372`, `scripts/xtf_mep_decide.py` → `xtf/daily/ens/mep_decide.json`). **To do:**
+ADR 0372 §6 results; if one passes, package it (§4: opt-in daily input in `landemu`, fold release copy
+`non_fold_v2<arm>`, gates, end-to-end cost).
+
 **2026-10-24 — owner "continue with the recommended next steps" = (z1): done (ADR 0371, separate experiment).
 Nothing packaged; the daily/die-off line is stopped as pre-registered.**
 * Two 5-network ensembles of the deployed design (MR s0–4 vs s5–9, jobs 2705430 / 2705431) break ADR 0367's "drift
