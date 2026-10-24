@@ -139,7 +139,7 @@ def main():
         parts = place_parts(base["warm"])
         np.savez(os.path.join(a.out, n), **base, place_mon=parts[0], place_s1=parts[1], place_s2=parts[2])
         z2 = np.load(os.path.join(a.out, n))
-        same = all(np.array_equal(z2[k], v) for k, v in base.items())
+        same = all(np.array_equal(z2[k], v, equal_nan=v.dtype.kind == "f") for k, v in base.items())
         BR.log(f"GATE (S) {n}: base arrays unchanged {same}; warm-up year == training 2019 True; + place_* (30 yr)")
         assert same
         worst_e = gate_extras(dm, forc, ex, parts)
