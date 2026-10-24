@@ -34,6 +34,23 @@ releases without the table run exactly as before. Built: `v2tex`, `fold_<g>_v3te
 releases unless ADR 0367 Part A adopts texture. `run_emulator_npp.py --variant tex` runs them for the mortality model
 (arm `BCET` of `explore_panel_treemort.py`; score with `--out-suffix` so earlier score files stay).
 
+## Weather-memory daily networks (ADR 0372): `release/non_fold_v2mept` (nitrogen-on, fold split)
+
+```bash
+python scripts/build_release_daily_mep.py --base .../release/non_fold_v1 --out .../release/non_fold_v2mept --arm MEPt
+python scripts/run_emulator_non.py --release .../release/non_fold_v2mept --leg mpi-esm1-2-hr_ssp370 --check \
+    --check-tag none --check-ens .../xtf/daily/ens/MEPt__stand_emul_main2/annual.npz   # NC_B3 check is the OLD nets
+```
+Networks = `xtf/daily/runs/MEPt_s0..4` (`xtf_daily.py train --arm MEPt`): the deployed MLP + 32 exponential running
+means of the weather + a 52-number place description of the 30 years before EACH year (MEPh = fixed 1990–2019).
+`daily.npz` declares `ema_tau` + `place_mode`; setups gain `place_mon/s1/s2` (30 yearly summaries: observed GSWP3-W5E5
+1990–2018 from `xtf_daily.hist_raw()` + the setup's own 2019 `warm`); `DailyState.end_year` rolls the trailing
+description. Releases without those keys run bit for bit as before. Gates in the builder: (1) numpy==torch with the
+extras, (E) online extras == `xtf_daily.Extras` over 3 years, (S) setup arrays unchanged — compare NaN-aware, the
+anchors carry NaN for treeless cells — (C) copies. Measured: error vs `non_fold_v1`'s networks GPP −12.5 %, NPP −17 %,
+ET −10 %, runoff −9.5 %; end-to-end 8.03e-3 vs 7.14e-3 core-s per cell-year. A deployment build on all 10 climate
+models does not exist yet (retrain MEPt on all legs first).
+
 ## Tree-population outputs (ADR 0363 + 0365): release `v4` = v2 + population, `fold_gfdl-esm4_v5` = fold v3 + it
 ```bash
 NCPUS=32 TIME=02:00:00 scripts/sbatch_python.sh poprel-<tag> scripts/build_population_release.py \

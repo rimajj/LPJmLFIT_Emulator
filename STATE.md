@@ -45,13 +45,18 @@ The table below is the per-part history up to 2026-10-14.
 ## NEXT — start here
 
 **2026-10-24 (later) — owner: "the goal is the best possible emulator … 15 % better at 1.2× cost is a good candidate"
-⇒ ADR 0372 (owner decision + pre-registration): IN PROGRESS.** The per-leg drift clause is replaced for the
-daily-network choice by "not worse than the deployed networks late in the century" + a noise-calibrated worst-leg
-limit. MEP looked 30 yr ahead for its place description ⇒ two deployable versions: MEPh (fixed, observed 1990–2019)
-and MEPt (trailing 30 yr, yearly). Jobs: `xtf-372train` 2705597 → `xtf-372bench` 2705598 + `xtf-372run` 2705599
-(ensembles, `scoreens --out-suffix _372`, `scripts/xtf_mep_decide.py` → `xtf/daily/ens/mep_decide.json`). **To do:**
-ADR 0372 §6 results; if one passes, package it (§4: opt-in daily input in `landemu`, fold release copy
-`non_fold_v2<arm>`, gates, end-to-end cost).
+⇒ ADR 0372: DONE — the running-means daily network is packaged as `release/non_fold_v2mept`.** The per-leg drift
+clause is replaced for the daily-network choice by "not worse than the deployed networks late in the century" + a
+noise-calibrated worst-leg limit. MEP looked 30 yr ahead for its place description ⇒ two deployable versions; MEPt
+(place = the 30 years before EACH year, rebuilt yearly) passes, MEPh (fixed 1990–2019) misses on one ET leg.
+* MEPt vs the deployed networks (complete emulator, emulated stand, held-out cells × held-out models): GPP −12.5 %,
+  NPP −17 %, ET −10 %, runoff −9.5 %; still better 2071–2100 for every flux. CO2-fixed legs: late runoff 1.06.
+* Package `landemu`: opt-in running means + place description (`daily.npz` `ema_tau`/`place_mode`, setup
+  `place_*`); `non_fold_v1` reproduces bit for bit. All builder gates pass; the packaged run equals the scored
+  ensemble to ~1e-7. End-to-end 8.03e-3 vs 7.14e-3 core-s per cell-year (1.12×; ≈ 118× below the original).
+**Next (owner to choose):** (v1) build a DEPLOYMENT version (retrain MEPt on all 10 climate models, swap into
+`non_v1` → `non_v2mept`) and make it the current nitrogen-on release; (v2) port the same idea to the nitrogen-off
+releases (`v4`); (v3) look at the CO2-fixed late-runoff loss first. No current release was replaced.
 
 **2026-10-24 — owner "continue with the recommended next steps" = (z1): done (ADR 0371, separate experiment).
 Nothing packaged; the daily/die-off line is stopped as pre-registered.**

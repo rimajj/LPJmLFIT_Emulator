@@ -2021,3 +2021,14 @@ scoreens, decision; 1 h 32 min). Result: MRb vs MRa breaks the 0.08 drift clause
 calibrated limits MEP/MEPx/TP still fail every flux (ET/runoff gain fades over the century, NPP's does not; candidates
 still better late on most legs). Found: MR s<k> ≈ NC_s<k> (same seed and sampling, 0.1 % apart), so the "retrained vs
 deployed" null is not independent — the calibration rests on the disjoint-seed null. Nothing packaged; stopped.
+
+## 2026-10-24 (later) — ADR 0372: the running-means daily network packaged
+Owner: "the goal is to have the best possible emulator … 15 % better at 1.2× cost … a good candidate". ADR 0372
+(fb8d80cd) records that decision (drift clause replaced for the daily-network choice) and pre-registers two deployable
+place descriptions (MEP's looked 30 yr ahead). `xtf_daily.py` arms MEPh / MEPt (+ `hist_raw`, `trailing_place`,
+checked against the old formula to 2e-6). Jobs 2705597 (10 nets, 17 min), 2705598 (bench), 2705599 (ensembles +
+`xtf_mep_decide.py`, 1 h 39 min): MEPt passes, MEPh misses on one ET leg (1.268 vs 1.256). Package (fa6b093f): opt-in
+extras in `landemu.daily`; gate job 2705611 (committed vs new package on non_fold_v1, bit for bit). Builder
+`build_release_daily_mep.py`: first test 2705620 failed on a NaN-unaware setup comparison (anchors are NaN for
+treeless cells), fixed (85f46fe4), 2705624 green. 2705770: `release/non_fold_v2mept` built, end-to-end 8.03e-3 vs
+7.14e-3 core-s per cell-year on the same node, `--check-ens` 4e-8 on two held-out models. + skill: emulator-release.
